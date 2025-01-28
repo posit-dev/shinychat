@@ -62,13 +62,13 @@
 <p>Or, install the development version of shinychat from <a href="https://github.com/" class="external-link">GitHub</a> with:</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># install.packages("pak")</span></span>
-<span><span class="fu">pak</span><span class="fu">::</span><span class="fu"><a href="https://pak.r-lib.org/reference/pak.html" class="external-link">pak</a></span><span class="op">(</span><span class="st">"jcheng5/shinychat"</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu">pak</span><span class="fu">::</span><span class="fu"><a href="https://pak.r-lib.org/reference/pak.html" class="external-link">pak</a></span><span class="op">(</span><span class="st">"posit-dev/shinychat"</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="example">Example<a class="anchor" aria-label="anchor" href="#example"></a>
 </h2>
 <p>To run this example, you’ll first need to create an OpenAI API key, and set it in your environment as <code>OPENAI_API_KEY</code>.</p>
-<p>You’ll also need to call <code>pak::pak("tidyverse/elmer")</code> to install the {<a href="https://elmer.tidyverse.org/" class="external-link">elmer</a>} package.</p>
+<p>You’ll also need to call <code>pak::pak("tidyverse/ellmer")</code> to install the {<a href="https://ellmer.tidyverse.org/" class="external-link">ellmer</a>} package.</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://shiny.posit.co/" class="external-link">shiny</a></span><span class="op">)</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/jcheng5/shinychat" class="external-link">shinychat</a></span><span class="op">)</span></span>
@@ -78,7 +78,7 @@
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">server</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">input</span>, <span class="va">output</span>, <span class="va">session</span><span class="op">)</span> <span class="op">{</span></span>
-<span>  <span class="va">chat</span> <span class="op">&lt;-</span> <span class="fu">elmer</span><span class="fu">::</span><span class="fu">chat_openai</span><span class="op">(</span>system_prompt <span class="op">=</span> <span class="st">"You're a trickster who answers in riddles"</span><span class="op">)</span></span>
+<span>  <span class="va">chat</span> <span class="op">&lt;-</span> <span class="fu">ellmer</span><span class="fu">::</span><span class="fu">chat_openai</span><span class="op">(</span>system_prompt <span class="op">=</span> <span class="st">"You're a trickster who answers in riddles"</span><span class="op">)</span></span>
 <span>  </span>
 <span>  <span class="fu"><a href="https://rdrr.io/pkg/shiny/man/observeEvent.html" class="external-link">observeEvent</a></span><span class="op">(</span><span class="va">input</span><span class="op">$</span><span class="va">chat_user_input</span>, <span class="op">{</span></span>
 <span>    <span class="va">stream</span> <span class="op">&lt;-</span> <span class="va">chat</span><span class="op">$</span><span class="fu">stream_async</span><span class="op">(</span><span class="va">input</span><span class="op">$</span><span class="va">chat_user_input</span><span class="op">)</span></span>
@@ -126,7 +126,7 @@
 <div class="dev-status">
 <h2 data-toc-skip>Dev status</h2>
 <ul class="list-unstyled">
-<li><a href="https://github.com/jcheng5/shinychat/actions/workflows/R-CMD-check.yaml" class="external-link"><img src="https://github.com/jcheng5/shinychat/actions/workflows/R-CMD-check.yaml/badge.svg" alt="R-CMD-check"></a></li>
+<li><a href="https://github.com/posit-dev/shinychat/actions/workflows/R-CMD-check.yaml" class="external-link"><img src="https://github.com/posit-dev/shinychat/actions/workflows/R-CMD-check.yaml/badge.svg" alt="R-CMD-check"></a></li>
 </ul>
 </div>
 
