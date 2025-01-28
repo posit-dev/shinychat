@@ -1,7 +1,7 @@
 # shinychat
 
 <!-- badges: start -->
-[![R-CMD-check](https://github.com/jcheng5/shinychat/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/jcheng5/shinychat/actions/workflows/R-CMD-check.yaml)
+[![R-CMD-check](https://github.com/posit-dev/shinychat/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/posit-dev/shinychat/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
 Chat UI component for [Shiny for R](https://shiny.posit.co/).
@@ -20,14 +20,14 @@ Or, install the development version of shinychat from [GitHub](https://github.co
 
 ``` r
 # install.packages("pak")
-pak::pak("jcheng5/shinychat")
+pak::pak("posit-dev/shinychat")
 ```
 
 ## Example
 
 To run this example, you'll first need to create an OpenAI API key, and set it in your environment as `OPENAI_API_KEY`.
 
-You'll also need to call `pak::pak("tidyverse/elmer")` to install the {[elmer](https://elmer.tidyverse.org/)} package.
+You'll also need to call `pak::pak("tidyverse/ellmer")` to install the {[ellmer](https://ellmer.tidyverse.org/)} package.
 
 ```r
 library(shiny)
@@ -38,7 +38,7 @@ ui <- bslib::page_fluid(
 )
 
 server <- function(input, output, session) {
-  chat <- elmer::chat_openai(system_prompt = "You're a trickster who answers in riddles")
+  chat <- ellmer::chat_openai(system_prompt = "You're a trickster who answers in riddles")
   
   observeEvent(input$chat_user_input, {
     stream <- chat$stream_async(input$chat_user_input)
