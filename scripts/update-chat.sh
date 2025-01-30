@@ -7,7 +7,8 @@ set -x
 # directory with a GIT_VERSION.
 
 REPO_URL="https://github.com/posit-dev/py-shiny.git"
-BRANCH=main
+# TODO: Change this to main after this gets merged https://github.com/posit-dev/py-shiny/pull/1782
+BRANCH=markdown-stream-component
 DEST_DIR="inst/lib/shiny"
 
 if [ ! -f "shinychat.Rproj" ]; then
@@ -21,6 +22,7 @@ git clone -b "$BRANCH" --depth 1 "$REPO_URL" repo_tmp
 rm -rf "$DEST_DIR"
 mkdir -p "$DEST_DIR"
 cp -R "repo_tmp/shiny/www/py-shiny/chat" "$DEST_DIR/chat"
+cp -R "repo_tmp/shiny/www/py-shiny/markdown-stream" "$DEST_DIR/markdown-stream"
 cp -R "repo_tmp/shiny/www/py-shiny/text-area" "$DEST_DIR/text-area"
 (cd repo_tmp; git rev-parse HEAD) > "${DEST_DIR}/GIT_VERSION"
 rm -rf repo_tmp
