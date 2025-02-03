@@ -7,8 +7,7 @@ set -x
 # directory with a GIT_VERSION.
 
 REPO_URL="https://github.com/posit-dev/py-shiny.git"
-# TODO: Change this to main after this gets merged https://github.com/posit-dev/py-shiny/pull/1782
-BRANCH=markdown-stream-component
+BRANCH=main
 DEST_DIR="inst/lib/shiny"
 
 if [ ! -f "shinychat.Rproj" ]; then
