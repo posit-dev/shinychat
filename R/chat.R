@@ -382,3 +382,43 @@ rlang::on_load(chat_append_stream_impl <- coro::async(function(id, stream, role 
   }
   chat_append_message(id, list(role = role, content = ""), chunk = "end", operation = "append", session = session)
 }))
+
+
+#' Clear all messages from a chat control
+#' 
+#' @param id The ID of the chat element
+#' @param session The Shiny session object
+#' 
+#' @export 
+#' @examplesIf interactive()
+#' 
+#' library(shiny)
+#' library(bslib)
+#' 
+#' ui <- page_fillable(
+#'   chat_ui("chat", fill = TRUE),
+#'   actionButton("clear", "Clear chat")
+#' )
+#' 
+#' server <- function(input, output, session) {
+#'   observeEvent(input$clear, {
+#'     chat_clear("chat")
+#'   })
+#' 
+#'   observeEvent(input$chat_user_input, {
+#'     response <- paste0("You said: ", input$chat_user_input)
+#'     chat_append("chat", response)
+#'   })
+#' }
+#'
+#' shinyApp(ui, server)
+chat_clear <- function(id, session = getDefaultReactiveDomain()) {
+  session$sendCustomMessage(
+    "shinyChatMessage",
+    list(
+      id = id,
+      handler = "shiny-chat-clear-messages",
+      obj = NULL
+    )
+  )
+}
