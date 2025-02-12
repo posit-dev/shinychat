@@ -4,7 +4,15 @@
 \alias{output_markdown_stream}
 \title{Create a UI element for a markdown stream.}
 \usage{
-output_markdown_stream(id, ..., content = "", content_type = "markdown")
+output_markdown_stream(
+  id,
+  ...,
+  content = "",
+  content_type = "markdown",
+  auto_scroll = TRUE,
+  width = "100\%",
+  height = "auto"
+)
 }
 \arguments{
 \item{id}{A unique identifier for this markdown stream.}
@@ -18,6 +26,13 @@ CommonMark). Other supported options are:
 * \code{"html"}: for rendering HTML content.
 * \code{"text"}: for plain text.
 * \code{"semi-markdown"}: for rendering markdown, but with HTML tags escaped.}
+
+\item{auto_scroll}{Whether to automatically scroll to the bottom of a
+scrollable container when new content is added. Default is True.}
+
+\item{width}{The width of the UI element.}
+
+\item{height}{The height of the UI element.}
 }
 \value{
 A shiny tag object.

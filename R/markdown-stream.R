@@ -26,19 +26,36 @@ markdown_stream_deps <- function() {
 #'       * `"html"`: for rendering HTML content.
 #'       * `"text"`: for plain text.
 #'       * `"semi-markdown"`: for rendering markdown, but with HTML tags escaped.
+#' @param auto_scroll Whether to automatically scroll to the bottom of a 
+#'   scrollable container when new content is added. Default is True.
+#' @param width The width of the UI element.
+#' @param height The height of the UI element.
 #'
 #' @return A shiny tag object.
 #' 
 #' @export
 #' @seealso [markdown_stream()]
 #' 
-output_markdown_stream <- function(id, ..., content = "", content_type = "markdown") {
+output_markdown_stream <- function(
+  id, 
+  ..., 
+  content = "", 
+  content_type = "markdown", 
+  auto_scroll = TRUE, 
+  width = "100%", 
+  height = "auto"
+) {
   htmltools::tag(
     "shiny-markdown-stream",
     rlang::list2(
       id = id,
+      style = css(
+        width = width,
+        height = height
+      ),
       content = content,
-      content_type = content_type,
+      "content-type" = content_type,
+      "auto-scroll" = auto_scroll,
       ...,
       markdown_stream_deps()
     )
