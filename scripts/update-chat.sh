@@ -21,6 +21,7 @@ git clone -b "$BRANCH" --depth 1 "$REPO_URL" repo_tmp
 rm -rf "$DEST_DIR"
 mkdir -p "$DEST_DIR"
 cp -R "repo_tmp/shiny/www/py-shiny/chat" "$DEST_DIR/chat"
+cp -R "repo_tmp/shiny/www/py-shiny/markdown-stream" "$DEST_DIR/markdown-stream"
 cp -R "repo_tmp/shiny/www/py-shiny/text-area" "$DEST_DIR/text-area"
 (cd repo_tmp; git rev-parse HEAD) > "${DEST_DIR}/GIT_VERSION"
 rm -rf repo_tmp
