@@ -377,6 +377,7 @@ chat_append_stream <- function(
   session = getDefaultReactiveDomain()
 ) {
   result <- chat_append_stream_impl(id, stream, role, session)
+  result <- chat_update_bookmark(id, result)
   # Handle erroneous result...
   promises::catch(result, function(reason) {
     chat_append_message(
