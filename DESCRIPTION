@@ -20,6 +20,7 @@ Imports:
     rlang,
     shiny (>= 1.10.0)
 Suggests:
+    ellmer,
     testthat (>= 3.0.0)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
