@@ -1,4 +1,3 @@
-
 markdown_stream_deps <- function() {
   htmltools::htmlDependency(
     "shinychat",
@@ -11,13 +10,13 @@ markdown_stream_deps <- function() {
 }
 
 #' Create a UI element for a markdown stream.
-#' 
-#' @description 
-#' Creates a UI element for a [markdown_stream()]. A markdown stream can be 
-#' useful for displaying generative AI responses (outside of a chat interface), 
+#'
+#' @description
+#' Creates a UI element for a [markdown_stream()]. A markdown stream can be
+#' useful for displaying generative AI responses (outside of a chat interface),
 #' streaming logs, or other use cases where chunks of content are generated
 #' over time.
-#' 
+#'
 #' @param id A unique identifier for this markdown stream.
 #' @param ... Extra HTML attributes to include on the chat element
 #' @param content Some content to display before any streaming occurs.
@@ -26,23 +25,23 @@ markdown_stream_deps <- function() {
 #'       * `"html"`: for rendering HTML content.
 #'       * `"text"`: for plain text.
 #'       * `"semi-markdown"`: for rendering markdown, but with HTML tags escaped.
-#' @param auto_scroll Whether to automatically scroll to the bottom of a 
+#' @param auto_scroll Whether to automatically scroll to the bottom of a
 #'   scrollable container when new content is added. Default is True.
 #' @param width The width of the UI element.
 #' @param height The height of the UI element.
 #'
 #' @return A shiny tag object.
-#' 
+#'
 #' @export
 #' @seealso [markdown_stream()]
-#' 
+#'
 output_markdown_stream <- function(
-  id, 
-  ..., 
-  content = "", 
-  content_type = "markdown", 
-  auto_scroll = TRUE, 
-  width = "100%", 
+  id,
+  ...,
+  content = "",
+  content_type = "markdown",
+  auto_scroll = TRUE,
+  width = "100%",
   height = "auto"
 ) {
   htmltools::tag(
@@ -90,7 +89,7 @@ output_markdown_stream <- function(
 #' library(coro)
 #' library(bslib)
 #' library(shinychat)
-#' 
+#'
 #' # Define a generator that yields a random response
 #' # (imagine this is a more sophisticated AI generator)
 #' random_response_generator <- async_generator(function() {
@@ -102,27 +101,32 @@ output_markdown_stream <- function(
 #'     "Can you elaborate on that?",
 #'     "Interesting question! Let's examine thi... **See more**"
 #'   )
-#' 
+#'
 #'   await(async_sleep(1))
 #'   for (chunk in strsplit(sample(responses, 1), "")[[1]]) {
 #'     yield(chunk)
 #'     await(async_sleep(0.02))
 #'   }
 #' })
-#' 
+#'
 #' ui <- page_fillable(
 #'   actionButton("generate", "Generate response"),
 #'   output_markdown_stream("stream")
 #' )
-#' 
+#'
 #' server <- function(input, output, session) {
 #'   observeEvent(input$generate, {
 #'     markdown_stream("stream", random_response_generator())
 #'   })
 #' }
-#' 
+#'
 #' shinyApp(ui, server)
-markdown_stream <- function(id, content_stream, operation = c("replace", "append"), session = getDefaultReactiveDomain()) {
+markdown_stream <- function(
+  id,
+  content_stream,
+  operation = c("replace", "append"),
+  session = getDefaultReactiveDomain()
+) {
   if (promises::is.promising(content_stream)) {
     # promise => async generator
     stream <- coro::gen(yield(content_stream))
@@ -130,7 +134,9 @@ markdown_stream <- function(id, content_stream, operation = c("replace", "append
     # Already a generator (sync or async)
     stream <- content_stream
   } else {
-    rlang::abort("Unexpected message type; markdown_stream() expects a string generator, a string promise, or a string promise generator")
+    rlang::abort(
+      "Unexpected message type; markdown_stream() expects a string generator, a string promise, or a string promise generator"
+    )
   }
 
   operation <- match.arg(operation)
@@ -139,7 +145,11 @@ markdown_stream <- function(id, content_stream, operation = c("replace", "append
   # Handle erroneous result...
   promises::catch(result, function(reason) {
     shiny::showNotification(
-      sprintf("Error in markdown_stream('%s'): %s", id, conditionMessage(reason)),
+      sprintf(
+        "Error in markdown_stream('%s'): %s",
+        id,
+        conditionMessage(reason)
+      ),
       type = "error",
       duration = NULL,
       closeButton = TRUE
@@ -153,36 +163,36 @@ markdown_stream <- function(id, content_stream, operation = c("replace", "append
   result
 }
 
-
 markdown_stream_impl <- NULL
-rlang::on_load(markdown_stream_impl <- coro::async(function(id, stream, operation, session) {
+rlang::on_load(
+  markdown_stream_impl <- coro::async(function(id, stream, operation, session) {
+    send_stream_message <- function(...) {
+      session$sendCustomMessage(
+        "shinyMarkdownStreamMessage",
+        list(id = id, ...)
+      )
+    }
 
-  send_stream_message <- function(...) {
-    session$sendCustomMessage(
-      "shinyMarkdownStreamMessage",
-      list(id = id, ...)
-    )
-  }
+    if (operation == "replace") {
+      send_stream_message(content = "", operation = "replace")
+    }
 
-  if (operation == "replace") {
-    send_stream_message(content = "", operation = "replace")
-  }
-  
-  send_stream_message(isStreaming = TRUE)
+    send_stream_message(isStreaming = TRUE)
 
-  on.exit({
-    send_stream_message(isStreaming = FALSE)
+    on.exit({
+      send_stream_message(isStreaming = FALSE)
+    })
+
+    for (msg in stream) {
+      if (promises::is.promising(msg)) {
+        msg <- await(msg)
+      }
+      if (coro::is_exhausted(msg)) {
+        break
+      }
+      send_stream_message(content = msg, operation = "append")
+    }
+
+    invisible(NULL)
   })
-
-  for (msg in stream) {
-    if (promises::is.promising(msg)) {
-      msg <- await(msg)
-    }
-    if (coro::is_exhausted(msg)) {
-      break
-    }
-    send_stream_message(content = msg, operation = "append")
-  }
-
-  invisible(NULL)
-}))
+)
