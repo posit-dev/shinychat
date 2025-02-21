@@ -6,6 +6,7 @@
 
 #' @importFrom htmltools tag css
 #' @importFrom coro async
+#' @importFrom rlang %||%
 NULL
 
 chat_deps <- function() {
@@ -131,7 +132,7 @@ chat_ui <- function(
     res <- bslib::as_fill_carrier(res)
   }
 
-  res
+  tag_require(res, version = 5, caller = "chat_ui")
 }
 
 #' Append an assistant response (or user message) to a chat control
@@ -187,42 +188,31 @@ chat_ui <- function(
 #'     "Can you elaborate on that?",
 #'     "Interesting question! Let's examine thi... **See more**"
 #'   )
-#' 
+#'
 #'   await(async_sleep(1))
 #'   for (chunk in strsplit(sample(responses, 1), "")[[1]]) {
 #'     yield(chunk)
 #'     await(async_sleep(0.02))
 #'   }
 #' })
-#' 
+#'
 #' ui <- page_fillable(
 #'   chat_ui("chat", fill = TRUE)
 #' )
-#' 
+#'
 #' server <- function(input, output, session) {
 #'   observeEvent(input$chat_user_input, {
 #'     response <- fake_chatbot(input$chat_user_input)
 #'     chat_append("chat", response)
 #'   })
 #' }
-#' 
+#'
 #' shinyApp(ui, server)
-#' 
+#'
 #' @export
 chat_append <- function(id, response, role = c("assistant", "user"), session = getDefaultReactiveDomain()) {
   role <- match.arg(role)
-  if (is.character(response)) {
-    # string => generator
-    stream <- coro::gen(yield(response))
-  } else if (promises::is.promising(response)) {
-    # promise => async generator
-    stream <- coro::gen(yield(response))
-  } else if (inherits(response, "coro_generator_instance")) {
-    # Already a generator (sync or async)
-    stream <- response
-  } else {
-    rlang::abort("Unexpected message type; chat_append() expects a string, a string generator, a string promise, or a string promise generator")
-  }
+  stream <- as_generator(response)
   chat_append_stream(id, stream, role = role, session = session)
 }
 
@@ -320,21 +310,23 @@ chat_append_message <- function(id, msg, chunk = TRUE, operation = c("append", "
     chunk_type <- NULL
   }
 
-  if (identical(class(msg[["content"]]), "character")) {
-    content_type <- "markdown"
-  } else {
-    content_type <- "html"
-  }
+  content <- msg[["content"]]
+  is_html <- inherits(content, c("shiny.tag", "shiny.tag.list", "html", "htmlwidget"))
+  content_type <- if (is_html) "html" else "markdown"
 
   operation <- match.arg(operation)
   if (identical(operation, "replace")) {
     operation <- NULL
   }
 
+  ui <- do_render_ui(content, session)
+  deps <- lapply(ui[["deps"]], unclass)
+
   msg <- list(
-    content = msg[["content"]],
+    content = ui[["html"]],
     role = msg[["role"]],
     content_type = content_type,
+    html_deps = jsonlite::toJSON(deps, auto_unbox = TRUE),
     chunk_type = chunk_type,
     operation = operation
   )
