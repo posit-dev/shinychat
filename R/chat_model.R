@@ -1,23 +1,49 @@
-# # Default call
-# shinychat::set_chat_model("chat", chat_session)
-# # Not `set_model` as there's no object context
+# TODO - barret; Explore if auto_bookmark should be used to stop the url from updating automatically
 
-# # Error if `shiny::getShinyOption("bookmarkStore")` is `"none"`.
-# #   * Provide example in docs on how to exclude some input in the example app.
-# #     # Escape bookmarking all inputs
-# #     shiny::setBookmarkExclude("big_object")
-# # Error if model is not a ellmer model. Provide error message on submitting GH issue for extension
-
-# # Sets onBookmark callback
-# # Sets onRestore callback
-# # Updates the url on user input / server output change
-
+#' Set the chat model
+#'
+#' @description
+#' Adds hooks to the Shiny chat given the model. By default, the chat will enable bookmarking.
+#'
+#' @param id The ID of the chat element
+#' @param ... Used for future parameter expansion.
+#' @param bookmark A logical that determines if bookmarking hooks should be added for the chat component. If `TRUE` (default), the bookmark value will be updated when the chat model is done responding. On session restore, the bookmark value will attempt to restore from the URL.
+#' @param session The Shiny session object
+#' @returns Returns nothing (\code{invisible(NULL)}).
+#'
+#' @examplesIf interactive()
+#' library(shiny)
+#' library(bslib)
+#' library(shinychat)
+#'
+#' ui <- page_fillable(
+#'   chat_ui("chat", fill = TRUE)
+#' )
+#'
+#' server <- function(input, output, session) {
+#'   chat_model <- ellmer::chat_ollama(
+#'     system_prompt = "Important: Always respond in a limerick",
+#'     model = "qwen2.5-coder:1.5b",
+#'     echo = TRUE
+#'   )
+#'   # Let the UI know about the model
+#'   set_chat_model("chat", chat_model, bookmark = TRUE)
+#'
+#'   observeEvent(input$chat_user_input, {
+#'     stream <- chat_model$stream_async(input$chat_user_input)
+#'     chat_append("chat", stream)
+#'   })
+#' }
+#'
+#' # Enable bookmarking!
+#' shinyApp(ui, server, enableBookmarking = "url")
 #' @export
 set_chat_model <- function(
   id,
   model,
   ...,
-  bookmark = TRUE
+  bookmark = TRUE,
+  session = getDefaultReactiveDomain()
 ) {
   rlang::check_dots_empty()
   stopifnot(is.character(id) && length(id) == 1)
@@ -25,32 +51,35 @@ set_chat_model <- function(
   rlang::check_installed("ellmer")
   if (!(inherits(model, "R6") && inherits(model, "Chat"))) {
     rlang::abort(
-      "`model` must be an `ellmer::Chat()` object. If you would like to have {shinychat} support your own package, please submit an Issue at https://github.com/posit-dev/shinychat"
+      "`model` must be an `ellmer::Chat()` object. If you would like to have {shinychat} support your own package, please submit a GitHub Issue at https://github.com/posit-dev/shinychat"
     )
   }
 
   if (isTRUE(bookmark)) {
-    set_chat_model_bookmark(id, model)
+    set_chat_model_bookmark(id, model, session = session)
   }
 
-  return()
+  # Don't return anything, even by chance
+  invisible(NULL)
 }
 
 bookmark_domains <- list2env(list())
 
 #' @importFrom rlang %||%
-set_chat_model_bookmark <- function(id, model) {
-  domain_token_value <- domain_token()
-  domain_hash <- paste0(domain_token_value, "-", id)
+set_chat_model_bookmark <- function(
+  id,
+  model,
+  ...,
+  session = getDefaultReactiveDomain()
+) {
+  rlang::check_dots_empty()
 
-  str(
-    list(
-      domain_hash = domain_hash,
-      bookmark_domains = as.list(bookmark_domains)
-    )
-  )
+  stopifnot(is.character(id) && length(id) == 1)
+  domain_token_value <- domain_token(session)
+  domain_hash <- paste0(domain_token_value, "-", session$ns(id))
 
   # Only allow for bookmarks for each chat once
+  # TODO-barret on second set chat model call, disable all reactive callbacks already registered
   if (!is.null(bookmark_domains[[domain_hash]])) {
     rlang::abort(
       "Error: A bookmark for this chat already exists. Be sure to only set the model once."
@@ -71,11 +100,14 @@ set_chat_model_bookmark <- function(id, model) {
     )
   }
 
-  # Save
-  shiny::onBookmark(function(state) {
-    print("shiny::onBookmark")
+  excluded_names <- domain$getBookmarkExclude()
+  ns_user_input <- paste0(id, "_user_input")
+  if (!(ns_user_input %in% excluded_names)) {
+    session$setBookmarkExclude(c(excluded_names, ns_user_input))
+  }
 
-    # TODO-barret-q: Why isn't this value set until a response has arrived?
+  # Save
+  session$onBookmark(function(state) {
     if (id %in% names(state$values)) {
       rlang::abort(
         paste0(
@@ -101,24 +133,25 @@ set_chat_model_bookmark <- function(id, model) {
   })
 
   # Restore
-  # Might need to be `onRestored`, idk yet
-  shiny::onRestore(function(state) {
-    print("shiny::onRestore")
+  session$onRestore(function(state) {
+    turns_obj <- state$values[[id]]
+    if (is.null(turns_obj)) return()
 
-    turns_df <- state$values[[id]]
-    if (is.null(turns_df)) return()
-    if (nrow(turns_df) == 0) return()
+    turn_list <-
+      if (inherits(turns_obj, "data.frame")) {
+        # Restore url jsonlite::fromJSON() object that has been _simplified_ into a data.frame()
+        turns_df <- turns_obj
+        if (nrow(turns_df) == 0) return()
 
-    print("Restoring turns!")
-    str(turns_df)
+        # Turn a data.frame into a list of row information, where the row info is a named lists
+        # Similar to `purrr::pmap(turns_df, list)`
+        unname(rlang::exec(Map, !!!as.list(turns_df), list))
+      } else {
+        # Restore `enableBookmarking("server")` object which is not _simplified_ by `jsonlite::fromJSON()`
+        turns_obj
+      }
 
-    # Turn a data.frame into a list of row information, where the row info is a named lists
-    # Similar to `purrr::pmap(turns_df, list)`
-    turn_list <- unname(rlang::exec(Map, !!!as.list(turns_df), list))
-
-    str(list(turn_list = turn_list))
-
-    # Verify turn fields available
+    # Verify turn fields are available
     Map(
       turn_info = turn_list,
       i = seq_along(turn_list),
@@ -167,20 +200,20 @@ set_chat_model_bookmark <- function(id, model) {
   if (is.null(bookmark_domains[[domain_token_value]])) {
     bookmark_domains[[domain_token_value]] <- TRUE
     # Update the query string when bookmarked
-    print("Setting onBookmarked")
     shiny::onBookmarked(function(url) {
-      print("onBookmarked!")
-      str(url)
       shiny::updateQueryString(url)
     })
   }
 
-  # TODO-barret on session ended, clean up domain info
+  # TODO-barret on session ended, clean up domain info in bookmark_domains
 }
 
-chat_update_bookmark <- function(id, stream_promise) {
-  # Capture the session from when the call was made
+chat_update_bookmark <- function(
+  id,
+  stream_promise,
   session = shiny::getDefaultReactiveDomain()
+) {
+  # Capture the session from when the call was made
   domain_token_value <- domain_token(session)
 
   if (is.null(bookmark_domains[[domain_token_value]])) {
@@ -189,13 +222,10 @@ chat_update_bookmark <- function(id, stream_promise) {
   }
 
   # Bookmark has been flagged for `id`
-
-  print("adding promise")
-
+  # When the stream ends, update the URL!
   promises::then(stream_promise, function(stream) {
     shiny::withReactiveDomain(session, {
       # Force a bookmark update when the stream ends!
-      print("session$doBookmark()!")
       session$doBookmark()
     })
   })

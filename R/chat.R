@@ -4,6 +4,7 @@
 # trimming of the message history to fit within the context window; these
 # are left for the caller to handle in the R version.
 
+#' @importFrom shiny getDefaultReactiveDomain
 #' @importFrom htmltools tag css
 #' @importFrom coro async
 NULL
@@ -70,6 +71,7 @@ chat_deps <- function() {
 #'       "</blockquote>"
 #'     )
 #'     chat_append("chat", response)
+#'     chat_append("chat", stream)
 #'   })
 #' }
 #'
@@ -262,8 +264,6 @@ chat_append <- function(
 #'
 #' @returns Returns nothing (\code{invisible(NULL)}).
 #'
-#' @importFrom shiny getDefaultReactiveDomain
-#'
 #' @examplesIf interactive()
 #' library(shiny)
 #' library(coro)
@@ -377,7 +377,7 @@ chat_append_stream <- function(
   session = getDefaultReactiveDomain()
 ) {
   result <- chat_append_stream_impl(id, stream, role, session)
-  result <- chat_update_bookmark(id, result)
+  result <- chat_update_bookmark(id, result, session = session)
   # Handle erroneous result...
   promises::catch(result, function(reason) {
     chat_append_message(
