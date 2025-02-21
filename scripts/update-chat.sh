@@ -7,7 +7,7 @@ set -x
 # directory with a GIT_VERSION.
 
 REPO_URL="https://github.com/posit-dev/py-shiny.git"
-BRANCH=main
+BRANCH=chat-shiny-bind
 DEST_DIR="inst/lib/shiny"
 
 if [ ! -f "shinychat.Rproj" ]; then
