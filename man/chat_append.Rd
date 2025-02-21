@@ -35,7 +35,7 @@ promise generator (as returned by the 'elmer' package's \code{chat}, \code{strea
 \code{chat_async}, and \code{stream_async} methods, respectively).
 
 This function should be called from a Shiny app's server. It is generally
-used to append the model's response to the chat, while user messages are
+used to append the client's response to the chat, while user messages are
 added to the chat UI automatically by the front-end. You'd only need to use
 \code{chat_append(role="user")} if you are programmatically generating queries
 from the server and sending them on behalf of the user, and want them to be
