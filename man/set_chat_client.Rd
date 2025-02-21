@@ -8,7 +8,7 @@ set_chat_client(
   id,
   client,
   ...,
-  bookmark = TRUE,
+  bookmark = c("auto", "manual"),
   session = getDefaultReactiveDomain()
 )
 }
@@ -17,7 +17,20 @@ set_chat_client(
 
 \item{...}{Used for future parameter expansion.}
 
-\item{bookmark}{A logical that determines if bookmarking hooks should be added for the chat component. If \code{TRUE} (default), the bookmark value will be updated when the chat client is done responding. On session restore, the bookmark value will attempt to restore from the URL.}
+\item{bookmark}{A character value determines how to handle bookmarking for the chat component. For the values to work, it requires that the App author has enabled bookmarking in their App. To enable bookmarking, you can call \code{shiny::enableBookmarking()} or set the parameter in \code{shinyApp(enableBookmarking = "url")}.
+
+Updating the URL:
+\itemize{
+\item \code{"auto"} (default): The bookmark value will be updated when the chat client is done responding.
+\item \code{"manual"}: The bookmark value will only update when \code{session$doBookmark()} is called by the App author.
+}
+
+Restoring from a bookmark:
+\itemize{
+\item \code{"auto"} (default) and \code{"manual"}: The chat client will be restored if  will be restored from the URL when the chat client is done responding."`
+}
+
+A warning will be issued if the bookmarking feature is not enabled.}
 
 \item{session}{The Shiny session object}
 }
@@ -27,14 +40,6 @@ Returns nothing (\code{invisible(NULL)}).
 \description{
 Adds hooks to the Shiny chat given the LLM client. By default, the chat set enable bookmarking.
 }
-\section{Bookmarking}{
-
-
-\pkg{shinychat} will not enable bookmarking by default. To enable bookmarking, you can call \code{shiny::enableBookmarking()} or set the parameter in \code{shinyApp(enableBookmarking = "url")}.
-
-To
-}
-
 \examples{
 \dontshow{if (interactive()) (if (getRversion() >= "3.4") withAutoprint else force)(\{ # examplesIf}
 library(shiny)
@@ -52,7 +57,7 @@ server <- function(input, output, session) {
     echo = TRUE
   )
   # Let the UI know about the client
-  set_chat_client("chat", chat_client, bookmark = TRUE)
+  set_chat_client("chat", chat_client, bookmark = "auto")
 
   observeEvent(input$chat_user_input, {
     stream <- chat_client$stream_async(input$chat_user_input)
