@@ -1,13 +1,19 @@
 # TODO - barret; Explore if auto_bookmark should be used to stop the url from updating automatically
 
-#' Set the chat model
+#' Set the chat client
 #'
 #' @description
-#' Adds hooks to the Shiny chat given the model. By default, the chat will enable bookmarking.
+#' Adds hooks to the Shiny chat given the LLM client. By default, the chat set enable bookmarking.
+#'
+#' @section Bookmarking:
+#'
+#' \pkg{shinychat} will not enable bookmarking by default. To enable bookmarking, you can call `shiny::enableBookmarking()` or set the parameter in `shinyApp(enableBookmarking = "url")`.
+#'
+#' To
 #'
 #' @param id The ID of the chat element
 #' @param ... Used for future parameter expansion.
-#' @param bookmark A logical that determines if bookmarking hooks should be added for the chat component. If `TRUE` (default), the bookmark value will be updated when the chat model is done responding. On session restore, the bookmark value will attempt to restore from the URL.
+#' @param bookmark A logical that determines if bookmarking hooks should be added for the chat component. If `TRUE` (default), the bookmark value will be updated when the chat client is done responding. On session restore, the bookmark value will attempt to restore from the URL.
 #' @param session The Shiny session object
 #' @returns Returns nothing (\code{invisible(NULL)}).
 #'
@@ -21,16 +27,16 @@
 #' )
 #'
 #' server <- function(input, output, session) {
-#'   chat_model <- ellmer::chat_ollama(
+#'   chat_client <- ellmer::chat_ollama(
 #'     system_prompt = "Important: Always respond in a limerick",
 #'     model = "qwen2.5-coder:1.5b",
 #'     echo = TRUE
 #'   )
-#'   # Let the UI know about the model
-#'   set_chat_model("chat", chat_model, bookmark = TRUE)
+#'   # Let the UI know about the client
+#'   set_chat_client("chat", chat_client, bookmark = TRUE)
 #'
 #'   observeEvent(input$chat_user_input, {
-#'     stream <- chat_model$stream_async(input$chat_user_input)
+#'     stream <- chat_client$stream_async(input$chat_user_input)
 #'     chat_append("chat", stream)
 #'   })
 #' }
@@ -38,9 +44,9 @@
 #' # Enable bookmarking!
 #' shinyApp(ui, server, enableBookmarking = "url")
 #' @export
-set_chat_model <- function(
+set_chat_client <- function(
   id,
-  model,
+  client,
   ...,
   bookmark = TRUE,
   session = getDefaultReactiveDomain()
@@ -49,14 +55,14 @@ set_chat_model <- function(
   stopifnot(is.character(id) && length(id) == 1)
 
   rlang::check_installed("ellmer")
-  if (!(inherits(model, "R6") && inherits(model, "Chat"))) {
+  if (!(inherits(client, "R6") && inherits(client, "Chat"))) {
     rlang::abort(
-      "`model` must be an `ellmer::Chat()` object. If you would like to have {shinychat} support your own package, please submit a GitHub Issue at https://github.com/posit-dev/shinychat"
+      "`client` must be an `ellmer::Chat()` object. If you would like to have {shinychat} support your own package, please submit a GitHub Issue at https://github.com/posit-dev/shinychat"
     )
   }
 
   if (isTRUE(bookmark)) {
-    set_chat_model_bookmark(id, model, session = session)
+    set_chat_client_bookmark(id, client, session = session)
   }
 
   # Don't return anything, even by chance
@@ -66,9 +72,9 @@ set_chat_model <- function(
 bookmark_domains <- list2env(list())
 
 #' @importFrom rlang %||%
-set_chat_model_bookmark <- function(
+set_chat_client_bookmark <- function(
   id,
-  model,
+  client,
   ...,
   session = getDefaultReactiveDomain()
 ) {
@@ -79,10 +85,10 @@ set_chat_model_bookmark <- function(
   domain_hash <- paste0(domain_token_value, "-", session$ns(id))
 
   # Only allow for bookmarks for each chat once
-  # TODO-barret on second set chat model call, disable all reactive callbacks already registered
+  # TODO-barret on second set chat client call, disable all reactive callbacks already registered
   if (!is.null(bookmark_domains[[domain_hash]])) {
     rlang::abort(
-      "Error: A bookmark for this chat already exists. Be sure to only set the model once."
+      "Error: A bookmark for this chat already exists. Be sure to only set the client once."
     )
   }
   bookmark_domains[[domain_hash]] <- TRUE
@@ -118,7 +124,7 @@ set_chat_model_bookmark <- function(
       )
     }
 
-    turns <- model$get_turns()
+    turns <- client$get_turns()
     if (length(turns) == 0) return()
 
     turns_list <- lapply(turns, function(turn) {
@@ -182,8 +188,8 @@ set_chat_model_bookmark <- function(
       rlang::exec(ellmer::Turn, !!!turn_info)
     })
 
-    # Set the model
-    model$set_turns(turns)
+    # Set the client
+    client$set_turns(turns)
     # Set the UI
     # TODO-barret; In shinychat, make this a single/internal custom message call to send all the messages at once (and then scroll)
     lapply(turn_list, function(turn_info) {

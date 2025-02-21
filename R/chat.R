@@ -62,7 +62,7 @@ chat_deps <- function() {
 #'
 #' server <- function(input, output, session) {
 #'   observeEvent(input$chat_user_input, {
-#'     # In a real app, this would call out to a chat model or API,
+#'     # In a real app, this would call out to a chat client or API,
 #'     # perhaps using the 'elmer' package.
 #'     response <- paste0(
 #'       "You said:\n\n",
@@ -151,7 +151,7 @@ chat_ui <- function(
 #' `chat_async`, and `stream_async` methods, respectively).
 #'
 #' This function should be called from a Shiny app's server. It is generally
-#' used to append the model's response to the chat, while user messages are
+#' used to append the client's response to the chat, while user messages are
 #' added to the chat UI automatically by the front-end. You'd only need to use
 #' `chat_append(role="user")` if you are programmatically generating queries
 #' from the server and sending them on behalf of the user, and want them to be
