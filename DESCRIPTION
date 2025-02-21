@@ -16,6 +16,7 @@ Imports:
     bslib,
     coro,
     htmltools,
+    jsonlite,
     promises (>= 1.3.2),
     rlang,
     shiny (>= 1.10.0)

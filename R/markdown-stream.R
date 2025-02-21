@@ -102,36 +102,28 @@ output_markdown_stream <- function(
 #'     "Can you elaborate on that?",
 #'     "Interesting question! Let's examine thi... **See more**"
 #'   )
-#' 
+#'
 #'   await(async_sleep(1))
 #'   for (chunk in strsplit(sample(responses, 1), "")[[1]]) {
 #'     yield(chunk)
 #'     await(async_sleep(0.02))
 #'   }
 #' })
-#' 
+#'
 #' ui <- page_fillable(
 #'   actionButton("generate", "Generate response"),
 #'   output_markdown_stream("stream")
 #' )
-#' 
+#'
 #' server <- function(input, output, session) {
 #'   observeEvent(input$generate, {
 #'     markdown_stream("stream", random_response_generator())
 #'   })
 #' }
-#' 
+#'
 #' shinyApp(ui, server)
 markdown_stream <- function(id, content_stream, operation = c("replace", "append"), session = getDefaultReactiveDomain()) {
-  if (promises::is.promising(content_stream)) {
-    # promise => async generator
-    stream <- coro::gen(yield(content_stream))
-  } else if (inherits(content_stream, "coro_generator_instance")) {
-    # Already a generator (sync or async)
-    stream <- content_stream
-  } else {
-    rlang::abort("Unexpected message type; markdown_stream() expects a string generator, a string promise, or a string promise generator")
-  }
+  stream <- as_generator(content_stream)
 
   operation <- match.arg(operation)
 
@@ -181,7 +173,12 @@ rlang::on_load(markdown_stream_impl <- coro::async(function(id, stream, operatio
     if (coro::is_exhausted(msg)) {
       break
     }
-    send_stream_message(content = msg, operation = "append")
+    ui <- process_ui(msg, session)
+    send_stream_message(
+      content = ui[["html"]],
+      operation = "append",
+      html_deps = ui[["deps"]],
+    )
   }
 
   invisible(NULL)
