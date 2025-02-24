@@ -1,12 +1,10 @@
-# TODO - barret; Explore if auto_bookmark should be used to stop the url from updating automatically
-# TODO - barret; Explore using session state instead of the environment!
-
 #' Set the chat client
 #'
 #' @description
 #' Adds hooks to the Shiny chat given the LLM client. By default, the chat set enable bookmarking.
 #'
 #' @param id The ID of the chat element
+#' @param client The \pkg{ellmer} LLM chat client.
 #' @param ... Used for future parameter expansion.
 #' @param bookmark A character value determines how to handle bookmarking for the chat component. For the values to work, it requires that the App author has enabled bookmarking in their App. To enable bookmarking, you can call `shiny::enableBookmarking()` or set the parameter in `shinyApp(enableBookmarking = "url")`.
 #'
@@ -85,8 +83,6 @@ set_chat_client <- function(
   invisible(NULL)
 }
 
-bookmark_domains <- list2env(list())
-
 #' @importFrom rlang %||%
 set_chat_client_bookmark <- function(
   id,
@@ -98,7 +94,6 @@ set_chat_client_bookmark <- function(
   rlang::check_dots_empty()
 
   stopifnot(is.character(id) && length(id) == 1)
-  session_client_hash <- paste0(domain_token(session), "-", session$ns(id))
 
   # Verify bookmark store is not "none"
   bookmarkStore <- shiny::getShinyOption("bookmarkStore", "none")
@@ -113,6 +108,7 @@ set_chat_client_bookmark <- function(
     )
   }
 
+  # Exclude works with bookmark names
   excluded_names <- session$getBookmarkExclude()
   ns_user_input <- paste0(id, "_user_input")
   if (!(ns_user_input %in% excluded_names)) {
@@ -209,14 +205,11 @@ set_chat_client_bookmark <- function(
   })
 
   # Update URL
-  # Only perform once per session (independent of chat `id`)
+  # Only perform once per session (independent of chat `id`).
+  # No need to clean up as these will stop when the session ends.
   if (auto_update && !has_session_auto_bookmark(session)) {
     # Enable session auto bookmarking if at least one chat wants it
-    set_session_auto_bookmark(session, TRUE)
-    # Clean up domain info in bookmark_domains
-    session$onSessionEnded(function() {
-      set_session_auto_bookmark(session, NULL)
-    })
+    set_session_auto_bookmark(session, value = TRUE)
 
     # Update the query string when bookmarked
     shiny::onBookmarked(function(url) {
@@ -224,9 +217,12 @@ set_chat_client_bookmark <- function(
     })
   }
 
+  # Set callbacks to cancel if `set_chat_client(id, client)` is called again with the same id
+  init_bookmark_obj(session)
+
   # Only allow for bookmarks for each chat once. Last bookmark method would win if all values were to be computed.
   # Remove previous `on*()` methods under same hash (.. odd author behavior)
-  previous_info <- get_bookmark_info(session_client_hash)
+  previous_info <- get_session_chat_bookmark(session, id)
   if (!is.null(previous_info)) {
     for (cancel_session_registration in previous_info$callbacks_to_cancel) {
       try({
@@ -235,20 +231,18 @@ set_chat_client_bookmark <- function(
     }
   }
 
-  # Set callbacks to cancel if `set_chat_client(id, client)` is called again with the same id
-  set_bookmark_info(
-    session_client_hash,
-    list(
+  # Store callbacks to cancel in case a new call to `set_chat_client(id, client)` is called with the same id
+  set_session_chat_bookmark(
+    session,
+    id,
+    value = list(
       callbacks_to_cancel = c(
         cancel_on_bookmark,
         cancel_on_restore
+        #, cancel_on_session_ended
       )
     )
   )
-  # Cleanup bookmark environment when session ends
-  session$onSessionEnded(function() {
-    set_bookmark_info(session_client_hash, NULL)
-  })
 }
 
 chat_update_bookmark <- function(
@@ -261,40 +255,47 @@ chat_update_bookmark <- function(
     return(stream_promise)
   }
 
-  # Bookmark has been flagged for `id`
-  # When the stream ends, update the URL!
-  promises::then(stream_promise, function(stream) {
-    # Force a bookmark update when the stream ends!
-    session$doBookmark()
-  })
+  # Bookmark has been flagged for `id`.
+  # When the stream ends, update the URL.
+  prom <-
+    promises::then(stream_promise, function(stream) {
+      # Force a bookmark update when the stream ends!
+      session$doBookmark()
+    })
+
+  return(prom)
 }
 
 
+AUTO_BOOKMARK_KEY <- "--auto-bookmark"
 has_session_auto_bookmark <- function(session) {
-  has_bookmark_info(domain_token(session))
+  has_session_chat_bookmark(session, AUTO_BOOKMARK_KEY)
 }
-set_session_auto_bookmark <- function(session, value) {
-  set_bookmark_info(domain_token(session), value)
-}
-get_session_auto_bookmark <- function(session) {
-  get_bookmark_info(domain_token(session))
-}
-
-has_bookmark_info <- function(hash) {
-  !is.null(bookmark_domains[[hash]])
-}
-set_bookmark_info <- function(hash, value) {
-  bookmark_domains[[hash]] <- value
-}
-get_bookmark_info <- function(hash) {
-  bookmark_domains[[hash]]
+set_session_auto_bookmark <- function(session, ..., value) {
+  set_session_chat_bookmark(session, AUTO_BOOKMARK_KEY, ..., value = value)
 }
 
 
-domain_token <- function(domain = shiny::getDefaultReactiveDomain()) {
-  if (is.null(domain)) {
-    return("global")
-  } else {
-    return(domain$token)
+has_session_chat_bookmark <- function(session, id) {
+  return(!is.null(get_session_chat_bookmark(session, id)))
+}
+get_session_chat_bookmark <- function(session, id) {
+  info <- session$userData$shinychat
+  if (is.null(info)) return(NULL)
+  key <- session$ns(id)
+  return(info[[key]])
+}
+set_session_chat_bookmark <- function(session, id, ..., value) {
+  rlang::check_dots_empty()
+
+  session$userData$shinychat[[session$ns(id)]] <- value
+
+  invisible(session)
+}
+init_bookmark_obj <- function(session) {
+  if (is.null(session$userData$shinychat)) {
+    session$userData$shinychat <- list()
   }
+
+  invisible(session)
 }

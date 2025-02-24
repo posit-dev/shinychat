@@ -15,6 +15,8 @@ set_chat_client(
 \arguments{
 \item{id}{The ID of the chat element}
 
+\item{client}{The \pkg{ellmer} LLM chat client.}
+
 \item{...}{Used for future parameter expansion.}
 
 \item{bookmark}{A character value determines how to handle bookmarking for the chat component. For the values to work, it requires that the App author has enabled bookmarking in their App. To enable bookmarking, you can call \code{shiny::enableBookmarking()} or set the parameter in \code{shinyApp(enableBookmarking = "url")}.
