@@ -99,9 +99,9 @@ set_chat_client_bookmark <- function(
 
   stopifnot(is.character(id) && length(id) == 1)
 
-  # Verify bookmark store is not "none"
-  bookmarkStore <- shiny::getShinyOption("bookmarkStore", "none")
-  if (bookmarkStore == "none") {
+  # Verify bookmark store is not disabled. Bookmark options: "disable", "url", "server"
+  bookmarkStore <- shiny::getShinyOption("bookmarkStore", "disable")
+  if (bookmarkStore == "disable") {
     rlang::abort(
       paste0(
         "Error: Shiny bookmarking is not enabled. ",
