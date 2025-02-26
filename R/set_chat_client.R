@@ -6,7 +6,11 @@
 #' @param id The ID of the chat element
 #' @param client The \pkg{ellmer} LLM chat client.
 #' @param ... Used for future parameter expansion.
-#' @param bookmark A character value determines how to handle bookmarking for the chat component. For the values to work, it requires that the App author has enabled bookmarking in their App. To enable bookmarking, you can call `shiny::enableBookmarking()` or set the parameter in `shinyApp(enableBookmarking = "url")`.
+#' @param bookmark A character value determines how to handle bookmarking for
+#' the chat component. For the values to work, it requires that the App author
+#' has enabled bookmarking in their App. To enable bookmarking, you can call
+#' `shiny::enableBookmarking("server")` or set the parameter in
+#' `shinyApp(enableBookmarking = "server")`. It is strongly encouraged to use `"server"` when bookmarking as the URL limit can be quickly reached. `"url"` is only recommended for deployments where there is no persistent disk storage, such as shinyapps.io.
 #'
 #' Updating the URL:
 #' * `"auto"` (default): The bookmark value will be updated when the chat client is done responding.
@@ -47,7 +51,7 @@
 #' }
 #'
 #' # Enable bookmarking!
-#' shinyApp(ui, server, enableBookmarking = "url")
+#' shinyApp(ui, server, enableBookmarking = "server")
 #' @export
 set_chat_client <- function(
   id,
@@ -102,8 +106,8 @@ set_chat_client_bookmark <- function(
       paste0(
         "Error: Shiny bookmarking is not enabled. ",
         "Please enable bookmarking in your Shiny app either by calling ",
-        "`shiny::enableBookmarking()` or by setting the parameter in ",
-        "`shiny::shinyApp(enableBookmarking = \"url\")`"
+        "`shiny::enableBookmarking(\"server\")` or by setting the parameter in ",
+        "`shiny::shinyApp(enableBookmarking = \"server\")`"
       )
     )
   }
