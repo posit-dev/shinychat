@@ -134,15 +134,21 @@ set_chat_client_bookmark <- function(
     turns <- client$get_turns()
     if (length(turns) == 0) return()
 
-    turns_list <- lapply(turns, function(turn) {
-      list(
-        role = turn@role,
-        # Convert everything to a single markdown string (including images!)
-        contents = ellmer::contents_markdown(turn),
-        tokens = turn@tokens
-      )
-    })
-    state$values[[id]] <- turns_list
+    if (shiny::getShinyOption("bookmarkStore", "server") == "server") {
+      # `.rds` file will be used for serialization. Saving client as is
+      state$values[[id]] <- client
+    } else {
+      # URL will be destination for serialization
+      turns_list <- lapply(turns, function(turn) {
+        list(
+          role = turn@role,
+          # Convert everything to a single markdown string (including images!)
+          contents = ellmer::contents_markdown(turn),
+          tokens = turn@tokens
+        )
+      })
+      state$values[[id]] <- turns_list
+    }
   })
 
   # Restore
@@ -150,60 +156,72 @@ set_chat_client_bookmark <- function(
     turns_obj <- state$values[[id]]
     if (is.null(turns_obj)) return()
 
-    turn_list <-
-      if (inherits(turns_obj, "data.frame")) {
-        # Restore url jsonlite::fromJSON() object that has been _simplified_ into a data.frame()
-        turns_df <- turns_obj
-        if (nrow(turns_df) == 0) return()
+    if (shiny::getShinyOption("bookmarkStore", "server") == "server") {
+      # Restore client from `.rds` file
+      restored_client <- turns_obj
 
-        # Turn a data.frame into a list of row information, where the row info is a named lists
-        # Similar to `purrr::pmap(turns_df, list)`
-        unname(rlang::exec(Map, !!!as.list(turns_df), list))
-      } else {
-        # Restore `enableBookmarking("server")` object which is not _simplified_ by `jsonlite::fromJSON()`
-        turns_obj
-      }
+      # Go through each property trying to set it to the other?
+      client$set_turns(restored_client$get_turns())
+    } else {
+      # Restore from URL
 
-    # Verify turn fields are available
-    Map(
-      turn_info = turn_list,
-      i = seq_along(turn_list),
-      f = function(turn_info, i) {
-        turn_info_names <- names(turn_info)
-        for (col_name in c("role", "contents", "tokens")) {
-          if (!(col_name %in% turn_info_names)) {
-            # TODO-barret-q; Should this instead be a warning and then remove the turns from this point on?
-            rlang::abort(
-              paste0(
-                "Restored turn ",
-                i,
-                "/",
-                length(turn_list),
-                " does not have a '",
-                col_name,
-                "' field."
+      turn_list <-
+        if (inherits(turns_obj, "data.frame")) {
+          # Restore url jsonlite::fromJSON() object that has been _simplified_ into a data.frame()
+          turns_df <- turns_obj
+          if (nrow(turns_df) == 0) return()
+
+          # Turn a data.frame into a list of row information, where the row info is a named lists
+          # Similar to `purrr::pmap(turns_df, list)`
+          unname(rlang::exec(Map, !!!as.list(turns_df), list))
+        } else {
+          # Restore `enableBookmarking("server")` object which is not _simplified_ by `jsonlite::fromJSON()`
+          turns_obj
+        }
+
+      # Verify turn fields are available
+      Map(
+        turn_info = turn_list,
+        i = seq_along(turn_list),
+        f = function(turn_info, i) {
+          turn_info_names <- names(turn_info)
+          for (col_name in c("role", "contents", "tokens")) {
+            if (!(col_name %in% turn_info_names)) {
+              # TODO-barret-q; Should this instead be a warning and then remove the turns from this point on?
+              rlang::abort(
+                paste0(
+                  "Restored turn ",
+                  i,
+                  "/",
+                  length(turn_list),
+                  " does not have a '",
+                  col_name,
+                  "' field."
+                )
               )
-            )
+            }
           }
         }
-      }
-    )
+      )
 
-    # Upgrade
-    # Note: Character `contents=` values will be auto upgraded by ellmer to a `ellmer::ContentText` objects
-    turns <- lapply(turn_list, function(turn_info) {
-      rlang::exec(ellmer::Turn, !!!turn_info)
-    })
+      # Upgrade
+      # Note: Character `contents=` values will be auto upgraded by ellmer to a `ellmer::ContentText` objects
+      turns <- lapply(turn_list, function(turn_info) {
+        rlang::exec(ellmer::Turn, !!!turn_info)
+      })
 
-    # Set the client
-    client$set_turns(turns)
+      # Set the client
+      client$set_turns(turns)
+    }
+
     # Set the UI
     # TODO-barret-future; In shinychat, make this a single/internal custom message call to send all the messages at once (and then scroll)
-    lapply(turn_list, function(turn_info) {
+    lapply(client$get_turns(), function(turn) {
       chat_append(
         id,
-        turn_info$contents,
-        role = turn_info$role
+        ellmer::contents_markdown(turn),
+        #  turn_info$contents,
+        role = turn@role
       )
     })
   })
