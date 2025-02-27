@@ -158,7 +158,7 @@ rlang::on_load(markdown_stream_impl <- coro::async(function(id, stream, operatio
   send_stream_message <- function(...) {
     session$sendCustomMessage(
       "shinyMarkdownStreamMessage",
-      list(id = id, ...)
+      rlang::list2(id = id, ...)
     )
   }
 
@@ -183,7 +183,7 @@ rlang::on_load(markdown_stream_impl <- coro::async(function(id, stream, operatio
     send_stream_message(
       content = ui[["html"]],
       operation = "append",
-      html_deps = ui[["deps"]],
+      html_deps = ui[["deps"]]
     )
   }
 
