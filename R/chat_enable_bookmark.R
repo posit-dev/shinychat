@@ -31,7 +31,7 @@
 #'     echo = TRUE
 #'   )
 #'   # Update bookmark to chat on user submission and completed response
-#'   chat_bookmark("chat", chat_client)
+#'   chat_enable_bookmark("chat", chat_client)
 #'
 #'   observeEvent(input$chat_user_input, {
 #'     stream <- chat_client$stream_async(input$chat_user_input)
@@ -42,7 +42,7 @@
 #' # Enable bookmarking!
 #' shinyApp(ui, server, enableBookmarking = "server")
 #' @export
-chat_bookmark <- function(
+chat_enable_bookmark <- function(
   id,
   client,
   ...,
@@ -64,7 +64,7 @@ chat_bookmark <- function(
 
   if (is.null(session)) {
     rlang::abort(
-      "A `session` must be provided. Be sure to call `chat_bookmark()` where a session context is available."
+      "A `session` must be provided. Be sure to call `chat_enable_bookmark()` where a session context is available."
     )
   }
 
@@ -222,7 +222,7 @@ chat_bookmark <- function(
       })
   }
 
-  # Set callbacks to cancel if `chat_bookmark(id, client)` is called again with the same id
+  # Set callbacks to cancel if `chat_enable_bookmark(id, client)` is called again with the same id
   # Only allow for bookmarks for each chat once. Last bookmark method would win if all values were to be computed.
   # Remove previous `on*()` methods under same hash (.. odd author behavior)
   previous_info <- get_session_chat_bookmark_info(session, id)
@@ -234,7 +234,7 @@ chat_bookmark <- function(
     }
   }
 
-  # Store callbacks to cancel in case a new call to `chat_bookmark(id, client)` is called with the same id
+  # Store callbacks to cancel in case a new call to `chat_enable_bookmark(id, client)` is called with the same id
   set_session_chat_bookmark_info(
     session,
     id,
