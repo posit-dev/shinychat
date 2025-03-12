@@ -42,7 +42,19 @@ chat_deps <- function() {
 #' @param id The ID of the chat element
 #' @param ... Extra HTML attributes to include on the chat element
 #' @param messages A list of messages to prepopulate the chat with. Each
-#'   message can be a string or a named list with `content` and `role` fields.
+#'   message can be one of the following:
+#' 
+#'   * A string, which is interpreted as markdown and rendered to HTML on 
+#'     the client.
+#'     * To prevent interpreting as markdown, mark the string as 
+#'       [htmltools::HTML()].
+#'   * A UI element.
+#'     * This includes [htmltools::tagList()], which take UI elements 
+#'       (including strings) as children. In this case, strings are still 
+#'       interpreted as markdown as long as they're not inside HTML.
+#'   * A named list of `content` and `role`. The `content` can contain content 
+#'     as described above, and the `role` can be "assistant" or "user".
+#'       
 #' @param placeholder The placeholder text for the chat's user input field
 #' @param width The CSS width of the chat element
 #' @param height The CSS height of the chat element
@@ -142,7 +154,7 @@ chat_ui <- function(
 #' Append an assistant response (or user message) to a chat control
 #'
 #' @description
-#' The `chat_append` function appends a message to an existing chat control. The
+#' The `chat_append` function appends a message to an existing [chat_ui()]. The
 #' `response` can be a string, string generator, string promise, or string
 #' promise generator (as returned by the 'elmer' package's `chat`, `stream`,
 #' `chat_async`, and `stream_async` methods, respectively).
@@ -165,7 +177,18 @@ chat_ui <- function(
 #' promise returned by `chat_append`.
 #'
 #' @param id The ID of the chat element
-#' @param response The message or message stream to append to the chat element
+#' @param response The message or message stream to append to the chat element.
+#'   The actual message content can one of the following:
+#'   
+#'   * A string, which is interpreted as markdown and rendered to HTML on 
+#'     the client.
+#'     * To prevent interpreting as markdown, mark the string as 
+#'       [htmltools::HTML()].
+#'   * A UI element.
+#'     * This includes [htmltools::tagList()], which take UI elements 
+#'       (including strings) as children. In this case, strings are still 
+#'       interpreted as markdown as long as they're not inside HTML.
+#' 
 #' @param role The role of the message (either "assistant" or "user"). Defaults
 #'   to "assistant".
 #' @param session The Shiny session object
