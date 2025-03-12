@@ -20,9 +20,12 @@ markdown_stream_deps <- function() {
 #'
 #' @param id A unique identifier for this markdown stream.
 #' @param ... Extra HTML attributes to include on the chat element
-#' @param content Some content to display before any streaming occurs.
+#' @param content A string of content to display before any streaming occurs.
+#'   When `content_type` is Markdown or HTML, it may also be UI element(s) such
+#'   as input and output bindings.
 #' @param content_type The content type. Default is `"markdown"` (specifically,
-#'   CommonMark). Other supported options are:
+#'   CommonMark). Supported content types include:
+#'       * `"markdown"`: markdown text, specifically CommonMark
 #'       * `"html"`: for rendering HTML content.
 #'       * `"text"`: for plain text.
 #'       * `"semi-markdown"`: for rendering markdown, but with HTML tags escaped.
