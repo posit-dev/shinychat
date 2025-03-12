@@ -75,7 +75,7 @@ chat_deps <- function() {
 #' server <- function(input, output, session) {
 #'   observeEvent(input$chat_user_input, {
 #'     # In a real app, this would call out to a chat model or API,
-#'     # perhaps using the 'elmer' package.
+#'     # perhaps using the 'ellmer' package.
 #'     response <- paste0(
 #'       "You said:\n\n",
 #'       "<blockquote>",
@@ -156,7 +156,7 @@ chat_ui <- function(
 #' @description
 #' The `chat_append` function appends a message to an existing [chat_ui()]. The
 #' `response` can be a string, string generator, string promise, or string
-#' promise generator (as returned by the 'elmer' package's `chat`, `stream`,
+#' promise generator (as returned by the 'ellmer' package's `chat`, `stream`,
 #' `chat_async`, and `stream_async` methods, respectively).
 #'
 #' This function should be called from a Shiny app's server. It is generally

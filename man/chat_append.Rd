@@ -46,7 +46,7 @@ handling" section).
 \description{
 The \code{chat_append} function appends a message to an existing \code{\link[=chat_ui]{chat_ui()}}. The
 \code{response} can be a string, string generator, string promise, or string
-promise generator (as returned by the 'elmer' package's \code{chat}, \code{stream},
+promise generator (as returned by the 'ellmer' package's \code{chat}, \code{stream},
 \code{chat_async}, and \code{stream_async} methods, respectively).
 
 This function should be called from a Shiny app's server. It is generally
