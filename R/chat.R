@@ -323,7 +323,16 @@ chat_append_message <- function(id, msg, chunk = TRUE, operation = c("append", "
     operation <- NULL
   }
 
-  ui <- process_ui(content, session)
+  if (is.character(content)) {
+    # content is most likely a string, so avoid overhead in that case
+    ui <- list(html = content, deps = "[]")
+  } else {
+    # process_ui() does *not* render markdown->HTML, but it does:
+    # 1. Extract and register HTMLdependency()s with the session.
+    # 2. Returns a HTML string representation of the TagChild
+    #    (i.e., `div()` -> `"<div>"`).
+    ui <- process_ui(content, session)
+  }
 
   msg <- list(
     content = ui[["html"]],

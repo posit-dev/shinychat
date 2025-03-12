@@ -11,11 +11,6 @@ as_generator <- function(x) {
 }
 
 process_ui <- function(ui, session) {
-  # Shortcut the common case (for performance)
-  if (is.character(ui)) {
-    return(list(html = HTML(ui), deps = "[]"))
-  }
-
   process_deps <- getFromNamespace("processDeps", "shiny")
   if (!is.function(process_deps)) {
     stop("Expected processDeps() function to exist in Shiny. Please report this issue.")
