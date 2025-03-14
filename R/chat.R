@@ -4,11 +4,6 @@
 # trimming of the message history to fit within the context window; these
 # are left for the caller to handle in the R version.
 
-#' @importFrom htmltools tag css HTML
-#' @importFrom coro async
-#' @importFrom rlang %||%
-NULL
-
 chat_deps <- function() {
   htmltools::htmlDependency(
     "shinychat",
