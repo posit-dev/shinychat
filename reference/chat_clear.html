@@ -73,7 +73,7 @@
 <span class="r-in"><span>  <span class="op">}</span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span>  <span class="fu"><a href="https://rdrr.io/pkg/shiny/man/observeEvent.html" class="external-link">observeEvent</a></span><span class="op">(</span><span class="va">input</span><span class="op">$</span><span class="va">chat_user_input</span>, <span class="op">{</span></span></span>
-<span class="r-in"><span>    <span class="va">response</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"You said:\n\n"</span>, <span class="va">input</span><span class="op">$</span><span class="va">chat_user_input</span><span class="op">)</span></span></span>
+<span class="r-in"><span>    <span class="va">response</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"You said: "</span>, <span class="va">input</span><span class="op">$</span><span class="va">chat_user_input</span><span class="op">)</span></span></span>
 <span class="r-in"><span>    <span class="fu"><a href="chat_append.html">chat_append</a></span><span class="op">(</span><span class="st">"chat"</span>, <span class="va">response</span><span class="op">)</span></span></span>
 <span class="r-in"><span>  <span class="op">}</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="op">}</span></span></span>

@@ -72,12 +72,15 @@ over time.</p>
 
 
 <dt id="arg-content">content<a class="anchor" aria-label="anchor" href="#arg-content"></a></dt>
-<dd><p>Some content to display before any streaming occurs.</p></dd>
+<dd><p>A string of content to display before any streaming occurs.
+When <code>content_type</code> is Markdown or HTML, it may also be UI element(s) such
+as input and output bindings.</p></dd>
 
 
 <dt id="arg-content-type">content_type<a class="anchor" aria-label="anchor" href="#arg-content-type"></a></dt>
 <dd><p>The content type. Default is <code>"markdown"</code> (specifically,
-CommonMark). Other supported options are:
+CommonMark). Supported content types include:
+* <code>"markdown"</code>: markdown text, specifically CommonMark
 * <code>"html"</code>: for rendering HTML content.
 * <code>"text"</code>: for plain text.
 * <code>"semi-markdown"</code>: for rendering markdown, but with HTML tags escaped.</p></dd>

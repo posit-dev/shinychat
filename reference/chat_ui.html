@@ -79,7 +79,17 @@ enter new messages.</p>
 
 <dt id="arg-messages">messages<a class="anchor" aria-label="anchor" href="#arg-messages"></a></dt>
 <dd><p>A list of messages to prepopulate the chat with. Each
-message can be a string or a named list with <code>content</code> and <code>role</code> fields.</p></dd>
+message can be one of the following:</p><ul><li><p>A string, which is interpreted as markdown and rendered to HTML on
+the client.</p><ul><li><p>To prevent interpreting as markdown, mark the string as
+<code><a href="https://rstudio.github.io/htmltools/reference/HTML.html" class="external-link">htmltools::HTML()</a></code>.</p></li>
+</ul></li>
+<li><p>A UI element.</p><ul><li><p>This includes <code><a href="https://rstudio.github.io/htmltools/reference/tagList.html" class="external-link">htmltools::tagList()</a></code>, which take UI elements
+(including strings) as children. In this case, strings are still
+interpreted as markdown as long as they're not inside HTML.</p></li>
+</ul></li>
+<li><p>A named list of <code>content</code> and <code>role</code>. The <code>content</code> can contain content
+as described above, and the <code>role</code> can be "assistant" or "user".</p></li>
+</ul></dd>
 
 
 <dt id="arg-placeholder">placeholder<a class="anchor" aria-label="anchor" href="#arg-placeholder"></a></dt>
@@ -119,7 +129,7 @@ container, if the container is
 <span class="r-in"><span><span class="va">server</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">input</span>, <span class="va">output</span>, <span class="va">session</span><span class="op">)</span> <span class="op">{</span></span></span>
 <span class="r-in"><span>  <span class="fu"><a href="https://rdrr.io/pkg/shiny/man/observeEvent.html" class="external-link">observeEvent</a></span><span class="op">(</span><span class="va">input</span><span class="op">$</span><span class="va">chat_user_input</span>, <span class="op">{</span></span></span>
 <span class="r-in"><span>    <span class="co"># In a real app, this would call out to a chat model or API,</span></span></span>
-<span class="r-in"><span>    <span class="co"># perhaps using the 'elmer' package.</span></span></span>
+<span class="r-in"><span>    <span class="co"># perhaps using the 'ellmer' package.</span></span></span>
 <span class="r-in"><span>    <span class="va">response</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span></span></span>
 <span class="r-in"><span>      <span class="st">"You said:\n\n"</span>,</span></span>
 <span class="r-in"><span>      <span class="st">"&lt;blockquote&gt;"</span>,</span></span>
