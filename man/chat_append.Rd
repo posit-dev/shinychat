@@ -14,7 +14,22 @@ chat_append(
 \arguments{
 \item{id}{The ID of the chat element}
 
-\item{response}{The message or message stream to append to the chat element}
+\item{response}{The message or message stream to append to the chat element.
+The actual message content can one of the following:
+\itemize{
+\item A string, which is interpreted as markdown and rendered to HTML on
+the client.
+\itemize{
+\item To prevent interpreting as markdown, mark the string as
+\code{\link[htmltools:HTML]{htmltools::HTML()}}.
+}
+\item A UI element.
+\itemize{
+\item This includes \code{\link[htmltools:tagList]{htmltools::tagList()}}, which take UI elements
+(including strings) as children. In this case, strings are still
+interpreted as markdown as long as they're not inside HTML.
+}
+}}
 
 \item{role}{The role of the message (either "assistant" or "user"). Defaults
 to "assistant".}
@@ -29,9 +44,9 @@ rejects if an error occurs while processing the response (see the "Error
 handling" section).
 }
 \description{
-The \code{chat_append} function appends a message to an existing chat control. The
+The \code{chat_append} function appends a message to an existing \code{\link[=chat_ui]{chat_ui()}}. The
 \code{response} can be a string, string generator, string promise, or string
-promise generator (as returned by the 'elmer' package's \code{chat}, \code{stream},
+promise generator (as returned by the 'ellmer' package's \code{chat}, \code{stream},
 \code{chat_async}, and \code{stream_async} methods, respectively).
 
 This function should be called from a Shiny app's server. It is generally

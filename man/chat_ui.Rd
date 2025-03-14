@@ -20,7 +20,23 @@ chat_ui(
 \item{...}{Extra HTML attributes to include on the chat element}
 
 \item{messages}{A list of messages to prepopulate the chat with. Each
-message can be a string or a named list with \code{content} and \code{role} fields.}
+message can be one of the following:
+\itemize{
+\item A string, which is interpreted as markdown and rendered to HTML on
+the client.
+\itemize{
+\item To prevent interpreting as markdown, mark the string as
+\code{\link[htmltools:HTML]{htmltools::HTML()}}.
+}
+\item A UI element.
+\itemize{
+\item This includes \code{\link[htmltools:tagList]{htmltools::tagList()}}, which take UI elements
+(including strings) as children. In this case, strings are still
+interpreted as markdown as long as they're not inside HTML.
+}
+\item A named list of \code{content} and \code{role}. The \code{content} can contain content
+as described above, and the \code{role} can be "assistant" or "user".
+}}
 
 \item{placeholder}{The placeholder text for the chat's user input field}
 
@@ -57,7 +73,7 @@ ui <- page_fillable(
 server <- function(input, output, session) {
   observeEvent(input$chat_user_input, {
     # In a real app, this would call out to a chat model or API,
-    # perhaps using the 'elmer' package.
+    # perhaps using the 'ellmer' package.
     response <- paste0(
       "You said:\n\n",
       "<blockquote>",

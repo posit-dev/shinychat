@@ -31,7 +31,7 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$chat_user_input, {
-    response <- paste0("You said:\n\n", input$chat_user_input)
+    response <- paste0("You said: ", input$chat_user_input)
     chat_append("chat", response)
   })
 }

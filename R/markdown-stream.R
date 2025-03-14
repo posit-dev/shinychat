@@ -11,40 +11,48 @@ markdown_stream_deps <- function() {
 }
 
 #' Create a UI element for a markdown stream.
-#' 
-#' @description 
-#' Creates a UI element for a [markdown_stream()]. A markdown stream can be 
-#' useful for displaying generative AI responses (outside of a chat interface), 
+#'
+#' @description
+#' Creates a UI element for a [markdown_stream()]. A markdown stream can be
+#' useful for displaying generative AI responses (outside of a chat interface),
 #' streaming logs, or other use cases where chunks of content are generated
 #' over time.
-#' 
+#'
 #' @param id A unique identifier for this markdown stream.
 #' @param ... Extra HTML attributes to include on the chat element
-#' @param content Some content to display before any streaming occurs.
+#' @param content A string of content to display before any streaming occurs.
+#'   When `content_type` is Markdown or HTML, it may also be UI element(s) such
+#'   as input and output bindings.
 #' @param content_type The content type. Default is `"markdown"` (specifically,
-#'   CommonMark). Other supported options are:
+#'   CommonMark). Supported content types include:
+#'       * `"markdown"`: markdown text, specifically CommonMark
 #'       * `"html"`: for rendering HTML content.
 #'       * `"text"`: for plain text.
 #'       * `"semi-markdown"`: for rendering markdown, but with HTML tags escaped.
-#' @param auto_scroll Whether to automatically scroll to the bottom of a 
+#' @param auto_scroll Whether to automatically scroll to the bottom of a
 #'   scrollable container when new content is added. Default is True.
 #' @param width The width of the UI element.
 #' @param height The height of the UI element.
 #'
 #' @return A shiny tag object.
-#' 
+#'
 #' @export
 #' @seealso [markdown_stream()]
-#' 
+#'
 output_markdown_stream <- function(
-  id, 
-  ..., 
-  content = "", 
-  content_type = "markdown", 
-  auto_scroll = TRUE, 
-  width = "100%", 
+  id,
+  ...,
+  content = "",
+  content_type = "markdown",
+  auto_scroll = TRUE,
+  width = "100%",
   height = "auto"
 ) {
+
+  ui <- with_current_theme({
+    htmltools::renderTags(content)
+  })
+
   htmltools::tag(
     "shiny-markdown-stream",
     rlang::list2(
@@ -53,10 +61,11 @@ output_markdown_stream <- function(
         width = width,
         height = height
       ),
-      content = content,
+      content = ui[["html"]],
       "content-type" = content_type,
       "auto-scroll" = auto_scroll,
       ...,
+      ui[["dependencies"]],
       markdown_stream_deps()
     )
   )
@@ -90,7 +99,7 @@ output_markdown_stream <- function(
 #' library(coro)
 #' library(bslib)
 #' library(shinychat)
-#' 
+#'
 #' # Define a generator that yields a random response
 #' # (imagine this is a more sophisticated AI generator)
 #' random_response_generator <- async_generator(function() {
@@ -102,36 +111,28 @@ output_markdown_stream <- function(
 #'     "Can you elaborate on that?",
 #'     "Interesting question! Let's examine thi... **See more**"
 #'   )
-#' 
+#'
 #'   await(async_sleep(1))
 #'   for (chunk in strsplit(sample(responses, 1), "")[[1]]) {
 #'     yield(chunk)
 #'     await(async_sleep(0.02))
 #'   }
 #' })
-#' 
+#'
 #' ui <- page_fillable(
 #'   actionButton("generate", "Generate response"),
 #'   output_markdown_stream("stream")
 #' )
-#' 
+#'
 #' server <- function(input, output, session) {
 #'   observeEvent(input$generate, {
 #'     markdown_stream("stream", random_response_generator())
 #'   })
 #' }
-#' 
+#'
 #' shinyApp(ui, server)
 markdown_stream <- function(id, content_stream, operation = c("replace", "append"), session = getDefaultReactiveDomain()) {
-  if (promises::is.promising(content_stream)) {
-    # promise => async generator
-    stream <- coro::gen(yield(content_stream))
-  } else if (inherits(content_stream, "coro_generator_instance")) {
-    # Already a generator (sync or async)
-    stream <- content_stream
-  } else {
-    rlang::abort("Unexpected message type; markdown_stream() expects a string generator, a string promise, or a string promise generator")
-  }
+  stream <- as_generator(content_stream)
 
   operation <- match.arg(operation)
 
@@ -160,14 +161,14 @@ rlang::on_load(markdown_stream_impl <- coro::async(function(id, stream, operatio
   send_stream_message <- function(...) {
     session$sendCustomMessage(
       "shinyMarkdownStreamMessage",
-      list(id = id, ...)
+      rlang::list2(id = id, ...)
     )
   }
 
   if (operation == "replace") {
     send_stream_message(content = "", operation = "replace")
   }
-  
+
   send_stream_message(isStreaming = TRUE)
 
   on.exit({
@@ -181,7 +182,23 @@ rlang::on_load(markdown_stream_impl <- coro::async(function(id, stream, operatio
     if (coro::is_exhausted(msg)) {
       break
     }
-    send_stream_message(content = msg, operation = "append")
+
+    if (is.character(msg)) {
+      # content is most likely a string, so avoid overhead in that case
+      ui <- list(html = msg, deps = "[]")
+    } else {
+      # process_ui() does *not* render markdown->HTML, but it does:
+      # 1. Extract and register HTMLdependency()s with the session.
+      # 2. Returns a HTML string representation of the TagChild
+      #    (i.e., `div()` -> `"<div>"`).
+      ui <- process_ui(msg, session)
+    }
+    
+    send_stream_message(
+      content = ui[["html"]],
+      operation = "append",
+      html_deps = ui[["deps"]]
+    )
   }
 
   invisible(NULL)
