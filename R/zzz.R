@@ -32,11 +32,11 @@ with_current_theme <- function(expr) {
   theme <- bslib::bs_current_theme() %||% bslib::bs_theme()
   old_theme <- bslib::bs_global_set(theme)
   on.exit(bslib::bs_global_set(old_theme), add = TRUE)
-  expr
+  force(expr)
 }
 
 tag_require <- function(tag, version = 5, caller = "") {
-  tag_req <- getFromNamespace("tag_require", "bslib")
+  tag_req <- asNamespace("bslib")[["tag_require"]]
   if (!is.function(tag_req)) {
     stop("Expected tag_require() function to exist in bslib. Please report this issue.")
   }
