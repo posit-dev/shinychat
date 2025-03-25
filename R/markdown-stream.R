@@ -48,10 +48,14 @@ output_markdown_stream <- function(
   width = "100%",
   height = "auto"
 ) {
-
-  ui <- with_current_theme({
-    htmltools::renderTags(content)
-  })
+  
+  # `content` is most likely a string, so avoid overhead in that case
+  # (it's also important that we *don't escape HTML* here).
+  if (is.character(content)) {
+    ui <- list(html = paste(content, collapse="\n"))
+  } else {
+    ui <- with_current_theme(htmltools::renderTags(content))
+  }
 
   htmltools::tag(
     "shiny-markdown-stream",
