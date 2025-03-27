@@ -45,7 +45,7 @@ output_markdown_stream <- function(
   content = "",
   content_type = "markdown",
   auto_scroll = TRUE,
-  width = "100%",
+  width = "min(680px, 100%)",
   height = "auto"
 ) {
   
@@ -63,7 +63,8 @@ output_markdown_stream <- function(
       id = id,
       style = css(
         width = width,
-        height = height
+        height = height,
+        margin = "0 auto"
       ),
       content = ui[["html"]],
       "content-type" = content_type,
