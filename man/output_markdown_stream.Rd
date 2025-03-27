@@ -10,7 +10,7 @@ output_markdown_stream(
   content = "",
   content_type = "markdown",
   auto_scroll = TRUE,
-  width = "100\%",
+  width = "min(680px, 100\%)",
   height = "auto"
 )
 }
