@@ -8,7 +8,7 @@
 \usage{
 chat_app(client, ...)
 
-chat_mod_ui(id, client, ...)
+chat_mod_ui(id, ..., client = NULL, messages = NULL)
 
 chat_mod_server(id, client)
 }
@@ -21,6 +21,10 @@ chat_mod_server(id, client)
 \code{\link[=chat_ui]{chat_ui()}}.}
 
 \item{id}{The chat module ID.}
+
+\item{messages}{Initial messages shown in the chat, used when \code{client} is not
+provided or when the chat \code{client} doesn't already contain turns. Passed to
+\code{messages} in \code{\link[=chat_ui]{chat_ui()}}.}
 }
 \value{
 A \code{\link[shiny:shinyApp]{shiny::shinyApp()}} object.

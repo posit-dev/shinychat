@@ -25,7 +25,7 @@ chat_app <- function(client, ...) {
   check_ellmer_chat(client)
 
   ui <- bslib::page_fillable(
-    chat_mod_ui("chat", client, height = "100%"),
+    chat_mod_ui("chat", client = client, height = "100%"),
     shiny::actionButton(
       "close_btn",
       label = "",
@@ -53,18 +53,32 @@ check_ellmer_chat <- function(client) {
 
 #' @describeIn chat_app A simple chat app module UI.
 #' @param id The chat module ID.
+#' @param messages Initial messages shown in the chat, used when `client` is not
+#'   provided or when the chat `client` doesn't already contain turns. Passed to
+#'   `messages` in [chat_ui()].
 #' @export
-chat_mod_ui <- function(id, client, ...) {
-  check_ellmer_chat(client)
+chat_mod_ui <- function(id, ..., client = NULL, messages = NULL) {
+  if (!is.null(client)) {
+    check_ellmer_chat(client)
 
-  messages <- map(client$get_turns(), function(turn) {
-    content <- ellmer::contents_markdown(turn)
-    if (is.null(content) || identical(content, "")) {
-      return(NULL)
+    client_msgs <- map(client$get_turns(), function(turn) {
+      content <- ellmer::contents_markdown(turn)
+      if (is.null(content) || identical(content, "")) {
+        return(NULL)
+      }
+      list(role = turn@role, content = content)
+    })
+    client_msgs <- compact(client_msgs)
+
+    if (length(client_msgs)) {
+      if (!is.null(messages)) {
+        warn(
+          "`client` was provided and has initial messages, `messages` will be ignored."
+        )
+      }
+      messages <- client_msgs
     }
-    list(role = turn@role, content = content)
-  })
-  messages <- compact(messages)
+  }
 
   shinychat::chat_ui(
     shiny::NS(id, "chat"),
