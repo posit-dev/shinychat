@@ -11,9 +11,11 @@ as_generator <- function(x) {
 }
 
 process_ui <- function(ui, session) {
-  process_deps <- getFromNamespace("processDeps", "shiny")
+  process_deps <- asNamespace("shiny")[["processDeps"]]
   if (!is.function(process_deps)) {
-    stop("Expected processDeps() function to exist in Shiny. Please report this issue.")
+    stop(
+      "Expected processDeps() function to exist in Shiny. Please report this issue."
+    )
   }
 
   # Render UI to html and register dependencies with the session
@@ -38,7 +40,9 @@ with_current_theme <- function(expr) {
 tag_require <- function(tag, version = 5, caller = "") {
   tag_req <- asNamespace("bslib")[["tag_require"]]
   if (!is.function(tag_req)) {
-    stop("Expected tag_require() function to exist in bslib. Please report this issue.")
+    stop(
+      "Expected tag_require() function to exist in bslib. Please report this issue."
+    )
   }
   tag_req(tag, version, caller)
 }
