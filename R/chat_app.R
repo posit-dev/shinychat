@@ -94,8 +94,10 @@ chat_mod_server <- function(id, client) {
 
   append_stream_task <- shiny::ExtendedTask$new(
     function(client, ui_id, user_input) {
-      stream <- client$stream_async(user_input)
-      chat_append(ui_id, stream)
+      promises::future_promise({
+        stream <- client$stream_async(user_input)
+        chat_append(ui_id, stream)
+      })
     }
   )
 
@@ -107,5 +109,45 @@ chat_mod_server <- function(id, client) {
         input$chat_user_input
       )
     })
+
+    shiny::observe({
+      if (append_stream_task$status() == "error") {
+        tryCatch(
+          append_stream_task$result(),
+          error = notify_error(session$ns("chat"), session)
+        )
+      }
+    })
   })
+}
+
+notify_error <- function(id, session = shiny::getDefaultReactiveDomain()) {
+  function(err) {
+    needs_sanitized <-
+      isTRUE(getOption("shiny.sanitize.errors")) &&
+      !inherits(err, "shiny.custom.error")
+    if (needs_sanitized) {
+      msg <- "**An error occurred.** Please try again or contact the app author."
+    } else {
+      msg <- sprintf(
+        "**An error occurred:**\n\n```\n%s\n```",
+        conditionMessage(err)
+      )
+    }
+
+    chat_append_message(
+      id,
+      msg = list(role = "assistant", content = msg),
+      chunk = TRUE,
+      operation = "append",
+      session = session
+    )
+    chat_append_message(
+      id,
+      list(role = "assistant", content = ""),
+      chunk = "end",
+      operation = "append",
+      session = session
+    )
+  }
 }
