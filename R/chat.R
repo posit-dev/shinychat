@@ -237,7 +237,9 @@ chat_ui <- function(
 #'
 #' @export
 chat_append <- function(id, response, role = c("assistant", "user"), session = getDefaultReactiveDomain()) {
+  check_active_session(session)
   role <- match.arg(role)
+  
   stream <- as_generator(response)
   chat_append_stream(id, stream, role = role, session = session)
 }
@@ -312,6 +314,8 @@ chat_append <- function(id, response, role = c("assistant", "user"), session = g
 #'
 #' @export
 chat_append_message <- function(id, msg, chunk = TRUE, operation = c("append", "replace"), session = getDefaultReactiveDomain()) {
+  check_active_session(session)
+
   if (!is.list(msg)) {
     rlang::abort("msg must be a named list with 'role' and 'content' fields")
   }
@@ -366,7 +370,7 @@ chat_append_message <- function(id, msg, chunk = TRUE, operation = c("append", "
   )
 
   session$sendCustomMessage("shinyChatMessage", list(
-    id = id,
+    id = resolve_id(id, session),
     handler = msg_type,
     obj = msg
   ))
@@ -444,10 +448,12 @@ rlang::on_load(chat_append_stream_impl <- coro::async(function(id, stream, role 
 #'
 #' shinyApp(ui, server)
 chat_clear <- function(id, session = getDefaultReactiveDomain()) {
+  check_active_session(session)
+
   session$sendCustomMessage(
     "shinyChatMessage",
     list(
-      id = id,
+      id = resolve_id(id, session),
       handler = "shiny-chat-clear-messages",
       obj = NULL
     )
