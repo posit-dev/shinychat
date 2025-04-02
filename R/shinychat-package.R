@@ -4,6 +4,6 @@
 ## usethis namespace: start
 #' @importFrom coro async
 #' @importFrom htmltools tag css HTML
-#' @importFrom rlang %||%
+#' @import rlang
 ## usethis namespace: end
 NULL
