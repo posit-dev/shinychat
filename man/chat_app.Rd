@@ -45,8 +45,50 @@ you chat because your turns will be appended to the history.
 }}
 \examples{
 \dontrun{
+# Interactive in the console ----
 client <- ellmer::chat_claude()
 chat_app(client)
+
+# Inside a Shiny app ----
+library(shiny)
+library(bslib)
+library(shinychat)
+
+ui <- page_navbar(
+  title = "shinychat",
+
+  nav_panel(
+    "Claude",
+    h2("Chat with Claude"),
+    chat_mod_ui(
+      "claude",
+      messages = list(
+        "Hi! Use this chat interface to chat with Anthropic's `claude-3-5-sonnet`."
+      )
+    )
+  ),
+
+  nav_panel(
+    "ChatGPT",
+    h2("Chat with ChatGPT"),
+    chat_mod_ui(
+      "openai",
+      messages = list(
+        "Hi! Use this chat interface to chat with OpenAI's `gpt-4o`."
+      )
+    )
+  )
+)
+
+server <- function(input, output, session) {
+  claude <- ellmer::chat_claude(model = "claude-3-5-sonnet-latest") # Requires ANTHROPIC_API_KEY
+  openai <- ellmer::chat_openai(model = "gpt-4o") # Requires OPENAI_API_KEY
+
+  chat_mod_server("claude", claude)
+  chat_mod_server("openai", openai)
+}
+
+shinyApp(ui, server)
 }
 
 }
