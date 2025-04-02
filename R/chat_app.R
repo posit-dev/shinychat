@@ -78,10 +78,20 @@ chat_mod_ui <- function(id, client, ...) {
 chat_mod_server <- function(id, client) {
   check_ellmer_chat(client)
 
+  append_stream_task <- shiny::ExtendedTask$new(
+    function(client, ui_id, user_input) {
+      stream <- client$stream_async(user_input)
+      chat_append(ui_id, stream)
+    }
+  )
+
   shiny::moduleServer(id, function(input, output, session) {
     shiny::observeEvent(input$chat_user_input, {
-      stream <- client$stream_async(input$chat_user_input)
-      shinychat::chat_append(session$ns("chat"), stream)
+      append_stream_task$invoke(
+        client,
+        session$ns("chat"),
+        input$chat_user_input
+      )
     })
   })
 }
