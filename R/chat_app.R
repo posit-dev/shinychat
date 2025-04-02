@@ -139,8 +139,14 @@ chat_mod_server <- function(id, client) {
 
   append_stream_task <- shiny::ExtendedTask$new(
     function(client, ui_id, user_input) {
-      promises::future_promise({
-        stream <- client$stream_async(user_input)
+      promises::promise(function(resolve, reject) {
+        tryCatch(
+          resolve(client$stream_async(user_input)),
+          error = function(err) {
+            reject(err)
+          }
+        )
+      })$then(function(stream) {
         chat_append(ui_id, stream)
       })
     }
