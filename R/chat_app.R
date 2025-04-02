@@ -16,27 +16,26 @@
 #' library(bslib)
 #' library(shinychat)
 #'
-#' ui <- page_navbar(
-#'   title = "shinychat",
+#' ui <- page_fillable(
+#'   titlePanel("shinychat example"),
 #'
-#'   nav_panel(
-#'     "Claude",
-#'     h2("Chat with Claude"),
-#'     chat_mod_ui(
-#'       "claude",
-#'       messages = list(
-#'         "Hi! Use this chat interface to chat with Anthropic's `claude-3-5-sonnet`."
+#'   layout_columns(
+#'     list(
+#'       h3("Chat with Claude"),
+#'       chat_mod_ui(
+#'         "claude",
+#'         messages = list(
+#'           "Hi! Use this chat interface to chat with Anthropic's `claude-3-5-sonnet`."
+#'         )
 #'       )
-#'     )
-#'   ),
-#'
-#'   nav_panel(
-#'     "ChatGPT",
-#'     h2("Chat with ChatGPT"),
-#'     chat_mod_ui(
-#'       "openai",
-#'       messages = list(
-#'         "Hi! Use this chat interface to chat with OpenAI's `gpt-4o`."
+#'     ),
+#'     list(
+#'       h3("Chat with ChatGPT"),
+#'       chat_mod_ui(
+#'         "openai",
+#'         messages = list(
+#'           "Hi! Use this chat interface to chat with OpenAI's `gpt-4o`."
+#'         )
 #'       )
 #'     )
 #'   )
