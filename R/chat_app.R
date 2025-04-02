@@ -188,7 +188,7 @@ notify_error <- function(id, session = shiny::getDefaultReactiveDomain()) {
     } else {
       msg <- sprintf(
         "**An error occurred:**\n\n```\n%s\n```",
-        conditionMessage(err)
+        strip_ansi(conditionMessage(err))
       )
     }
 
@@ -207,4 +207,10 @@ notify_error <- function(id, session = shiny::getDefaultReactiveDomain()) {
       session = session
     )
   }
+}
+
+strip_ansi <- function(text) {
+  # Matches codes like "\x1B[31;43m", "\x1B[1;3;4m"
+  ansi_pattern <- "(\x1B|\x033)\\[[0-9;?=<>]*[@-~]"
+  gsub(ansi_pattern, "", text)
 }
