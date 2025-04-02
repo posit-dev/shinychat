@@ -63,8 +63,8 @@ ui <- page_fillable(
   titlePanel("shinychat example"),
 
   layout_columns(
-    list(
-      h3("Chat with Claude"),
+    card(
+      card_header("Chat with Claude"),
       chat_mod_ui(
         "claude",
         messages = list(
@@ -72,8 +72,8 @@ ui <- page_fillable(
         )
       )
     ),
-    list(
-      h3("Chat with ChatGPT"),
+    card(
+      card_header("Chat with ChatGPT"),
       chat_mod_ui(
         "openai",
         messages = list(
