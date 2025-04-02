@@ -59,7 +59,11 @@
 #'   [shiny::shinyApp()]. In `chat_mod_ui()`, additional arguments are passed to
 #'   [chat_ui()].
 #'
-#' @returns A [shiny::shinyApp()] object.
+#' @returns
+#'   * `chat_app()` returns a [shiny::shinyApp()] object.
+#'   * `chat_mod_ui()` returns the UI for a shinychat module.
+#'   * `chat_mod_server()` includes the shinychat module server logic, and
+#'     and returns the last turn upon successful chat completion.
 #'
 #' @describeIn chat_app A simple Shiny app for live chatting.
 #' @export
@@ -158,6 +162,12 @@ chat_mod_server <- function(id, client) {
           append_stream_task$result(),
           error = notify_error(session$ns("chat"), session)
         )
+      }
+    })
+
+    shiny::reactive({
+      if (append_stream_task$status() == "success") {
+        client$last_turn()
       }
     })
   })

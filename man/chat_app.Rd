@@ -27,7 +27,12 @@ provided or when the chat \code{client} doesn't already contain turns. Passed to
 \code{messages} in \code{\link[=chat_ui]{chat_ui()}}.}
 }
 \value{
-A \code{\link[shiny:shinyApp]{shiny::shinyApp()}} object.
+\itemize{
+\item \code{chat_app()} returns a \code{\link[shiny:shinyApp]{shiny::shinyApp()}} object.
+\item \code{chat_mod_ui()} returns the UI for a shinychat module.
+\item \code{chat_mod_server()} includes the shinychat module server logic, and
+and returns the last turn upon successful chat completion.
+}
 }
 \description{
 Create a simple Shiny app for live chatting using an \link[ellmer:Chat]{ellmer::Chat} object.
