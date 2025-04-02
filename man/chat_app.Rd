@@ -2,47 +2,47 @@
 % Please edit documentation in R/chat_app.R
 \name{chat_app}
 \alias{chat_app}
+\alias{chat_mod_ui}
+\alias{chat_mod_server}
 \title{Open a live chat application in the browser}
 \usage{
-chat_app(chat, ...)
+chat_app(client, ...)
+
+chat_mod_ui(id, client, ...)
+
+chat_mod_server(id, client)
 }
 \arguments{
-\item{chat}{A chat object created by \pkg{ellmer}, e.g.
+\item{client}{A chat object created by \pkg{ellmer}, e.g.
 \code{\link[ellmer:chat_openai]{ellmer::chat_openai()}} and friends.}
 
-\item{...}{
-  Arguments passed on to \code{\link[shiny:shinyApp]{shiny::shinyApp}}
-  \describe{
-    \item{\code{onStart}}{A function that will be called before the app is actually run.
-This is only needed for \code{shinyAppObj}, since in the \code{shinyAppDir}
-case, a \code{global.R} file can be used for this purpose.}
-    \item{\code{options}}{Named options that should be passed to the \code{runApp} call
-(these can be any of the following: "port", "launch.browser", "host", "quiet",
-"display.mode" and "test.mode"). You can also specify \code{width} and
-\code{height} parameters which provide a hint to the embedding environment
-about the ideal height/width for the app.}
-    \item{\code{uiPattern}}{A regular expression that will be applied to each \code{GET}
-request to determine whether the \code{ui} should be used to handle the
-request. Note that the entire request path must match the regular
-expression in order for the match to be considered successful.}
-    \item{\code{enableBookmarking}}{Can be one of \code{"url"}, \code{"server"}, or
-\code{"disable"}. The default value, \code{NULL}, will respect the setting from
-any previous calls to  \code{\link[shiny:enableBookmarking]{enableBookmarking()}}. See \code{\link[shiny:enableBookmarking]{enableBookmarking()}}
-for more information on bookmarking your app.}
-  }}
+\item{...}{In \code{chat_app()}, additional arguments are passed to
+\code{\link[shiny:shinyApp]{shiny::shinyApp()}}. In \code{chat_mod_ui()}, additional arguments are passed to
+\code{\link[=chat_ui]{chat_ui()}}.}
+
+\item{id}{The chat module ID.}
 }
 \value{
 A \code{\link[shiny:shinyApp]{shiny::shinyApp()}} object.
 }
 \description{
 Create a simple Shiny app for live chatting using an \link[ellmer:Chat]{ellmer::Chat} object.
-Note that these functions will mutate the input \code{chat} object as
+Note that these functions will mutate the input \code{client} object as
 you chat because your turns will be appended to the history.
 }
+\section{Functions}{
+\itemize{
+\item \code{chat_app()}: A simple Shiny app for live chatting.
+
+\item \code{chat_mod_ui()}: A simple chat app module UI.
+
+\item \code{chat_mod_server()}: A simple chat app module server.
+
+}}
 \examples{
 \dontrun{
-chat <- ellmer::chat_claude()
-chat_app(chat)
+client <- ellmer::chat_claude()
+chat_app(client)
 }
 
 }
