@@ -7,3 +7,7 @@
 #' @import rlang
 ## usethis namespace: end
 NULL
+
+ignore_unused_imports <- function() {
+  jsonlite::fromJSON
+}
