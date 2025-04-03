@@ -156,7 +156,7 @@ chat_mod_server <- function(id, client) {
     shiny::observeEvent(input$chat_user_input, {
       append_stream_task$invoke(
         client,
-        session$ns("chat"),
+        "chat",
         input$chat_user_input
       )
     })
@@ -165,7 +165,7 @@ chat_mod_server <- function(id, client) {
       if (append_stream_task$status() == "error") {
         tryCatch(
           append_stream_task$result(),
-          error = notify_error(session$ns("chat"), session)
+          error = notify_error("chat", session = session, module_id = id)
         )
       }
     })
@@ -178,10 +178,17 @@ chat_mod_server <- function(id, client) {
   })
 }
 
-notify_error <- function(id, session = shiny::getDefaultReactiveDomain()) {
+notify_error <- function(
+  id,
+  module_id,
+  session = shiny::getDefaultReactiveDomain()
+) {
   function(err) {
     rlang::warn(
-      sprintf("ERROR: An error occurred in `chat_mod_server(id=\"%s\")`", id),
+      sprintf(
+        "ERROR: An error occurred in `chat_mod_server(id=\"%s\")`",
+        module_id
+      ),
       parent = err
     )
 
