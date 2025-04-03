@@ -180,6 +180,11 @@ chat_mod_server <- function(id, client) {
 
 notify_error <- function(id, session = shiny::getDefaultReactiveDomain()) {
   function(err) {
+    rlang::warn(
+      sprintf("ERROR: An error occurred in `chat_mod_server(id=\"%s\")`", id),
+      parent = err
+    )
+
     needs_sanitized <-
       isTRUE(getOption("shiny.sanitize.errors")) &&
       !inherits(err, "shiny.custom.error")
