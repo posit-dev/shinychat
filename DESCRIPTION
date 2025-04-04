@@ -3,15 +3,19 @@ Title: Chat UI Component for 'shiny'
 Version: 0.1.1.9001
 Authors@R: c(
     person("Joe", "Cheng", , "joe@posit.co", role = c("aut", "cre")),
-    person("Carson", "Sievert", , "carson@posit.co", role = c("aut")),
+    person("Carson", "Sievert", , "carson@posit.co", role = "aut"),
+    person("Garrick", "Aden-Buie", , "garrick@adenbuie.com", role = "aut",
+           comment = c(ORCID = "0000-0002-7111-0077")),
     person("Posit Software, PBC", role = c("cph", "fnd"))
   )
-Description: Provides a scrolling chat interface with multiline input, suitable
-    for creating chatbot apps based on Large Language Models (LLMs). Designed to
-    work particularly well with the 'ellmer' R package for calling LLMs.
+Description: Provides a scrolling chat interface with multiline input,
+    suitable for creating chatbot apps based on Large Language Models
+    (LLMs). Designed to work particularly well with the 'ellmer' R package
+    for calling LLMs.
 License: MIT + file LICENSE
-URL: https://github.com/jcheng5/shinychat, https://jcheng5.github.io/shinychat/
-BugReports: https://github.com/jcheng5/shinychat/issues
+URL: https://github.com/posit-dev/shinychat,
+    https://posit-dev.github.io/shinychat/
+BugReports: https://github.com/posit-dev/shinychat/issues
 Imports:
     bslib,
     coro,
@@ -23,8 +27,8 @@ Imports:
     shiny (>= 1.10.0)
 Suggests:
     testthat (>= 3.0.0)
+Config/Needs/website: tidyverse/tidytemplate
+Config/testthat/edition: 3
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
-Config/testthat/edition: 3
-Config/Needs/website: tidyverse/tidytemplate
