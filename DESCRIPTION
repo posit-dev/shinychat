@@ -10,8 +10,8 @@ Description: Provides a scrolling chat interface with multiline input, suitable
     for creating chatbot apps based on Large Language Models (LLMs). Designed to
     work particularly well with the 'ellmer' R package for calling LLMs.
 License: MIT + file LICENSE
-URL: https://github.com/jcheng5/shinychat, https://jcheng5.github.io/shinychat/
-BugReports: https://github.com/jcheng5/shinychat/issues
+URL: https://github.com/posit-dev/shinychat, https://posit-dev.github.io/shinychat/
+BugReports: https://github.com/posit-dev/shinychat/issues
 Imports:
     bslib,
     coro,
