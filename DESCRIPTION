@@ -1,6 +1,6 @@
 Package: shinychat
 Title: Chat UI Component for 'shiny'
-Version: 0.1.1.9000
+Version: 0.1.1.9001
 Authors@R: c(
     person("Joe", "Cheng", , "joe@posit.co", role = c("aut", "cre")),
     person("Carson", "Sievert", , "carson@posit.co", role = c("aut")),
