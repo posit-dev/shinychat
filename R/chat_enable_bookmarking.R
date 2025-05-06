@@ -31,7 +31,7 @@
 #'     echo = TRUE
 #'   )
 #'   # Update bookmark to chat on user submission and completed response
-#'   chat_enable_bookmark("chat", chat_client)
+#'   chat_enable_bookmarking("chat", chat_client)
 #'
 #'   observeEvent(input$chat_user_input, {
 #'     stream <- chat_client$stream_async(input$chat_user_input)
@@ -42,7 +42,7 @@
 #' # Enable bookmarking!
 #' shinyApp(ui, server, enableBookmarking = "server")
 #' @export
-chat_enable_bookmark <- function(
+chat_enable_bookmarking <- function(
   id,
   client,
   ...,
@@ -64,7 +64,7 @@ chat_enable_bookmark <- function(
 
   if (is.null(session)) {
     rlang::abort(
-      "A `session` must be provided. Be sure to call `chat_enable_bookmark()` where a session context is available."
+      "A `session` must be provided. Be sure to call `chat_enable_bookmarking()` where a session context is available."
     )
   }
 
@@ -90,110 +90,121 @@ chat_enable_bookmark <- function(
   }
 
   # Save
-  cancel_on_bookmark <- session$onBookmark(function(state) {
-    if (id %in% names(state$values)) {
-      rlang::abort(
-        paste0(
-          "Bookmark value with id (`\"",
-          id,
-          "\"`)) already exists. Please remove it or use a different id."
+  cancel_on_bookmark_client <-
+    session$onBookmark(function(state) {
+      if (id %in% names(state$values)) {
+        rlang::abort(
+          paste0(
+            "Bookmark value with id (`\"",
+            id,
+            "\"`)) already exists. Please remove it or use a different id."
+          )
         )
-      )
-    }
+      }
 
-    turns <- client$get_turns()
-    if (length(turns) == 0) return()
+      turns <- client$get_turns()
+      if (length(turns) == 0) return()
 
-    if (shiny::getShinyOption("bookmarkStore", "server") == "server") {
-      # `.rds` file will be used for serialization. Saving client as is
-      state$values[[id]] <- client
-    } else {
-      # URL will be destination for serialization
-      turns_list <- lapply(turns, function(turn) {
-        list(
-          role = turn@role,
-          # Convert everything to a single markdown string (including images!)
-          contents = ellmer::contents_markdown(turn),
-          tokens = turn@tokens
-        )
-      })
-      state$values[[id]] <- turns_list
-    }
-  })
+      if (shiny::getShinyOption("bookmarkStore", "server") == "server") {
+        # `.rds` file will be used for serialization. Saving client as is
+        state$values[[id]] <- client
+      } else {
+        # URL will be destination for serialization
+        turns_list <- lapply(turns, function(turn) {
+          list(
+            role = turn@role,
+            # Convert everything to a single markdown string (including images!)
+            contents = ellmer::contents_markdown(turn),
+            tokens = turn@tokens
+          )
+        })
+        state$values[[id]] <- turns_list
+      }
+    })
+  cancel_on_bookmark_ui <-
+    session$onBookmark(function(state) {
+      # TODO save UI here
+    })
 
   # Restore
-  cancel_on_restore <- session$onRestore(function(state) {
-    turns_obj <- state$values[[id]]
-    if (is.null(turns_obj)) return()
+  cancel_on_restore_client <-
+    session$onRestore(function(state) {
+      turns_obj <- state$values[[id]]
+      if (is.null(turns_obj)) return()
 
-    if (shiny::getShinyOption("bookmarkStore", "server") == "server") {
-      # Restore client from `.rds` file
-      restored_client <- turns_obj
+      if (shiny::getShinyOption("bookmarkStore", "server") == "server") {
+        # Restore client from `.rds` file
+        restored_client <- turns_obj
 
-      # Go through each property trying to set it to the other?
-      client$set_turns(restored_client$get_turns())
-    } else {
-      # Restore from URL
+        # Go through each property trying to set it to the other?
+        client$set_turns(restored_client$get_turns())
+      } else {
+        # Restore from URL
 
-      turn_list <-
-        if (inherits(turns_obj, "data.frame")) {
-          # Restore url jsonlite::fromJSON() object that has been _simplified_ into a data.frame()
-          turns_df <- turns_obj
-          if (nrow(turns_df) == 0) return()
+        turn_list <-
+          if (inherits(turns_obj, "data.frame")) {
+            # Restore url jsonlite::fromJSON() object that has been _simplified_ into a data.frame()
+            turns_df <- turns_obj
+            if (nrow(turns_df) == 0) return()
 
-          # Turn a data.frame into a list of row information, where the row info is a named lists
-          # Similar to `purrr::pmap(turns_df, list)`
-          unname(rlang::exec(Map, !!!as.list(turns_df), list))
-        } else {
-          turns_obj
-        }
+            # Turn a data.frame into a list of row information, where the row info is a named lists
+            # Similar to `purrr::pmap(turns_df, list)`
+            unname(rlang::exec(Map, !!!as.list(turns_df), list))
+          } else {
+            turns_obj
+          }
 
-      # Verify turn fields are available
-      Map(
-        turn_info = turn_list,
-        i = seq_along(turn_list),
-        f = function(turn_info, i) {
-          turn_info_names <- names(turn_info)
-          for (col_name in c("role", "contents", "tokens")) {
-            if (!(col_name %in% turn_info_names)) {
-              rlang::abort(
-                paste0(
-                  "Restored turn ",
-                  i,
-                  "/",
-                  length(turn_list),
-                  " does not have a '",
-                  col_name,
-                  "' field."
+        # Verify turn fields are available
+        Map(
+          turn_info = turn_list,
+          i = seq_along(turn_list),
+          f = function(turn_info, i) {
+            turn_info_names <- names(turn_info)
+            for (col_name in c("role", "contents", "tokens")) {
+              if (!(col_name %in% turn_info_names)) {
+                rlang::abort(
+                  paste0(
+                    "Restored turn ",
+                    i,
+                    "/",
+                    length(turn_list),
+                    " does not have a '",
+                    col_name,
+                    "' field."
+                  )
                 )
-              )
+              }
             }
           }
-        }
-      )
+        )
 
-      # Upgrade
-      # Note: Character `contents=` values will be auto upgraded by ellmer to a `ellmer::ContentText` objects
-      turns <- lapply(turn_list, function(turn_info) {
-        rlang::exec(ellmer::Turn, !!!turn_info)
+        # Upgrade
+        # Note: Character `contents=` values will be auto upgraded by ellmer to a `ellmer::ContentText` objects
+        turns <- lapply(turn_list, function(turn_info) {
+          rlang::exec(ellmer::Turn, !!!turn_info)
+        })
+
+        # Set the client
+        client$set_turns(turns)
+      }
+
+      # Set the UI
+      # TODO-barret-future; In shinychat, make this a single/internal custom message call to send all the messages at once (and then scroll)
+      lapply(client$get_turns(), function(turn) {
+        chat_append(
+          id,
+          # Use `contents_markdown()` as it handles image serialization
+          ellmer::contents_markdown(turn),
+          #  turn_info$contents,
+          role = turn@role
+        )
       })
-
-      # Set the client
-      client$set_turns(turns)
-    }
-
-    # Set the UI
-    # TODO-barret-future; In shinychat, make this a single/internal custom message call to send all the messages at once (and then scroll)
-    lapply(client$get_turns(), function(turn) {
-      chat_append(
-        id,
-        # Use `contents_markdown()` as it handles image serialization
-        ellmer::contents_markdown(turn),
-        #  turn_info$contents,
-        role = turn@role
-      )
     })
-  })
+
+  cancel_on_restore_ui <-
+    session$onRestore(function(state) {
+      # TODO restore UI here
+    })
 
   # Update URL
   cancel_update_on_input <-
@@ -222,7 +233,7 @@ chat_enable_bookmark <- function(
       })
   }
 
-  # Set callbacks to cancel if `chat_enable_bookmark(id, client)` is called again with the same id
+  # Set callbacks to cancel if `chat_enable_bookmarking(id, client)` is called again with the same id
   # Only allow for bookmarks for each chat once. Last bookmark method would win if all values were to be computed.
   # Remove previous `on*()` methods under same hash (.. odd author behavior)
   previous_info <- get_session_chat_bookmark_info(session, id)
@@ -234,14 +245,16 @@ chat_enable_bookmark <- function(
     }
   }
 
-  # Store callbacks to cancel in case a new call to `chat_enable_bookmark(id, client)` is called with the same id
+  # Store callbacks to cancel in case a new call to `chat_enable_bookmarking(id, client)` is called with the same id
   set_session_chat_bookmark_info(
     session,
     id,
     value = list(
       callbacks_to_cancel = c(
-        cancel_on_bookmark,
-        cancel_on_restore,
+        cancel_on_bookmark_client,
+        cancel_on_bookmark_ui,
+        cancel_on_restore_client,
+        cancel_on_restore_ui,
         cancel_update_on_input,
         cancel_update_bookmark
       )

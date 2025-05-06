@@ -3,7 +3,7 @@
 export(chat_append)
 export(chat_append_message)
 export(chat_clear)
-export(chat_enable_bookmark)
+export(chat_enable_bookmarking)
 export(chat_ui)
 export(markdown_stream)
 export(output_markdown_stream)
