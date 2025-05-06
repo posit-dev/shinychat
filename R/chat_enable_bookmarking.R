@@ -3,15 +3,15 @@
 #' @description
 #' Adds hooks to the Shiny chat given the LLM client.
 #'
-#' If either `update_on_input` or `update_on_response` is `TRUE`, the Shiny
+#' If either `bookmark_on_input` or `bookmark_on_response` is `TRUE`, the Shiny
 #' App's bookmark will be automatically updated without showing a modal to the
 #' user.
 #'
 #' @param id The ID of the chat element
 #' @param client The \pkg{ellmer} LLM chat client.
 #' @param ... Used for future parameter expansion.
-#' @param update_on_input A logical value determines if the bookmark should be updated when the user submits a message. Default is `TRUE`.
-#' @param update_on_response A logical value determines if the bookmark should be updated when the response stream completes. Default is `TRUE`.
+#' @param bookmark_on_input A logical value determines if the bookmark should be updated when the user submits a message. Default is `TRUE`.
+#' @param bookmark_on_response A logical value determines if the bookmark should be updated when the response stream completes. Default is `TRUE`.
 #' @param session The Shiny session object
 #' @returns Returns nothing (\code{invisible(NULL)}).
 #'
@@ -46,8 +46,8 @@ chat_enable_bookmarking <- function(
   id,
   client,
   ...,
-  update_on_input = TRUE,
-  update_on_response = TRUE,
+  bookmark_on_input = TRUE,
+  bookmark_on_response = TRUE,
   session = getDefaultReactiveDomain()
 ) {
   rlang::check_dots_empty()
@@ -59,8 +59,8 @@ chat_enable_bookmarking <- function(
       "`client` must be an `ellmer::Chat()` object. If you would like to have {shinychat} support your own package, please submit a GitHub Issue at https://github.com/posit-dev/shinychat"
     )
   }
-  update_on_input <- rlang::is_true(update_on_input)
-  update_on_response <- rlang::is_true(update_on_response)
+  bookmark_on_input <- rlang::is_true(bookmark_on_input)
+  bookmark_on_response <- rlang::is_true(bookmark_on_response)
 
   if (is.null(session)) {
     rlang::abort(
@@ -207,8 +207,8 @@ chat_enable_bookmarking <- function(
     })
 
   # Update URL
-  cancel_update_on_input <-
-    if (update_on_input) {
+  cancel_bookmark_on_input <-
+    if (bookmark_on_input) {
       observeEvent(session$input[[id_user_input]], {
         # On user submit
         session$doBookmark()
@@ -221,11 +221,11 @@ chat_enable_bookmarking <- function(
   set_session_bookmark_on_response(
     session,
     id,
-    enable = update_on_response
+    enable = bookmark_on_response
   )
 
   cancel_update_bookmark <- NULL
-  if (update_on_input || update_on_response) {
+  if (bookmark_on_input || bookmark_on_response) {
     cancel_update_bookmark <-
       # Update the query string when bookmarked
       shiny::onBookmarked(function(url) {
@@ -255,7 +255,7 @@ chat_enable_bookmarking <- function(
         cancel_on_bookmark_ui,
         cancel_on_restore_client,
         cancel_on_restore_ui,
-        cancel_update_on_input,
+        cancel_bookmark_on_input,
         cancel_update_bookmark
       )
     )

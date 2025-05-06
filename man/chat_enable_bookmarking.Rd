@@ -8,8 +8,8 @@ chat_enable_bookmarking(
   id,
   client,
   ...,
-  update_on_input = TRUE,
-  update_on_response = TRUE,
+  bookmark_on_input = TRUE,
+  bookmark_on_response = TRUE,
   session = getDefaultReactiveDomain()
 )
 }
@@ -20,9 +20,9 @@ chat_enable_bookmarking(
 
 \item{...}{Used for future parameter expansion.}
 
-\item{update_on_input}{A logical value determines if the bookmark should be updated when the user submits a message. Default is \code{TRUE}.}
+\item{bookmark_on_input}{A logical value determines if the bookmark should be updated when the user submits a message. Default is \code{TRUE}.}
 
-\item{update_on_response}{A logical value determines if the bookmark should be updated when the response stream completes. Default is \code{TRUE}.}
+\item{bookmark_on_response}{A logical value determines if the bookmark should be updated when the response stream completes. Default is \code{TRUE}.}
 
 \item{session}{The Shiny session object}
 }
@@ -32,7 +32,7 @@ Returns nothing (\code{invisible(NULL)}).
 \description{
 Adds hooks to the Shiny chat given the LLM client.
 
-If either \code{update_on_input} or \code{update_on_response} is \code{TRUE}, the Shiny
+If either \code{bookmark_on_input} or \code{bookmark_on_response} is \code{TRUE}, the Shiny
 App's bookmark will be automatically updated without showing a modal to the
 user.
 }
