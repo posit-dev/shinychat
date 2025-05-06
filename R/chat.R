@@ -4,11 +4,6 @@
 # trimming of the message history to fit within the context window; these
 # are left for the caller to handle in the R version.
 
-#' @importFrom shiny getDefaultReactiveDomain
-#' @importFrom htmltools tag css
-#' @importFrom coro async
-NULL
-
 chat_deps <- function() {
   htmltools::htmlDependency(
     "shinychat",
@@ -42,7 +37,19 @@ chat_deps <- function() {
 #' @param id The ID of the chat element
 #' @param ... Extra HTML attributes to include on the chat element
 #' @param messages A list of messages to prepopulate the chat with. Each
-#'   message can be a string or a named list with `content` and `role` fields.
+#'   message can be one of the following:
+#'
+#'   * A string, which is interpreted as markdown and rendered to HTML on
+#'     the client.
+#'     * To prevent interpreting as markdown, mark the string as
+#'       [htmltools::HTML()].
+#'   * A UI element.
+#'     * This includes [htmltools::tagList()], which take UI elements
+#'       (including strings) as children. In this case, strings are still
+#'       interpreted as markdown as long as they're not inside HTML.
+#'   * A named list of `content` and `role`. The `content` can contain content
+#'     as described above, and the `role` can be "assistant" or "user".
+#'
 #' @param placeholder The placeholder text for the chat's user input field
 #' @param width The CSS width of the chat element
 #' @param height The CSS height of the chat element
@@ -63,7 +70,7 @@ chat_deps <- function() {
 #' server <- function(input, output, session) {
 #'   observeEvent(input$chat_user_input, {
 #'     # In a real app, this would call out to a chat client or API,
-#'     # perhaps using the 'elmer' package.
+#'     # perhaps using the 'ellmer' package.
 #'     response <- paste0(
 #'       "You said:\n\n",
 #'       "<blockquote>",
@@ -93,26 +100,34 @@ chat_ui <- function(
   }
 
   message_tags <- lapply(messages, function(x) {
-    if (is.character(x)) {
-      x <- list(content = x, role = "assistant")
-    } else if (is.list(x)) {
-      if (!("content" %in% names(x))) {
-        rlang::abort("Each message must have a 'content' key.")
-      }
-      if (!("role" %in% names(x))) {
-        rlang::abort("Each message must have a 'role' key.")
-      }
-    } else {
-      rlang::abort("Each message must be a string or a named list.")
+    role <- "assistant"
+    content <- x
+    if (is.list(x) && ("content" %in% names(x))) {
+      content <- x[["content"]]
+      role <- x[["role"]] %||% role
     }
 
-    if (isTRUE(x[["role"]] == "user")) {
+    if (isTRUE(role == "user")) {
       tag_name <- "shiny-user-message"
     } else {
       tag_name <- "shiny-chat-message"
     }
 
-    tag(tag_name, list(content = x[["content"]]))
+    # `content` is most likely a string, so avoid overhead in that case
+    # (it's also important that we *don't escape HTML* here).
+    if (is.character(content)) {
+      ui <- list(html = paste(content, collapse = "\n"))
+    } else {
+      ui <- with_current_theme(htmltools::renderTags(content))
+    }
+
+    tag(
+      tag_name,
+      rlang::list2(
+        content = ui[["html"]],
+        ui[["dependencies"]],
+      )
+    )
   })
 
   res <- tag(
@@ -139,15 +154,15 @@ chat_ui <- function(
     res <- bslib::as_fill_carrier(res)
   }
 
-  res
+  tag_require(res, version = 5, caller = "chat_ui")
 }
 
 #' Append an assistant response (or user message) to a chat control
 #'
 #' @description
-#' The `chat_append` function appends a message to an existing chat control. The
+#' The `chat_append` function appends a message to an existing [chat_ui()]. The
 #' `response` can be a string, string generator, string promise, or string
-#' promise generator (as returned by the 'elmer' package's `chat`, `stream`,
+#' promise generator (as returned by the 'ellmer' package's `chat`, `stream`,
 #' `chat_async`, and `stream_async` methods, respectively).
 #'
 #' This function should be called from a Shiny app's server. It is generally
@@ -168,7 +183,18 @@ chat_ui <- function(
 #' promise returned by `chat_append`.
 #'
 #' @param id The ID of the chat element
-#' @param response The message or message stream to append to the chat element
+#' @param response The message or message stream to append to the chat element.
+#'   The actual message content can one of the following:
+#'
+#'   * A string, which is interpreted as markdown and rendered to HTML on
+#'     the client.
+#'     * To prevent interpreting as markdown, mark the string as
+#'       [htmltools::HTML()].
+#'   * A UI element.
+#'     * This includes [htmltools::tagList()], which take UI elements
+#'       (including strings) as children. In this case, strings are still
+#'       interpreted as markdown as long as they're not inside HTML.
+#'
 #' @param role The role of the message (either "assistant" or "user"). Defaults
 #'   to "assistant".
 #' @param session The Shiny session object
@@ -223,21 +249,10 @@ chat_append <- function(
   role = c("assistant", "user"),
   session = getDefaultReactiveDomain()
 ) {
+  check_active_session(session)
   role <- match.arg(role)
-  if (is.character(response)) {
-    # string => generator
-    stream <- coro::gen(yield(response))
-  } else if (promises::is.promising(response)) {
-    # promise => async generator
-    stream <- coro::gen(yield(response))
-  } else if (inherits(response, "coro_generator_instance")) {
-    # Already a generator (sync or async)
-    stream <- response
-  } else {
-    rlang::abort(
-      "Unexpected message type; chat_append() expects a string, a string generator, a string promise, or a string promise generator"
-    )
-  }
+
+  stream <- as_generator(response)
   chat_append_stream(id, stream, role = role, session = session)
 }
 
@@ -263,6 +278,8 @@ chat_append <- function(
 #' @param session The Shiny session object
 #'
 #' @returns Returns nothing (\code{invisible(NULL)}).
+#'
+#' @importFrom shiny getDefaultReactiveDomain
 #'
 #' @examplesIf interactive()
 #' library(shiny)
@@ -315,6 +332,8 @@ chat_append_message <- function(
   operation = c("append", "replace"),
   session = getDefaultReactiveDomain()
 ) {
+  check_active_session(session)
+
   if (!is.list(msg)) {
     rlang::abort("`msg` must be a named list with 'role' and 'content' fields")
   }
@@ -339,21 +358,34 @@ chat_append_message <- function(
     chunk_type <- NULL
   }
 
-  if (identical(class(msg[["content"]]), "character")) {
-    content_type <- "markdown"
-  } else {
-    content_type <- "html"
-  }
+  content <- msg[["content"]]
+  is_html <- inherits(
+    content,
+    c("shiny.tag", "shiny.tag.list", "html", "htmlwidget")
+  )
+  content_type <- if (is_html) "html" else "markdown"
 
   operation <- match.arg(operation)
   if (identical(operation, "replace")) {
     operation <- NULL
   }
 
+  if (is.character(content)) {
+    # content is most likely a string, so avoid overhead in that case
+    ui <- list(html = content, deps = "[]")
+  } else {
+    # process_ui() does *not* render markdown->HTML, but it does:
+    # 1. Extract and register HTMLdependency()s with the session.
+    # 2. Returns a HTML string representation of the TagChild
+    #    (i.e., `div()` -> `"<div>"`).
+    ui <- process_ui(content, session)
+  }
+
   msg <- list(
-    content = msg[["content"]],
+    content = ui[["html"]],
     role = msg[["role"]],
     content_type = content_type,
+    html_deps = ui[["deps"]],
     chunk_type = chunk_type,
     operation = operation
   )
@@ -361,7 +393,7 @@ chat_append_message <- function(
   session$sendCustomMessage(
     "shinyChatMessage",
     list(
-      id = id,
+      id = resolve_id(id, session),
       handler = msg_type,
       obj = msg
     )
@@ -444,6 +476,7 @@ rlang::on_load(
   })
 )
 
+
 #' Clear all messages from a chat control
 #'
 #' @param id The ID of the chat element
@@ -473,10 +506,12 @@ rlang::on_load(
 #'
 #' shinyApp(ui, server)
 chat_clear <- function(id, session = getDefaultReactiveDomain()) {
+  check_active_session(session)
+
   session$sendCustomMessage(
     "shinyChatMessage",
     list(
-      id = id,
+      id = resolve_id(id, session),
       handler = "shiny-chat-clear-messages",
       obj = NULL
     )
