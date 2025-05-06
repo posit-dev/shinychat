@@ -10,7 +10,7 @@ output_markdown_stream(
   content = "",
   content_type = "markdown",
   auto_scroll = TRUE,
-  width = "100\%",
+  width = "min(680px, 100\%)",
   height = "auto"
 )
 }
@@ -19,10 +19,13 @@ output_markdown_stream(
 
 \item{...}{Extra HTML attributes to include on the chat element}
 
-\item{content}{Some content to display before any streaming occurs.}
+\item{content}{A string of content to display before any streaming occurs.
+When \code{content_type} is Markdown or HTML, it may also be UI element(s) such
+as input and output bindings.}
 
 \item{content_type}{The content type. Default is \code{"markdown"} (specifically,
-CommonMark). Other supported options are:
+CommonMark). Supported content types include:
+* \code{"markdown"}: markdown text, specifically CommonMark
 * \code{"html"}: for rendering HTML content.
 * \code{"text"}: for plain text.
 * \code{"semi-markdown"}: for rendering markdown, but with HTML tags escaped.}
