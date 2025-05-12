@@ -1,0 +1,22 @@
+url: https://posit-dev.github.io/shinychat
+
+authors:
+  Posit Software, PBC:
+    href: https://www.posit.co
+    html: >-
+      <img src='https://www.tidyverse.org/posit-logo.svg' alt='Posit' height='16' width='62' style="margin-bottom: 3px;" />
+  Carson Sievert:
+    href: https://cpsievert.me
+  Garrick Aden-Buie:
+    href: https://garrickadenbuie.com
+
+template:
+  bootstrap: 5
+  light-switch: true
+  theme: github-light
+  theme-dark: github-dark
+  bslib:
+    brand: pkgdown/_brand.yml
+
+development:
+  mode: auto
