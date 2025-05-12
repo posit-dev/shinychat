@@ -22,6 +22,8 @@ rm -rf "$DEST_DIR"
 mkdir -p "$DEST_DIR"
 cp -R "repo_tmp/shiny/www/py-shiny/chat" "$DEST_DIR/chat"
 cp -R "repo_tmp/shiny/www/py-shiny/markdown-stream" "$DEST_DIR/markdown-stream"
-cp -R "repo_tmp/shiny/www/py-shiny/text-area" "$DEST_DIR/text-area"
+# TODO: after v1.10.0.9001 release, bump min shiny version and remove below
+# cp -R "repo_tmp/shiny/www/py-shiny/text-area" "$DEST_DIR/text-area"
+git restore inst/lib/shiny/text-area
 (cd repo_tmp; git rev-parse HEAD) > "${DEST_DIR}/GIT_VERSION"
 rm -rf repo_tmp
