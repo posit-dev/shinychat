@@ -40,12 +40,12 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(
 
   if (!is.null(content@error)) {
     tool_args <- pre_code(
-      jsonlite::toJSON(content@call_args, auto_unbox = TRUE)
+      jsonlite::toJSON(content@request@arguments, auto_unbox = TRUE)
     )
     err <- sprintf(
       '<details class="shiny-tool-result failed" id="%s"><summary>Failed to call <span class="function-name">%s</span></summary>%s\n\nError:\n\n%s\n\n</details>',
-      content@id,
-      if (!is.null(content@call_tool)) content@call_tool@name else
+      content@request@id,
+      if (!is.null(content@request@tool)) content@request@tool@name else
         "unknown tool",
       tool_args,
       pre_code(content@error)
@@ -60,18 +60,18 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(
   }
   result <- paste0("<strong>Tool Result</strong>\n", result)
 
-  if (length(content@call_args) == 0) {
-    call <- call2(content@call_tool@name)
+  if (length(content@request@arguments) == 0) {
+    call <- call2(content@request@name)
   } else {
-    call <- call2(content@call_tool@name, !!!content@call_args)
+    call <- call2(content@request@name, !!!content@request@arguments)
   }
 
   tool_call <- paste0("<strong>Tool Call</strong>", pre_code(format(call)))
 
   x <- sprintf(
     '<details class="shiny-tool-result" id="%s"><summary>View result from <span class="function-name">%s</span></summary>%s\n\n%s\n\n</details>',
-    content@id,
-    content@call_tool@name,
+    content@request@id,
+    content@request@name,
     tool_call,
     result
   )

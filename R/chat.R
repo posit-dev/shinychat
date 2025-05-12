@@ -457,8 +457,8 @@ rlang::on_load(
         break
       }
 
-      on_tool_request(msg, session)
-      on_tool_result(msg, session)
+      # coro::await(on_tool_request(msg, session))
+      # on_tool_result(msg, session)
 
       if (S7::S7_inherits(msg, ellmer::Content)) {
         msg <- contents_shinychat(msg)
@@ -484,59 +484,106 @@ rlang::on_load(
 
 tool_confirmation <- new.env(parent = emptyenv())
 
-on_tool_request <- function(x, session = shiny::getDefaultReactiveDomain()) {
-  return(invisible())
-
+on_tool_request <- coro::async(function(
+  x,
+  session = shiny::getDefaultReactiveDomain()
+) {
   if (!S7::S7_inherits(x, ellmer::ContentToolRequest)) {
     return(invisible())
   }
 
+  tool_name <- x@name
   result <- NULL
 
-  input_confirm_session <- sprintf(".tool_%s_confirm_session", x@name)
-  input_confirm_once <- sprintf(".tool_%s_confirm_once", x@name)
-  input_deny <- sprintf(".tool_%s_deny")
+  if (identical(get0(tool_name, envir = tool_confirmation), "session")) {
+    # Already confirmed for this session
+    return(invisible())
+  }
 
-  obs <- shiny::observeEvent(session$input$tool_username_submit, {
-    # shiny::removeModal(session)
-    result <<- session$input$tool_username_name
+  task <- ExtendedTask$new(coro::async(function(tool_name) {
+    result <- NULL
+
+    id_confirm_session <- ".tool_confirm_session"
+    id_confirm_once <- ".tool_confirm_once"
+    id_deny <- ".tool_deny"
+
+    obs <- shiny::observeEvent(session$input[[id_confirm_session]], {
+      cli::cli_inform("[{.field {tool_name}}] Confirmed for session")
+      result <<- "session"
+    })
+
+    obs2 <- shiny::observeEvent(session$input[[id_confirm_once]], {
+      cli::cli_inform("[{.field {tool_name}}] Confirmed once")
+      result <<- "once"
+    })
+
+    obs3 <- shiny::observeEvent(session$input[[id_deny]], {
+      cli::cli_inform("[{.field {tool_name}}] Denied")
+      result <<- "deny"
+    })
+
+    ui_inline_confirmation <- shiny::div(
+      id = "tool_confirmation",
+      shiny::p(
+        "Allow",
+        shiny::code(tool_name),
+        "to be called?"
+      ),
+      shiny::div(
+        class = "btn-group",
+        shiny::actionButton(id_confirm_once, "Once", class = "btn-sm"),
+        shiny::actionButton(id_confirm_session, "Always", class = "btn-sm"),
+        shiny::actionButton(id_deny, "Deny", class = "btn-sm")
+      )
+    )
+
+    shinychat::chat_append_message(
+      "chat",
+      list(role = "assistant", content = ui_inline_confirmation)
+    )
+
+    timeout <- Sys.time() + 10
+
+    while (is.null(result)) {
+      if (Sys.time() > timeout) stop("Timed out waiting for an answer.")
+      coro::await(coro::async_sleep(0.25))
+    }
+
+    obs$destroy()
+    obs2$destroy()
+    obs3$destroy()
+
+    shinychat::chat_append_message(
+      "chat",
+      list(role = "assistant", content = ""),
+      operation = "replace"
+    )
+  }))
+
+  obs <- observeEvent(task$result(), {
+    result <<- task$result()
   })
 
-  ui_inline_confirmation <- shiny::div(
-    id = "tool_confirmation",
-    shiny::textInput("tool_username_name", "Hi! What's your name?"),
-    shiny::actionButton("tool_username_submit", "Submit", class = "btn-sm")
-  )
-  shinychat::chat_append_message(
-    "chat",
-    list(role = "assistant", content = ui_inline_confirmation)
-  )
+  task$invoke(tool_name)
 
-  timeout <- Sys.time() + 20
+  timeout <- Sys.time() + 10
 
   while (is.null(result)) {
     if (Sys.time() > timeout) stop("Timed out waiting for an answer.")
     coro::await(coro::async_sleep(0.25))
   }
 
+  tool_confirmation[[tool_name]] <- result
   obs$destroy()
 
-  shinychat::chat_append_message(
-    "chat",
-    list(role = "assistant", content = ""),
-    operation = "replace"
-  )
-
-  result
-
   invisible()
-}
+})
 
 on_tool_result <- function(x, session = shiny::getDefaultReactiveDomain()) {
   if (!S7::S7_inherits(x, ellmer::ContentToolResult)) {
     return(invisible())
   }
-  session$sendCustomMessage("shinychat-hide-tool-request", x@id)
+  session$sendCustomMessage("shinychat-hide-tool-request", x@request@id)
   invisible()
 }
 

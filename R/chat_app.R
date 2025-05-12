@@ -144,8 +144,15 @@ chat_mod_server <- function(id, client) {
 
   append_stream_task <- shiny::ExtendedTask$new(
     function(client, ui_id, user_input) {
+      withr::local_options(list(ellmer.tool_async_parallel = FALSE))
+
+      stream <- client$stream_async(
+        user_input,
+        content = "all"
+      )
+
       promises::then(
-        promises::promise_resolve(client$stream_async(user_input)),
+        promises::promise_resolve(stream),
         function(stream) {
           chat_append(ui_id, stream)
         }
