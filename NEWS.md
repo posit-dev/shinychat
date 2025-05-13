@@ -10,6 +10,8 @@
 
 * Added `chat_app()`, `chat_mod_ui()` and `chat_mod_server()`. `chat_app()` takes an `ellmer::Chat` client and launches a simple Shiny app interface with the chat. `chat_mod_ui()` and `chat_mod_server()` replicate the interface as a Shiny module, for easily adding a simple chat interface connected to a specific `ellmer::Chat` client. (#36)
 
+* The promise returned by `chat_append()` now resolves to the content streamed into the chat. (#49)
+
 ## Bug fixes
 
 * `chat_append()`, `chat_append_message()` and `chat_clear()` now all work in Shiny modules without needing to namespace the `id` of the Chat component. (#37)
