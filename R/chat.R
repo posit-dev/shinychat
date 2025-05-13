@@ -448,6 +448,9 @@ rlang::on_load(
       chunk = "start",
       session = session
     )
+
+    res <- c()
+
     for (msg in stream) {
       if (promises::is.promising(msg)) {
         msg <- await(msg)
@@ -455,6 +458,9 @@ rlang::on_load(
       if (coro::is_exhausted(msg)) {
         break
       }
+
+      res <- c(res, msg)
+
       chat_append_message(
         id,
         list(role = role, content = msg),
@@ -463,6 +469,7 @@ rlang::on_load(
         session = session
       )
     }
+
     chat_append_message(
       id,
       list(role = role, content = ""),
@@ -470,6 +477,8 @@ rlang::on_load(
       operation = "append",
       session = session
     )
+
+    paste(res, collapse = "")
   })
 )
 
