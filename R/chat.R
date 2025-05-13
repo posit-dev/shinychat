@@ -449,7 +449,7 @@ rlang::on_load(
       session = session
     )
 
-    res <- c()
+    res <- list()
 
     for (msg in stream) {
       if (promises::is.promising(msg)) {
@@ -459,7 +459,7 @@ rlang::on_load(
         break
       }
 
-      res <- c(res, msg)
+      res[[length(res) + 1]] <- msg
 
       chat_append_message(
         id,
@@ -478,7 +478,11 @@ rlang::on_load(
       session = session
     )
 
-    paste(res, collapse = "")
+    if (every(res, is.character)) {
+      paste(unlist(res), collapse = "")
+    } else {
+      res
+    }
   })
 )
 
