@@ -409,6 +409,16 @@ chat_append_stream <- function(
 ) {
   result <- chat_append_stream_impl(id, stream, role, session)
   # Handle erroneous result...
+  result <- promises::catch(result, function(reason) {
+    # ...but rethrow the error as a silent error, so the caller can also handle
+    # it if they want, but it won't bring down the app.
+    class(reason) <- c("shiny.silent.error", class(reason))
+    cnd_signal(reason)
+  })
+
+  # Note that we want to return a rejected promise (so the caller can see the
+  # error) that was already handled (so there's no "unhandled promise error"
+  # warning if the caller chooses not to do anything with it).
   promises::catch(result, function(reason) {
     chat_append_message(
       id,
@@ -427,14 +437,9 @@ chat_append_stream <- function(
       ),
       parent = reason
     )
-    # ...but rethrow the error as a silent error, so the caller can also handle
-    # it if they want, but it won't bring down the app. Note that we want to
-    # return a rejected promise (so the caller can see the error) that was
-    # already handled (so there's no "unhandled promise error" warning if the
-    # caller chooses not to do anything with it).
-    class(reason) <- c("shiny.silent.error", class(reason))
-    cnd_signal(reason)
   })
+
+  result
 }
 
 utils:::globalVariables(c("generator_env", "exits", "yield"))
