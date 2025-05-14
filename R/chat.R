@@ -414,10 +414,7 @@ chat_append_stream <- function(
       id,
       list(
         role = role,
-        content = paste0(
-          "\n\n**An error occurred:** ",
-          conditionMessage(reason)
-        )
+        content = sanitized_chat_error(reason)
       ),
       chunk = "end",
       operation = "append",
@@ -426,7 +423,7 @@ chat_append_stream <- function(
     rlang::warn(
       sprintf(
         "ERROR: An error occurred in `chat_append_stream(id=\"%s\")`",
-        id
+        session$ns(id)
       ),
       parent = reason
     )
