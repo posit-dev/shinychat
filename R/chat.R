@@ -435,7 +435,6 @@ chat_append_stream <- function(
     class(reason) <- c("shiny.silent.error", class(reason))
     cnd_signal(reason)
   })
-  # result
 }
 
 utils:::globalVariables(c("generator_env", "exits", "yield"))
