@@ -449,7 +449,7 @@ rlang::on_load(
       session = session
     )
 
-    res <- list()
+    res <- fastmap::fastqueue(200)
 
     for (msg in stream) {
       if (promises::is.promising(msg)) {
@@ -459,7 +459,7 @@ rlang::on_load(
         break
       }
 
-      res[[length(res) + 1]] <- msg
+      res$add(msg)
 
       chat_append_message(
         id,
@@ -478,6 +478,7 @@ rlang::on_load(
       session = session
     )
 
+    res <- res$as_list()
     if (every(res, is.character)) {
       paste(unlist(res), collapse = "")
     } else {
