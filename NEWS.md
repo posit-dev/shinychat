@@ -14,6 +14,8 @@
 
 * `chat_append()`, `chat_append_message()` and `chat_clear()` now all work in Shiny modules without needing to namespace the `id` of the Chat component. (#37)
 
+* `chat_append()` now logs and throws a silent error if the stream errors for any reason. This prevents the app from crashing if the stream is interrupted. You can still use `promises::catch()` to handle the error in your app code if desired. (#46)
+
 # shinychat 0.1.1
 
 * Initial CRAN submission.
