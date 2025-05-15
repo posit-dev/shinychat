@@ -197,11 +197,12 @@ chat_ui <- function(
 #' @param role The role of the message (either "assistant" or "user"). Defaults
 #'   to "assistant".
 #' @param session The Shiny session object
-#' @returns Returns a promise. This promise resolves when the message has been
-#'   successfully sent to the client; note that it does not guarantee that the
-#'   message was actually received or rendered by the client. The promise
-#'   rejects if an error occurs while processing the response (see the "Error
-#'   handling" section).
+#'
+#' @returns Returns a promise that resolves to the contents of the stream, or an
+#'   error. This promise resolves when the message has been successfully sent to
+#'   the client; note that it does not guarantee that the message was actually
+#'   received or rendered by the client. The promise rejects if an error occurs
+#'   while processing the response (see the "Error handling" section).
 #'
 #' @examplesIf interactive()
 #' library(shiny)
@@ -460,9 +461,6 @@ rlang::on_load(
       chunk = "start",
       session = session
     )
-
-    res <- fastmap::fastqueue(200)
-
     for (msg in stream) {
       if (promises::is.promising(msg)) {
         msg <- await(msg)
@@ -470,9 +468,6 @@ rlang::on_load(
       if (coro::is_exhausted(msg)) {
         break
       }
-
-      res$add(msg)
-
       chat_append_message(
         id,
         list(role = role, content = msg),
@@ -481,7 +476,6 @@ rlang::on_load(
         session = session
       )
     }
-
     chat_append_message(
       id,
       list(role = role, content = ""),
@@ -489,13 +483,6 @@ rlang::on_load(
       operation = "append",
       session = session
     )
-
-    res <- res$as_list()
-    if (every(res, is.character)) {
-      paste(unlist(res), collapse = "")
-    } else {
-      res
-    }
   })
 )
 
