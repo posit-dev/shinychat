@@ -12,13 +12,11 @@ chat_deps <- function() {
     src = "lib/shiny",
     script = list(
       list(src = "chat/chat.js", type = "module"),
-      list(src = "markdown-stream/markdown-stream.js", type = "module"),
-      list(src = "text-area/textarea-autoresize.js", type = "module")
+      list(src = "markdown-stream/markdown-stream.js", type = "module")
     ),
     stylesheet = c(
       "chat/chat.css",
-      "markdown-stream/markdown-stream.css",
-      "text-area/textarea-autoresize.css"
+      "markdown-stream/markdown-stream.css"
     )
   )
 }
