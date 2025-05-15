@@ -10,6 +10,7 @@ NULL
 
 ignore_unused_imports <- function() {
   jsonlite::fromJSON
+  fastmap::fastqueue
 }
 
 release_bullets <- function() {
