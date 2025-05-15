@@ -461,6 +461,9 @@ rlang::on_load(
       chunk = "start",
       session = session
     )
+
+    res <- fastmap::fastqueue(200)
+
     for (msg in stream) {
       if (promises::is.promising(msg)) {
         msg <- await(msg)
@@ -468,6 +471,9 @@ rlang::on_load(
       if (coro::is_exhausted(msg)) {
         break
       }
+
+      res$add(msg)
+
       chat_append_message(
         id,
         list(role = role, content = msg),
@@ -476,6 +482,7 @@ rlang::on_load(
         session = session
       )
     }
+
     chat_append_message(
       id,
       list(role = role, content = ""),
@@ -483,6 +490,13 @@ rlang::on_load(
       operation = "append",
       session = session
     )
+
+    res <- res$as_list()
+    if (every(res, is.character)) {
+      paste(unlist(res), collapse = "")
+    } else {
+      res
+    }
   })
 )
 
