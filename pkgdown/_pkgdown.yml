@@ -1,5 +1,8 @@
 url: https://posit-dev.github.io/shinychat
 
+development:
+  mode: auto
+
 authors:
   Posit Software, PBC:
     href: https://www.posit.co
@@ -18,5 +21,16 @@ template:
   bslib:
     brand: pkgdown/_brand.yml
 
-development:
-  mode: auto
+reference:
+- title: Chat interfaces
+  contents:
+  - chat_ui
+  - chat_app
+  - chat_append
+  - chat_append_message
+  - chat_clear
+
+- title: Streaming markdown interface
+  contents:
+  - markdown_stream
+  - output_markdown_stream
