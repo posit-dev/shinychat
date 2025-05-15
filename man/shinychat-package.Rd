@@ -11,9 +11,9 @@ Provides a scrolling chat interface with multiline input, suitable for creating 
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://github.com/jcheng5/shinychat}
-  \item \url{https://jcheng5.github.io/shinychat/}
-  \item Report bugs at \url{https://github.com/jcheng5/shinychat/issues}
+  \item \url{https://github.com/posit-dev/shinychat}
+  \item \url{https://posit-dev.github.io/shinychat/}
+  \item Report bugs at \url{https://github.com/posit-dev/shinychat/issues}
 }
 
 }
@@ -23,6 +23,7 @@ Useful links:
 Authors:
 \itemize{
   \item Carson Sievert \email{carson@posit.co}
+  \item Garrick Aden-Buie \email{garrick@adenbuie.com} (\href{https://orcid.org/0000-0002-7111-0077}{ORCID})
 }
 
 Other contributors:

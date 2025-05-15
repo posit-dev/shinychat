@@ -26,6 +26,7 @@ Imports:
     rlang,
     shiny (>= 1.10.0)
 Suggests:
+    later,
     testthat (>= 3.0.0)
 Config/Needs/website: tidyverse/tidytemplate
 Config/testthat/edition: 3
