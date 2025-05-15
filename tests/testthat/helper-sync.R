@@ -28,3 +28,14 @@ sync <- function(expr) {
     success
   }
 }
+
+expect_promise <- function(p, state = NULL) {
+  name <- deparse(substitute(p))
+  expect(
+    promises::is.promise(p),
+    sprintf("`%s` is not a promise", name)
+  )
+  if (!is.null(state)) {
+    expect_equal(attr(p, "promise_impl")$status(), state)
+  }
+}

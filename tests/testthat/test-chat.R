@@ -42,6 +42,48 @@ test_that("Chat component markup", {
   # TODO: it'd be nice to mock the shinyChatMessage custom messages
 })
 
+test_that("chat_append_stream() returns the stream contents as string if all text", {
+  local_mocked_bindings(
+    chat_append_message = coro::async(function(...) invisible())
+  )
+
+  stream <- coro::async_generator(function() {
+    for (i in c("Hello", ",", " world", "!")) {
+      yield(i)
+    }
+  })
+
+  p <- chat_append_stream("chat", stream())
+  res <- sync(p)
+
+  expect_promise(p, "fulfilled")
+  expect_equal(res, "Hello, world!")
+})
+
+test_that("chat_append_stream() returns the stream contents as list if not all text", {
+  local_mocked_bindings(
+    chat_append_message = coro::async(function(...) invisible())
+  )
+
+  stream <- coro::async_generator(function() {
+    for (i in c("Hello", ",", " world", "!")) {
+      yield(ellmer::ContentText(i))
+    }
+  })
+
+  p <- chat_append_stream("chat", stream())
+  res <- sync(p)
+
+  expect_promise(p, "fulfilled")
+
+  expect_true(is.list(res))
+  expect_true(every(res, inherits, "ellmer::ContentText"))
+  expect_equal(
+    paste(map_chr(res, ellmer::contents_text), collapse = ""),
+    "Hello, world!"
+  )
+})
+
 test_that("chat_append_stream() handles errors in the stream", {
   local_mocked_bindings(
     chat_append_message = coro::async(function(...) invisible())
@@ -61,9 +103,7 @@ test_that("chat_append_stream() handles errors in the stream", {
       regexp = 'chat_append_stream'
     )
 
-    expect_s3_class(p, "promise")
-    expect_true(promises::is.promise(p))
-    expect_equal(attr(p, "promise_impl")$status(), "rejected")
+    expect_promise(p, "rejected")
 
     expect_s3_class(res, class = c("condition", "error"))
     expect_s3_class(res, class = "shiny.silent.error")
