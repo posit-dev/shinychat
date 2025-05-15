@@ -416,9 +416,6 @@ chat_append_stream <- function(
     cnd_signal(reason)
   })
 
-  # Note that we want to return a rejected promise (so the caller can see the
-  # error) that was already handled (so there's no "unhandled promise error"
-  # warning if the caller chooses not to do anything with it).
   promises::catch(result, function(reason) {
     chat_append_message(
       id,
@@ -439,6 +436,11 @@ chat_append_stream <- function(
     )
   })
 
+  # Note that we're not returning the result of `promises::catch()`, because we
+  # want to return a rejected promise so the caller can see the error. But we
+  # use the `catch()` both to make the error visible to the user *and* to ensure
+  # there's no "unhandled promise error" warning if the caller chooses not to do
+  # anything with it.
   result
 }
 
