@@ -37,11 +37,11 @@ to "assistant".}
 \item{session}{The Shiny session object}
 }
 \value{
-Returns a promise. This promise resolves when the message has been
-successfully sent to the client; note that it does not guarantee that the
-message was actually received or rendered by the client. The promise
-rejects if an error occurs while processing the response (see the "Error
-handling" section).
+Returns a promise that resolves to the contents of the stream, or an
+error. This promise resolves when the message has been successfully sent to
+the client; note that it does not guarantee that the message was actually
+received or rendered by the client. The promise rejects if an error occurs
+while processing the response (see the "Error handling" section).
 }
 \description{
 The \code{chat_append} function appends a message to an existing \code{\link[=chat_ui]{chat_ui()}}. The
