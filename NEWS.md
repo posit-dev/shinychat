@@ -1,3 +1,5 @@
+# shinychat (development version)
+
 # shinychat 0.2.0
 
 ## New features and improvements
