@@ -133,6 +133,7 @@ chat_mod_ui <- function(id, ..., client = NULL, messages = NULL) {
 }
 
 #' @describeIn chat_app A simple chat app module server.
+#' @param initial_stream Optional. A stream response (from `client$stream_async()`) to display immediately when the app launches, before any user input.
 #' @export
 chat_mod_server <- function(
   id,

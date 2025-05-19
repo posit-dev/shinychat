@@ -10,7 +10,7 @@ chat_app(client, ...)
 
 chat_mod_ui(id, ..., client = NULL, messages = NULL)
 
-chat_mod_server(id, client)
+chat_mod_server(id, client, initial_stream = NULL)
 }
 \arguments{
 \item{client}{A chat object created by \pkg{ellmer}, e.g.
@@ -25,6 +25,8 @@ chat_mod_server(id, client)
 \item{messages}{Initial messages shown in the chat, used when \code{client} is not
 provided or when the chat \code{client} doesn't already contain turns. Passed to
 \code{messages} in \code{\link[=chat_ui]{chat_ui()}}.}
+
+\item{initial_stream}{Optional. A stream response (from \code{client$stream_async()}) to display immediately when the app launches, before any user input.}
 }
 \value{
 \itemize{
