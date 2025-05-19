@@ -12,13 +12,11 @@ chat_deps <- function() {
     src = "lib/shiny",
     script = list(
       list(src = "chat/chat.js", type = "module"),
-      list(src = "markdown-stream/markdown-stream.js", type = "module"),
-      list(src = "text-area/textarea-autoresize.js", type = "module")
+      list(src = "markdown-stream/markdown-stream.js", type = "module")
     ),
     stylesheet = c(
       "chat/chat.css",
-      "markdown-stream/markdown-stream.css",
-      "text-area/textarea-autoresize.css"
+      "markdown-stream/markdown-stream.css"
     )
   )
 }
@@ -197,11 +195,12 @@ chat_ui <- function(
 #' @param role The role of the message (either "assistant" or "user"). Defaults
 #'   to "assistant".
 #' @param session The Shiny session object
-#' @returns Returns a promise. This promise resolves when the message has been
-#'   successfully sent to the client; note that it does not guarantee that the
-#'   message was actually received or rendered by the client. The promise
-#'   rejects if an error occurs while processing the response (see the "Error
-#'   handling" section).
+#'
+#' @returns Returns a promise that resolves to the contents of the stream, or an
+#'   error. This promise resolves when the message has been successfully sent to
+#'   the client; note that it does not guarantee that the message was actually
+#'   received or rendered by the client. The promise rejects if an error occurs
+#'   while processing the response (see the "Error handling" section).
 #'
 #' @examplesIf interactive()
 #' library(shiny)
@@ -409,26 +408,38 @@ chat_append_stream <- function(
 ) {
   result <- chat_append_stream_impl(id, stream, role, session)
   # Handle erroneous result...
+  result <- promises::catch(result, function(reason) {
+    # ...but rethrow the error as a silent error, so the caller can also handle
+    # it if they want, but it won't bring down the app.
+    class(reason) <- c("shiny.silent.error", class(reason))
+    cnd_signal(reason)
+  })
+
   promises::catch(result, function(reason) {
     chat_append_message(
       id,
       list(
         role = role,
-        content = paste0(
-          "\n\n**An error occurred:** ",
-          conditionMessage(reason)
-        )
+        content = sanitized_chat_error(reason)
       ),
       chunk = "end",
       operation = "append",
       session = session
     )
+    rlang::warn(
+      sprintf(
+        "ERROR: An error occurred in `chat_append_stream(id=\"%s\")`",
+        session$ns(id)
+      ),
+      parent = reason
+    )
   })
-  # ...but also return it, so the caller can also handle it if they want. Note
-  # that we're not returning the result of `promises::catch`; we want to return
-  # a rejected promise (so the caller can see the error) that was already
-  # handled (so there's no "unhandled promise error" warning if the caller
-  # chooses not to do anything with it).
+
+  # Note that we're not returning the result of `promises::catch()`, because we
+  # want to return a rejected promise so the caller can see the error. But we
+  # use the `catch()` both to make the error visible to the user *and* to ensure
+  # there's no "unhandled promise error" warning if the caller chooses not to do
+  # anything with it.
   result
 }
 
@@ -449,6 +460,8 @@ rlang::on_load(
       session = session
     )
 
+    res <- fastmap::fastqueue(200)
+
     for (msg in stream) {
       if (promises::is.promising(msg)) {
         msg <- await(msg)
@@ -457,8 +470,7 @@ rlang::on_load(
         break
       }
 
-      # coro::await(on_tool_request(msg, session))
-      # on_tool_result(msg, session)
+      res$add(msg)
 
       if (S7::S7_inherits(msg, ellmer::Content)) {
         msg <- contents_shinychat(msg)
@@ -472,6 +484,7 @@ rlang::on_load(
         session = session
       )
     }
+
     chat_append_message(
       id,
       list(role = role, content = ""),
@@ -479,113 +492,16 @@ rlang::on_load(
       operation = "append",
       session = session
     )
+
+    res <- res$as_list()
+    if (every(res, is.character)) {
+      paste(unlist(res), collapse = "")
+    } else {
+      res
+    }
   })
 )
 
-tool_confirmation <- new.env(parent = emptyenv())
-
-on_tool_request <- coro::async(function(
-  x,
-  session = shiny::getDefaultReactiveDomain()
-) {
-  if (!S7::S7_inherits(x, ellmer::ContentToolRequest)) {
-    return(invisible())
-  }
-
-  tool_name <- x@name
-  result <- NULL
-
-  if (identical(get0(tool_name, envir = tool_confirmation), "session")) {
-    # Already confirmed for this session
-    return(invisible())
-  }
-
-  task <- ExtendedTask$new(coro::async(function(tool_name) {
-    result <- NULL
-
-    id_confirm_session <- ".tool_confirm_session"
-    id_confirm_once <- ".tool_confirm_once"
-    id_deny <- ".tool_deny"
-
-    obs <- shiny::observeEvent(session$input[[id_confirm_session]], {
-      cli::cli_inform("[{.field {tool_name}}] Confirmed for session")
-      result <<- "session"
-    })
-
-    obs2 <- shiny::observeEvent(session$input[[id_confirm_once]], {
-      cli::cli_inform("[{.field {tool_name}}] Confirmed once")
-      result <<- "once"
-    })
-
-    obs3 <- shiny::observeEvent(session$input[[id_deny]], {
-      cli::cli_inform("[{.field {tool_name}}] Denied")
-      result <<- "deny"
-    })
-
-    ui_inline_confirmation <- shiny::div(
-      id = "tool_confirmation",
-      shiny::p(
-        "Allow",
-        shiny::code(tool_name),
-        "to be called?"
-      ),
-      shiny::div(
-        class = "btn-group",
-        shiny::actionButton(id_confirm_once, "Once", class = "btn-sm"),
-        shiny::actionButton(id_confirm_session, "Always", class = "btn-sm"),
-        shiny::actionButton(id_deny, "Deny", class = "btn-sm")
-      )
-    )
-
-    shinychat::chat_append_message(
-      "chat",
-      list(role = "assistant", content = ui_inline_confirmation)
-    )
-
-    timeout <- Sys.time() + 10
-
-    while (is.null(result)) {
-      if (Sys.time() > timeout) stop("Timed out waiting for an answer.")
-      coro::await(coro::async_sleep(0.25))
-    }
-
-    obs$destroy()
-    obs2$destroy()
-    obs3$destroy()
-
-    shinychat::chat_append_message(
-      "chat",
-      list(role = "assistant", content = ""),
-      operation = "replace"
-    )
-  }))
-
-  obs <- observeEvent(task$result(), {
-    result <<- task$result()
-  })
-
-  task$invoke(tool_name)
-
-  timeout <- Sys.time() + 10
-
-  while (is.null(result)) {
-    if (Sys.time() > timeout) stop("Timed out waiting for an answer.")
-    coro::await(coro::async_sleep(0.25))
-  }
-
-  tool_confirmation[[tool_name]] <- result
-  obs$destroy()
-
-  invisible()
-})
-
-on_tool_result <- function(x, session = shiny::getDefaultReactiveDomain()) {
-  if (!S7::S7_inherits(x, ellmer::ContentToolResult)) {
-    return(invisible())
-  }
-  session$sendCustomMessage("shinychat-hide-tool-request", x@request@id)
-  invisible()
-}
 
 #' Clear all messages from a chat control
 #'

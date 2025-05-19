@@ -1,4 +1,3 @@
-
 markdown_stream_deps <- function() {
   htmltools::htmlDependency(
     "shinychat",
@@ -48,11 +47,10 @@ output_markdown_stream <- function(
   width = "min(680px, 100%)",
   height = "auto"
 ) {
-  
   # `content` is most likely a string, so avoid overhead in that case
   # (it's also important that we *don't escape HTML* here).
   if (is.character(content)) {
-    ui <- list(html = paste(content, collapse="\n"))
+    ui <- list(html = paste(content, collapse = "\n"))
   } else {
     ui <- with_current_theme(htmltools::renderTags(content))
   }
@@ -136,7 +134,12 @@ output_markdown_stream <- function(
 #' }
 #'
 #' shinyApp(ui, server)
-markdown_stream <- function(id, content_stream, operation = c("replace", "append"), session = getDefaultReactiveDomain()) {
+markdown_stream <- function(
+  id,
+  content_stream,
+  operation = c("replace", "append"),
+  session = getDefaultReactiveDomain()
+) {
   stream <- as_generator(content_stream)
 
   operation <- match.arg(operation)
@@ -145,7 +148,11 @@ markdown_stream <- function(id, content_stream, operation = c("replace", "append
   # Handle erroneous result...
   promises::catch(result, function(reason) {
     shiny::showNotification(
-      sprintf("Error in markdown_stream('%s'): %s", id, conditionMessage(reason)),
+      sprintf(
+        "Error in markdown_stream('%s'): %s",
+        id,
+        conditionMessage(reason)
+      ),
       type = "error",
       duration = NULL,
       closeButton = TRUE
@@ -161,50 +168,51 @@ markdown_stream <- function(id, content_stream, operation = c("replace", "append
 
 
 markdown_stream_impl <- NULL
-rlang::on_load(markdown_stream_impl <- coro::async(function(id, stream, operation, session) {
+rlang::on_load(
+  markdown_stream_impl <- coro::async(function(id, stream, operation, session) {
+    send_stream_message <- function(...) {
+      session$sendCustomMessage(
+        "shinyMarkdownStreamMessage",
+        rlang::list2(id = id, ...)
+      )
+    }
 
-  send_stream_message <- function(...) {
-    session$sendCustomMessage(
-      "shinyMarkdownStreamMessage",
-      rlang::list2(id = id, ...)
-    )
-  }
+    if (operation == "replace") {
+      send_stream_message(content = "", operation = "replace")
+    }
 
-  if (operation == "replace") {
-    send_stream_message(content = "", operation = "replace")
-  }
+    send_stream_message(isStreaming = TRUE)
 
-  send_stream_message(isStreaming = TRUE)
+    on.exit({
+      send_stream_message(isStreaming = FALSE)
+    })
 
-  on.exit({
-    send_stream_message(isStreaming = FALSE)
+    for (msg in stream) {
+      if (promises::is.promising(msg)) {
+        msg <- await(msg)
+      }
+      if (coro::is_exhausted(msg)) {
+        break
+      }
+
+      if (is.character(msg)) {
+        # content is most likely a string, so avoid overhead in that case
+        ui <- list(html = msg, deps = "[]")
+      } else {
+        # process_ui() does *not* render markdown->HTML, but it does:
+        # 1. Extract and register HTMLdependency()s with the session.
+        # 2. Returns a HTML string representation of the TagChild
+        #    (i.e., `div()` -> `"<div>"`).
+        ui <- process_ui(msg, session)
+      }
+
+      send_stream_message(
+        content = ui[["html"]],
+        operation = "append",
+        html_deps = ui[["deps"]]
+      )
+    }
+
+    invisible(NULL)
   })
-
-  for (msg in stream) {
-    if (promises::is.promising(msg)) {
-      msg <- await(msg)
-    }
-    if (coro::is_exhausted(msg)) {
-      break
-    }
-
-    if (is.character(msg)) {
-      # content is most likely a string, so avoid overhead in that case
-      ui <- list(html = msg, deps = "[]")
-    } else {
-      # process_ui() does *not* render markdown->HTML, but it does:
-      # 1. Extract and register HTMLdependency()s with the session.
-      # 2. Returns a HTML string representation of the TagChild
-      #    (i.e., `div()` -> `"<div>"`).
-      ui <- process_ui(msg, session)
-    }
-    
-    send_stream_message(
-      content = ui[["html"]],
-      operation = "append",
-      html_deps = ui[["deps"]]
-    )
-  }
-
-  invisible(NULL)
-}))
+)

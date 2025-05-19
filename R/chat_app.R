@@ -169,68 +169,10 @@ chat_mod_server <- function(id, client) {
       )
     })
 
-    shiny::observe({
-      if (append_stream_task$status() == "error") {
-        tryCatch(
-          append_stream_task$result(),
-          error = notify_error("chat", session = session, module_id = id)
-        )
-      }
-    })
-
     shiny::reactive({
       if (append_stream_task$status() == "success") {
         client$last_turn()
       }
     })
   })
-}
-
-notify_error <- function(
-  id,
-  module_id,
-  session = shiny::getDefaultReactiveDomain()
-) {
-  function(err) {
-    rlang::warn(
-      sprintf(
-        "ERROR: An error occurred in `chat_mod_server(id=\"%s\")`",
-        module_id
-      ),
-      parent = err
-    )
-
-    needs_sanitized <-
-      isTRUE(getOption("shiny.sanitize.errors")) &&
-      !inherits(err, "shiny.custom.error")
-    if (needs_sanitized) {
-      msg <- "**An error occurred.** Please try again or contact the app author."
-    } else {
-      msg <- sprintf(
-        "**An error occurred:**\n\n```\n%s\n```",
-        strip_ansi(conditionMessage(err))
-      )
-    }
-
-    chat_append_message(
-      id,
-      msg = list(role = "assistant", content = msg),
-      chunk = TRUE,
-      operation = "append",
-      session = session
-    )
-    chat_append_message(
-      id,
-      list(role = "assistant", content = ""),
-      chunk = "end",
-      operation = "append",
-      session = session
-    )
-  }
-}
-
-strip_ansi <- function(text) {
-  # Matches codes like "\x1B[31;43m", "\x1B[1;3;4m"
-  ansi_pattern <- "(\x1B|\x033)\\[[0-9;?=<>]*[@-~]"
-  gsub(ansi_pattern, "", text)
 }
