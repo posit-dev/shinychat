@@ -134,13 +134,17 @@ chat_mod_ui <- function(id, ..., client = NULL, messages = NULL) {
 
 #' @describeIn chat_app A simple chat app module server.
 #' @export
-chat_mod_server <- function(id, client) {
+chat_mod_server <- function(
+  id,
+  client,
+  initial_stream = NULL
+) {
   check_ellmer_chat(client)
 
   append_stream_task <- shiny::ExtendedTask$new(
-    function(client, ui_id, user_input) {
+    function(client, ui_id, stream) {
       promises::then(
-        promises::promise_resolve(client$stream_async(user_input)),
+        promises::promise_resolve(stream),
         function(stream) {
           chat_append(ui_id, stream)
         }
@@ -148,14 +152,23 @@ chat_mod_server <- function(id, client) {
     }
   )
 
+  initial_stream # force
+
   shiny::moduleServer(id, function(input, output, session) {
-    shiny::observeEvent(input$chat_user_input, {
-      append_stream_task$invoke(
-        client,
-        "chat",
-        input$chat_user_input
-      )
-    })
+    shiny::observeEvent(
+      input$chat_user_input,
+      {
+        if (is.null(input$chat_user_input)) {
+          stream <- initial_stream
+          initial_stream <<- NULL
+        } else {
+          stream <- client$stream_async(input$chat_user_input)
+        }
+
+        append_stream_task$invoke(client, "chat", stream)
+      },
+      ignoreNULL = is.null(initial_stream)
+    )
 
     shiny::reactive({
       if (append_stream_task$status() == "success") {
