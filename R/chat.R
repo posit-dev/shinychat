@@ -472,6 +472,10 @@ rlang::on_load(
 
       res$add(msg)
 
+      if (S7::S7_inherits(msg, ellmer::Content)) {
+        msg <- contents_shinychat(msg)
+      }
+
       chat_append_message(
         id,
         list(role = role, content = msg),

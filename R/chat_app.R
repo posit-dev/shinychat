@@ -106,14 +106,7 @@ chat_mod_ui <- function(id, ..., client = NULL, messages = NULL) {
   if (!is.null(client)) {
     check_ellmer_chat(client)
 
-    client_msgs <- map(client$get_turns(), function(turn) {
-      content <- ellmer::contents_markdown(turn)
-      if (is.null(content) || identical(content, "")) {
-        return(NULL)
-      }
-      list(role = turn@role, content = content)
-    })
-    client_msgs <- compact(client_msgs)
+    client_msgs <- contents_shinychat(client)
 
     if (length(client_msgs)) {
       if (!is.null(messages)) {
@@ -125,10 +118,22 @@ chat_mod_ui <- function(id, ..., client = NULL, messages = NULL) {
     }
   }
 
-  shinychat::chat_ui(
-    shiny::NS(id, "chat"),
-    messages = messages,
-    ...
+  shiny::tagList(
+    shinychat::chat_ui(
+      shiny::NS(id, "chat"),
+      messages = messages,
+      ...
+    ),
+    shiny::includeCSS(system.file(
+      "tools",
+      "tool-request.css",
+      package = "shinychat"
+    )),
+    shiny::includeScript(system.file(
+      "tools",
+      "tool-request.js",
+      package = "shinychat"
+    ))
   )
 }
 
@@ -139,12 +144,27 @@ chat_mod_server <- function(id, client) {
 
   append_stream_task <- shiny::ExtendedTask$new(
     function(client, ui_id, user_input) {
-      promises::then(
-        promises::promise_resolve(client$stream_async(user_input)),
-        function(stream) {
-          chat_append(ui_id, stream)
-        }
+      clear_on_tool_result <- client$on_tool_result(function(result) {
+        session <- shiny::getDefaultReactiveDomain()
+        if (is.null(session)) return()
+        session$sendCustomMessage(
+          "shinychat-hide-tool-request",
+          result@request@id
+        )
+      })
+
+      stream <- client$stream_async(
+        user_input,
+        stream = "content"
       )
+
+      p <- promises::promise_resolve(stream)
+      p <- promises::then(p, function(stream) {
+        chat_append(ui_id, stream)
+      })
+      promises::finally(p, function() {
+        clear_on_tool_result()
+      })
     }
   )
 
