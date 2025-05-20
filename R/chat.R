@@ -12,13 +12,11 @@ chat_deps <- function() {
     src = "lib/shiny",
     script = list(
       list(src = "chat/chat.js", type = "module"),
-      list(src = "markdown-stream/markdown-stream.js", type = "module"),
-      list(src = "text-area/textarea-autoresize.js", type = "module")
+      list(src = "markdown-stream/markdown-stream.js", type = "module")
     ),
     stylesheet = c(
       "chat/chat.css",
-      "markdown-stream/markdown-stream.css",
-      "text-area/textarea-autoresize.css"
+      "markdown-stream/markdown-stream.css"
     )
   )
 }
@@ -198,11 +196,12 @@ chat_ui <- function(
 #' @param role The role of the message (either "assistant" or "user"). Defaults
 #'   to "assistant".
 #' @param session The Shiny session object
-#' @returns Returns a promise. This promise resolves when the message has been
-#'   successfully sent to the client; note that it does not guarantee that the
-#'   message was actually received or rendered by the client. The promise
-#'   rejects if an error occurs while processing the response (see the "Error
-#'   handling" section).
+#'
+#' @returns Returns a promise that resolves to the contents of the stream, or an
+#'   error. This promise resolves when the message has been successfully sent to
+#'   the client; note that it does not guarantee that the message was actually
+#'   received or rendered by the client. The promise rejects if an error occurs
+#'   while processing the response (see the "Error handling" section).
 #'
 #' @examplesIf interactive()
 #' library(shiny)
@@ -411,27 +410,38 @@ chat_append_stream <- function(
   result <- chat_append_stream_impl(id, stream, role, session)
   result <- chat_update_bookmark(id, result, session = session)
   # Handle erroneous result...
+  result <- promises::catch(result, function(reason) {
+    # ...but rethrow the error as a silent error, so the caller can also handle
+    # it if they want, but it won't bring down the app.
+    class(reason) <- c("shiny.silent.error", class(reason))
+    cnd_signal(reason)
+  })
+
   promises::catch(result, function(reason) {
     chat_append_message(
       id,
       list(
         role = role,
-        content = paste0(
-          "\n\n**An error occurred:** ",
-          conditionMessage(reason)
-        )
+        content = sanitized_chat_error(reason)
       ),
       chunk = "end",
       operation = "append",
       session = session
     )
+    rlang::warn(
+      sprintf(
+        "ERROR: An error occurred in `chat_append_stream(id=\"%s\")`",
+        session$ns(id)
+      ),
+      parent = reason
+    )
   })
 
-  # ...but also return it, so the caller can also handle it if they want. Note
-  # that we're not returning the result of `promises::catch`; we want to return
-  # a rejected promise (so the caller can see the error) that was already
-  # handled (so there's no "unhandled promise error" warning if the caller
-  # chooses not to do anything with it).
+  # Note that we're not returning the result of `promises::catch()`, because we
+  # want to return a rejected promise so the caller can see the error. But we
+  # use the `catch()` both to make the error visible to the user *and* to ensure
+  # there's no "unhandled promise error" warning if the caller chooses not to do
+  # anything with it.
   result
 }
 
@@ -451,6 +461,9 @@ rlang::on_load(
       chunk = "start",
       session = session
     )
+
+    res <- fastmap::fastqueue(200)
+
     for (msg in stream) {
       if (promises::is.promising(msg)) {
         msg <- await(msg)
@@ -458,6 +471,9 @@ rlang::on_load(
       if (coro::is_exhausted(msg)) {
         break
       }
+
+      res$add(msg)
+
       chat_append_message(
         id,
         list(role = role, content = msg),
@@ -466,6 +482,7 @@ rlang::on_load(
         session = session
       )
     }
+
     chat_append_message(
       id,
       list(role = role, content = ""),
@@ -473,6 +490,13 @@ rlang::on_load(
       operation = "append",
       session = session
     )
+
+    res <- res$as_list()
+    if (every(res, is.character)) {
+      paste(unlist(res), collapse = "")
+    } else {
+      res
+    }
   })
 )
 

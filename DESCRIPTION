@@ -1,12 +1,13 @@
 Package: shinychat
 Title: Chat UI Component for 'shiny'
-Version: 0.1.1.9001
+Version: 0.2.0.9000
 Authors@R: c(
-    person("Joe", "Cheng", , "joe@posit.co", role = c("aut", "cre")),
+    person("Joe", "Cheng", , "joe@posit.co", role = "aut"),
     person("Carson", "Sievert", , "carson@posit.co", role = "aut"),
-    person("Garrick", "Aden-Buie", , "garrick@adenbuie.com", role = "aut",
+    person("Garrick", "Aden-Buie", , "garrick@adenbuie.com", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0002-7111-0077")),
-    person("Posit Software, PBC", role = c("cph", "fnd"))
+    person("Posit Software, PBC", role = c("cph", "fnd"),
+           comment = c(ROR = "03wc8by49"))
   )
 Description: Provides a scrolling chat interface with multiline input,
     suitable for creating chatbot apps based on Large Language Models
@@ -20,13 +21,14 @@ Imports:
     bslib,
     coro,
     ellmer,
+    fastmap,
     htmltools,
     jsonlite,
     promises (>= 1.3.2),
     rlang,
     shiny (>= 1.10.0)
 Suggests:
-    ellmer,
+    later,
     testthat (>= 3.0.0)
 Config/Needs/website: tidyverse/tidytemplate
 Config/testthat/edition: 3

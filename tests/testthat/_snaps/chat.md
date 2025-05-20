@@ -55,7 +55,7 @@
         "1.0.0", "")), span("world"))))
     Output
       $deps
-      [{"name":"foo","all_files":true},{"name":"shinychat","script":[{"src":"chat/chat.js","type":"module"},{"src":"markdown-stream/markdown-stream.js","type":"module"},{"src":"text-area/textarea-autoresize.js","type":"module"}],"stylesheet":["chat/chat.css","markdown-stream/markdown-stream.css","text-area/textarea-autoresize.css"],"all_files":true},{"name":"bslib-tag-require","script":"tag-require.js","all_files":true},{"name":"htmltools-fill","stylesheet":"fill.css","all_files":true}] 
+      [{"name":"foo","all_files":true},{"name":"shinychat","script":[{"src":"chat/chat.js","type":"module"},{"src":"markdown-stream/markdown-stream.js","type":"module"}],"stylesheet":["chat/chat.css","markdown-stream/markdown-stream.css"],"all_files":true},{"name":"bslib-tag-require","script":"tag-require.js","all_files":true},{"name":"htmltools-fill","stylesheet":"fill.css","all_files":true}] 
       
       $html
       <shiny-chat-container class="html-fill-item html-fill-container" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill id="chat" placeholder="Enter a message..." style="width:min(680px, 100%);height:auto;">
