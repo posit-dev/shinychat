@@ -6,6 +6,14 @@
 \usage{
 contents_shinychat(content, ...)
 }
+\arguments{
+\item{content}{An \code{\link[ellmer:Content]{ellmer::Content}} object.}
+
+\item{...}{Additional arguments passed to underlying methods.}
+}
+\value{
+Returns text or HTML formatted for use in \code{chat_ui()}.
+}
 \description{
 Format ellmer content for shinychat
 }

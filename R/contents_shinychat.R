@@ -1,5 +1,10 @@
 #' Format ellmer content for shinychat
 #'
+#' @param content An [`ellmer::Content`] object.
+#' @param ... Additional arguments passed to underlying methods.
+#'
+#' @return Returns text or HTML formatted for use in `chat_ui()`.
+#'
 #' @export
 contents_shinychat <- S7::new_generic("contents_shinychat", "content")
 
@@ -35,48 +40,59 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(
   ...
 ) {
   pre_code <- function(x) {
+    x <- gsub("`", "&#96;", x, fixed = TRUE)
+    x <- gsub("<", "&lt;", x, fixed = TRUE)
+    x <- gsub(">", "&gt;", x, fixed = TRUE)
     sprintf("<pre><code>%s</code></pre>", paste(x, collapse = "\n"))
   }
 
   if (!is.null(content@error)) {
-    tool_args <- pre_code(
-      jsonlite::toJSON(content@request@arguments, auto_unbox = TRUE)
-    )
-    err <- sprintf(
-      '<details class="shiny-tool-result failed" id="%s"><summary>Failed to call <span class="function-name">%s</span></summary>%s\n\nError:\n\n%s\n\n</details>',
-      content@request@id,
-      if (!is.null(content@request@tool)) content@request@tool@name else
-        "unknown tool",
-      tool_args,
+    class <- "shiny-tool-result failed"
+    summary_text <- "Failed to call"
+    tool_result <- sprintf(
+      "<strong>Error</strong>%s",
       pre_code(content@error)
     )
-    return(shiny::HTML(paste0("\n\n", err, "\n\n")))
-  }
-
-  result <- paste(content@value, collapse = "\n")
-
-  if (!grepl("```", result)) {
-    result <- pre_code(result)
-  }
-  result <- paste0("<strong>Tool Result</strong>\n", result)
-
-  if (length(content@request@arguments) == 0) {
-    call <- call2(content@request@name)
   } else {
-    call <- call2(content@request@name, !!!content@request@arguments)
+    class <- "shiny-tool-result"
+    summary_text <- "Result from"
+    tool_result <- sprintf(
+      '<strong>Tool Result</strong>%s',
+      pre_code(content@value)
+    )
   }
 
-  tool_call <- paste0("<strong>Tool Call</strong>", pre_code(format(call)))
+  if (!is.null(content@request@tool)) {
+    tool_name <- content@request@tool@name
+  } else {
+    tool_name <- "unknown tool"
+  }
 
-  x <- sprintf(
-    '<details class="shiny-tool-result" id="%s"><summary>View result from <span class="function-name">%s</span></summary>%s\n\n%s\n\n</details>',
-    content@request@id,
-    content@request@name,
-    tool_call,
-    result
+  tool_call <-
+    details_open <- sprintf(
+      '<details class="%s" id="%s">',
+      class,
+      content@request@id
+    )
+
+  summary <- sprintf(
+    '<summary>%s <span class="function-name">%s</span></summary>',
+    summary_text,
+    tool_name
   )
 
-  shiny::HTML(paste0("\n\n", x, "\n\n"))
+  tool_call <- sprintf(
+    '<strong>Tool Call</strong>%s',
+    pre_code(format(content@request, show = "call"))
+  )
+
+  body <- sprintf(
+    '<p>%s</p><p>%s</p></details>\n\n',
+    tool_call,
+    tool_result
+  )
+
+  return(shiny::HTML(paste0(details_open, summary, body)))
 }
 
 S7::method(contents_shinychat, ellmer::Turn) <- function(content) {

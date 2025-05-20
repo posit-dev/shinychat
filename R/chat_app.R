@@ -144,19 +144,27 @@ chat_mod_server <- function(id, client) {
 
   append_stream_task <- shiny::ExtendedTask$new(
     function(client, ui_id, user_input) {
-      withr::local_options(list(ellmer.tool_async_parallel = FALSE))
+      clear_on_tool_result <- client$on_tool_result(function(result) {
+        session <- shiny::getDefaultReactiveDomain()
+        if (is.null(session)) return()
+        session$sendCustomMessage(
+          "shinychat-hide-tool-request",
+          result@request@id
+        )
+      })
 
       stream <- client$stream_async(
         user_input,
-        content = "all"
+        stream = "content"
       )
 
-      promises::then(
-        promises::promise_resolve(stream),
-        function(stream) {
-          chat_append(ui_id, stream)
-        }
-      )
+      p <- promises::promise_resolve(stream)
+      p <- promises::then(p, function(stream) {
+        chat_append(ui_id, stream)
+      })
+      promises::finally(p, function() {
+        clear_on_tool_result()
+      })
     }
   )
 
