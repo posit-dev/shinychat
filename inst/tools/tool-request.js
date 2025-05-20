@@ -3,7 +3,7 @@ Shiny.addCustomMessageHandler('shinychat-hide-tool-request', function (id) {
 
     if (!styleSheet) {
         styleSheet = document.createElement('style');
-        styleSheet.id = 'dynamic-styles';
+        styleSheet.id = 'shinychat-hidden-tool-requests';
         document.head.appendChild(styleSheet);
     }
 
