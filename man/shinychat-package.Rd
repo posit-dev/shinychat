@@ -18,17 +18,18 @@ Useful links:
 
 }
 \author{
-\strong{Maintainer}: Joe Cheng \email{joe@posit.co}
+\strong{Maintainer}: Garrick Aden-Buie \email{garrick@adenbuie.com} (\href{https://orcid.org/0000-0002-7111-0077}{ORCID})
 
 Authors:
 \itemize{
+  \item Joe Cheng \email{joe@posit.co}
   \item Carson Sievert \email{carson@posit.co}
-  \item Garrick Aden-Buie \email{garrick@adenbuie.com} (\href{https://orcid.org/0000-0002-7111-0077}{ORCID})
+  \item Barret Schloerke \email{barret@posit.co} (\href{https://orcid.org/0000-0001-9986-114X}{ORCID})
 }
 
 Other contributors:
 \itemize{
-  \item Posit Software, PBC [copyright holder, funder]
+  \item Posit Software, PBC (03wc8by49) [copyright holder, funder]
 }
 
 }
