@@ -160,7 +160,7 @@ chat_ui <- function(
 #' The `chat_append` function appends a message to an existing [chat_ui()]. The
 #' `response` can be a string, string generator, string promise, or string
 #' promise generator (as returned by the 'ellmer' package's `chat`, `stream`,
-#' `chat_async`, and `stream_async` S7::methods, respectively).
+#' `chat_async`, and `stream_async` methods, respectively).
 #'
 #' This function should be called from a Shiny app's server. It is generally
 #' used to append the model's response to the chat, while user messages are
