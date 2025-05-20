@@ -22,16 +22,10 @@ S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
   content,
   ...
 ) {
-  if (length(content@arguments) == 0) {
-    call <- call2(content@name)
-  } else {
-    call <- call2(content@name, !!!content@arguments)
-  }
-
   shiny::HTML(sprintf(
     '\n\n<p class="shiny-tool-request" data-tool-call-id="%s">Running <code>%s</code></p>\n\n',
     content@id,
-    format(call)
+    paste(format(content, show = "call"), collapse = " ")
   ))
 }
 
@@ -51,7 +45,7 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(
     summary_text <- "Failed to call"
     tool_result <- sprintf(
       "<strong>Error</strong>%s",
-      pre_code(content@error)
+      pre_code(strip_ansi(content@error))
     )
   } else {
     class <- "shiny-tool-result"
@@ -63,9 +57,19 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(
   }
 
   if (!is.null(content@request@tool)) {
-    tool_name <- content@request@tool@name
+    tool_name <-
+      content@request@tool@annotations$title %||%
+      content@request@tool@name
   } else {
     tool_name <- "unknown tool"
+  }
+
+  intent <- ""
+  if (!is.null(content@request@arguments$intent)) {
+    intent <- sprintf(
+      ' | <span class="intent">%s</span>',
+      content@request@arguments$intent
+    )
   }
 
   tool_call <-
@@ -76,9 +80,10 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(
     )
 
   summary <- sprintf(
-    '<summary>%s <span class="function-name">%s</span></summary>',
+    '<summary>%s <span class="function-name">%s</span>%s</summary>',
     summary_text,
-    tool_name
+    tool_name,
+    intent
   )
 
   tool_call <- sprintf(

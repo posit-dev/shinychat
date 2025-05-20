@@ -21,7 +21,7 @@
     transform: rotateY(180deg);
 }
 
-.shiny-tool-request:not(:first-child), 
+.shiny-tool-request:not(:first-child),
 .shiny-tool-result:not(:first-child) {
     margin-top: 1em;
 }
@@ -100,4 +100,9 @@
 
 .shiny-tool-result summary .function-name {
     font-weight: bold;
+}
+
+.shiny-tool-result summary .intent {
+    color: var(--bs-secondary);
+    font-style: italic;
 }
