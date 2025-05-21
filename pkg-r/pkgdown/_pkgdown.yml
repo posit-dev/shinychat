@@ -1,5 +1,7 @@
 url: https://posit-dev.github.io/shinychat
 
+destination: "../docs/r"
+
 development:
   mode: auto
 
