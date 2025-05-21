@@ -3,7 +3,17 @@
 on:
   push:
     branches: [main, master]
+    paths:
+      - 'pkg-r/man'
+      - 'pkg-r/vignettes'
+      - 'pkg-r/pkgdown'
+      - '.github/workflows/R-CMD-check.yaml'
   pull_request:
+    paths:
+      - 'pkg-r/man'
+      - 'pkg-r/vignettes'
+      - 'pkg-r/pkgdown'
+      - '.github/workflows/R-CMD-check.yaml'
   release:
     types: [published]
   workflow_dispatch:
@@ -35,10 +45,12 @@ jobs:
         with:
           extra-packages: any::pkgdown, local::.
           needs: website
+          working-directory: pkg-r
 
       - name: Build site
         run: pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)
         shell: Rscript {0}
+        working-directory: pkg-r
 
       - name: Deploy to GitHub pages 🚀
         if: github.event_name != 'pull_request'

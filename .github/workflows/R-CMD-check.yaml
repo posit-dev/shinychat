@@ -3,7 +3,13 @@
 on:
   push:
     branches: [main, master]
+    paths:
+      - 'pkg-r/**'
+      - '.github/workflows/R-CMD-check.yaml'
   pull_request:
+    paths:
+      - 'pkg-r/**'
+      - '.github/workflows/R-CMD-check.yaml'
 
 name: R-CMD-check.yaml
 
