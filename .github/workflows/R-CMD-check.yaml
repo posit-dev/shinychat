@@ -50,8 +50,10 @@ jobs:
         with:
           extra-packages: any::rcmdcheck
           needs: check
+          working-directory: pkg-r
 
       - uses: r-lib/actions/check-r-package@v2
         with:
+          working-directory: pkg-r
           upload-snapshots: true
           build_args: 'c("--no-manual","--compact-vignettes=gs+qpdf")'
