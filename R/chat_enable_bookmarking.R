@@ -122,11 +122,6 @@ chat_enable_bookmarking <- function(
       client_set_ui(client, id = id)
     })
 
-  cancel_on_restore_ui <-
-    session$onRestore(function(state) {
-      # TODO restore UI here
-    })
-
   # Update URL
   cancel_bookmark_on_input <-
     if (bookmark_on_input) {
@@ -173,9 +168,7 @@ chat_enable_bookmarking <- function(
     value = list(
       callbacks_to_cancel = c(
         cancel_on_bookmark_client,
-        cancel_on_bookmark_ui,
         cancel_on_restore_client,
-        cancel_on_restore_ui,
         cancel_bookmark_on_input,
         cancel_update_bookmark
       )
