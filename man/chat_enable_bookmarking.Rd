@@ -42,9 +42,11 @@ library(shiny)
 library(bslib)
 library(shinychat)
 
-ui <- page_fillable(
-  chat_ui("chat", fill = TRUE)
-)
+ui <- function(request) {
+  page_fillable(
+    chat_ui("chat", fill = TRUE)
+  )
+}
 
 server <- function(input, output, session) {
   chat_client <- ellmer::chat_ollama(

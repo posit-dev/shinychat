@@ -20,9 +20,11 @@
 #' library(bslib)
 #' library(shinychat)
 #'
-#' ui <- page_fillable(
-#'   chat_ui("chat", fill = TRUE)
-#' )
+#' ui <- function(request) {
+#'   page_fillable(
+#'     chat_ui("chat", fill = TRUE)
+#'   )
+#' }
 #'
 #' server <- function(input, output, session) {
 #'   chat_client <- ellmer::chat_ollama(
@@ -102,103 +104,22 @@ chat_enable_bookmarking <- function(
         )
       }
 
-      turns <- client$get_turns()
-      if (length(turns) == 0) return()
+      client_state <- client_get_state(client)
 
-      if (shiny::getShinyOption("bookmarkStore", "server") == "server") {
-        # `.rds` file will be used for serialization. Saving client as is
-        state$values[[id]] <- client
-      } else {
-        # URL will be destination for serialization
-        turns_list <- lapply(turns, function(turn) {
-          list(
-            role = turn@role,
-            # Convert everything to a single markdown string (including images!)
-            contents = ellmer::contents_markdown(turn),
-            tokens = turn@tokens
-          )
-        })
-        state$values[[id]] <- turns_list
-      }
-    })
-  cancel_on_bookmark_ui <-
-    session$onBookmark(function(state) {
-      # TODO save UI here
+      state$values[[id]] <- client_state
     })
 
   # Restore
   cancel_on_restore_client <-
     session$onRestore(function(state) {
-      turns_obj <- state$values[[id]]
-      if (is.null(turns_obj)) return()
+      client_state <- state$values[[id]]
+      if (is.null(client_state)) return()
 
-      if (shiny::getShinyOption("bookmarkStore", "server") == "server") {
-        # Restore client from `.rds` file
-        restored_client <- turns_obj
-
-        # Go through each property trying to set it to the other?
-        client$set_turns(restored_client$get_turns())
-      } else {
-        # Restore from URL
-
-        turn_list <-
-          if (inherits(turns_obj, "data.frame")) {
-            # Restore url jsonlite::fromJSON() object that has been _simplified_ into a data.frame()
-            turns_df <- turns_obj
-            if (nrow(turns_df) == 0) return()
-
-            # Turn a data.frame into a list of row information, where the row info is a named lists
-            # Similar to `purrr::pmap(turns_df, list)`
-            unname(rlang::exec(Map, !!!as.list(turns_df), list))
-          } else {
-            turns_obj
-          }
-
-        # Verify turn fields are available
-        Map(
-          turn_info = turn_list,
-          i = seq_along(turn_list),
-          f = function(turn_info, i) {
-            turn_info_names <- names(turn_info)
-            for (col_name in c("role", "contents", "tokens")) {
-              if (!(col_name %in% turn_info_names)) {
-                rlang::abort(
-                  paste0(
-                    "Restored turn ",
-                    i,
-                    "/",
-                    length(turn_list),
-                    " does not have a '",
-                    col_name,
-                    "' field."
-                  )
-                )
-              }
-            }
-          }
-        )
-
-        # Upgrade
-        # Note: Character `contents=` values will be auto upgraded by ellmer to a `ellmer::ContentText` objects
-        turns <- lapply(turn_list, function(turn_info) {
-          rlang::exec(ellmer::Turn, !!!turn_info)
-        })
-
-        # Set the client
-        client$set_turns(turns)
-      }
+      client_set_state(client, client_state)
 
       # Set the UI
-      # TODO-barret-future; In shinychat, make this a single/internal custom message call to send all the messages at once (and then scroll)
-      lapply(client$get_turns(), function(turn) {
-        chat_append(
-          id,
-          # Use `contents_markdown()` as it handles image serialization
-          ellmer::contents_markdown(turn),
-          #  turn_info$contents,
-          role = turn@role
-        )
-      })
+      chat_clear(id)
+      client_set_ui(client, id = id)
     })
 
   cancel_on_restore_ui <-
@@ -293,7 +214,7 @@ chat_update_bookmark <- function(
 # These methods exist to set flags within the session.
 # These flags will determine if the session should be bookmarked when a response has completed.
 # `chat_update_bookmark()` will check if the flag is set and update the URL if it is.
-ON_RESPONSE_KEY <- ".on-response"
+ON_RESPONSE_KEY <- ".bookmark-on-response"
 has_session_bookmark_on_response <- function(session, id) {
   has_session_chat_bookmark_info(
     session,
@@ -313,22 +234,15 @@ has_session_chat_bookmark_info <- function(session, id) {
   return(!is.null(get_session_chat_bookmark_info(session, id)))
 }
 get_session_chat_bookmark_info <- function(session, id) {
-  init_bookmark_obj(session)
   info <- session$userData$shinychat
   key <- session$ns(id)
   return(info[[key]])
 }
 set_session_chat_bookmark_info <- function(session, id, value) {
-  init_bookmark_obj(session)
-
-  session$userData$shinychat[[session$ns(id)]] <- value
-
-  invisible(session)
-}
-init_bookmark_obj <- function(session) {
   if (is.null(session$userData$shinychat)) {
     session$userData$shinychat <- list()
   }
+  session$userData$shinychat[[session$ns(id)]] <- value
 
   invisible(session)
 }

@@ -5,6 +5,7 @@
 #' @importFrom coro async
 #' @importFrom htmltools tag css HTML
 #' @import rlang
+#' @import S7
 ## usethis namespace: end
 NULL
 
