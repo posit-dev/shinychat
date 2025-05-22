@@ -34,3 +34,7 @@ reference:
   contents:
   - markdown_stream
   - output_markdown_stream
+
+- title: Bookmark
+  contents:
+  - chat_enable_bookmarking
