@@ -11,9 +11,22 @@
         },
         "editor.defaultFormatter": "charliermarsh.ruff"
     },
+    "[typescript]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[javascript]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
     "editor.codeActionsOnSave": {
         "source.fixAll.eslint": "always"
     },
-    "eslint.validate": ["javascript"],
+    "eslint.validate": [
+        "javascript",
+        "typescript",
+        "jsx",
+        "tsx"
+    ],
     "quarto.path": "~/.local/share/qvm/versions/v1.7.31/bin/quarto"
 }

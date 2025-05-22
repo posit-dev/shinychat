@@ -1,7 +1,7 @@
-import DOMPurify from "dompurify";
-import { LitElement } from "lit";
+import DOMPurify from "dompurify"
+import { LitElement } from "lit"
 
-import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render";
+import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 
 ////////////////////////////////////////////////
 // Lit helpers
@@ -9,27 +9,27 @@ import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render";
 
 function createElement(
   tag_name: string,
-  attrs: { [key: string]: string | null }
+  attrs: { [key: string]: string | null },
 ): HTMLElement {
-  const el = document.createElement(tag_name);
+  const el = document.createElement(tag_name)
   for (const [key, value] of Object.entries(attrs)) {
     // Replace _ with - in attribute names
-    const attrName = key.replace(/_/g, "-");
-    if (value !== null) el.setAttribute(attrName, value);
+    const attrName = key.replace(/_/g, "-")
+    if (value !== null) el.setAttribute(attrName, value)
   }
-  return el;
+  return el
 }
 
 function createSVGIcon(icon: string): HTMLElement {
-  const parser = new DOMParser();
-  const svgDoc = parser.parseFromString(icon, "image/svg+xml");
-  return svgDoc.documentElement;
+  const parser = new DOMParser()
+  const svgDoc = parser.parseFromString(icon, "image/svg+xml")
+  return svgDoc.documentElement
 }
 
 // https://lit.dev/docs/components/shadow-dom/#implementing-createrenderroot
 class LightElement extends LitElement {
   createRenderRoot() {
-    return this;
+    return this
   }
 }
 ////////////////////////////////////////////////
@@ -37,10 +37,10 @@ class LightElement extends LitElement {
 ////////////////////////////////////////////////
 
 export type ShinyClientMessage = {
-  message: string;
-  headline?: string;
-  status?: "error" | "info" | "warning";
-};
+  message: string
+  headline?: string
+  status?: "error" | "info" | "warning"
+}
 
 function showShinyClientMessage({
   headline = "",
@@ -50,21 +50,21 @@ function showShinyClientMessage({
   document.dispatchEvent(
     new CustomEvent("shiny:client-message", {
       detail: { headline: headline, message: message, status: status },
-    })
-  );
+    }),
+  )
 }
 
 async function renderDependencies(deps: HtmlDep[]): Promise<void> {
-  if (!window.Shiny) return;
-  if (!deps) return;
+  if (!window.Shiny) return
+  if (!deps) return
 
   try {
-    await window.Shiny.renderDependenciesAsync(deps);
+    await window.Shiny.renderDependenciesAsync(deps)
   } catch (renderError) {
     showShinyClientMessage({
       status: "error",
       message: `Failed to render HTML dependencies: ${renderError}`,
-    });
+    })
   }
 }
 
@@ -79,29 +79,29 @@ function sanitizeHTML(html: string): string {
     // Allow any (defined) custom element
     CUSTOM_ELEMENT_HANDLING: {
       tagNameCheck: (tagName) => {
-        return window.customElements.get(tagName) !== undefined;
+        return window.customElements.get(tagName) !== undefined
       },
       attributeNameCheck: (attr) => true,
       allowCustomizedBuiltInElements: true,
     },
-  });
+  })
 }
 
 // Allow htmlwidgets' script tags through the sanitizer
 // by allowing `<script type="application/json" data-for="*"`,
 // which every widget should follow, and seems generally safe.
-const sanitizer = DOMPurify();
+const sanitizer = DOMPurify()
 sanitizer.addHook("uponSanitizeElement", (node, data) => {
   if (node.nodeName && node.nodeName === "SCRIPT") {
     // Need to ensure node is an Element before calling getAttribute
-    const element = node as Element;
+    const element = node as Element
     const isOK =
       element.getAttribute("type") === "application/json" &&
-      element.getAttribute("data-for") !== null;
+      element.getAttribute("data-for") !== null
 
-    data.allowedTags["script"] = isOK;
+    data.allowedTags["script"] = isOK
   }
-});
+})
 
 /**
  * Creates a throttle decorator that ensures the decorated method isn't called more
@@ -113,24 +113,24 @@ export function throttle(delay: number) {
   return function (
     _target: any,
     _propertyKey: string,
-    descriptor: PropertyDescriptor
+    descriptor: PropertyDescriptor,
   ) {
-    const originalMethod = descriptor.value;
-    let timeout: number | undefined;
+    const originalMethod = descriptor.value
+    let timeout: number | undefined
 
     descriptor.value = function (...args: any[]) {
       if (timeout) {
-        window.clearTimeout(timeout);
+        window.clearTimeout(timeout)
       }
 
       timeout = window.setTimeout(() => {
-        originalMethod.apply(this, args);
-        timeout = undefined;
-      }, delay);
-    };
+        originalMethod.apply(this, args)
+        timeout = undefined
+      }, delay)
+    }
 
-    return descriptor;
-  };
+    return descriptor
+  }
 }
 
 export {
@@ -140,6 +140,6 @@ export {
   renderDependencies,
   sanitizeHTML,
   showShinyClientMessage,
-};
+}
 
-export type { HtmlDep };
+export type { HtmlDep }
