@@ -15,7 +15,7 @@ process.argv.forEach((val, index) => {
   }
 });
 
-const outDir = "../dist";
+const outDir = "dist";
 
 const allEsbuildMetadata: Array<Metafile> = [];
 
@@ -91,22 +91,22 @@ async function bundle_helper(
 const opts: Array<BuildOptions> = [
   {
     entryPoints: {
-      "markdown-stream/markdown-stream": "markdown-stream/markdown-stream.ts",
+      "markdown-stream/markdown-stream": "src/markdown-stream/markdown-stream.ts",
     },
   },
   {
     entryPoints: {
-      "markdown-stream/markdown-stream": "markdown-stream/markdown-stream.scss",
+      "markdown-stream/markdown-stream": "src/markdown-stream/markdown-stream.scss",
     },
     plugins: [sassPlugin({ type: "css", sourceMap: false })],
   },
   {
     entryPoints: {
-      "chat/chat": "chat/chat.ts",
+      "chat/chat": "src/chat/chat.ts",
     },
   },
   {
-    entryPoints: { "chat/chat": "chat/chat.scss" },
+    entryPoints: { "chat/chat": "src/chat/chat.scss" },
     plugins: [sassPlugin({ type: "css", sourceMap: false })],
   },
 ];

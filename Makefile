@@ -32,6 +32,21 @@ js-setup:  ## [js] Install JS dependencies
 	@echo "🆙 Setup JS dependencies"
 	cd $(PATH_PKG_JS) && npm install
 
+.PHONY: js-lint
+js-lint:  ## [js] Lint JS code
+	@echo "📐 Linting JS code"
+	cd $(PATH_PKG_JS) && npm run lint
+
+.PHONY: js-build
+js-build:  ## [js] Build JS code
+	@echo "🧳 Building JS code"
+	cd $(PATH_PKG_JS) && npm run build
+
+.PHONY: js-build-watch
+js-build-watch:  ## [js] Build JS code in watch mode
+	@echo "🧳 Building JS code in watch mode"
+	cd $(PATH_PKG_JS) && npm run watch
+
 .PHONY: r-setup
 r-setup:  ## [r] Install R dependencies
 	@echo "🆙 Updating R dependencies"
