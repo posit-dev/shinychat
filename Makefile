@@ -70,7 +70,6 @@ r-check-package:  ## [r] Check package
 	@echo "🔄 Running R CMD Check"
 	cd $(PATH_PKG_R) && Rscript -e "devtools::check(document = FALSE)"
 
-
 .PHONY: r-check-tests
 r-check-tests:  ## [r] Check tests
 	@echo ""
@@ -82,6 +81,16 @@ r-check-format:  ## [r] Check format
 	@echo ""
 	@echo "📐 Checking R format"
 	air format --check $(PATH_PKG_R)/
+
+.PHONY: r-update-dist
+r-update-dist: ## [r] Update shinychat web assets
+	@echo ""
+	@echo "🔄 Updating shinychat web assets"
+	rm -rf $(PATH_PKG_R)/inst/lib/shiny/chat
+	cp -r $(PATH_PKG_JS)/dist/chat $(PATH_PKG_R)/inst/lib/shiny/
+	rm -rf $(PATH_PKG_R)/inst/lib/shiny/markdown-stream
+	cp -r $(PATH_PKG_JS)/dist/markdown-stream $(PATH_PKG_R)/inst/lib/shiny/
+	(git rev-parse HEAD) > "$(PATH_PKG_R)/inst/lib/shiny/GIT_VERSION"
 
 .PHONY: py-setup
 py-setup:  ## [py] Setup python environment
