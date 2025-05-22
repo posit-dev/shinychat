@@ -12,3 +12,4 @@
 ^CRAN-SUBMISSION$
 ^_dev$
 ^revdep$
+^shiny_bookmarks$
