@@ -227,11 +227,15 @@ has_session_chat_bookmark_info <- function(session, id) {
   return(!is.null(get_session_chat_bookmark_info(session, id)))
 }
 get_session_chat_bookmark_info <- function(session, id) {
+  if (is.null(session)) return(NULL)
+
   info <- session$userData$shinychat
   key <- session$ns(id)
   return(info[[key]])
 }
 set_session_chat_bookmark_info <- function(session, id, value) {
+  if (is.null(session)) return(NULL)
+
   if (is.null(session$userData$shinychat)) {
     session$userData$shinychat <- list()
   }
