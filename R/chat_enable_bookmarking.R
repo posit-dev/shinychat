@@ -125,7 +125,7 @@ chat_enable_bookmarking <- function(
   # Update URL
   cancel_bookmark_on_input <-
     if (bookmark_on_input) {
-      observeEvent(session$input[[id_user_input]], {
+      shiny::observeEvent(session$input[[id_user_input]], {
         # On user submit
         session$doBookmark()
       })
