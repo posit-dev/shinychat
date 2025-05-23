@@ -1,0 +1,14 @@
+{
+  "organizeImportsSkipDestructiveCodeActions": true,
+  "singleQuote": false,
+  "semi": false,
+  "trailingComma": "all",
+  "overrides": [
+    {
+      "files": "**/*.scss",
+      "options": {
+        "printWidth": 150
+      }
+    }
+  ]
+}

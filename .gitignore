@@ -5,3 +5,4 @@
 .Renviron
 docs
 _dev
+uv.lock
