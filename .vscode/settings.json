@@ -28,5 +28,8 @@
         "jsx",
         "tsx"
     ],
-    "quarto.path": "~/.local/share/qvm/versions/v1.7.31/bin/quarto"
+    "quarto.path": "~/.local/share/qvm/versions/v1.7.31/bin/quarto",
+    "cSpell.words": [
+        "shinychat"
+    ]
 }
