@@ -86,9 +86,11 @@ r-check-format:  ## [r] Check format
 r-update-dist: ## [r] Update shinychat web assets
 	@echo ""
 	@echo "🔄 Updating shinychat web assets"
-	rm -rf $(PATH_PKG_R)/inst/lib/shiny/chat
+	if [ -d $(PATH_PKG_R)/inst/lib/shiny ]; then \
+		rm -rf $(PATH_PKG_R)/inst/lib/shiny; \
+	fi
+	mkdir -p $(PATH_PKG_R)/inst/lib/shiny
 	cp -r $(PATH_PKG_JS)/dist/chat $(PATH_PKG_R)/inst/lib/shiny/
-	rm -rf $(PATH_PKG_R)/inst/lib/shiny/markdown-stream
 	cp -r $(PATH_PKG_JS)/dist/markdown-stream $(PATH_PKG_R)/inst/lib/shiny/
 	(git rev-parse HEAD) > "$(PATH_PKG_R)/inst/lib/shiny/GIT_VERSION"
 
@@ -170,6 +172,18 @@ py-build:   ## [py] Build python package
 	@echo "🧳 Building python package"
 	@[ -d dist ] && rm -r dist || true
 	uv build
+
+.PHONY: py-update-dist
+py-update-dist: ## [py] Update shinychat web assets
+	@echo ""
+	@echo "🔄 Updating shinychat web assets"
+	if [ -d $(PATH_PKG_PY)/src/shinychat/www ]; then \
+		rm -rf $(PATH_PKG_PY)/src/shinychat/www; \
+	fi
+	mkdir -p $(PATH_PKG_PY)/src/shinychat/www
+	cp -r $(PATH_PKG_JS)/dist/chat $(PATH_PKG_PY)/src/shinychat/www/
+	cp -r $(PATH_PKG_JS)/dist/markdown-stream $(PATH_PKG_PY)/src/shinychat/www/
+	(git rev-parse HEAD) > "$(PATH_PKG_PY)/src/shinychat/www/GIT_VERSION"
 
 .PHONY: help
 help:  ## Show help messages for make targets
