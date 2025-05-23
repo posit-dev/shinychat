@@ -34,6 +34,7 @@ from shiny._utils import CancelCallback, wrap_async
 from shiny.bookmark import BookmarkState, RestoreState
 from shiny.bookmark._types import BookmarkStore
 from shiny.module import ResolvedId, resolve_id
+from shiny.reactive._reactives import Effect_
 from shiny.session import (
     get_current_session,
     require_active_session,
@@ -94,8 +95,12 @@ __all__ = (
 TransformUserInput = Callable[[str], Union[str, None]]
 TransformUserInputAsync = Callable[[str], Awaitable[Union[str, None]]]
 TransformAssistantResponse = Callable[[str], Union[str, HTML, None]]
-TransformAssistantResponseAsync = Callable[[str], Awaitable[Union[str, HTML, None]]]
-TransformAssistantResponseChunk = Callable[[str, str, bool], Union[str, HTML, None]]
+TransformAssistantResponseAsync = Callable[
+    [str], Awaitable[Union[str, HTML, None]]
+]
+TransformAssistantResponseChunk = Callable[
+    [str, str, bool], Union[str, HTML, None]
+]
 TransformAssistantResponseChunkAsync = Callable[
     [str, str, bool], Awaitable[Union[str, HTML, None]]
 ]
@@ -146,6 +151,7 @@ class Chat:
     # Create and display chat instance
     chat = ui.Chat(id="my_chat")
     chat.ui()
+
 
     # Define a callback to run when the user submits a message
     @chat.on_user_submit
@@ -223,7 +229,9 @@ class Chat:
         self.id = resolve_id(id)
         self.user_input_id = ResolvedId(f"{self.id}_user_input")
         self._transform_user: TransformUserInputAsync | None = None
-        self._transform_assistant: TransformAssistantResponseChunkAsync | None = None
+        self._transform_assistant: (
+            TransformAssistantResponseChunkAsync | None
+        ) = None
         self._tokenizer = tokenizer
 
         # TODO: remove the `None` when this PR lands:
@@ -252,7 +260,7 @@ class Chat:
         self._suspend_input_handler: bool = False
 
         # Keep track of effects so we can destroy them when the chat is destroyed
-        self._effects: list[reactive.Effect_] = []
+        self._effects: list[Effect_] = []
         self._cancel_bookmarking_callbacks: CancelCallback | None = None
 
         # Initialize chat state and user input effect
@@ -262,17 +270,17 @@ class Chat:
                 reactive.Value(())
             )
 
-            self._latest_user_input: reactive.Value[TransformedMessage | None] = (
-                reactive.Value(None)
-            )
+            self._latest_user_input: reactive.Value[
+                TransformedMessage | None
+            ] = reactive.Value(None)
 
             @reactive.extended_task
             async def _mock_task() -> str:
                 return ""
 
-            self._latest_stream: reactive.Value[reactive.ExtendedTask[[], str]] = (
-                reactive.Value(_mock_task)
-            )
+            self._latest_stream: reactive.Value[
+                reactive.ExtendedTask[[], str]
+            ] = reactive.Value(_mock_task)
 
             # TODO: deprecate messages once we start promoting managing LLM message
             # state through other means
@@ -319,16 +327,16 @@ class Chat:
         CHAT_INSTANCES[instance_id] = self
 
     @overload
-    def on_user_submit(self, fn: UserSubmitFunction) -> reactive.Effect_: ...
+    def on_user_submit(self, fn: UserSubmitFunction) -> Effect_: ...
 
     @overload
     def on_user_submit(
         self,
-    ) -> Callable[[UserSubmitFunction], reactive.Effect_]: ...
+    ) -> Callable[[UserSubmitFunction], Effect_]: ...
 
     def on_user_submit(
         self, fn: UserSubmitFunction | None = None
-    ) -> reactive.Effect_ | Callable[[UserSubmitFunction], reactive.Effect_]:
+    ) -> Effect_ | Callable[[UserSubmitFunction], Effect_]:
         """
         Define a function to invoke when user input is submitted.
 
@@ -676,6 +684,7 @@ class Chat:
         chat = ui.Chat(id="my_chat")
         chat.ui()
 
+
         @reactive.effect
         async def _():
             async with chat.message_stream_context() as msg:
@@ -707,7 +716,9 @@ class Chat:
         is_root_stream = stream_id is None
         if is_root_stream:
             stream_id = _utils.private_random_id()
-            await self._append_message_chunk("", chunk="start", stream_id=stream_id)
+            await self._append_message_chunk(
+                "", chunk="start", stream_id=stream_id
+            )
 
         try:
             yield MessageStream(self, stream_id)
@@ -734,7 +745,9 @@ class Chat:
     ) -> None:
         # If currently we're in a *different* stream, queue the message chunk
         if self._current_stream_id and self._current_stream_id != stream_id:
-            self._pending_messages.append((message, chunk, operation, stream_id))
+            self._pending_messages.append(
+                (message, chunk, operation, stream_id)
+            )
             return
 
         self._current_stream_id = stream_id
@@ -743,7 +756,9 @@ class Chat:
         msg = normalize_message_chunk(message)
 
         if operation == "replace":
-            self._current_stream_message = self._message_stream_checkpoint + msg.content
+            self._current_stream_message = (
+                self._message_stream_checkpoint + msg.content
+            )
             msg.content = self._current_stream_message
         else:
             self._current_stream_message += msg.content
@@ -767,7 +782,9 @@ class Chat:
                 # When `operation="append"`, msg.content is just a chunk, but we must
                 # store the full message
                 self._store_message(
-                    ChatMessage(content=self._current_stream_message, role=msg.role)
+                    ChatMessage(
+                        content=self._current_stream_message, role=msg.role
+                    )
                 )
 
             # Send the message to the client
@@ -912,7 +929,9 @@ class Chat:
         id = _utils.private_random_id()
 
         empty = ChatMessageDict(content="", role="assistant")
-        await self._append_message_chunk(empty, chunk="start", stream_id=id, icon=icon)
+        await self._append_message_chunk(
+            empty, chunk="start", stream_id=id, icon=icon
+        )
 
         try:
             async for msg in message:
@@ -1074,12 +1093,17 @@ class Chat:
             nparams = len(inspect.signature(fn).parameters)
             if nparams == 1:
                 fn = cast(
-                    Union[TransformAssistantResponse, TransformAssistantResponseAsync],
+                    Union[
+                        TransformAssistantResponse,
+                        TransformAssistantResponseAsync,
+                    ],
                     fn,
                 )
                 fn = _utils.wrap_async(fn)
 
-                async def _transform_wrapper(content: str, chunk: str, done: bool):
+                async def _transform_wrapper(
+                    content: str, chunk: str, done: bool
+                ):
                     return await fn(content)
 
                 self._transform_assistant = _transform_wrapper
@@ -1113,7 +1137,10 @@ class Chat:
 
         if message.role == "user" and self._transform_user is not None:
             content = await self._transform_user(message.content)
-        elif message.role == "assistant" and self._transform_assistant is not None:
+        elif (
+            message.role == "assistant"
+            and self._transform_assistant is not None
+        ):
             content = await self._transform_assistant(
                 message.content,
                 chunk_content,
@@ -1131,7 +1158,10 @@ class Chat:
     def _needs_transform(self, message: ChatMessage) -> bool:
         if message.role == "user" and self._transform_user is not None:
             return True
-        elif message.role == "assistant" and self._transform_assistant is not None:
+        elif (
+            message.role == "assistant"
+            and self._transform_assistant is not None
+        ):
             return True
         return False
 
@@ -1367,9 +1397,13 @@ class Chat:
         self._cancel_bookmarking_callbacks = None
 
     async def _remove_loading_message(self):
-        await self._send_custom_message("shiny-chat-remove-loading-message", None)
+        await self._send_custom_message(
+            "shiny-chat-remove-loading-message", None
+        )
 
-    async def _send_custom_message(self, handler: str, obj: ClientMessage | None):
+    async def _send_custom_message(
+        self, handler: str, obj: ClientMessage | None
+    ):
         await self._session.send_custom_message(
             "shinyChatMessage",
             {
@@ -1473,7 +1507,9 @@ class Chat:
         if bookmark_on == "response":
 
             @reactive.effect
-            @reactive.event(lambda: self.messages(format=MISSING), ignore_init=True)
+            @reactive.event(
+                lambda: self.messages(format=MISSING), ignore_init=True
+            )
             async def _():
                 messages = self.messages(format=MISSING)
 
@@ -1741,7 +1777,9 @@ def chat_ui(
             content = x
         else:
             if "content" not in x:
-                raise ValueError("Each message dictionary must have a 'content' key.")
+                raise ValueError(
+                    "Each message dictionary must have a 'content' key."
+                )
 
             content = x["content"]
             if "role" in x:
