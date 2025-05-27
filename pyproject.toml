@@ -35,8 +35,16 @@ providers = [
 
 [tool.uv]
 dev-dependencies = [
+    "faicons>=0.2.2",
+    "ipyleaflet>=0.19.2",
+    "pandas>=2.2.3",
+    "playwright>=1.52.0",
+    "plotly>=6.1.1",
     "pyright>=1.1.401",
+    "pytest>=8.3.5",
+    "pytest-playwright>=0.7.0",
     "ruff>=0.6.5",
+    "shinywidgets>=0.6.2",
     "tox-uv>=1",
 ]
 upgrade-package = ["shinychat"]
@@ -126,6 +134,7 @@ select = ['E', 'F', 'W', 'A', 'PLC', 'PLE', 'PLW', 'I']
 ignore = [
     "A001", # Variable shadowing Python builtin, e.g. `input`
     "A002", # Argument shadowing Python builtin, e.g. `id`
+    "A004", # Import shadowing Python builtin, e.g. `input`
     "E501"
 ]
 

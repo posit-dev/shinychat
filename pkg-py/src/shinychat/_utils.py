@@ -67,7 +67,7 @@ def private_random_id(prefix: str = "", bytes: int = 3) -> str:
 @contextlib.contextmanager
 def private_seed() -> Generator[None, None, None]:
     state = random.getstate()
-    global own_random_state
+    global own_random_state  # noqa: PLW0603
     try:
         random.setstate(own_random_state)
         yield
@@ -137,7 +137,9 @@ def is_async_callable(
     return False
 
 
-def wrap_async_iterable(x: Iterable[Any] | AsyncIterable[Any]) -> AsyncIterable[Any]:
+def wrap_async_iterable(
+    x: Iterable[Any] | AsyncIterable[Any],
+) -> AsyncIterable[Any]:
     """
     Given any iterable, return an async iterable. The async iterable will yield the
     values of the original iterable, but will also yield control to the event loop
