@@ -19,18 +19,13 @@ is_url_bookmarkstore <- function() {
 
 method(client_get_state, S7::new_S3_class(c("Chat", "R6"))) <-
   function(client) {
-
+    # Do not record the client object itself. This would be a security leak.
+    # Instead, save only the `turns` information
     recorded_turns <- lapply(
       client$get_turns(),
       ellmer::contents_record,
       chat = client
     )
-
-    # Pre-serialize the contents so that when shiny:::toJSON() is called, it is stable.
-    # jsonlite::toJSON() is not stable as it is a lossy serialization. In addition, jsonlite::fromJSON() (which shiny:::safeFromJSON() uses) is not stable as it tries to make everything a data.frame.
-    #
-    # * `jsonlite::serializeJSON()` is a stable transformation
-    # * `jsonlite::unserializeJSON()` is a stable transformation
 
     if (is_url_bookmarkstore()) {
       recorded_turns <- lapply(
@@ -42,6 +37,11 @@ method(client_get_state, S7::new_S3_class(c("Chat", "R6"))) <-
       )
     }
 
+    # Pre-serialize the contents so that when shiny:::toJSON() is called, it is stable.
+    # jsonlite::toJSON() is not stable as it is a lossy serialization. In addition, jsonlite::fromJSON() (which shiny:::safeFromJSON() uses) is not stable as it tries to make everything a data.frame.
+    #
+    # * `jsonlite::serializeJSON()` is a stable transformation
+    # * `jsonlite::unserializeJSON()` is a stable transformation
     state_json <- jsonlite::serializeJSON(recorded_turns)
     state_str <- base64enc::base64encode(memCompress(state_json, "gzip"))
 
@@ -63,15 +63,6 @@ method(client_set_state, S7::new_S3_class(c("Chat", "R6"))) <-
         paste0("Invalid state version. Expected 1, got ", state$version)
       )
     }
-
-    # if (is_server_bookmarkstore()) {
-    #   # Restore from the saved client object
-    #   # Deserialize the whole chat client
-    #   # However, this is a security leak
-    #   restored_client <- state
-    #   client$set_turns(restored_client$get_turns())
-    #   return()
-    # }
 
     state_str <- state$state
 
