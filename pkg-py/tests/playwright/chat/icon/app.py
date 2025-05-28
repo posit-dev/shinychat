@@ -3,7 +3,7 @@ from pathlib import Path
 
 import faicons
 from shiny.express import app_opts, input, ui
-from shinychat import ChatExpress
+from shinychat.express import Chat
 
 ui.page_opts(title="Chat Icons")
 
@@ -11,7 +11,7 @@ app_opts(static_assets={"/img": Path(__file__).parent / "img"})
 
 with ui.layout_columns():
     # Default Bot ---------------------------------------------------------------------
-    chat_default = ChatExpress(
+    chat_default = Chat(
         id="chat_default",
         messages=[
             {
@@ -31,7 +31,7 @@ with ui.layout_columns():
         await chat_default.append_message(f"You said: {user_input}")
 
     # Animal Bot ----------------------------------------------------------------------
-    chat_animal = ChatExpress(id="chat_animal")
+    chat_animal = Chat(id="chat_animal")
 
     with ui.div():
         ui.h2("Animal Bot")
@@ -65,7 +65,7 @@ with ui.layout_columns():
     </svg>
     """
 
-    chat_svg = ChatExpress(id="chat_svg")
+    chat_svg = Chat(id="chat_svg")
 
     with ui.div():
         ui.h2("SVG Bot")
@@ -79,7 +79,7 @@ with ui.layout_columns():
         await chat_svg.append_message(f"You said: {user_input}")
 
     # Image Bot -----------------------------------------------------------------------
-    chat_image = ChatExpress(id="chat_image")
+    chat_image = Chat(id="chat_image")
 
     with ui.div():
         ui.h2("Image Bot")

@@ -1,11 +1,11 @@
 from shiny import reactive
 from shiny.express import render, ui
-from shinychat import ChatExpress
+from shinychat.express import Chat
 
 ui.page_opts(title="Hello Chat")
 
 # Create and display the chat
-chat = ChatExpress(id="chat")
+chat = Chat(id="chat")
 chat.ui()
 
 

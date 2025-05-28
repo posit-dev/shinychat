@@ -1,8 +1,8 @@
 import shiny.express  # noqa: F401
 from shiny import render
-from shinychat import ChatExpress
+from shinychat.express import Chat
 
-chat = ChatExpress(id="chat")
+chat = Chat(id="chat")
 chat.ui()
 
 

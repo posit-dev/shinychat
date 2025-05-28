@@ -1,6 +1,6 @@
 from shiny import reactive
 from shiny.express import input, ui
-from shinychat import ChatExpress
+from shinychat.express import Chat
 
 ui.page_opts(title="Testing input bindings in Chat", gap="3rem")
 
@@ -19,7 +19,7 @@ welcome = ui.TagList(
     ),
 )
 
-chat = ChatExpress(
+chat = Chat(
     id="chat",
     messages=[welcome],
 )

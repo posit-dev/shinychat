@@ -1,11 +1,11 @@
 from shiny.express import render, ui
-from shinychat import ChatExpress
+from shinychat.express import Chat
 
 # Set some Shiny page options
 ui.page_opts(title="Hello Chat")
 
 # Create a chat instance, with an initial message
-chat = ChatExpress(
+chat = Chat(
     id="chat",
     messages=[
         {"content": "Hello! How can I help you today?", "role": "assistant"},

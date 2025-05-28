@@ -1,9 +1,9 @@
 import asyncio
 
 from shiny.express import render
-from shinychat import ChatExpress
+from shinychat.express import Chat
 
-chat = ChatExpress("chat")
+chat = Chat("chat")
 
 chat.ui()
 chat.update_user_input(value="Press Enter to start the stream")

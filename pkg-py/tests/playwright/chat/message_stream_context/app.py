@@ -2,7 +2,7 @@ import asyncio
 
 from shiny import reactive
 from shiny.express import input, render, ui
-from shinychat import ChatExpress
+from shinychat.express import Chat
 
 SLEEP_TIME = 0.25
 
@@ -23,7 +23,7 @@ with ui.sidebar(style="height:100%"):
         return str(chat.messages())
 
 
-chat = ChatExpress(id="chat")
+chat = Chat(id="chat")
 chat.ui()
 
 

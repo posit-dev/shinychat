@@ -1,5 +1,5 @@
 import shiny.express  # noqa: F401
-from shinychat import ChatExpress
+from shinychat.express import Chat
 
 suggestions1 = """
 <p>Here is the <span id="first" class='suggestion'>1st input suggestion</span>.
@@ -12,7 +12,7 @@ suggestion2 = """
 And <span id="fifth" data-suggestion="another suggestion" data-suggestion-submit="true">this suggestion will also auto-submit</span>.</p>
 """
 
-chat = ChatExpress("chat", messages=[suggestion2])
+chat = Chat("chat", messages=[suggestion2])
 
 chat.ui(messages=[suggestions1])
 

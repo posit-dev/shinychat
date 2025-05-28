@@ -1,13 +1,13 @@
 from typing import Union
 
 from shiny.express import render, ui
-from shinychat import ChatExpress
+from shinychat.express import Chat
 
 # Set some Shiny page options
 ui.page_opts(title="Hello Chat")
 
 # Create a chat instance, with an initial message
-chat = ChatExpress(id="chat")
+chat = Chat(id="chat")
 
 # Display the chat
 chat.ui()

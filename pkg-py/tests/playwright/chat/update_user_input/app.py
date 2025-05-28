@@ -1,6 +1,6 @@
 from shiny import reactive
 from shiny.express import input, ui
-from shinychat import ChatExpress
+from shinychat.express import Chat
 
 ui.page_opts(fillable=True)
 
@@ -10,7 +10,7 @@ with ui.layout_columns(fill=False, fillable=True):
     ui.input_action_button("submit", "Submit to chat")
     ui.input_action_button("submit_and_focus", "Submit and focus chat")
 
-chat = ChatExpress("chat")
+chat = Chat("chat")
 
 
 chat.ui()

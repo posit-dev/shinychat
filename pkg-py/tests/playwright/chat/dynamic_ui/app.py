@@ -1,7 +1,7 @@
 from shiny.express import render
-from shinychat import ChatExpress
+from shinychat.express import Chat
 
-chat = ChatExpress(id="chat")
+chat = Chat(id="chat")
 
 
 @render.ui

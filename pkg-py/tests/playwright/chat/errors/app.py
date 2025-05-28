@@ -1,11 +1,11 @@
 from shiny.express import render, ui
-from shinychat import ChatExpress
+from shinychat.express import Chat
 
 # Set some Shiny page options
 ui.page_opts(title="Hello Chat")
 
 
-chat = ChatExpress(id="chat")
+chat = Chat(id="chat")
 chat.ui()
 
 
