@@ -1453,10 +1453,9 @@ class Chat:
         :
             A callback to cancel the bookmarking hooks.
         """
-        from shiny.express._stub_session import ExpressStubSession
 
         session = get_current_session()
-        if session is None or isinstance(session, ExpressStubSession):
+        if session is None or session.is_stub_session():
             return BookmarkCancelCallback(lambda: None)
 
         if session.bookmark.store == "disable":
