@@ -2,7 +2,6 @@ import importlib.util
 from typing import Any, Awaitable, Callable, Protocol, runtime_checkable
 
 from htmltools import TagChild
-from shiny._utils import CancelCallback
 from shiny.types import Jsonifiable
 
 chatlas_is_installed = importlib.util.find_spec("chatlas") is not None
@@ -46,6 +45,9 @@ class ClientWithState(Protocol):
         returned by the `get_state()` method (after a round trip through JSON
         serialization and unserialization).
     """
+
+
+CancelCallback = Callable[[], None]
 
 
 class BookmarkCancelCallback:
