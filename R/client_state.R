@@ -1,18 +1,6 @@
-client_get_state <- new_generic(
-  "client_get_state",
-  "client",
-  function(client) {
-    result <- S7::S7_dispatch()
-  }
-)
+client_get_state <- new_generic("client_get_state", "client")
 
-client_set_state <- new_generic(
-  "client_get_state",
-  "client",
-  function(client, state) {
-    S7::S7_dispatch()
-  }
-)
+client_set_state <- new_generic("client_get_state", "client")
 
 client_set_ui <- new_generic(
   "client_set_ui",
@@ -23,21 +11,14 @@ client_set_ui <- new_generic(
 )
 
 is_server_bookmarkstore <- function() {
-  shiny::getShinyOption("bookmarkStore", "server") == "server"
+  shiny::getShinyOption("bookmarkStore", "") == "server"
 }
 is_url_bookmarkstore <- function() {
-  shiny::getShinyOption("bookmarkStore", "url") == "url"
+  shiny::getShinyOption("bookmarkStore", "") == "url"
 }
 
 method(client_get_state, S7::new_S3_class(c("Chat", "R6"))) <-
   function(client) {
-    # if (is_server_bookmarkstore()) {
-    #   # Serialize the whole chat client
-    #   # However, this is a security leak
-    #   return(client)
-    # }
-
-    A <<- client$get_turns()
 
     recorded_turns <- lapply(
       client$get_turns(),

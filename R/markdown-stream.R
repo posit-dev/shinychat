@@ -168,6 +168,7 @@ markdown_stream <- function(
   result
 }
 
+
 markdown_stream_impl <- NULL
 rlang::on_load(
   markdown_stream_impl <- coro::async(function(id, stream, operation, session) {

@@ -35,6 +35,6 @@ reference:
   - markdown_stream
   - output_markdown_stream
 
-- title: Bookmark
+- title: Bookmark chat history
   contents:
   - chat_enable_bookmarking
