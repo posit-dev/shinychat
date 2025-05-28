@@ -2,10 +2,7 @@ from playwright.sync_api import Page, expect
 from shiny.run import ShinyAppProc
 from shinychat.playwright import ChatController
 
-from tests.playwright.utils.deploy_utils import skip_on_webkit
 
-
-@skip_on_webkit
 def test_validate_chat_append_user_message(
     page: Page, local_app: ShinyAppProc
 ) -> None:

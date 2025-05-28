@@ -5,10 +5,7 @@ from shiny.playwright import controller
 from shiny.run import ShinyAppProc
 from shinychat.playwright import ChatController
 
-from tests.playwright.utils.deploy_utils import skip_on_webkit
 
-
-@skip_on_webkit
 def test_validate_chat_stream_result(
     page: Page, local_app: ShinyAppProc
 ) -> None:
