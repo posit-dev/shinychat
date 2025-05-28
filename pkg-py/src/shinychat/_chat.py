@@ -30,7 +30,6 @@ from htmltools import (
 )
 from shiny import reactive
 from shiny._deprecated import warn_deprecated
-from shiny._utils import CancelCallback, wrap_async
 from shiny.bookmark import BookmarkState, RestoreState
 from shiny.bookmark._types import BookmarkStore
 from shiny.module import ResolvedId, resolve_id
@@ -47,6 +46,7 @@ from shiny.ui.fill import as_fill_item, as_fillable_container
 from . import _utils
 from ._chat_bookmark import (
     BookmarkCancelCallback,
+    CancelCallback,
     ClientWithState,
     get_chatlas_state,
     is_chatlas_chat_client,
@@ -1473,8 +1473,8 @@ class Chat:
         # Retrieve get_state/set_state functions from the client
         if isinstance(client, ClientWithState):
             # Do client with state stuff here
-            get_state = wrap_async(client.get_state)
-            set_state = wrap_async(client.set_state)
+            get_state = _utils.wrap_async(client.get_state)
+            set_state = _utils.wrap_async(client.set_state)
 
         elif is_chatlas_chat_client(client):
             get_state = get_chatlas_state(client)
