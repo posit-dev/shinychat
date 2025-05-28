@@ -1,11 +1,15 @@
 #' Add Shiny bookmarking for shinychat
 #'
 #' @description
-#' Adds hooks to the Shiny chat given the LLM client.
+#' Adds Shiny bookmarking hooks to save and restore the \pkg{ellmer} chat `client`.
 #'
 #' If either `bookmark_on_input` or `bookmark_on_response` is `TRUE`, the Shiny
 #' App's bookmark will be automatically updated without showing a modal to the
 #' user.
+#'
+#' Note: The chat UI is not saved within the bookmark and is only restored
+#' directly from the `client`'s messages. If any transient state (e.g. Shiny
+#' inputs and outputs) has been added to the chat UI, they will not be properly restored. Please add your own `session$onRestore()` (and possibly `session$onBookmark`) handler to restore any additional state.
 #'
 #' @param id The ID of the chat element
 #' @param client The \pkg{ellmer} LLM chat client.
