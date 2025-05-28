@@ -1,1 +1,3 @@
 src/shinychat/__version.py
+
+__pycache__/
