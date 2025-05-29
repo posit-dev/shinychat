@@ -48,9 +48,7 @@ jobs:
           working-directory: pkg-r
 
       - name: Build site
-        run: pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)
-        shell: Rscript {0}
-        working-directory: pkg-r
+        run: make r-docs
 
       - name: Deploy to GitHub pages 🚀
         if: github.event_name != 'pull_request'
