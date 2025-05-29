@@ -4,6 +4,8 @@
 .Ruserdata
 .Renviron
 .venv
-docs
+docs/r
+docs/py
 _dev
 uv.lock
+.coverage
