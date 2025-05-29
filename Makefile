@@ -20,12 +20,11 @@ install-quarto:
 
 
 .PHONY: docs
-docs:  ## [docs] Build the documentation
-	${QUARTO_PATH} render docs
+docs: r-docs-render py-docs-render ## [docs] Build the documentation
 
 .PHONY: docs-preview
 docs-preview:  ## [docs] Preview the documentation
-	${QUARTO_PATH} preview docs
+	@npx http-server docs -p 8080
 
 .PHONY: js-setup
 js-setup:  ## [js] Install JS dependencies
