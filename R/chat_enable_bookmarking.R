@@ -7,9 +7,11 @@
 #' App's bookmark will be automatically updated without showing a modal to the
 #' user.
 #'
-#' Note: Only the `client`'s chat state is saved/restored in the bookmark. If the `client`'s state 
-#' doesn't properly capture the chat's UI (i.e., a transformation is applied in-between receiving and displaying
-#' the message), then you may need to implement your own `session$onRestore()` (and possibly `session$onBookmark`) handler to restore any additional state.
+#' Note: Only the `client`'s chat state is saved/restored in the bookmark. If
+#' the `client`'s state doesn't properly capture the chat's UI (i.e., a
+#' transformation is applied in-between receiving and displaying the message),
+#' then you may need to implement your own `session$onRestore()` (and possibly
+#' `session$onBookmark`) handler to restore any additional state.
 #'
 #' @param id The ID of the chat element
 #' @param client The \pkg{ellmer} LLM chat client.

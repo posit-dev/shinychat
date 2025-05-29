@@ -36,9 +36,11 @@ If either \code{bookmark_on_input} or \code{bookmark_on_response} is \code{TRUE}
 App's bookmark will be automatically updated without showing a modal to the
 user.
 
-Note: The chat UI is not saved within the bookmark and is only restored
-directly from the \code{client}'s messages. If any transient state (e.g. Shiny
-inputs and outputs) has been added to the chat UI, they will not be properly restored. Please add your own \code{session$onRestore()} (and possibly \code{session$onBookmark}) handler to restore any additional state.
+Note: Only the \code{client}'s chat state is saved/restored in the bookmark. If
+the \code{client}'s state doesn't properly capture the chat's UI (i.e., a
+transformation is applied in-between receiving and displaying the message),
+then you may need to implement your own \code{session$onRestore()} (and possibly
+\code{session$onBookmark}) handler to restore any additional state.
 }
 \examples{
 \dontshow{if (interactive()) (if (getRversion() >= "3.4") withAutoprint else force)(\{ # examplesIf}
