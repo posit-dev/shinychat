@@ -10,9 +10,9 @@ on:
 name: quartodoc.yaml
 
 env:
-  UV_VERSION: "0.4.x"
+  UV_VERSION: "0.7.x"
   PYTHON_VERSION: 3.13
-  QUARTO_VERSION: 1.6.42
+  QUARTO_VERSION: 1.7.31
 
 jobs:
   docs-publish:
@@ -30,7 +30,7 @@ jobs:
         version: ${{ env.QUARTO_VERSION }}
 
     - name: 🚀 Install uv
-      uses: astral-sh/setup-uv@v3
+      uses: astral-sh/setup-uv@v6.1.0
       with:
         version: ${{ env.UV_VERSION }}
 

@@ -15,8 +15,8 @@ install-quarto:
 	qvm install v${QUARTO_VERSION}
 	@echo "🔹 Updating .vscode/settings.json"
 	@awk -v path="${QUARTO_PATH}" '/"quarto.path":/ {gsub(/"quarto.path": ".*"/, "\"quarto.path\": \"" path "\"")} 1' .vscode/settings.json > .vscode/settings.json.tmp && mv .vscode/settings.json.tmp .vscode/settings.json
-	@#echo "🔹 Updating .github/workflows/docs-publish.yml"
-	@#awk -v ver="${QUARTO_VERSION}" '/QUARTO_VERSION:/ {gsub(/QUARTO_VERSION: .*/, "QUARTO_VERSION: " ver)} 1' .github/workflows/docs-publish.yml > .github/workflows/docs-publish.yml.tmp && mv .github/workflows/docs-publish.yml.tmp .github/workflows/docs-publish.yml
+	@echo "🔹 Updating .github/workflows/quartodoc.yaml"
+	@awk -v ver="${QUARTO_VERSION}" '/QUARTO_VERSION:/ {gsub(/QUARTO_VERSION: .*/, "QUARTO_VERSION: " ver)} 1' .github/workflows/quartodoc.yaml > .github/workflows/quartodoc.yaml.tmp && mv .github/workflows/quartodoc.yaml.tmp .github/workflows/quartodoc.yaml
 
 
 .PHONY: docs
