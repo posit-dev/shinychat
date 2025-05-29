@@ -94,6 +94,16 @@ r-update-dist: ## [r] Update shinychat web assets
 	cp -r $(PATH_PKG_JS)/dist/markdown-stream $(PATH_PKG_R)/inst/lib/shiny/
 	(git rev-parse HEAD) > "$(PATH_PKG_R)/inst/lib/shiny/GIT_VERSION"
 
+.PHONY: r-docs
+r-docs: ## [r] Build R docs
+	@echo "📖 Rendering R docs with pkgdown"
+	cd $(PATH_PKG_R) && Rscript -e "pkgdown::build_site()"
+
+.PHONY: r-docs-preview
+r-docs-preview: ## [r] Build R docs
+	@echo "📖 Rendering R docs with pkgdown"
+	cd $(PATH_PKG_R) && Rscript -e "pkgdown::preview_site()"
+
 .PHONY: py-setup
 py-setup:  ## [py] Setup python environment
 	uv sync --all-extras
@@ -149,23 +159,38 @@ py-update-snaps:  ## [py] Update python test snapshots
 	uv run pytest --snapshot-update
 
 .PHONY: py-docs
-py-docs:  ## [py] Generate python docs
-	@echo "📖 Generating python docs with quartodoc"
-	@$(eval export IN_QUARTODOC=true)
-	cd docs && uv run quartodoc build
-	cd docs && uv run quartodoc interlinks
+py-docs: py-docs-api py-docs-render ## [py] Build python docs
 
-.PHONY: py-docs-watch
-py-docs-watch:  ## [py] Generate python docs
+.PHONY: py-docs-render
+py-docs-render:  ## [py] Render python docs
+	@echo "📖 Rendering python docs with quarto"
+	@$(eval export IN_QUARTODOC=true)
+	${QUARTO_PATH} render pkg-py/docs
+
+.PHONY: py-docs-preview
+py-docs-preview:  ## [py] Preview python docs
+	@echo "📖 Rendering python docs with quarto"
+	@$(eval export IN_QUARTODOC=true)
+	${QUARTO_PATH} preview pkg-py/docs
+
+.PHONY: py-docs-api
+py-docs-api:  ## [py] Update python API docs
 	@echo "📖 Generating python docs with quartodoc"
 	@$(eval export IN_QUARTODOC=true)
-	uv run quartodoc build --config docs/_quarto.yml --watch
+	cd pkg-py/docs && uv run quartodoc build
+	cd pkg-py/docs && uv run quartodoc interlinks
+
+.PHONY: py-docs-api-watch
+py-docs-api-watch:  ## [py] Update python docs
+	@echo "📖 Generating python docs with quartodoc"
+	@$(eval export IN_QUARTODOC=true)
+	uv run quartodoc build --config pkg-py/docs/_quarto.yml --watch
 
 .PHONY: py-docs-clean
 py-docs-clean:   ## [py] Clean python docs
 	@echo "🧹 Cleaning python docs"
-	find docs/pkg/py -name '*.qmd' ! -name 'index.qmd' -delete
-	find docs/pkg/py -name '*.quarto_ipynb' -delete
+	rm -r pkg-py/docs/api
+	find pkg-py/docs/py -name '*.quarto_ipynb' -delete
 
 .PHONY: py-build
 py-build:   ## [py] Build python package

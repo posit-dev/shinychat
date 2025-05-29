@@ -35,6 +35,7 @@ providers = [
 
 [tool.uv]
 dev-dependencies = [
+    "coverage>=7.8.2",
     "faicons>=0.2.2",
     "ipyleaflet>=0.19.2",
     "pandas>=2.2.3",
@@ -43,7 +44,9 @@ dev-dependencies = [
     "pyright>=1.1.401",
     "pytest>=8.3.5",
     "pytest-playwright>=0.7.0",
+    "quartodoc>=0.10.0",
     "ruff>=0.6.5",
+    "shinylive>=0.8.3",
     "shinywidgets>=0.6.2",
     "tox-uv>=1",
 ]
