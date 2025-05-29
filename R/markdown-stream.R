@@ -145,6 +145,8 @@ markdown_stream <- function(
   operation <- match.arg(operation)
 
   result <- markdown_stream_impl(id, stream, operation, session)
+  result <- chat_update_bookmark(id, result, session = session)
+
   # Handle erroneous result...
   promises::catch(result, function(reason) {
     shiny::showNotification(
