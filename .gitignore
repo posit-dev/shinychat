@@ -3,5 +3,9 @@
 .RData
 .Ruserdata
 .Renviron
-docs
+.venv
+docs/r
+docs/py
 _dev
+uv.lock
+.coverage
