@@ -1,6 +1,8 @@
 {
     "recommendations": [
         "Posit.air-vscode",
-        "dbaeumer.vscode-eslint"
+        "dbaeumer.vscode-eslint",
+        "charliermarsh.ruff",
+        "esbenp.prettier-vscode"
     ]
 }
