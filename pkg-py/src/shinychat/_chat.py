@@ -71,24 +71,6 @@ __all__ = (
 
 # TODO: UserInput might need to be a list of dicts if we want to support multiple
 # user input content types
-TransformUserInput = Callable[[str], Union[str, None]]
-TransformUserInputAsync = Callable[[str], Awaitable[Union[str, None]]]
-TransformAssistantResponse = Callable[[str], Union[str, HTML, None]]
-TransformAssistantResponseAsync = Callable[
-    [str], Awaitable[Union[str, HTML, None]]
-]
-TransformAssistantResponseChunk = Callable[
-    [str, str, bool], Union[str, HTML, None]
-]
-TransformAssistantResponseChunkAsync = Callable[
-    [str, str, bool], Awaitable[Union[str, HTML, None]]
-]
-TransformAssistantResponseFunction = Union[
-    TransformAssistantResponse,
-    TransformAssistantResponseAsync,
-    TransformAssistantResponseChunk,
-    TransformAssistantResponseChunkAsync,
-]
 UserSubmitFunction0 = Union[
     Callable[[], None],
     Callable[[], Awaitable[None]],
@@ -160,22 +142,6 @@ class Chat:
     id
         A unique identifier for the chat session. In Shiny Core, make sure this id
         matches a corresponding :func:`~shiny.ui.chat_ui` call in the UI.
-    messages
-        A sequence of messages to display in the chat. A given message can be one of the
-        following:
-
-        * A string, which is interpreted as markdown and rendered to HTML on the client.
-            * To prevent interpreting as markdown, mark the string as
-              :class:`~shiny.ui.HTML`.
-        * A UI element (specifically, a :class:`~shiny.ui.TagChild`).
-            * This includes :class:`~shiny.ui.TagList`, which take UI elements
-              (including strings) as children. In this case, strings are still
-              interpreted as markdown as long as they're not inside HTML.
-        * A dictionary with `content` and `role` keys. The `content` key can contain a
-          content as described above, and the `role` key can be "assistant" or "user".
-
-        **NOTE:** content may include specially formatted **input suggestion** links
-        (see `.append_message()` for more information).
     on_error
         How to handle errors that occur in response to user input. When `"unhandled"`,
         the app will stop running when an error occurs. Otherwise, a notification
@@ -186,12 +152,6 @@ class Chat:
         * `"actual"`: Display the actual error message to the user.
         * `"sanitize"`: Sanitize the error message before displaying it to the user.
         * `"unhandled"`: Do not display any error message to the user.
-    tokenizer
-        The tokenizer to use for calculating token counts, which is required to impose
-        `token_limits` in `.messages()`. If not provided, a default generic tokenizer
-        is attempted to be loaded from the tokenizers library. A specific tokenizer
-        may also be provided by following the `TokenEncoding` (tiktoken or tozenizers)
-        protocol (e.g., `tiktoken.encoding_for_model("gpt-4o")`).
     """
 
     def __init__(
@@ -353,11 +313,12 @@ class Chat:
         """
         Reactively read chat messages
 
+        Obtain chat messages that have been appended after initial load.
+
         Note
         ----
-        Messages are listed in the order they were added. As a result, when this method
-        is called in a `.on_user_submit()` callback (as it most often is), the last
-        message will be the most recent one submitted by the user.
+        Startup messages (i.e., those passed to the `.ui()` method) are not included in the
+        return value. Also, this method must be called in a reactive context, and will invl
 
         Returns
         -------
