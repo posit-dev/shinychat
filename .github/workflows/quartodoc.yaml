@@ -47,7 +47,9 @@ jobs:
         echo "VIRTUAL_ENV=$VIRTUAL_ENV" >> $GITHUB_ENV
 
     - name: 🏭 Update Python docs
-      run: make py-docs
+      run: |
+        make py-docs-api
+        quarto render pkg-py/docs
 
     - name: 🚢 Deploy to GitHub pages
       if: github.event_name != 'pull_request'
