@@ -7,13 +7,13 @@ on:
       - 'pkg-r/man'
       - 'pkg-r/vignettes'
       - 'pkg-r/pkgdown'
-      - '.github/workflows/R-CMD-check.yaml'
+      - '.github/workflows/pkgdown.yaml'
   pull_request:
     paths:
       - 'pkg-r/man'
       - 'pkg-r/vignettes'
       - 'pkg-r/pkgdown'
-      - '.github/workflows/R-CMD-check.yaml'
+      - '.github/workflows/pkgdown.yaml'
   release:
     types: [published]
   workflow_dispatch:
