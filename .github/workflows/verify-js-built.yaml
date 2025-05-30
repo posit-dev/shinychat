@@ -1,9 +1,15 @@
-name: Verify built assets
+name: verify-js-built.yaml
 
 on:
   push:
     branches: ["main", "rc-*"]
+    paths:
+      - "js/**/*"
+      - .github/workflows/verify-js-built.yaml
   pull_request:
+    paths:
+      - "js/**/*"
+      - .github/workflows/verify-js-built.yaml
 
 jobs:
   verify_js_built:
