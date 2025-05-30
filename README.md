@@ -1,4 +1,4 @@
-# shinychat <a href="https://posit-dev.github.io/shinychat/"><img src="pkg-r/man/figures/logo.png" align="right" height="138" alt="shinychat website" /></a>
+# shinychat <a href="https://posit-dev.github.io/shinychat/"><img src="pkg-r/man/figures/logo.svg" align="right" height="138" alt="shinychat website" /></a>
 
 <!-- badges: start -->
 [![R-CMD-check](https://github.com/posit-dev/shinychat/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/posit-dev/shinychat/actions/workflows/R-CMD-check.yaml)
