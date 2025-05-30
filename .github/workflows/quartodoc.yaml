@@ -9,7 +9,9 @@ on:
 
 name: quartodoc.yaml
 
-permissions: read-all
+permissions:
+  contents: write
+
 env:
   UV_VERSION: "0.7.x"
   PYTHON_VERSION: 3.13

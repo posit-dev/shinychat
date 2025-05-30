@@ -20,7 +20,8 @@ on:
 
 name: pkgdown.yaml
 
-permissions: read-all
+permissions:
+  contents: write
 
 jobs:
   pkgdown:
