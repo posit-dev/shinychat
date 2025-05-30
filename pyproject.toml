@@ -7,7 +7,7 @@ license = { text = "MIT" }
 dependencies = [
     "htmltools>=0.6.0",
     "shiny>=1.4.0",
-    "playwright>=1.52.0",
+    "playwright>=1.43.0",
 ]
 dynamic = ["version"]
 authors = [
@@ -25,32 +25,32 @@ Changelog = "https://github.com/posit-dev/shinychat/blob/main/pkg-py/CHANGELOG.m
 
 [project.optional-dependencies]
 providers = [
-    "anthropic>=0.52.0",
-    "chatlas>=0.7.1",
-    "google-generativeai>=0.8.5",
-    "langchain-core>=0.3.61",
-    "ollama>=0.4.8",
-    "openai>=1.82.0",
-    "tokenizers>=0.21.1",
+    "anthropic",
+    "chatlas>=0.6.1",
+    "google-generativeai;python_version>='3.9'",
+    "langchain-core",
+    "ollama",
+    "openai",
+    "tokenizers",
 ]
 test = [
     "coverage>=7.8.2",
-    "pyright>=1.1.401",
-    "pytest>=8.3.5",
-    "pytest-playwright>=0.7.0",
+    "faicons",
+    "ipyleaflet",
+    "pandas",
+    "plotly",
+    "pyright>=1.1.398",
+    "pytest>=6.2.4",
+    "pytest-playwright>=0.3.0",
+    "shinylive",
+    "shinywidgets",
     "tox-uv>=1",
 ]
 
 [tool.uv]
 dev-dependencies = [
-    "faicons>=0.2.2",
-    "ipyleaflet>=0.19.2",
-    "pandas>=2.2.3",
-    "plotly>=6.1.1",
     "quartodoc>=0.10.0",
     "ruff>=0.6.5",
-    "shinylive>=0.8.3",
-    "shinywidgets>=0.6.2",
 ]
 upgrade-package = ["shinychat"]
 
