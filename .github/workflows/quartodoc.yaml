@@ -4,6 +4,7 @@ on:
       - main
     paths:
       - "docs/**/*"
+      - "pkg-py/**/*"
       - .github/workflows/quartodoc.yaml
   workflow_dispatch:
 

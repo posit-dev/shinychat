@@ -3,3 +3,7 @@
 /_inv
 *.quarto_ipynb
 objects.txt
+
+# Ignore quartodoc artifacts, these are built in CI
+_sidebar-python.yml
+api
