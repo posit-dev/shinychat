@@ -14,8 +14,8 @@ Description: Provides a scrolling chat interface with multiline input,
     (LLMs). Designed to work particularly well with the 'ellmer' R package
     for calling LLMs.
 License: MIT + file LICENSE
-URL: https://github.com/posit-dev/shinychat,
-    https://posit-dev.github.io/shinychat/
+URL: https://posit-dev.github.io/shinychat/r/,
+    https://github.com/posit-dev/shinychat
 BugReports: https://github.com/posit-dev/shinychat/issues
 Imports:
     bslib,
