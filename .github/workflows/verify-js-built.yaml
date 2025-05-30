@@ -1,0 +1,45 @@
+name: Verify built assets
+
+on:
+  push:
+    branches: ["main", "rc-*"]
+  pull_request:
+
+jobs:
+  verify_js_built:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔎 Extract node version from .nvmrc
+        id: nvm
+        working-directory: js
+        run: |
+          echo "version=$(cat .nvmrc)" >> $GITHUB_OUTPUT
+
+      - name: 🟡 Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "${{ steps.nvm.outputs.version }}"
+
+      - name: 🆙 Install dependencies
+        run: make js-setup-ci
+        env:
+          NODE_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
+
+      - name: 🏭 Build
+        run: make js-build
+
+      - name: 🧐 Check for uncommitted changes
+        run: |
+          if [[ `git status --porcelain` ]]; then
+            git diff
+            echo "Uncommitted changes found. Please commit any changes that result from 'npm ci && npm run build'."
+            exit 1
+          else
+            echo "No uncommitted changes found."
+          fi
+        working-directory: js

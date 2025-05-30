@@ -31,6 +31,11 @@ js-setup:  ## [js] Install JS dependencies
 	@echo "🆙 Setup JS dependencies"
 	cd $(PATH_PKG_JS) && npm install
 
+.PHONY: js-setup-ci
+js-setup-ci:  ## [js] Install JS dependencies as CI
+	@echo "🆙 Setup JS dependencies"
+	cd $(PATH_PKG_JS) && npm ci
+
 .PHONY: js-lint
 js-lint:  ## [js] Lint JS code
 	@echo "📐 Linting JS code"
