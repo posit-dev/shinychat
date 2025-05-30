@@ -1098,7 +1098,7 @@ class ChatExpress(Chat):
     def ui(
         self,
         *,
-        messages: Optional[Sequence[str | ChatMessageDict]] = None,
+        messages: Optional[Sequence[TagChild | ChatMessageDict]] = None,
         placeholder: str = "Enter a message...",
         width: CssUnit = "min(680px, 100%)",
         height: CssUnit = "auto",

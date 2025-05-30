@@ -19,11 +19,11 @@ welcome = ui.TagList(
     ),
 )
 
-chat = Chat(
-    id="chat",
+chat = Chat(id="chat")
+chat.ui(
+    class_="mb-5",
     messages=[welcome],
 )
-chat.ui(class_="mb-5")
 
 
 @reactive.effect
