@@ -1,0 +1,1410 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.7.31">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>chat – shinychat</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dbde6ece91fc58bf30abbd8587d2285d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-525f837b9012dba0b48413feacb2d7c0.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<meta property="og:title" content="shinychat">
+<meta property="og:description" content="Chat UI Component for Shiny">
+<meta property="og:site_name" content="shinychat">
+<meta name="twitter:title" content="shinychat">
+<meta name="twitter:description" content="Chat UI Component for Shiny">
+<meta name="twitter:card" content="summary">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">shinychat</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../index.html"> 
+<span class="menu-text">Get Started</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link active" href="../api/index.html" aria-current="page"> 
+<span class="menu-text">API Reference</span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+    <div class="dropdown">
+      <a href="" title="" id="quarto-navigation-tool-dropdown-0" class="quarto-navigation-tool dropdown-toggle px-1" data-bs-toggle="dropdown" aria-expanded="false" role="link" aria-label=""><i class="bi bi-github"></i></a>
+      <ul class="dropdown-menu" aria-labelledby="quarto-navigation-tool-dropdown-0">
+          <li>
+            <a class="dropdown-item quarto-navbar-tools-item" href="https://github.com/posit-dev/shinychat/pkg-py">
+            Source code
+            </a>
+          </li>
+          <li>
+            <a class="dropdown-item quarto-navbar-tools-item" href="https://github.com/posit-dev/shinychat/issues/new">
+            Report a bug
+            </a>
+          </li>
+      </ul>
+    </div>
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../api/Chat.html">Shiny Core</a></li><li class="breadcrumb-item"><a href="../api/Chat.html">Chat</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../api/index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">shinychat Reference</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">Shiny Core</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../api/Chat.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Chat</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../api/chat_ui.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">chat_ui</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">Shiny Express</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../api/express.Chat.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">express.Chat</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true">
+ <span class="menu-text">Testing</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../api/playwright.ChatController.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">playwright.ChatController</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#shinychat.Chat" id="toc-shinychat.Chat" class="nav-link active" data-scroll-target="#shinychat.Chat">Chat</a>
+  <ul class="collapse">
+  <li><a href="#parameters" id="toc-parameters" class="nav-link" data-scroll-target="#parameters">Parameters</a></li>
+  <li><a href="#attributes" id="toc-attributes" class="nav-link" data-scroll-target="#attributes">Attributes</a></li>
+  <li><a href="#methods" id="toc-methods" class="nav-link" data-scroll-target="#methods">Methods</a>
+  <ul class="collapse">
+  <li><a href="#shinychat.Chat.append_message" id="toc-shinychat.Chat.append_message" class="nav-link" data-scroll-target="#shinychat.Chat.append_message">append_message</a></li>
+  <li><a href="#shinychat.Chat.append_message_stream" id="toc-shinychat.Chat.append_message_stream" class="nav-link" data-scroll-target="#shinychat.Chat.append_message_stream">append_message_stream</a></li>
+  <li><a href="#shinychat.Chat.clear_messages" id="toc-shinychat.Chat.clear_messages" class="nav-link" data-scroll-target="#shinychat.Chat.clear_messages">clear_messages</a></li>
+  <li><a href="#shinychat.Chat.destroy" id="toc-shinychat.Chat.destroy" class="nav-link" data-scroll-target="#shinychat.Chat.destroy">destroy</a></li>
+  <li><a href="#shinychat.Chat.enable_bookmarking" id="toc-shinychat.Chat.enable_bookmarking" class="nav-link" data-scroll-target="#shinychat.Chat.enable_bookmarking">enable_bookmarking</a></li>
+  <li><a href="#shinychat.Chat.message_stream_context" id="toc-shinychat.Chat.message_stream_context" class="nav-link" data-scroll-target="#shinychat.Chat.message_stream_context">message_stream_context</a></li>
+  <li><a href="#shinychat.Chat.messages" id="toc-shinychat.Chat.messages" class="nav-link" data-scroll-target="#shinychat.Chat.messages">messages</a></li>
+  <li><a href="#shinychat.Chat.on_user_submit" id="toc-shinychat.Chat.on_user_submit" class="nav-link" data-scroll-target="#shinychat.Chat.on_user_submit">on_user_submit</a></li>
+  <li><a href="#shinychat.Chat.set_user_message" id="toc-shinychat.Chat.set_user_message" class="nav-link" data-scroll-target="#shinychat.Chat.set_user_message">set_user_message</a></li>
+  <li><a href="#shinychat.Chat.transform_assistant_response" id="toc-shinychat.Chat.transform_assistant_response" class="nav-link" data-scroll-target="#shinychat.Chat.transform_assistant_response">transform_assistant_response</a></li>
+  <li><a href="#shinychat.Chat.transform_user_input" id="toc-shinychat.Chat.transform_user_input" class="nav-link" data-scroll-target="#shinychat.Chat.transform_user_input">transform_user_input</a></li>
+  <li><a href="#shinychat.Chat.update_user_input" id="toc-shinychat.Chat.update_user_input" class="nav-link" data-scroll-target="#shinychat.Chat.update_user_input">update_user_input</a></li>
+  <li><a href="#shinychat.Chat.user_input" id="toc-shinychat.Chat.user_input" class="nav-link" data-scroll-target="#shinychat.Chat.user_input">user_input</a></li>
+  </ul></li>
+  </ul></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/shinychat/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li><li><a href="https://github.com/posit-dev/shinychat/edit/main/pkg-py/docs/api/Chat.qmd" class="toc-action"><i class="bi empty"></i>Edit this page</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../api/Chat.html">Shiny Core</a></li><li class="breadcrumb-item"><a href="../api/Chat.html">Chat</a></li></ol></nav></header>
+
+
+
+
+<section id="shinychat.Chat" class="level1">
+<h1>Chat</h1>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>Chat(<span class="bu">id</span>, <span class="op">*</span>, messages<span class="op">=</span>(), on_error<span class="op">=</span><span class="st">'auto'</span>, tokenizer<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Create a chat interface.</p>
+<p>A UI component for building conversational interfaces. With it, end users can submit messages, which will cause a <code>.on_user_submit()</code> callback to run. That callback gets passed the user input message, which can be used to generate a response. The response can then be appended to the chat using <code>.append_message()</code> or <code>.append_message_stream()</code>.</p>
+<p>Here’s a rough outline for how to implement a <code>Chat</code>:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shiny.express <span class="im">import</span> ui</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Create and display chat instance</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>chat <span class="op">=</span> ui.Chat(<span class="bu">id</span><span class="op">=</span><span class="st">"my_chat"</span>)</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>chat.ui()</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Define a callback to run when the user submits a message</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="at">@chat.on_user_submit</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> handle_user_input(user_input: <span class="bu">str</span>):</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Create a response message stream</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    response <span class="op">=</span> <span class="cf">await</span> my_model.generate_response(user_input, stream<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Append the response into the chat</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.append_message_stream(response)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>In the outline above, <code>my_model.generate_response()</code> is a placeholder for the function that generates a response based on the chat’s messages. This function will look different depending on the model you’re using, but it will generally involve passing the messages to the model and getting a response back. Also, you’ll typically have a choice to <code>stream=True</code> the response generation, and in that case, you’ll use <code>.append_message_stream()</code> instead of <code>.append_message()</code> to append the response to the chat. Streaming is preferrable when available since it allows for more responsive and scalable chat interfaces.</p>
+<p>It is also highly recommended to use a package like <a href="https://posit-dev.github.io/chatlas/">chatlas</a> to generate responses, especially when responses should be aware of the chat history, support tool calls, etc. See this <a href="https://posit-dev.github.io/chatlas/web-apps.html">article</a> to learn more.</p>
+<section id="parameters" class="level2 doc-section doc-section-parameters">
+<h2 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>id</td>
+<td><a href="`str`">str</a></td>
+<td>A unique identifier for the chat session. In Shiny Core, make sure this id matches a corresponding :func:<code>~shiny.ui.chat_ui</code> call in the UI.</td>
+<td><em>required</em></td>
+</tr>
+<tr class="even">
+<td>messages</td>
+<td><a href="`typing.Sequence`">Sequence</a>[<a href="`typing.Any`">Any</a>]</td>
+<td>A sequence of messages to display in the chat. A given message can be one of the following: * A string, which is interpreted as markdown and rendered to HTML on the client. * To prevent interpreting as markdown, mark the string as :class:<code>~shiny.ui.HTML</code>. * A UI element (specifically, a :class:<code>~shiny.ui.TagChild</code>). * This includes :class:<code>~shiny.ui.TagList</code>, which take UI elements (including strings) as children. In this case, strings are still interpreted as markdown as long as they’re not inside HTML. * A dictionary with <code>content</code> and <code>role</code> keys. The <code>content</code> key can contain a content as described above, and the <code>role</code> key can be “assistant” or “user”. <strong>NOTE:</strong> content may include specially formatted <strong>input suggestion</strong> links (see <code>.append_message()</code> for more information).</td>
+<td><code>()</code></td>
+</tr>
+<tr class="odd">
+<td>on_error</td>
+<td><a href="`typing.Literal`">Literal</a>['auto', 'actual', 'sanitize', 'unhandled']</td>
+<td>How to handle errors that occur in response to user input. When <code>"unhandled"</code>, the app will stop running when an error occurs. Otherwise, a notification is displayed to the user and the app continues to run. * <code>"auto"</code>: Sanitize the error message if the app is set to sanitize errors, otherwise display the actual error message. * <code>"actual"</code>: Display the actual error message to the user. * <code>"sanitize"</code>: Sanitize the error message before displaying it to the user. * <code>"unhandled"</code>: Do not display any error message to the user.</td>
+<td><code>'auto'</code></td>
+</tr>
+<tr class="even">
+<td>tokenizer</td>
+<td><a href="`shinychat._chat_tokenizer.TokenEncoding`">TokenEncoding</a> | None</td>
+<td>The tokenizer to use for calculating token counts, which is required to impose <code>token_limits</code> in <code>.messages()</code>. If not provided, a default generic tokenizer is attempted to be loaded from the tokenizers library. A specific tokenizer may also be provided by following the <code>TokenEncoding</code> (tiktoken or tozenizers) protocol (e.g., <code>tiktoken.encoding_for_model("gpt-4o")</code>).</td>
+<td><code>None</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="attributes" class="level2">
+<h2 class="anchored" data-anchor-id="attributes">Attributes</h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><a href="#shinychat.Chat.latest_message_stream">latest_message_stream</a></td>
+<td>React to changes in the latest message stream.</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="methods" class="level2">
+<h2 class="anchored" data-anchor-id="methods">Methods</h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><a href="#shinychat.Chat.append_message">append_message</a></td>
+<td>Append a message to the chat.</td>
+</tr>
+<tr class="even">
+<td><a href="#shinychat.Chat.append_message_stream">append_message_stream</a></td>
+<td>Append a message as a stream of message chunks.</td>
+</tr>
+<tr class="odd">
+<td><a href="#shinychat.Chat.clear_messages">clear_messages</a></td>
+<td>Clear all chat messages.</td>
+</tr>
+<tr class="even">
+<td><a href="#shinychat.Chat.destroy">destroy</a></td>
+<td>Destroy the chat instance.</td>
+</tr>
+<tr class="odd">
+<td><a href="#shinychat.Chat.enable_bookmarking">enable_bookmarking</a></td>
+<td>Enable bookmarking for the chat instance.</td>
+</tr>
+<tr class="even">
+<td><a href="#shinychat.Chat.message_stream_context">message_stream_context</a></td>
+<td>Message stream context manager.</td>
+</tr>
+<tr class="odd">
+<td><a href="#shinychat.Chat.messages">messages</a></td>
+<td>Reactively read chat messages</td>
+</tr>
+<tr class="even">
+<td><a href="#shinychat.Chat.on_user_submit">on_user_submit</a></td>
+<td>Define a function to invoke when user input is submitted.</td>
+</tr>
+<tr class="odd">
+<td><a href="#shinychat.Chat.set_user_message">set_user_message</a></td>
+<td>Deprecated. Use <code>update_user_input(value=value)</code> instead.</td>
+</tr>
+<tr class="even">
+<td><a href="#shinychat.Chat.transform_assistant_response">transform_assistant_response</a></td>
+<td>Transform assistant responses.</td>
+</tr>
+<tr class="odd">
+<td><a href="#shinychat.Chat.transform_user_input">transform_user_input</a></td>
+<td>Transform user input.</td>
+</tr>
+<tr class="even">
+<td><a href="#shinychat.Chat.update_user_input">update_user_input</a></td>
+<td>Update the user input.</td>
+</tr>
+<tr class="odd">
+<td><a href="#shinychat.Chat.user_input">user_input</a></td>
+<td>Reactively read the user’s message.</td>
+</tr>
+</tbody>
+</table>
+<section id="shinychat.Chat.append_message" class="level3">
+<h3 class="anchored" data-anchor-id="shinychat.Chat.append_message">append_message</h3>
+<div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>Chat.append_message(message, <span class="op">*</span>, icon<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Append a message to the chat.</p>
+<section id="parameters-1" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-1">Parameters</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>message</td>
+<td><a href="`typing.Any`">Any</a></td>
+<td>A given message can be one of the following: * A string, which is interpreted as markdown and rendered to HTML on the client. * To prevent interpreting as markdown, mark the string as :class:<code>~shiny.ui.HTML</code>. * A UI element (specifically, a :class:<code>~shiny.ui.TagChild</code>). * This includes :class:<code>~shiny.ui.TagList</code>, which take UI elements (including strings) as children. In this case, strings are still interpreted as markdown as long as they’re not inside HTML. * A dictionary with <code>content</code> and <code>role</code> keys. The <code>content</code> key can contain content as described above, and the <code>role</code> key can be “assistant” or “user”. <strong>NOTE:</strong> content may include specially formatted <strong>input suggestion</strong> links (see note below).</td>
+<td><em>required</em></td>
+</tr>
+<tr class="even">
+<td>icon</td>
+<td><a href="`htmltools.HTML`">HTML</a> | <a href="`htmltools.Tag`">Tag</a> | <a href="`htmltools.TagList`">TagList</a> | None</td>
+<td>An optional icon to display next to the message, currently only used for assistant messages. The icon can be any HTML element (e.g., an :func:<code>~shiny.ui.img</code> tag) or a string of HTML.</td>
+<td><code>None</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="note" class="level4 doc-section doc-section-note">
+<h4 class="doc-section doc-section-note anchored" data-anchor-id="note">Note</h4>
+<div class="callout callout-style-default callout-note callout-titled" title="Input suggestions">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Input suggestions
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Input suggestions are special links that send text to the user input box when clicked (or accessed via keyboard). They can be created in the following ways:</p>
+<ul>
+<li><code>&lt;span class='suggestion'&gt;Suggestion text&lt;/span&gt;</code>: An inline text link that places ‘Suggestion text’ in the user input box when clicked.</li>
+<li><code>&lt;img data-suggestion='Suggestion text' src='image.jpg'&gt;</code>: An image link with the same functionality as above.</li>
+<li><code>&lt;span data-suggestion='Suggestion text'&gt;Actual text&lt;/span&gt;</code>: An inline text link that places ‘Suggestion text’ in the user input box when clicked.</li>
+</ul>
+<p>A suggestion can also be submitted automatically by doing one of the following:</p>
+<ul>
+<li>Adding a <code>submit</code> CSS class or a <code>data-suggestion-submit="true"</code> attribute to the suggestion element.</li>
+<li>Holding the <code>Ctrl/Cmd</code> key while clicking the suggestion link.</li>
+</ul>
+<p>Note that a user may also opt-out of submitting a suggestion by holding the <code>Alt/Option</code> key while clicking the suggestion link.</p>
+</div>
+</div>
+<div class="callout callout-style-default callout-note callout-titled" title="Streamed messages">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Streamed messages
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Use <code>.append_message_stream()</code> instead of this method when <code>stream=True</code> (or similar) is specified in model’s completion method.</p>
+</div>
+</div>
+</section>
+</section>
+<section id="shinychat.Chat.append_message_stream" class="level3">
+<h3 class="anchored" data-anchor-id="shinychat.Chat.append_message_stream">append_message_stream</h3>
+<div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>Chat.append_message_stream(message, <span class="op">*</span>, icon<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Append a message as a stream of message chunks.</p>
+<section id="parameters-2" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-2">Parameters</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>message</td>
+<td><a href="`typing.Iterable`">Iterable</a>[<a href="`typing.Any`">Any</a>] | <a href="`typing.AsyncIterable`">AsyncIterable</a>[<a href="`typing.Any`">Any</a>]</td>
+<td>An (async) iterable of message chunks. Each chunk can be one of the following: * A string, which is interpreted as markdown and rendered to HTML on the client. * To prevent interpreting as markdown, mark the string as :class:<code>~shiny.ui.HTML</code>. * A UI element (specifically, a :class:<code>~shiny.ui.TagChild</code>). * This includes :class:<code>~shiny.ui.TagList</code>, which take UI elements (including strings) as children. In this case, strings are still interpreted as markdown as long as they’re not inside HTML. * A dictionary with <code>content</code> and <code>role</code> keys. The <code>content</code> key can contain content as described above, and the <code>role</code> key can be “assistant” or “user”. <strong>NOTE:</strong> content may include specially formatted <strong>input suggestion</strong> links (see note below).</td>
+<td><em>required</em></td>
+</tr>
+<tr class="even">
+<td>icon</td>
+<td><a href="`htmltools.HTML`">HTML</a> | <a href="`htmltools.Tag`">Tag</a> | None</td>
+<td>An optional icon to display next to the message, currently only used for assistant messages. The icon can be any HTML element (e.g., an :func:<code>~shiny.ui.img</code> tag) or a string of HTML.</td>
+<td><code>None</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="note-1" class="level4 doc-section doc-section-note">
+<h4 class="doc-section doc-section-note anchored" data-anchor-id="note-1">Note</h4>
+<pre class="callout-note" title="Input suggestions"><code>Input suggestions are special links that send text to the user input box when
+clicked (or accessed via keyboard). They can be created in the following ways:
+
+* `&lt;span class='suggestion'&gt;Suggestion text&lt;/span&gt;`: An inline text link that
+    places 'Suggestion text' in the user input box when clicked.
+* `&lt;img data-suggestion='Suggestion text' src='image.jpg'&gt;`: An image link with
+    the same functionality as above.
+* `&lt;span data-suggestion='Suggestion text'&gt;Actual text&lt;/span&gt;`: An inline text
+    link that places 'Suggestion text' in the user input box when clicked.
+
+A suggestion can also be submitted automatically by doing one of the following:
+
+* Adding a `submit` CSS class or a `data-suggestion-submit="true"` attribute to
+  the suggestion element.
+* Holding the `Ctrl/Cmd` key while clicking the suggestion link.
+
+Note that a user may also opt-out of submitting a suggestion by holding the
+`Alt/Option` key while clicking the suggestion link.</code></pre>
+<pre class="callout-note" title="Streamed messages"><code>Use this method (over `.append_message()`) when `stream=True` (or similar) is
+specified in model's completion method.</code></pre>
+</section>
+<section id="returns" class="level4 doc-section doc-section-returns">
+<h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns">Returns</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 4%">
+<col style="width: 4%">
+<col style="width: 91%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td></td>
+<td>An extended task that represents the streaming task. The <code>.result()</code> method of the task can be called in a reactive context to get the final state of the stream.</td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="shinychat.Chat.clear_messages" class="level3">
+<h3 class="anchored" data-anchor-id="shinychat.Chat.clear_messages">clear_messages</h3>
+<div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>Chat.clear_messages()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Clear all chat messages.</p>
+</section>
+<section id="shinychat.Chat.destroy" class="level3">
+<h3 class="anchored" data-anchor-id="shinychat.Chat.destroy">destroy</h3>
+<div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>Chat.destroy()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Destroy the chat instance.</p>
+</section>
+<section id="shinychat.Chat.enable_bookmarking" class="level3">
+<h3 class="anchored" data-anchor-id="shinychat.Chat.enable_bookmarking">enable_bookmarking</h3>
+<div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>Chat.enable_bookmarking(client, <span class="op">/</span>, <span class="op">*</span>, bookmark_on<span class="op">=</span><span class="st">'response'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Enable bookmarking for the chat instance.</p>
+<p>This method registers <code>on_bookmark</code> and <code>on_restore</code> hooks on <code>session.bookmark</code> (:class:<code>shiny.bookmark.Bookmark</code>) to save/restore chat state on both the <code>Chat</code> and <code>client=</code> instances. In order for this method to actually work correctly, a <code>bookmark_store=</code> must be specified in <code>shiny.App()</code>.</p>
+<section id="parameters-3" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-3">Parameters</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>client</td>
+<td><a href="`shinychat._chat_bookmark.ClientWithState`">ClientWithState</a> | <a href="`chatlas`">chatlas</a>.<a href="`chatlas.Chat`">Chat</a>[<a href="`typing.Any`">Any</a>, <a href="`typing.Any`">Any</a>]</td>
+<td>The chat client instance to use for bookmarking. This can be a Chat model provider from <a href="https://posit-dev.github.io/chatlas/">chatlas</a>, or more generally, an instance following the <code>ClientWithState</code> protocol.</td>
+<td><em>required</em></td>
+</tr>
+<tr class="even">
+<td>bookmark_on</td>
+<td><a href="`typing.Optional`">Optional</a>[<a href="`typing.Literal`">Literal</a>['response']]</td>
+<td>The event to trigger the bookmarking on. Supported values include: - <code>"response"</code> (the default): a bookmark is triggered when the assistant is done responding. - <code>None</code>: no bookmark is triggered When this method triggers a bookmark, it also updates the URL query string to reflect the bookmarked state.</td>
+<td><code>'response'</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="raises" class="level4 doc-section doc-section-raises">
+<h4 class="doc-section doc-section-raises anchored" data-anchor-id="raises">Raises</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td><a href="`ValueError`">ValueError</a></td>
+<td>If the Shiny App does have bookmarking enabled.</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="returns-1" class="level4 doc-section doc-section-returns">
+<h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-1">Returns</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td><a href="`shinychat._chat_bookmark.CancelCallback`">CancelCallback</a></td>
+<td>A callback to cancel the bookmarking hooks.</td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="shinychat.Chat.message_stream_context" class="level3">
+<h3 class="anchored" data-anchor-id="shinychat.Chat.message_stream_context">message_stream_context</h3>
+<div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>Chat.message_stream_context()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<pre><code>    Message stream context manager.
+
+    A context manager for appending streaming messages into the chat. This context
+    manager can:
+
+    1. Be used in isolation to append a new streaming message to the chat.
+        * Compared to `.append_message_stream()` this method is more flexible but
+          isn't non-blocking by default (i.e., it doesn't launch an extended task).
+    2. Be nested within itself
+        * Nesting is primarily useful for making checkpoints to `.clear()` back
+          to (see the example below).
+    3. Be used from within a `.append_message_stream()`
+        * Useful for inserting additional content from another context into the
+          stream (e.g., see the note about tool calls below).</code></pre>
+<section id="yields" class="level4 doc-section doc-section---------yields">
+<h4 class="doc-section doc-section---------yields anchored" data-anchor-id="yields">Yields</h4>
+<pre><code>    :
+        A `MessageStream` class instance, which has a method for `.append()`ing
+        message content chunks to as well as way to `.clear()` the stream back to
+        it's initial state. Note that `.append()` supports the same message content
+        types as `.append_message()`.</code></pre>
+</section>
+<section id="example" class="level4 doc-section doc-section---------example">
+<h4 class="doc-section doc-section---------example anchored" data-anchor-id="example">Example</h4>
+<pre><code>    ```python
+    import asyncio
+
+    from shiny import reactive
+    from shiny.express import ui
+
+    chat = ui.Chat(id="my_chat")
+    chat.ui()
+
+
+    @reactive.effect
+    async def _():
+        async with chat.message_stream_context() as msg:
+            await msg.append("Starting stream...</code></pre>
+<p>Progress:“) async with chat.message_stream_context() as progress: for x in [0, 50, 100]: await progress.append(f” {x}%“) await asyncio.sleep(1) await progress.clear() await msg.clear() await msg.append(”Completed stream”) ```</p>
+</section>
+<section id="note-2" class="level4 doc-section doc-section---------note">
+<h4 class="doc-section doc-section---------note anchored" data-anchor-id="note-2">Note</h4>
+<pre><code>    A useful pattern for displaying tool calls in a chatbot is for the tool to
+    display using `.message_stream_context()` while the the response generation is
+    happening through `.append_message_stream()`. This allows the tool to display
+    things like progress updates (or other "ephemeral" content) and optionally
+    `.clear()` the stream back to it's initial state when ready to display the
+    "final" content.</code></pre>
+</section>
+</section>
+<section id="shinychat.Chat.messages" class="level3">
+<h3 class="anchored" data-anchor-id="shinychat.Chat.messages">messages</h3>
+<div class="sourceCode" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>Chat.messages(</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>    <span class="bu">format</span><span class="op">=</span>MISSING,</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>    token_limits<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>    transform_user<span class="op">=</span><span class="st">'all'</span>,</span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>    transform_assistant<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Reactively read chat messages</p>
+<p>Obtain chat messages within a reactive context. The default behavior is intended for passing messages along to a model for response generation where you typically want to:</p>
+<ol type="1">
+<li>Cap the number of tokens sent in a single request (i.e., <code>token_limits</code>).</li>
+<li>Apply user input transformations (i.e., <code>transform_user</code>), if any.</li>
+<li>Not apply assistant response transformations (i.e., <code>transform_assistant</code>) since these are predominantly for display purposes (i.e., the model shouldn’t concern itself with how the responses are displayed).</li>
+</ol>
+<section id="parameters-4" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-4">Parameters</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>format</td>
+<td><a href="`shiny.types.MISSING_TYPE`">MISSING_TYPE</a> | <a href="`shinychat._chat_provider_types.ProviderMessageFormat`">ProviderMessageFormat</a></td>
+<td>The message format to return. The default value of <code>MISSING</code> means chat messages are returned as :class:<code>ChatMessage</code> objects (a dictionary with <code>content</code> and <code>role</code> keys). Other supported formats include: * <code>"anthropic"</code>: Anthropic message format. * <code>"google"</code>: Google message (aka content) format. * <code>"langchain"</code>: LangChain message format. * <code>"openai"</code>: OpenAI message format. * <code>"ollama"</code>: Ollama message format.</td>
+<td><code>MISSING</code></td>
+</tr>
+<tr class="even">
+<td>token_limits</td>
+<td><a href="`tuple`">tuple</a>[<a href="`int`">int</a>, <a href="`int`">int</a>] | None</td>
+<td>Limit the conversation history based on token limits. If specified, only the most recent messages that fit within the token limits are returned. This is useful for avoiding “exceeded token limit” errors when sending messages to the relevant model, while still providing the most recent context available. A specified value must be a tuple of two integers. The first integer is the maximum number of tokens that can be sent to the model in a single request. The second integer is the amount of tokens to reserve for the model’s response. Note that token counts based on the <code>tokenizer</code> provided to the <code>Chat</code> constructor.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="odd">
+<td>transform_user</td>
+<td><a href="`typing.Literal`">Literal</a>['all', 'last', 'none']</td>
+<td>Whether to return user input messages with transformation applied. This only matters if a <code>transform_user_input</code> was provided to the chat constructor. The default value of <code>"all"</code> means all user input messages are transformed. The value of <code>"last"</code> means only the last user input message is transformed. The value of <code>"none"</code> means no user input messages are transformed.</td>
+<td><code>'all'</code></td>
+</tr>
+<tr class="even">
+<td>transform_assistant</td>
+<td><a href="`bool`">bool</a></td>
+<td>Whether to return assistant messages with transformation applied. This only matters if an <code>transform_assistant_response</code> was provided to the chat constructor.</td>
+<td><code>False</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="note-3" class="level4 doc-section doc-section-note">
+<h4 class="doc-section doc-section-note anchored" data-anchor-id="note-3">Note</h4>
+<p>Messages are listed in the order they were added. As a result, when this method is called in a <code>.on_user_submit()</code> callback (as it most often is), the last message will be the most recent one submitted by the user.</p>
+</section>
+<section id="returns-2" class="level4 doc-section doc-section-returns">
+<h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-2">Returns</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td><a href="`tuple`">tuple</a>[<a href="`shinychat._chat_types.ChatMessage`">ChatMessage</a>, …]</td>
+<td>A tuple of chat messages.</td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="shinychat.Chat.on_user_submit" class="level3">
+<h3 class="anchored" data-anchor-id="shinychat.Chat.on_user_submit">on_user_submit</h3>
+<div class="sourceCode" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>Chat.on_user_submit(fn<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Define a function to invoke when user input is submitted.</p>
+<p>Apply this method as a decorator to a function (<code>fn</code>) that should be invoked when the user submits a message. This function can take an optional argument, which will be the user input message.</p>
+<p>In many cases, the implementation of <code>fn</code> should also do the following:</p>
+<ol type="1">
+<li>Generate a response based on the user input.</li>
+</ol>
+<ul>
+<li>If the response should be aware of chat history, use a package like <a href="https://posit-dev.github.io/chatlas/">chatlas</a> to manage the chat state, or use the <code>.messages()</code> method to get the chat history.</li>
+</ul>
+<ol start="2" type="1">
+<li>Append that response to the chat component using <code>.append_message()</code> ( or <code>.append_message_stream()</code> if the response is streamed).</li>
+</ol>
+<section id="parameters-5" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-5">Parameters</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>fn</td>
+<td><a href="`shinychat._chat.UserSubmitFunction`">UserSubmitFunction</a> | None</td>
+<td>A function to invoke when user input is submitted.</td>
+<td><code>None</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="note-4" class="level4 doc-section doc-section-note">
+<h4 class="doc-section doc-section-note anchored" data-anchor-id="note-4">Note</h4>
+<p>This method creates a reactive effect that only gets invalidated when the user submits a message. Thus, the function <code>fn</code> can read other reactive dependencies, but it will only be re-invoked when the user submits a message.</p>
+</section>
+</section>
+<section id="shinychat.Chat.set_user_message" class="level3">
+<h3 class="anchored" data-anchor-id="shinychat.Chat.set_user_message">set_user_message</h3>
+<div class="sourceCode" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>Chat.set_user_message(value)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Deprecated. Use <code>update_user_input(value=value)</code> instead.</p>
+</section>
+<section id="shinychat.Chat.transform_assistant_response" class="level3">
+<h3 class="anchored" data-anchor-id="shinychat.Chat.transform_assistant_response">transform_assistant_response</h3>
+<div class="sourceCode" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>Chat.transform_assistant_response(fn<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Transform assistant responses.</p>
+<p>Use this method as a decorator on a function (<code>fn</code>) that transforms assistant responses before displaying them in the chat. This is useful for post-processing model responses before displaying them to the user.</p>
+<section id="parameters-6" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-6">Parameters</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>fn</td>
+<td><a href="`shinychat._chat.TransformAssistantResponseFunction`">TransformAssistantResponseFunction</a> | None</td>
+<td>A function that takes a string and returns either a string, :class:<code>shiny.ui.HTML</code>, or <code>None</code>. If <code>fn</code> returns a string, it gets interpreted and parsed as a markdown on the client (and the resulting HTML is then sanitized). If <code>fn</code> returns :class:<code>shiny.ui.HTML</code>, it will be displayed as-is. If <code>fn</code> returns <code>None</code>, the response is effectively ignored.</td>
+<td><code>None</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="note-5" class="level4 doc-section doc-section-note">
+<h4 class="doc-section doc-section-note anchored" data-anchor-id="note-5">Note</h4>
+<p>When doing an <code>.append_message_stream()</code>, <code>fn</code> gets called on every chunk of the response (thus, it should be performant), and can optionally access more information (i.e., arguments) about the stream. The 1st argument (required) contains the accumulated content, the 2nd argument (optional) contains the current chunk, and the 3rd argument (optional) is a boolean indicating whether this chunk is the last one in the stream.</p>
+</section>
+</section>
+<section id="shinychat.Chat.transform_user_input" class="level3">
+<h3 class="anchored" data-anchor-id="shinychat.Chat.transform_user_input">transform_user_input</h3>
+<div class="sourceCode" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>Chat.transform_user_input(fn<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Transform user input.</p>
+<p>Use this method as a decorator on a function (<code>fn</code>) that transforms user input before storing it in the chat messages returned by <code>.messages()</code>. This is useful for implementing RAG workflows, like taking a URL and scraping it for text before sending it to the model.</p>
+<section id="parameters-7" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-7">Parameters</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>fn</td>
+<td><a href="`shinychat._chat.TransformUserInput`">TransformUserInput</a> | <a href="`shinychat._chat.TransformUserInputAsync`">TransformUserInputAsync</a> | None</td>
+<td>A function to transform user input before storing it in the chat <code>.messages()</code>. If <code>fn</code> returns <code>None</code>, the user input is effectively ignored, and <code>.on_user_submit()</code> callbacks are suspended until more input is submitted. This behavior is often useful to catch and handle errors that occur during transformation. In this case, the transform function should append an error message to the chat (via <code>.append_message()</code>) to inform the user of the error.</td>
+<td><code>None</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="shinychat.Chat.update_user_input" class="level3">
+<h3 class="anchored" data-anchor-id="shinychat.Chat.update_user_input">update_user_input</h3>
+<div class="sourceCode" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>Chat.update_user_input(value<span class="op">=</span><span class="va">None</span>, placeholder<span class="op">=</span><span class="va">None</span>, submit<span class="op">=</span><span class="va">False</span>, focus<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Update the user input.</p>
+<section id="parameters-8" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-8">Parameters</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>value</td>
+<td><a href="`str`">str</a> | None</td>
+<td>The value to set the user input to.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="even">
+<td>placeholder</td>
+<td><a href="`str`">str</a> | None</td>
+<td>The placeholder text for the user input.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="odd">
+<td>submit</td>
+<td><a href="`bool`">bool</a></td>
+<td>Whether to automatically submit the text for the user. Requires <code>value</code>.</td>
+<td><code>False</code></td>
+</tr>
+<tr class="even">
+<td>focus</td>
+<td><a href="`bool`">bool</a></td>
+<td>Whether to move focus to the input element. Requires <code>value</code>.</td>
+<td><code>False</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="shinychat.Chat.user_input" class="level3">
+<h3 class="anchored" data-anchor-id="shinychat.Chat.user_input">user_input</h3>
+<div class="sourceCode" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>Chat.user_input(transform<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Reactively read the user’s message.</p>
+<section id="parameters-9" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-9">Parameters</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>transform</td>
+<td><a href="`bool`">bool</a></td>
+<td>Whether to apply the user input transformation function (if one was provided).</td>
+<td><code>False</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="returns-3" class="level4 doc-section doc-section-returns">
+<h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-3">Returns</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td><a href="`str`">str</a> | None</td>
+<td>The user input message (before any transformation).</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="note-6" class="level4 doc-section doc-section-note">
+<h4 class="doc-section doc-section-note anchored" data-anchor-id="note-6">Note</h4>
+<p>Most users shouldn’t need to use this method directly since the last item in <code>.messages()</code> contains the most recent user input. It can be useful for:</p>
+<ol type="1">
+<li>Taking a reactive dependency on the user’s input outside of a <code>.on_user_submit()</code> callback.</li>
+<li>Maintaining message state separately from <code>.messages()</code>.</li>
+</ol>
+
+
+</section>
+</section>
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+        const codeEl = trigger.previousElementSibling.cloneNode(true);
+        for (const childEl of codeEl.children) {
+          if (isCodeAnnotation(childEl)) {
+            childEl.remove();
+          }
+        }
+        return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/posit-dev\.github\.io\/shinychat\/py");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+<p>Proudly supported by <a href="https://posit.co"><img src="https://posit.co/wp-content/uploads/2024/06/Posit-Logos-2024_horiz-full-color.svg" class="img-fluid" alt="Posit" width="65"></a></p>
+</div>   
+    <div class="nav-footer-center">
+      &nbsp;
+    <div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/posit-dev/shinychat/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li><li><a href="https://github.com/posit-dev/shinychat/edit/main/pkg-py/docs/api/Chat.qmd" class="toc-action"><i class="bi empty"></i>Edit this page</a></li></ul></div></div>
+    <div class="nav-footer-right">
+      &nbsp;
+    </div>
+  </div>
+</footer>
+
+
+
+
+</body></html>
