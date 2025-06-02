@@ -4,6 +4,10 @@
   box-sizing: border-box;
 }
 
+:root {
+  --animation-speed: 1;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, avenir next, avenir, segoe ui,
     helvetica neue, Adwaita Sans, Cantarell, Ubuntu, roboto, noto, helvetica,
@@ -67,14 +71,14 @@ body {
   display: flex;
   opacity: 0;
   transform: translateY(20px);
-  animation: slideIn 0.6s ease-out forwards;
+  animation: slideIn calc(0.6s * var(--animation-speed)) ease-out forwards;
   align-items: flex-start;
   gap: 0.75rem;
 }
 
 .chat-message.user {
   flex-direction: row-reverse;
-  animation-delay: 0.5s;
+  animation-delay: calc(0.5s * var(--animation-speed));
 }
 
 .chat-message.ai {
@@ -82,15 +86,15 @@ body {
 }
 
 .chat-message:nth-child(2) {
-  animation-delay: 1.5s;
+  animation-delay: calc(1.5s * var(--animation-speed));
 }
 
 .chat-message:nth-child(3) {
-  animation-delay: 3s;
+  animation-delay: calc(3s * var(--animation-speed));
 }
 
 .chat-message:nth-child(4) {
-  animation-delay: 4s;
+  animation-delay: calc(4s * var(--animation-speed));
 }
 
 .message-bubble {
@@ -190,7 +194,8 @@ body {
   padding: 2rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   opacity: 0;
-  animation: slideIn 0.6s ease-out forwards;
+  animation: slideIn calc(0.6s * var(--animation-speed)) ease-out forwards;
+  animation-delay: calc(1s * var(--animation-speed));;
 }
 
 .features h3 {
@@ -243,17 +248,6 @@ body {
   padding: 2rem;
   color: #6b7280;
   font-size: 0.9rem;
-}
-
-.chat-input-area {
-  border-top: 1px solid #e5e7eb;
-  padding: 1.5rem 2rem;
-  background: #f9fafb;
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  opacity: 0;
-  animation: slideIn 0.6s ease-out 8s forwards;
 }
 
 @keyframes slideIn {
