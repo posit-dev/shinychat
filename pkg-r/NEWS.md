@@ -1,5 +1,9 @@
 # shinychat (development version)
 
+## New features and improvements
+
+* Added `chat_enable_bookmarking()` which adds Shiny bookmarking hooks to save and restore the `{ellmer}` chat client. (#28)
+
 # shinychat 0.2.0
 
 ## New features and improvements
@@ -10,7 +14,7 @@
 
 * Added a new `chat_clear()` function to clear the chat of all messages. (#25)
 
-* Added `chat_app()`, `chat_mod_ui()` and `chat_mod_server()`. `chat_app()` takes an `ellmer::Chat` client and launches a simple Shiny app interface with the chat. `chat_mod_ui()` and `chat_mod_server()` replicate the interface as a Shiny module, for easily adding a simple chat interface connected to a specific `ellmer::Chat` client. (#36)
+* Added `chat_app()`, `chat_mod_ui()` and `chat_mod_server()`. `chat_app()` takes an `{ellmer}` chat client and launches a simple Shiny app interface with the chat. `chat_mod_ui()` and `chat_mod_server()` replicate the interface as a Shiny module, for easily adding a simple chat interface connected to a specific `{ellmer}` chat client. (#36)
 
 * The promise returned by `chat_append()` now resolves to the content streamed into the chat. (#49)
 
