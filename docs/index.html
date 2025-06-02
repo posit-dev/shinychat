@@ -31,16 +31,30 @@
 
 <body>
   <script>
-    // Check if user is coming from within the same domain
-    document.addEventListener('DOMContentLoaded', function() {
+    // Handle navigation detection including back button presses
+    document.addEventListener('DOMContentLoaded', function () {
       const referrer = document.referrer;
-      debugger;
+      const internalNavigation = sessionStorage.getItem('shinychat-internal-navigation');
 
-      // Check if the referrer is from posit-dev.github.io/shinychat
-      if (referrer && referrer.includes('posit-dev.github.io/shinychat')) {
+      // Check if coming from within the site or using back button
+      if (referrer && referrer.includes('posit-dev.github.io/shinychat') || internalNavigation === 'true') {
         // Set a faster animation speed
         document.documentElement.style.setProperty('--animation-speed', '0.2'); // 5x faster
       }
+
+      // Clear the session storage after we've used it
+      sessionStorage.removeItem('shinychat-internal-navigation');
+
+      // Add click listeners to all internal links
+      document.addEventListener('click', function (e) {
+        // Find the closest anchor tag if the click was on a child element
+        const link = e.target.closest('a');
+
+        if (link && link.href && link.href.includes('posit-dev.github.io/shinychat')) {
+          // Mark that we're navigating internally
+          sessionStorage.setItem('shinychat-internal-navigation', 'true');
+        }
+      });
     });
   </script>
   <header class="header">
