@@ -30,6 +30,19 @@
 </head>
 
 <body>
+  <script>
+    // Check if user is coming from within the same domain
+    document.addEventListener('DOMContentLoaded', function() {
+      const referrer = document.referrer;
+      debugger;
+
+      // Check if the referrer is from posit-dev.github.io/shinychat
+      if (referrer && referrer.includes('posit-dev.github.io/shinychat')) {
+        // Set a faster animation speed
+        document.documentElement.style.setProperty('--animation-speed', '0.2'); // 5x faster
+      }
+    });
+  </script>
   <header class="header">
     <div class="logo">
       <div>
