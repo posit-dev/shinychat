@@ -67,7 +67,7 @@ chat_deps <- function() {
 #'
 #' server <- function(input, output, session) {
 #'   observeEvent(input$chat_user_input, {
-#'     # In a real app, this would call out to a chat model or API,
+#'     # In a real app, this would call out to a chat client or API,
 #'     # perhaps using the 'ellmer' package.
 #'     response <- paste0(
 #'       "You said:\n\n",
@@ -76,6 +76,7 @@ chat_deps <- function() {
 #'       "</blockquote>"
 #'     )
 #'     chat_append("chat", response)
+#'     chat_append("chat", stream)
 #'   })
 #' }
 #'
@@ -163,7 +164,7 @@ chat_ui <- function(
 #' `chat_async`, and `stream_async` methods, respectively).
 #'
 #' This function should be called from a Shiny app's server. It is generally
-#' used to append the model's response to the chat, while user messages are
+#' used to append the client's response to the chat, while user messages are
 #' added to the chat UI automatically by the front-end. You'd only need to use
 #' `chat_append(role="user")` if you are programmatically generating queries
 #' from the server and sending them on behalf of the user, and want them to be
@@ -333,7 +334,7 @@ chat_append_message <- function(
   check_active_session(session)
 
   if (!is.list(msg)) {
-    rlang::abort("msg must be a named list with 'role' and 'content' fields")
+    rlang::abort("`msg` must be a named list with 'role' and 'content' fields")
   }
   if (!isTRUE(msg[["role"]] %in% c("user", "assistant"))) {
     warning("Invalid role argument; must be 'user' or 'assistant'")
@@ -407,6 +408,7 @@ chat_append_stream <- function(
   session = getDefaultReactiveDomain()
 ) {
   result <- chat_append_stream_impl(id, stream, role, session)
+  result <- chat_update_bookmark(id, result, session = session)
   # Handle erroneous result...
   result <- promises::catch(result, function(reason) {
     # ...but rethrow the error as a silent error, so the caller can also handle

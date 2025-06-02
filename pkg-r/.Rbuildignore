@@ -10,4 +10,6 @@
 ^_dev$
 ^cran-comments\.md$
 ^CRAN-SUBMISSION$
+^_dev$
 ^revdep$
+^shiny_bookmarks$
