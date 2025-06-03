@@ -1,0 +1,6 @@
+chatlas
+faicons
+openai
+pydantic-ai
+python-dotenv
+shiny
