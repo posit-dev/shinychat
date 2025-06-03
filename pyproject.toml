@@ -1,6 +1,6 @@
 [project]
 name = "shinychat"
-description = "Add your description here"
+description = "An AI Chat interface for Shiny apps."
 readme = "pkg-py/README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
