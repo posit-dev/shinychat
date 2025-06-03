@@ -1,9 +1,8 @@
 import os
 
 from dotenv import load_dotenv
-from pydantic_ai import Agent
 from pydantic import BaseModel
-
+from pydantic_ai import Agent
 from shiny.express import ui
 
 
@@ -42,5 +41,7 @@ chat.ui()
 async def handle_user_input(user_input: str):
     result = await chat_client.run(user_input)
     city_info = result.output
-    message = f"City: {city_info.city}, County: {city_info.county}, State: {city_info.state}"
+    message = (
+        f"City: {city_info.city}, County: {city_info.county}, State: {city_info.state}"
+    )
     await chat.append_message(message)

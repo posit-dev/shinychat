@@ -1,7 +1,8 @@
 import os
+
 from dotenv import load_dotenv
-from pydantic_ai import Agent
 from faicons import icon_svg
+from pydantic_ai import Agent
 from shiny import reactive
 from shiny.express import input, render, ui
 
@@ -20,7 +21,7 @@ chat_client = Agent(
     """,
 )
 
-# Shiny page options 
+# Shiny page options
 ui.page_opts(title="Personalized Workout Plan Generator")
 
 # Sidebar UI for user inputs
@@ -96,6 +97,6 @@ async def _():
 
     # Generate the stream using the pydantic_workout_stream_generator
     stream_generator = pydantic_workout_stream_generator(prompt)
-    
+
     # Pass the async generator to the MarkdownStream
     await workout_stream.stream(stream_generator)

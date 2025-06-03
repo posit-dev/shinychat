@@ -1,8 +1,9 @@
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
-from pydantic_ai import Agent
 from faicons import icon_svg
+from pydantic_ai import Agent
 from shiny import App, Inputs, reactive, ui
 
 welcome = """
