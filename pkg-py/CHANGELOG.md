@@ -7,3 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+* The `shinychat` package was created from the `shiny.ui.Chat` and
+  `shiny.ui.MarkdownStream` components as a new package. These components will
+  still be available in the `shiny` package, but by separating the `shinychat`
+  package we can more easily maintain and develop these components independently with a faster release cycle.
