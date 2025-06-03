@@ -37,14 +37,14 @@ jobs:
       - name: 📦 Install the project
         run: uv sync --python ${{ env.PYTHON_VERSION }} --all-extras
 
-      - name: 🧪 Check tests
-        run: make py-check-tests
-
       - name: 📝 Check types
         run: make py-check-types
 
       - name: 📐 Check formatting
         run: make py-check-format
+
+      - name: 🧪 Check tests
+        run: make py-check-tests
 
       - name: 🧳 Build package
         run: uv build
