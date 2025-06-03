@@ -18,7 +18,7 @@ authors = [
 
 [project.urls]
 Homepage = "https://posit-dev.github.io/shinychat/"
-Documentation = "https://posit-dev.github.io/shinychat/pkg/py/"
+Documentation = "https://posit-dev.github.io/shinychat/py/"
 Repository = "https://github.com/posit-dev/shinychat"
 Issues = "https://github.com/posit-dev/shinychat/issues/"
 Changelog = "https://github.com/posit-dev/shinychat/blob/main/pkg-py/CHANGELOG.md"
