@@ -44,7 +44,7 @@ chat_append() to append messages to the chat.'><meta property="og:image" content
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Create a chat UI element</h1>
-      <small class="dont-index">Source: <a href="https://github.com/posit-dev/shinychat/blob/main/R/chat.R" class="external-link"><code>R/chat.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/posit-dev/shinychat/blob/py/v0.0.1a0/R/chat.R" class="external-link"><code>R/chat.R</code></a></small>
       <div class="d-none name"><code>chat_ui.Rd</code></div>
     </div>
 
@@ -125,7 +125,7 @@ container, if the container is
     <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># interactive()</span></span></span>
 <span class="r-in"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://shiny.posit.co/" class="external-link">shiny</a></span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://rstudio.github.io/bslib/" class="external-link">bslib</a></span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/posit-dev/shinychat" class="external-link">shinychat</a></span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://posit-dev.github.io/shinychat/r/">shinychat</a></span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="va">ui</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rstudio.github.io/bslib/reference/page_fillable.html" class="external-link">page_fillable</a></span><span class="op">(</span></span></span>
 <span class="r-in"><span>  <span class="fu">chat_ui</span><span class="op">(</span><span class="st">"chat"</span>, fill <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></span>
@@ -133,7 +133,7 @@ container, if the container is
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="va">server</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">input</span>, <span class="va">output</span>, <span class="va">session</span><span class="op">)</span> <span class="op">{</span></span></span>
 <span class="r-in"><span>  <span class="fu"><a href="https://rdrr.io/pkg/shiny/man/observeEvent.html" class="external-link">observeEvent</a></span><span class="op">(</span><span class="va">input</span><span class="op">$</span><span class="va">chat_user_input</span>, <span class="op">{</span></span></span>
-<span class="r-in"><span>    <span class="co"># In a real app, this would call out to a chat model or API,</span></span></span>
+<span class="r-in"><span>    <span class="co"># In a real app, this would call out to a chat client or API,</span></span></span>
 <span class="r-in"><span>    <span class="co"># perhaps using the 'ellmer' package.</span></span></span>
 <span class="r-in"><span>    <span class="va">response</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span></span></span>
 <span class="r-in"><span>      <span class="st">"You said:\n\n"</span>,</span></span>
@@ -142,6 +142,7 @@ container, if the container is
 <span class="r-in"><span>      <span class="st">"&lt;/blockquote&gt;"</span></span></span>
 <span class="r-in"><span>    <span class="op">)</span></span></span>
 <span class="r-in"><span>    <span class="fu"><a href="chat_append.html">chat_append</a></span><span class="op">(</span><span class="st">"chat"</span>, <span class="va">response</span><span class="op">)</span></span></span>
+<span class="r-in"><span>    <span class="fu"><a href="chat_append.html">chat_append</a></span><span class="op">(</span><span class="st">"chat"</span>, <span class="va">stream</span><span class="op">)</span></span></span>
 <span class="r-in"><span>  <span class="op">}</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="op">}</span></span></span>
 <span class="r-in"><span></span></span>
@@ -154,7 +155,7 @@ container, if the container is
 
 
     <footer><div class="pkgdown-footer-left">
-  <p>Developed by Joe Cheng, <a href="https://cpsievert.me" class="external-link">Carson Sievert</a>, <a href="https://garrickadenbuie.com" class="external-link">Garrick Aden-Buie</a>, <a href="https://www.posit.co" class="external-link"><img src="https://www.tidyverse.org/posit-logo.svg" alt="Posit" height="16" width="62" style="margin-bottom: 3px;"></a>.</p>
+  <p>Developed by Joe Cheng, <a href="https://cpsievert.me" class="external-link">Carson Sievert</a>, <a href="https://garrickadenbuie.com" class="external-link">Garrick Aden-Buie</a>, Barret Schloerke, <a href="https://www.posit.co" class="external-link"><img src="https://www.tidyverse.org/posit-logo.svg" alt="Posit" height="16" width="62" style="margin-bottom: 3px;"></a>.</p>
 </div>
 
 <div class="pkgdown-footer-right">

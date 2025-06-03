@@ -34,11 +34,15 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Changelog</h1>
-      <small>Source: <a href="https://github.com/posit-dev/shinychat/blob/main/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
+      <small>Source: <a href="https://github.com/posit-dev/shinychat/blob/py/v0.0.1a0/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="development version" id="shinychat-development-version">shinychat (development version)<a class="anchor" aria-label="anchor" href="#shinychat-development-version"></a></h2>
+<div class="section level3">
+<h3 id="new-features-and-improvements-development-version">New features and improvements<a class="anchor" aria-label="anchor" href="#new-features-and-improvements-development-version"></a></h3>
+<ul><li>Added <code><a href="../reference/chat_enable_bookmarking.html">chat_enable_bookmarking()</a></code> which adds Shiny bookmarking hooks to save and restore the <a href="https://ellmer.tidyverse.org" class="external-link">ellmer</a> chat client. (<a href="https://github.com/posit-dev/shinychat/issues/28" class="external-link">#28</a>)</li>
+</ul></div>
 </div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="0.2.0" id="shinychat-020">shinychat 0.2.0<a class="anchor" aria-label="anchor" href="#shinychat-020"></a></h2><p class="text-muted">CRAN release: 2025-05-16</p>
@@ -47,7 +51,7 @@
 <ul><li><p>Added new <code><a href="../reference/output_markdown_stream.html">output_markdown_stream()</a></code> and <code><a href="../reference/markdown_stream.html">markdown_stream()</a></code> functions to allow for streaming markdown content to the client. This is useful for showing Generative AI responses in real-time in a Shiny app, outside of a chat interface. (<a href="https://github.com/posit-dev/shinychat/issues/23" class="external-link">#23</a>)</p></li>
 <li><p>Both <code><a href="../reference/chat_ui.html">chat_ui()</a></code> and <code><a href="../reference/output_markdown_stream.html">output_markdown_stream()</a></code> now support arbitrary Shiny UI elements inside of messages. This allows for gathering input from the user (e.g., <code><a href="https://rdrr.io/pkg/shiny/man/selectInput.html" class="external-link">selectInput()</a></code>), displaying of rich output (e.g., <a href="https://github.com/ramnathv/htmlwidgets" class="external-link">htmlwidgets</a> like <a href="https://plotly-r.com" class="external-link">plotly</a>), and more. (<a href="https://github.com/posit-dev/shinychat/issues/29" class="external-link">#29</a>)</p></li>
 <li><p>Added a new <code><a href="../reference/chat_clear.html">chat_clear()</a></code> function to clear the chat of all messages. (<a href="https://github.com/posit-dev/shinychat/issues/25" class="external-link">#25</a>)</p></li>
-<li><p>Added <code><a href="../reference/chat_app.html">chat_app()</a></code>, <code><a href="../reference/chat_app.html">chat_mod_ui()</a></code> and <code><a href="../reference/chat_app.html">chat_mod_server()</a></code>. <code><a href="../reference/chat_app.html">chat_app()</a></code> takes an <code><a href="https://ellmer.tidyverse.org/reference/Chat.html" class="external-link">ellmer::Chat</a></code> client and launches a simple Shiny app interface with the chat. <code><a href="../reference/chat_app.html">chat_mod_ui()</a></code> and <code><a href="../reference/chat_app.html">chat_mod_server()</a></code> replicate the interface as a Shiny module, for easily adding a simple chat interface connected to a specific <code><a href="https://ellmer.tidyverse.org/reference/Chat.html" class="external-link">ellmer::Chat</a></code> client. (<a href="https://github.com/posit-dev/shinychat/issues/36" class="external-link">#36</a>)</p></li>
+<li><p>Added <code><a href="../reference/chat_app.html">chat_app()</a></code>, <code><a href="../reference/chat_app.html">chat_mod_ui()</a></code> and <code><a href="../reference/chat_app.html">chat_mod_server()</a></code>. <code><a href="../reference/chat_app.html">chat_app()</a></code> takes an <a href="https://ellmer.tidyverse.org" class="external-link">ellmer</a> chat client and launches a simple Shiny app interface with the chat. <code><a href="../reference/chat_app.html">chat_mod_ui()</a></code> and <code><a href="../reference/chat_app.html">chat_mod_server()</a></code> replicate the interface as a Shiny module, for easily adding a simple chat interface connected to a specific <a href="https://ellmer.tidyverse.org" class="external-link">ellmer</a> chat client. (<a href="https://github.com/posit-dev/shinychat/issues/36" class="external-link">#36</a>)</p></li>
 <li><p>The promise returned by <code><a href="../reference/chat_append.html">chat_append()</a></code> now resolves to the content streamed into the chat. (<a href="https://github.com/posit-dev/shinychat/issues/49" class="external-link">#49</a>)</p></li>
 </ul></div>
 <div class="section level3">
@@ -65,7 +69,7 @@
 
 
     <footer><div class="pkgdown-footer-left">
-  <p>Developed by Joe Cheng, <a href="https://cpsievert.me" class="external-link">Carson Sievert</a>, <a href="https://garrickadenbuie.com" class="external-link">Garrick Aden-Buie</a>, <a href="https://www.posit.co" class="external-link"><img src="https://www.tidyverse.org/posit-logo.svg" alt="Posit" height="16" width="62" style="margin-bottom: 3px;"></a>.</p>
+  <p>Developed by Joe Cheng, <a href="https://cpsievert.me" class="external-link">Carson Sievert</a>, <a href="https://garrickadenbuie.com" class="external-link">Garrick Aden-Buie</a>, Barret Schloerke, <a href="https://www.posit.co" class="external-link"><img src="https://www.tidyverse.org/posit-logo.svg" alt="Posit" height="16" width="62" style="margin-bottom: 3px;"></a>.</p>
 </div>
 
 <div class="pkgdown-footer-right">
