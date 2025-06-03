@@ -45,6 +45,8 @@ test = [
     "shinylive",
     "shinywidgets",
     "tox-uv>=1",
+    "pydantic-ai",
+    "python-dotenv"
 ]
 
 [tool.uv]
