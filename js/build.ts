@@ -66,11 +66,17 @@ async function bundle_helper(
       format: "esm",
       bundle: true,
       minify,
-      // No need to clean up old source maps, as `minify==false` only during `npm run watch-fast`
+      // No need to clean up source maps, as `minify==false` only during `npm run watch-fast`
       // GHA will run `npm run build` which will minify
       sourcemap: minify,
       metafile,
       outdir: outDir,
+      // Add Preact aliases to use Preact instead of React
+      alias: {
+        react: "preact/compat",
+        "react-dom": "preact/compat",
+        "react/jsx-runtime": "preact/jsx-runtime",
+      },
       ...options,
     })
 
@@ -134,6 +140,12 @@ const entries: EntryConfig[] = [
     name: "chat/chat",
     jsEntry: "src/chat/chat.ts",
     sassEntry: "src/chat/chat.scss",
+  },
+  // Add hello-world React component entry
+  {
+    name: "hello-world/hello-world",
+    jsEntry: "src/hello-world/hello-world.tsx",
+    sassEntry: "src/hello-world/hello-world.scss",
   },
 ]
 
