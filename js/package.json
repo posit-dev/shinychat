@@ -20,8 +20,10 @@
     "watch": "npx nodemon --exec 'npm run build' --ext '*' --ignore dist/ --ignore esbuild-metadata.json",
     "build-fast": "tsx build.ts --minify=false",
     "watch-fast": "npx nodemon --exec 'npm run build-fast' --ext '*' --ignore dist/ --ignore esbuild-metadata.json",
-    "test": "jest",
-    "test:watch": "jest --watch"
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:run": "vitest run",
+    "test:watch": "vitest --watch"
   },
   "dependencies": {
     "clipboard": "^2.0.11",
@@ -43,6 +45,7 @@
     "@types/rstudio-shiny": "git+https://git@github.com/rstudio/shiny.git#v1.10.0",
     "@typescript-eslint/eslint-plugin": "^8.32.1",
     "@typescript-eslint/parser": "^8.32.1",
+    "@vitest/ui": "^3.2.1",
     "esbuild": "^0.25.4",
     "esbuild-sass-plugin": "^3.3.1",
     "eslint-config-prettier": "^10.1.5",
@@ -50,11 +53,11 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^5.2.0",
     "globals": "^16.1.0",
-    "jest": "^29.7.0",
-    "jest-environment-jsdom": "^29.7.0",
+    "jsdom": "^26.1.0",
     "prettier": "^3.5.3",
-    "ts-jest": "^29.2.5",
+    "ts-node": "^10.9.2",
     "tsx": "^4.19.4",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.1"
   }
 }
