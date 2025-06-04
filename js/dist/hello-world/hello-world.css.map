@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../src/hello-world/hello-world.scss"],
+  "sourcesContent": [".hello-world {\n  padding: 1rem;\n  border: 1px solid #ddd;\n  border-radius: 4px;\n  font-family: system-ui, -apple-system, sans-serif;\n}\n.hello-world h1 {\n  color: #333;\n  margin-bottom: 0.5rem;\n}\n.hello-world p {\n  margin-bottom: 1rem;\n}\n.hello-world button {\n  background-color: #007bff;\n  color: white;\n  border: none;\n  padding: 0.5rem 1rem;\n  border-radius: 4px;\n  cursor: pointer;\n}\n.hello-world button:hover {\n  background-color: #0056b3;\n}\n.hello-world button:active {\n  transform: translateY(1px);\n}"],
+  "mappings": "AAAA,CAAC,YAAD,QACW,KACT,OAAQ,IAAI,MAAM,KAFpB,cAGiB,IACf,YAAa,SAAS,CAAE,aAAa,CAAE,UACzC,CACA,CANC,YAMY,GACX,MAAO,KACP,cAAe,KACjB,CACA,CAVC,YAUY,EACX,cAAe,IACjB,CACA,CAbC,YAaY,OACX,iBAAkB,QAClB,MAAO,KACP,OAAQ,KAhBV,QAiBW,MAAO,KAjBlB,cAkBiB,IACf,OAAQ,OACV,CACA,CArBC,YAqBY,MAAM,OACjB,iBAAkB,OACpB,CACA,CAxBC,YAwBY,MAAM,QACjB,UAAW,WAAW,IACxB",
+  "names": []
+}

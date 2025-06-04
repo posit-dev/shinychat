@@ -53,6 +53,9 @@ export default defineConfig([
       "@typescript-eslint/no-unused-vars": "off",
       "@typescript-eslint/no-non-null-assertion": "off",
       "prettier/prettier": "error",
+      // Disable the React in scope rule for new JSX transform
+      "react/react-in-jsx-scope": "off",
+      "react/jsx-uses-react": "off",
     },
 
     settings: {
