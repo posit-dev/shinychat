@@ -363,3 +363,8 @@ Assume the above information is correct and up-to-date at the start of our conve
 Use the tools available to you to your best ability.
 If you need to run code, please output the code that should be run and ask me to run the code for you.
 If you need the results, please ask me to run the code and provide the results.
+
+## Small edits
+
+For small file edits, don't use the `write_text_file` tool.
+Instead, please tell me what changes to make and I will make them for you.
