@@ -174,18 +174,18 @@ These are useful considerations when building React components that will integra
 1. Updated `package.json` with React dependencies
 2. Modified `tsconfig.json` for React JSX
 3. Updated `build.ts` to handle React + existing SCSS
-4. Basic test setup (Jest + React Testing Library)
+4. Basic test setup (vitest + React Testing Library)
 5. Simple "Hello World" React component that builds successfully
 
 **Key Focus**: Minimal changes to get React building alongside existing code.
 
 **Acceptance Criteria**:
-- [ ] `npm run build` successfully compiles React components
-- [ ] Can import and render a basic React component
-- [ ] SCSS compilation still works
-- [ ] TypeScript compilation works without errors
+- [x] `npm run build` successfully compiles React components
+- [x] Can import and render a basic React component
+- [x] SCSS compilation still works
+- [x] TypeScript compilation works without errors
+- [x] `npm test` runs component tests successfully
 
-<!-- HIDE -->
 
 ### Task 2: MarkdownStream React Component (UI Only)
 
@@ -217,6 +217,7 @@ These are useful considerations when building React components that will integra
 - [ ] Auto-scroll behavior matches original
 - [ ] Component works in isolation with props
 
+<!-- HIDE -->
 
 ### Task 3: Complete Chat UI System
 
@@ -366,5 +367,6 @@ If you need the results, please ask me to run the code and provide the results.
 
 ## Small edits
 
-For small file edits, don't use the `write_text_file` tool.
+For small one-to-three line edits, don't use the `write_text_file` tool.
 Instead, please tell me what changes to make and I will make them for you.
+Do use the `write_text_file` tool for larger edits, such as entire files or if providing the content for a file that doesn't already exist.
