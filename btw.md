@@ -333,7 +333,7 @@ These are useful considerations when building React components that will integra
 
 ## Current file structure
 
-This project is focused on the `js/` directory of the current project, which contains the JavaScript source code for the chat and markdown stream components.
+Our working directory is the root of the project, which contains a `js/` folder that is the focus of this project and which contains the JavaScript source code for the chat and markdown stream components.
 The current file structure is as follows:
 
 ```
@@ -389,3 +389,8 @@ If you need the results, please ask me to run the code and provide the results.
 For small one-to-three line edits, don't use the `write_text_file` tool.
 Instead, please tell me what changes to make and I will make them for you.
 Do use the `write_text_file` tool for larger edits, such as entire files or if providing the content for a file that doesn't already exist.
+
+## Pause for collaboration
+
+Pause between chunks of work to allow for collaboration.
+It's better to confirm the next steps before proceeding with a large change.
