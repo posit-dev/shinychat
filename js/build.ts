@@ -147,6 +147,16 @@ const entries: EntryConfig[] = [
     jsEntry: "src/hello-world/hello-world.tsx",
     sassEntry: "src/hello-world/hello-world.scss",
   },
+  // Add MarkdownStream demo entry
+  {
+    name: "demo",
+    jsEntry: "src/demo.tsx",
+  },
+  // Add simple demo entry for testing
+  {
+    name: "demo-simple",
+    jsEntry: "src/demo-simple.tsx",
+  },
 ]
 
 ;(async () => {

@@ -338,7 +338,10 @@ The current file structure is as follows:
 
 ```
 ./js
+├── README-REACT.md
+├── README-markdown-stream.md
 ├── build.ts
+├── demo.html
 ├── esbuild-metadata.json
 ├── eslint.config.js
 ├── package-lock.json
@@ -347,13 +350,29 @@ The current file structure is as follows:
 │   ├── chat
 │   │   ├── chat.scss
 │   │   └── chat.ts
+│   ├── components
+│   │   ├── MarkdownStream.css
+│   │   ├── MarkdownStream.tsx
+│   │   ├── MarkdownStreamDemo.tsx
+│   │   └── __tests__
+│   │       ├── MarkdownStream.integration.test.tsx
+│   │       ├── MarkdownStream.test.tsx
+│   │       └── test-setup.ts
+│   ├── demo.tsx
+│   ├── hello-world
+│   │   ├── HelloWorld.test.tsx
+│   │   ├── HelloWorld.tsx
+│   │   ├── hello-world.scss
+│   │   └── hello-world.tsx
 │   ├── markdown-stream
 │   │   ├── highlight_styles.scss
 │   │   ├── markdown-stream.scss
 │   │   └── markdown-stream.ts
 │   └── utils
 │       └── _utils.ts
-└── tsconfig.json
+├── tsconfig.json
+├── vitest.config.ts
+└── vitest.setup.ts
 ```
 
 IMPORTANT: DO NOT USE THE `list_files` tool to list all of the files in `js/` unless you've included a regular expression to filter out irrelevant files, like `node_modules`, `dist`, or other generated files.

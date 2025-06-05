@@ -15,6 +15,7 @@
   "license": "MIT",
   "scripts": {
     "lint": "tsc -noEmit && eslint .",
+    "lint:fix": "tsc -noEmit && eslint . --fix",
     "bundle": "tsx build.ts",
     "build": "npm run lint && npm run bundle",
     "watch": "npx nodemon --exec 'npm run build' --ext '*' --ignore dist/ --ignore esbuild-metadata.json",
