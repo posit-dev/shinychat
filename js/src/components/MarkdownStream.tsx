@@ -343,7 +343,8 @@ export function MarkdownStream({
   const findScrollableParent = useCallback((): HTMLElement | null => {
     if (!autoScroll || !containerRef.current) return null
 
-    let el: HTMLElement | null = containerRef.current
+    // Start from the parent of our container div, not the container div itself
+    let el: HTMLElement | null = containerRef.current.parentElement
     while (el) {
       if (el.scrollHeight > el.clientHeight) return el
       el = el.parentElement
