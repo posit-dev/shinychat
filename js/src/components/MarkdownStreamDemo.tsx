@@ -1,4 +1,4 @@
-import { useState, useEffect } from "preact/hooks"
+import { useState, useEffect, useRef, useCallback } from "preact/hooks"
 import { JSX } from "preact/jsx-runtime"
 import { MarkdownStream, ContentType } from "./MarkdownStream"
 
@@ -266,66 +266,89 @@ export function MarkdownStreamDemo(): JSX.Element {
     lastUpdate: new Date().toLocaleTimeString(),
   })
 
-  // Simulate streaming by gradually adding content
-  const simulateStreaming = (
-    targetContent: string,
-    speed: number = streamingSpeed,
-  ) => {
-    setContent("")
-    setStreaming(true)
-    setStats((prev) => ({
-      ...prev,
-      contentChanges: 0,
-      streamEnds: prev.streamEnds,
-    }))
+  // Use a ref to track the current interval so we can clean it up
+  const streamingIntervalRef = useRef<number | null>(null)
 
-    let currentIndex = 0
-    const intervalId = setInterval(() => {
-      if (currentIndex >= targetContent.length) {
-        setStreaming(false)
-        clearInterval(intervalId)
-        return
+  // Simulate streaming by gradually adding content
+  const simulateStreaming = useCallback(
+    (targetContent: string, speed: number = streamingSpeed) => {
+      // Clear any existing streaming interval
+      if (streamingIntervalRef.current) {
+        clearInterval(streamingIntervalRef.current)
+        streamingIntervalRef.current = null
       }
 
-      // Add chunks of content to simulate realistic streaming
-      const chunkSize = Math.floor(Math.random() * 15) + 1
-      const nextChunk = targetContent.slice(
-        currentIndex,
-        currentIndex + chunkSize,
-      )
-      setContent((prev) => prev + nextChunk)
-      currentIndex += chunkSize
-    }, speed)
+      setContent("")
+      setStreaming(true)
+      setStats((prev) => ({
+        ...prev,
+        contentChanges: 0,
+        streamEnds: prev.streamEnds,
+      }))
 
-    return () => clearInterval(intervalId)
-  }
+      let currentIndex = 0
 
-  const handleContentChange = () => {
+      streamingIntervalRef.current = window.setInterval(() => {
+        if (currentIndex >= targetContent.length) {
+          setStreaming(false)
+          if (streamingIntervalRef.current) {
+            clearInterval(streamingIntervalRef.current)
+            streamingIntervalRef.current = null
+          }
+          return
+        }
+
+        // Add chunks of content to simulate realistic streaming
+        const chunkSize = Math.floor(Math.random() * 15) + 1
+        const nextChunk = targetContent.slice(
+          currentIndex,
+          currentIndex + chunkSize,
+        )
+        setContent((prev) => prev + nextChunk)
+        currentIndex += chunkSize
+      }, speed)
+    },
+    [streamingSpeed],
+  )
+
+  // Clean up interval on unmount
+  useEffect(() => {
+    return () => {
+      if (streamingIntervalRef.current) {
+        clearInterval(streamingIntervalRef.current)
+      }
+    }
+  }, [])
+
+  const handleContentChange = useCallback(() => {
     setStats((prev) => ({
       ...prev,
       contentChanges: prev.contentChanges + 1,
       lastUpdate: new Date().toLocaleTimeString(),
     }))
-  }
+  }, [])
 
-  const handleStreamEnd = () => {
+  const handleStreamEnd = useCallback(() => {
     setStats((prev) => ({
       ...prev,
       streamEnds: prev.streamEnds + 1,
       lastUpdate: new Date().toLocaleTimeString(),
     }))
-  }
+  }, [])
 
-  const loadDemo = (demo: StreamingDemo) => {
-    setCurrentDemo(demo)
-    simulateStreaming(demo.content)
-  }
+  const loadDemo = useCallback(
+    (demo: StreamingDemo) => {
+      setCurrentDemo(demo)
+      simulateStreaming(demo.content)
+    },
+    [simulateStreaming],
+  )
 
-  const loadCustomContent = () => {
+  const loadCustomContent = useCallback(() => {
     if (customContent.trim()) {
       simulateStreaming(customContent)
     }
-  }
+  }, [customContent, simulateStreaming])
 
   return (
     <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "20px" }}>
@@ -563,37 +586,6 @@ export function MarkdownStreamDemo(): JSX.Element {
           </div>
         </div>
       </div>
-
-      <footer
-        style={{
-          marginTop: "40px",
-          padding: "20px",
-          background: "#f8f9fa",
-          borderRadius: "8px",
-          textAlign: "center",
-        }}
-      >
-        <h3>🎯 Component Features Demonstrated</h3>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-            gap: "15px",
-            marginTop: "15px",
-          }}
-        >
-          <div>✅ Markdown rendering</div>
-          <div>✅ HTML content support</div>
-          <div>✅ Syntax highlighting</div>
-          <div>✅ Code copy buttons</div>
-          <div>✅ Streaming animation</div>
-          <div>✅ Auto-scroll behavior</div>
-          <div>✅ Multiple content types</div>
-          <div>✅ Event callbacks</div>
-          <div>✅ Table styling</div>
-          <div>✅ Security sanitization</div>
-        </div>
-      </footer>
     </div>
   )
 }
