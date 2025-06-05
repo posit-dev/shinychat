@@ -30,12 +30,12 @@ def chat_deps() -> list[HTMLDependency]:
 
 def markdown_stream_dependency() -> HTMLDependency:
     return HTMLDependency(
-        name="shinychat-markdown",
+        name="shinychat",
         version=__version__,
         source={
             "package": "shinychat",
-            "subdir": "www/markdown-stream",
+            "subdir": "www/react",
         },
-        script={"src": "markdown-stream.js", "type": "module"},
-        stylesheet={"href": "markdown-stream.css"},
+        script={"src": "shiny-markdown-stream.js", "type": "module"},
+        stylesheet={"href": "shiny-markdown-stream.css"},
     )

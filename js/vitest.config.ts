@@ -6,7 +6,13 @@ export default defineConfig({
     setupFiles: ["./vitest.setup.ts"],
     globals: true,
     include: ["**/*.{test,spec}.{ts,tsx}"],
-    exclude: ["node_modules", "dist"],
+    exclude: [
+      "node_modules/**",
+      "dist/**",
+      "src/markdown-stream/**", // Exclude Lit components
+      "src/chat/**", // Exclude Lit components
+      "src/utils/**", // Exclude Lit utilities
+    ],
   },
   esbuild: {
     jsx: "automatic",

@@ -337,38 +337,42 @@ Our working directory is the root of the project, which contains a `js/` folder 
 The current file structure is as follows:
 
 ```
-./js
+js
 ├── README-REACT.md
 ├── README-markdown-stream.md
 ├── build.ts
+├── demo-simple.html
 ├── demo.html
 ├── esbuild-metadata.json
 ├── eslint.config.js
 ├── package-lock.json
 ├── package.json
 ├── src
-│   ├── chat
+│   ├── __demos__ # Demos of new React components
+│   │   └── markdown-stream
+│   │       ├── MarkdownStreamDemo.tsx
+│   │       ├── demo-simple.tsx
+│   │       └── demo.tsx
+│   ├── chat # Old lit implementation of Chat
 │   │   ├── chat.scss
 │   │   └── chat.ts
-│   ├── components
+│   ├── components # New React components
 │   │   ├── MarkdownStream.css
 │   │   ├── MarkdownStream.tsx
-│   │   ├── MarkdownStreamDemo.tsx
 │   │   └── __tests__
 │   │       ├── MarkdownStream.integration.test.tsx
 │   │       ├── MarkdownStream.test.tsx
 │   │       └── test-setup.ts
-│   ├── demo.tsx
-│   ├── hello-world
+│   ├── hello-world # Testing React setup
 │   │   ├── HelloWorld.test.tsx
 │   │   ├── HelloWorld.tsx
 │   │   ├── hello-world.scss
 │   │   └── hello-world.tsx
-│   ├── markdown-stream
+│   ├── markdown-stream # Old lit implementation of MarkdownStream
 │   │   ├── highlight_styles.scss
 │   │   ├── markdown-stream.scss
 │   │   └── markdown-stream.ts
-│   └── utils
+│   └── utils # old lit utilities
 │       └── _utils.ts
 ├── tsconfig.json
 ├── vitest.config.ts
@@ -392,5 +396,7 @@ Do use the `write_text_file` tool for larger edits, such as entire files or if p
 
 ## Pause for collaboration
 
-Pause between chunks of work to allow for collaboration.
-It's better to confirm the next steps before proceeding with a large change.
+Before making any changes, explain the plan of action and ask for confirmation.
+Pause between units of work to allow for collaboration and to confirm the next steps.
+Remember: it's better to pause and confirm that a step is correct than to proceed forward with many incorrect changes.
+Never guess: always ask for clarification if you're unsure about something.

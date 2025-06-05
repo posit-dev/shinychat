@@ -211,8 +211,8 @@ py-update-dist: ## [py] Update shinychat web assets
 		rm -rf $(PATH_PKG_PY)/src/shinychat/www; \
 	fi
 	mkdir -p $(PATH_PKG_PY)/src/shinychat/www
-	cp -r $(PATH_PKG_JS)/dist/chat $(PATH_PKG_PY)/src/shinychat/www/
-	cp -r $(PATH_PKG_JS)/dist/markdown-stream $(PATH_PKG_PY)/src/shinychat/www/
+	cp -r $(PATH_PKG_JS)/dist/chat $(PATH_PKG_PY)/src/shinychat/www/chat
+	cp -r $(PATH_PKG_JS)/dist/components $(PATH_PKG_PY)/src/shinychat/www/react
 	(git rev-parse HEAD) > "$(PATH_PKG_PY)/src/shinychat/www/GIT_VERSION"
 
 .PHONY: help

@@ -58,6 +58,14 @@ export default defineConfig([
       "react/jsx-uses-react": "off",
     },
 
+    ignores: [
+      "dist/**",
+      "node_modules/**",
+      "src/markdown-stream/**", // Ignore Lit components
+      "src/chat/**", // Ignore Lit components
+      "src/utils/**", // Ignore Lit utilities
+    ],
+
     settings: {
       react: {
         version: "detect",

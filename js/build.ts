@@ -132,11 +132,6 @@ async function bundleEntry({
 
 const entries: EntryConfig[] = [
   {
-    name: "markdown-stream/markdown-stream",
-    jsEntry: "src/markdown-stream/markdown-stream.ts",
-    sassEntry: "src/markdown-stream/markdown-stream.scss",
-  },
-  {
     name: "chat/chat",
     jsEntry: "src/chat/chat.ts",
     sassEntry: "src/chat/chat.scss",
@@ -156,6 +151,16 @@ const entries: EntryConfig[] = [
   {
     name: "demo-simple",
     jsEntry: "src/__demos__/markdown-stream/demo-simple.tsx",
+  },
+  // Shiny MarkdownStream
+  {
+    name: "components/markdown-stream/shiny-markdown-stream",
+    jsEntry: "src/components/ShinyMarkdownStream.tsx",
+    sassEntry: "src/components/MarkdownStream.css",
+  },
+  {
+    name: "shiny-demo",
+    jsEntry: "src/__demos__/markdown-stream/shiny-demo.tsx",
   },
 ]
 
