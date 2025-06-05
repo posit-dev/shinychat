@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "preact/hooks"
 import { JSX } from "preact/jsx-runtime"
-import { MarkdownStream, ContentType } from "./MarkdownStream"
+import { MarkdownStream, ContentType } from "../../components/MarkdownStream"
 
 const sampleMarkdown = `# MarkdownStream Demo
 
@@ -549,7 +549,7 @@ export function MarkdownStreamDemo(): JSX.Element {
             style={{
               border: "2px solid #dee2e6",
               borderRadius: "8px",
-              minHeight: "400px",
+              // minHeight: "400px",
               maxHeight: "600px",
               overflow: "auto",
               background: "#fff",

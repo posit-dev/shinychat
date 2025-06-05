@@ -1,5 +1,5 @@
 import { render } from "preact"
-import { MarkdownStream } from "./components/MarkdownStream"
+import { MarkdownStream } from "../../components/MarkdownStream"
 
 const testMarkdown = `# Test
 

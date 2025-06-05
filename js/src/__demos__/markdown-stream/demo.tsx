@@ -1,5 +1,5 @@
 import { render } from "preact"
-import { MarkdownStreamDemo } from "./components/MarkdownStreamDemo"
+import { MarkdownStreamDemo } from "./MarkdownStreamDemo"
 
 export function renderDemo(): void {
   const rootElement = document.getElementById("root")

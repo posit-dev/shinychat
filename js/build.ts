@@ -150,12 +150,12 @@ const entries: EntryConfig[] = [
   // Add MarkdownStream demo entry
   {
     name: "demo",
-    jsEntry: "src/demo.tsx",
+    jsEntry: "src/__demos__/markdown-stream/demo.tsx",
   },
   // Add simple demo entry for testing
   {
     name: "demo-simple",
-    jsEntry: "src/demo-simple.tsx",
+    jsEntry: "src/__demos__/markdown-stream/demo-simple.tsx",
   },
 ]
 
