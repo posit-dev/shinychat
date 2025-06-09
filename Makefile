@@ -93,9 +93,9 @@ r-update-dist: ## [r] Update shinychat web assets
 	if [ -d $(PATH_PKG_R)/inst/lib/shiny ]; then \
 		rm -rf $(PATH_PKG_R)/inst/lib/shiny; \
 	fi
-	mkdir -p $(PATH_PKG_R)/inst/lib/shiny
+	mkdir -p $(PATH_PKG_R)/inst/lib/shiny/react
 	cp -r $(PATH_PKG_JS)/dist/chat $(PATH_PKG_R)/inst/lib/shiny/
-	cp -r $(PATH_PKG_JS)/dist/markdown-stream $(PATH_PKG_R)/inst/lib/shiny/
+	cp -r $(PATH_PKG_JS)/dist/components/ $(PATH_PKG_R)/inst/lib/shiny/react
 	(git rev-parse HEAD) > "$(PATH_PKG_R)/inst/lib/shiny/GIT_VERSION"
 
 .PHONY: r-docs

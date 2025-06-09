@@ -1,11 +1,11 @@
 markdown_stream_deps <- function() {
   htmltools::htmlDependency(
-    "shinychat",
+    "shinychat-markdown-stream",
     utils::packageVersion("shinychat"),
     package = "shinychat",
-    src = "lib/shiny",
-    script = list(src = "markdown-stream/markdown-stream.js", type = "module"),
-    stylesheet = "markdown-stream/markdown-stream.css",
+    src = "lib/shiny/react/markdown-stream",
+    script = list(src = "shiny-markdown-stream.js", type = "module"),
+    stylesheet = "shiny-markdown-stream.css",
   )
 }
 
