@@ -29,9 +29,7 @@
   "dependencies": {
     "clipboard": "^2.0.11",
     "dompurify": "^3.2.6",
-    "highlight.js": "^11.11.1",
     "lit": "^3.3.0",
-    "marked": "^12.0.2",
     "preact": "^10.24.3",
     "react-markdown": "^10.1.0",
     "rehype-highlight": "^7.0.2",
