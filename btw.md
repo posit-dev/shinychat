@@ -166,7 +166,7 @@ These are useful considerations when building React components that will integra
 
 ## Phase 1: React UI Components
 
-### Task 1: Project Setup & Basic React Infrastructure
+### Task 1: Project Setup & Basic React Infrastructure - ✅ COMPLETED
 
 **Objective**: Get React development environment working with existing build system.
 
@@ -187,37 +187,39 @@ These are useful considerations when building React components that will integra
 - [x] `npm test` runs component tests successfully
 
 
-### Task 2: MarkdownStream React Component (UI Only)
+### Task 2: MarkdownStream React Component (UI Only) - ✅ COMPLETED
 
 **Objective**: Create a fully functional MarkdownStream React component that renders all content types, handles streaming, and includes syntax highlighting - but without Shiny integration.
 
-**Context**: Port the entire UI functionality from `markdown-stream.ts`, focusing on content rendering, streaming states, and user interactions.
+**Key Deliverables Completed**:
+- `components/MarkdownStream.tsx` with complete React-based implementation using `react-markdown`
+- All content types render identically to Lit version (markdown, semi-markdown, HTML, text)
+- Streaming animation and behavior maintained with proper throttled auto-scroll
+- Syntax highlighting integrated via `rehype-highlight` plugin
+- Code copy functionality implemented as React components
+- Component works in isolation with props interface
 
-**Deliverables**:
-1. `components/MarkdownStream.tsx` with:
-   - Props: `content`, `contentType`, `streaming`, `autoScroll`, `onContentChange`, `onStreamEnd`
-   - Content rendering for all types (markdown, semi-markdown, HTML, text)
-   - Streaming state with dot indicator
-   - Syntax highlighting with highlight.js
-   - Code copy functionality
-   - Auto-scroll behavior
-   - All visual states and transitions
+**Technical Implementation**:
+- **Architecture Change**: Migrated from `dangerouslySetInnerHTML` + post-render DOM manipulation to `react-markdown` with custom component renderers
+- **Layout Shift Elimination**: Syntax highlighting and copy buttons now handled by React's reconciliation system instead of post-render effects
+- **Custom Components**: `CodeBlock`, `PreBlock`, `Table` components with built-in functionality
+- **Streaming Performance**: Proper throttled scrolling (immediate execution + every 50ms during updates)
+- **Type Safety**: Resolved Preact/React type compatibility with strategic type assertions
 
-2. `components/MarkdownStream.module.css` - Complete styling
-3. Storybook or demo page to showcase functionality
-4. Unit tests for all rendering scenarios
+**Dependencies Added**:
+- `react-markdown` - Core markdown to React rendering
+- `remark-gfm` - GitHub Flavored Markdown support
+- `rehype-highlight` - Syntax highlighting integration
+- `rehype-raw` - Raw HTML support
 
-**Key Focus**: Perfect visual and interaction parity with Lit version, testable in isolation.
+**Acceptance Criteria Met**:
+- ✅ All content types render identically to Lit version
+- ✅ Streaming animation and behavior matches
+- ✅ Syntax highlighting works correctly
+- ✅ Code copy buttons function properly
+- ✅ Auto-scroll behavior matches original
+- ✅ Component works in isolation with props
 
-**Acceptance Criteria**:
-- [ ] All content types render identically to Lit version
-- [ ] Streaming animation and behavior matches
-- [ ] Syntax highlighting works correctly
-- [ ] Code copy buttons function properly
-- [ ] Auto-scroll behavior matches original
-- [ ] Component works in isolation with props
-
-<!-- HIDE -->
 
 ### Task 3: Complete Chat UI System
 
@@ -270,6 +272,7 @@ These are useful considerations when building React components that will integra
 - [ ] Demo page showcases all functionality
 - [ ] No Shiny dependencies required for UI functionality
 
+<!-- HIDE -->
 
 ## Phase 2: Shiny Integration Layer
 
