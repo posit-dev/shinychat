@@ -34,7 +34,7 @@ def markdown_stream_dependency() -> HTMLDependency:
         version=__version__,
         source={
             "package": "shinychat",
-            "subdir": "www/react",
+            "subdir": "www/react/markdown-stream",
         },
         script={"src": "shiny-markdown-stream.js", "type": "module"},
         stylesheet={"href": "shiny-markdown-stream.css"},

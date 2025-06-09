@@ -3,6 +3,10 @@
   display: block;
 }
 
+.markdown-stream pre {
+  padding: 0;
+}
+
 /* Styling for the code-copy button (inspired by Quarto's code-copy feature) */
 .markdown-stream pre:has(.code-copy-button) {
   position: relative;
@@ -111,7 +115,7 @@
   border-bottom: calc(var(--bs-border-width) * 2) solid var(--bs-table-border-color);
 }
 
-/* 
+/*
   Highlight.js styles will be dynamically injected by the component
   This ensures proper theme switching between light and dark modes
 */

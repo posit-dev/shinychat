@@ -244,6 +244,25 @@ const streamingDemos: StreamingDemo[] = [
   },
 ]
 
+// Popular highlight.js themes for demo
+const availableThemes = [
+  { name: "atom-one-light", label: "Atom One Light", category: "light" },
+  { name: "atom-one-dark", label: "Atom One Dark", category: "dark" },
+  { name: "github", label: "GitHub", category: "light" },
+  { name: "github-dark", label: "GitHub Dark", category: "dark" },
+  { name: "vs", label: "Visual Studio", category: "light" },
+  { name: "vs2015", label: "Visual Studio 2015", category: "dark" },
+  { name: "monokai", label: "Monokai", category: "dark" },
+  { name: "solarized-light", label: "Solarized Light", category: "light" },
+  { name: "solarized-dark", label: "Solarized Dark", category: "dark" },
+  { name: "dracula", label: "Dracula", category: "dark" },
+  { name: "nord", label: "Nord", category: "dark" },
+  { name: "tomorrow", label: "Tomorrow", category: "light" },
+  { name: "tomorrow-night", label: "Tomorrow Night", category: "dark" },
+  { name: "zenburn", label: "Zenburn", category: "dark" },
+  { name: "rainbow", label: "Rainbow", category: "light" },
+]
+
 export function MarkdownStreamDemo(): JSX.Element {
   const [currentDemo, setCurrentDemo] = useState<StreamingDemo>(
     streamingDemos[0] || {
@@ -259,6 +278,11 @@ export function MarkdownStreamDemo(): JSX.Element {
   const [autoScroll, setAutoScroll] = useState(true)
   const [streamingSpeed, setStreamingSpeed] = useState(50)
   const [customContent, setCustomContent] = useState("")
+
+  // Theme configuration
+  const [lightTheme, setLightTheme] = useState("atom-one-light")
+  const [darkTheme, setDarkTheme] = useState("atom-one-dark")
+  const [useLocalThemes, setUseLocalThemes] = useState(true)
 
   const [stats, setStats] = useState({
     contentChanges: 0,
@@ -363,7 +387,8 @@ export function MarkdownStreamDemo(): JSX.Element {
           }}
         >
           A comprehensive demo showcasing streaming content rendering with
-          syntax highlighting, auto-scrolling, and multiple content types.
+          dynamic theme loading, syntax highlighting, auto-scrolling, and
+          multiple content types.
         </p>
       </header>
 
@@ -387,7 +412,103 @@ export function MarkdownStreamDemo(): JSX.Element {
           <h2 style={{ marginTop: 0 }}>🎛️ Controls</h2>
 
           <div style={{ marginBottom: "20px" }}>
-            <h3>Demo Content</h3>
+            <h3>🎨 Theme Configuration</h3>
+            <div
+              style={{ display: "flex", flexDirection: "column", gap: "12px" }}
+            >
+              <label
+                style={{ display: "flex", alignItems: "center", gap: "8px" }}
+              >
+                <input
+                  type="checkbox"
+                  checked={useLocalThemes}
+                  onChange={(e) =>
+                    setUseLocalThemes((e.target as HTMLInputElement).checked)
+                  }
+                />
+                <span>Use Local Themes (atom-one-*)</span>
+              </label>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "8px",
+                }}
+              >
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "4px",
+                      fontSize: "14px",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    ☀️ Light Theme
+                  </label>
+                  <select
+                    value={lightTheme}
+                    onChange={(e) =>
+                      setLightTheme((e.target as HTMLSelectElement).value)
+                    }
+                    style={{
+                      width: "100%",
+                      padding: "4px",
+                      border: "1px solid #ddd",
+                      borderRadius: "4px",
+                      fontSize: "12px",
+                    }}
+                  >
+                    {availableThemes
+                      .filter((theme) => theme.category === "light")
+                      .map((theme) => (
+                        <option key={theme.name} value={theme.name}>
+                          {theme.label}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "4px",
+                      fontSize: "14px",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    🌙 Dark Theme
+                  </label>
+                  <select
+                    value={darkTheme}
+                    onChange={(e) =>
+                      setDarkTheme((e.target as HTMLSelectElement).value)
+                    }
+                    style={{
+                      width: "100%",
+                      padding: "4px",
+                      border: "1px solid #ddd",
+                      borderRadius: "4px",
+                      fontSize: "12px",
+                    }}
+                  >
+                    {availableThemes
+                      .filter((theme) => theme.category === "dark")
+                      .map((theme) => (
+                        <option key={theme.name} value={theme.name}>
+                          {theme.label}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: "20px" }}>
+            <h3>📄 Demo Content</h3>
             <div
               style={{ display: "flex", flexDirection: "column", gap: "8px" }}
             >
@@ -414,7 +535,7 @@ export function MarkdownStreamDemo(): JSX.Element {
           </div>
 
           <div style={{ marginBottom: "20px" }}>
-            <h3>Settings</h3>
+            <h3>⚙️ Settings</h3>
             <div
               style={{ display: "flex", flexDirection: "column", gap: "10px" }}
             >
@@ -464,7 +585,7 @@ export function MarkdownStreamDemo(): JSX.Element {
           </div>
 
           <div style={{ marginBottom: "20px" }}>
-            <h3>Custom Content</h3>
+            <h3>✏️ Custom Content</h3>
             <textarea
               value={customContent}
               onChange={(e) =>
@@ -511,6 +632,12 @@ export function MarkdownStreamDemo(): JSX.Element {
                 <strong>Auto Scroll:</strong> {autoScroll ? "✅ On" : "❌ Off"}
               </div>
               <div>
+                <strong>Light Theme:</strong> {lightTheme}
+              </div>
+              <div>
+                <strong>Dark Theme:</strong> {darkTheme}
+              </div>
+              <div>
                 <strong>Content Length:</strong>{" "}
                 {content.length.toLocaleString()} chars
               </div>
@@ -549,7 +676,6 @@ export function MarkdownStreamDemo(): JSX.Element {
             style={{
               border: "2px solid #dee2e6",
               borderRadius: "8px",
-              // minHeight: "400px",
               maxHeight: "600px",
               overflow: "auto",
               background: "#fff",
@@ -563,6 +689,8 @@ export function MarkdownStreamDemo(): JSX.Element {
               autoScroll={autoScroll}
               onContentChange={handleContentChange}
               onStreamEnd={handleStreamEnd}
+              codeThemeLight={lightTheme}
+              codeThemeDark={darkTheme}
             />
 
             {!content && (
@@ -585,6 +713,43 @@ export function MarkdownStreamDemo(): JSX.Element {
             )}
           </div>
         </div>
+      </div>
+
+      <div
+        style={{
+          marginTop: "30px",
+          padding: "20px",
+          background: "#f8f9fa",
+          borderRadius: "8px",
+        }}
+      >
+        <h3>🎯 New Features</h3>
+        <ul style={{ margin: 0, paddingLeft: "20px" }}>
+          <li>
+            <strong>Dynamic Theme Loading:</strong> Automatically loads
+            highlight.js themes from CDN with local fallbacks
+          </li>
+          <li>
+            <strong>Configurable Themes:</strong> Set custom light and dark
+            themes via component props
+          </li>
+          <li>
+            <strong>Local Theme Support:</strong> Embedded atom-one-light and
+            atom-one-dark themes for offline use
+          </li>
+          <li>
+            <strong>Theme Detection:</strong> Automatically switches between
+            light/dark based on system preferences
+          </li>
+          <li>
+            <strong>Error Handling:</strong> Graceful fallback to embedded
+            themes if CDN fails
+          </li>
+          <li>
+            <strong>Performance:</strong> Only loads CSS when needed, with
+            automatic cleanup
+          </li>
+        </ul>
       </div>
     </div>
   )

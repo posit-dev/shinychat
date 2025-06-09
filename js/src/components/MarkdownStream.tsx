@@ -16,11 +16,20 @@ export interface MarkdownStreamProps {
   autoScroll?: boolean
   onContentChange?: () => void
   onStreamEnd?: () => void
+  // Theme configuration
+  codeThemeLight?: string
+  codeThemeDark?: string
 }
 
 // SVG dot to indicate content is currently streaming
 const SVG_DOT_CLASS = "markdown-stream-dot"
 const SVG_DOT = `<svg width="12" height="12" xmlns="http://www.w3.org/2000/svg" class="${SVG_DOT_CLASS}" style="margin-left:.25em;margin-top:-.25em"><circle cx="6" cy="6" r="6"/></svg>`
+
+// Default theme configuration
+const CODE_THEME_LIGHT_DEFAULT = "atom-one-light"
+const CODE_THEME_DARK_DEFAULT = "atom-one-dark"
+const HIGHLIGHT_JS_CDN_BASE =
+  "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles"
 
 // 'markdown' renderer (for assistant messages)
 const markdownRenderer = new Renderer()
@@ -92,8 +101,238 @@ function useThrottle<T extends (...args: unknown[]) => unknown>(
   ) as T
 }
 
+// Theme loading utility functions
+function getThemeUrl(themeName: string): string {
+  if (
+    themeName === CODE_THEME_LIGHT_DEFAULT ||
+    themeName === CODE_THEME_DARK_DEFAULT
+  ) {
+    // For local themes, we'll use embedded CSS
+    return ""
+  }
+  return `${HIGHLIGHT_JS_CDN_BASE}/${themeName}.min.css`
+}
+
+function createStyleElement(themeName: string, css: string): HTMLStyleElement {
+  const style = document.createElement("style")
+  style.setAttribute("data-highlight-theme", themeName)
+  style.setAttribute("data-markdown-stream", "true")
+  style.textContent = css
+  return style
+}
+
+function loadThemeStylesheet(themeName: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    // Remove existing theme stylesheets
+    document
+      .querySelectorAll(
+        'link[data-markdown-stream="true"], style[data-markdown-stream="true"]',
+      )
+      .forEach((el) => el.remove())
+
+    // Handle local embedded themes
+    if (
+      themeName === CODE_THEME_LIGHT_DEFAULT ||
+      themeName === CODE_THEME_DARK_DEFAULT
+    ) {
+      const css = getEmbeddedThemeCSS(themeName)
+      const style = createStyleElement(themeName, css)
+      document.head.appendChild(style)
+      resolve()
+      return
+    }
+
+    // Load theme from CDN
+    const themeUrl = getThemeUrl(themeName)
+    const link = document.createElement("link")
+    link.rel = "stylesheet"
+    link.type = "text/css"
+    link.href = themeUrl
+    link.setAttribute("data-highlight-theme", themeName)
+    link.setAttribute("data-markdown-stream", "true")
+
+    link.onload = () => resolve()
+    link.onerror = () => {
+      // Fallback to embedded theme if CDN fails
+      console.warn(
+        `Failed to load theme from CDN: ${themeUrl}. Falling back to embedded theme.`,
+      )
+      link.remove()
+      const fallbackTheme = themeName.includes("dark")
+        ? CODE_THEME_DARK_DEFAULT
+        : CODE_THEME_LIGHT_DEFAULT
+      const css = getEmbeddedThemeCSS(fallbackTheme)
+      const style = createStyleElement(fallbackTheme, css)
+      document.head.appendChild(style)
+      resolve()
+    }
+
+    document.head.appendChild(link)
+  })
+}
+
+function getEmbeddedThemeCSS(themeName: string): string {
+  if (themeName === CODE_THEME_DARK_DEFAULT) {
+    return `.markdown-stream {
+  pre code.hljs {
+    display: block;
+    overflow-x: auto;
+    padding: 1em;
+  }
+  code.hljs {
+    padding: 3px 5px;
+  }
+  .hljs {
+    color: #abb2bf;
+    background: #282c34;
+  }
+  .hljs-comment,
+  .hljs-quote {
+    color: #5c6370;
+    font-style: italic;
+  }
+  .hljs-doctag,
+  .hljs-formula,
+  .hljs-keyword {
+    color: #c678dd;
+  }
+  .hljs-deletion,
+  .hljs-name,
+  .hljs-section,
+  .hljs-selector-tag,
+  .hljs-subst {
+    color: #e06c75;
+  }
+  .hljs-literal {
+    color: #56b6c2;
+  }
+  .hljs-addition,
+  .hljs-attribute,
+  .hljs-meta .hljs-string,
+  .hljs-regexp,
+  .hljs-string {
+    color: #98c379;
+  }
+  .hljs-attr,
+  .hljs-number,
+  .hljs-selector-attr,
+  .hljs-selector-class,
+  .hljs-selector-pseudo,
+  .hljs-template-variable,
+  .hljs-type,
+  .hljs-variable {
+    color: #d19a66;
+  }
+  .hljs-bullet,
+  .hljs-link,
+  .hljs-meta,
+  .hljs-selector-id,
+  .hljs-symbol,
+  .hljs-title {
+    color: #61aeee;
+  }
+  .hljs-built_in,
+  .hljs-class .hljs-title,
+  .hljs-title.class_ {
+    color: #e6c07b;
+  }
+  .hljs-emphasis {
+    font-style: italic;
+  }
+  .hljs-strong {
+    font-weight: 700;
+  }
+  .hljs-link {
+    text-decoration: underline;
+  }
+}`
+  } else {
+    // atom-one-light theme
+    return `.markdown-stream {
+  pre code.hljs {
+    display: block;
+    overflow-x: auto;
+    padding: 1em;
+  }
+  code.hljs {
+    padding: 3px 5px;
+  }
+  .hljs {
+    color: #383a42;
+    background: #fafafa;
+  }
+  .hljs-comment,
+  .hljs-quote {
+    color: #a0a1a7;
+    font-style: italic;
+  }
+  .hljs-doctag,
+  .hljs-formula,
+  .hljs-keyword {
+    color: #a626a4;
+  }
+  .hljs-deletion,
+  .hljs-name,
+  .hljs-section,
+  .hljs-selector-tag,
+  .hljs-subst {
+    color: #e45649;
+  }
+  .hljs-literal {
+    color: #0184bb;
+  }
+  .hljs-addition,
+  .hljs-attribute,
+  .hljs-meta .hljs-string,
+  .hljs-regexp,
+  .hljs-string {
+    color: #50a14f;
+  }
+  .hljs-attr,
+  .hljs-number,
+  .hljs-selector-attr,
+  .hljs-selector-class,
+  .hljs-selector-pseudo,
+  .hljs-template-variable,
+  .hljs-type,
+  .hljs-variable {
+    color: #986801;
+  }
+  .hljs-bullet,
+  .hljs-link,
+  .hljs-meta,
+  .hljs-selector-id,
+  .hljs-symbol,
+  .hljs-title {
+    color: #4078f2;
+  }
+  .hljs-built_in,
+  .hljs-class .hljs-title,
+  .hljs-title.class_ {
+    color: #c18401;
+  }
+  .hljs-emphasis {
+    font-style: italic;
+  }
+  .hljs-strong {
+    font-weight: 700;
+  }
+  .hljs-link {
+    text-decoration: underline;
+  }
+}
+
+    `
+  }
+}
+
 // Theme detection and CSS injection for highlight.js
-function useHighlightTheme() {
+function useHighlightTheme(
+  lightTheme: string = CODE_THEME_LIGHT_DEFAULT,
+  darkTheme: string = CODE_THEME_DARK_DEFAULT,
+) {
+  const [currentTheme, setCurrentTheme] = useState<string>("")
+
   useEffect(() => {
     const loadHighlightTheme = async () => {
       // Check if we're in dark mode
@@ -102,164 +341,28 @@ function useHighlightTheme() {
         document.documentElement.getAttribute("data-bs-theme") === "dark" ||
         document.body.classList.contains("dark-theme")
 
-      // Remove existing highlight.js stylesheets
-      document
-        .querySelectorAll('link[href*="highlight.js"]')
-        .forEach((link) => link.remove())
-      document
-        .querySelectorAll("style[data-highlight-theme]")
-        .forEach((style) => style.remove())
+      const selectedTheme = isDarkMode ? darkTheme : lightTheme
+
+      // Don't reload if it's the same theme
+      if (currentTheme === selectedTheme) {
+        return
+      }
 
       try {
-        // Import the appropriate theme CSS as text
-        const themeName = isDarkMode ? "atom-one-dark" : "atom-one-light"
-
-        // For now, we'll inject basic styles. In a full implementation, you might
-        // want to dynamically import the CSS files or include them in your build
-        const style = document.createElement("style")
-        style.setAttribute("data-highlight-theme", themeName)
-
-        if (isDarkMode) {
-          style.textContent = `
-            .markdown-stream pre code.hljs {
-              display: block;
-              overflow-x: auto;
-              padding: 1em;
-              color: #abb2bf;
-              background: #282c34;
-            }
-            .markdown-stream .hljs-comment,
-            .markdown-stream .hljs-quote {
-              color: #5c6370;
-              font-style: italic;
-            }
-            .markdown-stream .hljs-doctag,
-            .markdown-stream .hljs-keyword,
-            .markdown-stream .hljs-formula {
-              color: #c678dd;
-            }
-            .markdown-stream .hljs-section,
-            .markdown-stream .hljs-name,
-            .markdown-stream .hljs-selector-tag,
-            .markdown-stream .hljs-deletion,
-            .markdown-stream .hljs-subst {
-              color: #e06c75;
-            }
-            .markdown-stream .hljs-literal {
-              color: #56b6c2;
-            }
-            .markdown-stream .hljs-string,
-            .markdown-stream .hljs-regexp,
-            .markdown-stream .hljs-addition,
-            .markdown-stream .hljs-attribute,
-            .markdown-stream .hljs-meta-string {
-              color: #98c379;
-            }
-            .markdown-stream .hljs-built_in,
-            .markdown-stream .hljs-class .hljs-title {
-              color: #e6c07b;
-            }
-            .markdown-stream .hljs-attr,
-            .markdown-stream .hljs-variable,
-            .markdown-stream .hljs-template-variable,
-            .markdown-stream .hljs-type,
-            .markdown-stream .hljs-selector-class,
-            .markdown-stream .hljs-selector-attr,
-            .markdown-stream .hljs-selector-pseudo,
-            .markdown-stream .hljs-number {
-              color: #d19a66;
-            }
-            .markdown-stream .hljs-symbol,
-            .markdown-stream .hljs-bullet,
-            .markdown-stream .hljs-link,
-            .markdown-stream .hljs-meta,
-            .markdown-stream .hljs-selector-id,
-            .markdown-stream .hljs-title {
-              color: #61aeee;
-            }
-            .markdown-stream .hljs-emphasis {
-              font-style: italic;
-            }
-            .markdown-stream .hljs-strong {
-              font-weight: bold;
-            }
-            .markdown-stream .hljs-link {
-              text-decoration: underline;
-            }
-          `
-        } else {
-          style.textContent = `
-            .markdown-stream pre code.hljs {
-              display: block;
-              overflow-x: auto;
-              padding: 1em;
-              color: #383a42;
-              background: #fafafa;
-            }
-            .markdown-stream .hljs-comment,
-            .markdown-stream .hljs-quote {
-              color: #a0a1a7;
-              font-style: italic;
-            }
-            .markdown-stream .hljs-doctag,
-            .markdown-stream .hljs-keyword,
-            .markdown-stream .hljs-formula {
-              color: #a626a4;
-            }
-            .markdown-stream .hljs-section,
-            .markdown-stream .hljs-name,
-            .markdown-stream .hljs-selector-tag,
-            .markdown-stream .hljs-deletion,
-            .markdown-stream .hljs-subst {
-              color: #e45649;
-            }
-            .markdown-stream .hljs-literal {
-              color: #0184bb;
-            }
-            .markdown-stream .hljs-string,
-            .markdown-stream .hljs-regexp,
-            .markdown-stream .hljs-addition,
-            .markdown-stream .hljs-attribute,
-            .markdown-stream .hljs-meta-string {
-              color: #50a14f;
-            }
-            .markdown-stream .hljs-built_in,
-            .markdown-stream .hljs-class .hljs-title {
-              color: #c18401;
-            }
-            .markdown-stream .hljs-attr,
-            .markdown-stream .hljs-variable,
-            .markdown-stream .hljs-template-variable,
-            .markdown-stream .hljs-type,
-            .markdown-stream .hljs-selector-class,
-            .markdown-stream .hljs-selector-attr,
-            .markdown-stream .hljs-selector-pseudo,
-            .markdown-stream .hljs-number {
-              color: #986801;
-            }
-            .markdown-stream .hljs-symbol,
-            .markdown-stream .hljs-bullet,
-            .markdown-stream .hljs-link,
-            .markdown-stream .hljs-meta,
-            .markdown-stream .hljs-selector-id,
-            .markdown-stream .hljs-title {
-              color: #4078f2;
-            }
-            .markdown-stream .hljs-emphasis {
-              font-style: italic;
-            }
-            .markdown-stream .hljs-strong {
-              font-weight: bold;
-            }
-            .markdown-stream .hljs-link {
-              text-decoration: underline;
-            }
-          `
-        }
-
-        document.head.appendChild(style)
+        await loadThemeStylesheet(selectedTheme)
+        setCurrentTheme(selectedTheme)
       } catch (error) {
         console.warn("Failed to load highlight.js theme:", error)
+        // Fallback to default embedded theme
+        const fallbackTheme = isDarkMode
+          ? CODE_THEME_DARK_DEFAULT
+          : CODE_THEME_LIGHT_DEFAULT
+        try {
+          await loadThemeStylesheet(fallbackTheme)
+          setCurrentTheme(fallbackTheme)
+        } catch (fallbackError) {
+          console.error("Failed to load fallback theme:", fallbackError)
+        }
       }
     }
 
@@ -297,6 +400,17 @@ function useHighlightTheme() {
       mediaQuery.removeEventListener("change", handleThemeChange)
       observer.disconnect()
     }
+  }, [lightTheme, darkTheme, currentTheme])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      document
+        .querySelectorAll(
+          'link[data-markdown-stream="true"], style[data-markdown-stream="true"]',
+        )
+        .forEach((el) => el.remove())
+    }
   }, [])
 }
 
@@ -307,6 +421,8 @@ export function MarkdownStream({
   autoScroll = false,
   onContentChange,
   onStreamEnd,
+  codeThemeLight = CODE_THEME_LIGHT_DEFAULT,
+  codeThemeDark = CODE_THEME_DARK_DEFAULT,
 }: MarkdownStreamProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollableElementRef = useRef<HTMLElement | null>(null)
@@ -315,7 +431,7 @@ export function MarkdownStream({
   const clipboardInstancesRef = useRef<ClipboardJS[]>([])
 
   // Set up highlight.js theme handling
-  useHighlightTheme()
+  useHighlightTheme(codeThemeLight, codeThemeDark)
 
   // Convert content to HTML
   const htmlContent =

@@ -29,6 +29,10 @@ export class ShinyMarkdownStreamOutput extends HTMLElement {
   private contentType: ContentType = "markdown"
   private streaming: boolean = false
   private autoScroll: boolean = false
+  private codeTheme: { light: string; dark: string } = {
+    light: "atom-one-light",
+    dark: "atom-one-dark",
+  }
 
   connectedCallback() {
     // Don't use shadow DOM so the component can inherit styles from the main document
@@ -44,6 +48,10 @@ export class ShinyMarkdownStreamOutput extends HTMLElement {
       (this.getAttribute("content-type") as ContentType) || "markdown"
     this.streaming = this.hasAttribute("streaming")
     this.autoScroll = this.hasAttribute("auto-scroll")
+    this.codeTheme = {
+      light: this.getAttribute("light-theme") || "atom-one-light",
+      dark: this.getAttribute("dark-theme") || "atom-one-dark",
+    }
 
     // Initial render
     this.renderValue()
@@ -67,6 +75,8 @@ export class ShinyMarkdownStreamOutput extends HTMLElement {
           autoScroll={this.autoScroll}
           onContentChange={this.handleContentChange}
           onStreamEnd={this.handleStreamEnd}
+          codeThemeLight={this.codeTheme.light}
+          codeThemeDark={this.codeTheme.dark}
         />
       </StrictMode>,
       this.rootElement,

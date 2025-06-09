@@ -92,9 +92,9 @@ class MarkdownStream:
             async def _mock_task() -> str:
                 return ""
 
-            self._latest_stream: reactive.Value[reactive.ExtendedTask[[], str]] = (
-                reactive.Value(_mock_task)
-            )
+            self._latest_stream: reactive.Value[
+                reactive.ExtendedTask[[], str]
+            ] = reactive.Value(_mock_task)
 
     async def stream(
         self,
@@ -149,7 +149,9 @@ class MarkdownStream:
                         ui = self._session._process_ui(x)
 
                     result += ui["html"]
-                    await self._send_content_message(ui["html"], "append", ui["deps"])
+                    await self._send_content_message(
+                        ui["html"], "append", ui["deps"]
+                    )
 
             return result
 
@@ -249,7 +251,9 @@ class MarkdownStream:
     ):
         if self._session.is_stub_session():
             return
-        await self._session.send_custom_message("shinyMarkdownStreamMessage", {**msg})
+        await self._session.send_custom_message(
+            "shinyMarkdownStreamMessage", {**msg}
+        )
 
     async def _raise_exception(self, e: BaseException):
         if self.on_error == "unhandled":
@@ -269,6 +273,8 @@ class ExpressMarkdownStream(MarkdownStream):
         auto_scroll: bool = True,
         width: CssUnit = "min(680px, 100%)",
         height: CssUnit = "auto",
+        code_theme_light: str | None = None,
+        code_theme_dark: str | None = None,
     ) -> Tag:
         """
         Create a UI element for this `MarkdownStream`.
@@ -306,6 +312,8 @@ class ExpressMarkdownStream(MarkdownStream):
             auto_scroll=auto_scroll,
             width=width,
             height=height,
+            code_theme_light=code_theme_light,
+            code_theme_dark=code_theme_dark,
         )
 
 
@@ -317,6 +325,8 @@ def output_markdown_stream(
     auto_scroll: bool = True,
     width: CssUnit = "min(680px, 100%)",
     height: CssUnit = "auto",
+    code_theme_light: str | None = None,
+    code_theme_dark: str | None = None,
 ) -> Tag:
     """
     Create a UI element for a :class:`~shiny.ui.MarkdownStream`.
@@ -368,6 +378,8 @@ def output_markdown_stream(
             ),
             "content-type": content_type,
             "auto-scroll": "" if auto_scroll else None,
+            "light-theme": code_theme_light,
+            "dark-theme": code_theme_dark,
         },
         id=resolve_id(id),
         content=ui["html"],
