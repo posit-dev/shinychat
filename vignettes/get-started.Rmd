@@ -18,9 +18,9 @@ knitr::opts_chunk$set(
 library(shinychat)
 ```
 
-This article will cover how to build a chatbot powered by a Large Language Model (LLM) using `shinychat` and [`ellmer`](https://ellmer.tidyverse.org/). ellmer will handle connecting to and communicating with the model, while shinychat will handle the user interface for your chatbot. 
+This article will cover how to build a chatbot powered by a Large Language Model (LLM) using shinychat and [ellmer](https://ellmer.tidyverse.org/). ellmer will handle connecting to and communicating with the model, while shinychat will handle the user interface for your chatbot. 
 
-You will need to install both `shinychat` and `ellmer`. 
+You will need to install both shinychat and ellmer. 
 
 ```r
 install.packages(c("shinychat", "ellmer"))
@@ -30,7 +30,7 @@ install.packages(c("shinychat", "ellmer"))
 
 ### Choose a model
 
-First, choose a model to power your chatbot. `ellmer` and `shinychat` support a [wide variety](https://ellmer.tidyverse.org/#providers) of LLM providers including Anthropic, OpenAI, Vertex, Snowflake, Groq, Perplexity, and more.
+First, choose a model to power your chatbot. ellmer and shinychat support a [wide variety](https://ellmer.tidyverse.org/#providers) of LLM providers including Anthropic, OpenAI, Vertex, Snowflake, Groq, Perplexity, and more.
 
 With ellmer, you specify the LLM provider by choosing the corresponding `chat_*()` function, e.g., `chat_anthropic()`,  `chat_openai()`, etc. This makes it easy to swap out the chat provider to a different one at any time. 
 
@@ -45,7 +45,7 @@ If you don't specify the `model` argument, the `chat_*()` function will use a re
 
 ::: callout-tip
 ## Help me choose!
-If you're not sure which provider to choose, `ellmer` provides a [guide](https://ellmer.tidyverse.org/#providermodel-choice) to help you decide. 
+If you're not sure which provider to choose, ellmer provides a [guide](https://ellmer.tidyverse.org/#providermodel-choice) to help you decide. 
 
 If you’re not ready to sign up for a cloud provider (e.g., OpenAI or Anthropic), you can run models locally (for free!) with [Ollama](https://ellmer.tidyverse.org/reference/chat_ollama.html).
 
@@ -56,7 +56,7 @@ A local model is a good way to get started without incurring any cost or sharing
 
 Next, authenticate with your LLM provider. Popular model providers like OpenAI and Anthropic require an API key. We recommend storing these API keys in your `.Renviron` (e.g., as `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`).
 
-You can find the variable names in each `chat_*()` function's documentation (e.g., [`chat_openai()`](https://ellmer.tidyverse.org/reference/chat_openai.html#arg-api-key), [`chat_anthropic()`](https://ellmer.tidyverse.org/reference/chat_anthropic.html#arg-api-key)). There is additional information on [authentication](https://ellmer.tidyverse.org/#authentication) on the `ellmer` site.
+You can find the variable names in each `chat_*()` function's documentation (e.g., [`chat_openai()`](https://ellmer.tidyverse.org/reference/chat_openai.html#arg-api-key), [`chat_anthropic()`](https://ellmer.tidyverse.org/reference/chat_anthropic.html#arg-api-key)). There is additional information on [authentication](https://ellmer.tidyverse.org/#authentication) on the ellmer site.
 
 Once your credentials (if any) are in place, you're ready to get started. 
 
@@ -162,7 +162,7 @@ Use the `chat_*()` function's `system_prompt` argument to provide the LLM with m
 chat <- ellmer::chat_ollama(system_prompt = "You are a helpful assistant")
 ```
 
-To learn more about writing system prompts, see `ellmer`'s [Prompt design](https://ellmer.tidyverse.org/articles/prompt-design.html) vignette. Generally, we recommend writing the system prompt in a separate markdown file, but if your prompt is short you can also supply it directly as a string to the `system_prompt` argument.
+To learn more about writing system prompts, see ellmer's [Prompt design](https://ellmer.tidyverse.org/articles/prompt-design.html) vignette. Generally, we recommend writing the system prompt in a separate markdown file, but if your prompt is short you can also supply it directly as a string to the `system_prompt` argument.
 
 ### Add messages and suggestions on startup
 
