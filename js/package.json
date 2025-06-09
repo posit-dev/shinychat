@@ -44,7 +44,7 @@
     "@testing-library/preact": "^3.2.4",
     "@types/dompurify": "^3.0.5",
     "@types/jest": "^29.5.14",
-    "@types/node": "^22.15.21",
+    "@types/node": "^22.15.30",
     "@types/rstudio-shiny": "git+https://git@github.com/rstudio/shiny.git#v1.10.0",
     "@typescript-eslint/eslint-plugin": "^8.32.1",
     "@typescript-eslint/parser": "^8.32.1",

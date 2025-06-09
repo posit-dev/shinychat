@@ -1,6 +1,8 @@
-import { BuildOptions, build, type Metafile } from "esbuild"
+/// <reference types="node" />
+
+import { BuildOptions, type BuildResult, build, type Metafile } from "esbuild"
 import { sassPlugin } from "esbuild-sass-plugin"
-import * as fs from "node:fs/promises"
+import * as fs from "fs/promises"
 
 // Parse command line arguments
 const args = Object.fromEntries(
@@ -58,9 +60,7 @@ function mergeMetadatas(metadatas: Array<Metafile>): Metafile {
   return mergedMetadata
 }
 
-async function bundle_helper(
-  options: BuildOptions,
-): Promise<ReturnType<typeof build> | undefined> {
+async function bundle_helper(options: BuildOptions): Promise<BuildResult> {
   try {
     const result = await build({
       format: "esm",
@@ -108,7 +108,7 @@ async function bundleEntry({
   jsEntry,
   sassEntry,
 }: EntryConfig): Promise<void> {
-  const tasks = []
+  const tasks: Promise<BuildResult>[] = []
 
   if (jsEntry) {
     tasks.push(
@@ -136,31 +136,21 @@ const entries: EntryConfig[] = [
     jsEntry: "src/chat/chat.ts",
     sassEntry: "src/chat/chat.scss",
   },
-  // Add hello-world React component entry
-  {
-    name: "hello-world/hello-world",
-    jsEntry: "src/hello-world/hello-world.tsx",
-    sassEntry: "src/hello-world/hello-world.scss",
-  },
-  // Add MarkdownStream demo entry
-  {
-    name: "demo",
-    jsEntry: "src/__demos__/markdown-stream/demo.tsx",
-  },
-  // Add simple demo entry for testing
-  {
-    name: "demo-simple",
-    jsEntry: "src/__demos__/markdown-stream/demo-simple.tsx",
-  },
-  // Shiny MarkdownStream
+  // ShinyMarkdownStream
   {
     name: "components/markdown-stream/shiny-markdown-stream",
     jsEntry: "src/components/ShinyMarkdownStream.tsx",
     sassEntry: "src/components/MarkdownStream.css",
   },
+  // MarkdownStream demo entry
   {
-    name: "shiny-demo",
-    jsEntry: "src/__demos__/markdown-stream/shiny-demo.tsx",
+    name: "demo",
+    jsEntry: "src/__demos__/markdown-stream/demo.tsx",
+  },
+  // Simple demo entry for testing
+  {
+    name: "demo-simple",
+    jsEntry: "src/__demos__/markdown-stream/demo-simple.tsx",
   },
 ]
 
