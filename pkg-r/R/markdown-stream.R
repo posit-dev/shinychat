@@ -96,7 +96,11 @@ output_markdown_stream <- function(
 #' @return NULL
 #'
 #' @export
-#' @examplesIf interactive()
+#' @examplesIf rlang::is_interactive()
+#' # Try a more involved example:
+#' if (FALSE) {
+#'   shiny::runExample("markdown-stream", package = "shinychat")
+#' }
 #'
 #' library(shiny)
 #' library(coro)

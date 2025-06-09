@@ -32,7 +32,11 @@ of a chat interface), streaming logs, or other use cases where chunks of
 content are generated over time.
 }
 \examples{
-\dontshow{if (interactive()) (if (getRversion() >= "3.4") withAutoprint else force)(\{ # examplesIf}
+\dontshow{if (rlang::is_interactive()) (if (getRversion() >= "3.4") withAutoprint else force)(\{ # examplesIf}
+# Try a more involved example:
+if (FALSE) {
+  shiny::runExample("markdown-stream", package = "shinychat")
+}
 
 library(shiny)
 library(coro)
