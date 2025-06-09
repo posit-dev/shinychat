@@ -340,46 +340,47 @@ Our working directory is the root of the project, which contains a `js/` folder 
 The current file structure is as follows:
 
 ```
-js
-├── README-REACT.md
-├── README-markdown-stream.md
-├── build.ts
-├── demo-simple.html
-├── demo.html
-├── esbuild-metadata.json
-├── eslint.config.js
-├── package-lock.json
-├── package.json
-├── src
-│   ├── __demos__ # Demos of new React components
-│   │   └── markdown-stream
-│   │       ├── MarkdownStreamDemo.tsx
-│   │       ├── demo-simple.tsx
-│   │       └── demo.tsx
-│   ├── chat # Old lit implementation of Chat
-│   │   ├── chat.scss
-│   │   └── chat.ts
-│   ├── components # New React components
-│   │   ├── MarkdownStream.css
-│   │   ├── MarkdownStream.tsx
-│   │   └── __tests__
-│   │       ├── MarkdownStream.integration.test.tsx
-│   │       ├── MarkdownStream.test.tsx
-│   │       └── test-setup.ts
-│   ├── hello-world # Testing React setup
-│   │   ├── HelloWorld.test.tsx
-│   │   ├── HelloWorld.tsx
-│   │   ├── hello-world.scss
-│   │   └── hello-world.tsx
-│   ├── markdown-stream # Old lit implementation of MarkdownStream
-│   │   ├── highlight_styles.scss
-│   │   ├── markdown-stream.scss
-│   │   └── markdown-stream.ts
-│   └── utils # old lit utilities
-│       └── _utils.ts
-├── tsconfig.json
-├── vitest.config.ts
-└── vitest.setup.ts
+# Configuration files
+js/build.ts
+js/esbuild-metadata.json
+js/eslint.config.js
+js/package-lock.json
+js/package.json
+js/tsconfig.json
+js/vitest.config.ts
+js/vitest.setup.ts
+# Source code
+js/src
+# Demos
+js/src/__demos__
+js/src/__demos__/markdown-stream
+js/src/__demos__/markdown-stream/MarkdownStreamDemo.tsx
+js/src/__demos__/markdown-stream/demo-simple.html
+js/src/__demos__/markdown-stream/demo-simple.tsx
+js/src/__demos__/markdown-stream/demo.html
+js/src/__demos__/markdown-stream/demo.tsx
+# Old lit chat component
+js/src/chat
+js/src/chat/chat.scss
+js/src/chat/chat.ts
+# New React Components
+js/src/components
+js/src/components/MarkdownStream.css
+js/src/components/MarkdownStream.tsx
+js/src/components/ShinyMarkdownStream.tsx
+# New React components tests
+js/src/components/__tests__
+js/src/components/__tests__/MarkdownStream.integration.test.tsx
+js/src/components/__tests__/MarkdownStream.test.tsx
+js/src/components/__tests__/test-setup.ts
+js/src/components/index.ts
+# Old lit markdown-stream component
+js/src/markdown-stream
+js/src/markdown-stream/highlight_styles.scss
+js/src/markdown-stream/markdown-stream.scss
+js/src/markdown-stream/markdown-stream.ts
+# Some utilities
+js/src/utils/_utils.ts
 ```
 
 IMPORTANT: DO NOT USE THE `list_files` tool to list all of the files in `js/` unless you've included a regular expression to filter out irrelevant files, like `node_modules`, `dist`, or other generated files.
