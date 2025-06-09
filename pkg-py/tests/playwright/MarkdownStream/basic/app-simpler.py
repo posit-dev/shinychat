@@ -8,7 +8,12 @@ from shinychat.express import MarkdownStream
 # Read in the py-shiny README.md file
 readme = Path(__file__).parent / "README.md"
 with open(readme, "r") as f:
-    readme_chunks = f.read().replace("\n", " \n ").split(" ")
+    readme_chunks = f.read()
+
+# Remove everything up to "## Getting started"
+# readme_chunks = readme_chunks.split("## Getting started", 1)[-1]
+# readme_chunks = "## Getting started" + readme_chunks
+readme_chunks = readme_chunks.replace("\n", " \n ").split(" ")
 
 
 stream = MarkdownStream("shiny_readme")
@@ -17,7 +22,7 @@ stream_err = MarkdownStream("shiny_readme_err")
 
 async def readme_generator():
     for chunk in readme_chunks:
-        await asyncio.sleep(0.0005)
+        await asyncio.sleep(0.005)
         yield chunk + " "
 
 
@@ -39,9 +44,10 @@ with ui.card(
 ):
     ui.card_header("Shiny README.md")
     stream.ui(
-        # code_theme_light="gradient-light", code_theme_dark="gradient-dark"
-        code_theme_light="github-light",
-        code_theme_dark="github-dark",
+        code_theme_light="gradient-light",
+        code_theme_dark="gradient-dark",
+        # code_theme_light="github-light",
+        # code_theme_dark="github-dark",
     )
 
 ui.input_dark_mode()

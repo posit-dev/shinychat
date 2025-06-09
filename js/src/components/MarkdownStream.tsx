@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState, useCallback } from "preact/hooks"
+import { useEffect, useRef, useState, useCallback, useMemo } from "preact/hooks"
 import { JSX } from "preact/jsx-runtime"
 import ClipboardJS from "clipboard"
-import hljs from "highlight.js/lib/common"
-import { Renderer, parse } from "marked"
+import ReactMarkdown, { Components } from "react-markdown"
+import remarkGfm from "remark-gfm"
+import rehypeHighlight from "rehype-highlight"
+import rehypeRaw from "rehype-raw"
 import DOMPurify from "dompurify"
 import { sanitizeHTML } from "../utils/_utils"
 import "./MarkdownStream.css"
@@ -23,7 +25,6 @@ export interface MarkdownStreamProps {
 
 // SVG dot to indicate content is currently streaming
 const SVG_DOT_CLASS = "markdown-stream-dot"
-const SVG_DOT = `<svg width="12" height="12" xmlns="http://www.w3.org/2000/svg" class="${SVG_DOT_CLASS}" style="margin-left:.25em;margin-top:-.25em"><circle cx="6" cy="6" r="6"/></svg>`
 
 // Default theme configuration
 const CODE_THEME_LIGHT_DEFAULT = "atom-one-light"
@@ -31,52 +32,115 @@ const CODE_THEME_DARK_DEFAULT = "atom-one-dark"
 const HIGHLIGHT_JS_CDN_BASE =
   "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles"
 
-// 'markdown' renderer (for assistant messages)
-const markdownRenderer = new Renderer()
-
-// Add some basic Bootstrap styling to markdown tables
-markdownRenderer.table = (header: string, body: string) => {
-  return `<table class="table table-striped table-bordered">
-      <thead>${header}</thead>
-      <tbody>${body}</tbody>
-    </table>`
+// Streaming dot component
+function StreamingDot(): JSX.Element {
+  return (
+    <svg
+      width="12"
+      height="12"
+      xmlns="http://www.w3.org/2000/svg"
+      className={SVG_DOT_CLASS}
+      style={{ marginLeft: ".25em", marginTop: "-.25em" }}
+    >
+      <circle cx="6" cy="6" r="6" />
+    </svg>
+  )
 }
 
-// 'semi-markdown' renderer (for user messages)
-const semiMarkdownRenderer = new Renderer()
+// Custom code block component with copy button
+function CodeBlock(props: JSX.HTMLAttributes<HTMLElement>): JSX.Element {
+  const { children, className, ...restProps } = props
+  const codeRef = useRef<HTMLElement>(null)
+  const clipboardRef = useRef<ClipboardJS | null>(null)
 
-// Escape HTML, not for security reasons, but just because it's confusing if the user is
-// using tag-like syntax to demarcate parts of their prompt for other reasons (like
-// <User>/<Assistant> for providing examples to the model), and those tags vanish.
-semiMarkdownRenderer.html = (html: string) =>
-  html
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;")
+  useEffect(() => {
+    if (!codeRef.current) return
 
-function contentToHTML(content: string, content_type: ContentType): string {
-  if (content_type === "markdown") {
-    const html = parse(content, { renderer: markdownRenderer })
-    return sanitizeHTML(html as string)
-  } else if (content_type === "semi-markdown") {
-    const html = parse(content, { renderer: semiMarkdownRenderer })
-    return sanitizeHTML(html as string)
-  } else if (content_type === "html") {
-    return sanitizeHTML(content)
-  } else if (content_type === "text") {
-    // For text content, we need to escape HTML and preserve line breaks
-    return content
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#039;")
-      .replaceAll("\n", "<br>")
-  } else {
-    throw new Error(`Unknown content type: ${content_type}`)
-  }
+    // Clean up existing clipboard instance
+    if (clipboardRef.current) {
+      clipboardRef.current.destroy()
+    }
+
+    // Find the copy button
+    const copyButton = codeRef.current.querySelector(
+      ".code-copy-button",
+    ) as HTMLButtonElement
+    if (!copyButton) return
+
+    // Setup clipboard
+    clipboardRef.current = new ClipboardJS(copyButton, {
+      text: () => {
+        // Get text content of the code element, excluding the button
+        const codeText = Array.from(codeRef.current!.childNodes)
+          .filter(
+            (node) =>
+              !node.nodeType ||
+              (node as Element).className !== "code-copy-button",
+          )
+          .map((node) => node.textContent || "")
+          .join("")
+        return codeText
+      },
+    })
+
+    clipboardRef.current.on("success", (e) => {
+      copyButton.classList.add("code-copy-button-checked")
+      setTimeout(
+        () => copyButton.classList.remove("code-copy-button-checked"),
+        2000,
+      )
+      e.clearSelection()
+    })
+
+    clipboardRef.current.on("error", (e) => {
+      console.warn("Failed to copy to clipboard:", e)
+    })
+
+    return () => {
+      if (clipboardRef.current) {
+        clipboardRef.current.destroy()
+        clipboardRef.current = null
+      }
+    }
+  }, [children])
+
+  return (
+    <code
+      ref={codeRef}
+      className={className}
+      {...(restProps as JSX.HTMLAttributes<HTMLElement>)}
+    >
+      <button
+        className="code-copy-button"
+        title="Copy to clipboard"
+        onClick={(e) => e.preventDefault()}
+      >
+        <i className="bi"></i>
+      </button>
+      {children}
+    </code>
+  )
+}
+
+// Custom pre component to ensure proper styling
+function PreBlock(props: JSX.HTMLAttributes<HTMLPreElement>): JSX.Element {
+  const { children, ...restProps } = props
+  return (
+    <pre {...(restProps as JSX.HTMLAttributes<HTMLPreElement>)}>{children}</pre>
+  )
+}
+
+// Custom table component with Bootstrap classes
+function Table(props: JSX.HTMLAttributes<HTMLTableElement>): JSX.Element {
+  const { children, ...restProps } = props
+  return (
+    <table
+      className="table table-striped table-bordered"
+      {...(restProps as JSX.HTMLAttributes<HTMLTableElement>)}
+    >
+      {children}
+    </table>
+  )
 }
 
 // Throttle utility for React
@@ -428,20 +492,67 @@ export function MarkdownStream({
   const scrollableElementRef = useRef<HTMLElement | null>(null)
   const isContentBeingAddedRef = useRef(false)
   const isUserScrolledRef = useRef(false)
-  const clipboardInstancesRef = useRef<ClipboardJS[]>([])
 
   // Set up highlight.js theme handling
   useHighlightTheme(codeThemeLight, codeThemeDark)
 
-  // Convert content to HTML
-  const htmlContent =
-    contentType === "text"
-      ? content.replaceAll("\n", "<br>")
-      : contentToHTML(content, contentType)
+  // Process content based on type
+  const processedContent = useMemo(() => {
+    if (contentType === "text") {
+      // For text content, escape HTML and preserve line breaks
+      return content
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;")
+        .replaceAll("\n", "<br>")
+    } else if (contentType === "html") {
+      return sanitizeHTML(content)
+    } else {
+      // For markdown and semi-markdown, return as-is for react-markdown to process
+      return content
+    }
+  }, [content, contentType])
 
-  // Streaming dot HTML - only when streaming
-  const streamingDotHTML = streaming ? SVG_DOT : ""
-  const finalHTML = htmlContent + streamingDotHTML
+  // Custom components for react-markdown
+  const components = useMemo(() => {
+    const baseComponents = {
+      code: CodeBlock,
+      pre: PreBlock,
+      table: Table,
+    }
+
+    // For semi-markdown, we want to escape HTML
+    if (contentType === "semi-markdown") {
+      return {
+        ...baseComponents,
+        // Override HTML rendering to escape it
+        html: ({
+          children,
+        }: {
+          children: string | number | undefined | null
+        }) => (
+          <span>
+            {String(children).replaceAll("<", "&lt;").replaceAll(">", "&gt;")}
+          </span>
+        ),
+      }
+    }
+
+    return baseComponents
+  }, [contentType])
+
+  // Remark/Rehype plugins
+  const remarkPlugins = useMemo(() => [remarkGfm], [])
+  const rehypePlugins = useMemo(() => {
+    const plugins = [rehypeHighlight, rehypeRaw]
+    // Only allow raw HTML for markdown and html content types
+    if (contentType === "markdown" || contentType === "html") {
+      plugins.slice(1, 1) // Remove rehypeRaw if not needed
+    }
+    return plugins
+  }, [contentType])
 
   // Scroll handler
   const isNearBottom = useCallback((): boolean => {
@@ -495,51 +606,9 @@ export function MarkdownStream({
   // Throttled scroll to bottom
   const throttledScrollToBottom = useThrottle(maybeScrollToBottom, 50)
 
-  const highlightAndCodeCopy = useCallback((): void => {
-    if (!containerRef.current) return
-
-    // Clean up existing clipboard instances
-    clipboardInstancesRef.current.forEach((instance) => instance.destroy())
-    clipboardInstancesRef.current = []
-
-    const codeBlocks =
-      containerRef.current.querySelectorAll<HTMLElement>("pre code")
-
-    codeBlocks.forEach((el) => {
-      if (el.dataset.highlighted === "yes") return
-
-      // Highlight syntax
-      hljs.highlightElement(el)
-
-      // Add copy button
-      const btn = document.createElement("button")
-      btn.className = "code-copy-button"
-      btn.title = "Copy to clipboard"
-      btn.innerHTML = '<i class="bi"></i>'
-      el.prepend(btn)
-
-      // Setup clipboard
-      const clipboard = new ClipboardJS(btn, { target: () => el })
-      clipboardInstancesRef.current.push(clipboard)
-
-      clipboard.on("success", (e) => {
-        btn.classList.add("code-copy-button-checked")
-        setTimeout(() => btn.classList.remove("code-copy-button-checked"), 2000)
-        e.clearSelection()
-      })
-    })
-  }, [])
-
   // Effect for content changes
   useEffect(() => {
     isContentBeingAddedRef.current = true
-
-    // Post-process DOM after content has been added
-    try {
-      highlightAndCodeCopy()
-    } catch (error) {
-      console.warn("Failed to highlight code:", error)
-    }
 
     // Update scrollable element after content has been added
     updateScrollableElement()
@@ -558,7 +627,6 @@ export function MarkdownStream({
   }, [
     content,
     contentType,
-    highlightAndCodeCopy,
     updateScrollableElement,
     throttledScrollToBottom,
     onContentChange,
@@ -579,16 +647,37 @@ export function MarkdownStream({
   useEffect(() => {
     return () => {
       scrollableElementRef.current?.removeEventListener("scroll", onScroll)
-      clipboardInstancesRef.current.forEach((instance) => instance.destroy())
     }
   }, [onScroll])
+
+  // Render content based on type
+  const renderContent = () => {
+    if (contentType === "text") {
+      return <div dangerouslySetInnerHTML={{ __html: processedContent }} />
+    } else if (contentType === "html") {
+      return <div dangerouslySetInnerHTML={{ __html: processedContent }} />
+    } else {
+      // Use ReactMarkdown for markdown and semi-markdown
+      return (
+        <ReactMarkdown
+          remarkPlugins={remarkPlugins}
+          rehypePlugins={rehypePlugins}
+          components={components as Components}
+        >
+          {processedContent}
+        </ReactMarkdown>
+      )
+    }
+  }
 
   return (
     <div
       ref={containerRef}
       className="markdown-stream"
       data-streaming={streaming}
-      dangerouslySetInnerHTML={{ __html: finalHTML }}
-    />
+    >
+      {renderContent()}
+      {streaming && <StreamingDot />}
+    </div>
   )
 }
