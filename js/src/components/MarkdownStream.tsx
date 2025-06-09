@@ -143,28 +143,6 @@ function Table(props: JSX.HTMLAttributes<HTMLTableElement>): JSX.Element {
   )
 }
 
-// Throttle utility for React
-function useThrottle<T extends (...args: unknown[]) => unknown>(
-  callback: T,
-  delay: number,
-): T {
-  const timeoutRef = useRef<number>()
-
-  return useCallback(
-    (...args: Parameters<T>) => {
-      if (timeoutRef.current) {
-        window.clearTimeout(timeoutRef.current)
-      }
-
-      timeoutRef.current = window.setTimeout(() => {
-        callback(...args)
-        timeoutRef.current = undefined
-      }, delay)
-    },
-    [callback, delay],
-  ) as T
-}
-
 // Theme loading utility functions
 function getThemeUrl(themeName: string): string {
   if (
@@ -603,9 +581,6 @@ export function MarkdownStream({
     })
   }, [streaming])
 
-  // Throttled scroll to bottom
-  const throttledScrollToBottom = useThrottle(maybeScrollToBottom, 50)
-
   // Effect for content changes
   useEffect(() => {
     isContentBeingAddedRef.current = true
@@ -615,7 +590,7 @@ export function MarkdownStream({
 
     // Possibly scroll to bottom after content has been added
     isContentBeingAddedRef.current = false
-    throttledScrollToBottom()
+    maybeScrollToBottom()
 
     if (onContentChange) {
       try {
@@ -624,13 +599,7 @@ export function MarkdownStream({
         console.warn("Failed to call onContentChange callback:", error)
       }
     }
-  }, [
-    content,
-    contentType,
-    updateScrollableElement,
-    throttledScrollToBottom,
-    onContentChange,
-  ])
+  }, [content, contentType, updateScrollableElement, onContentChange])
 
   // Effect for streaming changes
   useEffect(() => {
