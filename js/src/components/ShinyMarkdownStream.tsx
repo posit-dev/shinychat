@@ -94,8 +94,8 @@ export class ShinyMarkdownStreamOutput extends HTMLElement {
     this.streaming = this.hasAttribute("streaming")
     this.autoScroll = this.hasAttribute("auto-scroll")
     this.codeTheme = {
-      light: this.getAttribute("light-theme") || "atom-one-light",
-      dark: this.getAttribute("dark-theme") || "atom-one-dark",
+      light: this.getAttribute("code-theme-light") || "atom-one-light",
+      dark: this.getAttribute("code-theme-dark") || "atom-one-dark",
     }
 
     // Initial render
