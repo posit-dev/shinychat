@@ -191,6 +191,13 @@ export class ShinyMarkdownStreamOutput extends HTMLElement {
     }
     this.renderValue()
   }
+
+  setCodeTheme({ light, dark }: { light: string; dark: string }) {
+    this.codeTheme = { light, dark }
+    this.setAttribute("light-theme", light)
+    this.setAttribute("dark-theme", dark)
+    this.renderValue()
+  }
 }
 
 // Register the custom element
