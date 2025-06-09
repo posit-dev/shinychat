@@ -3,6 +3,8 @@ import { render } from "preact/compat"
 import { MarkdownStream, ContentType } from "./MarkdownStream"
 import { renderDependencies, showShinyClientMessage } from "../utils/_utils"
 import type { HtmlDep } from "../utils/_utils"
+import { throttle } from "../utils/_utils"
+import { ShinyClass as Shiny } from "rstudio-shiny/srcts/types/src/shiny"
 
 export type ContentMessage = {
   id: string
@@ -32,6 +34,49 @@ export class ShinyMarkdownStreamOutput extends HTMLElement {
   private codeTheme: { light: string; dark: string } = {
     light: "atom-one-light",
     dark: "atom-one-dark",
+  }
+
+  static async #doBind(el: HTMLElement): Promise<void> {
+    const shiny = window?.Shiny as Shiny
+    if (!shiny?.initializeInputs) return
+    if (!shiny?.bindAll) return
+
+    try {
+      shiny.initializeInputs(el)
+    } catch (err) {
+      showShinyClientMessage({
+        status: "error",
+        message: `Failed to initialize Shiny inputs: ${err}`,
+      })
+    }
+
+    try {
+      await shiny.bindAll(el)
+    } catch (err) {
+      showShinyClientMessage({
+        status: "error",
+        message: `Failed to bind Shiny inputs/outputs: ${err}`,
+      })
+    }
+  }
+
+  @throttle(200)
+  private static async _throttledBind(el: HTMLElement): Promise<void> {
+    await this.#doBind(el)
+  }
+
+  static async #doUnBind(el: HTMLElement): Promise<void> {
+    const shiny = window?.Shiny as Shiny
+    if (!shiny?.unbindAll) return
+
+    try {
+      shiny.unbindAll(el)
+    } catch (err) {
+      showShinyClientMessage({
+        status: "error",
+        message: `Failed to unbind Shiny inputs/outputs: ${err}`,
+      })
+    }
   }
 
   connectedCallback() {
@@ -75,6 +120,7 @@ export class ShinyMarkdownStreamOutput extends HTMLElement {
           autoScroll={this.autoScroll}
           onContentChange={this.handleContentChange}
           onStreamEnd={this.handleStreamEnd}
+          onWillContentChange={this.handleWillContentChange}
           codeThemeLight={this.codeTheme.light}
           codeThemeDark={this.codeTheme.dark}
         />
@@ -83,8 +129,19 @@ export class ShinyMarkdownStreamOutput extends HTMLElement {
     )
   }
 
+  handleWillContentChange = () => {
+    ShinyMarkdownStreamOutput.#doUnBind(this)
+  }
+
   // Public callback methods for React component and testing
   handleContentChange = () => {
+    // Render Shiny HTML dependencies and bind inputs/outputs
+    if (this.streaming) {
+      ShinyMarkdownStreamOutput._throttledBind(this)
+    } else {
+      ShinyMarkdownStreamOutput.#doBind(this)
+    }
+
     // Callback for when content changes - can be used for custom logic
     this.dispatchEvent(
       new CustomEvent("contentchange", {

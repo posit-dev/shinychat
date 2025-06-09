@@ -18,6 +18,7 @@ export interface MarkdownStreamProps {
   autoScroll?: boolean
   onContentChange?: () => void
   onStreamEnd?: () => void
+  onWillContentChange?: () => void
   // Theme configuration
   codeThemeLight?: string
   codeThemeDark?: string
@@ -463,6 +464,7 @@ export function MarkdownStream({
   autoScroll = false,
   onContentChange,
   onStreamEnd,
+  onWillContentChange,
   codeThemeLight = CODE_THEME_LIGHT_DEFAULT,
   codeThemeDark = CODE_THEME_DARK_DEFAULT,
 }: MarkdownStreamProps): JSX.Element {
@@ -583,6 +585,14 @@ export function MarkdownStream({
 
   // Effect for content changes
   useEffect(() => {
+    if (onWillContentChange) {
+      try {
+        onWillContentChange()
+      } catch (error) {
+        console.warn("Failed to call onWillContentChange callback:", error)
+      }
+    }
+
     isContentBeingAddedRef.current = true
 
     // Update scrollable element after content has been added
@@ -599,7 +609,14 @@ export function MarkdownStream({
         console.warn("Failed to call onContentChange callback:", error)
       }
     }
-  }, [content, contentType, updateScrollableElement, onContentChange])
+  }, [
+    content,
+    contentType,
+    updateScrollableElement,
+    maybeScrollToBottom,
+    onWillContentChange,
+    onContentChange,
+  ])
 
   // Effect for streaming changes
   useEffect(() => {
