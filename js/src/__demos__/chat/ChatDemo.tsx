@@ -23,29 +23,27 @@ const SAMPLE_RESPONSES = [
 
 export function ChatDemo(): JSX.Element {
   const [messages, setMessages] = useState<Message[]>(DEMO_MESSAGES)
-  const [isTyping, setIsTyping] = useState(false)
+  const [isStreaming, setIsStreaming] = useState(false)
 
   const handleSendMessage = useCallback((message: Message) => {
     // Add user message immediately
     setMessages((prev) => [...prev, message])
-    setIsTyping(true)
+    setIsStreaming(true)
 
     // Simulate AI response after a delay
     setTimeout(
       () => {
         const response =
           SAMPLE_RESPONSES[Math.floor(Math.random() * SAMPLE_RESPONSES.length)]
-        if (response) {
-          const assistantMessage: Message = {
-            id: `assistant-${Date.now()}`,
-            role: "assistant",
-            content: response,
-            content_type: "markdown",
-          }
-
-          setMessages((prev) => [...prev, assistantMessage])
-          setIsTyping(false)
+        const assistantMessage: Message = {
+          id: `assistant-${Date.now()}`,
+          role: "assistant",
+          content: response || "",
+          content_type: "markdown",
         }
+
+        setMessages((prev) => [...prev, assistantMessage])
+        setIsStreaming(false)
       },
       1000 + Math.random() * 2000,
     ) // Random delay between 1-3 seconds
@@ -67,32 +65,62 @@ export function ChatDemo(): JSX.Element {
 
   const clearChat = () => {
     setMessages(DEMO_MESSAGES)
-    setIsTyping(false)
+    setIsStreaming(false)
   }
 
-  const addTypingMessage = () => {
-    if (isTyping) return
+  const simulateStreaming = () => {
+    if (isStreaming) return
 
-    setIsTyping(true)
-    const typingMessage: Message = {
-      id: `typing-${Date.now()}`,
+    setIsStreaming(true)
+
+    // Add a message that starts streaming
+    const streamingMessage: Message = {
+      id: `streaming-${Date.now()}`,
       role: "assistant",
       content: "",
       content_type: "markdown",
+      chunk_type: "message_start",
     }
-    setMessages((prev) => [...prev, typingMessage])
+    setMessages((prev) => [...prev, streamingMessage])
 
-    // Remove typing message after a few seconds
-    setTimeout(() => {
-      setMessages((prev) => prev.filter((msg) => msg.id !== typingMessage.id))
-      setIsTyping(false)
-    }, 3000)
+    // Simulate streaming chunks
+    const fullResponse =
+      "This is a **streaming response**. It appears piece by piece to simulate real-time generation.\n\n```javascript\n// Code appears gradually too\nfunction streamingExample() {\n  return 'Hello, streaming world!';\n}\n```\n\nPretty cool, right?"
+
+    let currentContent = ""
+    let chunkIndex = 0
+    const chunks = fullResponse.split(" ")
+
+    const streamInterval = setInterval(() => {
+      if (chunkIndex < chunks.length) {
+        currentContent += (chunkIndex > 0 ? " " : "") + chunks[chunkIndex]
+
+        setMessages((prev) => {
+          const newMessages = [...prev]
+          const lastIndex = newMessages.length - 1
+          if (lastIndex >= 0 && newMessages[lastIndex]) {
+            newMessages[lastIndex] = {
+              ...newMessages[lastIndex],
+              content: currentContent,
+              chunk_type:
+                chunkIndex === chunks.length - 1 ? "message_end" : null,
+            }
+          }
+          return newMessages
+        })
+
+        chunkIndex++
+      } else {
+        clearInterval(streamInterval)
+        setIsStreaming(false)
+      }
+    }, 100) // Add a word every 100ms
   }
 
-  // Add typing message when there are no assistant messages with empty content
+  // Add a loading message to demonstrate empty content behavior
   const displayMessages = [...messages]
   if (
-    isTyping &&
+    isStreaming &&
     !messages.some((msg) => msg.role === "assistant" && msg.content === "")
   ) {
     displayMessages.push({
@@ -129,12 +157,12 @@ export function ChatDemo(): JSX.Element {
         <h3 style={{ margin: 0, fontSize: "1.25rem" }}>Chat Demo</h3>
         <div>
           <button
-            onClick={addTypingMessage}
-            disabled={isTyping}
+            onClick={simulateStreaming}
+            disabled={isStreaming}
             style={{ marginRight: "0.5rem" }}
             className="btn btn-sm btn-outline-secondary"
           >
-            Show Typing
+            {isStreaming ? "Streaming..." : "Show Streaming"}
           </button>
           <button onClick={clearChat} className="btn btn-sm btn-outline-danger">
             Clear Chat

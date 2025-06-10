@@ -1,45 +1,37 @@
-import { useEffect, useRef, useState, useCallback } from "preact/hooks"
+import { useEffect, useRef, useCallback } from "preact/hooks"
 import { JSX } from "preact/jsx-runtime"
 import type { ChatInputSetInputOptions } from "./types"
+
+export interface ChatInputMethods {
+  setInputValue: (value: string, options?: ChatInputSetInputOptions) => void
+  focus: () => void
+}
 
 export interface ChatInputProps {
   id?: string
   placeholder?: string
   disabled?: boolean
-  value?: string
-  onInputSent?: (value: string) => void
-  onValueChange?: (value: string) => void
+  value: string
+  onValueChange: (value: string) => void
+  onInputSent: (value: string) => void
   autoFocus?: boolean
-  // Accept a ref callback for external ref access
-  inputRef?: (element: HTMLTextAreaElement | null) => void
+  // Callback to receive input methods for external control
+  onMethodsReady?: (methods: ChatInputMethods) => void
 }
 
 export function ChatInput({
   id,
   placeholder = "Enter a message...",
   disabled = false,
-  value: controlledValue,
-  onInputSent,
+  value,
   onValueChange,
+  onInputSent,
   autoFocus = false,
-  inputRef,
+  onMethodsReady,
 }: ChatInputProps): JSX.Element {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const [internalValue, setInternalValue] = useState("")
-
-  // Use controlled value if provided, otherwise use internal state
-  const value = controlledValue !== undefined ? controlledValue : internalValue
-  const setValue =
-    controlledValue !== undefined ? onValueChange : setInternalValue
 
   const valueIsEmpty = value.trim().length === 0
-
-  // Handle external ref callback
-  useEffect(() => {
-    if (inputRef && textareaRef.current) {
-      inputRef(textareaRef.current)
-    }
-  }, [inputRef])
 
   // Auto-resize textarea
   const updateHeight = useCallback(() => {
@@ -55,10 +47,24 @@ export function ChatInput({
     (e: Event) => {
       const target = e.target as HTMLTextAreaElement
       const newValue = target.value
-      setValue?.(newValue)
+      onValueChange(newValue)
       updateHeight()
     },
-    [setValue, updateHeight],
+    [onValueChange, updateHeight],
+  )
+
+  // Send input
+  const sendInput = useCallback(
+    (focus = true) => {
+      if (valueIsEmpty || disabled) return
+
+      onInputSent(value)
+
+      if (focus) {
+        textareaRef.current?.focus()
+      }
+    },
+    [valueIsEmpty, disabled, value, onInputSent],
   )
 
   // Handle key down events
@@ -70,25 +76,15 @@ export function ChatInput({
         sendInput()
       }
     },
-    [valueIsEmpty, disabled],
+    [valueIsEmpty, disabled, sendInput],
   )
 
-  // Send input
-  const sendInput = useCallback(
-    (focus = true) => {
-      if (valueIsEmpty || disabled) return
+  // Focus method
+  const focusInput = useCallback(() => {
+    textareaRef.current?.focus()
+  }, [])
 
-      onInputSent?.(value)
-      setValue?.("")
-
-      if (focus) {
-        textareaRef.current?.focus()
-      }
-    },
-    [valueIsEmpty, disabled, value, onInputSent, setValue],
-  )
-
-  // Public method to set input value with options
+  // Public method to set input value with options (for suggestions)
   const setInputValue = useCallback(
     (
       newValue: string,
@@ -97,16 +93,16 @@ export function ChatInput({
       // Store previous value to restore post-submit (if submitting)
       const oldValue = value
 
-      setValue?.(newValue)
+      onValueChange(newValue)
 
       // Update height after setting value
       setTimeout(updateHeight, 0)
 
       if (submit) {
         setTimeout(() => {
-          sendInput(false)
+          onInputSent(newValue)
           if (oldValue) {
-            setValue?.(oldValue)
+            onValueChange(oldValue)
             setTimeout(updateHeight, 0)
           }
         }, 0)
@@ -116,15 +112,18 @@ export function ChatInput({
         setTimeout(() => textareaRef.current?.focus(), 0)
       }
     },
-    [value, setValue, updateHeight, sendInput],
+    [value, onValueChange, updateHeight, onInputSent],
   )
 
-  // Expose setInputValue method via ref
+  // Expose methods to parent component
   useEffect(() => {
-    if (textareaRef.current) {
-      ;(textareaRef.current as any).setInputValue = setInputValue
+    if (onMethodsReady) {
+      onMethodsReady({
+        setInputValue,
+        focus: focusInput,
+      })
     }
-  }, [setInputValue])
+  }, [onMethodsReady, setInputValue, focusInput])
 
   // Update height when value changes
   useEffect(() => {
