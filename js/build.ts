@@ -136,6 +136,11 @@ const entries: EntryConfig[] = [
     jsEntry: "src/chat/chat.ts",
     sassEntry: "src/chat/chat.scss",
   },
+  // React Chat Components
+  {
+    name: "components/chat/chat",
+    sassEntry: "src/components/chat/Chat.module.css",
+  },
   // ShinyMarkdownStream
   {
     name: "components/markdown-stream/shiny-markdown-stream",
@@ -151,6 +156,11 @@ const entries: EntryConfig[] = [
   {
     name: "demo-simple",
     jsEntry: "src/__demos__/markdown-stream/demo-simple.tsx",
+  },
+  // Chat demo entry
+  {
+    name: "demos/chat/demo",
+    jsEntry: "src/__demos__/chat/demo.tsx",
   },
 ]
 

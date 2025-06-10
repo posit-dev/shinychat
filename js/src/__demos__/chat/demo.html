@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Components Demo</title>
+    <!-- Bootstrap CSS for form styling -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Highlight.js CSS for code syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/atom-one-light.min.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f8f9fa;
+            padding: 2rem 0;
+        }
+        
+        .container {
+            max-width: 1200px;
+        }
+        
+        .demo-section {
+            background: white;
+            border-radius: 8px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .demo-title {
+            color: #2c3e50;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #3498db;
+        }
+        
+        .demo-description {
+            color: #666;
+            margin-bottom: 1.5rem;
+        }
+        
+        .feature-list {
+            background-color: #f8f9fa;
+            border-radius: 6px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+        
+        .feature-list h5 {
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+        }
+        
+        .feature-list ul {
+            margin-bottom: 0;
+        }
+        
+        .feature-list li {
+            margin-bottom: 0.25rem;
+        }
+        
+        .code-highlight {
+            background-color: #f1f3f4;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="text-center mb-5">
+            <h1 class="display-4 text-primary">Chat Components Demo</h1>
+            <p class="lead text-muted">Interactive React-based chat interface components</p>
+        </div>
+
+        <div class="demo-section">
+            <h2 class="demo-title">Interactive Chat Interface</h2>
+            <p class="demo-description">
+                A complete chat interface built with React components. Try sending messages, 
+                clicking suggestions, and using keyboard shortcuts.
+            </p>
+            
+            <div class="feature-list">
+                <h5>Features Demonstrated:</h5>
+                <ul>
+                    <li><strong>Message Sending:</strong> Type a message and press Enter (or Shift+Enter for new line)</li>
+                    <li><strong>Auto-resize Input:</strong> Textarea grows as you type</li>
+                    <li><strong>Suggestion Interaction:</strong> Click dotted-underline suggestions to use them</li>
+                    <li><strong>Keyboard Shortcuts:</strong> 
+                        <span class="code-highlight">Cmd/Ctrl + click</span> to auto-submit, 
+                        <span class="code-highlight">Alt + click</span> to just insert text
+                    </li>
+                    <li><strong>Markdown Rendering:</strong> Full markdown support with syntax highlighting</li>
+                    <li><strong>Streaming Simulation:</strong> Simulated typing indicators and responses</li>
+                    <li><strong>Responsive Design:</strong> Works on desktop and mobile</li>
+                </ul>
+            </div>
+
+            <!-- Chat Demo Container -->
+            <div id="demo-root"></div>
+        </div>
+
+        <div class="demo-section">
+            <h2 class="demo-title">Technical Implementation</h2>
+            <p class="demo-description">
+                These React components are designed to work standalone first, with Shiny integration 
+                to be added later. The components use modern React patterns and are fully typed with TypeScript.
+            </p>
+            
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="feature-list">
+                        <h5>Component Architecture:</h5>
+                        <ul>
+                            <li><code>ChatContainer</code> - Main orchestrating component</li>
+                            <li><code>ChatMessages</code> - Message list container</li>
+                            <li><code>ChatMessage</code> - Assistant message with icon</li>
+                            <li><code>ChatUserMessage</code> - User message bubble</li>
+                            <li><code>ChatInput</code> - Auto-resize input with send button</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="feature-list">
+                        <h5>Key Technologies:</h5>
+                        <ul>
+                            <li><strong>Preact:</strong> Lightweight React alternative</li>
+                            <li><strong>react-markdown:</strong> Markdown to React rendering</li>
+                            <li><strong>CSS Modules:</strong> Scoped styling</li>
+                            <li><strong>TypeScript:</strong> Full type safety</li>
+                            <li><strong>Modern React Hooks:</strong> Functional components</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load the demo script -->
+    <script type="module" src="../../dist/demos/chat/demo.js"></script>
+</body>
+</html>
