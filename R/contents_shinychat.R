@@ -57,9 +57,14 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(
   }
 
   if (!is.null(content@request@tool)) {
-    tool_name <-
-      content@request@tool@annotations$title %||%
-      content@request@tool@name
+    if (!is.null(content@request@tool@annotations$title)) {
+      # Use the tool title if available
+      tool_name <- content@request@tool@annotations$title
+      summary_text <- ""
+    } else {
+      # Fallback to tool name
+      tool_name <- content@request@tool@name
+    }
   } else {
     tool_name <- "unknown tool"
   }
