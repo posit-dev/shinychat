@@ -145,6 +145,10 @@ S7::method(contents_shinychat, S7::new_S3_class(c("Chat", "R6"))) <- function(
     if (is.null(content) || identical(content, "")) {
       return(NULL)
     }
+    if (every(content, is.character)) {
+      # TODO: Fix chat_ui() to handle lists of strings
+      content <- paste(unlist(content), collapse = "\n\n")
+    }
     list(role = turn@role, content = content)
   })
 
