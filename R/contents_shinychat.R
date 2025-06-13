@@ -22,10 +22,14 @@ S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
   content,
   ...
 ) {
+  call <- format(content, show = "call")
+  if (length(call) > 1) {
+    call <- sprintf("%s()", content@name)
+  }
   shiny::HTML(sprintf(
     '\n\n<p class="shiny-tool-request" data-tool-call-id="%s">Running <code>%s</code></p>\n\n',
     content@id,
-    paste(format(content, show = "call"), collapse = " ")
+    call
   ))
 }
 
