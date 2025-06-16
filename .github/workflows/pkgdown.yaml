@@ -3,14 +3,25 @@
 on:
   push:
     branches: [main, master]
+    paths:
+      - 'pkg-r/man'
+      - 'pkg-r/vignettes'
+      - 'pkg-r/pkgdown'
+      - '.github/workflows/pkgdown.yaml'
   pull_request:
+    paths:
+      - 'pkg-r/man'
+      - 'pkg-r/vignettes'
+      - 'pkg-r/pkgdown'
+      - '.github/workflows/pkgdown.yaml'
   release:
     types: [published]
   workflow_dispatch:
 
 name: pkgdown.yaml
 
-permissions: read-all
+permissions:
+  contents: write
 
 jobs:
   pkgdown:
@@ -22,6 +33,10 @@ jobs:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
     permissions:
       contents: write
+
+    # Only run on release events for tags start with "r/v*"
+    if: github.event_name != 'release' || startsWith(github.ref, 'refs/tags/r/v')
+
     steps:
       - uses: actions/checkout@v4
 
@@ -35,10 +50,10 @@ jobs:
         with:
           extra-packages: any::pkgdown, local::.
           needs: website
+          working-directory: pkg-r
 
       - name: Build site
-        run: pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)
-        shell: Rscript {0}
+        run: make r-docs
 
       - name: Deploy to GitHub pages 🚀
         if: github.event_name != 'pull_request'

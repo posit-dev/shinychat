@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>shinychat - Page Not Found</title>
+  <meta name="twitter:title" content="shinychat - Page Not Found" />
+  <meta name="twitter:description" content="Bring your Shiny apps to life with LLM-powered chat interfaces" />
+  <meta name="twitter:url" content="https://posit-dev.github.io/shinychat" />
+  <meta name="twitter:image" content="web-app-manifest-512x512.png" />
+  <meta name="twitter:image:alt" content="shinychat hex logo" />
+  <meta name="twitter:image:width" content="512" />
+  <meta name="twitter:image:height" content="512" />
+  <meta name="twitter:card" content="summary" />
+  <meta property="og:title" content="shinychat - Page Not Found" />
+  <meta property="og:description" content="Bring your Shiny apps to life with LLM-powered chat interfaces" />
+  <meta property="og:url" content="https://posit-dev.github.io/shinychat" />
+  <meta property="og:image" content="web-app-manifest-512x512.png" />
+  <meta property="og:image:alt" content="shinychat hex logo" />
+  <meta property="og:image:width" content="512" />
+  <meta property="og:image:height" content="512" />
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="en_US" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Atomic+Age&display=swap" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="chat-styles.css">
+</head>
+
+<body>
+  <script>
+    // Handle navigation detection including back button presses
+    document.addEventListener('DOMContentLoaded', function () {
+      const referrer = document.referrer;
+      const internalNavigation = sessionStorage.getItem('shinychat-internal-navigation');
+
+      // Check if coming from within the site or using back button
+      if (referrer && referrer.includes('posit-dev.github.io/shinychat') || internalNavigation === 'true') {
+        // Set a faster animation speed
+        document.documentElement.style.setProperty('--animation-speed', '0.2'); // 5x faster
+      }
+
+      // Clear the session storage after we've used it
+      sessionStorage.removeItem('shinychat-internal-navigation');
+
+      // Add click listeners to all internal links
+      document.addEventListener('click', function (e) {
+        // Find the closest anchor tag if the click was on a child element
+        const link = e.target.closest('a');
+
+        if (link && link.href && link.href.includes('posit-dev.github.io/shinychat')) {
+          // Mark that we're navigating internally
+          sessionStorage.setItem('shinychat-internal-navigation', 'true');
+        }
+      });
+    });
+  </script>
+  <header class="header">
+    <div class="logo">
+      <div>
+        <img src="logo.svg" alt="shinychat logo" style="height: 120px; width: auto;">
+      </div>
+      <div>shinychat</div>
+    </div>
+    <div class="tagline">Bring your Shiny apps to life with LLM-powered chat interfaces</div>
+  </header>
+
+  <div class="chat-container">
+    <div class="chat-messages">
+      <div class="chat-message ai">
+        <div class="avatar">
+          <i class="fas fa-robot"></i>
+        </div>
+        <div class="message-bubble">
+          <div class="message-content">
+            <p><strong>Oops! The requested page could not be found.</strong> This might be because:</p>
+            <ul>
+              <li>The URL was mistyped</li>
+              <li>The page has been moved or deleted</li>
+              <li>The link is outdated</li>
+            </ul>
+            <p>I&#39;m here to assist you in finding the right information. What were you looking for?</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-message user">
+        <div class="avatar">
+          <i class="fas fa-user"></i>
+        </div>
+        <div class="message-bubble">
+          <div class="message-content">
+            Help me find the documentation for shinychat.
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-message ai">
+        <div class="avatar">
+          <i class="fas fa-robot"></i>
+        </div>
+        <div class="message-bubble">
+          <div class="message-content">
+            Of course! Pick your preferred language to find your way to the shinychat documentation:
+
+            <div class="package-links">
+              <a href="py/index.html" class="package-link">
+                <i class="fab fa-python"></i>
+                Python Documentation
+              </a>
+              <a href="r/index.html" class="package-link">
+                <i class="fab fa-r-project"></i>
+                R Documentation
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <p>© <span class="footer-year">2025</span> shinychat. Built for the data science community by <a
+        href="https://posit.co"><img
+          src="https://posit.co/wp-content/uploads/2024/06/Posit-Logos-2024_horiz-full-color.svg" alt="Posit"
+          width="65px" style="vertical-align: middle"></a></p>
+  </footer>
+
+  <script>
+    // Update footer year dynamically
+    document.querySelector('.footer-year').textContent = new Date().getFullYear();
+
+    // // Animate chat messages on load
+    // document.querySelectorAll('.chat-message').forEach((message, index) => {
+    //     message.style.animationDelay = `${index * 0.5}s`;
+    //     message.style.opacity = '1';
+    //     message.style.transform = 'translateY(0)';
+    // });
+  </script>
+</body>
+
+</html>

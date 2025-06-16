@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>shinychat - Bring Your Shiny Apps to Life with LLM Chat</title>
+  <meta name="twitter:title" content="shinychat - Bring Your Shiny Apps to Life with LLM Chat" />
+  <meta name="twitter:description" content="Bring your Shiny apps to life with LLM-powered chat interfaces" />
+  <meta name="twitter:url" content="https://posit-dev.github.io/shinychat" />
+  <meta name="twitter:image" content="web-app-manifest-512x512.png" />
+  <meta name="twitter:image:alt" content="shinychat hex logo" />
+  <meta name="twitter:image:width" content="512" />
+  <meta name="twitter:image:height" content="512" />
+  <meta name="twitter:card" content="summary" />
+  <meta property="og:title" content="shinychat - Bring Your Shiny Apps to Life with LLM Chat" />
+  <meta property="og:description" content="Bring your Shiny apps to life with LLM-powered chat interfaces" />
+  <meta property="og:url" content="https://posit-dev.github.io/shinychat" />
+  <meta property="og:image" content="web-app-manifest-512x512.png" />
+  <meta property="og:image:alt" content="shinychat hex logo" />
+  <meta property="og:image:width" content="512" />
+  <meta property="og:image:height" content="512" />
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="en_US" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Atomic+Age&display=swap" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="chat-styles.css">
+</head>
+
+<body>
+  <script>
+    // Handle navigation detection including back button presses
+    document.addEventListener('DOMContentLoaded', function () {
+      const referrer = document.referrer;
+      const internalNavigation = sessionStorage.getItem('shinychat-internal-navigation');
+
+      // Check if coming from within the site or using back button
+      if (referrer && referrer.includes('posit-dev.github.io/shinychat') || internalNavigation === 'true') {
+        // Set a faster animation speed
+        document.documentElement.style.setProperty('--animation-speed', '0.2'); // 5x faster
+      }
+
+      // Clear the session storage after we've used it
+      sessionStorage.removeItem('shinychat-internal-navigation');
+
+      // Add click listeners to all internal links
+      document.addEventListener('click', function (e) {
+        // Find the closest anchor tag if the click was on a child element
+        const link = e.target.closest('a');
+
+        if (link && link.href && link.href.includes('posit-dev.github.io/shinychat')) {
+          // Mark that we're navigating internally
+          sessionStorage.setItem('shinychat-internal-navigation', 'true');
+        }
+      });
+    });
+  </script>
+  <header class="header">
+    <div class="logo">
+      <div>
+        <img src="logo.svg" alt="shinychat logo" style="height: 120px; width: auto;">
+      </div>
+      <div>shinychat</div>
+    </div>
+    <div class="tagline">Bring your Shiny apps to life with LLM-powered chat interfaces</div>
+  </header>
+
+  <div class="chat-container">
+    <div class="chat-messages">
+      <div class="chat-message user">
+        <div class="avatar">
+          <i class="fas fa-user"></i>
+        </div>
+        <div class="message-bubble">
+          <div class="message-content">
+            How can I add an AI chatbot to my Shiny app?
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-message ai">
+        <div class="avatar">
+          <i class="fas fa-robot"></i>
+        </div>
+        <div class="message-bubble">
+          <div class="message-content">
+            Great question! <strong>shinychat</strong> is the perfect solution for integrating LLM-powered chat
+            interfaces directly into your Shiny applications.
+            <br><br>
+            <strong>shinychat</strong> provides easy-to-use chat UI components that work seamlessly with both <a
+              href="https://shiny.posit.co">Shiny</a> for <a href="https://shiny.posit.co/py">Python</a> and <a
+              href="https://shiny.posit.co">R</a>. You can create interactive, conversational experiences that make your
+            data applications more engaging and user-friendly.
+            <br><br>
+            <strong>Key features:</strong>
+            <ul>
+              <li>Drop-in chat UI components</li>
+              <li>Real-time streaming and markdown formatting</li>
+              <li>Works with your favorite AI framework</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-message user">
+        <div class="avatar">
+          <i class="fas fa-user"></i>
+        </div>
+        <div class="message-bubble">
+          <div class="message-content">
+            How do I get started?
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-message ai">
+        <div class="avatar">
+          <i class="fas fa-robot"></i>
+        </div>
+        <div class="message-bubble">
+          <div class="message-content">
+            Choose your preferred language to get started with shinychat:
+
+            <div class="package-links">
+              <a href="py/index.html" class="package-link">
+                <i class="fab fa-python"></i>
+                Python Documentation
+              </a>
+              <a href="r/index.html" class="package-link">
+                <i class="fab fa-r-project"></i>
+                R Documentation
+              </a>
+            </div>
+
+            <p>Both packages offer the same powerful functionality with language-specific implementations. Check out our
+            documentation for installation guides, examples, and API references!</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="features">
+    <h3>Why Choose shinychat?</h3>
+    <div class="features-grid">
+      <div class="feature">
+        <div class="feature-icon">
+          <i class="fas fa-bolt"></i>
+        </div>
+        <div class="feature-content">
+          <h4>Easy Integration</h4>
+          <p>Add chat functionality to your existing Shiny apps with just a few lines of code.</p>
+        </div>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">
+          <i class="fa-brands fa-github fa-lg"></i>
+        </div>
+        <div class="feature-content">
+          <h4>Open Source</h4>
+          <p>View the source code, ask questions or report an issue at <a href="https://github.com/posit-dev/shinychat">posit-dev/shinychat</a>.</p>
+        </div>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">
+          <i class="fas fa-brain"></i>
+        </div>
+        <div class="feature-content">
+          <h4>LLM Ready</h4>
+          <p>Works with any LLM provider–ChatGPT, Claude, Gemini, Perplexity and more!</p>
+        </div>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">
+          <i class="fas fa-code"></i>
+        </div>
+        <div class="feature-content">
+          <h4>In Your Favorite Language</h4>
+          <p>Available for both Python and R and compatible with your favorite AI frameworks.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <p>© <span class="footer-year">2025</span> shinychat. Built for the data science community by <a
+        href="https://posit.co"><img
+          src="https://posit.co/wp-content/uploads/2024/06/Posit-Logos-2024_horiz-full-color.svg" alt="Posit"
+          width="65px" style="vertical-align: middle"></a></p>
+  </footer>
+
+  <script>
+    // Update footer year dynamically
+    document.querySelector('.footer-year').textContent = new Date().getFullYear();
+  </script>
+</body>
+
+</html>
