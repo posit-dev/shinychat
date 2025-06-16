@@ -1,10 +1,7 @@
 ---
 title: "Get started"
-output: rmarkdown::html_vignette
-vignette: >
-  %\VignetteIndexEntry{Get started}
-  %\VignetteEngine{knitr::rmarkdown}
-  %\VignetteEncoding{UTF-8}
+resource_files:
+  - images/
 ---
 
 ```{r, include = FALSE}
@@ -88,7 +85,7 @@ shinyApp(ui, server)
 
 Congrats, you now have a chat interface powered by an LLM of your choice! 🎉
 
-![Screenshot of a conversation using shinychat.](/images/chat-quick-start.png){class="rounded shadow lightbox mt-3"}
+![Screenshot of a conversation using shinychat.](images/chat-quick-start.png){class="rounded shadow lightbox mt-3"}
 
 
 ### Inspect the code
@@ -175,7 +172,7 @@ chat_ui(
 )
 ```
 
-![Screenshot of a chatbot with a welcome message.](/images/chat-messages.png){class="rounded shadow lightbox d-block m-auto"}
+![Screenshot of a chatbot with a welcome message.](images/chat-messages.png){class="rounded shadow lightbox d-block m-auto"}
 
 You can also suggest inputs to the user by adding the `suggestion` CSS class to the relevant portions of the message. Similarly, use the `submit` class to make the clicking on the suggestion submit the input automatically.
 
@@ -198,7 +195,7 @@ ui <- bslib::page_fillable(
 )
 ```
 
-![Screenshot of a chatbot with input suggestions.](/images/chat-suggestions.png){class="rounded shadow lightbox d-block m-auto"}
+![Screenshot of a chatbot with input suggestions.](images/chat-suggestions.png){class="rounded shadow lightbox d-block m-auto"}
 
 Messages can also contain arbitrary Shiny UI [components](https://shiny.posit.co/r/components/), so you could even include something like a [tooltip](https://shiny.posit.co/r/components/display-messages/tooltips/) to provide additional details on demand.
 
@@ -215,7 +212,7 @@ ui <- bslib::page_fillable(
 )
 ```
 
-![Screenshot of a chatbot filling the page.](/images/chat-page_fillable.png){class="rounded shadow lightbox d-block m-auto"}
+![Screenshot of a chatbot filling the page.](images/chat-page_fillable.png){class="rounded shadow lightbox d-block m-auto"}
 
 ### Sidebar layout
 
@@ -254,7 +251,7 @@ server <- function(input, output, session) {
 shinyApp(ui, server)
 ```
 
-![Screenshot of a chatbot filling a sidebar.](/images/chat-sidebar.png){class="rounded shadow lightbox d-block m-auto"}
+![Screenshot of a chatbot filling a sidebar.](images/chat-sidebar.png){class="rounded shadow lightbox d-block m-auto"}
 
 ### Card layout
 
@@ -295,4 +292,4 @@ shinyApp(ui, server)
 ```
 
 
-![Screenshot of a chatbot embedded in a card with a header and tooltip.](/images/chat-card.png){class="rounded shadow lightbox d-block m-auto"}
+![Screenshot of a chatbot embedded in a card with a header and tooltip.](images/chat-card.png){class="rounded shadow lightbox d-block m-auto"}
