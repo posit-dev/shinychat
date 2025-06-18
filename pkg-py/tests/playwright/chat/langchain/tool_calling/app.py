@@ -30,6 +30,8 @@ def get_current_datetime() -> str:
 
 tools = [get_current_time, get_current_date, get_current_datetime]
 
+tool_registry = {tool.name: tool for tool in tools}
+
 chat_client = ChatOpenAI(
     api_key=os.environ.get("OPENAI_API_KEY"),
     model="gpt-4o",
@@ -54,38 +56,32 @@ chat.ui()
 async def handle_user_input(user_input: str):
     messages = [HumanMessage(content=user_input)]
 
-    async def stream_wrapper():
-        # while True:
-        response = await chat_client.astream(messages)
+    async def stream_response():
+        accumulated_tool_calls = []
 
-        # if response.tool_calls:
-        #     if response.content:
-        #         yield response.content + "\n\n"
+        async for chunk in chat_client.astream(messages):
+            tool_calls = getattr(chunk, "tool_calls", None)
+            if tool_calls:
+                accumulated_tool_calls.extend(tool_calls)
 
-        #     for tool_call in response.tool_calls:
-        #         tool_to_call = None
-        #         for tool in tools:
-        #             if tool.name == tool_call["name"]:
-        #                 tool_to_call = tool
-        #                 break
+            if chunk.content:
+                content = chunk.content
+                if isinstance(content, str):
+                    yield content
+                elif isinstance(content, list):
+                    for part in content:
+                        if isinstance(part, str):
+                            yield part
 
-        #         if tool_to_call:
-        #             tool_result = tool_to_call.invoke(tool_call["args"])
+        for tool_call in accumulated_tool_calls:
+            tool_name = tool_call.get("name", "")
+            if not tool_name:
+                continue
 
-        #             messages.append(response)
-        #             messages.append(
-        #                 ToolMessage(
-        #                     content=str(tool_result), tool_call_id=tool_call["id"]
-        #                 )
-        #             )
+            if tool_name in tool_registry:
+                result = tool_registry[tool_name].invoke({})
+                yield f"\n\n🔧 {tool_name}: {result}"
+            else:
+                yield f"\n\n❌ Unknown tool: {tool_name}"
 
-        #     continue
-        # else:
-        #     yield response.content
-        #     break
-
-        async def stream_wrapper():
-            async for item in response:
-                yield item.content
-
-        await chat.append_message_stream(stream_wrapper())
+    await chat.append_message_stream(stream_response())
