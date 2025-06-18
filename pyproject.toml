@@ -46,7 +46,10 @@ test = [
     "shinywidgets",
     "tox-uv>=1",
     "pydantic-ai",
-    "python-dotenv"
+    "python-dotenv",
+    "llm",
+    "llama-index",
+    "langchain"
 ]
 
 [tool.uv]
