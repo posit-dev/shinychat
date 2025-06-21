@@ -23,6 +23,17 @@ template:
   bslib:
     brand: pkgdown/_brand.yml
 
+navbar:
+  structure:
+    left:  [get-started, reference]
+    right: [search, news, github, lightswitch]
+  components:
+    home: ~
+
+    get-started:
+      text: Get Started
+      href: articles/get-started.html
+
 reference:
 - title: Chat interfaces
   contents:
