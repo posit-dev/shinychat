@@ -4,6 +4,48 @@ resource_files:
   - images/
 ---
 
+<style>
+.callout {
+  border: 1px solid #dfe1e5;
+  border-left: 4px solid #2680e3;
+  border-radius: 6px;
+  background-color: #fff;
+  margin: 1em 0;
+}
+
+.callout > .title {
+  background-color: #edf4fd;
+  padding: 0.5em 1em;
+  font-weight: bold;
+  border-bottom: 1px solid #dfe1e5;
+}
+
+.callout > .title::before {
+  content: "ℹ️";
+  margin-right: 0.5em;
+}
+
+.callout > .body {
+  padding: 1em;
+}
+
+p.caption {
+  text-align: center;
+  font-size: 0.85em;
+  color: #555;
+  margin-top: 0.75em;
+  margin-bottom: 1em;
+}
+
+img.rounded.shadow {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+  border-radius: 0.5rem;
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+</style>
+
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
@@ -11,7 +53,7 @@ knitr::opts_chunk$set(
 )
 ```
 
-```{r setup}
+```{r setup, echo=FALSE}
 library(shinychat)
 ```
 
@@ -39,15 +81,16 @@ chat_openai(model = "o3")
 
 If you don't specify the `model` argument, the `chat_*()` function will use a reasonable default. For more information, see the individual `chat_*()` function's [documentation](https://ellmer.tidyverse.org/reference/index.html#chatbots). 
 
-
-::: callout-tip
-## Help me choose!
+<div class="callout">
+  <div class="title">Help me choose!</div>
+  <div class="body">
 If you're not sure which provider to choose, ellmer provides a [guide](https://ellmer.tidyverse.org/#providermodel-choice) to help you decide. 
 
 If you’re not ready to sign up for a cloud provider (e.g., OpenAI or Anthropic), you can run models locally (for free!) with [Ollama](https://ellmer.tidyverse.org/reference/chat_ollama.html).
 
 A local model is a good way to get started without incurring any cost or sharing your data with a cloud provider. You will need to [install Ollama](https://ellmer.tidyverse.org/reference/chat_ollama.html) and an open-source model (e.g., Llama 3.1). You can use the [`ollamar` package](https://hauselin.github.io/ollama-r/) to install particular models from R. 
-:::
+  </div>
+</div>
 
 ### Set up credentials
 
@@ -85,8 +128,9 @@ shinyApp(ui, server)
 
 Congrats, you now have a chat interface powered by an LLM of your choice! 🎉
 
-![Screenshot of a conversation using shinychat.](images/chat-quick-start.png){class="rounded shadow lightbox mt-3"}
-
+```{r, fig.cap="Screenshot of a conversation using shinychat.", fig.align='center', out.extra='class="rounded shadow"'}
+knitr::include_graphics("images/chat-quick-start.png")
+```
 
 ### Inspect the code
 
@@ -172,7 +216,9 @@ chat_ui(
 )
 ```
 
-![Screenshot of a chatbot with a welcome message.](images/chat-messages.png){class="rounded shadow lightbox d-block m-auto"}
+```{r, fig.cap="Screenshot of a chatbot with a welcome message.", fig.align='center', out.extra='class="rounded shadow"'}
+knitr::include_graphics("images/chat-messages.png")
+```
 
 You can also suggest inputs to the user by adding the `suggestion` CSS class to the relevant portions of the message. Similarly, use the `submit` class to make the clicking on the suggestion submit the input automatically.
 
@@ -195,7 +241,9 @@ ui <- bslib::page_fillable(
 )
 ```
 
-![Screenshot of a chatbot with input suggestions.](images/chat-suggestions.png){class="rounded shadow lightbox d-block m-auto"}
+```{r, fig.cap="Screenshot of a chatbot with input suggestions.", fig.align='center', out.extra='class="rounded shadow"'}
+knitr::include_graphics("images/chat-suggestions.png")
+```
 
 Messages can also contain arbitrary Shiny UI [components](https://shiny.posit.co/r/components/), so you could even include something like a [tooltip](https://shiny.posit.co/r/components/display-messages/tooltips/) to provide additional details on demand.
 
@@ -212,7 +260,9 @@ ui <- bslib::page_fillable(
 )
 ```
 
-![Screenshot of a chatbot filling the page.](images/chat-page_fillable.png){class="rounded shadow lightbox d-block m-auto"}
+```{r, fig.cap="Screenshot of a chatbot filling the page.", fig.align='center', out.extra='class="rounded shadow"'}
+knitr::include_graphics("images/chat-page_fillable.png")
+```
 
 ### Sidebar layout
 
@@ -250,8 +300,9 @@ server <- function(input, output, session) {
 
 shinyApp(ui, server)
 ```
-
-![Screenshot of a chatbot filling a sidebar.](images/chat-sidebar.png){class="rounded shadow lightbox d-block m-auto"}
+```{r, fig.cap="Screenshot of a chatbot filling a sidebar.", fig.align='center', out.extra='class="rounded shadow"'}
+knitr::include_graphics("images/chat-sidebar.png")
+```
 
 ### Card layout
 
@@ -291,5 +342,6 @@ server <- function(input, output, session) {
 shinyApp(ui, server)
 ```
 
-
-![Screenshot of a chatbot embedded in a card with a header and tooltip.](images/chat-card.png){class="rounded shadow lightbox d-block m-auto"}
+```{r, fig.cap="Screenshot of a chatbot embedded in a card with a header and tooltip.", fig.align='center', out.extra='class="rounded shadow"'}
+knitr::include_graphics("images/chat-card.png")
+```
