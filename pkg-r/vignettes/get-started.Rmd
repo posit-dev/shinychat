@@ -128,7 +128,7 @@ shinyApp(ui, server)
 
 Congrats, you now have a chat interface powered by an LLM of your choice! 🎉
 
-```{r, fig.cap="Screenshot of a conversation using shinychat.", fig.align='center', out.extra='class="rounded shadow"'}
+```{r, echo=FALSE, fig.cap="Screenshot of a conversation using shinychat.", fig.align='center', out.extra='class="rounded shadow"'}
 knitr::include_graphics("images/chat-quick-start.png")
 ```
 
