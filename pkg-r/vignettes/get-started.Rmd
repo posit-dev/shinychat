@@ -216,7 +216,7 @@ chat_ui(
 )
 ```
 
-```{r, fig.cap="Screenshot of a chatbot with a welcome message.", fig.align='center', out.extra='class="rounded shadow"'}
+```{r, echo=FALSE, fig.cap="Screenshot of a chatbot with a welcome message.", fig.align='center', out.extra='class="rounded shadow"'}
 knitr::include_graphics("images/chat-messages.png")
 ```
 
@@ -241,7 +241,7 @@ ui <- bslib::page_fillable(
 )
 ```
 
-```{r, fig.cap="Screenshot of a chatbot with input suggestions.", fig.align='center', out.extra='class="rounded shadow"'}
+```{r, echo=FALSE, fig.cap="Screenshot of a chatbot with input suggestions.", fig.align='center', out.extra='class="rounded shadow"'}
 knitr::include_graphics("images/chat-suggestions.png")
 ```
 
@@ -260,7 +260,7 @@ ui <- bslib::page_fillable(
 )
 ```
 
-```{r, fig.cap="Screenshot of a chatbot filling the page.", fig.align='center', out.extra='class="rounded shadow"'}
+```{r, echo=FALSE, fig.cap="Screenshot of a chatbot filling the page.", fig.align='center', out.extra='class="rounded shadow"'}
 knitr::include_graphics("images/chat-page_fillable.png")
 ```
 
@@ -300,7 +300,7 @@ server <- function(input, output, session) {
 
 shinyApp(ui, server)
 ```
-```{r, fig.cap="Screenshot of a chatbot filling a sidebar.", fig.align='center', out.extra='class="rounded shadow"'}
+```{r, echo=FALSE, fig.cap="Screenshot of a chatbot filling a sidebar.", fig.align='center', out.extra='class="rounded shadow"'}
 knitr::include_graphics("images/chat-sidebar.png")
 ```
 
@@ -342,6 +342,6 @@ server <- function(input, output, session) {
 shinyApp(ui, server)
 ```
 
-```{r, fig.cap="Screenshot of a chatbot embedded in a card with a header and tooltip.", fig.align='center', out.extra='class="rounded shadow"'}
+```{r, echo=FALSE, fig.cap="Screenshot of a chatbot embedded in a card with a header and tooltip.", fig.align='center', out.extra='class="rounded shadow"'}
 knitr::include_graphics("images/chat-card.png")
 ```
