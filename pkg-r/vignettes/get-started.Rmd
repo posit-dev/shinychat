@@ -85,10 +85,6 @@ If you don't specify the `model` argument, the `chat_*()` function will use a re
   <div class="title">Help me choose!</div>
   <div class="body">
 If you're not sure which provider to choose, ellmer provides a [guide](https://ellmer.tidyverse.org/#providermodel-choice) to help you decide. 
-
-If you’re not ready to sign up for a cloud provider (e.g., OpenAI or Anthropic), you can run models locally (for free!) with [Ollama](https://ellmer.tidyverse.org/reference/chat_ollama.html).
-
-A local model is a good way to get started without incurring any cost or sharing your data with a cloud provider. You will need to [install Ollama](https://ellmer.tidyverse.org/reference/chat_ollama.html) and an open-source model (e.g., Llama 3.1). You can use the [`ollamar` package](https://hauselin.github.io/ollama-r/) to install particular models from R. 
   </div>
 </div>
 
@@ -163,37 +159,12 @@ A shinychat chatbot includes three core steps:
 
 1. **Create a chat UI element** with [`chat_ui()`](https://posit-dev.github.io/shinychat/reference/chat_ui.html).
 
-2. **Initialize a chat** with a `chat_*()` function, like `chat_openai()`, in the server function. You can use the `system_prompt` argument to supply a [system prompt](https://ellmer.tidyverse.org/articles/prompt-design.html).
+2. **Initialize a chat** with a `chat_*()` function, like `chat_openai()`, in the server function. Use a different `chat_*()` function (`chat_ollama()`, `chat_anthropic()`, etc.) to use a different model provider. You can also use the `system_prompt` argument to supply a [system prompt](https://ellmer.tidyverse.org/articles/prompt-design.html). 
 
 3. **Set up a reactive listener** with `observeEvent()` that waits for the user to submit a message (`input$chat_user_input`). When a message is received:
 
     * Send the input to the LLM using `chat$stream_async()`, which returns asynchronously streaming results from the LLM. This means the results will appear in chunks, so the user doesn’t have to wait for the full response.
     * Append the response to the `chat_ui()` element with `chat_append()`, so the user can see the model’s reply appear live as it's generated.
-
-### Switch the model
-
-To switch the model provider, use a different `chat_*()` function.
-
-```r
-library(shiny)
-library(shinychat)
-
-ui <- bslib::page_fluid(
-  chat_ui("chat")
-)
-
-server <- function(input, output, session) {
-  # Switch this chat_*() function to use a different model provider
-  chat <- ellmer::chat_ollama(system_prompt = "You are a helpful assistant.")
-  
-  observeEvent(input$chat_user_input, {
-    stream <- chat$stream_async(input$chat_user_input)
-    chat_append("chat", stream)
-  })
-}
-
-shinyApp(ui, server)
-```
 
 ### Add a system prompt
 
@@ -205,7 +176,9 @@ chat <- ellmer::chat_ollama(system_prompt = "You are a helpful assistant")
 
 To learn more about writing system prompts, see ellmer's [Prompt design](https://ellmer.tidyverse.org/articles/prompt-design.html) vignette. Generally, we recommend writing the system prompt in a separate markdown file, but if your prompt is short you can also supply it directly as a string to the `system_prompt` argument.
 
-### Add messages and suggestions on startup
+### Add messages and suggestions 
+
+#### On startup
 
 You can specify messages to show when the chat first loads by using `chat_ui()`'s `messages` argument. You can use markdown or HTML to format these messages.
 
@@ -246,6 +219,25 @@ knitr::include_graphics("images/chat-suggestions.png")
 ```
 
 Messages can also contain arbitrary Shiny UI [components](https://shiny.posit.co/r/components/), so you could even include something like a [tooltip](https://shiny.posit.co/r/components/display-messages/tooltips/) to provide additional details on demand.
+
+#### Mid-conversation
+
+You can also use suggestions to guide users through a a multi-turn conversation. To do so, you’ll need to instruct the AI how to generate suggestions itself by adding a section like the one below to your system prompt:
+
+````
+## Showing prompt suggestions
+
+If you find it appropriate to suggest prompts the user might want to write, wrap the text of each prompt in `<span class="suggestion">` tags.
+Also use "Suggested next steps:" to introduce the suggestions. For example:
+
+```
+Suggested next steps:
+
+1. <span class="suggestion">Suggestion 1.</span>
+2. <span class="suggestion">Suggestion 2.</span>
+3. <span class="suggestion">Suggestion 3.</span>
+```
+````
 
 ## Layouts
 
