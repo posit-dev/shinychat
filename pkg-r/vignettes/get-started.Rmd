@@ -95,7 +95,6 @@ Next, authenticate with your LLM provider. Popular model providers like OpenAI a
 
 You can find some helpful links and tips for getting setup with credentials (e.g., an API key) on the relevant reference page for the `chat_*()` provider you'd like to work with ([`chat_openai()`](https://ellmer.tidyverse.org/reference/chat_openai.html), [`chat_anthropic()`](https://ellmer.tidyverse.org/reference/chat_anthropic.html))
 
-Once your credentials (if any) are in place, you're ready to get started. 
 
 ## Create a basic chatbot
 
