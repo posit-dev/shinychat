@@ -222,7 +222,7 @@ Messages can also contain arbitrary Shiny UI [components](https://shiny.posit.co
 
 #### Mid-conversation
 
-You can also use suggestions to guide users through a a multi-turn conversation. To do so, you’ll need to instruct the AI how to generate suggestions itself by adding a section like the one below to your system prompt:
+You can also use suggestions to guide users through a multi-turn conversation. To do so, you’ll need to instruct the AI how to generate suggestions itself by adding a section like the one below to your system prompt:
 
 ````
 ## Showing prompt suggestions
