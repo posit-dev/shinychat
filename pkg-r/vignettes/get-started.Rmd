@@ -15,6 +15,7 @@ resource_files:
 
 .callout > .title {
   background-color: #edf4fd;
+  color: #1d1f21;
   padding: 0.5em 1em;
   font-weight: bold;
   border-bottom: 1px solid #dfe1e5;
