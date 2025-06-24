@@ -93,7 +93,7 @@ If you're not sure which provider to choose, ellmer provides a [guide](https://e
 
 Next, authenticate with your LLM provider. Popular model providers like OpenAI and Anthropic require an API key. We recommend storing these API keys in your `.Renviron` (e.g., as `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`).
 
-You can find some helpful links and tips for getting setup with credentials (e.g., an API key) on the relevant reference page for the `chat_*()` provider you'd like to work with ([`chat_openai()`](https://ellmer.tidyverse.org/reference/chat_openai.html), [`chat_anthropic()`](https://ellmer.tidyverse.org/reference/chat_anthropic.html)).
+You can find some helpful links and tips for getting set up with credentials (e.g., an API key) on the relevant reference page for the `chat_*()` provider you'd like to work with ([`chat_openai()`](https://ellmer.tidyverse.org/reference/chat_openai.html), [`chat_anthropic()`](https://ellmer.tidyverse.org/reference/chat_anthropic.html)).
 
 
 ## Create a basic chatbot
@@ -193,7 +193,7 @@ chat_ui(
 knitr::include_graphics("images/chat-messages.png")
 ```
 
-You can also suggest inputs to the user by adding the `suggestion` CSS class to the relevant portions of the message. Similarly, use the `submit` class to make the clicking on the suggestion submit the input automatically.
+You can also suggest inputs to the user by adding the `suggestion` CSS class to the relevant portions of the message. Similarly, use the `submit` class to make clicking on the suggestion submit the input automatically.
 
 ```r
 messages <-
