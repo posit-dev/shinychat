@@ -93,12 +93,12 @@ If you're not sure which provider to choose, ellmer provides a [guide](https://e
 
 Next, authenticate with your LLM provider. Popular model providers like OpenAI and Anthropic require an API key. We recommend storing these API keys in your `.Renviron` (e.g., as `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`).
 
-You can find some helpful links and tips for getting setup with credentials (e.g., an API key) on the relevant reference page for the `chat_*()` provider you'd like to work with ([`chat_openai()`](https://ellmer.tidyverse.org/reference/chat_openai.html), [`chat_anthropic()`](https://ellmer.tidyverse.org/reference/chat_anthropic.html))
+You can find some helpful links and tips for getting setup with credentials (e.g., an API key) on the relevant reference page for the `chat_*()` provider you'd like to work with ([`chat_openai()`](https://ellmer.tidyverse.org/reference/chat_openai.html), [`chat_anthropic()`](https://ellmer.tidyverse.org/reference/chat_anthropic.html)).
 
 
 ## Create a basic chatbot
 
-Once you've identified which model provider you want to use and set up the necessary authentication, you're ready to create a chatbot. The following code creates a basic chatbot in a Shiny app. 
+Once you've identified which model provider you want to use and set up the necessary credentials, you're ready to create a chatbot. The following code creates a basic chatbot in a Shiny app. 
 
 Copy and paste the code into an R script, switching out `ellmer::chat_openai()` for your desired chat function. Save the file as `app.R` and then run the app.
 
@@ -124,7 +124,7 @@ shinyApp(ui, server)
 
 Congrats, you now have a chat interface powered by an LLM of your choice! 🎉
 
-```{r, echo=FALSE, fig.cap="Screenshot of a conversation using shinychat.", fig.align='center', out.extra='class="rounded shadow"'}
+```{r, echo=FALSE, fig.cap="Screenshot of a conversation using shinychat.", fig.align='center', out.extra='class="rounded shadow"', out.height='50%'}
 knitr::include_graphics("images/chat-quick-start.png")
 ```
 
@@ -189,7 +189,7 @@ chat_ui(
 )
 ```
 
-```{r, echo=FALSE, fig.cap="Screenshot of a chatbot with a welcome message.", fig.align='center', out.extra='class="rounded shadow"'}
+```{r, echo=FALSE, fig.cap="Screenshot of a chatbot with a welcome message.", fig.align='center', out.extra='class="rounded shadow"', out.width='100%'}
 knitr::include_graphics("images/chat-messages.png")
 ```
 
@@ -214,7 +214,7 @@ ui <- bslib::page_fillable(
 )
 ```
 
-```{r, echo=FALSE, fig.cap="Screenshot of a chatbot with input suggestions.", fig.align='center', out.extra='class="rounded shadow"'}
+```{r, echo=FALSE, fig.cap="Screenshot of a chatbot with input suggestions.", fig.align='center', out.extra='class="rounded shadow"', out.width='100%'}
 knitr::include_graphics("images/chat-suggestions.png")
 ```
 
@@ -252,7 +252,7 @@ ui <- bslib::page_fillable(
 )
 ```
 
-```{r, echo=FALSE, fig.cap="Screenshot of a chatbot filling the page.", fig.align='center', out.extra='class="rounded shadow"'}
+```{r, echo=FALSE, fig.cap="Screenshot of a chatbot filling the page.", fig.align='center', out.extra='class="rounded shadow"', out.width='100%'}
 knitr::include_graphics("images/chat-page_fillable.png")
 ```
 
@@ -270,7 +270,7 @@ ui <- bslib::page_sidebar(
     chat_ui(
       "chat",
       messages = list(
-        "Welcome! Here is a <span class='suggestion'>suggestion</span>"
+        "Welcome! Here is a <span class='suggestion'>suggestion</span>."
       ),
       height = "100%"
     ),
@@ -292,7 +292,7 @@ server <- function(input, output, session) {
 
 shinyApp(ui, server)
 ```
-```{r, echo=FALSE, fig.cap="Screenshot of a chatbot filling a sidebar.", fig.align='center', out.extra='class="rounded shadow"'}
+```{r, echo=FALSE, fig.cap="Screenshot of a chatbot filling a sidebar.", fig.align='center', out.extra='class="rounded shadow"', out.width='100%'}
 knitr::include_graphics("images/chat-sidebar.png")
 ```
 
@@ -334,6 +334,6 @@ server <- function(input, output, session) {
 shinyApp(ui, server)
 ```
 
-```{r, echo=FALSE, fig.cap="Screenshot of a chatbot embedded in a card with a header and tooltip.", fig.align='center', out.extra='class="rounded shadow"'}
+```{r, echo=FALSE, fig.cap="Screenshot of a chatbot embedded in a card with a header and tooltip.", fig.align='center', out.extra='class="rounded shadow"', out.width='100%'}
 knitr::include_graphics("images/chat-card.png")
 ```
