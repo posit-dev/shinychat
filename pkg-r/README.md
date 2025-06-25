@@ -34,12 +34,19 @@ You'll also need to install the {[ellmer](https://ellmer.tidyverse.org/)} packag
 library(shiny)
 library(shinychat)
 
-ui <- bslib::page_fluid(
-  chat_ui("chat")
+ui <- bslib::page_fillable(
+  chat_ui(
+    id = "chat",
+    messages = "**Hello!** How can I help you today?"
+  ),
+  fillable_mobile = TRUE
 )
 
 server <- function(input, output, session) {
-  chat <- ellmer::chat_openai(system_prompt = "You're a trickster who answers in riddles")
+  chat <- 
+    ellmer::chat_openai(
+      system_prompt = "Respond to the user as succinctly as possible."
+    )
 
   observeEvent(input$chat_user_input, {
     stream <- chat$stream_async(input$chat_user_input)
