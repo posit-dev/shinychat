@@ -5,9 +5,11 @@
 [![CRAN status](https://www.r-pkg.org/badges/version/shinychat)](https://CRAN.R-project.org/package=shinychat)
 <!-- badges: end -->
 
-Chat UI component for [Shiny for R](https://shiny.posit.co/).
+**shinychat** is a chat UI component for [Shiny for R](https://shiny.posit.co/).
 
-(For [Shiny for Python](https://shiny.posit.co/py/), see [ui.Chat](https://shiny.posit.co/py/components/display-messages/chat/).)
+It’s also available for [Shiny for Python](https://posit-dev.github.io/shinychat/py/index.html).
+
+**Build your first shinychat chatbot:** See [Get Started](articles/get-started.html) to learn more.
 
 ## Installation
 
@@ -28,7 +30,7 @@ pak::pak("posit-dev/shinychat/pkg-r")
 
 To run this example, you'll first need to create an OpenAI API key, and set it in your environment as `OPENAI_API_KEY`.
 
-You'll also need to install the {[ellmer](https://ellmer.tidyverse.org/)} package (with `install.packages("ellmer")`).
+You'll also need to install the [ellmer](https://ellmer.tidyverse.org/) package (with `install.packages("ellmer")`).
 
 ```r
 library(shiny)
