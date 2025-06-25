@@ -49,3 +49,5 @@ server <- function(input, output, session) {
 
 shinyApp(ui, server)
 ```
+
+<img src="man/figures/app.png" alt="Screenshot of the resulting app." style="width: 100%"/>
