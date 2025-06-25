@@ -77,7 +77,7 @@ With ellmer, you specify the LLM provider by choosing the corresponding `chat_*(
 Model providers also typically offer a variety of models. To specify a particular model, use the `chat_*()` function's `model` argument. For example:
 
 ```r
-chat_openai(model = "o3")
+ellmer::chat_openai(model = "o3")
 ```
 
 If you don't specify the `model` argument, the `chat_*()` function will use a reasonable default. For more information, see the individual `chat_*()` function's [documentation](https://ellmer.tidyverse.org/reference/index.html#chatbots). 
