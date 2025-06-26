@@ -44,6 +44,66 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(
     sprintf("<pre><code>%s</code></pre>", paste(x, collapse = "\n"))
   }
 
+  deps <- NULL
+
+  tool_result_display <- function(content) {
+    if (is.null(content@extra$display)) {
+      return(pre_code(content@value))
+    }
+
+    display <- content@extra$display
+
+    html <- NULL
+    md <- NULL
+    text <- NULL
+
+    if (
+      is.list(content@extra$display) &&
+        !inherits(content@extra$display, c("shiny.tag.list", "shiny.tag"))
+    ) {
+      if (
+        !some(
+          c("text", "markdown", "html"),
+          \(x) x %in% names(content@extra$display)
+        )
+      ) {
+        stop(
+          "ContentToolResult@extra$display must be a list with at least one of the following elements: text, markdown, html."
+        )
+      }
+      html <- content@extra$display$html
+      md <- content@extra$display$markdown
+      text <- content@extra$display$text
+    } else {
+      if (inherits(content@extra$display, "html")) {
+        html <- content@extra$display
+      } else {
+        md <- content@extra$display
+      }
+    }
+
+    if (!is.null(html)) {
+      deps <<- htmltools::findDependencies(html)
+      return(format(html))
+    }
+
+    if (!is.null(markdown)) {
+      md <- paste(md, collapse = "\n")
+      md <- paste0("\n\n", md, "\n\n")
+      return(md)
+    }
+
+    return(text %||% pre_code(contents$value))
+  }
+
+  if (isFALSE(content@extra$display_tool_request)) {
+    res <- tool_result_display(content)
+    if (!is.null(deps)) {
+      res <- htmltools::attachDependencies(res, deps)
+    }
+    return(res)
+  }
+
   if (!is.null(content@error)) {
     class <- "shiny-tool-result failed"
     summary_text <- "Failed to call"
@@ -56,7 +116,7 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(
     summary_text <- "Result from"
     tool_result <- sprintf(
       '<strong>Tool Result</strong>%s',
-      pre_code(content@value)
+      tool_result_display(content)
     )
   }
 
@@ -106,7 +166,11 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(
     tool_result
   )
 
-  return(shiny::HTML(paste0(details_open, summary, body)))
+  res <- shiny::HTML(paste0(details_open, summary, body))
+  if (!is.null(deps)) {
+    res <- htmltools::attachDependencies(res, deps)
+  }
+  return(res)
 }
 
 S7::method(contents_shinychat, ellmer::Turn) <- function(content) {
