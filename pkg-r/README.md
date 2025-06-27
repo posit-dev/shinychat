@@ -7,7 +7,6 @@
 
 **shinychat** is a chat UI component for [Shiny for R](https://shiny.posit.co/).
 
-It’s also available for [Shiny for Python](https://posit-dev.github.io/shinychat/py/index.html).
 
 **Build your first shinychat chatbot:** See [Get Started](articles/get-started.html) to learn more.
 
