@@ -5,7 +5,7 @@
 [![CRAN status](https://www.r-pkg.org/badges/version/shinychat)](https://CRAN.R-project.org/package=shinychat)
 <!-- badges: end -->
 
-**shinychat** is a chat UI component for [Shiny for R](https://shiny.posit.co/).
+**shinychat** provides a [Shiny](https://shiny.posit.co/) toolkit for building generative AI applications like chatbots and [streaming content](https://posit-dev.github.io/shinychat/r/reference/markdown_stream.html).
 
 
 **Build your first shinychat chatbot:** See [Get Started](articles/get-started.html) to learn more.
