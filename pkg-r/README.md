@@ -5,7 +5,7 @@
 [![CRAN status](https://www.r-pkg.org/badges/version/shinychat)](https://CRAN.R-project.org/package=shinychat)
 <!-- badges: end -->
 
-**shinychat** provides a [Shiny](https://shiny.posit.co/) toolkit for building generative AI applications like chatbots and [streaming content](https://posit-dev.github.io/shinychat/r/reference/markdown_stream.html). It's designed to work alongside the [ellmer](https://ellmer.tidyverse.org/) package, which handles model communication and response generation.
+**shinychat** provides a [Shiny](https://shiny.posit.co/) toolkit for building generative AI applications like chatbots and [streaming content](https://posit-dev.github.io/shinychat/r/reference/markdown_stream.html). It's designed to work alongside the [ellmer](https://ellmer.tidyverse.org/) package, which handles response generation.
 
 ## Installation
 
