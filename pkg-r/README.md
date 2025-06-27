@@ -5,9 +5,7 @@
 [![CRAN status](https://www.r-pkg.org/badges/version/shinychat)](https://CRAN.R-project.org/package=shinychat)
 <!-- badges: end -->
 
-Chat UI component for [Shiny for R](https://shiny.posit.co/).
-
-(For [Shiny for Python](https://shiny.posit.co/py/), see [ui.Chat](https://shiny.posit.co/py/components/display-messages/chat/).)
+**shinychat** provides a [Shiny](https://shiny.posit.co/) toolkit for building generative AI applications like chatbots and [streaming content](https://posit-dev.github.io/shinychat/r/reference/markdown_stream.html). It's designed to work alongside the [ellmer](https://ellmer.tidyverse.org/) package, which handles response generation.
 
 ## Installation
 
@@ -28,18 +26,25 @@ pak::pak("posit-dev/shinychat/pkg-r")
 
 To run this example, you'll first need to create an OpenAI API key, and set it in your environment as `OPENAI_API_KEY`.
 
-You'll also need to install the {[ellmer](https://ellmer.tidyverse.org/)} package (with `install.packages("ellmer")`).
+You'll also need to install the [ellmer](https://ellmer.tidyverse.org/) package (with `install.packages("ellmer")`).
 
 ```r
 library(shiny)
 library(shinychat)
 
-ui <- bslib::page_fluid(
-  chat_ui("chat")
+ui <- bslib::page_fillable(
+  chat_ui(
+    id = "chat",
+    messages = "**Hello!** How can I help you today?"
+  ),
+  fillable_mobile = TRUE
 )
 
 server <- function(input, output, session) {
-  chat <- ellmer::chat_openai(system_prompt = "You're a trickster who answers in riddles")
+  chat <- 
+    ellmer::chat_openai(
+      system_prompt = "Respond to the user as succinctly as possible."
+    )
 
   observeEvent(input$chat_user_input, {
     stream <- chat$stream_async(input$chat_user_input)
@@ -49,3 +54,9 @@ server <- function(input, output, session) {
 
 shinyApp(ui, server)
 ```
+
+<img src="man/figures/app.png" alt="Screenshot of the resulting app." style="width: 100%"/>
+
+## Next steps
+
+Ready to start building a chatbot with shinychat? See [Get Started](articles/get-started.html) to learn more.
