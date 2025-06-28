@@ -69,15 +69,17 @@
 chat_app <- function(client, ...) {
   check_ellmer_chat(client)
 
-  ui <- bslib::page_fillable(
-    chat_mod_ui("chat", client = client, height = "100%"),
-    shiny::actionButton(
-      "close_btn",
-      label = "",
-      class = "btn-close",
-      style = "position: fixed; top: 6px; right: 6px;"
+  ui <- function(req) {
+    bslib::page_fillable(
+      chat_mod_ui("chat", client = client, height = "100%"),
+      shiny::actionButton(
+        "close_btn",
+        label = "",
+        class = "btn-close",
+        style = "position: fixed; top: 6px; right: 6px;"
+      )
     )
-  )
+  }
 
   server <- function(input, output, session) {
     chat_mod_server("chat", client)
