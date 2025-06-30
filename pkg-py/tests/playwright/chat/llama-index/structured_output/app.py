@@ -101,11 +101,7 @@ async def get_response_tokens(conversation: list[ChatMessage]):
         )
         response = await program.acall(conversation=str(conversation))
 
-    json_response = f"```json\n{json.dumps(response.dict(), indent=2)}\n```"
-
-    # Yield the response in chunks
-    for char in json_response:
-        yield char
+    yield f"```json\n{json.dumps(response.dict(), indent=2)}\n```"
 
 
 @chat.on_user_submit
