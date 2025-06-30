@@ -4,6 +4,8 @@
 
 * Added `chat_enable_bookmarking()` which adds Shiny bookmarking hooks to save and restore the `{ellmer}` chat client. (#28)
 
+* `chat_app()` now correctly restores the chat client state when refreshing the app, e.g. by reloading the page. (#71)
+
 # shinychat 0.2.0
 
 ## New features and improvements
