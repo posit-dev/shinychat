@@ -5,6 +5,11 @@
 #' Note that these functions will mutate the input `client` object as
 #' you chat because your turns will be appended to the history.
 #'
+#' The app created by `chat_app()` is suitable for interactive use by a single
+#' user. For multi-user Shiny apps, use the Shiny module chat functions --
+#' `chat_mod_ui()` and `chat_mod_server()` -- and be sure to create a new chat
+#' client for each user session.
+#'
 #' @examples
 #' \dontrun{
 #' # Interactive in the console ----
@@ -64,7 +69,9 @@
 #'   * `chat_mod_server()` includes the shinychat module server logic, and
 #'     and returns the last turn upon successful chat completion.
 #'
-#' @describeIn chat_app A simple Shiny app for live chatting.
+#' @describeIn chat_app A simple Shiny app for live chatting. Note that this
+#'   app is suitable for interactive use by a single user; do not use
+#'   `chat_app()` in a multi-user Shiny app context.
 #' @export
 chat_app <- function(client, ...) {
   check_ellmer_chat(client)
