@@ -58,7 +58,7 @@ app is suitable for interactive use by a single user; do not use
 \examples{
 \dontrun{
 # Interactive in the console ----
-client <- ellmer::chat_claude()
+client <- ellmer::chat_anthropic()
 chat_app(client)
 
 # Inside a Shiny app ----
@@ -92,7 +92,7 @@ ui <- page_fillable(
 )
 
 server <- function(input, output, session) {
-  claude <- ellmer::chat_claude(model = "claude-3-5-sonnet-latest") # Requires ANTHROPIC_API_KEY
+  claude <- ellmer::chat_anthropic(model = "claude-3-5-sonnet-latest") # Requires ANTHROPIC_API_KEY
   openai <- ellmer::chat_openai(model = "gpt-4o") # Requires OPENAI_API_KEY
 
   chat_mod_server("claude", claude)
