@@ -7,7 +7,6 @@ from shiny.express import ui
 _ = load_dotenv()
 chat_client = Agent(
     "openai:o4-mini",
-    api_key=os.environ.get("OPENAI_API_KEY"),
     system_prompt="You are a helpful assistant.",
 )
 
