@@ -38,10 +38,17 @@ and returns the last turn upon successful chat completion.
 Create a simple Shiny app for live chatting using an \link[ellmer:Chat]{ellmer::Chat} object.
 Note that these functions will mutate the input \code{client} object as
 you chat because your turns will be appended to the history.
+
+The app created by \code{chat_app()} is suitable for interactive use by a single
+user. For multi-user Shiny apps, use the Shiny module chat functions --
+\code{chat_mod_ui()} and \code{chat_mod_server()} -- and be sure to create a new chat
+client for each user session.
 }
 \section{Functions}{
 \itemize{
-\item \code{chat_app()}: A simple Shiny app for live chatting.
+\item \code{chat_app()}: A simple Shiny app for live chatting. Note that this
+app is suitable for interactive use by a single user; do not use
+\code{chat_app()} in a multi-user Shiny app context.
 
 \item \code{chat_mod_ui()}: A simple chat app module UI.
 
@@ -51,7 +58,7 @@ you chat because your turns will be appended to the history.
 \examples{
 \dontrun{
 # Interactive in the console ----
-client <- ellmer::chat_claude()
+client <- ellmer::chat_anthropic()
 chat_app(client)
 
 # Inside a Shiny app ----
@@ -85,7 +92,7 @@ ui <- page_fillable(
 )
 
 server <- function(input, output, session) {
-  claude <- ellmer::chat_claude(model = "claude-3-5-sonnet-latest") # Requires ANTHROPIC_API_KEY
+  claude <- ellmer::chat_anthropic(model = "claude-3-5-sonnet-latest") # Requires ANTHROPIC_API_KEY
   openai <- ellmer::chat_openai(model = "gpt-4o") # Requires OPENAI_API_KEY
 
   chat_mod_server("claude", claude)
