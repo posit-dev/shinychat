@@ -41,4 +41,4 @@ chat.ui()
 async def handle_user_input(user_input: str):
     joke = chat_client.with_structured_output(Joke).invoke(user_input)
     joke_text = f"{joke.setup}\n\n{joke.punchline}\n\nRating: {joke.rating if joke.rating is not None else 'N/A'}"
-    await chat.append_message_stream(joke_text)
+    await chat.append_message(joke_text)
