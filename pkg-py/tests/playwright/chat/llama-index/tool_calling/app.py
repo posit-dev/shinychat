@@ -8,7 +8,6 @@ from llama_index.core.tools import FunctionTool
 from llama_index.llms.openai import OpenAI
 from shiny.express import ui
 
-# Load environment variables from .env file
 _ = load_dotenv()
 
 
@@ -44,8 +43,10 @@ time_tool = FunctionTool.from_defaults(fn=get_current_time)
 date_tool = FunctionTool.from_defaults(fn=get_current_date)
 
 llm = OpenAI(
-    model="gpt-4o-mini",
+    model="gpt-4.1-nano-2025-04-14",
 )
+
+agent = ReActAgent.from_tools([time_tool, date_tool], llm=llm, verbose=True)
 
 ui.page_opts(
     title="Shiny Chat with LlamaIndex Tool Calling",
@@ -71,21 +72,20 @@ chat = ui.Chat(
 chat.ui()
 
 
-async def get_response_tokens(conversation: list[ChatMessage]):
-
-    agent = ReActAgent.from_tools([time_tool, date_tool], llm=llm, verbose=True)
-
-    last_message = conversation[-1].content if conversation else ""
-
-    response_stream = await agent.astream_chat(last_message)
-    async for token in response_stream.async_response_gen():
-        yield token
-
-
 @chat.on_user_submit
 async def handle_user_input():
-    conversation = [
+    messages = [
         ChatMessage(role=msg["role"], content=msg["content"]) for msg in chat.messages()
     ]
 
-    await chat.append_message_stream(get_response_tokens(conversation))
+    last_message = messages[-1]
+    chat_history = messages[:-1]
+
+    async def stream_generator():
+        response_stream = await agent.astream_chat(
+            message=last_message.content, chat_history=chat_history
+        )
+        async for token in response_stream.async_response_gen():
+            yield token
+
+    await chat.append_message_stream(stream_generator())
