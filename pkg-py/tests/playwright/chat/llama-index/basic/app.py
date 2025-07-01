@@ -1,5 +1,5 @@
 from dotenv import load_dotenv
-from llama_index.core.agent.workflow import FunctionAgent
+from llama_index.core.agent.workflow import FunctionAgent, AgentStream
 from llama_index.core.workflow import Context
 from llama_index.llms.openai import OpenAI
 from shiny.express import ui
@@ -7,7 +7,7 @@ from shiny.express import ui
 _ = load_dotenv()
 
 llm = OpenAI(
-    model="gpt-4o-mini",
+    model="gpt-4.1-nano-2025-04-14",
 )
 
 ui.page_opts(
@@ -36,18 +36,25 @@ chat = ui.Chat(
 chat.ui()
 
 
-async def get_response_from_agent(user_message: str):
-    response = await agent.run(user_msg=user_message, ctx=ctx)
-    return str(response)
+async def stream_response_from_agent(user_message: str, context: Context):
+    handler = agent.run(user_msg=user_message, ctx=context)
+
+    async for event in handler.stream_events():
+        if isinstance(event, AgentStream):
+            if event.delta:
+                yield event.delta
+
+    await handler
+
 
 
 @chat.on_user_submit
 async def handle_user_input():
     latest_messages = chat.messages()
     latest_user_message = latest_messages[-1]["content"]
-    response = await get_response_from_agent(latest_user_message)
 
-    async def stream_response():
-        yield response
+    async def stream_generator():
+        async for chunk in stream_response_from_agent(latest_user_message, ctx):
+            yield chunk
 
-    await chat.append_message_stream(stream_response())
+    await chat.append_message_stream(stream_generator())
