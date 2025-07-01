@@ -3,8 +3,9 @@ from datetime import datetime
 
 from dotenv import load_dotenv
 from langchain.agents import AgentExecutor, create_openai_tools_agent
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.chat_history import InMemoryChatMessageHistory
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from shiny.express import ui
@@ -55,8 +56,19 @@ llm = ChatOpenAI(
 agent = create_openai_tools_agent(llm, tools, prompt)
 agent_executor = AgentExecutor(agent=agent, tools=tools)
 
+        store[session_id] = InMemoryChatMessageHistory()
+    return store[session_id]
+
+
+agent_with_chat_history = RunnableWithMessageHistory(
+    agent_executor,
+    get_session_history,
+    input_messages_key="input",
+    history_messages_key="chat_history",
+)
+
 ui.page_opts(
-    title="Hello LangChain Chat Models with Tools",
+    title="Shiny Chat with LangChain Agent",
     fillable=True,
     fillable_mobile=True,
 )
@@ -64,7 +76,10 @@ ui.page_opts(
 chat = ui.Chat(
     id="chat",
     messages=[
-        "Hello! I can help with time, date, calculator and other questions!"
+        {
+            "content": "Hello! I'm a chatbot with tools. I can get the time, date, weather, or do calculations. I'll also remember our conversation. How can I help?",
+            "role": "assistant",
+        }
     ],
 )
 chat.ui()
@@ -72,23 +87,19 @@ chat.ui()
 
 @chat.on_user_submit
 async def handle_user_input(user_input: str):
-    def convert_to_langchain_messages(messages):
-        return [
-            HumanMessage(content=msg["content"])
-            if msg["role"] == "user"
-            else AIMessage(content=msg["content"])
-            for msg in messages
-            if msg["role"] in ["user", "assistant"]
-        ]
-
-    current_messages = chat.messages()[:-1]
-    langchain_history = convert_to_langchain_messages(current_messages)
+    """
+    Handles user input by streaming the agent's response.
+    """
+    config = {"configurable": {"session_id": "shiny_session_tools_1"}}
 
     async def stream_response():
-        async for chunk in agent_executor.astream(
-            {"input": user_input, "chat_history": langchain_history}
+        async for event in agent_with_chat_history.astream_events(
+            {"input": user_input}, config=config, version="v1"
         ):
-            if chunk.get("output"):
-                yield chunk["output"]
+            kind = event["event"]
+            if kind == "on_chat_model_stream":
+                content = event["data"]["chunk"].content
+                if content:
+                    yield content
 
     await chat.append_message_stream(stream_response())
