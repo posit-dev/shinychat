@@ -2,6 +2,7 @@ import os
 
 from chatlas import ChatOpenAI
 from llama_index.core import StorageContext, load_index_from_storage
+from shiny.express import ui
 
 _ = os.environ.get("OPENAI_API_KEY")
 
@@ -34,9 +35,7 @@ except Exception as e:
     print("Dummy index created and saved.")
 
 
-def retrieve_trusted_content(
-    query: str, top_k: int = 3
-):
+def retrieve_trusted_content(query: str, top_k: int = 3):
     """
     Retrieve relevant content from the bookstore's knowledge base.
     This acts as the "lookup" for our customer service assistant.
@@ -54,7 +53,7 @@ def retrieve_trusted_content(
     return [f"<excerpt>{x.text}</excerpt>" for x in nodes]
 
 
-chat = ChatOpenAI(
+chat_client = ChatOpenAI(
     system_prompt=(
         "You are 'BookWorm Haven's Customer Service Assistant'. "
         "Your primary goal is to help customers with their queries about shipping, returns, "
@@ -66,44 +65,35 @@ chat = ChatOpenAI(
 )
 
 # This is where Chatlas learns to "look up" information when needed.
-chat.register_tool(retrieve_trusted_content)
+chat_client.register_tool(retrieve_trusted_content)
 
 
-# Example Customer Interactions with the Assistant
-print("\n--- BookWorm Haven Customer Service ---\n")
+ui.page_opts(
+    title="BookWorm Haven Customer Service",
+    fillable=True,
+    fillable_mobile=True,
+)
 
-# Example 1: Question that can be answered from the knowledge base (shipping policy)
-customer_query_1 = "How long does standard shipping take?"
-print(f"Customer: {customer_query_1}")
-response_1 = chat.chat(customer_query_1)
-print(f"Assistant: {response_1}\n")
+chat = ui.Chat(
+    id="chat",
+    messages=[
+        """
+Hello! I am BookWorm Haven's Customer Service Assistant.
 
-# Example 2: Another question answerable from the knowledge base (return policy)
-customer_query_2 = "What's your return policy?"
-print(f"Customer: {customer_query_2}")
-response_2 = chat.chat(customer_query_2)
-print(f"Assistant: {response_2}\n")
+Here are some examples of what you can ask me:
 
-# Example 3: Question about a specific book (information available)
-customer_query_3 = "Tell me about 'The Midnight Library'."
-print(f"Customer: {customer_query_3}")
-response_3 = chat.chat(customer_query_3)
-print(f"Assistant: {response_3}\n")
+- <span class="suggestion"> How long does standard shipping take? </span>
+- <span class="suggestion"> What is your return policy? </span>
+- <span class="suggestion"> Can you tell me about 'The Midnight Library'? </span>
 
-# Example 4: Question with information not in the knowledge base
-customer_query_4 = "Do you have any books about quantum physics for beginners?"
-print(f"Customer: {customer_query_4}")
-response_4 = chat.chat(customer_query_4)
-print(f"Assistant: {response_4}\n")
+        """
+    ],
+)
+chat.ui()
 
-# Example 5: Combining information
-customer_query_5 = "Is free shipping available and what payment methods do you accept?"
-print(f"Customer: {customer_query_5}")
-response_5 = chat.chat(customer_query_5)
-print(f"Assistant: {response_5}\n")
 
-# Example 6: More nuanced query requiring retrieval
-customer_query_6 = "I want to return a book, what should I do?"
-print(f"Customer: {customer_query_6}")
-response_6 = chat.chat(customer_query_6)
-print(f"Assistant: {response_6}\n")
+# Generate a response when the user submits a message
+@chat.on_user_submit
+async def handle_user_input(user_input: str):
+    response = await chat_client.stream_async(user_input)
+    await chat.append_message_stream(response)
