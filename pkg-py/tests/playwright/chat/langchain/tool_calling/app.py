@@ -56,6 +56,15 @@ llm = ChatOpenAI(
 agent = create_openai_tools_agent(llm, tools, prompt)
 agent_executor = AgentExecutor(agent=agent, tools=tools)
 
+store = {}
+
+
+def get_session_history(session_id: str):
+    """
+    Retrieves the chat history for a given session ID.
+    If no history exists, a new one is created.
+    """
+    if session_id not in store:
         store[session_id] = InMemoryChatMessageHistory()
     return store[session_id]
 
