@@ -1,9 +1,9 @@
 from dotenv import load_dotenv
-from llama_index.core.llms import ChatMessage
+from llama_index.core.agent.workflow import FunctionAgent
+from llama_index.core.workflow import Context
 from llama_index.llms.openai import OpenAI
 from shiny.express import ui
 
-# Load environment variables from .env file
 _ = load_dotenv()
 
 llm = OpenAI(
@@ -16,31 +16,38 @@ ui.page_opts(
     fillable_mobile=True,
 )
 
+agent = FunctionAgent(
+    tools=[],
+    llm=llm,
+    system_prompt="You are a pirate with a colorful personality.",
+)
+
+ctx = Context(agent)
 
 chat = ui.Chat(
     id="chat",
     messages=[
-        {"role": "system", "content": "You are a pirate with a colorful personality."},
-        {"role": "user", "content": "What is your name, pirate?"},
         {
             "role": "assistant",
-            "content": "Arrr, they call me Captain Cog, the chattiest pirate on the seven seas!",
+            "content": "Arrr, they call me Captain Cog, the chattiest pirate on the seven seas! Ask me anything, matey!",
         },
     ],
 )
 chat.ui()
 
 
-async def get_response_tokens(conversation: list[ChatMessage]):
-    response_stream = await llm.astream_chat(conversation)
-    async for r in response_stream:
-        yield r.delta
+async def get_response_from_agent(user_message: str):
+    response = await agent.run(user_msg=user_message, ctx=ctx)
+    return str(response)
 
 
 @chat.on_user_submit
 async def handle_user_input():
-    conversation = [
-        ChatMessage(role=msg["role"], content=msg["content"]) for msg in chat.messages()
-    ]
+    latest_messages = chat.messages()
+    latest_user_message = latest_messages[-1]["content"]
+    response = await get_response_from_agent(latest_user_message)
 
-    await chat.append_message_stream(get_response_tokens(conversation))
+    async def stream_response():
+        yield response
+
+    await chat.append_message_stream(stream_response())
