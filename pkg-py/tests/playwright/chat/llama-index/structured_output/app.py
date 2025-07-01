@@ -60,48 +60,14 @@ chat.ui()
 
 
 async def stream_response_from_agent(user_message: str, context: Context):
-    context.conversation_history.append(
-        {
-            "role": "user",
-            "content": user_message,
-            "timestamp": datetime.now().isoformat(),
-        }
-    )
-
-    recent_context = ""
-    if len(context.conversation_history) > 1:
-        recent_messages = context.conversation_history[-3:]
-        recent_context = "\n".join(
-            [f"{msg['role']}: {msg['content']}" for msg in recent_messages]
-        )
-
-    enhanced_message = f"""
-    Context from recent conversation:
-    {recent_context}
-
-    Current request: {user_message}
-
-    Please provide a clear analytical response.
-    """
-
-    handler = agent.run(user_msg=enhanced_message, ctx=context)
-    response_content = ""
-
+    handler = agent.run(user_msg=user_message, ctx=context)
+    
     async for event in handler.stream_events():
         if isinstance(event, AgentStream):
             if event.delta:
-                response_content += event.delta
                 yield event.delta
 
     await handler
-
-    context.conversation_history.append(
-        {
-            "role": "assistant",
-            "content": response_content,
-            "timestamp": datetime.now().isoformat(),
-        }
-    )
 
 
 @chat.on_user_submit
