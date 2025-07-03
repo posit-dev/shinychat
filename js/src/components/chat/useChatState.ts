@@ -1,4 +1,4 @@
-import { useState, useCallback } from "preact/hooks"
+import { useState, useCallback, useMemo } from "preact/hooks"
 import type { Message, UpdateUserInput } from "./types"
 
 export interface ChatState {
@@ -138,22 +138,40 @@ export function useChatState(initialMessages: Message[] = []): ChatState {
     setInputDisabled(disabled)
   }, [])
 
-  return {
-    // State
-    messages,
-    inputValue,
-    inputDisabled,
+  // Memoize the entire return object to prevent infinite re-renders
+  // when this hook is used in useEffect dependency arrays
+  return useMemo(
+    () => ({
+      // State
+      messages,
+      inputValue,
+      inputDisabled,
 
-    // Message operations (for Shiny integration)
-    appendMessage,
-    appendMessageChunk,
-    clearMessages,
-    removeLoadingMessage,
-    updateUserInput,
+      // Message operations (for Shiny integration)
+      appendMessage,
+      appendMessageChunk,
+      clearMessages,
+      removeLoadingMessage,
+      updateUserInput,
 
-    // UI operations
-    handleInputSent,
-    setInputValue: setInputValueCallback,
-    setInputDisabled: setInputDisabledCallback,
-  }
+      // UI operations
+      handleInputSent,
+      setInputValue: setInputValueCallback,
+      setInputDisabled: setInputDisabledCallback,
+    }),
+    [
+      // Dependencies: all the state and callbacks that could change
+      messages,
+      inputValue,
+      inputDisabled,
+      appendMessage,
+      appendMessageChunk,
+      clearMessages,
+      removeLoadingMessage,
+      updateUserInput,
+      handleInputSent,
+      setInputValueCallback,
+      setInputDisabledCallback,
+    ],
+  )
 }
