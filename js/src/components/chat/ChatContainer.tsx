@@ -37,6 +37,10 @@ export function ChatContainer({
   const messages =
     externalMessages.length > 0 ? externalMessages : chat.messages
 
+  console.log(
+    `🔄 ChatContainer render - ID: ${id}, messages: ${messages.length}`,
+  )
+
   // Handle input sent - either external control or internal
   const handleInputSent = useCallback(
     (value: string) => {

@@ -38,7 +38,32 @@ export class ShinyChatOutput extends HTMLElement {
   private placeholder: string = "Enter a message..."
   private initialMessages: Message[] = []
 
+  private chatContainerElement(): HTMLElement | null {
+    return (
+      this.rootElement?.querySelector<HTMLElement>(".chat-container") || null
+    )
+  }
+
+  private dispatchElement(): HTMLElement {
+    const chatContainer = this.chatContainerElement()
+    if (chatContainer) {
+      return chatContainer
+    }
+
+    return this
+  }
+
+  #dispatchEvent(event: CustomEvent): void {
+    console.log(`📤 Dispatching event: ${event.type}`, {
+      element: this.dispatchElement(),
+      event,
+    })
+    this.dispatchElement().dispatchEvent(event)
+  }
+
   connectedCallback() {
+    console.log(`🔌 ShinyChatOutput connected: ${this.id}`)
+
     // Don't use shadow DOM so the component can inherit styles from the main document
     const root = document.createElement("div")
     root.classList.add("html-fill-container", "html-fill-item")
@@ -72,6 +97,7 @@ export class ShinyChatOutput extends HTMLElement {
   }
 
   disconnectedCallback() {
+    console.log(`🔌 ShinyChatOutput disconnected: ${this.id}`)
     if (this.rootElement) {
       render(null, this.rootElement)
     }
@@ -79,6 +105,7 @@ export class ShinyChatOutput extends HTMLElement {
 
   private renderValue() {
     if (!this.rootElement) return
+    console.log(`🎨 ShinyChatOutput renderValue: ${this.id}`)
 
     render(
       <StrictMode>
@@ -121,31 +148,31 @@ export class ShinyChatOutput extends HTMLElement {
     const event = new CustomEvent("shiny-chat-append-message", {
       detail: message,
     })
-    this.dispatchEvent(event)
+    this.#dispatchEvent(event)
   }
 
   appendMessageChunk(message: Message) {
     const event = new CustomEvent("shiny-chat-append-message-chunk", {
       detail: message,
     })
-    this.dispatchEvent(event)
+    this.#dispatchEvent(event)
   }
 
   clearMessages() {
     const event = new CustomEvent("shiny-chat-clear-messages")
-    this.dispatchEvent(event)
+    this.#dispatchEvent(event)
   }
 
   updateUserInput(update: UpdateUserInput) {
     const event = new CustomEvent("shiny-chat-update-user-input", {
       detail: update,
     })
-    this.dispatchEvent(event)
+    this.#dispatchEvent(event)
   }
 
   removeLoadingMessage() {
     const event = new CustomEvent("shiny-chat-remove-loading-message")
-    this.dispatchEvent(event)
+    this.#dispatchEvent(event)
   }
 
   // Public methods for updating attributes from Shiny
@@ -171,6 +198,7 @@ if (!customElements.get("shiny-chat-container")) {
 async function handleShinyChatMessage(
   message: AnyShinyChatMessage,
 ): Promise<void> {
+  console.log(`📥 handleShinyChatMessage:`, message)
   const el = document.getElementById(message.id) as ShinyChatOutput
 
   if (!el) {

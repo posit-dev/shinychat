@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 from contextlib import asynccontextmanager
 from typing import (
     TYPE_CHECKING,
@@ -1805,8 +1806,15 @@ def chat_ui(
             )
         )
 
+    print(f"Chat UI: {id}, messages: {len(message_tags)}")
+
     res = Tag(
         "shiny-chat-container",
+        Tag(
+            "script",
+            json.dumps(messages),
+            **{"type": "application/json", "data-for-shiny-chat": ""},
+        ),
         Tag("shiny-chat-messages", *message_tags),
         Tag(
             "shiny-chat-input",
