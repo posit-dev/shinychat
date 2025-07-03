@@ -36,6 +36,7 @@ export class ShinyChatOutput extends HTMLElement {
   private rootElement?: HTMLElement
   private iconAssistant: string = ""
   private placeholder: string = "Enter a message..."
+  private initialMessages: Message[] = []
 
   connectedCallback() {
     // Don't use shadow DOM so the component can inherit styles from the main document
@@ -58,6 +59,9 @@ export class ShinyChatOutput extends HTMLElement {
         const data = JSON.parse(dataEl.innerText)
         // Handle initial data if provided
         console.log("Initial chat data:", data)
+        if (data.messages && Array.isArray(data.messages)) {
+          this.initialMessages = data.messages
+        }
       } catch (err) {
         console.warn("Failed to parse initial chat data:", err)
       }
@@ -83,6 +87,7 @@ export class ShinyChatOutput extends HTMLElement {
           iconAssistant={this.iconAssistant}
           placeholder={this.placeholder}
           onSendMessage={this.handleSendMessage}
+          messages={this.initialMessages}
         />
       </StrictMode>,
       this.rootElement,
