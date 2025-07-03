@@ -1,7 +1,8 @@
 ---
-provider: aws_bedrock
-model: us.anthropic.claude-sonnet-4-20250514-v1:0
-tools:  [files, search_web]
+client:
+  provider: aws_bedrock
+  model: us.anthropic.claude-sonnet-4-20250514-v1:0
+tools:  [files]
 echo: output
 ---
 
@@ -363,11 +364,23 @@ js/src/__demos__/markdown-stream/demo.tsx
 js/src/chat
 js/src/chat/chat.scss
 js/src/chat/chat.ts
-# New React Components
+# New MarkdownStream React Components
 js/src/components
 js/src/components/MarkdownStream.css
 js/src/components/MarkdownStream.tsx
 js/src/components/ShinyMarkdownStream.tsx
+# New Chat React Components
+js/src/components/chat/Chat.module.css
+js/src/components/chat/ChatContainer.tsx
+js/src/components/chat/ChatInput.tsx
+js/src/components/chat/ChatMessage.tsx
+js/src/components/chat/ChatMessages.tsx
+js/src/components/chat/ChatUserMessage.tsx
+js/src/components/chat/README.md
+js/src/components/chat/ShinyChatContainer.tsx
+js/src/components/chat/index.ts
+js/src/components/chat/types.ts
+js/src/components/chat/useChatState.ts
 # New React components tests
 js/src/components/__tests__
 js/src/components/__tests__/MarkdownStream.integration.test.tsx

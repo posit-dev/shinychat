@@ -16,7 +16,7 @@
             background-color: #f8f9fa;
             padding: 2rem;
         }
-        
+
         .chat-demo-container {
             max-width: 800px;
             margin: 0 auto;
@@ -28,20 +28,20 @@
             display: flex;
             flex-direction: column;
         }
-        
+
         .chat-header {
             padding: 1rem 2rem;
             background-color: #f8f9fa;
             border-bottom: 1px solid #dee2e6;
             text-align: center;
         }
-        
+
         .chat-body {
             flex: 1;
             padding: 0;
             overflow: hidden;
         }
-        
+
         /* Chat styles would go here - in a real app these would be loaded from the CSS module */
         .demo-placeholder {
             display: flex;
@@ -51,7 +51,7 @@
             color: #6c757d;
             font-size: 1.25rem;
         }
-        
+
         .build-instructions {
             background-color: #fff3cd;
             border: 1px solid #ffeaa7;
@@ -73,7 +73,7 @@
             <div class="chat-header">
                 <h3 class="mb-0">Interactive Chat Interface</h3>
             </div>
-            
+
             <div class="chat-body">
                 <div id="demo-root">
                     <div class="demo-placeholder">
@@ -98,7 +98,7 @@
     <script type="module">
         // Try to load the demo script, but handle errors gracefully
         try {
-            const module = await import('./../../dist/demos/chat/demo.js');
+            const module = await import('./../../../dist/demos/chat/demo.js');
         } catch (error) {
             console.warn('Demo script not found. Run npm run build to generate it.');
             document.getElementById('demo-root').innerHTML = `

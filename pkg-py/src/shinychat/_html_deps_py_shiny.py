@@ -20,10 +20,10 @@ def chat_deps() -> list[HTMLDependency]:
         version=__version__,
         source={
             "package": "shinychat",
-            "subdir": "www/chat",
+            "subdir": "www/react/chat",
         },
-        script={"src": "chat.js", "type": "module"},
-        stylesheet={"href": "chat.css"},
+        script={"src": "shiny-chat-container.js", "type": "module"},
+        stylesheet=[{"href": "chat.css"}, {"href": "shiny-chat-container.css"}],
     )
     return [dep, markdown_stream_dependency()]
 

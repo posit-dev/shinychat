@@ -5,6 +5,9 @@ export { ChatMessages } from "./ChatMessages"
 export { ChatUserMessage } from "./ChatUserMessage"
 export { useChatState } from "./useChatState"
 
+// Shiny integration
+export { ShinyChatOutput, handleShinyChatMessage } from "./ShinyChatContainer"
+
 export type {
   Message,
   ContentType,
@@ -17,3 +20,9 @@ export type { ChatMessageProps } from "./ChatMessage"
 export type { ChatMessagesProps } from "./ChatMessages"
 export type { ChatUserMessageProps } from "./ChatUserMessage"
 export type { ChatState } from "./useChatState"
+export type {
+  ShinyChatMessage,
+  ShinyChatUpdateUserInput,
+  ShinyChatSimpleMessage,
+  AnyShinyChatMessage,
+} from "./ShinyChatContainer"

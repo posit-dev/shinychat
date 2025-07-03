@@ -141,6 +141,11 @@ const entries: EntryConfig[] = [
     name: "components/chat/chat",
     sassEntry: "src/components/chat/Chat.module.css",
   },
+  // Shiny Chat Integration
+  {
+    name: "components/chat/shiny-chat-container",
+    jsEntry: "src/components/chat/ShinyChatContainer.tsx",
+  },
   // ShinyMarkdownStream
   {
     name: "components/markdown-stream/shiny-markdown-stream",
