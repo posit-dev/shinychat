@@ -71,13 +71,10 @@ async def stream_response_from_agent(user_message: str, context: Context):
 
 
 @chat.on_user_submit
-async def handle_user_input():
-    """Handle user input and stream response."""
-    latest_messages = chat.messages()
-    latest_user_message = latest_messages[-1]["content"]
+async def handle_user_input(user_input: str):
 
     async def stream_generator():
-        async for chunk in stream_response_from_agent(latest_user_message, ctx):
+        async for chunk in stream_response_from_agent(user_input, ctx):
             yield chunk
 
     await chat.append_message_stream(stream_generator())
