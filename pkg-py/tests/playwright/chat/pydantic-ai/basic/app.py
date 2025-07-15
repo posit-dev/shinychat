@@ -22,9 +22,15 @@ ui.page_opts(
 
 chat = ui.Chat(
     id="chat",
-    messages=["Hello! How can I help you today?"],
 )
-chat.ui()
+chat.ui(
+    messages=[
+        {
+            "content": "Hello! I’m your AI assistant. You can ask me questions, get explanations, or help with tasks like brainstorming, summarizing, or coding. How can I assist you today?",
+            "role": "user",
+        }
+    ]
+)
 
 
 @chat.on_user_submit

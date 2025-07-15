@@ -18,11 +18,15 @@ ui.page_opts(
 
 chat = ui.Chat(
     id="chat",
-    messages=[
-        "Hello! I am a bot using `llm` package with OpenAI. How can I help?"
-    ],
 )
-chat.ui()
+chat.ui(
+    messages=[
+        {
+            "content": "Hello! I’m your AI assistant for time queries. Ask me for the current time in any city or timezone (for example: 'What time is it in Tokyo?'), and I’ll provide the answer. How can I assist you today?",
+            "role": "assistant",
+        }
+    ]
+)
 
 
 @chat.on_user_submit

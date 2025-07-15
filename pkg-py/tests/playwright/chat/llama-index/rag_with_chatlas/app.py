@@ -1,10 +1,10 @@
-import os
 
 from chatlas import ChatOpenAI
+from dotenv import load_dotenv
 from llama_index.core import StorageContext, load_index_from_storage
 from shiny.express import ui
 
-_ = os.environ.get("OPENAI_API_KEY")
+_ = load_dotenv()
 
 
 # Load the knowledge store (index) from disk

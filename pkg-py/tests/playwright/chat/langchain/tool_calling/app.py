@@ -84,6 +84,8 @@ ui.page_opts(
 
 chat = ui.Chat(
     id="chat",
+)
+chat.ui(
     messages=[
         {
             "content": "Hello! I'm a chatbot with tools. I can get the time, date, weather, or do calculations. I'll also remember our conversation. How can I help?",
@@ -91,7 +93,6 @@ chat = ui.Chat(
         }
     ],
 )
-chat.ui()
 
 
 @chat.on_user_submit

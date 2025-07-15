@@ -2,8 +2,8 @@ from datetime import datetime
 
 import pytz
 from dotenv import load_dotenv
-from llama_index.core.agent import ReActAgent
-from llama_index.core.llms import ChatMessage
+from llama_index.core.agent.workflow import AgentStream, FunctionAgent
+from llama_index.core.workflow import Context
 from llama_index.core.tools import FunctionTool
 from llama_index.llms.openai import OpenAI
 from shiny.express import ui
@@ -46,46 +46,51 @@ llm = OpenAI(
     model="gpt-4.1-nano-2025-04-14",
 )
 
-agent = ReActAgent.from_tools([time_tool, date_tool], llm=llm, verbose=True)
-
 ui.page_opts(
     title="Shiny Chat with LlamaIndex Tool Calling",
     fillable=True,
     fillable_mobile=True,
 )
 
+agent = FunctionAgent(
+    tools=[time_tool, date_tool],
+    llm=llm,
+    system_prompt="You are a pirate with a colorful personality. You can tell people the time and date when they need to know when to set sail!",
+)
+
+ctx = Context(agent)
 
 chat = ui.Chat(
     id="chat",
+)
+chat.ui(
     messages=[
-        {
-            "role": "system",
-            "content": "You are a pirate with a colorful personality. You can help users get the current time and date using your tools when they ask.",
-        },
-        {"role": "user", "content": "What is your name, pirate?"},
         {
             "role": "assistant",
             "content": "Arrr, they call me Captain Cog, the chattiest pirate on the seven seas! I can also tell ye the time and date if ye need to know when to set sail!",
         },
     ],
 )
-chat.ui()
+
+
+async def stream_response_from_agent(user_message: str, context: Context):
+    """Stream response from agent using the context-based approach."""
+    handler = agent.run(user_msg=user_message, ctx=context)
+
+    async for event in handler.stream_events():
+        if isinstance(event, AgentStream):
+            if event.delta:
+                yield event.delta
+
+    await handler
 
 
 @chat.on_user_submit
-async def handle_user_input():
-    messages = [
-        ChatMessage(role=msg["role"], content=msg["content"]) for msg in chat.messages()
-    ]
-
-    last_message = messages[-1]
-    chat_history = messages[:-1]
+async def handle_user_input(user_input: str):
+    """Handle user input and stream response using context."""
 
     async def stream_generator():
-        response_stream = await agent.astream_chat(
-            message=last_message.content, chat_history=chat_history
-        )
-        async for token in response_stream.async_response_gen():
-            yield token
+        async for chunk in stream_response_from_agent(user_input, ctx):
+            yield chunk
 
     await chat.append_message_stream(stream_generator())

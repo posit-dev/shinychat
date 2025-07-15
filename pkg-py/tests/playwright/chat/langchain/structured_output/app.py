@@ -14,7 +14,9 @@ class Joke(BaseModel):
 
     setup: str = Field(description="The setup of the joke")
     punchline: str = Field(description="The punchline to the joke")
-    rating: Optional[int] = Field(description="How funny the joke is, from 1 to 10")
+    rating: Optional[int] = Field(
+        description="How funny the joke is, from 1 to 10"
+    )
 
 
 _ = Joke.model_rebuild()
@@ -32,9 +34,21 @@ ui.page_opts(
 
 chat = ui.Chat(
     id="chat",
-    messages=["Hello! How can I help you today?"],
 )
-chat.ui()
+chat.ui(
+    messages=[
+        {
+            "role": "assistant",
+            "content": """
+Hello! I'm your joke assistant. I can tell you jokes and rate them.
+Here are some examples of what you can ask me:
+- <span class="suggestion"> Tell me a joke about pirates. </span>
+- <span class="suggestion"> Can you tell me a funny joke about skeletons? </span>
+- <span class="suggestion"> Give me a joke about cats. </span>
+            """,
+        }
+    ],
+)
 
 
 @chat.on_user_submit

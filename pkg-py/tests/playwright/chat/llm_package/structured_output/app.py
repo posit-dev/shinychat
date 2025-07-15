@@ -1,8 +1,7 @@
 import llm
 from dotenv import load_dotenv
-from shiny.express import ui
 from pydantic import BaseModel
-
+from shiny.express import ui
 
 # Load environment variables from .env file
 _ = load_dotenv()
@@ -11,6 +10,7 @@ _ = load_dotenv()
 class Dog(BaseModel):
     name: str
     age: int
+
 
 model = llm.get_model("gpt-4o-mini")
 
@@ -26,9 +26,21 @@ ui.page_opts(
 
 chat = ui.Chat(
     id="chat",
-    messages=["Hello! I am a bot using `llm` package with OpenAI. How can I help?"],
 )
-chat.ui()
+chat.ui(
+    messages=[
+        {
+            "content": """
+            Here are some examples of what you can ask me:
+
+- <span class="suggestion"> Tell me about a dog named Bella who is 3 years old. </span>
+- <span class="suggestion"> I have a dog named Rocky, age 7. </span>
+- <span class="suggestion"> Give me info about a puppy called Luna, 1 year old. </span>
+            """,
+            "role": "assistant",
+        }
+    ]
+)
 
 
 @chat.on_user_submit

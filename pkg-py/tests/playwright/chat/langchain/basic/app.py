@@ -1,6 +1,6 @@
 import os
-from dotenv import load_dotenv
 
+from dotenv import load_dotenv
 from langchain_core.chat_history import InMemoryChatMessageHistory
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables.history import RunnableWithMessageHistory
@@ -49,6 +49,8 @@ ui.page_opts(
 
 chat = ui.Chat(
     id="chat",
+)
+chat.ui(
     messages=[
         {
             "content": "Hello! I'm a chatbot that can remember our conversation. How can I help you today?",
@@ -56,7 +58,6 @@ chat = ui.Chat(
         }
     ],
 )
-chat.ui()
 
 
 @chat.on_user_submit

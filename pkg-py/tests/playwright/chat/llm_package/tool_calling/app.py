@@ -25,14 +25,19 @@ ui.page_opts(
 
 chat = ui.Chat(
     id="chat",
-    messages=["Hello! I am a bot using `llm` package with OpenAI that showcases tool calling. How can I help? Ask me for the current time or date."],
 )
-chat.ui()
+chat.ui(
+    messages=[
+        {
+            "content": "Hello! I'm a chatbot that can help you with the current time. How can I assist you today?",
+            "role": "assistant",
+        }
+    ],
+)
 
 
 @chat.on_user_submit
 async def handle_user_input(user_input: str):
-
     response = model.chain(user_input, tools=[get_current_time])
 
     # Stream the response to the chat window

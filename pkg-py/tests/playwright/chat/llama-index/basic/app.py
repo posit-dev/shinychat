@@ -1,5 +1,5 @@
 from dotenv import load_dotenv
-from llama_index.core.agent.workflow import FunctionAgent, AgentStream
+from llama_index.core.agent.workflow import AgentStream, FunctionAgent
 from llama_index.core.workflow import Context
 from llama_index.llms.openai import OpenAI
 from shiny.express import ui
@@ -26,6 +26,8 @@ ctx = Context(agent)
 
 chat = ui.Chat(
     id="chat",
+)
+chat.ui(
     messages=[
         {
             "role": "assistant",
@@ -33,7 +35,6 @@ chat = ui.Chat(
         },
     ],
 )
-chat.ui()
 
 
 async def stream_response_from_agent(user_message: str, context: Context):
@@ -47,10 +48,8 @@ async def stream_response_from_agent(user_message: str, context: Context):
     await handler
 
 
-
 @chat.on_user_submit
 async def handle_user_input(user_input: str):
-
     async def stream_generator():
         async for chunk in stream_response_from_agent(user_input, ctx):
             yield chunk

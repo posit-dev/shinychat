@@ -42,9 +42,15 @@ ui.page_opts(
 # Create and display a Shiny chat component
 chat = ui.Chat(
     id="chat",
-    messages=["Hello! Ask me to tell a joke, get the weather, or tell the time."],
 )
-chat.ui()
+chat.ui(
+    messages=[
+        {
+            "content": "Hello! I'm a chatbot that can help you with weather, time, and jokes. How can I assist you today?",
+            "role": "assistant",
+        }
+    ],
+)
 
 
 # Generate a response when the user submits a message

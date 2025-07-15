@@ -1,5 +1,3 @@
-import os
-
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from pydantic_ai import Agent
@@ -31,16 +29,26 @@ ui.page_opts(
 # Create and display a Shiny chat component
 chat = ui.Chat(
     id="chat",
-    messages=["Hello! Ask me where the superbowl was held in any year?"],
 )
-chat.ui()
+chat.ui(
+    messages=[
+        {
+            "role": "assistant",
+            "content": """
+Hello! Ask me where the superbowl was held in any year and I can tell the state, county, and city.
+For example, you can ask:
+- <span class="suggestion"> Where was the superbowl in 2020? </span>
+- <span class="suggestion"> What city hosted the superbowl in 2015? </span>
+- <span class="suggestion"> Where was the superbowl in 2018? </span>
+""",
+        }
+    ],
+)
 
 
 @chat.on_user_submit
 async def handle_user_input(user_input: str):
     result = await chat_client.run(user_input)
     city_info = result.output
-    message = (
-        f"City: {city_info.city}, County: {city_info.county}, State: {city_info.state}"
-    )
+    message = f"City: {city_info.city}, County: {city_info.county}, State: {city_info.state}"
     await chat.append_message(message)
