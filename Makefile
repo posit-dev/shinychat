@@ -96,6 +96,7 @@ r-update-dist: ## [r] Update shinychat web assets
 	mkdir -p $(PATH_PKG_R)/inst/lib/shiny
 	cp -r $(PATH_PKG_JS)/dist/chat $(PATH_PKG_R)/inst/lib/shiny/
 	cp -r $(PATH_PKG_JS)/dist/markdown-stream $(PATH_PKG_R)/inst/lib/shiny/
+	cp -r $(PATH_PKG_JS)/dist/tool-display $(PATH_PKG_R)/inst/lib/shiny/
 	(git rev-parse HEAD) > "$(PATH_PKG_R)/inst/lib/shiny/GIT_VERSION"
 
 .PHONY: r-docs
@@ -213,6 +214,7 @@ py-update-dist: ## [py] Update shinychat web assets
 	mkdir -p $(PATH_PKG_PY)/src/shinychat/www
 	cp -r $(PATH_PKG_JS)/dist/chat $(PATH_PKG_PY)/src/shinychat/www/
 	cp -r $(PATH_PKG_JS)/dist/markdown-stream $(PATH_PKG_PY)/src/shinychat/www/
+	cp -r $(PATH_PKG_JS)/dist/tool-display $(PATH_PKG_PY)/src/shinychat/www/
 	(git rev-parse HEAD) > "$(PATH_PKG_PY)/src/shinychat/www/GIT_VERSION"
 
 .PHONY: help

@@ -13,12 +13,12 @@ chat_deps <- function() {
     script = list(
       list(src = "chat/chat.js", type = "module"),
       list(src = "markdown-stream/markdown-stream.js", type = "module"),
-      list(src = "tools/tool-request.js")
+      list(src = "tool-display/tool-display.js")
     ),
     stylesheet = c(
       "chat/chat.css",
       "markdown-stream/markdown-stream.css",
-      "tools/tool-request.css"
+      "tool-display/tool-display.css"
     )
   )
 }

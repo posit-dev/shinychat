@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../src/tool-display/tool-display.ts"],
+  "sourcesContent": ["window.Shiny.addCustomMessageHandler(\n  \"shinychat-hide-tool-request\",\n  function (id: string) {\n    let styleSheet = document.getElementById(\"shinychat-hidden-tool-requests\")\n\n    if (!styleSheet) {\n      styleSheet = document.createElement(\"style\")\n      styleSheet.id = \"shinychat-hidden-tool-requests\"\n      document.head.appendChild(styleSheet)\n    }\n\n    // Add the rule to the stylesheet\n    const rule = `[data-tool-call-id=\"${id}\"] { display: none !important; }`\n    const sheet = (styleSheet as HTMLStyleElement).sheet\n    if (sheet) {\n      sheet.insertRule(rule, sheet.cssRules.length)\n    }\n  },\n)\n"],
+  "mappings": "AAAA,OAAO,MAAM,wBACX,8BACA,SAAUA,EAAY,CACpB,IAAIC,EAAa,SAAS,eAAe,gCAAgC,EAEpEA,IACHA,EAAa,SAAS,cAAc,OAAO,EAC3CA,EAAW,GAAK,iCAChB,SAAS,KAAK,YAAYA,CAAU,GAItC,IAAMC,EAAO,uBAAuBF,CAAE,mCAChCG,EAASF,EAAgC,MAC3CE,GACFA,EAAM,WAAWD,EAAMC,EAAM,SAAS,MAAM,CAEhD,CACF",
+  "names": ["id", "styleSheet", "rule", "sheet"]
+}

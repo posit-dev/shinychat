@@ -1,0 +1,2 @@
+window.Shiny.addCustomMessageHandler("shinychat-hide-tool-request",function(n){let e=document.getElementById("shinychat-hidden-tool-requests");e||(e=document.createElement("style"),e.id="shinychat-hidden-tool-requests",document.head.appendChild(e));let s=`[data-tool-call-id="${n}"] { display: none !important; }`,t=e.sheet;t&&t.insertRule(s,t.cssRules.length)});
+//# sourceMappingURL=tool-display.js.map

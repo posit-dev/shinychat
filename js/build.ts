@@ -135,6 +135,11 @@ const entries: EntryConfig[] = [
     jsEntry: "src/chat/chat.ts",
     sassEntry: "src/chat/chat.scss",
   },
+  {
+    name: "tool-display/tool-display",
+    jsEntry: "src/tool-display/tool-display.ts",
+    sassEntry: "src/tool-display/tool-display.scss",
+  },
 ]
 
 ;(async () => {
