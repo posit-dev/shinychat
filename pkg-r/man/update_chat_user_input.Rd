@@ -17,6 +17,8 @@ update_chat_user_input(
 \arguments{
 \item{id}{The ID of the chat element}
 
+\item{...}{Currently unused, but reserved for future use.}
+
 \item{value}{The value to set the user input to. If \code{NULL}, the input will not be updated.}
 
 \item{placeholder}{The placeholder text for the user input}
@@ -26,9 +28,6 @@ update_chat_user_input(
 \item{focus}{Whether to move focus to the input element. Requires \code{value}.}
 
 \item{session}{The Shiny session object}
-}
-\value{
-Returns nothing (\code{invisible(NULL)}).
 }
 \description{
 Update the user input of a chat control

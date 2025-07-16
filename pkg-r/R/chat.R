@@ -546,13 +546,12 @@ chat_clear <- function(id, session = getDefaultReactiveDomain()) {
 #' Update the user input of a chat control
 #'
 #' @param id The ID of the chat element
+#' @param ... Currently unused, but reserved for future use.
 #' @param value The value to set the user input to. If `NULL`, the input will not be updated.
 #' @param placeholder The placeholder text for the user input
 #' @param submit Whether to automatically submit the text for the user. Requires `value`.
 #' @param focus Whether to move focus to the input element. Requires `value`.
 #' @param session The Shiny session object
-#'
-#' @returns Returns nothing (\code{invisible(NULL)}).
 #'
 #' @export
 #' @examplesIf interactive()
@@ -595,6 +594,7 @@ update_chat_user_input <- function(
   focus = FALSE,
   session = getDefaultReactiveDomain()
 ) {
+  rlang::check_dots_empty()
   check_active_session(session)
 
   if (is.null(value) && (submit || focus)) {
