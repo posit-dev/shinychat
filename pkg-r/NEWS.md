@@ -1,8 +1,11 @@
 # shinychat (development version)
 
-## New features and improvements
+## New features
 
 * Added `chat_enable_bookmarking()` which adds Shiny bookmarking hooks to save and restore the `{ellmer}` chat client. (#28)
+* Added `update_chat_user_input()` for programmatically updating the user input of a chat UI element. (#78)
+
+## Improvements
 
 * `chat_app()` now correctly restores the chat client state when refreshing the app, e.g. by reloading the page. (#71)
 
