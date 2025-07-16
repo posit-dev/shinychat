@@ -1,0 +1,195 @@
+#' Open a live chat application in the browser
+#'
+#' @description
+#' Create a simple Shiny app for live chatting using an [ellmer::Chat] object.
+#' Note that these functions will mutate the input `client` object as
+#' you chat because your turns will be appended to the history.
+#'
+#' The app created by `chat_app()` is suitable for interactive use by a single
+#' user. For multi-user Shiny apps, use the Shiny module chat functions --
+#' `chat_mod_ui()` and `chat_mod_server()` -- and be sure to create a new chat
+#' client for each user session.
+#'
+#' @examples
+#' \dontrun{
+#' # Interactive in the console ----
+#' client <- ellmer::chat_anthropic()
+#' chat_app(client)
+#'
+#' # Inside a Shiny app ----
+#' library(shiny)
+#' library(bslib)
+#' library(shinychat)
+#'
+#' ui <- page_fillable(
+#'   titlePanel("shinychat example"),
+#'
+#'   layout_columns(
+#'     card(
+#'       card_header("Chat with Claude"),
+#'       chat_mod_ui(
+#'         "claude",
+#'         messages = list(
+#'           "Hi! Use this chat interface to chat with Anthropic's `claude-3-5-sonnet`."
+#'         )
+#'       )
+#'     ),
+#'     card(
+#'       card_header("Chat with ChatGPT"),
+#'       chat_mod_ui(
+#'         "openai",
+#'         messages = list(
+#'           "Hi! Use this chat interface to chat with OpenAI's `gpt-4o`."
+#'         )
+#'       )
+#'     )
+#'   )
+#' )
+#'
+#' server <- function(input, output, session) {
+#'   claude <- ellmer::chat_anthropic(model = "claude-3-5-sonnet-latest") # Requires ANTHROPIC_API_KEY
+#'   openai <- ellmer::chat_openai(model = "gpt-4o") # Requires OPENAI_API_KEY
+#'
+#'   chat_mod_server("claude", claude)
+#'   chat_mod_server("openai", openai)
+#' }
+#'
+#' shinyApp(ui, server)
+#' }
+#'
+#' @param client A chat object created by \pkg{ellmer}, e.g.
+#'   [ellmer::chat_openai()] and friends.
+#' @param ... In `chat_app()`, additional arguments are passed to
+#'   [shiny::shinyApp()]. In `chat_mod_ui()`, additional arguments are passed to
+#'   [chat_ui()].
+#'
+#' @returns
+#'   * `chat_app()` returns a [shiny::shinyApp()] object.
+#'   * `chat_mod_ui()` returns the UI for a shinychat module.
+#'   * `chat_mod_server()` includes the shinychat module server logic, and
+#'     and returns the last turn upon successful chat completion.
+#'
+#' @describeIn chat_app A simple Shiny app for live chatting. Note that this
+#'   app is suitable for interactive use by a single user; do not use
+#'   `chat_app()` in a multi-user Shiny app context.
+#' @export
+chat_app <- function(client, ...) {
+  check_ellmer_chat(client)
+
+  ui <- function(req) {
+    bslib::page_fillable(
+      chat_mod_ui("chat", client = client, height = "100%"),
+      shiny::actionButton(
+        "close_btn",
+        label = "",
+        class = "btn-close",
+        style = "position: fixed; top: 6px; right: 6px;"
+      )
+    )
+  }
+
+  server <- function(input, output, session) {
+    chat_mod_server("chat", client)
+
+    shiny::observeEvent(input$close_btn, {
+      shiny::stopApp()
+    })
+  }
+
+  shiny::shinyApp(ui, server, ...)
+}
+
+check_ellmer_chat <- function(client) {
+  if (!inherits(client, "Chat")) {
+    abort("`client` must be an `ellmer::Chat` object.")
+  }
+}
+
+#' @describeIn chat_app A simple chat app module UI.
+#' @param id The chat module ID.
+#' @param messages Initial messages shown in the chat, used when `client` is not
+#'   provided or when the chat `client` doesn't already contain turns. Passed to
+#'   `messages` in [chat_ui()].
+#' @export
+chat_mod_ui <- function(id, ..., client = NULL, messages = NULL) {
+  if (!is.null(client)) {
+    check_ellmer_chat(client)
+
+    client_msgs <- contents_shinychat(client)
+
+    if (length(client_msgs)) {
+      if (!is.null(messages)) {
+        warn(
+          "`client` was provided and has initial messages, `messages` will be ignored."
+        )
+      }
+      messages <- client_msgs
+    }
+  }
+
+  shiny::tagList(
+    shinychat::chat_ui(
+      shiny::NS(id, "chat"),
+      messages = messages,
+      ...
+    ),
+    shiny::includeCSS(system.file(
+      "tools",
+      "tool-request.css",
+      package = "shinychat"
+    )),
+    shiny::includeScript(system.file(
+      "tools",
+      "tool-request.js",
+      package = "shinychat"
+    ))
+  )
+}
+
+#' @describeIn chat_app A simple chat app module server.
+#' @export
+chat_mod_server <- function(id, client) {
+  check_ellmer_chat(client)
+
+  append_stream_task <- shiny::ExtendedTask$new(
+    function(client, ui_id, user_input) {
+      clear_on_tool_result <- client$on_tool_result(function(result) {
+        session <- shiny::getDefaultReactiveDomain()
+        if (is.null(session)) return()
+        session$sendCustomMessage(
+          "shinychat-hide-tool-request",
+          result@request@id
+        )
+      })
+
+      stream <- client$stream_async(
+        user_input,
+        stream = "content"
+      )
+
+      p <- promises::promise_resolve(stream)
+      p <- promises::then(p, function(stream) {
+        chat_append(ui_id, stream)
+      })
+      promises::finally(p, function() {
+        clear_on_tool_result()
+      })
+    }
+  )
+
+  shiny::moduleServer(id, function(input, output, session) {
+    shiny::observeEvent(input$chat_user_input, {
+      append_stream_task$invoke(
+        client,
+        "chat",
+        input$chat_user_input
+      )
+    })
+
+    shiny::reactive({
+      if (append_stream_task$status() == "success") {
+        client$last_turn()
+      }
+    })
+  })
+}

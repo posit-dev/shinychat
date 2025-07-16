@@ -1,0 +1,16 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^LICENSE\.md$
+^scripts$
+^\.github$
+^README\.Rmd$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$
+^vignettes*
+^_dev$
+^cran-comments\.md$
+^CRAN-SUBMISSION$
+^_dev$
+^revdep$
+^shiny_bookmarks$
