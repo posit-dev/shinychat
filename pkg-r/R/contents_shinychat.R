@@ -109,17 +109,14 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(
     )
   }
 
-  if (!is.null(content@request@tool)) {
-    if (!is.null(content@request@tool@annotations$title)) {
-      # Use the tool title if available
-      tool_name <- content@request@tool@annotations$title
+  tool_name <- "unknown tool"
+  tool <- content@request@tool
+  if (!is.null(tool)) {
+    tool_name <- tool@name
+    if (!is.null(tool@annotations$title)) {
+      tool_name <- tool@annotations$title
       summary_text <- ""
-    } else {
-      # Fallback to tool name
-      tool_name <- content@request@tool@name
     }
-  } else {
-    tool_name <- "unknown tool"
   }
 
   intent <- ""
@@ -130,12 +127,11 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(
     )
   }
 
-  tool_call <-
-    details_open <- sprintf(
-      '<details class="%s" id="%s">',
-      class,
-      content@request@id
-    )
+  details_open <- sprintf(
+    '<details class="%s" id="%s">',
+    class,
+    content@request@id
+  )
 
   summary <- sprintf(
     '<summary>%s <span class="function-name">%s</span>%s</summary>',
