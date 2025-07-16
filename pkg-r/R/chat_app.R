@@ -143,7 +143,9 @@ chat_mod_server <- function(id, client) {
     function(client, ui_id, user_input) {
       clear_on_tool_result <- client$on_tool_result(function(result) {
         session <- shiny::getDefaultReactiveDomain()
-        if (is.null(session)) return()
+        if (is.null(session)) {
+          return()
+        }
         session$sendCustomMessage(
           "shinychat-hide-tool-request",
           result@request@id
