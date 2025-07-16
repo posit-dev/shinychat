@@ -8,6 +8,8 @@ check_active_session <- function(session = shiny::getDefaultReactiveDomain()) {
 }
 
 resolve_id <- function(id, session = shiny::getDefaultReactiveDomain()) {
-  if (is.null(session)) return(id)
+  if (is.null(session)) {
+    return(id)
+  }
   session$ns(id)
 }
