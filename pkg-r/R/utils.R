@@ -18,3 +18,8 @@ strip_ansi <- function(text) {
   ansi_pattern <- "(\x1B|\x033)\\[[0-9;?=<>]*[@-~]"
   gsub(ansi_pattern, "", text)
 }
+
+
+drop_nulls <- function(x) {
+  x[!vapply(x, is.null, FUN.VALUE = logical(1))]
+}

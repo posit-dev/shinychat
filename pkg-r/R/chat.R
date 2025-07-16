@@ -541,3 +541,83 @@ chat_clear <- function(id, session = getDefaultReactiveDomain()) {
     )
   )
 }
+
+
+#' Update the user input of a chat control
+#'
+#' @param id The ID of the chat element
+#' @param value The value to set the user input to. If `NULL`, the input will not be updated.
+#' @param placeholder The placeholder text for the user input
+#' @param submit Whether to automatically submit the text for the user. Requires `value`.
+#' @param focus Whether to move focus to the input element. Requires `value`.
+#' @param session The Shiny session object
+#'
+#' @returns Returns nothing (\code{invisible(NULL)}).
+#'
+#' @export
+#' @examplesIf interactive()
+#' library(shiny)
+#' library(bslib)
+#' library(shinychat)
+#'
+#' ui <- page_fillable(
+#'   chat_ui("chat"),
+#'   layout_columns(
+#'     fill = FALSE,
+#'     actionButton("update_placeholder", "Update placeholder"),
+#'     actionButton("update_value", "Update user input")
+#'   )
+#' )
+#'
+#' server <- function(input, output, session) {
+#'   observeEvent(input$update_placeholder, {
+#'     update_chat_user_input("chat", placeholder = "New placeholder text")
+#'   })
+#'
+#'   observeEvent(input$update_value, {
+#'     update_chat_user_input("chat", value = "New user input", focus = TRUE)
+#'   })
+#'
+#'   observeEvent(input$chat_user_input, {
+#'     response <- paste0("You said: ", input$chat_user_input)
+#'     chat_append("chat", response)
+#'   })
+#' }
+#'
+#' shinyApp(ui, server)
+
+update_chat_user_input <- function(
+  id,
+  ...,
+  value = NULL,
+  placeholder = NULL,
+  submit = FALSE,
+  focus = FALSE,
+  session = getDefaultReactiveDomain()
+) {
+  check_active_session(session)
+
+  if (is.null(value) && (submit || focus)) {
+    rlang::abort(
+      "An input `value` must be provided when `submit` or `focus` are `TRUE`."
+    )
+  }
+
+  vals <- drop_nulls(
+    list(
+      value = value,
+      placeholder = placeholder,
+      submit = submit,
+      focus = focus
+    )
+  )
+
+  session$sendCustomMessage(
+    "shinyChatMessage",
+    list(
+      id = resolve_id(id, session),
+      handler = "shiny-chat-update-user-input",
+      obj = vals
+    )
+  )
+}
