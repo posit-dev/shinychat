@@ -34,48 +34,40 @@ S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
 S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(
   content
 ) {
-  pre_code <- function(x) {
-    x <- gsub("`", "&#96;", x, fixed = TRUE)
-    x <- gsub("<", "&lt;", x, fixed = TRUE)
-    x <- gsub(">", "&gt;", x, fixed = TRUE)
-    sprintf("<pre><code>%s</code></pre>", paste(x, collapse = "\n"))
-  }
-
   deps <- NULL
 
   tool_result_display <- function(content) {
-    if (is.null(content@extra$display)) {
+    display <- content@extra$display
+    if (is.null(display)) {
       return(pre_code(content@value))
     }
-
-    display <- content@extra$display
 
     html <- NULL
     md <- NULL
     text <- NULL
 
     if (
-      is.list(content@extra$display) &&
-        !inherits(content@extra$display, c("shiny.tag.list", "shiny.tag"))
+      is.list(display) &&
+        !inherits(display, c("shiny.tag.list", "shiny.tag"))
     ) {
       if (
         !some(
           c("text", "markdown", "html"),
-          \(x) x %in% names(content@extra$display)
+          \(x) x %in% names(display)
         )
       ) {
         stop(
           "ContentToolResult@extra$display must be a list with at least one of the following elements: text, markdown, html."
         )
       }
-      html <- content@extra$display$html
-      md <- content@extra$display$markdown
-      text <- content@extra$display$text
+      html <- display$html
+      md <- display$markdown
+      text <- display$text
     } else {
-      if (inherits(content@extra$display, "html")) {
-        html <- content@extra$display
+      if (inherits(display, "html")) {
+        html <- display
       } else {
-        md <- content@extra$display
+        md <- display
       }
     }
 
@@ -222,4 +214,12 @@ S7::method(contents_shinychat, S7::new_S3_class(c("Chat", "R6"))) <- function(
   })
 
   compact(messages)
+}
+
+
+pre_code <- function(x) {
+  x <- gsub("`", "&#96;", x, fixed = TRUE)
+  x <- gsub("<", "&lt;", x, fixed = TRUE)
+  x <- gsub(">", "&gt;", x, fixed = TRUE)
+  sprintf("<pre><code>%s</code></pre>", paste(x, collapse = "\n"))
 }
