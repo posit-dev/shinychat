@@ -13,9 +13,13 @@ on:
 
 name: R-CMD-check.yaml
 
+permissions: read-all
+
 jobs:
   routine:
     uses: rstudio/shiny-workflows/.github/workflows/routine.yaml@v1
+    permissions:
+      contents: write
     with:
       working-directory: pkg-r
       format-r-code: true
