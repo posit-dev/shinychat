@@ -119,7 +119,9 @@ chat_enable_bookmarking <- function(
   cancel_on_restore_client <-
     session$onRestore(function(state) {
       client_state <- state$values[[id]]
-      if (is.null(client_state)) return()
+      if (is.null(client_state)) {
+        return()
+      }
 
       client_set_state(client, client_state)
 
@@ -233,14 +235,18 @@ has_session_chat_bookmark_info <- function(session, id) {
   return(!is.null(get_session_chat_bookmark_info(session, id)))
 }
 get_session_chat_bookmark_info <- function(session, id) {
-  if (is.null(session)) return(NULL)
+  if (is.null(session)) {
+    return(NULL)
+  }
 
   info <- session$userData$shinychat
   key <- session$ns(id)
   return(info[[key]])
 }
 set_session_chat_bookmark_info <- function(session, id, value) {
-  if (is.null(session)) return(NULL)
+  if (is.null(session)) {
+    return(NULL)
+  }
 
   if (is.null(session$userData$shinychat)) {
     session$userData$shinychat <- list()
