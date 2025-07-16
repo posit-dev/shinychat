@@ -1,14 +1,13 @@
 #' Format ellmer content for shinychat
 #'
 #' @param content An [`ellmer::Content`] object.
-#' @param ... Additional arguments passed to underlying methods.
 #'
 #' @return Returns text or HTML formatted for use in `chat_ui()`.
 #'
 #' @export
 contents_shinychat <- S7::new_generic("contents_shinychat", "content")
 
-S7::method(contents_shinychat, ellmer::Content) <- function(content, ...) {
+S7::method(contents_shinychat, ellmer::Content) <- function(content) {
   # Fall back to html or markdown
   html <- ellmer::contents_html(content)
   if (!is.null(html)) shiny::HTML(html) else ellmer::contents_markdown(content)
@@ -19,8 +18,7 @@ S7::method(contents_shinychat, ellmer::ContentText) <- function(content) {
 }
 
 S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
-  content,
-  ...
+  content
 ) {
   call <- format(content, show = "call")
   if (length(call) > 1) {
@@ -34,8 +32,7 @@ S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
 }
 
 S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(
-  content,
-  ...
+  content
 ) {
   pre_code <- function(x) {
     x <- gsub("`", "&#96;", x, fixed = TRUE)
@@ -178,8 +175,7 @@ S7::method(contents_shinychat, ellmer::Turn) <- function(content) {
 }
 
 S7::method(contents_shinychat, S7::new_S3_class(c("Chat", "R6"))) <- function(
-  content,
-  ...
+  content
 ) {
   # Consolidate tool calls into assistant turns. This currently assumes that
   # tool calls are always returned in user turns that have at least one
