@@ -19,6 +19,7 @@ jobs:
   routine:
     uses: rstudio/shiny-workflows/.github/workflows/routine.yaml@v1
     with:
+      working-directory: pkg-r
       format-r-code: true
       check-js: false
   R-CMD-check:
