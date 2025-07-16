@@ -127,22 +127,10 @@ chat_mod_ui <- function(id, ..., client = NULL, messages = NULL) {
     }
   }
 
-  shiny::tagList(
-    shinychat::chat_ui(
-      shiny::NS(id, "chat"),
-      messages = messages,
-      ...
-    ),
-    shiny::includeCSS(system.file(
-      "tools",
-      "tool-request.css",
-      package = "shinychat"
-    )),
-    shiny::includeScript(system.file(
-      "tools",
-      "tool-request.js",
-      package = "shinychat"
-    ))
+  chat_ui(
+    shiny::NS(id, "chat"),
+    messages = messages,
+    ...
   )
 }
 
