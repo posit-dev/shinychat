@@ -34,7 +34,7 @@ Imports:
 Suggests:
     later,
     testthat (>= 3.0.0)
-Remotes: 
+Remotes:
     tidyverse/ellmer
 Config/Needs/website: tidyverse/tidytemplate
 Config/testthat/edition: 3
