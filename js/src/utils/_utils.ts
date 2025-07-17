@@ -72,6 +72,17 @@ async function renderDependencies(deps: HtmlDep[]): Promise<void> {
 // General helpers
 ////////////////////////////////////////////////
 
+function hasProperty<T extends object, K extends PropertyKey>(
+  obj: T,
+  prop: K,
+): obj is T & Record<K, unknown> {
+  return prop in obj
+}
+
+function escapeHTML(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
 function sanitizeHTML(html: string): string {
   return sanitizer.sanitize(html, {
     // Sanitize scripts manually (see below)
@@ -137,6 +148,8 @@ export {
   LightElement,
   createElement,
   createSVGIcon,
+  escapeHTML,
+  hasProperty,
   renderDependencies,
   sanitizeHTML,
   showShinyClientMessage,

@@ -20,142 +20,56 @@ S7::method(contents_shinychat, ellmer::ContentText) <- function(content) {
 S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
   content
 ) {
-  call <- format(content, show = "call")
-  if (length(call) > 1) {
-    call <- sprintf("%s()", content@name)
-  }
-  shiny::HTML(sprintf(
-    '\n\n<p class="shiny-tool-request" data-tool-call-id="%s">Running <code>%s</code></p>\n\n',
-    content@id,
-    call
-  ))
+  res <- htmltools::tag(
+    "shinychat-tool-request",
+    list(
+      `data-tool-call-id` = content@id,
+      name = content@name
+    )
+  )
+
+  # The request element is inline so the streaming dot can appear inline next to it.
+  # As a result, if there is text before the request, the request will appears
+  # inline with that text, which is not what we want. To work around this, we
+  # effectively add a newline before the request element.
+  htmltools::tagList(htmltools::p(), res)
 }
 
-S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(
-  content
-) {
-  deps <- NULL
-
-  tool_result_display <- function(content) {
-    display <- content@extra$display
-    if (is.null(display)) {
-      return(pre_code(content@value))
-    }
-
-    html <- NULL
-    md <- NULL
-    text <- NULL
-
-    if (
-      is.list(display) &&
-        !inherits(display, c("shiny.tag.list", "shiny.tag"))
-    ) {
-      if (
-        !some(
-          c("text", "markdown", "html"),
-          \(x) x %in% names(display)
-        )
-      ) {
-        stop(
-          "ContentToolResult@extra$display must be a list with at least one of the following elements: text, markdown, html."
-        )
-      }
-      html <- display$html
-      md <- display$markdown
-      text <- display$text
-    } else {
-      if (inherits(display, "html")) {
-        html <- display
-      } else {
-        md <- display
-      }
-    }
-
-    if (!is.null(html)) {
-      deps <<- htmltools::findDependencies(html)
-      return(format(html))
-    }
-
-    if (!is.null(markdown)) {
-      md <- paste(md, collapse = "\n")
-      md <- paste0("\n\n", md, "\n\n")
-      return(md)
-    }
-
-    return(text %||% pre_code(contents$value))
+S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
+  request <- content@request
+  if (is.null(request)) {
+    # I guess we could display the value, but I'm not sure if this is even possible?
+    rlang::abort(c(
+      "Unable to display tool result since it does not appear to have a ",
+      "corresponding tool request. Please report this issue."
+    ))
   }
 
-  if (isFALSE(content@extra$display_tool_request)) {
-    res <- tool_result_display(content)
-    if (!is.null(deps)) {
-      res <- htmltools::attachDependencies(res, deps)
-    }
-    return(res)
-  }
-
-  if (!is.null(content@error)) {
-    class <- "shiny-tool-result failed"
-    summary_text <- "Failed to call"
-    tool_result <- sprintf(
-      "<strong>Error</strong>%s",
-      pre_code(strip_ansi(content@error))
-    )
+  if (inherits(content@error, "condition")) {
+    error <- sanitized_chat_error(content@error)
   } else {
-    class <- "shiny-tool-result"
-    summary_text <- "Result from"
-    tool_result <- sprintf(
-      '<strong>Tool Result</strong>%s',
-      tool_result_display(content)
+    error <- as.character(content@error)
+  }
+
+  if (!is.null(request@tool)) {
+    annotations <- to_json_attr(request@tool@annotations)
+  } else {
+    annotations <- NULL
+  }
+
+  value <- capture.output(print(content@value))
+
+  htmltools::tag(
+    "shinychat-tool-result",
+    list(
+      `data-tool-call-id` = request@id,
+      name = request@name,
+      arguments = to_json_attr(request@arguments),
+      value = paste(value, collapse = "\n"),
+      error = error,
+      annotations = annotations
     )
-  }
-
-  tool_name <- "unknown tool"
-  tool <- content@request@tool
-  if (!is.null(tool)) {
-    tool_name <- tool@name
-    if (!is.null(tool@annotations$title)) {
-      tool_name <- tool@annotations$title
-      summary_text <- ""
-    }
-  }
-
-  intent <- ""
-  if (!is.null(content@request@arguments$intent)) {
-    intent <- sprintf(
-      ' | <span class="intent">%s</span>',
-      content@request@arguments$intent
-    )
-  }
-
-  details_open <- sprintf(
-    '<details class="%s" id="%s">',
-    class,
-    content@request@id
   )
-
-  summary <- sprintf(
-    '<summary>%s <span class="function-name">%s</span>%s</summary>',
-    summary_text,
-    tool_name,
-    intent
-  )
-
-  tool_call <- sprintf(
-    '<strong>Tool Call</strong>%s',
-    pre_code(format(content@request, show = "call"))
-  )
-
-  body <- sprintf(
-    '<p>%s</p><p>%s</p></details>\n\n',
-    tool_call,
-    tool_result
-  )
-
-  res <- shiny::HTML(paste0(details_open, summary, body))
-  if (!is.null(deps)) {
-    res <- htmltools::attachDependencies(res, deps)
-  }
-  return(res)
 }
 
 S7::method(contents_shinychat, ellmer::Turn) <- function(content) {
@@ -213,9 +127,17 @@ S7::method(contents_shinychat, S7::new_S3_class(c("Chat", "R6"))) <- function(
 }
 
 
-pre_code <- function(x) {
-  x <- gsub("`", "&#96;", x, fixed = TRUE)
-  x <- gsub("<", "&lt;", x, fixed = TRUE)
-  x <- gsub(">", "&gt;", x, fixed = TRUE)
-  sprintf("<pre><code>%s</code></pre>", paste(x, collapse = "\n"))
+to_json_attr <- function(x, pretty = TRUE) {
+  if (length(x) == 0) {
+    return(NULL)
+  }
+
+  jsonlite::toJSON(
+    x,
+    auto_unbox = TRUE,
+    pretty = pretty,
+    force = TRUE,
+    null = "null",
+    dataframe = "rows"
+  )
 }

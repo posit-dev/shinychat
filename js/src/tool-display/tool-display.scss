@@ -1,108 +1,99 @@
-.shiny-tool-request {
-    margin: 0;
-    border-radius: var(--bs-border-radius);
-    overflow: hidden;
-    padding: 0.5em;
-    font-size: 0.8em;
-    color: var(--bs-secondary);
-    font-weight: 400;
-    display: block;
-    align-items: center;
-    user-select: none;
+// Right pointing arrow
+@mixin tool-arrow {
+  content: "\2B05";
+  font-size: 1em;
+  margin-right: 0.5rem;
+  transform-origin: center;
+  transform: rotateY(180deg);
 }
 
-.shiny-tool-request::before {
-    content: "\2B05";
+// Rules shared across both tool requests and results
+shinychat-tool-request,
+shinychat-tool-result {
+  font-weight: 300;
+  margin-bottom: 1rem;
+}
+
+shinychat-tool-request {
+  display: flex;
+  align-items: center;
+
+  &::before {
+    @include tool-arrow;
     color: var(--bs-primary);
-    display: inline-block;
-    margin-right: 0.5em;
-    font-size: 1em;
-    transform-origin: center;
-    transform: rotateY(180deg);
+  }
+
+  // If <markdown-stream>'s dot is child, it should appear last
+  .markdown-stream-dot {
+    order: 1;
+  }
 }
 
-.shiny-tool-request:not(:first-child),
-.shiny-tool-result:not(:first-child) {
-    margin-top: 1em;
-}
+shinychat-tool-result {
+  display: block;
 
-.shiny-tool-request:first-child + .shiny-tool-result {
-    margin-top: 0;
-}
+  // The top-level result <summary>
+  .result-summary {
+    &::before {
+      @include tool-arrow;
+      color: var(--bs-success);
+    }
+    &.failed::before {
+      content: "\2718";
+      color: var(--bs-danger);
+    }
+  }
 
-.shiny-tool-request:not(:last-child),
-.shiny-tool-result:not(:last-child) {
-    margin-bottom: 1em;
-}
-
-.shiny-tool-result + .shiny-tool-result,
-.shiny-tool-request + .shiny-tool-request,
-.shiny-tool-request + .shiny-tool-result,
-.shiny-tool-result + .shiny-tool-request {
-    margin-top: -1rem;
-}
-
-.shiny-tool-result {
-    margin: 0;
-    border-radius: var(--bs-border-radius);
-    overflow: hidden;
-    padding: 0.5em;
-    font-size: 0.8em;
-}
-
-.shiny-tool-result summary {
-    padding: 1em;
-    margin: -0.5em;
-    margin-left: -1em;
-    margin-top: -1em;
-    color: var(--bs-secondary);
-    font-weight: 400;
+  // All of the <summary> elements in the result
+  summary {
+    list-style: none;
     cursor: pointer;
-    display: block;
-    align-items: center;
-    user-select: none;
+
+    &::after {
+      content: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='currentColor' class='bi bi-caret-right-fill' viewBox='0 0 16 16'%3E%3Cpath d='m12.14 8.753-5.482 4.796c-.646.566-1.658.106-1.658-.753V3.204a1 1 0 0 1 1.659-.753l5.48 4.796a1 1 0 0 1 0 1.506z'/%3E%3C/svg%3E");
+      font-size: 1.15rem;
+      margin-left: 0.25rem;
+      vertical-align: middle;
+    }
+  }
+
+  details[open] > summary::after {
+    content: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='currentColor' class='bi bi-caret-down-fill' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
+  }
+
+  // Container for the top-level result details
+  .result-container {
+    position: relative;
+    border: 1px solid var(--bs-border-color, #0066cc);
+    width: 100%;
+    padding: 1rem;
+    border-radius: var(--bs-border-radius, 0.2rem);
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+    column-span: all;
+  }
+
+  .input-parameter-label {
+    position: absolute;
+    top: 0;
+    width: 100%;
+    text-align: center;
+    font-weight: 300;
+    font-size: 0.8rem;
+    color: var(--bs-gray-600);
+    padding: 0.5rem;
+    font-family: var(--bs-font-monospace, monospace);
+  }
+
+  pre:has(> .input-parameter-label) {
+    padding-top: 1.5rem;
+  }
 }
 
-.shiny-tool-result summary::before {
-    content: "\2714";
-    color: var(--bs-success);
-    display: inline-block;
-    margin-right: 0.5em;
-    font-size: 1em;
-}
-
-.shiny-tool-result.failed summary::before {
-    content: "\2718";
-    color: var(--bs-danger);
-}
-
-.shiny-tool-result[open] summary {
-    margin-bottom: 1em;
-    border-bottom: 1px solid var(--bs-border-color);
-}
-
-.shiny-tool-result summary::marker,
-.shiny-tool-result summary::-webkit-details-marker {
-    display: none;
-}
-
-.shiny-tool-result summary::after {
-    display: inline-block;
-    content: "\25C0";
-    margin-left: 0.5em;
-    font-size: 1em;
-    transition: transform 0.2s;
-}
-
-.shiny-tool-result[open] summary::after {
-    transform: rotate(-90deg);
-}
-
-.shiny-tool-result summary .function-name {
-    font-weight: bold;
-}
-
-.shiny-tool-result summary .intent {
-    color: var(--bs-secondary);
-    font-style: italic;
+// When a request's HTML appears in a markdown stream, it will
+// include a <p> element just before it to ensure it appears
+// on its own line. If the request happens to be first in the stream,
+// we don't want the spacing that <p> adds.
+shiny-markdown-stream p:first-of-type:empty {
+  display: none;
 }
