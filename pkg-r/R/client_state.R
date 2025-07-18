@@ -23,8 +23,7 @@ method(client_get_state, S7::new_S3_class(c("Chat", "R6"))) <-
     # Instead, save only the `turns` information
     recorded_turns <- lapply(
       client$get_turns(),
-      ellmer::contents_record,
-      chat = client
+      ellmer::contents_record
     )
 
     if (is_url_bookmarkstore()) {
@@ -74,8 +73,7 @@ method(client_set_state, S7::new_S3_class(c("Chat", "R6"))) <-
 
     replayed_turns <- lapply(
       recorded_turns,
-      ellmer::contents_replay,
-      chat = client
+      ellmer::contents_replay
     )
 
     client$set_turns(replayed_turns)
