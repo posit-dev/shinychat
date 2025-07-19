@@ -16,6 +16,7 @@ NULL
 ignore_unused_imports <- function() {
   jsonlite::fromJSON
   fastmap::fastqueue
+  ellmer::contents_html
 }
 
 release_bullets <- function() {

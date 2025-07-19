@@ -12,11 +12,13 @@ chat_deps <- function() {
     src = "lib/shiny",
     script = list(
       list(src = "chat/chat.js", type = "module"),
-      list(src = "markdown-stream/markdown-stream.js", type = "module")
+      list(src = "markdown-stream/markdown-stream.js", type = "module"),
+      list(src = "tools/tool-request.js")
     ),
     stylesheet = c(
       "chat/chat.css",
-      "markdown-stream/markdown-stream.css"
+      "markdown-stream/markdown-stream.css",
+      "tools/tool-request.css"
     )
   )
 }
@@ -473,6 +475,10 @@ rlang::on_load(
       }
 
       res$add(msg)
+
+      if (S7::S7_inherits(msg, ellmer::Content)) {
+        msg <- contents_shinychat(msg)
+      }
 
       chat_append_message(
         id,
