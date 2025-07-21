@@ -111,30 +111,13 @@ check_ellmer_chat <- function(client) {
 #'   provided or when the chat `client` doesn't already contain turns. Passed to
 #'   `messages` in [chat_ui()].
 #' @export
-chat_mod_ui <- function(id, ..., client = NULL, messages = NULL) {
-  if (!is.null(client)) {
-    check_ellmer_chat(client)
-
-    client_msgs <- map(client$get_turns(), function(turn) {
-      content <- ellmer::contents_markdown(turn)
-      if (is.null(content) || identical(content, "")) {
-        return(NULL)
-      }
-      list(role = turn@role, content = content)
-    })
-    client_msgs <- compact(client_msgs)
-
-    if (length(client_msgs)) {
-      if (!is.null(messages)) {
-        warn(
-          "`client` was provided and has initial messages, `messages` will be ignored."
-        )
-      }
-      messages <- client_msgs
-    }
-  }
-
-  shinychat::chat_ui(
+chat_mod_ui <- function(
+  id,
+  ...,
+  client = lifecycle::deprecate_soft(),
+  messages = NULL
+) {
+  chat_ui(
     shiny::NS(id, "chat"),
     messages = messages,
     ...
@@ -158,6 +141,8 @@ chat_mod_server <- function(id, client) {
   )
 
   shiny::moduleServer(id, function(input, output, session) {
+    chat_enable_bookmarking("chat", client, session = session)
+
     shiny::observeEvent(input$chat_user_input, {
       append_stream_task$invoke(
         client,
