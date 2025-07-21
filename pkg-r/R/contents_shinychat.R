@@ -79,23 +79,27 @@ S7::method(contents_shinychat, ellmer::Turn) <- function(content) {
 S7::method(contents_shinychat, S7::new_S3_class(c("Chat", "R6"))) <- function(
   content
 ) {
-  # Consolidate tool calls into assistant turns. This currently assumes that
-  # tool calls are always returned in user turns that have at least one
-  # proceeding assistant turn.
+  # Workaround the problem that results from ellmer storing tool results in a
+  # user turn, but when displayed, they should be part of the surrounding
+  # assistant turn (not a separate user turn).
+  #
+  # This implementation currently assumes that:
+  #  * Tool results are stored in a user turn, and when present, no other
+  #    content types are present.
+  #  * User turns that have at least one proceeding assistant turn.
+
   turns <- map(content$get_turns(), function(turn) {
-    if (
-      all(map_lgl(turn@contents, S7::S7_inherits, ellmer::ContentToolResult))
-    ) {
-      turn@role <- "assistant"
-    }
-    is_tool_request <- map_lgl(
+    is_result <- map_lgl(
       turn@contents,
       S7::S7_inherits,
-      ellmer::ContentToolRequest
+      ellmer::ContentToolResult
     )
-    turn@contents <- turn@contents[!is_tool_request]
+    if (all(is_result) && sum(is_result) > 0) {
+      turn@role <- "assistant"
+    }
     turn
   })
+
   turns <- reduce(turns, .init = list(), function(turns, turn) {
     if (length(turns) == 0) {
       return(list(turn))
@@ -111,19 +115,9 @@ S7::method(contents_shinychat, S7::new_S3_class(c("Chat", "R6"))) <- function(
     c(turns, list(turn))
   })
 
-  messages <- map(turns, function(turn) {
-    content <- compact(contents_shinychat(turn))
-    if (is.null(content) || identical(content, "")) {
-      return(NULL)
-    }
-    if (every(content, is.character)) {
-      # TODO: Fix chat_ui() to handle lists of strings
-      content <- paste(unlist(content), collapse = "\n\n")
-    }
-    list(role = turn@role, content = content)
+  lapply(turns, function(turn) {
+    list(role = turn@role, content = contents_shinychat(turn))
   })
-
-  compact(messages)
 }
 
 

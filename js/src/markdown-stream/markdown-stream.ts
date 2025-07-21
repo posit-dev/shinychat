@@ -167,7 +167,6 @@ class MarkdownElement extends LightElement {
   }
 
   #appendStreamingDot(): void {
-    // TODO: would it make sense to append into a tool request (so that it appears inline?)
     this.lastElementChild?.appendChild(SVG_DOT)
   }
 
