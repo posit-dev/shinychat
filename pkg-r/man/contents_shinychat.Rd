@@ -10,7 +10,7 @@ contents_shinychat(content, ...)
 \item{content}{An \code{\link[ellmer:Content]{ellmer::Content}} object.}
 }
 \value{
-Returns text or HTML formatted for use in \code{chat_ui()}.
+Returns text, HTML, or web component tags formatted for use in \code{chat_ui()}.
 }
 \description{
 Format ellmer content for shinychat
