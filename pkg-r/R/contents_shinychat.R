@@ -17,18 +17,26 @@ S7::method(contents_shinychat, ellmer::ContentText) <- function(content) {
   content@text
 }
 
-S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
-  content
-) {
-  call <- format(content, show = "call")
-  if (length(call) > 1) {
-    call <- sprintf("%s()", content@name)
+S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(content) {
+  # Prepare props
+  props <- list(
+    id = content@id,
+    name = content@name,
+    arguments = jsonlite::toJSON(content@arguments, auto_unbox = TRUE)
+  )
+  
+  # Add optional title if present in tool annotations
+  if (!is.null(content@tool@annotations$title)) {
+    props$title <- content@tool@annotations$title
   }
-  shiny::HTML(sprintf(
-    '\n\n<p class="shiny-tool-request" data-tool-call-id="%s">Running <code>%s</code></p>\n\n',
-    content@id,
-    call
-  ))
+  
+  # Add optional intent if present in arguments
+  if (!is.null(content@arguments$intent)) {
+    props$intent <- content@arguments$intent
+  }
+  
+  # Return structured tag
+  htmltools::tag("shiny-tool-request", props)
 }
 
 S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(
