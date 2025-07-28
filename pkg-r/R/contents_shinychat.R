@@ -2,7 +2,7 @@
 #'
 #' @param content An [`ellmer::Content`] object.
 #'
-#' @return Returns text or HTML formatted for use in `chat_ui()`.
+#' @return Returns text, HTML, or web component tags formatted for use in `chat_ui()`.
 #'
 #' @export
 contents_shinychat <- S7::new_generic("contents_shinychat", "content")
@@ -10,219 +10,177 @@ contents_shinychat <- S7::new_generic("contents_shinychat", "content")
 S7::method(contents_shinychat, ellmer::Content) <- function(content) {
   # Fall back to html or markdown
   html <- ellmer::contents_html(content)
-  if (!is.null(html)) shiny::HTML(html) else ellmer::contents_markdown(content)
+  if (!is.null(html)) {
+    shiny::HTML(html)
+  } else {
+    ellmer::contents_markdown(content)
+  }
 }
 
 S7::method(contents_shinychat, ellmer::ContentText) <- function(content) {
   content@text
 }
 
-S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(content) {
+S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
+  content
+) {
   # Prepare props
   props <- list(
     id = content@id,
     name = content@name,
     arguments = jsonlite::toJSON(content@arguments, auto_unbox = TRUE)
   )
-  
+
   # Add optional title if present in tool annotations
   if (!is.null(content@tool@annotations$title)) {
     props$title <- content@tool@annotations$title
   }
-  
+
   # Add optional intent if present in arguments
   if (!is.null(content@arguments$intent)) {
     props$intent <- content@arguments$intent
   }
-  
+
   # Return structured tag
   htmltools::tag("shiny-tool-request", props)
 }
 
-S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(
-  content
-) {
-  deps <- NULL
+S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
+  # Prepare base props
+  props <- list(
+    id = content@request@id,
+    status = if (!is.null(content@error)) "error" else "success",
+    show_request = !isFALSE(content@extra$display_tool_request)
+  )
 
-  tool_result_display <- function(content) {
+  # Add optional title if present
+  if (!is.null(content@request@tool@annotations$title)) {
+    props$title <- content@request@tool@annotations$title
+  }
+
+  # Add optional intent if present
+  if (!is.null(content@request@arguments$intent)) {
+    props$intent <- content@request@arguments$intent
+  }
+
+  # Determine value and value_type
+  if (!is.null(content@error)) {
+    props$value <- strip_ansi(content@error)
+    props$value_type <- "code"
+  } else {
     display <- content@extra$display
     if (is.null(display)) {
-      return(pre_code(content@value))
-    }
-
-    html <- NULL
-    md <- NULL
-    text <- NULL
-
-    has_display_list <- is.list(display) &&
-      !inherits(display, c("shiny.tag.list", "shiny.tag"))
-
-    if (has_display_list) {
-      has_display_list_name <- some(c("text", "markdown", "html"), \(x) {
-        x %in% names(display)
-      })
-
-      if (has_display_list) {
-        html <- display$html
-        md <- display$markdown
-        text <- display$text
-      }
+      props$value <- content@value
+      props$value_type <- "code"
     } else {
       if (inherits(display, c("html", "shiny.tag.list", "shiny.tag"))) {
-        html <- display
+        props$value <- format(display)
+        props$value_type <- "html"
+        deps <- htmltools::findDependencies(display)
       } else if (is.character(display)) {
-        md <- display
+        props$value <- paste(display, collapse = "\n")
+        props$value_type <- "markdown"
+      } else if (is.list(display)) {
+        # Try html, markdown, text in order
+        if (!is.null(display$html)) {
+          props$value <- format(display$html)
+          props$value_type <- "html"
+          deps <- htmltools::findDependencies(display$html)
+        } else if (!is.null(display$markdown)) {
+          props$value <- paste(display$markdown, collapse = "\n")
+          props$value_type <- "markdown"
+        } else if (!is.null(display$text)) {
+          props$value <- display$text
+          props$value_type <- "text"
+        } else {
+          props$value <- content@value
+          props$value_type <- "code"
+        }
       }
     }
-
-    if (!is.null(html)) {
-      deps <<- htmltools::findDependencies(html)
-      return(format(html))
-    }
-
-    if (!is.null(markdown)) {
-      md <- paste(md, collapse = "\n")
-      md <- paste0("\n\n", md, "\n\n")
-      return(md)
-    }
-
-    if (!nzchar(text)) {
-      text <- NULL
-    }
-
-    return(text %||% pre_code(contents$value))
   }
 
-  if (isFALSE(content@extra$display_tool_request)) {
-    res <- tool_result_display(content)
-    if (!is.null(deps)) {
-      res <- htmltools::attachDependencies(res, deps)
-    }
-    return(res)
+  # Create tool request child if needed
+  children <- NULL
+  if (props$show_request) {
+    children <- contents_shinychat(content@request)
   }
 
-  if (!is.null(content@error)) {
-    class <- "shiny-tool-result failed"
-    summary_text <- "Failed to call"
-    tool_result <- sprintf(
-      "<strong>Error</strong>%s",
-      pre_code(strip_ansi(content@error))
-    )
-  } else {
-    class <- "shiny-tool-result"
-    summary_text <- "Result from"
-    tool_result <- sprintf(
-      '<strong>Tool Result</strong>%s',
-      tool_result_display(content)
-    )
-  }
+  # Create the result tag
+  res <- htmltools::tag("shiny-tool-result", props, children)
 
-  tool_name <- "unknown tool"
-  tool <- content@request@tool
-  if (!is.null(tool)) {
-    tool_name <- tool@name
-    if (!is.null(tool@annotations$title)) {
-      tool_name <- tool@annotations$title
-      summary_text <- ""
-    }
-  }
-
-  intent <- ""
-  if (!is.null(content@request@arguments$intent)) {
-    intent <- sprintf(
-      ' | <span class="intent">%s</span>',
-      content@request@arguments$intent
-    )
-  }
-
-  details_open <- sprintf(
-    '<details class="%s" id="%s">',
-    class,
-    content@request@id
-  )
-
-  summary <- sprintf(
-    '<summary>%s <span class="function-name">%s</span>%s</summary>',
-    summary_text,
-    tool_name,
-    intent
-  )
-
-  tool_call <- sprintf(
-    '<strong>Tool Call</strong>%s',
-    pre_code(format(content@request, show = "call"))
-  )
-
-  body <- sprintf(
-    '<p>%s</p><p>%s</p></details>\n\n',
-    tool_call,
-    tool_result
-  )
-
-  res <- shiny::HTML(paste0(details_open, summary, body))
+  # Attach dependencies if any were found
   if (!is.null(deps)) {
     res <- htmltools::attachDependencies(res, deps)
   }
-  return(res)
+
+  res
 }
 
 S7::method(contents_shinychat, ellmer::Turn) <- function(content) {
-  lapply(content@contents, contents_shinychat)
+  # Process all contents in the turn, filtering out empty results
+  results <- lapply(content@contents, contents_shinychat)
+  Filter(Negate(is.null), results)
 }
 
 S7::method(contents_shinychat, S7::new_S3_class(c("Chat", "R6"))) <- function(
   content
 ) {
-  # Consolidate tool calls into assistant turns. This currently assumes that
-  # tool calls are always returned in user turns that have at least one
-  # proceeding assistant turn.
-  turns <- map(content$get_turns(), function(turn) {
+  # Process turns with tool request/result consolidation
+  turns <- lapply(content$get_turns(), function(turn) {
+    # Convert tool results to assistant turns
     if (
-      all(map_lgl(turn@contents, S7::S7_inherits, ellmer::ContentToolResult))
+      all(vapply(
+        turn@contents,
+        S7::S7_inherits,
+        logical(1),
+        ellmer::ContentToolResult
+      ))
     ) {
       turn@role <- "assistant"
     }
-    is_tool_request <- map_lgl(
+
+    # Filter out tool requests as they'll be shown in results
+    is_tool_request <- vapply(
       turn@contents,
       S7::S7_inherits,
+      logical(1),
       ellmer::ContentToolRequest
     )
     turn@contents <- turn@contents[!is_tool_request]
     turn
   })
 
-  turns <- reduce(turns, .init = list(), function(turns, turn) {
-    if (length(turns) == 0) {
-      return(list(turn))
-    }
+  # Consolidate adjacent turns with the same role
+  turns <- Reduce(
+    function(acc, turn) {
+      if (length(acc) == 0) {
+        return(list(turn))
+      }
 
-    # consolidate turns with adjacent roles
-    last_turn <- turns[[length(turns)]]
-    if (identical(last_turn@role, turn@role)) {
-      turns[[length(turns)]]@contents <- c(last_turn@contents, turn@contents)
-      return(turns)
-    }
+      last_turn <- acc[[length(acc)]]
+      if (identical(last_turn@role, turn@role)) {
+        acc[[length(acc)]]@contents <- c(last_turn@contents, turn@contents)
+        return(acc)
+      }
 
-    c(turns, list(turn))
-  })
+      c(acc, list(turn))
+    },
+    turns,
+    init = list()
+  )
 
-  messages <- map(turns, function(turn) {
+  # Convert turns to messages
+  messages <- lapply(turns, function(turn) {
     content <- compact(contents_shinychat(turn))
     if (is.null(content) || identical(content, "")) {
       return(NULL)
     }
-    if (every(content, is.character)) {
+    if (all(vapply(content, is.character, logical(1)))) {
       content <- paste(unlist(content), collapse = "\n\n")
     }
     list(role = turn@role, content = content)
   })
 
   compact(messages)
-}
-
-pre_code <- function(x) {
-  x <- gsub("`", "&#96;", x, fixed = TRUE)
-  x <- gsub("<", "&lt;", x, fixed = TRUE)
-  x <- gsub(">", "&gt;", x, fixed = TRUE)
-  sprintf("<pre><code>%s</code></pre>", paste(x, collapse = "\n"))
 }
