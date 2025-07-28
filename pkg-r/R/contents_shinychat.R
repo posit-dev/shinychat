@@ -46,27 +46,23 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(
     md <- NULL
     text <- NULL
 
-    if (
-      is.list(display) &&
-        !inherits(display, c("shiny.tag.list", "shiny.tag"))
-    ) {
-      if (
-        !some(
-          c("text", "markdown", "html"),
-          \(x) x %in% names(display)
-        )
-      ) {
-        stop(
-          "ContentToolResult@extra$display must be a list with at least one of the following elements: text, markdown, html."
-        )
+    has_display_list <- is.list(display) &&
+      !inherits(display, c("shiny.tag.list", "shiny.tag"))
+
+    if (has_display_list) {
+      has_display_list_name <- some(c("text", "markdown", "html"), \(x) {
+        x %in% names(display)
+      })
+
+      if (has_display_list) {
+        html <- display$html
+        md <- display$markdown
+        text <- display$text
       }
-      html <- display$html
-      md <- display$markdown
-      text <- display$text
     } else {
-      if (inherits(display, "html")) {
+      if (inherits(display, c("html", "shiny.tag.list", "shiny.tag"))) {
         html <- display
-      } else {
+      } else if (is.character(display)) {
         md <- display
       }
     }
@@ -80,6 +76,10 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(
       md <- paste(md, collapse = "\n")
       md <- paste0("\n\n", md, "\n\n")
       return(md)
+    }
+
+    if (!nzchar(text)) {
+      text <- NULL
     }
 
     return(text %||% pre_code(contents$value))
@@ -182,6 +182,7 @@ S7::method(contents_shinychat, S7::new_S3_class(c("Chat", "R6"))) <- function(
     turn@contents <- turn@contents[!is_tool_request]
     turn
   })
+
   turns <- reduce(turns, .init = list(), function(turns, turn) {
     if (length(turns) == 0) {
       return(list(turn))
@@ -203,7 +204,6 @@ S7::method(contents_shinychat, S7::new_S3_class(c("Chat", "R6"))) <- function(
       return(NULL)
     }
     if (every(content, is.character)) {
-      # TODO: Fix chat_ui() to handle lists of strings
       content <- paste(unlist(content), collapse = "\n\n")
     }
     list(role = turn@role, content = content)
@@ -211,7 +211,6 @@ S7::method(contents_shinychat, S7::new_S3_class(c("Chat", "R6"))) <- function(
 
   compact(messages)
 }
-
 
 pre_code <- function(x) {
   x <- gsub("`", "&#96;", x, fixed = TRUE)
