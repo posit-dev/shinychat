@@ -63,6 +63,8 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     props$intent <- content@request@arguments$intent
   }
 
+  deps <- NULL
+
   # Determine value and value_type
   if (!is.null(content@error)) {
     props$value <- strip_ansi(content@error)
@@ -87,7 +89,7 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
           props$value_type <- "html"
           deps <- htmltools::findDependencies(display$html)
         } else if (!is.null(display$markdown)) {
-          props$value <- paste(display$markdown, collapse = "\n")
+          props$value <- display$markdown
           props$value_type <- "markdown"
         } else if (!is.null(display$text)) {
           props$value <- display$text
@@ -101,20 +103,12 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
   }
 
   # Create tool request child if needed
-  children <- NULL
-  if (props$show_request) {
-    children <- contents_shinychat(content@request)
-  }
+  children <- list(
+    contents_shinychat(content@request),
+    if (!is.null(deps)) deps
+  )
 
-  # Create the result tag
-  res <- htmltools::tag("shiny-tool-result", props, children)
-
-  # Attach dependencies if any were found
-  if (!is.null(deps)) {
-    res <- htmltools::attachDependencies(res, deps)
-  }
-
-  res
+  htmltools::tag("shiny-tool-result", rlang::list2(!!!props, !!!children))
 }
 
 S7::method(contents_shinychat, ellmer::Turn) <- function(content) {

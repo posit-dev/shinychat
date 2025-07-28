@@ -1,38 +1,70 @@
-import { LitElement, html, css } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
-import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { LitElement, html, css } from "lit"
+import { property } from "lit/decorators.js"
+import { unsafeHTML } from "lit/directives/unsafe-html.js"
 
 /**
  * Web component that displays information about a tool request.
- * 
+ *
  * @element shiny-tool-request
- * 
+ *
  * @prop {string} id - Tool call ID
  * @prop {string} name - Tool name
  * @prop {string} title - Optional tool display title
  * @prop {string} intent - Optional tool intent
  * @prop {string} arguments - JSON string of tool arguments
+ * @prop {boolean} hidden - Whether the element should be hidden
  */
-@customElement('shiny-tool-request')
+
 export class ShinyToolRequest extends LitElement {
   @property({ type: String })
-  id!: string;
+  id!: string
 
   @property({ type: String })
-  name!: string;
+  name!: string
 
   @property({ type: String })
-  title?: string;
+  title: string = ""
 
   @property({ type: String })
-  intent?: string;
+  intent?: string
 
   @property({ type: String })
-  arguments!: string;
+  arguments!: string
+
+  @property({ type: Boolean })
+  hidden = false
+
+  connectedCallback() {
+    super.connectedCallback()
+    // Listen for hide events
+    window.addEventListener("shiny-tool-request-hide", ((
+      event: CustomEvent,
+    ) => {
+      if (event.detail.id === this.id) {
+        this.hidden = true
+      }
+    }) as EventListener)
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback()
+    // Clean up event listener
+    window.removeEventListener("shiny-tool-request-hide", ((
+      event: CustomEvent,
+    ) => {
+      if (event.detail.id === this.id) {
+        this.hidden = true
+      }
+    }) as EventListener)
+  }
 
   static styles = css`
     :host {
       display: block;
+    }
+
+    :host([hidden]) {
+      display: none;
     }
 
     .shiny-tool-request {
@@ -49,7 +81,7 @@ export class ShinyToolRequest extends LitElement {
     }
 
     .shiny-tool-request::before {
-      content: "⬅";  /* UTF-8: \u2B05 */
+      content: "⬅"; /* UTF-8: \u2B05 */
       color: var(--bs-primary, #0d6efd);
       display: inline-block;
       margin-right: 0.5em;
@@ -79,26 +111,30 @@ export class ShinyToolRequest extends LitElement {
     }
 
     .tool-arguments {
-      display: none;  /* Hide by default as it wasn't in original */
+      display: none; /* Hide by default as it wasn't in original */
     }
-  `;
+  `
 
   render() {
+    if (this.hidden) {
+      return html``
+    }
+
     return html`
       <div class="shiny-tool-request">
-        Running 
+        Running
         <span class="function-name">${this.title || this.name}</span>
-        ${this.intent ? html`<span class="intent">${this.intent}</span>` : ''}
+        ${this.intent ? html`<span class="intent">${this.intent}</span>` : ""}
       </div>
-    `;
+    `
   }
 }
 
 /**
  * Web component that displays the result of a tool execution.
- * 
+ *
  * @element shiny-tool-result
- * 
+ *
  * @prop {string} id - Tool call ID from request
  * @prop {string} status - "success" or "error"
  * @prop {boolean} show_request - Whether to display the nested tool request
@@ -107,28 +143,37 @@ export class ShinyToolRequest extends LitElement {
  * @prop {string} title - Optional tool display title
  * @prop {string} intent - Optional tool intent
  */
-@customElement('shiny-tool-result')
 export class ShinyToolResult extends LitElement {
   @property({ type: String })
-  id!: string;
+  id!: string
 
   @property({ type: String })
-  status!: string;
+  status!: string
 
   @property({ type: Boolean })
-  show_request = true;
+  show_request = true
 
   @property({ type: String })
-  value!: string;
+  value!: string
 
   @property({ type: String })
-  value_type!: string;
+  value_type!: string
 
   @property({ type: String })
-  title?: string;
+  title: string = ""
 
   @property({ type: String })
-  intent?: string;
+  intent?: string
+
+  connectedCallback() {
+    super.connectedCallback()
+    // Emit event to hide the corresponding tool request
+    window.dispatchEvent(
+      new CustomEvent("shiny-tool-request-hide", {
+        detail: { id: this.id },
+      }),
+    )
+  }
 
   static styles = css`
     :host {
@@ -157,7 +202,7 @@ export class ShinyToolResult extends LitElement {
     }
 
     details summary::before {
-      content: "✔";  /* UTF-8: \u2714 */
+      content: "✔"; /* UTF-8: \u2714 */
       color: var(--bs-success, #198754);
       display: inline-block;
       margin-right: 0.5em;
@@ -165,7 +210,7 @@ export class ShinyToolResult extends LitElement {
     }
 
     details.failed summary::before {
-      content: "✘";  /* UTF-8: \u2718 */
+      content: "✘"; /* UTF-8: \u2718 */
       color: var(--bs-danger, #dc3545);
     }
 
@@ -181,7 +226,7 @@ export class ShinyToolResult extends LitElement {
 
     details summary::after {
       display: inline-block;
-      content: "◀";  /* UTF-8: \u25C0 */
+      content: "◀"; /* UTF-8: \u25C0 */
       margin-left: 0.5em;
       font-size: 1em;
       transition: transform 0.2s;
@@ -230,47 +275,51 @@ export class ShinyToolResult extends LitElement {
     :host(:not(:last-child)) .shiny-tool-result {
       margin-bottom: 1em;
     }
-  `;
+  `
 
   private renderContent() {
     switch (this.value_type) {
-      case 'html':
-        return html`<div class="content-wrapper">${unsafeHTML(this.value)}</div>`;
-      case 'code':
-        return html`<pre><code>${this.value}</code></pre>`;
-      case 'text':
-        return html`<div class="content-wrapper">${this.value}</div>`;
-      case 'markdown':
+      case "html":
+        return html`<div class="content-wrapper">
+          ${unsafeHTML(this.value)}
+        </div>`
+      case "code":
+        return html`<pre><code>${this.value}</code></pre>`
+      case "text":
+        return html`<div class="content-wrapper">${this.value}</div>`
+      case "markdown":
         // Note: Would need markdown-it or similar to render markdown
-        return html`<div class="content-wrapper">${this.value}</div>`;
+        return html`<div class="content-wrapper">${this.value}</div>`
       default:
-        return html`<pre><code>${this.value}</code></pre>`;
+        return html`<pre><code>${this.value}</code></pre>`
     }
   }
 
   render() {
-    const detailsClass = `shiny-tool-result${this.status === 'error' ? ' failed' : ''}`;
-    
+    const detailsClass = `shiny-tool-result${this.status === "error" ? " failed" : ""}`
+
     return html`
       <div class=${detailsClass}>
         <details ?open=${true}>
           <summary>
-            ${this.status === 'error' ? 'Failed to call' : 'Result from'}
-            <span class="function-name">${this.title || 'Tool'}</span>
-            ${this.intent ? html`<span class="intent">${this.intent}</span>` : ''}
+            ${this.status === "error" ? "Failed to call" : "Result from"}
+            <span class="function-name">${this.title || "Tool"}</span>
+            ${this.intent
+              ? html`<span class="intent">${this.intent}</span>`
+              : ""}
           </summary>
 
-          ${this.show_request ? html`<slot></slot>` : ''}
+          ${this.show_request ? html`<slot></slot>` : ""}
           ${this.renderContent()}
         </details>
       </div>
-    `;
+    `
   }
 }
 
 declare global {
   interface HTMLElementTagNameMap {
-    'shiny-tool-request': ShinyToolRequest;
-    'shiny-tool-result': ShinyToolResult;
+    "shiny-tool-request": ShinyToolRequest
+    "shiny-tool-result": ShinyToolResult
   }
 }
