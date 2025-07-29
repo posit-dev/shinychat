@@ -16,7 +16,7 @@ declare global {
  *
  * @element shiny-tool-request
  *
- * @prop {string} request_id - Tool call ID
+ * @prop {string} requestId - Tool call ID
  * @prop {string} name - Tool name
  * @prop {string} title - Optional tool display title
  * @prop {string} intent - Optional tool intent
@@ -75,7 +75,9 @@ export class ShinyToolRequest extends LitElement {
       <div class="shiny-tool-request">
         Running
         <span class="function-name">${this.title || this.name}</span>
-        ${this.intent ? html`<span class="intent">${this.intent}</span>` : ""}
+        ${this.intent
+          ? html`<span class="request-intent">${this.intent}</span>`
+          : ""}
       </div>
     `
   }
@@ -86,12 +88,12 @@ export class ShinyToolRequest extends LitElement {
  *
  * @element shiny-tool-result
  *
- * @prop {string} request_id - Tool call ID from request
- * @prop {string} request_call - Optional tool call string
+ * @prop {string} requestId - Tool call ID from request
+ * @prop {string} requestCall - Optional tool call string
  * @prop {string} status - "success" or "error"
- * @prop {boolean} show_request - Whether to display the nested tool request
+ * @prop {boolean} showRequest - Whether to display the nested tool request
  * @prop {string} value - Content to display
- * @prop {string} value_type - "html", "markdown", "text", or "code"
+ * @prop {string} valueType - "html", "markdown", "text", or "code"
  * @prop {string} name - Tool name
  * @prop {string} title - Optional tool display title
  * @prop {string} intent - Optional tool intent
@@ -216,7 +218,7 @@ ${"`".repeat(8)}"
 
     return html`
       <div
-        class="card bslib-card bslib-mb-spacing html-fill-item html-fill-container m-0"
+        class="shiny-tool-result-card card bslib-card bslib-mb-spacing html-fill-item html-fill-container m-0"
         data-bslib-card-init
         data-require-bs-caller="chat_ui()"
         data-require-bs-version="5"

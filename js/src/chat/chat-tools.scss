@@ -6,18 +6,6 @@ shiny-tool-result {
   padding: 0;
   font-size: 0.8em;
 
-  .content-wrapper {
-    margin: 1em 0;
-  }
-
-  .content-wrapper :first-child {
-    margin-top: 0;
-  }
-
-  .content-wrapper :last-child {
-    margin-bottom: 0;
-  }
-
   .request-intent {
     margin-inline-start: auto;
     opacity: 0.66;
@@ -38,53 +26,55 @@ shiny-tool-result {
     border-radius: var(--bs-border-radius, 4px);
   }
 
-  .bslib-card .card-header,
-  .bslib-card .card-footer {
-    font-size: inherit;
-    font-weight: normal;
-    word-break: break-word;
-  }
-
-  .card {
+  .shiny-tool-result-card {
     max-height: var(--shiny-tool-result__max-height, 500px);
+
+    .card-header,
+    .card-footer {
+      font-size: inherit;
+      font-weight: normal;
+      word-break: break-word;
+    }
+
+    .card-header {
+      width: 100%;
+      text-align: left;
+      border: none;
+      background: none;
+      cursor: pointer;
+
+      &:hover,
+      &:focus-visible {
+        background-color: rgba(var(--bs-emphasis-color-rgb), 0.05);
+        outline: none;
+      }
+
+      .function-name {
+        font-weight: bold;
+      }
+
+      .collapse-arrow {
+        transition: transform 0.2s ease-in-out;
+      }
+
+      &[aria-expanded="true"] .collapse-arrow {
+        transform: rotate(-90deg);
+      }
+    }
+
+    .card-body {
+      transition: max-height 0.3s ease-out, opacity 0.2s ease-out;
+      overflow: hidden;
+      opacity: 1;
+
+      &.collapsed {
+        max-height: 0;
+        opacity: 0;
+        padding: 0;
+      }
+    }
   }
 
-  .card-header {
-    width: 100%;
-    text-align: left;
-    border: none;
-    background: none;
-    cursor: pointer;
-
-    &:hover, &:focus-visible {
-      background-color: rgba(var(--bs-emphasis-color-rgb), 0.05);
-      outline: none;
-    }
-
-    .function-name {
-      font-weight: bold;
-    }
-
-    .collapse-arrow {
-      transition: transform 0.2s ease-in-out;
-    }
-
-    &[aria-expanded="true"] .collapse-arrow {
-      transform: rotate(-90deg);
-    }
-  }
-
-  .card-body {
-    transition: max-height 0.3s ease-out, opacity 0.2s ease-out;
-    overflow: hidden;
-    opacity: 1;
-
-    &.collapsed {
-      max-height: 0;
-      opacity: 0;
-      padding: 0;
-    }
-  }
 }
 
 
@@ -119,7 +109,7 @@ shiny-tool-request {
     font-weight: bold;
   }
 
-  .intent {
+  .request-intent {
     color: var(--bs-secondary, #6c757d);
     font-style: italic;
     margin-left: 0.5em;
