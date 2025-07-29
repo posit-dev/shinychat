@@ -168,7 +168,7 @@ export class ShinyToolResult extends LitElement {
   connectedCallback() {
     super.connectedCallback()
     // Emit event to hide the corresponding tool request
-    window.dispatchEvent(
+    this.dispatchEvent(
       new CustomEvent("shiny-tool-request-hide", {
         detail: { id: this.id },
       }),
@@ -300,7 +300,7 @@ export class ShinyToolResult extends LitElement {
 
     return html`
       <div class=${detailsClass}>
-        <details ?open=${true}>
+        <details>
           <summary>
             ${this.status === "error" ? "Failed to call" : "Result from"}
             <span class="function-name">${this.title || "Tool"}</span>
