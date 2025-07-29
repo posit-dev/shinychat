@@ -61,8 +61,8 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
   }
 
   # Add optional intent if present
-  if (!is.null(content@request@arguments$intent)) {
-    props$intent <- content@request@arguments$intent
+  if (!is.null(content@request@arguments$.intent)) {
+    props$intent <- content@request@arguments$.intent
   }
 
   display_props <- tool_result_display(content)
