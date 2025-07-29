@@ -1,7 +1,6 @@
 shiny-tool-result {
   display: block;
-  margin: 0;
-  margin-block: 1em;
+  margin: 1em 0;
   border-radius: var(--bs-border-radius, 4px);
   overflow: visible;
   padding: 0;
@@ -46,6 +45,10 @@ shiny-tool-result {
     word-break: break-word;
   }
 
+  .card {
+    max-height: var(--shiny-tool-result__max-height, 500px);
+  }
+
   .card-header {
     width: 100%;
     text-align: left;
@@ -74,7 +77,6 @@ shiny-tool-result {
   .card-body {
     transition: max-height 0.3s ease-out, opacity 0.2s ease-out;
     overflow: hidden;
-    max-height: 1000px; // Arbitrary large value
     opacity: 1;
 
     &.collapsed {
@@ -87,8 +89,7 @@ shiny-tool-result {
 
 
 shiny-tool-request {
-  margin: 0;
-  margin-block: 1em;
+  margin: 1em 0;
   border-radius: var(--bs-border-radius, 4px);
   overflow: hidden;
   padding: 0.5em;
