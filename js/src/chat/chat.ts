@@ -254,7 +254,9 @@ class ChatInput extends LightElement {
     if (this.valueIsEmpty) return
     if (this.disabled) return
 
-    window.Shiny.setInputValue!(this.id, this.value, { priority: "event" })
+    window.Shiny.setInputValue!(this.id, this.value, {
+      priority: "event",
+    })
 
     // Emit event so parent element knows to insert the message
     const sentEvent = new CustomEvent("shiny-chat-input-sent", {

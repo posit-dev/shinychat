@@ -26,7 +26,7 @@ S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
 ) {
   # Prepare props
   props <- list(
-    id = content@id,
+    request_id = content@id,
     name = content@name,
     arguments = jsonlite::toJSON(content@arguments, auto_unbox = TRUE)
   )
@@ -48,7 +48,7 @@ S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
 S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
   # Prepare base props
   props <- list(
-    id = content@request@id,
+    request_id = content@request@id,
     status = if (!is.null(content@error)) "error" else "success",
     show_request = !isFALSE(content@extra$display_tool_request)
   )

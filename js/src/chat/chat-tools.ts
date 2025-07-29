@@ -3,11 +3,20 @@ import { property } from "lit/decorators.js"
 import { unsafeHTML } from "lit/directives/unsafe-html.js"
 
 /**
+ * Custom event interface for hiding tool requests
+ */
+declare global {
+  interface GlobalEventHandlersEventMap {
+    "shiny-tool-request-hide": CustomEvent<{ request_id: string }>
+  }
+}
+
+/**
  * Web component that displays information about a tool request.
  *
  * @element shiny-tool-request
  *
- * @prop {string} id - Tool call ID
+ * @prop {string} request_id - Tool call ID
  * @prop {string} name - Tool name
  * @prop {string} title - Optional tool display title
  * @prop {string} intent - Optional tool intent
@@ -17,7 +26,7 @@ import { unsafeHTML } from "lit/directives/unsafe-html.js"
 
 export class ShinyToolRequest extends LitElement {
   @property({ type: String })
-  id!: string
+  request_id!: string
 
   @property({ type: String })
   name!: string
@@ -36,26 +45,21 @@ export class ShinyToolRequest extends LitElement {
 
   connectedCallback() {
     super.connectedCallback()
-    // Listen for hide events
-    window.addEventListener("shiny-tool-request-hide", ((
-      event: CustomEvent,
-    ) => {
-      if (event.detail.id === this.id) {
-        this.hidden = true
-      }
-    }) as EventListener)
+    window.addEventListener("shiny-tool-request-hide", this.#onToolRequestHide)
   }
 
   disconnectedCallback() {
     super.disconnectedCallback()
-    // Clean up event listener
-    window.removeEventListener("shiny-tool-request-hide", ((
-      event: CustomEvent,
-    ) => {
-      if (event.detail.id === this.id) {
-        this.hidden = true
-      }
-    }) as EventListener)
+    window.removeEventListener(
+      "shiny-tool-request-hide",
+      this.#onToolRequestHide,
+    )
+  }
+
+  #onToolRequestHide = (event: CustomEvent) => {
+    if (event.detail.request_id === this.request_id) {
+      this.hidden = true
+    }
   }
 
   static styles = css`
@@ -135,7 +139,7 @@ export class ShinyToolRequest extends LitElement {
  *
  * @element shiny-tool-result
  *
- * @prop {string} id - Tool call ID from request
+ * @prop {string} request_id - Tool call ID from request
  * @prop {string} status - "success" or "error"
  * @prop {boolean} show_request - Whether to display the nested tool request
  * @prop {string} value - Content to display
@@ -145,7 +149,7 @@ export class ShinyToolRequest extends LitElement {
  */
 export class ShinyToolResult extends LitElement {
   @property({ type: String })
-  id!: string
+  request_id!: string
 
   @property({ type: String })
   status!: string
@@ -170,7 +174,9 @@ export class ShinyToolResult extends LitElement {
     // Emit event to hide the corresponding tool request
     this.dispatchEvent(
       new CustomEvent("shiny-tool-request-hide", {
-        detail: { id: this.id },
+        detail: { request_id: this.request_id },
+        bubbles: true,
+        cancelable: true,
       }),
     )
   }
