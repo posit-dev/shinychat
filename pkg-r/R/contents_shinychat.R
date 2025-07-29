@@ -2,10 +2,17 @@
 #'
 #' @param content An [`ellmer::Content`] object.
 #'
-#' @return Returns text, HTML, or web component tags formatted for use in `chat_ui()`.
+#' @return Returns text, HTML, or web component tags formatted for use in
+#'   `chat_ui()`.
 #'
 #' @export
-contents_shinychat <- S7::new_generic("contents_shinychat", "content")
+contents_shinychat <- S7::new_generic(
+  "contents_shinychat",
+  "content",
+  function(content) {
+    S7::S7_dispatch()
+  }
+)
 
 S7::method(contents_shinychat, ellmer::Content) <- function(content) {
   # Fall back to html or markdown

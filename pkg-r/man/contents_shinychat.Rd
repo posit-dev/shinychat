@@ -4,13 +4,14 @@
 \alias{contents_shinychat}
 \title{Format ellmer content for shinychat}
 \usage{
-contents_shinychat(content, ...)
+contents_shinychat(content)
 }
 \arguments{
 \item{content}{An \code{\link[ellmer:Content]{ellmer::Content}} object.}
 }
 \value{
-Returns text, HTML, or web component tags formatted for use in \code{chat_ui()}.
+Returns text, HTML, or web component tags formatted for use in
+\code{chat_ui()}.
 }
 \description{
 Format ellmer content for shinychat
