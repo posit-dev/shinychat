@@ -77,9 +77,11 @@ shiny-chat-message {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 1rem;
-  > * {
+
+  >* {
     height: fit-content;
   }
+
   .message-icon {
     border-radius: 50%;
     border: var(--shiny-chat-border);
@@ -89,7 +91,7 @@ shiny-chat-message {
     place-items: center;
     overflow: clip;
 
-    > * {
+    >* {
       // images and avatars are full-bleed
       height: 100%;
       width: 100%;
@@ -99,10 +101,10 @@ shiny-chat-message {
       object-fit: contain;
     }
 
-    > svg,
-    > .icon,
-    > .fa,
-    > .bi {
+    >svg,
+    >.icon,
+    >.fa,
+    >.bi {
       // icons and svgs need some padding within the circle
       max-height: 66%;
       max-width: 66%;
@@ -154,10 +156,12 @@ shiny-chat-input {
     resize: none;
     padding-right: 36px !important;
     max-height: 175px;
+
     &::placeholder {
       color: var(--bs-gray-600, #707782) !important;
     }
   }
+
   button {
     position: absolute;
     bottom: calc(6px + var(--_input-padding-bottom));
@@ -170,6 +174,7 @@ shiny-chat-input {
     cursor: pointer;
     line-height: 16px;
     border-radius: 50%;
+
     &:disabled {
       cursor: not-allowed;
       color: var(--bs-gray-500, #8d959e);
@@ -183,4 +188,137 @@ shiny-chat-input {
 */
 .shiny-busy:has(shiny-chat-input[disabled])::after {
   display: none;
+}
+
+
+shiny-tool-result {
+  margin: 0;
+  margin-block: 1em;
+  border-radius: var(--bs-border-radius, 4px);
+  overflow: hidden;
+  padding: 0.5em;
+  font-size: 0.8em;
+
+
+  details summary {
+    padding: 1em;
+    margin: -0.5em;
+    margin-left: -1em;
+    margin-top: -1em;
+    color: var(--bs-secondary, #6c757d);
+    font-weight: 400;
+    cursor: pointer;
+    display: block;
+    align-items: center;
+    user-select: none;
+  }
+
+  details summary::before {
+    content: "✔";
+    /* UTF-8: \u2714 */
+    color: var(--bs-success, #198754);
+    display: inline-block;
+    margin-right: 0.5em;
+    font-size: 1em;
+  }
+
+  details.failed summary::before {
+    content: "✘";
+    /* UTF-8: \u2718 */
+    color: var(--bs-danger, #dc3545);
+  }
+
+  details[open] summary {
+    margin-bottom: 1em;
+    border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+  }
+
+  details summary::marker,
+  details summary::-webkit-details-marker {
+    display: none;
+  }
+
+  details summary::after {
+    display: inline-block;
+    content: "◀";
+    /* UTF-8: \u25C0 */
+    margin-left: 0.5em;
+    font-size: 1em;
+    transition: transform 0.2s;
+  }
+
+  details[open] summary::after {
+    transform: rotate(-90deg);
+  }
+
+  details summary .function-name {
+    font-weight: bold;
+  }
+
+  details summary .intent {
+    color: var(--bs-secondary, #6c757d);
+    font-style: italic;
+  }
+
+  /* Content styling */
+  .content-wrapper {
+    margin: 1em 0;
+  }
+
+  .content-wrapper :first-child {
+    margin-top: 0;
+  }
+
+  .content-wrapper :last-child {
+    margin-bottom: 0;
+  }
+
+  /* Code specific styling */
+  pre {
+    margin: 0;
+    white-space: pre-wrap;
+    background: var(--bs-gray-100, #f8f9fa);
+    padding: 1em;
+    border-radius: var(--bs-border-radius, 4px);
+  }
+}
+
+shiny-tool-request {
+  display: block;
+  margin: 0;
+  margin-block: 1em;
+  border-radius: var(--bs-border-radius, 4px);
+  overflow: hidden;
+  padding: 0.5em;
+  font-size: 0.8em;
+  color: var(--bs-secondary, #6c757d);
+  font-weight: 400;
+  display: block;
+  align-items: center;
+  user-select: none;
+
+  &[hidden] {
+    display: none;
+  }
+
+  &::before {
+    content: "⬅";
+    /* UTF-8: \u2B05 */
+    color: var(--bs-primary, #0d6efd);
+    display: inline-block;
+    margin-right: 0.5em;
+    font-size: 1em;
+    transform-origin: center;
+    transform: rotateY(180deg);
+  }
+
+  .function-name {
+    font-weight: bold;
+  }
+
+  .intent {
+    color: var(--bs-secondary, #6c757d);
+    font-style: italic;
+    margin-left: 0.5em;
+  }
 }
