@@ -63,53 +63,73 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     props$intent <- content@request@arguments$intent
   }
 
-  deps <- NULL
+  display_props <- tool_result_display(content)
+  props$value <- display_props$value
+  props$value_type <- display_props$value_type
 
-  # Determine value and value_type
-  if (!is.null(content@error)) {
-    props$value <- strip_ansi(content@error)
-    props$value_type <- "code"
-  } else {
-    display <- content@extra$display
-    if (is.null(display)) {
-      props$value <- content@value
-      props$value_type <- "code"
-    } else {
-      if (inherits(display, c("html", "shiny.tag.list", "shiny.tag"))) {
-        props$value <- format(display)
-        props$value_type <- "html"
-        deps <- htmltools::findDependencies(display)
-      } else if (is.character(display)) {
-        props$value <- paste(display, collapse = "\n")
-        props$value_type <- "markdown"
-      } else if (is.list(display)) {
-        # Try html, markdown, text in order
-        if (!is.null(display$html)) {
-          props$value <- format(display$html)
-          props$value_type <- "html"
-          deps <- htmltools::findDependencies(display$html)
-        } else if (!is.null(display$markdown)) {
-          props$value <- display$markdown
-          props$value_type <- "markdown"
-        } else if (!is.null(display$text)) {
-          props$value <- display$text
-          props$value_type <- "text"
-        } else {
-          props$value <- content@value
-          props$value_type <- "code"
-        }
-      }
-    }
-  }
-
-  # Create tool request child if needed
   children <- list(
     contents_shinychat(content@request),
-    if (!is.null(deps)) deps
+    if (!is.null(display_props$deps)) display_props$deps
   )
 
   htmltools::tag("shiny-tool-result", rlang::list2(!!!props, !!!children))
 }
+
+tool_result_display <- function(content) {
+  # Default fallback
+  res <- list(
+    value = content@value,
+    value_type = "code",
+    deps = NULL
+  )
+
+  if (!is.null(content@error)) {
+    res$value <- strip_ansi(content@error)
+    return(res)
+  }
+
+  # Get display from extra data attached to the result
+  display <- content@extra$display
+
+  # If no display, return code value
+  if (is.null(display)) {
+    return(res)
+  }
+
+  is_md <-
+    is.character(display) ||
+    (is.list(display) && !is.null(display$markdown))
+
+  if (is_md) {
+    md <- list(
+      value = paste(display, collapse = "\n"),
+      value_type = "markdown",
+      deps = NULL
+    )
+    return(md)
+  }
+
+  is_html <-
+    inherits(display, c("html", "htmltools_tag", "htmltools_html")) ||
+    (is.list(display) && !is.null(display$html))
+
+  if (is_html) {
+    html <- list(
+      value = format(display),
+      value_type = "html",
+      deps = htmltools::findDependencies(display)
+    )
+    return(html)
+  }
+
+  if (is.list(display) && !is.null(display$text)) {
+    res$value <- display$text
+    res$value_type <- "text"
+  }
+
+  res
+}
+
 
 S7::method(contents_shinychat, ellmer::Turn) <- function(content) {
   # Process all contents in the turn, filtering out empty results
