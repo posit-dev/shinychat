@@ -49,6 +49,8 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
   # Prepare base props
   props <- list(
     request_id = content@request@id,
+    request_call = format(content@request, show = "call"),
+    name = content@request@name,
     status = if (!is.null(content@error)) "error" else "success",
     show_request = !isFALSE(content@extra$display_tool_request)
   )
@@ -67,12 +69,10 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
   props$value <- display_props$value
   props$value_type <- display_props$value_type
 
-  children <- list(
-    contents_shinychat(content@request),
-    if (!is.null(display_props$deps)) display_props$deps
+  htmltools::tag(
+    "shiny-tool-result",
+    rlang::list2(!!!props, if (!is.null(display_props$deps)) display_props$deps)
   )
-
-  htmltools::tag("shiny-tool-result", rlang::list2(!!!props, !!!children))
 }
 
 tool_result_display <- function(content) {
