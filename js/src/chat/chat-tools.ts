@@ -25,8 +25,8 @@ declare global {
  */
 
 export class ShinyToolRequest extends LitElement {
-  @property({ type: String })
-  request_id!: string
+  @property({ type: String, attribute: "request-id" })
+  requestId!: string
 
   @property({ type: String })
   name!: string
@@ -57,7 +57,7 @@ export class ShinyToolRequest extends LitElement {
   }
 
   #onToolRequestHide = (event: CustomEvent) => {
-    if (event.detail.request_id === this.request_id) {
+    if (event.detail.request_id === this.requestId) {
       this.hidden = true
     }
   }
@@ -97,23 +97,23 @@ export class ShinyToolRequest extends LitElement {
  * @prop {string} intent - Optional tool intent
  */
 export class ShinyToolResult extends LitElement {
-  @property({ type: String })
-  request_id!: string
+  @property({ type: String, attribute: "request-id" })
+  requestId!: string
 
-  @property({ type: String })
-  request_call?: string
+  @property({ type: String, attribute: "request-call" })
+  requestCall?: string
 
   @property({ type: String })
   status!: string
 
-  @property({ type: Boolean })
-  show_request = true
+  @property({ type: Boolean, attribute: "show-request" })
+  showRequest = true
 
   @property({ type: String })
   value!: string
 
-  @property({ type: String })
-  value_type!: string
+  @property({ type: String, attribute: "value-type" })
+  valueType!: string
 
   @property({ type: String })
   title: string = ""
@@ -132,7 +132,7 @@ export class ShinyToolResult extends LitElement {
     // Emit event to hide the corresponding tool request
     this.dispatchEvent(
       new CustomEvent("shiny-tool-request-hide", {
-        detail: { request_id: this.request_id },
+        detail: { request_id: this.requestId },
         bubbles: true,
         cancelable: true,
       }),
@@ -142,13 +142,13 @@ export class ShinyToolResult extends LitElement {
   #renderResult() {
     let result: string | TemplateResult = ""
 
-    if (this.value_type === "html") {
+    if (this.valueType === "html") {
       result = html`${unsafeHTML(this.value)}`
-    } else if (this.value_type === "text") {
+    } else if (this.valueType === "text") {
       result = html`<p>${this.value}</p>`
     } else {
       // markdown, code, or default
-      if (this.value_type !== "markdown") {
+      if (this.valueType !== "markdown") {
         // If value_type is "code", we format it as a markdown code block
         const backticks = "`".repeat(8)
         result = `${backticks}markdown\n${this.value}\n${backticks}`
@@ -161,25 +161,29 @@ export class ShinyToolResult extends LitElement {
       ></shiny-markdown-stream>`
     }
 
+    const resultHeader = this.showRequest
+      ? html`<strong>Tool result</strong> `
+      : ""
+
     return html`<div class="shiny-tool-result__result">
-      <strong>Tool result</strong> ${result}
+      ${resultHeader}${result}
     </div>`
   }
 
   #renderRequest() {
-    if (!this.show_request || !this.request_call) {
+    if (!this.showRequest || !this.requestCall) {
       return ""
     }
 
     const request = html`<shiny-markdown-stream
       content="${"`".repeat(8)}
-${this.request_call}
+${this.requestCall}
 ${"`".repeat(8)}"
       content-type="markdown"
       ?streaming=${false}
     ></shiny-markdown-stream>`
 
-    const isLongRequest = this.request_call.split("\n").length > 2
+    const isLongRequest = this.requestCall.split("\n").length > 2
 
     return html`<div class="shiny-tool-result__request">
       ${isLongRequest
@@ -196,8 +200,8 @@ ${"`".repeat(8)}"
   }
 
   render() {
-    const headerId = `tool-header-${this.request_id}`
-    const contentId = `tool-content-${this.request_id}`
+    const headerId = `tool-header-${this.requestId}`
+    const contentId = `tool-content-${this.requestId}`
     const statusIcon =
       this.status === "error" ? ICONS.exclamationCircleFill : ICONS.tools
 

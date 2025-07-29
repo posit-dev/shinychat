@@ -24,9 +24,8 @@ S7::method(contents_shinychat, ellmer::ContentText) <- function(content) {
 S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
   content
 ) {
-  # Prepare props
   props <- list(
-    request_id = content@id,
+    "request-id" = content@id,
     name = content@name,
     arguments = jsonlite::toJSON(content@arguments, auto_unbox = TRUE)
   )
@@ -36,9 +35,9 @@ S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
     props$title <- content@tool@annotations$title
   }
 
-  # Add optional intent if present in arguments
-  if (!is.null(content@arguments$intent)) {
-    props$intent <- content@arguments$intent
+  # Add optional intent if present in request arguments
+  if (!is.null(content@arguments$.intent)) {
+    props$intent <- content@arguments$.intent
   }
 
   # Return structured tag
@@ -52,7 +51,7 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     request_call = format(content@request, show = "call"),
     name = content@request@name,
     status = if (!is.null(content@error)) "error" else "success",
-    show_request = !isFALSE(content@extra$display_tool_request)
+    show_request = tolower(!isFALSE(content@extra$display_tool_request))
   )
 
   # Add optional title if present
@@ -68,6 +67,8 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
   display_props <- tool_result_display(content)
   props$value <- display_props$value
   props$value_type <- display_props$value_type
+
+  names(props) <- gsub("_", "-", names(props))
 
   htmltools::tag(
     "shiny-tool-result",
@@ -96,6 +97,19 @@ tool_result_display <- function(content) {
     return(res)
   }
 
+  is_html <-
+    inherits(display, c("html", "shiny.tag", "shiny.tag.list")) ||
+    (is.list(display) && !is.null(display$html))
+
+  if (is_html) {
+    html <- list(
+      value = format(display),
+      value_type = "html",
+      deps = htmltools::findDependencies(display)
+    )
+    return(html)
+  }
+
   is_md <-
     is.character(display) ||
     (is.list(display) && !is.null(display$markdown))
@@ -107,19 +121,6 @@ tool_result_display <- function(content) {
       deps = NULL
     )
     return(md)
-  }
-
-  is_html <-
-    inherits(display, c("html", "htmltools_tag", "htmltools_html")) ||
-    (is.list(display) && !is.null(display$html))
-
-  if (is_html) {
-    html <- list(
-      value = format(display),
-      value_type = "html",
-      deps = htmltools::findDependencies(display)
-    )
-    return(html)
   }
 
   if (is.list(display) && !is.null(display$text)) {
