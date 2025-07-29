@@ -54,7 +54,7 @@ Please report this to https://github.com/markedjs/marked.`,e){let r="<p>An error
       <div class="shiny-tool-request">
         Running
         <span class="function-name">${this.title||this.name}</span>
-        ${this.intent?re`<span class="intent">${this.intent}</span>`:""}
+        ${this.intent?re`<span class="request-intent">${this.intent}</span>`:""}
       </div>
     `}};K([W({type:String,attribute:"request-id"})],Fe.prototype,"requestId",2),K([W({type:String})],Fe.prototype,"name",2),K([W({type:String})],Fe.prototype,"title",2),K([W({type:String})],Fe.prototype,"intent",2),K([W({type:String})],Fe.prototype,"arguments",2),K([W({type:Boolean,reflect:!0})],Fe.prototype,"hidden",2);var eo,Ae=class extends Ie{constructor(){super(...arguments);this.showRequest=!0;this.title="";this.name="";this.expanded=!1}connectedCallback(){super.connectedCallback(),this.dispatchEvent(new CustomEvent("shiny-tool-request-hide",{detail:{request_id:this.requestId},bubbles:!0,cancelable:!0}))}#e(){let t="";if(this.valueType==="html")t=re`${Ue(this.value)}`;else if(this.valueType==="text")t=re`<p>${this.value}</p>`;else{if(this.valueType!=="markdown"){let r="`".repeat(8);t=`${r}markdown
 ${this.value}
@@ -80,7 +80,7 @@ ${"`".repeat(8)}"
       >${this.title?this.title:this.name+"()"}</span
     >`;this.status==="error"&&(a=re`${a} failed`);let s=this.status==="error"?"text-danger":"";return re(eo||(eo=Gi([`
       <div
-        class="card bslib-card bslib-mb-spacing html-fill-item html-fill-container m-0"
+        class="shiny-tool-result-card card bslib-card bslib-mb-spacing html-fill-item html-fill-container m-0"
         data-bslib-card-init
         data-require-bs-caller="chat_ui()"
         data-require-bs-version="5"

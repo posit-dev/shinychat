@@ -5,7 +5,7 @@ var ln=Object.freeze,cn=Object.defineProperty;var Es=Object.getOwnPropertyDescri
       <div class="shiny-tool-request">
         Running
         <span class="function-name">${this.title||this.name}</span>
-        ${this.intent?y`<span class="intent">${this.intent}</span>`:""}
+        ${this.intent?y`<span class="request-intent">${this.intent}</span>`:""}
       </div>
     `}};g([m({type:String,attribute:"request-id"})],B.prototype,"requestId",2),g([m({type:String})],B.prototype,"name",2),g([m({type:String})],B.prototype,"title",2),g([m({type:String})],B.prototype,"intent",2),g([m({type:String})],B.prototype,"arguments",2),g([m({type:Boolean,reflect:!0})],B.prototype,"hidden",2);var jn,D=class extends H{constructor(){super(...arguments);this.showRequest=!0;this.title="";this.name="";this.expanded=!1}connectedCallback(){super.connectedCallback(),this.dispatchEvent(new CustomEvent("shiny-tool-request-hide",{detail:{request_id:this.requestId},bubbles:!0,cancelable:!0}))}#t(){let e="";if(this.valueType==="html")e=y`${dt(this.value)}`;else if(this.valueType==="text")e=y`<p>${this.value}</p>`;else{if(this.valueType!=="markdown"){let i="`".repeat(8);e=`${i}markdown
 ${this.value}
@@ -31,7 +31,7 @@ ${"`".repeat(8)}"
       >${this.title?this.title:this.name+"()"}</span
     >`;this.status==="error"&&(o=y`${o} failed`);let l=this.status==="error"?"text-danger":"";return y(jn||(jn=un([`
       <div
-        class="card bslib-card bslib-mb-spacing html-fill-item html-fill-container m-0"
+        class="shiny-tool-result-card card bslib-card bslib-mb-spacing html-fill-item html-fill-container m-0"
         data-bslib-card-init
         data-require-bs-caller="chat_ui()"
         data-require-bs-version="5"
