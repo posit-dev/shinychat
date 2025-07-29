@@ -134,32 +134,24 @@ tool_result_display <- function(content) {
 
 S7::method(contents_shinychat, ellmer::Turn) <- function(content) {
   # Process all contents in the turn, filtering out empty results
-  results <- lapply(content@contents, contents_shinychat)
-  Filter(Negate(is.null), results)
+  compact(map(content@contents, contents_shinychat))
 }
 
 S7::method(contents_shinychat, S7::new_S3_class(c("Chat", "R6"))) <- function(
   content
 ) {
   # Process turns with tool request/result consolidation
-  turns <- lapply(content$get_turns(), function(turn) {
-    # Convert tool results to assistant turns
-    if (
-      all(vapply(
-        turn@contents,
-        S7::S7_inherits,
-        logical(1),
-        ellmer::ContentToolResult
-      ))
-    ) {
+  turns <- map(content$get_turns(), function(turn) {
+    # Turns containing only tool results are converted into assistant turns
+    if (every(turn@contents, S7::S7_inherits, ellmer::ContentToolResult)) {
       turn@role <- "assistant"
+      return(turn)
     }
 
     # Filter out tool requests as they'll be shown in results
-    is_tool_request <- vapply(
+    is_tool_request <- map_lgl(
       turn@contents,
       S7::S7_inherits,
-      logical(1),
       ellmer::ContentToolRequest
     )
     turn@contents <- turn@contents[!is_tool_request]
@@ -167,7 +159,9 @@ S7::method(contents_shinychat, S7::new_S3_class(c("Chat", "R6"))) <- function(
   })
 
   # Consolidate adjacent turns with the same role
-  turns <- Reduce(
+  turns <- reduce(
+    turns,
+    .init = list(),
     function(acc, turn) {
       if (length(acc) == 0) {
         return(list(turn))
@@ -180,18 +174,16 @@ S7::method(contents_shinychat, S7::new_S3_class(c("Chat", "R6"))) <- function(
       }
 
       c(acc, list(turn))
-    },
-    turns,
-    init = list()
+    }
   )
 
   # Convert turns to messages
-  messages <- lapply(turns, function(turn) {
+  messages <- map(turns, function(turn) {
     content <- compact(contents_shinychat(turn))
     if (is.null(content) || identical(content, "")) {
       return(NULL)
     }
-    if (all(vapply(content, is.character, logical(1)))) {
+    if (every(content, is.character)) {
       content <- paste(unlist(content), collapse = "\n\n")
     }
     list(role = turn@role, content = content)
