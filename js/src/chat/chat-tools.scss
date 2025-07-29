@@ -26,17 +26,17 @@ shiny-tool-result {
     border-radius: var(--bs-border-radius, 4px);
   }
 
+  .card-header,
+  .card-footer {
+    font-size: inherit;
+    font-weight: normal;
+    word-break: break-word;
+  }
+
   .shiny-tool-result-card {
     max-height: var(--shiny-tool-result__max-height, 500px);
 
-    .card-header,
-    .card-footer {
-      font-size: inherit;
-      font-weight: normal;
-      word-break: break-word;
-    }
-
-    .card-header {
+    > .card-header {
       width: 100%;
       text-align: left;
       border: none;
@@ -62,7 +62,7 @@ shiny-tool-result {
       }
     }
 
-    .card-body {
+    > .card-body {
       transition: max-height 0.3s ease-out, opacity 0.2s ease-out;
       overflow: hidden;
       opacity: 1;
