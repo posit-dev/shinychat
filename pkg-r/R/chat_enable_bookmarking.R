@@ -78,17 +78,6 @@ chat_enable_bookmarking <- function(
 
   # Verify bookmark store is not disabled. Bookmark options: "disable", "url", "server"
   bookmark_store <- shiny::getShinyOption("bookmarkStore", "disable")
-  # TODO: Q - I feel this should be removed. Since we are only adding hooks, it doesn't matter if it's enabled or not. If the user diables chat, it would be very annoying to receive error messages for code they may not own.
-  if (bookmark_store == "disable") {
-    rlang::abort(
-      paste0(
-        "Error: Shiny bookmarking is not enabled. ",
-        "Please enable bookmarking in your Shiny app either by calling ",
-        "`shiny::enableBookmarking(\"server\")` or by setting the parameter in ",
-        "`shiny::shinyApp(enableBookmarking = \"server\")`"
-      )
-    )
-  }
 
   # Exclude works with bookmark names
   excluded_names <- session$getBookmarkExclude()
@@ -126,8 +115,10 @@ chat_enable_bookmarking <- function(
       client_set_state(client, client_state)
 
       # Set the UI
-      chat_clear(id)
-      client_set_ui(client, id = id)
+      shiny::withReactiveDomain(session, {
+        chat_clear(id)
+        client_set_ui(client, id = id)
+      })
     })
 
   # Update URL
@@ -151,9 +142,11 @@ chat_enable_bookmarking <- function(
   cancel_update_bookmark <- NULL
   if (bookmark_on_input || bookmark_on_response) {
     cancel_update_bookmark <-
-      # Update the query string when bookmarked
-      shiny::onBookmarked(function(url) {
-        shiny::updateQueryString(url)
+      shiny::withReactiveDomain(session$rootScope(), {
+        # Update the query string when bookmarked
+        shiny::onBookmarked(function(url) {
+          shiny::updateQueryString(url)
+        })
       })
   }
 
@@ -205,7 +198,7 @@ chat_update_bookmark <- function(
   prom <-
     promises::then(stream_promise, function(stream) {
       # Force a bookmark update when the stream ends!
-      session$doBookmark()
+      shiny::isolate(session$doBookmark())
     })
 
   return(prom)

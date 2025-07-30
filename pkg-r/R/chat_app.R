@@ -88,6 +88,8 @@ chat_app <- function(client, ...) {
     )
   }
 
+  shiny::enableBookmarking("url")
+
   server <- function(input, output, session) {
     chat_mod_server("chat", client)
 
@@ -118,16 +120,7 @@ chat_mod_ui <- function(
   messages = NULL
 ) {
   if (!is.null(client)) {
-    check_ellmer_chat(client)
-
-    client_msgs <- map(client$get_turns(), function(turn) {
-      content <- ellmer::contents_markdown(turn)
-      if (is.null(content) || identical(content, "")) {
-        return(NULL)
-      }
-      list(role = turn@role, content = content)
-    })
-    client_msgs <- compact(client_msgs)
+    client_msgs <- contents_shinychat(client)
 
     if (length(client_msgs)) {
       if (!is.null(messages)) {
