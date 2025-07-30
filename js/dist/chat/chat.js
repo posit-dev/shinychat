@@ -4,6 +4,7 @@ var un=Object.freeze,hn=Object.defineProperty;var As=Object.getOwnPropertyDescri
 `+I),it&&Kt([ne,se,ie],W=>{I=Mt(I,W," ")}),x&&Pt?x.createHTML(I):I},t.setConfig=function(){let u=arguments.length>0&&arguments[0]!==void 0?arguments[0]:{};pe(u),ae=!0},t.clearConfig=function(){ct=null,ae=!1},t.isValidAttribute=function(u,s,a){ct||pe({});let c=w(u),E=w(s);return rn(c,E,a)},t.addHook=function(u,s){typeof s=="function"&&$t(L[u],s)},t.removeHook=function(u,s){if(s!==void 0){let a=Hs(L[u],s);return a===-1?void 0:zs(L[u],a,1)[0]}return Nn(L[u])},t.removeHooks=function(u){L[u]=[]},t.removeAllHooks=function(){L=zn()},t}var jn=Wn();function Jt(i,t){let e=document.createElement(i);for(let[n,r]of Object.entries(t)){let o=n.replace(/_/g,"-");r!==null&&e.setAttribute(o,r)}return e}var Z=class extends B{createRenderRoot(){return this}};function Ie({headline:i="",message:t,status:e="warning"}){document.dispatchEvent(new CustomEvent("shiny:client-message",{detail:{headline:i,message:t,status:e}}))}async function Vn(i){if(window.Shiny&&i)try{await window.Shiny.renderDependenciesAsync(i)}catch(t){Ie({status:"error",message:`Failed to render HTML dependencies: ${t}`})}}var si=jn();si.addHook("uponSanitizeElement",(i,t)=>{if(i.nodeName&&i.nodeName==="SCRIPT"){let e=i,n=e.getAttribute("type")==="application/json"&&e.getAttribute("data-for")!==null;t.allowedTags.script=n}});var Kn,k=class extends B{constructor(){super(...arguments);this.title="";this.expanded=!1;this.classStatus="";this.icon="";this.titleTemplate="{title}"}createRenderRoot(){return this}#t(e){e.preventDefault(),this.expanded=!this.expanded,this.requestUpdate()}formatTitle(){let e=this.title||`${this.name}()`;return e=`<span class="tool-title-name">${e}</span>`,e=this.titleTemplate.replace("{title}",e),y`${nt(e)}`}renderCard(e){let n=`tool-header-${this.requestId}`,r=`tool-content-${this.requestId}`,o=y`
       <div class="tool-icon ${this.classStatus}">${nt(this.icon)}</div>
       <div class="tool-title ${this.classStatus}">${this.formatTitle()}</div>
+      <div class="tool-spacer"></div>
       ${this.intent?y`<div class="tool-intent">${this.intent}</div>`:""}
     `;return y(Kn||(Kn=dn([`
       <div
@@ -43,14 +44,14 @@ var un=Object.freeze,hn=Object.defineProperty;var As=Object.getOwnPropertyDescri
         content-type="markdown"
         ?streaming=${!1}
       ></shiny-markdown-stream>
-    `;return this.renderCard(e)}};g([f({type:String})],pt.prototype,"arguments",2),g([f({type:Boolean,reflect:!0})],pt.prototype,"hidden",2);var K=class extends k{constructor(){super();this.showRequest=!0;this.titleTemplate="{title}"}connectedCallback(){super.connectedCallback(),this.status==="error"?(this.classStatus="text-danger",this.icon=Yn.exclamationCircleFill,this.titleTemplate="{title} failed"):this.icon=Yn.wrenchAdjustable,this.dispatchEvent(new CustomEvent("shiny-tool-request-hide",{detail:{request_id:this.requestId},bubbles:!0,cancelable:!0}))}#t(){let e="";this.valueType==="html"?e=y`${nt(this.value)}`:this.valueType==="text"?e=y`<p>${this.value}</p>`:(this.valueType!=="markdown"&&(e=De(this.value)),e=y`<shiny-markdown-stream
+    `;return this.renderCard(e)}};g([f({type:String})],pt.prototype,"arguments",2),g([f({type:Boolean,reflect:!0})],pt.prototype,"hidden",2);var K=class extends k{constructor(){super();this.showRequest=!0;this.titleTemplate="{title}"}connectedCallback(){super.connectedCallback(),this.status==="error"?(this.classStatus="text-danger",this.icon=Yn.exclamationCircleFill,this.titleTemplate="{title} failed"):this.icon||(this.icon=Yn.wrenchAdjustable),this.dispatchEvent(new CustomEvent("shiny-tool-request-hide",{detail:{request_id:this.requestId},bubbles:!0,cancelable:!0}))}#t(){let e="";this.valueType==="html"?e=y`${nt(this.value)}`:this.valueType==="text"?e=y`<p>${this.value}</p>`:(this.valueType!=="markdown"&&(e=De(this.value)),e=y`<shiny-markdown-stream
         content=${e||this.value}
         content-type="markdown"
         ?streaming=${!1}
       ></shiny-markdown-stream>`);let n=this.showRequest?y`<strong>Tool result</strong> `:"";return y`<div class="shiny-tool-result__result">
       ${n}${e}
     </div>`}#e(){if(!this.showRequest||!this.requestCall)return"";let e=y`<shiny-markdown-stream
-      content="${De(this.requestCall)}"
+      content="${De(this.requestCall,"")}"
       content-type="markdown"
       ?streaming=${!1}
     ></shiny-markdown-stream>`,n=this.requestCall.split(`
