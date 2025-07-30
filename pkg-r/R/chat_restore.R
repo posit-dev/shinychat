@@ -104,7 +104,7 @@ chat_restore <- function(
       state$values[[id]] <- client_state
     })
 
-  cancel_set_ui <- observe({
+  cancel_set_ui <- shiny::observe({
     client_set_ui(client, id = id)
     cancel_set_ui$destroy()
   })
