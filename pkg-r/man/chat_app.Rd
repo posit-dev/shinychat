@@ -8,9 +8,14 @@
 \usage{
 chat_app(client, ...)
 
-chat_mod_ui(id, ..., client = NULL, messages = NULL)
+chat_mod_ui(id, ..., client = lifecycle::deprecated(), messages = NULL)
 
-chat_mod_server(id, client)
+chat_mod_server(
+  id,
+  client,
+  bookmark_on_input = TRUE,
+  bookmark_on_response = TRUE
+)
 }
 \arguments{
 \item{client}{A chat object created by \pkg{ellmer}, e.g.

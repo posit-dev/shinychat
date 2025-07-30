@@ -39,7 +39,7 @@
 #'     echo = TRUE
 #'   )
 #'   # Update bookmark to chat on user submission and completed response
-#'   chat_enable_bookmarking("chat", chat_client)
+#'   chat_restore("chat", chat_client)
 #'
 #'   observeEvent(input$chat_user_input, {
 #'     stream <- chat_client$stream_async(input$chat_user_input)
@@ -50,7 +50,7 @@
 #' # Enable bookmarking!
 #' shinyApp(ui, server, enableBookmarking = "server")
 #' @export
-chat_enable_bookmarking <- function(
+chat_restore <- function(
   id,
   client,
   ...,
@@ -72,7 +72,7 @@ chat_enable_bookmarking <- function(
 
   if (is.null(session)) {
     rlang::abort(
-      "A `session` must be provided. Be sure to call `chat_enable_bookmarking()` where a session context is available."
+      "A `session` must be provided. Be sure to call `chat_restore()` where a session context is available."
     )
   }
 
@@ -104,6 +104,11 @@ chat_enable_bookmarking <- function(
       state$values[[id]] <- client_state
     })
 
+  cancel_set_ui <- observe({
+    client_set_ui(client, id = id)
+    cancel_set_ui$destroy()
+  })
+
   # Restore
   cancel_on_restore_client <-
     session$onRestore(function(state) {
@@ -112,6 +117,7 @@ chat_enable_bookmarking <- function(
         return()
       }
 
+      cancel_set_ui$destroy()
       client_set_state(client, client_state)
 
       # Set the UI
@@ -150,7 +156,7 @@ chat_enable_bookmarking <- function(
       })
   }
 
-  # Set callbacks to cancel if `chat_enable_bookmarking(id, client)` is called again with the same id
+  # Set callbacks to cancel if `chat_restore(id, client)` is called again with the same id
   # Only allow for bookmarks for each chat once. Last bookmark method would win if all values were to be computed.
   # Remove previous `on*()` methods under same hash (.. odd author behavior)
   previous_info <- get_session_chat_bookmark_info(session, id)
@@ -162,7 +168,7 @@ chat_enable_bookmarking <- function(
     }
   }
 
-  # Store callbacks to cancel in case a new call to `chat_enable_bookmarking(id, client)` is called with the same id
+  # Store callbacks to cancel in case a new call to `chat_restore(id, client)` is called with the same id
   set_session_chat_bookmark_info(
     session,
     id,

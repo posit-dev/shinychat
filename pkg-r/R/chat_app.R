@@ -88,7 +88,7 @@ chat_app <- function(client, ...) {
     )
   }
 
-  shiny::enableBookmarking("url")
+  # shiny::enableBookmarking("url")
 
   server <- function(input, output, session) {
     chat_mod_server("chat", client)
@@ -116,22 +116,9 @@ check_ellmer_chat <- function(client) {
 chat_mod_ui <- function(
   id,
   ...,
-  client = NULL,
+  client = lifecycle::deprecated(),
   messages = NULL
 ) {
-  if (!is.null(client)) {
-    client_msgs <- contents_shinychat(client)
-
-    if (length(client_msgs)) {
-      if (!is.null(messages)) {
-        warn(
-          "`client` was provided and has initial messages, `messages` will be ignored."
-        )
-      }
-      messages <- client_msgs
-    }
-  }
-
   chat_ui(
     shiny::NS(id, "chat"),
     messages = messages,
@@ -141,7 +128,12 @@ chat_mod_ui <- function(
 
 #' @describeIn chat_app A simple chat app module server.
 #' @export
-chat_mod_server <- function(id, client) {
+chat_mod_server <- function(
+  id,
+  client,
+  bookmark_on_input = TRUE,
+  bookmark_on_response = TRUE
+) {
   check_ellmer_chat(client)
 
   append_stream_task <- shiny::ExtendedTask$new(
@@ -156,7 +148,13 @@ chat_mod_server <- function(id, client) {
   )
 
   shiny::moduleServer(id, function(input, output, session) {
-    chat_enable_bookmarking("chat", client, session = session)
+    chat_restore(
+      "chat",
+      client,
+      session = session,
+      bookmark_on_input = bookmark_on_input,
+      bookmark_on_response = bookmark_on_response
+    )
 
     shiny::observeEvent(input$chat_user_input, {
       append_stream_task$invoke(
