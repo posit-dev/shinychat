@@ -114,9 +114,31 @@ check_ellmer_chat <- function(client) {
 chat_mod_ui <- function(
   id,
   ...,
-  client = lifecycle::deprecate_soft(),
+  client = NULL,
   messages = NULL
 ) {
+  if (!is.null(client)) {
+    check_ellmer_chat(client)
+
+    client_msgs <- map(client$get_turns(), function(turn) {
+      content <- ellmer::contents_markdown(turn)
+      if (is.null(content) || identical(content, "")) {
+        return(NULL)
+      }
+      list(role = turn@role, content = content)
+    })
+    client_msgs <- compact(client_msgs)
+
+    if (length(client_msgs)) {
+      if (!is.null(messages)) {
+        warn(
+          "`client` was provided and has initial messages, `messages` will be ignored."
+        )
+      }
+      messages <- client_msgs
+    }
+  }
+
   chat_ui(
     shiny::NS(id, "chat"),
     messages = messages,
