@@ -241,7 +241,7 @@ export class ShinyToolResult extends ShinyToolCard {
     }
 
     const request = html`<shiny-markdown-stream
-      content="${markdownCodeBlock(this.requestCall)}"
+      content="${markdownCodeBlock(this.requestCall, "")}"
       content-type="markdown"
       ?streaming=${false}
     ></shiny-markdown-stream>`
