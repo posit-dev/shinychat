@@ -63,6 +63,7 @@ class ShinyToolCard extends LitElement {
     const headerContent = html`
       <div class="tool-icon ${this.classStatus}">${unsafeHTML(this.icon)}</div>
       <div class="tool-title ${this.classStatus}">${this.formatTitle()}</div>
+      <div class="tool-spacer"></div>
       ${this.intent ? html`<div class="tool-intent">${this.intent}</div>` : ""}
     `
 

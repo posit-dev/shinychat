@@ -2,10 +2,13 @@
   max-height: var(--shiny-tool-card-max-height, 500px);
 
   .tool-intent {
-    margin-inline-start: auto;
     opacity: 0.66;
     font-style: italic;
     font-weight: normal;
+  }
+
+  .tool-spacer {
+    margin-inline-start: auto;
   }
 
   .tool-icon {
