@@ -115,6 +115,11 @@ shiny-tool-request {
   }
 }
 
+shiny-tool-result + p,
+shiny-tool-request + p {
+  margin-top: 1rem;
+}
+
 shiny-tool-result,
 shiny-tool-request {
   &:first-child {
