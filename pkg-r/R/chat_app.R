@@ -103,7 +103,7 @@ chat_app <- function(client, ..., bookmark_store = "url") {
     })
   }
 
-  shiny::shinyApp(ui, server, ..., enableBookmarking = "url")
+  shiny::shinyApp(ui, server, ..., enableBookmarking = bookmark_store)
 }
 
 check_ellmer_chat <- function(client) {
