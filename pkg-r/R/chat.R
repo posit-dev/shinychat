@@ -463,12 +463,17 @@ rlang::on_load(
     role = "assistant",
     session = shiny::getDefaultReactiveDomain()
   ) {
-    chat_append_message(
-      id,
-      list(role = role, content = ""),
-      chunk = "start",
-      session = session
-    )
+    chat_append_ <- function(content, chunk = TRUE) {
+      chat_append_message(
+        id,
+        msg = list(role = role, content = content),
+        operation = "append",
+        chunk = chunk,
+        session = session
+      )
+    }
+
+    chat_append_("", chunk = "start")
 
     res <- fastmap::fastqueue(200)
 
@@ -486,22 +491,10 @@ rlang::on_load(
         msg <- contents_shinychat(msg)
       }
 
-      chat_append_message(
-        id,
-        list(role = role, content = msg),
-        chunk = TRUE,
-        operation = "append",
-        session = session
-      )
+      chat_append_(msg)
     }
 
-    chat_append_message(
-      id,
-      list(role = role, content = ""),
-      chunk = "end",
-      operation = "append",
-      session = session
-    )
+    chat_append_("", chunk = "end")
 
     res <- res$as_list()
     if (every(res, is.character)) {
