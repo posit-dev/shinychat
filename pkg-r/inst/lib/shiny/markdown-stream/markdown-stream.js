@@ -69,10 +69,8 @@ Please report this to https://github.com/markedjs/marked.`,e){let r="<p>An error
           aria-expanded="`,`"
           aria-controls="`,`"
         >
-          <div class="hstack gap-2">
-            `,`
-            <div class="collapse-arrow">\u25C0</div>
-          </div>
+          `,`
+          <div class="collapse-arrow">\u25C0</div>
         </button>
         <div
           class="card-body bslib-gap-spacing html-fill-item html-fill-container`,`"
@@ -93,7 +91,7 @@ Please report this to https://github.com/markedjs/marked.`,e){let r="<p>An error
         content-type="markdown"
         ?streaming=${!1}
       ></shiny-markdown-stream>
-    `;return this.renderCard(t)}};K([W({type:String})],Ot.prototype,"arguments",2),K([W({type:Boolean,reflect:!0})],Ot.prototype,"hidden",2);var je=class extends Oe{constructor(){super();this.showRequest=!0;this.titleTemplate="{title}"}connectedCallback(){super.connectedCallback(),this.status==="error"?(this.classStatus="text-danger",this.icon=no.exclamationCircleFill,this.titleTemplate="{title} failed"):this.icon||(this.icon=no.wrenchAdjustable),this.dispatchEvent(new CustomEvent("shiny-tool-request-hide",{detail:{request_id:this.requestId},bubbles:!0,cancelable:!0}))}#e(){let t="";this.valueType==="html"?t=ne`${Ie(this.value)}`:this.valueType==="text"?t=ne`<p>${this.value}</p>`:(this.valueType!=="markdown"&&(t=Ni(this.value)),t=ne`<shiny-markdown-stream
+    `;return this.renderCard(t)}};K([W({type:String})],Ot.prototype,"arguments",2),K([W({type:Boolean,reflect:!0})],Ot.prototype,"hidden",2);var je=class extends Oe{constructor(){super();this.showRequest=!0;this.titleTemplate="{title}"}connectedCallback(){super.connectedCallback(),this.status==="error"?(this.classStatus="text-danger",this.icon=no.exclamationCircleFill,this.titleTemplate="{title} failed"):this.icon||(this.icon=no.wrenchAdjustable),this.dispatchEvent(new CustomEvent("shiny-tool-request-hide",{detail:{request_id:this.requestId},bubbles:!0,cancelable:!0}))}#e(){let t="";this.valueType==="html"?t=ne`${Ie(this.value)}`:this.valueType==="text"?t=ne`<p>${this.value}</p>`:(this.valueType!=="markdown"&&(t=Ni(this.value,"text")),t=ne`<shiny-markdown-stream
         content=${t||this.value}
         content-type="markdown"
         ?streaming=${!1}
