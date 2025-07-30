@@ -8,7 +8,7 @@
 \usage{
 chat_app(client, ..., bookmark_store = "url")
 
-chat_mod_ui(id, ..., client = lifecycle::deprecated(), messages = NULL)
+chat_mod_ui(id, ..., client = deprecated(), messages = NULL)
 
 chat_mod_server(
   id,
@@ -19,7 +19,9 @@ chat_mod_server(
 }
 \arguments{
 \item{client}{A chat object created by \pkg{ellmer}, e.g.
-\code{\link[ellmer:chat_openai]{ellmer::chat_openai()}} and friends.}
+\code{\link[ellmer:chat_openai]{ellmer::chat_openai()}} and friends. This argument is deprecated in
+\code{chat_mod_ui()} because the client state is now managed by
+\code{chat_mod_server()}.}
 
 \item{...}{In \code{chat_app()}, additional arguments are passed to
 \code{\link[shiny:shinyApp]{shiny::shinyApp()}}. In \code{chat_mod_ui()}, additional arguments are passed to

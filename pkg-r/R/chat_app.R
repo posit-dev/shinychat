@@ -58,7 +58,9 @@
 #' }
 #'
 #' @param client A chat object created by \pkg{ellmer}, e.g.
-#'   [ellmer::chat_openai()] and friends.
+#'   [ellmer::chat_openai()] and friends. This argument is deprecated in
+#'   `chat_mod_ui()` because the client state is now managed by
+#'   `chat_mod_server()`.
 #' @param ... In `chat_app()`, additional arguments are passed to
 #'   [shiny::shinyApp()]. In `chat_mod_ui()`, additional arguments are passed to
 #'   [chat_ui()].
@@ -117,9 +119,17 @@ check_ellmer_chat <- function(client) {
 chat_mod_ui <- function(
   id,
   ...,
-  client = lifecycle::deprecated(),
+  client = deprecated(),
   messages = NULL
 ) {
+  if (lifecycle::is_present(client)) {
+    lifecycle::deprecate_warn(
+      "0.3.0",
+      "chat_mod_ui(client = )",
+      "chat_mod_server(client = )"
+    )
+  }
+
   chat_ui(
     shiny::NS(id, "chat"),
     messages = messages,

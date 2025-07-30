@@ -27,6 +27,7 @@ Imports:
     fastmap,
     htmltools,
     jsonlite,
+    lifecycle,
     promises (>= 1.3.2),
     rlang,
     S7,
