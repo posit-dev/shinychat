@@ -81,10 +81,8 @@ class ShinyToolCard extends LitElement {
           aria-expanded="${this.expanded}"
           aria-controls="${contentId}"
         >
-          <div class="hstack gap-2">
-            ${headerContent}
-            <div class="collapse-arrow">◀</div>
-          </div>
+          ${headerContent}
+          <div class="collapse-arrow">◀</div>
         </button>
         <div
           class="card-body bslib-gap-spacing html-fill-item html-fill-container${this
@@ -217,7 +215,7 @@ export class ShinyToolResult extends ShinyToolCard {
       // markdown, code, or default
       if (this.valueType !== "markdown") {
         // If value_type is "code", we format it as a markdown code block
-        result = markdownCodeBlock(this.value)
+        result = markdownCodeBlock(this.value, "text")
       }
 
       result = html`<shiny-markdown-stream
