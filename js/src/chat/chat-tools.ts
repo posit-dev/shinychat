@@ -193,7 +193,7 @@ export class ShinyToolResult extends ShinyToolCard {
       this.classStatus = "text-danger"
       this.icon = ICONS.exclamationCircleFill
       this.titleTemplate = "{title} failed"
-    } else {
+    } else if (!this.icon) {
       this.icon = ICONS.wrenchAdjustable
     }
     // Emit event to hide the corresponding tool request

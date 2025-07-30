@@ -66,6 +66,13 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     props$title <- content@request@tool@annotations$title
   }
 
+  # Add optional icon if present
+  icon_deps <- NULL
+  if (!is.null(content@request@tool@annotations$icon)) {
+    props$icon <- content@request@tool@annotations$icon
+    icon_deps <- htmltools::findDependencies(props$icon)
+  }
+
   # Add optional intent if present
   if (!is.null(content@request@arguments$.intent)) {
     props$intent <- content@request@arguments$.intent
@@ -79,7 +86,7 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
 
   htmltools::tag(
     "shiny-tool-result",
-    rlang::list2(!!!props, if (!is.null(display_props$deps)) display_props$deps)
+    compact(list2(!!!props, display_props$deps, icon_deps))
   )
 }
 
