@@ -180,7 +180,42 @@ class MarkdownElement extends LightElement {
   }
 
   #appendStreamingDot(): void {
-    this.lastElementChild?.appendChild(SVG_DOT)
+    this.#removeStreamingDot()
+
+    const findInnermost = (element: Element): Element => {
+      // Get the last child that's an element (not text/comment)
+      const lastChild = Array.from(element.children).pop()
+      if (!lastChild) return element
+
+      const tagName = lastChild.tagName.toLowerCase()
+
+      const recurseInto = ["p", "div", "pre", "ul", "ol"]
+      if (recurseInto.includes(tagName)) {
+        return findInnermost(lastChild)
+      }
+
+      // List of elements that should contain inline content
+      const inlineContainers = [
+        "p",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "li",
+        "code",
+      ]
+
+      if (inlineContainers.includes(tagName)) {
+        return lastChild
+      }
+
+      return element
+    }
+
+    const targetElement = this.children.length ? findInnermost(this) : this
+    targetElement.appendChild(SVG_DOT)
   }
 
   #removeStreamingDot(): void {
