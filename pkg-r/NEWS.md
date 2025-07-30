@@ -2,7 +2,7 @@
 
 ## New features
 
-* Added `chat_enable_bookmarking()` which adds Shiny bookmarking hooks to save and restore the `{ellmer}` chat client. (#28)
+* Added `chat_restore()` which adds Shiny bookmarking hooks to save and restore the `{ellmer}` chat client. (#28, #82)
 
 * Added `update_chat_user_input()` for programmatically updating the user input of a chat UI element. (#78)
 
