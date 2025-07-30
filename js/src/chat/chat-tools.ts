@@ -1,4 +1,4 @@
-import { LitElement, html, css, TemplateResult } from "lit"
+import { LitElement, html, TemplateResult } from "lit"
 import { property } from "lit/decorators.js"
 import { unsafeHTML } from "lit/directives/unsafe-html.js"
 
@@ -12,19 +12,9 @@ declare global {
 }
 
 /**
- * Web component that displays information about a tool request.
- *
- * @element shiny-tool-request
- *
- * @prop {string} requestId - Tool call ID
- * @prop {string} name - Tool name
- * @prop {string} title - Optional tool display title
- * @prop {string} intent - Optional tool intent
- * @prop {string} arguments - JSON string of tool arguments
- * @prop {boolean} hidden - Whether the element should be hidden
+ * Base class for tool-related card components
  */
-
-export class ShinyToolRequest extends LitElement {
+class ShinyToolCard extends LitElement {
   @property({ type: String, attribute: "request-id" })
   requestId!: string
 
@@ -37,11 +27,101 @@ export class ShinyToolRequest extends LitElement {
   @property({ type: String })
   intent?: string
 
+  @property({ type: Boolean, reflect: true })
+  expanded = false
+
+  @property({ type: String })
+  classStatus: string = ""
+
+  @property({ type: String })
+  icon: string = ""
+
+  @property({ type: String })
+  titleTemplate: string = "{title}"
+
+  createRenderRoot(): ShinyToolCard {
+    return this
+  }
+
+  #toggleCollapse(e: Event) {
+    e.preventDefault()
+    this.expanded = !this.expanded
+    this.requestUpdate()
+  }
+
+  protected formatTitle() {
+    let displayTitle = this.title || `${this.name}()`
+    displayTitle = `<span class="tool-title-name">${displayTitle}</span>`
+    displayTitle = this.titleTemplate.replace("{title}", displayTitle)
+    return html`${unsafeHTML(displayTitle)}`
+  }
+
+  protected renderCard(bodyContent: TemplateResult) {
+    const headerId = `tool-header-${this.requestId}`
+    const contentId = `tool-content-${this.requestId}`
+
+    const headerContent = html`
+      <div class="tool-icon ${this.classStatus}">${unsafeHTML(this.icon)}</div>
+      <div class="tool-title ${this.classStatus}">${this.formatTitle()}</div>
+      ${this.intent ? html`<div class="tool-intent">${this.intent}</div>` : ""}
+    `
+
+    return html`
+      <div
+        class="shiny-tool-card card bslib-card bslib-mb-spacing html-fill-item html-fill-container m-0"
+        data-bslib-card-init
+        data-require-bs-caller="chat_ui()"
+        data-require-bs-version="5"
+      >
+        <button
+          class="card-header"
+          id="${headerId}"
+          @click="${this.#toggleCollapse}"
+          aria-expanded="${this.expanded}"
+          aria-controls="${contentId}"
+        >
+          <div class="hstack gap-2">
+            ${headerContent}
+            <div class="collapse-arrow">◀</div>
+          </div>
+        </button>
+        <div
+          class="card-body bslib-gap-spacing html-fill-item html-fill-container${this
+            .expanded
+            ? ""
+            : " collapsed"}"
+          id="${contentId}"
+          role="region"
+          aria-labelledby="${headerId}"
+          ?inert="${!this.expanded}"
+        >
+          ${bodyContent}
+        </div>
+        <script data-bslib-card-init>
+          bslib.Card.initializeAllCards()
+        </script>
+      </div>
+    `
+  }
+}
+
+/**
+ * Web component that displays information about a tool request.
+ *
+ * @element shiny-tool-request
+ */
+export class ShinyToolRequest extends ShinyToolCard {
   @property({ type: String })
   arguments!: string
 
   @property({ type: Boolean, reflect: true })
   hidden = false
+
+  constructor() {
+    super()
+    this.titleTemplate = "Running {title}"
+    this.icon = '<div class="spinner-border" role="status"></div>'
+  }
 
   connectedCallback() {
     super.connectedCallback()
@@ -62,24 +142,20 @@ export class ShinyToolRequest extends LitElement {
     }
   }
 
-  createRenderRoot(): ShinyToolRequest {
-    return this
-  }
-
   render() {
     if (this.hidden) {
       return html``
     }
 
-    return html`
-      <div class="shiny-tool-request">
-        Running
-        <span class="function-name">${this.title || this.name}</span>
-        ${this.intent
-          ? html`<span class="request-intent">${this.intent}</span>`
-          : ""}
-      </div>
+    const bodyContent = html`
+      <shiny-markdown-stream
+        content="${markdownCodeBlock(this.arguments, "json")}"
+        content-type="markdown"
+        ?streaming=${false}
+      ></shiny-markdown-stream>
     `
+
+    return this.renderCard(bodyContent)
   }
 }
 
@@ -87,21 +163,8 @@ export class ShinyToolRequest extends LitElement {
  * Web component that displays the result of a tool execution.
  *
  * @element shiny-tool-result
- *
- * @prop {string} requestId - Tool call ID from request
- * @prop {string} requestCall - Optional tool call string
- * @prop {string} status - "success" or "error"
- * @prop {boolean} showRequest - Whether to display the nested tool request
- * @prop {string} value - Content to display
- * @prop {string} valueType - "html", "markdown", "text", or "code"
- * @prop {string} name - Tool name
- * @prop {string} title - Optional tool display title
- * @prop {string} intent - Optional tool intent
  */
-export class ShinyToolResult extends LitElement {
-  @property({ type: String, attribute: "request-id" })
-  requestId!: string
-
+export class ShinyToolResult extends ShinyToolCard {
   @property({ type: String, attribute: "request-call" })
   requestCall?: string
 
@@ -117,20 +180,21 @@ export class ShinyToolResult extends LitElement {
   @property({ type: String, attribute: "value-type" })
   valueType!: string
 
-  @property({ type: String })
-  title: string = ""
-
-  @property({ type: String })
-  name: string = ""
-
-  @property({ type: String })
-  intent?: string
-
-  @property({ type: Boolean, reflect: true })
-  expanded = false
+  constructor() {
+    super()
+    this.titleTemplate = "{title}"
+  }
 
   connectedCallback() {
     super.connectedCallback()
+    // Set status class and icon based on status
+    if (this.status === "error") {
+      this.classStatus = "text-danger"
+      this.icon = ICONS.exclamationCircleFill
+      this.titleTemplate = "{title} failed"
+    } else {
+      this.icon = ICONS.wrenchAdjustable
+    }
     // Emit event to hide the corresponding tool request
     this.dispatchEvent(
       new CustomEvent("shiny-tool-request-hide", {
@@ -152,8 +216,7 @@ export class ShinyToolResult extends LitElement {
       // markdown, code, or default
       if (this.valueType !== "markdown") {
         // If value_type is "code", we format it as a markdown code block
-        const backticks = "`".repeat(8)
-        result = `${backticks}markdown\n${this.value}\n${backticks}`
+        result = markdownCodeBlock(this.value)
       }
 
       result = html`<shiny-markdown-stream
@@ -178,9 +241,7 @@ export class ShinyToolResult extends LitElement {
     }
 
     const request = html`<shiny-markdown-stream
-      content="${"`".repeat(8)}
-${this.requestCall}
-${"`".repeat(8)}"
+      content="${markdownCodeBlock(this.requestCall)}"
       content-type="markdown"
       ?streaming=${false}
     ></shiny-markdown-stream>`
@@ -197,71 +258,10 @@ ${"`".repeat(8)}"
     </div>`
   }
 
-  createRenderRoot(): ShinyToolResult {
-    return this
-  }
-
   render() {
-    const headerId = `tool-header-${this.requestId}`
-    const contentId = `tool-content-${this.requestId}`
-    const statusIcon =
-      this.status === "error" ? ICONS.exclamationCircleFill : ICONS.tools
+    const bodyContent = html` ${this.#renderRequest()} ${this.#renderResult()} `
 
-    let title = html`<span class="function-name"
-      >${this.title ? this.title : this.name + "()"}</span
-    >`
-    if (this.status === "error") {
-      title = html`${title} failed`
-    }
-
-    const statusClass = this.status === "error" ? "text-danger" : ""
-
-    return html`
-      <div
-        class="shiny-tool-result-card card bslib-card bslib-mb-spacing html-fill-item html-fill-container m-0"
-        data-bslib-card-init
-        data-require-bs-caller="chat_ui()"
-        data-require-bs-version="5"
-      >
-        <button
-          class="card-header"
-          id="${headerId}"
-          @click="${this.#toggleCollapse}"
-          aria-expanded="${this.expanded}"
-          aria-controls="${contentId}"
-        >
-          <div class="hstack gap-2">
-            <div class="tool-icon ${statusClass}">
-              ${unsafeHTML(statusIcon)}
-            </div>
-            <div class="request-title ${statusClass}">${title}</div>
-            <div class="request-intent">${this.intent || ""}</div>
-            <div class="collapse-arrow">◀</div>
-          </div>
-        </button>
-        <div
-          class="card-body bslib-gap-spacing html-fill-item html-fill-container${this
-            .expanded
-            ? ""
-            : " collapsed"}"
-          id="${contentId}"
-          role="region"
-          aria-labelledby="${headerId}"
-          ?inert="${!this.expanded}"
-        >
-          ${this.#renderRequest()} ${this.#renderResult()}
-        </div>
-        <script data-bslib-card-init>
-          bslib.Card.initializeAllCards()
-        </script>
-      </div>
-    `
-  }
-
-  #toggleCollapse(e: Event) {
-    e.preventDefault()
-    this.expanded = !this.expanded
-    this.requestUpdate()
+    return this.renderCard(bodyContent)
   }
 }
 
@@ -272,6 +272,15 @@ const ICONS = {
   exclamationCircleFill: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-exclamation-circle-fill" viewBox="0 0 16 16">
   <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0M8 4a.905.905 0 0 0-.9.995l.35 3.507a.552.552 0 0 0 1.1 0l.35-3.507A.905.905 0 0 0 8 4m.002 6a1 1 0 1 0 0 2 1 1 0 0 0 0-2"/>
 </svg>`,
+  wrenchAdjustable: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-wrench-adjustable" viewBox="0 0 16 16">
+  <path d="M16 4.5a4.5 4.5 0 0 1-1.703 3.526L13 5l2.959-1.11q.04.3.041.61"/>
+  <path d="M11.5 9c.653 0 1.273-.139 1.833-.39L12 5.5 11 3l3.826-1.53A4.5 4.5 0 0 0 7.29 6.092l-6.116 5.096a2.583 2.583 0 1 0 3.638 3.638L9.908 8.71A4.5 4.5 0 0 0 11.5 9m-1.292-4.361-.596.893.809-.27a.25.25 0 0 1 .287.377l-.596.893.809-.27.158.475-1.5.5a.25.25 0 0 1-.287-.376l.596-.893-.809.27a.25.25 0 0 1-.287-.377l.596-.893-.809.27-.158-.475 1.5-.5a.25.25 0 0 1 .287.376M3 14a1 1 0 1 1 0-2 1 1 0 0 1 0 2"/>
+</svg>`,
+}
+
+const markdownCodeBlock = (content: string, language: string = "markdown") => {
+  const backticks = "`".repeat(8)
+  return `${backticks}${language}\n${content}\n${backticks}`
 }
 
 declare global {
