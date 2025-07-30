@@ -88,8 +88,6 @@ chat_app <- function(client, ...) {
     )
   }
 
-  shiny::enableBookmarking("url")
-
   server <- function(input, output, session) {
     chat_mod_server("chat", client)
 
@@ -98,7 +96,7 @@ chat_app <- function(client, ...) {
     })
   }
 
-  shiny::shinyApp(ui, server, ...)
+  shiny::shinyApp(ui, server, ..., enableBookmarking = "url")
 }
 
 check_ellmer_chat <- function(client) {
