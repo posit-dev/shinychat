@@ -58,6 +58,19 @@ markdownRenderer.table = (header: string, body: string) => {
     </table>`
 }
 
+const defaultMarkdownCodeRenderer = markdownRenderer.code
+
+markdownRenderer.code = function (
+  code: string,
+  infostring: string | undefined,
+  escaped: boolean,
+): string {
+  if (infostring === "{=html}") {
+    return code
+  }
+  return defaultMarkdownCodeRenderer.call(this, code, infostring, escaped)
+}
+
 // 'semi-markdown' renderer (for user messages)
 const semiMarkdownRenderer = new Renderer()
 

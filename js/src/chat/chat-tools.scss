@@ -106,3 +106,7 @@ shiny-tool-request {
     margin-bottom: 0;
   }
 }
+
+shiny-tool-request[hidden] + shiny-tool-result:first-of-type {
+  margin-top: 0;
+}

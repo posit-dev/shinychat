@@ -380,8 +380,16 @@ chat_append_message <- function(
     ui <- process_ui(content, session)
   }
 
+  msg_content <- ui[["html"]]
+  if (is_html) {
+    msg_content <- sprintf(
+      "\n\n````````{=html}\n%s\n````````\n\n",
+      msg_content
+    )
+  }
+
   msg <- list(
-    content = ui[["html"]],
+    content = msg_content,
     role = msg[["role"]],
     content_type = content_type,
     html_deps = ui[["deps"]],
