@@ -128,6 +128,7 @@ chat_mod_ui <- function(
 }
 
 #' @describeIn chat_app A simple chat app module server.
+#' @inheritParams chat_restore
 #' @export
 chat_mod_server <- function(
   id,
