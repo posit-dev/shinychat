@@ -6,7 +6,7 @@
 \alias{chat_mod_server}
 \title{Open a live chat application in the browser}
 \usage{
-chat_app(client, ...)
+chat_app(client, ..., bookmark_store = "url")
 
 chat_mod_ui(id, ..., client = lifecycle::deprecated(), messages = NULL)
 
@@ -24,6 +24,12 @@ chat_mod_server(
 \item{...}{In \code{chat_app()}, additional arguments are passed to
 \code{\link[shiny:shinyApp]{shiny::shinyApp()}}. In \code{chat_mod_ui()}, additional arguments are passed to
 \code{\link[=chat_ui]{chat_ui()}}.}
+
+\item{bookmark_store}{The bookmarking store to use for the app. Passed to
+\code{enable_bookmarking} in \code{\link[shiny:shinyApp]{shiny::shinyApp()}}. Defaults to \code{"url"}, which
+uses the URL to store the chat state. URL-based bookmarking is limited in
+size; use \code{"server"} to store the state on the server side without size
+limitations; or disable bookmarking by setting this to \code{"disable"}.}
 
 \item{id}{The chat module ID.}
 

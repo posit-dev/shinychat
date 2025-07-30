@@ -62,6 +62,11 @@
 #' @param ... In `chat_app()`, additional arguments are passed to
 #'   [shiny::shinyApp()]. In `chat_mod_ui()`, additional arguments are passed to
 #'   [chat_ui()].
+#' @param bookmark_store The bookmarking store to use for the app. Passed to
+#'   `enable_bookmarking` in [shiny::shinyApp()]. Defaults to `"url"`, which
+#'   uses the URL to store the chat state. URL-based bookmarking is limited in
+#'   size; use `"server"` to store the state on the server side without size
+#'   limitations; or disable bookmarking by setting this to `"disable"`.
 #'
 #' @returns
 #'   * `chat_app()` returns a [shiny::shinyApp()] object.
@@ -73,20 +78,18 @@
 #'   app is suitable for interactive use by a single user; do not use
 #'   `chat_app()` in a multi-user Shiny app context.
 #' @export
-chat_app <- function(client, ...) {
+chat_app <- function(client, ..., bookmark_store = "url") {
   check_ellmer_chat(client)
 
-  ui <- function(req) {
-    bslib::page_fillable(
-      chat_mod_ui("chat", client = client, height = "100%"),
-      shiny::actionButton(
-        "close_btn",
-        label = "",
-        class = "btn-close",
-        style = "position: fixed; top: 6px; right: 6px;"
-      )
+  ui <- bslib::page_fillable(
+    chat_mod_ui("chat", height = "100%"),
+    shiny::actionButton(
+      "close_btn",
+      label = "",
+      class = "btn-close",
+      style = "position: fixed; top: 6px; right: 6px;"
     )
-  }
+  )
 
   server <- function(input, output, session) {
     chat_mod_server("chat", client)
