@@ -35,9 +35,9 @@ limitations; or disable bookmarking by setting this to \code{"disable"}.}
 
 \item{id}{The chat module ID.}
 
-\item{messages}{Initial messages shown in the chat, used when \code{client} is not
-provided or when the chat \code{client} doesn't already contain turns. Passed to
-\code{messages} in \code{\link[=chat_ui]{chat_ui()}}.}
+\item{messages}{Initial messages shown in the chat, used only when \code{client}
+(in \code{chat_mod_ui()}) doesn't already contain turns. Passed to \code{messages}
+in \code{\link[=chat_ui]{chat_ui()}}.}
 
 \item{bookmark_on_input}{A logical value determines if the bookmark should be updated when the user submits a message. Default is \code{TRUE}.}
 

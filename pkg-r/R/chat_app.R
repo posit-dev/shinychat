@@ -114,9 +114,9 @@ check_ellmer_chat <- function(client) {
 
 #' @describeIn chat_app A simple chat app module UI.
 #' @param id The chat module ID.
-#' @param messages Initial messages shown in the chat, used when `client` is not
-#'   provided or when the chat `client` doesn't already contain turns. Passed to
-#'   `messages` in [chat_ui()].
+#' @param messages Initial messages shown in the chat, used only when `client`
+#'   (in `chat_mod_ui()`) doesn't already contain turns. Passed to `messages`
+#'   in [chat_ui()].
 #' @export
 chat_mod_ui <- function(
   id,

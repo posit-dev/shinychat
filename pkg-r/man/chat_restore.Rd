@@ -30,7 +30,8 @@ chat_restore(
 Returns nothing (\code{invisible(NULL)}).
 }
 \description{
-Adds Shiny bookmarking hooks to save and restore the \pkg{ellmer} chat \code{client}.
+Adds Shiny bookmarking hooks to save and restore the \pkg{ellmer} chat
+\code{client}. Also restores chat messages from the history in the \code{client}.
 
 If either \code{bookmark_on_input} or \code{bookmark_on_response} is \code{TRUE}, the Shiny
 App's bookmark will be automatically updated without showing a modal to the
@@ -41,6 +42,10 @@ the \code{client}'s state doesn't properly capture the chat's UI (i.e., a
 transformation is applied in-between receiving and displaying the message),
 then you may need to implement your own \code{session$onRestore()} (and possibly
 \code{session$onBookmark}) handler to restore any additional state.
+
+To avoid restoring chat history from the \code{client}, you can ensure that the
+history is empty by calling \code{client$set_turns(list())} before passing the
+client to \code{chat_restore()}.
 }
 \examples{
 \dontshow{if (interactive()) (if (getRversion() >= "3.4") withAutoprint else force)(\{ # examplesIf}
