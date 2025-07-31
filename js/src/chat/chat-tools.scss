@@ -75,38 +75,24 @@
     }
 
     .collapse-indicator {
-      font-size: 10px;
+      display: grid;
+      place-items: center;
       width: 1em;
       height: 1em;
-      position: relative;
-      display: inline-block;
       opacity: 0.66;
 
-      &::before,
-      &::after {
-        content: "";
-        position: absolute;
-        width: 1em;
-        height: .16em;
-        top: calc((1em / 2) - .08em);
-        background-color: black;
-        border-radius: 0.03em;
+      &, > .horizontal {
         transition: 0.3s ease-in-out all;
-      }
-
-      &::after {
-        transform: rotate(90deg);
+        transform-origin: center center;
       }
     }
 
     &[aria-expanded="true"] {
       >.collapse-indicator {
-        &::after {
-          transform: rotate(180deg);
-        }
+        transform: rotate(-90deg);
 
-        &::before {
-          transform: rotate(90deg) scale(0);
+        .horizontal {
+          transform: scale(0);
         }
       }
     }
