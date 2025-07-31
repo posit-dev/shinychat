@@ -96,9 +96,6 @@ class ShinyToolCard extends LitElement {
         >
           ${bodyContent}
         </div>
-        <script data-bslib-card-init>
-          bslib.Card.initializeAllCards()
-        </script>
       </div>
     `
   }
