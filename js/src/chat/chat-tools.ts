@@ -70,9 +70,6 @@ class ShinyToolCard extends LitElement {
     return html`
       <div
         class="shiny-tool-card card bslib-card bslib-mb-spacing html-fill-item html-fill-container m-0"
-        data-bslib-card-init
-        data-require-bs-caller="chat_ui()"
-        data-require-bs-version="5"
       >
         <button
           class="card-header"
