@@ -85,70 +85,36 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     )
   }
 
-  display_props <- tool_result_display(content)
-  props$value <- display_props$value
-  props$value_type <- display_props$value_type
-
+  props <- list2(!!!props, !!!tool_result_display(content))
   names(props) <- gsub("_", "-", names(props))
 
-  htmltools::tag(
-    "shiny-tool-result",
-    compact(list2(!!!props, display_props$deps, icon_deps))
-  )
+  htmltools::tag("shiny-tool-result", list2(!!!props, icon_deps))
 }
 
 tool_result_display <- function(content) {
-  # Default fallback
-  res <- list(
-    value = tool_string(content),
-    value_type = "code",
-    deps = NULL
-  )
-
-  if (tool_errored(content)) {
-    return(res)
-  }
-
-  # Get display from extra data attached to the result
   display <- content@extra$display
 
-  # If no display, return code value
-  if (is.null(display)) {
-    return(res)
+  if (tool_errored(content) || is.null(display)) {
+    return(list(value = tool_string(content), value_type = "code"))
   }
 
-  is_html <-
-    inherits(display, c("html", "shiny.tag", "shiny.tag.list")) ||
-    (is.list(display) && !is.null(display$html))
-
-  if (is_html) {
-    html <- list(
-      value = format(display),
-      value_type = "html",
-      deps = htmltools::findDependencies(display)
-    )
-    return(html)
+  if (inherits(display, c("html", "shiny.tag", "shiny.tag.list"))) {
+    return(list(value = display, value_type = "html"))
   }
 
-  is_md <-
-    is.character(display) ||
-    (is.list(display) && !is.null(display$markdown))
-
-  if (is_md) {
-    md <- list(
-      value = paste(display, collapse = "\n"),
-      value_type = "markdown",
-      deps = NULL
-    )
-    return(md)
+  if (is.character(display)) {
+    return(list(value = tool_string(content), value_type = "markdown"))
   }
 
-  if (is.list(display) && !is.null(display$text)) {
-    res$value <- display$text
-    res$value_type <- "text"
+  if (is.list(display)) {
+    has_type <- intersect(c("html", "markdown", "text"), names(display))
+    if (length(has_type) > 0) {
+      value_type <- has_type[1]
+      return(list(value = display[[value_type]], value_type = value_type))
+    }
   }
 
-  res
+  list(value = tool_string(content), value_type = "code")
 }
 
 # Copied from
