@@ -47,6 +47,12 @@ S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
 }
 
 S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
+  if (is.null(content@request)) {
+    cli::cli_abort(
+      "`ContentToolResult` objects must have an associated `@request` property."
+    )
+  }
+
   # Prepare base props
   props <- list(
     request_id = content@request@id,
