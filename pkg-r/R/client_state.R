@@ -88,7 +88,35 @@ method(client_set_ui, S7::new_S3_class(c("Chat", "R6"))) <-
 
     msgs <- contents_shinychat(client)
     lapply(msgs, function(x) {
-      chat_append(id, x$content, role = x$role)
+      is_list <- is.list(x$content) &&
+        !inherits(x$content, c("shiny.tag", "shiny.taglist"))
+
+      if (is_list) {
+        chat_append_message(
+          id,
+          msg = list(role = x$role, content = ""),
+          operation = "append",
+          chunk = "start",
+        )
+
+        for (content_part in x$content) {
+          chat_append_message(
+            id,
+            msg = list(role = x$role, content = content_part),
+            operation = "append",
+            chunk = TRUE,
+          )
+        }
+
+        chat_append_message(
+          id,
+          msg = list(role = x$role, content = ""),
+          operation = "append",
+          chunk = "end",
+        )
+      } else {
+        chat_append(id, x$content, role = x$role)
+      }
     })
   }
 
