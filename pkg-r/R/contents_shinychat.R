@@ -57,7 +57,7 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     request_id = content@request@id,
     request_call = format(content@request, show = "call"),
     name = content@request@name,
-    status = if (!is.null(content@error)) "error" else "success",
+    status = if (tool_errored(content)) "error" else "success",
     show_request = tolower(!isFALSE(content@extra$display_tool_request))
   )
 
@@ -93,13 +93,12 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
 tool_result_display <- function(content) {
   # Default fallback
   res <- list(
-    value = content@value,
+    value = tool_string(content),
     value_type = "code",
     deps = NULL
   )
 
-  if (!is.null(content@error)) {
-    res$value <- strip_ansi(content@error)
+  if (tool_errored(content)) {
     return(res)
   }
 
@@ -143,6 +142,27 @@ tool_result_display <- function(content) {
   }
 
   res
+}
+
+# Copied from
+# https://github.com/tidyverse/ellmer/blob/11cf1696/R/content.R#L292-L308
+tool_errored <- function(x) !is.null(x@error)
+tool_error_string <- function(x) {
+  if (inherits(x@error, "condition")) conditionMessage(x@error) else x@error
+}
+tool_string <- function(x) {
+  if (tool_errored(x)) {
+    # Changed from original: if tool errored, just return the error message
+    strip_ansi(tool_error_string(x))
+  } else if (inherits(x@value, "AsIs")) {
+    x@value
+  } else if (inherits(x@value, "json")) {
+    x@value
+  } else if (is.character(x@value)) {
+    paste(x@value, collapse = "\n")
+  } else {
+    jsonlite::toJSON(x@value, auto_unbox = TRUE)
+  }
 }
 
 
