@@ -1,14 +1,14 @@
 # Chat component markup
 
     Code
-      cat(format(output_markdown_stream("stream")))
+      output_markdown_stream("stream")
     Output
       <shiny-markdown-stream id="stream" style="width:min(680px, 100%);height:auto;margin:0 auto;" content="" content-type="markdown" auto-scroll="TRUE"></shiny-markdown-stream>
 
 ---
 
     Code
-      cat(format(output_markdown_stream("stream", content = "Foo\nBar")))
+      output_markdown_stream("stream", content = "Foo\nBar")
     Output
       <shiny-markdown-stream id="stream" style="width:min(680px, 100%);height:auto;margin:0 auto;" content="Foo&#10;Bar" content-type="markdown" auto-scroll="TRUE"></shiny-markdown-stream>
 
