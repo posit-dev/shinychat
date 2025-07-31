@@ -34,21 +34,15 @@ S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
   props <- list(
     "request-id" = content@id,
     name = content@name,
-    arguments = jsonlite::toJSON(content@arguments, auto_unbox = TRUE)
+    arguments = jsonlite::toJSON(content@arguments, auto_unbox = TRUE),
+    intent = content@arguments$.intent
   )
 
-  # Add optional title if present in tool annotations
   tool <- content@tool
-  if (!is.null(tool) && !is.null(tool@annotations$title)) {
-    props$title <- content@tool@annotations$title
+  if (!is.null(tool)) {
+    props$title <- tool@annotations$title
   }
 
-  # Add optional intent if present in request arguments
-  if (!is.null(content@arguments$.intent)) {
-    props$intent <- content@arguments$.intent
-  }
-
-  # Return structured tag
   htmltools::tag("shiny-tool-request", props)
 }
 
@@ -59,7 +53,8 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     request_call = "",
     name = content@request@name,
     status = if (tool_errored(content)) "error" else "success",
-    show_request = tolower(!isFALSE(content@extra$display_tool_request))
+    show_request = tolower(!isFALSE(content@extra$display_tool_request)),
+    intent = content@request@arguments$.intent
   )
 
   icon_deps <- NULL
@@ -69,16 +64,9 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     # Format fails if tool is not present (ellmer v0.3.0, tidyverse/ellmer#691)
     props$request_call <- format(content@request, show = "call")
 
-    # Add optional title if present
-    if (!is.null(tool@annotations$title)) {
-      props$title <- tool@annotations$title
-    }
-
-    # Add optional icon if present
-    if (!is.null(tool@annotations$icon)) {
-      props$icon <- tool@annotations$icon
-      icon_deps <- htmltools::findDependencies(props$icon)
-    }
+    props$title <- tool@annotations$title
+    props$icon <- tool@annotations$icon
+    icon_deps <- htmltools::findDependencies(props$icon)
   } else {
     props$request_call <- jsonlite::toJSON(
       list(
@@ -89,11 +77,6 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
       auto_unbox = TRUE,
       pretty = 2
     )
-  }
-
-  # Add optional intent if present
-  if (!is.null(content@request@arguments$.intent)) {
-    props$intent <- content@request@arguments$.intent
   }
 
   display_props <- tool_result_display(content)
