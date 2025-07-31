@@ -58,10 +58,17 @@
 #' }
 #'
 #' @param client A chat object created by \pkg{ellmer}, e.g.
-#'   [ellmer::chat_openai()] and friends.
+#'   [ellmer::chat_openai()] and friends. This argument is deprecated in
+#'   `chat_mod_ui()` because the client state is now managed by
+#'   `chat_mod_server()`.
 #' @param ... In `chat_app()`, additional arguments are passed to
 #'   [shiny::shinyApp()]. In `chat_mod_ui()`, additional arguments are passed to
 #'   [chat_ui()].
+#' @param bookmark_store The bookmarking store to use for the app. Passed to
+#'   `enable_bookmarking` in [shiny::shinyApp()]. Defaults to `"url"`, which
+#'   uses the URL to store the chat state. URL-based bookmarking is limited in
+#'   size; use `"server"` to store the state on the server side without size
+#'   limitations; or disable bookmarking by setting this to `"disable"`.
 #'
 #' @returns
 #'   * `chat_app()` returns a [shiny::shinyApp()] object.
@@ -73,12 +80,12 @@
 #'   app is suitable for interactive use by a single user; do not use
 #'   `chat_app()` in a multi-user Shiny app context.
 #' @export
-chat_app <- function(client, ...) {
+chat_app <- function(client, ..., bookmark_store = "url") {
   check_ellmer_chat(client)
 
   ui <- function(req) {
     bslib::page_fillable(
-      chat_mod_ui("chat", client = client, height = "100%"),
+      chat_mod_ui("chat", height = "100%"),
       shiny::actionButton(
         "close_btn",
         label = "",
@@ -96,7 +103,7 @@ chat_app <- function(client, ...) {
     })
   }
 
-  shiny::shinyApp(ui, server, ...)
+  shiny::shinyApp(ui, server, ..., enableBookmarking = bookmark_store)
 }
 
 check_ellmer_chat <- function(client) {
@@ -107,34 +114,25 @@ check_ellmer_chat <- function(client) {
 
 #' @describeIn chat_app A simple chat app module UI.
 #' @param id The chat module ID.
-#' @param messages Initial messages shown in the chat, used when `client` is not
-#'   provided or when the chat `client` doesn't already contain turns. Passed to
-#'   `messages` in [chat_ui()].
+#' @param messages Initial messages shown in the chat, used only when `client`
+#'   (in `chat_mod_ui()`) doesn't already contain turns. Passed to `messages`
+#'   in [chat_ui()].
 #' @export
-chat_mod_ui <- function(id, ..., client = NULL, messages = NULL) {
-  if (!is.null(client)) {
-    check_ellmer_chat(client)
-
-    client_msgs <- map(client$get_turns(), function(turn) {
-      content <- ellmer::contents_markdown(turn)
-      if (is.null(content) || identical(content, "")) {
-        return(NULL)
-      }
-      list(role = turn@role, content = content)
-    })
-    client_msgs <- compact(client_msgs)
-
-    if (length(client_msgs)) {
-      if (!is.null(messages)) {
-        warn(
-          "`client` was provided and has initial messages, `messages` will be ignored."
-        )
-      }
-      messages <- client_msgs
-    }
+chat_mod_ui <- function(
+  id,
+  ...,
+  client = deprecated(),
+  messages = NULL
+) {
+  if (lifecycle::is_present(client)) {
+    lifecycle::deprecate_warn(
+      "0.3.0",
+      "chat_mod_ui(client = )",
+      "chat_mod_server(client = )"
+    )
   }
 
-  shinychat::chat_ui(
+  chat_ui(
     shiny::NS(id, "chat"),
     messages = messages,
     ...
@@ -142,8 +140,14 @@ chat_mod_ui <- function(id, ..., client = NULL, messages = NULL) {
 }
 
 #' @describeIn chat_app A simple chat app module server.
+#' @inheritParams chat_restore
 #' @export
-chat_mod_server <- function(id, client) {
+chat_mod_server <- function(
+  id,
+  client,
+  bookmark_on_input = TRUE,
+  bookmark_on_response = TRUE
+) {
   check_ellmer_chat(client)
 
   append_stream_task <- shiny::ExtendedTask$new(
@@ -158,6 +162,14 @@ chat_mod_server <- function(id, client) {
   )
 
   shiny::moduleServer(id, function(input, output, session) {
+    chat_restore(
+      "chat",
+      client,
+      session = session,
+      bookmark_on_input = bookmark_on_input,
+      bookmark_on_response = bookmark_on_response
+    )
+
     shiny::observeEvent(input$chat_user_input, {
       append_stream_task$invoke(
         client,

@@ -50,4 +50,4 @@ reference:
 
 - title: Bookmark chat history
   contents:
-  - chat_enable_bookmarking
+  - chat_restore
