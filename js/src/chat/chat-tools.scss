@@ -75,35 +75,40 @@
     }
 
     .collapse-indicator {
-      --_size: 10px;
-      --_thickness: 2px;
-      --_transition-duration: 0.2s;
-      display: grid;
-      place-items: center;
-      grid-template-columns: 1fr;
-      grid-template-rows: 1fr;
-      width: var(--_size);
-      transition: transform var(--_transition-duration) ease-in-out;
+      font-size: 10px;
+      width: 1em;
+      height: 1em;
+      position: relative;
+      display: inline-block;
+      opacity: 0.66;
+
+      &::before,
+      &::after {
+        content: "";
+        position: absolute;
+        width: 1em;
+        height: .16em;
+        top: calc((1em / 2) - .08em);
+        background-color: black;
+        border-radius: 0.03em;
+        transition: 0.3s ease-in-out all;
+      }
+
+      &::after {
+        transform: rotate(90deg);
+      }
     }
 
-    .collapse-indicator-bar {
-      grid-column: 1/2;
-      grid-row: 1/2;
-      width: var(--_size);
-      height: var(--_thickness);
-      background-color: var(--bs-emphasis-color);
-      border-radius: var(--_size);
-      transition: transform var(--_transition-duration) ease-in-out,
-        width var(--_transition-duration) linear;
-      transform-origin: center center;
-    }
+    &[aria-expanded="true"] {
+      >.collapse-indicator {
+        &::after {
+          transform: rotate(180deg);
+        }
 
-    .collapse-indicator-bar:first-child {
-      transform: rotate(90deg);
-    }
-
-    &[aria-expanded="true"] .collapse-indicator-bar:last-child {
-      width: 0;
+        &::before {
+          transform: rotate(90deg) scale(0);
+        }
+      }
     }
   }
 
@@ -140,8 +145,8 @@ shiny-tool-request {
   }
 }
 
-shiny-tool-result + p,
-shiny-tool-request + p {
+shiny-tool-result+p,
+shiny-tool-request+p {
   margin-top: 1rem;
 }
 

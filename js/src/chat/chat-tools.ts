@@ -82,10 +82,7 @@ class ShinyToolCard extends LitElement {
           aria-controls="${contentId}"
         >
           ${headerContent}
-          <div class="collapse-indicator">
-            <div class="collapse-indicator-bar"></div>
-            <div class="collapse-indicator-bar"></div>
-          </div>
+          <div class="collapse-indicator"></div>
         </button>
         <div
           class="card-body bslib-gap-spacing html-fill-item html-fill-container${this

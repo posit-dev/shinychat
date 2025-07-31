@@ -70,10 +70,7 @@ Please report this to https://github.com/markedjs/marked.`,e){let r="<p>An error
           aria-controls="`,`"
         >
           `,`
-          <div class="collapse-indicator">
-            <div class="collapse-indicator-bar"></div>
-            <div class="collapse-indicator-bar"></div>
-          </div>
+          <div class="collapse-indicator"></div>
         </button>
         <div
           class="card-body bslib-gap-spacing html-fill-item html-fill-container`,`"
