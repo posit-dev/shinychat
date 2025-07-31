@@ -62,7 +62,9 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     show_request = tolower(!isFALSE(content@extra$display_tool_request))
   )
 
+  icon_deps <- NULL
   tool <- content@request@tool
+
   if (!is.null(tool)) {
     # Format fails if tool is not present (ellmer v0.3.0, tidyverse/ellmer#691)
     props$request_call <- format(content@request, show = "call")
@@ -73,7 +75,6 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     }
 
     # Add optional icon if present
-    icon_deps <- NULL
     if (!is.null(tool@annotations$icon)) {
       props$icon <- tool@annotations$icon
       icon_deps <- htmltools::findDependencies(props$icon)
