@@ -1,7 +1,7 @@
 # Chat component markup
 
     Code
-      chat_ui("chat")
+      cat(format(chat_ui("chat")))
     Output
       <shiny-chat-container class="html-fill-item html-fill-container" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill id="chat" placeholder="Enter a message..." style="width:min(680px, 100%);height:auto;">
         <shiny-chat-messages></shiny-chat-messages>
@@ -11,7 +11,7 @@
 ---
 
     Code
-      chat_ui("chat", messages = list("Foo", "Bar"))
+      cat(format(chat_ui("chat", messages = list("Foo", "Bar"))))
     Output
       <shiny-chat-container class="html-fill-item html-fill-container" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill id="chat" placeholder="Enter a message..." style="width:min(680px, 100%);height:auto;">
         <shiny-chat-messages>
@@ -24,8 +24,8 @@
 ---
 
     Code
-      chat_ui("chat", messages = list(list(content = "Assistant", role = "assistant"),
-      list(content = "User", role = "user")))
+      cat(format(chat_ui("chat", messages = list(list(content = "Assistant", role = "assistant"),
+      list(content = "User", role = "user")))))
     Output
       <shiny-chat-container class="html-fill-item html-fill-container" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill id="chat" placeholder="Enter a message..." style="width:min(680px, 100%);height:auto;">
         <shiny-chat-messages>
@@ -38,7 +38,7 @@
 ---
 
     Code
-      chat_ui("chat", messages = list(div("Hello"), span("world")))
+      cat(format(chat_ui("chat", messages = list(div("Hello"), span("world")))))
     Output
       <shiny-chat-container class="html-fill-item html-fill-container" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill id="chat" placeholder="Enter a message..." style="width:min(680px, 100%);height:auto;">
         <shiny-chat-messages>

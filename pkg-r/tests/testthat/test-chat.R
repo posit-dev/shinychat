@@ -1,30 +1,32 @@
 library(htmltools)
 
 test_that("Chat component markup", {
-  expect_snapshot(chat_ui("chat"))
+  expect_snapshot(
+    cat(format(chat_ui("chat")))
+  )
 
   expect_snapshot({
-    chat_ui("chat", messages = list("Foo", "Bar"))
+    cat(format(chat_ui("chat", messages = list("Foo", "Bar"))))
   })
 
   expect_snapshot({
-    chat_ui(
+    cat(format(chat_ui(
       "chat",
       messages = list(
         list(content = "Assistant", role = "assistant"),
         list(content = "User", role = "user")
       )
-    )
+    )))
   })
 
   expect_snapshot({
-    chat_ui(
+    cat(format(chat_ui(
       "chat",
       messages = list(
         div("Hello"),
         span("world")
       )
-    )
+    )))
   })
 
   expect_snapshot({
