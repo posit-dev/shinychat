@@ -192,8 +192,23 @@ S7::method(contents_shinychat, ellmer::Turn) <- function(content) {
 S7::method(contents_shinychat, S7::new_S3_class(c("Chat", "R6"))) <- function(
   content
 ) {
+  tools <- content$get_tools()
+
   # Process turns with tool request/result consolidation
   turns <- map(content$get_turns(), function(turn) {
+    turn@contents <- map(turn@contents, function(x) {
+      if (!S7::S7_inherits(x, ellmer::ContentToolResult)) {
+        return(x)
+      }
+      if (!is.null(x@request@tool)) {
+        return(x)
+      }
+      if (x@request@name %in% names(tools)) {
+        x@request@tool <- tools[[x@request@name]]
+      }
+      x
+    })
+
     # Turns containing only tool results are converted into assistant turns
     if (every(turn@contents, S7::S7_inherits, ellmer::ContentToolResult)) {
       turn@role <- "assistant"
@@ -207,6 +222,7 @@ S7::method(contents_shinychat, S7::new_S3_class(c("Chat", "R6"))) <- function(
       ellmer::ContentToolRequest
     )
     turn@contents <- turn@contents[!is_tool_request]
+
     turn
   })
 
