@@ -154,7 +154,11 @@ export class ShinyToolRequest extends ShinyToolCard {
       ></shiny-markdown-stream>
     `
 
-    return this.renderCard(bodyContent)
+    return this.renderCard(
+      html`<div class="shiny-tool-request__arguments">
+        <strong>Tool arguments</strong> ${bodyContent}
+      </div>`,
+    )
   }
 }
 
