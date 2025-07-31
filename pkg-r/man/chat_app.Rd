@@ -6,25 +6,42 @@
 \alias{chat_mod_server}
 \title{Open a live chat application in the browser}
 \usage{
-chat_app(client, ...)
+chat_app(client, ..., bookmark_store = "url")
 
-chat_mod_ui(id, ..., client = NULL, messages = NULL)
+chat_mod_ui(id, ..., client = deprecated(), messages = NULL)
 
-chat_mod_server(id, client)
+chat_mod_server(
+  id,
+  client,
+  bookmark_on_input = TRUE,
+  bookmark_on_response = TRUE
+)
 }
 \arguments{
 \item{client}{A chat object created by \pkg{ellmer}, e.g.
-\code{\link[ellmer:chat_openai]{ellmer::chat_openai()}} and friends.}
+\code{\link[ellmer:chat_openai]{ellmer::chat_openai()}} and friends. This argument is deprecated in
+\code{chat_mod_ui()} because the client state is now managed by
+\code{chat_mod_server()}.}
 
 \item{...}{In \code{chat_app()}, additional arguments are passed to
 \code{\link[shiny:shinyApp]{shiny::shinyApp()}}. In \code{chat_mod_ui()}, additional arguments are passed to
 \code{\link[=chat_ui]{chat_ui()}}.}
 
+\item{bookmark_store}{The bookmarking store to use for the app. Passed to
+\code{enable_bookmarking} in \code{\link[shiny:shinyApp]{shiny::shinyApp()}}. Defaults to \code{"url"}, which
+uses the URL to store the chat state. URL-based bookmarking is limited in
+size; use \code{"server"} to store the state on the server side without size
+limitations; or disable bookmarking by setting this to \code{"disable"}.}
+
 \item{id}{The chat module ID.}
 
-\item{messages}{Initial messages shown in the chat, used when \code{client} is not
-provided or when the chat \code{client} doesn't already contain turns. Passed to
-\code{messages} in \code{\link[=chat_ui]{chat_ui()}}.}
+\item{messages}{Initial messages shown in the chat, used only when \code{client}
+(in \code{chat_mod_ui()}) doesn't already contain turns. Passed to \code{messages}
+in \code{\link[=chat_ui]{chat_ui()}}.}
+
+\item{bookmark_on_input}{A logical value determines if the bookmark should be updated when the user submits a message. Default is \code{TRUE}.}
+
+\item{bookmark_on_response}{A logical value determines if the bookmark should be updated when the response stream completes. Default is \code{TRUE}.}
 }
 \value{
 \itemize{

@@ -2,10 +2,11 @@
 "_PACKAGE"
 
 ## usethis namespace: start
-#' @importFrom coro async
-#' @importFrom htmltools tag css HTML
 #' @import rlang
 #' @import S7
+#' @importFrom coro async
+#' @importFrom htmltools tag css HTML
+#' @importFrom lifecycle deprecated
 ## usethis namespace: end
 NULL
 

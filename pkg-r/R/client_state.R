@@ -23,8 +23,7 @@ method(client_get_state, S7::new_S3_class(c("Chat", "R6"))) <-
     # Instead, save only the `turns` information
     recorded_turns <- lapply(
       client$get_turns(),
-      ellmer::contents_record,
-      chat = client
+      ellmer::contents_record
     )
 
     if (is_url_bookmarkstore()) {
@@ -75,7 +74,7 @@ method(client_set_state, S7::new_S3_class(c("Chat", "R6"))) <-
     replayed_turns <- lapply(
       recorded_turns,
       ellmer::contents_replay,
-      chat = client
+      tools = client$get_tools()
     )
 
     client$set_turns(replayed_turns)
@@ -86,15 +85,10 @@ method(client_set_ui, S7::new_S3_class(c("Chat", "R6"))) <-
   function(client, ..., id) {
     # TODO-future: Disable bookmarking when restoring. Leverage `tryCatch(finally={})`
     # TODO-barret-future; In shinychat, make this a single/internal custom message call to send all the messages at once (and then scroll)
-    lapply(client$get_turns(), function(turn) {
-      chat_append(
-        id,
-        # Use `contents_markdown()` as it handles image serialization
-        # TODO: Use `contents_shinychat()` from posit-dev/shinychat#52
-        ellmer::contents_markdown(turn),
-        #  turn_info$contents,
-        role = turn@role
-      )
+
+    msgs <- contents_shinychat(client)
+    lapply(msgs, function(x) {
+      chat_append(id, x$content, role = x$role)
     })
   }
 

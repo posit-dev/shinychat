@@ -1,7 +1,8 @@
 #' Add Shiny bookmarking for shinychat
 #'
 #' @description
-#' Adds Shiny bookmarking hooks to save and restore the \pkg{ellmer} chat `client`.
+#' Adds Shiny bookmarking hooks to save and restore the \pkg{ellmer} chat
+#' `client`. Also restores chat messages from the history in the `client`.
 #'
 #' If either `bookmark_on_input` or `bookmark_on_response` is `TRUE`, the Shiny
 #' App's bookmark will be automatically updated without showing a modal to the
@@ -12,6 +13,10 @@
 #' transformation is applied in-between receiving and displaying the message),
 #' then you may need to implement your own `session$onRestore()` (and possibly
 #' `session$onBookmark`) handler to restore any additional state.
+#'
+#' To avoid restoring chat history from the `client`, you can ensure that the
+#' history is empty by calling `client$set_turns(list())` before passing the
+#' client to `chat_restore()`.
 #'
 #' @param id The ID of the chat element
 #' @param client The \pkg{ellmer} LLM chat client.
@@ -39,7 +44,7 @@
 #'     echo = TRUE
 #'   )
 #'   # Update bookmark to chat on user submission and completed response
-#'   chat_enable_bookmarking("chat", chat_client)
+#'   chat_restore("chat", chat_client)
 #'
 #'   observeEvent(input$chat_user_input, {
 #'     stream <- chat_client$stream_async(input$chat_user_input)
@@ -50,7 +55,7 @@
 #' # Enable bookmarking!
 #' shinyApp(ui, server, enableBookmarking = "server")
 #' @export
-chat_enable_bookmarking <- function(
+chat_restore <- function(
   id,
   client,
   ...,
@@ -72,23 +77,12 @@ chat_enable_bookmarking <- function(
 
   if (is.null(session)) {
     rlang::abort(
-      "A `session` must be provided. Be sure to call `chat_enable_bookmarking()` where a session context is available."
+      "A `session` must be provided. Be sure to call `chat_restore()` where a session context is available."
     )
   }
 
   # Verify bookmark store is not disabled. Bookmark options: "disable", "url", "server"
   bookmark_store <- shiny::getShinyOption("bookmarkStore", "disable")
-  # TODO: Q - I feel this should be removed. Since we are only adding hooks, it doesn't matter if it's enabled or not. If the user diables chat, it would be very annoying to receive error messages for code they may not own.
-  if (bookmark_store == "disable") {
-    rlang::abort(
-      paste0(
-        "Error: Shiny bookmarking is not enabled. ",
-        "Please enable bookmarking in your Shiny app either by calling ",
-        "`shiny::enableBookmarking(\"server\")` or by setting the parameter in ",
-        "`shiny::shinyApp(enableBookmarking = \"server\")`"
-      )
-    )
-  }
 
   # Exclude works with bookmark names
   excluded_names <- session$getBookmarkExclude()
@@ -115,6 +109,11 @@ chat_enable_bookmarking <- function(
       state$values[[id]] <- client_state
     })
 
+  cancel_set_ui <- shiny::observe({
+    client_set_ui(client, id = id)
+    cancel_set_ui$destroy()
+  })
+
   # Restore
   cancel_on_restore_client <-
     session$onRestore(function(state) {
@@ -123,11 +122,14 @@ chat_enable_bookmarking <- function(
         return()
       }
 
+      cancel_set_ui$destroy()
       client_set_state(client, client_state)
 
       # Set the UI
-      chat_clear(id)
-      client_set_ui(client, id = id)
+      shiny::withReactiveDomain(session, {
+        chat_clear(id)
+        client_set_ui(client, id = id)
+      })
     })
 
   # Update URL
@@ -151,13 +153,15 @@ chat_enable_bookmarking <- function(
   cancel_update_bookmark <- NULL
   if (bookmark_on_input || bookmark_on_response) {
     cancel_update_bookmark <-
-      # Update the query string when bookmarked
-      shiny::onBookmarked(function(url) {
-        shiny::updateQueryString(url)
+      shiny::withReactiveDomain(session$rootScope(), {
+        # Update the query string when bookmarked
+        shiny::onBookmarked(function(url) {
+          shiny::updateQueryString(url)
+        })
       })
   }
 
-  # Set callbacks to cancel if `chat_enable_bookmarking(id, client)` is called again with the same id
+  # Set callbacks to cancel if `chat_restore(id, client)` is called again with the same id
   # Only allow for bookmarks for each chat once. Last bookmark method would win if all values were to be computed.
   # Remove previous `on*()` methods under same hash (.. odd author behavior)
   previous_info <- get_session_chat_bookmark_info(session, id)
@@ -169,7 +173,7 @@ chat_enable_bookmarking <- function(
     }
   }
 
-  # Store callbacks to cancel in case a new call to `chat_enable_bookmarking(id, client)` is called with the same id
+  # Store callbacks to cancel in case a new call to `chat_restore(id, client)` is called with the same id
   set_session_chat_bookmark_info(
     session,
     id,
@@ -205,7 +209,7 @@ chat_update_bookmark <- function(
   prom <-
     promises::then(stream_promise, function(stream) {
       # Force a bookmark update when the stream ends!
-      session$doBookmark()
+      shiny::isolate(session$doBookmark())
     })
 
   return(prom)
