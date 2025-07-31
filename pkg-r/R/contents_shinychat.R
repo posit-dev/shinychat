@@ -38,7 +38,8 @@ S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
   )
 
   # Add optional title if present in tool annotations
-  if (!is.null(content@tool@annotations$title)) {
+  tool <- content@tool
+  if (!is.null(tool) && !is.null(tool@annotations$title)) {
     props$title <- content@tool@annotations$title
   }
 
@@ -55,22 +56,38 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
   # Prepare base props
   props <- list(
     request_id = content@request@id,
-    request_call = format(content@request, show = "call"),
+    request_call = "",
     name = content@request@name,
     status = if (tool_errored(content)) "error" else "success",
     show_request = tolower(!isFALSE(content@extra$display_tool_request))
   )
 
-  # Add optional title if present
-  if (!is.null(content@request@tool@annotations$title)) {
-    props$title <- content@request@tool@annotations$title
-  }
+  tool <- content@request@tool
+  if (!is.null(tool)) {
+    # Format fails if tool is not present (ellmer v0.3.0, tidyverse/ellmer#691)
+    props$request_call <- format(content@request, show = "call")
 
-  # Add optional icon if present
-  icon_deps <- NULL
-  if (!is.null(content@request@tool@annotations$icon)) {
-    props$icon <- content@request@tool@annotations$icon
-    icon_deps <- htmltools::findDependencies(props$icon)
+    # Add optional title if present
+    if (!is.null(tool@annotations$title)) {
+      props$title <- tool@annotations$title
+    }
+
+    # Add optional icon if present
+    icon_deps <- NULL
+    if (!is.null(tool@annotations$icon)) {
+      props$icon <- tool@annotations$icon
+      icon_deps <- htmltools::findDependencies(props$icon)
+    }
+  } else {
+    props$request_call <- jsonlite::toJSON(
+      list(
+        id = content@request@id,
+        name = content@request@name,
+        arguments = content@request@arguments
+      ),
+      auto_unbox = TRUE,
+      pretty = 2
+    )
   }
 
   # Add optional intent if present
