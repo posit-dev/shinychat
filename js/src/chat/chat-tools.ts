@@ -225,6 +225,10 @@ export class ShinyToolResult extends ShinyToolCard {
       ></shiny-markdown-stream>`
     }
 
+    if (!this.showRequest && this.valueType === "html") {
+      return result
+    }
+
     const resultHeader = this.showRequest
       ? html`<strong>Tool result</strong> `
       : ""
