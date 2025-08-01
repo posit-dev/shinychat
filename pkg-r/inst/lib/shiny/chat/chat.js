@@ -8,7 +8,7 @@ var gs=Object.defineProperty;var _s=Object.getOwnPropertyDescriptor;var g=(i,t,e
       ${this.intent?y`<div class="tool-intent">${this.intent}</div>`:""}
     `;return y`
       <div
-        class="shiny-tool-card card bslib-card bslib-mb-spacing html-fill-item html-fill-container m-0"
+        class="shiny-tool-card card bslib-card html-fill-item html-fill-container m-0"
       >
         <button
           class="card-header"
