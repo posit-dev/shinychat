@@ -182,61 +182,63 @@ class MarkdownElement extends LightElement {
   #appendStreamingDot(): void {
     this.#removeStreamingDot()
 
-    const isTextOrElement = (node: Node): node is Element | Text => {
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        return true
-      }
-      if (node.nodeType !== Node.TEXT_NODE || !node.textContent) {
-        return false
-      }
-      // Text node with some text!
-      return node.textContent.trim().length > 0
-    }
+    const hasText = (node: Text): boolean => /\S/.test(node.textContent || "")
 
+    // We go into these elements to find the innermost streaming element
+    const recurseInto = new Set(["p", "div", "pre", "ul", "ol"])
+    // We can put the dot in these kinds of containers
+    const inlineContainers = new Set([
+      "p",
+      "h1",
+      "h2",
+      "h3",
+      "h4",
+      "h5",
+      "h6",
+      "li",
+      "code",
+    ])
+
+    /**
+     * Find the innermost element where streaming is happening, i.e. where the
+     * streaming is appending new content.
+     */
     const findInnermostStreamingElement = (element: Element): Element => {
-      const children = Array.from(element.childNodes)
-      if (children.length === 0) return element
+      let current = element
 
-      let lastChild = children.pop()
-      if (!lastChild) return element
+      while (true) {
+        const children = current.childNodes
 
-      while (!isTextOrElement(lastChild)) {
-        // If the last child isn't an element or text node with text, we skip it
-        lastChild = children.pop()
-        if (!lastChild) return element
+        let lastMeaningfulChild: Node | null = null
+
+        // Find last meaningful child
+        for (let i = children.length - 1; i >= 0; i--) {
+          const child = children[i]
+          if (!child) break
+          if (
+            child.nodeType === Node.ELEMENT_NODE ||
+            (child.nodeType === Node.TEXT_NODE && hasText(child as Text))
+          ) {
+            lastMeaningfulChild = child
+            break
+          }
+        }
+
+        if (!lastMeaningfulChild || !(lastMeaningfulChild instanceof Element)) {
+          // If no meaningful child, or last child is a text node, streaming
+          // is happening the `current` element.
+          return current
+        }
+
+        const tagName = lastMeaningfulChild.tagName.toLowerCase()
+
+        if (recurseInto.has(tagName)) {
+          current = lastMeaningfulChild
+          continue // Keep drilling down to find innermost streaming element
+        }
+
+        return inlineContainers.has(tagName) ? lastMeaningfulChild : current
       }
-
-      if (!(lastChild instanceof Element)) {
-        // Last child isn't an element, this is where streaming is happening
-        return element
-      }
-
-      const tagName = lastChild.tagName.toLowerCase()
-
-      // Drill down into certain nested elements
-      const recurseInto = ["p", "div", "pre", "ul", "ol"]
-      if (recurseInto.includes(tagName)) {
-        return findInnermostStreamingElement(lastChild)
-      }
-
-      // List of elements where it's okay to append the dot
-      const inlineContainers = [
-        "p",
-        "h1",
-        "h2",
-        "h3",
-        "h4",
-        "h5",
-        "h6",
-        "li",
-        "code",
-      ]
-
-      if (inlineContainers.includes(tagName)) {
-        return lastChild
-      }
-
-      return element
     }
 
     findInnermostStreamingElement(this).appendChild(SVG_DOT)
