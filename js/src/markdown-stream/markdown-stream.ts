@@ -182,19 +182,44 @@ class MarkdownElement extends LightElement {
   #appendStreamingDot(): void {
     this.#removeStreamingDot()
 
-    const findInnermost = (element: Element): Element => {
-      // Get the last child that's an element (not text/comment)
-      const lastChild = Array.from(element.children).pop()
+    const isTextOrElement = (node: Node): node is Element | Text => {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        return true
+      }
+      if (node.nodeType !== Node.TEXT_NODE || !node.textContent) {
+        return false
+      }
+      // Text node with some text!
+      return node.textContent.trim().length > 0
+    }
+
+    const findInnermostStreamingElement = (element: Element): Element => {
+      const children = Array.from(element.childNodes)
+      if (children.length === 0) return element
+
+      let lastChild = children.pop()
       if (!lastChild) return element
+
+      while (!isTextOrElement(lastChild)) {
+        // If the last child isn't an element or text node with text, we skip it
+        lastChild = children.pop()
+        if (!lastChild) return element
+      }
+
+      if (!(lastChild instanceof Element)) {
+        // Last child isn't an element, this is where streaming is happening
+        return element
+      }
 
       const tagName = lastChild.tagName.toLowerCase()
 
+      // Drill down into certain nested elements
       const recurseInto = ["p", "div", "pre", "ul", "ol"]
       if (recurseInto.includes(tagName)) {
-        return findInnermost(lastChild)
+        return findInnermostStreamingElement(lastChild)
       }
 
-      // List of elements that should contain inline content
+      // List of elements where it's okay to append the dot
       const inlineContainers = [
         "p",
         "h1",
@@ -214,8 +239,7 @@ class MarkdownElement extends LightElement {
       return element
     }
 
-    const targetElement = this.children.length ? findInnermost(this) : this
-    targetElement.appendChild(SVG_DOT)
+    findInnermostStreamingElement(this).appendChild(SVG_DOT)
   }
 
   #removeStreamingDot(): void {
