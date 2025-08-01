@@ -92,28 +92,12 @@ method(client_set_ui, S7::new_S3_class(c("Chat", "R6"))) <-
         !inherits(msg_turn$content, c("shiny.tag", "shiny.taglist"))
 
       if (is_list) {
-        chat_append_message(
-          id,
-          msg = list(role = msg_turn$role, content = ""),
-          operation = "append",
-          chunk = "start",
-        )
-
-        for (content_part in msg_turn$content) {
-          chat_append_message(
-            id,
-            msg = list(role = msg_turn$role, content = content_part),
-            operation = "append",
-            chunk = TRUE,
-          )
-        }
-
-        chat_append_message(
-          id,
-          msg = list(role = msg_turn$role, content = ""),
-          operation = "append",
-          chunk = "end",
-        )
+        stream <- coro::generator(function() {
+          for (x in msg_turn$content) {
+            coro::yield(x)
+          }
+        })
+        chat_append(id, stream, msg_turn$role)
       } else {
         chat_append(id, msg_turn$content, role = msg_turn$role)
       }
