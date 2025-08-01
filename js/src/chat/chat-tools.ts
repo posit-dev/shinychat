@@ -12,30 +12,72 @@ declare global {
 }
 
 /**
- * Base class for tool-related card components
+ * Base class for a collapsible tool request or result card component.
+ *
+ * @element shiny-tool-card
+ * @extends LitElement
  */
 class ShinyToolCard extends LitElement {
+  /**
+   * Unique identifier for the tool request or result. This value links a
+   * request to a result and is therefore not unique on the page.
+   * @property {string} requestId
+   * @attr request-id
+   */
   @property({ type: String, attribute: "request-id" })
   requestId!: string
 
+  /**
+   * Name of the tool being executed, e.g. `get_weather`.
+   * @property {string} name
+   */
   @property({ type: String })
   name!: string
 
+  /**
+   * Display title for the card. If not provided, falls back to `name`.
+   * @property {string} title
+   */
   @property({ type: String })
   title: string = ""
 
+  /**
+   * Optional intent description explaining the purpose of the tool execution.
+   * This value is shown in the card header with the class "tool-intent".
+   * @property {string | undefined} intent
+   */
   @property({ type: String })
   intent?: string
 
+  /**
+   * Controls whether the card content is expanded/visible.
+   * @property {boolean} expanded
+   * @attr expanded
+   * @default false
+   */
   @property({ type: Boolean, reflect: true })
   expanded = false
 
+  /**
+   * CSS class(es) to apply for status styling (e.g., "text-danger" for errors).
+   * @property {string} classStatus
+   */
   @property({ type: String })
   classStatus: string = ""
 
+  /**
+   * HTML content for the icon displayed in the card header.
+   * @property {string} icon
+   */
   @property({ type: String })
   icon: string = ""
 
+  /**
+   * Template string for formatting the card title. {title} is replaced with the
+   * actual title.
+   * @property {string} titleTemplate
+   * @default "{title}"
+   */
   @property({ type: String })
   titleTemplate: string = "{title}"
 
@@ -49,6 +91,10 @@ class ShinyToolCard extends LitElement {
     this.requestUpdate()
   }
 
+  /**
+   * Formats the title for display in the card header. Uses the `titleTemplate`,
+   * replacing `{title}` with the actual title or name of the tool.
+   */
   protected formatTitle() {
     let displayTitle = this.title || `${this.name}()`
     displayTitle = `<span class="tool-title-name">${displayTitle}</span>`
@@ -56,6 +102,11 @@ class ShinyToolCard extends LitElement {
     return html`${unsafeHTML(displayTitle)}`
   }
 
+  /**
+   * Renders the card with the provided body content.
+   * @param {TemplateResult} bodyContent - The content to display in the card
+   *   body.
+   */
   protected renderCard(bodyContent: TemplateResult) {
     const headerId = `tool-header-${this.requestId}`
     const contentId = `tool-content-${this.requestId}`
@@ -69,7 +120,7 @@ class ShinyToolCard extends LitElement {
 
     return html`
       <div
-        class="shiny-tool-card card bslib-card bslib-mb-spacing html-fill-item html-fill-container m-0"
+        class="shiny-tool-card card bslib-card html-fill-item html-fill-container m-0"
       >
         <button
           class="card-header"
@@ -102,11 +153,24 @@ class ShinyToolCard extends LitElement {
  * Web component that displays information about a tool request.
  *
  * @element shiny-tool-request
+ * @extends ShinyToolCard
  */
 export class ShinyToolRequest extends ShinyToolCard {
+  /**
+   * The function arguments as requested by the LLM, typically in JSON format.
+   * @property {string} arguments
+   * @attr
+   */
   @property({ type: String })
   arguments!: string
 
+  /**
+   * Controls the visibility of the tool request component.
+   * When true, the component is hidden from view.
+   * @property {boolean} hidden
+   * @attr
+   * @default false
+   */
   @property({ type: Boolean, reflect: true })
   hidden = false
 
@@ -160,20 +224,54 @@ export class ShinyToolRequest extends ShinyToolCard {
  * Web component that displays the result of a tool execution.
  *
  * @element shiny-tool-result
+ * @extends ShinyToolCard
+ * @fires shiny-tool-request-hide - Event fired to hide any corresponding tool
+ *   requests on the page.
  */
 export class ShinyToolResult extends ShinyToolCard {
+  /**
+   * The original tool call that generated this result. Used to display the tool
+   * invocation.
+   * @property {string | undefined} requestCall
+   * @attr request-call
+   */
   @property({ type: String, attribute: "request-call" })
   requestCall?: string
 
+  /**
+   * The status of the tool execution. When set to "error", displays in an error
+   * state with red text and an exclamation icon.
+   * @property {string} status
+   */
   @property({ type: String })
   status!: string
 
+  /**
+   * Should the tool request should be displayed alongside the result?
+   * @property {boolean} showRequest
+   * @attr show-request
+   * @default true
+   */
   @property({ type: Boolean, attribute: "show-request" })
   showRequest = true
 
+  /**
+   * The actual result content returned by the tool execution.
+   * @property {string} value
+   */
   @property({ type: String })
   value!: string
 
+  /**
+   * Specifies how the value should be rendered. Supported types:
+   * - "html": Renders the value as raw HTML
+   * - "text": Renders the value as plain text in a paragraph
+   * - "markdown": Renders the value as Markdown (default)
+   * - "code": Renders the value as a code block
+   * Any other value defaults to markdown rendering.
+   * @property {string} valueType
+   * @attr value-type
+   */
   @property({ type: String, attribute: "value-type" })
   valueType!: string
 
@@ -202,6 +300,9 @@ export class ShinyToolResult extends ShinyToolCard {
     )
   }
 
+  /**
+   * Renders the tool result content.
+   */
   #renderResult() {
     let result: string | TemplateResult = ""
 
@@ -236,6 +337,10 @@ export class ShinyToolResult extends ShinyToolCard {
     </div>`
   }
 
+  /**
+   * Renders the tool request call, if applicable.
+   * If the request call is long, it will be wrapped in a <details> element.
+   */
   #renderRequest() {
     if (!this.showRequest || !this.requestCall) {
       return ""
@@ -283,6 +388,15 @@ const ICONS = {
 </svg>`,
 }
 
+/**
+ * Formats a string as a Markdown code block with the specified language.
+ * Defaults to "markdown" if no language is provided.
+ *
+ * @param {string} content - The content to include in the code block.
+ * @param {string} [language="markdown"] - The programming language for syntax
+ *   highlighting.
+ * @returns {string} - The formatted Markdown code block.
+ */
 const markdownCodeBlock = (content: string, language: string = "markdown") => {
   const backticks = "`".repeat(8)
   return `${backticks}${language}\n${content}\n${backticks}`

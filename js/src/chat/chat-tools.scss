@@ -81,7 +81,8 @@
       height: 1em;
       opacity: 0.66;
 
-      &, > .horizontal {
+      &,
+      >.horizontal {
         transition: 0.3s ease-in-out all;
         transform-origin: center center;
       }

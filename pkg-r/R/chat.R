@@ -382,6 +382,8 @@ chat_append_message <- function(
 
   msg_content <- ui[["html"]]
   if (is_html) {
+    # Code blocks with `{=html}` infostrings are rendered as-is by a custom
+    # rendering method in markdown-stream.ts
     msg_content <- sprintf(
       "\n\n````````{=html}\n%s\n````````\n\n",
       msg_content
