@@ -103,7 +103,7 @@ tool_result_display <- function(content) {
   }
 
   if (is.character(display)) {
-    return(list(value = tool_string(content), value_type = "markdown"))
+    return(list(value = display, value_type = "markdown"))
   }
 
   if (is.list(display)) {
