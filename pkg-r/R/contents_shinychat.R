@@ -108,6 +108,17 @@ tool_result_display <- function(content) {
     return(list(value = tool_string(content), value_type = "code"))
   }
 
+  if (
+    # TODO: better check
+    inherits(display, "htmlwidget") || inherits(display$html, "htmlwidget")
+  ) {
+    widget <- display$html %||% display
+    widget <- htmltools::renderTags(widget)
+    display <- htmltools::HTML(widget$html)
+    htmltools::attachDependencies(display, widget$dependencies)
+    return(list(value = display, value_type = "html"))
+  }
+
   if (inherits(display, c("html", "shiny.tag", "shiny.tag.list"))) {
     return(list(value = display, value_type = "html"))
   }
