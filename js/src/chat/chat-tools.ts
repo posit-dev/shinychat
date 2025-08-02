@@ -253,7 +253,7 @@ export class ShinyToolResult extends ShinyToolCard {
    * @default true
    */
   @property({ type: Boolean, attribute: "show-request" })
-  showRequest = true
+  showRequest = false
 
   /**
    * The actual result content returned by the tool execution.
