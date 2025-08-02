@@ -59,20 +59,30 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     request_call = "",
     name = content@request@name,
     status = if (tool_errored(content)) "error" else "success",
-    show_request = tolower(!isFALSE(content@extra$display_tool_request)),
-    intent = content@request@arguments$.intent
+    show_request = if (!isFALSE(content@extra$display$show_request)) NA,
+    intent = content@request@arguments$.intent,
+    expanded = if (isTRUE(content@extra$display$open)) NA
   )
 
   icon_deps <- NULL
   tool <- content@request@tool
 
+  # Let tool results override global tool properties
+  if (!is.null(content@extra$title)) {
+    props$title <- content@extra$title
+  }
+  if (!is.null(content@extra$icon)) {
+    props$icon <- content@extra$icon
+    icon_deps <- htmltools::findDependencies(props$icon)
+  }
+
   if (!is.null(tool)) {
     # Format fails if tool is not present (ellmer v0.3.0, tidyverse/ellmer#691)
     props$request_call <- format(content@request, show = "call")
 
-    props$title <- tool@annotations$title
-    props$icon <- tool@annotations$icon
-    icon_deps <- htmltools::findDependencies(props$icon)
+    props$title <- props$title %||% tool@annotations$title
+    props$icon <- props$icon %||% tool@annotations$icon
+    icon_deps <- icon_deps %||% htmltools::findDependencies(props$icon)
   } else {
     props$request_call <- jsonlite::toJSON(
       list(
