@@ -60,7 +60,10 @@ S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
     props$title <- tool@annotations$title
   }
 
-  htmltools::tag("shiny-tool-request", props)
+  tagList(
+    htmltools::tag("shiny-tool-request", props),
+    chat_deps()
+  )
 }
 
 S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
@@ -125,7 +128,12 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
   # where `processDeps()` won't find it.
   deps <- htmltools::findDependencies(props$value)
 
-  htmltools::tag("shiny-tool-result", list2(!!!props, deps, icon_deps))
+  htmltools::tagList(
+    htmltools::tag("shiny-tool-result", props),
+    deps,
+    icon_deps,
+    chat_deps()
+  )
 }
 
 ensure_content_display <- function(content) {
