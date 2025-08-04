@@ -102,6 +102,7 @@
   >.card-body {
     transition: max-height 0.3s ease-out, opacity 0.2s ease-out;
     opacity: 1;
+    overflow: auto;
 
     &.collapsed {
       max-height: 0;
