@@ -164,7 +164,7 @@ validate_content_display <- function(content) {
     ))
   }
 
-  list()
+  display
 }
 
 tool_result_display <- function(content) {
