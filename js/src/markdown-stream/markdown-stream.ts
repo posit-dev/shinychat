@@ -205,8 +205,10 @@ class MarkdownElement extends LightElement {
      */
     const findInnermostStreamingElement = (element: Element): Element => {
       let current = element
+      let depth = 0
 
-      while (true) {
+      while (depth < 5) {
+        depth++
         const children = current.childNodes
 
         let lastMeaningfulChild: Node | null = null
@@ -239,6 +241,8 @@ class MarkdownElement extends LightElement {
 
         return inlineContainers.has(tagName) ? lastMeaningfulChild : current
       }
+
+      return current
     }
 
     findInnermostStreamingElement(this).appendChild(SVG_DOT)
