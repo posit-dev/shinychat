@@ -97,7 +97,7 @@ method(client_set_ui, S7::new_S3_class(c("Chat", "R6"))) <-
             coro::yield(x)
           }
         })
-        chat_append(id, stream, msg_turn$role)
+        chat_append(id, stream(), msg_turn$role)
       } else {
         chat_append(id, msg_turn$content, role = msg_turn$role)
       }
