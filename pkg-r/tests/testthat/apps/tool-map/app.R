@@ -53,10 +53,7 @@ Use this tool whenever you're talking about a location with the user.
 
 ui <- function(req) {
   page_fillable(
-    chat_mod_ui("chat"),
-    htmltools::findDependencies(
-      tool_show_map(34, 45, "", "")@extra$display$html
-    )
+    chat_mod_ui("chat")
   )
 }
 
@@ -72,4 +69,4 @@ Anytime you mention a location, use the `tool_show_map` tool to show a map with 
   chat_mod_server("chat", client)
 }
 
-shinyApp(ui, server, enableBookmarking = "disable")
+shinyApp(ui, server, enableBookmarking = "url")
