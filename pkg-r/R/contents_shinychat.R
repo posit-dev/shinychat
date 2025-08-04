@@ -68,11 +68,11 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
   tool <- content@request@tool
 
   # Let tool results override global tool properties
-  if (!is.null(content@extra$title)) {
-    props$title <- content@extra$title
+  if (!is.null(content@extra$display$title)) {
+    props$title <- content@extra$display$title
   }
-  if (!is.null(content@extra$icon)) {
-    props$icon <- content@extra$icon
+  if (!is.null(content@extra$display$icon)) {
+    props$icon <- content@extra$display$icon
     icon_deps <- htmltools::findDependencies(props$icon)
   }
 
@@ -153,7 +153,7 @@ tool_string <- function(x) {
   } else if (is.character(x@value)) {
     paste(x@value, collapse = "\n")
   } else {
-    jsonlite::toJSON(x@value, auto_unbox = TRUE)
+    jsonlite::toJSON(x@value, auto_unbox = TRUE, pretty = 2)
   }
 }
 
