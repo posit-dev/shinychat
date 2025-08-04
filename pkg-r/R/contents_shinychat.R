@@ -1,14 +1,14 @@
 opt_shinychat_tool_display <- function() {
   choices <- c("none", "basic", "rich")
 
-  env <- Sys.getenv("SHINYCHAT_TOOL_DISPLAY", unset = "")
-
-  if (nzchar(env)) {
-    return(arg_match(env, choices, error_arg = "SHINYCHAT_TOOL_DISPLAY"))
+  opt <- getOption("shinychat.tool_display", default = NULL)
+  if (!is.null(opt)) {
+    opt <- arg_match(opt, choices, error_arg = "shinychat.tool_display")
+    return(opt)
   }
 
-  opt <- getOption("shinychat.tool_display", "rich")
-  arg_match(opt, choices, error_arg = "shinychat.tool_display")
+  env <- Sys.getenv("SHINYCHAT_TOOL_DISPLAY", unset = "rich")
+  arg_match(env, choices, error_arg = "SHINYCHAT_TOOL_DISPLAY")
 }
 
 #' Format ellmer content for shinychat
