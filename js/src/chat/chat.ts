@@ -575,7 +575,7 @@ chatCustomElements.forEach(({ tag, component }) => {
   }
 })
 
-window.Shiny.addCustomMessageHandler(
+window.Shiny?.addCustomMessageHandler(
   "shinyChatMessage",
   async function (message: ShinyChatMessage) {
     if (message.obj?.html_deps) {

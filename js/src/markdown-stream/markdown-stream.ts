@@ -433,7 +433,7 @@ async function handleMessage(
   }
 }
 
-window.Shiny.addCustomMessageHandler(
+window.Shiny?.addCustomMessageHandler(
   "shinyMarkdownStreamMessage",
   handleMessage,
 )
