@@ -112,15 +112,6 @@ tool_result_display <- function(content) {
     return(list(value = tool_string(content), value_type = "code"))
   }
 
-  if (inherits(display, "htmlwidget") || inherits(display$html, "htmlwidget")) {
-    widget <- tagList(display$html %||% display)
-    return(list(value = widget, value_type = "html"))
-  }
-
-  if (inherits(display, c("html", "shiny.tag", "shiny.tag.list"))) {
-    return(list(value = display, value_type = "html"))
-  }
-
   if (is.character(display)) {
     return(list(value = display, value_type = "markdown"))
   }
@@ -133,7 +124,8 @@ tool_result_display <- function(content) {
     }
   }
 
-  list(value = tool_string(content), value_type = "code")
+  # Assume the display is HTML if no type is specified
+  list(value = display, value_type = "html")
 }
 
 # Copied from
