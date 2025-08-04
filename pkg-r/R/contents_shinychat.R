@@ -98,7 +98,11 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
   props <- list2(!!!props, !!!tool_result_display(content))
   names(props) <- gsub("_", "-", names(props))
 
-  htmltools::tag("shiny-tool-result", list2(!!!props, icon_deps))
+  # Get dependencies for the value because we store its HTML as an attribute
+  # where `processDeps()` won't find it.
+  deps <- htmltools::findDependencies(props$value)
+
+  htmltools::tag("shiny-tool-result", list2(!!!props, deps, icon_deps))
 }
 
 tool_result_display <- function(content) {
