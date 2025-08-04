@@ -74,7 +74,7 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     )
   }
 
-  content@extra$display <- validate_content_display(content)
+  content@extra$display <- ensure_content_display(content)
 
   # Prepare base props
   props <- list(
@@ -128,7 +128,7 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
   htmltools::tag("shiny-tool-result", list2(!!!props, deps, icon_deps))
 }
 
-validate_content_display <- function(content) {
+ensure_content_display <- function(content) {
   display <- content@extra$display
 
   if (is.null(display) || opt_shinychat_tool_display() == "basic") {
@@ -162,6 +162,7 @@ validate_content_display <- function(content) {
       invalid_display_fmt,
       "x" = "Expected a list with fields {.or {.var {expected_fields}}}, not {.obj_type_friendly {display}}."
     ))
+    return(list())
   }
 
   display
