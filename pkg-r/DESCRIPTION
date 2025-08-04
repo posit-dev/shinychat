@@ -22,6 +22,7 @@ BugReports: https://github.com/posit-dev/shinychat/issues
 Imports:
     base64enc,
     bslib,
+    cli,
     coro,
     ellmer (>= 0.3.0),
     fastmap,
@@ -34,8 +35,9 @@ Imports:
     shiny (>= 1.10.0)
 Suggests:
     later,
-    testthat (>= 3.0.0)
-Config/Needs/website: tidyverse/tidytemplate
+    testthat (>= 3.0.0),
+    withr
+Config/Needs/website: tidyverse/tidytemplate, rmarkdown
 Config/testthat/edition: 3
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
