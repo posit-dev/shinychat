@@ -182,6 +182,13 @@ class MarkdownElement extends LightElement {
   #appendStreamingDot(): void {
     this.#removeStreamingDot()
 
+    if (this.content.trim() === "") {
+      return
+    }
+    if (this.lastElementChild?.tagName.toLowerCase() === "shiny-tool-request") {
+      return
+    }
+
     const hasText = (node: Text): boolean => /\S/.test(node.textContent || "")
 
     // We go into these elements to find the innermost streaming element
