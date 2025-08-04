@@ -1,3 +1,16 @@
+opt_shinychat_tool_display <- function() {
+  choices <- c("none", "basic", "rich")
+
+  env <- Sys.getenv("SHINYCHAT_TOOL_DISPLAY", unset = "")
+
+  if (nzchar(env)) {
+    return(arg_match(env, choices, error_arg = "SHINYCHAT_TOOL_DISPLAY"))
+  }
+
+  opt <- getOption("shinychat.tool_display", "rich")
+  arg_match(opt, choices, error_arg = "shinychat.tool_display")
+}
+
 #' Format ellmer content for shinychat
 #'
 #' @param content An [`ellmer::Content`] object.
@@ -31,6 +44,10 @@ S7::method(contents_shinychat, ellmer::ContentText) <- function(content) {
 S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
   content
 ) {
+  if (opt_shinychat_tool_display() == "none") {
+    return(NULL)
+  }
+
   props <- list(
     "request-id" = content@id,
     name = content@name,
@@ -47,11 +64,17 @@ S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
 }
 
 S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
+  if (opt_shinychat_tool_display() == "none") {
+    return(NULL)
+  }
+
   if (is.null(content@request)) {
     cli::cli_abort(
       "`ContentToolResult` objects must have an associated `@request` property."
     )
   }
+
+  content@extra$display <- validate_content_display(content)
 
   # Prepare base props
   props <- list(
@@ -105,15 +128,53 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
   htmltools::tag("shiny-tool-result", list2(!!!props, deps, icon_deps))
 }
 
+validate_content_display <- function(content) {
+  display <- content@extra$display
+
+  if (is.null(display) || opt_shinychat_tool_display() == "basic") {
+    return(list())
+  }
+
+  invalid_display_fmt <- "Invalid {.code @extra$display} format for {.code ContentToolResult} from {.fn {content@request@name}} (call id: {content@request@id})."
+
+  if (
+    inherits(display, c("html", "shiny.tag", "shiny.tag.list", "htmlwidgets"))
+  ) {
+    cli::cli_warn(c(
+      invalid_display_fmt,
+      "i" = "To display HTML content for tool results in {.pkg shinychat}, create a tool result with {.code extra = list(display = list(html = ...))}.",
+      "i" = "You can also use {.code markdown} or {.code text} items in {.code display} to show Markdown or plain text, respectively."
+    ))
+    return(list())
+  }
+
+  expected_fields <- c(
+    "html",
+    "markdown",
+    "text",
+    "show_request",
+    "open",
+    "title"
+  )
+
+  if (!is.list(display)) {
+    cli::cli_warn(c(
+      invalid_display_fmt,
+      "x" = "Expected a list with fields {.or {.var {expected_fields}}}, not {.obj_type_friendly {display}}."
+    ))
+  }
+
+  list()
+}
+
 tool_result_display <- function(content) {
   display <- content@extra$display
 
-  if (tool_errored(content) || is.null(display)) {
-    return(list(value = tool_string(content), value_type = "code"))
-  }
+  has_display <- !is.null(display) && is.list(display) && length(display) > 0
+  use_basic_display <- opt_shinychat_tool_display() == "basic"
 
-  if (is.character(display)) {
-    return(list(value = display, value_type = "markdown"))
+  if (tool_errored(content) || use_basic_display || !has_display) {
+    return(list(value = tool_string(content), value_type = "code"))
   }
 
   if (is.list(display)) {
@@ -124,8 +185,7 @@ tool_result_display <- function(content) {
     }
   }
 
-  # Assume the display is HTML if no type is specified
-  list(value = display, value_type = "html")
+  list(value = tool_string(content), value_type = "code")
 }
 
 # Copied from
