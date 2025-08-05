@@ -1,4 +1,4 @@
-url: https://posit-dev.github.io/shinychat
+url: https://posit-dev.github.io/shinychat/r
 
 destination: "../docs/r"
 
@@ -42,6 +42,7 @@ reference:
   - chat_append
   - chat_append_message
   - chat_clear
+  - update_chat_user_input
 
 - title: Streaming markdown interface
   contents:
