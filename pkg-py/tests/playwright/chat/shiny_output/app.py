@@ -3,9 +3,8 @@ import pandas as pd
 import plotly.express as px  # pyright: ignore[reportMissingTypeStubs]
 from shiny import reactive, render
 from shiny.express import ui
-from shinywidgets import render_plotly, render_widget
-
 from shinychat.express import Chat
+from shinywidgets import render_plotly, render_widget
 
 ui.page_opts(
     title="Hello output bindings in Chat",
@@ -22,7 +21,7 @@ with ui.hold() as map_ui:
 
 chat = Chat(id="chat")
 
-chat.ui(messages=[map_ui])  # type: ignore[reportArgumentType]
+chat.ui(messages=[map_ui])
 
 with ui.hold() as df_1:
 
