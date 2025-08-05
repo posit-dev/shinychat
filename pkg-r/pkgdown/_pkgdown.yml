@@ -52,3 +52,7 @@ reference:
 - title: Bookmark chat history
   contents:
   - chat_restore
+
+- title: Integration with ellmer
+  contents:
+  - contents_shinychat
