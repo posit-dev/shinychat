@@ -56,7 +56,7 @@ S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
       "request-id" = content@id,
       name = content@name,
       arguments = jsonlite::toJSON(content@arguments, auto_unbox = TRUE),
-      intent = content@arguments$.intent,
+      intent = content@arguments$.tool_intent,
       title = if (!is.null(tool)) tool@annotations$title,
       chat_deps()
     )
@@ -82,7 +82,7 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     request_call = "",
     name = content@request@name,
     status = if (tool_errored(content)) "error" else "success",
-    intent = content@request@arguments$.intent,
+    intent = content@request@arguments$.tool_intent,
     show_request = if (!isFALSE(display$show_request)) NA,
     expanded = if (isTRUE(display$open)) NA,
     title = display$title,
