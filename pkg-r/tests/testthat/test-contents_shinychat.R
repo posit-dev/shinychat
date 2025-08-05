@@ -243,14 +243,14 @@ test_that("ContentToolResult formats request_call correctly", {
   )
 })
 
-test_that("ensure_content_display handles invalid formats", {
+test_that("get_tool_result_display handles invalid formats", {
   # Test direct HTML warning
   result <- new_tool_result(
     extra = list(display = htmltools::tags$p("test"))
   )
 
   expect_snapshot(
-    ensure_content_display(result)
+    get_tool_result_display(result)
   )
 
   # Test non-list warning
@@ -258,7 +258,7 @@ test_that("ensure_content_display handles invalid formats", {
     extra = list(display = "invalid")
   )
   expect_snapshot(
-    ensure_content_display(result)
+    get_tool_result_display(result)
   )
 })
 

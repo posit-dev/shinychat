@@ -22,10 +22,10 @@
       Error in `method(contents_shinychat, ellmer::ContentToolResult)`:
       ! `ContentToolResult` objects must have an associated `@request` property.
 
-# ensure_content_display handles invalid formats
+# get_tool_result_display handles invalid formats
 
     Code
-      ensure_content_display(result)
+      get_tool_result_display(result)
     Condition
       Warning:
       Invalid `@extra$display` format for `ContentToolResult` from `test-tool()` (call id: test-id).
@@ -37,11 +37,11 @@
 ---
 
     Code
-      ensure_content_display(result)
+      get_tool_result_display(result)
     Condition
       Warning:
       Invalid `@extra$display` format for `ContentToolResult` from `test-tool()` (call id: test-id).
-      x Expected a list with fields `html`, `markdown`, `text`, `show_request`, `open`, or `title`, not a string.
+      x Expected a list with fields `html`, `markdown`, `text`, `show_request`, `open`, `title`, or `icon`, not a string.
     Output
       list()
 

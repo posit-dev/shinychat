@@ -48,21 +48,18 @@ S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
     return(NULL)
   }
 
-  props <- list(
-    "request-id" = content@id,
-    name = content@name,
-    arguments = jsonlite::toJSON(content@arguments, auto_unbox = TRUE),
-    intent = content@arguments$.intent
-  )
-
   tool <- content@tool
-  if (!is.null(tool)) {
-    props$title <- tool@annotations$title
-  }
 
-  tagList(
-    htmltools::tag("shiny-tool-request", props),
-    chat_deps()
+  htmltools::tag(
+    "shiny-tool-request",
+    list(
+      "request-id" = content@id,
+      name = content@name,
+      arguments = jsonlite::toJSON(content@arguments, auto_unbox = TRUE),
+      intent = content@arguments$.intent,
+      title = if (!is.null(tool)) tool@annotations$title,
+      chat_deps()
+    )
   )
 }
 
@@ -77,7 +74,7 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     )
   }
 
-  content@extra$display <- ensure_content_display(content)
+  display <- get_tool_result_display(content)
 
   # Prepare base props
   props <- list(
@@ -85,22 +82,14 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     request_call = "",
     name = content@request@name,
     status = if (tool_errored(content)) "error" else "success",
-    show_request = if (!isFALSE(content@extra$display$show_request)) NA,
     intent = content@request@arguments$.intent,
-    expanded = if (isTRUE(content@extra$display$open)) NA
+    show_request = if (!isFALSE(display$show_request)) NA,
+    expanded = if (isTRUE(display$open)) NA,
+    title = display$title,
+    icon = display$icon
   )
 
-  icon_deps <- NULL
   tool <- content@request@tool
-
-  # Let tool results override global tool properties
-  if (!is.null(content@extra$display$title)) {
-    props$title <- content@extra$display$title
-  }
-  if (!is.null(content@extra$display$icon)) {
-    props$icon <- content@extra$display$icon
-    icon_deps <- htmltools::findDependencies(props$icon)
-  }
 
   if (!is.null(tool)) {
     # Format fails if tool is not present (ellmer v0.3.0, tidyverse/ellmer#691)
@@ -108,7 +97,6 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
 
     props$title <- props$title %||% tool@annotations$title
     props$icon <- props$icon %||% tool@annotations$icon
-    icon_deps <- icon_deps %||% htmltools::findDependencies(props$icon)
   } else {
     props$request_call <- jsonlite::toJSON(
       list(
@@ -121,29 +109,27 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     )
   }
 
-  props <- list2(!!!props, !!!tool_result_display(content))
-  names(props) <- gsub("_", "-", names(props))
-
-  # Get dependencies for the value because we store its HTML as an attribute
-  # where `processDeps()` won't find it.
-  deps <- htmltools::findDependencies(props$value)
-
-  htmltools::tagList(
-    htmltools::tag("shiny-tool-result", props),
-    deps,
-    icon_deps,
+  props <- list2(
+    !!!props,
+    !!!tool_result_display(content, display),
+    htmltools::findDependencies(props$value),
+    htmltools::findDependencies(props$icon),
     chat_deps()
   )
+  names(props) <- gsub("_", "-", names(props))
+
+  htmltools::tag("shiny-tool-result", props)
 }
 
-ensure_content_display <- function(content) {
+get_tool_result_display <- function(content) {
   display <- content@extra$display
+  request <- content@request
 
   if (is.null(display) || opt_shinychat_tool_display() == "basic") {
     return(list())
   }
 
-  invalid_display_fmt <- "Invalid {.code @extra$display} format for {.code ContentToolResult} from {.fn {content@request@name}} (call id: {content@request@id})."
+  invalid_display_fmt <- "Invalid {.code @extra$display} format for {.code ContentToolResult} from {.fn {request@name}} (call id: {request@id})."
 
   if (
     inherits(display, c("html", "shiny.tag", "shiny.tag.list", "htmlwidgets"))
@@ -156,13 +142,9 @@ ensure_content_display <- function(content) {
     return(list())
   }
 
+  # fmt: skip
   expected_fields <- c(
-    "html",
-    "markdown",
-    "text",
-    "show_request",
-    "open",
-    "title"
+    "html", "markdown", "text", "show_request", "open", "title", "icon"
   )
 
   if (!is.list(display)) {
@@ -176,8 +158,8 @@ ensure_content_display <- function(content) {
   display
 }
 
-tool_result_display <- function(content) {
-  display <- content@extra$display
+tool_result_display <- function(content, display = NULL) {
+  display <- display %||% content@extra$display
 
   has_display <- !is.null(display) && is.list(display) && length(display) > 0
   use_basic_display <- opt_shinychat_tool_display() == "basic"
