@@ -91,7 +91,7 @@ test_that("ContentToolRequest rich display", {
   expect_s3_class(result, "shiny.tag")
   expect_equal(result$name, "shiny-tool-request")
   expect_equal(result$attribs$"request-id", "test-123")
-  expect_equal(result$attribs$name, "weather")
+  expect_equal(result$attribs[["tool-name"]], "weather")
   expect_equal(result$attribs$intent, "Check weather")
   expect_equal(
     jsonlite::fromJSON(result$attribs$arguments),
@@ -108,7 +108,7 @@ test_that("ContentToolRequest handles tool annotations", {
   )
   req <- new_tool_request(tool = tool)
   result <- contents_shinychat(req)
-  expect_equal(result$attribs$title, "Weather Tool")
+  expect_equal(result$attribs[["tool-title"]], "Weather Tool")
 })
 
 test_that("ContentToolResult requires an associated `@request` property", {
@@ -198,7 +198,7 @@ test_that("ContentToolResult with additional display options from result", {
   expect_equal(output$attribs$"value-type", "html")
   expect_null(output$attribs[["show-request"]])
   expect_equal(output$attribs$expanded, NA)
-  expect_equal(output$attribs$title, "Custom Title")
+  expect_equal(output$attribs[["tool-title"]], "Custom Title")
 })
 
 test_that("ContentToolResult handles icon and dependencies from tool definition", {

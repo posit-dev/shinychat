@@ -30,16 +30,18 @@ class ShinyToolCard extends LitElement {
   /**
    * Name of the tool being executed, e.g. `get_weather`.
    * @property {string} name
+   * @attr tool-name
    */
-  @property({ type: String })
-  name!: string
+  @property({ type: String, attribute: "tool-name" })
+  toolName!: string
 
   /**
-   * Display title for the card. If not provided, falls back to `name`.
+   * Display title for the card. If not provided, falls back to `toolName`.
    * @property {string} title
+   * @attr tool-title
    */
-  @property({ type: String })
-  title: string = ""
+  @property({ type: String, attribute: "tool-title" })
+  toolTitle?: string
 
   /**
    * Optional intent description explaining the purpose of the tool execution.
@@ -96,7 +98,7 @@ class ShinyToolCard extends LitElement {
    * replacing `{title}` with the actual title or name of the tool.
    */
   protected formatTitle() {
-    let displayTitle = this.title || `${this.name}()`
+    let displayTitle = this.toolTitle || `${this.toolName}()`
     displayTitle = `<span class="tool-title-name">${displayTitle}</span>`
     displayTitle = this.titleTemplate.replace("{title}", displayTitle)
     return html`${unsafeHTML(displayTitle)}`

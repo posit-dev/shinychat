@@ -54,10 +54,10 @@ S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
     "shiny-tool-request",
     list(
       "request-id" = content@id,
-      name = content@name,
+      "tool-name" = content@name,
       arguments = jsonlite::toJSON(content@arguments, auto_unbox = TRUE),
       intent = content@arguments$.tool_intent,
-      title = if (!is.null(tool)) tool@annotations$title,
+      "tool-title" = if (!is.null(tool)) tool@annotations$title,
       chat_deps()
     )
   )
@@ -80,12 +80,12 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
   props <- list(
     request_id = content@request@id,
     request_call = "",
-    name = content@request@name,
+    tool_name = content@request@name,
     status = if (tool_errored(content)) "error" else "success",
     intent = content@request@arguments$.tool_intent,
     show_request = if (!isFALSE(display$show_request)) NA,
     expanded = if (isTRUE(display$open)) NA,
-    title = display$title,
+    tool_title = display$title,
     icon = display$icon
   )
 
@@ -95,7 +95,7 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     # Format fails if tool is not present (ellmer v0.3.0, tidyverse/ellmer#691)
     props$request_call <- format(content@request, show = "call")
 
-    props$title <- props$title %||% tool@annotations$title
+    props$tool_title <- props$tool_title %||% tool@annotations$title
     props$icon <- props$icon %||% tool@annotations$icon
   } else {
     props$request_call <- jsonlite::toJSON(
