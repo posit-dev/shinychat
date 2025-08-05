@@ -58,7 +58,7 @@ ui <- function(req) {
 }
 
 server <- function(input, output, session) {
-  client <<- ellmer::chat(
+  client <- ellmer::chat(
     "openai/gpt-4.1-nano",
     system_prompt = r"(
 You're a helpful guide who can tell users about places and show them maps.

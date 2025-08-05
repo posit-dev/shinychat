@@ -46,8 +46,8 @@ ui <- function(req) {
 }
 
 server <- function(input, output, session) {
-  client <<- ellmer::chat("openai/gpt-4.1-nano")
-  # client <<- ellmer::chat_ollama(model = "mistral-nemo")
+  client <- ellmer::chat("openai/gpt-4.1-nano")
+  # client <- ellmer::chat_ollama(model = "mistral-nemo")
   client$register_tool(get_weather_forecast)
   chat_mod_server("chat", client)
 }
