@@ -5,6 +5,8 @@ from shiny import reactive, render
 from shiny.express import ui
 from shinywidgets import render_plotly, render_widget
 
+from shinychat.express import Chat
+
 ui.page_opts(
     title="Hello output bindings in Chat",
     fillable=True,
@@ -18,9 +20,9 @@ with ui.hold() as map_ui:
         return ipyl.Map(center=(52, 10), zoom=8)
 
 
-chat = ui.Chat(id="chat")
+chat = Chat(id="chat")
 
-chat.ui(messages=[map_ui])
+chat.ui(messages=[map_ui])  # type: ignore[reportArgumentType]
 
 with ui.hold() as df_1:
 
@@ -45,7 +47,7 @@ with ui.hold() as df_2:
 
 @reactive.effect
 async def _():
-    await chat.append_message_stream(df_2)
+    await chat.append_message(df_2)
 
 
 with ui.hold() as plot_ui:
