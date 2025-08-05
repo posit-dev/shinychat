@@ -155,6 +155,7 @@ class ChatInput extends LightElement {
   }
 
   private _disabled = false
+  private _isComposing = false
   inputVisibleObserver?: IntersectionObserver
 
   connectedCallback(): void {
@@ -167,12 +168,19 @@ class ChatInput extends LightElement {
     })
 
     this.inputVisibleObserver.observe(this)
+    this.textarea.addEventListener("compositionstart", this.#onCompositionStart)
+    this.textarea.addEventListener("compositionend", this.#onCompositionEnd)
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback()
     this.inputVisibleObserver?.disconnect()
     this.inputVisibleObserver = undefined
+    this.textarea.removeEventListener(
+      "compositionstart",
+      this.#onCompositionStart,
+    )
+    this.textarea.removeEventListener("compositionend", this.#onCompositionEnd)
   }
 
   attributeChangedCallback(
@@ -230,7 +238,7 @@ class ChatInput extends LightElement {
   // Pressing enter sends the message (if not empty)
   #onKeyDown(e: KeyboardEvent): void {
     const isEnter = e.code === "Enter" && !e.shiftKey
-    if (isEnter && !this.valueIsEmpty) {
+    if (isEnter && !this._isComposing && !this.valueIsEmpty) {
       e.preventDefault()
       this.#sendInput()
     }
@@ -239,6 +247,14 @@ class ChatInput extends LightElement {
   #onInput(): void {
     this.#updateHeight()
     this.button.disabled = this.disabled ? true : this.value.trim().length === 0
+  }
+
+  #onCompositionStart(): void {
+    this._isComposing = true
+  }
+
+  #onCompositionEnd(): void {
+    this._isComposing = false
   }
 
   // Determine whether the button should be enabled/disabled on first render
