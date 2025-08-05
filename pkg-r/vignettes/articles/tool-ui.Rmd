@@ -1,5 +1,5 @@
 ---
-title: "Customizing Tool UI in shinychat"
+title: "Tool Calling UI"
 output:
   html_document:
     theme:
@@ -7,7 +7,7 @@ output:
       preset: shiny
     self_contained: false
 vignette: >
-  %\VignetteIndexEntry{Customizing Tool UI in shinychat}
+  %\VignetteIndexEntry{Tool Calling UI}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
