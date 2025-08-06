@@ -2,9 +2,8 @@ try:
     import playwright  # noqa: F401 # pyright: ignore[reportUnusedImport, reportMissingTypeStubs]
 except ImportError:
     raise ImportError(
-        "The shinychat.playwright module requires the playwright package to be installed."
-        " Please install it with this command:"
-        "\n\n    pip install playwright"
+        "The shinychat.playwright module requires the playwright package to be installed. "
+        "Please install it with: `pip install playwright`"
     )
 
 # If `pytest` is installed...
@@ -18,9 +17,8 @@ try:
 
     except ImportError:
         raise ImportError(
-            "If you are using pytest to test your app,"
-            " you can install the pytest-playwright shim package with this command:",
-            "\n\n    pip install pytest-playwright",
+            "If you are using pytest to test your shiny app, install the pytest-playwright "
+            "shim package with: `pip install pytest-playwright`"
         )
 except ImportError:
     pass
