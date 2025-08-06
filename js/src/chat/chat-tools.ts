@@ -6,10 +6,20 @@ import { unsafeHTML } from "lit/directives/unsafe-html.js"
  * Custom event interface for hiding tool requests
  */
 declare global {
+  interface Window {
+    shinychat: {
+      hiddenToolRequests: Set<string>
+    }
+  }
   interface GlobalEventHandlersEventMap {
     "shiny-tool-request-hide": CustomEvent<{ request_id: string }>
   }
 }
+
+// TODO: remove this hack and rely only on events
+window.shinychat = window.shinychat || {}
+window.shinychat.hiddenToolRequests =
+  window.shinychat.hiddenToolRequests || new Set<string>()
 
 /**
  * Base class for a collapsible tool request or result card component.
@@ -184,6 +194,7 @@ export class ShinyToolRequest extends ShinyToolCard {
 
   connectedCallback() {
     super.connectedCallback()
+    this.hidden = window.shinychat.hiddenToolRequests.has(this.requestId)
     window.addEventListener("shiny-tool-request-hide", this.#onToolRequestHide)
   }
 
@@ -293,6 +304,7 @@ export class ShinyToolResult extends ShinyToolCard {
       this.icon = ICONS.wrenchAdjustable
     }
     // Emit event to hide the corresponding tool request
+    window.shinychat.hiddenToolRequests.add(this.requestId)
     this.dispatchEvent(
       new CustomEvent("shiny-tool-request-hide", {
         detail: { request_id: this.requestId },
@@ -400,6 +412,19 @@ const markdownCodeBlock = (content: string, language: string = "markdown") => {
   const backticks = "`".repeat(8)
   return `${backticks}${language}\n${content}\n${backticks}`
 }
+
+window.Shiny?.addCustomMessageHandler(
+  "shiny-tool-request-hide",
+  (request_id) => {
+    window.shinychat.hiddenToolRequests.add(request_id)
+    const event = new CustomEvent("shiny-tool-request-hide", {
+      detail: { request_id },
+      bubbles: true,
+      cancelable: true,
+    })
+    window.dispatchEvent(event)
+  },
+)
 
 declare global {
   interface HTMLElementTagNameMap {

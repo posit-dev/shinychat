@@ -489,6 +489,12 @@ rlang::on_load(
 
       res$add(msg)
 
+      if (S7::S7_inherits(msg, ellmer::ContentToolResult)) {
+        if (!is.null(msg@request)) {
+          session$sendCustomMessage("shiny-tool-request-hide", msg@request@id)
+        }
+      }
+
       if (S7::S7_inherits(msg, ellmer::Content)) {
         msg <- contents_shinychat(msg)
       }
