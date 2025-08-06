@@ -140,7 +140,8 @@ ignore = [
     "A001", # Variable shadowing Python builtin, e.g. `input`
     "A002", # Argument shadowing Python builtin, e.g. `id`
     "A004", # Import shadowing Python builtin, e.g. `input`
-    "E501"
+    "E501",
+    "PLC0415", # Import outside top-level
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
