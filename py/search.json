@@ -1,24 +1,39 @@
 [
   {
-    "objectID": "index.html",
-    "href": "index.html",
-    "title": "shinychat",
+    "objectID": "api/playwright.ChatController.html",
+    "href": "api/playwright.ChatController.html",
+    "title": "playwright.ChatController",
     "section": "",
-    "text": "Chat UI component for Shiny for Python."
+    "text": "playwright.ChatController(page, id)\nController for :func:shiny.ui.chat.\n\n\n\n\n\nName\nDescription\n\n\n\n\nloc\nPlaywright Locator for the chat.\n\n\nloc_input\nPlaywright Locator for the chat’s \n\n\nloc_input_button\nPlaywright Locator for the chat’s  input.\n\n\nloc_input_container\nPlaywright Locator for the chat input container.\n\n\nloc_latest_message\nPlaywright Locator for the last message in the chat.\n\n\nloc_messages\nPlaywright Locator for the chat messages.\n\n\n\n\n\n\n\n\n\nName\nDescription\n\n\n\n\nexpect_latest_message\nExpects the last message in the chat.\n\n\nexpect_messages\nExpects the chat messages.\n\n\nexpect_user_input\nExpects the user message in the chat.\n\n\nsend_user_input\nSends the user message in the chat.\n\n\nset_user_input\nSets the user message in the chat.\n\n\n\n\n\nplaywright.ChatController.expect_latest_message(value, *, timeout=None)\nExpects the last message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nPatternOrStr\nThe expected last message.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the expectation to pass. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.expect_messages(value, *, timeout=None)\nExpects the chat messages.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nPatternOrStr\nThe expected messages.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the expectation to pass. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.expect_user_input(value, *, timeout=None)\nExpects the user message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nPatternOrStr\nThe expected user message.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the expectation to pass. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.send_user_input(method='enter', timeout=None)\nSends the user message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nmethod\nLiteral['enter', 'click']\nThe method to send the user message. Defaults to \"enter\".\n'enter'\n\n\ntimeout\nTimeout\nThe maximum time to wait for the chat input to be visible and interactable. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.set_user_input(value, *, timeout=None)\nSets the user message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nstr\nThe message to send.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the chat input to be visible and interactable. Defaults to None.\nNone",
+    "crumbs": [
+      "API Reference",
+      "Testing",
+      "playwright.ChatController"
+    ]
   },
   {
-    "objectID": "index.html#installation",
-    "href": "index.html#installation",
-    "title": "shinychat",
-    "section": "Installation",
-    "text": "Installation\nYou can install shinychat from PyPI with:\nuv pip install shinychat\nOr, install the development version of shinychat from GitHub with:\nuv pip install git+https://github.com/posit-dev/shinychat.git"
+    "objectID": "api/playwright.ChatController.html#attributes",
+    "href": "api/playwright.ChatController.html#attributes",
+    "title": "playwright.ChatController",
+    "section": "",
+    "text": "Name\nDescription\n\n\n\n\nloc\nPlaywright Locator for the chat.\n\n\nloc_input\nPlaywright Locator for the chat’s \n\n\nloc_input_button\nPlaywright Locator for the chat’s  input.\n\n\nloc_input_container\nPlaywright Locator for the chat input container.\n\n\nloc_latest_message\nPlaywright Locator for the last message in the chat.\n\n\nloc_messages\nPlaywright Locator for the chat messages.",
+    "crumbs": [
+      "API Reference",
+      "Testing",
+      "playwright.ChatController"
+    ]
   },
   {
-    "objectID": "index.html#example",
-    "href": "index.html#example",
-    "title": "shinychat",
-    "section": "Example",
-    "text": "Example\nTo run this example, you’ll first need to create an OpenAI API key, and set it in your environment as OPENAI_API_KEY.\nfrom shiny.express import render, ui\nfrom shinychat.express import Chat\n\n# Set some Shiny page options\nui.page_opts(title=\"Hello Chat\")\n\n# Create a chat instance, with an initial message\nchat = Chat(\n    id=\"chat\",\n    messages=[\n        {\"content\": \"Hello! How can I help you today?\", \"role\": \"assistant\"},\n    ],\n)\n\n# Display the chat\nchat.ui()\n\n\n# Define a callback to run when the user submits a message\n@chat.on_user_submit\nasync def handle_user_input(user_input: str):\n    await chat.append_message(f\"You said: {user_input}\")\n\n\n\"Message state:\"\n\n\n@render.code\ndef message_state():\n    return str(chat.messages())"
+    "objectID": "api/playwright.ChatController.html#methods",
+    "href": "api/playwright.ChatController.html#methods",
+    "title": "playwright.ChatController",
+    "section": "",
+    "text": "Name\nDescription\n\n\n\n\nexpect_latest_message\nExpects the last message in the chat.\n\n\nexpect_messages\nExpects the chat messages.\n\n\nexpect_user_input\nExpects the user message in the chat.\n\n\nsend_user_input\nSends the user message in the chat.\n\n\nset_user_input\nSets the user message in the chat.\n\n\n\n\n\nplaywright.ChatController.expect_latest_message(value, *, timeout=None)\nExpects the last message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nPatternOrStr\nThe expected last message.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the expectation to pass. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.expect_messages(value, *, timeout=None)\nExpects the chat messages.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nPatternOrStr\nThe expected messages.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the expectation to pass. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.expect_user_input(value, *, timeout=None)\nExpects the user message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nPatternOrStr\nThe expected user message.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the expectation to pass. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.send_user_input(method='enter', timeout=None)\nSends the user message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nmethod\nLiteral['enter', 'click']\nThe method to send the user message. Defaults to \"enter\".\n'enter'\n\n\ntimeout\nTimeout\nThe maximum time to wait for the chat input to be visible and interactable. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.set_user_input(value, *, timeout=None)\nSets the user message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nstr\nThe message to send.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the chat input to be visible and interactable. Defaults to None.\nNone",
+    "crumbs": [
+      "API Reference",
+      "Testing",
+      "playwright.ChatController"
+    ]
   },
   {
     "objectID": "api/express.Chat.html",
@@ -101,39 +116,48 @@
     ]
   },
   {
-    "objectID": "api/playwright.ChatController.html",
-    "href": "api/playwright.ChatController.html",
-    "title": "playwright.ChatController",
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "shinychat",
     "section": "",
-    "text": "playwright.ChatController(page, id)\nController for :func:shiny.ui.chat.\n\n\n\n\n\nName\nDescription\n\n\n\n\nloc\nPlaywright Locator for the chat.\n\n\nloc_input\nPlaywright Locator for the chat’s \n\n\nloc_input_button\nPlaywright Locator for the chat’s  input.\n\n\nloc_input_container\nPlaywright Locator for the chat input container.\n\n\nloc_latest_message\nPlaywright Locator for the last message in the chat.\n\n\nloc_messages\nPlaywright Locator for the chat messages.\n\n\n\n\n\n\n\n\n\nName\nDescription\n\n\n\n\nexpect_latest_message\nExpects the last message in the chat.\n\n\nexpect_messages\nExpects the chat messages.\n\n\nexpect_user_input\nExpects the user message in the chat.\n\n\nsend_user_input\nSends the user message in the chat.\n\n\nset_user_input\nSets the user message in the chat.\n\n\n\n\n\nplaywright.ChatController.expect_latest_message(value, *, timeout=None)\nExpects the last message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nPatternOrStr\nThe expected last message.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the expectation to pass. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.expect_messages(value, *, timeout=None)\nExpects the chat messages.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nPatternOrStr\nThe expected messages.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the expectation to pass. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.expect_user_input(value, *, timeout=None)\nExpects the user message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nPatternOrStr\nThe expected user message.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the expectation to pass. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.send_user_input(method='enter', timeout=None)\nSends the user message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nmethod\nLiteral['enter', 'click']\nThe method to send the user message. Defaults to \"enter\".\n'enter'\n\n\ntimeout\nTimeout\nThe maximum time to wait for the chat input to be visible and interactable. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.set_user_input(value, *, timeout=None)\nSets the user message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nstr\nThe message to send.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the chat input to be visible and interactable. Defaults to None.\nNone",
+    "text": "Chat UI component for Shiny for Python."
+  },
+  {
+    "objectID": "index.html#installation",
+    "href": "index.html#installation",
+    "title": "shinychat",
+    "section": "Installation",
+    "text": "Installation\nYou can install shinychat from PyPI with:\nuv pip install shinychat\nOr, install the development version of shinychat from GitHub with:\nuv pip install git+https://github.com/posit-dev/shinychat.git"
+  },
+  {
+    "objectID": "index.html#example",
+    "href": "index.html#example",
+    "title": "shinychat",
+    "section": "Example",
+    "text": "Example\nTo run this example, you’ll first need to create an OpenAI API key, and set it in your environment as OPENAI_API_KEY.\nfrom shiny.express import render, ui\nfrom shinychat.express import Chat\n\n# Set some Shiny page options\nui.page_opts(title=\"Hello Chat\")\n\n# Create a chat instance, with an initial message\nchat = Chat(\n    id=\"chat\",\n    messages=[\n        {\"content\": \"Hello! How can I help you today?\", \"role\": \"assistant\"},\n    ],\n)\n\n# Display the chat\nchat.ui()\n\n\n# Define a callback to run when the user submits a message\n@chat.on_user_submit\nasync def handle_user_input(user_input: str):\n    await chat.append_message(f\"You said: {user_input}\")\n\n\n\"Message state:\"\n\n\n@render.code\ndef message_state():\n    return str(chat.messages())"
+  },
+  {
+    "objectID": "api/chat_ui.html",
+    "href": "api/chat_ui.html",
+    "title": "chat_ui",
+    "section": "",
+    "text": "chat_ui(\n    id,\n    *,\n    messages=None,\n    placeholder='Enter a message...',\n    width='min(680px, 100%)',\n    height='auto',\n    fill=True,\n    icon_assistant=None,\n    **kwargs,\n)\nUI container for a chat component (Shiny Core).\nThis function is for locating a :class:~shiny.ui.Chat instance in a Shiny Core app. If you are using Shiny Express, use the :method:~shiny.ui.Chat.ui method instead.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nid\nstr\nA unique identifier for the chat UI.\nrequired\n\n\nmessages\nOptional[Sequence[TagChild | ChatMessageDict]]\nA sequence of messages to display in the chat. A given message can be one of the following: * A string, which is interpreted as markdown and rendered to HTML on the client. * To prevent interpreting as markdown, mark the string as :class:~shiny.ui.HTML. * A UI element (specifically, a :class:~shiny.ui.TagChild). * This includes :class:~shiny.ui.TagList, which take UI elements (including strings) as children. In this case, strings are still interpreted as markdown as long as they’re not inside HTML. * A dictionary with content and role keys. The content key can contain a content as described above, and the role key can be “assistant” or “user”. NOTE: content may include specially formatted input suggestion links (see :method:~shiny.ui.Chat.append_message for more info).\nNone\n\n\nplaceholder\nstr\nPlaceholder text for the chat input.\n'Enter a message...'\n\n\nwidth\nCssUnit\nThe width of the chat container.\n'min(680px, 100%)'\n\n\nheight\nCssUnit\nThe height of the chat container.\n'auto'\n\n\nfill\nbool\nWhether the chat should vertically take available space inside a fillable container.\nTrue\n\n\nicon_assistant\nHTML | Tag | TagList | None\nThe icon to use for the assistant chat messages. Can be a HTML or a tag in the form of :class:~htmltools.HTML or :class:~htmltools.Tag. If None, a default robot icon is used.\nNone\n\n\nkwargs\nTagAttrValue\nAdditional attributes for the chat container element.\n{}",
     "crumbs": [
       "API Reference",
-      "Testing",
-      "playwright.ChatController"
+      "Shiny Core",
+      "chat_ui"
     ]
   },
   {
-    "objectID": "api/playwright.ChatController.html#attributes",
-    "href": "api/playwright.ChatController.html#attributes",
-    "title": "playwright.ChatController",
+    "objectID": "api/chat_ui.html#parameters",
+    "href": "api/chat_ui.html#parameters",
+    "title": "chat_ui",
     "section": "",
-    "text": "Name\nDescription\n\n\n\n\nloc\nPlaywright Locator for the chat.\n\n\nloc_input\nPlaywright Locator for the chat’s \n\n\nloc_input_button\nPlaywright Locator for the chat’s  input.\n\n\nloc_input_container\nPlaywright Locator for the chat input container.\n\n\nloc_latest_message\nPlaywright Locator for the last message in the chat.\n\n\nloc_messages\nPlaywright Locator for the chat messages.",
+    "text": "Name\nType\nDescription\nDefault\n\n\n\n\nid\nstr\nA unique identifier for the chat UI.\nrequired\n\n\nmessages\nOptional[Sequence[TagChild | ChatMessageDict]]\nA sequence of messages to display in the chat. A given message can be one of the following: * A string, which is interpreted as markdown and rendered to HTML on the client. * To prevent interpreting as markdown, mark the string as :class:~shiny.ui.HTML. * A UI element (specifically, a :class:~shiny.ui.TagChild). * This includes :class:~shiny.ui.TagList, which take UI elements (including strings) as children. In this case, strings are still interpreted as markdown as long as they’re not inside HTML. * A dictionary with content and role keys. The content key can contain a content as described above, and the role key can be “assistant” or “user”. NOTE: content may include specially formatted input suggestion links (see :method:~shiny.ui.Chat.append_message for more info).\nNone\n\n\nplaceholder\nstr\nPlaceholder text for the chat input.\n'Enter a message...'\n\n\nwidth\nCssUnit\nThe width of the chat container.\n'min(680px, 100%)'\n\n\nheight\nCssUnit\nThe height of the chat container.\n'auto'\n\n\nfill\nbool\nWhether the chat should vertically take available space inside a fillable container.\nTrue\n\n\nicon_assistant\nHTML | Tag | TagList | None\nThe icon to use for the assistant chat messages. Can be a HTML or a tag in the form of :class:~htmltools.HTML or :class:~htmltools.Tag. If None, a default robot icon is used.\nNone\n\n\nkwargs\nTagAttrValue\nAdditional attributes for the chat container element.\n{}",
     "crumbs": [
       "API Reference",
-      "Testing",
-      "playwright.ChatController"
-    ]
-  },
-  {
-    "objectID": "api/playwright.ChatController.html#methods",
-    "href": "api/playwright.ChatController.html#methods",
-    "title": "playwright.ChatController",
-    "section": "",
-    "text": "Name\nDescription\n\n\n\n\nexpect_latest_message\nExpects the last message in the chat.\n\n\nexpect_messages\nExpects the chat messages.\n\n\nexpect_user_input\nExpects the user message in the chat.\n\n\nsend_user_input\nSends the user message in the chat.\n\n\nset_user_input\nSets the user message in the chat.\n\n\n\n\n\nplaywright.ChatController.expect_latest_message(value, *, timeout=None)\nExpects the last message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nPatternOrStr\nThe expected last message.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the expectation to pass. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.expect_messages(value, *, timeout=None)\nExpects the chat messages.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nPatternOrStr\nThe expected messages.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the expectation to pass. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.expect_user_input(value, *, timeout=None)\nExpects the user message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nPatternOrStr\nThe expected user message.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the expectation to pass. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.send_user_input(method='enter', timeout=None)\nSends the user message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nmethod\nLiteral['enter', 'click']\nThe method to send the user message. Defaults to \"enter\".\n'enter'\n\n\ntimeout\nTimeout\nThe maximum time to wait for the chat input to be visible and interactable. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.set_user_input(value, *, timeout=None)\nSets the user message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nstr\nThe message to send.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the chat input to be visible and interactable. Defaults to None.\nNone",
-    "crumbs": [
-      "API Reference",
-      "Testing",
-      "playwright.ChatController"
+      "Shiny Core",
+      "chat_ui"
     ]
   },
   {
@@ -182,30 +206,6 @@
       "API Reference",
       "Shiny Core",
       "Chat"
-    ]
-  },
-  {
-    "objectID": "api/chat_ui.html",
-    "href": "api/chat_ui.html",
-    "title": "chat_ui",
-    "section": "",
-    "text": "chat_ui(\n    id,\n    *,\n    messages=None,\n    placeholder='Enter a message...',\n    width='min(680px, 100%)',\n    height='auto',\n    fill=True,\n    icon_assistant=None,\n    **kwargs,\n)\nUI container for a chat component (Shiny Core).\nThis function is for locating a :class:~shiny.ui.Chat instance in a Shiny Core app. If you are using Shiny Express, use the :method:~shiny.ui.Chat.ui method instead.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nid\nstr\nA unique identifier for the chat UI.\nrequired\n\n\nmessages\nOptional[Sequence[TagChild | ChatMessageDict]]\nA sequence of messages to display in the chat. A given message can be one of the following: * A string, which is interpreted as markdown and rendered to HTML on the client. * To prevent interpreting as markdown, mark the string as :class:~shiny.ui.HTML. * A UI element (specifically, a :class:~shiny.ui.TagChild). * This includes :class:~shiny.ui.TagList, which take UI elements (including strings) as children. In this case, strings are still interpreted as markdown as long as they’re not inside HTML. * A dictionary with content and role keys. The content key can contain a content as described above, and the role key can be “assistant” or “user”. NOTE: content may include specially formatted input suggestion links (see :method:~shiny.ui.Chat.append_message for more info).\nNone\n\n\nplaceholder\nstr\nPlaceholder text for the chat input.\n'Enter a message...'\n\n\nwidth\nCssUnit\nThe width of the chat container.\n'min(680px, 100%)'\n\n\nheight\nCssUnit\nThe height of the chat container.\n'auto'\n\n\nfill\nbool\nWhether the chat should vertically take available space inside a fillable container.\nTrue\n\n\nicon_assistant\nHTML | Tag | TagList | None\nThe icon to use for the assistant chat messages. Can be a HTML or a tag in the form of :class:~htmltools.HTML or :class:~htmltools.Tag. If None, a default robot icon is used.\nNone\n\n\nkwargs\nTagAttrValue\nAdditional attributes for the chat container element.\n{}",
-    "crumbs": [
-      "API Reference",
-      "Shiny Core",
-      "chat_ui"
-    ]
-  },
-  {
-    "objectID": "api/chat_ui.html#parameters",
-    "href": "api/chat_ui.html#parameters",
-    "title": "chat_ui",
-    "section": "",
-    "text": "Name\nType\nDescription\nDefault\n\n\n\n\nid\nstr\nA unique identifier for the chat UI.\nrequired\n\n\nmessages\nOptional[Sequence[TagChild | ChatMessageDict]]\nA sequence of messages to display in the chat. A given message can be one of the following: * A string, which is interpreted as markdown and rendered to HTML on the client. * To prevent interpreting as markdown, mark the string as :class:~shiny.ui.HTML. * A UI element (specifically, a :class:~shiny.ui.TagChild). * This includes :class:~shiny.ui.TagList, which take UI elements (including strings) as children. In this case, strings are still interpreted as markdown as long as they’re not inside HTML. * A dictionary with content and role keys. The content key can contain a content as described above, and the role key can be “assistant” or “user”. NOTE: content may include specially formatted input suggestion links (see :method:~shiny.ui.Chat.append_message for more info).\nNone\n\n\nplaceholder\nstr\nPlaceholder text for the chat input.\n'Enter a message...'\n\n\nwidth\nCssUnit\nThe width of the chat container.\n'min(680px, 100%)'\n\n\nheight\nCssUnit\nThe height of the chat container.\n'auto'\n\n\nfill\nbool\nWhether the chat should vertically take available space inside a fillable container.\nTrue\n\n\nicon_assistant\nHTML | Tag | TagList | None\nThe icon to use for the assistant chat messages. Can be a HTML or a tag in the form of :class:~htmltools.HTML or :class:~htmltools.Tag. If None, a default robot icon is used.\nNone\n\n\nkwargs\nTagAttrValue\nAdditional attributes for the chat container element.\n{}",
-    "crumbs": [
-      "API Reference",
-      "Shiny Core",
-      "chat_ui"
     ]
   }
 ]
