@@ -63,6 +63,7 @@ skip-excluded-dirs = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["pkg-py/src/shinychat"]
+include = ["py.typed"]
 
 [tool.hatch.build.targets.sdist]
 include = ["/pkg-py/src/shinychat"]
