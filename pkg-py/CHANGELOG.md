@@ -11,3 +11,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `shiny.ui.MarkdownStream` components as a new package. These components will
   still be available in the `shiny` package, but by separating the `shinychat`
   package we can more easily maintain and develop these components independently with a faster release cycle.
+
+* The chat input no longer submits incomplete text when the user has activated IME completions (e.g. while typing in Japanese or Chinese). (#85)
