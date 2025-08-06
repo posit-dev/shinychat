@@ -6,8 +6,7 @@ requires-python = ">=3.9"
 license = { text = "MIT" }
 dependencies = [
     "htmltools>=0.6.0",
-    "shiny>=1.4.0",
-    "playwright>=1.43.0",
+    "shiny>=1.4.0"
 ]
 dynamic = ["version"]
 authors = [
@@ -41,6 +40,7 @@ test = [
     "plotly",
     "pyright>=1.1.398",
     "pytest>=6.2.4",
+    "playwright>=1.43.0",
     "pytest-playwright>=0.3.0",
     "shinylive",
     "shinywidgets",
