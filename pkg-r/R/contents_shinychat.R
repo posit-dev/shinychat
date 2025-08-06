@@ -13,6 +13,101 @@ opt_shinychat_tool_display <- function() {
 
 #' Format ellmer content for shinychat
 #'
+#' @section Extending `contents_shinychat()`:
+#'
+#' You can extend `contents_shinychat()` to handle custom content types in your
+#' application. `contents_shinychat()` is [an S7 generic][S7::new_generic]. If
+#' you haven't worked with S7 before, you can learn more about S7 classes,
+#' generics and methods in the [S7
+#' documentation](https://rconsortium.github.io/S7/articles/S7.html).
+#'
+#' We'll work through a short example creating a custom display for the results
+#' of a tool that gets local weather forecasts. We first need to create a custom
+#' class that extends [ellmer::ContentToolResult].
+#'
+#' ```r
+#' library(ellmer)
+#'
+#' WeatherToolResult <- S7::new_class(
+#'   "WeatherToolResult",
+#'   parent = ContentToolResult,
+#'   properties = list(
+#'     location_name = S7::class_character
+#'   )
+#' )
+#' ```
+#'
+#' Next, we'll create a simple [ellmer::tool()] that gets the weather forecast
+#' for a location and returns our custom `WeatherToolResult` class. The custom
+#' class works just like a regular `ContentToolResult`, but it has an additional
+#' `location_name` property.
+#'
+#' ```r
+#' get_weather_forecast <- tool(
+#'   function(lat, lon, location_name) {
+#'     WeatherToolResult(
+#'       weathR::point_tomorrow(lat, lon, short = FALSE),
+#'       location_name = location_name
+#'     )
+#'   },
+#'   name = "get_weather_forecast",
+#'   description = "Get the weather forecast for a location.",
+#'   arguments = list(
+#'     lat = type_number("Latitude"),
+#'     lon = type_number("Longitude"),
+#'     location_name = type_string("Name of the location for display to the user")
+#'   )
+#' )
+#' ```
+#'
+#' Finally, we can extend `contents_shinychat()` to render our custom content
+#' class for display in the chat interface. The basic process is to define a
+#' `contents_shinychat()` external generic and then implement a method for your
+#' custom class.
+#'
+#' ```r
+#' contents_shinychat <- S7::new_external_generic(
+#'   package = "shinychat",
+#'   name = "contents_shinychat",
+#'   dispatch_args = "contents"
+#' )
+#'
+#' S7::method(contents_shinychat, WeatherToolResult) <- function(content) {
+#'   # Your custom rendering logic here
+#' }
+#' ```
+#'
+#' You can use this pattern to completely customize how the content is displayed
+#' inside shinychat by returning HTML objects directly from this method.
+#'
+#' You can also use this pattern to build upon the default shinychat display for
+#' tool requests and results. By using [S7::super()], you can create the
+#' object shinychat uses for tool results (or tool requests), and then modify it
+#' to suit your needs.
+#'
+#' ```r
+#' S7::method(contents_shinychat, WeatherToolResult) <- function(content) {
+#'   # Call the super method for ContentToolResult to get shinychat's defaults
+#'   res <- contents_shinychat(S7::super(content, ContentToolResult))
+#'
+#'   # Then update the result object with more specific content
+#'   # In this case, we render the tool result dataframe as a {gt} table...
+#'   res$value <- gt::as_raw_html(gt::gt(content@value))
+#'   res$value_type <- "html"
+#'   # ...and update the tool result title to include the location name
+#'   res$title <- paste("Weather Forecast for", content@location_name)
+#'
+#'   res
+#' }
+#' ```
+#'
+#' Note that you do **not** need to create a new class or extend
+#' `contents_shinychat()` to customize the tool display. Rather, you can use the
+#' strategies discussed in the [Tool Calling UI
+#' article](https://posit-dev.github.io/shinychat/r/article/tool-ui.html) to
+#' customize the tool request and result display by providing a `display` list
+#' in the `extra` argument of the tool result.
+#'
 #' @param content An [`ellmer::Content`] object.
 #'
 #' @return Returns text, HTML, or web component tags formatted for use in
@@ -41,6 +136,70 @@ S7::method(contents_shinychat, ellmer::ContentText) <- function(content) {
   content@text
 }
 
+new_tool_card <- function(type, request_id, tool_name, ...) {
+  type <- arg_match(type, c("request", "result"))
+
+  classes <- c(
+    paste0("shinychat_tool_", type),
+    "shinychat_tool_card"
+  )
+
+  dots <- dots_list(
+    type = type,
+    request_id = request_id,
+    tool_name = tool_name,
+    ...
+  )
+
+  structure(dots, class = classes)
+}
+
+#' @export
+as.tags.shinychat_tool_card <- function(x) {
+  tag_name <- switch(
+    x$type,
+    request = "shiny-tool-request",
+    result = "shiny-tool-result",
+    cli::cli_abort(
+      "shinychat tool card must have type {.val request} or {.val result}, not {.val {x$type}}."
+    )
+  )
+
+  names(x) <- gsub("_", "-", names(x))
+
+  deps <- list(
+    htmltools::findDependencies(x$value),
+    htmltools::findDependencies(x$icon),
+    chat_deps()
+  )
+
+  htmltools::tag(
+    tag_name,
+    dots_list(type = NULL, !!!x, !!!deps, .homonyms = "first")
+  )
+}
+
+#' @export
+format.shinychat_tool_card <- function(x, ...) {
+  format(as.tags(x), ...)
+}
+
+#' @export
+print.shinychat_tool_card <- function(x, ...) {
+  tags <- as.tags(x)
+  class(tags) <- c("bslib_fragment", class(tags))
+  attr(tags, "bslib_page") <- function(...) {
+    bslib::page_fluid(
+      htmltools::div(
+        class = "m-3",
+        ...
+      )
+    )
+  }
+  print(tags, ...)
+  invisible(x)
+}
+
 S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
   content
 ) {
@@ -50,16 +209,13 @@ S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
 
   tool <- content@tool
 
-  htmltools::tag(
-    "shiny-tool-request",
-    list(
-      "request-id" = content@id,
-      "tool-name" = content@name,
-      arguments = jsonlite::toJSON(content@arguments, auto_unbox = TRUE),
-      intent = content@arguments$.tool_intent,
-      "tool-title" = if (!is.null(tool)) tool@annotations$title,
-      chat_deps()
-    )
+  new_tool_card(
+    "request",
+    request_id = content@id,
+    tool_name = content@name,
+    arguments = jsonlite::toJSON(content@arguments, auto_unbox = TRUE),
+    intent = content@arguments$.tool_intent,
+    tool_title = if (!is.null(tool)) tool@annotations$title
   )
 }
 
@@ -75,30 +231,15 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
   }
 
   display <- get_tool_result_display(content)
+  annotations <- list()
 
-  # Prepare base props
-  props <- list(
-    request_id = content@request@id,
-    request_call = "",
-    tool_name = content@request@name,
-    status = if (tool_errored(content)) "error" else "success",
-    intent = content@request@arguments$.tool_intent,
-    show_request = if (!isFALSE(display$show_request)) NA,
-    expanded = if (isTRUE(display$open)) NA,
-    tool_title = display$title,
-    icon = display$icon
-  )
-
-  tool <- content@request@tool
-
-  if (!is.null(tool)) {
-    # Format fails if tool is not present (ellmer v0.3.0, tidyverse/ellmer#691)
-    props$request_call <- format(content@request, show = "call")
-
-    props$tool_title <- props$tool_title %||% tool@annotations$title
-    props$icon <- props$icon %||% tool@annotations$icon
+  if (!is.null(content@request@tool)) {
+    annotations <- content@request@tool@annotations
+    request_call <- format(content@request, show = "call")
   } else {
-    props$request_call <- jsonlite::toJSON(
+    # formatting the request fails if tool is not present
+    # (ellmer v0.3.0, tidyverse/ellmer#691)
+    request_call <- jsonlite::toJSON(
       list(
         id = content@request@id,
         name = content@request@name,
@@ -109,16 +250,19 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     )
   }
 
-  props <- list2(
-    !!!props,
-    !!!tool_result_display(content, display),
-    htmltools::findDependencies(props$value),
-    htmltools::findDependencies(props$icon),
-    chat_deps()
+  new_tool_card(
+    "result",
+    request_id = content@request@id,
+    request_call = request_call,
+    status = if (tool_errored(content)) "error" else "success",
+    tool_name = content@request@name,
+    tool_title = display$title %||% annotations$title,
+    icon = display$icon %||% annotations$icon,
+    intent = content@request@arguments$.tool_intent,
+    show_request = if (!isFALSE(display$show_request)) NA,
+    expanded = if (isTRUE(display$open)) NA,
+    !!!tool_result_display(content, display)
   )
-  names(props) <- gsub("_", "-", names(props))
-
-  htmltools::tag("shiny-tool-result", props)
 }
 
 get_tool_result_display <- function(content) {

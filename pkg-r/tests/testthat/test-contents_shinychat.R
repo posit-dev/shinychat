@@ -73,28 +73,37 @@ test_that("basic Content handling works", {
 test_that("ContentToolRequest returns NULL when display is disabled", {
   # Should return NULL when display is none
   with_shinychat_tool_display(opt = "none", {
-    req <- new_tool_request()
-    expect_null(contents_shinychat(req))
+    request <- new_tool_request()
+    expect_null(contents_shinychat(request))
   })
 })
 
 test_that("ContentToolRequest rich display", {
   local_shinychat_tool_display(opt = "rich")
 
-  req <- new_tool_request(
+  request <- new_tool_request(
     id = "test-123",
     name = "weather",
     arguments = list(.tool_intent = "Check weather", location = "NYC")
   )
 
-  result <- contents_shinychat(req)
-  expect_s3_class(result, "shiny.tag")
-  expect_equal(result$name, "shiny-tool-request")
-  expect_equal(result$attribs$"request-id", "test-123")
-  expect_equal(result$attribs[["tool-name"]], "weather")
-  expect_equal(result$attribs$intent, "Check weather")
+  res <- contents_shinychat(request)
+  expect_s3_class(res, "shinychat_tool_request")
+  expect_equal(res$request_id, "test-123")
+  expect_equal(res$tool_name, "weather")
+  expect_equal(res$intent, "Check weather")
   expect_equal(
-    jsonlite::fromJSON(result$attribs$arguments),
+    jsonlite::fromJSON(res$arguments),
+    list(.tool_intent = "Check weather", location = "NYC")
+  )
+
+  res_tags <- as.tags(res)
+  expect_equal(res_tags$name, "shiny-tool-request")
+  expect_equal(res_tags$attribs$"request-id", "test-123")
+  expect_equal(res_tags$attribs[["tool-name"]], "weather")
+  expect_equal(res_tags$attribs$intent, "Check weather")
+  expect_equal(
+    jsonlite::fromJSON(res_tags$attribs$arguments),
     list(.tool_intent = "Check weather", location = "NYC")
   )
 })
@@ -106,9 +115,11 @@ test_that("ContentToolRequest handles tool annotations", {
     name = "weather",
     annotations = list(title = "Weather Tool")
   )
-  req <- new_tool_request(tool = tool)
-  result <- contents_shinychat(req)
-  expect_equal(result$attribs[["tool-title"]], "Weather Tool")
+  request <- new_tool_request(tool = tool)
+  res <- contents_shinychat(request)
+
+  expect_s3_class(res, "shinychat_tool_request")
+  expect_equal(res$tool_title, "Weather Tool")
 })
 
 test_that("ContentToolResult requires an associated `@request` property", {
@@ -131,27 +142,31 @@ test_that("simple ContentToolResult are displayed correctly", {
   local_shinychat_tool_display(opt = "rich")
 
   result <- new_tool_result(value = "Success!")
-  output <- contents_shinychat(result)
+  res <- contents_shinychat(result)
 
-  expect_equal(output$attribs$status, "success")
-  expect_equal(output$attribs$value, "Success!")
-  expect_equal(output$attribs$"value-type", "code")
+  expect_s3_class(res, "shinychat_tool_result")
+  expect_equal(res$request_id, result@request@id)
+  expect_equal(res$tool_name, result@request@name)
+  expect_equal(res$value, "Success!")
+  expect_equal(res$value_type, "code")
+  expect_equal(res$status, "success")
 })
 
 test_that("errors in ContentToolResult are displayed correctly", {
   local_shinychat_tool_display(opt = "rich")
 
   result <- new_tool_result(error = "Failed!")
-  output <- contents_shinychat(result)
+  res <- contents_shinychat(result)
 
-  expect_equal(output$attribs$status, "error")
-  expect_equal(output$attribs$value, "Failed!")
-  expect_equal(output$attribs$"value-type", "code")
+  expect_s3_class(res, "shinychat_tool_result")
+  expect_equal(res$status, "error")
+  expect_equal(res$value, "Failed!")
+  expect_equal(res$value_type, "code")
 
   # basic and rich display are the same
   expect_equal(
     with_shinychat_tool_display(opt = "basic", contents_shinychat(result)),
-    output
+    res
   )
 })
 
@@ -168,14 +183,24 @@ test_that("ContentToolResult with custom text display", {
     list(value = "Success!", value_type = "text")
   )
 
-  output <- contents_shinychat(result)
-  expect_s3_class(output, "shiny.tag")
-  expect_equal(output$name, "shiny-tool-result")
-  expect_equal(output$attribs$status, "success")
-  expect_equal(output$attribs$value, "Success!")
-  expect_equal(output$attribs$"value-type", "text")
-  expect_equal(output$attribs[["show-request"]], NA)
-  expect_null(output$attribs$expanded)
+  res <- contents_shinychat(result)
+  expect_s3_class(res, "shinychat_tool_result")
+  expect_equal(res$request_id, result@request@id)
+  expect_equal(res$tool_name, result@request@name)
+  expect_equal(res$status, "success")
+  expect_equal(res$value, "Success!")
+  expect_equal(res$value_type, "text")
+  expect_equal(res$show_request, NA)
+  expect_null(res$expanded)
+
+  res_tags <- as.tags(res)
+  expect_s3_class(res_tags, "shiny.tag")
+  expect_equal(res_tags$name, "shiny-tool-result")
+  expect_equal(res_tags$attribs$status, "success")
+  expect_equal(res_tags$attribs$value, "Success!")
+  expect_equal(res_tags$attribs$"value-type", "text")
+  expect_equal(res_tags$attribs[["show-request"]], NA)
+  expect_null(res_tags$attribs$expanded)
 })
 
 test_that("ContentToolResult with additional display options from result", {
@@ -192,13 +217,20 @@ test_that("ContentToolResult with additional display options from result", {
       )
     )
   )
-  output <- contents_shinychat(result)
+  res <- contents_shinychat(result)
+  expect_s3_class(res, "shinychat_tool_result")
+  expect_equal(res$value, "<p>test</p>")
+  expect_equal(res$value_type, "html")
+  expect_equal(res$show_request, NULL)
+  expect_equal(res$expanded, NA)
+  expect_equal(res$tool_title, "Custom Title")
 
-  expect_equal(output$attribs$value, "<p>test</p>")
-  expect_equal(output$attribs$"value-type", "html")
-  expect_null(output$attribs[["show-request"]])
-  expect_equal(output$attribs$expanded, NA)
-  expect_equal(output$attribs[["tool-title"]], "Custom Title")
+  res_tags <- as.tags(res)
+  expect_equal(res_tags$attribs$value, "<p>test</p>")
+  expect_equal(res_tags$attribs$"value-type", "html")
+  expect_equal(res_tags$attribs[["show-request"]], NULL)
+  expect_equal(res_tags$attribs$expanded, NA)
+  expect_equal(res_tags$attribs[["tool-title"]], "Custom Title")
 })
 
 test_that("ContentToolResult handles icon and dependencies from tool definition", {
@@ -220,10 +252,16 @@ test_that("ContentToolResult handles icon and dependencies from tool definition"
     request = new_tool_request(tool = tool),
     extra = list(display = list(text = "test"))
   )
-  output <- contents_shinychat(result)
 
-  expect_equal(format(output$attribs$icon), '<i class="icon"></i>')
-  expect_true(list(icon_dep) %in% htmltools::findDependencies(output$children))
+  res <- contents_shinychat(result)
+  expect_s3_class(res, "shinychat_tool_result")
+  expect_equal(res$icon, tool@annotations$icon)
+
+  res_tags <- as.tags(res)
+  expect_equal(format(res_tags$attribs$icon), '<i class="icon"></i>')
+  expect_true(
+    list(icon_dep) %in% htmltools::findDependencies(res_tags$children)
+  )
 })
 
 test_that("ContentToolResult formats request_call correctly", {
@@ -236,10 +274,18 @@ test_that("ContentToolResult formats request_call correctly", {
       arguments = list(x = 1, y = "test")
     )
   )
-  output <- contents_shinychat(result)
+  res <- contents_shinychat(result)
+  expect_equal(res$request_call, 'test(x = 1, y = "test")')
+
+  result@request@tool <- NULL
+  res_no_tool <- contents_shinychat(result)
   expect_equal(
-    output$attribs[["request-call"]],
-    'test(x = 1, y = "test")'
+    jsonlite::fromJSON(res_no_tool$request_call),
+    list(
+      id = result@request@id,
+      name = result@request@name,
+      arguments = result@request@arguments
+    )
   )
 })
 
@@ -310,7 +356,7 @@ test_that("processes a Turn object", {
   results <- contents_shinychat(turn)
   expect_length(results, 3)
   expect_equal(results[[1]], "Hello")
-  expect_s3_class(results[[2]], "shiny.tag")
+  expect_s3_class(results[[2]], "shinychat_tool_request")
   expect_equal(results[[3]], "World")
 })
 
@@ -379,14 +425,10 @@ test_that("drops requests and moves results to assistant turn role in a Chat obj
 
   # Verify tool requests are filtered but results appear
   expect_false(
-    some(messages[[1]]$content, function(x) {
-      inherits(x, "shiny.tag") && x$name == "shiny-tool-request"
-    })
+    some(messages[[1]]$content, inherits, "shinychat_tool_request")
   )
   expect_true(
-    some(messages[[1]]$content, function(x) {
-      inherits(x, "shiny.tag") && x$name == "shiny-tool-result"
-    })
+    some(messages[[1]]$content, inherits, "shinychat_tool_result")
   )
 })
 
@@ -419,6 +461,6 @@ test_that("warns when `display` is not a list", {
     extra = list(display = htmltools::tags$p("test"))
   )
   expect_snapshot(
-    contents_shinychat(result)
+    as.tags(contents_shinychat(result))
   )
 })

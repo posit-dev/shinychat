@@ -5,6 +5,7 @@
 #' @import rlang
 #' @import S7
 #' @importFrom coro async
+#' @importFrom htmltools as.tags
 #' @importFrom htmltools tag css HTML
 #' @importFrom lifecycle deprecated
 ## usethis namespace: end

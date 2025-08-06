@@ -360,7 +360,13 @@ chat_append_message <- function(
   content <- msg[["content"]]
   is_html <- inherits(
     content,
-    c("shiny.tag", "shiny.tag.list", "html", "htmlwidget")
+    c(
+      "shiny.tag",
+      "shiny.tag.list",
+      "html",
+      "htmlwidget",
+      "shinychat_tool_card"
+    )
   )
   content_type <- if (is_html) "html" else "markdown"
 

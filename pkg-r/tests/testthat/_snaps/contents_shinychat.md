@@ -72,12 +72,12 @@
 # warns when `display` is not a list
 
     Code
-      contents_shinychat(result)
+      as.tags(contents_shinychat(result))
     Condition
       Warning:
       Invalid `@extra$display` format for `ContentToolResult` from `test-tool()` (call id: test-id).
       i To display HTML content for tool results in shinychat, create a tool result with `extra = list(display = list(html = ...))`.
       i You can also use `markdown` or `text` items in `display` to show Markdown or plain text, respectively.
     Output
-      <shiny-tool-result request-id="test-id" request-call="`test-tool`()" tool-name="test-tool" status="success" show-request value="{}" value-type="code"></shiny-tool-result>
+      <shiny-tool-result request-id="test-id" tool-name="test-tool" request-call="`test-tool`()" status="success" show-request value="{}" value-type="code"></shiny-tool-result>
 
