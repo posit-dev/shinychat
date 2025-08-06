@@ -168,19 +168,16 @@ class ChatInput extends LightElement {
     })
 
     this.inputVisibleObserver.observe(this)
-    this.textarea.addEventListener("compositionstart", this.#onCompositionStart)
-    this.textarea.addEventListener("compositionend", this.#onCompositionEnd)
+    this.addEventListener("compositionstart", this.#onCompositionStart)
+    this.addEventListener("compositionend", this.#onCompositionEnd)
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback()
     this.inputVisibleObserver?.disconnect()
     this.inputVisibleObserver = undefined
-    this.textarea.removeEventListener(
-      "compositionstart",
-      this.#onCompositionStart,
-    )
-    this.textarea.removeEventListener("compositionend", this.#onCompositionEnd)
+    this.removeEventListener("compositionstart", this.#onCompositionStart)
+    this.removeEventListener("compositionend", this.#onCompositionEnd)
   }
 
   attributeChangedCallback(
