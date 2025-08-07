@@ -1,164 +1,190 @@
-import sys
-from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Optional, cast
+from __future__ import annotations
+
+from functools import singledispatch
 
 from htmltools import HTML, Tagifiable
 
 from ._chat_types import ChatMessage
 
-if TYPE_CHECKING:
+__all__ = ["contents_shinychat", "contents_shinychat_chunk"]
+
+
+@singledispatch
+def contents_shinychat(message) -> ChatMessage:
+    """
+    Extract content from various message types into a ChatMessage.
+
+    This function uses `singledispatch` to allow for easy extension to support
+    new message types. To add support for a new type, register a new function
+    using the `@contents_shinychat.register` decorator.
+
+    Parameters
+    ----------
+    message
+        The message object to extract content from (e.g., ChatCompletion,
+        BaseMessage, etc.).
+
+    Note
+    ----
+    This function is implicitly called `Chat.append_message()` to support
+    handling of various message types. It is not intended to be called directly
+    by users, but may be useful for debugging or advanced use cases.
+
+    Returns
+    -------
+    ChatMessage
+        A ChatMessage object containing the extracted content and role.
+
+    Raises
+    ------
+    ValueError
+        If the message type is unsupported.
+    """
+    if isinstance(message, (str, HTML)) or message is None:
+        return ChatMessage(content=message, role="assistant")
+    if isinstance(message, dict):
+        if "content" not in message:
+            raise ValueError("Message dictionary must have a 'content' key")
+        return ChatMessage(
+            content=message["content"],
+            role=message.get("role", "assistant"),
+        )
+    raise ValueError(
+        f"Don't know how to extract content for message type {type(message)}: {message}. "
+        "Consider registering a function to handle this type via `@contents_shinychat.register`"
+    )
+
+
+@singledispatch
+def contents_shinychat_chunk(chunk) -> ChatMessage:
+    """
+    Extract content from various message chunk types into a ChatMessage.
+
+    This function uses `singledispatch` to allow for easy extension to support
+    new chunk types. To add support for a new type, register a new function
+    using the `@contents_shinychat_chunk.register` decorator.
+
+    Parameters
+    ----------
+    chunk
+        The message chunk object to extract content from (e.g., ChatCompletionChunk,
+        BaseMessageChunk, etc.).
+
+    Note
+    ----
+    This function is implicitly called `Chat.append_message_stream()` (on every
+    chunk of a message stream). It is not intended to be called directly by
+    users, but may be useful for debugging or advanced use cases.
+
+    Returns
+    -------
+    ChatMessage
+        A ChatMessage object containing the extracted content and role.
+
+    Raises
+    ------
+    ValueError
+        If the chunk type is unsupported.
+    """
+    if isinstance(chunk, (str, HTML)) or chunk is None:
+        return ChatMessage(content=chunk, role="assistant")
+    if isinstance(chunk, dict):
+        if "content" not in chunk:
+            raise ValueError("Chunk dictionary must have a 'content' key")
+        return ChatMessage(
+            content=chunk["content"],
+            role=chunk.get("role", "assistant"),
+        )
+    raise ValueError(
+        f"Don't know how to extract content for message chunk type {type(chunk)}: {chunk}. "
+        "Consider registering a function to handle this type via `@contents_shinychat_chunk.register`"
+    )
+
+
+# ------------------------------------------------------------------
+# Shiny tagifiable content extractor
+# ------------------------------------------------------------------
+
+
+@contents_shinychat.register
+def _(message: Tagifiable) -> ChatMessage:
+    return ChatMessage(content=message, role="assistant")
+
+
+@contents_shinychat_chunk.register
+def _(chunk: Tagifiable) -> ChatMessage:
+    return ChatMessage(content=chunk, role="assistant")
+
+
+# ------------------------------------------------------------------
+# LangChain content extractor
+# ------------------------------------------------------------------
+
+try:
+    from langchain_core.messages import BaseMessage, BaseMessageChunk
+
+    @contents_shinychat.register
+    def _(message: BaseMessage) -> ChatMessage:
+        if isinstance(message.content, list):
+            raise ValueError(
+                "The `message.content` provided seems to represent numerous messages. "
+                "Consider iterating over `message.content` and calling .append_message() on each iteration."
+            )
+        return ChatMessage(
+            content=message.content,
+            role="assistant",
+        )
+
+    @contents_shinychat_chunk.register
+    def _(chunk: BaseMessageChunk) -> ChatMessage:
+        if isinstance(chunk.content, list):
+            raise ValueError(
+                "The `chunk.content` provided seems to represent numerous messages. "
+                "Consider iterating over `chunk.content` and calling .append_message() on each iteration."
+            )
+        return ChatMessage(
+            content=chunk.content,
+            role="assistant",
+        )
+except ImportError:
+    pass
+
+
+# ------------------------------------------------------------------
+# OpenAI content extractor
+# ------------------------------------------------------------------
+
+try:
+    from openai.types.chat import ChatCompletion, ChatCompletionChunk
+
+    @contents_shinychat.register
+    def _(message: ChatCompletion) -> ChatMessage:
+        return ChatMessage(
+            content=message.choices[0].message.content,
+            role="assistant",
+        )
+
+    @contents_shinychat_chunk.register
+    def _(chunk: ChatCompletionChunk) -> ChatMessage:
+        return ChatMessage(
+            content=chunk.choices[0].delta.content,
+            role="assistant",
+        )
+except ImportError:
+    pass
+
+
+# ------------------------------------------------------------------
+# Anthropic content extractor
+# ------------------------------------------------------------------
+
+try:
     from anthropic.types import Message as AnthropicMessage
     from anthropic.types import MessageStreamEvent
 
-    if sys.version_info >= (3, 9):
-        from google.generativeai.types.generation_types import (  # pyright: ignore[reportMissingTypeStubs]
-            GenerateContentResponse,
-        )
-    else:
-
-        class GenerateContentResponse:
-            text: str
-
-    from langchain_core.messages import BaseMessage, BaseMessageChunk
-    from openai.types.chat import ChatCompletion, ChatCompletionChunk
-
-
-class BaseMessageNormalizer(ABC):
-    @abstractmethod
-    def normalize(self, message: Any) -> ChatMessage:
-        pass
-
-    @abstractmethod
-    def normalize_chunk(self, chunk: Any) -> ChatMessage:
-        pass
-
-    @abstractmethod
-    def can_normalize(self, message: Any) -> bool:
-        pass
-
-    @abstractmethod
-    def can_normalize_chunk(self, chunk: Any) -> bool:
-        pass
-
-
-class StringNormalizer(BaseMessageNormalizer):
-    def normalize(self, message: Any) -> ChatMessage:
-        x = cast(Optional[str], message)
-        return ChatMessage(content=x or "", role="assistant")
-
-    def normalize_chunk(self, chunk: Any) -> ChatMessage:
-        x = cast(Optional[str], chunk)
-        return ChatMessage(content=x or "", role="assistant")
-
-    def can_normalize(self, message: Any) -> bool:
-        return isinstance(message, (str, HTML)) or message is None
-
-    def can_normalize_chunk(self, chunk: Any) -> bool:
-        return isinstance(chunk, (str, HTML)) or chunk is None
-
-
-class DictNormalizer(BaseMessageNormalizer):
-    def normalize(self, message: Any) -> ChatMessage:
-        x = cast("dict[str, Any]", message)
-        if "content" not in x:
-            raise ValueError("Message must have 'content' key")
-        return ChatMessage(content=x["content"], role=x.get("role", "assistant"))
-
-    def normalize_chunk(self, chunk: Any) -> ChatMessage:
-        x = cast("dict[str, Any]", chunk)
-        if "content" not in x:
-            raise ValueError("Message must have 'content' key")
-        return ChatMessage(content=x["content"], role=x.get("role", "assistant"))
-
-    def can_normalize(self, message: Any) -> bool:
-        return isinstance(message, dict)
-
-    def can_normalize_chunk(self, chunk: Any) -> bool:
-        return isinstance(chunk, dict)
-
-
-class TagifiableNormalizer(DictNormalizer):
-    def normalize(self, message: Any) -> ChatMessage:
-        x = cast("Tagifiable", message)
-        return super().normalize({"content": x})
-
-    def normalize_chunk(self, chunk: Any) -> ChatMessage:
-        x = cast("Tagifiable", chunk)
-        return super().normalize_chunk({"content": x})
-
-    def can_normalize(self, message: Any) -> bool:
-        return isinstance(message, Tagifiable)
-
-    def can_normalize_chunk(self, chunk: Any) -> bool:
-        return isinstance(chunk, Tagifiable)
-
-
-class LangChainNormalizer(BaseMessageNormalizer):
-    def normalize(self, message: Any) -> ChatMessage:
-        x = cast("BaseMessage", message)
-        if isinstance(x.content, list):  # type: ignore
-            raise ValueError(
-                "The `message.content` provided seems to represent numerous messages. "
-                "Consider iterating over `message.content` and calling .append_message() on each iteration."
-            )
-        return ChatMessage(content=x.content, role="assistant")
-
-    def normalize_chunk(self, chunk: Any) -> ChatMessage:
-        x = cast("BaseMessageChunk", chunk)
-        if isinstance(x.content, list):  # type: ignore
-            raise ValueError(
-                "The `message.content` provided seems to represent numerous messages. "
-                "Consider iterating over `message.content` and calling .append_message() on each iteration."
-            )
-        return ChatMessage(content=x.content, role="assistant")
-
-    def can_normalize(self, message: Any) -> bool:
-        try:
-            from langchain_core.messages import BaseMessage
-
-            return isinstance(message, BaseMessage)
-        except Exception:
-            return False
-
-    def can_normalize_chunk(self, chunk: Any) -> bool:
-        try:
-            from langchain_core.messages import BaseMessageChunk
-
-            return isinstance(chunk, BaseMessageChunk)
-        except Exception:
-            return False
-
-
-class OpenAINormalizer(StringNormalizer):
-    def normalize(self, message: Any) -> ChatMessage:
-        x = cast("ChatCompletion", message)
-        return super().normalize(x.choices[0].message.content)
-
-    def normalize_chunk(self, chunk: Any) -> ChatMessage:
-        x = cast("ChatCompletionChunk", chunk)
-        return super().normalize_chunk(x.choices[0].delta.content)
-
-    def can_normalize(self, message: Any) -> bool:
-        try:
-            from openai.types.chat import ChatCompletion
-
-            return isinstance(message, ChatCompletion)
-        except Exception:
-            return False
-
-    def can_normalize_chunk(self, chunk: Any) -> bool:
-        try:
-            from openai.types.chat import ChatCompletionChunk
-
-            return isinstance(chunk, ChatCompletionChunk)
-        except Exception:
-            return False
-
-
-class AnthropicNormalizer(BaseMessageNormalizer):
-    def normalize(self, message: Any) -> ChatMessage:
-        x = cast("AnthropicMessage", message)
-        content = x.content[0]
+    @contents_shinychat.register
+    def _(message: AnthropicMessage) -> ChatMessage:
+        content = message.content[0]
         if content.type != "text":
             raise ValueError(
                 f"Anthropic message type {content.type} not supported. "
@@ -166,185 +192,59 @@ class AnthropicNormalizer(BaseMessageNormalizer):
             )
         return ChatMessage(content=content.text, role="assistant")
 
-    def normalize_chunk(self, chunk: Any) -> ChatMessage:
-        x = cast("MessageStreamEvent", chunk)
+    @contents_shinychat_chunk.register
+    def _(chunk: MessageStreamEvent) -> ChatMessage:
         content = ""
-        if x.type == "content_block_delta":
-            if x.delta.type != "text_delta":
+        if chunk.type == "content_block_delta":
+            if chunk.delta.type != "text_delta":
                 raise ValueError(
-                    f"Anthropic message delta type {x.delta.type} not supported. "
+                    f"Anthropic message delta type {chunk.delta.type} not supported. "
                     "Only 'text_delta' type is supported"
                 )
-            content = x.delta.text
+            content = chunk.delta.text
 
         return ChatMessage(content=content, role="assistant")
-
-    def can_normalize(self, message: Any) -> bool:
-        try:
-            from anthropic.types import Message as AnthropicMessage
-
-            return isinstance(message, AnthropicMessage)
-        except Exception:
-            return False
-
-    def can_normalize_chunk(self, chunk: Any) -> bool:
-        try:
-            from anthropic.types import (
-                RawContentBlockDeltaEvent,
-                RawContentBlockStartEvent,
-                RawContentBlockStopEvent,
-                RawMessageDeltaEvent,
-                RawMessageStartEvent,
-                RawMessageStopEvent,
-            )
-
-            # The actual MessageStreamEvent is a generic, so isinstance() can't
-            # be used to check the type. Instead, we manually construct the relevant
-            # union of relevant classes...
-            return (
-                isinstance(chunk, RawContentBlockDeltaEvent)
-                or isinstance(chunk, RawContentBlockStartEvent)
-                or isinstance(chunk, RawContentBlockStopEvent)
-                or isinstance(chunk, RawMessageDeltaEvent)
-                or isinstance(chunk, RawMessageStartEvent)
-                or isinstance(chunk, RawMessageStopEvent)
-            )
-        except Exception:
-            return False
+except ImportError:
+    pass
 
 
-class GoogleNormalizer(BaseMessageNormalizer):
-    def normalize(self, message: Any) -> ChatMessage:
-        x = cast("GenerateContentResponse", message)
-        return ChatMessage(content=x.text, role="assistant")
+# ------------------------------------------------------------------
+# Google content extractor
+# ------------------------------------------------------------------
 
-    def normalize_chunk(self, chunk: Any) -> ChatMessage:
-        x = cast("GenerateContentResponse", chunk)
-        return ChatMessage(content=x.text, role="assistant")
-
-    def can_normalize(self, message: Any) -> bool:
-        try:
-            import google.generativeai.types.generation_types as gtypes  # pyright: ignore[reportMissingTypeStubs, reportMissingImports]
-
-            return isinstance(
-                message,
-                gtypes.GenerateContentResponse,  # pyright: ignore[reportUnknownMemberType]
-            )
-        except Exception:
-            return False
-
-    def can_normalize_chunk(self, chunk: Any) -> bool:
-        return self.can_normalize(chunk)
-
-
-class OllamaNormalizer(DictNormalizer):
-    def normalize(self, message: Any) -> ChatMessage:
-        x = cast("dict[str, Any]", message["message"])
-        return super().normalize(x)
-
-    def normalize_chunk(self, chunk: "dict[str, Any]") -> ChatMessage:
-        msg = cast("dict[str, Any]", chunk["message"])
-        return super().normalize_chunk(msg)
-
-    def can_normalize(self, message: Any) -> bool:
-        try:
-            from ollama import ChatResponse
-
-            # Ollama<0.4 used TypedDict (now it uses pydantic)
-            # https://github.com/ollama/ollama-python/pull/276
-            if isinstance(ChatResponse, dict):
-                return "message" in message and super().can_normalize(
-                    message["message"]
-                )
-            else:
-                return isinstance(message, ChatResponse)
-        except Exception:
-            return False
-
-    def can_normalize_chunk(self, chunk: Any) -> bool:
-        return self.can_normalize(chunk)
-
-
-class NormalizerRegistry:
-    def __init__(self) -> None:
-        # Order of strategies matters (the 1st one that can normalize the message is used)
-        # So make sure to put the most specific strategies first
-        self._strategies: dict[str, BaseMessageNormalizer] = {
-            "openai": OpenAINormalizer(),
-            "anthropic": AnthropicNormalizer(),
-            "google": GoogleNormalizer(),
-            "langchain": LangChainNormalizer(),
-            "ollama": OllamaNormalizer(),
-            "tagify": TagifiableNormalizer(),
-            "dict": DictNormalizer(),
-            "string": StringNormalizer(),
-        }
-
-    def register(
-        self, provider: str, strategy: BaseMessageNormalizer, force: bool = False
-    ) -> None:
-        if provider in self._strategies:
-            if force:
-                del self._strategies[provider]
-            else:
-                raise ValueError(f"Provider {provider} already exists in registry")
-        # Update the strategies dict such that the new strategy is the first to be considered
-        self._strategies = {provider: strategy, **self._strategies}
-
-
-message_normalizer_registry = NormalizerRegistry()
-
-
-def register_custom_normalizer(
-    provider: str, normalizer: BaseMessageNormalizer, force: bool = False
-) -> None:
-    """
-    Register a custom normalizer for handling specific message types.
-
-    Parameters
-    ----------
-    provider : str
-        A unique identifier for this normalizer in the registry
-    normalizer : BaseMessageNormalizer
-        A normalizer instance that can handle your specific message type
-    force : bool, optional
-        Whether to override an existing normalizer with the same provider name,
-        by default False
-
-    Examples
-    --------
-    >>> class MyCustomMessage:
-    ...     def __init__(self, content):
-    ...         self.content = content
-    ...
-    >>> class MyCustomNormalizer(StringNormalizer):
-    ...     def normalize(self, message):
-    ...         return ChatMessage(content=message.content, role="assistant")
-    ...     def can_normalize(self, message):
-    ...         return isinstance(message, MyCustomMessage)
-    ...
-    >>> register_custom_normalizer("my_provider", MyCustomNormalizer())
-    """
-    message_normalizer_registry.register(provider, normalizer, force)
-
-
-def normalize_message(message: Any) -> ChatMessage:
-    strategies = message_normalizer_registry._strategies
-    for strategy in strategies.values():
-        if strategy.can_normalize(message):
-            return strategy.normalize(message)
-    raise ValueError(
-        f"Could not find a normalizer for message of type {type(message)}: {message}. "
-        "Consider registering a custom normalizer via shiny.ui._chat_types.registry.register()"
+try:
+    from google.generativeai.types.generation_types import (
+        GenerateContentResponse,
     )
 
+    @contents_shinychat.register
+    def _(message: GenerateContentResponse) -> ChatMessage:
+        return ChatMessage(content=message.text, role="assistant")
 
-def normalize_message_chunk(chunk: Any) -> ChatMessage:
-    strategies = message_normalizer_registry._strategies
-    for strategy in strategies.values():
-        if strategy.can_normalize_chunk(chunk):
-            return strategy.normalize_chunk(chunk)
-    raise ValueError(
-        f"Could not find a normalizer for message chunk of type {type(chunk)}: {chunk}. "
-        "Consider registering a custom normalizer via shiny.ui._chat_normalize.register_custom_normalizer()"
-    )
+    @contents_shinychat_chunk.register
+    def _(chunk: GenerateContentResponse) -> ChatMessage:
+        return ChatMessage(content=chunk.text, role="assistant")
+
+except ImportError:
+    pass
+
+
+# ------------------------------------------------------------------
+# Ollama content extractor
+# ------------------------------------------------------------------
+
+try:
+    from ollama import ChatResponse
+
+    @contents_shinychat.register
+    def _(message: ChatResponse) -> ChatMessage:
+        msg = message.message
+        return ChatMessage(msg.content, role="assistant")
+
+    @contents_shinychat_chunk.register
+    def _(chunk: ChatResponse) -> ChatMessage:
+        msg = chunk.message
+        return ChatMessage(msg.content, role="assistant")
+
+except ImportError:
+    pass

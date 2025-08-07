@@ -9,8 +9,12 @@ from shiny import Session
 from shiny.module import ResolvedId
 from shiny.session import session_context
 from shiny.types import MISSING
+
 from shinychat import Chat
-from shinychat._chat_normalize import normalize_message, normalize_message_chunk
+from shinychat._chat_normalize import (
+    contents_shinychat,
+    contents_shinychat_chunk,
+)
 from shinychat._chat_types import (
     ChatMessage,
     ChatMessageDict,
@@ -169,7 +173,7 @@ def test_chat_message_trimming():
 
 
 # ------------------------------------------------------------------------------------
-# Unit tests for normalize_message() and normalize_message_chunk().
+# Unit tests for contents_shinychat() and contents_shinychat_chunk().
 #
 # This is where we go from provider's response object to ChatMessage.
 #
@@ -181,13 +185,13 @@ def test_chat_message_trimming():
 
 
 def test_string_normalization():
-    m = normalize_message_chunk("Hello world!")
+    m = contents_shinychat_chunk("Hello world!")
     assert m.content == "Hello world!"
     assert m.role == "assistant"
 
 
 def test_dict_normalization():
-    m = normalize_message_chunk(
+    m = contents_shinychat_chunk(
         {"content": "Hello world!", "role": "assistant"}
     )
     assert m.content == "Hello world!"
@@ -208,13 +212,13 @@ def test_langchain_normalization():
 
     # Mock & normalize return value of BaseChatModel.invoke()
     msg = BaseMessage(content="Hello world!", role="assistant", type="foo")
-    m = normalize_message(msg)
+    m = contents_shinychat(msg)
     assert m.content == "Hello world!"
     assert m.role == "assistant"
 
     # Mock & normalize return value of BaseChatModel.stream()
     chunk = BaseMessageChunk(content="Hello ", type="foo")
-    m = normalize_message_chunk(chunk)
+    m = contents_shinychat_chunk(chunk)
     assert m.content == "Hello "
     assert m.role == "assistant"
 
@@ -224,9 +228,7 @@ def test_google_normalization():
     if sys.version_info < (3, 9):
         return
 
-    from google.generativeai.generative_models import (
-        GenerativeModel,  # pyright: ignore[reportMissingTypeStubs]
-    )
+    from google.generativeai.generative_models import GenerativeModel  # pyright: ignore[reportMissingTypeStubs]
 
     generate_content = GenerativeModel.generate_content  # type: ignore
 
@@ -275,7 +277,7 @@ def test_anthropic_normalization():
         usage=Usage(input_tokens=0, output_tokens=0),
     )
 
-    m = normalize_message(msg)
+    m = contents_shinychat(msg)
     assert m.content == "Hello world!"
     assert m.role == "assistant"
 
@@ -286,7 +288,7 @@ def test_anthropic_normalization():
         index=0,
     )
 
-    m = normalize_message_chunk(chunk)
+    m = contents_shinychat_chunk(chunk)
     assert m.content == "Hello "
     assert m.role == "assistant"
 
@@ -335,7 +337,7 @@ def test_openai_normalization():
         created=int(datetime.now().timestamp()),
     )
 
-    m = normalize_message(completion)
+    m = contents_shinychat(completion)
     assert m.content == "Hello world!"
     assert m.role == "assistant"
 
@@ -356,7 +358,7 @@ def test_openai_normalization():
         ],
     )
 
-    m = normalize_message_chunk(chunk)
+    m = contents_shinychat_chunk(chunk)
     assert m.content == "Hello "
     assert m.role == "assistant"
 
@@ -371,11 +373,11 @@ def test_ollama_normalization():
     )
 
     msg_dict = {"content": "Hello world!", "role": "assistant"}
-    m = normalize_message(msg)
+    m = contents_shinychat(msg)
     assert m.content == msg_dict["content"]
     assert m.role == msg_dict["role"]
 
-    m = normalize_message_chunk(msg)
+    m = contents_shinychat_chunk(msg)
     assert m.content == msg_dict["content"]
     assert m.role == msg_dict["role"]
 
@@ -419,9 +421,7 @@ def test_as_google_message():
     if sys.version_info < (3, 9):
         return
 
-    from google.generativeai.generative_models import (
-        GenerativeModel,  # pyright: ignore[reportMissingTypeStubs]
-    )
+    from google.generativeai.generative_models import GenerativeModel  # pyright: ignore[reportMissingTypeStubs]
 
     generate_content = GenerativeModel.generate_content  # type: ignore
 
@@ -430,9 +430,7 @@ def test_as_google_message():
         == "content_types.ContentsType"
     )
 
-    from google.generativeai.types import (
-        content_types,  # pyright: ignore[reportMissingTypeStubs]
-    )
+    from google.generativeai.types import content_types  # pyright: ignore[reportMissingTypeStubs]
 
     assert is_type_in_union(
         content_types.ContentDict, content_types.ContentsType
