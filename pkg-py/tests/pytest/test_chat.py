@@ -9,7 +9,6 @@ from shiny import Session
 from shiny.module import ResolvedId
 from shiny.session import session_context
 from shiny.types import MISSING
-
 from shinychat import Chat
 from shinychat._chat_normalize import (
     contents_shinychat,
@@ -228,7 +227,9 @@ def test_google_normalization():
     if sys.version_info < (3, 9):
         return
 
-    from google.generativeai.generative_models import GenerativeModel  # pyright: ignore[reportMissingTypeStubs]
+    from google.generativeai.generative_models import (
+        GenerativeModel,  # pyright: ignore[reportMissingTypeStubs]
+    )
 
     generate_content = GenerativeModel.generate_content  # type: ignore
 
@@ -421,7 +422,9 @@ def test_as_google_message():
     if sys.version_info < (3, 9):
         return
 
-    from google.generativeai.generative_models import GenerativeModel  # pyright: ignore[reportMissingTypeStubs]
+    from google.generativeai.generative_models import (
+        GenerativeModel,  # pyright: ignore[reportMissingTypeStubs]
+    )
 
     generate_content = GenerativeModel.generate_content  # type: ignore
 
@@ -430,7 +433,9 @@ def test_as_google_message():
         == "content_types.ContentsType"
     )
 
-    from google.generativeai.types import content_types  # pyright: ignore[reportMissingTypeStubs]
+    from google.generativeai.types import (
+        content_types,  # pyright: ignore[reportMissingTypeStubs]
+    )
 
     assert is_type_in_union(
         content_types.ContentDict, content_types.ContentsType
