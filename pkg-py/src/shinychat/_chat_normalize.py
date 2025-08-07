@@ -180,8 +180,8 @@ except ImportError:
 # ------------------------------------------------------------------
 
 try:
-    from anthropic.types import (
-        Message as AnthropicMessage,  # pyright: ignore[reportMissingImports]
+    from anthropic.types import (  # pyright: ignore[reportMissingImports]
+        Message as AnthropicMessage,
     )
 
     @get_message_content.register

@@ -258,14 +258,14 @@ def test_anthropic_normalization():
         TextBlock,
         Usage,
     )
-    from anthropic.types.message import (
-        Message,  # pyright: ignore[reportMissingImports]
+    from anthropic.types.message import (  # pyright: ignore[reportMissingImports]
+        Message,
     )
-    from anthropic.types.raw_content_block_delta_event import (
-        RawContentBlockDeltaEvent,  # pyright: ignore[reportMissingImports]
+    from anthropic.types.raw_content_block_delta_event import (  # pyright: ignore[reportMissingImports]
+        RawContentBlockDeltaEvent,
     )
-    from anthropic.types.text_delta import (
-        TextDelta,  # pyright: ignore[reportMissingImports]
+    from anthropic.types.text_delta import (  # pyright: ignore[reportMissingImports]
+        TextDelta,
     )
 
     # Make sure return type of Anthropic().messages.create() hasn't changed
@@ -419,8 +419,8 @@ def test_as_anthropic_message():
         AsyncMessages,
         Messages,
     )
-    from anthropic.types import (
-        MessageParam,  # pyright: ignore[reportMissingImports]
+    from anthropic.types import (  # pyright: ignore[reportMissingImports]
+        MessageParam,
     )
     from shinychat._chat_provider_types import as_anthropic_message
 
