@@ -399,6 +399,9 @@ def test_ollama_normalization():
 
 
 def test_as_anthropic_message():
+    if sys.version_info < (3, 11):
+        pytest.skip("Anthropic is only available for Python 3.11+")
+
     from anthropic.resources.messages import AsyncMessages, Messages
     from anthropic.types import MessageParam
     from shinychat._chat_provider_types import as_anthropic_message
