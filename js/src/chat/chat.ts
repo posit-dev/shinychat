@@ -9,6 +9,8 @@ import {
   showShinyClientMessage,
 } from "../utils/_utils"
 
+import { ShinyToolRequest, ShinyToolResult } from "./chat-tools"
+
 import type { HtmlDep } from "../utils/_utils"
 
 type ContentType = "markdown" | "html" | "text"
@@ -54,6 +56,8 @@ const CHAT_USER_MESSAGE_TAG = "shiny-user-message"
 const CHAT_MESSAGES_TAG = "shiny-chat-messages"
 const CHAT_INPUT_TAG = "shiny-chat-input"
 const CHAT_CONTAINER_TAG = "shiny-chat-container"
+const CHAT_TOOL_REQUEST_TAG = "shiny-tool-request"
+const CHAT_TOOL_RESULT_TAG = "shiny-tool-result"
 
 const ICONS = {
   robot:
@@ -561,6 +565,8 @@ const chatCustomElements = [
   { tag: CHAT_MESSAGES_TAG, component: ChatMessages },
   { tag: CHAT_INPUT_TAG, component: ChatInput },
   { tag: CHAT_CONTAINER_TAG, component: ChatContainer },
+  { tag: CHAT_TOOL_REQUEST_TAG, component: ShinyToolRequest },
+  { tag: CHAT_TOOL_RESULT_TAG, component: ShinyToolResult },
 ]
 
 chatCustomElements.forEach(({ tag, component }) => {
@@ -569,7 +575,7 @@ chatCustomElements.forEach(({ tag, component }) => {
   }
 })
 
-window.Shiny.addCustomMessageHandler(
+window.Shiny?.addCustomMessageHandler(
   "shinyChatMessage",
   async function (message: ShinyChatMessage) {
     if (message.obj?.html_deps) {

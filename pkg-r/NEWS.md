@@ -6,6 +6,8 @@
 
 * Added `update_chat_user_input()` for programmatically updating the user input of a chat UI element. (#78)
 
+* shinychat now shows tool call request and results in the UI, and the feature is enabled by default in `chat_app()` and the chat module (`chat_mod_server()`). When using `chat_append()` with `chat_ui()`, set `stream = "content"` when you call the `$stream_async()` method on the `ellmer::Chat` client to ensure tool calls are included in the chat stream output. Learn more in the [tool calling UI article](https://posit-dev.github.io/shinychat/r/articles/tool-ui.html). (#52)
+
 ## Improvements
 
 * `chat_app()` now correctly restores the chat client state when refreshing the app, e.g. by reloading the page. (#71)
