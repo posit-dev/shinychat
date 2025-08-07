@@ -1,4 +1,4 @@
-url: https://posit-dev.github.io/shinychat
+url: https://posit-dev.github.io/shinychat/r
 
 destination: "../docs/r"
 
@@ -25,7 +25,7 @@ template:
 
 navbar:
   structure:
-    left:  [get-started, reference]
+    left:  [get-started, articles, reference]
     right: [search, news, github, lightswitch]
   components:
     home: ~
@@ -33,6 +33,12 @@ navbar:
     get-started:
       text: Get Started
       href: articles/get-started.html
+
+    articles:
+      text: Articles
+      menu:
+      - text: Tool Calling UI
+        href: articles/tool-ui.html
 
 reference:
 - title: Chat interfaces
@@ -42,6 +48,7 @@ reference:
   - chat_append
   - chat_append_message
   - chat_clear
+  - update_chat_user_input
 
 - title: Streaming markdown interface
   contents:
@@ -51,3 +58,7 @@ reference:
 - title: Bookmark chat history
   contents:
   - chat_restore
+
+- title: Integration with ellmer
+  contents:
+  - contents_shinychat

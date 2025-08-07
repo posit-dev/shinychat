@@ -360,7 +360,13 @@ chat_append_message <- function(
   content <- msg[["content"]]
   is_html <- inherits(
     content,
-    c("shiny.tag", "shiny.tag.list", "html", "htmlwidget")
+    c(
+      "shiny.tag",
+      "shiny.tag.list",
+      "html",
+      "htmlwidget",
+      "shinychat_tool_card"
+    )
   )
   content_type <- if (is_html) "html" else "markdown"
 
@@ -380,8 +386,18 @@ chat_append_message <- function(
     ui <- process_ui(content, session)
   }
 
+  msg_content <- ui[["html"]]
+  if (is_html) {
+    # Code blocks with `{=html}` infostrings are rendered as-is by a custom
+    # rendering method in markdown-stream.ts
+    msg_content <- sprintf(
+      "\n\n````````{=html}\n%s\n````````\n\n",
+      msg_content
+    )
+  }
+
   msg <- list(
-    content = ui[["html"]],
+    content = msg_content,
     role = msg[["role"]],
     content_type = content_type,
     html_deps = ui[["deps"]],
@@ -455,12 +471,17 @@ rlang::on_load(
     role = "assistant",
     session = shiny::getDefaultReactiveDomain()
   ) {
-    chat_append_message(
-      id,
-      list(role = role, content = ""),
-      chunk = "start",
-      session = session
-    )
+    chat_append_ <- function(content, chunk = TRUE) {
+      chat_append_message(
+        id,
+        msg = list(role = role, content = content),
+        operation = "append",
+        chunk = chunk,
+        session = session
+      )
+    }
+
+    chat_append_("", chunk = "start")
 
     res <- fastmap::fastqueue(200)
 
@@ -474,22 +495,20 @@ rlang::on_load(
 
       res$add(msg)
 
-      chat_append_message(
-        id,
-        list(role = role, content = msg),
-        chunk = TRUE,
-        operation = "append",
-        session = session
-      )
+      if (S7::S7_inherits(msg, ellmer::ContentToolResult)) {
+        if (!is.null(msg@request)) {
+          session$sendCustomMessage("shiny-tool-request-hide", msg@request@id)
+        }
+      }
+
+      if (S7::S7_inherits(msg, ellmer::Content)) {
+        msg <- contents_shinychat(msg)
+      }
+
+      chat_append_(msg)
     }
 
-    chat_append_message(
-      id,
-      list(role = role, content = ""),
-      chunk = "end",
-      operation = "append",
-      session = session
-    )
+    chat_append_("", chunk = "end")
 
     res <- res$as_list()
     if (every(res, is.character)) {
