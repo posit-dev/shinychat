@@ -243,6 +243,9 @@ def test_google_normalization():
 
 
 def test_anthropic_normalization():
+    if sys.version_info < (3, 11):
+        pytest.skip("Anthropic is only available for Python 3.11+")
+
     from anthropic import Anthropic, AsyncAnthropic
     from anthropic.resources.messages import AsyncMessages, Messages
     from anthropic.types import TextBlock, Usage
