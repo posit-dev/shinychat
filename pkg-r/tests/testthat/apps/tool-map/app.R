@@ -2,7 +2,6 @@ library(shiny)
 library(bslib)
 library(ellmer)
 library(leaflet)
-pkgload::load_all()
 library(shinychat)
 
 tool_show_map <- tool(
