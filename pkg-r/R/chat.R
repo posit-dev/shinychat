@@ -54,6 +54,9 @@ chat_deps <- function() {
 #' @param fill Whether the chat element should try to vertically fill its
 #'   container, if the container is
 #'   [fillable](https://rstudio.github.io/bslib/articles/filling/index.html)
+#' @param icon_assistant The icon to use for the assistant chat messages.
+#'   Can be HTML or a tag in the form of [htmltools::HTML()] or
+#'   [htmltools::tags()]. If `None`, a default robot icon is used.
 #' @returns A Shiny tag object, suitable for inclusion in a Shiny UI
 #'
 #' @examplesIf interactive()
@@ -90,7 +93,8 @@ chat_ui <- function(
   placeholder = "Enter a message...",
   width = "min(680px, 100%)",
   height = "auto",
-  fill = TRUE
+  fill = TRUE,
+  icon_assistant = NULL
 ) {
   attrs <- rlang::list2(...)
   if (!all(nzchar(rlang::names2(attrs)))) {
@@ -123,6 +127,7 @@ chat_ui <- function(
       tag_name,
       rlang::list2(
         content = ui[["html"]],
+        icon = if (!is.null(icon_assistant)) as.character(icon_assistant),
         ui[["dependencies"]],
       )
     )
@@ -138,13 +143,19 @@ chat_ui <- function(
       ),
       placeholder = placeholder,
       fill = if (isTRUE(fill)) NA else NULL,
+      # Also include icon on the parent so that when messages are dynamically added,
+      # we know the default icon has changed
+      icon_assistant = if (!is.null(icon_assistant)) {
+        as.character(icon_assistant)
+      },
       ...,
       tag("shiny-chat-messages", message_tags),
       tag(
         "shiny-chat-input",
         list(id = paste0(id, "_user_input"), placeholder = placeholder)
       ),
-      chat_deps()
+      chat_deps(),
+      htmltools::findDependencies(icon_assistant)
     )
   )
 
@@ -195,6 +206,9 @@ chat_ui <- function(
 #'
 #' @param role The role of the message (either "assistant" or "user"). Defaults
 #'   to "assistant".
+#' @param icon An optional icon to display next to the message, currently only
+#'   used for assistant messages. The icon can be any HTML element (e.g., an
+#'   [htmltools::img()] tag) or a string of HTML.
 #' @param session The Shiny session object
 #'
 #' @returns Returns a promise that resolves to the contents of the stream, or an
@@ -246,13 +260,14 @@ chat_append <- function(
   id,
   response,
   role = c("assistant", "user"),
+  icon = NULL,
   session = getDefaultReactiveDomain()
 ) {
   check_active_session(session)
   role <- match.arg(role)
 
   stream <- as_generator(response)
-  chat_append_stream(id, stream, role = role, session = session)
+  chat_append_stream(id, stream, role = role, icon = icon, session = session)
 }
 
 #' Low-level function to append a message to a chat control
@@ -274,6 +289,9 @@ chat_append <- function(
 #'   then the new content is appended to the existing message content. If
 #'   `"replace"`, then the existing message content is replaced by the new
 #'   content. Ignored if `chunk` is `FALSE`.
+#' @param icon An optional icon to display next to the message, currently only
+#'  used for assistant messages. The icon can be any HTML element (e.g.,
+#'  [htmltools::img()] tag) or a string of HTML.
 #' @param session The Shiny session object
 #'
 #' @returns Returns nothing (\code{invisible(NULL)}).
@@ -329,6 +347,7 @@ chat_append_message <- function(
   msg,
   chunk = TRUE,
   operation = c("append", "replace"),
+  icon = NULL,
   session = getDefaultReactiveDomain()
 ) {
   check_active_session(session)
@@ -389,6 +408,10 @@ chat_append_message <- function(
     operation = operation
   )
 
+  if (!is.null(icon)) {
+    msg$icon <- as.character(icon)
+  }
+
   session$sendCustomMessage(
     "shinyChatMessage",
     list(
@@ -405,9 +428,10 @@ chat_append_stream <- function(
   id,
   stream,
   role = "assistant",
+  icon = NULL,
   session = getDefaultReactiveDomain()
 ) {
-  result <- chat_append_stream_impl(id, stream, role, session)
+  result <- chat_append_stream_impl(id, stream, role, icon, session)
   result <- chat_update_bookmark(id, result, session = session)
   # Handle erroneous result...
   result <- promises::catch(result, function(reason) {
@@ -453,12 +477,14 @@ rlang::on_load(
     id,
     stream,
     role = "assistant",
+    icon = NULL,
     session = shiny::getDefaultReactiveDomain()
   ) {
     chat_append_message(
       id,
       list(role = role, content = ""),
       chunk = "start",
+      icon = icon,
       session = session
     )
 

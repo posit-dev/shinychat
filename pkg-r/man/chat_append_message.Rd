@@ -9,6 +9,7 @@ chat_append_message(
   msg,
   chunk = TRUE,
   operation = c("append", "replace"),
+  icon = NULL,
   session = getDefaultReactiveDomain()
 )
 }
@@ -30,6 +31,10 @@ intermediate chunk of a multi-chunk message. Default is \code{FALSE}.}
 then the new content is appended to the existing message content. If
 \code{"replace"}, then the existing message content is replaced by the new
 content. Ignored if \code{chunk} is \code{FALSE}.}
+
+\item{icon}{An optional icon to display next to the message, currently only
+used for assistant messages. The icon can be any HTML element (e.g.,
+\code{\link[htmltools:builder]{htmltools::img()}} tag) or a string of HTML.}
 
 \item{session}{The Shiny session object}
 }

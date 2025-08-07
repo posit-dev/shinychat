@@ -6,6 +6,8 @@
 
 * Added `update_chat_user_input()` for programmatically updating the user input of a chat UI element. (#78)
 
+* Added `chat_append(icon=...)` and `chat_ui(icon_assistant=...)` for customizing the icon that appears next to assistant responses. (#88)
+
 ## Improvements
 
 * `chat_app()` now correctly restores the chat client state when refreshing the app, e.g. by reloading the page. (#71)
