@@ -539,3 +539,33 @@ def test_as_ollama_message():
     assert as_ollama_message(msg) == OllamaMessage(
         content="I have a question", role="user"
     )
+
+
+class MyObject:
+    content = "Hello world!"
+
+
+class MyObjectChunk:
+    content = "Hello world!"
+
+
+@get_message_content.register
+def _(message: MyObject) -> ChatMessage:
+    return ChatMessage(content=message.content, role="assistant")
+
+
+@get_message_chunk_content.register
+def _(chunk: MyObjectChunk) -> ChatMessage:
+    return ChatMessage(content=chunk.content, role="assistant")
+
+
+def test_custom_objects():
+    obj = MyObject()
+    m = get_message_content(obj)
+    assert m.content == "Hello world!"
+    assert m.role == "assistant"
+
+    chunk = MyObjectChunk()
+    m = get_message_chunk_content(chunk)
+    assert m.content == "Hello world!"
+    assert m.role == "assistant"
