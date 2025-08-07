@@ -52,7 +52,7 @@ from ._chat_bookmark import (
     is_chatlas_chat_client,
     set_chatlas_state,
 )
-from ._chat_normalize import contents_shinychat, contents_shinychat_chunk
+from ._chat_normalize import get_message_chunk_content, get_message_content
 from ._chat_provider_types import (
     AnthropicMessage,
     GoogleMessage,
@@ -636,7 +636,7 @@ class Chat:
             self._pending_messages.append((message, False, "append", None))
             return
 
-        msg = contents_shinychat(message)
+        msg = get_message_content(message)
         msg = await self._transform_message(msg)
         if msg is None:
             return
@@ -753,7 +753,7 @@ class Chat:
         self._current_stream_id = stream_id
 
         # Normalize various message types into a ChatMessage()
-        msg = contents_shinychat_chunk(message)
+        msg = get_message_chunk_content(message)
 
         if operation == "replace":
             self._current_stream_message = (

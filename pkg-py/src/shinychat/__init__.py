@@ -1,5 +1,5 @@
 from ._chat import Chat, chat_ui
-from ._chat_normalize import contents_shinychat, contents_shinychat_chunk
+from ._chat_normalize import get_message_chunk_content, get_message_content
 from ._markdown_stream import MarkdownStream, output_markdown_stream
 
 __all__ = [
@@ -7,6 +7,6 @@ __all__ = [
     "chat_ui",
     "MarkdownStream",
     "output_markdown_stream",
-    "contents_shinychat",
-    "contents_shinychat_chunk",
+    "get_message_content",
+    "get_message_chunk_content",
 ]

@@ -6,17 +6,17 @@ from htmltools import HTML, Tagifiable
 
 from ._chat_types import ChatMessage
 
-__all__ = ["contents_shinychat", "contents_shinychat_chunk"]
+__all__ = ["get_message_content", "get_message_chunk_content"]
 
 
 @singledispatch
-def contents_shinychat(message) -> ChatMessage:
+def get_message_content(message) -> ChatMessage:
     """
     Extract content from various message types into a ChatMessage.
 
     This function uses `singledispatch` to allow for easy extension to support
     new message types. To add support for a new type, register a new function
-    using the `@contents_shinychat.register` decorator.
+    using the `@get_message_content.register` decorator.
 
     Parameters
     ----------
@@ -51,18 +51,18 @@ def contents_shinychat(message) -> ChatMessage:
         )
     raise ValueError(
         f"Don't know how to extract content for message type {type(message)}: {message}. "
-        "Consider registering a function to handle this type via `@contents_shinychat.register`"
+        "Consider registering a function to handle this type via `@get_message_content.register`"
     )
 
 
 @singledispatch
-def contents_shinychat_chunk(chunk) -> ChatMessage:
+def get_message_chunk_content(chunk) -> ChatMessage:
     """
     Extract content from various message chunk types into a ChatMessage.
 
     This function uses `singledispatch` to allow for easy extension to support
     new chunk types. To add support for a new type, register a new function
-    using the `@contents_shinychat_chunk.register` decorator.
+    using the `@get_message_chunk_content.register` decorator.
 
     Parameters
     ----------
@@ -97,7 +97,7 @@ def contents_shinychat_chunk(chunk) -> ChatMessage:
         )
     raise ValueError(
         f"Don't know how to extract content for message chunk type {type(chunk)}: {chunk}. "
-        "Consider registering a function to handle this type via `@contents_shinychat_chunk.register`"
+        "Consider registering a function to handle this type via `@get_message_chunk_content.register`"
     )
 
 
@@ -106,12 +106,12 @@ def contents_shinychat_chunk(chunk) -> ChatMessage:
 # ------------------------------------------------------------------
 
 
-@contents_shinychat.register
+@get_message_content.register
 def _(message: Tagifiable) -> ChatMessage:
     return ChatMessage(content=message, role="assistant")
 
 
-@contents_shinychat_chunk.register
+@get_message_chunk_content.register
 def _(chunk: Tagifiable) -> ChatMessage:
     return ChatMessage(content=chunk, role="assistant")
 
@@ -123,7 +123,7 @@ def _(chunk: Tagifiable) -> ChatMessage:
 try:
     from langchain_core.messages import BaseMessage, BaseMessageChunk
 
-    @contents_shinychat.register
+    @get_message_content.register
     def _(message: BaseMessage) -> ChatMessage:
         if isinstance(message.content, list):
             raise ValueError(
@@ -135,7 +135,7 @@ try:
             role="assistant",
         )
 
-    @contents_shinychat_chunk.register
+    @get_message_chunk_content.register
     def _(chunk: BaseMessageChunk) -> ChatMessage:
         if isinstance(chunk.content, list):
             raise ValueError(
@@ -157,14 +157,14 @@ except ImportError:
 try:
     from openai.types.chat import ChatCompletion, ChatCompletionChunk
 
-    @contents_shinychat.register
+    @get_message_content.register
     def _(message: ChatCompletion) -> ChatMessage:
         return ChatMessage(
             content=message.choices[0].message.content,
             role="assistant",
         )
 
-    @contents_shinychat_chunk.register
+    @get_message_chunk_content.register
     def _(chunk: ChatCompletionChunk) -> ChatMessage:
         return ChatMessage(
             content=chunk.choices[0].delta.content,
@@ -182,7 +182,7 @@ try:
     from anthropic.types import Message as AnthropicMessage
     from anthropic.types import MessageStreamEvent
 
-    @contents_shinychat.register
+    @get_message_content.register
     def _(message: AnthropicMessage) -> ChatMessage:
         content = message.content[0]
         if content.type != "text":
@@ -192,7 +192,7 @@ try:
             )
         return ChatMessage(content=content.text, role="assistant")
 
-    @contents_shinychat_chunk.register
+    @get_message_chunk_content.register
     def _(chunk: MessageStreamEvent) -> ChatMessage:
         content = ""
         if chunk.type == "content_block_delta":
@@ -217,11 +217,11 @@ try:
         GenerateContentResponse,
     )
 
-    @contents_shinychat.register
+    @get_message_content.register
     def _(message: GenerateContentResponse) -> ChatMessage:
         return ChatMessage(content=message.text, role="assistant")
 
-    @contents_shinychat_chunk.register
+    @get_message_chunk_content.register
     def _(chunk: GenerateContentResponse) -> ChatMessage:
         return ChatMessage(content=chunk.text, role="assistant")
 
@@ -236,12 +236,12 @@ except ImportError:
 try:
     from ollama import ChatResponse
 
-    @contents_shinychat.register
+    @get_message_content.register
     def _(message: ChatResponse) -> ChatMessage:
         msg = message.message
         return ChatMessage(msg.content, role="assistant")
 
-    @contents_shinychat_chunk.register
+    @get_message_chunk_content.register
     def _(chunk: ChatResponse) -> ChatMessage:
         msg = chunk.message
         return ChatMessage(msg.content, role="assistant")
