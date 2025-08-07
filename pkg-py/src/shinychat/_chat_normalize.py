@@ -140,7 +140,7 @@ try:
     def _(chunk: BaseMessageChunk) -> ChatMessage:
         if isinstance(chunk.content, list):
             raise ValueError(
-                "The `chunk.content` provided seems to represent numerous messages. "
+                "The `chunk.content` provided seems to represent numerous message chunks. "
                 "Consider iterating over `chunk.content` and calling .append_message() on each iteration."
             )
         return ChatMessage(
