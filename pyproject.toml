@@ -28,7 +28,7 @@ providers = [
     "chatlas>=0.6.1",
     "google-generativeai;python_version>='3.9'",
     "langchain-core",
-    "ollama",
+    "ollama>=0.4.0",
     "openai",
     "tokenizers",
 ]

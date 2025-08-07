@@ -180,7 +180,25 @@ except ImportError:
 
 try:
     from anthropic.types import Message as AnthropicMessage
-    from anthropic.types import MessageStreamEvent
+    from anthropic.types import (
+        RawContentBlockDeltaEvent,
+        RawContentBlockStartEvent,
+        RawContentBlockStopEvent,
+        RawMessageDeltaEvent,
+        RawMessageStartEvent,
+        RawMessageStopEvent,
+    )
+
+    # Create a non-annotated type alias for RawMessageStreamEvent
+    # (so it works with singledispatch)
+    RawMessageStreamEvent = (
+        RawMessageStartEvent
+        | RawMessageDeltaEvent
+        | RawMessageStopEvent
+        | RawContentBlockStartEvent
+        | RawContentBlockDeltaEvent
+        | RawContentBlockStopEvent
+    )
 
     @get_message_content.register
     def _(message: AnthropicMessage) -> ChatMessage:
@@ -193,7 +211,7 @@ try:
         return ChatMessage(content=content.text, role="assistant")
 
     @get_message_chunk_content.register
-    def _(chunk: MessageStreamEvent) -> ChatMessage:
+    def _(chunk: RawMessageStreamEvent) -> ChatMessage:
         content = ""
         if chunk.type == "content_block_delta":
             if chunk.delta.type != "text_delta":

@@ -398,7 +398,7 @@ def test_ollama_normalization():
 def test_as_anthropic_message():
     from anthropic.resources.messages import AsyncMessages, Messages
     from anthropic.types import MessageParam
-    from shiny.ui._chat_provider_types import as_anthropic_message
+    from shinychat._chat_provider_types import as_anthropic_message
 
     # Make sure return type of llm.messages.create() hasn't changed
     assert (
@@ -416,7 +416,7 @@ def test_as_anthropic_message():
 
 
 def test_as_google_message():
-    from shiny.ui._chat_provider_types import as_google_message
+    from shinychat._chat_provider_types import as_google_message
 
     # Not available for Python 3.8
     if sys.version_info < (3, 9):
@@ -460,7 +460,7 @@ def test_as_langchain_message():
         MessageLikeRepresentation,
         SystemMessage,
     )
-    from shiny.ui._chat_provider_types import as_langchain_message
+    from shinychat._chat_provider_types import as_langchain_message
 
     assert BaseChatModel.invoke.__annotations__["input"] == "LanguageModelInput"
     assert BaseChatModel.stream.__annotations__["input"] == "LanguageModelInput"
@@ -491,7 +491,7 @@ def test_as_openai_message():
         ChatCompletionSystemMessageParam,
         ChatCompletionUserMessageParam,
     )
-    from shiny.ui._chat_provider_types import as_openai_message
+    from shinychat._chat_provider_types import as_openai_message
 
     assert (
         Completions.create.__annotations__["messages"]
@@ -523,14 +523,11 @@ def test_as_ollama_message():
     import ollama
     from ollama import Message as OllamaMessage
 
-    # ollama 0.4.2 added Callable to the type hints, but pyright complains about
-    # missing arguments to the Callable type. We'll ignore this for now.
-    # https://github.com/ollama/ollama-python/commit/b50a65b
-    chat = ollama.chat  # type: ignore
+    assert "ollama._types.Message" in str(
+        ollama.chat.__annotations__["messages"]
+    )
 
-    assert "ollama._types.Message" in str(chat.__annotations__["messages"])
-
-    from shiny.ui._chat_provider_types import as_ollama_message
+    from shinychat._chat_provider_types import as_ollama_message
 
     msg = ChatMessageDict(content="I have a question", role="user")
     assert as_ollama_message(msg) == OllamaMessage(
