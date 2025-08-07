@@ -12,6 +12,10 @@
 
 * `chat_app()` now correctly restores the chat client state when refreshing the app, e.g. by reloading the page. (#71)
 
+## Bug fixes
+
+* The chat input no longer submits incomplete text when the user has activated IME completions (e.g. while typing in Japanese or Chinese). (#85)
+
 # shinychat 0.2.0
 
 ## New features and improvements
