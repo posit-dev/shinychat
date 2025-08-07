@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from functools import singledispatch
 
 from htmltools import HTML, Tagifiable
@@ -180,25 +181,6 @@ except ImportError:
 
 try:
     from anthropic.types import Message as AnthropicMessage
-    from anthropic.types import (
-        RawContentBlockDeltaEvent,
-        RawContentBlockStartEvent,
-        RawContentBlockStopEvent,
-        RawMessageDeltaEvent,
-        RawMessageStartEvent,
-        RawMessageStopEvent,
-    )
-
-    # Create a non-annotated type alias for RawMessageStreamEvent
-    # (so it works with singledispatch)
-    RawMessageStreamEvent = (
-        RawMessageStartEvent
-        | RawMessageDeltaEvent
-        | RawMessageStopEvent
-        | RawContentBlockStartEvent
-        | RawContentBlockDeltaEvent
-        | RawContentBlockStopEvent
-    )
 
     @get_message_content.register
     def _(message: AnthropicMessage) -> ChatMessage:
@@ -210,18 +192,22 @@ try:
             )
         return ChatMessage(content=content.text, role="assistant")
 
-    @get_message_chunk_content.register
-    def _(chunk: RawMessageStreamEvent) -> ChatMessage:
-        content = ""
-        if chunk.type == "content_block_delta":
-            if chunk.delta.type != "text_delta":
-                raise ValueError(
-                    f"Anthropic message delta type {chunk.delta.type} not supported. "
-                    "Only 'text_delta' type is supported"
-                )
-            content = chunk.delta.text
+    # Old versions of singledispatch doesn't seem to support union types
+    if sys.version_info >= (3, 11):
+        from anthropic.types import RawMessageStreamEvent
 
-        return ChatMessage(content=content, role="assistant")
+        @get_message_chunk_content.register
+        def _(chunk: RawMessageStreamEvent) -> ChatMessage:
+            content = ""
+            if chunk.type == "content_block_delta":
+                if chunk.delta.type != "text_delta":
+                    raise ValueError(
+                        f"Anthropic message delta type {chunk.delta.type} not supported. "
+                        "Only 'text_delta' type is supported"
+                    )
+                content = chunk.delta.text
+
+            return ChatMessage(content=content, role="assistant")
 except ImportError:
     pass
 
