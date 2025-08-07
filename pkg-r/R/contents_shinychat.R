@@ -155,7 +155,7 @@ new_tool_card <- function(type, request_id, tool_name, ...) {
 }
 
 #' @export
-as.tags.shinychat_tool_card <- function(x) {
+as.tags.shinychat_tool_card <- function(x, ...) {
   tag_name <- switch(
     x$type,
     request = "shiny-tool-request",
