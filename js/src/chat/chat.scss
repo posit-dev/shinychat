@@ -1,3 +1,5 @@
+@import "chat-tools.scss";
+
 shiny-chat-container {
   --shiny-chat-border: var(--bs-border-width, 1px) solid var(--bs-border-color, #e9ecef);
   --shiny-chat-user-message-bg: RGBA(var(--bs-primary-rgb, 0, 123, 194), 0.06);

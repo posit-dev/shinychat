@@ -127,7 +127,6 @@ chat_restore <- function(
 
       # Set the UI
       shiny::withReactiveDomain(session, {
-        chat_clear(id)
         client_set_ui(client, id = id)
       })
     })

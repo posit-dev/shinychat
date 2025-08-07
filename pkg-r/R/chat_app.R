@@ -152,12 +152,15 @@ chat_mod_server <- function(
 
   append_stream_task <- shiny::ExtendedTask$new(
     function(client, ui_id, user_input) {
-      promises::then(
-        promises::promise_resolve(client$stream_async(user_input)),
-        function(stream) {
-          chat_append(ui_id, stream)
-        }
+      stream <- client$stream_async(
+        user_input,
+        stream = "content"
       )
+
+      p <- promises::promise_resolve(stream)
+      promises::then(p, function(stream) {
+        chat_append(ui_id, stream)
+      })
     }
   )
 
