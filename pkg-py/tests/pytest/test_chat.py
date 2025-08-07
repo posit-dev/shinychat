@@ -246,14 +246,27 @@ def test_anthropic_normalization():
     if sys.version_info < (3, 11):
         pytest.skip("Anthropic is only available for Python 3.11+")
 
-    from anthropic import Anthropic, AsyncAnthropic
-    from anthropic.resources.messages import AsyncMessages, Messages
-    from anthropic.types import TextBlock, Usage
-    from anthropic.types.message import Message
-    from anthropic.types.raw_content_block_delta_event import (
-        RawContentBlockDeltaEvent,
+    from anthropic import (  # pyright: ignore[reportMissingImports]
+        Anthropic,
+        AsyncAnthropic,
     )
-    from anthropic.types.text_delta import TextDelta
+    from anthropic.resources.messages import (  # pyright: ignore[reportMissingImports]
+        AsyncMessages,
+        Messages,
+    )
+    from anthropic.types import (  # pyright: ignore[reportMissingImports]
+        TextBlock,
+        Usage,
+    )
+    from anthropic.types.message import (
+        Message,  # pyright: ignore[reportMissingImports]
+    )
+    from anthropic.types.raw_content_block_delta_event import (
+        RawContentBlockDeltaEvent,  # pyright: ignore[reportMissingImports]
+    )
+    from anthropic.types.text_delta import (
+        TextDelta,  # pyright: ignore[reportMissingImports]
+    )
 
     # Make sure return type of Anthropic().messages.create() hasn't changed
     assert isinstance(Anthropic().messages, Messages)
@@ -402,8 +415,13 @@ def test_as_anthropic_message():
     if sys.version_info < (3, 11):
         pytest.skip("Anthropic is only available for Python 3.11+")
 
-    from anthropic.resources.messages import AsyncMessages, Messages
-    from anthropic.types import MessageParam
+    from anthropic.resources.messages import (  # pyright: ignore[reportMissingImports]
+        AsyncMessages,
+        Messages,
+    )
+    from anthropic.types import (
+        MessageParam,  # pyright: ignore[reportMissingImports]
+    )
     from shinychat._chat_provider_types import as_anthropic_message
 
     # Make sure return type of llm.messages.create() hasn't changed

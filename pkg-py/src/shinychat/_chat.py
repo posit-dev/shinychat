@@ -54,7 +54,7 @@ from ._chat_bookmark import (
 )
 from ._chat_normalize import get_message_chunk_content, get_message_content
 from ._chat_provider_types import (
-    AnthropicMessage,
+    AnthropicMessage,  # pyright: ignore[reportAttributeAccessIssue]
     GoogleMessage,
     LangChainMessage,
     OllamaMessage,

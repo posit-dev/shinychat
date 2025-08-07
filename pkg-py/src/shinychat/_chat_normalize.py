@@ -180,7 +180,9 @@ except ImportError:
 # ------------------------------------------------------------------
 
 try:
-    from anthropic.types import Message as AnthropicMessage
+    from anthropic.types import (
+        Message as AnthropicMessage,  # pyright: ignore[reportMissingImports]
+    )
 
     @get_message_content.register
     def _(message: AnthropicMessage) -> ChatMessage:
