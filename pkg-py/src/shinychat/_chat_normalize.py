@@ -26,7 +26,7 @@ def contents_shinychat(message) -> ChatMessage:
 
     Note
     ----
-    This function is implicitly called `Chat.append_message()` to support
+    This function is implicitly called by `Chat.append_message()` to support
     handling of various message types. It is not intended to be called directly
     by users, but may be useful for debugging or advanced use cases.
 
@@ -72,7 +72,7 @@ def contents_shinychat_chunk(chunk) -> ChatMessage:
 
     Note
     ----
-    This function is implicitly called `Chat.append_message_stream()` (on every
+    This function is implicitly called by `Chat.append_message_stream()` (on every
     chunk of a message stream). It is not intended to be called directly by
     users, but may be useful for debugging or advanced use cases.
 
