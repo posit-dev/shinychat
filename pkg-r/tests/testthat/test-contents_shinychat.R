@@ -84,7 +84,7 @@ test_that("ContentToolRequest rich display", {
   request <- new_tool_request(
     id = "test-123",
     name = "weather",
-    arguments = list(.tool_intent = "Check weather", location = "NYC")
+    arguments = list(.intent = "Check weather", location = "NYC")
   )
 
   res <- contents_shinychat(request)
@@ -94,7 +94,7 @@ test_that("ContentToolRequest rich display", {
   expect_equal(res$intent, "Check weather")
   expect_equal(
     jsonlite::fromJSON(res$arguments),
-    list(.tool_intent = "Check weather", location = "NYC")
+    list(.intent = "Check weather", location = "NYC")
   )
 
   res_tags <- as.tags(res)
@@ -104,7 +104,7 @@ test_that("ContentToolRequest rich display", {
   expect_equal(res_tags$attribs$intent, "Check weather")
   expect_equal(
     jsonlite::fromJSON(res_tags$attribs$arguments),
-    list(.tool_intent = "Check weather", location = "NYC")
+    list(.intent = "Check weather", location = "NYC")
   )
 })
 
