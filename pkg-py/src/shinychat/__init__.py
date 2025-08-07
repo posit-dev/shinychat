@@ -1,6 +1,6 @@
 from . import playwright, types
 from ._chat import Chat, chat_ui
-from ._chat_normalize import get_message_chunk_content, get_message_content
+from ._chat_normalize import message_chunk_content, message_content
 from ._markdown_stream import MarkdownStream, output_markdown_stream
 
 __all__ = [
@@ -8,8 +8,8 @@ __all__ = [
     "chat_ui",
     "MarkdownStream",
     "output_markdown_stream",
-    "get_message_content",
-    "get_message_chunk_content",
+    "message_content",
+    "message_chunk_content",
     "types",
     "playwright",
 ]

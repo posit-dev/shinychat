@@ -10,10 +10,7 @@ from shiny.module import ResolvedId
 from shiny.session import session_context
 from shiny.types import MISSING
 from shinychat import Chat
-from shinychat._chat_normalize import (
-    get_message_chunk_content,
-    get_message_content,
-)
+from shinychat._chat_normalize import message_chunk_content, message_content
 from shinychat._chat_types import (
     ChatMessage,
     ChatMessageDict,
@@ -172,7 +169,7 @@ def test_chat_message_trimming():
 
 
 # ------------------------------------------------------------------------------------
-# Unit tests for get_message_content() and get_message_chunk_content().
+# Unit tests for message_content() and message_chunk_content().
 #
 # This is where we go from provider's response object to ChatMessage.
 #
@@ -184,15 +181,13 @@ def test_chat_message_trimming():
 
 
 def test_string_normalization():
-    m = get_message_chunk_content("Hello world!")
+    m = message_chunk_content("Hello world!")
     assert m.content == "Hello world!"
     assert m.role == "assistant"
 
 
 def test_dict_normalization():
-    m = get_message_chunk_content(
-        {"content": "Hello world!", "role": "assistant"}
-    )
+    m = message_chunk_content({"content": "Hello world!", "role": "assistant"})
     assert m.content == "Hello world!"
     assert m.role == "assistant"
 
@@ -211,13 +206,13 @@ def test_langchain_normalization():
 
     # Mock & normalize return value of BaseChatModel.invoke()
     msg = BaseMessage(content="Hello world!", role="assistant", type="foo")
-    m = get_message_content(msg)
+    m = message_content(msg)
     assert m.content == "Hello world!"
     assert m.role == "assistant"
 
     # Mock & normalize return value of BaseChatModel.stream()
     chunk = BaseMessageChunk(content="Hello ", type="foo")
-    m = get_message_chunk_content(chunk)
+    m = message_chunk_content(chunk)
     assert m.content == "Hello "
     assert m.role == "assistant"
 
@@ -294,7 +289,7 @@ def test_anthropic_normalization():
         usage=Usage(input_tokens=0, output_tokens=0),
     )
 
-    m = get_message_content(msg)
+    m = message_content(msg)
     assert m.content == "Hello world!"
     assert m.role == "assistant"
 
@@ -305,7 +300,7 @@ def test_anthropic_normalization():
         index=0,
     )
 
-    m = get_message_chunk_content(chunk)
+    m = message_chunk_content(chunk)
     assert m.content == "Hello "
     assert m.role == "assistant"
 
@@ -354,7 +349,7 @@ def test_openai_normalization():
         created=int(datetime.now().timestamp()),
     )
 
-    m = get_message_content(completion)
+    m = message_content(completion)
     assert m.content == "Hello world!"
     assert m.role == "assistant"
 
@@ -375,7 +370,7 @@ def test_openai_normalization():
         ],
     )
 
-    m = get_message_chunk_content(chunk)
+    m = message_chunk_content(chunk)
     assert m.content == "Hello "
     assert m.role == "assistant"
 
@@ -390,11 +385,11 @@ def test_ollama_normalization():
     )
 
     msg_dict = {"content": "Hello world!", "role": "assistant"}
-    m = get_message_content(msg)
+    m = message_content(msg)
     assert m.content == msg_dict["content"]
     assert m.role == msg_dict["role"]
 
-    m = get_message_chunk_content(msg)
+    m = message_chunk_content(msg)
     assert m.content == msg_dict["content"]
     assert m.role == msg_dict["role"]
 
@@ -567,23 +562,23 @@ class MyObjectChunk:
     content = "Hello world!"
 
 
-@get_message_content.register
+@message_content.register
 def _(message: MyObject) -> ChatMessage:
     return ChatMessage(content=message.content, role="assistant")
 
 
-@get_message_chunk_content.register
+@message_chunk_content.register
 def _(chunk: MyObjectChunk) -> ChatMessage:
     return ChatMessage(content=chunk.content, role="assistant")
 
 
 def test_custom_objects():
     obj = MyObject()
-    m = get_message_content(obj)
+    m = message_content(obj)
     assert m.content == "Hello world!"
     assert m.role == "assistant"
 
     chunk = MyObjectChunk()
-    m = get_message_chunk_content(chunk)
+    m = message_chunk_content(chunk)
     assert m.content == "Hello world!"
     assert m.role == "assistant"
