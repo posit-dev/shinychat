@@ -10,7 +10,7 @@ from shiny.module import ResolvedId
 from shiny.session import session_context
 from shiny.types import MISSING
 from shinychat import Chat
-from shinychat._chat_normalize import message_chunk_content, message_content
+from shinychat._chat_normalize import message_content, message_content_chunk
 from shinychat._chat_types import (
     ChatMessage,
     ChatMessageDict,
@@ -169,7 +169,7 @@ def test_chat_message_trimming():
 
 
 # ------------------------------------------------------------------------------------
-# Unit tests for message_content() and message_chunk_content().
+# Unit tests for message_content() and message_content_chunk().
 #
 # This is where we go from provider's response object to ChatMessage.
 #
@@ -181,13 +181,13 @@ def test_chat_message_trimming():
 
 
 def test_string_normalization():
-    m = message_chunk_content("Hello world!")
+    m = message_content_chunk("Hello world!")
     assert m.content == "Hello world!"
     assert m.role == "assistant"
 
 
 def test_dict_normalization():
-    m = message_chunk_content({"content": "Hello world!", "role": "assistant"})
+    m = message_content_chunk({"content": "Hello world!", "role": "assistant"})
     assert m.content == "Hello world!"
     assert m.role == "assistant"
 
@@ -212,7 +212,7 @@ def test_langchain_normalization():
 
     # Mock & normalize return value of BaseChatModel.stream()
     chunk = BaseMessageChunk(content="Hello ", type="foo")
-    m = message_chunk_content(chunk)
+    m = message_content_chunk(chunk)
     assert m.content == "Hello "
     assert m.role == "assistant"
 
@@ -300,7 +300,7 @@ def test_anthropic_normalization():
         index=0,
     )
 
-    m = message_chunk_content(chunk)
+    m = message_content_chunk(chunk)
     assert m.content == "Hello "
     assert m.role == "assistant"
 
@@ -370,7 +370,7 @@ def test_openai_normalization():
         ],
     )
 
-    m = message_chunk_content(chunk)
+    m = message_content_chunk(chunk)
     assert m.content == "Hello "
     assert m.role == "assistant"
 
@@ -389,7 +389,7 @@ def test_ollama_normalization():
     assert m.content == msg_dict["content"]
     assert m.role == msg_dict["role"]
 
-    m = message_chunk_content(msg)
+    m = message_content_chunk(msg)
     assert m.content == msg_dict["content"]
     assert m.role == msg_dict["role"]
 
@@ -567,7 +567,7 @@ def _(message: MyObject) -> ChatMessage:
     return ChatMessage(content=message.content, role="assistant")
 
 
-@message_chunk_content.register
+@message_content_chunk.register
 def _(chunk: MyObjectChunk) -> ChatMessage:
     return ChatMessage(content=chunk.content, role="assistant")
 
@@ -579,6 +579,6 @@ def test_custom_objects():
     assert m.role == "assistant"
 
     chunk = MyObjectChunk()
-    m = message_chunk_content(chunk)
+    m = message_content_chunk(chunk)
     assert m.content == "Hello world!"
     assert m.role == "assistant"

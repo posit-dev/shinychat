@@ -52,7 +52,7 @@ from ._chat_bookmark import (
     is_chatlas_chat_client,
     set_chatlas_state,
 )
-from ._chat_normalize import message_chunk_content, message_content
+from ._chat_normalize import message_content, message_content_chunk
 from ._chat_provider_types import (
     AnthropicMessage,  # pyright: ignore[reportAttributeAccessIssue]
     GoogleMessage,
@@ -753,7 +753,7 @@ class Chat:
         self._current_stream_id = stream_id
 
         # Normalize various message types into a ChatMessage()
-        msg = message_chunk_content(message)
+        msg = message_content_chunk(message)
 
         if operation == "replace":
             self._current_stream_message = (

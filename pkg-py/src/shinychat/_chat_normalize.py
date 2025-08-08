@@ -7,7 +7,7 @@ from htmltools import HTML, Tagifiable
 
 from ._chat_types import ChatMessage
 
-__all__ = ["message_content", "message_chunk_content"]
+__all__ = ["message_content", "message_content_chunk"]
 
 
 @singledispatch
@@ -57,13 +57,13 @@ def message_content(message) -> ChatMessage:
 
 
 @singledispatch
-def message_chunk_content(chunk) -> ChatMessage:
+def message_content_chunk(chunk) -> ChatMessage:
     """
     Extract content from various message chunk types into a ChatMessage.
 
     This function uses `singledispatch` to allow for easy extension to support
     new chunk types. To add support for a new type, register a new function
-    using the `@message_chunk_content.register` decorator.
+    using the `@message_content_chunk.register` decorator.
 
     Parameters
     ----------
@@ -98,7 +98,7 @@ def message_chunk_content(chunk) -> ChatMessage:
         )
     raise ValueError(
         f"Don't know how to extract content for message chunk type {type(chunk)}: {chunk}. "
-        "Consider registering a function to handle this type via `@message_chunk_content.register`"
+        "Consider registering a function to handle this type via `@message_content_chunk.register`"
     )
 
 
@@ -112,7 +112,7 @@ def _(message: Tagifiable) -> ChatMessage:
     return ChatMessage(content=message, role="assistant")
 
 
-@message_chunk_content.register
+@message_content_chunk.register
 def _(chunk: Tagifiable) -> ChatMessage:
     return ChatMessage(content=chunk, role="assistant")
 
@@ -136,7 +136,7 @@ try:
             role="assistant",
         )
 
-    @message_chunk_content.register
+    @message_content_chunk.register
     def _(chunk: BaseMessageChunk) -> ChatMessage:
         if isinstance(chunk.content, list):
             raise ValueError(
@@ -165,7 +165,7 @@ try:
             role="assistant",
         )
 
-    @message_chunk_content.register
+    @message_content_chunk.register
     def _(chunk: ChatCompletionChunk) -> ChatMessage:
         return ChatMessage(
             content=chunk.choices[0].delta.content,
@@ -198,7 +198,7 @@ try:
     if sys.version_info >= (3, 11):
         from anthropic.types import RawMessageStreamEvent
 
-        @message_chunk_content.register
+        @message_content_chunk.register
         def _(chunk: RawMessageStreamEvent) -> ChatMessage:
             content = ""
             if chunk.type == "content_block_delta":
@@ -227,7 +227,7 @@ try:
     def _(message: GenerateContentResponse) -> ChatMessage:
         return ChatMessage(content=message.text, role="assistant")
 
-    @message_chunk_content.register
+    @message_content_chunk.register
     def _(chunk: GenerateContentResponse) -> ChatMessage:
         return ChatMessage(content=chunk.text, role="assistant")
 
@@ -247,7 +247,7 @@ try:
         msg = message.message
         return ChatMessage(msg.content, role="assistant")
 
-    @message_chunk_content.register
+    @message_content_chunk.register
     def _(chunk: ChatResponse) -> ChatMessage:
         msg = chunk.message
         return ChatMessage(msg.content, role="assistant")
