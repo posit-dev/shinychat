@@ -24,11 +24,11 @@ Changelog = "https://github.com/posit-dev/shinychat/blob/main/pkg-py/CHANGELOG.m
 
 [project.optional-dependencies]
 providers = [
-    "anthropic",
+    "anthropic;python_version>='3.11'",
     "chatlas>=0.6.1",
-    "google-generativeai;python_version>='3.9'",
+    "google-generativeai",
     "langchain-core",
-    "ollama",
+    "ollama>=0.4.0",
     "openai",
     "tokenizers",
 ]

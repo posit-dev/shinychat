@@ -4,7 +4,9 @@ from typing import TYPE_CHECKING, Literal, Union
 from ._chat_types import ChatMessageDict
 
 if TYPE_CHECKING:
-    from anthropic.types import MessageParam as AnthropicMessage
+    from anthropic.types import (  # pyright: ignore[reportMissingImports]
+        MessageParam as AnthropicMessage,
+    )
     from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
     from ollama import Message as OllamaMessage
     from openai.types.chat import (
@@ -28,7 +30,11 @@ if TYPE_CHECKING:
     ]
 
     ProviderMessage = Union[
-        AnthropicMessage, GoogleMessage, LangChainMessage, OpenAIMessage, OllamaMessage
+        AnthropicMessage,
+        GoogleMessage,
+        LangChainMessage,
+        OpenAIMessage,
+        OllamaMessage,
     ]
 else:
     AnthropicMessage = GoogleMessage = LangChainMessage = OpenAIMessage = (
@@ -63,7 +69,9 @@ def as_provider_message(
 
 
 def as_anthropic_message(message: ChatMessageDict) -> "AnthropicMessage":
-    from anthropic.types import MessageParam as AnthropicMessage
+    from anthropic.types import (  # pyright: ignore[reportMissingImports]
+        MessageParam as AnthropicMessage,
+    )
 
     if message["role"] == "system":
         raise ValueError(

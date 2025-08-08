@@ -10,7 +10,7 @@ from shiny.module import ResolvedId
 from shiny.session import session_context
 from shiny.types import MISSING
 from shinychat import Chat
-from shinychat._chat_normalize import normalize_message, normalize_message_chunk
+from shinychat._chat_normalize import message_content, message_content_chunk
 from shinychat._chat_types import (
     ChatMessage,
     ChatMessageDict,
@@ -169,7 +169,7 @@ def test_chat_message_trimming():
 
 
 # ------------------------------------------------------------------------------------
-# Unit tests for normalize_message() and normalize_message_chunk().
+# Unit tests for message_content() and message_content_chunk().
 #
 # This is where we go from provider's response object to ChatMessage.
 #
@@ -181,15 +181,13 @@ def test_chat_message_trimming():
 
 
 def test_string_normalization():
-    m = normalize_message_chunk("Hello world!")
+    m = message_content_chunk("Hello world!")
     assert m.content == "Hello world!"
     assert m.role == "assistant"
 
 
 def test_dict_normalization():
-    m = normalize_message_chunk(
-        {"content": "Hello world!", "role": "assistant"}
-    )
+    m = message_content_chunk({"content": "Hello world!", "role": "assistant"})
     assert m.content == "Hello world!"
     assert m.role == "assistant"
 
@@ -208,13 +206,13 @@ def test_langchain_normalization():
 
     # Mock & normalize return value of BaseChatModel.invoke()
     msg = BaseMessage(content="Hello world!", role="assistant", type="foo")
-    m = normalize_message(msg)
+    m = message_content(msg)
     assert m.content == "Hello world!"
     assert m.role == "assistant"
 
     # Mock & normalize return value of BaseChatModel.stream()
     chunk = BaseMessageChunk(content="Hello ", type="foo")
-    m = normalize_message_chunk(chunk)
+    m = message_content_chunk(chunk)
     assert m.content == "Hello "
     assert m.role == "assistant"
 
@@ -240,14 +238,30 @@ def test_google_normalization():
 
 
 def test_anthropic_normalization():
-    from anthropic import Anthropic, AsyncAnthropic
-    from anthropic.resources.messages import AsyncMessages, Messages
-    from anthropic.types import TextBlock, Usage
-    from anthropic.types.message import Message
-    from anthropic.types.raw_content_block_delta_event import (
+    if sys.version_info < (3, 11):
+        pytest.skip("Anthropic is only available for Python 3.11+")
+
+    from anthropic import (  # pyright: ignore[reportMissingImports]
+        Anthropic,
+        AsyncAnthropic,
+    )
+    from anthropic.resources.messages import (  # pyright: ignore[reportMissingImports]
+        AsyncMessages,
+        Messages,
+    )
+    from anthropic.types import (  # pyright: ignore[reportMissingImports]
+        TextBlock,
+        Usage,
+    )
+    from anthropic.types.message import (  # pyright: ignore[reportMissingImports]
+        Message,
+    )
+    from anthropic.types.raw_content_block_delta_event import (  # pyright: ignore[reportMissingImports]
         RawContentBlockDeltaEvent,
     )
-    from anthropic.types.text_delta import TextDelta
+    from anthropic.types.text_delta import (  # pyright: ignore[reportMissingImports]
+        TextDelta,
+    )
 
     # Make sure return type of Anthropic().messages.create() hasn't changed
     assert isinstance(Anthropic().messages, Messages)
@@ -275,7 +289,7 @@ def test_anthropic_normalization():
         usage=Usage(input_tokens=0, output_tokens=0),
     )
 
-    m = normalize_message(msg)
+    m = message_content(msg)
     assert m.content == "Hello world!"
     assert m.role == "assistant"
 
@@ -286,7 +300,7 @@ def test_anthropic_normalization():
         index=0,
     )
 
-    m = normalize_message_chunk(chunk)
+    m = message_content_chunk(chunk)
     assert m.content == "Hello "
     assert m.role == "assistant"
 
@@ -335,7 +349,7 @@ def test_openai_normalization():
         created=int(datetime.now().timestamp()),
     )
 
-    m = normalize_message(completion)
+    m = message_content(completion)
     assert m.content == "Hello world!"
     assert m.role == "assistant"
 
@@ -356,7 +370,7 @@ def test_openai_normalization():
         ],
     )
 
-    m = normalize_message_chunk(chunk)
+    m = message_content_chunk(chunk)
     assert m.content == "Hello "
     assert m.role == "assistant"
 
@@ -371,11 +385,11 @@ def test_ollama_normalization():
     )
 
     msg_dict = {"content": "Hello world!", "role": "assistant"}
-    m = normalize_message(msg)
+    m = message_content(msg)
     assert m.content == msg_dict["content"]
     assert m.role == msg_dict["role"]
 
-    m = normalize_message_chunk(msg)
+    m = message_content_chunk(msg)
     assert m.content == msg_dict["content"]
     assert m.role == msg_dict["role"]
 
@@ -393,9 +407,17 @@ def test_ollama_normalization():
 
 
 def test_as_anthropic_message():
-    from anthropic.resources.messages import AsyncMessages, Messages
-    from anthropic.types import MessageParam
-    from shiny.ui._chat_provider_types import as_anthropic_message
+    if sys.version_info < (3, 11):
+        pytest.skip("Anthropic is only available for Python 3.11+")
+
+    from anthropic.resources.messages import (  # pyright: ignore[reportMissingImports]
+        AsyncMessages,
+        Messages,
+    )
+    from anthropic.types import (  # pyright: ignore[reportMissingImports]
+        MessageParam,
+    )
+    from shinychat._chat_provider_types import as_anthropic_message
 
     # Make sure return type of llm.messages.create() hasn't changed
     assert (
@@ -413,7 +435,7 @@ def test_as_anthropic_message():
 
 
 def test_as_google_message():
-    from shiny.ui._chat_provider_types import as_google_message
+    from shinychat._chat_provider_types import as_google_message
 
     # Not available for Python 3.8
     if sys.version_info < (3, 9):
@@ -457,7 +479,7 @@ def test_as_langchain_message():
         MessageLikeRepresentation,
         SystemMessage,
     )
-    from shiny.ui._chat_provider_types import as_langchain_message
+    from shinychat._chat_provider_types import as_langchain_message
 
     assert BaseChatModel.invoke.__annotations__["input"] == "LanguageModelInput"
     assert BaseChatModel.stream.__annotations__["input"] == "LanguageModelInput"
@@ -488,7 +510,7 @@ def test_as_openai_message():
         ChatCompletionSystemMessageParam,
         ChatCompletionUserMessageParam,
     )
-    from shiny.ui._chat_provider_types import as_openai_message
+    from shinychat._chat_provider_types import as_openai_message
 
     assert (
         Completions.create.__annotations__["messages"]
@@ -520,16 +542,43 @@ def test_as_ollama_message():
     import ollama
     from ollama import Message as OllamaMessage
 
-    # ollama 0.4.2 added Callable to the type hints, but pyright complains about
-    # missing arguments to the Callable type. We'll ignore this for now.
-    # https://github.com/ollama/ollama-python/commit/b50a65b
-    chat = ollama.chat  # type: ignore
+    assert "ollama._types.Message" in str(
+        ollama.chat.__annotations__["messages"]
+    )
 
-    assert "ollama._types.Message" in str(chat.__annotations__["messages"])
-
-    from shiny.ui._chat_provider_types import as_ollama_message
+    from shinychat._chat_provider_types import as_ollama_message
 
     msg = ChatMessageDict(content="I have a question", role="user")
     assert as_ollama_message(msg) == OllamaMessage(
         content="I have a question", role="user"
     )
+
+
+class MyObject:
+    content = "Hello world!"
+
+
+class MyObjectChunk:
+    content = "Hello world!"
+
+
+@message_content.register
+def _(message: MyObject) -> ChatMessage:
+    return ChatMessage(content=message.content, role="assistant")
+
+
+@message_content_chunk.register
+def _(chunk: MyObjectChunk) -> ChatMessage:
+    return ChatMessage(content=chunk.content, role="assistant")
+
+
+def test_custom_objects():
+    obj = MyObject()
+    m = message_content(obj)
+    assert m.content == "Hello world!"
+    assert m.role == "assistant"
+
+    chunk = MyObjectChunk()
+    m = message_content_chunk(chunk)
+    assert m.content == "Hello world!"
+    assert m.role == "assistant"
