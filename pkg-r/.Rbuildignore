@@ -14,3 +14,4 @@
 ^_dev$
 ^revdep$
 ^shiny_bookmarks$
+^vignettes/articles$

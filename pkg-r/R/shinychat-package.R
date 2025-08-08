@@ -5,6 +5,7 @@
 #' @import rlang
 #' @import S7
 #' @importFrom coro async
+#' @importFrom htmltools as.tags
 #' @importFrom htmltools tag css HTML
 #' @importFrom lifecycle deprecated
 ## usethis namespace: end
@@ -17,6 +18,7 @@ NULL
 ignore_unused_imports <- function() {
   jsonlite::fromJSON
   fastmap::fastqueue
+  ellmer::contents_html
 }
 
 release_bullets <- function() {

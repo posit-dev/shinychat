@@ -87,8 +87,20 @@ method(client_set_ui, S7::new_S3_class(c("Chat", "R6"))) <-
     # TODO-barret-future; In shinychat, make this a single/internal custom message call to send all the messages at once (and then scroll)
 
     msgs <- contents_shinychat(client)
-    lapply(msgs, function(x) {
-      chat_append(id, x$content, role = x$role)
+    lapply(msgs, function(msg_turn) {
+      is_list <- is.list(msg_turn$content) &&
+        !inherits(msg_turn$content, c("shiny.tag", "shiny.taglist"))
+
+      if (is_list) {
+        stream <- coro::generator(function() {
+          for (x in msg_turn$content) {
+            coro::yield(x)
+          }
+        })
+        chat_append(id, stream(), msg_turn$role)
+      } else {
+        chat_append(id, msg_turn$content, role = msg_turn$role)
+      }
     })
   }
 

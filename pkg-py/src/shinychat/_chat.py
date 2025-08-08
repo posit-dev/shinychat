@@ -51,7 +51,7 @@ from ._chat_bookmark import (
     is_chatlas_chat_client,
     set_chatlas_state,
 )
-from ._chat_normalize import normalize_message, normalize_message_chunk
+from ._chat_normalize import message_content, message_content_chunk
 from ._chat_types import ChatMessage, ChatMessageDict, ClientMessage
 from ._html_deps_py_shiny import chat_deps
 
@@ -397,7 +397,7 @@ class Chat:
             self._pending_messages.append((message, False, "append", None))
             return
 
-        msg = normalize_message(message)
+        msg = message_content(message)
         self._store_message(msg)
         await self._send_append_message(
             message=msg,
@@ -511,7 +511,7 @@ class Chat:
         self._current_stream_id = stream_id
 
         # Normalize various message types into a ChatMessage()
-        msg = normalize_message_chunk(message)
+        msg = message_content_chunk(message)
 
         if operation == "replace":
             self._current_stream_message = (
