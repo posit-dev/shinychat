@@ -168,6 +168,9 @@ as.tags.shinychat_tool_card <- function(x, ...) {
   if (identical(x$value_type, "html") && !is.character(x$value)) {
     x$value <- as.tags(x$value)
   }
+  if (!is.null(x$icon) && !is.character(x$icon)) {
+    x$icon <- as.tags(x$icon)
+  }
 
   names(x) <- gsub("_", "-", names(x))
 
