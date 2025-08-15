@@ -5,15 +5,10 @@ from shinychat.express import Chat
 ui.page_opts(title="Hello Chat")
 
 # Create a chat instance, with an initial message
-chat = Chat(
-    id="chat",
-    messages=[
-        {"content": "Hello! How can I help you today?", "role": "assistant"},
-    ],
-)
+chat = Chat(id="chat")
 
 # Display the chat
-chat.ui()
+chat.ui(messages=["Hello! How can I help you today?"])
 
 
 # Define a callback to run when the user submits a message
