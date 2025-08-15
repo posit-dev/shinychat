@@ -74,7 +74,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-dbde6ece91fc58bf30abbd8587d2285d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-858b109e2a056f3ade7d17854fe29630.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-f18685a7aeb329d3c7e7d4bc4bd648a0.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -344,11 +344,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 <tr class="even">
 <td><a href="#shinychat.express.Chat.transform_assistant_response">transform_assistant_response</a></td>
-<td>Transform assistant responses.</td>
+<td>Deprecated. Assistant response transformation features will be removed in a future version.</td>
 </tr>
 <tr class="odd">
 <td><a href="#shinychat.express.Chat.transform_user_input">transform_user_input</a></td>
-<td>Transform user input.</td>
+<td>Deprecated. User input transformation features will be removed in a future version.</td>
 </tr>
 <tr class="even">
 <td><a href="#shinychat.express.Chat.ui">ui</a></td>
@@ -670,12 +670,7 @@ specified in model's completion method.</code></pre>
 <span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>    transform_assistant<span class="op">=</span><span class="va">False</span>,</span>
 <span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Reactively read chat messages</p>
-<p>Obtain chat messages within a reactive context. The default behavior is intended for passing messages along to a model for response generation where you typically want to:</p>
-<ol type="1">
-<li>Cap the number of tokens sent in a single request (i.e., <code>token_limits</code>).</li>
-<li>Apply user input transformations (i.e., <code>transform_user</code>), if any.</li>
-<li>Not apply assistant response transformations (i.e., <code>transform_assistant</code>) since these are predominantly for display purposes (i.e., the model shouldn’t concern itself with how the responses are displayed).</li>
-</ol>
+<p>Obtain chat messages within a reactive context.</p>
 <section id="parameters-3" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-3">Parameters</h4>
 <table class="caption-top table">
@@ -691,25 +686,25 @@ specified in model's completion method.</code></pre>
 <tr class="odd">
 <td>format</td>
 <td><a href="`shiny.types.MISSING_TYPE`">MISSING_TYPE</a> | <a href="`shinychat._chat_provider_types.ProviderMessageFormat`">ProviderMessageFormat</a></td>
-<td>The message format to return. The default value of <code>MISSING</code> means chat messages are returned as :class:<code>ChatMessage</code> objects (a dictionary with <code>content</code> and <code>role</code> keys). Other supported formats include: * <code>"anthropic"</code>: Anthropic message format. * <code>"google"</code>: Google message (aka content) format. * <code>"langchain"</code>: LangChain message format. * <code>"openai"</code>: OpenAI message format. * <code>"ollama"</code>: Ollama message format.</td>
+<td>Deprecated. Provider-specific message formatting will be removed in a future version.</td>
 <td><code>MISSING</code></td>
 </tr>
 <tr class="even">
 <td>token_limits</td>
 <td><a href="`tuple`">tuple</a>[<a href="`int`">int</a>, <a href="`int`">int</a>] | None</td>
-<td>Limit the conversation history based on token limits. If specified, only the most recent messages that fit within the token limits are returned. This is useful for avoiding “exceeded token limit” errors when sending messages to the relevant model, while still providing the most recent context available. A specified value must be a tuple of two integers. The first integer is the maximum number of tokens that can be sent to the model in a single request. The second integer is the amount of tokens to reserve for the model’s response. Note that token counts based on the <code>tokenizer</code> provided to the <code>Chat</code> constructor.</td>
+<td>Deprecated. Token counting and message trimming features will be removed in a future version.</td>
 <td><code>None</code></td>
 </tr>
 <tr class="odd">
 <td>transform_user</td>
 <td><a href="`typing.Literal`">Literal</a>['all', 'last', 'none']</td>
-<td>Whether to return user input messages with transformation applied. This only matters if a <code>transform_user_input</code> was provided to the chat constructor. The default value of <code>"all"</code> means all user input messages are transformed. The value of <code>"last"</code> means only the last user input message is transformed. The value of <code>"none"</code> means no user input messages are transformed.</td>
+<td>Deprecated. Message transformation features will be removed in a future version.</td>
 <td><code>'all'</code></td>
 </tr>
 <tr class="even">
 <td>transform_assistant</td>
 <td><a href="`bool`">bool</a></td>
-<td>Whether to return assistant messages with transformation applied. This only matters if an <code>transform_assistant_response</code> was provided to the chat constructor.</td>
+<td>Deprecated. Message transformation features will be removed in a future version.</td>
 <td><code>False</code></td>
 </tr>
 </tbody>
@@ -788,60 +783,12 @@ specified in model's completion method.</code></pre>
 <section id="shinychat.express.Chat.transform_assistant_response" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.express.Chat.transform_assistant_response">transform_assistant_response</h3>
 <div class="sourceCode" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>express.Chat.transform_assistant_response(fn<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Transform assistant responses.</p>
-<p>Use this method as a decorator on a function (<code>fn</code>) that transforms assistant responses before displaying them in the chat. This is useful for post-processing model responses before displaying them to the user.</p>
-<section id="parameters-5" class="level4 doc-section doc-section-parameters">
-<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-5">Parameters</h4>
-<table class="caption-top table">
-<thead>
-<tr class="header">
-<th>Name</th>
-<th>Type</th>
-<th>Description</th>
-<th>Default</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>fn</td>
-<td><a href="`shinychat._chat.TransformAssistantResponseFunction`">TransformAssistantResponseFunction</a> | None</td>
-<td>A function that takes a string and returns either a string, :class:<code>shiny.ui.HTML</code>, or <code>None</code>. If <code>fn</code> returns a string, it gets interpreted and parsed as a markdown on the client (and the resulting HTML is then sanitized). If <code>fn</code> returns :class:<code>shiny.ui.HTML</code>, it will be displayed as-is. If <code>fn</code> returns <code>None</code>, the response is effectively ignored.</td>
-<td><code>None</code></td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="note-5" class="level4 doc-section doc-section-note">
-<h4 class="doc-section doc-section-note anchored" data-anchor-id="note-5">Note</h4>
-<p>When doing an <code>.append_message_stream()</code>, <code>fn</code> gets called on every chunk of the response (thus, it should be performant), and can optionally access more information (i.e., arguments) about the stream. The 1st argument (required) contains the accumulated content, the 2nd argument (optional) contains the current chunk, and the 3rd argument (optional) is a boolean indicating whether this chunk is the last one in the stream.</p>
-</section>
+<p>Deprecated. Assistant response transformation features will be removed in a future version.</p>
 </section>
 <section id="shinychat.express.Chat.transform_user_input" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.express.Chat.transform_user_input">transform_user_input</h3>
 <div class="sourceCode" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>express.Chat.transform_user_input(fn<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Transform user input.</p>
-<p>Use this method as a decorator on a function (<code>fn</code>) that transforms user input before storing it in the chat messages returned by <code>.messages()</code>. This is useful for implementing RAG workflows, like taking a URL and scraping it for text before sending it to the model.</p>
-<section id="parameters-6" class="level4 doc-section doc-section-parameters">
-<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-6">Parameters</h4>
-<table class="caption-top table">
-<thead>
-<tr class="header">
-<th>Name</th>
-<th>Type</th>
-<th>Description</th>
-<th>Default</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>fn</td>
-<td><a href="`shinychat._chat.TransformUserInput`">TransformUserInput</a> | <a href="`shinychat._chat.TransformUserInputAsync`">TransformUserInputAsync</a> | None</td>
-<td>A function to transform user input before storing it in the chat <code>.messages()</code>. If <code>fn</code> returns <code>None</code>, the user input is effectively ignored, and <code>.on_user_submit()</code> callbacks are suspended until more input is submitted. This behavior is often useful to catch and handle errors that occur during transformation. In this case, the transform function should append an error message to the chat (via <code>.append_message()</code>) to inform the user of the error.</td>
-<td><code>None</code></td>
-</tr>
-</tbody>
-</table>
-</section>
+<p>Deprecated. User input transformation features will be removed in a future version.</p>
 </section>
 <section id="shinychat.express.Chat.ui" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.express.Chat.ui">ui</h3>
@@ -855,8 +802,8 @@ specified in model's completion method.</code></pre>
 <span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs,</span>
 <span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Create a UI element for this <code>Chat</code>.</p>
-<section id="parameters-7" class="level4 doc-section doc-section-parameters">
-<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-7">Parameters</h4>
+<section id="parameters-5" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-5">Parameters</h4>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -922,8 +869,8 @@ specified in model's completion method.</code></pre>
 <span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>    focus<span class="op">=</span><span class="va">False</span>,</span>
 <span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Update the user input.</p>
-<section id="parameters-8" class="level4 doc-section doc-section-parameters">
-<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-8">Parameters</h4>
+<section id="parameters-6" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-6">Parameters</h4>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -966,8 +913,8 @@ specified in model's completion method.</code></pre>
 <h3 class="anchored" data-anchor-id="shinychat.express.Chat.user_input">user_input</h3>
 <div class="sourceCode" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>express.Chat.user_input(transform<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Reactively read the user’s message.</p>
-<section id="parameters-9" class="level4 doc-section doc-section-parameters">
-<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-9">Parameters</h4>
+<section id="parameters-7" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-7">Parameters</h4>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -1006,8 +953,8 @@ specified in model's completion method.</code></pre>
 </tbody>
 </table>
 </section>
-<section id="note-6" class="level4 doc-section doc-section-note">
-<h4 class="doc-section doc-section-note anchored" data-anchor-id="note-6">Note</h4>
+<section id="note-5" class="level4 doc-section doc-section-note">
+<h4 class="doc-section doc-section-note anchored" data-anchor-id="note-5">Note</h4>
 <p>Most users shouldn’t need to use this method directly since the last item in <code>.messages()</code> contains the most recent user input. It can be useful for:</p>
 <ol type="1">
 <li>Taking a reactive dependency on the user’s input outside of a <code>.on_user_submit()</code> callback.</li>
