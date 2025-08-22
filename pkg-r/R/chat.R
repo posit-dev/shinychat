@@ -109,12 +109,6 @@ chat_ui <- function(
       role <- x[["role"]] %||% role
     }
 
-    if (isTRUE(role == "user")) {
-      tag_name <- "shiny-user-message"
-    } else {
-      tag_name <- "shiny-chat-message"
-    }
-
     # `content` is most likely a string, so avoid overhead in that case
     # (it's also important that we *don't escape HTML* here).
     if (is.character(content)) {
@@ -124,8 +118,9 @@ chat_ui <- function(
     }
 
     tag(
-      tag_name,
+      "shiny-chat-message",
       rlang::list2(
+        `data-role` = role,
         content = ui[["html"]],
         icon = if (!is.null(icon_assistant)) as.character(icon_assistant),
         ui[["dependencies"]],

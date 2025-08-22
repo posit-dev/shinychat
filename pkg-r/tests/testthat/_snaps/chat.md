@@ -15,8 +15,8 @@
     Output
       <shiny-chat-container class="html-fill-item html-fill-container" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill id="chat" placeholder="Enter a message..." style="width:min(680px, 100%);height:auto;">
         <shiny-chat-messages>
-          <shiny-chat-message content="Foo"></shiny-chat-message>
-          <shiny-chat-message content="Bar"></shiny-chat-message>
+          <shiny-chat-message data-role="assistant" content="Foo"></shiny-chat-message>
+          <shiny-chat-message data-role="assistant" content="Bar"></shiny-chat-message>
         </shiny-chat-messages>
         <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
       </shiny-chat-container>
@@ -29,8 +29,8 @@
     Output
       <shiny-chat-container class="html-fill-item html-fill-container" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill id="chat" placeholder="Enter a message..." style="width:min(680px, 100%);height:auto;">
         <shiny-chat-messages>
-          <shiny-chat-message content="Assistant"></shiny-chat-message>
-          <shiny-user-message content="User"></shiny-user-message>
+          <shiny-chat-message data-role="assistant" content="Assistant"></shiny-chat-message>
+          <shiny-chat-message data-role="user" content="User"></shiny-chat-message>
         </shiny-chat-messages>
         <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
       </shiny-chat-container>
@@ -42,8 +42,8 @@
     Output
       <shiny-chat-container class="html-fill-item html-fill-container" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill id="chat" placeholder="Enter a message..." style="width:min(680px, 100%);height:auto;">
         <shiny-chat-messages>
-          <shiny-chat-message content="&lt;div&gt;Hello&lt;/div&gt;"></shiny-chat-message>
-          <shiny-chat-message content="&lt;span&gt;world&lt;/span&gt;"></shiny-chat-message>
+          <shiny-chat-message data-role="assistant" content="&lt;div&gt;Hello&lt;/div&gt;"></shiny-chat-message>
+          <shiny-chat-message data-role="assistant" content="&lt;span&gt;world&lt;/span&gt;"></shiny-chat-message>
         </shiny-chat-messages>
         <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
       </shiny-chat-container>
@@ -60,8 +60,8 @@
       $html
       <shiny-chat-container class="html-fill-item html-fill-container" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill id="chat" placeholder="Enter a message..." style="width:min(680px, 100%);height:auto;">
         <shiny-chat-messages>
-          <shiny-chat-message content="&lt;div&gt;Hello&lt;/div&gt;"></shiny-chat-message>
-          <shiny-chat-message content="&lt;span&gt;world&lt;/span&gt;"></shiny-chat-message>
+          <shiny-chat-message data-role="assistant" content="&lt;div&gt;Hello&lt;/div&gt;"></shiny-chat-message>
+          <shiny-chat-message data-role="assistant" content="&lt;span&gt;world&lt;/span&gt;"></shiny-chat-message>
         </shiny-chat-messages>
         <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
       </shiny-chat-container>
