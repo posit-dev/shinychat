@@ -29,7 +29,6 @@ from htmltools import (
     css,
 )
 from shiny import reactive
-from shiny._deprecated import warn_deprecated
 from shiny.bookmark import BookmarkState, RestoreState
 from shiny.bookmark._types import BookmarkStore
 from shiny.module import ResolvedId, resolve_id
@@ -39,7 +38,7 @@ from shiny.session import (
     require_active_session,
     session_context,
 )
-from shiny.types import MISSING, MISSING_TYPE, Jsonifiable, NotifyException
+from shiny.types import Jsonifiable, NotifyException
 from shiny.ui.css import CssUnit, as_css_unit
 from shiny.ui.fill import as_fill_item, as_fillable_container
 
@@ -53,27 +52,7 @@ from ._chat_bookmark import (
     set_chatlas_state,
 )
 from ._chat_normalize import message_content, message_content_chunk
-from ._chat_provider_types import (
-    AnthropicMessage,  # pyright: ignore[reportAttributeAccessIssue]
-    GoogleMessage,
-    LangChainMessage,
-    OllamaMessage,
-    OpenAIMessage,
-    ProviderMessage,
-    ProviderMessageFormat,
-    as_provider_message,
-)
-from ._chat_tokenizer import (
-    TokenEncoding,
-    TokenizersEncoding,
-    get_default_tokenizer,
-)
-from ._chat_types import (
-    ChatMessage,
-    ChatMessageDict,
-    ClientMessage,
-    TransformedMessage,
-)
+from ._chat_types import ChatMessage, ChatMessageDict, ClientMessage
 from ._html_deps_py_shiny import chat_deps
 
 if TYPE_CHECKING:
@@ -92,24 +71,6 @@ __all__ = (
 
 # TODO: UserInput might need to be a list of dicts if we want to support multiple
 # user input content types
-TransformUserInput = Callable[[str], Union[str, None]]
-TransformUserInputAsync = Callable[[str], Awaitable[Union[str, None]]]
-TransformAssistantResponse = Callable[[str], Union[str, HTML, None]]
-TransformAssistantResponseAsync = Callable[
-    [str], Awaitable[Union[str, HTML, None]]
-]
-TransformAssistantResponseChunk = Callable[
-    [str, str, bool], Union[str, HTML, None]
-]
-TransformAssistantResponseChunkAsync = Callable[
-    [str, str, bool], Awaitable[Union[str, HTML, None]]
-]
-TransformAssistantResponseFunction = Union[
-    TransformAssistantResponse,
-    TransformAssistantResponseAsync,
-    TransformAssistantResponseChunk,
-    TransformAssistantResponseChunkAsync,
-]
 UserSubmitFunction0 = Union[
     Callable[[], None],
     Callable[[], Awaitable[None]],
@@ -181,8 +142,6 @@ class Chat:
     id
         A unique identifier for the chat session. In Shiny Core, make sure this id
         matches a corresponding :func:`~shiny.ui.chat_ui` call in the UI.
-    messages
-        Deprecated. Use `chat.ui(messages=...)` instead.
     on_error
         How to handle errors that occur in response to user input. When `"unhandled"`,
         the app will stop running when an error occurs. Otherwise, a notification
@@ -193,40 +152,19 @@ class Chat:
         * `"actual"`: Display the actual error message to the user.
         * `"sanitize"`: Sanitize the error message before displaying it to the user.
         * `"unhandled"`: Do not display any error message to the user.
-    tokenizer
-        Deprecated. Token counting and message trimming features will be removed in a
-        future version.
     """
 
     def __init__(
         self,
         id: str,
         *,
-        messages: Sequence[Any] = (),
         on_error: Literal["auto", "actual", "sanitize", "unhandled"] = "auto",
-        tokenizer: TokenEncoding | None = None,
     ):
         if not isinstance(id, str):
             raise TypeError("`id` must be a string.")
 
-        if messages:
-            warn_deprecated(
-                "`Chat(messages=...)` is deprecated. Use `.ui(messages=...)` instead."
-            )
-
-        if tokenizer is not None:
-            warn_deprecated(
-                "`Chat(tokenizer=...)` is deprecated. "
-                "This is only relevant for `.messages(token_limits=...)` which is also now deprecated."
-            )
-
         self.id = resolve_id(id)
         self.user_input_id = ResolvedId(f"{self.id}_user_input")
-        self._transform_user: TransformUserInputAsync | None = None
-        self._transform_assistant: (
-            TransformAssistantResponseChunkAsync | None
-        ) = None
-        self._tokenizer = tokenizer
 
         # TODO: remove the `None` when this PR lands:
         # https://github.com/posit-dev/py-shiny/pull/793/files
@@ -249,10 +187,6 @@ class Chat:
         # For tracking message stream state when entering/exiting nested streams
         self._message_stream_checkpoint: str = ""
 
-        # If a user input message is transformed into a response, we need to cancel
-        # the next user input submit handling
-        self._suspend_input_handler: bool = False
-
         # Keep track of effects so we can destroy them when the chat is destroyed
         self._effects: list[Effect_] = []
         self._cancel_bookmarking_callbacks: CancelCallback | None = None
@@ -260,13 +194,13 @@ class Chat:
         # Initialize chat state and user input effect
         with session_context(self._session):
             # Initialize message state
-            self._messages: reactive.Value[tuple[TransformedMessage, ...]] = (
+            self._messages: reactive.Value[tuple[ChatMessage, ...]] = (
                 reactive.Value(())
             )
 
-            self._latest_user_input: reactive.Value[
-                TransformedMessage | None
-            ] = reactive.Value(None)
+            self._latest_user_input: reactive.Value[ChatMessage | None] = (
+                reactive.Value(None)
+            )
 
             @reactive.extended_task
             async def _mock_task() -> str:
@@ -276,19 +210,6 @@ class Chat:
                 reactive.ExtendedTask[[], str]
             ] = reactive.Value(_mock_task)
 
-            # TODO: deprecate messages once we start promoting managing LLM message
-            # state through other means
-            async def _append_init_messages():
-                for msg in messages:
-                    await self.append_message(msg)
-
-            @reactive.effect
-            async def _init_chat():
-                await _append_init_messages()
-
-            self._append_init_messages = _append_init_messages
-            self._init_chat = _init_chat
-
             # When user input is submitted, transform, and store it in the chat state
             # (and make sure this runs before other effects since when the user
             #  calls `.messages()`, they should get the latest user input)
@@ -296,21 +217,9 @@ class Chat:
             @reactive.event(self._user_input)
             async def _on_user_input():
                 msg = ChatMessage(content=self._user_input(), role="user")
-                # It's possible that during the transform, a message is appended, so get
-                # the length now, so we can insert the new message at the right index
-                n_pre = len(self._messages())
-                msg_post = await self._transform_message(msg)
-                if msg_post is not None:
-                    self._store_message(msg_post)
-                    self._suspend_input_handler = False
-                else:
-                    # A transformed value of None is a special signal to suspend input
-                    # handling (i.e., don't generate a response)
-                    self._store_message(msg, index=n_pre)
-                    await self._remove_loading_message()
-                    self._suspend_input_handler = True
+                self._store_message(msg)
+                await self._remove_loading_message()
 
-            self._effects.append(_init_chat)
             self._effects.append(_on_user_input)
 
         # Prevent repeated calls to Chat() with the same id from accumulating effects
@@ -365,23 +274,14 @@ class Chat:
             @reactive.effect
             @reactive.event(self._user_input)
             async def handle_user_input():
-                if self._suspend_input_handler:
-                    from shiny import req
-
-                    req(False)
                 try:
                     if len(fn_params) > 1:
                         raise ValueError(
                             "A on_user_submit function should not take more than 1 argument"
                         )
                     elif len(fn_params) == 1:
-                        input = self.user_input(transform=True)
-                        # The line immediately below handles the possibility of input
-                        # being transformed to None. Technically, input should never be
-                        # None at this point (since the handler should be suspended).
-                        input = "" if input is None else input
                         afunc = _utils.wrap_async(cast(UserSubmitFunction1, fn))
-                        await afunc(input)
+                        await afunc(self.user_input())
                     else:
                         afunc = _utils.wrap_async(cast(UserSubmitFunction0, fn))
                         await afunc()
@@ -409,162 +309,27 @@ class Chat:
             msg = f"Error in Chat('{self.id}'): {str(e)}"
             raise NotifyException(msg, sanitize=sanitize) from e
 
-    @overload
-    def messages(
-        self,
-        *,
-        format: Literal["anthropic"],
-        token_limits: tuple[int, int] | None = None,
-        transform_user: Literal["all", "last", "none"] = "all",
-        transform_assistant: bool = False,
-    ) -> tuple[AnthropicMessage, ...]: ...
-
-    @overload
-    def messages(
-        self,
-        *,
-        format: Literal["google"],
-        token_limits: tuple[int, int] | None = None,
-        transform_user: Literal["all", "last", "none"] = "all",
-        transform_assistant: bool = False,
-    ) -> tuple[GoogleMessage, ...]: ...
-
-    @overload
-    def messages(
-        self,
-        *,
-        format: Literal["langchain"],
-        token_limits: tuple[int, int] | None = None,
-        transform_user: Literal["all", "last", "none"] = "all",
-        transform_assistant: bool = False,
-    ) -> tuple[LangChainMessage, ...]: ...
-
-    @overload
-    def messages(
-        self,
-        *,
-        format: Literal["openai"],
-        token_limits: tuple[int, int] | None = None,
-        transform_user: Literal["all", "last", "none"] = "all",
-        transform_assistant: bool = False,
-    ) -> tuple[OpenAIMessage, ...]: ...
-
-    @overload
-    def messages(
-        self,
-        *,
-        format: Literal["ollama"],
-        token_limits: tuple[int, int] | None = None,
-        transform_user: Literal["all", "last", "none"] = "all",
-        transform_assistant: bool = False,
-    ) -> tuple[OllamaMessage, ...]: ...
-
-    @overload
-    def messages(
-        self,
-        *,
-        format: MISSING_TYPE = MISSING,
-        token_limits: tuple[int, int] | None = None,
-        transform_user: Literal["all", "last", "none"] = "all",
-        transform_assistant: bool = False,
-    ) -> tuple[ChatMessageDict, ...]: ...
-
-    def messages(
-        self,
-        *,
-        format: MISSING_TYPE | ProviderMessageFormat = MISSING,
-        token_limits: tuple[int, int] | None = None,
-        transform_user: Literal["all", "last", "none"] = "all",
-        transform_assistant: bool = False,
-    ) -> tuple[ChatMessageDict | ProviderMessage, ...]:
+    def messages(self) -> tuple[ChatMessageDict, ...]:
         """
         Reactively read chat messages
 
-        Obtain chat messages within a reactive context.
-
-        Parameters
-        ----------
-        format
-            Deprecated. Provider-specific message formatting will be removed in a future
-            version.
-        token_limits
-            Deprecated. Token counting and message trimming features will be removed in
-            a future version.
-        transform_user
-            Deprecated. Message transformation features will be removed in a future
-            version.
-        transform_assistant
-            Deprecated. Message transformation features will be removed in a future
-            version.
+        Obtain chat messages that have been appended after initial load.
 
         Note
         ----
-        Messages are listed in the order they were added. As a result, when this method
-        is called in a `.on_user_submit()` callback (as it most often is), the last
-        message will be the most recent one submitted by the user.
+        Startup messages (i.e., those passed to the `.ui()` method) are not included in the
+        return value. Also, this method must be called in a reactive context, and will invl
 
         Returns
         -------
-        tuple[ChatMessage, ...]
+        tuple[ChatMessageDict, ...]
             A tuple of chat messages.
         """
 
-        if not isinstance(format, MISSING_TYPE):
-            warn_deprecated(
-                "`.messages(format=...)` is deprecated. "
-                "Provider-specific message formatting will be removed in a future version. "
-                "See here for more details: https://github.com/posit-dev/shinychat/pull/91"
-            )
-
-        if token_limits is not None:
-            warn_deprecated(
-                "`.messages(token_limits=...)` is deprecated. "
-                "Token counting and message trimming features will be removed in a future version. "
-                "See here for more details: https://github.com/posit-dev/shinychat/pull/91"
-            )
-
-        if transform_user != "all":
-            warn_deprecated(
-                "`.messages(transform_user=...)` is deprecated. "
-                "Message transformation features will be removed in a future version. "
-                "See here for more details: https://github.com/posit-dev/shinychat/pull/91"
-            )
-
-        if transform_assistant:
-            warn_deprecated(
-                "`.messages(transform_assistant=...)` is deprecated. "
-                "Message transformation features will be removed in a future version. "
-                "See here for more details: https://github.com/posit-dev/shinychat/pull/91"
-            )
-
-        messages = self._messages()
-
-        # Anthropic requires a user message first and no system messages
-        if format == "anthropic":
-            messages = self._trim_anthropic_messages(messages)
-
-        if token_limits is not None:
-            messages = self._trim_messages(messages, token_limits, format)
-
-        res: list[ChatMessageDict | ProviderMessage] = []
-        for i, m in enumerate(messages):
-            transform = False
-            if m.role == "assistant":
-                transform = transform_assistant
-            elif m.role == "user":
-                transform = transform_user == "all" or (
-                    transform_user == "last" and i == len(messages) - 1
-                )
-            content_key = getattr(
-                m, "transform_key" if transform else "pre_transform_key"
-            )
-            content = getattr(m, content_key)
-            chat_msg = ChatMessageDict(content=str(content), role=m.role)
-            if not isinstance(format, MISSING_TYPE):
-                chat_msg = as_provider_message(chat_msg, format)
-            res.append(chat_msg)
-
-        return tuple(res)
+        return tuple(
+            ChatMessageDict(content=m.content, role=m.role)
+            for m in self._messages()
+        )
 
     async def append_message(
         self,
@@ -633,9 +398,6 @@ class Chat:
             return
 
         msg = message_content(message)
-        msg = await self._transform_message(msg)
-        if msg is None:
-            return
         self._store_message(msg)
         await self._send_append_message(
             message=msg,
@@ -760,21 +522,7 @@ class Chat:
             self._current_stream_message += msg.content
 
         try:
-            if self._needs_transform(msg):
-                # Transforming may change the meaning of msg.content to be a *replace*
-                # not *append*. So, update msg.content and the operation accordingly.
-                chunk_content = msg.content
-                msg.content = self._current_stream_message
-                operation = "replace"
-                msg = await self._transform_message(
-                    msg, chunk=chunk, chunk_content=chunk_content
-                )
-                # Act like nothing happened if transformed to None
-                if msg is None:
-                    return
-                if chunk == "end":
-                    self._store_message(msg)
-            elif chunk == "end":
+            if chunk == "end":
                 # When `operation="append"`, msg.content is just a chunk, but we must
                 # store the full message
                 self._store_message(
@@ -954,14 +702,11 @@ class Chat:
     # Send a message to the UI
     async def _send_append_message(
         self,
-        message: TransformedMessage | ChatMessage,
+        message: ChatMessage,
         chunk: ChunkOption = False,
         operation: Literal["append", "replace"] = "append",
         icon: HTML | Tag | TagList | None = None,
     ):
-        if not isinstance(message, TransformedMessage):
-            message = TransformedMessage.from_chat_message(message)
-
         if message.role == "system":
             # System messages are not displayed in the UI
             return
@@ -977,7 +722,7 @@ class Chat:
         elif chunk == "end":
             chunk_type = "message_end"
 
-        content = message.content_client
+        content = message.content
         content_type = "html" if isinstance(content, HTML) else "markdown"
 
         # TODO: pass along dependencies for both content and icon (if any)
@@ -1002,148 +747,12 @@ class Chat:
         # TODO: Joe said it's a good idea to yield here, but I'm not sure why?
         # await asyncio.sleep(0)
 
-    @overload
-    def transform_user_input(
-        self, fn: TransformUserInput | TransformUserInputAsync
-    ) -> None: ...
-
-    @overload
-    def transform_user_input(
-        self,
-    ) -> Callable[[TransformUserInput | TransformUserInputAsync], None]: ...
-
-    def transform_user_input(
-        self, fn: TransformUserInput | TransformUserInputAsync | None = None
-    ) -> None | Callable[[TransformUserInput | TransformUserInputAsync], None]:
-        """
-        Deprecated. User input transformation features will be removed in a future version.
-        """
-
-        warn_deprecated(
-            "The `.transform_user_input` decorator is deprecated. "
-            "User input transformation features will be removed in a future version. "
-            "See here for more details: https://github.com/posit-dev/shinychat/pull/91"
-        )
-
-        def _set_transform(fn: TransformUserInput | TransformUserInputAsync):
-            self._transform_user = _utils.wrap_async(fn)
-
-        if fn is None:
-            return _set_transform
-        else:
-            return _set_transform(fn)
-
-    @overload
-    def transform_assistant_response(
-        self, fn: TransformAssistantResponseFunction
-    ) -> None: ...
-
-    @overload
-    def transform_assistant_response(
-        self,
-    ) -> Callable[[TransformAssistantResponseFunction], None]: ...
-
-    def transform_assistant_response(
-        self,
-        fn: TransformAssistantResponseFunction | None = None,
-    ) -> None | Callable[[TransformAssistantResponseFunction], None]:
-        """
-        Deprecated. Assistant response transformation features will be removed in a future version.
-        """
-
-        warn_deprecated(
-            "The `.transform_assistant_response` decorator is deprecated. "
-            "Assistant response transformation features will be removed in a future version. "
-            "See here for more details: https://github.com/posit-dev/shinychat/pull/91"
-        )
-
-        def _set_transform(
-            fn: TransformAssistantResponseFunction,
-        ):
-            nparams = len(inspect.signature(fn).parameters)
-            if nparams == 1:
-                fn = cast(
-                    Union[
-                        TransformAssistantResponse,
-                        TransformAssistantResponseAsync,
-                    ],
-                    fn,
-                )
-                fn = _utils.wrap_async(fn)
-
-                async def _transform_wrapper(
-                    content: str, chunk: str, done: bool
-                ):
-                    return await fn(content)
-
-                self._transform_assistant = _transform_wrapper
-
-            elif nparams == 3:
-                fn = cast(
-                    Union[
-                        TransformAssistantResponseChunk,
-                        TransformAssistantResponseChunkAsync,
-                    ],
-                    fn,
-                )
-                self._transform_assistant = _utils.wrap_async(fn)
-            else:
-                raise Exception(
-                    "A @transform_assistant_response function must take 1 or 3 arguments"
-                )
-
-        if fn is None:
-            return _set_transform
-        else:
-            return _set_transform(fn)
-
-    async def _transform_message(
-        self,
-        message: ChatMessage,
-        chunk: ChunkOption = False,
-        chunk_content: str = "",
-    ) -> TransformedMessage | None:
-        res = TransformedMessage.from_chat_message(message)
-
-        if message.role == "user" and self._transform_user is not None:
-            content = await self._transform_user(message.content)
-        elif (
-            message.role == "assistant"
-            and self._transform_assistant is not None
-        ):
-            content = await self._transform_assistant(
-                message.content,
-                chunk_content,
-                chunk == "end" or chunk is False,
-            )
-        else:
-            return res
-
-        if content is None:
-            return None
-
-        setattr(res, res.transform_key, content)
-        return res
-
-    def _needs_transform(self, message: ChatMessage) -> bool:
-        if message.role == "user" and self._transform_user is not None:
-            return True
-        elif (
-            message.role == "assistant"
-            and self._transform_assistant is not None
-        ):
-            return True
-        return False
-
     # Just before storing, handle chunk msg type and calculate tokens
     def _store_message(
         self,
-        message: TransformedMessage | ChatMessage,
+        message: ChatMessage,
         index: int | None = None,
     ) -> None:
-        if not isinstance(message, TransformedMessage):
-            message = TransformedMessage.from_chat_message(message)
-
         with reactive.isolate():
             messages = self._messages()
 
@@ -1154,115 +763,17 @@ class Chat:
         messages.insert(index, message)
 
         self._messages.set(tuple(messages))
-        if message.role == "user":
-            self._latest_user_input.set(message)
 
         return None
 
-    def _trim_messages(
-        self,
-        messages: tuple[TransformedMessage, ...],
-        token_limits: tuple[int, int],
-        format: MISSING_TYPE | ProviderMessageFormat,
-    ) -> tuple[TransformedMessage, ...]:
-        n_total, n_reserve = token_limits
-        if n_total <= n_reserve:
-            raise ValueError(
-                f"Invalid token limits: {token_limits}. The 1st value must be greater "
-                "than the 2nd value."
-            )
-
-        # Since don't trim system messages, 1st obtain their total token count
-        # (so we can determine how many non-system messages can fit)
-        n_system_tokens: int = 0
-        n_system_messages: int = 0
-        n_other_messages: int = 0
-        token_counts: list[int] = []
-        for m in messages:
-            count = self._get_token_count(m.content_server)
-            token_counts.append(count)
-            if m.role == "system":
-                n_system_tokens += count
-                n_system_messages += 1
-            else:
-                n_other_messages += 1
-
-        remaining_non_system_tokens = n_total - n_reserve - n_system_tokens
-
-        if remaining_non_system_tokens <= 0:
-            raise ValueError(
-                f"System messages exceed `.messages(token_limits={token_limits})`. "
-                "Consider increasing the 1st value of `token_limit` or setting it to "
-                "`token_limit=None` to disable token limits."
-            )
-
-        # Now, iterate through the messages in reverse order and appending
-        # until we run out of tokens
-        messages2: list[TransformedMessage] = []
-        n_other_messages2: int = 0
-        token_counts.reverse()
-        for i, m in enumerate(reversed(messages)):
-            if m.role == "system":
-                messages2.append(m)
-                continue
-            remaining_non_system_tokens -= token_counts[i]
-            if remaining_non_system_tokens >= 0:
-                messages2.append(m)
-                n_other_messages2 += 1
-
-        messages2.reverse()
-
-        if len(messages2) == n_system_messages and n_other_messages2 > 0:
-            raise ValueError(
-                f"Only system messages fit within `.messages(token_limits={token_limits})`. "
-                "Consider increasing the 1st value of `token_limit` or setting it to "
-                "`token_limit=None` to disable token limits."
-            )
-
-        return tuple(messages2)
-
-    def _trim_anthropic_messages(
-        self,
-        messages: tuple[TransformedMessage, ...],
-    ) -> tuple[TransformedMessage, ...]:
-        if any(m.role == "system" for m in messages):
-            raise ValueError(
-                "Anthropic requires a system prompt to be specified in it's `.create()` method "
-                "(not in the chat messages with `role: system`)."
-            )
-        for i, m in enumerate(messages):
-            if m.role == "user":
-                return messages[i:]
-
-        return ()
-
-    def _get_token_count(
-        self,
-        content: str,
-    ) -> int:
-        if self._tokenizer is None:
-            self._tokenizer = get_default_tokenizer()
-
-        encoded = self._tokenizer.encode(content)
-        if isinstance(encoded, TokenizersEncoding):
-            return len(encoded.ids)
-        else:
-            return len(encoded)
-
-    def user_input(self, transform: bool = False) -> str | None:
+    def user_input(self) -> str:
         """
         Reactively read the user's message.
 
-        Parameters
-        ----------
-        transform
-            Whether to apply the user input transformation function (if one was
-            provided).
-
         Returns
         -------
-        str | None
-            The user input message (before any transformation).
+        str
+            The user input message.
 
         Note
         ----
@@ -1273,20 +784,7 @@ class Chat:
           2. Maintaining message state separately from `.messages()`.
 
         """
-
-        if transform:
-            warn_deprecated(
-                "`.user_input(transform=...)` is deprecated. "
-                "User input transformation features will be removed in a future version. "
-                "See here for more details: https://github.com/posit-dev/shinychat/pull/91"
-            )
-
-        msg = self._latest_user_input()
-        if msg is None:
-            return None
-        key = "content_server" if transform else "content_client"
-        val = getattr(msg, key)
-        return str(val)
+        return self._user_input()
 
     def _user_input(self) -> str:
         id = self.user_input_id
@@ -1336,17 +834,6 @@ class Chat:
         }
 
         self._session._send_message_sync({"custom": {"shinyChatMessage": msg}})
-
-    def set_user_message(self, value: str):
-        """
-        Deprecated. Use `update_user_input(value=value)` instead.
-        """
-
-        warn_deprecated(
-            "set_user_message() is deprecated. Use update_user_input(value=value) instead."
-        )
-
-        self.update_user_input(value=value)
 
     async def clear_messages(self):
         """
@@ -1484,11 +971,9 @@ class Chat:
         if bookmark_on == "response":
 
             @reactive.effect
-            @reactive.event(
-                lambda: self.messages(format=MISSING), ignore_init=True
-            )
+            @reactive.event(lambda: self.messages(), ignore_init=True)
             async def _():
-                messages = self.messages(format=MISSING)
+                messages = self.messages()
 
                 if len(messages) == 0:
                     return
@@ -1534,12 +1019,7 @@ class Chat:
                 # This does NOT contain the `chat.ui(messages=)` values.
                 # When restoring, the `chat.ui(messages=)` values will need to be kept
                 # and the `ui.Chat(messages=)` values will need to be reset
-                state.values[resolved_bookmark_id_msgs_str] = self.messages(
-                    format=MISSING
-                )
-
-        # Attempt to stop the initialization of the `ui.Chat(messages=)` messages
-        self._init_chat.destroy()
+                state.values[resolved_bookmark_id_msgs_str] = self.messages()
 
         @root_session.bookmark.on_restore
         async def _on_restore_ui(state: RestoreState):
@@ -1552,8 +1032,6 @@ class Chat:
             # calling `self._init_chat.destroy()` above
 
             if resolved_bookmark_id_msgs_str not in state.values:
-                # If no messages to restore, display the `__init__(messages=)` messages
-                await self._append_init_messages()
                 return
 
             msgs: list[Any] = state.values[resolved_bookmark_id_msgs_str]
