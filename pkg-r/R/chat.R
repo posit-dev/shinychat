@@ -145,7 +145,7 @@ chat_ui <- function(
       fill = if (isTRUE(fill)) NA else NULL,
       # Also include icon on the parent so that when messages are dynamically added,
       # we know the default icon has changed
-      icon_assistant = if (!is.null(icon_assistant)) {
+      `icon-assistant` = if (!is.null(icon_assistant)) {
         as.character(icon_assistant)
       },
       ...,
