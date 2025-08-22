@@ -4,6 +4,9 @@ pkgload::load_all()
 library(shinychat)
 library(bsicons)
 
+# Add resource path for images
+addResourcePath("img", "img")
+
 ui <- page_fillable(
   title = "Chat Icons",
 
@@ -77,9 +80,6 @@ ui <- page_fillable(
 )
 
 server <- function(input, output, session) {
-  # Add resource path for images
-  addResourcePath("img", "img")
-
   # Default Bot ----
   observeEvent(input$chat_default_user_input, {
     req(input$chat_default_user_input)
