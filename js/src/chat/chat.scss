@@ -134,6 +134,12 @@ shiny-chat-message[data-role="user"] {
   max-width: 100%;
 }
 
+shiny-chat-message[data-role="user"]:not([icon]) {
+  // User messages don't have an icon (unless they're somehow added manually).
+  // In the future, we'll likely want to support user avatars
+  grid-template-columns: auto;
+}
+
 shiny-user-message,
 shiny-chat-message {
   &[content_type="text"] {
