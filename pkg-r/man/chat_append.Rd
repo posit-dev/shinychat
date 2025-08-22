@@ -8,6 +8,7 @@ chat_append(
   id,
   response,
   role = c("assistant", "user"),
+  icon = NULL,
   session = getDefaultReactiveDomain()
 )
 }
@@ -33,6 +34,10 @@ interpreted as markdown as long as they're not inside HTML.
 
 \item{role}{The role of the message (either "assistant" or "user"). Defaults
 to "assistant".}
+
+\item{icon}{An optional icon to display next to the message, currently only
+used for assistant messages. The icon can be any HTML element (e.g., an
+\code{\link[htmltools:builder]{htmltools::img()}} tag) or a string of HTML.}
 
 \item{session}{The Shiny session object}
 }

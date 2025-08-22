@@ -302,23 +302,23 @@ contents_shinychat(result_title_icon_result)
 
 In the last example, we saw that we could include arguments in the tool function to let the LLM write some of the display text for us (e.g., the location name).
 
-This strategy is so useful that shinychat automatically supports it for a `.intent` argument.
-When `.intent` is present in the tool's arguments, shinychat shows this value in the tool request and result titles as the _reason the tool was called_.
+This strategy is so useful that shinychat automatically supports it for an `` `_intent` `` argument.
+When `` `_intent` `` is present in the tool's arguments, shinychat shows this value in the tool request and result titles as the _reason the tool was called_.
 
 To demonstrate, we'll use take a break from our weather tool and create a tool that simply generates a random number.
-On it's own, the tool doesn't need any arguments, but we include a `.intent` argument in the tool function and we include a description to explain its purpose.
+On its own, the tool doesn't need any arguments, but we include a `` `_intent` `` argument in the tool function and we include a description to explain its purpose.
 
 ```{r}
 #| echo: true
 
 tool_random_number <- tool(
-  function(.intent) {
+  function(`_intent`) {
     runif(1)
   },
   name = "tool_random_number",
   description = "Generate a random number.",
   arguments = list(
-    .intent = type_string(
+    `_intent` = type_string(
       "A short snippet used for display purposes to explain the call to the user."
     )
   ),
@@ -335,7 +335,7 @@ When the tool is called, shinychat shows the reason the LLM called the tool in t
 request_random_number <- ContentToolRequest(
   id = "tool_call_006",
   name = "tool_random_number",
-  arguments = list(.intent = "Generate a random number for testing"),
+  arguments = list(`_intent` = "Generate a random number for testing"),
   tool = tool_random_number
 )
 

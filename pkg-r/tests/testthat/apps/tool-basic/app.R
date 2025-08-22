@@ -40,7 +40,7 @@ tool_fun <- if (TOOL_OPTS$async) {
   # Use async function for tool call
   if (TOOL_OPTS$with_intent) {
     # Async function with intent
-    coro::async(function(path, .intent = "") {
+    coro::async(function(path, `_intent` = "") {
       coro::await(coro::async_sleep(runif(1, 1, 10)))
       maybe_fail()
       c("app.R", "data.csv")
@@ -57,7 +57,7 @@ tool_fun <- if (TOOL_OPTS$async) {
   # Synchronous version
   if (TOOL_OPTS$with_intent) {
     # Synchronous function with intent
-    function(path, .intent = "") {
+    function(path, `_intent` = "") {
       Sys.sleep(runif(1, 1, 3))
       maybe_fail()
       c("app.R", "data.csv")
@@ -74,7 +74,7 @@ tool_fun <- if (TOOL_OPTS$async) {
 
 tool_args <- list(
   path = type_string("Path to the directory to list files"),
-  .intent = if (TOOL_OPTS$with_intent) {
+  `_intent` = if (TOOL_OPTS$with_intent) {
     type_string(
       "Reason for the request to explain the tool call to the user"
     )

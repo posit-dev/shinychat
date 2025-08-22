@@ -11,7 +11,8 @@ chat_ui(
   placeholder = "Enter a message...",
   width = "min(680px, 100\%)",
   height = "auto",
-  fill = TRUE
+  fill = TRUE,
+  icon_assistant = NULL
 )
 }
 \arguments{
@@ -47,6 +48,10 @@ as described above, and the \code{role} can be "assistant" or "user".
 \item{fill}{Whether the chat element should try to vertically fill its
 container, if the container is
 \href{https://rstudio.github.io/bslib/articles/filling/index.html}{fillable}}
+
+\item{icon_assistant}{The icon to use for the assistant chat messages.
+Can be HTML or a tag in the form of \code{\link[htmltools:HTML]{htmltools::HTML()}} or
+\code{\link[htmltools:builder]{htmltools::tags()}}. If \code{None}, a default robot icon is used.}
 }
 \value{
 A Shiny tag object, suitable for inclusion in a Shiny UI
