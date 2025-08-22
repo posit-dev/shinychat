@@ -221,7 +221,7 @@ S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
     request_id = content@id,
     tool_name = content@name,
     arguments = jsonlite::toJSON(content@arguments, auto_unbox = TRUE),
-    intent = content@arguments$.intent,
+    intent = content@arguments[["_intent"]],
     tool_title = if (!is.null(tool)) tool@annotations$title
   )
 }
@@ -265,7 +265,7 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     tool_name = content@request@name,
     tool_title = display$title %||% annotations$title,
     icon = display$icon %||% annotations$icon,
-    intent = content@request@arguments$.intent,
+    intent = content@request@arguments[["_intent"]],
     show_request = if (!isFALSE(display$show_request)) NA,
     expanded = if (isTRUE(display$open)) NA,
     !!!tool_result_display(content, display)
