@@ -32,7 +32,7 @@ ui <- page_fillable(
       chat_ui(
         id = "chat_animal",
         messages = list("Hello! I'm Animal Bot. How can I help you today?"),
-        icon_assistant = fontawesome::fa("otter", )
+        icon_assistant = fontawesome::fa("otter", title = "icon-otter")
       ),
       selectInput(
         "animal",
