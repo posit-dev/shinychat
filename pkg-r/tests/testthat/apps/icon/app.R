@@ -1,8 +1,7 @@
 library(shiny)
 library(bslib)
-pkgload::load_all()
 library(shinychat)
-library(bsicons)
+library(fontawesome)
 
 # Add resource path for images
 addResourcePath("img", "img")
