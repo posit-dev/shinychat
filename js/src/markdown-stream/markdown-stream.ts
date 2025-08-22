@@ -58,6 +58,19 @@ markdownRenderer.table = (header: string, body: string) => {
     </table>`
 }
 
+const defaultMarkdownCodeRenderer = markdownRenderer.code
+
+markdownRenderer.code = function (
+  code: string,
+  infostring: string | undefined,
+  escaped: boolean,
+): string {
+  if (infostring === "{=html}") {
+    return code
+  }
+  return defaultMarkdownCodeRenderer.call(this, code, infostring, escaped)
+}
+
 // 'semi-markdown' renderer (for user messages)
 const semiMarkdownRenderer = new Renderer()
 
@@ -167,7 +180,79 @@ class MarkdownElement extends LightElement {
   }
 
   #appendStreamingDot(): void {
-    this.lastElementChild?.appendChild(SVG_DOT)
+    this.#removeStreamingDot()
+
+    if (this.content.trim() === "") {
+      return
+    }
+    if (this.lastElementChild?.tagName.toLowerCase() === "shiny-tool-request") {
+      return
+    }
+
+    const hasText = (node: Text): boolean => /\S/.test(node.textContent || "")
+
+    // We go into these elements to find the innermost streaming element
+    const recurseInto = new Set(["p", "div", "pre", "ul", "ol"])
+    // We can put the dot in these kinds of containers
+    const inlineContainers = new Set([
+      "p",
+      "h1",
+      "h2",
+      "h3",
+      "h4",
+      "h5",
+      "h6",
+      "li",
+      "code",
+    ])
+
+    /**
+     * Find the innermost element where streaming is happening, i.e. where the
+     * streaming is appending new content.
+     */
+    const findInnermostStreamingElement = (element: Element): Element => {
+      let current = element
+      let depth = 0
+
+      while (depth < 5) {
+        depth++
+        const children = current.childNodes
+
+        let lastMeaningfulChild: Node | null = null
+
+        // Find last meaningful child
+        for (let i = children.length - 1; i >= 0; i--) {
+          const child = children[i]
+          if (!child) break
+          if (
+            child.nodeType === Node.ELEMENT_NODE ||
+            (child.nodeType === Node.TEXT_NODE && hasText(child as Text))
+          ) {
+            lastMeaningfulChild = child
+            break
+          }
+        }
+
+        if (!lastMeaningfulChild || !(lastMeaningfulChild instanceof Element)) {
+          // If no meaningful child, or last child is a text node, streaming
+          // is happening the `current` element.
+          return current
+        }
+
+        const tagName = lastMeaningfulChild.tagName.toLowerCase()
+
+        if (recurseInto.has(tagName)) {
+          current = lastMeaningfulChild
+          continue // Keep drilling down to find innermost streaming element
+        }
+
+        return inlineContainers.has(tagName) ? lastMeaningfulChild : current
+      }
+
+      return current
+    }
+
+    findInnermostStreamingElement(this).appendChild(SVG_DOT)
   }
 
   #removeStreamingDot(): void {
@@ -348,7 +433,7 @@ async function handleMessage(
   }
 }
 
-window.Shiny.addCustomMessageHandler(
+window.Shiny?.addCustomMessageHandler(
   "shinyMarkdownStreamMessage",
   handleMessage,
 )

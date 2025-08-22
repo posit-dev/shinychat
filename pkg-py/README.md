@@ -4,6 +4,8 @@
 
 Chat UI component for [Shiny for Python](https://shiny.posit.co/py/).
 
+**Note:** shinychat is automatically installed with Shiny for Python and available as `shiny.ui.Chat` and `shiny.express.ui.Chat`. For complete instructions about creating chatbots please see the [Shiny for Python documentation](https://shiny.posit.co/py/docs/genai-chatbots.html).
+
 ## Installation
 
 You can install shinychat from PyPI with:
@@ -20,8 +22,6 @@ uv pip install git+https://github.com/posit-dev/shinychat.git
 
 ## Example
 
-To run this example, you'll first need to create an OpenAI API key, and set it in your environment as `OPENAI_API_KEY`.
-
 ```r
 from shiny.express import render, ui
 from shinychat.express import Chat
@@ -29,7 +29,7 @@ from shinychat.express import Chat
 # Set some Shiny page options
 ui.page_opts(title="Hello Chat")
 
-# Create a chat instance, with an initial message
+# Create a chat component, with an initial message
 chat = Chat(
     id="chat",
     messages=[
