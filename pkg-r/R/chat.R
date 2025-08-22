@@ -502,7 +502,8 @@ rlang::on_load(
         msg = list(role = role, content = content),
         operation = "append",
         chunk = chunk,
-        session = session
+        session = session,
+        ...
       )
     }
 
