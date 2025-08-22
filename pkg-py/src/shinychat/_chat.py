@@ -1769,17 +1769,13 @@ def chat_ui(
         else:
             ui = TagList(content).render()
 
-        if role == "user":
-            tag_name = "shiny-user-message"
-        else:
-            tag_name = "shiny-chat-message"
-
         message_tags.append(
             Tag(
-                tag_name,
+                "shiny-chat-message",
                 ui["dependencies"],
                 content=ui["html"],
                 icon=icon_attr,
+                data_role=role,
             )
         )
 

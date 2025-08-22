@@ -13,15 +13,19 @@ import { ShinyToolRequest, ShinyToolResult } from "./chat-tools"
 
 import type { HtmlDep } from "../utils/_utils"
 
-type ContentType = "markdown" | "html" | "text"
+type ContentType = "markdown" | "html" | "text" | "semi-markdown"
 
-type Message = {
+type MessageAttrs = {
   content: string
-  role: "user" | "assistant"
+  data_role: "user" | "assistant"
   chunk_type: "message_start" | "message_end" | null
   content_type: ContentType
   icon?: string
   operation: "append" | null
+}
+
+type Message = Omit<MessageAttrs, "data_role"> & {
+  role: MessageAttrs["data_role"]
 }
 
 type ShinyChatMessage = {
@@ -72,23 +76,39 @@ class ChatMessage extends LightElement {
   @property({ attribute: "content-type" }) contentType: ContentType = "markdown"
   @property({ type: Boolean, reflect: true }) streaming = false
   @property() icon = ""
+  @property({ attribute: "data-role" }) role: "user" | "assistant" = "assistant"
 
   render() {
-    // Show dots until we have content
-    const isEmpty = this.content.trim().length === 0
-    const icon = isEmpty ? ICONS.dots_fade : this.icon || ICONS.robot
+    const icon = this.#messageIcon()
 
     return html`
-      <div class="message-icon">${unsafeHTML(icon)}</div>
+      ${icon}
       <shiny-markdown-stream
         content=${this.content}
         content-type=${this.contentType}
         ?streaming=${this.streaming}
-        auto-scroll
+        ?auto-scroll=${this.role === "assistant"}
         .onContentChange=${this.#onContentChange.bind(this)}
         .onStreamEnd=${this.#makeSuggestionsAccessible.bind(this)}
       ></shiny-markdown-stream>
     `
+  }
+
+  #messageIcon() {
+    const icon = this.#getIcon()
+    return icon
+      ? html`<div class="message-icon">${unsafeHTML(icon)}</div>`
+      : null
+  }
+
+  #getIcon() {
+    if (this.role !== "assistant") {
+      return this.icon
+    }
+
+    // Show dots until we have content (for assistant messages only)
+    const isEmpty = this.content.trim().length === 0
+    return isEmpty ? ICONS.dots_fade : this.icon || ICONS.robot
   }
 
   #onContentChange(): void {
@@ -109,16 +129,11 @@ class ChatMessage extends LightElement {
   }
 }
 
-class ChatUserMessage extends LightElement {
-  @property() content = "..."
-
-  render() {
-    return html`
-      <shiny-markdown-stream
-        content=${this.content}
-        content-type="semi-markdown"
-      ></shiny-markdown-stream>
-    `
+class ChatUserMessage extends ChatMessage {
+  constructor() {
+    super()
+    this.role = "user" // Always set role to user for this subclass
+    this.contentType = "semi-markdown" // User messages are always semi-markdown
   }
 }
 
@@ -435,14 +450,17 @@ class ChatContainer extends LightElement {
   #appendMessage(message: Message, finalize = true): void {
     this.#initMessage()
 
-    const TAG_NAME =
-      message.role === "user" ? CHAT_USER_MESSAGE_TAG : CHAT_MESSAGE_TAG
+    const TAG_NAME = CHAT_MESSAGE_TAG
 
     if (this.iconAssistant) {
       message.icon = message.icon || this.iconAssistant
     }
 
-    const msg = createElement(TAG_NAME, message)
+    // Remap role to data_role for the custom element attribute
+    const { role, ...restMessage } = message
+    const messageAttrs: MessageAttrs = { data_role: role, ...restMessage }
+
+    const msg = createElement(TAG_NAME, messageAttrs)
     this.messages.appendChild(msg)
 
     if (finalize) {

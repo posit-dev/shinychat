@@ -1,4 +1,4 @@
-@import "chat-tools.scss";
+@use "chat-tools.scss";
 
 shiny-chat-container {
   --shiny-chat-border: var(--bs-border-width, 1px) solid var(--bs-border-color, #e9ecef);
@@ -125,7 +125,8 @@ shiny-chat-message {
 }
 
 /* Align the user message to the right */
-shiny-user-message {
+shiny-user-message,
+shiny-chat-message[data-role="user"] {
   align-self: flex-end;
   padding: 0.75rem 1rem;
   border-radius: 10px;
