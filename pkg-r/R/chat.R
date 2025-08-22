@@ -290,8 +290,8 @@ chat_append <- function(
 #'   `"replace"`, then the existing message content is replaced by the new
 #'   content. Ignored if `chunk` is `FALSE`.
 #' @param icon An optional icon to display next to the message, currently only
-#'  used for assistant messages. The icon can be any HTML element (e.g.,
-#'  [htmltools::img()] tag) or a string of HTML.
+#'   used for assistant messages. The icon can be any HTML element (e.g.,
+#'   [htmltools::img()] tag) or a string of HTML.
 #' @param session The Shiny session object
 #'
 #' @returns Returns nothing (\code{invisible(NULL)}).
