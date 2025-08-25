@@ -506,6 +506,8 @@ rlang::on_load(
 
     res <- fastmap::fastqueue(200)
 
+    stream_stage <- "stream"
+
     for (msg in stream) {
       if (promises::is.promising(msg)) {
         msg <- await(msg)
@@ -514,7 +516,19 @@ rlang::on_load(
         break
       }
 
+      stream_stage <- stream_stage_next(stream_stage, msg)
+      if (stream_stage == "reset") {
+        chat_append_("", chunk = "end")
+        chat_append("", chunk = "start", icon = icon)
+        stream_stage <- "stream"
+      }
+
       res$add(msg)
+
+      if (identical(this_stream_stage(msg), "reset")) {
+        chat_append_("", chunk = "end")
+        chat_append_("", chunk = "start")
+      }
 
       if (S7::S7_inherits(msg, ellmer::ContentToolResult)) {
         if (!is.null(msg@request)) {
@@ -540,6 +554,55 @@ rlang::on_load(
   })
 )
 
+stream_stage_state_machine <- function() {
+  stage <- "start"
+  last_was_tool <- FALSE
+
+  # not_tool -> tool || "reset"
+  # tool -> tool || "pending"
+  # tool -> not_tool || "reset"
+  # not_tool -> not_tool || "stream"
+
+  # TODO: {ellmer} could emit a special "stream end" object inside the tool loop
+  # between internal user/assistant turns, and then we wouldn't need to manually
+  # track state here.
+
+  function(x) {
+    # Avoid state-machine overhead when ellmer is emitting plain text
+    if (identical(stage, "always_stream")) {
+      return("stream")
+    }
+
+    if (is.character(x)) {
+      stage <<- "always_stream"
+      return("stream")
+    }
+
+    stage_last <- stage
+
+    if (is_tool_content(x)) {
+      stage <<- if (last_was_tool || stage == "start") "pending" else "reset"
+      last_was_tool <<- TRUE
+    } else {
+      stage <<- if (stage == "pending") "reset" else "stream"
+      last_as_tool <<- FALSE
+    }
+
+    stage
+  }
+}
+
+is_content_tool_request <- function(x) {
+  S7::S7_inherits(x, ellmer::ContentToolRequest)
+}
+
+is_content_tool_result <- function(x) {
+  S7::S7_inherits(x, ellmer::ContentToolResult)
+}
+
+is_tool_content <- function(x) {
+  is_content_tool_request(x) || is_content_tool_result(x)
+}
 
 #' Clear all messages from a chat control
 #'
