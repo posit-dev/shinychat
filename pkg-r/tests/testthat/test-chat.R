@@ -44,7 +44,8 @@ test_that("Chat component markup", {
 
 test_that("chat_append_stream() returns the stream contents as string if all text", {
   local_mocked_bindings(
-    chat_append_message = coro::async(function(...) invisible())
+    chat_append_message = coro::async(function(...) invisible()),
+    chat_update_bookmark = function(id, p, session) p
   )
 
   stream <- coro::async_generator(function() {
@@ -53,7 +54,9 @@ test_that("chat_append_stream() returns the stream contents as string if all tex
     }
   })
 
-  p <- chat_append_stream("chat", stream())
+  session <- list(sendCustomMessage = function(...) {})
+
+  p <- chat_append_stream("chat", stream(), session = session)
   res <- sync(p)
 
   expect_promise(p, "fulfilled")
@@ -62,7 +65,8 @@ test_that("chat_append_stream() returns the stream contents as string if all tex
 
 test_that("chat_append_stream() returns the stream contents as list if not all text", {
   local_mocked_bindings(
-    chat_append_message = coro::async(function(...) invisible())
+    chat_append_message = coro::async(function(...) invisible()),
+    chat_update_bookmark = function(id, p, session) p
   )
 
   stream <- coro::async_generator(function() {
@@ -71,7 +75,8 @@ test_that("chat_append_stream() returns the stream contents as list if not all t
     }
   })
 
-  p <- chat_append_stream("chat", stream())
+  session <- list(sendCustomMessage = function(...) {})
+  p <- chat_append_stream("chat", stream(), session = session)
   res <- sync(p)
 
   expect_promise(p, "fulfilled")
