@@ -11,29 +11,46 @@ import {
 
 import { ShinyToolRequest, ShinyToolResult } from "./chat-tools"
 
+import { MarkdownElement as ShinyMarkdownStream } from "../markdown-stream/markdown-stream"
+
 import type { HtmlDep } from "../utils/_utils"
 
 type ContentType = "markdown" | "html" | "text" | "semi-markdown"
 
-type MessageAttrs = {
+type ChatMessagePayload = {
+  role: "user" | "assistant"
   content: string
-  data_role: "user" | "assistant"
-  chunk_type: "message_start" | "message_end" | null
-  content_type: ContentType
+  contentType: ContentType
   icon?: string
-  operation: "append" | null
+  html_deps?: HtmlDep[]
 }
 
-type Message = Omit<MessageAttrs, "data_role"> & {
-  role: MessageAttrs["data_role"]
+type ChatMessageStartPayload = {
+  streamId: string
+  role: "user" | "assistant"
+  contentType: ContentType
+  icon?: string
+}
+
+type ChatMessageAppendPayload = {
+  streamId: string
+  operation: "append" | "replace"
+  content: string
+  html_deps?: HtmlDep[]
+}
+
+type ChatMessageEndPayload = {
+  streamId: string
 }
 
 type ShinyChatMessage = {
   id: string
   handler: string
-  // Message keys will create custom element attributes, but html_deps are handled
-  // separately
-  obj: (Message & { html_deps?: HtmlDep[] }) | null
+  obj:
+    | ChatMessagePayload
+    | ChatMessageStartPayload
+    | ChatMessageAppendPayload
+    | ChatMessageEndPayload
 }
 
 type UpdateUserInput = {
@@ -46,9 +63,12 @@ type UpdateUserInput = {
 // https://github.com/microsoft/TypeScript/issues/28357#issuecomment-748550734
 declare global {
   interface GlobalEventHandlersEventMap {
-    "shiny-chat-input-sent": CustomEvent<Message>
-    "shiny-chat-append-message": CustomEvent<Message>
-    "shiny-chat-append-message-chunk": CustomEvent<Message>
+    "shiny-chat-input-sent": CustomEvent<ChatMessagePayload>
+    "shiny-chat-input-enable": CustomEvent
+    "shiny-chat-message": CustomEvent<ChatMessagePayload>
+    "shiny-chat-message-start": CustomEvent<ChatMessageStartPayload>
+    "shiny-chat-message-append": CustomEvent<ChatMessageAppendPayload>
+    "shiny-chat-message-end": CustomEvent<ChatMessageEndPayload>
     "shiny-chat-clear-messages": CustomEvent
     "shiny-chat-update-user-input": CustomEvent<UpdateUserInput>
     "shiny-chat-remove-loading-message": CustomEvent
@@ -56,7 +76,8 @@ declare global {
 }
 
 const CHAT_MESSAGE_TAG = "shiny-chat-message"
-const CHAT_USER_MESSAGE_TAG = "shiny-user-message"
+const CHAT_MESSAGE_USER_TAG = "shiny-user-message"
+const CHAT_MESSAGE_LOADING_TAG = "shiny-chat-message-loading"
 const CHAT_MESSAGES_TAG = "shiny-chat-messages"
 const CHAT_INPUT_TAG = "shiny-chat-input"
 const CHAT_CONTAINER_TAG = "shiny-chat-container"
@@ -71,34 +92,125 @@ const ICONS = {
     '<svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><style>.spinner_S1WN{animation:spinner_MGfb .8s linear infinite;animation-delay:-.8s}.spinner_Km9P{animation-delay:-.65s}.spinner_JApP{animation-delay:-.5s}@keyframes spinner_MGfb{93.75%,100%{opacity:.2}}</style><circle class="spinner_S1WN" cx="4" cy="12" r="3"/><circle class="spinner_S1WN spinner_Km9P" cx="12" cy="12" r="3"/><circle class="spinner_S1WN spinner_JApP" cx="20" cy="12" r="3"/></svg>',
 }
 
-class ChatMessage extends LightElement {
-  @property() content = "..."
-  @property({ attribute: "content-type" }) contentType: ContentType = "markdown"
-  @property({ type: Boolean, reflect: true }) streaming = false
-  @property() icon = ""
-  @property({ attribute: "data-role" }) role: "user" | "assistant" = "assistant"
+class ChatMessage extends HTMLElement {
+  // ChatMessage is *not* a LitElement because we want to manage rendering
+  // manually to avoid re-renders when updating content streams. This component
+  // is a simple container for icon and content areas, plus a method to create
+  // new content streams as needed.
+  private _icon = ""
+  private _role: "user" | "assistant" | "loading" = "assistant"
+  private _content: string = ""
+  private _contentType: ContentType = "markdown"
+  private _initialized = false
 
-  render() {
+  constructor() {
+    super()
+
+    // Initialize properties from attributes
+    this._content = this.getAttribute("content") || ""
+    this._contentType =
+      (this.getAttribute("content-type") as ContentType) || "markdown"
+
+    const role = this.getAttribute("data-role")
+    if (role === "user" || role === "assistant" || role === "loading") {
+      this._role = role
+    }
+
+    this.#initializeElement()
+  }
+
+  connectedCallback() {
+    // Only render initial content on first connection, not on reconnects
+    if (!this._initialized) {
+      this._initialized = true
+      this.#renderInitialContent()
+    }
+  }
+
+  get icon() {
+    return this._icon
+  }
+  set icon(value: string | undefined) {
+    this._icon = value ? value : ""
+    if (value) {
+      this.setAttribute("icon", "")
+    } else {
+      this.removeAttribute("icon")
+    }
+    this.#updateIcon()
+  }
+
+  get role() {
+    return this._role
+  }
+  set role(value: "user" | "assistant" | "loading") {
+    this._role = value
+    this.setAttribute("data-role", value)
+    this.#updateIcon()
+  }
+
+  get content() {
+    return this._content
+  }
+  set content(value: string) {
+    this._content = value
+    this.#renderInitialContent()
+  }
+
+  get contentType() {
+    return this._contentType
+  }
+  set contentType(value: ContentType) {
+    this._contentType = value
+    this.setAttribute("content-type", value)
+  }
+
+  // Attribute observation for external attribute changes
+  static get observedAttributes() {
+    return ["data-role", "content-type"]
+  }
+
+  attributeChangedCallback(name: string, oldValue: string, newValue: string) {
+    if (oldValue === newValue) return
+
+    switch (name) {
+      case "data-role":
+        this._role = newValue as "user" | "assistant" | "loading"
+        this.#updateIcon()
+        break
+      case "content-type":
+        this._contentType = newValue as ContentType
+        break
+    }
+  }
+
+  #initializeElement() {
     const icon = this.#messageIcon()
-
-    return html`
+    this.innerHTML = `
       ${icon}
-      <shiny-markdown-stream
-        content=${this.content}
-        content-type=${this.contentType}
-        ?streaming=${this.streaming}
-        ?auto-scroll=${this.role === "assistant"}
-        .onContentChange=${this.#onContentChange.bind(this)}
-        .onStreamEnd=${this.#makeSuggestionsAccessible.bind(this)}
-      ></shiny-markdown-stream>
+      <div class="message-content"></div>
     `
+  }
+
+  #updateIcon() {
+    const iconContainer = this.querySelector(".message-icon")
+    const newIcon = this.#getIcon()
+
+    if (newIcon && iconContainer) {
+      iconContainer.innerHTML = newIcon
+    } else if (newIcon && !iconContainer) {
+      const iconDiv = document.createElement("div")
+      iconDiv.className = "message-icon"
+      iconDiv.innerHTML = newIcon
+      this.prepend(iconDiv)
+    } else if (!newIcon && iconContainer) {
+      iconContainer.remove()
+    }
   }
 
   #messageIcon() {
     const icon = this.#getIcon()
-    return icon
-      ? html`<div class="message-icon">${unsafeHTML(icon)}</div>`
-      : null
+    return icon ? `<div class="message-icon">${icon}</div>` : ""
   }
 
   #getIcon() {
@@ -106,13 +218,49 @@ class ChatMessage extends LightElement {
       return this.icon
     }
 
-    // Show dots until we have content (for assistant messages only)
-    const isEmpty = this.content.trim().length === 0
-    return isEmpty ? ICONS.dots_fade : this.icon || ICONS.robot
+    return this.icon || ICONS.robot
   }
 
-  #onContentChange(): void {
-    if (!this.streaming) this.#makeSuggestionsAccessible()
+  async #renderInitialContent() {
+    if (!this.content) return
+    const existingInitStream = this.contentContainer.querySelector(
+      "[data-stream-id='__init__']",
+    )
+    if (existingInitStream) {
+      existingInitStream.remove()
+    }
+
+    const stream = await this.createStream("__init__", this.contentType, false)
+    stream.content = this.content
+    stream.streaming = false
+
+    // Make sure the initial stream is the first stream
+    this.contentContainer.prepend(stream)
+  }
+
+  get contentContainer(): HTMLElement {
+    return this.querySelector(".message-content") as HTMLElement
+  }
+
+  async createStream(
+    streamId: string,
+    contentType: ContentType,
+    streaming = false,
+  ): Promise<ShinyMarkdownStream> {
+    const stream = createElement("shiny-markdown-stream", {
+      "data-stream-id": streamId,
+      content: "",
+      "content-type": contentType,
+      streaming: streaming ? "" : null,
+      "auto-scroll": this.role === "assistant" ? "" : null,
+    }) as ShinyMarkdownStream
+
+    // Set up content change and stream end handlers
+    stream.onContentChange = this.#makeSuggestionsAccessible.bind(this)
+    stream.onStreamEnd = this.#makeSuggestionsAccessible.bind(this)
+
+    this.contentContainer.appendChild(stream)
+    return stream
   }
 
   #makeSuggestionsAccessible(): void {
@@ -129,11 +277,18 @@ class ChatMessage extends LightElement {
   }
 }
 
-class ChatUserMessage extends ChatMessage {
+class ChatMessageUser extends ChatMessage {
   constructor() {
     super()
-    this.role = "user" // Always set role to user for this subclass
-    this.contentType = "semi-markdown" // User messages are always semi-markdown
+    this.role = "user"
+  }
+}
+
+class ChatMessageLoading extends ChatMessage {
+  constructor() {
+    super()
+    this.role = "loading"
+    this.icon = ICONS.dots_fade
   }
 }
 
@@ -334,6 +489,8 @@ class ChatInput extends LightElement {
 class ChatContainer extends LightElement {
   @property({ attribute: "icon-assistant" }) iconAssistant = ""
   inputSentinelObserver?: IntersectionObserver
+  private loadingIndicator: HTMLElement | null = null
+  private activeStreams = new Map<string, Promise<HTMLElement>>()
 
   private get input(): ChatInput {
     return this.querySelector(CHAT_INPUT_TAG) as ChatInput
@@ -386,11 +543,13 @@ class ChatContainer extends LightElement {
     if (!this.messages) return
 
     this.addEventListener("shiny-chat-input-sent", this.#onInputSent)
-    this.addEventListener("shiny-chat-append-message", this.#onAppend)
-    this.addEventListener(
-      "shiny-chat-append-message-chunk",
-      this.#onAppendChunk,
-    )
+    this.addEventListener("shiny-chat-input-enable", this.#onEnableInput)
+
+    this.addEventListener("shiny-chat-message", this.#onMessage)
+    this.addEventListener("shiny-chat-message-start", this.#onMessageStart)
+    this.addEventListener("shiny-chat-message-append", this.#onMessageAppend)
+    this.addEventListener("shiny-chat-message-end", this.#onMessageEnd)
+
     this.addEventListener("shiny-chat-clear-messages", this.#onClear)
     this.addEventListener(
       "shiny-chat-update-user-input",
@@ -411,11 +570,13 @@ class ChatContainer extends LightElement {
     this.inputSentinelObserver = undefined
 
     this.removeEventListener("shiny-chat-input-sent", this.#onInputSent)
-    this.removeEventListener("shiny-chat-append-message", this.#onAppend)
-    this.removeEventListener(
-      "shiny-chat-append-message-chunk",
-      this.#onAppendChunk,
-    )
+    this.removeEventListener("shiny-chat-input-enable", this.#onEnableInput)
+
+    this.removeEventListener("shiny-chat-message", this.#onMessage)
+    this.removeEventListener("shiny-chat-message-start", this.#onMessageStart)
+    this.removeEventListener("shiny-chat-message-append", this.#onMessageAppend)
+    this.removeEventListener("shiny-chat-message-end", this.#onMessageEnd)
+
     this.removeEventListener("shiny-chat-clear-messages", this.#onClear)
     this.removeEventListener(
       "shiny-chat-update-user-input",
@@ -429,92 +590,135 @@ class ChatContainer extends LightElement {
     this.removeEventListener("keydown", this.#onInputSuggestionKeydown)
   }
 
-  // When user submits input, append it to the chat, and add a loading message
-  #onInputSent(event: CustomEvent<Message>): void {
-    this.#appendMessage(event.detail)
-    this.#addLoadingMessage()
+  async #onMessage(event: CustomEvent<ChatMessagePayload>): Promise<void> {
+    const { role, content, contentType, icon } = event.detail
+
+    this.#removeLoadingIndicator()
+
+    const messageElement = this.#ensureMessageElement(role, icon)
+    const streamId = `msg-${Date.now()}`
+    const stream = await messageElement.createStream(
+      streamId,
+      contentType,
+      false,
+    )
+
+    const streamElement = stream as ShinyMarkdownStream
+    streamElement.content = content
+    streamElement.streaming = false
   }
 
-  // Handle an append message event from server
-  #onAppend(event: CustomEvent<Message>): void {
-    this.#appendMessage(event.detail)
+  async #onMessageStart(
+    event: CustomEvent<ChatMessageStartPayload>,
+  ): Promise<void> {
+    const { streamId, role, contentType, icon } = event.detail
+
+    this.#removeLoadingIndicator()
+
+    const messageElement = this.#ensureMessageElement(role, icon)
+    const streamPromise = messageElement.createStream(
+      streamId,
+      contentType,
+      true,
+    )
+
+    // Store active stream promises so subsequent messages can await them
+    this.activeStreams.set(streamId, streamPromise)
+
+    await streamPromise
   }
 
-  #initMessage(): void {
-    this.#removeLoadingMessage()
-    if (!this.input.disabled) {
-      this.input.disabled = true
+  async #onMessageAppend(
+    event: CustomEvent<ChatMessageAppendPayload>,
+  ): Promise<void> {
+    const { streamId, operation, content } = event.detail
+
+    const stream = await this.activeStreams.get(streamId)
+    if (!stream) {
+      throw `Stream element with id ${streamId} not found`
+    }
+
+    const streamElement = stream as ShinyMarkdownStream
+    if (operation === "append") {
+      streamElement.content = streamElement.content + content
+    } else {
+      streamElement.content = content
     }
   }
 
-  #appendMessage(message: Message, finalize = true): void {
-    this.#initMessage()
+  async #onMessageEnd(
+    event: CustomEvent<ChatMessageEndPayload>,
+  ): Promise<void> {
+    const { streamId } = event.detail
 
-    const TAG_NAME = CHAT_MESSAGE_TAG
-
-    if (this.iconAssistant) {
-      message.icon = message.icon || this.iconAssistant
+    // Wait for the stream to be created first
+    const stream = await this.activeStreams.get(streamId)
+    if (stream) {
+      const streamElement = stream as ShinyMarkdownStream
+      streamElement.streaming = false
     }
 
-    // Remap role to data_role for the custom element attribute
-    const { role, ...restMessage } = message
-    const messageAttrs: MessageAttrs = { data_role: role, ...restMessage }
-
-    const msg = createElement(TAG_NAME, messageAttrs)
-    this.messages.appendChild(msg)
-
-    if (finalize) {
-      this.#finalizeMessage()
-    }
+    this.activeStreams.delete(streamId)
   }
 
-  // Loading message is just an empty message
-  #addLoadingMessage(): void {
-    const loading_message = {
-      content: "",
-      role: "assistant",
-    }
-    const message = createElement(CHAT_MESSAGE_TAG, loading_message)
-    this.messages.appendChild(message)
+  #onEnableInput(): void {
+    this.input.disabled = false
+    this.#removeLoadingIndicator()
   }
 
-  #removeLoadingMessage(): void {
-    const content = this.lastMessage?.content
-    if (!content) this.lastMessage?.remove()
-  }
-
-  #onAppendChunk(event: CustomEvent<Message>): void {
-    this.#appendMessageChunk(event.detail)
-  }
-
-  #appendMessageChunk(message: Message): void {
-    if (message.chunk_type === "message_start") {
-      this.#appendMessage(message, false)
-    }
-
+  #ensureMessageElement(
+    role: "user" | "assistant",
+    icon?: string,
+  ): ChatMessage {
+    const hasLoadingIndicator = this.loadingIndicator !== null
     const lastMessage = this.lastMessage
-    if (!lastMessage) throw new Error("No messages found in the chat output")
+    const canReuseLastMessage =
+      lastMessage && lastMessage.role === role && !hasLoadingIndicator
 
-    if (message.chunk_type === "message_start") {
-      lastMessage.setAttribute("streaming", "")
-      return
+    if (canReuseLastMessage) {
+      return lastMessage
     }
 
-    const content =
-      message.operation === "append"
-        ? lastMessage.getAttribute("content") + message.content
-        : message.content
+    const el = new ChatMessage()
+    el.role = role
+    el.icon = icon
+    this.messages.appendChild(el)
+    return el
+  }
 
-    lastMessage.setAttribute("content", content)
+  #addLoadingIndicator(): void {
+    if (this.loadingIndicator) return
 
-    if (message.chunk_type === "message_end") {
-      this.lastMessage?.removeAttribute("streaming")
-      this.#finalizeMessage()
+    this.loadingIndicator = new ChatMessageLoading()
+    this.messages.appendChild(this.loadingIndicator)
+  }
+
+  #removeLoadingIndicator(): void {
+    if (this.loadingIndicator) {
+      this.loadingIndicator.remove()
+      this.loadingIndicator = null
     }
+  }
+
+  #onInputSent(event: CustomEvent<ChatMessagePayload>): void {
+    const messageEvent = new CustomEvent("shiny-chat-message", {
+      detail: {
+        role: event.detail.role,
+        content: event.detail.content,
+        contentType: "semi-markdown" as ContentType,
+        icon: event.detail.icon,
+      },
+      bubbles: true,
+    })
+    this.dispatchEvent(messageEvent)
+
+    this.#addLoadingIndicator()
   }
 
   #onClear(): void {
     this.messages.innerHTML = ""
+    this.loadingIndicator = null
+    this.activeStreams.clear()
   }
 
   #onUpdateUserInput(event: CustomEvent<UpdateUserInput>): void {
@@ -579,12 +783,7 @@ class ChatContainer extends LightElement {
   }
 
   #onRemoveLoadingMessage(): void {
-    this.#removeLoadingMessage()
-    this.#finalizeMessage()
-  }
-
-  #finalizeMessage(): void {
-    this.input.disabled = false
+    this.#removeLoadingIndicator()
   }
 }
 
@@ -592,7 +791,8 @@ class ChatContainer extends LightElement {
 
 const chatCustomElements = [
   { tag: CHAT_MESSAGE_TAG, component: ChatMessage },
-  { tag: CHAT_USER_MESSAGE_TAG, component: ChatUserMessage },
+  { tag: CHAT_MESSAGE_USER_TAG, component: ChatMessageUser },
+  { tag: CHAT_MESSAGE_LOADING_TAG, component: ChatMessageLoading },
   { tag: CHAT_MESSAGES_TAG, component: ChatMessages },
   { tag: CHAT_INPUT_TAG, component: ChatInput },
   { tag: CHAT_CONTAINER_TAG, component: ChatContainer },
@@ -609,7 +809,7 @@ chatCustomElements.forEach(({ tag, component }) => {
 window.Shiny?.addCustomMessageHandler(
   "shinyChatMessage",
   async function (message: ShinyChatMessage) {
-    if (message.obj?.html_deps) {
+    if (message.obj && "html_deps" in message.obj && message.obj.html_deps) {
       await renderDependencies(message.obj.html_deps)
     }
 
