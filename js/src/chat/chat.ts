@@ -14,6 +14,7 @@ import { ShinyToolRequest, ShinyToolResult } from "./chat-tools"
 import { MarkdownElement as ShinyMarkdownStream } from "../markdown-stream/markdown-stream"
 
 import type { HtmlDep } from "../utils/_utils"
+import { icons as ICONS } from "../utils/_icons"
 
 type ContentType = "markdown" | "html" | "text" | "semi-markdown"
 
@@ -84,21 +85,13 @@ const CHAT_CONTAINER_TAG = "shiny-chat-container"
 const CHAT_TOOL_REQUEST_TAG = "shiny-tool-request"
 const CHAT_TOOL_RESULT_TAG = "shiny-tool-result"
 
-const ICONS = {
-  robot:
-    '<svg fill="currentColor" class="bi bi-robot" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M6 12.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5M3 8.062C3 6.76 4.235 5.765 5.53 5.886a26.6 26.6 0 0 0 4.94 0C11.765 5.765 13 6.76 13 8.062v1.157a.93.93 0 0 1-.765.935c-.845.147-2.34.346-4.235.346s-3.39-.2-4.235-.346A.93.93 0 0 1 3 9.219zm4.542-.827a.25.25 0 0 0-.217.068l-.92.9a25 25 0 0 1-1.871-.183.25.25 0 0 0-.068.495c.55.076 1.232.149 2.02.193a.25.25 0 0 0 .189-.071l.754-.736.847 1.71a.25.25 0 0 0 .404.062l.932-.97a25 25 0 0 0 1.922-.188.25.25 0 0 0-.068-.495c-.538.074-1.207.145-1.98.189a.25.25 0 0 0-.166.076l-.754.785-.842-1.7a.25.25 0 0 0-.182-.135"/><path d="M8.5 1.866a1 1 0 1 0-1 0V3h-2A4.5 4.5 0 0 0 1 7.5V8a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1v1a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-1a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1v-.5A4.5 4.5 0 0 0 10.5 3h-2zM14 7.5V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V7.5A3.5 3.5 0 0 1 5.5 4h5A3.5 3.5 0 0 1 14 7.5"/></svg>',
-  // https://github.com/n3r4zzurr0/svg-spinners/blob/main/svg-css/3-dots-fade.svg
-  dots_fade:
-    '<svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><style>.spinner_S1WN{animation:spinner_MGfb .8s linear infinite;animation-delay:-.8s}.spinner_Km9P{animation-delay:-.65s}.spinner_JApP{animation-delay:-.5s}@keyframes spinner_MGfb{93.75%,100%{opacity:.2}}</style><circle class="spinner_S1WN" cx="4" cy="12" r="3"/><circle class="spinner_S1WN spinner_Km9P" cx="12" cy="12" r="3"/><circle class="spinner_S1WN spinner_JApP" cx="20" cy="12" r="3"/></svg>',
-}
-
 class ChatMessage extends HTMLElement {
   // ChatMessage is *not* a LitElement because we want to manage rendering
   // manually to avoid re-renders when updating content streams. This component
   // is a simple container for icon and content areas, plus a method to create
   // new content streams as needed.
   private _icon = ""
-  private _role: "user" | "assistant" | "loading" = "assistant"
+  private _role: string = "assistant"
   private _content: string = ""
   private _contentType: ContentType = "markdown"
   private _initialized = false
@@ -112,9 +105,7 @@ class ChatMessage extends HTMLElement {
       (this.getAttribute("content-type") as ContentType) || "markdown"
 
     const role = this.getAttribute("data-role")
-    if (role === "user" || role === "assistant" || role === "loading") {
-      this._role = role
-    }
+    if (role) this._role = role
 
     this.#initializeElement()
   }
@@ -143,7 +134,7 @@ class ChatMessage extends HTMLElement {
   get role() {
     return this._role
   }
-  set role(value: "user" | "assistant" | "loading") {
+  set role(value: string) {
     this._role = value
     this.setAttribute("data-role", value)
     this.#updateIcon()
@@ -214,11 +205,11 @@ class ChatMessage extends HTMLElement {
   }
 
   #getIcon() {
-    if (this.role !== "assistant") {
-      return this.icon
+    if (this.role != "user") {
+      return this.icon || ICONS.robot
     }
 
-    return this.icon || ICONS.robot
+    return this.icon
   }
 
   async #renderInitialContent() {
@@ -288,7 +279,7 @@ class ChatMessageLoading extends ChatMessage {
   constructor() {
     super()
     this.role = "loading"
-    this.icon = ICONS.dots_fade
+    this.icon = ICONS.dotsFade
   }
 }
 
@@ -382,8 +373,7 @@ class ChatInput extends LightElement {
   }
 
   render() {
-    const icon =
-      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-arrow-up-circle-fill" viewBox="0 0 16 16"><path d="M16 8A8 8 0 1 0 0 8a8 8 0 0 0 16 0m-7.5 3.5a.5.5 0 0 1-1 0V5.707L5.354 7.854a.5.5 0 1 1-.708-.708l3-3a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 5.707z"/></svg>'
+    const icon = ICONS.arrowUpCircleFill
 
     return html`
       <textarea
@@ -666,10 +656,7 @@ class ChatContainer extends LightElement {
     this.#removeLoadingIndicator()
   }
 
-  #ensureMessageElement(
-    role: "user" | "assistant",
-    icon?: string,
-  ): ChatMessage {
+  #ensureMessageElement(role: string, icon?: string): ChatMessage {
     const hasLoadingIndicator = this.loadingIndicator !== null
     const lastMessage = this.lastMessage
     const canReuseLastMessage =
