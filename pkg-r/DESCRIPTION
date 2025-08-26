@@ -46,6 +46,7 @@ Collate:
     'shinychat-package.R'
     'chat.R'
     'chat_app.R'
+    'chat_append.R'
     'chat_restore.R'
     'client_state.R'
     'contents_shinychat.R'
