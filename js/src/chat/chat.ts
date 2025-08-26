@@ -7,6 +7,7 @@ import {
   createElement,
   renderDependencies,
   showShinyClientMessage,
+  generateRandomId,
 } from "../utils/_utils"
 
 import { ShinyToolRequest, ShinyToolResult } from "./chat-tools"
@@ -88,15 +89,6 @@ const CHAT_CONTAINER_TAG = "shiny-chat-container"
 const CHAT_TOOL_REQUEST_TAG = "shiny-tool-request"
 const CHAT_TOOL_RESULT_TAG = "shiny-tool-result"
 
-/**
- * Generate a unique stream ID with format "stream-{randomHash}"
- */
-function generateStreamId(): string {
-  const randomHash =
-    Math.random().toString(36).substring(2, 15) +
-    Math.random().toString(36).substring(2, 15)
-  return `stream-${randomHash}`
-}
 class ChatMessage extends HTMLElement {
   // ChatMessage is *not* a LitElement because we want to manage rendering
   // manually to avoid re-renders when updating content streams. This component
@@ -629,8 +621,7 @@ class ChatContainer extends LightElement {
     event: CustomEvent<ChatMessageStartPayload>,
   ): Promise<void> {
     const { role, contentType, icon } = event.detail
-    // Generate streamId if not provided
-    const streamId = event.detail.streamId || generateStreamId()
+    const streamId = event.detail.streamId || generateRandomId("stream")
 
     this.#removeLoadingIndicator()
 
