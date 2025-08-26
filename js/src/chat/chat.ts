@@ -19,7 +19,7 @@ import { icons as ICONS } from "../utils/_icons"
 type ContentType = "markdown" | "html" | "text" | "semi-markdown"
 
 type ChatMessagePayload = {
-  role: "user" | "assistant"
+  role: string
   content: string
   contentType: ContentType
   icon?: string
@@ -27,21 +27,24 @@ type ChatMessagePayload = {
 }
 
 type ChatMessageStartPayload = {
-  streamId: string
-  role: "user" | "assistant"
+  streamId?: string
+  role: string
   contentType: ContentType
   icon?: string
 }
 
 type ChatMessageAppendPayload = {
-  streamId: string
+  streamId?: string
   operation: "append" | "replace"
   content: string
+  icon?: string
+  role?: string
+  contentType?: ContentType
   html_deps?: HtmlDep[]
 }
 
 type ChatMessageEndPayload = {
-  streamId: string
+  streamId?: string
 }
 
 type ShinyChatMessage = {
@@ -85,6 +88,15 @@ const CHAT_CONTAINER_TAG = "shiny-chat-container"
 const CHAT_TOOL_REQUEST_TAG = "shiny-tool-request"
 const CHAT_TOOL_RESULT_TAG = "shiny-tool-result"
 
+/**
+ * Generate a unique stream ID with format "stream-{randomHash}"
+ */
+function generateStreamId(): string {
+  const randomHash =
+    Math.random().toString(36).substring(2, 15) +
+    Math.random().toString(36).substring(2, 15)
+  return `stream-${randomHash}`
+}
 class ChatMessage extends HTMLElement {
   // ChatMessage is *not* a LitElement because we want to manage rendering
   // manually to avoid re-renders when updating content streams. This component
@@ -251,6 +263,7 @@ class ChatMessage extends HTMLElement {
     stream.onStreamEnd = this.#makeSuggestionsAccessible.bind(this)
 
     this.contentContainer.appendChild(stream)
+
     return stream
   }
 
@@ -480,7 +493,7 @@ class ChatContainer extends LightElement {
   @property({ attribute: "icon-assistant" }) iconAssistant = ""
   inputSentinelObserver?: IntersectionObserver
   private loadingIndicator: HTMLElement | null = null
-  private activeStreams = new Map<string, Promise<HTMLElement>>()
+  private activeStreams = new Map<string, Promise<ShinyMarkdownStream>>()
 
   private get input(): ChatInput {
     return this.querySelector(CHAT_INPUT_TAG) as ChatInput
@@ -580,6 +593,20 @@ class ChatContainer extends LightElement {
     this.removeEventListener("keydown", this.#onInputSuggestionKeydown)
   }
 
+  /**
+   * Find the most recent stream element when streamId is not provided
+   */
+  #findMostRecentStream(): ShinyMarkdownStream | null {
+    const lastMessage = this.lastMessage
+    if (!lastMessage) {
+      return null
+    }
+
+    return lastMessage.contentContainer.querySelector(
+      "shiny-markdown-stream:last-child",
+    ) as ShinyMarkdownStream | null
+  }
+
   async #onMessage(event: CustomEvent<ChatMessagePayload>): Promise<void> {
     const { role, content, contentType, icon } = event.detail
 
@@ -601,7 +628,9 @@ class ChatContainer extends LightElement {
   async #onMessageStart(
     event: CustomEvent<ChatMessageStartPayload>,
   ): Promise<void> {
-    const { streamId, role, contentType, icon } = event.detail
+    const { role, contentType, icon } = event.detail
+    // Generate streamId if not provided
+    const streamId = event.detail.streamId || generateStreamId()
 
     this.#removeLoadingIndicator()
 
@@ -621,11 +650,33 @@ class ChatContainer extends LightElement {
   async #onMessageAppend(
     event: CustomEvent<ChatMessageAppendPayload>,
   ): Promise<void> {
-    const { streamId, operation, content } = event.detail
+    const { operation, content } = event.detail
+    let stream: ShinyMarkdownStream | null = null
 
-    const stream = await this.activeStreams.get(streamId)
-    if (!stream) {
-      throw `Stream element with id ${streamId} not found`
+    if (event.detail.streamId) {
+      // Use explicit streamId if provided
+      stream = (await this.activeStreams.get(event.detail.streamId)) || null
+      if (!stream) {
+        throw new Error(
+          `Stream element with id ${event.detail.streamId} not found`,
+        )
+      }
+    } else {
+      // Fallback to most recent stream
+      stream = this.#findMostRecentStream()
+      if (!stream) {
+        const startEvent = this.#toChatMessageStartEvent(event.detail)
+        if (!startEvent) {
+          throw new Error(
+            `No active stream found and unable to create new stream without role and contentType`,
+          )
+        }
+        await this.#onMessageStart(startEvent)
+        stream = this.#findMostRecentStream()
+        if (!stream) {
+          throw new Error(`Failed to create new stream`)
+        }
+      }
     }
 
     const streamElement = stream as ShinyMarkdownStream
@@ -636,19 +687,54 @@ class ChatContainer extends LightElement {
     }
   }
 
+  #toChatMessageStartEvent(
+    event: ChatMessageAppendPayload,
+  ): CustomEvent<ChatMessageStartPayload> | undefined {
+    const { streamId, role, contentType, icon } = event
+    if (!role) return
+    if (!contentType) return
+
+    return new CustomEvent<ChatMessageStartPayload>(
+      "shiny-chat-message-start",
+      {
+        detail: {
+          streamId,
+          role,
+          contentType,
+          icon,
+        },
+        bubbles: true,
+      },
+    )
+  }
+
   async #onMessageEnd(
     event: CustomEvent<ChatMessageEndPayload>,
   ): Promise<void> {
-    const { streamId } = event.detail
+    let stream: HTMLElement | null = null
 
-    // Wait for the stream to be created first
-    const stream = await this.activeStreams.get(streamId)
+    if (event.detail.streamId) {
+      // Use explicit streamId if provided
+      stream = (await this.activeStreams.get(event.detail.streamId)) || null
+      if (stream) {
+        this.activeStreams.delete(event.detail.streamId)
+      }
+    } else {
+      // Fallback to most recent stream
+      stream = this.#findMostRecentStream()
+      if (stream) {
+        // Find and remove the corresponding entry from activeStreams
+        const streamId = stream.getAttribute("data-stream-id")
+        if (streamId && this.activeStreams.has(streamId)) {
+          this.activeStreams.delete(streamId)
+        }
+      }
+    }
+
     if (stream) {
       const streamElement = stream as ShinyMarkdownStream
       streamElement.streaming = false
     }
-
-    this.activeStreams.delete(streamId)
   }
 
   #onEnableInput(): void {
