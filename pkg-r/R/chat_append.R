@@ -232,6 +232,8 @@ chat_append_message <- function(
       id,
       content = msg[["content"]],
       operation = operation,
+      role = msg[["role"]],
+      icon = icon,
       session = session
     )
   } else {
@@ -243,6 +245,26 @@ chat_append_message <- function(
   invisible(msg)
 }
 
+send_shiny_chat_message <- function(
+  id,
+  handler,
+  ...,
+  .session = getDefaultReactiveDomain()
+) {
+  msg <- compact(dots_list(...))
+
+  .session$sendCustomMessage(
+    "shinyChatMessage",
+    list(
+      id = resolve_id(id, .session),
+      handler = handler,
+      obj = msg
+    )
+  )
+
+  invisible(msg)
+}
+
 chat_event_message <- function(
   id,
   role = "assistant",
@@ -250,22 +272,14 @@ chat_event_message <- function(
   icon = NULL,
   session = getDefaultReactiveDomain()
 ) {
-  msg <- list2(
+  send_shiny_chat_message(
+    id,
+    "shiny-chat-message",
     role = role,
-    !!!chat_event_payload_content(content),
-    icon = if (!is.null(icon)) as.character(icon)
+    !!!chat_event_payload_content(content, session),
+    icon = if (!is.null(icon)) as.character(icon),
+    .session = session
   )
-
-  session$sendCustomMessage(
-    "shinyChatMessage",
-    list(
-      id = resolve_id(id, session),
-      handler = "shiny-chat-message",
-      obj = msg
-    )
-  )
-
-  invisible(msg)
 }
 
 chat_event_message_start <- function(
@@ -279,23 +293,15 @@ chat_event_message_start <- function(
   stream_id <- stream_id %||% stream_id_new()
   the$active_streams <- c(the$active_streams, stream_id)
 
-  msg <- list(
+  send_shiny_chat_message(
+    id,
+    "shiny-chat-message-start",
     streamId = stream_id,
     role = role,
     contentType = content_type,
-    icon = if (!is.null(icon)) as.character(icon)
+    icon = if (!is.null(icon)) as.character(icon),
+    .session = session
   )
-
-  session$sendCustomMessage(
-    "shinyChatMessage",
-    list(
-      id = resolve_id(id, session),
-      handler = "shiny-chat-message-start",
-      obj = msg
-    )
-  )
-
-  invisible(msg)
 }
 
 the$active_streams <- c()
@@ -307,10 +313,9 @@ stream_id_new <- function() {
 }
 
 active_stream_id_get <- function() {
-  if (length(the$active_streams) == 0) {
-    cli::cli_abort("No active streams")
+  if (length(the$active_streams) > 0) {
+    the$active_streams[[1]]
   }
-  the$active_streams[[1]]
 }
 
 active_stream_id_remove <- function(id) {
@@ -321,31 +326,25 @@ chat_event_message_append <- function(
   id,
   content,
   operation = c("append", "replace"),
+  role = NULL,
+  icon = NULL,
   stream_id = NULL,
   session = getDefaultReactiveDomain()
 ) {
   stream_id <- stream_id %||% active_stream_id_get()
   operation <- arg_match(operation)
+  content <- chat_event_payload_content(content, session)
 
-  msg <- list2(
+  send_shiny_chat_message(
+    id,
+    "shiny-chat-message-append",
     streamId = stream_id,
     operation = operation,
-    !!!chat_event_payload_content(content, session)
+    role = role,
+    icon = icon,
+    !!!content,
+    .session = session
   )
-
-  # Content type was already set in the start message
-  msg$content_type <- NULL
-
-  session$sendCustomMessage(
-    "shinyChatMessage",
-    list(
-      id = resolve_id(id, session),
-      handler = "shiny-chat-message-append",
-      obj = msg
-    )
-  )
-
-  invisible(msg)
 }
 
 chat_event_message_end <- function(
@@ -356,18 +355,12 @@ chat_event_message_end <- function(
   stream_id <- stream_id %||% active_stream_id_get()
   active_stream_id_remove(stream_id)
 
-  msg <- list(streamId = stream_id)
-
-  session$sendCustomMessage(
-    "shinyChatMessage",
-    list(
-      id = resolve_id(id, session),
-      handler = "shiny-chat-message-end",
-      obj = msg
-    )
+  send_shiny_chat_message(
+    id,
+    "shiny-chat-message-end",
+    streamId = stream_id,
+    .session = session
   )
-
-  invisible(msg)
 }
 
 chat_event_payload_content <- function(
