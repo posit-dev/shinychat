@@ -377,8 +377,8 @@ S7::method(contents_shinychat, S7::new_S3_class(c("Chat", "R6"))) <- function(
       x
     })
 
-    # Turns containing only tool results are converted into assistant turns
-    if (every(turn@contents, S7::S7_inherits, ellmer::ContentToolResult)) {
+    # Turns containing tool results are converted into assistant turns
+    if (some(turn@contents, S7::S7_inherits, ellmer::ContentToolResult)) {
       turn@role <- "assistant"
       return(turn)
     }
