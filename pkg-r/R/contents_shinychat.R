@@ -347,7 +347,7 @@ tool_string <- function(x) {
   } else if (is.character(x@value)) {
     paste(x@value, collapse = "\n")
   } else {
-    jsonlite::toJSON(x@value, auto_unbox = TRUE, pretty = 2)
+    jsonlite::toJSON(x@value, auto_unbox = TRUE, pretty = 2, force = TRUE)
   }
 }
 
