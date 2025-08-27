@@ -22,7 +22,7 @@ class ChatMessage:
     def __init__(
         self,
         content: TagChild,
-        role: Role,
+        role: Role = "assistant",
     ):
         self.role: Role = role
 
