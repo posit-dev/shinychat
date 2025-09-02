@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import warnings
 from contextlib import asynccontextmanager
 from typing import (
     TYPE_CHECKING,
@@ -375,7 +376,9 @@ class Chat:
                             "A on_user_submit function should not take more than 1 argument"
                         )
                     elif len(fn_params) == 1:
-                        input = self.user_input(transform=True)
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore")
+                            input = self.user_input(transform=True)
                         # The line immediately below handles the possibility of input
                         # being transformed to None. Technically, input should never be
                         # None at this point (since the handler should be suspended).
