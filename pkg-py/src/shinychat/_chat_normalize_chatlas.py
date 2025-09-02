@@ -2,10 +2,12 @@ import json
 import os
 import warnings
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, TypeGuard
+from typing import TYPE_CHECKING, Literal
 
 from htmltools import RenderedHTML, Tag, TagChild, Tagifiable, TagList
 from packaging import version
+
+from ._typing_extensions import TypeGuard
 
 if TYPE_CHECKING:
     from chatlas.types import ContentToolRequest, ContentToolResult
