@@ -237,7 +237,9 @@ except ImportError:
 # ------------------------------------------------------------------
 
 try:
-    from anthropic.types import Message as AnthropicMessage  # pyright: ignore[reportMissingImports]
+    from anthropic.types import (
+        Message as AnthropicMessage,  # pyright: ignore[reportMissingImports]
+    )
 
     @message_content.register
     def _(message: AnthropicMessage):

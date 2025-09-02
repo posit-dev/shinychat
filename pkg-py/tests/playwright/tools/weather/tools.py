@@ -1,5 +1,6 @@
 import requests
 
+
 def get_weather_forecast(lat: float, lon: float) -> dict:
     """Get the weather forecast for a location."""
     lat_lng = f"latitude={lat}&longitude={lon}"

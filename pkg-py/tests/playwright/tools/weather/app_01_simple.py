@@ -1,6 +1,5 @@
 from chatlas import ChatOpenAI
 from shiny.express import app_opts, ui
-
 from shinychat.express import Chat
 
 from .tools import get_weather_forecast

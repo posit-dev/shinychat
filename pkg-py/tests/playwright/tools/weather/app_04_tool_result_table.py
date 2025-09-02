@@ -3,7 +3,6 @@ import os
 import pandas as pd
 from chatlas import ChatOpenAI, ContentToolResult
 from shiny.express import ui
-
 from shinychat.express import Chat
 
 # Set environment variable for tool display

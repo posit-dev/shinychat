@@ -9,7 +9,6 @@ from chatlas.types import ToolAnnotations
 from pydantic import BaseModel, Field
 from shiny import reactive
 from shiny.express import input, ui
-
 from shinychat.express import Chat
 
 TOOL_OPTS = {

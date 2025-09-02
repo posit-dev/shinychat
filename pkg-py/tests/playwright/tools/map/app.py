@@ -4,9 +4,8 @@ import ipywidgets
 from chatlas import ChatOpenAI, ContentToolResult
 from ipyleaflet import CircleMarker, Map
 from shiny.express import ui
-from shinywidgets import output_widget, register_widget
-
 from shinychat.express import Chat
+from shinywidgets import output_widget, register_widget
 
 
 def tool_show_map(

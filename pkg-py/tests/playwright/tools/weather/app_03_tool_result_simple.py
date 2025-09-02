@@ -1,7 +1,6 @@
 import faicons
 from chatlas import ChatOpenAI, ContentToolResult
 from shiny.express import app_opts, ui
-
 from shinychat.express import Chat
 
 from . import tools
