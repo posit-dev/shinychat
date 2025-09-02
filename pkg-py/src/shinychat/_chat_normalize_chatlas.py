@@ -2,8 +2,7 @@ import json
 import os
 import warnings
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
-from typing import TypeGuard
+from typing import TYPE_CHECKING, Literal, TypeGuard
 
 from htmltools import RenderedHTML, Tag, TagChild, Tagifiable, TagList
 from packaging import version
@@ -296,7 +295,7 @@ def is_tool_result(val: object) -> "TypeGuard[ContentToolResult]":
         return False
 
 
-# Tools we're added to ContentToolRequest class until 0.11.1
+# Tools were added to ContentToolRequest class until 0.11.1
 def is_legacy():
     import chatlas
 
@@ -310,6 +309,6 @@ def tool_display_override() -> Literal["none", "basic", "rich"]:
     if val == "rich" or val == "basic" or val == "none":
         return val
     else:
-        raise Exception(
+        raise ValueError(
             'The `SHINYCHAT_TOOL_DISPLAY` env var must be one of: "none", "basic", or "rich"'
         )

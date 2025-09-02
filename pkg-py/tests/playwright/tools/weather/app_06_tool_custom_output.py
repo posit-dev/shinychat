@@ -8,8 +8,6 @@ from shinychat import message_content_chunk
 from shinychat.express import Chat
 from shinychat.types import ChatMessage
 
-ui.page_opts(title="Weather Tool - Custom Output")
-
 
 class WeatherToolResult(ContentToolResult):
     """
