@@ -237,8 +237,8 @@ except ImportError:
 # ------------------------------------------------------------------
 
 try:
-    from anthropic.types import (
-        Message as AnthropicMessage,  # pyright: ignore[reportMissingImports]
+    from anthropic.types import (  # pyright: ignore[reportMissingImports]
+        Message as AnthropicMessage,
     )
 
     @message_content.register
@@ -253,8 +253,8 @@ try:
 
     # Old versions of singledispatch doesn't seem to support union types
     if sys.version_info >= (3, 11):
-        from anthropic.types import (
-            RawMessageStreamEvent,  # pyright: ignore[reportMissingImports]
+        from anthropic.types import (  # pyright: ignore[reportMissingImports]
+            RawMessageStreamEvent,
         )
 
         @message_content_chunk.register
