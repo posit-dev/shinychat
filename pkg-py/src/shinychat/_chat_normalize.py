@@ -253,7 +253,9 @@ try:
 
     # Old versions of singledispatch doesn't seem to support union types
     if sys.version_info >= (3, 11):
-        from anthropic.types import RawMessageStreamEvent
+        from anthropic.types import (
+            RawMessageStreamEvent,  # pyright: ignore[reportMissingImports]
+        )
 
         @message_content_chunk.register
         def _(chunk: RawMessageStreamEvent):
