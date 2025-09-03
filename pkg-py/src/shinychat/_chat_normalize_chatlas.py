@@ -3,11 +3,20 @@ from __future__ import annotations
 import json
 import os
 import warnings
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Sequence, Union
 
-from htmltools import HTML, RenderedHTML, Tag, Tagifiable, TagList
+from htmltools import (
+    HTML,
+    MetadataNode,
+    RenderedHTML,
+    ReprHtml,
+    Tag,
+    Tagifiable,
+    TagList,
+)
 from packaging import version
 from pydantic import BaseModel, field_serializer, field_validator
+from typing_extensions import TypeAliasType
 
 from ._typing_extensions import TypeGuard
 
@@ -18,8 +27,13 @@ __all__ = [
     "ToolResultDisplay",
 ]
 
-# Pydantic doesn't work with htmltool's recursive TagChild type
-TagChild = Tag | TagList | HTML | str | None
+# A version of the (recursive) TagChild type that actually works with Pydantic
+# https://docs.pydantic.dev/2.11/concepts/types/#named-type-aliases
+TagNode = Union[Tagifiable, MetadataNode, ReprHtml, str, HTML]
+TagChild = TypeAliasType(
+    "TagChild",
+    "Union[TagNode, TagList, float, None, Sequence[TagChild]]",
+)
 
 
 class ToolCardComponent(BaseModel):
@@ -391,7 +405,7 @@ def tool_display_override() -> Literal["none", "basic", "rich"]:
 
 
 def restore_rendered_html(x: dict[str, Any]):
-    from htmltools import HTML, HTMLDependency, TagList
+    from htmltools import HTMLDependency
 
     if "html" not in x or "dependencies" not in x:
         raise ValueError(f"Don't know how to restore HTML from {x}")
