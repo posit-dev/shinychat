@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import warnings
-from typing import TYPE_CHECKING, Any, Literal, Sequence, Union
+from typing import TYPE_CHECKING, Any, Literal, Optional, Sequence, Union
 
 from htmltools import (
     HTML,
@@ -48,13 +48,13 @@ class ToolCardComponent(BaseModel):
     tool_name: str
     "Name of the tool being executed, e.g. `get_weather`."
 
-    tool_title: str | None = None
+    tool_title: Optional[str] = None
     "Display title for the card. If not provided, falls back to `tool_name`."
 
     icon: TagChild = None
     "HTML content for the icon displayed in the card header."
 
-    intent: str | None = None
+    intent: Optional[str] = None
     "Optional intent description explaining the purpose of the tool execution."
 
     expanded: bool = False
@@ -206,13 +206,13 @@ class ToolResultDisplay(BaseModel):
         Custom plain text string (to use in place of the default result display).
     """
 
-    title: str | None = None
+    title: Optional[str] = None
     icon: TagChild = None
     html: TagChild = None
     show_request: bool = True
     open: bool = False
-    markdown: str | None = None
-    text: str | None = None
+    markdown: Optional[str] = None
+    text: Optional[str] = None
 
     model_config = {"arbitrary_types_allowed": True}
 
