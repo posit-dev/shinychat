@@ -5,6 +5,7 @@ from chatlas import ChatOpenAI, ContentToolResult
 from ipyleaflet import CircleMarker, Map
 from shiny.express import ui
 from shinychat.express import Chat
+from shinychat.types import ToolResultDisplay
 from shinywidgets import output_widget, register_widget
 
 
@@ -31,12 +32,12 @@ def tool_show_map(
     return ContentToolResult(
         value="Map shown to the user.",
         extra={
-            "display": {
-                "html": output_widget(id),
-                "show_request": False,
-                "open": True,
-                "title": f"Map of {title}",
-            },
+            "display": ToolResultDisplay(
+                html=output_widget(id),
+                show_request=False,
+                open=True,
+                title=f"Map of {title}",
+            ),
         },
     )
 

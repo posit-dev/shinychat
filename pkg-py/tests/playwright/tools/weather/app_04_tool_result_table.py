@@ -4,6 +4,7 @@ import pandas as pd
 from chatlas import ChatOpenAI, ContentToolResult
 from shiny.express import ui
 from shinychat.express import Chat
+from shinychat.types import ToolResultDisplay
 
 # Set environment variable for tool display
 os.environ["SHINYCHAT_TOOL_DISPLAY"] = "rich"
@@ -33,10 +34,10 @@ def get_weather_forecast(
     return ContentToolResult(
         value=forecast_table,
         extra={
-            "display": {
-                "html": ui.HTML(forecast_table),
-                "title": f"Weather Forecast for {location_name}",
-            }
+            "display": ToolResultDisplay(
+                html=ui.HTML(forecast_table),
+                title=f"Weather Forecast for {location_name}",
+            )
         },
     )
 

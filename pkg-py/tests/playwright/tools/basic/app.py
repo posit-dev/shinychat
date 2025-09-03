@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from shiny import reactive
 from shiny.express import input, ui
 from shinychat.express import Chat
+from shinychat.types import ToolResultDisplay
 
 TOOL_OPTS = {
     "async": os.getenv("TEST_TOOL_ASYNC", "TRUE").lower() == "true",
@@ -28,7 +29,9 @@ def list_files_impl():
 
     extra = {}
     if TOOL_OPTS["with_icon"]:
-        extra = {"display": {"icon": faicons.icon_svg("folder-open")}}
+        extra = {
+            "display": ToolResultDisplay(icon=faicons.icon_svg("folder-open")),
+        }
 
     return ContentToolResult(
         value=["app.py", "data.csv"],

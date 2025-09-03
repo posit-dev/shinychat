@@ -2,6 +2,7 @@ import pandas as pd
 from chatlas import ChatOpenAI, ContentToolResult
 from shiny.express import ui
 from shinychat.express import Chat
+from shinychat.types import ToolResultDisplay
 
 
 class WeatherToolResult(ContentToolResult):
@@ -24,10 +25,10 @@ class WeatherToolResult(ContentToolResult):
             html_table = str(forecast_data)  # Fallback
 
         extra = {
-            "display": {
-                "html": ui.HTML(html_table),
-                "title": f"Weather Forecast for {location_name}",
-            }
+            "display": ToolResultDisplay(
+                html=ui.HTML(html_table),
+                title=f"Weather Forecast for {location_name}",
+            )
         }
 
         super().__init__(value=forecast_data, extra=extra, **kwargs)

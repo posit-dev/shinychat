@@ -2,6 +2,7 @@ import faicons
 from chatlas import ChatOpenAI, ContentToolResult
 from shiny.express import app_opts, ui
 from shinychat.express import Chat
+from shinychat.types import ToolResultDisplay
 
 from . import tools
 
@@ -24,10 +25,10 @@ def get_weather_forecast(
     return ContentToolResult(
         value=forecast_data,
         extra={
-            "display": {
-                "title": f"Weather Forecast for {location_name}",
-                "icon": faicons.icon_svg(icon),
-            }
+            "display": ToolResultDisplay(
+                title=f"Weather Forecast for {location_name}",
+                icon=faicons.icon_svg(icon),
+            )
         },
     )
 

@@ -3,11 +3,11 @@ from __future__ import annotations
 import json
 import os
 import warnings
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-from htmltools import RenderedHTML, Tag, TagChild, Tagifiable, TagList
+from htmltools import HTML, RenderedHTML, Tag, Tagifiable, TagList
 from packaging import version
+from pydantic import BaseModel, field_serializer, field_validator
 
 from ._typing_extensions import TypeGuard
 
@@ -18,10 +18,12 @@ __all__ = [
     "ToolResultDisplay",
 ]
 
+# Pydantic doesn't work with htmltool's recursive TagChild type
+TagChild = Tag | TagList | HTML | str | None
 
-@dataclass
-class ToolCardComponent:
-    "Data class mirroring the ShinyToolCard component class in chat-tools.ts"
+
+class ToolCardComponent(BaseModel):
+    "A class that mirrors the ShinyToolCard component class in chat-tools.ts"
 
     request_id: str
     """
@@ -44,10 +46,23 @@ class ToolCardComponent:
     expanded: bool = False
     "Controls whether the card content is expanded/visible."
 
+    model_config = {"arbitrary_types_allowed": True}
 
-@dataclass
+    @field_serializer("icon")
+    def _serialize_icon(self, value: TagChild):
+        return TagList(value).render()
+
+    @field_validator("icon", mode="before")
+    @classmethod
+    def _validate_icon(cls, value: TagChild) -> TagChild:
+        if isinstance(value, dict):
+            return restore_rendered_html(value)
+        else:
+            return value
+
+
 class ToolRequestComponent(ToolCardComponent):
-    "Data class mirroring the ShinyToolRequest component class from chat-tools.ts"
+    "A class that mirrors the ShinyToolRequest component class from chat-tools.ts"
 
     arguments: str = ""
     "The function arguments as requested by the LLM, typically in JSON format."
@@ -71,9 +86,8 @@ class ToolRequestComponent(ToolCardComponent):
 ValueType = Literal["html", "markdown", "text", "code"]
 
 
-@dataclass
 class ToolResultComponent(ToolCardComponent):
-    "Data class mirroring the ShinyToolResult component class from chat-tools.ts"
+    "A class that mirrors the ShinyToolResult component class from chat-tools.ts"
 
     request_call: str = ""
     "The original tool call that generated this result. Used to display the tool invocation."
@@ -129,18 +143,76 @@ class ToolResultComponent(ToolCardComponent):
         )
 
 
-@dataclass
-class ToolResultDisplay:
-    "Data class to for users to customize how tool results are displayed"
+class ToolResultDisplay(BaseModel):
+    """
+    Customize how tool results are displayed.
 
-    html: TagChild = None
-    markdown: str | None = None
-    text: str | None = None
-    show_request: bool = True
-    open: bool = False
+    Assign a `ToolResultDisplay` instance to a
+    [`chatlas.ContentToolResult`](https://posit-dev.github.io/chatlas/reference/types.ContentToolResult.html)
+    to customize the UI shown to the user when tool calls occur.
+
+    Examples
+    --------
+
+    ```python
+    import chatlas as ctl
+    from shinychat.types import ToolResultDisplay
+
+
+    def my_tool():
+        display = ToolResultDisplay(
+            title="Tool result title",
+            markdown="A _markdown_ message shown to user.",
+        )
+        return ctl.ContentToolResult(
+            value="Value the model sees",
+            extra={"display": display},
+        )
+
+
+    chat_client = ctl.ChatAuto()
+    chat_client.register_tool(my_tool)
+    ```
+
+    Parameters
+    ---------
+    title
+        The title to display in the header of the tool result.
+    icon
+        An icon to display in the header (alongside the title).
+    show_request
+        Whether to show the tool request inside the tool result container.
+    open
+        Whether or not the tool result details are expanded by default.
+    html
+        Custom HTML content (to use in place of the default result display).
+    markdown
+        Custom Markdown string (to use in place of the default result display).
+    text
+        Custom plain text string (to use in place of the default result display).
+    """
+
     title: str | None = None
     icon: TagChild = None
-    expanded: bool | None = None
+    html: TagChild = None
+    show_request: bool = True
+    open: bool = False
+    markdown: str | None = None
+    text: str | None = None
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    @field_serializer("html", "icon")
+    def _serialize_html_icon(self, value: TagChild):
+        return TagList(value).render()
+
+    @field_validator("html", "icon", mode="before")
+    @classmethod
+    def _validate_html_icon(cls, value: TagChild) -> TagChild:
+        if isinstance(value, dict):
+            return restore_rendered_html(value)
+        else:
+            return value
 
 
 def tool_request_contents(x: "ContentToolRequest") -> Tagifiable:
@@ -299,7 +371,7 @@ def is_tool_result(val: object) -> "TypeGuard[ContentToolResult]":
         return False
 
 
-# Tools were added to ContentToolRequest class until 0.11.1
+# Tools started getting added to ContentToolRequest staring with 0.11.1
 def is_legacy():
     import chatlas
 
@@ -316,3 +388,38 @@ def tool_display_override() -> Literal["none", "basic", "rich"]:
         raise ValueError(
             'The `SHINYCHAT_TOOL_DISPLAY` env var must be one of: "none", "basic", or "rich"'
         )
+
+
+def restore_rendered_html(x: dict[str, Any]):
+    from htmltools import HTML, HTMLDependency, TagList
+
+    if "html" not in x or "dependencies" not in x:
+        raise ValueError(f"Don't know how to restore HTML from {x}")
+
+    deps: list[HTMLDependency] = []
+    for d in x["dependencies"]:
+        if not isinstance(d, dict):
+            continue
+        name = d["name"]
+        version = d["version"]
+        other = {k: v for k, v in d.items() if k not in ("name", "version")}
+        # TODO: warn if the source is a tempdir?
+        deps.append(HTMLDependency(name=name, version=version, **other))
+
+    res = TagList(HTML(x["html"]), *deps)
+    if not deps:
+        return res
+
+    session = None
+    try:
+        from shiny.session import get_current_session
+
+        session = get_current_session()
+    except Exception:
+        pass
+
+    # De-dupe dependencies for the current Shiny session
+    if session:
+        session._process_ui(res)
+
+    return res
