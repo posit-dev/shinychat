@@ -180,6 +180,8 @@ as.tags.shinychat_tool_card <- function(x, ...) {
     chat_deps()
   )
 
+  x$value <- html_escape(format(x$value))
+
   htmltools::tag(
     tag_name,
     dots_list(type = NULL, !!!x, !!!deps, .homonyms = "first")

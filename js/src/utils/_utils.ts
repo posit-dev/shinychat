@@ -133,12 +133,23 @@ export function throttle(delay: number) {
   }
 }
 
+function htmlUnescape(x: string): string {
+  x = x.replace(/&#10;/g, "\n")
+  x = x.replace(/&#13;/g, "\r")
+  x = x.replace(/&quot;/g, '"')
+  x = x.replace(/&gt;/g, ">")
+  x = x.replace(/&lt;/g, "<")
+  x = x.replace(/&amp;/g, "&")
+  return x
+}
+
 export {
   LightElement,
   createElement,
   createSVGIcon,
   renderDependencies,
   sanitizeHTML,
+  htmlUnescape,
   showShinyClientMessage,
 }
 

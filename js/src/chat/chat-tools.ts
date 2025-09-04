@@ -1,6 +1,7 @@
 import { LitElement, html, TemplateResult } from "lit"
 import { property } from "lit/decorators.js"
 import { unsafeHTML } from "lit/directives/unsafe-html.js"
+import { htmlUnescape } from "../utils/_utils"
 
 /**
  * Custom event interface for hiding tool requests
@@ -319,20 +320,21 @@ export class ShinyToolResult extends ShinyToolCard {
    */
   #renderResult() {
     let result: string | TemplateResult = ""
+    const value = htmlUnescape(this.value || "")
 
     if (this.valueType === "html") {
-      result = html`${unsafeHTML(this.value)}`
+      result = html`${unsafeHTML(value)}`
     } else if (this.valueType === "text") {
-      result = html`<p>${this.value}</p>`
+      result = html`<p>${value}</p>`
     } else {
       // markdown, code, or default
       if (this.valueType !== "markdown") {
         // If value_type is "code", we format it as a markdown code block
-        result = markdownCodeBlock(this.value, "text")
+        result = markdownCodeBlock(value, "text")
       }
 
       result = html`<shiny-markdown-stream
-        content=${result || this.value}
+        content=${result || value}
         content-type="markdown"
         ?streaming=${false}
       ></shiny-markdown-stream>`
