@@ -15,6 +15,8 @@ NULL
 #' @rawNamespace if (getRversion() < "4.3.0") importFrom("S7", "@")
 NULL
 
+the <- new_environment()
+
 ignore_unused_imports <- function() {
   jsonlite::fromJSON
   fastmap::fastqueue

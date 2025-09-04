@@ -104,6 +104,29 @@ sanitizer.addHook("uponSanitizeElement", (node, data) => {
 })
 
 /**
+ * Generate a nanoid-style random ID
+ * @param prefix A prefix to prepend to the ID (e.g. "btn", "input", etc)
+ * @param size The length of the random portion of the ID (default: 12)
+ */
+function generateRandomId(prefix: string, size = 12): string {
+  const chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+  let id = ""
+  // Prefer secure random when available
+  if (crypto?.getRandomValues) {
+    const bytes = new Uint8Array(size)
+    crypto.getRandomValues(bytes)
+    for (let i = 0; i < size; i++) {
+      id += chars[bytes[i]! % chars.length]
+    }
+  } else {
+    for (let i = 0; i < size; i++) {
+      id += chars[Math.floor(Math.random() * chars.length)]
+    }
+  }
+  return `${prefix}-${id}`
+}
+
+/**
  * Creates a throttle decorator that ensures the decorated method isn't called more
  * frequently than the specified delay
  * @param delay The minimum time (in ms) that must pass between calls
@@ -140,6 +163,7 @@ export {
   renderDependencies,
   sanitizeHTML,
   showShinyClientMessage,
+  generateRandomId,
 }
 
 export type { HtmlDep }

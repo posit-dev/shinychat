@@ -148,6 +148,14 @@ shiny-chat-message {
   }
 }
 
+shiny-chat-message .message-content shiny-markdown-stream:not(:last-child) {
+  margin-bottom: 1rem;
+}
+
+shiny-chat-message shiny-markdown-stream:empty {
+  display: none;
+}
+
 shiny-chat-input {
   --_input-padding-top: 0;
   --_input-padding-bottom: var(--_chat-container-padding, 0.25rem);

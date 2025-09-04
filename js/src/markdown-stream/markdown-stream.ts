@@ -102,7 +102,7 @@ function contentToHTML(content: string, content_type: ContentType) {
 }
 
 class MarkdownElement extends LightElement {
-  @property() content = ""
+  @property({ reflect: true }) content = ""
   @property({ attribute: "content-type" })
   content_type: ContentType = "markdown"
   @property({ type: Boolean, reflect: true })
