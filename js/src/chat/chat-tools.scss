@@ -1,10 +1,19 @@
 .shiny-tool-card {
   max-height: var(--shiny-tool-card-max-height, 500px);
 
+  .tool-title {
+    min-width: 25%;
+    flex-shrink: 2;
+  }
+
   .tool-intent {
     opacity: 0.66;
     font-style: italic;
     font-weight: normal;
+    text-align: end;
+    flex-shrink: 3;
+    max-width: 60%;
+    min-width: 20%;
   }
 
   .tool-spacer {
