@@ -180,8 +180,8 @@ as.tags.shinychat_tool_card <- function(x, ...) {
     chat_deps()
   )
 
-  x$value <- html_escape(format(x$value))
-  x$icon <- html_escape(format(x$icon))
+  x$value <- if (!is.null(x$value)) html_escape(format(x$value))
+  x$icon <- if (!is.null(x$icon)) html_escape(format(x$icon))
 
   htmltools::tag(
     tag_name,
