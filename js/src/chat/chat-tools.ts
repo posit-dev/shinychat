@@ -1,7 +1,6 @@
 import { LitElement, html, TemplateResult } from "lit"
 import { property } from "lit/decorators.js"
 import { unsafeHTML } from "lit/directives/unsafe-html.js"
-import { htmlUnescape } from "../utils/_utils"
 
 /**
  * Custom event interface for hiding tool requests
@@ -123,7 +122,7 @@ class ShinyToolCard extends LitElement {
   protected renderCard(bodyContent: TemplateResult) {
     const headerId = `tool-header-${this.requestId}`
     const contentId = `tool-content-${this.requestId}`
-    const icon = htmlUnescape(this.icon) || ICONS.wrenchAdjustable
+    const icon = this.icon || ICONS.wrenchAdjustable
 
     const headerContent = html`
       <div class="tool-icon ${this.classStatus}">${unsafeHTML(icon)}</div>
@@ -319,7 +318,7 @@ export class ShinyToolResult extends ShinyToolCard {
    */
   #renderResult() {
     let result: string | TemplateResult = ""
-    const value = htmlUnescape(this.value || "")
+    const value = this.value || "[Empty result]"
 
     if (this.valueType === "html") {
       result = html`${unsafeHTML(value)}`

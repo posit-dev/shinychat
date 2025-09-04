@@ -23,15 +23,3 @@ strip_ansi <- function(text) {
 drop_nulls <- function(x) {
   x[!vapply(x, is.null, FUN.VALUE = logical(1))]
 }
-
-html_escape <- function(x, attr = TRUE) {
-  x <- gsub("&", "&amp;", x, fixed = TRUE)
-  x <- gsub("<", "&lt;", x, fixed = TRUE)
-  x <- gsub(">", "&gt;", x, fixed = TRUE)
-  if (attr) {
-    x <- gsub("\"", "&quot;", x, fixed = TRUE)
-    x <- gsub("\r", "&#13;", x, fixed = TRUE)
-    x <- gsub("\n", "&#10;", x, fixed = TRUE)
-  }
-  x
-}

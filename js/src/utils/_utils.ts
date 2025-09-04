@@ -93,13 +93,48 @@ function sanitizeHTML(html: string): string {
 const sanitizer = DOMPurify()
 sanitizer.addHook("uponSanitizeElement", (node, data) => {
   if (node.nodeName && node.nodeName === "SCRIPT") {
-    // Need to ensure node is an Element before calling getAttribute
+    // Need to ensure node is an Element before calling getAttribute˙
     const element = node as Element
     const isOK =
       element.getAttribute("type") === "application/json" &&
       element.getAttribute("data-for") !== null
 
     data.allowedTags["script"] = isOK
+  }
+})
+
+// This next section is a big workaround to prevent DOMPurify from removing
+// attributes from our custom elements when they contain suspicious HTML values.
+// In particular, using HTML comments in the value attribute of
+// <shiny-tool-request> is something we want to allow but DOMPurify will remove
+// the entire attribute. The workaround is to restore the original attributes
+// after sanitization.
+const originalAttributes = new WeakMap<Node, Record<string, string>>()
+
+sanitizer.addHook("beforeSanitizeAttributes", function (node, data) {
+  if (!node.tagName) return
+
+  const isShinyToolCard = ["shiny-tool-request", "shiny-tool-result"].includes(
+    node.tagName.toLowerCase(),
+  )
+
+  if (isShinyToolCard) {
+    const attrs: Record<string, string> = {}
+    if (node.hasAttribute("value")) attrs.value = node.getAttribute("value")!
+    // We could also preserve `icon` here, but it shouldn't have the same issue
+    if (Object.keys(attrs).length > 0) {
+      originalAttributes.set(node, attrs)
+    }
+  }
+})
+
+sanitizer.addHook("afterSanitizeAttributes", function (node, data) {
+  if (originalAttributes.has(node)) {
+    const attrs = originalAttributes.get(node)!
+    Object.entries(attrs).forEach(([name, value]) => {
+      node.setAttribute(name, value)
+    })
+    originalAttributes.delete(node)
   }
 })
 
@@ -133,23 +168,12 @@ export function throttle(delay: number) {
   }
 }
 
-function htmlUnescape(x: string): string {
-  x = x.replace(/&#10;/g, "\n")
-  x = x.replace(/&#13;/g, "\r")
-  x = x.replace(/&quot;/g, '"')
-  x = x.replace(/&gt;/g, ">")
-  x = x.replace(/&lt;/g, "<")
-  x = x.replace(/&amp;/g, "&")
-  return x
-}
-
 export {
   LightElement,
   createElement,
   createSVGIcon,
   renderDependencies,
   sanitizeHTML,
-  htmlUnescape,
   showShinyClientMessage,
 }
 
