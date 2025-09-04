@@ -123,9 +123,10 @@ class ShinyToolCard extends LitElement {
   protected renderCard(bodyContent: TemplateResult) {
     const headerId = `tool-header-${this.requestId}`
     const contentId = `tool-content-${this.requestId}`
+    const icon = htmlUnescape(this.icon) || ICONS.wrenchAdjustable
 
     const headerContent = html`
-      <div class="tool-icon ${this.classStatus}">${unsafeHTML(this.icon)}</div>
+      <div class="tool-icon ${this.classStatus}">${unsafeHTML(icon)}</div>
       <div class="tool-title ${this.classStatus}">${this.formatTitle()}</div>
       <div class="tool-spacer"></div>
       ${this.intent ? html`<div class="tool-intent">${this.intent}</div>` : ""}
@@ -301,8 +302,6 @@ export class ShinyToolResult extends ShinyToolCard {
       this.classStatus = "text-danger"
       this.icon = ICONS.exclamationCircleFill
       this.titleTemplate = "{title} failed"
-    } else if (!this.icon) {
-      this.icon = ICONS.wrenchAdjustable
     }
     // Emit event to hide the corresponding tool request
     window.shinychat.hiddenToolRequests.add(this.requestId)
