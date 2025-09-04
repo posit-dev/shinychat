@@ -66,7 +66,7 @@ To respond to user input, listen for \code{input$ID_user_input} (for example, if
 \code{\link[=chat_append]{chat_append()}} to append messages to the chat.
 }
 \examples{
-\dontshow{if (interactive()) (if (getRversion() >= "3.4") withAutoprint else force)(\{ # examplesIf}
+\dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
 library(shiny)
 library(bslib)
 library(shinychat)
