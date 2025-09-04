@@ -226,7 +226,7 @@ test_that("ContentToolResult with additional display options from result", {
   expect_equal(res$tool_title, "Custom Title")
 
   res_tags <- as.tags(res)
-  expect_equal(res_tags$attribs$value, html_escape("<p>test</p>"))
+  expect_equal(res_tags$attribs$value, "<p>test</p>")
   expect_equal(res_tags$attribs$"value-type", "html")
   expect_equal(res_tags$attribs[["show-request"]], NULL)
   expect_equal(res_tags$attribs$expanded, NA)
@@ -258,10 +258,7 @@ test_that("ContentToolResult handles icon and dependencies from tool definition"
   expect_equal(res$icon, tool@annotations$icon)
 
   res_tags <- as.tags(res)
-  expect_equal(
-    format(res_tags$attribs$icon),
-    html_escape('<i class="icon"></i>')
-  )
+  expect_equal(format(res_tags$attribs$icon), '<i class="icon"></i>')
   expect_true(
     list(icon_dep) %in% htmltools::findDependencies(res_tags$children)
   )
