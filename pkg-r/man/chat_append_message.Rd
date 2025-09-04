@@ -46,7 +46,7 @@ For advanced users who want to control the message chunking behavior. Most
 users should use \code{\link[=chat_append]{chat_append()}} instead.
 }
 \examples{
-\dontshow{if (interactive()) (if (getRversion() >= "3.4") withAutoprint else force)(\{ # examplesIf}
+\dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
 library(shiny)
 library(coro)
 library(bslib)
