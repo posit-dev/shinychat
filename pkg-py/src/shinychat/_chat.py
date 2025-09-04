@@ -54,6 +54,7 @@ from ._chat_bookmark import (
     set_chatlas_state,
 )
 from ._chat_normalize import message_content, message_content_chunk
+from ._chat_normalize_chatlas import hide_corresponding_request, is_tool_result
 from ._chat_provider_types import (
     AnthropicMessage,  # pyright: ignore[reportAttributeAccessIssue]
     GoogleMessage,
@@ -753,6 +754,9 @@ class Chat:
 
         # Normalize various message types into a ChatMessage()
         msg = message_content_chunk(message)
+
+        if is_tool_result(message):
+            await hide_corresponding_request(message)
 
         if operation == "replace":
             self._current_stream_message = (
