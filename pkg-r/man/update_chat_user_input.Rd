@@ -33,7 +33,7 @@ update_chat_user_input(
 Update the user input of a chat control
 }
 \examples{
-\dontshow{if (interactive()) (if (getRversion() >= "3.4") withAutoprint else force)(\{ # examplesIf}
+\dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
 library(shiny)
 library(bslib)
 library(shinychat)
