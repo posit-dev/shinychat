@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, TypedDict
 
-from htmltools import HTML, TagChild
+from htmltools import HTML, TagChild, Tagifiable, TagList
 from shiny.session import require_active_session
 
 from ._typing_extensions import NotRequired
@@ -26,6 +26,12 @@ class ChatMessage:
     ):
         self.role: Role = role
 
+        is_html = (
+            isinstance(content, HTML)
+            or isinstance(content, TagList)
+            or isinstance(content, Tagifiable)
+        )
+
         # content _can_ be a TagChild, but it's most likely just a string (of
         # markdown), so only process it if it's not a string.
         deps = []
@@ -35,7 +41,7 @@ class ChatMessage:
             content = res["html"]
             deps = res["deps"]
 
-        self.content = content
+        self.content = HTML(content) if is_html else str(content)
         self.html_deps = deps
 
 
