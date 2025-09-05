@@ -26,11 +26,7 @@ class ChatMessage:
     ):
         self.role: Role = role
 
-        is_html = (
-            isinstance(content, HTML)
-            or isinstance(content, TagList)
-            or isinstance(content, Tagifiable)
-        )
+        is_html = isinstance(content, (Tag, TagList, HTML, Tagifiable))
 
         # content _can_ be a TagChild, but it's most likely just a string (of
         # markdown), so only process it if it's not a string.
