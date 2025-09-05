@@ -10,6 +10,7 @@ import {
 } from "../utils/_utils"
 
 import { ShinyToolRequest, ShinyToolResult } from "./chat-tools"
+import { showExternalLinkConfirmation } from "./chat-external-link"
 
 import type { HtmlDep } from "../utils/_utils"
 
@@ -411,6 +412,7 @@ class ChatContainer extends LightElement {
     )
     this.addEventListener("click", this.#onInputSuggestionClick)
     this.addEventListener("keydown", this.#onInputSuggestionKeydown)
+    this.addEventListener("click", this.#onExternalLinkClick)
   }
 
   disconnectedCallback(): void {
@@ -437,6 +439,7 @@ class ChatContainer extends LightElement {
     )
     this.removeEventListener("click", this.#onInputSuggestionClick)
     this.removeEventListener("keydown", this.#onInputSuggestionKeydown)
+    this.removeEventListener("click", this.#onExternalLinkClick)
   }
 
   // When user submits input, append it to the chat, and add a loading message
@@ -595,6 +598,31 @@ class ChatContainer extends LightElement {
 
   #finalizeMessage(): void {
     this.input.disabled = false
+  }
+
+  #onExternalLinkClick(e: MouseEvent): void {
+    // Find if the clicked element or any of its parents is an external link
+    const target = e.target as HTMLElement
+    const linkEl = target.closest(
+      "a[data-external-link]",
+    ) as HTMLAnchorElement | null
+
+    if (!linkEl || !linkEl.href) return
+
+    // Prevent the default link behavior
+    e.preventDefault()
+
+    // Show confirmation dialog and open the link if confirmed
+    showExternalLinkConfirmation(linkEl.href)
+      .then((confirmed) => {
+        if (confirmed) {
+          window.open(linkEl.href, "_blank", "noopener,noreferrer")
+        }
+      })
+      .catch(() => {
+        // If dialog fails for any reason, fall back to opening the link directly
+        window.open(linkEl.href, "_blank", "noopener,noreferrer")
+      })
   }
 }
 

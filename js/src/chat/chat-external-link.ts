@@ -1,0 +1,156 @@
+import { LitElement, html } from "lit"
+import { property } from "lit/decorators.js"
+
+import { LightElement } from "../utils/_utils"
+
+export class ChatExternalLinkDialog extends LightElement {
+  @property() url = ""
+
+  private static instance: ChatExternalLinkDialog | null = null
+  private dialog: HTMLDialogElement | null = null
+  private resolvePromise: ((value: boolean) => void) | null = null
+
+  static getInstance(): ChatExternalLinkDialog {
+    if (!ChatExternalLinkDialog.instance) {
+      ChatExternalLinkDialog.instance = document.createElement(
+        "shinychat-external-link-dialog",
+      ) as ChatExternalLinkDialog
+      document.body.appendChild(ChatExternalLinkDialog.instance)
+    }
+    return ChatExternalLinkDialog.instance
+  }
+
+  connectedCallback(): void {
+    super.connectedCallback()
+    this.createDialog()
+  }
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback()
+    this.dialog?.remove()
+    this.dialog = null
+  }
+
+  render() {
+    return html``
+  }
+
+  /**
+   * Shows a modal dialog asking for confirmation to open an external link
+   * @param url The URL to open
+   * @returns A promise that resolves to true if the user confirmed, false otherwise
+   */
+  async showConfirmation(url: string): Promise<boolean> {
+    this.url = url
+
+    // Update the URL in the dialog
+    const linkUrlElement = this.dialog?.querySelector(".link-url")
+    if (linkUrlElement) {
+      linkUrlElement.textContent = url
+    }
+
+    return new Promise<boolean>((resolve) => {
+      this.resolvePromise = resolve
+
+      try {
+        this.dialog?.showModal()
+      } catch (err) {
+        // If showModal fails, resolve with true to fallback to default behavior
+        resolve(true)
+      }
+    })
+  }
+
+  private createDialog(): void {
+    if (this.dialog) return
+
+    this.dialog = document.createElement("dialog")
+    this.dialog.id = "shinychat-external-link-dialog"
+    this.dialog.className = "shinychat-external-link-dialog"
+
+    // Create the dialog content with Bootstrap classes
+    this.dialog.innerHTML = `
+      <div class="modal position-relative d-block fade show">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">External Link</h5>
+            <button class="btn-close shinychat-btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p>This link will take you to an external website:</p>
+            <p class="link-url text-break"></p>
+          </div>
+          <div class="modal-footer">
+            <button autofocus class="btn btn-primary shinychat-btn-proceed">Open Link</button>
+            <button class="btn btn-outline-danger shinychat-btn-cancel">Cancel</button>
+          </div>
+          </div>
+        </div>
+      </div>
+    `
+
+    document.body.appendChild(this.dialog)
+
+    // Add event listeners to the buttons
+    const getBtn = (selector: string) =>
+      this.dialog?.querySelector(selector) as HTMLButtonElement
+
+    const btns = {
+      close: getBtn(".shinychat-btn-close"),
+      cancel: getBtn(".shinychat-btn-cancel"),
+      proceed: getBtn(".shinychat-btn-proceed"),
+    }
+
+    btns.close.addEventListener("click", () => this.handleCancel())
+    btns.cancel.addEventListener("click", () => this.handleCancel())
+    btns.proceed.addEventListener("click", () => this.handleProceed())
+
+    // Close the dialog when clicked outside (native dialog behavior)
+    this.dialog.addEventListener("click", (e) => {
+      if (e.target === this.dialog) {
+        this.handleCancel()
+        e.preventDefault()
+      }
+    })
+  }
+
+  private handleCancel(): void {
+    this.dialog?.close()
+    if (this.resolvePromise) {
+      this.resolvePromise(false)
+      this.resolvePromise = null
+    }
+  }
+
+  private handleProceed(): void {
+    this.dialog?.close()
+    if (this.resolvePromise) {
+      this.resolvePromise(true)
+      this.resolvePromise = null
+    }
+  }
+}
+
+// Define the custom element
+if (!customElements.get("shinychat-external-link-dialog")) {
+  customElements.define(
+    "shinychat-external-link-dialog",
+    ChatExternalLinkDialog,
+  )
+}
+
+/**
+ * Shows a confirmation dialog for external links
+ * @param url The URL to confirm
+ * @returns A promise that resolves to true if confirmed, false otherwise
+ */
+export function showExternalLinkConfirmation(url: string): Promise<boolean> {
+  // Check if the browser supports HTMLDialogElement
+  if (typeof window.HTMLDialogElement !== "undefined") {
+    const dialog = ChatExternalLinkDialog.getInstance()
+    return dialog.showConfirmation(url)
+  }
+
+  // Fallback for browsers without dialog support
+  return Promise.resolve(true)
+}

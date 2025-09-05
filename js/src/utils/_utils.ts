@@ -111,6 +111,7 @@ sanitizer.addHook("afterSanitizeAttributes", function (node) {
   const href = node.getAttribute("href")
 
   if (href && /^(https?:)?\/\//.test(href)) {
+    node.setAttribute("data-external-link", "")
     node.setAttribute("target", "_blank")
     node.setAttribute("rel", "noopener noreferrer")
   }

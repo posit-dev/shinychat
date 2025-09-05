@@ -193,3 +193,20 @@ shiny-chat-input {
 .shiny-busy:has(shiny-chat-input[disabled])::after {
   display: none;
 }
+
+/* External link dialog styling */
+.shinychat-external-link-dialog {
+  padding: 0;
+  border: none;
+  background: none;
+  max-width: min(680px, 90%);
+}
+
+.shinychat-external-link-dialog::backdrop {
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.shinychat-external-link-dialog .link-url {
+  word-break: break-all;
+  font-weight: 500;
+}
