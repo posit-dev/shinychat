@@ -93,7 +93,7 @@ function sanitizeHTML(html: string): string {
 const sanitizer = DOMPurify()
 sanitizer.addHook("uponSanitizeElement", (node, data) => {
   if (node.nodeName && node.nodeName === "SCRIPT") {
-    // Need to ensure node is an Element before calling getAttribute˙
+    // Need to ensure node is an Element before calling getAttribute
     const element = node as Element
     const isOK =
       element.getAttribute("type") === "application/json" &&
