@@ -336,6 +336,7 @@ class ChatContainer extends LightElement {
   @property({ attribute: "icon-assistant" }) iconAssistant = ""
   inputSentinelObserver?: IntersectionObserver
   _attachEventListenersOnReconnect = false
+  _boundOnExternalLinkClick!: (e: MouseEvent) => void
 
   private get input(): ChatInput {
     return this.querySelector(CHAT_INPUT_TAG) as ChatInput
@@ -381,6 +382,7 @@ class ChatContainer extends LightElement {
     )
 
     this.inputSentinelObserver.observe(sentinel)
+    this._boundOnExternalLinkClick = this.#onExternalLinkClick.bind(this)
 
     if (this._attachEventListenersOnReconnect) {
       this.#addEventListeners()
@@ -413,7 +415,7 @@ class ChatContainer extends LightElement {
     this.addEventListener("click", this.#onInputSuggestionClick)
     this.addEventListener("keydown", this.#onInputSuggestionKeydown)
     // Add external link handler to the window so that it's easier for users to disable
-    window.addEventListener("click", this.#onExternalLinkClick.bind(this))
+    window.addEventListener("click", this._boundOnExternalLinkClick)
   }
 
   disconnectedCallback(): void {
@@ -440,7 +442,7 @@ class ChatContainer extends LightElement {
     )
     this.removeEventListener("click", this.#onInputSuggestionClick)
     this.removeEventListener("keydown", this.#onInputSuggestionKeydown)
-    window.removeEventListener("click", this.#onExternalLinkClick)
+    window.removeEventListener("click", this._boundOnExternalLinkClick)
   }
 
   // When user submits input, append it to the chat, and add a loading message
