@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, TypedDict
 
-from htmltools import HTML, TagChild, Tagifiable, TagList
+from htmltools import HTML, Tag, TagChild, Tagifiable, TagList
 from shiny.session import require_active_session
 
 from ._typing_extensions import NotRequired
