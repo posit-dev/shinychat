@@ -987,11 +987,6 @@ class Chat:
         content = message.content_client
         content_type = "html" if isinstance(content, HTML) else "markdown"
 
-        if content_type == "html":
-            # Code blocks with `{=html}` infostrings are rendered as-is by a
-            # custom rendering method in markdown-stream.ts
-            content = f"\n\n````````{{=html}}\n{content}\n````````\n\n"
-
         # TODO: pass along dependencies for both content and icon (if any)
         msg = ClientMessage(
             content=str(content),

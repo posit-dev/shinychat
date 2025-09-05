@@ -41,7 +41,12 @@ class ChatMessage:
             content = res["html"]
             deps = res["deps"]
 
-        self.content = HTML(content) if is_html else str(content)
+        if is_html:
+            # Code blocks with `{=html}` infostrings are rendered as-is by a
+            # custom rendering method in markdown-stream.ts
+            content = f"\n\n````````{{=html}}\n{content}\n````````\n\n"
+
+        self.content = content
         self.html_deps = deps
 
 
