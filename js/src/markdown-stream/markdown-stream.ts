@@ -88,9 +88,7 @@ markdownRenderer.link = function (
   const isExternal = href && /^(https?:)?\/\//.test(href)
 
   // For external links, modify the original output to add target="_blank"
-  return !isExternal
-    ? link
-    : link.replace("<a ", '<a target="_blank" rel="noopener noreferrer" ')
+  return !isExternal ? link : link.replace("<a ", "<a data-external-link ")
 }
 
 // 'semi-markdown' renderer (for user messages)
@@ -124,9 +122,7 @@ semiMarkdownRenderer.link = function (
   const isExternal = href && /^(https?:)?\/\//.test(href)
 
   // For external links, modify the original output to add target="_blank"
-  return !isExternal
-    ? link
-    : link.replace("<a ", '<a target="_blank" rel="noopener noreferrer" ')
+  return !isExternal ? link : link.replace("<a ", "<a data-external-link ")
 }
 
 function contentToHTML(content: string, content_type: ContentType) {

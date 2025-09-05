@@ -103,6 +103,14 @@ sanitizer.addHook("uponSanitizeElement", (node, data) => {
   }
 })
 
+sanitizer.addHook("afterSanitizeAttributes", function (node) {
+  // set all elements owning target to target=_blank
+  if (node.hasAttribute("data-external-link")) {
+    node.setAttribute("target", "_blank")
+    node.setAttribute("rel", "noopener noreferrer")
+  }
+})
+
 /**
  * Creates a throttle decorator that ensures the decorated method isn't called more
  * frequently than the specified delay
