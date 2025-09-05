@@ -103,6 +103,41 @@ sanitizer.addHook("uponSanitizeElement", (node, data) => {
   }
 })
 
+// This next section is a big workaround to prevent DOMPurify from removing
+// attributes from our custom elements when they contain suspicious HTML values.
+// In particular, using HTML comments in the value attribute of
+// <shiny-tool-request> is something we want to allow but DOMPurify will remove
+// the entire attribute. The workaround is to restore the original attributes
+// after sanitization.
+const originalAttributes = new WeakMap<Node, Record<string, string>>()
+
+sanitizer.addHook("beforeSanitizeAttributes", function (node, data) {
+  if (!node.tagName) return
+
+  const isShinyToolCard = ["shiny-tool-request", "shiny-tool-result"].includes(
+    node.tagName.toLowerCase(),
+  )
+
+  if (isShinyToolCard) {
+    const attrs: Record<string, string> = {}
+    if (node.hasAttribute("value")) attrs.value = node.getAttribute("value")!
+    // We could also preserve `icon` here, but it shouldn't have the same issue
+    if (Object.keys(attrs).length > 0) {
+      originalAttributes.set(node, attrs)
+    }
+  }
+})
+
+sanitizer.addHook("afterSanitizeAttributes", function (node, data) {
+  if (originalAttributes.has(node)) {
+    const attrs = originalAttributes.get(node)!
+    Object.entries(attrs).forEach(([name, value]) => {
+      node.setAttribute(name, value)
+    })
+    originalAttributes.delete(node)
+  }
+})
+
 /**
  * Creates a throttle decorator that ensures the decorated method isn't called more
  * frequently than the specified delay
