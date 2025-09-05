@@ -71,6 +71,28 @@ markdownRenderer.code = function (
   return defaultMarkdownCodeRenderer.call(this, code, infostring, escaped)
 }
 
+// External links should open in a new tab
+const defaultMarkdownLinkRenderer = markdownRenderer.link
+
+markdownRenderer.link = function (
+  href: string,
+  title: string | null | undefined,
+  text: string,
+) {
+  // marked's default link renderer does some sanitization we want to keep
+  const link = defaultMarkdownLinkRenderer.call(this, href, title, text)
+  if (link === text) {
+    return link
+  }
+
+  const isExternal = href && /^(https?:)?\/\//.test(href)
+
+  // For external links, modify the original output to add target="_blank"
+  return !isExternal
+    ? link
+    : link.replace("<a ", '<a target="_blank" rel="noopener noreferrer" ')
+}
+
 // 'semi-markdown' renderer (for user messages)
 const semiMarkdownRenderer = new Renderer()
 
@@ -84,6 +106,28 @@ semiMarkdownRenderer.html = (html: string) =>
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;")
+
+// Open external links in a new tab
+const defaultSemiMarkdownLinkRenderer = semiMarkdownRenderer.link
+
+semiMarkdownRenderer.link = function (
+  href: string,
+  title: string | null | undefined,
+  text: string,
+) {
+  // marked's default link renderer does some sanitization we want to keep
+  const link = defaultSemiMarkdownLinkRenderer.call(this, href, title, text)
+  if (link === text) {
+    return link
+  }
+
+  const isExternal = href && /^(https?:)?\/\//.test(href)
+
+  // For external links, modify the original output to add target="_blank"
+  return !isExternal
+    ? link
+    : link.replace("<a ", '<a target="_blank" rel="noopener noreferrer" ')
+}
 
 function contentToHTML(content: string, content_type: ContentType) {
   if (content_type === "markdown") {
