@@ -3,6 +3,12 @@ import { property } from "lit/decorators.js"
 
 import { LightElement } from "../utils/_utils"
 
+declare global {
+  interface Window {
+    shinychat_always_open_external_links?: boolean
+  }
+}
+
 export class ChatExternalLinkDialog extends LightElement {
   @property() url = ""
 
@@ -41,6 +47,11 @@ export class ChatExternalLinkDialog extends LightElement {
    * @returns A promise that resolves to true if the user confirmed, false otherwise
    */
   async showConfirmation(url: string): Promise<boolean> {
+    // If the user has opted to always open external links, resolve immediately
+    if (window.shinychat_always_open_external_links) {
+      return Promise.resolve(true)
+    }
+
     this.url = url
 
     // Update the URL in the dialog
@@ -80,9 +91,12 @@ export class ChatExternalLinkDialog extends LightElement {
             <p>This link will take you to an external website:</p>
             <p class="link-url text-break"></p>
           </div>
-          <div class="modal-footer">
-            <button autofocus class="btn btn-primary shinychat-btn-proceed">Open Link</button>
-            <button class="btn btn-outline-danger shinychat-btn-cancel">Cancel</button>
+          <div class="modal-footer flex-wrap-reverse">
+            <button class="btn btn-sm btn-link shinychat-btn-always me-auto">Always open external links</button>
+            <div class="d-flex gap-2 justify-content-end">
+              <button autofocus class="btn btn-sm btn-primary shinychat-btn-proceed">Open Link</button>
+              <button class="btn btn-sm btn-outline-danger shinychat-btn-cancel">Cancel</button>
+            </div>
           </div>
           </div>
         </div>
@@ -99,11 +113,13 @@ export class ChatExternalLinkDialog extends LightElement {
       close: getBtn(".shinychat-btn-close"),
       cancel: getBtn(".shinychat-btn-cancel"),
       proceed: getBtn(".shinychat-btn-proceed"),
+      always: getBtn(".shinychat-btn-always"),
     }
 
     btns.close.addEventListener("click", () => this.handleCancel())
     btns.cancel.addEventListener("click", () => this.handleCancel())
     btns.proceed.addEventListener("click", () => this.handleProceed())
+    btns.always.addEventListener("click", () => this.handleAlways())
 
     // Close the dialog when clicked outside (native dialog behavior)
     this.dialog.addEventListener("click", (e) => {
@@ -128,6 +144,12 @@ export class ChatExternalLinkDialog extends LightElement {
       this.resolvePromise(true)
       this.resolvePromise = null
     }
+  }
+
+  private handleAlways(): void {
+    window.shinychat_always_open_external_links = true
+
+    this.handleCancel()
   }
 }
 
