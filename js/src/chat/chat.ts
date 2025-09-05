@@ -412,7 +412,8 @@ class ChatContainer extends LightElement {
     )
     this.addEventListener("click", this.#onInputSuggestionClick)
     this.addEventListener("keydown", this.#onInputSuggestionKeydown)
-    this.addEventListener("click", this.#onExternalLinkClick)
+    // Add external link handler to the window so that it's easier for users to disable
+    window.addEventListener("click", this.#onExternalLinkClick.bind(this))
   }
 
   disconnectedCallback(): void {
@@ -439,7 +440,7 @@ class ChatContainer extends LightElement {
     )
     this.removeEventListener("click", this.#onInputSuggestionClick)
     this.removeEventListener("keydown", this.#onInputSuggestionKeydown)
-    this.removeEventListener("click", this.#onExternalLinkClick)
+    window.removeEventListener("click", this.#onExternalLinkClick)
   }
 
   // When user submits input, append it to the chat, and add a loading message
@@ -603,6 +604,8 @@ class ChatContainer extends LightElement {
   #onExternalLinkClick(e: MouseEvent): void {
     // Find if the clicked element or any of its parents is an external link
     const target = e.target as HTMLElement
+    if (!this.contains(target)) return
+
     const linkEl = target.closest(
       "a[data-external-link]",
     ) as HTMLAnchorElement | null
