@@ -105,7 +105,12 @@ sanitizer.addHook("uponSanitizeElement", (node, data) => {
 
 sanitizer.addHook("afterSanitizeAttributes", function (node) {
   // set all elements owning target to target=_blank
-  if (node.hasAttribute("data-external-link")) {
+  const is_link = node.tagName === "A" && node.hasAttribute("href")
+  if (!is_link) return
+
+  const href = node.getAttribute("href")
+
+  if (href && /^(https?:)?\/\//.test(href)) {
     node.setAttribute("target", "_blank")
     node.setAttribute("rel", "noopener noreferrer")
   }
