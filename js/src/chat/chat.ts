@@ -334,6 +334,7 @@ class ChatInput extends LightElement {
 class ChatContainer extends LightElement {
   @property({ attribute: "icon-assistant" }) iconAssistant = ""
   inputSentinelObserver?: IntersectionObserver
+  _attachEventListenersOnReconnect = false
 
   private get input(): ChatInput {
     return this.querySelector(CHAT_INPUT_TAG) as ChatInput
@@ -379,12 +380,20 @@ class ChatContainer extends LightElement {
     )
 
     this.inputSentinelObserver.observe(sentinel)
+
+    if (this._attachEventListenersOnReconnect) {
+      this.#addEventListeners()
+    }
   }
 
   firstUpdated(): void {
     // Don't attach event listeners until child elements are rendered
     if (!this.messages) return
+    this.#addEventListeners()
+  }
 
+  #addEventListeners(): void {
+    this._attachEventListenersOnReconnect = true
     this.addEventListener("shiny-chat-input-sent", this.#onInputSent)
     this.addEventListener("shiny-chat-append-message", this.#onAppend)
     this.addEventListener(
@@ -406,6 +415,7 @@ class ChatContainer extends LightElement {
 
   disconnectedCallback(): void {
     super.disconnectedCallback()
+    this._attachEventListenersOnReconnect = true
 
     this.inputSentinelObserver?.disconnect()
     this.inputSentinelObserver = undefined
