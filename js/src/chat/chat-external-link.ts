@@ -148,8 +148,7 @@ export class ChatExternalLinkDialog extends LightElement {
 
   private handleAlways(): void {
     window.shinychat_always_open_external_links = true
-
-    this.handleCancel()
+    this.handleProceed()
   }
 }
 
