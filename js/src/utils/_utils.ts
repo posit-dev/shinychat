@@ -103,6 +103,20 @@ sanitizer.addHook("uponSanitizeElement", (node, data) => {
   }
 })
 
+sanitizer.addHook("afterSanitizeAttributes", function (node) {
+  // set all elements owning target to target=_blank
+  const is_link = node.tagName === "A" && node.hasAttribute("href")
+  if (!is_link) return
+
+  const href = node.getAttribute("href")
+
+  if (href && /^(https?:)?\/\//.test(href)) {
+    node.setAttribute("data-external-link", "")
+    node.setAttribute("target", "_blank")
+    node.setAttribute("rel", "noopener noreferrer")
+  }
+})
+
 // This next section is a big workaround to prevent DOMPurify from removing
 // attributes from our custom elements when they contain suspicious HTML values.
 // In particular, using HTML comments in the value attribute of
