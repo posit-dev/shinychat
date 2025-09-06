@@ -73,7 +73,7 @@ export class ExternalLinkDialog {
             <p class="link-url text-break"></p>
           </div>
           <div class="modal-footer flex-wrap-reverse">
-            <button class="btn btn-sm btn-link shinychat-btn-always me-auto">Always open external links</button>
+            <button class="btn btn-sm btn-link shinychat-btn-always ps-0 me-auto">Always open external links</button>
             <div class="d-flex gap-2 justify-content-end">
               <button autofocus class="btn btn-sm btn-primary shinychat-btn-proceed">Open Link</button>
               <button class="btn btn-sm btn-outline-danger shinychat-btn-cancel">Cancel</button>
