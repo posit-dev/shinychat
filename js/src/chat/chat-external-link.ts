@@ -1,44 +1,25 @@
-import { LitElement, html } from "lit"
-import { property } from "lit/decorators.js"
-
-import { LightElement } from "../utils/_utils"
-
 declare global {
   interface Window {
     shinychat_always_open_external_links?: boolean
   }
 }
 
-export class ChatExternalLinkDialog extends LightElement {
-  @property() url = ""
+export class ExternalLinkDialog {
+  url: string | null = null
 
-  private static instance: ChatExternalLinkDialog | null = null
+  private static instance: ExternalLinkDialog | null = null
   private dialog: HTMLDialogElement | null = null
   private resolvePromise: ((value: boolean) => void) | null = null
 
-  static getInstance(): ChatExternalLinkDialog {
-    if (!ChatExternalLinkDialog.instance) {
-      ChatExternalLinkDialog.instance = document.createElement(
-        "shinychat-external-link-dialog",
-      ) as ChatExternalLinkDialog
-      document.body.appendChild(ChatExternalLinkDialog.instance)
+  static getInstance(): ExternalLinkDialog {
+    if (!ExternalLinkDialog.instance) {
+      ExternalLinkDialog.instance = new ExternalLinkDialog()
     }
-    return ChatExternalLinkDialog.instance
+    return ExternalLinkDialog.instance
   }
 
-  connectedCallback(): void {
-    super.connectedCallback()
+  constructor() {
     this.createDialog()
-  }
-
-  disconnectedCallback(): void {
-    super.disconnectedCallback()
-    this.dialog?.remove()
-    this.dialog = null
-  }
-
-  render() {
-    return html``
   }
 
   /**
@@ -152,14 +133,6 @@ export class ChatExternalLinkDialog extends LightElement {
   }
 }
 
-// Define the custom element
-if (!customElements.get("shinychat-external-link-dialog")) {
-  customElements.define(
-    "shinychat-external-link-dialog",
-    ChatExternalLinkDialog,
-  )
-}
-
 /**
  * Shows a confirmation dialog for external links
  * @param url The URL to confirm
@@ -168,7 +141,7 @@ if (!customElements.get("shinychat-external-link-dialog")) {
 export function showExternalLinkConfirmation(url: string): Promise<boolean> {
   // Check if the browser supports HTMLDialogElement
   if (typeof window.HTMLDialogElement !== "undefined") {
-    const dialog = ChatExternalLinkDialog.getInstance()
+    const dialog = ExternalLinkDialog.getInstance()
     return dialog.showConfirmation(url)
   }
 
