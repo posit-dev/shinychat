@@ -288,8 +288,18 @@ def tool_result_contents(x: "ContentToolResult") -> Tagifiable:
 
     tool = x.request.tool
     tool_title = None
+    icon = None
     if tool and tool.annotations:
         tool_title = tool.annotations.get("title")
+        icon = tool.annotations.get("extras", {}).get("icon")
+        icon = icon or tool.annotations.get("icon")
+
+    # Icon strings and HTML display never get escaped
+    icon = display.icon or icon
+    if icon and isinstance(icon, str):
+        icon = HTML(icon)
+    if value_type == "html" and isinstance(value, str):
+        value = HTML(value)
 
     # display (tool *result* level) takes precedence over
     # annotations (tool *definition* level)
@@ -301,7 +311,7 @@ def tool_result_contents(x: "ContentToolResult") -> Tagifiable:
         status="success" if x.error is None else "error",
         value=value,
         value_type=value_type,
-        icon=display.icon,
+        icon=icon,
         intent=intent,
         show_request=display.show_request,
         expanded=display.open,

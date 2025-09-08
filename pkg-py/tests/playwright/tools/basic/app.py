@@ -6,9 +6,9 @@ import time
 import faicons
 from chatlas import ChatAuto, ContentToolResult
 from chatlas.types import ToolAnnotations
-from pydantic import BaseModel, Field
 from shiny import reactive
 from shiny.express import input, ui
+
 from shinychat.express import Chat
 from shinychat.types import ToolResultDisplay
 
@@ -39,20 +39,6 @@ def list_files_impl():
     )
 
 
-class ListFileParams(BaseModel):
-    """
-    List files in the user's current directory. Always check again when asked.
-    """
-
-    path: str = Field(..., description="The path to list files from")
-
-
-class ListFileParamsWithIntent(ListFileParams):
-    intent: str = Field(
-        ..., description="The user's intent for this tool", alias="_intent"
-    )
-
-
 annotations: ToolAnnotations = {}
 if TOOL_OPTS["with_title"]:
     annotations["title"] = "List Files"
@@ -61,56 +47,59 @@ if TOOL_OPTS["with_title"]:
 if TOOL_OPTS["async"]:
     if TOOL_OPTS["with_intent"]:
 
-        async def list_files_func1(path: str, _intent: str):
+        async def list_files(path: str, _intent: str):  # pyright: ignore[reportRedeclaration]
+            """
+            List files in the user's current directory. Always check again when asked.
+
+            Parameters
+            ----------
+            path
+                The path to list files from.
+            _intent
+                Reason for the request to explain the tool call to the user.
+            """
             await asyncio.sleep(random.uniform(1, 10))
             return list_files_impl()
-
-        chat_client.register_tool(
-            list_files_func1,
-            name="list_files",
-            model=ListFileParamsWithIntent,
-            annotations=annotations,
-        )
 
     else:
 
-        async def list_files_func2(path: str):
+        async def list_files(path: str):  # pyright: ignore[reportRedeclaration]
+            """
+            List files in the user's current directory. Always check again when asked.
+            """
             await asyncio.sleep(random.uniform(1, 10))
             return list_files_impl()
-
-        chat_client.register_tool(
-            list_files_func2,
-            name="list_files",
-            model=ListFileParams,
-            annotations=annotations,
-        )
 
 else:
     if TOOL_OPTS["with_intent"]:
 
-        def list_files_func3(path: str, _intent: str):
+        def list_files(path: str, _intent: str):  # pyright: ignore[reportRedeclaration]
+            """
+            List files in the user's current directory. Always check again when asked.
+
+            Parameters
+            ----------
+            path
+                The path to list files from.
+            _intent
+                Reason for the request to explain the tool call to the user.
+            """
             time.sleep(random.uniform(1, 3))
             return list_files_impl()
-
-        chat_client.register_tool(
-            list_files_func3,
-            name="list_files",
-            model=ListFileParamsWithIntent,
-            annotations=annotations,
-        )
 
     else:
 
-        def list_files_func4(path: str):
+        def list_files(path: str):  # pyright: ignore[reportRedeclaration]
+            """
+            List files in the user's current directory. Always check again when asked.
+            """
             time.sleep(random.uniform(1, 3))
             return list_files_impl()
 
-        chat_client.register_tool(
-            list_files_func4,
-            name="list_files",
-            model=ListFileParams,
-            annotations=annotations,
-        )
+chat_client.register_tool(
+    list_files,
+    annotations=annotations,
+)
 
 ui.page_opts(fillable=True)
 
