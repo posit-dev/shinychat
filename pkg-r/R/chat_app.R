@@ -74,7 +74,17 @@
 #'   * `chat_app()` returns a [shiny::shinyApp()] object.
 #'   * `chat_mod_ui()` returns the UI for a shinychat module.
 #'   * `chat_mod_server()` includes the shinychat module server logic, and
-#'     and returns the last turn upon successful chat completion.
+#'     and a list with:
+#'
+#'     * `last_input`: A reactive value containing the last user input.
+#'     * `last_turn`: A reactive value containing the last assistant turn.
+#'     * `update_user_input()`: A function to update the chat input or submit a
+#'       new user input. Takes the same arguments as [update_chat_user_input()],
+#'       except for `id` and `session`, which are supplied automatically.
+#'     * `clear()`: A function to clear the chat history and the chat UI.
+#'       Takes a single argument, `clear_history`, which indicates whether to
+#'       also clear the chat history in the `client` object. Defaults to `TRUE`.
+#'     * `client`: The chat client object, which is mutated as you chat.
 #'
 #' @describeIn chat_app A simple Shiny app for live chatting. Note that this
 #'   app is suitable for interactive use by a single user; do not use
@@ -173,7 +183,11 @@ chat_mod_server <- function(
       bookmark_on_response = bookmark_on_response
     )
 
+    last_turn <- shiny::reactiveVal(NULL)
+    last_input <- shiny::reactiveVal(NULL)
+
     shiny::observeEvent(input$chat_user_input, {
+      last_input(input$chat_user_input)
       append_stream_task$invoke(
         client,
         "chat",
@@ -181,10 +195,46 @@ chat_mod_server <- function(
       )
     })
 
-    shiny::reactive({
+    shiny::observe({
       if (append_stream_task$status() == "success") {
-        client$last_turn()
+        last_turn(client$last_turn())
       }
     })
+
+    list(
+      last_turn = shiny::reactive(last_turn()),
+      last_input = shiny::reactive(last_input()),
+      client = client,
+      update_user_input = function(
+        value = NULL,
+        ...,
+        placeholder = NULL,
+        submit = FALSE,
+        focus = FALSE
+      ) {
+        update_chat_user_input(
+          "chat",
+          value = value,
+          placeholder = placeholder,
+          submit = submit,
+          focus = focus,
+          ...,
+          session = session
+        )
+      },
+      clear = function(clear_history = TRUE) {
+        if (!rlang::is_bool(clear_history)) {
+          cli::cli_abort(
+            "{.var clear_history} must be {.or {.val {c(TRUE, FALSE)}}}."
+          )
+        }
+        chat_clear("chat", session = session)
+        if (isTRUE(clear_history)) {
+          client$set_turns(list())
+        }
+        last_turn(NULL)
+        last_input(NULL)
+      }
+    )
   })
 }
