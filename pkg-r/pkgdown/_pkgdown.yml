@@ -3,7 +3,7 @@ url: https://posit-dev.github.io/shinychat/r
 destination: "../docs/r"
 
 development:
-  mode: auto
+  mode: release
 
 authors:
   Posit Software, PBC:

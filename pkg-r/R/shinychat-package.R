@@ -23,6 +23,7 @@ ignore_unused_imports <- function() {
 
 release_bullets <- function() {
   c(
-    "Check that shinychat js assets are up-to-date (`scripts/update-chat.sh`)"
+    "Check that shinychat js assets are up-to-date (`make js-build && make r-update-dist`)",
+    "Set `development.mode: auto` in `pkg-r/pkgdown/_pkgdown.yml` and remove this release bullet."
   )
 }
