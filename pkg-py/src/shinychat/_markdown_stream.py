@@ -92,9 +92,9 @@ class MarkdownStream:
             async def _mock_task() -> str:
                 return ""
 
-            self._latest_stream: reactive.Value[reactive.ExtendedTask[[], str]] = (
-                reactive.Value(_mock_task)
-            )
+            self._latest_stream: reactive.Value[
+                reactive.ExtendedTask[[], str]
+            ] = reactive.Value(_mock_task)
 
     async def stream(
         self,
@@ -149,7 +149,9 @@ class MarkdownStream:
                         ui = self._session._process_ui(x)
 
                     result += ui["html"]
-                    await self._send_content_message(ui["html"], "append", ui["deps"])
+                    await self._send_content_message(
+                        ui["html"], "append", ui["deps"]
+                    )
 
             return result
 
@@ -249,7 +251,9 @@ class MarkdownStream:
     ):
         if self._session.is_stub_session():
             return
-        await self._session.send_custom_message("shinyMarkdownStreamMessage", {**msg})
+        await self._session.send_custom_message(
+            "shinyMarkdownStreamMessage", {**msg}
+        )
 
     async def _raise_exception(self, e: BaseException):
         if self.on_error == "unhandled":

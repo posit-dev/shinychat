@@ -8,7 +8,6 @@ from chatlas import ChatAuto, ContentToolResult
 from chatlas.types import ToolAnnotations
 from shiny import reactive
 from shiny.express import input, ui
-
 from shinychat.express import Chat
 from shinychat.types import ToolResultDisplay
 
@@ -95,6 +94,7 @@ else:
             """
             time.sleep(random.uniform(1, 3))
             return list_files_impl()
+
 
 chat_client.register_tool(
     list_files,
