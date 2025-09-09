@@ -128,7 +128,16 @@ in <code><a href="chat_ui.html">chat_ui()</a></code>.</p></dd>
 <ul><li><p><code>chat_app()</code> returns a <code><a href="https://rdrr.io/pkg/shiny/man/shinyApp.html" class="external-link">shiny::shinyApp()</a></code> object.</p></li>
 <li><p><code>chat_mod_ui()</code> returns the UI for a shinychat module.</p></li>
 <li><p><code>chat_mod_server()</code> includes the shinychat module server logic, and
-and returns the last turn upon successful chat completion.</p></li>
+and a list with:</p><ul><li><p><code>last_input</code>: A reactive value containing the last user input.</p></li>
+<li><p><code>last_turn</code>: A reactive value containing the last assistant turn.</p></li>
+<li><p><code>update_user_input()</code>: A function to update the chat input or submit a
+new user input. Takes the same arguments as <code><a href="update_chat_user_input.html">update_chat_user_input()</a></code>,
+except for <code>id</code> and <code>session</code>, which are supplied automatically.</p></li>
+<li><p><code>clear()</code>: A function to clear the chat history and the chat UI.
+Takes a single argument, <code>clear_history</code>, which indicates whether to
+also clear the chat history in the <code>client</code> object. Defaults to <code>TRUE</code>.</p></li>
+<li><p><code>client</code>: The chat client object, which is mutated as you chat.</p></li>
+</ul></li>
 </ul></div>
     <div class="section level2">
     <h2 id="functions">Functions<a class="anchor" aria-label="anchor" href="#functions"></a></h2>
