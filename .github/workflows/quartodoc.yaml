@@ -14,7 +14,7 @@ permissions:
   contents: write
 
 env:
-  UV_VERSION: "0.7.x"
+  UV_VERSION: "0.8.x"
   PYTHON_VERSION: 3.13
   QUARTO_VERSION: 1.7.31
 
@@ -34,7 +34,7 @@ jobs:
         version: ${{ env.QUARTO_VERSION }}
 
     - name: 🚀 Install uv
-      uses: astral-sh/setup-uv@v6.1.0
+      uses: astral-sh/setup-uv@v6
       with:
         version: ${{ env.UV_VERSION }}
 
