@@ -53,7 +53,9 @@ jobs:
           working-directory: pkg-r
 
       - name: Build site
-        run: make r-docs-render
+        working-directory: pkg-r
+        shell: Rscript {0}
+        run: pkgdown::build_site()
 
       - name: Deploy to GitHub pages 🚀
         if: github.event_name != 'pull_request'
