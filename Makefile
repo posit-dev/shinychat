@@ -98,8 +98,8 @@ r-update-dist: ## [r] Update shinychat web assets
 	cp -r $(PATH_PKG_JS)/dist/markdown-stream $(PATH_PKG_R)/inst/lib/shiny/
 	(git rev-parse HEAD) > "$(PATH_PKG_R)/inst/lib/shiny/GIT_VERSION"
 
-.PHONY: r-docs
-r-docs: ## [r] Build R docs
+.PHONY: r-docs-render
+r-docs-render: ## [r] Build R docs
 	@echo "📖 Rendering R docs with pkgdown"
 	cd $(PATH_PKG_R) && Rscript -e "pkgdown::build_site()"
 
