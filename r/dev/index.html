@@ -20,7 +20,7 @@
 <script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><meta property="og:title" content="Chat UI Component for shiny">
 <meta name="description" content="Provides a scrolling chat interface with multiline input, suitable for creating chatbot apps based on Large Language Models (LLMs). Designed to work particularly well with the ellmer R package for calling LLMs.">
 <meta property="og:description" content="Provides a scrolling chat interface with multiline input, suitable for creating chatbot apps based on Large Language Models (LLMs). Designed to work particularly well with the ellmer R package for calling LLMs.">
-<meta property="og:image" content="https://posit-dev.github.io/shinychat/logo.svg">
+<meta property="og:image" content="https://posit-dev.github.io/shinychat/r/logo.svg">
 <meta name="robots" content="noindex">
 </head>
 <body>
@@ -40,13 +40,20 @@
 
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto">
+<li class="nav-item"><a class="nav-link" href="articles/get-started.html">Get Started</a></li>
+<li class="nav-item dropdown">
+  <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles">
+<li><a class="dropdown-item" href="articles/tool-ui.html">Tool Calling UI</a></li>
+  </ul>
+</li>
 <li class="nav-item"><a class="nav-link" href="reference/index.html">Reference</a></li>
-<li class="nav-item"><a class="nav-link" href="news/index.html">Changelog</a></li>
       </ul>
 <ul class="navbar-nav">
 <li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="search.json">
 </form></li>
+<li class="nav-item"><a class="nav-link" href="news/index.html">Changelog</a></li>
 <li class="nav-item"><a class="external-link nav-link" href="https://github.com/posit-dev/shinychat/" aria-label="GitHub"><span class="fa fab fa-github fa-lg"></span></a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-lightswitch" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true" aria-label="Light switch"><span class="fa fa-sun"></span></button>
@@ -71,8 +78,7 @@
 </div>
 <!-- badges: start -->
 
-<p>Chat UI component for <a href="https://shiny.posit.co/" class="external-link">Shiny for R</a>.</p>
-<p>(For <a href="https://shiny.posit.co/py/" class="external-link">Shiny for Python</a>, see <a href="https://shiny.posit.co/py/components/display-messages/chat/" class="external-link">ui.Chat</a>.)</p>
+<p><strong>shinychat</strong> provides a <a href="https://shiny.posit.co/" class="external-link">Shiny</a> toolkit for building generative AI applications like chatbots and <a href="https://posit-dev.github.io/shinychat/r/reference/markdown_stream.html">streaming content</a>. It’s designed to work alongside the <a href="https://ellmer.tidyverse.org/" class="external-link">ellmer</a> package, which handles response generation.</p>
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h2>
@@ -88,17 +94,24 @@
 <h2 id="example">Example<a class="anchor" aria-label="anchor" href="#example"></a>
 </h2>
 <p>To run this example, you’ll first need to create an OpenAI API key, and set it in your environment as <code>OPENAI_API_KEY</code>.</p>
-<p>You’ll also need to install the {<a href="https://ellmer.tidyverse.org/" class="external-link">ellmer</a>} package (with <code>install.packages("ellmer")</code>).</p>
+<p>You’ll also need to install the <a href="https://ellmer.tidyverse.org/" class="external-link">ellmer</a> package (with <code>install.packages("ellmer")</code>).</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://shiny.posit.co/" class="external-link">shiny</a></span><span class="op">)</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://posit-dev.github.io/shinychat/r/">shinychat</a></span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">ui</span> <span class="op">&lt;-</span> <span class="fu">bslib</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/bslib/reference/page.html" class="external-link">page_fluid</a></span><span class="op">(</span></span>
-<span>  <span class="fu"><a href="reference/chat_ui.html">chat_ui</a></span><span class="op">(</span><span class="st">"chat"</span><span class="op">)</span></span>
+<span><span class="va">ui</span> <span class="op">&lt;-</span> <span class="fu">bslib</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/bslib/reference/page_fillable.html" class="external-link">page_fillable</a></span><span class="op">(</span></span>
+<span>  <span class="fu"><a href="reference/chat_ui.html">chat_ui</a></span><span class="op">(</span></span>
+<span>    id <span class="op">=</span> <span class="st">"chat"</span>,</span>
+<span>    messages <span class="op">=</span> <span class="st">"**Hello!** How can I help you today?"</span></span>
+<span>  <span class="op">)</span>,</span>
+<span>  fillable_mobile <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">server</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">input</span>, <span class="va">output</span>, <span class="va">session</span><span class="op">)</span> <span class="op">{</span></span>
-<span>  <span class="va">chat</span> <span class="op">&lt;-</span> <span class="fu">ellmer</span><span class="fu">::</span><span class="fu"><a href="https://ellmer.tidyverse.org/reference/chat_openai.html" class="external-link">chat_openai</a></span><span class="op">(</span>system_prompt <span class="op">=</span> <span class="st">"You're a trickster who answers in riddles"</span><span class="op">)</span></span>
+<span>  <span class="va">chat</span> <span class="op">&lt;-</span> </span>
+<span>    <span class="fu">ellmer</span><span class="fu">::</span><span class="fu"><a href="https://ellmer.tidyverse.org/reference/chat_openai.html" class="external-link">chat_openai</a></span><span class="op">(</span></span>
+<span>      system_prompt <span class="op">=</span> <span class="st">"Respond to the user as succinctly as possible."</span></span>
+<span>    <span class="op">)</span></span>
 <span></span>
 <span>  <span class="fu"><a href="https://rdrr.io/pkg/shiny/man/observeEvent.html" class="external-link">observeEvent</a></span><span class="op">(</span><span class="va">input</span><span class="op">$</span><span class="va">chat_user_input</span>, <span class="op">{</span></span>
 <span>    <span class="va">stream</span> <span class="op">&lt;-</span> <span class="va">chat</span><span class="op">$</span><span class="fu">stream_async</span><span class="op">(</span><span class="va">input</span><span class="op">$</span><span class="va">chat_user_input</span><span class="op">)</span></span>
@@ -107,6 +120,12 @@
 <span><span class="op">}</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/shinyApp.html" class="external-link">shinyApp</a></span><span class="op">(</span><span class="va">ui</span>, <span class="va">server</span><span class="op">)</span></span></code></pre></div>
+<p><img src="reference/figures/app.png" alt="Screenshot of the resulting app." style="width: 100%"></p>
+</div>
+<div class="section level2">
+<h2 id="next-steps">Next steps<a class="anchor" aria-label="anchor" href="#next-steps"></a>
+</h2>
+<p>Ready to start building a chatbot with shinychat? See <a href="articles/get-started.html">Get Started</a> to learn more.</p>
 </div>
 </div>
   </main><aside class="col-md-3"><div class="links">
@@ -152,6 +171,7 @@
 <h2 data-toc-skip>Dev status</h2>
 <ul class="list-unstyled">
 <li><a href="https://github.com/posit-dev/shinychat/actions/workflows/R-CMD-check.yaml" class="external-link"><img src="https://github.com/posit-dev/shinychat/actions/workflows/R-CMD-check.yaml/badge.svg" alt="R-CMD-check"></a></li>
+<li><a href="https://CRAN.R-project.org/package=shinychat" class="external-link"><img src="https://www.r-pkg.org/badges/version/shinychat" alt="CRAN status"></a></li>
 </ul>
 </div>
 
