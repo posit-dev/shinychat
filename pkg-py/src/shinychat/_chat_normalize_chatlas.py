@@ -291,7 +291,7 @@ def tool_result_contents(x: "ContentToolResult") -> Tagifiable:
     icon = None
     if tool and tool.annotations:
         tool_title = tool.annotations.get("title")
-        icon = tool.annotations.get("extras", {}).get("icon")
+        icon = tool.annotations.get("extra", {}).get("icon")
         icon = icon or tool.annotations.get("icon")
 
     # Icon strings and HTML display never get escaped

@@ -41,6 +41,9 @@ def list_files_impl():
 annotations: ToolAnnotations = {}
 if TOOL_OPTS["with_title"]:
     annotations["title"] = "List Files"
+    annotations["extra"] = {
+        "icon": faicons.icon_svg("folder"),
+    }
 
 # Define the tool function based on configuration
 if TOOL_OPTS["async"]:
