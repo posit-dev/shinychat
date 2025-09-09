@@ -30,7 +30,7 @@ Imports:
     jsonlite,
     lifecycle,
     promises (>= 1.3.2),
-    rlang,
+    rlang (>= 1.1.0),
     S7,
     shiny (>= 1.10.0)
 Suggests:
