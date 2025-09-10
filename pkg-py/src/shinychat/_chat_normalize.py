@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from functools import singledispatch
 
-from htmltools import HTML, Tagifiable, TagList
+from htmltools import HTML, Tagifiable
 
 from ._chat_normalize_chatlas import tool_request_contents, tool_result_contents
 from ._chat_types import ChatMessage
@@ -163,10 +163,15 @@ try:
 
     @message_content.register
     def _(message: Turn):
-        contents = TagList()
+        from chatlas import ContentToolResult
+        content = ""
         for x in message.contents:
-            contents.append(message_content(x).content)
-        return ChatMessage(content=contents)
+            content += message_content(x).content
+        if all(isinstance(x, ContentToolResult) for x in message.contents):
+            role = "assistant"
+        else:
+            role = message.role
+        return ChatMessage(content=content, role=role)
 
     @message_content_chunk.register
     def _(chunk: Turn):
