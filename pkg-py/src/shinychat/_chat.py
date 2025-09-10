@@ -20,7 +20,15 @@ from typing import (
 )
 from weakref import WeakValueDictionary
 
-from htmltools import HTML, Tag, TagAttrValue, TagChild, TagList, css, HTMLDependency
+from htmltools import (
+    HTML,
+    HTMLDependency,
+    Tag,
+    TagAttrValue,
+    TagChild,
+    TagList,
+    css,
+)
 from shiny import reactive
 from shiny._deprecated import warn_deprecated
 from shiny.bookmark import BookmarkState, RestoreState
@@ -587,6 +595,7 @@ class Chat:
             * A dictionary with `content` and `role` keys. The `content` key can contain
               content as described above, and the `role` key can be "assistant" or
               "user".
+            * More generally, any type registered with :func:`shinychat.message_content`.
 
             **NOTE:** content may include specially formatted **input suggestion** links
             (see note below).
@@ -821,6 +830,7 @@ class Chat:
             * A dictionary with `content` and `role` keys. The `content` key can contain
               content as described above, and the `role` key can be "assistant" or
               "user".
+            * More generally, any type registered with :func:`shinychat.message_content_chunk`.
 
             **NOTE:** content may include specially formatted **input suggestion** links
             (see note below).
@@ -1753,11 +1763,10 @@ def chat_ui(
         messages = []
     for x in messages:
         msg = message_content(x)
-        deps = [HTMLDependency(**d) for d in msg.html_deps]
         message_tags.append(
             Tag(
                 "shiny-chat-message",
-                *deps,
+                *[HTMLDependency(**d) for d in msg.html_deps],
                 content=msg.content,
                 icon=icon_attr,
                 data_role=msg.role,
