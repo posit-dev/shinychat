@@ -1,6 +1,7 @@
 import { PropertyValues, html } from "lit"
 import { unsafeHTML } from "lit-html/directives/unsafe-html.js"
 import { property } from "lit/decorators.js"
+import { streamingMarkdown } from "./streaming-markdown-directive.js"
 
 import ClipboardJS from "clipboard"
 import hljs from "highlight.js/lib/common"
@@ -85,11 +86,21 @@ semiMarkdownRenderer.html = (html: string) =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;")
 
-function contentToHTML(content: string, content_type: ContentType) {
+function contentToHTML(
+  content: string,
+  content_type: ContentType,
+  useStreaming = false,
+) {
   if (content_type === "markdown") {
+    if (useStreaming) {
+      return streamingMarkdown(content, markdownRenderer)
+    }
     const html = parse(content, { renderer: markdownRenderer })
     return unsafeHTML(sanitizeHTML(html as string))
   } else if (content_type === "semi-markdown") {
+    if (useStreaming) {
+      return streamingMarkdown(content, semiMarkdownRenderer)
+    }
     const html = parse(content, { renderer: semiMarkdownRenderer })
     return unsafeHTML(sanitizeHTML(html as string))
   } else if (content_type === "html") {
@@ -113,7 +124,12 @@ class MarkdownElement extends LightElement {
   @property({ type: Function }) onStreamEnd?: () => void
 
   render() {
-    return html`${contentToHTML(this.content, this.content_type)}`
+    // Use streaming directive for markdown/semi-markdown when streaming is enabled
+    const useStreaming =
+      this.streaming &&
+      (this.content_type === "markdown" ||
+        this.content_type === "semi-markdown")
+    return html`${contentToHTML(this.content, this.content_type, useStreaming)}`
   }
 
   disconnectedCallback(): void {
