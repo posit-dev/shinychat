@@ -47,7 +47,7 @@ with ui.hold() as df_2:
 
 @reactive.effect
 async def _():
-    await chat.append_message_stream(df_2)
+    await chat.append_message(df_2)
 
 
 with ui.hold() as plot_ui:
