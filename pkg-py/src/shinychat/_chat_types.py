@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Literal, TypedDict
 
 from htmltools import HTML, Tag, TagChild, Tagifiable, TagList
-from shiny.session import require_active_session
+from shiny.session import get_current_session
 
 from ._typing_extensions import NotRequired
 
@@ -32,10 +32,13 @@ class ChatMessage:
         # markdown), so only process it if it's not a string.
         deps = []
         if not isinstance(content, str):
-            session = require_active_session(None)
-            res = session._process_ui(content)
-            content = res["html"]
-            deps = res["deps"]
+            session = get_current_session()
+            if session:
+                res = session._process_ui(content)
+                content, deps = res["html"], res["deps"]
+            else:
+                res = TagList(content).render()
+                content, deps = res["html"], res["dependencies"]
 
         if is_html:
             # Code blocks with `{=html}` infostrings are rendered as-is by a
