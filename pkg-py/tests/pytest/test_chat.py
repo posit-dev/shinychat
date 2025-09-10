@@ -181,14 +181,54 @@ def test_chat_message_trimming():
 
 
 def test_string_normalization():
-    m = message_content_chunk("Hello world!")
+    m = message_content("Hello world!")
     assert m.content == "Hello world!"
     assert m.role == "assistant"
+    mc = message_content_chunk("Hello world!")
+    assert mc.content == "Hello world!"
+    assert mc.role == "assistant"
 
 
 def test_dict_normalization():
-    m = message_content_chunk({"content": "Hello world!", "role": "assistant"})
+    m = message_content({"content": "Hello world!", "role": "assistant"})
     assert m.content == "Hello world!"
+    assert m.role == "assistant"
+    mc = message_content_chunk({"content": "Hello world!"})
+    assert mc.content == "Hello world!"
+    assert mc.role == "assistant"
+
+
+def test_chat_message_normalization():
+    m = message_content(ChatMessage(content="Hello world!", role="assistant"))
+    assert m.content == "Hello world!"
+    assert m.role == "assistant"
+    mc = message_content_chunk(ChatMessage(content="Hello world!"))
+    assert mc.content == "Hello world!"
+    assert mc.role == "assistant"
+
+
+def test_tagifiable_normalization():
+    from shiny.ui import HTML, div
+
+    # Interpreted as markdown (without escaping)
+    m = message_content("Hello <span>world</span>!")
+    assert m.content == "Hello <span>world</span>!"
+    assert m.role == "assistant"
+
+    # Interpreted as HTML (without escaping)
+    m = message_content(HTML("Hello <span>world</span>!"))
+    assert (
+        m.content
+        == "\n\n````````{=html}\nHello <span>world</span>!\n````````\n\n"
+    )
+    assert m.role == "assistant"
+
+    # Interpreted as HTML (if top-level object is tag-like, inner string contents get escaped)
+    m = message_content(div("Hello <span>world</span>!"))
+    assert (
+        m.content
+        == "\n\n````````{=html}\n<div>Hello &lt;span&gt;world&lt;/span&gt;!</div>\n````````\n\n"
+    )
     assert m.role == "assistant"
 
 
