@@ -9,7 +9,6 @@ from shiny import Session
 from shiny.module import ResolvedId
 from shiny.session import session_context
 from shiny.types import MISSING
-
 from shinychat import Chat
 from shinychat._chat_normalize import message_content, message_content_chunk
 from shinychat._chat_types import (
@@ -263,7 +262,9 @@ def test_google_normalization():
     if sys.version_info < (3, 9):
         return
 
-    from google.generativeai.generative_models import GenerativeModel  # pyright: ignore[reportMissingTypeStubs]
+    from google.generativeai.generative_models import (
+        GenerativeModel,  # pyright: ignore[reportMissingTypeStubs]
+    )
 
     generate_content = GenerativeModel.generate_content  # type: ignore
 
@@ -280,8 +281,10 @@ def test_anthropic_normalization():
     if sys.version_info < (3, 11):
         pytest.skip("Anthropic is only available for Python 3.11+")
 
-    from anthropic import Anthropic  # pyright: ignore[reportMissingImports]
-    from anthropic import AsyncAnthropic
+    from anthropic import (  # pyright: ignore[reportMissingImports]
+        Anthropic,
+        AsyncAnthropic,
+    )
     from anthropic.resources.messages import (  # pyright: ignore[reportMissingImports]
         AsyncMessages,
         Messages,
@@ -290,11 +293,15 @@ def test_anthropic_normalization():
         TextBlock,
         Usage,
     )
-    from anthropic.types.message import Message  # pyright: ignore[reportMissingImports]
-    from anthropic.types.raw_content_block_delta_event import (
+    from anthropic.types.message import (  # pyright: ignore[reportMissingImports]
+        Message,
+    )
+    from anthropic.types.raw_content_block_delta_event import (  # pyright: ignore[reportMissingImports]
         RawContentBlockDeltaEvent,
-    )  # pyright: ignore[reportMissingImports]
-    from anthropic.types.text_delta import TextDelta  # pyright: ignore[reportMissingImports]
+    )
+    from anthropic.types.text_delta import (  # pyright: ignore[reportMissingImports]
+        TextDelta,
+    )
 
     # Make sure return type of Anthropic().messages.create() hasn't changed
     assert isinstance(Anthropic().messages, Messages)
@@ -447,8 +454,9 @@ def test_as_anthropic_message():
         AsyncMessages,
         Messages,
     )
-    from anthropic.types import MessageParam  # pyright: ignore[reportMissingImports]
-
+    from anthropic.types import (  # pyright: ignore[reportMissingImports]
+        MessageParam,
+    )
     from shinychat._chat_provider_types import as_anthropic_message
 
     # Make sure return type of llm.messages.create() hasn't changed
@@ -473,7 +481,9 @@ def test_as_google_message():
     if sys.version_info < (3, 9):
         return
 
-    from google.generativeai.generative_models import GenerativeModel  # pyright: ignore[reportMissingTypeStubs]
+    from google.generativeai.generative_models import (
+        GenerativeModel,  # pyright: ignore[reportMissingTypeStubs]
+    )
 
     generate_content = GenerativeModel.generate_content  # type: ignore
 
@@ -482,7 +492,9 @@ def test_as_google_message():
         == "content_types.ContentsType"
     )
 
-    from google.generativeai.types import content_types  # pyright: ignore[reportMissingTypeStubs]
+    from google.generativeai.types import (
+        content_types,  # pyright: ignore[reportMissingTypeStubs]
+    )
 
     assert is_type_in_union(
         content_types.ContentDict, content_types.ContentsType
@@ -497,8 +509,8 @@ def test_as_google_message():
 def test_as_langchain_message():
     from langchain_core.language_models.base import LanguageModelInput
     from langchain_core.language_models.base import (
-        Sequence as LangchainSequence,
-    )  # pyright: ignore[reportPrivateImportUsage]
+        Sequence as LangchainSequence,  # pyright: ignore[reportPrivateImportUsage]
+    )
     from langchain_core.language_models.chat_models import BaseChatModel
     from langchain_core.messages import (
         AIMessage,
@@ -507,7 +519,6 @@ def test_as_langchain_message():
         MessageLikeRepresentation,
         SystemMessage,
     )
-
     from shinychat._chat_provider_types import as_langchain_message
 
     assert BaseChatModel.invoke.__annotations__["input"] == "LanguageModelInput"
@@ -539,7 +550,6 @@ def test_as_openai_message():
         ChatCompletionSystemMessageParam,
         ChatCompletionUserMessageParam,
     )
-
     from shinychat._chat_provider_types import as_openai_message
 
     assert (
