@@ -296,8 +296,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 <tr class="even">
 <td>messages</td>
-<td><a href="`typing.Optional`">Optional</a>[<a href="`typing.Sequence`">Sequence</a>[<a href="`htmltools.TagChild`">TagChild</a> | <a href="`shinychat._chat_types.ChatMessageDict`">ChatMessageDict</a>]]</td>
-<td>A sequence of messages to display in the chat. A given message can be one of the following: * A string, which is interpreted as markdown and rendered to HTML on the client. * To prevent interpreting as markdown, mark the string as :class:<code>~shiny.ui.HTML</code>. * A UI element (specifically, a :class:<code>~shiny.ui.TagChild</code>). * This includes :class:<code>~shiny.ui.TagList</code>, which take UI elements (including strings) as children. In this case, strings are still interpreted as markdown as long as they’re not inside HTML. * A dictionary with <code>content</code> and <code>role</code> keys. The <code>content</code> key can contain a content as described above, and the <code>role</code> key can be “assistant” or “user”. <strong>NOTE:</strong> content may include specially formatted <strong>input suggestion</strong> links (see :method:<code>~shiny.ui.Chat.append_message</code> for more info).</td>
+<td><a href="`typing.Optional`">Optional</a>[<a href="`typing.Iterable`">Iterable</a>[<a href="`str`">str</a> | <a href="`htmltools.TagChild`">TagChild</a> | <a href="`shinychat._chat_types.ChatMessageDict`">ChatMessageDict</a> | <a href="`shinychat._chat_types.ChatMessage`">ChatMessage</a> | <a href="`typing.Any`">Any</a>]]</td>
+<td>A sequence of messages to display in the chat. A given message can be one of the following: * A string, which is interpreted as markdown and rendered to HTML on the client. * To prevent interpreting as markdown, mark the string as :class:<code>~shiny.ui.HTML</code>. * A UI element (specifically, a :class:<code>~shiny.ui.TagChild</code>). * This includes :class:<code>~shiny.ui.TagList</code>, which take UI elements (including strings) as children. In this case, strings are still interpreted as markdown as long as they’re not inside HTML. * A dictionary with <code>content</code> and <code>role</code> keys. The <code>content</code> key can contain a content as described above, and the <code>role</code> key can be “assistant” or “user”. * More generally, any type registered with :func:<code>shinychat.message_content</code>. <strong>NOTE:</strong> content may include specially formatted <strong>input suggestion</strong> links (see :method:<code>~shiny.ui.Chat.append_message</code> for more info).</td>
 <td><code>None</code></td>
 </tr>
 <tr class="odd">
@@ -326,7 +326,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 <tr class="odd">
 <td>icon_assistant</td>
-<td><a href="`htmltools.HTML`">HTML</a> | <a href="`htmltools.Tag`">Tag</a> | <a href="`htmltools.TagList`">TagList</a> | None</td>
+<td><a href="`typing.Optional`">Optional</a>[<a href="`htmltools.HTML`">HTML</a> | <a href="`htmltools.Tag`">Tag</a> | <a href="`htmltools.TagList`">TagList</a>]</td>
 <td>The icon to use for the assistant chat messages. Can be a HTML or a tag in the form of :class:<code>~htmltools.HTML</code> or :class:<code>~htmltools.Tag</code>. If <code>None</code>, a default robot icon is used.</td>
 <td><code>None</code></td>
 </tr>
