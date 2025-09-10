@@ -7,7 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [UNRELEASED]
 
+### New features
 
+* `ChatMessage()` can now be constructed outside of a Shiny session. (#131)
+* `Chat.chat_ui(messages=...)` now supports any type also supported by `message_content()`. (#131)
 
 ## [0.2.0] - 2025-09-10
 
