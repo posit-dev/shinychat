@@ -1,6 +1,7 @@
 from playwright.sync_api import Page, expect
 from shiny.playwright import controller
 from shiny.run import ShinyAppProc
+
 from shinychat.playwright import ChatController
 
 
@@ -42,7 +43,6 @@ def test_validate_chat_basic(page: Page, local_app: ShinyAppProc) -> None:
     message_state = controller.OutputCode(page, "message_state")
     message_state_expected = tuple(
         [
-            {"content": initial_message, "role": "assistant"},
             {"content": f"\n{user_message}", "role": "user"},
             {"content": f"You said: \n{user_message}", "role": "assistant"},
             {"content": f"{user_message2}", "role": "user"},

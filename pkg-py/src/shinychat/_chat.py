@@ -20,7 +20,7 @@ from typing import (
 )
 from weakref import WeakValueDictionary
 
-from htmltools import HTML, Tag, TagAttrValue, TagChild, TagList, css
+from htmltools import HTML, Tag, TagAttrValue, TagChild, TagList, css, HTMLDependency
 from shiny import reactive
 from shiny._deprecated import warn_deprecated
 from shiny.bookmark import BookmarkState, RestoreState
@@ -1580,7 +1580,9 @@ class ChatExpress(Chat):
     def ui(
         self,
         *,
-        messages: Optional[Sequence[TagChild | ChatMessageDict]] = None,
+        messages: Optional[
+            Iterable[str | TagChild | ChatMessageDict | ChatMessage | Any]
+        ] = None,
         placeholder: str = "Enter a message...",
         width: CssUnit = "min(680px, 100%)",
         height: CssUnit = "auto",
@@ -1751,10 +1753,11 @@ def chat_ui(
         messages = []
     for x in messages:
         msg = message_content(x)
+        deps = [HTMLDependency(**d) for d in msg.html_deps]
         message_tags.append(
             Tag(
                 "shiny-chat-message",
-                *msg.html_deps,
+                *deps,
                 content=msg.content,
                 icon=icon_attr,
                 data_role=msg.role,

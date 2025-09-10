@@ -33,7 +33,7 @@ class ChatMessage:
         deps = []
         if not isinstance(content, str):
             session = get_current_session()
-            if session:
+            if session and not session.is_stub_session():
                 res = session._process_ui(content)
                 deps = res["deps"]
             else:

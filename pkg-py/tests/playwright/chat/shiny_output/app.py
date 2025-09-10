@@ -18,11 +18,12 @@ with ui.hold() as map_ui:
         return ipyl.Map(center=(52, 10), zoom=8)
 
 
-chat = ui.Chat(id="chat")
-
-chat.ui(
+chat = ui.Chat(
+    id="chat",
     messages=[map_ui],
 )
+
+chat.ui()
 
 with ui.hold() as df_1:
 
