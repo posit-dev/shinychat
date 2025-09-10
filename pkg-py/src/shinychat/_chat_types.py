@@ -32,13 +32,11 @@ class ChatMessage:
         # markdown), so only process it if it's not a string.
         deps = []
         if not isinstance(content, str):
+            res = TagList(content).render()
+            content, deps = res["html"], res["dependencies"]
             session = get_current_session()
             if session:
-                res = session._process_ui(content)
-                content, deps = res["html"], res["deps"]
-            else:
-                res = TagList(content).render()
-                content, deps = res["html"], res["dependencies"]
+                session._process_ui(content)
 
         if is_html:
             # Code blocks with `{=html}` infostrings are rendered as-is by a
