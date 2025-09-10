@@ -1682,7 +1682,9 @@ class ChatExpress(Chat):
 def chat_ui(
     id: str,
     *,
-    messages: Optional[Iterable[Any]] = None,
+    messages: Optional[
+        Iterable[str | TagChild | ChatMessageDict | ChatMessage | Any]
+    ] = None,
     placeholder: str = "Enter a message...",
     width: CssUnit = "min(680px, 100%)",
     height: CssUnit = "auto",
