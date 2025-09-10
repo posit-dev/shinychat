@@ -3,8 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, TypedDict
 
-from htmltools import HTML, Tag, TagChild, Tagifiable, TagList
-from shiny.session import get_current_session
+from htmltools import HTML, HTMLDependency, TagChild, TagList
 
 from ._typing_extensions import NotRequired
 
@@ -26,28 +25,18 @@ class ChatMessage:
     ):
         self.role: Role = role
 
-        is_html = isinstance(content, (Tag, TagList, HTML, Tagifiable))
-
         # content _can_ be a TagChild, but it's most likely just a string (of
         # markdown), so only process it if it's not a string.
         deps = []
         if not isinstance(content, str):
-            session = get_current_session()
-            if session and not session.is_stub_session():
-                res = session._process_ui(content)
-                deps = res["deps"]
-            else:
-                res = TagList(content).render()
-                deps = [d.as_dict() for d in res["dependencies"]]
-            content = res["html"]
-
-        if is_html:
+            ui = TagList(content).render()
+            content, deps = ui["html"], ui["dependencies"]
             # Code blocks with `{=html}` infostrings are rendered as-is by a
             # custom rendering method in markdown-stream.ts
             content = f"\n\n````````{{=html}}\n{content}\n````````\n\n"
 
         self.content = content
-        self.html_deps = deps
+        self.html_deps: list[HTMLDependency] = deps
 
 
 # A message once transformed have been applied
@@ -58,7 +47,7 @@ class TransformedMessage:
     role: Role
     transform_key: Literal["content_client", "content_server"]
     pre_transform_key: Literal["content_client", "content_server"]
-    html_deps: list[dict[str, str]] | None = None
+    html_deps: list[HTMLDependency] | None = None
 
     @classmethod
     def from_chat_message(cls, message: ChatMessage) -> "TransformedMessage":
