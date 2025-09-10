@@ -44,6 +44,8 @@ def message_content(message):
     """
     if isinstance(message, (str, HTML)) or message is None:
         return ChatMessage(content=message)
+    if isinstance(message, ChatMessage):
+        return message
     if isinstance(message, dict):
         if "content" not in message:
             raise ValueError("Message dictionary must have a 'content' key")
@@ -90,6 +92,8 @@ def message_content_chunk(chunk):
     """
     if isinstance(chunk, (str, HTML)) or chunk is None:
         return ChatMessage(content=chunk)
+    if isinstance(chunk, ChatMessage):
+        return chunk
     if isinstance(chunk, dict):
         if "content" not in chunk:
             raise ValueError("Chunk dictionary must have a 'content' key")
