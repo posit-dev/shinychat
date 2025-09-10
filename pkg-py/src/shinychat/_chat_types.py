@@ -35,13 +35,11 @@ class ChatMessage:
             session = get_current_session()
             if session:
                 res = session._process_ui(content)
-                content, deps = res["html"], res["deps"]
+                deps = res["deps"]
             else:
                 res = TagList(content).render()
-                content, deps = (
-                    res["html"],
-                    [d.as_dict() for d in res["dependencies"]],
-                )
+                deps = [d.as_dict() for d in res["dependencies"]]
+            content = res["html"]
 
         if is_html:
             # Code blocks with `{=html}` infostrings are rendered as-is by a
