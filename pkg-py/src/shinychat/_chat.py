@@ -20,15 +20,7 @@ from typing import (
 )
 from weakref import WeakValueDictionary
 
-from htmltools import (
-    HTML,
-    HTMLDependency,
-    Tag,
-    TagAttrValue,
-    TagChild,
-    TagList,
-    css,
-)
+from htmltools import HTML, Tag, TagAttrValue, TagChild, TagList, css
 from shiny import reactive
 from shiny._deprecated import warn_deprecated
 from shiny.bookmark import BookmarkState, RestoreState
@@ -1001,9 +993,12 @@ class Chat:
         if icon is not None:
             msg["icon"] = str(icon)
 
+        # Register deps with the session and get the dictionary format
+        # for client-side rendering
         deps = message.html_deps
         if deps:
-            msg["html_deps"] = deps
+            processed = self._session._process_ui(TagList(*deps))
+            msg["html_deps"] = processed["deps"]
 
         # print(msg)
 
@@ -1766,7 +1761,7 @@ def chat_ui(
         message_tags.append(
             Tag(
                 "shiny-chat-message",
-                *[HTMLDependency(**d) for d in msg.html_deps],
+                *msg.html_deps,
                 content=msg.content,
                 icon=icon_attr,
                 data_role=msg.role,
