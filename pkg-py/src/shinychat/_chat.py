@@ -22,7 +22,7 @@ from weakref import WeakValueDictionary
 
 from htmltools import (
     HTML,
-    RenderedHTML,
+    HTMLDependency,
     Tag,
     TagAttrValue,
     TagChild,
@@ -595,6 +595,7 @@ class Chat:
             * A dictionary with `content` and `role` keys. The `content` key can contain
               content as described above, and the `role` key can be "assistant" or
               "user".
+            * More generally, any type registered with :func:`shinychat.message_content`.
 
             **NOTE:** content may include specially formatted **input suggestion** links
             (see note below).
@@ -829,6 +830,7 @@ class Chat:
             * A dictionary with `content` and `role` keys. The `content` key can contain
               content as described above, and the `role` key can be "assistant" or
               "user".
+            * More generally, any type registered with :func:`shinychat.message_content_chunk`.
 
             **NOTE:** content may include specially formatted **input suggestion** links
             (see note below).
@@ -1588,7 +1590,9 @@ class ChatExpress(Chat):
     def ui(
         self,
         *,
-        messages: Optional[Sequence[TagChild | ChatMessageDict]] = None,
+        messages: Optional[
+            Iterable[str | TagChild | ChatMessageDict | ChatMessage | Any]
+        ] = None,
         placeholder: str = "Enter a message...",
         width: CssUnit = "min(680px, 100%)",
         height: CssUnit = "auto",
@@ -1690,12 +1694,14 @@ class ChatExpress(Chat):
 def chat_ui(
     id: str,
     *,
-    messages: Optional[Sequence[TagChild | ChatMessageDict]] = None,
+    messages: Optional[
+        Iterable[str | TagChild | ChatMessageDict | ChatMessage | Any]
+    ] = None,
     placeholder: str = "Enter a message...",
     width: CssUnit = "min(680px, 100%)",
     height: CssUnit = "auto",
     fill: bool = True,
-    icon_assistant: HTML | Tag | TagList | None = None,
+    icon_assistant: Optional[HTML | Tag | TagList] = None,
     **kwargs: TagAttrValue,
 ) -> Tag:
     """
@@ -1722,6 +1728,7 @@ def chat_ui(
               interpreted as markdown as long as they're not inside HTML.
         * A dictionary with `content` and `role` keys. The `content` key can contain a
           content as described above, and the `role` key can be "assistant" or "user".
+        * More generally, any type registered with :func:`shinychat.message_content`.
 
         **NOTE:** content may include specially formatted **input suggestion** links
         (see :method:`~shiny.ui.Chat.append_message` for more info).
@@ -1755,34 +1762,14 @@ def chat_ui(
     if messages is None:
         messages = []
     for x in messages:
-        role = "assistant"
-        content: TagChild = None
-        if not isinstance(x, dict):
-            content = x
-        else:
-            if "content" not in x:
-                raise ValueError(
-                    "Each message dictionary must have a 'content' key."
-                )
-
-            content = x["content"]
-            if "role" in x:
-                role = x["role"]
-
-        # `content` is most likely a string, so avoid overhead in that case
-        # (it's also important that we *don't escape HTML* here).
-        if isinstance(content, str):
-            ui: RenderedHTML = {"html": content, "dependencies": []}
-        else:
-            ui = TagList(content).render()
-
+        msg = message_content(x)
         message_tags.append(
             Tag(
                 "shiny-chat-message",
-                ui["dependencies"],
-                content=ui["html"],
+                *[HTMLDependency(**d) for d in msg.html_deps],
+                content=msg.content,
                 icon=icon_attr,
-                data_role=role,
+                data_role=msg.role,
             )
         )
 
