@@ -12,9 +12,9 @@ suggestion2 = """
 And <span id="fifth" data-suggestion="another suggestion" data-suggestion-submit="true">this suggestion will also auto-submit</span>.</p>
 """
 
-chat = Chat("chat", messages=[suggestion2])
+chat = Chat("chat")
 
-chat.ui(messages=[suggestions1])
+chat.ui(messages=[suggestions1, suggestion2])
 
 
 @chat.on_user_submit
