@@ -5,7 +5,6 @@ from functools import singledispatch
 
 from htmltools import HTML, Tagifiable
 
-from ._chat_normalize_chatlas import tool_request_contents, tool_result_contents
 from ._chat_types import ChatMessage
 
 __all__ = ["message_content", "message_content_chunk"]
@@ -129,6 +128,12 @@ try:
     from chatlas import ContentToolRequest, ContentToolResult, Turn
     from chatlas.types import Content, ContentText
 
+    # Import here to avoid hard dependency on pydantic
+    from ._chat_normalize_chatlas import (
+        tool_request_contents,
+        tool_result_contents,
+    )
+
     @message_content.register
     def _(message: Content):
         return ChatMessage(content=str(message))
@@ -164,6 +169,7 @@ try:
     @message_content.register
     def _(message: Turn):
         from chatlas import ContentToolResult
+
         content = ""
         for x in message.contents:
             content += message_content(x).content
