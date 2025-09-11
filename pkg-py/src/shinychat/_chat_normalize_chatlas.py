@@ -18,8 +18,6 @@ from packaging import version
 from pydantic import BaseModel, field_serializer, field_validator
 from typing_extensions import TypeAliasType
 
-from ._typing_extensions import TypeGuard
-
 if TYPE_CHECKING:
     from chatlas.types import ContentToolRequest, ContentToolResult
 
@@ -363,36 +361,6 @@ def tool_result_display(
         return display.text, "text"
 
     return str(x.get_model_value()), "code"
-
-
-async def hide_corresponding_request(x: "ContentToolResult"):
-    if x.request is None:
-        return
-
-    session = None
-    try:
-        from shiny.session import get_current_session
-
-        session = get_current_session()
-    except Exception:
-        return
-
-    if session is None:
-        return
-
-    await session.send_custom_message(
-        "shiny-tool-request-hide",
-        x.request.id,  # type: ignore
-    )
-
-
-def is_tool_result(val: object) -> "TypeGuard[ContentToolResult]":
-    try:
-        from chatlas.types import ContentToolResult
-
-        return isinstance(val, ContentToolResult)
-    except ImportError:
-        return False
 
 
 # Tools started getting added to ContentToolRequest staring with 0.11.1

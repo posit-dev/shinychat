@@ -46,7 +46,6 @@ from ._chat_bookmark import (
     set_chatlas_state,
 )
 from ._chat_normalize import message_content, message_content_chunk
-from ._chat_normalize_chatlas import hide_corresponding_request, is_tool_result
 from ._chat_provider_types import (
     AnthropicMessage,  # pyright: ignore[reportAttributeAccessIssue]
     GoogleMessage,
@@ -69,6 +68,7 @@ from ._chat_types import (
     TransformedMessage,
 )
 from ._html_deps_py_shiny import chat_deps
+from ._typing_extensions import TypeGuard
 
 if TYPE_CHECKING:
     import chatlas
@@ -1836,6 +1836,36 @@ class MessageStream:
             message_chunk,
             stream_id=self._stream_id,
         )
+
+
+async def hide_corresponding_request(x: "chatlas.ContentToolResult"):
+    if x.request is None:
+        return
+
+    session = None
+    try:
+        from shiny.session import get_current_session
+
+        session = get_current_session()
+    except Exception:
+        return
+
+    if session is None:
+        return
+
+    await session.send_custom_message(
+        "shiny-tool-request-hide",
+        x.request.id,  # type: ignore
+    )
+
+
+def is_tool_result(val: object) -> "TypeGuard[chatlas.ContentToolResult]":
+    try:
+        from chatlas.types import ContentToolResult
+
+        return isinstance(val, ContentToolResult)
+    except ImportError:
+        return False
 
 
 CHAT_INSTANCES: WeakValueDictionary[str, Chat] = WeakValueDictionary()
