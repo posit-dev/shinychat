@@ -26,6 +26,7 @@ Changelog = "https://github.com/posit-dev/shinychat/blob/main/pkg-py/CHANGELOG.m
 providers = [
     "anthropic;python_version>='3.11'",
     "chatlas[mcp]>=0.12.0",
+    "pydantic",
     "google-generativeai",
     "langchain-core",
     "ollama>=0.4.0",
