@@ -1,10 +1,10 @@
 import { PropertyValues, html } from "lit"
-import { unsafeHTML } from "lit-html/directives/unsafe-html.js"
+
 import { property } from "lit/decorators.js"
+import { incrementalHTMLStream } from "./incremental-html-directive.js"
 
 import ClipboardJS from "clipboard"
 import hljs from "highlight.js/lib/common"
-import { Renderer, parse } from "marked"
 
 import { CHAT_CONTAINER_TAG } from "../chat/chat"
 
@@ -13,7 +13,6 @@ import {
   createElement,
   createSVGIcon,
   renderDependencies,
-  sanitizeHTML,
   showShinyClientMessage,
   throttle,
 } from "../utils/_utils"
@@ -41,66 +40,6 @@ function isStreamingMessage(
   return "isStreaming" in message
 }
 
-// SVG dot to indicate content is currently streaming
-const SVG_DOT_CLASS = "markdown-stream-dot"
-const SVG_DOT = createSVGIcon(
-  `<svg width="12" height="12" xmlns="http://www.w3.org/2000/svg" class="${SVG_DOT_CLASS}" style="margin-left:.25em;margin-top:-.25em"><circle cx="6" cy="6" r="6"/></svg>`,
-)
-
-// 'markdown' renderer (for assistant messages)
-const markdownRenderer = new Renderer()
-
-// Add some basic Bootstrap styling to markdown tables
-markdownRenderer.table = (header: string, body: string) => {
-  return `<table class="table table-striped table-bordered">
-      <thead>${header}</thead>
-      <tbody>${body}</tbody>
-    </table>`
-}
-
-const defaultMarkdownCodeRenderer = markdownRenderer.code
-
-markdownRenderer.code = function (
-  code: string,
-  infostring: string | undefined,
-  escaped: boolean,
-): string {
-  if (infostring === "{=html}") {
-    return code
-  }
-  return defaultMarkdownCodeRenderer.call(this, code, infostring, escaped)
-}
-
-// 'semi-markdown' renderer (for user messages)
-const semiMarkdownRenderer = new Renderer()
-
-// Escape HTML, not for security reasons, but just because it's confusing if the user is
-// using tag-like syntax to demarcate parts of their prompt for other reasons (like
-// <User>/<Assistant> for providing examples to the model), and those tags vanish.
-semiMarkdownRenderer.html = (html: string) =>
-  html
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;")
-
-function contentToHTML(content: string, content_type: ContentType) {
-  if (content_type === "markdown") {
-    const html = parse(content, { renderer: markdownRenderer })
-    return unsafeHTML(sanitizeHTML(html as string))
-  } else if (content_type === "semi-markdown") {
-    const html = parse(content, { renderer: semiMarkdownRenderer })
-    return unsafeHTML(sanitizeHTML(html as string))
-  } else if (content_type === "html") {
-    return unsafeHTML(sanitizeHTML(content))
-  } else if (content_type === "text") {
-    return content
-  } else {
-    throw new Error(`Unknown content type: ${content_type}`)
-  }
-}
-
 class MarkdownElement extends LightElement {
   @property() content = ""
   @property({ attribute: "content-type" })
@@ -113,7 +52,11 @@ class MarkdownElement extends LightElement {
   @property({ type: Function }) onStreamEnd?: () => void
 
   render() {
-    return html`${contentToHTML(this.content, this.content_type)}`
+    return html`${incrementalHTMLStream(
+      this.content,
+      this.content_type,
+      this.streaming,
+    )}`
   }
 
   disconnectedCallback(): void {
@@ -141,7 +84,6 @@ class MarkdownElement extends LightElement {
 
       // Render Shiny HTML dependencies and bind inputs/outputs
       if (this.streaming) {
-        this.#appendStreamingDot()
         MarkdownElement._throttledBind(this)
       } else {
         MarkdownElement.#doBind(this)
@@ -164,99 +106,14 @@ class MarkdownElement extends LightElement {
     }
 
     if (changedProperties.has("streaming")) {
-      if (this.streaming) {
-        this.#appendStreamingDot()
-      } else {
-        this.#removeStreamingDot()
-        if (this.onStreamEnd) {
-          try {
-            this.onStreamEnd()
-          } catch (error) {
-            console.warn("Failed to call onStreamEnd callback:", error)
-          }
+      if (!this.streaming && this.onStreamEnd) {
+        try {
+          this.onStreamEnd()
+        } catch (error) {
+          console.warn("Failed to call onStreamEnd callback:", error)
         }
       }
     }
-  }
-
-  #appendStreamingDot(): void {
-    this.#removeStreamingDot()
-
-    if (this.content.trim() === "") {
-      return
-    }
-    if (this.lastElementChild?.tagName.toLowerCase() === "shiny-tool-request") {
-      return
-    }
-
-    const hasText = (node: Text): boolean => /\S/.test(node.textContent || "")
-
-    // We go into these elements to find the innermost streaming element
-    const recurseInto = new Set(["p", "div", "pre", "ul", "ol"])
-    // We can put the dot in these kinds of containers
-    const inlineContainers = new Set([
-      "p",
-      "h1",
-      "h2",
-      "h3",
-      "h4",
-      "h5",
-      "h6",
-      "li",
-      "code",
-    ])
-
-    /**
-     * Find the innermost element where streaming is happening, i.e. where the
-     * streaming is appending new content.
-     */
-    const findInnermostStreamingElement = (element: Element): Element => {
-      let current = element
-      let depth = 0
-
-      while (depth < 5) {
-        depth++
-        const children = current.childNodes
-
-        let lastMeaningfulChild: Node | null = null
-
-        // Find last meaningful child
-        for (let i = children.length - 1; i >= 0; i--) {
-          const child = children[i]
-          if (!child) break
-          if (
-            child.nodeType === Node.ELEMENT_NODE ||
-            (child.nodeType === Node.TEXT_NODE && hasText(child as Text))
-          ) {
-            lastMeaningfulChild = child
-            break
-          }
-        }
-
-        if (!lastMeaningfulChild || !(lastMeaningfulChild instanceof Element)) {
-          // If no meaningful child, or last child is a text node, streaming
-          // is happening the `current` element.
-          return current
-        }
-
-        const tagName = lastMeaningfulChild.tagName.toLowerCase()
-
-        if (recurseInto.has(tagName)) {
-          current = lastMeaningfulChild
-          continue // Keep drilling down to find innermost streaming element
-        }
-
-        return inlineContainers.has(tagName) ? lastMeaningfulChild : current
-      }
-
-      return current
-    }
-
-    findInnermostStreamingElement(this).appendChild(SVG_DOT)
-  }
-
-  #removeStreamingDot(): void {
-    this.querySelector(`svg.${SVG_DOT_CLASS}`)?.remove()
   }
 
   static async #doUnBind(el: HTMLElement): Promise<void> {
@@ -438,4 +295,4 @@ window.Shiny?.addCustomMessageHandler(
   handleMessage,
 )
 
-export { MarkdownElement, contentToHTML }
+export { MarkdownElement }
