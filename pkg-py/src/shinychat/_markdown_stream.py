@@ -1,17 +1,14 @@
 from contextlib import asynccontextmanager
-from typing import AsyncIterable, Iterable, Literal, Union
+from typing import TYPE_CHECKING, AsyncIterable, Iterable, Literal, Union
 
 from htmltools import RenderedHTML, Tag, TagChild, TagList, css
-from shiny import _utils, reactive
-from shiny._deprecated import warn_deprecated
-from shiny.module import resolve_id
-from shiny.session import require_active_session, session_context
-from shiny.session._utils import RenderedDeps
-from shiny.types import NotifyException
-from shiny.ui.css import CssUnit, as_css_unit
 
 from ._html_deps_py_shiny import markdown_stream_dependency
 from ._typing_extensions import TypedDict
+
+if TYPE_CHECKING:
+    from shiny import reactive
+    from shiny.ui.css import CssUnit
 
 __all__ = (
     "output_markdown_stream",
@@ -72,6 +69,9 @@ class MarkdownStream:
         *,
         on_error: Literal["auto", "actual", "sanitize", "unhandled"] = "auto",
     ):
+        from shiny.module import resolve_id
+        from shiny.session import require_active_session
+
         self.id = resolve_id(id)
         # TODO: remove the `None` when this PR lands:
         # https://github.com/posit-dev/py-shiny/pull/793/files
@@ -86,15 +86,18 @@ class MarkdownStream:
 
         self.on_error = on_error
 
+        from shiny import reactive
+        from shiny.session import session_context
+
         with session_context(self._session):
 
             @reactive.extended_task
             async def _mock_task() -> str:
                 return ""
 
-            self._latest_stream: reactive.Value[
-                reactive.ExtendedTask[[], str]
-            ] = reactive.Value(_mock_task)
+            self._latest_stream: "reactive.Value[reactive.ExtendedTask[[], str]]" = reactive.Value(
+                _mock_task
+            )
 
     async def stream(
         self,
@@ -127,6 +130,8 @@ class MarkdownStream:
             of the task can be called in a reactive context to get the final state of the
             stream.
         """
+        from shiny import _utils, reactive
+        from shiny.session._utils import RenderedDeps
 
         content = _utils.wrap_async_iterable(content)
 
@@ -205,6 +210,8 @@ class MarkdownStream:
 
         Deprecated. Use `latest_stream.result()` instead.
         """
+        from shiny._deprecated import warn_deprecated
+
         warn_deprecated(
             "The `.get_latest_stream_result()` method is deprecated and will be removed "
             "in a future release. Use `.latest_stream.result()` instead. "
@@ -256,6 +263,8 @@ class MarkdownStream:
         )
 
     async def _raise_exception(self, e: BaseException):
+        from shiny.types import NotifyException
+
         if self.on_error == "unhandled":
             raise e
         else:
@@ -271,8 +280,8 @@ class ExpressMarkdownStream(MarkdownStream):
         content: TagChild = "",
         content_type: StreamingContentType = "markdown",
         auto_scroll: bool = True,
-        width: CssUnit = "min(680px, 100%)",
-        height: CssUnit = "auto",
+        width: "CssUnit" = "min(680px, 100%)",
+        height: "CssUnit" = "auto",
     ) -> Tag:
         """
         Create a UI element for this `MarkdownStream`.
@@ -319,8 +328,8 @@ def output_markdown_stream(
     content: TagChild = "",
     content_type: StreamingContentType = "markdown",
     auto_scroll: bool = True,
-    width: CssUnit = "min(680px, 100%)",
-    height: CssUnit = "auto",
+    width: "CssUnit" = "min(680px, 100%)",
+    height: "CssUnit" = "auto",
 ) -> Tag:
     """
     Create a UI element for a :class:`~shiny.ui.MarkdownStream`.
@@ -352,6 +361,8 @@ def output_markdown_stream(
     height
         The height of the UI element.
     """
+    from shiny.module import resolve_id
+    from shiny.ui.css import as_css_unit
 
     # `content` is most likely a string, so avoid overhead in that case
     # (it's also important that we *don't escape HTML* here).
