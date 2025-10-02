@@ -10,7 +10,7 @@
 
 * Added `chat_append(icon=...)` and `chat_ui(icon_assistant=...)` for customizing the icon that appears next to assistant responses. (#88)
 
-* `chat_mod_server()` now returns a list of reactives for `last_input` and `last_turn`, as well and functions to `update_user_input()` and `clear()` the chat. (#130)
+* `chat_mod_server()` now returns a list of reactives for `last_input` and `last_turn`, as well functions to `update_user_input()`, `append()` and `clear()` the chat. (#130, #143, #145)
 
 ## Improvements
 
