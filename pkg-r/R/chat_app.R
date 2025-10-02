@@ -82,8 +82,13 @@
 #'       new user input. Takes the same arguments as [update_chat_user_input()],
 #'       except for `id` and `session`, which are supplied automatically.
 #'     * `clear()`: A function to clear the chat history and the chat UI.
-#'       Takes a single argument, `clear_history`, which indicates whether to
-#'       also clear the chat history in the `client` object. Defaults to `TRUE`.
+#'       `clear()` takes an optional list of `messages` used to initialize the
+#'       chat after clearing. `messages` should be a list of messages, where
+#'       each message is a list with `role` and `content` fields. The
+#'       `client_history` argument controls how the chat client's history is
+#'       updated after clearing. It can be one of: `"clear"` the chat history;
+#'       `"set"` the chat history to `messages`; `"append"` `messages` to the
+#'       existing chat history; or `"keep"` the existing chat history.
 #'     * `client`: The chat client object, which is mutated as you chat.
 #'
 #' @describeIn chat_app A simple Shiny app for live chatting. Note that this
@@ -201,40 +206,73 @@ chat_mod_server <- function(
       }
     })
 
+    chat_update_user_input <- function(
+      value = NULL,
+      ...,
+      placeholder = NULL,
+      submit = FALSE,
+      focus = FALSE
+    ) {
+      update_chat_user_input(
+        "chat",
+        value = value,
+        placeholder = placeholder,
+        submit = submit,
+        focus = focus,
+        ...,
+        session = session
+      )
+    }
+
+    client_clear <- function(
+      messages = NULL,
+      client_history = c("clear", "set", "append", "keep")
+    ) {
+      client_history <- arg_match(client_history)
+
+      if (!is.null(messages)) {
+        if (rlang::is_string(messages)) {
+          # Promote strings to single assistant message
+          messages <- list(list(role = "assistant", content = messages))
+        }
+        if (!rlang::is_list(messages)) {
+          cli::cli_abort(
+            "{.var messages} must be a list of messages, and each message must be a list with {.field role} and {.field content}."
+          )
+        }
+        if (length(intersect(c("role", "content"), names(messages))) == 2) {
+          # Catch the single-message case and promote it to a list of messages
+          messages <- list(messages)
+        }
+      }
+
+      chat_clear("chat", session = session)
+      if (!is.null(messages)) {
+        for (msg in messages) {
+          chat_append("chat", msg$content, role = msg$role, session = session)
+        }
+      }
+
+      if (client_history == "clear") {
+        client$set_turns(list())
+      } else if (client_history == "set") {
+        client$set_turns(as_ellmer_turns(messages))
+      } else if (client_history == "append") {
+        turns <- client$get_turns()
+        turns <- c(turns, as_ellmer_turns(messages))
+        client$set_turns(turns)
+      }
+
+      last_turn(NULL)
+      last_input(NULL)
+    }
+
     list(
       last_turn = shiny::reactive(last_turn()),
       last_input = shiny::reactive(last_input()),
       client = client,
-      update_user_input = function(
-        value = NULL,
-        ...,
-        placeholder = NULL,
-        submit = FALSE,
-        focus = FALSE
-      ) {
-        update_chat_user_input(
-          "chat",
-          value = value,
-          placeholder = placeholder,
-          submit = submit,
-          focus = focus,
-          ...,
-          session = session
-        )
-      },
-      clear = function(clear_history = TRUE) {
-        if (!rlang::is_bool(clear_history)) {
-          cli::cli_abort(
-            "{.var clear_history} must be {.or {.val {c(TRUE, FALSE)}}}."
-          )
-        }
-        chat_clear("chat", session = session)
-        if (isTRUE(clear_history)) {
-          client$set_turns(list())
-        }
-        last_turn(NULL)
-        last_input(NULL)
-      }
+      update_user_input = chat_update_user_input,
+      clear = client_clear
     )
   })
 }

@@ -56,8 +56,13 @@ and a list with:
 new user input. Takes the same arguments as \code{\link[=update_chat_user_input]{update_chat_user_input()}},
 except for \code{id} and \code{session}, which are supplied automatically.
 \item \code{clear()}: A function to clear the chat history and the chat UI.
-Takes a single argument, \code{clear_history}, which indicates whether to
-also clear the chat history in the \code{client} object. Defaults to \code{TRUE}.
+\code{clear()} takes an optional list of \code{messages} used to initialize the
+chat after clearing. \code{messages} should be a list of messages, where
+each message is a list with \code{role} and \code{content} fields. The
+\code{client_history} argument controls how the chat client's history is
+updated after clearing. It can be one of: \code{"clear"} the chat history;
+\code{"set"} the chat history to \code{messages}; \code{"append"} \code{messages} to the
+existing chat history; or \code{"keep"} the existing chat history.
 \item \code{client}: The chat client object, which is mutated as you chat.
 }
 }
