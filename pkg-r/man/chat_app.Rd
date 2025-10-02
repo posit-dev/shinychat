@@ -55,6 +55,9 @@ and a list with:
 \item \code{update_user_input()}: A function to update the chat input or submit a
 new user input. Takes the same arguments as \code{\link[=update_chat_user_input]{update_chat_user_input()}},
 except for \code{id} and \code{session}, which are supplied automatically.
+\item \code{append()}: A function to append a new message to the chat UI. Takes
+the same arguments as \code{\link[=chat_append]{chat_append()}}, except for \code{id} and \code{session},
+which are supplied automatically.
 \item \code{clear()}: A function to clear the chat history and the chat UI.
 \code{clear()} takes an optional list of \code{messages} used to initialize the
 chat after clearing. \code{messages} should be a list of messages, where

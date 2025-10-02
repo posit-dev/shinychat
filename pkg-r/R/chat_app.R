@@ -81,6 +81,9 @@
 #'     * `update_user_input()`: A function to update the chat input or submit a
 #'       new user input. Takes the same arguments as [update_chat_user_input()],
 #'       except for `id` and `session`, which are supplied automatically.
+#'     * `append()`: A function to append a new message to the chat UI. Takes
+#'       the same arguments as [chat_append()], except for `id` and `session`,
+#'       which are supplied automatically.
 #'     * `clear()`: A function to clear the chat history and the chat UI.
 #'       `clear()` takes an optional list of `messages` used to initialize the
 #'       chat after clearing. `messages` should be a list of messages, where
@@ -224,6 +227,10 @@ chat_mod_server <- function(
       )
     }
 
+    chat_append_mod <- function(response, role = "assistant", icon = NULL) {
+      chat_append("chat", response, role = role, icon = icon, session = session)
+    }
+
     client_clear <- function(
       messages = NULL,
       client_history = c("clear", "set", "append", "keep")
@@ -271,6 +278,7 @@ chat_mod_server <- function(
       last_turn = shiny::reactive(last_turn()),
       last_input = shiny::reactive(last_input()),
       client = client,
+      append = chat_append_mod,
       update_user_input = chat_update_user_input,
       clear = client_clear
     )
