@@ -59,9 +59,9 @@ from ._utils_types import MISSING, MISSING_TYPE
 
 if TYPE_CHECKING:
     import chatlas
-    from shiny import reactive
     from shiny.bookmark import BookmarkState, RestoreState
     from shiny.bookmark._types import BookmarkStore
+    from shiny.reactive import ExtendedTask
     from shiny.reactive._reactives import Effect_
     from shiny.types import Jsonifiable
     from shiny.ui.css import CssUnit
@@ -896,7 +896,7 @@ class Chat:
         return _stream_task
 
     @property
-    def latest_message_stream(self) -> reactive.ExtendedTask[[], str]:
+    def latest_message_stream(self) -> ExtendedTask[[], str]:
         """
         React to changes in the latest message stream.
 
