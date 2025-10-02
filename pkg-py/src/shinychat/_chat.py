@@ -22,9 +22,6 @@ from weakref import WeakValueDictionary
 
 from htmltools import HTML, Tag, TagAttrValue, TagChild, TagList, css
 
-# Import MISSING and MISSING_TYPE at module level since they're used in @overload decorators
-from shiny.types import MISSING, MISSING_TYPE
-
 from . import _utils
 from ._chat_bookmark import (
     BookmarkCancelCallback,
@@ -58,6 +55,7 @@ from ._chat_types import (
 )
 from ._html_deps_py_shiny import chat_deps
 from ._typing_extensions import TypeGuard
+from ._utils_types import MISSING, MISSING_TYPE
 
 if TYPE_CHECKING:
     import chatlas
@@ -474,7 +472,7 @@ class Chat:
     def messages(
         self,
         *,
-        format: "MISSING_TYPE | ProviderMessageFormat" = None,  # type: ignore
+        format: MISSING_TYPE | "ProviderMessageFormat" = MISSING,  # type: ignore
         token_limits: tuple[int, int] | None = None,
         transform_user: Literal["all", "last", "none"] = "all",
         transform_assistant: bool = False,
@@ -511,9 +509,6 @@ class Chat:
             A tuple of chat messages.
         """
         from shiny._deprecated import warn_deprecated
-
-        if format is None:
-            format = MISSING
 
         if not isinstance(format, MISSING_TYPE):
             warn_deprecated(
