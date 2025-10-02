@@ -134,8 +134,13 @@ and a list with:</p><ul><li><p><code>last_input</code>: A reactive value contain
 new user input. Takes the same arguments as <code><a href="update_chat_user_input.html">update_chat_user_input()</a></code>,
 except for <code>id</code> and <code>session</code>, which are supplied automatically.</p></li>
 <li><p><code>clear()</code>: A function to clear the chat history and the chat UI.
-Takes a single argument, <code>clear_history</code>, which indicates whether to
-also clear the chat history in the <code>client</code> object. Defaults to <code>TRUE</code>.</p></li>
+<code>clear()</code> takes an optional list of <code>messages</code> used to initialize the
+chat after clearing. <code>messages</code> should be a list of messages, where
+each message is a list with <code>role</code> and <code>content</code> fields. The
+<code>client_history</code> argument controls how the chat client's history is
+updated after clearing. It can be one of: <code>"clear"</code> the chat history;
+<code>"set"</code> the chat history to <code>messages</code>; <code>"append"</code> <code>messages</code> to the
+existing chat history; or <code>"keep"</code> the existing chat history.</p></li>
 <li><p><code>client</code>: The chat client object, which is mutated as you chat.</p></li>
 </ul></li>
 </ul></div>
