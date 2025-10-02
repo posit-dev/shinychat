@@ -48,13 +48,16 @@ in \code{\link[=chat_ui]{chat_ui()}}.}
 \item \code{chat_app()} returns a \code{\link[shiny:shinyApp]{shiny::shinyApp()}} object.
 \item \code{chat_mod_ui()} returns the UI for a shinychat module.
 \item \code{chat_mod_server()} includes the shinychat module server logic, and
-and a list with:
+returns a list containing:
 \itemize{
 \item \code{last_input}: A reactive value containing the last user input.
 \item \code{last_turn}: A reactive value containing the last assistant turn.
 \item \code{update_user_input()}: A function to update the chat input or submit a
 new user input. Takes the same arguments as \code{\link[=update_chat_user_input]{update_chat_user_input()}},
 except for \code{id} and \code{session}, which are supplied automatically.
+\item \code{append()}: A function to append a new message to the chat UI. Takes
+the same arguments as \code{\link[=chat_append]{chat_append()}}, except for \code{id} and \code{session},
+which are supplied automatically.
 \item \code{clear()}: A function to clear the chat history and the chat UI.
 \code{clear()} takes an optional list of \code{messages} used to initialize the
 chat after clearing. \code{messages} should be a list of messages, where
