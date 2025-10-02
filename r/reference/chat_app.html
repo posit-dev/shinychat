@@ -128,11 +128,14 @@ in <code><a href="chat_ui.html">chat_ui()</a></code>.</p></dd>
 <ul><li><p><code>chat_app()</code> returns a <code><a href="https://rdrr.io/pkg/shiny/man/shinyApp.html" class="external-link">shiny::shinyApp()</a></code> object.</p></li>
 <li><p><code>chat_mod_ui()</code> returns the UI for a shinychat module.</p></li>
 <li><p><code>chat_mod_server()</code> includes the shinychat module server logic, and
-and a list with:</p><ul><li><p><code>last_input</code>: A reactive value containing the last user input.</p></li>
+returns a list containing:</p><ul><li><p><code>last_input</code>: A reactive value containing the last user input.</p></li>
 <li><p><code>last_turn</code>: A reactive value containing the last assistant turn.</p></li>
 <li><p><code>update_user_input()</code>: A function to update the chat input or submit a
 new user input. Takes the same arguments as <code><a href="update_chat_user_input.html">update_chat_user_input()</a></code>,
 except for <code>id</code> and <code>session</code>, which are supplied automatically.</p></li>
+<li><p><code><a href="https://rdrr.io/r/base/append.html" class="external-link">append()</a></code>: A function to append a new message to the chat UI. Takes
+the same arguments as <code><a href="chat_append.html">chat_append()</a></code>, except for <code>id</code> and <code>session</code>,
+which are supplied automatically.</p></li>
 <li><p><code>clear()</code>: A function to clear the chat history and the chat UI.
 <code>clear()</code> takes an optional list of <code>messages</code> used to initialize the
 chat after clearing. <code>messages</code> should be a list of messages, where
