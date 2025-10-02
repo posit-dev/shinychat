@@ -74,7 +74,7 @@
 #'   * `chat_app()` returns a [shiny::shinyApp()] object.
 #'   * `chat_mod_ui()` returns the UI for a shinychat module.
 #'   * `chat_mod_server()` includes the shinychat module server logic, and
-#'     and a list with:
+#'     returns a list containing:
 #'
 #'     * `last_input`: A reactive value containing the last user input.
 #'     * `last_turn`: A reactive value containing the last assistant turn.

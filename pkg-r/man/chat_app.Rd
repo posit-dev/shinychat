@@ -48,7 +48,7 @@ in \code{\link[=chat_ui]{chat_ui()}}.}
 \item \code{chat_app()} returns a \code{\link[shiny:shinyApp]{shiny::shinyApp()}} object.
 \item \code{chat_mod_ui()} returns the UI for a shinychat module.
 \item \code{chat_mod_server()} includes the shinychat module server logic, and
-and a list with:
+returns a list containing:
 \itemize{
 \item \code{last_input}: A reactive value containing the last user input.
 \item \code{last_turn}: A reactive value containing the last assistant turn.
