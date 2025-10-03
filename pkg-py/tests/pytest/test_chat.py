@@ -8,7 +8,6 @@ import pytest
 from shiny import Session
 from shiny.module import ResolvedId
 from shiny.session import session_context
-from shiny.types import MISSING
 from shinychat import Chat
 from shinychat._chat_normalize import message_content, message_content_chunk
 from shinychat._chat_types import (
@@ -17,6 +16,7 @@ from shinychat._chat_types import (
     Role,
     TransformedMessage,
 )
+from shinychat._utils_types import MISSING
 
 # ----------------------------------------------------------------------
 # Helpers

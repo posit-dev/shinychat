@@ -21,20 +21,6 @@ from typing import (
 from weakref import WeakValueDictionary
 
 from htmltools import HTML, Tag, TagAttrValue, TagChild, TagList, css
-from shiny import reactive
-from shiny._deprecated import warn_deprecated
-from shiny.bookmark import BookmarkState, RestoreState
-from shiny.bookmark._types import BookmarkStore
-from shiny.module import ResolvedId, resolve_id
-from shiny.reactive._reactives import Effect_
-from shiny.session import (
-    get_current_session,
-    require_active_session,
-    session_context,
-)
-from shiny.types import MISSING, MISSING_TYPE, Jsonifiable, NotifyException
-from shiny.ui.css import CssUnit, as_css_unit
-from shiny.ui.fill import as_fill_item, as_fillable_container
 
 from . import _utils
 from ._chat_bookmark import (
@@ -69,9 +55,16 @@ from ._chat_types import (
 )
 from ._html_deps_py_shiny import chat_deps
 from ._typing_extensions import TypeGuard
+from ._utils_types import MISSING, MISSING_TYPE
 
 if TYPE_CHECKING:
     import chatlas
+    from shiny.bookmark import BookmarkState, RestoreState
+    from shiny.bookmark._types import BookmarkStore
+    from shiny.reactive import ExtendedTask
+    from shiny.reactive._reactives import Effect_
+    from shiny.types import Jsonifiable
+    from shiny.ui.css import CssUnit
 
 else:
     chatlas = object
@@ -200,6 +193,10 @@ class Chat:
         on_error: Literal["auto", "actual", "sanitize", "unhandled"] = "auto",
         tokenizer: TokenEncoding | None = None,
     ):
+        from shiny._deprecated import warn_deprecated
+        from shiny.module import ResolvedId, resolve_id
+        from shiny.session import require_active_session
+
         if not isinstance(id, str):
             raise TypeError("`id` must be a string.")
 
@@ -248,10 +245,13 @@ class Chat:
         self._suspend_input_handler: bool = False
 
         # Keep track of effects so we can destroy them when the chat is destroyed
-        self._effects: list[Effect_] = []
+        self._effects: list["Effect_"] = []
         self._cancel_bookmarking_callbacks: CancelCallback | None = None
 
         # Initialize chat state and user input effect
+        from shiny import reactive
+        from shiny.session import session_context
+
         with session_context(self._session):
             # Initialize message state
             self._messages: reactive.Value[tuple[TransformedMessage, ...]] = (
@@ -354,6 +354,8 @@ class Chat:
         """
 
         def create_effect(fn: UserSubmitFunction):
+            from shiny import reactive
+
             fn_params = inspect.signature(fn).parameters
 
             @reactive.effect
@@ -397,6 +399,8 @@ class Chat:
         self,
         e: BaseException,
     ) -> None:
+        from shiny.types import NotifyException
+
         if self.on_error == "unhandled":
             raise e
         else:
@@ -468,7 +472,7 @@ class Chat:
     def messages(
         self,
         *,
-        format: MISSING_TYPE | ProviderMessageFormat = MISSING,
+        format: "MISSING_TYPE | ProviderMessageFormat" = MISSING,
         token_limits: tuple[int, int] | None = None,
         transform_user: Literal["all", "last", "none"] = "all",
         transform_assistant: bool = False,
@@ -504,6 +508,7 @@ class Chat:
         tuple[ChatMessage, ...]
             A tuple of chat messages.
         """
+        from shiny._deprecated import warn_deprecated
 
         if not isinstance(format, MISSING_TYPE):
             warn_deprecated(
@@ -866,6 +871,7 @@ class Chat:
             of the task can be called in a reactive context to get the final state of the
             stream.
         """
+        from shiny import reactive
 
         message = _utils.wrap_async_iterable(message)
 
@@ -890,7 +896,7 @@ class Chat:
         return _stream_task
 
     @property
-    def latest_message_stream(self) -> reactive.ExtendedTask[[], str]:
+    def latest_message_stream(self) -> ExtendedTask[[], str]:
         """
         React to changes in the latest message stream.
 
@@ -1022,6 +1028,7 @@ class Chat:
         """
         Deprecated. User input transformation features will be removed in a future version.
         """
+        from shiny._deprecated import warn_deprecated
 
         warn_deprecated(
             "The `.transform_user_input` decorator is deprecated. "
@@ -1054,6 +1061,7 @@ class Chat:
         """
         Deprecated. Assistant response transformation features will be removed in a future version.
         """
+        from shiny._deprecated import warn_deprecated
 
         warn_deprecated(
             "The `.transform_assistant_response` decorator is deprecated. "
@@ -1145,6 +1153,8 @@ class Chat:
         message: TransformedMessage | ChatMessage,
         index: int | None = None,
     ) -> None:
+        from shiny import reactive
+
         if not isinstance(message, TransformedMessage):
             message = TransformedMessage.from_chat_message(message)
 
@@ -1277,6 +1287,7 @@ class Chat:
           2. Maintaining message state separately from `.messages()`.
 
         """
+        from shiny._deprecated import warn_deprecated
 
         if transform:
             warn_deprecated(
@@ -1345,6 +1356,7 @@ class Chat:
         """
         Deprecated. Use `update_user_input(value=value)` instead.
         """
+        from shiny._deprecated import warn_deprecated
 
         warn_deprecated(
             "set_user_message() is deprecated. Use update_user_input(value=value) instead."
@@ -1397,7 +1409,7 @@ class Chat:
 
     def enable_bookmarking(
         self,
-        client: ClientWithState | chatlas.Chat[Any, Any],
+        client: "ClientWithState | chatlas.Chat[Any, Any]",
         /,
         *,
         bookmark_on: Optional[Literal["response"]] = "response",
@@ -1435,6 +1447,8 @@ class Chat:
         :
             A callback to cancel the bookmarking hooks.
         """
+        from shiny import reactive
+        from shiny.session import get_current_session
 
         session = get_current_session()
         if session is None or session.is_stub_session():
@@ -1589,8 +1603,8 @@ class ChatExpress(Chat):
             Iterable[str | TagChild | ChatMessageDict | ChatMessage | Any]
         ] = None,
         placeholder: str = "Enter a message...",
-        width: CssUnit = "min(680px, 100%)",
-        height: CssUnit = "auto",
+        width: "CssUnit" = "min(680px, 100%)",
+        height: "CssUnit" = "auto",
         fill: bool = True,
         icon_assistant: HTML | Tag | TagList | None = None,
         **kwargs: TagAttrValue,
@@ -1635,10 +1649,10 @@ class ChatExpress(Chat):
 
     def enable_bookmarking(
         self,
-        client: ClientWithState | chatlas.Chat[Any, Any],
+        client: "ClientWithState | chatlas.Chat[Any, Any]",
         /,
         *,
-        bookmark_store: Optional[BookmarkStore] = None,
+        bookmark_store: "Optional[BookmarkStore]" = None,
         bookmark_on: Optional[Literal["response"]] = "response",
     ) -> CancelCallback:
         """
@@ -1693,8 +1707,8 @@ def chat_ui(
         Iterable[str | TagChild | ChatMessageDict | ChatMessage | Any]
     ] = None,
     placeholder: str = "Enter a message...",
-    width: CssUnit = "min(680px, 100%)",
-    height: CssUnit = "auto",
+    width: "CssUnit" = "min(680px, 100%)",
+    height: "CssUnit" = "auto",
     fill: bool = True,
     icon_assistant: Optional[HTML | Tag | TagList] = None,
     **kwargs: TagAttrValue,
@@ -1742,6 +1756,9 @@ def chat_ui(
     kwargs
         Additional attributes for the chat container element.
     """
+    from shiny.module import resolve_id
+    from shiny.ui.css import as_css_unit
+    from shiny.ui.fill import as_fill_item, as_fillable_container
 
     id = resolve_id(id)
 
