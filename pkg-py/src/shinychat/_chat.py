@@ -472,7 +472,7 @@ class Chat:
     def messages(
         self,
         *,
-        format: MISSING_TYPE | "ProviderMessageFormat" = MISSING,  # type: ignore
+        format: "MISSING_TYPE | ProviderMessageFormat" = MISSING,
         token_limits: tuple[int, int] | None = None,
         transform_user: Literal["all", "last", "none"] = "all",
         transform_assistant: bool = False,
