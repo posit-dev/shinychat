@@ -74,7 +74,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-dbde6ece91fc58bf30abbd8587d2285d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-74c1e8942ef01847b584d5231fe20670.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-43a78ea59ffdb4ebd87d5877617f2b73.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -550,13 +550,13 @@ specified in model's completion method.</code></pre>
 <tbody>
 <tr class="odd">
 <td>client</td>
-<td><a href="`shinychat._chat_bookmark.ClientWithState`">ClientWithState</a> | <a href="`chatlas`">chatlas</a>.<a href="`chatlas.Chat`">Chat</a>[<a href="`typing.Any`">Any</a>, <a href="`typing.Any`">Any</a>]</td>
+<td>'ClientWithState | chatlas.Chat[Any, Any]'</td>
 <td>The chat client instance to use for bookmarking. This can be a Chat model provider from <a href="https://posit-dev.github.io/chatlas/">chatlas</a>, or more generally, an instance following the <code>ClientWithState</code> protocol.</td>
 <td><em>required</em></td>
 </tr>
 <tr class="even">
 <td>bookmark_store</td>
-<td><a href="`typing.Optional`">Optional</a>[<a href="`shiny.bookmark._types.BookmarkStore`">BookmarkStore</a>]</td>
+<td>'Optional[BookmarkStore]'</td>
 <td>A convenience parameter to set the <code>shiny.express.app_opts(bookmark_store=)</code> which is required for bookmarking (and <code>.enable_bookmarking()</code>). If <code>None</code>, no value will be set.</td>
 <td><code>None</code></td>
 </tr>
@@ -685,7 +685,7 @@ specified in model's completion method.</code></pre>
 <tbody>
 <tr class="odd">
 <td>format</td>
-<td><a href="`shiny.types.MISSING_TYPE`">MISSING_TYPE</a> | <a href="`shinychat._chat_provider_types.ProviderMessageFormat`">ProviderMessageFormat</a></td>
+<td>'MISSING_TYPE | ProviderMessageFormat'</td>
 <td>Deprecated. Provider-specific message formatting will be removed in a future version.</td>
 <td><code>MISSING</code></td>
 </tr>
@@ -828,13 +828,13 @@ specified in model's completion method.</code></pre>
 </tr>
 <tr class="odd">
 <td>width</td>
-<td><a href="`shiny.ui.css.CssUnit`">CssUnit</a></td>
+<td>'CssUnit'</td>
 <td>The width of the UI element.</td>
 <td><code>'min(680px, 100%)'</code></td>
 </tr>
 <tr class="even">
 <td>height</td>
-<td><a href="`shiny.ui.css.CssUnit`">CssUnit</a></td>
+<td>'CssUnit'</td>
 <td>The height of the UI element.</td>
 <td><code>'auto'</code></td>
 </tr>
