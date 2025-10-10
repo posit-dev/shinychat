@@ -116,7 +116,7 @@ chat_app <- function(client, ..., bookmark_store = "url") {
   server <- function(input, output, session) {
     chat_mod_server("chat", client)
 
-    shiny::observeEvent(input$close_btn, {
+    shiny::observeEvent(input$close_btn, label = "on_close_btn", {
       shiny::stopApp()
     })
   }
@@ -191,10 +191,10 @@ chat_mod_server <- function(
       bookmark_on_response = bookmark_on_response
     )
 
-    last_turn <- shiny::reactiveVal(NULL)
-    last_input <- shiny::reactiveVal(NULL)
+    last_turn <- shiny::reactiveVal(NULL, label = "last_turn")
+    last_input <- shiny::reactiveVal(NULL, label = "last_input")
 
-    shiny::observeEvent(input$chat_user_input, {
+    shiny::observeEvent(input$chat_user_input, label = "on_chat_user_input", {
       last_input(input$chat_user_input)
       append_stream_task$invoke(
         client,
@@ -203,7 +203,7 @@ chat_mod_server <- function(
       )
     })
 
-    shiny::observe({
+    shiny::observe(label = "update_last_turn", {
       if (append_stream_task$status() == "success") {
         last_turn(client$last_turn())
       }
@@ -275,8 +275,8 @@ chat_mod_server <- function(
     }
 
     list(
-      last_turn = shiny::reactive(last_turn()),
-      last_input = shiny::reactive(last_input()),
+      last_turn = shiny::reactive(last_turn(), label = "mod_last_turn"),
+      last_input = shiny::reactive(last_input(), label = "mod_last_input"),
       client = client,
       append = chat_append_mod,
       update_user_input = chat_update_user_input,

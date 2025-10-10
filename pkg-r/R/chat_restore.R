@@ -109,7 +109,7 @@ chat_restore <- function(
       state$values[[id]] <- client_state
     })
 
-  cancel_set_ui <- shiny::observe({
+  cancel_set_ui <- shiny::observe(label = "set_ui", {
     client_set_ui(client, id = id)
     cancel_set_ui$destroy()
   })
@@ -134,10 +134,14 @@ chat_restore <- function(
   # Update URL
   cancel_bookmark_on_input <-
     if (bookmark_on_input) {
-      shiny::observeEvent(session$input[[id_user_input]], {
-        # On user submit
-        session$doBookmark()
-      })
+      shiny::observeEvent(
+        session$input[[id_user_input]],
+        label = "on_user_submit_do_bookmark",
+        {
+          # On user submit
+          session$doBookmark()
+        }
+      )
     } else {
       NULL
     }
