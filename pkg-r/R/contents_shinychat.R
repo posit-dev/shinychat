@@ -207,6 +207,11 @@ print.shinychat_tool_card <- function(x, ...) {
   invisible(x)
 }
 
+#' @exportS3Method knitr::knit_print
+knit_print.shinychat_tool_card <- function(x, ...) {
+  knitr::knit_print(as.tags(x))
+}
+
 S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
   content
 ) {
