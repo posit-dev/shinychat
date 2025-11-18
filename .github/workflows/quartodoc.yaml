@@ -14,7 +14,7 @@ permissions:
   contents: write
 
 env:
-  UV_VERSION: "0.7.x"
+  UV_VERSION: "0.9.x"
   PYTHON_VERSION: 3.13
   QUARTO_VERSION: 1.7.31
 

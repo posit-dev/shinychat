@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 env:
-  UV_VERSION: "0.7.x"
+  UV_VERSION: "0.9.x"
 
 jobs:
   py-test:
@@ -26,11 +26,11 @@ jobs:
       fail-fast: false
       matrix:
         python-version:
-          - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
           - "3.13"
+          - "3.14"
 
     steps:
       - uses: actions/checkout@v4
