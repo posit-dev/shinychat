@@ -110,7 +110,7 @@ r-docs-preview: ## [r] Build R docs
 
 .PHONY: py-setup
 py-setup:  ## [py] Setup python environment
-	uv sync --all-extras
+	uv sync --all-extras --upgrade
 
 .PHONY: py-check
 py-check:  py-check-format py-check-types py-check-tests ## [py] Run python checks
