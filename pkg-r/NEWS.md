@@ -26,6 +26,8 @@
 
 * We consolidated the `<shiny-chat-message>` and `<shiny-user-message>` components into a single `<shiny-chat-message>` component with a `data-role` attribute to indicate whether it's an "assistant" or "user" message. This likely has minimal impact on your apps, other than custom styles. You should update any `shiny-user-message` rules to use `shiny-chat-message[data-role="user"]`. (#101)
 
+* The chat UI's send input button is now identified by the class `.shiny-chat-btn-send`. (@DeepanshKhurana, #138)
+
 # shinychat 0.2.0
 
 ## New features and improvements
