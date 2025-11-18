@@ -110,15 +110,15 @@ r-docs-preview: ## [r] Build R docs
 
 .PHONY: py-setup
 py-setup:  ## [py] Setup python environment
-	uv sync --all-extras
+	uv sync --all-extras --all-groups --upgrade
 
 .PHONY: py-check
 py-check:  py-check-format py-check-types py-check-tests ## [py] Run python checks
 
 .PHONY: py-check-tox
-py-check-tox:  ## [py] Run python 3.9 - 3.12 checks with tox
+py-check-tox:  ## [py] Run python checks across versions with tox
 	@echo ""
-	@echo "🔄 Running tests and type checking with tox for Python 3.9--3.12"
+	@echo "🔄 Running tests and type checking with tox for Python 3.10--3.14"
 	uv run tox run-parallel
 
 .PHONY: py-check-tests
