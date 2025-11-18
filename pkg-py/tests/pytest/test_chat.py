@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import types
 from datetime import datetime
 from typing import Union, cast, get_args, get_origin
 
@@ -40,7 +41,9 @@ test_session = cast(Session, _MockSession())
 
 # Check if a type is part of a Union
 def is_type_in_union(type: object, union: object) -> bool:
-    if get_origin(union) is Union:
+    origin = get_origin(union)
+    # Handle both typing.Union and types.UnionType (from | operator in Python 3.10+)
+    if origin is Union or origin is types.UnionType:
         return type in get_args(union)
     return False
 
