@@ -224,7 +224,7 @@ class ChatInput extends LightElement {
   }
 
   private get button(): HTMLButtonElement {
-    return this.querySelector("button.chat-send-button") as HTMLButtonElement
+    return this.querySelector(".shiny-chat-btn-send") as HTMLButtonElement
   }
 
   render() {
@@ -243,7 +243,7 @@ class ChatInput extends LightElement {
       ></textarea>
       <button
         type="button"
-        class="chat-send-button"
+        class="shiny-chat-btn-send"
         title="Send message"
         aria-label="Send message"
         @click=${this.#sendInput}

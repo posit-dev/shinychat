@@ -167,7 +167,7 @@ shiny-chat-input {
       color: var(--bs-gray-600, #707782) !important;
     }
   }
-  button.chat-send-button {
+  .shiny-chat-btn-send {
     position: absolute;
     bottom: calc(6px + var(--_input-padding-bottom));
     right: 8px;
