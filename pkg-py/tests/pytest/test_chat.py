@@ -238,10 +238,10 @@ def test_langchain_normalization():
 
     # Make sure return type of the .invoke()/.stream() methods haven't changed
     # (If they do, we may need to update the mock and normalization functions)
-    assert BaseChatModel.invoke.__annotations__["return"] == "BaseMessage"
+    assert BaseChatModel.invoke.__annotations__["return"] == "AIMessage"
     assert (
         BaseChatModel.stream.__annotations__["return"]
-        == "Iterator[BaseMessageChunk]"
+        == "Iterator[AIMessageChunk]"
     )
 
     # Mock & normalize return value of BaseChatModel.invoke()
