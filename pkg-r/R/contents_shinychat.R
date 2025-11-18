@@ -207,6 +207,11 @@ print.shinychat_tool_card <- function(x, ...) {
   invisible(x)
 }
 
+#' @exportS3Method knitr::knit_print
+knit_print.shinychat_tool_card <- function(x, ...) {
+  knitr::knit_print(as.tags(x))
+}
+
 S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
   content
 ) {
@@ -379,7 +384,11 @@ S7::method(contents_shinychat, S7::new_S3_class(c("Chat", "R6"))) <- function(
 
     # Turns containing only tool results are converted into assistant turns
     if (every(turn@contents, S7::S7_inherits, ellmer::ContentToolResult)) {
-      turn@role <- "assistant"
+      if (packageVersion("ellmer") >= "0.3.2.9000") {
+        turn <- ellmer::AssistantTurn(turn@contents)
+      } else {
+        turn@role <- "assistant"
+      }
       return(turn)
     }
 

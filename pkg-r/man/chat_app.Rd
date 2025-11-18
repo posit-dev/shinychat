@@ -48,16 +48,24 @@ in \code{\link[=chat_ui]{chat_ui()}}.}
 \item \code{chat_app()} returns a \code{\link[shiny:shinyApp]{shiny::shinyApp()}} object.
 \item \code{chat_mod_ui()} returns the UI for a shinychat module.
 \item \code{chat_mod_server()} includes the shinychat module server logic, and
-and a list with:
+returns a list containing:
 \itemize{
 \item \code{last_input}: A reactive value containing the last user input.
 \item \code{last_turn}: A reactive value containing the last assistant turn.
 \item \code{update_user_input()}: A function to update the chat input or submit a
 new user input. Takes the same arguments as \code{\link[=update_chat_user_input]{update_chat_user_input()}},
 except for \code{id} and \code{session}, which are supplied automatically.
+\item \code{append()}: A function to append a new message to the chat UI. Takes
+the same arguments as \code{\link[=chat_append]{chat_append()}}, except for \code{id} and \code{session},
+which are supplied automatically.
 \item \code{clear()}: A function to clear the chat history and the chat UI.
-Takes a single argument, \code{clear_history}, which indicates whether to
-also clear the chat history in the \code{client} object. Defaults to \code{TRUE}.
+\code{clear()} takes an optional list of \code{messages} used to initialize the
+chat after clearing. \code{messages} should be a list of messages, where
+each message is a list with \code{role} and \code{content} fields. The
+\code{client_history} argument controls how the chat client's history is
+updated after clearing. It can be one of: \code{"clear"} the chat history;
+\code{"set"} the chat history to \code{messages}; \code{"append"} \code{messages} to the
+existing chat history; or \code{"keep"} the existing chat history.
 \item \code{client}: The chat client object, which is mutated as you chat.
 }
 }

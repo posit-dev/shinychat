@@ -34,6 +34,7 @@ Imports:
     S7,
     shiny (>= 1.10.0)
 Suggests:
+    knitr,
     later,
     testthat (>= 3.0.0),
     withr

@@ -2,6 +2,7 @@
 
 S3method(as.tags,shinychat_tool_card)
 S3method(format,shinychat_tool_card)
+S3method(knitr::knit_print,shinychat_tool_card)
 S3method(print,shinychat_tool_card)
 export(chat_app)
 export(chat_append)
