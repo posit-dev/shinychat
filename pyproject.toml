@@ -33,6 +33,8 @@ providers = [
     "openai",
     "tokenizers",
 ]
+
+[dependency-groups]
 test = [
     "coverage>=7.8.2",
     "faicons",
@@ -47,12 +49,13 @@ test = [
     "shinywidgets",
     "tox-uv>=1",
 ]
-
-[tool.uv]
-dev-dependencies = [
+dev = [
     "quartodoc>=0.10.0",
     "ruff>=0.6.5",
+    {include-group = "test"},
 ]
+
+[tool.uv]
 upgrade-package = ["shinychat"]
 
 [build-system]

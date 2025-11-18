@@ -42,7 +42,7 @@ jobs:
       run: uv python install ${{ env.PYTHON_VERSION }}
 
     - name: 📦 Install shinychat and dependencies
-      run: uv sync --python ${{ env.PYTHON_VERSION }} --all-extras
+      run: uv sync --python ${{ env.PYTHON_VERSION }} --all-extras --all-groups
 
     - name: 🔌 Activate venv
       run: |

@@ -44,7 +44,7 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: 📦 Install the project
-        run: uv sync --python ${{ matrix.python-version }} --all-extras
+        run: uv sync --python ${{ matrix.python-version }} --all-extras --all-groups
 
       - name: 📜 Show uv.lock
         run: cat uv.lock
