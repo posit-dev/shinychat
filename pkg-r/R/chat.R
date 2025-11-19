@@ -182,9 +182,8 @@ chat_ui <- function(
 #' an error occurs while producing the message (e.g., an iteration in
 #' `stream_async` fails), the promise returned by `chat_append` will reject with
 #' the error. If the `chat_append` call is the last expression in a Shiny
-#' observer, Shiny will see that the observer failed, and end the user session.
-#' If you prefer to handle the error gracefully, use [promises::catch()] on the
-#' promise returned by `chat_append`.
+#' observer, shinychat will log the error message and show a message that the
+#' error occurred in the chat UI.
 #'
 #' @param id The ID of the chat element
 #' @param response The message or message stream to append to the chat element.
