@@ -60,4 +60,4 @@ shinyApp(ui, server)
 
 ## Next steps
 
-Ready to start building a chatbot with shinychat? See [Get Started](articles/get-started.html) to learn more.
+Ready to start building a chatbot with shinychat? See [Get Started](https://posit-dev.github.io/shinychat/r/articles/get-started.html) to learn more.
