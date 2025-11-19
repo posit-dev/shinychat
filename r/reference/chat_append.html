@@ -135,9 +135,8 @@ while processing the response (see the "Error handling" section).</p>
 an error occurs while producing the message (e.g., an iteration in
 <code>stream_async</code> fails), the promise returned by <code>chat_append</code> will reject with
 the error. If the <code>chat_append</code> call is the last expression in a Shiny
-observer, Shiny will see that the observer failed, and end the user session.
-If you prefer to handle the error gracefully, use <code><a href="https://rstudio.github.io/promises/reference/then.html" class="external-link">promises::catch()</a></code> on the
-promise returned by <code>chat_append</code>.</p>
+observer, shinychat will log the error message and show a message that the
+error occurred in the chat UI.</p>
     </div>
 
     <div class="section level2">
@@ -191,7 +190,7 @@ promise returned by <code>chat_append</code>.</p>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
 </div>
 
     </footer></div>

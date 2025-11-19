@@ -63,7 +63,8 @@
 </ul></div>
 <div class="section level3">
 <h3 id="internal-changes-development-version">Internal changes<a class="anchor" aria-label="anchor" href="#internal-changes-development-version"></a></h3>
-<ul><li>We consolidated the <code>&lt;shiny-chat-message&gt;</code> and <code>&lt;shiny-user-message&gt;</code> components into a single <code>&lt;shiny-chat-message&gt;</code> component with a <code>data-role</code> attribute to indicate whether it’s an “assistant” or “user” message. This likely has minimal impact on your apps, other than custom styles. You should update any <code>shiny-user-message</code> rules to use <code>shiny-chat-message[data-role="user"]</code>. (<a href="https://github.com/posit-dev/shinychat/issues/101" class="external-link">#101</a>)</li>
+<ul><li><p>We consolidated the <code>&lt;shiny-chat-message&gt;</code> and <code>&lt;shiny-user-message&gt;</code> components into a single <code>&lt;shiny-chat-message&gt;</code> component with a <code>data-role</code> attribute to indicate whether it’s an “assistant” or “user” message. This likely has minimal impact on your apps, other than custom styles. You should update any <code>shiny-user-message</code> rules to use <code>shiny-chat-message[data-role="user"]</code>. (<a href="https://github.com/posit-dev/shinychat/issues/101" class="external-link">#101</a>)</p></li>
+<li><p>The chat UI’s send input button is now identified by the class <code>.shiny-chat-btn-send</code>. (<a href="https://github.com/DeepanshKhurana" class="external-link">@DeepanshKhurana</a>, <a href="https://github.com/posit-dev/shinychat/issues/138" class="external-link">#138</a>)</p></li>
 </ul></div>
 </div>
     <div class="section level2">
@@ -95,7 +96,7 @@
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
 </div>
 
     </footer></div>
