@@ -103,6 +103,10 @@ class ShinyToolCard extends LitElement {
     this.requestUpdate()
   }
 
+  firstUpdated() {
+    this.dispatchEvent(new CustomEvent("shiny-chat-maybe-scroll-to-bottom"))
+  }
+
   /**
    * Formats the title for display in the card header. Uses the `titleTemplate`,
    * replacing `{title}` with the actual title or name of the tool.
