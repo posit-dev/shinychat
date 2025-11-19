@@ -361,7 +361,8 @@ test_that("processes a Turn object", {
 })
 
 test_that("consolidates adjacent turn types in a Chat object", {
-  chat <- ellmer::chat_openai(api_key = "boop")
+  withr::local_options(OPENAI_API_KEY = "boop")
+  chat <- ellmer::chat_openai()
 
   chat$set_turns(list(
     ellmer::Turn(
@@ -381,7 +382,8 @@ test_that("consolidates adjacent turn types in a Chat object", {
 })
 
 test_that("doesn't consolidate adjacent turns with different roles in a Chat object", {
-  chat <- ellmer::chat_openai(api_key = "boop")
+  withr::local_options(OPENAI_API_KEY = "boop")
+  chat <- ellmer::chat_openai()
 
   chat$set_turns(list(
     ellmer::Turn(
@@ -401,7 +403,8 @@ test_that("doesn't consolidate adjacent turns with different roles in a Chat obj
 })
 
 test_that("drops requests and moves results to assistant turn role in a Chat object", {
-  chat <- ellmer::chat_openai(api_key = "boop")
+  withr::local_options(OPENAI_API_KEY = "boop")
+  chat <- ellmer::chat_openai()
 
   chat$set_turns(list(
     ellmer::Turn(
