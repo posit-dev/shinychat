@@ -386,7 +386,7 @@ test_that("doesn't consolidate adjacent turns with different roles in a Chat obj
     ellmer::UserTurn(
       contents = list(ellmer::ContentText("Question"))
     ),
-    ellmer::UserTurn(
+    ellmer::AssistantTurn(
       contents = list(ellmer::ContentText("Answer"))
     )
   ))
