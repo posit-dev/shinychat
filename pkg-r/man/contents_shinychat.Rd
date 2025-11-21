@@ -102,7 +102,7 @@ to suit your needs.
 
 Note that you do \strong{not} need to create a new class or extend
 \code{contents_shinychat()} to customize the tool display. Rather, you can use the
-strategies discussed in the \href{https://posit-dev.github.io/shinychat/r/article/tool-ui.html}{Tool Calling UI article} to
+strategies discussed in the \href{https://posit-dev.github.io/shinychat/r/articles/tool-ui.html}{Tool Calling UI article} to
 customize the tool request and result display by providing a \code{display} list
 in the \code{extra} argument of the tool result.
 }
