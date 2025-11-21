@@ -19,7 +19,7 @@
 ## Citation
 
 Source:
-[`DESCRIPTION`](https://github.com/posit-dev/shinychat/blob/main/DESCRIPTION)
+[`DESCRIPTION`](https://github.com/posit-dev/shinychat/blob/r/v0.3.0/DESCRIPTION)
 
 Cheng J, Sievert C, Aden-Buie G, Schloerke B (2025). *shinychat: Chat UI
 Component for 'shiny'*. R package version 0.3.0,
