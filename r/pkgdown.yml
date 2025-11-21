@@ -4,7 +4,7 @@ pkgdown_sha: ~
 articles:
   get-started: get-started.html
   articles/tool-ui: tool-ui.html
-last_built: 2025-11-19T20:30Z
+last_built: 2025-11-21T20:48Z
 urls:
   reference: https://posit-dev.github.io/shinychat/r/reference
   article: https://posit-dev.github.io/shinychat/r/articles

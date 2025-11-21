@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">shinychat</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.2.0.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.3.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -23,7 +23,13 @@
 <li class="nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
-<li class="active nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
+<li class="active nav-item dropdown">
+  <button class="nav-link dropdown-toggle" type="button" id="dropdown-news" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">News</button>
+  <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdown-news"><li><h6 class="dropdown-header" data-toc-skip>Releases</h6></li>
+    <li><a class="external-link dropdown-item" href="https://shiny.posit.co/blog/posts/shinychat-tool-ui/">v0.3.0</a></li>
+    <li><hr class="dropdown-divider"></li>
+    <li><a class="dropdown-item" href="../news/index.html">Changelog</a></li>
+  </ul></li>
 <li class="nav-item"><a class="external-link nav-link" href="https://github.com/posit-dev/shinychat/" aria-label="GitHub"><span class="fa fab fa-github fa-lg"></span></a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-lightswitch" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true" aria-label="Light switch"><span class="fa fa-sun"></span></button>
@@ -43,26 +49,30 @@
     </div>
 
     <div class="section level2">
-<h2 class="pkg-version" data-toc-text="development version" id="shinychat-development-version">shinychat (development version)<a class="anchor" aria-label="anchor" href="#shinychat-development-version"></a></h2>
+<h2 class="pkg-version" data-toc-text="0.3.0" id="shinychat-030">shinychat 0.3.0<a class="anchor" aria-label="anchor" href="#shinychat-030"></a></h2><p class="text-muted">CRAN release: 2025-11-20</p>
 <div class="section level3">
-<h3 id="new-features-development-version">New features<a class="anchor" aria-label="anchor" href="#new-features-development-version"></a></h3>
+<h3 id="breaking-changes-0-3-0">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-0-3-0"></a></h3>
+<ul><li>
+<code><a href="../reference/chat_app.html">chat_mod_server()</a></code> now returns a list of reactives for <code>last_input</code> and <code>last_turn</code>, as well functions to <code>update_user_input()</code>, <code><a href="https://rdrr.io/r/base/append.html" class="external-link">append()</a></code> and <code>clear()</code> the chat. (<a href="https://github.com/posit-dev/shinychat/issues/130" class="external-link">#130</a>, <a href="https://github.com/posit-dev/shinychat/issues/143" class="external-link">#143</a>, <a href="https://github.com/posit-dev/shinychat/issues/145" class="external-link">#145</a>)</li>
+</ul></div>
+<div class="section level3">
+<h3 id="new-features-0-3-0">New features<a class="anchor" aria-label="anchor" href="#new-features-0-3-0"></a></h3>
 <ul><li><p>Added <code><a href="../reference/chat_restore.html">chat_restore()</a></code> which adds Shiny bookmarking hooks to save and restore the <a href="https://ellmer.tidyverse.org" class="external-link">ellmer</a> chat client. (<a href="https://github.com/posit-dev/shinychat/issues/28" class="external-link">#28</a>, <a href="https://github.com/posit-dev/shinychat/issues/82" class="external-link">#82</a>)</p></li>
 <li><p>Added <code><a href="../reference/update_chat_user_input.html">update_chat_user_input()</a></code> for programmatically updating the user input of a chat UI element. (<a href="https://github.com/posit-dev/shinychat/issues/78" class="external-link">#78</a>)</p></li>
 <li><p>shinychat now shows tool call request and results in the UI, and the feature is enabled by default in <code><a href="../reference/chat_app.html">chat_app()</a></code> and the chat module (<code><a href="../reference/chat_app.html">chat_mod_server()</a></code>). When using <code><a href="../reference/chat_append.html">chat_append()</a></code> with <code><a href="../reference/chat_ui.html">chat_ui()</a></code>, set <code>stream = "content"</code> when you call the <code>$stream_async()</code> method on the <code><a href="https://ellmer.tidyverse.org/reference/Chat.html" class="external-link">ellmer::Chat</a></code> client to ensure tool calls are included in the chat stream output. Learn more in the <a href="https://posit-dev.github.io/shinychat/r/articles/tool-ui.html">tool calling UI article</a>. (<a href="https://github.com/posit-dev/shinychat/issues/52" class="external-link">#52</a>)</p></li>
 <li><p>Added <code>chat_append(icon=...)</code> and <code>chat_ui(icon_assistant=...)</code> for customizing the icon that appears next to assistant responses. (<a href="https://github.com/posit-dev/shinychat/issues/88" class="external-link">#88</a>)</p></li>
-<li><p><code><a href="../reference/chat_app.html">chat_mod_server()</a></code> now returns a list of reactives for <code>last_input</code> and <code>last_turn</code>, as well functions to <code>update_user_input()</code>, <code><a href="https://rdrr.io/r/base/append.html" class="external-link">append()</a></code> and <code>clear()</code> the chat. (<a href="https://github.com/posit-dev/shinychat/issues/130" class="external-link">#130</a>, <a href="https://github.com/posit-dev/shinychat/issues/143" class="external-link">#143</a>, <a href="https://github.com/posit-dev/shinychat/issues/145" class="external-link">#145</a>)</p></li>
 </ul></div>
 <div class="section level3">
-<h3 id="improvements-development-version">Improvements<a class="anchor" aria-label="anchor" href="#improvements-development-version"></a></h3>
+<h3 id="improvements-0-3-0">Improvements<a class="anchor" aria-label="anchor" href="#improvements-0-3-0"></a></h3>
 <ul><li><p><code><a href="../reference/chat_app.html">chat_app()</a></code> now correctly restores the chat client state when refreshing the app, e.g. by reloading the page. (<a href="https://github.com/posit-dev/shinychat/issues/71" class="external-link">#71</a>)</p></li>
 <li><p>External links in chat messages in <code><a href="../reference/chat_ui.html">chat_ui()</a></code> now open in a new tab by default, with a confirmation dialog. (<a href="https://github.com/posit-dev/shinychat/issues/120" class="external-link">#120</a>)</p></li>
 </ul></div>
 <div class="section level3">
-<h3 id="bug-fixes-development-version">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-development-version"></a></h3>
+<h3 id="bug-fixes-0-3-0">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-0-3-0"></a></h3>
 <ul><li>The chat input no longer submits incomplete text when the user has activated IME completions (e.g. while typing in Japanese or Chinese). (<a href="https://github.com/posit-dev/shinychat/issues/85" class="external-link">#85</a>)</li>
 </ul></div>
 <div class="section level3">
-<h3 id="internal-changes-development-version">Internal changes<a class="anchor" aria-label="anchor" href="#internal-changes-development-version"></a></h3>
+<h3 id="internal-changes-0-3-0">Internal changes<a class="anchor" aria-label="anchor" href="#internal-changes-0-3-0"></a></h3>
 <ul><li><p>We consolidated the <code>&lt;shiny-chat-message&gt;</code> and <code>&lt;shiny-user-message&gt;</code> components into a single <code>&lt;shiny-chat-message&gt;</code> component with a <code>data-role</code> attribute to indicate whether it’s an “assistant” or “user” message. This likely has minimal impact on your apps, other than custom styles. You should update any <code>shiny-user-message</code> rules to use <code>shiny-chat-message[data-role="user"]</code>. (<a href="https://github.com/posit-dev/shinychat/issues/101" class="external-link">#101</a>)</p></li>
 <li><p>The chat UI’s send input button is now identified by the class <code>.shiny-chat-btn-send</code>. (<a href="https://github.com/DeepanshKhurana" class="external-link">@DeepanshKhurana</a>, <a href="https://github.com/posit-dev/shinychat/issues/138" class="external-link">#138</a>)</p></li>
 </ul></div>

@@ -1,6 +1,18 @@
 # Changelog
 
-## shinychat (development version)
+## shinychat 0.3.0
+
+CRAN release: 2025-11-20
+
+### Breaking changes
+
+- [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/reference/chat_app.md)
+  now returns a list of reactives for `last_input` and `last_turn`, as
+  well functions to `update_user_input()`,
+  [`append()`](https://rdrr.io/r/base/append.html) and `clear()` the
+  chat. ([\#130](https://github.com/posit-dev/shinychat/issues/130),
+  [\#143](https://github.com/posit-dev/shinychat/issues/143),
+  [\#145](https://github.com/posit-dev/shinychat/issues/145))
 
 ### New features
 
@@ -35,14 +47,6 @@
 - Added `chat_append(icon=...)` and `chat_ui(icon_assistant=...)` for
   customizing the icon that appears next to assistant responses.
   ([\#88](https://github.com/posit-dev/shinychat/issues/88))
-
-- [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/reference/chat_app.md)
-  now returns a list of reactives for `last_input` and `last_turn`, as
-  well functions to `update_user_input()`,
-  [`append()`](https://rdrr.io/r/base/append.html) and `clear()` the
-  chat. ([\#130](https://github.com/posit-dev/shinychat/issues/130),
-  [\#143](https://github.com/posit-dev/shinychat/issues/143),
-  [\#145](https://github.com/posit-dev/shinychat/issues/145))
 
 ### Improvements
 
