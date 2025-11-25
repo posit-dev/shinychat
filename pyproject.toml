@@ -76,6 +76,9 @@ include = ["/pkg-py/src/shinychat"]
 source = "vcs"
 tag-pattern = "^py/(?:[\\w-]+-)?(?P<version>[vV]?\\d+(?:\\.\\d+){0,2}[^\\+]*)(?:\\+.*)?$"
 
+[tool.hatch.version.raw-options]
+git_describe_command = "git describe --dirty --tags --long --match 'py/v*'"
+
 [tool.hatch.build.hooks.vcs]
 version-file = "pkg-py/src/shinychat/__version.py"
 
