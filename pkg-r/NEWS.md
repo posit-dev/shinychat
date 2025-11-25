@@ -1,5 +1,7 @@
 # shinychat (development version)
 
+* Fixed an issue where user chat messages would display the default assistant icon. (#162)
+
 # shinychat 0.3.0
 
 ## Breaking changes
