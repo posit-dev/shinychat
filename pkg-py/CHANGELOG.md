@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Maintenance
 
+* Fixed an issue where user chat messages would display the default assistant icon. (#162)
+
 * shinychat now requires Python 3.10 or later and, optionally, langchain 1.0.0 or newer. (#156)
 
 ## [0.2.8] - 2025-09-11

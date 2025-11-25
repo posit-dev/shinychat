@@ -469,12 +469,13 @@ class ChatContainer extends LightElement {
 
     const TAG_NAME = CHAT_MESSAGE_TAG
 
-    if (this.iconAssistant) {
-      message.icon = message.icon || this.iconAssistant
-    }
-
     // Remap role to data_role for the custom element attribute
     const { role, ...restMessage } = message
+
+    if (role === "assistant" && this.iconAssistant) {
+      restMessage.icon = message.icon || this.iconAssistant
+    }
+
     const messageAttrs: MessageAttrs = { data_role: role, ...restMessage }
 
     const msg = createElement(TAG_NAME, messageAttrs)
