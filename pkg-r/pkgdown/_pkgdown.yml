@@ -62,3 +62,8 @@ reference:
 - title: Integration with ellmer
   contents:
   - contents_shinychat
+
+news:
+  releases:
+  - text: "v0.3.0"
+    href: https://shiny.posit.co/blog/posts/shinychat-tool-ui/

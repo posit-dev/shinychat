@@ -7,9 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [UNRELEASED]
 
+### Maintenance
+
+* Fixed an issue where user chat messages would display the default assistant icon. (#162)
+
+* shinychat now requires Python 3.10 or later and, optionally, langchain 1.0.0 or newer. (#156)
+
+## [0.2.8] - 2025-09-11
+
+### Bug fixes
+
+* Allow `chatlas.types.ToolResultDisplay` to be imported without `pydantic`.
+
+## [0.2.7] - 2025-09-11
+
+### Bug fixes
+
+* Only import `pydantic` if `chatlas` is relevant.
+
+## [0.2.6] - 2025-09-11
+
+### Bug fixes
+
+* `pydantic` is (once again) a soft dependency (included in the `providers` extra).
+
+## [0.2.5] - 2025-09-11
+
+### Bug fixes
+
+* `chatlas` is (once again) a soft dependency (included in the `providers` extra).
+
+## [0.2.4] - 2025-09-10
+
+### Bug fixes
+
+* Fixed an issue (introduced in v0.2.0) where statically rendered messages with HTML dependencies weren't being handled properly. (#134)
+
+## [0.2.3] - 2025-09-10
+
+### Bug fixes
+
+* `message_content()` and `message_content_chunk()` correctly extract content from a `chatlas.Turn`. (#133)
+
+## [0.2.2] - 2025-09-10
+
+### Improvements
+
+* `message_content()` and `message_content_chunk()` can now take `ChatMessage()` as input. (#132)
+
+## [0.2.1] - 2025-09-10
+
 ### New features
 
+* `Chat.chat_ui(messages=...)` now supports any type also supported by `message_content()`. (#131)
+* `ChatMessage()` can now be constructed outside of a Shiny session. (#131)
+
+## [0.2.0] - 2025-09-10
+
+### New features
+
+* New and improved UI for tool calls that occur via [chatlas](https://posit-dev.github.io/chatlas/). As a reminder, tool call displays are enabled by setting `content="all"` in chatlas' `.stream()` (or `.stream_async()`) method. See the tests under the `pkg-py/tests/playwright/tools` directory for inspiration of what is now possible with custom tool displays via the new `ToolResultDisplay` class. (#107)
+
 * Added new `message_content()` and `message_content_chunk()` generic (`singledispatch`) functions. These functions aren't intended to be called directly by users, but instead, provide an opportunity to teach `Chat.append_message()`/`Chat.append_message_stream()` to extract message contents from different types of objects. (#96)
+
+* External links in chat messages in `chat_ui()` now open in a new tab by default, with a confirmation dialog. (#120)
 
 ### Bug fixes
 

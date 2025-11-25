@@ -2,11 +2,11 @@
 name = "shinychat"
 description = "An AI Chat interface for Shiny apps."
 readme = "pkg-py/README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 dependencies = [
     "htmltools>=0.6.0",
-    "shiny>=1.4.0"
+    "shiny>=1.4.0",
 ]
 dynamic = ["version"]
 authors = [
@@ -25,13 +25,16 @@ Changelog = "https://github.com/posit-dev/shinychat/blob/main/pkg-py/CHANGELOG.m
 [project.optional-dependencies]
 providers = [
     "anthropic;python_version>='3.11'",
-    "chatlas>=0.6.1",
+    "chatlas[mcp]>=0.12.0",
+    "pydantic",
     "google-generativeai",
-    "langchain-core",
+    "langchain-core>=1.0.0",
     "ollama>=0.4.0",
     "openai",
     "tokenizers",
 ]
+
+[dependency-groups]
 test = [
     "coverage>=7.8.2",
     "faicons",
@@ -46,12 +49,13 @@ test = [
     "shinywidgets",
     "tox-uv>=1",
 ]
-
-[tool.uv]
-dev-dependencies = [
+dev = [
     "quartodoc>=0.10.0",
     "ruff>=0.6.5",
+    {include-group = "test"},
 ]
+
+[tool.uv]
 upgrade-package = ["shinychat"]
 
 [build-system]
@@ -72,6 +76,9 @@ include = ["/pkg-py/src/shinychat"]
 source = "vcs"
 tag-pattern = "^py/(?:[\\w-]+-)?(?P<version>[vV]?\\d+(?:\\.\\d+){0,2}[^\\+]*)(?:\\+.*)?$"
 
+[tool.hatch.version.raw-options]
+git_describe_command = "git describe --dirty --tags --long --match 'py/v*'"
+
 [tool.hatch.build.hooks.vcs]
 version-file = "pkg-py/src/shinychat/__version.py"
 
@@ -82,7 +89,7 @@ exclude = ["pkg-py/_dev"]
 [tool.tox]
 legacy_tox_ini = """
 [tox]
-env_list = type-py3{9,10,11,12,13}, py3{9,10,11,12,13}
+env_list = type-py3{10,11,12,13,14}, py3{10,11,12,13,14}
 isolated_build = True
 
 [testenv]

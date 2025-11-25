@@ -103,6 +103,10 @@ class ShinyToolCard extends LitElement {
     this.requestUpdate()
   }
 
+  firstUpdated() {
+    this.dispatchEvent(new CustomEvent("shiny-chat-maybe-scroll-to-bottom"))
+  }
+
   /**
    * Formats the title for display in the card header. Uses the `titleTemplate`,
    * replacing `{title}` with the actual title or name of the tool.
@@ -122,9 +126,10 @@ class ShinyToolCard extends LitElement {
   protected renderCard(bodyContent: TemplateResult) {
     const headerId = `tool-header-${this.requestId}`
     const contentId = `tool-content-${this.requestId}`
+    const icon = this.icon || ICONS.wrenchAdjustable
 
     const headerContent = html`
-      <div class="tool-icon ${this.classStatus}">${unsafeHTML(this.icon)}</div>
+      <div class="tool-icon ${this.classStatus}">${unsafeHTML(icon)}</div>
       <div class="tool-title ${this.classStatus}">${this.formatTitle()}</div>
       <div class="tool-spacer"></div>
       ${this.intent ? html`<div class="tool-intent">${this.intent}</div>` : ""}
@@ -300,8 +305,6 @@ export class ShinyToolResult extends ShinyToolCard {
       this.classStatus = "text-danger"
       this.icon = ICONS.exclamationCircleFill
       this.titleTemplate = "{title} failed"
-    } else if (!this.icon) {
-      this.icon = ICONS.wrenchAdjustable
     }
     // Emit event to hide the corresponding tool request
     window.shinychat.hiddenToolRequests.add(this.requestId)
@@ -319,20 +322,21 @@ export class ShinyToolResult extends ShinyToolCard {
    */
   #renderResult() {
     let result: string | TemplateResult = ""
+    const value = this.value || "[Empty result]"
 
     if (this.valueType === "html") {
-      result = html`${unsafeHTML(this.value)}`
+      result = html`${unsafeHTML(value)}`
     } else if (this.valueType === "text") {
-      result = html`<p>${this.value}</p>`
+      result = html`<p>${value}</p>`
     } else {
       // markdown, code, or default
       if (this.valueType !== "markdown") {
         // If value_type is "code", we format it as a markdown code block
-        result = markdownCodeBlock(this.value, "text")
+        result = markdownCodeBlock(value, "text")
       }
 
       result = html`<shiny-markdown-stream
-        content=${result || this.value}
+        content=${result || value}
         content-type="markdown"
         ?streaming=${false}
       ></shiny-markdown-stream>`

@@ -48,7 +48,7 @@ history is empty by calling \code{client$set_turns(list())} before passing the
 client to \code{chat_restore()}.
 }
 \examples{
-\dontshow{if (interactive()) (if (getRversion() >= "3.4") withAutoprint else force)(\{ # examplesIf}
+\dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
 library(shiny)
 library(bslib)
 library(shinychat)

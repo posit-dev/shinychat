@@ -10,6 +10,7 @@ import {
 } from "../utils/_utils"
 
 import { ShinyToolRequest, ShinyToolResult } from "./chat-tools"
+import { showExternalLinkConfirmation } from "./chat-external-link"
 
 import type { HtmlDep } from "../utils/_utils"
 
@@ -223,7 +224,7 @@ class ChatInput extends LightElement {
   }
 
   private get button(): HTMLButtonElement {
-    return this.querySelector("button") as HTMLButtonElement
+    return this.querySelector(".shiny-chat-btn-send") as HTMLButtonElement
   }
 
   render() {
@@ -242,6 +243,7 @@ class ChatInput extends LightElement {
       ></textarea>
       <button
         type="button"
+        class="shiny-chat-btn-send"
         title="Send message"
         aria-label="Send message"
         @click=${this.#sendInput}
@@ -334,6 +336,8 @@ class ChatInput extends LightElement {
 class ChatContainer extends LightElement {
   @property({ attribute: "icon-assistant" }) iconAssistant = ""
   inputSentinelObserver?: IntersectionObserver
+  _attachEventListenersOnReconnect = false
+  _boundOnExternalLinkClick!: (e: MouseEvent) => void
 
   private get input(): ChatInput {
     return this.querySelector(CHAT_INPUT_TAG) as ChatInput
@@ -379,12 +383,21 @@ class ChatContainer extends LightElement {
     )
 
     this.inputSentinelObserver.observe(sentinel)
+    this._boundOnExternalLinkClick = this.#onExternalLinkClick.bind(this)
+
+    if (this._attachEventListenersOnReconnect) {
+      this.#addEventListeners()
+    }
   }
 
   firstUpdated(): void {
     // Don't attach event listeners until child elements are rendered
     if (!this.messages) return
+    this.#addEventListeners()
+  }
 
+  #addEventListeners(): void {
+    this._attachEventListenersOnReconnect = true
     this.addEventListener("shiny-chat-input-sent", this.#onInputSent)
     this.addEventListener("shiny-chat-append-message", this.#onAppend)
     this.addEventListener(
@@ -402,10 +415,13 @@ class ChatContainer extends LightElement {
     )
     this.addEventListener("click", this.#onInputSuggestionClick)
     this.addEventListener("keydown", this.#onInputSuggestionKeydown)
+    // Add external link handler to the window so that it's easier for users to disable
+    window.addEventListener("click", this._boundOnExternalLinkClick)
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback()
+    this._attachEventListenersOnReconnect = true
 
     this.inputSentinelObserver?.disconnect()
     this.inputSentinelObserver = undefined
@@ -427,6 +443,7 @@ class ChatContainer extends LightElement {
     )
     this.removeEventListener("click", this.#onInputSuggestionClick)
     this.removeEventListener("keydown", this.#onInputSuggestionKeydown)
+    window.removeEventListener("click", this._boundOnExternalLinkClick)
   }
 
   // When user submits input, append it to the chat, and add a loading message
@@ -452,12 +469,13 @@ class ChatContainer extends LightElement {
 
     const TAG_NAME = CHAT_MESSAGE_TAG
 
-    if (this.iconAssistant) {
-      message.icon = message.icon || this.iconAssistant
-    }
-
     // Remap role to data_role for the custom element attribute
     const { role, ...restMessage } = message
+
+    if (role === "assistant" && this.iconAssistant) {
+      restMessage.icon = message.icon || this.iconAssistant
+    }
+
     const messageAttrs: MessageAttrs = { data_role: role, ...restMessage }
 
     const msg = createElement(TAG_NAME, messageAttrs)
@@ -585,6 +603,33 @@ class ChatContainer extends LightElement {
 
   #finalizeMessage(): void {
     this.input.disabled = false
+  }
+
+  #onExternalLinkClick(e: MouseEvent): void {
+    // Find if the clicked element or any of its parents is an external link
+    const target = e.target as HTMLElement
+    if (!this.contains(target)) return
+
+    const linkEl = target.closest(
+      "a[data-external-link]",
+    ) as HTMLAnchorElement | null
+
+    if (!linkEl || !linkEl.href) return
+
+    // Prevent the default link behavior
+    e.preventDefault()
+
+    // Show confirmation dialog and open the link if confirmed
+    showExternalLinkConfirmation(linkEl.href)
+      .then((confirmed) => {
+        if (confirmed) {
+          window.open(linkEl.href, "_blank", "noopener,noreferrer")
+        }
+      })
+      .catch(() => {
+        // If dialog fails for any reason, fall back to opening the link directly
+        window.open(linkEl.href, "_blank", "noopener,noreferrer")
+      })
   }
 }
 

@@ -116,6 +116,14 @@ class MarkdownElement extends LightElement {
     return html`${contentToHTML(this.content, this.content_type)}`
   }
 
+  connectedCallback(): void {
+    super.connectedCallback()
+    this.addEventListener(
+      "shiny-chat-maybe-scroll-to-bottom",
+      this.#onMaybeScrollToBottom,
+    )
+  }
+
   disconnectedCallback(): void {
     super.disconnectedCallback()
     this.#cleanup()
@@ -376,6 +384,10 @@ class MarkdownElement extends LightElement {
     return null
   }
 
+  #onMaybeScrollToBottom = (): void => {
+    this.#maybeScrollToBottom()
+  }
+
   #maybeScrollToBottom(): void {
     const el = this.#scrollableElement
     if (!el || this.#isUserScrolled) return
@@ -390,6 +402,10 @@ class MarkdownElement extends LightElement {
     this.#scrollableElement?.removeEventListener("scroll", this.#onScroll)
     this.#scrollableElement = null
     this.#isUserScrolled = false
+    this.removeEventListener(
+      "shiny-chat-maybe-scroll-to-bottom",
+      this.#onMaybeScrollToBottom,
+    )
   }
 }
 

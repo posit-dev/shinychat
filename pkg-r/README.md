@@ -3,6 +3,7 @@
 <!-- badges: start -->
 [![R-CMD-check](https://github.com/posit-dev/shinychat/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/posit-dev/shinychat/actions/workflows/R-CMD-check.yaml)
 [![CRAN status](https://www.r-pkg.org/badges/version/shinychat)](https://CRAN.R-project.org/package=shinychat)
+[![shinychat status badge](https://posit-dev.r-universe.dev/shinychat/badges/version)](https://posit-dev.r-universe.dev/shinychat)
 <!-- badges: end -->
 
 **shinychat** provides a [Shiny](https://shiny.posit.co/) toolkit for building generative AI applications like chatbots and [streaming content](https://posit-dev.github.io/shinychat/r/reference/markdown_stream.html). It's designed to work alongside the [ellmer](https://ellmer.tidyverse.org/) package, which handles response generation.
@@ -41,7 +42,7 @@ ui <- bslib::page_fillable(
 )
 
 server <- function(input, output, session) {
-  chat <- 
+  chat <-
     ellmer::chat_openai(
       system_prompt = "Respond to the user as succinctly as possible."
     )
@@ -59,4 +60,4 @@ shinyApp(ui, server)
 
 ## Next steps
 
-Ready to start building a chatbot with shinychat? See [Get Started](articles/get-started.html) to learn more.
+Ready to start building a chatbot with shinychat? See [Get Started](https://posit-dev.github.io/shinychat/r/articles/get-started.html) to learn more.

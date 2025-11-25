@@ -1,11 +1,50 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Pattern, Union
 
 from playwright.sync_api import Locator, Page
 from playwright.sync_api import expect as playwright_expect
-from shiny.playwright._types import PatternOrStr, Timeout
-from shiny.playwright.controller._base import UiBase
+
+PatternStr = Pattern[str]
+PatternOrStr = Union[str, PatternStr]
+Timeout = Union[float, None]
+
+
+# Avoid circular import with shiny.playwright by copy/pasting UiBase class
+class UiBase:
+    """A base class representing shiny UI components."""
+
+    id: str
+    """
+    The browser DOM `id` of the UI element.
+    """
+    loc: Locator
+    """
+    Playwright `Locator` of the UI element.
+    """
+    page: Page
+    """
+    Playwright `Page` of the Shiny app.
+    """
+
+    def __init__(
+        self,
+        page: Page,
+        *,
+        id: str,
+        loc: Locator | str,
+    ) -> None:
+        self.page = page
+        # Needed?!? This is covered by `self.loc_root` and possibly `self.loc`
+        self.id = id
+        if isinstance(loc, str):
+            loc = page.locator(loc)
+        self.loc = loc
+
+    @property
+    def expect(self):
+        """Expectation method equivalent to `playwright.expect(self.loc)`."""
+        return playwright_expect(self.loc)
 
 
 class Chat(UiBase):
@@ -56,7 +95,9 @@ class Chat(UiBase):
         self.loc_latest_message = self.loc_messages.locator("> :last-child")
         self.loc_input_container = self.loc.locator("> shiny-chat-input")
         self.loc_input = self.loc_input_container.locator("textarea")
-        self.loc_input_button = self.loc_input_container.locator("button")
+        self.loc_input_button = self.loc_input_container.locator(
+            ".shiny-chat-btn-send"
+        )
 
     def expect_latest_message(
         self,

@@ -1,5 +1,13 @@
 # shinychat (development version)
 
+* Fixed an issue where user chat messages would display the default assistant icon. (#162)
+
+# shinychat 0.3.0
+
+## Breaking changes
+
+* `chat_mod_server()` now returns a list of reactives for `last_input` and `last_turn`, as well functions to `update_user_input()`, `append()` and `clear()` the chat. (#130, #143, #145)
+
 ## New features
 
 * Added `chat_restore()` which adds Shiny bookmarking hooks to save and restore the `{ellmer}` chat client. (#28, #82)
@@ -14,6 +22,8 @@
 
 * `chat_app()` now correctly restores the chat client state when refreshing the app, e.g. by reloading the page. (#71)
 
+* External links in chat messages in `chat_ui()` now open in a new tab by default, with a confirmation dialog. (#120)
+
 ## Bug fixes
 
 * The chat input no longer submits incomplete text when the user has activated IME completions (e.g. while typing in Japanese or Chinese). (#85)
@@ -21,6 +31,8 @@
 ## Internal changes
 
 * We consolidated the `<shiny-chat-message>` and `<shiny-user-message>` components into a single `<shiny-chat-message>` component with a `data-role` attribute to indicate whether it's an "assistant" or "user" message. This likely has minimal impact on your apps, other than custom styles. You should update any `shiny-user-message` rules to use `shiny-chat-message[data-role="user"]`. (#101)
+
+* The chat UI's send input button is now identified by the class `.shiny-chat-btn-send`. (@DeepanshKhurana, #138)
 
 # shinychat 0.2.0
 

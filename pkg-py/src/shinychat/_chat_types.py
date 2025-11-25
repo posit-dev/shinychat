@@ -3,8 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, TypedDict
 
-from htmltools import HTML, TagChild
-from shiny.session import require_active_session
+from htmltools import HTML, HTMLDependency, TagChild, TagList
 
 from ._typing_extensions import NotRequired
 
@@ -22,7 +21,7 @@ class ChatMessage:
     def __init__(
         self,
         content: TagChild,
-        role: Role,
+        role: Role = "assistant",
     ):
         self.role: Role = role
 
@@ -30,13 +29,14 @@ class ChatMessage:
         # markdown), so only process it if it's not a string.
         deps = []
         if not isinstance(content, str):
-            session = require_active_session(None)
-            res = session._process_ui(content)
-            content = res["html"]
-            deps = res["deps"]
+            ui = TagList(content).render()
+            content, deps = ui["html"], ui["dependencies"]
+            # Code blocks with `{=html}` infostrings are rendered as-is by a
+            # custom rendering method in markdown-stream.ts
+            content = f"\n\n````````{{=html}}\n{content}\n````````\n\n"
 
         self.content = content
-        self.html_deps = deps
+        self.html_deps: list[HTMLDependency] = deps
 
 
 # A message once transformed have been applied
@@ -47,7 +47,7 @@ class TransformedMessage:
     role: Role
     transform_key: Literal["content_client", "content_server"]
     pre_transform_key: Literal["content_client", "content_server"]
-    html_deps: list[dict[str, str]] | None = None
+    html_deps: list[HTMLDependency] | None = None
 
     @classmethod
     def from_chat_message(cls, message: ChatMessage) -> "TransformedMessage":

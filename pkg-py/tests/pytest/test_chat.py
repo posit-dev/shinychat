@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import types
 from datetime import datetime
 from typing import Union, cast, get_args, get_origin
 
@@ -8,7 +9,6 @@ import pytest
 from shiny import Session
 from shiny.module import ResolvedId
 from shiny.session import session_context
-from shiny.types import MISSING
 from shinychat import Chat
 from shinychat._chat_normalize import message_content, message_content_chunk
 from shinychat._chat_types import (
@@ -17,6 +17,7 @@ from shinychat._chat_types import (
     Role,
     TransformedMessage,
 )
+from shinychat._utils_types import MISSING
 
 # ----------------------------------------------------------------------
 # Helpers
@@ -40,7 +41,9 @@ test_session = cast(Session, _MockSession())
 
 # Check if a type is part of a Union
 def is_type_in_union(type: object, union: object) -> bool:
-    if get_origin(union) is Union:
+    origin = get_origin(union)
+    # Handle both typing.Union and types.UnionType (from | operator in Python 3.10+)
+    if origin is Union or origin is types.UnionType:
         return type in get_args(union)
     return False
 
@@ -181,14 +184,54 @@ def test_chat_message_trimming():
 
 
 def test_string_normalization():
-    m = message_content_chunk("Hello world!")
+    m = message_content("Hello world!")
     assert m.content == "Hello world!"
     assert m.role == "assistant"
+    mc = message_content_chunk("Hello world!")
+    assert mc.content == "Hello world!"
+    assert mc.role == "assistant"
 
 
 def test_dict_normalization():
-    m = message_content_chunk({"content": "Hello world!", "role": "assistant"})
+    m = message_content({"content": "Hello world!", "role": "assistant"})
     assert m.content == "Hello world!"
+    assert m.role == "assistant"
+    mc = message_content_chunk({"content": "Hello world!"})
+    assert mc.content == "Hello world!"
+    assert mc.role == "assistant"
+
+
+def test_chat_message_normalization():
+    m = message_content(ChatMessage(content="Hello world!", role="assistant"))
+    assert m.content == "Hello world!"
+    assert m.role == "assistant"
+    mc = message_content_chunk(ChatMessage(content="Hello world!"))
+    assert mc.content == "Hello world!"
+    assert mc.role == "assistant"
+
+
+def test_tagifiable_normalization():
+    from shiny.ui import HTML, div
+
+    # Interpreted as markdown (without escaping)
+    m = message_content("Hello <span>world</span>!")
+    assert m.content == "Hello <span>world</span>!"
+    assert m.role == "assistant"
+
+    # Interpreted as HTML (without escaping)
+    m = message_content(HTML("Hello <span>world</span>!"))
+    assert (
+        m.content
+        == "\n\n````````{=html}\nHello <span>world</span>!\n````````\n\n"
+    )
+    assert m.role == "assistant"
+
+    # Interpreted as HTML (if top-level object is tag-like, inner string contents get escaped)
+    m = message_content(div("Hello <span>world</span>!"))
+    assert (
+        m.content
+        == "\n\n````````{=html}\n<div>Hello &lt;span&gt;world&lt;/span&gt;!</div>\n````````\n\n"
+    )
     assert m.role == "assistant"
 
 
@@ -198,10 +241,10 @@ def test_langchain_normalization():
 
     # Make sure return type of the .invoke()/.stream() methods haven't changed
     # (If they do, we may need to update the mock and normalization functions)
-    assert BaseChatModel.invoke.__annotations__["return"] == "BaseMessage"
+    assert BaseChatModel.invoke.__annotations__["return"] == "AIMessage"
     assert (
         BaseChatModel.stream.__annotations__["return"]
-        == "Iterator[BaseMessageChunk]"
+        == "Iterator[AIMessageChunk]"
     )
 
     # Mock & normalize return value of BaseChatModel.invoke()

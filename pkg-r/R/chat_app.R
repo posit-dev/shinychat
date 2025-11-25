@@ -74,7 +74,25 @@
 #'   * `chat_app()` returns a [shiny::shinyApp()] object.
 #'   * `chat_mod_ui()` returns the UI for a shinychat module.
 #'   * `chat_mod_server()` includes the shinychat module server logic, and
-#'     and returns the last turn upon successful chat completion.
+#'     returns a list containing:
+#'
+#'     * `last_input`: A reactive value containing the last user input.
+#'     * `last_turn`: A reactive value containing the last assistant turn.
+#'     * `update_user_input()`: A function to update the chat input or submit a
+#'       new user input. Takes the same arguments as [update_chat_user_input()],
+#'       except for `id` and `session`, which are supplied automatically.
+#'     * `append()`: A function to append a new message to the chat UI. Takes
+#'       the same arguments as [chat_append()], except for `id` and `session`,
+#'       which are supplied automatically.
+#'     * `clear()`: A function to clear the chat history and the chat UI.
+#'       `clear()` takes an optional list of `messages` used to initialize the
+#'       chat after clearing. `messages` should be a list of messages, where
+#'       each message is a list with `role` and `content` fields. The
+#'       `client_history` argument controls how the chat client's history is
+#'       updated after clearing. It can be one of: `"clear"` the chat history;
+#'       `"set"` the chat history to `messages`; `"append"` `messages` to the
+#'       existing chat history; or `"keep"` the existing chat history.
+#'     * `client`: The chat client object, which is mutated as you chat.
 #'
 #' @describeIn chat_app A simple Shiny app for live chatting. Note that this
 #'   app is suitable for interactive use by a single user; do not use
@@ -98,7 +116,7 @@ chat_app <- function(client, ..., bookmark_store = "url") {
   server <- function(input, output, session) {
     chat_mod_server("chat", client)
 
-    shiny::observeEvent(input$close_btn, {
+    shiny::observeEvent(input$close_btn, label = "on_close_btn", {
       shiny::stopApp()
     })
   }
@@ -173,7 +191,11 @@ chat_mod_server <- function(
       bookmark_on_response = bookmark_on_response
     )
 
-    shiny::observeEvent(input$chat_user_input, {
+    last_turn <- shiny::reactiveVal(NULL, label = "last_turn")
+    last_input <- shiny::reactiveVal(NULL, label = "last_input")
+
+    shiny::observeEvent(input$chat_user_input, label = "on_chat_user_input", {
+      last_input(input$chat_user_input)
       append_stream_task$invoke(
         client,
         "chat",
@@ -181,10 +203,84 @@ chat_mod_server <- function(
       )
     })
 
-    shiny::reactive({
+    shiny::observe(label = "update_last_turn", {
       if (append_stream_task$status() == "success") {
-        client$last_turn()
+        last_turn(client$last_turn())
       }
     })
+
+    chat_update_user_input <- function(
+      value = NULL,
+      ...,
+      placeholder = NULL,
+      submit = FALSE,
+      focus = FALSE
+    ) {
+      update_chat_user_input(
+        "chat",
+        value = value,
+        placeholder = placeholder,
+        submit = submit,
+        focus = focus,
+        ...,
+        session = session
+      )
+    }
+
+    chat_append_mod <- function(response, role = "assistant", icon = NULL) {
+      chat_append("chat", response, role = role, icon = icon, session = session)
+    }
+
+    client_clear <- function(
+      messages = NULL,
+      client_history = c("clear", "set", "append", "keep")
+    ) {
+      client_history <- arg_match(client_history)
+
+      if (!is.null(messages)) {
+        if (rlang::is_string(messages)) {
+          # Promote strings to single assistant message
+          messages <- list(list(role = "assistant", content = messages))
+        }
+        if (!rlang::is_list(messages)) {
+          cli::cli_abort(
+            "{.var messages} must be a list of messages, and each message must be a list with {.field role} and {.field content}."
+          )
+        }
+        if (length(intersect(c("role", "content"), names(messages))) == 2) {
+          # Catch the single-message case and promote it to a list of messages
+          messages <- list(messages)
+        }
+      }
+
+      chat_clear("chat", session = session)
+      if (!is.null(messages)) {
+        for (msg in messages) {
+          chat_append("chat", msg$content, role = msg$role, session = session)
+        }
+      }
+
+      if (client_history == "clear") {
+        client$set_turns(list())
+      } else if (client_history == "set") {
+        client$set_turns(as_ellmer_turns(messages))
+      } else if (client_history == "append") {
+        turns <- client$get_turns()
+        turns <- c(turns, as_ellmer_turns(messages))
+        client$set_turns(turns)
+      }
+
+      last_turn(NULL)
+      last_input(NULL)
+    }
+
+    list(
+      last_turn = shiny::reactive(last_turn(), label = "mod_last_turn"),
+      last_input = shiny::reactive(last_input(), label = "mod_last_input"),
+      client = client,
+      append = chat_append_mod,
+      update_user_input = chat_update_user_input,
+      clear = client_clear
+    )
   })
 }

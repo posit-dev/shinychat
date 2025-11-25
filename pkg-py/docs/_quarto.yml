@@ -34,7 +34,7 @@ website:
       - icon: github
         menu:
           - text: Source code
-            href:  https://github.com/posit-dev/shinychat/pkg-py
+            href:  https://github.com/posit-dev/shinychat/tree/main/pkg-py
           - text: Report a bug
             href:  https://github.com/posit-dev/shinychat/issues/new
 

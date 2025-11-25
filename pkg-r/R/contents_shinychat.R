@@ -104,7 +104,7 @@ opt_shinychat_tool_display <- function() {
 #' Note that you do **not** need to create a new class or extend
 #' `contents_shinychat()` to customize the tool display. Rather, you can use the
 #' strategies discussed in the [Tool Calling UI
-#' article](https://posit-dev.github.io/shinychat/r/article/tool-ui.html) to
+#' article](https://posit-dev.github.io/shinychat/r/articles/tool-ui.html) to
 #' customize the tool request and result display by providing a `display` list
 #' in the `extra` argument of the tool result.
 #'
@@ -219,6 +219,11 @@ print.shinychat_tool_card <- function(x, ...) {
   }
   print(tags, ...)
   invisible(x)
+}
+
+#' @exportS3Method knitr::knit_print
+knit_print.shinychat_tool_card <- function(x, ...) {
+  knitr::knit_print(as.tags(x))
 }
 
 S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
@@ -407,9 +412,13 @@ S7::method(contents_shinychat, S7::new_S3_class(c("Chat", "R6"))) <- function(
       x
     })
 
-    # Turns containing tool results are converted into assistant turns
-    if (some(turn@contents, S7::S7_inherits, ellmer::ContentToolResult)) {
-      turn@role <- "assistant"
+    # Turns containing only tool results are converted into assistant turns
+    if (every(turn@contents, S7::S7_inherits, ellmer::ContentToolResult)) {
+      if (packageVersion("ellmer") >= "0.3.2.9000") {
+        turn <- ellmer::AssistantTurn(turn@contents)
+      } else {
+        turn@role <- "assistant"
+      }
       return(turn)
     }
 

@@ -51,6 +51,9 @@ js-build-watch:  ## [js] Build JS code in watch mode
 	@echo "🧳 Building JS code in watch mode"
 	cd $(PATH_PKG_JS) && npm run watch
 
+.PHONY: update-dist
+update-dist: js-build r-update-dist py-update-dist  ## Update shinychat web assets in all packages
+
 .PHONY: r-setup
 r-setup:  ## [r] Install R dependencies
 	@echo "🆙 Updating R dependencies"
@@ -98,8 +101,8 @@ r-update-dist: ## [r] Update shinychat web assets
 	cp -r $(PATH_PKG_JS)/dist/markdown-stream $(PATH_PKG_R)/inst/lib/shiny/
 	(git rev-parse HEAD) > "$(PATH_PKG_R)/inst/lib/shiny/GIT_VERSION"
 
-.PHONY: r-docs
-r-docs: ## [r] Build R docs
+.PHONY: r-docs-render
+r-docs-render: ## [r] Build R docs
 	@echo "📖 Rendering R docs with pkgdown"
 	cd $(PATH_PKG_R) && Rscript -e "pkgdown::build_site()"
 
@@ -110,15 +113,15 @@ r-docs-preview: ## [r] Build R docs
 
 .PHONY: py-setup
 py-setup:  ## [py] Setup python environment
-	uv sync --all-extras
+	uv sync --all-extras --all-groups --upgrade
 
 .PHONY: py-check
 py-check:  py-check-format py-check-types py-check-tests ## [py] Run python checks
 
 .PHONY: py-check-tox
-py-check-tox:  ## [py] Run python 3.9 - 3.12 checks with tox
+py-check-tox:  ## [py] Run python checks across versions with tox
 	@echo ""
-	@echo "🔄 Running tests and type checking with tox for Python 3.9--3.12"
+	@echo "🔄 Running tests and type checking with tox for Python 3.10--3.14"
 	uv run tox run-parallel
 
 .PHONY: py-check-tests

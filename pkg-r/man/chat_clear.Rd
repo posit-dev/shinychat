@@ -15,7 +15,7 @@ chat_clear(id, session = getDefaultReactiveDomain())
 Clear all messages from a chat control
 }
 \examples{
-\dontshow{if (interactive()) (if (getRversion() >= "3.4") withAutoprint else force)(\{ # examplesIf}
+\dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
 
 library(shiny)
 library(bslib)
