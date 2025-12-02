@@ -25,12 +25,12 @@ window.addEventListener("shiny-tool-request-hide", (event: CustomEvent) => {
   // Hide the tool request element with the given request ID
   const { request_id: requestId } = event.detail
   if (!requestId) return
+  window.shinychat.hiddenToolRequests.add(requestId)
   const toolRequestElement = document.querySelector<HTMLElement>(
     `.shiny-tool-request[request-id="${requestId}"]`,
   )
   if (!toolRequestElement) return
   toolRequestElement.hidden = true
-  window.shinychat.hiddenToolRequests.add(requestId)
 })
 
 /**
