@@ -21,6 +21,18 @@ window.shinychat = window.shinychat || {}
 window.shinychat.hiddenToolRequests =
   window.shinychat.hiddenToolRequests || new Set<string>()
 
+window.addEventListener("shiny-tool-request-hide", (event: CustomEvent) => {
+  // Hide the tool request element with the given request ID
+  const { request_id: requestId } = event.detail
+  if (!requestId) return
+  const toolRequestElement = document.querySelector<HTMLElement>(
+    `.shiny-tool-request[request-id="${requestId}"]`,
+  )
+  if (!toolRequestElement) return
+  toolRequestElement.hidden = true
+  window.shinychat.hiddenToolRequests.add(requestId)
+})
+
 /**
  * Base class for a collapsible tool request or result card component.
  *
@@ -193,6 +205,7 @@ export class ShinyToolRequest extends ShinyToolCard {
 
   constructor() {
     super()
+    this.classList.add("shiny-tool-request")
     this.titleTemplate = "Running {title}"
     this.icon = '<div class="spinner-border" role="status"></div>'
   }
@@ -200,21 +213,6 @@ export class ShinyToolRequest extends ShinyToolCard {
   connectedCallback() {
     super.connectedCallback()
     this.hidden = window.shinychat.hiddenToolRequests.has(this.requestId)
-    window.addEventListener("shiny-tool-request-hide", this.#onToolRequestHide)
-  }
-
-  disconnectedCallback() {
-    super.disconnectedCallback()
-    window.removeEventListener(
-      "shiny-tool-request-hide",
-      this.#onToolRequestHide,
-    )
-  }
-
-  #onToolRequestHide = (event: CustomEvent) => {
-    if (event.detail.request_id === this.requestId) {
-      this.hidden = true
-    }
   }
 
   render() {
@@ -295,6 +293,7 @@ export class ShinyToolResult extends ShinyToolCard {
 
   constructor() {
     super()
+    this.classList.add("shiny-tool-result")
     this.titleTemplate = "{title}"
   }
 
@@ -307,7 +306,6 @@ export class ShinyToolResult extends ShinyToolCard {
       this.titleTemplate = "{title} failed"
     }
     // Emit event to hide the corresponding tool request
-    window.shinychat.hiddenToolRequests.add(this.requestId)
     this.dispatchEvent(
       new CustomEvent("shiny-tool-request-hide", {
         detail: { request_id: this.requestId },
@@ -420,7 +418,6 @@ const markdownCodeBlock = (content: string, language: string = "markdown") => {
 window.Shiny?.addCustomMessageHandler(
   "shiny-tool-request-hide",
   (request_id) => {
-    window.shinychat.hiddenToolRequests.add(request_id)
     const event = new CustomEvent("shiny-tool-request-hide", {
       detail: { request_id },
       bubbles: true,
