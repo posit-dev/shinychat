@@ -35,11 +35,14 @@
 
   function handleThinkingMessage(payload) {
     const { id, type, content: text } = payload;
+    const retries = payload._retries || 0;
 
     if (type === 'start') {
       const message = findStreamingMessage();
       if (!message) {
-        setTimeout(() => handleThinkingMessage(payload), 50);
+        if (retries < 20) {
+          setTimeout(() => handleThinkingMessage({ ...payload, _retries: retries + 1 }), 50);
+        }
         return;
       }
 
@@ -71,8 +74,8 @@
 
       if (!parts.fullText.trim()) {
         parts.wrapper.remove();
-        thinkingBlocks.delete(id);
       }
+      thinkingBlocks.delete(id);
     }
   }
 
