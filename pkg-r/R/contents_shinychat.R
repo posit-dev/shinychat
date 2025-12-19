@@ -376,33 +376,33 @@ tool_string <- function(x) {
   }
 }
 
+flush_thinking_buffer <- function(thinking_buffer) {
+  if (length(thinking_buffer) == 0) {
+    return(list())
+  }
+  combined <- ellmer::ContentThinking(paste(thinking_buffer, collapse = "\n\n"))
+  list(combined)
+}
 
-S7::method(contents_shinychat, ellmer::Turn) <- function(content) {
-  contents <- content@contents
-
-  # Consolidate adjacent ContentThinking into single blocks
+consolidate_thinking <- function(contents) {
   consolidated <- list()
   thinking_buffer <- character()
-
-
-  flush_thinking <- function() {
-    if (length(thinking_buffer) > 0) {
-      combined <- ellmer::ContentThinking(paste(thinking_buffer, collapse = "\n\n"))
-      consolidated <<- c(consolidated, list(combined))
-      thinking_buffer <<- character()
-    }
-  }
 
   for (item in contents) {
     if (S7::S7_inherits(item, ellmer::ContentThinking)) {
       thinking_buffer <- c(thinking_buffer, item@thinking)
     } else {
-      flush_thinking()
+      consolidated <- c(consolidated, flush_thinking_buffer(thinking_buffer))
+      thinking_buffer <- character()
       consolidated <- c(consolidated, list(item))
     }
   }
-  flush_thinking()
 
+  c(consolidated, flush_thinking_buffer(thinking_buffer))
+}
+
+S7::method(contents_shinychat, ellmer::Turn) <- function(content) {
+  consolidated <- consolidate_thinking(content@contents)
   compact(map(consolidated, contents_shinychat))
 }
 
