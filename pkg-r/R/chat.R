@@ -533,7 +533,12 @@ rlang::on_load(
 
       if (S7::S7_inherits(msg, ellmer::ContentThinking)) {
         if (is.null(thinking_id)) {
-          thinking_id <- paste0("think-", format(Sys.time(), "%H%M%S"), "-", sample.int(1e6, 1))
+          thinking_id <- paste0(
+            "think-",
+            format(Sys.time(), "%H%M%S"),
+            "-",
+            sample.int(1e6, 1)
+          )
           send_thinking("start", msg@thinking)
         } else {
           send_thinking("update", msg@thinking)
