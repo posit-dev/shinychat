@@ -41,10 +41,11 @@ test_that("ContentThinking renders as collapsible HTML", {
   thinking <- ellmer::ContentThinking("Let me think about this...")
   result <- contents_shinychat(thinking)
 
-  expect_s3_class(result, "html")
-  expect_match(as.character(result), "<details>")
-  expect_match(as.character(result), "Thinking")
-  expect_match(as.character(result), "Let me think about this")
+  expect_s3_class(result, "shiny.tag")
+  html <- as.character(result)
+  expect_match(html, "shinychat-thinking")
+  expect_match(html, "shinychat-thinking-content")
+  expect_match(html, "Let me think about this")
 })
 
 test_that("basic Content handling works", {
