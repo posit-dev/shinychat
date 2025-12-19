@@ -136,6 +136,26 @@ S7::method(contents_shinychat, ellmer::ContentText) <- function(content) {
   content@text
 }
 
+S7::method(contents_shinychat, ellmer::ContentThinking) <- function(content) {
+  text <- content@thinking
+  preview <- strsplit(trimws(text), "\n")[[1]][1]
+  if (nchar(preview) > 60) {
+    preview <- paste0(substr(preview, 1, 60), "\u2026")
+  }
+
+  htmltools::div(
+    class = "shinychat-thinking",
+    `data-open` = "false",
+    htmltools::tags$button(
+      type = "button",
+      class = "shinychat-thinking-toggle",
+      `aria-expanded` = "false",
+      htmltools::span(class = "shinychat-thinking-preview", preview)
+    ),
+    htmltools::div(class = "shinychat-thinking-content", text)
+  )
+}
+
 new_tool_card <- function(type, request_id, tool_name, ...) {
   type <- arg_match(type, c("request", "result"))
 
@@ -358,8 +378,32 @@ tool_string <- function(x) {
 
 
 S7::method(contents_shinychat, ellmer::Turn) <- function(content) {
-  # Process all contents in the turn, filtering out empty results
-  compact(map(content@contents, contents_shinychat))
+  contents <- content@contents
+
+  # Consolidate adjacent ContentThinking into single blocks
+  consolidated <- list()
+  thinking_buffer <- character()
+
+
+  flush_thinking <- function() {
+    if (length(thinking_buffer) > 0) {
+      combined <- ellmer::ContentThinking(paste(thinking_buffer, collapse = "\n\n"))
+      consolidated <<- c(consolidated, list(combined))
+      thinking_buffer <<- character()
+    }
+  }
+
+  for (item in contents) {
+    if (S7::S7_inherits(item, ellmer::ContentThinking)) {
+      thinking_buffer <- c(thinking_buffer, item@thinking)
+    } else {
+      flush_thinking()
+      consolidated <- c(consolidated, list(item))
+    }
+  }
+  flush_thinking()
+
+  compact(map(consolidated, contents_shinychat))
 }
 
 S7::method(contents_shinychat, S7::new_S3_class(c("Chat", "R6"))) <- function(

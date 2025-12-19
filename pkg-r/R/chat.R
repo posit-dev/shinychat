@@ -12,11 +12,13 @@ chat_deps <- function() {
     src = "lib/shiny",
     script = list(
       list(src = "chat/chat.js", type = "module"),
-      list(src = "markdown-stream/markdown-stream.js", type = "module")
+      list(src = "markdown-stream/markdown-stream.js", type = "module"),
+      list(src = "thinking/thinking.js")
     ),
     stylesheet = c(
       "chat/chat.css",
-      "markdown-stream/markdown-stream.css"
+      "markdown-stream/markdown-stream.css",
+      "thinking/thinking.css"
     )
   )
 }
@@ -504,6 +506,14 @@ rlang::on_load(
     chat_append_("", chunk = "start", icon = icon)
 
     res <- fastmap::fastqueue(200)
+    thinking_id <- NULL
+
+    send_thinking <- function(type, content = "") {
+      session$sendCustomMessage(
+        "shinychat-thinking",
+        list(id = thinking_id, type = type, content = content)
+      )
+    }
 
     for (msg in stream) {
       if (promises::is.promising(msg)) {
@@ -521,11 +531,25 @@ rlang::on_load(
         }
       }
 
+      if (S7::S7_inherits(msg, ellmer::ContentThinking)) {
+        if (is.null(thinking_id)) {
+          thinking_id <- paste0("think-", format(Sys.time(), "%H%M%S"), "-", sample.int(1e6, 1))
+          send_thinking("start", msg@thinking)
+        } else {
+          send_thinking("update", msg@thinking)
+        }
+        next
+      }
+
       if (S7::S7_inherits(msg, ellmer::Content)) {
         msg <- contents_shinychat(msg)
       }
 
       chat_append_(msg)
+    }
+
+    if (!is.null(thinking_id)) {
+      send_thinking("done")
     }
 
     chat_append_("", chunk = "end")
