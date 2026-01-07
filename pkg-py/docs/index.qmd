@@ -7,11 +7,17 @@ pagetitle: "Get Started"
 <!-- badges: start -->
 <!-- badges: end -->
 
-Chat UI component for [Shiny for Python](https://shiny.posit.co/py/).
+**shinychat** provides a [Shiny](https://shiny.posit.co/py) toolkit for building generative AI applications like chatbots and streaming content. It works best with [chatlas](https://posit-dev.github.io/chatlas/), but also works great with other LLM frameworks such as LangChain, Pydantic AI, and more.
 
 ## Installation
 
-You can install shinychat from PyPI with:
+shinychat is a dependency of the [shiny](https://pypi.org/project/shiny) package, so in most cases, you'll want to just install shiny with:
+
+```bash
+uv pip install shiny
+```
+
+However, you can also install shinychat separately with:
 
 ```bash
 uv pip install shinychat
@@ -23,39 +29,37 @@ Or, install the development version of shinychat from [GitHub](https://github.co
 uv pip install git+https://github.com/posit-dev/shinychat.git
 ```
 
-## Example
+## Starter example
 
-To run this example, you'll first need to create an OpenAI API key, and set it in your environment as `OPENAI_API_KEY`.
+With shiny installed, you're ready to run your first shinychat app. Create a new file named `app.py` with the following content:
 
-```r
-from shiny.express import render, ui
+```{.python file="app.py"}
 from shinychat.express import Chat
 
-# Set some Shiny page options
-ui.page_opts(title="Hello Chat")
-
-# Create a chat instance, with an initial message
-chat = Chat(
-    id="chat",
-    messages=[
-        {"content": "Hello! How can I help you today?", "role": "assistant"},
-    ],
-)
-
-# Display the chat
+# Create a chat instance and display it
+chat = Chat(id="chat")
 chat.ui()
-
 
 # Define a callback to run when the user submits a message
 @chat.on_user_submit
 async def handle_user_input(user_input: str):
+    # Simply echo the user's input back to them
     await chat.append_message(f"You said: {user_input}")
-
-
-"Message state:"
-
-
-@render.code
-def message_state():
-    return str(chat.messages())
 ```
+
+To run the app, execute the following command in your terminal (or via the [Shiny extension](https://marketplace.visualstudio.com/items?itemName=Posit.shiny)):
+
+```bash
+uv shiny run --reload app.py
+```
+
+
+## Learn more
+
+The official shiny website offers the best starting point for learning about shinychat:
+
+* [Get inspired](https://shiny.posit.co/py/docs/genai-inspiration.html)
+* [Chatbots](https://shiny.posit.co/py/docs/genai-chatbots.html)
+* [Streaming markdown](https://shiny.posit.co/py/docs/genai-stream.html)
+* [Tool calling](https://shiny.posit.co/py/docs/genai-tools.html)
+* [Structured data](https://shiny.posit.co/py/docs/genai-structured-data.html)
