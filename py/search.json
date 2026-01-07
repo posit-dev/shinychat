@@ -4,21 +4,28 @@
     "href": "index.html",
     "title": "shinychat",
     "section": "",
-    "text": "Chat UI component for Shiny for Python."
+    "text": "shinychat provides a Shiny toolkit for building generative AI applications like chatbots and streaming content. It works best with chatlas, but also works great with other LLM frameworks such as LangChain, Pydantic AI, and more."
   },
   {
     "objectID": "index.html#installation",
     "href": "index.html#installation",
     "title": "shinychat",
     "section": "Installation",
-    "text": "Installation\nYou can install shinychat from PyPI with:\nuv pip install shinychat\nOr, install the development version of shinychat from GitHub with:\nuv pip install git+https://github.com/posit-dev/shinychat.git"
+    "text": "Installation\nshinychat is a dependency of the shiny package, so in most cases, you’ll want to just install shiny with:\nuv pip install shiny\nHowever, you can also install shinychat separately with:\nuv pip install shinychat\nOr, install the development version of shinychat from GitHub with:\nuv pip install git+https://github.com/posit-dev/shinychat.git"
   },
   {
-    "objectID": "index.html#example",
-    "href": "index.html#example",
+    "objectID": "index.html#starter-example",
+    "href": "index.html#starter-example",
     "title": "shinychat",
-    "section": "Example",
-    "text": "Example\nTo run this example, you’ll first need to create an OpenAI API key, and set it in your environment as OPENAI_API_KEY.\nfrom shiny.express import render, ui\nfrom shinychat.express import Chat\n\n# Set some Shiny page options\nui.page_opts(title=\"Hello Chat\")\n\n# Create a chat instance, with an initial message\nchat = Chat(\n    id=\"chat\",\n    messages=[\n        {\"content\": \"Hello! How can I help you today?\", \"role\": \"assistant\"},\n    ],\n)\n\n# Display the chat\nchat.ui()\n\n\n# Define a callback to run when the user submits a message\n@chat.on_user_submit\nasync def handle_user_input(user_input: str):\n    await chat.append_message(f\"You said: {user_input}\")\n\n\n\"Message state:\"\n\n\n@render.code\ndef message_state():\n    return str(chat.messages())"
+    "section": "Starter example",
+    "text": "Starter example\nWith shiny installed, you’re ready to run your first shinychat app. Create a new file named app.py with the following content:\nfrom shinychat.express import Chat\n\n# Create a chat instance and display it\nchat = Chat(id=\"chat\")\nchat.ui()\n\n# Define a callback to run when the user submits a message\n@chat.on_user_submit\nasync def handle_user_input(user_input: str):\n    # Simply echo the user's input back to them\n    await chat.append_message(f\"You said: {user_input}\")\nTo run the app, execute the following command in your terminal (or via the Shiny extension):\nuv shiny run --reload app.py"
+  },
+  {
+    "objectID": "index.html#learn-more",
+    "href": "index.html#learn-more",
+    "title": "shinychat",
+    "section": "Learn more",
+    "text": "Learn more\nThe official shiny website offers the best starting point for learning about shinychat:\n\nGet inspired\nChatbots\nStreaming markdown\nTool calling\nStructured data"
   },
   {
     "objectID": "api/chat_ui.html",
