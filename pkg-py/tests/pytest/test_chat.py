@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import sys
 import types
 from datetime import datetime
@@ -260,24 +261,54 @@ def test_langchain_normalization():
     assert m.role == "assistant"
 
 
-def test_google_normalization():
-    # Not available for Python 3.8
-    if sys.version_info < (3, 9):
+def test_google_content_object_normalization():
+    # Not available for Python 3.9
+    if sys.version_info < (3, 10):
         return
 
-    from google.generativeai.generative_models import (
-        GenerativeModel,  # pyright: ignore[reportMissingTypeStubs]
+    from google.genai import types
+
+    # Test Content object normalization
+    c = types.Content(parts=[types.Part(text="Hello world!")], role="model")
+    m = message_content(c)
+    assert m.content == "Hello world!"
+    assert m.role == "model"
+
+
+def test_google_multimodal_normalization():
+    # Not available for Python 3.9
+    if sys.version_info < (3, 10):
+        return
+
+    from google.genai import types
+
+    # Text part, image part, text part.
+    c = types.Content(
+        parts=[
+            types.Part(text="Here is an image:"),
+            types.Part(inline_data={"mime_type": "image/png", "data": "AAAA"}),
+            types.Part(text=" described above."),
+        ],
+        role="model",
     )
 
-    generate_content = GenerativeModel.generate_content  # type: ignore
+    m = message_content(c)
+    assert m.content == "Here is an image: described above."
+    assert m.role == "model"
+
+
+def test_google_normalization():
+    # Not available for Python 3.9
+    if sys.version_info < (3, 10):
+        return
+
+    from google.genai.models import Models
+    from google.genai.types import GenerateContentResponse
 
     assert (
-        generate_content.__annotations__["return"]
-        == "generation_types.GenerateContentResponse"
+        inspect.signature(Models.generate_content).return_annotation
+        == GenerateContentResponse
     )
-
-    # Not worth mocking the return value of generate_content() since it's a complex object
-    # and fairly simple to normalize....
 
 
 def test_anthropic_normalization():
@@ -480,32 +511,21 @@ def test_as_anthropic_message():
 def test_as_google_message():
     from shinychat._chat_provider_types import as_google_message
 
-    # Not available for Python 3.8
-    if sys.version_info < (3, 9):
+    # Not available for Python 3.9
+    if sys.version_info < (3, 10):
         return
 
-    from google.generativeai.generative_models import (
-        GenerativeModel,  # pyright: ignore[reportMissingTypeStubs]
-    )
+    from google.genai import types
+    from google.genai.models import Models
 
-    generate_content = GenerativeModel.generate_content  # type: ignore
-
-    assert (
-        generate_content.__annotations__["contents"]
-        == "content_types.ContentsType"
+    contents_annotation = (
+        inspect.signature(Models.generate_content).parameters["contents"].annotation
     )
-
-    from google.generativeai.types import (
-        content_types,  # pyright: ignore[reportMissingTypeStubs]
-    )
-
-    assert is_type_in_union(
-        content_types.ContentDict, content_types.ContentsType
-    )
+    assert is_type_in_union(types.Content, contents_annotation)
 
     msg = ChatMessageDict(content="I have a question", role="user")
-    assert as_google_message(msg) == content_types.ContentDict(
-        parts=["I have a question"], role="user"
+    assert as_google_message(msg) == types.Content(
+        parts=[types.Part(text="I have a question")], role="user"
     )
 
 

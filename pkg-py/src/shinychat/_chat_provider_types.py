@@ -15,10 +15,10 @@ if TYPE_CHECKING:
         ChatCompletionUserMessageParam,
     )
 
-    if sys.version_info >= (3, 9):
-        import google.generativeai.types as gtypes  # pyright: ignore[reportMissingTypeStubs]
+    if sys.version_info >= (3, 10):
+        import google.genai.types as gtypes  # pyright: ignore[reportMissingImports]
 
-        GoogleMessage = gtypes.ContentDict
+        GoogleMessage = gtypes.Content
     else:
         GoogleMessage = object
 
@@ -81,20 +81,20 @@ def as_anthropic_message(message: ChatMessageDict) -> "AnthropicMessage":
 
 
 def as_google_message(message: ChatMessageDict) -> "GoogleMessage":
-    if sys.version_info < (3, 9):
-        raise ValueError("Google requires Python 3.9")
+    if sys.version_info < (3, 10):
+        raise ValueError("Google requires Python 3.10")
 
-    import google.generativeai.types as gtypes  # pyright: ignore[reportMissingTypeStubs]
+    import google.genai.types as gtypes  # pyright: ignore[reportMissingImports]
 
     role = message["role"]
 
     if role == "system":
         raise ValueError(
-            "Google requires a system prompt to be specified in the `GenerativeModel()` constructor."
+            "Google requires a system prompt to be specified with `GenerateContentConfig.system_instruction`."
         )
     elif role == "assistant":
         role = "model"
-    return gtypes.ContentDict(parts=[message["content"]], role=role)
+    return gtypes.Content(parts=[gtypes.Part(text=message["content"])], role=role)
 
 
 def as_langchain_message(message: ChatMessageDict) -> "LangChainMessage":
