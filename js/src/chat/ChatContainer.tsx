@@ -2,7 +2,7 @@ import { useRef, useEffect, useCallback } from "react"
 import { ChatMessages } from "./ChatMessages"
 import { ChatInput, type ChatInputHandle } from "./ChatInput"
 import { showExternalLinkConfirmation } from "./ExternalLinkDialog"
-import { useChatState } from "./context"
+import { useChatState, useTransport } from "./context"
 
 // Declare custom elements used in JSX so TypeScript doesn't complain
 declare module "react" {
@@ -24,10 +24,16 @@ declare module "react" {
 export interface ChatContainerProps {
   iconAssistant?: string
   inputId: string
+  elementId: string
 }
 
-export function ChatContainer({ iconAssistant, inputId }: ChatContainerProps) {
+export function ChatContainer({
+  iconAssistant,
+  inputId,
+  elementId,
+}: ChatContainerProps) {
   const { inputDisabled, inputValue, inputPlaceholder } = useChatState()
+  const transport = useTransport()
 
   const chatInputRef = useRef<ChatInputHandle>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
@@ -56,10 +62,31 @@ export function ChatContainer({ iconAssistant, inputId }: ChatContainerProps) {
     return () => observer.disconnect()
   }, [])
 
+  // Handle imperative update_input commands (submit/focus) from the server.
+  // These require direct access to the ChatInput handle and can't go through the reducer.
+  useEffect(() => {
+    const unsubscribe = transport.onMessage(elementId, (action) => {
+      if (action.type !== "update_input") return
+      if (!action.submit && !action.focus) return
+
+      if (action.value !== undefined) {
+        chatInputRef.current?.setInputValue(action.value, {
+          submit: action.submit,
+          focus: action.focus,
+        })
+      } else if (action.focus) {
+        chatInputRef.current?.focus()
+      }
+    })
+    return unsubscribe
+  }, [transport, elementId])
+
   // External link click handler (intercepts [data-external-link] elements)
   const onContainerClick = useCallback((e: React.MouseEvent<HTMLElement>) => {
     const target = e.target as HTMLElement
-    const linkEl = target.closest("a[data-external-link]") as HTMLAnchorElement | null
+    const linkEl = target.closest(
+      "a[data-external-link]",
+    ) as HTMLAnchorElement | null
     if (!linkEl || !linkEl.href) return
 
     e.preventDefault()
@@ -146,10 +173,7 @@ export function ChatContainer({ iconAssistant, inputId }: ChatContainerProps) {
       </shiny-chat-messages>
 
       {/* Input area (sticky, grid row 2) */}
-      <shiny-chat-input
-        ref={inputAreaRef}
-        onClick={onContainerClick}
-      >
+      <shiny-chat-input ref={inputAreaRef} onClick={onContainerClick}>
         <ChatInput
           ref={chatInputRef}
           inputId={inputId}

@@ -7,11 +7,7 @@ export function ChatMessages({ iconAssistant }: { iconAssistant?: string }) {
   return (
     <>
       {messages.map((msg) => (
-        <ChatMessage
-          key={msg.id}
-          message={msg}
-          iconAssistant={iconAssistant}
-        />
+        <ChatMessage key={msg.id} message={msg} iconAssistant={iconAssistant} />
       ))}
     </>
   )

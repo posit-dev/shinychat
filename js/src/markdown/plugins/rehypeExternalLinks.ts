@@ -14,7 +14,7 @@ export const rehypeExternalLinks: Plugin<[], Root> = () => (tree) => {
     if (/^(https?:)?\/\//.test(href)) {
       node.properties = {
         ...node.properties,
-        "dataExternalLink": "",
+        dataExternalLink: "",
         target: "_blank",
         rel: "noopener noreferrer",
       }

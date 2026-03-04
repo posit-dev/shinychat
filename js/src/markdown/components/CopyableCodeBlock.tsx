@@ -5,7 +5,11 @@ interface CopyableCodeBlockProps {
   [key: string]: unknown
 }
 
-export function CopyableCodeBlock({ children, node, ...props }: CopyableCodeBlockProps) {
+export function CopyableCodeBlock({
+  children,
+  node,
+  ...props
+}: CopyableCodeBlockProps) {
   const [copied, setCopied] = useState(false)
   const preRef = useRef<HTMLPreElement>(null)
 

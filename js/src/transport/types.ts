@@ -14,7 +14,12 @@ export type MessagePayload = {
 export type ChatAction =
   | { type: "message"; message: MessagePayload }
   | { type: "chunk_start"; message: MessagePayload }
-  | { type: "chunk"; content: string; operation: "append" | "replace" }
+  | {
+      type: "chunk"
+      content: string
+      operation: "append" | "replace"
+      content_type?: ContentType
+    }
   | { type: "chunk_end" }
   | { type: "clear" }
   | {
@@ -39,10 +44,7 @@ export type ShinyClientMessage = {
 
 export interface ChatTransport {
   sendInput(id: string, value: string): void
-  onMessage(
-    id: string,
-    callback: (action: ChatAction) => void,
-  ): () => void
+  onMessage(id: string, callback: (action: ChatAction) => void): () => void
   renderDependencies(deps: HtmlDep[]): Promise<void>
   bindAll(el: HTMLElement): Promise<void>
   unbindAll(el: HTMLElement): void

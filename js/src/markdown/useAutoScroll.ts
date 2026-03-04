@@ -17,7 +17,12 @@ export function useAutoScroll(
   containerRef: RefObject<HTMLElement | null>,
   options: UseAutoScrollOptions,
 ): void {
-  const { autoScroll, streaming, content, containerTag = "shiny-chat-container" } = options
+  const {
+    autoScroll,
+    streaming,
+    content,
+    containerTag = "shiny-chat-container",
+  } = options
   const scrollableRef = useRef<HTMLElement | null>(null)
   const isUserScrolledRef = useRef(false)
   const isContentChangingRef = useRef(false)
@@ -34,7 +39,8 @@ export function useAutoScroll(
     }
   }, [isNearBottom])
 
-  // Find and track scrollable parent
+  // Find and track scrollable parent (re-runs when content changes since the
+  // parent may not be scrollable until content makes it overflow)
   useEffect(() => {
     if (!autoScroll || !containerRef.current) {
       scrollableRef.current = null
@@ -64,7 +70,7 @@ export function useAutoScroll(
     return () => {
       scrollableRef.current?.removeEventListener("scroll", onScroll)
     }
-  }, [autoScroll, containerRef, onScroll, containerTag])
+  }, [autoScroll, containerRef, onScroll, containerTag, content])
 
   // Scroll to bottom when content changes
   useEffect(() => {

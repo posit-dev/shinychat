@@ -3,7 +3,9 @@ import type { ChatTransport } from "../transport/types"
 import type { ChatState, AnyAction } from "./state"
 import { initialState } from "./state"
 
-export const TransportContext = createContext<ChatTransport>(null as unknown as ChatTransport)
+export const TransportContext = createContext<ChatTransport>(
+  null as unknown as ChatTransport,
+)
 
 export const ChatStateContext = createContext<ChatState>(initialState)
 

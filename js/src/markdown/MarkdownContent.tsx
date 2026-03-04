@@ -47,7 +47,7 @@ export function MarkdownContent({
   const processor = isUser ? userProcessor : assistantProcessor
   const components = isUser ? userComponents : assistantComponents
 
-  // Convert markdown → React elements (skipped for plain text)
+  // Convert markdown/HTML → React elements (skipped for plain text only)
   const elements = useMemo(
     () =>
       isText

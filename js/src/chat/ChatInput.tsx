@@ -1,4 +1,5 @@
 import {
+  useState,
   useRef,
   useEffect,
   useCallback,
@@ -20,6 +21,7 @@ export interface ChatInputHandle {
     value: string,
     options?: { submit?: boolean; focus?: boolean },
   ): void
+  focus(): void
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
@@ -29,6 +31,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const isComposingRef = useRef(false)
+    const [hasText, setHasText] = useState(value.trim().length > 0)
 
     // Update textarea value when the controlled `value` prop changes
     useEffect(() => {
@@ -37,6 +40,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       if (el.value !== value) {
         el.value = value
       }
+      setHasText(value.trim().length > 0)
       updateHeight(el)
     }, [value])
 
@@ -44,12 +48,6 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       if (el.scrollHeight === 0) return
       el.style.height = "auto"
       el.style.height = `${el.scrollHeight}px`
-    }
-
-    function isSendDisabled(): boolean {
-      const el = textareaRef.current
-      if (!el) return true
-      return disabled || el.value.trim().length === 0
     }
 
     const sendInput = useCallback(
@@ -66,6 +64,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         // value is cleared via state (INPUT_SENT sets inputValue: ""),
         // but we also clear the DOM element immediately to avoid lag
         el.value = ""
+        setHasText(false)
         updateHeight(el)
 
         if (focusAfter) el.focus()
@@ -90,16 +89,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       const el = textareaRef.current
       if (!el) return
       updateHeight(el)
-      // Force button re-render by triggering a re-render via textarea input events.
-      // Since the button disabled state is derived imperatively, we manage it via
-      // the DOM directly here to avoid an extra useState.
-      const btn = el.parentElement?.querySelector<HTMLButtonElement>(
-        ".shiny-chat-btn-send",
-      )
-      if (btn) {
-        btn.disabled = disabled ? true : el.value.trim().length === 0
-      }
-    }, [disabled])
+      setHasText(el.value.trim().length > 0)
+    }, [])
 
     const onCompositionStart = useCallback((): void => {
       isComposingRef.current = true
@@ -115,36 +106,50 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       () => ({
         setInputValue(
           newValue: string,
-          { submit = false, focus = false }: { submit?: boolean; focus?: boolean } = {},
+          {
+            submit = false,
+            focus = false,
+          }: { submit?: boolean; focus?: boolean } = {},
         ): void {
           const el = textareaRef.current
           if (!el) return
 
           const oldValue = el.value
           el.value = newValue
-
-          // Trigger auto-resize + button state update
-          const inputEvent = new Event("input", { bubbles: true, cancelable: true })
-          el.dispatchEvent(inputEvent)
+          setHasText(newValue.trim().length > 0)
+          updateHeight(el)
 
           if (submit) {
-            sendInput(false)
-            if (oldValue) {
-              el.value = oldValue
-              const evt = new Event("input", { bubbles: true, cancelable: true })
-              el.dispatchEvent(evt)
+            // Directly send without going through sendInput — bypasses
+            // the disabled check since the server explicitly asked to submit.
+            const submitContent = el.value
+            if (submitContent.trim().length > 0) {
+              dispatch({
+                type: "INPUT_SENT",
+                content: submitContent,
+                role: "user",
+                preserveInputValue: true,
+              })
+              transport.sendInput(inputId, submitContent)
             }
+            // Always restore old value (the submitted value was temporary)
+            el.value = oldValue
+            setHasText(oldValue.trim().length > 0)
+            updateHeight(el)
           }
 
           if (focus) {
             el.focus()
           }
         },
+        focus(): void {
+          textareaRef.current?.focus()
+        },
       }),
-      [sendInput],
+      [dispatch, transport, inputId],
     )
 
-    const sendButtonDisabled = disabled || value.trim().length === 0
+    const sendButtonDisabled = disabled || !hasText
 
     return (
       <>

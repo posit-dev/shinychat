@@ -29,7 +29,15 @@ function createDotNode(): Element {
 
 const recurseInto = new Set(["p", "div", "pre", "ul", "ol"])
 const inlineContainers = new Set([
-  "p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "code",
+  "p",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "li",
+  "code",
 ])
 
 function hasTextContent(node: ElementContent): boolean {

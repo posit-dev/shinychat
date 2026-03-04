@@ -2,11 +2,11 @@ import { createRoot, type Root } from "react-dom/client"
 import { createElement } from "react"
 import { MarkdownStream, type MarkdownStreamApi } from "./MarkdownStream"
 import { TransportContext } from "../chat/context"
-import { ShinyTransport } from "../transport/shiny-transport"
+import { getShinyTransport } from "../transport/shiny-transport"
 import type { ContentType } from "../transport/types"
 
 // Single shared transport instance for standalone markdown-stream usage
-const transport = new ShinyTransport()
+const transport = getShinyTransport()
 
 type ContentMessage = {
   id: string

@@ -1,4 +1,8 @@
-import type { ContentType, ChatAction, MessagePayload } from "../transport/types"
+import type {
+  ContentType,
+  ChatAction,
+  MessagePayload,
+} from "../transport/types"
 
 export interface ChatMessageData {
   id: string
@@ -19,7 +23,12 @@ export interface ChatState {
 
 // Actions that originate from the UI (not from the server)
 export type UIAction =
-  | { type: "INPUT_SENT"; content: string; role: "user" }
+  | {
+      type: "INPUT_SENT"
+      content: string
+      role: "user"
+      preserveInputValue?: boolean
+    }
   | { type: "HIDE_TOOL_REQUEST"; requestId: string }
 
 export type AnyAction = ChatAction | UIAction
@@ -72,7 +81,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         ...state,
         messages: [...state.messages, userMsg, loadingMsg],
         inputDisabled: true,
-        inputValue: "",
+        inputValue: action.preserveInputValue ? state.inputValue : "",
       }
     }
 
@@ -106,7 +115,11 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
           ? last.content + action.content
           : action.content
 
-      messages[messages.length - 1] = { ...last, content }
+      // Update contentType if the chunk provides one (e.g., transition
+      // from "markdown" to "html" when UI elements appear mid-stream)
+      const contentType = action.content_type ?? last.contentType
+
+      messages[messages.length - 1] = { ...last, content, contentType }
       return { ...state, messages }
     }
 

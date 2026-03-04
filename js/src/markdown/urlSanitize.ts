@@ -8,7 +8,17 @@ import type { Root, Element } from "hast"
  */
 const urlAttributes: Record<string, string[] | null> = {
   href: ["a", "area", "base", "link"],
-  src: ["audio", "embed", "iframe", "img", "input", "script", "source", "track", "video"],
+  src: [
+    "audio",
+    "embed",
+    "iframe",
+    "img",
+    "input",
+    "script",
+    "source",
+    "track",
+    "video",
+  ],
   poster: ["video"],
   action: ["form"],
   formAction: ["button", "input"],

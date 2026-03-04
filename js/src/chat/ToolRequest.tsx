@@ -13,7 +13,10 @@ export interface ToolRequestProps {
 /**
  * Formats a string as a Markdown code block with the specified language.
  */
-function markdownCodeBlock(content: string, language: string = "markdown"): string {
+function markdownCodeBlock(
+  content: string,
+  language: string = "markdown",
+): string {
   const backticks = "`".repeat(8)
   return `${backticks}${language}\n${content}\n${backticks}`
 }

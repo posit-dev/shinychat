@@ -7,11 +7,13 @@ import type { Schema } from "hast-util-sanitize"
  * Key customizations:
  * - Allow <script type="application/json" data-for="..."> for htmlwidgets
  * - Whitelist shiny-tool-request/result custom elements with their attributes
+ * - Allow form elements (select, label, button, etc.) for Shiny UI widgets
+ *   delivered via {=html} fenced blocks
+ * - Allow class, style, data-*, and other attributes Shiny inputs need
  * - Allow data-external-link, target, rel on <a> tags
  * - Allow hljs-* class patterns for syntax highlighting
  * - Disable clobberPrefix to preserve id/name attributes for Shiny binding
- *
- * See design doc "Unified Pipeline Migration Risks & Gotchas" for details.
+ * - Override defaultSchema's `required` to stop forcing input to disabled checkbox
  */
 export const customSchema: Schema = {
   ...defaultSchema,
@@ -22,19 +24,74 @@ export const customSchema: Schema = {
   // Disable clobber prefix (gotcha #3: would rename id/name attributes)
   clobber: [],
 
+  // Override defaultSchema.required which forces input to disabled checkbox
+  required: {},
+
   tagNames: [
     ...(defaultSchema.tagNames ?? []),
     "script",
     "shiny-tool-request",
     "shiny-tool-result",
     "shiny-markdown-stream",
+    // Form elements used by Shiny UI widgets (delivered via {=html} blocks)
+    "select",
+    "option",
+    "optgroup",
+    "label",
+    "button",
+    "form",
+    "textarea",
+    "fieldset",
+    "legend",
+    "output",
   ],
 
   attributes: {
     ...defaultSchema.attributes,
 
+    // Allow class, style, data-*, role, and aria-* on all elements.
+    // Shiny UI widgets use class extensively for binding (e.g.,
+    // "shiny-input-container", "form-control", "shiny-input-select").
+    // data-* attributes are used for Shiny binding metadata (e.g., data-update-on).
+    "*": [
+      ...(defaultSchema.attributes?.["*"] ?? []),
+      "className",
+      "style",
+      "data*",
+      "role",
+      "aria*",
+    ],
+
     // htmlwidget scripts: only allow type=application/json with data-for
     script: [["type", "application/json"], "data-for"],
+
+    // Form element attributes needed by Shiny inputs
+    input: [
+      "type",
+      "checked",
+      "disabled",
+      "min",
+      "max",
+      "step",
+      "placeholder",
+      "autocomplete",
+      "required",
+      "readonly",
+      "pattern",
+    ],
+    select: ["multiple", "disabled", "required"],
+    option: ["selected", "disabled"],
+    optgroup: ["disabled"],
+    button: ["type", "disabled"],
+    textarea: [
+      "placeholder",
+      "disabled",
+      "required",
+      "readonly",
+      "rows",
+      "cols",
+    ],
+    label: ["htmlFor"],
 
     // Custom elements: enumerate all attributes (gotcha #2: no wildcards)
     "shiny-tool-request": [
@@ -84,10 +141,7 @@ export const customSchema: Schema = {
       ...(defaultSchema.attributes?.code ?? []),
       ["className", /^language-/, /^hljs-/, "hljs"],
     ],
-    span: [
-      ...(defaultSchema.attributes?.span ?? []),
-      ["className", /^hljs-/],
-    ],
+    span: [...(defaultSchema.attributes?.span ?? []), ["className", /^hljs-/]],
     pre: [...(defaultSchema.attributes?.pre ?? []), "data*"],
   },
 }
