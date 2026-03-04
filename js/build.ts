@@ -127,12 +127,12 @@ async function bundleEntry({
 const entries: EntryConfig[] = [
   {
     name: "markdown-stream/markdown-stream",
-    jsEntry: "src/markdown-stream/markdown-stream.ts",
+    jsEntry: "src/markdown-stream/markdown-stream-entry.ts",
     sassEntry: "src/markdown-stream/markdown-stream.scss",
   },
   {
     name: "chat/chat",
-    jsEntry: "src/chat/chat.ts",
+    jsEntry: "src/chat/chat-entry.ts",
     sassEntry: "src/chat/chat.scss",
   },
 ]
