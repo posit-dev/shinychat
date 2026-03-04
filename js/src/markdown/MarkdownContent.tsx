@@ -1,4 +1,10 @@
-import { useMemo, useEffect, useRef, type ReactElement, type ComponentType } from "react"
+import {
+  useMemo,
+  useEffect,
+  useRef,
+  type ReactElement,
+  type ComponentType,
+} from "react"
 import type { Processor } from "unified"
 import type { ContentType } from "../transport/types"
 import { markdownToReact } from "./markdownToReact"
@@ -37,31 +43,26 @@ export function MarkdownContent({
 
   // Choose processor and components based on content type
   const isUser = contentType === "semi-markdown"
+  const isText = contentType === "text"
   const processor = isUser ? userProcessor : assistantProcessor
   const components = isUser ? userComponents : assistantComponents
 
-  // For "text" content type, just render as plain text
-  if (contentType === "text") {
-    return <div ref={containerRef}>{content}</div>
-  }
-
-  // For "html" content type, we still run through the pipeline
-  // (sanitization is important for HTML content)
-
-  // Convert markdown → React elements
+  // Convert markdown → React elements (skipped for plain text)
   const elements = useMemo(
     () =>
-      markdownToReact(content, {
-        processor: processor as unknown as Processor,
-        components,
-        streaming,
-      }),
-    [content, contentType, streaming],
+      isText
+        ? null
+        : markdownToReact(content, {
+            processor: processor as unknown as Processor,
+            components,
+            streaming,
+          }),
+    [content, streaming, isText, processor, components],
   )
 
   // Shiny bind/unbind after render
   useEffect(() => {
-    if (!containerRef.current) return
+    if (isText || !containerRef.current) return
 
     const el = containerRef.current
 
@@ -78,12 +79,12 @@ export function MarkdownContent({
     return () => {
       transport.unbindAll(el)
     }
-  }, [content, streaming])
+  }, [content, streaming, isText, transport])
 
   // Notify parent of content changes
   useEffect(() => {
     onContentChange?.()
-  }, [content])
+  }, [content, onContentChange])
 
   // Detect streaming → not-streaming transition
   useEffect(() => {
@@ -91,7 +92,11 @@ export function MarkdownContent({
       onStreamEnd?.()
     }
     prevStreamingRef.current = streaming
-  }, [streaming])
+  }, [streaming, onStreamEnd])
+
+  if (isText) {
+    return <div ref={containerRef}>{content}</div>
+  }
 
   return <div ref={containerRef}>{elements}</div>
 }

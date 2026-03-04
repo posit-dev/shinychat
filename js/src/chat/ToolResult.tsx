@@ -19,7 +19,10 @@ export interface ToolResultProps {
 /**
  * Formats a string as a Markdown code block with the specified language.
  */
-function markdownCodeBlock(content: string, language: string = "markdown"): string {
+function markdownCodeBlock(
+  content: string,
+  language: string = "markdown",
+): string {
   const backticks = "`".repeat(8)
   return `${backticks}${language}\n${content}\n${backticks}`
 }
@@ -45,7 +48,7 @@ export function ToolResult({
   // On mount, hide the corresponding tool request
   useEffect(() => {
     dispatch({ type: "HIDE_TOOL_REQUEST", requestId })
-  }, [requestId])
+  }, [requestId, dispatch])
 
   const isError = status === "error"
   const classStatus = isError ? "text-danger" : ""
@@ -121,9 +124,7 @@ function renderResult(
   let resultContent: React.ReactNode
 
   if (valueType === "html") {
-    resultContent = (
-      <div dangerouslySetInnerHTML={{ __html: displayValue }} />
-    )
+    resultContent = <div dangerouslySetInnerHTML={{ __html: displayValue }} />
   } else if (valueType === "text") {
     resultContent = <p>{displayValue}</p>
   } else {

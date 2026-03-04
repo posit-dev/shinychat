@@ -40,11 +40,10 @@ class MarkdownStreamElement extends HTMLElement {
     this.reactRoot = createRoot(this)
 
     const initialContent = this.getAttribute("content") ?? ""
-    const initialContentType = (this.getAttribute("content-type") as ContentType) ?? "markdown"
+    const initialContentType =
+      (this.getAttribute("content-type") as ContentType) ?? "markdown"
     const initialStreaming = this.hasAttribute("streaming")
     const autoScroll = this.hasAttribute("auto-scroll")
-
-    const self = this
 
     this.reactRoot.render(
       createElement(
@@ -56,7 +55,7 @@ class MarkdownStreamElement extends HTMLElement {
           initialStreaming,
           autoScroll,
           onApiReady: (api: MarkdownStreamApi) => {
-            self.api = api
+            this.api = api
           },
         }),
       ),
@@ -93,7 +92,9 @@ if (!customElements.get("shiny-markdown-stream")) {
 window.Shiny?.addCustomMessageHandler(
   "shinyMarkdownStreamMessage",
   async (message: ContentMessage | IsStreamingMessage) => {
-    const el = document.getElementById(message.id) as MarkdownStreamElement | null
+    const el = document.getElementById(
+      message.id,
+    ) as MarkdownStreamElement | null
 
     if (!el) {
       transport.showClientMessage({

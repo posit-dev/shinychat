@@ -30,7 +30,8 @@ export function MarkdownStream({
   onApiReady,
 }: MarkdownStreamProps) {
   const [content, setContent] = useState(initialContent)
-  const [contentType, setContentType] = useState<ContentType>(initialContentType)
+  const [contentType, setContentType] =
+    useState<ContentType>(initialContentType)
   const [streaming, setStreaming] = useState(initialStreaming)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -44,9 +45,16 @@ export function MarkdownStream({
     setContent(newContent)
   }, [])
 
-  // Notify the shell of the imperative API on mount
+  // Notify the shell of the imperative API on mount (intentionally empty deps —
+  // the API methods are stable refs and onApiReady only needs to fire once)
   useEffect(() => {
-    onApiReady?.({ appendContent, replaceContent, setStreaming, setContentType })
+    onApiReady?.({
+      appendContent,
+      replaceContent,
+      setStreaming,
+      setContentType,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (
