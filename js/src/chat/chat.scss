@@ -148,6 +148,38 @@ shiny-chat-message {
   }
 }
 
+shiny-chat-input .chat-image-preview {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  margin-bottom: 4px;
+  background: #f3f4f6;
+  border-radius: 8px;
+  width: fit-content;
+
+  img {
+    max-height: 80px;
+    max-width: 160px;
+    border-radius: 4px;
+    object-fit: contain;
+  }
+
+  .chat-image-preview-dismiss {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.1rem;
+    line-height: 1;
+    color: #6b7280;
+    padding: 0 2px;
+
+    &:hover {
+      color: #111827;
+    }
+  }
+}
+
 shiny-chat-input {
   --_input-padding-top: 0;
   --_input-padding-bottom: var(--_chat-container-padding, 0.25rem);

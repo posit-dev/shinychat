@@ -176,6 +176,7 @@ class ChatInput extends LightElement {
 
   private _disabled = false
   private _isComposing = false
+  private _pendingImage: { type: string; data: string } | null = null
   inputVisibleObserver?: IntersectionObserver
 
   connectedCallback(): void {
@@ -190,6 +191,7 @@ class ChatInput extends LightElement {
     this.inputVisibleObserver.observe(this)
     this.addEventListener("compositionstart", this.#onCompositionStart)
     this.addEventListener("compositionend", this.#onCompositionEnd)
+    this.addEventListener("paste", this.#onPaste as EventListener)
   }
 
   disconnectedCallback(): void {
@@ -198,6 +200,7 @@ class ChatInput extends LightElement {
     this.inputVisibleObserver = undefined
     this.removeEventListener("compositionstart", this.#onCompositionStart)
     this.removeEventListener("compositionend", this.#onCompositionEnd)
+    this.removeEventListener("paste", this.#onPaste as EventListener)
   }
 
   attributeChangedCallback(
@@ -220,7 +223,7 @@ class ChatInput extends LightElement {
   }
 
   private get valueIsEmpty(): boolean {
-    return this.value.trim().length === 0
+    return this.value.trim().length === 0 && this._pendingImage === null
   }
 
   private get button(): HTMLButtonElement {
@@ -232,6 +235,21 @@ class ChatInput extends LightElement {
       '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-arrow-up-circle-fill" viewBox="0 0 16 16"><path d="M16 8A8 8 0 1 0 0 8a8 8 0 0 0 16 0m-7.5 3.5a.5.5 0 0 1-1 0V5.707L5.354 7.854a.5.5 0 1 1-.708-.708l3-3a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 5.707z"/></svg>'
 
     return html`
+      <div class="chat-image-preview" style="display: none;">
+        <img alt="Pasted image preview" />
+        <button
+          type="button"
+          class="chat-image-preview-dismiss"
+          title="Remove image"
+          aria-label="Remove image"
+          @click=${() => {
+            this.#removeImagePreview()
+            this.#onInput()
+          }}
+        >
+          &times;
+        </button>
+      </div>
       <textarea
         id="${this.id}"
         class="form-control"
@@ -264,7 +282,7 @@ class ChatInput extends LightElement {
 
   #onInput(): void {
     this.#updateHeight()
-    this.button.disabled = this.disabled ? true : this.value.trim().length === 0
+    this.button.disabled = this.disabled ? true : this.valueIsEmpty
   }
 
   #onCompositionStart(): void {
@@ -273,6 +291,87 @@ class ChatInput extends LightElement {
 
   #onCompositionEnd(): void {
     this._isComposing = false
+  }
+
+  #onPaste = (e: ClipboardEvent): void => {
+    const clipData = e.clipboardData
+    if (!clipData) return
+
+    // Try items first (Chrome, Firefox)
+    const items = clipData.items
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]!
+      if (item.type.startsWith("image/")) {
+        e.preventDefault()
+        const file = item.getAsFile()
+        if (file) this.#processImageFile(file)
+        return
+      }
+    }
+
+    // Fallback: check files (Safari)
+    for (let i = 0; i < clipData.files.length; i++) {
+      const file = clipData.files[i]!
+      if (file.type.startsWith("image/")) {
+        e.preventDefault()
+        this.#processImageFile(file)
+        return
+      }
+    }
+  }
+
+  #processImageFile(file: File): void {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const img = new Image()
+      img.onload = () => {
+        const MAX = 1024
+        let { width, height } = img
+        if (width > MAX || height > MAX) {
+          if (width > height) {
+            height = Math.round(height * (MAX / width))
+            width = MAX
+          } else {
+            width = Math.round(width * (MAX / height))
+            height = MAX
+          }
+        }
+        const canvas = document.createElement("canvas")
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext("2d")!
+        ctx.drawImage(img, 0, 0, width, height)
+        const mimeType = file.type || "image/png"
+        const dataUrl = canvas.toDataURL(mimeType)
+        const base64 = dataUrl.split(",")[1] ?? ""
+        this._pendingImage = { type: mimeType, data: base64 }
+        this.#showImagePreview(dataUrl)
+        this.#onInput()
+      }
+      img.src = reader.result as string
+    }
+    reader.readAsDataURL(file)
+  }
+
+  #showImagePreview(dataUrl: string): void {
+    const container = this.querySelector(
+      ".chat-image-preview",
+    ) as HTMLElement | null
+    if (!container) return
+    const img = container.querySelector("img") as HTMLImageElement | null
+    if (img) img.src = dataUrl
+    container.style.display = "flex"
+  }
+
+  #removeImagePreview(): void {
+    this._pendingImage = null
+    const container = this.querySelector(
+      ".chat-image-preview",
+    ) as HTMLElement | null
+    if (!container) return
+    const img = container.querySelector("img") as HTMLImageElement | null
+    if (img) img.src = ""
+    container.style.display = "none"
   }
 
   // Determine whether the button should be enabled/disabled on first render
@@ -284,16 +383,31 @@ class ChatInput extends LightElement {
     if (this.valueIsEmpty) return
     if (this.disabled) return
 
-    window.Shiny.setInputValue!(this.id, this.value, { priority: "event" })
+    const text = this.value
+    const image = this._pendingImage
+
+    // Send structured value if image is attached, plain string otherwise
+    if (image) {
+      window.Shiny.setInputValue!(
+        this.id,
+        { text, images: [{ type: image.type, data: image.data }] },
+        { priority: "event" },
+      )
+    } else {
+      window.Shiny.setInputValue!(this.id, text, { priority: "event" })
+    }
+
+    const displayContent = text || (image ? "(image)" : "")
 
     // Emit event so parent element knows to insert the message
     const sentEvent = new CustomEvent("shiny-chat-input-sent", {
-      detail: { content: this.value, role: "user" },
+      detail: { content: displayContent, role: "user" },
       bubbles: true,
       composed: true,
     })
     this.dispatchEvent(sentEvent)
 
+    this.#removeImagePreview()
     this.setInputValue("")
     this.disabled = true
 
