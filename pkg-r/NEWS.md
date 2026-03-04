@@ -1,5 +1,7 @@
 # shinychat (development version)
 
+* Added support for displaying thinking/reasoning content from models that support extended thinking. Thinking content appears in a collapsible block during streaming and on reload (@simonpcouch, #167).
+
 * Fixed an issue where user chat messages would display the default assistant icon. (#162)
 
 # shinychat 0.3.0

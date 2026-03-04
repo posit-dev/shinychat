@@ -37,6 +37,17 @@ test_that("opt_shinychat_tool_display handles options and environment variables"
   })
 })
 
+test_that("ContentThinking renders as collapsible HTML", {
+  thinking <- ellmer::ContentThinking("Let me think about this...")
+  result <- contents_shinychat(thinking)
+
+  expect_s3_class(result, "shiny.tag")
+  html <- as.character(result)
+  expect_match(html, "shinychat-thinking")
+  expect_match(html, "shinychat-thinking-content")
+  expect_match(html, "Let me think about this")
+})
+
 test_that("basic Content handling works", {
   ContentHTML <- S7::new_class(
     "ContentHTML",

@@ -1,0 +1,48 @@
+.shinychat-thinking {
+  margin-bottom: 0.75rem;
+  border-left: 2px solid var(--bs-border-color, #dee2e6);
+  padding-left: 0.75rem;
+  font-size: 0.9em;
+  font-style: italic;
+  color: var(--bs-secondary-color, #6c757d);
+  cursor: pointer;
+}
+
+.shinychat-thinking:hover {
+  color: var(--bs-body-color, #212529);
+}
+
+.shinychat-thinking-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  color: inherit;
+  font-size: inherit;
+  font-style: inherit;
+  text-align: left;
+  width: 100%;
+}
+
+.shinychat-thinking-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.shinychat-thinking-content {
+  display: none;
+  margin-top: 0.5rem;
+  white-space: pre-wrap;
+}
+
+.shinychat-thinking[data-open="true"] .shinychat-thinking-preview {
+  display: none;
+}
+
+.shinychat-thinking[data-open="true"] .shinychat-thinking-content {
+  display: block;
+}
