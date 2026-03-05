@@ -16,7 +16,8 @@ get_weather_forecast <- tool(
       extra = list(
         display = list(
           html = forecast_table,
-          title = paste("Weather Forecast for", location_name)
+          title = paste("Weather Forecast for", location_name),
+          full_screen = TRUE
         )
       )
     )

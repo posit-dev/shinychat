@@ -22,7 +22,6 @@ window.shinychat.hiddenToolRequests =
   window.shinychat.hiddenToolRequests || new Set<string>()
 
 window.addEventListener("shiny-tool-request-hide", (event: CustomEvent) => {
-  // Hide the tool request element with the given request ID
   const { request_id: requestId } = event.detail
   if (!requestId) return
   window.shinychat.hiddenToolRequests.add(requestId)
@@ -111,6 +110,8 @@ class ShinyToolCard extends LitElement {
 
   #toggleCollapse(e: Event) {
     e.preventDefault()
+    const card = (e.target as HTMLElement).closest(".shiny-tool-card")
+    if (card?.hasAttribute("fullscreen")) return
     this.expanded = !this.expanded
     this.requestUpdate()
   }
@@ -246,6 +247,18 @@ export class ShinyToolRequest extends ShinyToolCard {
  */
 export class ShinyToolResult extends ShinyToolCard {
   /**
+   * Controls whether the card has a fullscreen toggle button.
+   * @property {boolean} fullScreen
+   * @attr full-screen
+   * @default false
+   */
+  @property({ type: Boolean, reflect: true, attribute: "full-screen" })
+  fullScreen = false
+
+  #overlay: HTMLDivElement | null = null
+  #triggerElement: HTMLElement | null = null
+
+  /**
    * The original tool call that generated this result. Used to display the tool
    * invocation.
    * @property {string | undefined} requestCall
@@ -297,15 +310,137 @@ export class ShinyToolResult extends ShinyToolCard {
     this.titleTemplate = "{title}"
   }
 
+  #enterFullscreen(e: Event) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (this.#overlay) return
+
+    const card = (e.target as HTMLElement).closest(
+      ".shiny-tool-card",
+    ) as HTMLElement | null
+    if (!card) return
+
+    this.#triggerElement = (e.target as HTMLElement).closest(
+      ".tool-fullscreen-toggle",
+    ) as HTMLElement | null
+
+    this.expanded = true
+    this.requestUpdate()
+
+    card.setAttribute("fullscreen", "")
+    window.dispatchEvent(new Event("resize"))
+
+    this.#overlay = this.#createOverlay()
+    document.body.append(this.#overlay)
+
+    document.addEventListener("keydown", this.#trapFocusExit, true)
+    card.setAttribute("tabindex", "-1")
+    card.focus()
+  }
+
+  #exitFullscreen() {
+    const card = this.querySelector(
+      ".shiny-tool-card[fullscreen]",
+    ) as HTMLElement | null
+    if (!card) return
+
+    card.removeAttribute("fullscreen")
+    card.removeAttribute("tabindex")
+    window.dispatchEvent(new Event("resize"))
+
+    this.#overlay?.remove()
+    this.#overlay = null
+
+    document.removeEventListener("keydown", this.#trapFocusExit, true)
+
+    this.#triggerElement?.focus()
+    this.#triggerElement = null
+  }
+
+  #createOverlay(): HTMLDivElement {
+    const overlay = document.createElement("div")
+    overlay.className = "shiny-tool-fullscreen-backdrop"
+    overlay.onclick = () => this.#exitFullscreen()
+
+    const closeBtn = document.createElement("button")
+    closeBtn.type = "button"
+    closeBtn.className = "shiny-tool-fullscreen-exit"
+    closeBtn.setAttribute("aria-expanded", "true")
+    closeBtn.setAttribute("aria-label", "Close card")
+    closeBtn.onclick = (ev) => {
+      ev.stopPropagation()
+      this.#exitFullscreen()
+    }
+    closeBtn.innerHTML = `Close ${ICONS.xLg}`
+
+    overlay.append(closeBtn)
+    return overlay
+  }
+
+  #trapFocusExit = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      const target = e.target as HTMLElement
+      if (
+        target.matches("select[open]") ||
+        target.matches("input[aria-expanded='true']")
+      ) {
+        return
+      }
+      this.#exitFullscreen()
+      e.preventDefault()
+      return
+    }
+
+    if (e.key !== "Tab") return
+
+    const card = this.querySelector(
+      ".shiny-tool-card[fullscreen]",
+    ) as HTMLElement | null
+    if (!card || !this.#overlay) return
+
+    const cardFocusable = [
+      ...card.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    ].filter((el) => el.offsetParent !== null)
+    const closeBtn = this.#overlay.querySelector<HTMLElement>(
+      ".shiny-tool-fullscreen-exit",
+    )
+    if (!closeBtn) return
+    const firstInCard = cardFocusable[0]
+    const lastInCard = cardFocusable[cardFocusable.length - 1]
+    const active = document.activeElement
+
+    if (!e.shiftKey && (active === lastInCard || active === card)) {
+      e.preventDefault()
+      closeBtn.focus()
+    } else if (!e.shiftKey && active === closeBtn) {
+      e.preventDefault()
+      ;(firstInCard ?? card).focus()
+    } else if (e.shiftKey && (active === firstInCard || active === card)) {
+      e.preventDefault()
+      closeBtn.focus()
+    } else if (e.shiftKey && active === closeBtn) {
+      e.preventDefault()
+      ;(lastInCard ?? card).focus()
+    } else if (!card.contains(active as Node) && active !== closeBtn) {
+      e.preventDefault()
+      card.focus()
+    }
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback()
+    this.#exitFullscreen()
+  }
+
   connectedCallback() {
     super.connectedCallback()
-    // Set status class and icon based on status
     if (this.status === "error") {
       this.classStatus = "text-danger"
       this.icon = ICONS.exclamationCircleFill
       this.titleTemplate = "{title} failed"
     }
-    // Emit event to hide the corresponding tool request
     this.dispatchEvent(
       new CustomEvent("shiny-tool-request-hide", {
         detail: { request_id: this.requestId },
@@ -380,8 +515,28 @@ export class ShinyToolResult extends ShinyToolCard {
     </div>`
   }
 
+  #renderFullscreenToggle() {
+    if (!this.fullScreen) return ""
+    const contentId = `tool-content-${this.requestId}`
+    return html`
+      <button
+        class="tool-fullscreen-toggle badge rounded-pill"
+        @click="${this.#enterFullscreen}"
+        aria-label="Expand card"
+        aria-expanded="false"
+        aria-controls="${contentId}"
+        type="button"
+      >
+        ${unsafeHTML(ICONS.fullscreenEnter)}
+      </button>
+    `
+  }
+
   render() {
-    const bodyContent = html` ${this.#renderRequest()} ${this.#renderResult()} `
+    const bodyContent = html`
+      ${this.#renderRequest()} ${this.#renderResult()}
+      ${this.#renderFullscreenToggle()}
+    `
 
     return this.renderCard(bodyContent)
   }
@@ -399,6 +554,8 @@ const ICONS = {
   <path class="horizontal" d="M5 11C4.44772 11 4 10.5523 4 10C4 9.44772 4.44772 9 5 9H15C15.5523 9 16 9.44772 16 10C16 10.5523 15.5523 11 15 11H5Z" fill="currentColor"/>
   <path class="vertical" d="M9 5C9 4.44772 9.44772 4 10 4C10.5523 4 11 4.44772 11 5V15C11 15.5523 10.5523 16 10 16C9.44772 16 9 15.5523 9 15V5Z" fill="currentColor"/>
 </svg>`,
+  fullscreenEnter: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style="height:1em;width:1em;fill:currentColor;" aria-hidden="true" role="img"><path d="M20 5C20 4.4 19.6 4 19 4H13C12.4 4 12 3.6 12 3C12 2.4 12.4 2 13 2H21C21.6 2 22 2.4 22 3V11C22 11.6 21.6 12 21 12C20.4 12 20 11.6 20 11V5ZM4 19C4 19.6 4.4 20 5 20H11C11.6 20 12 20.4 12 21C12 21.6 11.6 22 11 22H3C2.4 22 2 21.6 2 21V13C2 12.4 2.4 12 3 12C3.6 12 4 12.4 4 13V19Z"/></svg>`,
+  xLg: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-x-lg" viewBox="0 0 16 16"><path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8z"/></svg>`,
 }
 
 /**

@@ -23,7 +23,8 @@ tool_show_map <- tool(
         display = list(
           html = map,
           show_request = FALSE,
-          open = TRUE
+          open = TRUE,
+          full_screen = TRUE
         ),
         title = sprintf("Map of %s", title)
       )
