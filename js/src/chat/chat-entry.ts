@@ -78,6 +78,7 @@ class ChatContainerElement extends HTMLElement {
     this.reactRoot.render(
       createElement(ChatApp, {
         transport,
+        shinyLifecycle: transport,
         elementId,
         iconAssistant,
         inputId,

@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react"
 import { MarkdownContent } from "../markdown/MarkdownContent"
-import { useAutoScroll } from "../markdown/useAutoScroll"
+import { useAutoScroll, findScrollableParent } from "../markdown/useAutoScroll"
 import type { ContentType } from "../transport/types"
 
 export interface MarkdownStreamProps {
@@ -33,9 +33,39 @@ export function MarkdownStream({
   const [contentType, setContentType] =
     useState<ContentType>(initialContentType)
   const [streaming, setStreaming] = useState(initialStreaming)
-  const containerRef = useRef<HTMLDivElement>(null)
+  const innerRef = useRef<HTMLDivElement>(null)
 
-  useAutoScroll(containerRef, { autoScroll, streaming, content })
+  // Auto-scroll: the hook gives us a callback ref for the scrollable container.
+  // In standalone mode we don't own the scrollable ancestor, so we do a one-time
+  // DOM walk on mount and wire the callback ref to the found element.
+  const { containerRef, scrollToBottom } = useAutoScroll({
+    streaming: autoScroll && streaming,
+    contentDependency: content,
+  })
+
+  useEffect(() => {
+    if (!autoScroll || !innerRef.current) return
+
+    const scrollable = findScrollableParent(innerRef.current)
+    if (scrollable) {
+      // Attach the hook's callback ref to the discovered scrollable element
+      containerRef(scrollable)
+    }
+
+    return () => {
+      // Detach on unmount
+      containerRef(null)
+    }
+    // Only run once on mount — the scrollable parent doesn't change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Re-engage auto-scroll when streaming starts
+  useEffect(() => {
+    if (streaming && autoScroll) {
+      scrollToBottom()
+    }
+  }, [streaming, autoScroll, scrollToBottom])
 
   const appendContent = useCallback((chunk: string) => {
     setContent((prev) => prev + chunk)
@@ -58,7 +88,7 @@ export function MarkdownStream({
   }, [])
 
   return (
-    <div ref={containerRef}>
+    <div ref={innerRef}>
       <MarkdownContent
         content={content}
         contentType={contentType}

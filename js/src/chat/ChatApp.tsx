@@ -1,15 +1,17 @@
-import { useReducer, useEffect } from "react"
+import { useReducer, useEffect, useRef } from "react"
 import {
   TransportContext,
+  ShinyLifecycleContext,
   ChatStateContext,
   ChatDispatchContext,
 } from "./context"
 import { chatReducer, initialState, type ChatMessageData } from "./state"
-import { ChatContainer } from "./ChatContainer"
-import type { ChatTransport } from "../transport/types"
+import { ChatContainer, type ChatContainerHandle } from "./ChatContainer"
+import type { ChatTransport, ShinyLifecycle } from "../transport/types"
 
 interface ChatAppProps {
   transport: ChatTransport
+  shinyLifecycle: ShinyLifecycle
   elementId: string
   iconAssistant?: string
   inputId: string
@@ -19,6 +21,7 @@ interface ChatAppProps {
 
 export function ChatApp({
   transport,
+  shinyLifecycle,
   elementId,
   iconAssistant,
   inputId,
@@ -31,15 +34,26 @@ export function ChatApp({
     messages: initialMessages ?? [],
   })
 
-  // Wire transport messages → dispatch
+  const containerRef = useRef<ChatContainerHandle>(null)
+
+  // Single transport subscription: routes actions to the reducer and handles
+  // imperative input commands (submit/focus) via the container ref.
   useEffect(() => {
     const unsubscribe = transport.onMessage(elementId, (action) => {
-      if (action.type === "update_input" && action.submit) {
-        // For submit: only dispatch placeholder to reducer (value is handled
-        // imperatively by ChatContainer's transport listener to support
-        // save/restore of the old textarea value)
+      if (action.type === "update_input" && (action.submit || action.focus)) {
+        // Imperative actions need direct ChatInput access (save/restore value,
+        // focus management). Dispatch only the placeholder update to the reducer.
         if (action.placeholder) {
           dispatch({ type: "update_input", placeholder: action.placeholder })
+        }
+
+        if (action.value !== undefined) {
+          containerRef.current?.setInputValue(action.value, {
+            submit: action.submit,
+            focus: action.focus,
+          })
+        } else if (action.focus) {
+          containerRef.current?.focus()
         }
         return
       }
@@ -50,15 +64,17 @@ export function ChatApp({
 
   return (
     <TransportContext.Provider value={transport}>
-      <ChatStateContext.Provider value={state}>
-        <ChatDispatchContext.Provider value={dispatch}>
-          <ChatContainer
-            iconAssistant={iconAssistant}
-            inputId={inputId}
-            elementId={elementId}
-          />
-        </ChatDispatchContext.Provider>
-      </ChatStateContext.Provider>
+      <ShinyLifecycleContext.Provider value={shinyLifecycle}>
+        <ChatStateContext.Provider value={state}>
+          <ChatDispatchContext.Provider value={dispatch}>
+            <ChatContainer
+              ref={containerRef}
+              iconAssistant={iconAssistant}
+              inputId={inputId}
+            />
+          </ChatDispatchContext.Provider>
+        </ChatStateContext.Provider>
+      </ShinyLifecycleContext.Provider>
     </TransportContext.Provider>
   )
 }

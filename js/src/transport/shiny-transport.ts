@@ -1,5 +1,6 @@
 import type {
   ChatTransport,
+  ShinyLifecycle,
   ChatAction,
   MessagePayload,
   ShinyClientMessage,
@@ -137,7 +138,7 @@ export function getShinyTransport(): ShinyTransport {
   return window.__shinyChatTransport
 }
 
-export class ShinyTransport implements ChatTransport {
+export class ShinyTransport implements ChatTransport, ShinyLifecycle {
   private listeners = new Map<string, Set<(action: ChatAction) => void>>()
   private pendingMessages = new Map<string, ChatAction[]>()
 

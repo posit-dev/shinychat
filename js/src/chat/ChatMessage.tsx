@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from "react"
+import { memo, useRef, useEffect, useCallback } from "react"
 import type { ChatMessageData } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { robot, dots_fade } from "../utils/icons"
@@ -8,7 +8,10 @@ interface ChatMessageProps {
   iconAssistant?: string
 }
 
-export function ChatMessage({ message, iconAssistant }: ChatMessageProps) {
+export const ChatMessage = memo(function ChatMessage({
+  message,
+  iconAssistant,
+}: ChatMessageProps) {
   const contentRef = useRef<HTMLDivElement>(null)
 
   const isUser = message.role === "user"
@@ -44,11 +47,11 @@ export function ChatMessage({ message, iconAssistant }: ChatMessageProps) {
     })
   }, [])
 
-  // Run after every render so suggestions added mid-stream are picked up.
-  // The hasAttribute("tabindex") guard prevents redundant work.
+  // Re-run when content changes so suggestions added mid-stream are picked up.
+  // The hasAttribute("tabindex") guard prevents redundant DOM mutations.
   useEffect(() => {
     makeSuggestionsAccessible()
-  })
+  }, [message.content, makeSuggestionsAccessible])
 
   const roleClass = isUser ? "shiny-chat-user-message" : "shiny-chat-message"
   const contentTypeClass =
@@ -72,4 +75,4 @@ export function ChatMessage({ message, iconAssistant }: ChatMessageProps) {
       </div>
     </div>
   )
-}
+})

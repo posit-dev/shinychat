@@ -1,7 +1,7 @@
 import { createRoot, type Root } from "react-dom/client"
 import { createElement } from "react"
 import { MarkdownStream, type MarkdownStreamApi } from "./MarkdownStream"
-import { TransportContext } from "../chat/context"
+import { ShinyLifecycleContext } from "../chat/context"
 import { getShinyTransport } from "../transport/shiny-transport"
 import type { ContentType } from "../transport/types"
 
@@ -47,7 +47,7 @@ class MarkdownStreamElement extends HTMLElement {
 
     this.reactRoot.render(
       createElement(
-        TransportContext.Provider,
+        ShinyLifecycleContext.Provider,
         { value: transport },
         createElement(MarkdownStream, {
           initialContent,

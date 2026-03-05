@@ -11,7 +11,7 @@ import { markdownToReact } from "./markdownToReact"
 import { assistantProcessor, userProcessor } from "./processors"
 import { CopyableCodeBlock } from "./components/CopyableCodeBlock"
 import { BootstrapTable } from "./components/BootstrapTable"
-import { useTransport } from "../chat/context"
+import { useShinyLifecycle } from "../chat/context"
 
 const assistantComponents: Record<string, ComponentType<unknown>> = {
   pre: CopyableCodeBlock as ComponentType<unknown>,
@@ -38,7 +38,7 @@ export function MarkdownContent({
   onStreamEnd,
 }: MarkdownContentProps): ReactElement | null {
   const containerRef = useRef<HTMLDivElement>(null)
-  const transport = useTransport()
+  const shiny = useShinyLifecycle()
   const prevStreamingRef = useRef(streaming)
 
   // Choose processor and components based on content type
@@ -69,17 +69,17 @@ export function MarkdownContent({
     // Throttle during streaming: only bind every 200ms
     if (streaming) {
       const timeout = setTimeout(() => {
-        transport.bindAll(el)
+        shiny.bindAll(el)
       }, 200)
       return () => clearTimeout(timeout)
     }
 
-    transport.bindAll(el)
+    shiny.bindAll(el)
 
     return () => {
-      transport.unbindAll(el)
+      shiny.unbindAll(el)
     }
-  }, [content, streaming, isText, transport])
+  }, [content, streaming, isText, shiny])
 
   // Notify parent of content changes
   useEffect(() => {

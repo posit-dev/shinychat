@@ -10,6 +10,8 @@ export interface ChatMessageData {
   content: string
   contentType: ContentType
   streaming: boolean
+  /** True for the empty placeholder message shown while waiting for the assistant to respond. */
+  isPlaceholder?: boolean
   icon?: string
 }
 
@@ -54,7 +56,7 @@ function messagePayloadToData(msg: MessagePayload): ChatMessageData {
 
 function removeLoadingMessage(messages: ChatMessageData[]): ChatMessageData[] {
   const last = messages[messages.length - 1]
-  if (last && last.role === "assistant" && last.content.trim() === "") {
+  if (last?.isPlaceholder) {
     return messages.slice(0, -1)
   }
   return messages
@@ -76,6 +78,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         content: "",
         contentType: "markdown",
         streaming: false,
+        isPlaceholder: true,
       }
       return {
         ...state,
@@ -108,7 +111,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     case "chunk": {
       const messages = [...state.messages]
       const last = messages[messages.length - 1]
-      if (!last) return state
+      if (!last || last.role !== "assistant" || !last.streaming) return state
 
       const content =
         action.operation === "append"

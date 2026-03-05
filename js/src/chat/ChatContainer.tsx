@@ -1,8 +1,15 @@
-import { useRef, useEffect, useCallback } from "react"
+import {
+  useRef,
+  useEffect,
+  useCallback,
+  forwardRef,
+  useImperativeHandle,
+} from "react"
 import { ChatMessages } from "./ChatMessages"
 import { ChatInput, type ChatInputHandle } from "./ChatInput"
 import { showExternalLinkConfirmation } from "./ExternalLinkDialog"
-import { useChatState, useTransport } from "./context"
+import { useChatState } from "./context"
+import { useAutoScroll } from "../markdown/useAutoScroll"
 
 // Declare custom elements used in JSX so TypeScript doesn't complain
 declare module "react" {
@@ -24,20 +31,37 @@ declare module "react" {
 export interface ChatContainerProps {
   iconAssistant?: string
   inputId: string
-  elementId: string
 }
 
-export function ChatContainer({
-  iconAssistant,
-  inputId,
-  elementId,
-}: ChatContainerProps) {
-  const { inputDisabled, inputValue, inputPlaceholder } = useChatState()
-  const transport = useTransport()
+/** Imperative handle exposed by ChatContainer for programmatic input control. */
+export type ChatContainerHandle = ChatInputHandle
+
+export const ChatContainer = forwardRef<
+  ChatContainerHandle,
+  ChatContainerProps
+>(function ChatContainer({ iconAssistant, inputId }, ref) {
+  const { messages, inputDisabled, inputValue, inputPlaceholder } =
+    useChatState()
 
   const chatInputRef = useRef<ChatInputHandle>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
   const inputAreaRef = useRef<HTMLDivElement>(null)
+
+  const isStreaming = messages.some((m) => m.streaming)
+  const { containerRef: messagesRef, scrollToBottom } = useAutoScroll({
+    streaming: isStreaming,
+    contentDependency: messages,
+  })
+
+  // Forward ChatInput's imperative handle so ChatApp can call setInputValue/focus
+  useImperativeHandle(ref, () => ({
+    setInputValue(...args) {
+      chatInputRef.current?.setInputValue(...args)
+    },
+    focus() {
+      chatInputRef.current?.focus()
+    },
+  }))
 
   // IntersectionObserver: add/remove shadow class on textarea when sentinel scrolls off-screen
   useEffect(() => {
@@ -61,25 +85,6 @@ export function ChatContainer({
     observer.observe(sentinel)
     return () => observer.disconnect()
   }, [])
-
-  // Handle imperative update_input commands (submit/focus) from the server.
-  // These require direct access to the ChatInput handle and can't go through the reducer.
-  useEffect(() => {
-    const unsubscribe = transport.onMessage(elementId, (action) => {
-      if (action.type !== "update_input") return
-      if (!action.submit && !action.focus) return
-
-      if (action.value !== undefined) {
-        chatInputRef.current?.setInputValue(action.value, {
-          submit: action.submit,
-          focus: action.focus,
-        })
-      } else if (action.focus) {
-        chatInputRef.current?.focus()
-      }
-    })
-    return unsubscribe
-  }, [transport, elementId])
 
   // External link click handler (intercepts [data-external-link] elements)
   const onContainerClick = useCallback((e: React.MouseEvent<HTMLElement>) => {
@@ -144,28 +149,21 @@ export function ChatContainer({
     })
   }
 
-  const onSuggestionClick = useCallback(
-    (e: React.MouseEvent<HTMLElement>) => {
-      handleSuggestionEvent(e)
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  )
+  function onSuggestionClick(e: React.MouseEvent<HTMLElement>): void {
+    handleSuggestionEvent(e)
+  }
 
-  const onSuggestionKeydown = useCallback(
-    (e: React.KeyboardEvent<HTMLElement>) => {
-      const isEnterOrSpace = e.key === "Enter" || e.key === " "
-      if (!isEnterOrSpace) return
-      handleSuggestionEvent(e)
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  )
+  function onSuggestionKeydown(e: React.KeyboardEvent<HTMLElement>): void {
+    const isEnterOrSpace = e.key === "Enter" || e.key === " "
+    if (!isEnterOrSpace) return
+    handleSuggestionEvent(e)
+  }
 
   return (
     // Messages area (scrollable, grid row 1)
     <>
       <shiny-chat-messages
+        ref={messagesRef}
         onClick={onSuggestionClick}
         onKeyDown={onSuggestionKeydown}
       >
@@ -180,6 +178,7 @@ export function ChatContainer({
           disabled={inputDisabled}
           placeholder={inputPlaceholder}
           value={inputValue}
+          onSend={scrollToBottom}
         />
       </shiny-chat-input>
 
@@ -187,4 +186,4 @@ export function ChatContainer({
       <div ref={sentinelRef} style={{ width: "100%", height: 0 }} />
     </>
   )
-}
+})

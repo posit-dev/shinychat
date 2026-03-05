@@ -1,20 +1,36 @@
 import { createContext, useContext, type Dispatch } from "react"
-import type { ChatTransport } from "../transport/types"
+import type { ChatTransport, ShinyLifecycle } from "../transport/types"
 import type { ChatState, AnyAction } from "./state"
 import { initialState } from "./state"
 
-export const TransportContext = createContext<ChatTransport>(
-  null as unknown as ChatTransport,
-)
+export const TransportContext = createContext<ChatTransport | null>(null)
+
+export const ShinyLifecycleContext = createContext<ShinyLifecycle | null>(null)
 
 export const ChatStateContext = createContext<ChatState>(initialState)
 
-export const ChatDispatchContext = createContext<Dispatch<AnyAction>>(
-  null as unknown as Dispatch<AnyAction>,
+export const ChatDispatchContext = createContext<Dispatch<AnyAction> | null>(
+  null,
 )
 
 export function useTransport(): ChatTransport {
-  return useContext(TransportContext)
+  const ctx = useContext(TransportContext)
+  if (!ctx) {
+    throw new Error(
+      "useTransport must be used within a TransportContext.Provider",
+    )
+  }
+  return ctx
+}
+
+export function useShinyLifecycle(): ShinyLifecycle {
+  const ctx = useContext(ShinyLifecycleContext)
+  if (!ctx) {
+    throw new Error(
+      "useShinyLifecycle must be used within a ShinyLifecycleContext.Provider",
+    )
+  }
+  return ctx
 }
 
 export function useChatState(): ChatState {
@@ -22,5 +38,11 @@ export function useChatState(): ChatState {
 }
 
 export function useChatDispatch(): Dispatch<AnyAction> {
-  return useContext(ChatDispatchContext)
+  const ctx = useContext(ChatDispatchContext)
+  if (!ctx) {
+    throw new Error(
+      "useChatDispatch must be used within a ChatDispatchContext.Provider",
+    )
+  }
+  return ctx
 }

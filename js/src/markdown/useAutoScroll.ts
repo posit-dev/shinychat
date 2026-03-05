@@ -1,89 +1,148 @@
-import { useEffect, useRef, useCallback, type RefObject } from "react"
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type RefCallback,
+} from "react"
 
-interface UseAutoScrollOptions {
-  autoScroll: boolean
+export interface UseAutoScrollOptions {
+  /** Is content actively streaming? */
   streaming: boolean
-  content: string
-  containerTag?: string // stop searching for scrollable parent at this tag
+  /** Value that changes when content updates (e.g., messages array or content string).
+   *  Used as a useEffect dependency to trigger scroll checks during streaming. */
+  contentDependency: unknown
+  /** Pixel tolerance for "at bottom" detection. Default: 10 */
+  bottomTolerance?: number
+}
+
+export interface UseAutoScrollReturn {
+  /** Callback ref — attach to the scrollable container element. */
+  containerRef: RefCallback<HTMLElement>
+  /** Whether auto-scroll is engaged. False when the user has scrolled away. */
+  stickToBottom: boolean
+  /** Manually scroll to bottom and re-engage auto-scroll. */
+  scrollToBottom: () => void
 }
 
 /**
- * Custom hook that auto-scrolls the nearest scrollable parent to the bottom
- * when content changes, unless the user has manually scrolled away.
+ * Auto-scrolls a container to the bottom during streaming, disengaging when the
+ * user scrolls up and re-engaging when they scroll back to the bottom.
  *
- * Ported from the current MarkdownElement scroll logic.
+ * Uses direction-based detection (comparing scrollTop to its previous value)
+ * rather than flag-based detection. The scroll listener is attached once via a
+ * callback ref and is never torn down/re-registered during content changes.
  */
-export function useAutoScroll(
-  containerRef: RefObject<HTMLElement | null>,
-  options: UseAutoScrollOptions,
-): void {
-  const {
-    autoScroll,
-    streaming,
-    content,
-    containerTag = "shiny-chat-container",
-  } = options
-  const scrollableRef = useRef<HTMLElement | null>(null)
-  const isUserScrolledRef = useRef(false)
-  const isContentChangingRef = useRef(false)
+export function useAutoScroll({
+  streaming,
+  contentDependency,
+  bottomTolerance = 10,
+}: UseAutoScrollOptions): UseAutoScrollReturn {
+  const containerElRef = useRef<HTMLElement | null>(null)
+  const [stickToBottom, setStickToBottom] = useState(true)
+  const prevScrollTopRef = useRef<number>(0)
 
-  const isNearBottom = useCallback((): boolean => {
-    const el = scrollableRef.current
-    if (!el) return false
-    return el.scrollHeight - (el.scrollTop + el.clientHeight) < 50
-  }, [])
+  // Check scroll position and update stickToBottom.
+  // Direction-based: scrollTop decreased → user scrolled up → disengage.
+  // At bottom (within tolerance) → re-engage.
+  const checkScrollPosition = useCallback(() => {
+    const el = containerElRef.current
+    if (!el) return
 
-  const onScroll = useCallback(() => {
-    if (!isContentChangingRef.current) {
-      isUserScrolledRef.current = !isNearBottom()
+    const { scrollTop, scrollHeight, clientHeight } = el
+    const isAtBottom =
+      scrollTop + clientHeight >= scrollHeight - bottomTolerance
+    const isScrollingUp = scrollTop < prevScrollTopRef.current
+    prevScrollTopRef.current = scrollTop
+
+    if (isScrollingUp) {
+      setStickToBottom(false)
+    } else if (isAtBottom) {
+      setStickToBottom(true)
     }
-  }, [isNearBottom])
+  }, [bottomTolerance])
 
-  // Find and track scrollable parent (re-runs when content changes since the
-  // parent may not be scrollable until content makes it overflow)
-  useEffect(() => {
-    if (!autoScroll || !containerRef.current) {
-      scrollableRef.current = null
-      return
-    }
+  // Store in a ref so the callback ref closure always calls the latest version
+  const checkScrollPositionRef = useRef(checkScrollPosition)
+  checkScrollPositionRef.current = checkScrollPosition
 
-    let el: HTMLElement | null = containerRef.current
-    let found: HTMLElement | null = null
+  // Stable handler that delegates to the ref — this is what gets registered as
+  // the scroll listener, so it never goes stale even though the callback ref
+  // closure is captured once.
+  const stableScrollHandler = useRef((): void => {
+    checkScrollPositionRef.current()
+  })
 
-    while (el) {
-      if (el.scrollHeight > el.clientHeight) {
-        found = el
-        break
-      }
-      el = el.parentElement
-      if (el?.tagName?.toLowerCase() === containerTag.toLowerCase()) {
-        break
-      }
-    }
-
-    if (found !== scrollableRef.current) {
-      scrollableRef.current?.removeEventListener("scroll", onScroll)
-      scrollableRef.current = found
-      scrollableRef.current?.addEventListener("scroll", onScroll)
+  // Callback ref: attaches the scroll listener when the element mounts and
+  // removes it when the element unmounts. Fires exactly once per mount/unmount
+  // cycle — no teardown on content changes.
+  const containerRef = useCallback<RefCallback<HTMLElement>>((node) => {
+    if (containerElRef.current) {
+      containerElRef.current.removeEventListener(
+        "scroll",
+        stableScrollHandler.current,
+      )
     }
 
-    return () => {
-      scrollableRef.current?.removeEventListener("scroll", onScroll)
-    }
-  }, [autoScroll, containerRef, onScroll, containerTag, content])
+    containerElRef.current = node
 
-  // Scroll to bottom when content changes
-  useEffect(() => {
-    isContentChangingRef.current = true
-
-    const el = scrollableRef.current
-    if (el && !isUserScrolledRef.current) {
-      el.scroll({
-        top: el.scrollHeight - el.clientHeight,
-        behavior: streaming ? "instant" : "smooth",
+    if (node) {
+      prevScrollTopRef.current = node.scrollTop
+      node.addEventListener("scroll", stableScrollHandler.current, {
+        passive: true,
       })
     }
+  }, [])
 
-    isContentChangingRef.current = false
-  }, [content, streaming])
+  // Auto-scroll during streaming when stickToBottom is true.
+  // contentDependency is included so that each new chunk triggers the scroll.
+  useEffect(() => {
+    if (streaming && stickToBottom && containerElRef.current) {
+      containerElRef.current.scrollTo({
+        top: containerElRef.current.scrollHeight,
+        behavior: "smooth",
+      })
+    }
+  }, [streaming, stickToBottom, contentDependency])
+
+  // Manually re-engage and scroll to bottom
+  const scrollToBottom = useCallback(() => {
+    setStickToBottom(true)
+    containerElRef.current?.scrollTo({
+      top: containerElRef.current.scrollHeight,
+      behavior: "smooth",
+    })
+  }, [])
+
+  return { containerRef, stickToBottom, scrollToBottom }
+}
+
+/**
+ * Walks up the DOM from `startEl` to find the nearest scrollable ancestor.
+ * Stops if it hits an element with tag `stopAtTag` (exclusive).
+ * Returns `null` if no scrollable ancestor is found.
+ */
+export function findScrollableParent(
+  startEl: HTMLElement,
+  stopAtTag?: string,
+): HTMLElement | null {
+  let el: HTMLElement | null = startEl.parentElement
+  const stopTag = stopAtTag?.toLowerCase()
+
+  while (el) {
+    if (stopTag && el.tagName.toLowerCase() === stopTag) break
+
+    const style = getComputedStyle(el)
+    if (
+      style.overflowY === "auto" ||
+      style.overflowY === "scroll" ||
+      style.overflowY === "overlay"
+    ) {
+      return el
+    }
+
+    el = el.parentElement
+  }
+
+  return null
 }

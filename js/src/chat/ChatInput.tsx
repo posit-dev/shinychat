@@ -14,6 +14,7 @@ export interface ChatInputProps {
   disabled: boolean
   placeholder: string
   value: string
+  onSend?: () => void
 }
 
 export interface ChatInputHandle {
@@ -25,7 +26,7 @@ export interface ChatInputHandle {
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
-  function ChatInput({ inputId, disabled, placeholder, value }, ref) {
+  function ChatInput({ inputId, disabled, placeholder, value, onSend }, ref) {
     const dispatch = useChatDispatch()
     const transport = useTransport()
 
@@ -60,6 +61,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
         dispatch({ type: "INPUT_SENT", content, role: "user" })
         transport.sendInput(inputId, content)
+        onSend?.()
 
         // value is cleared via state (INPUT_SENT sets inputValue: ""),
         // but we also clear the DOM element immediately to avoid lag
@@ -69,7 +71,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
         if (focusAfter) el.focus()
       },
-      [disabled, dispatch, transport, inputId],
+      [disabled, dispatch, transport, inputId, onSend],
     )
 
     const onKeyDown = useCallback(
@@ -131,6 +133,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                 preserveInputValue: true,
               })
               transport.sendInput(inputId, submitContent)
+              onSend?.()
             }
             // Always restore old value (the submitted value was temporary)
             el.value = oldValue
@@ -146,7 +149,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           textareaRef.current?.focus()
         },
       }),
-      [dispatch, transport, inputId],
+      [dispatch, transport, inputId, onSend],
     )
 
     const sendButtonDisabled = disabled || !hasText

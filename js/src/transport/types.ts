@@ -42,9 +42,14 @@ export type ShinyClientMessage = {
   status?: "error" | "info" | "warning"
 }
 
+/** Core transport: message passing between client and server. */
 export interface ChatTransport {
   sendInput(id: string, value: string): void
   onMessage(id: string, callback: (action: ChatAction) => void): () => void
+}
+
+/** Shiny-specific lifecycle: DOM binding, dependency rendering, error display. */
+export interface ShinyLifecycle {
   renderDependencies(deps: HtmlDep[]): Promise<void>
   bindAll(el: HTMLElement): Promise<void>
   unbindAll(el: HTMLElement): void

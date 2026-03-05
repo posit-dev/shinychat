@@ -129,7 +129,7 @@ export function showExternalLinkConfirmation(url: string): Promise<boolean> {
     const { root } = getOrCreateContainer()
 
     const unmount = () => {
-      root.render(<></>)
+      root.render(null)
     }
 
     const handleProceed = () => {

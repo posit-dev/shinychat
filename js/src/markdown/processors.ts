@@ -14,11 +14,12 @@ import { customSchema } from "./plugins/sanitizeSchema"
 
 /**
  * Frozen processor for assistant messages.
- * Includes: GFM, {=html} passthrough, raw HTML parsing, sanitization,
+ * Includes: GFM, {=html} passthrough, raw HTML parsing,
  * external links, syntax highlighting.
  *
- * Sanitization blocks <script> (except htmlwidgets) and on* event handlers
- * while allowing form elements and attributes that Shiny UI widgets need.
+ * No rehypeSanitize step: the output is converted to React elements via
+ * toJsxRuntime (not innerHTML), so script tags and event-handler attributes
+ * are inert. Sanitization is applied only to user messages as defense-in-depth.
  *
  * SECURITY: remarkRawHtml is ONLY used here, never for user messages.
  */
