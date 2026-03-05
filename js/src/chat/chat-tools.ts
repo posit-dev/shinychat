@@ -97,13 +97,6 @@ class ShinyToolCard extends LitElement {
   icon: string = ""
 
   /**
-   * Optional HTML content to display in the card footer (below the card body).
-   * @property {string} footer
-   */
-  @property({ type: String })
-  footer: string = ""
-
-  /**
    * Template string for formatting the card title. {title} is replaced with the
    * actual title.
    * @property {string} titleTemplate
@@ -142,7 +135,10 @@ class ShinyToolCard extends LitElement {
    * @param {TemplateResult} bodyContent - The content to display in the card
    *   body.
    */
-  protected renderCard(bodyContent: TemplateResult) {
+  protected renderCard(
+    bodyContent: TemplateResult,
+    footerContent: TemplateResult | "" = "",
+  ) {
     const headerId = `tool-header-${this.requestId}`
     const contentId = `tool-content-${this.requestId}`
     const icon = this.icon || ICONS.wrenchAdjustable
@@ -153,10 +149,6 @@ class ShinyToolCard extends LitElement {
       <div class="tool-spacer"></div>
       ${this.intent ? html`<div class="tool-intent">${this.intent}</div>` : ""}
     `
-
-    const footerContent = this.footer
-      ? html`<div class="card-footer">${unsafeHTML(this.footer)}</div>`
-      : ""
 
     return html`
       <div
@@ -257,6 +249,13 @@ export class ShinyToolRequest extends ShinyToolCard {
  *   requests on the page.
  */
 export class ShinyToolResult extends ShinyToolCard {
+  /**
+   * Optional HTML content to display in the card footer (below the card body).
+   * @property {string} footer
+   */
+  @property({ type: String })
+  footer: string = ""
+
   /**
    * The original tool call that generated this result. Used to display the tool
    * invocation.
@@ -395,7 +394,11 @@ export class ShinyToolResult extends ShinyToolCard {
   render() {
     const bodyContent = html` ${this.#renderRequest()} ${this.#renderResult()} `
 
-    return this.renderCard(bodyContent)
+    const footerContent = this.footer
+      ? html`<div class="card-footer">${unsafeHTML(this.footer)}</div>`
+      : ""
+
+    return this.renderCard(bodyContent, footerContent)
   }
 }
 
