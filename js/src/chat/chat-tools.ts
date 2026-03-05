@@ -427,6 +427,13 @@ window.Shiny?.addCustomMessageHandler(
   },
 )
 
+if (!customElements.get("shiny-tool-request")) {
+  customElements.define("shiny-tool-request", ShinyToolRequest)
+}
+if (!customElements.get("shiny-tool-result")) {
+  customElements.define("shiny-tool-result", ShinyToolResult)
+}
+
 declare global {
   interface HTMLElementTagNameMap {
     "shiny-tool-request": ShinyToolRequest
