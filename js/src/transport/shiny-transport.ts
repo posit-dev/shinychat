@@ -153,7 +153,7 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
         // but the translated "chunk" action type doesn't have an html_deps
         // field, so we must extract them here.
         const msg = envelope.obj as LegacyMessageObj | null
-        if (msg?.html_deps) {
+        if (msg?.html_deps && Array.isArray(msg.html_deps)) {
           await this.renderDependencies(msg.html_deps)
         }
 
