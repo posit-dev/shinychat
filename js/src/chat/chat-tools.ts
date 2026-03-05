@@ -203,15 +203,11 @@ export class ShinyToolRequest extends ShinyToolCard {
   @property({ type: Boolean, reflect: true })
   hidden = false
 
-  constructor() {
-    super()
+  connectedCallback() {
+    super.connectedCallback()
     this.classList.add("shiny-tool-request")
     this.titleTemplate = "Running {title}"
     this.icon = '<div class="spinner-border" role="status"></div>'
-  }
-
-  connectedCallback() {
-    super.connectedCallback()
     this.hidden = window.shinychat.hiddenToolRequests.has(this.requestId)
   }
 
@@ -291,14 +287,10 @@ export class ShinyToolResult extends ShinyToolCard {
   @property({ type: String, attribute: "value-type" })
   valueType!: string
 
-  constructor() {
-    super()
-    this.classList.add("shiny-tool-result")
-    this.titleTemplate = "{title}"
-  }
-
   connectedCallback() {
     super.connectedCallback()
+    this.classList.add("shiny-tool-result")
+    this.titleTemplate = "{title}"
     // Set status class and icon based on status
     if (this.status === "error") {
       this.classStatus = "text-danger"
