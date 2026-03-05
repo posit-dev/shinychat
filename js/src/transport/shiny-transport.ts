@@ -148,6 +148,15 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
       async (envelope: LegacyEnvelope) => {
         const { id } = envelope
 
+        // Render HTML deps from the raw envelope before translating to
+        // actions. Intermediate chunks carry deps (e.g., for htmlwidgets)
+        // but the translated "chunk" action type doesn't have an html_deps
+        // field, so we must extract them here.
+        const msg = envelope.obj as LegacyMessageObj | null
+        if (msg?.html_deps) {
+          await this.renderDependencies(msg.html_deps)
+        }
+
         // Translate legacy format to ChatAction(s)
         const actions = legacyToActions(envelope)
         if (actions.length === 0) {
@@ -156,13 +165,6 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
             message: `Unknown chat handler: "${envelope.handler}"`,
           })
           return
-        }
-
-        // Render HTML deps before dispatching
-        for (const action of actions) {
-          if ("message" in action && action.message?.html_deps) {
-            await this.renderDependencies(action.message.html_deps)
-          }
         }
 
         const callbacks = this.listeners.get(id)
