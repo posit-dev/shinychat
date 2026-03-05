@@ -1,6 +1,7 @@
 import { ToolCard } from "./ToolCard"
 import { useChatState } from "./context"
 import { MarkdownContent } from "../markdown/MarkdownContent"
+import { markdownCodeBlock } from "../markdown/markdownCodeBlock"
 
 export interface ToolRequestProps {
   requestId: string
@@ -8,17 +9,6 @@ export interface ToolRequestProps {
   toolTitle?: string
   intent?: string
   arguments: string
-}
-
-/**
- * Formats a string as a Markdown code block with the specified language.
- */
-function markdownCodeBlock(
-  content: string,
-  language: string = "markdown",
-): string {
-  const backticks = "`".repeat(8)
-  return `${backticks}${language}\n${content}\n${backticks}`
 }
 
 /**

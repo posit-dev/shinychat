@@ -2,6 +2,7 @@ import { useEffect } from "react"
 import { ToolCard } from "./ToolCard"
 import { useChatDispatch } from "./context"
 import { MarkdownContent } from "../markdown/MarkdownContent"
+import { markdownCodeBlock } from "../markdown/markdownCodeBlock"
 import { exclamationCircleFill } from "../utils/icons"
 
 export interface ToolResultProps {
@@ -14,17 +15,6 @@ export interface ToolResultProps {
   valueType: string
   requestCall?: string
   showRequest?: boolean
-}
-
-/**
- * Formats a string as a Markdown code block with the specified language.
- */
-function markdownCodeBlock(
-  content: string,
-  language: string = "markdown",
-): string {
-  const backticks = "`".repeat(8)
-  return `${backticks}${language}\n${content}\n${backticks}`
 }
 
 /**
