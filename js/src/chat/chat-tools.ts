@@ -97,6 +97,13 @@ class ShinyToolCard extends LitElement {
   icon: string = ""
 
   /**
+   * Optional HTML content to display in the card footer (below the card body).
+   * @property {string} footer
+   */
+  @property({ type: String })
+  footer: string = ""
+
+  /**
    * Template string for formatting the card title. {title} is replaced with the
    * actual title.
    * @property {string} titleTemplate
@@ -147,6 +154,10 @@ class ShinyToolCard extends LitElement {
       ${this.intent ? html`<div class="tool-intent">${this.intent}</div>` : ""}
     `
 
+    const footerContent = this.footer
+      ? html`<div class="card-footer">${unsafeHTML(this.footer)}</div>`
+      : ""
+
     return html`
       <div
         class="shiny-tool-card card bslib-card html-fill-item html-fill-container m-0"
@@ -173,6 +184,7 @@ class ShinyToolCard extends LitElement {
         >
           ${bodyContent}
         </div>
+        ${footerContent}
       </div>
     `
   }

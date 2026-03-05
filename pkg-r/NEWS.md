@@ -1,5 +1,7 @@
 # shinychat (development version)
 
+* Added `footer` field to `ToolResultDisplay` for displaying custom HTML content below the tool result card body. (#178)
+
 * Fixed an issue where user chat messages would display the default assistant icon. (#162)
 
 # shinychat 0.3.0

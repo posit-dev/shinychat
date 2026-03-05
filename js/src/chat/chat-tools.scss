@@ -120,6 +120,10 @@
     }
   }
 
+  >.card-header[aria-expanded="false"] ~ .card-footer {
+    display: none;
+  }
+
   pre {
     margin: 0;
     white-space: pre-wrap;
