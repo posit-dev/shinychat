@@ -75,7 +75,9 @@ shiny-chat-messages {
   margin-right: calc(-1 * var(--_scroll-margin));
 }
 
-shiny-chat-message {
+// React renders messages as <div class="shiny-chat-message"> (not custom elements),
+// so we use class selectors here.
+.shiny-chat-message {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 1rem;
@@ -119,30 +121,25 @@ shiny-chat-message {
   }
 
   /* Vertically center the 2nd column (message content) */
-  shiny-markdown-stream {
+  .shiny-chat-message-content {
     align-self: center;
   }
 }
 
 /* Align the user message to the right */
-shiny-user-message,
-shiny-chat-message[data-role="user"] {
+.shiny-chat-user-message {
   align-self: flex-end;
   padding: 0.75rem 1rem;
   border-radius: 10px;
   background-color: var(--shiny-chat-user-message-bg);
   max-width: 100%;
-}
-
-shiny-chat-message[data-role="user"]:not([icon]) {
-  // User messages don't have an icon (unless they're somehow added manually).
-  // In the future, we'll likely want to support user avatars
+  // User messages don't have an icon by default
   grid-template-columns: auto;
 }
 
-shiny-user-message,
-shiny-chat-message {
-  &[content_type="text"] {
+.shiny-chat-message,
+.shiny-chat-user-message {
+  &.content-type-text {
     white-space: pre;
     overflow-x: auto;
   }

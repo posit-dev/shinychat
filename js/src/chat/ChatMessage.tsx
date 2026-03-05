@@ -51,9 +51,11 @@ export function ChatMessage({ message, iconAssistant }: ChatMessageProps) {
   })
 
   const roleClass = isUser ? "shiny-chat-user-message" : "shiny-chat-message"
+  const contentTypeClass =
+    message.contentType === "text" ? " content-type-text" : ""
 
   return (
-    <div className={roleClass}>
+    <div className={roleClass + contentTypeClass}>
       {iconHtml && (
         <div
           className="message-icon"
