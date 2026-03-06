@@ -136,7 +136,10 @@ class ShinyToolCard extends LitElement {
    * @param {TemplateResult} bodyContent - The content to display in the card
    *   body.
    */
-  protected renderCard(bodyContent: TemplateResult) {
+  protected renderCard(
+    bodyContent: TemplateResult,
+    footerContent: TemplateResult | "" = "",
+  ) {
     const headerId = `tool-header-${this.requestId}`
     const contentId = `tool-content-${this.requestId}`
     const icon = this.icon || ICONS.wrenchAdjustable
@@ -174,6 +177,7 @@ class ShinyToolCard extends LitElement {
         >
           ${bodyContent}
         </div>
+        ${footerContent}
       </div>
     `
   }
@@ -246,6 +250,13 @@ export class ShinyToolRequest extends ShinyToolCard {
  *   requests on the page.
  */
 export class ShinyToolResult extends ShinyToolCard {
+  /**
+   * Optional HTML content to display in the card footer (below the card body).
+   * @property {string} footer
+   */
+  @property({ type: String })
+  footer: string = ""
+
   /**
    * Controls whether the card has a fullscreen toggle button.
    * @property {boolean} fullScreen
@@ -536,7 +547,11 @@ export class ShinyToolResult extends ShinyToolCard {
       ${this.#renderFullscreenToggle()}
     `
 
-    return this.renderCard(bodyContent)
+    const footerContent = this.footer
+      ? html`<div class="card-footer">${unsafeHTML(this.footer)}</div>`
+      : ""
+
+    return this.renderCard(bodyContent, footerContent)
   }
 }
 

@@ -41,7 +41,7 @@
     Condition
       Warning:
       Invalid `@extra$display` format for `ContentToolResult` from `test-tool()` (call id: test-id).
-      x Expected a list with fields `html`, `markdown`, `text`, `show_request`, `open`, `title`, or `icon`, not a string.
+      x Expected a list with fields `html`, `markdown`, `text`, `show_request`, `open`, `title`, `icon`, or `footer`, not a string.
     Output
       list()
 

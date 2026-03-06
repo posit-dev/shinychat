@@ -118,6 +118,10 @@
     }
   }
 
+  >.card-header[aria-expanded="false"] ~ .card-footer {
+    display: none;
+  }
+
   &:hover, &:focus-within {
     .tool-fullscreen-toggle {
       opacity: 0.6;
