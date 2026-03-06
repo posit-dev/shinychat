@@ -48,13 +48,10 @@
   }
 
   >.card-header {
-    // .hstack
     display: flex;
     flex-direction: row;
     align-items: center;
     align-self: stretch;
-
-    // .gap-2
     gap: 0.5rem;
 
     width: 100%;
@@ -109,6 +106,7 @@
   }
 
   >.card-body {
+    position: relative;
     transition: max-height 0.3s ease-out, opacity 0.2s ease-out;
     opacity: 1;
     overflow: auto;
@@ -120,11 +118,136 @@
     }
   }
 
+  &:hover, &:focus-within {
+    .tool-fullscreen-toggle {
+      opacity: 0.6;
+    }
+  }
+
   pre {
     margin: 0;
     white-space: pre-wrap;
     padding: 1em;
     border-radius: var(--bs-border-radius, 4px);
+  }
+}
+
+@keyframes shiny-tool-fullscreen-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.shiny-tool-fullscreen-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1049;
+  background-color: rgba(var(--bs-body-color-rgb, 0, 0, 0), 0.6);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  animation: shiny-tool-fullscreen-enter 300ms ease forwards;
+}
+
+.shiny-tool-fullscreen-exit {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: rgba(var(--bs-body-bg-rgb, 255, 255, 255), 0.8);
+  background: none;
+  border: none;
+  padding: 0;
+
+  &:hover {
+    color: rgba(var(--bs-body-bg-rgb, 255, 255, 255), 1);
+  }
+
+  &:focus-visible {
+    outline: 2px solid rgba(var(--bs-body-bg-rgb, 255, 255, 255), 0.8);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  svg {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .shiny-tool-card[fullscreen] {
+    inset: 2.5rem 0.5rem 0.5rem;
+  }
+
+  .shiny-tool-fullscreen-exit {
+    top: 0.5rem;
+    right: 0.5rem;
+  }
+}
+
+.shiny-tool-card[fullscreen] {
+  position: fixed;
+  inset: 3.5rem 1rem 1rem;
+  z-index: 1050;
+  max-height: none;
+  border-radius: var(--bs-border-radius, 4px);
+  background: var(--bs-body-bg, #fff);
+
+  > .card-header {
+    cursor: default;
+
+    &:hover,
+    &:focus-visible {
+      background-color: inherit;
+    }
+
+    .collapse-indicator {
+      display: none;
+    }
+  }
+
+  > .card-body {
+    max-height: none;
+    overflow: auto;
+
+    .tool-fullscreen-toggle {
+      display: none;
+    }
+  }
+}
+
+.tool-fullscreen-toggle {
+  position: absolute;
+  bottom: 0.2rem;
+  right: 0;
+  color: var(--bs-card-color);
+  background-color: var(--bs-card-bg, var(--bs-body-bg));
+  border: var(--bs-card-border-width, 1px) solid var(--bs-card-border-color, var(--bs-border-color));
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  margin: 0.2rem 0.4rem;
+  padding: 0.55rem !important;
+  font-size: 0.8rem;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+
+  &:hover,
+  &:focus {
+    opacity: 1;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--bs-primary, #007bc2);
+    outline-offset: 2px;
+  }
+
+  svg {
+    height: 1em;
+    width: 1em;
+    fill: currentColor;
   }
 }
 

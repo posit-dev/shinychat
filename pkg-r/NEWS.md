@@ -1,5 +1,7 @@
 # shinychat (development version)
 
+* Tool result cards now support a fullscreen toggle. Set `full_screen = TRUE` in the `display` list (or set `res$full_screen <- NA` in a custom `contents_shinychat()` method) to add a button that expands the card to fill the viewport. Press `Escape`, click the backdrop, or use the close button to exit fullscreen.
+
 * Fixed an issue where user chat messages would display the default assistant icon. (#162)
 
 # shinychat 0.3.0
