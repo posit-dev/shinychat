@@ -171,12 +171,16 @@ as.tags.shinychat_tool_card <- function(x, ...) {
   if (!is.null(x$icon) && !is.character(x$icon)) {
     x$icon <- as.tags(x$icon)
   }
+  if (!is.null(x$footer) && !is.character(x$footer)) {
+    x$footer <- as.tags(x$footer)
+  }
 
   names(x) <- gsub("_", "-", names(x))
 
   deps <- list(
     htmltools::findDependencies(x$value),
     htmltools::findDependencies(x$icon),
+    htmltools::findDependencies(x$footer),
     chat_deps()
   )
 
@@ -273,6 +277,7 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     intent = content@request@arguments[["_intent"]],
     show_request = if (!isFALSE(display$show_request)) NA,
     expanded = if (isTRUE(display$open)) NA,
+    footer = display$footer,
     !!!tool_result_display(content, display)
   )
 }
@@ -300,7 +305,8 @@ get_tool_result_display <- function(content) {
 
   # fmt: skip
   expected_fields <- c(
-    "html", "markdown", "text", "show_request", "open", "title", "icon"
+    "html", "markdown", "text", "show_request", "open", "title", "icon",
+    "footer"
   )
 
   if (!is.list(display)) {
