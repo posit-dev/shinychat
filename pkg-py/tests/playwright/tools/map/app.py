@@ -36,6 +36,7 @@ def tool_show_map(
                 html=output_widget(id),
                 show_request=False,
                 open=True,
+                full_screen=True,
                 title=f"Map of {title}",
             ),
         },

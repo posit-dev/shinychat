@@ -28,6 +28,7 @@ class WeatherToolResult(ContentToolResult):
             "display": ToolResultDisplay(
                 html=ui.HTML(html_table),
                 title=f"Weather Forecast for {location_name}",
+                full_screen=True,
             )
         }
 

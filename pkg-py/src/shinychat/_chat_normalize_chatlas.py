@@ -129,6 +129,9 @@ class ToolResultComponent(ToolCardComponent):
     footer: TagChild = None
     "Optional HTML content to display in the card footer (below the card body)."
 
+    full_screen: bool = False
+    "Controls whether a fullscreen toggle button is displayed on the card."
+
     def tagify(self):
         icon_ui = TagList(self.icon).render()
 
@@ -156,6 +159,7 @@ class ToolResultComponent(ToolCardComponent):
             show_request="" if self.show_request else None,
             expanded="" if self.expanded else None,
             footer=footer_ui["html"] if self.footer else None,
+            full_screen="" if self.full_screen else None,
             *icon_ui["dependencies"],
             *value_ui["dependencies"],
             *footer_ui["dependencies"],
@@ -203,6 +207,8 @@ class ToolResultDisplay(BaseModel):
         Whether to show the tool request inside the tool result container.
     open
         Whether or not the tool result details are expanded by default.
+    full_screen
+        Whether or not to display a fullscreen toggle button on the card.
     html
         Custom HTML content (to use in place of the default result display).
     markdown
@@ -218,6 +224,7 @@ class ToolResultDisplay(BaseModel):
     html: TagChild = None
     show_request: bool = True
     open: bool = False
+    full_screen: bool = False
     markdown: Optional[str] = None
     text: Optional[str] = None
     footer: TagChild = None
@@ -324,6 +331,7 @@ def tool_result_contents(x: "ContentToolResult") -> Tagifiable:
         show_request=display.show_request,
         expanded=display.open,
         footer=display.footer,
+        full_screen=display.full_screen,
     )
 
 

@@ -32,6 +32,7 @@ S7::method(contents_shinychat, WeatherToolResult) <- function(content) {
   res$value <- gt::as_raw_html(gt::gt(content@value))
   res$value_type <- "html"
   res$title <- paste("Weather Forecast for", content@location_name)
+  res$full_screen <- NA
 
   res
 }
