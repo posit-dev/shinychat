@@ -1,4 +1,5 @@
-import { PropertyValues, html } from "lit"
+import { PropertyValues, html, nothing } from "lit"
+import { repeat } from "lit/directives/repeat.js"
 import { unsafeHTML } from "lit-html/directives/unsafe-html.js"
 import { property } from "lit/decorators.js"
 
@@ -112,7 +113,127 @@ class MarkdownElement extends LightElement {
   @property({ type: Function }) onContentChange?: () => void
   @property({ type: Function }) onStreamEnd?: () => void
 
+  // ------- Incremental rendering -------
+  // Avoids O(n²) markdown parsing during streaming by splitting content into
+  // "committed" blocks (parsed once, cached) and a "pending" tail (re-parsed).
+  // At stream end, we re-parse the full content to fix any split artifacts.
+
+  #committedBlocks: Array<{ id: number; html: string }> = []
+  #pendingMarkdown = ""
+  #pendingHtml = ""
+  #fenceCount = 0 // odd = inside code fence
+  #lastProcessedIndex = 0
+  #blockIdCounter = 0
+  #pendingUpdateScheduled = false
+  #lastPendingUpdate = 0
+
+  #countFences(text: string): number {
+    return (text.match(/^`{3,}/gm) || []).length
+  }
+
+  #parseMarkdown(markdown: string): string {
+    if (!markdown.trim()) return ""
+    if (this.content_type === "markdown") {
+      return sanitizeHTML(
+        parse(markdown, { renderer: markdownRenderer }) as string,
+      )
+    } else if (this.content_type === "semi-markdown") {
+      return sanitizeHTML(
+        parse(markdown, { renderer: semiMarkdownRenderer }) as string,
+      )
+    }
+    return ""
+  }
+
+  #processContent(): void {
+    const newContent = this.content.slice(this.#lastProcessedIndex)
+    if (!newContent) return
+
+    this.#fenceCount += this.#countFences(newContent)
+    this.#pendingMarkdown += newContent
+    this.#lastProcessedIndex = this.content.length
+
+    // Commit at \n\n boundaries when outside code fences
+    if (this.#fenceCount % 2 === 0) {
+      const boundary = this.#pendingMarkdown.lastIndexOf("\n\n")
+      if (boundary !== -1) {
+        const toCommit = this.#pendingMarkdown.slice(0, boundary)
+        if (toCommit.trim()) {
+          this.#committedBlocks.push({
+            id: this.#blockIdCounter++,
+            html: this.#parseMarkdown(toCommit),
+          })
+        }
+        this.#pendingMarkdown = this.#pendingMarkdown.slice(boundary + 2)
+      }
+    }
+
+    this.#schedulePendingUpdate()
+  }
+
+  #schedulePendingUpdate(): void {
+    const len = this.#pendingMarkdown.length
+
+    // Skip parsing for very large pending buffers (e.g., huge tables)
+    if (len > 5000) {
+      this.#pendingHtml = ""
+      return
+    }
+
+    // Throttle based on content length: larger buffers update less frequently.
+    // Naturally handles tables (large) vs prose (small) without special-casing.
+    const throttleMs = Math.min(50 + Math.floor(len / 4), 400)
+    const now = performance.now()
+
+    if (now - this.#lastPendingUpdate >= throttleMs) {
+      this.#pendingHtml = this.#parseMarkdown(this.#pendingMarkdown)
+      this.#lastPendingUpdate = now
+    } else if (!this.#pendingUpdateScheduled) {
+      this.#pendingUpdateScheduled = true
+      window.setTimeout(
+        () => {
+          this.#pendingUpdateScheduled = false
+          this.#pendingHtml = this.#parseMarkdown(this.#pendingMarkdown)
+          this.#lastPendingUpdate = performance.now()
+          this.requestUpdate()
+        },
+        throttleMs - (now - this.#lastPendingUpdate),
+      )
+    }
+  }
+
+  #finalizeStream(): void {
+    // Re-parse full content to fix any artifacts from block splitting
+    const fullHtml = this.#parseMarkdown(this.content)
+    this.#committedBlocks = [{ id: 0, html: fullHtml }]
+    this.#pendingMarkdown = ""
+    this.#pendingHtml = ""
+  }
+
+  #resetIncrementalState(): void {
+    this.#committedBlocks = []
+    this.#pendingMarkdown = ""
+    this.#pendingHtml = ""
+    this.#fenceCount = 0
+    this.#lastProcessedIndex = 0
+    this.#pendingUpdateScheduled = false
+    this.#lastPendingUpdate = 0
+  }
+
   render() {
+    if (
+      (this.content_type === "markdown" ||
+        this.content_type === "semi-markdown") &&
+      (this.#committedBlocks.length > 0 || this.#pendingHtml)
+    ) {
+      return html`
+        ${repeat(
+          this.#committedBlocks,
+          (block) => block.id,
+          (block) => unsafeHTML(block.html),
+        )}${this.#pendingHtml ? unsafeHTML(this.#pendingHtml) : nothing}
+      `
+    }
     return html`${contentToHTML(this.content, this.content_type)}`
   }
 
@@ -132,6 +253,23 @@ class MarkdownElement extends LightElement {
   protected willUpdate(changedProperties: PropertyValues): void {
     if (changedProperties.has("content")) {
       this.#isContentBeingAdded = true
+
+      // Reset incremental state on content replacement (vs append)
+      const oldContent = changedProperties.get("content") as string | undefined
+      if (
+        oldContent !== undefined &&
+        (this.content.length < oldContent.length ||
+          !this.content.startsWith(oldContent))
+      ) {
+        this.#resetIncrementalState()
+      }
+
+      if (
+        this.content_type === "markdown" ||
+        this.content_type === "semi-markdown"
+      ) {
+        this.#processContent()
+      }
 
       MarkdownElement.#doUnBind(this)
     }
@@ -175,6 +313,7 @@ class MarkdownElement extends LightElement {
       if (this.streaming) {
         this.#appendStreamingDot()
       } else {
+        this.#finalizeStream()
         this.#removeStreamingDot()
         if (this.onStreamEnd) {
           try {
@@ -406,6 +545,7 @@ class MarkdownElement extends LightElement {
       "shiny-chat-maybe-scroll-to-bottom",
       this.#onMaybeScrollToBottom,
     )
+    this.#resetIncrementalState()
   }
 }
 
