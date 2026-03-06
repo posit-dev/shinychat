@@ -4,6 +4,7 @@ import { MarkdownStream, type MarkdownStreamApi } from "./MarkdownStream"
 import { ShinyLifecycleContext } from "../chat/context"
 import { getShinyTransport } from "../transport/shiny-transport"
 import type { ContentType } from "../transport/types"
+import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 
 // Single shared transport instance for standalone markdown-stream usage
 const transport = getShinyTransport()
@@ -12,7 +13,7 @@ type ContentMessage = {
   id: string
   content: string
   operation: "append" | "replace"
-  html_deps?: unknown[]
+  html_deps?: HtmlDep[]
 }
 
 type IsStreamingMessage = {
@@ -105,7 +106,7 @@ window.Shiny?.addCustomMessageHandler(
     }
 
     if (!isStreamingMessage(message) && message.html_deps) {
-      await transport.renderDependencies(message.html_deps as never[])
+      await transport.renderDependencies(message.html_deps)
     }
 
     el.handleMessage(message)
