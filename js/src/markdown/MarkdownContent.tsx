@@ -71,7 +71,10 @@ export function MarkdownContent({
       const timeout = setTimeout(() => {
         shiny.bindAll(el)
       }, 200)
-      return () => clearTimeout(timeout)
+      return () => {
+        clearTimeout(timeout)
+        shiny.unbindAll(el)
+      }
     }
 
     shiny.bindAll(el)
