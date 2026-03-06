@@ -411,7 +411,7 @@ get_weather_forecast <- tool(
 ```
 
 Expand the tool result card to see the forecast as a table.
-Notice the fullscreen toggle button in the card header---clicking it expands the card to fill the viewport.
+Notice the fullscreen toggle button in the card body---clicking it expands the card to fill the viewport.
 
 ```{r}
 request_html <- ContentToolRequest(
@@ -511,9 +511,9 @@ shinychat supports several options in the `display` list to control how results 
 
    This is most useful when you've [customized the tool display](#alternative-display-content) to include an `{htmlwidget}` or other rich content that users should see immediately.
 
-- **`full_screen = TRUE`**: Add a fullscreen toggle button to the tool result card header.
+- **`full_screen = TRUE`**: Add a fullscreen toggle button to the tool result card.
 
-   When clicked, the card expands to fill the entire viewport, making it easy to inspect large or detailed content like maps, tables, and plots. Users can exit fullscreen by clicking the toggle again or pressing the `Escape` key.
+   When clicked, the card expands to fill the entire viewport, making it easy to inspect large or detailed content like maps, tables, and plots. Users can exit fullscreen by pressing `Escape`, clicking the backdrop, or using the close button.
 
 - **`title`** and **`icon`**: Choose the title and icon displayed in the tool result card header.
 

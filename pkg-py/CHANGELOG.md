@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### New features
 
-* Tool result cards now support a fullscreen toggle. Set `full_screen=True` in `ToolResultDisplay()` to add a button that expands the card to fill the viewport. Press `Escape` or click the toggle again to exit.
+* Tool result cards now support a fullscreen toggle. Set `full_screen=True` in `ToolResultDisplay()` to add a button that expands the card to fill the viewport. Press `Escape`, click the backdrop, or use the close button to exit fullscreen.
 
 ## [0.2.9] - 2026-02-09
 

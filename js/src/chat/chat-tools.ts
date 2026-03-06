@@ -365,8 +365,7 @@ export class ShinyToolResult extends ShinyToolCard {
     const closeBtn = document.createElement("button")
     closeBtn.type = "button"
     closeBtn.className = "shiny-tool-fullscreen-exit"
-    closeBtn.setAttribute("aria-expanded", "true")
-    closeBtn.setAttribute("aria-label", "Close card")
+    closeBtn.setAttribute("aria-label", "Exit fullscreen")
     closeBtn.onclick = (ev) => {
       ev.stopPropagation()
       this.#exitFullscreen()
@@ -523,7 +522,6 @@ export class ShinyToolResult extends ShinyToolCard {
         class="tool-fullscreen-toggle badge rounded-pill"
         @click="${this.#enterFullscreen}"
         aria-label="Expand card"
-        aria-expanded="false"
         aria-controls="${contentId}"
         type="button"
       >
