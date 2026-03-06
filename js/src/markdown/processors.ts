@@ -10,6 +10,7 @@ import { remarkRawHtml } from "./plugins/remarkRawHtml"
 import { remarkEscapeHtml } from "./plugins/remarkEscapeHtml"
 import { rehypeExternalLinks } from "./plugins/rehypeExternalLinks"
 import { rehypeUncontrolledInputs } from "./plugins/rehypeUncontrolledInputs"
+import { rehypeCEBooleans } from "./plugins/rehypeCEBooleans"
 import { customSchema } from "./plugins/sanitizeSchema"
 
 /**
@@ -29,6 +30,7 @@ export const assistantProcessor = unified()
   .use(remarkRawHtml)
   .use(remarkRehype, { allowDangerousHtml: true })
   .use(rehypeRaw)
+  .use(rehypeCEBooleans)
   .use(rehypeUncontrolledInputs)
   .use(rehypeExternalLinks)
   .use(rehypeHighlight, { detect: false, ignoreMissing: true })
