@@ -114,7 +114,7 @@ class ShinyToolCard extends LitElement {
     if (card?.hasAttribute("fullscreen")) return
     this.expanded = !this.expanded
     this.requestUpdate()
-    window.dispatchEvent(new Event("resize"))
+    requestAnimationFrame(() => window.dispatchEvent(new Event("resize")))
   }
 
   firstUpdated() {
