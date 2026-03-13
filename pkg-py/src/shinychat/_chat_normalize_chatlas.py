@@ -84,6 +84,7 @@ class ToolRequestComponent(ToolCardComponent):
 
         return Tag(
             "shiny-tool-request",
+            data_shinychat_react=True,
             request_id=self.request_id,
             tool_name=self.tool_name,
             tool_title=self.tool_title,
@@ -147,6 +148,7 @@ class ToolResultComponent(ToolCardComponent):
 
         return Tag(
             "shiny-tool-result",
+            data_shinychat_react=True,
             request_id=self.request_id,
             tool_name=self.tool_name,
             tool_title=self.tool_title,

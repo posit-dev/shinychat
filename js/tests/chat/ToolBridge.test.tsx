@@ -31,7 +31,7 @@ describe("Tool component bridge rendering", () => {
         message: {
           role: "assistant",
           content:
-            '<shiny-tool-request request-id="req-1" tool-name="get_weather" tool-title="Get Weather" arguments=\'{"city":"NYC"}\'></shiny-tool-request>',
+            '<shinychat-html><shiny-tool-request data-shinychat-react request-id="req-1" tool-name="get_weather" tool-title="Get Weather" arguments=\'{"city":"NYC"}\'></shiny-tool-request></shinychat-html>',
           content_type: "markdown",
         },
       })
@@ -65,7 +65,7 @@ describe("Tool component bridge rendering", () => {
         message: {
           role: "assistant",
           content:
-            '<shiny-tool-request request-id="req-2" tool-name="get_weather" arguments="{}"></shiny-tool-request>',
+            '<shinychat-html><shiny-tool-request data-shinychat-react request-id="req-2" tool-name="get_weather" arguments="{}"></shiny-tool-request></shinychat-html>',
           content_type: "markdown",
         },
       })
@@ -86,7 +86,7 @@ describe("Tool component bridge rendering", () => {
         message: {
           role: "assistant",
           content:
-            '<shiny-tool-result request-id="req-2" tool-name="get_weather" status="success" value="Sunny, 72°F" value-type="text"></shiny-tool-result>',
+            '<shinychat-html><shiny-tool-result data-shinychat-react request-id="req-2" tool-name="get_weather" status="success" value="Sunny, 72°F" value-type="text"></shiny-tool-result></shinychat-html>',
           content_type: "markdown",
         },
       })
@@ -117,7 +117,7 @@ describe("Tool component bridge rendering", () => {
         message: {
           role: "assistant",
           content:
-            '<shiny-tool-request request-id="req-inline-hide" tool-name="get_weather" arguments="{}"></shiny-tool-request>',
+            '<shinychat-html><shiny-tool-request data-shinychat-react request-id="req-inline-hide" tool-name="get_weather" arguments="{}"></shiny-tool-request></shinychat-html>',
           content_type: "markdown",
         },
       })
@@ -131,7 +131,7 @@ describe("Tool component bridge rendering", () => {
         message: {
           role: "assistant",
           content:
-            '<shiny-tool-result request-id="req-inline-hide" tool-name="get_weather" status="success" value="Sunny, 72°F" value-type="text"></shiny-tool-result>',
+            '<shinychat-html><shiny-tool-result data-shinychat-react request-id="req-inline-hide" tool-name="get_weather" status="success" value="Sunny, 72°F" value-type="text"></shiny-tool-result></shinychat-html>',
           content_type: "markdown",
         },
       })
@@ -160,7 +160,7 @@ describe("Tool component bridge rendering", () => {
         message: {
           role: "assistant",
           content:
-            '<shiny-tool-request request-id="req-stream-hide" tool-name="get_weather" arguments="{}"></shiny-tool-request>',
+            '<shinychat-html><shiny-tool-request data-shinychat-react request-id="req-stream-hide" tool-name="get_weather" arguments="{}"></shiny-tool-request></shinychat-html>',
           content_type: "markdown",
         },
       })
@@ -183,7 +183,7 @@ describe("Tool component bridge rendering", () => {
       transport.fire("test-chat", {
         type: "chunk",
         content:
-          '<shiny-tool-result request-id="req-stream-hide" tool-name="get_weather" status="success" value="Done" value-type="text"></shiny-tool-result>',
+          '<shinychat-html><shiny-tool-result data-shinychat-react request-id="req-stream-hide" tool-name="get_weather" status="success" value="Done" value-type="text"></shiny-tool-result></shinychat-html>',
         operation: "replace",
       })
     })
@@ -215,7 +215,7 @@ describe("Tool component bridge rendering", () => {
         message: {
           role: "assistant",
           content:
-            '<shiny-tool-request request-id="req-3" tool-name="search" arguments="{}"></shiny-tool-request>',
+            '<shinychat-html><shiny-tool-request data-shinychat-react request-id="req-3" tool-name="search" arguments="{}"></shiny-tool-request></shinychat-html>',
           content_type: "markdown",
         },
       })
@@ -251,7 +251,7 @@ describe("Tool component bridge rendering", () => {
             id: "msg-request",
             role: "assistant",
             content:
-              '<shiny-tool-request request-id="req-preloaded" tool-name="search" arguments="{}"></shiny-tool-request>',
+              '<shinychat-html><shiny-tool-request data-shinychat-react request-id="req-preloaded" tool-name="search" arguments="{}"></shiny-tool-request></shinychat-html>',
             contentType: "markdown",
             streaming: false,
           },
@@ -259,7 +259,7 @@ describe("Tool component bridge rendering", () => {
             id: "msg-result",
             role: "assistant",
             content:
-              '<shiny-tool-result request-id="req-preloaded" tool-name="search" status="success" value="Done" value-type="text"></shiny-tool-result>',
+              '<shinychat-html><shiny-tool-result data-shinychat-react request-id="req-preloaded" tool-name="search" status="success" value="Done" value-type="text"></shiny-tool-result></shinychat-html>',
             contentType: "markdown",
             streaming: false,
           },

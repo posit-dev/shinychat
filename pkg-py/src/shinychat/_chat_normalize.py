@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from functools import singledispatch
 
-from htmltools import HTML, TagList, Tagifiable
+from htmltools import HTML, Tagifiable
 
 from ._chat_types import ChatMessage
 
@@ -152,11 +152,7 @@ try:
 
     @message_content.register
     def _(chunk: ContentToolRequest):
-        # Render to string so ChatMessage doesn't wrap in <shinychat-html>.
-        # Tool elements must pass through the React pipeline (not innerHTML)
-        # to be intercepted by their bridge components.
-        ui = TagList(tool_request_contents(chunk)).render()
-        return ChatMessage(content=ui["html"], html_deps=ui["dependencies"])
+        return ChatMessage(content=tool_request_contents(chunk))
 
     @message_content_chunk.register
     def _(chunk: ContentToolRequest):
@@ -164,11 +160,7 @@ try:
 
     @message_content.register
     def _(chunk: ContentToolResult):
-        # Render to string so ChatMessage doesn't wrap in <shinychat-html>.
-        # Tool elements must pass through the React pipeline (not innerHTML)
-        # to be intercepted by their bridge components.
-        ui = TagList(tool_result_contents(chunk)).render()
-        return ChatMessage(content=ui["html"], html_deps=ui["dependencies"])
+        return ChatMessage(content=tool_result_contents(chunk))
 
     @message_content_chunk.register
     def _(chunk: ContentToolResult):

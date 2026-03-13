@@ -64,15 +64,16 @@ function fixCustomElementProps(
 }
 
 // Wrappers that fix up props for custom elements before calling React's jsx/jsxs.
+// Exported so other modules (e.g. HtmlIsland) can reuse the same patched wrappers.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const jsx: typeof reactJsx = (type: any, props: any, key: any) =>
+export const jsx: typeof reactJsx = (type: any, props: any, key: any) =>
   reactJsx(
     type,
     typeof type === "string" ? fixCustomElementProps(type, props) : props,
     key,
   )
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const jsxs: typeof reactJsxs = (type: any, props: any, key: any) =>
+export const jsxs: typeof reactJsxs = (type: any, props: any, key: any) =>
   reactJsxs(
     type,
     typeof type === "string" ? fixCustomElementProps(type, props) : props,

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render } from "@testing-library/react"
 import * as markdownToReactModule from "../../src/markdown/markdownToReact"
 import { MarkdownContent } from "../../src/markdown/MarkdownContent"
+import { chatTagToComponentMap } from "../../src/chat/chatTagToComponentMap"
 
 // MarkdownContent is a pure component — it does NOT call useShinyLifecycle,
 // so no context wrapper is needed.
@@ -59,6 +60,22 @@ describe("MarkdownContent (pure)", () => {
 
     expect(container.querySelector("shiny-tool-result")).not.toBeNull()
     expect(container.querySelector(".shiny-tool-card")).toBeNull()
+  })
+
+  it("renders tool tags inside shinychat-html via smart island", () => {
+    const content =
+      '<shinychat-html><shiny-tool-request data-shinychat-react request-id="req-1" tool-name="test" arguments="{}"></shiny-tool-request></shinychat-html>'
+
+    const { container } = render(
+      <MarkdownContent
+        content={content}
+        contentType="markdown"
+        tagToComponentMap={chatTagToComponentMap}
+      />,
+    )
+
+    // The tool request bridge renders .shiny-tool-card
+    expect(container.querySelector(".shiny-tool-card")).not.toBeNull()
   })
 
   it("shows streaming dot when streaming=true", () => {
