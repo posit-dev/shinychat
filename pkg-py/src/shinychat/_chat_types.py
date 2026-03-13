@@ -5,6 +5,7 @@ from typing import Literal, TypedDict
 
 from htmltools import HTML, HTMLDependency, TagChild, TagList
 
+from ._html_islands import split_html_islands
 from ._typing_extensions import NotRequired
 
 Role = Literal["assistant", "user", "system"]
@@ -29,13 +30,13 @@ class ChatMessage:
         # markdown), so only process it if it's not a string.
         deps: list[HTMLDependency] = []
         if not isinstance(content, str):
-            ui = TagList(content).render()
+            split = split_html_islands(content)
+            ui = TagList(*split).render()
             content, ui_deps = ui["html"], ui["dependencies"]
             deps = deps + ui_deps
-            # Wrapped in shinychat-html so the client renders it via the
-            # smart HtmlIsland (innerHTML for plain HTML, React for elements
-            # with data-shinychat-react)
-            content = f"\n\n<shinychat-html>\n{content}\n</shinychat-html>\n\n"
+            # Surround with blank lines so the markdown parser treats
+            # block-level custom elements correctly.
+            content = f"\n\n{content}\n\n"
 
         self.content = content
         self.html_deps: list[HTMLDependency] = deps

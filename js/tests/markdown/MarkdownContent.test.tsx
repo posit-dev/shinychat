@@ -62,9 +62,11 @@ describe("MarkdownContent (pure)", () => {
     expect(container.querySelector(".shiny-tool-card")).toBeNull()
   })
 
-  it("renders tool tags inside shinychat-html via smart island", () => {
+  it("renders tool tags as top-level React components (server splits content)", () => {
+    // The server now splits HTML islands around data-shinychat-react elements,
+    // so tool tags arrive as top-level elements (not wrapped in shinychat-html).
     const content =
-      '<shinychat-html><shiny-tool-request data-shinychat-react request-id="req-1" tool-name="test" arguments="{}"></shiny-tool-request></shinychat-html>'
+      '<shiny-tool-request data-shinychat-react request-id="req-1" tool-name="test" arguments="{}"></shiny-tool-request>'
 
     const { container } = render(
       <MarkdownContent

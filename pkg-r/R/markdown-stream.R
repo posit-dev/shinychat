@@ -190,19 +190,8 @@ rlang::on_load(
         # content is most likely a string, so avoid overhead in that case
         ui <- list(html = msg, deps = "[]")
       } else {
-        # process_ui() does *not* render markdown->HTML, but it does:
-        # 1. Extract and register HTMLdependency()s with the session.
-        # 2. Returns a HTML string representation of the TagChild
-        #    (i.e., `div()` -> `"<div>"`).
+        msg <- htmltools::tagList(!!!split_html_islands(msg))
         ui <- process_ui(msg, session)
-        # No surrounding newlines needed here — the stream path sends
-        # individual appended chunks (not embedded in a markdown string),
-        # so no block-level disambiguation is required.
-        # See _chat_types.py (Python) or chat.R for the chat path where
-        # newlines ARE needed.
-        ui[["html"]] <- paste0(
-          "<shinychat-html>", ui[["html"]], "</shinychat-html>"
-        )
       }
 
       send_stream_message(

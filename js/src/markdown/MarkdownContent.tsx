@@ -5,7 +5,6 @@ import { assistantProcessor, userProcessor } from "./processors"
 import { CopyableCodeBlock } from "./components/CopyableCodeBlock"
 import { BootstrapTable } from "./components/BootstrapTable"
 import { HtmlIsland } from "./components/HtmlIsland"
-import { ComponentMapProvider } from "./componentMapContext"
 
 const baseAssistantComponents: Record<string, ComponentType<unknown>> = {
   pre: CopyableCodeBlock as ComponentType<unknown>,
@@ -64,9 +63,5 @@ export function MarkdownContent({
   )
 
   if (isText) return <>{content}</>
-  return (
-    <ComponentMapProvider value={resolvedTagToComponentMap}>
-      {elements}
-    </ComponentMapProvider>
-  )
+  return <>{elements}</>
 }

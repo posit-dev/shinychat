@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, AsyncIterable, Iterable, Literal, Union
 from htmltools import RenderedHTML, Tag, TagChild, TagList, css
 
 from ._html_deps_py_shiny import shinychat_dependency
+from ._html_islands import split_html_islands
 from ._typing_extensions import TypedDict
 
 if TYPE_CHECKING:
@@ -147,18 +148,8 @@ class MarkdownStream:
                         # x is most likely a string, so avoid overhead in that case
                         ui: RenderedDeps = {"html": x, "deps": []}
                     else:
-                        # process_ui() does *not* render markdown->HTML, but it does:
-                        # 1. Extract and register HTMLdependency()s with the session.
-                        # 2. Returns a HTML string representation of the TagChild
-                        #    (i.e., `div()` -> `"<div>"`).
-                        ui = self._session._process_ui(x)
-                        # No surrounding newlines needed here: chunks are sent as
-                        # individual appended pieces, not embedded in a markdown
-                        # string, so there's no markdown parser to satisfy with
-                        # blank lines for block-level treatment. (Contrast with
-                        # _chat_types.py, which embeds the tag in a full markdown
-                        # string and must use blank lines to ensure block-level HTML.)
-                        ui["html"] = f"<shinychat-html>{ui['html']}</shinychat-html>"
+                        split = split_html_islands(x)
+                        ui = self._session._process_ui(TagList(*split))
 
                     result += ui["html"]
                     await self._send_content_message(
