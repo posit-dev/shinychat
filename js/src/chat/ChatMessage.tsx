@@ -2,6 +2,7 @@ import { memo, useRef, useEffect, useCallback } from "react"
 import type { ChatMessageData } from "./state"
 import { ShinyBoundMarkdown } from "../markdown/ShinyBoundMarkdown"
 import { robot, dots_fade } from "../utils/icons"
+import { chatTagToComponentMap } from "./chatTagToComponentMap"
 
 interface ChatMessageProps {
   message: ChatMessageData
@@ -71,6 +72,7 @@ export const ChatMessage = memo(function ChatMessage({
           contentType={message.contentType}
           streaming={message.streaming}
           onStreamEnd={makeSuggestionsAccessible}
+          tagToComponentMap={chatTagToComponentMap}
         />
       </div>
     </div>

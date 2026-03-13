@@ -1,8 +1,12 @@
-import { describe, it, expect } from "vitest"
-import { render } from "@testing-library/react"
+import { describe, it, expect, vi, afterEach } from "vitest"
+import { render, fireEvent } from "@testing-library/react"
 import { ToolCard } from "../../src/chat/ToolCard"
 
 describe("ToolCard", () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it("collapsed card body has inert attribute", () => {
     const { container } = render(
       <ToolCard requestId="test-1" toolName="my_tool" initialExpanded={false}>
@@ -44,7 +48,37 @@ describe("ToolCard", () => {
     card!.setAttribute("fullscreen", "")
 
     // Clicking the header should NOT collapse while fullscreen
-    header!.click()
+    fireEvent.click(header!)
     expect(header!.getAttribute("aria-expanded")).toBe("true")
+  })
+
+  it("dispatches a resize event after toggling collapse", () => {
+    const { container } = render(
+      <ToolCard requestId="test-4" toolName="my_tool" initialExpanded={false}>
+        <div>body content</div>
+      </ToolCard>,
+    )
+
+    const header = container.querySelector(".card-header") as HTMLElement | null
+    expect(header).toBeTruthy()
+
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent")
+    const rafSpy = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((cb: FrameRequestCallback) => {
+        cb(0)
+        return 1
+      })
+
+    fireEvent.click(header!)
+
+    expect(header!.getAttribute("aria-expanded")).toBe("true")
+    expect(rafSpy).toHaveBeenCalled()
+    expect(dispatchSpy).toHaveBeenCalledWith(expect.any(Event))
+    expect(
+      dispatchSpy.mock.calls.some(
+        ([event]) => event instanceof Event && event.type === "resize",
+      ),
+    ).toBe(true)
   })
 })

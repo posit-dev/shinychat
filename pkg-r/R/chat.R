@@ -354,6 +354,9 @@ chat_append_message <- function(
   }
 
   content <- msg[["content"]]
+  # Tool cards need to pass through the React pipeline (not innerHTML)
+  # to be intercepted by their bridge components
+  is_tool_card <- inherits(content, "shinychat_tool_card")
   is_html <- inherits(
     content,
     c(
@@ -383,9 +386,10 @@ chat_append_message <- function(
   }
 
   msg_content <- ui[["html"]]
-  if (is_html) {
+  if (is_html && !is_tool_card) {
     # Wrapped in shinychat-html so the client renders it via innerHTML
-    # as an uncontrolled island
+    # as an uncontrolled island. Tool cards are excluded because they need
+    # the React pipeline to be intercepted by bridge components.
     msg_content <- sprintf(
       "\n\n<shinychat-html>\n%s\n</shinychat-html>\n\n",
       msg_content

@@ -4,19 +4,15 @@ import { parseMarkdown, hastToReact } from "./markdownToReact"
 import { assistantProcessor, userProcessor } from "./processors"
 import { CopyableCodeBlock } from "./components/CopyableCodeBlock"
 import { BootstrapTable } from "./components/BootstrapTable"
-import { ToolRequestBridge } from "../chat/ToolRequestBridge"
-import { ToolResultBridge } from "../chat/ToolResultBridge"
-import { HtmlIslandBridge } from "../chat/HtmlIslandBridge"
+import { HtmlIsland } from "./components/HtmlIsland"
 
-const assistantComponents: Record<string, ComponentType<unknown>> = {
+const baseAssistantComponents: Record<string, ComponentType<unknown>> = {
   pre: CopyableCodeBlock as ComponentType<unknown>,
   table: BootstrapTable as ComponentType<unknown>,
-  "shiny-tool-request": ToolRequestBridge as ComponentType<unknown>,
-  "shiny-tool-result": ToolResultBridge as ComponentType<unknown>,
-  "shinychat-html": HtmlIslandBridge as ComponentType<unknown>,
+  "shinychat-html": HtmlIsland as ComponentType<unknown>,
 }
 
-const userComponents: Record<string, ComponentType<unknown>> = {
+const baseUserComponents: Record<string, ComponentType<unknown>> = {
   table: BootstrapTable as ComponentType<unknown>,
 }
 
@@ -24,6 +20,7 @@ export interface MarkdownContentProps {
   content: string
   contentType: ContentType
   streaming?: boolean
+  tagToComponentMap?: Record<string, ComponentType<unknown>>
 }
 
 /**
@@ -34,11 +31,18 @@ export function MarkdownContent({
   content,
   contentType,
   streaming = false,
+  tagToComponentMap,
 }: MarkdownContentProps): ReactElement {
   const isUser = contentType === "semi-markdown"
   const isText = contentType === "text"
   const processor = isUser ? userProcessor : assistantProcessor
-  const components = isUser ? userComponents : assistantComponents
+  const resolvedTagToComponentMap = useMemo(
+    () =>
+      isUser
+        ? { ...baseUserComponents, ...tagToComponentMap }
+        : { ...baseAssistantComponents, ...tagToComponentMap },
+    [isUser, tagToComponentMap],
+  )
 
   // Stage 1 (expensive): parse markdown string → HAST. Cached by content+processor.
   const hast = useMemo(
@@ -48,8 +52,14 @@ export function MarkdownContent({
 
   // Stage 2 (cheap): convert HAST → React elements. Re-runs when streaming toggles.
   const elements = useMemo(
-    () => (hast ? hastToReact(hast, { components, streaming }) : null),
-    [hast, streaming, components],
+    () =>
+      hast
+        ? hastToReact(hast, {
+            tagToComponentMap: resolvedTagToComponentMap,
+            streaming,
+          })
+        : null,
+    [hast, streaming, resolvedTagToComponentMap],
   )
 
   if (isText) return <>{content}</>

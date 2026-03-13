@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react"
+import type { ComponentType } from "react"
 import type { ContentType } from "../transport/types"
 import { useShinyLifecycle } from "../chat/context"
 import { useShinyBinding } from "./useShinyBinding"
@@ -10,6 +11,7 @@ export interface ShinyBoundMarkdownProps {
   streaming?: boolean
   onContentChange?: () => void
   onStreamEnd?: () => void
+  tagToComponentMap?: Record<string, ComponentType<unknown>>
 }
 
 export function ShinyBoundMarkdown({
@@ -18,6 +20,7 @@ export function ShinyBoundMarkdown({
   streaming = false,
   onContentChange,
   onStreamEnd,
+  tagToComponentMap,
 }: ShinyBoundMarkdownProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const shiny = useShinyLifecycle()
@@ -42,6 +45,7 @@ export function ShinyBoundMarkdown({
         content={content}
         contentType={contentType}
         streaming={streaming}
+        tagToComponentMap={tagToComponentMap}
       />
     </div>
   )

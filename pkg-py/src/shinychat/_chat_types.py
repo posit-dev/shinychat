@@ -22,15 +22,17 @@ class ChatMessage:
         self,
         content: TagChild,
         role: Role = "assistant",
+        html_deps: list[HTMLDependency] | None = None,
     ):
         self.role: Role = role
 
         # content _can_ be a TagChild, but it's most likely just a string (of
         # markdown), so only process it if it's not a string.
-        deps = []
+        deps: list[HTMLDependency] = html_deps or []
         if not isinstance(content, str):
             ui = TagList(content).render()
-            content, deps = ui["html"], ui["dependencies"]
+            content, ui_deps = ui["html"], ui["dependencies"]
+            deps = deps + ui_deps
             # Wrapped in shinychat-html so the client renders it via innerHTML
             # as an uncontrolled island
             content = f"\n\n<shinychat-html>\n{content}\n</shinychat-html>\n\n"

@@ -338,29 +338,17 @@ describe("chatReducer", () => {
     })
   })
 
-  describe("chunk auto-hides tool requests when content has tool results", () => {
-    it("hides request IDs found in replace-operation chunk content", () => {
+  describe("chunk hiddenToolRequests handling", () => {
+    it("does not derive hidden tool requests from rendered chunk HTML", () => {
       const msg = makeAssistantMsg({ streaming: true, content: "" })
       const state = makeState({ messages: [msg] })
       const next = chatReducer(state, {
         type: "chunk",
         content:
-          '<shiny-tool-result request-id="req-2" tool-name="foo" status="success" value="ok" value-type="text"></shiny-tool-result>',
+          '<shiny-tool-result request-id="req-from-html" tool-name="foo" status="success" value="ok" value-type="text"></shiny-tool-result>',
         operation: "replace",
       })
-      expect(next.hiddenToolRequests.has("req-2")).toBe(true)
-    })
-
-    it("does not scan append-operation chunks for tool results", () => {
-      const msg = makeAssistantMsg({ streaming: true, content: "" })
-      const state = makeState({ messages: [msg] })
-      const next = chatReducer(state, {
-        type: "chunk",
-        content:
-          '<shiny-tool-result request-id="req-append" tool-name="foo" status="success" value="ok" value-type="text"></shiny-tool-result>',
-        operation: "append",
-      })
-      expect(next.hiddenToolRequests.has("req-append")).toBe(false)
+      expect(next.hiddenToolRequests).toBe(state.hiddenToolRequests)
     })
   })
 

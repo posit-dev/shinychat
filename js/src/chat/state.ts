@@ -63,25 +63,6 @@ function removeLoadingMessage(messages: ChatMessageData[]): ChatMessageData[] {
   return messages
 }
 
-/**
- * Extract request IDs from <shiny-tool-result> elements in content HTML.
- * Used by the reducer to auto-hide the corresponding tool request cards
- * when a tool result message arrives.
- */
-function extractToolResultRequestIds(content: string): string[] {
-  const re = /<shiny-tool-result[^>]+request-id="([^"]+)"/g
-  return Array.from(content.matchAll(re), (m) => m[1]!)
-}
-
-function hideToolResults(
-  hiddenToolRequests: Set<string>,
-  content: string,
-): Set<string> {
-  const ids = extractToolResultRequestIds(content)
-  if (ids.length === 0) return hiddenToolRequests
-  return new Set([...hiddenToolRequests, ...ids])
-}
-
 export function chatReducer(state: ChatState, action: AnyAction): ChatState {
   switch (action.type) {
     case "INPUT_SENT": {
@@ -142,14 +123,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       const contentType = action.content_type ?? last.contentType
 
       messages[messages.length - 1] = { ...last, content, contentType }
-      return {
-        ...state,
-        messages,
-        hiddenToolRequests:
-          action.operation === "replace"
-            ? hideToolResults(state.hiddenToolRequests, action.content)
-            : state.hiddenToolRequests,
-      }
+      return { ...state, messages }
     }
 
     case "chunk_end": {

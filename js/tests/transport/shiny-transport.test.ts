@@ -299,4 +299,76 @@ describe("ShinyTransport", () => {
       expect(received).toHaveLength(0)
     })
   })
+
+  describe("custom message handler contracts", () => {
+    it("renders html dependencies before delivering a message action", async () => {
+      const transport = new ShinyTransport()
+      const received: unknown[] = []
+      const order: string[] = []
+
+      ;(
+        window.Shiny!.renderDependenciesAsync as ReturnType<typeof vi.fn>
+      ).mockImplementation(async () => {
+        order.push("deps")
+      })
+
+      transport.onMessage("chat1", (action) => {
+        order.push("listener")
+        received.push(action)
+      })
+
+      await fire(
+        makeAppendEnvelope({
+          content: "with deps",
+          html_deps: [{ name: "x", version: "1.0.0", src: { href: "/" } }],
+        }),
+      )
+
+      expect(window.Shiny?.renderDependenciesAsync).toHaveBeenCalled()
+      expect(received).toHaveLength(1)
+      expect(order).toEqual(["deps", "listener"])
+    })
+
+    it("shows a warning client message for an unknown handler", async () => {
+      const transport = new ShinyTransport()
+      const dispatchSpy = vi.spyOn(document, "dispatchEvent")
+
+      await fire({
+        id: "chat1",
+        handler: "unknown-handler",
+        obj: null,
+      })
+
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "shiny:client-message",
+          detail: expect.objectContaining({
+            status: "warning",
+            message: 'Unknown chat handler: "unknown-handler"',
+          }),
+        }),
+      )
+
+      // Keep the local variable used so tree shaking / lint doesn't complain
+      expect(transport).toBeTruthy()
+    })
+
+    it("broadcasts tool-request-hide to all listeners", () => {
+      const transport = new ShinyTransport()
+      const receivedA: unknown[] = []
+      const receivedB: unknown[] = []
+
+      transport.onMessage("chatA", (action) => receivedA.push(action))
+      transport.onMessage("chatB", (action) => receivedB.push(action))
+
+      handlers["shiny-tool-request-hide"]!("req-42")
+
+      expect(receivedA).toEqual([
+        { type: "hide_tool_request", requestId: "req-42" },
+      ])
+      expect(receivedB).toEqual([
+        { type: "hide_tool_request", requestId: "req-42" },
+      ])
+    })
+  })
 })

@@ -53,9 +53,12 @@ describe("MarkdownContent (pure)", () => {
     const content =
       '<shiny-tool-result request-id="req-1" tool-name="get_weather" status="success" value="Sunny" value-type="text"></shiny-tool-result>'
 
-    expect(() => {
-      render(<MarkdownContent content={content} contentType="markdown" />)
-    }).not.toThrow()
+    const { container } = render(
+      <MarkdownContent content={content} contentType="markdown" />,
+    )
+
+    expect(container.querySelector("shiny-tool-result")).not.toBeNull()
+    expect(container.querySelector(".shiny-tool-card")).toBeNull()
   })
 
   it("shows streaming dot when streaming=true", () => {

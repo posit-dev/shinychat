@@ -119,7 +119,7 @@ describe("hastToReact", () => {
       return <span data-testid="custom-p">{children}</span>
     }
     const el = hastToReact(hast, {
-      components: { p: CustomP as ComponentType<unknown> },
+      tagToComponentMap: { p: CustomP as ComponentType<unknown> },
     })
     const { getByTestId } = render(el)
     expect(getByTestId("custom-p")).toBeTruthy()

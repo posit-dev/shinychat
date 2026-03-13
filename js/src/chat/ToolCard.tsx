@@ -64,7 +64,11 @@ export function ToolCard({
 
   function handleClick(e: React.MouseEvent) {
     e.preventDefault()
-    setExpanded((prev) => !prev)
+    const card = e.currentTarget.closest(".shiny-tool-card")
+    if (card?.hasAttribute("fullscreen")) return
+
+    setExpanded(!expanded)
+    requestAnimationFrame(() => window.dispatchEvent(new Event("resize")))
   }
 
   function handleFullscreenClick(e: React.MouseEvent<HTMLButtonElement>) {

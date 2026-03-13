@@ -34,6 +34,7 @@ export function MarkdownStream({
     useState<ContentType>(initialContentType)
   const [streaming, setStreaming] = useState(initialStreaming)
   const innerRef = useRef<HTMLDivElement>(null)
+  const scrollParentRef = useRef<HTMLElement | null>(null)
 
   // Auto-scroll: the hook gives us a callback ref for the scrollable container.
   // In standalone mode we don't own the scrollable ancestor, so we do a one-time
@@ -44,21 +45,29 @@ export function MarkdownStream({
   })
 
   useEffect(() => {
-    if (!autoScroll || !innerRef.current) return
+    if (!autoScroll || !innerRef.current) {
+      if (scrollParentRef.current) {
+        containerRef(null)
+        scrollParentRef.current = null
+      }
+      return
+    }
 
     const scrollable = findScrollableParent(innerRef.current)
-    if (scrollable) {
-      // Attach the hook's callback ref to the discovered scrollable element
+    if (scrollable !== scrollParentRef.current) {
       containerRef(scrollable)
+      scrollParentRef.current = scrollable
     }
+  }, [autoScroll, content, containerRef])
 
+  useEffect(() => {
     return () => {
-      // Detach on unmount
-      containerRef(null)
+      if (scrollParentRef.current) {
+        containerRef(null)
+        scrollParentRef.current = null
+      }
     }
-    // Only run once on mount — the scrollable parent doesn't change
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [containerRef])
 
   // Re-engage auto-scroll when streaming starts
   useEffect(() => {

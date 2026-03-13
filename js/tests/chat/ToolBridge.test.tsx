@@ -98,6 +98,104 @@ describe("Tool component bridge rendering", () => {
     expect(resultDiv?.textContent).toContain("Sunny, 72°F")
   })
 
+  it("hides an existing tool request when a matching tool result arrives without an explicit hide action", () => {
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+      />,
+    )
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "assistant",
+          content:
+            '<shiny-tool-request request-id="req-inline-hide" tool-name="get_weather" arguments="{}"></shiny-tool-request>',
+          content_type: "markdown",
+        },
+      })
+    })
+
+    expect(document.querySelector(".shiny-tool-request")).toBeTruthy()
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "assistant",
+          content:
+            '<shiny-tool-result request-id="req-inline-hide" tool-name="get_weather" status="success" value="Sunny, 72°F" value-type="text"></shiny-tool-result>',
+          content_type: "markdown",
+        },
+      })
+    })
+
+    expect(document.querySelector(".shiny-tool-request")).toBeNull()
+    expect(document.querySelector(".shiny-tool-result")).toBeTruthy()
+  })
+
+  it("hides an existing tool request when a matching streamed tool result replaces chunk content", () => {
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+      />,
+    )
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "assistant",
+          content:
+            '<shiny-tool-request request-id="req-stream-hide" tool-name="get_weather" arguments="{}"></shiny-tool-request>',
+          content_type: "markdown",
+        },
+      })
+    })
+
+    expect(document.querySelector(".shiny-tool-request")).toBeTruthy()
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "chunk_start",
+        message: {
+          role: "assistant",
+          content: "",
+          content_type: "markdown",
+        },
+      })
+    })
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "chunk",
+        content:
+          '<shiny-tool-result request-id="req-stream-hide" tool-name="get_weather" status="success" value="Done" value-type="text"></shiny-tool-result>',
+        operation: "replace",
+      })
+    })
+
+    act(() => {
+      transport.fire("test-chat", { type: "chunk_end" })
+    })
+
+    expect(document.querySelector(".shiny-tool-request")).toBeNull()
+    expect(document.querySelector(".shiny-tool-result")).toBeTruthy()
+  })
+
   it("hide_tool_request action hides a rendered tool request", () => {
     const transport = createMockTransport()
     const shinyLifecycle = createMockShinyLifecycle()
@@ -136,5 +234,40 @@ describe("Tool component bridge rendering", () => {
 
     // Card should be gone (ToolRequest returns null when hidden)
     expect(document.querySelector(".shiny-tool-card")).toBeNull()
+  })
+
+  it("hides a preloaded tool request when a matching preloaded tool result is rendered", () => {
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+        initialMessages={[
+          {
+            id: "msg-request",
+            role: "assistant",
+            content:
+              '<shiny-tool-request request-id="req-preloaded" tool-name="search" arguments="{}"></shiny-tool-request>',
+            contentType: "markdown",
+            streaming: false,
+          },
+          {
+            id: "msg-result",
+            role: "assistant",
+            content:
+              '<shiny-tool-result request-id="req-preloaded" tool-name="search" status="success" value="Done" value-type="text"></shiny-tool-result>',
+            contentType: "markdown",
+            streaming: false,
+          },
+        ]}
+      />,
+    )
+
+    expect(document.querySelector(".shiny-tool-request")).toBeNull()
+    expect(document.querySelector(".shiny-tool-result")).toBeTruthy()
   })
 })

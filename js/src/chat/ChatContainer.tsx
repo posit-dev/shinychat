@@ -72,9 +72,10 @@ export const ChatContainer = forwardRef<
   pendingUrlRef.current = pendingUrl
 
   const isStreaming = messages[messages.length - 1]?.streaming ?? false
-  const { containerRef: messagesRef, scrollToBottom } = useAutoScroll({
+  const { containerRef: messagesRef, engageStickToBottom } = useAutoScroll({
     streaming: isStreaming,
     contentDependency: messages,
+    scrollOnContentChange: true,
   })
 
   // Forward ChatInput's imperative handle so ChatApp can call setInputValue/focus
@@ -226,7 +227,7 @@ export const ChatContainer = forwardRef<
           inputId={inputId}
           disabled={inputDisabled}
           placeholder={inputPlaceholder}
-          onSend={scrollToBottom}
+          onSend={engageStickToBottom}
         />
       </shiny-chat-input>
 

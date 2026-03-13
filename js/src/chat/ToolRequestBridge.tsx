@@ -1,4 +1,5 @@
 import { ToolRequest } from "./ToolRequest"
+import { useChatToolState } from "./context"
 
 interface ToolRequestBridgeProps {
   "request-id"?: string
@@ -18,7 +19,10 @@ export function ToolRequestBridge({
   intent,
   arguments: toolArguments,
 }: ToolRequestBridgeProps) {
+  const { hiddenToolRequests } = useChatToolState()
+
   if (!requestId || !toolName) return null
+  if (hiddenToolRequests.has(requestId)) return null
 
   return (
     <div className="shiny-tool-request">

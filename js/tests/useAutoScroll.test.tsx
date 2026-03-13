@@ -331,7 +331,7 @@ describe("useAutoScroll", () => {
       })
     })
 
-    it("does not scroll when not streaming", () => {
+    it("does not scroll when not streaming (default scrollOnContentChange=false)", () => {
       const element = createMockScrollContainer({
         scrollTop: 500,
         scrollHeight: 1000,
@@ -513,6 +513,246 @@ describe("useAutoScroll", () => {
     })
   })
 
+  describe("scrollOnContentChange", () => {
+    it("scrolls on non-streaming content change when scrollOnContentChange is true and stickToBottom is true", () => {
+      const element = createMockScrollContainer({
+        scrollTop: 500,
+        scrollHeight: 1000,
+        clientHeight: 500,
+      })
+
+      const { result, rerender } = renderHook(
+        (props) =>
+          useAutoScroll({
+            streaming: props.streaming,
+            contentDependency: props.contentDependency,
+            scrollOnContentChange: true,
+          }),
+        {
+          initialProps: {
+            streaming: false,
+            contentDependency: [] as unknown[],
+          },
+        },
+      )
+
+      act(() => {
+        result.current.containerRef(element)
+      })
+
+      rerender({ streaming: false, contentDependency: ["new message"] })
+
+      expect(element.scrollTo).toHaveBeenCalled()
+    })
+
+    it("does not scroll when stickToBottom is false even with scrollOnContentChange", () => {
+      const element = createMockScrollContainer({
+        scrollTop: 500,
+        scrollHeight: 1000,
+        clientHeight: 500,
+      })
+
+      const { result, rerender } = renderHook(
+        (props) =>
+          useAutoScroll({
+            streaming: props.streaming,
+            contentDependency: props.contentDependency,
+            scrollOnContentChange: true,
+          }),
+        {
+          initialProps: {
+            streaming: false,
+            contentDependency: [] as unknown[],
+          },
+        },
+      )
+
+      act(() => {
+        result.current.containerRef(element)
+      })
+
+      // Scroll up to disengage stickToBottom
+      act(() => {
+        simulateScroll(element, 300)
+      })
+      expect(result.current.stickToBottom).toBe(false)
+
+      rerender({ streaming: false, contentDependency: ["new message"] })
+
+      expect(element.scrollTo).not.toHaveBeenCalled()
+    })
+
+    it("uses smooth behavior for non-streaming scrolls", () => {
+      const element = createMockScrollContainer({
+        scrollTop: 500,
+        scrollHeight: 1000,
+        clientHeight: 500,
+      })
+
+      const { result, rerender } = renderHook(
+        (props) =>
+          useAutoScroll({
+            streaming: props.streaming,
+            contentDependency: props.contentDependency,
+            scrollOnContentChange: true,
+          }),
+        {
+          initialProps: {
+            streaming: false,
+            contentDependency: [] as unknown[],
+          },
+        },
+      )
+
+      act(() => {
+        result.current.containerRef(element)
+      })
+
+      rerender({ streaming: false, contentDependency: ["new message"] })
+
+      expect(element.scrollTo).toHaveBeenCalledWith({
+        top: 1000,
+        behavior: "smooth",
+      })
+    })
+
+    it("uses instant behavior for streaming scrolls", () => {
+      const element = createMockScrollContainer({
+        scrollTop: 500,
+        scrollHeight: 1000,
+        clientHeight: 500,
+      })
+
+      const { result, rerender } = renderHook(
+        (props) =>
+          useAutoScroll({
+            streaming: props.streaming,
+            contentDependency: props.contentDependency,
+            scrollOnContentChange: true,
+          }),
+        {
+          initialProps: {
+            streaming: true,
+            contentDependency: [] as unknown[],
+          },
+        },
+      )
+
+      act(() => {
+        result.current.containerRef(element)
+      })
+
+      rerender({ streaming: true, contentDependency: ["new message"] })
+
+      expect(element.scrollTo).toHaveBeenCalledWith({
+        top: 1000,
+        behavior: "instant",
+      })
+    })
+  })
+
+  describe("engageStickToBottom", () => {
+    it("sets stickToBottom to true without calling scrollTo", () => {
+      const element = createMockScrollContainer({
+        scrollTop: 500,
+        scrollHeight: 1000,
+        clientHeight: 500,
+      })
+
+      const { result } = renderHook(() =>
+        useAutoScroll({
+          streaming: false,
+          contentDependency: [],
+        }),
+      )
+
+      act(() => {
+        result.current.containerRef(element)
+      })
+
+      // Scroll up to disengage stickToBottom
+      act(() => {
+        simulateScroll(element, 300)
+      })
+      expect(result.current.stickToBottom).toBe(false)
+
+      act(() => {
+        result.current.engageStickToBottom()
+      })
+
+      expect(result.current.stickToBottom).toBe(true)
+      expect(element.scrollTo).not.toHaveBeenCalled()
+    })
+
+    it("is a no-op when already stuck to bottom", () => {
+      const { result } = renderHook(() =>
+        useAutoScroll({
+          streaming: false,
+          contentDependency: [],
+        }),
+      )
+
+      // stickToBottom starts true
+      expect(result.current.stickToBottom).toBe(true)
+
+      act(() => {
+        result.current.engageStickToBottom()
+      })
+
+      expect(result.current.stickToBottom).toBe(true)
+    })
+
+    it("triggers scroll on next content change after re-engaging (with scrollOnContentChange)", () => {
+      const element = createMockScrollContainer({
+        scrollTop: 500,
+        scrollHeight: 1000,
+        clientHeight: 500,
+      })
+
+      const { result, rerender } = renderHook(
+        (props) =>
+          useAutoScroll({
+            streaming: false,
+            contentDependency: props.contentDependency,
+            scrollOnContentChange: true,
+          }),
+        {
+          initialProps: {
+            contentDependency: [] as unknown[],
+          },
+        },
+      )
+
+      act(() => {
+        result.current.containerRef(element)
+      })
+
+      // Scroll up to disengage stickToBottom
+      act(() => {
+        simulateScroll(element, 300)
+      })
+      expect(result.current.stickToBottom).toBe(false)
+
+      // Re-engage without an explicit scroll call
+      act(() => {
+        result.current.engageStickToBottom()
+      })
+      expect(result.current.stickToBottom).toBe(true)
+
+      // Clear any scrollTo calls that may have fired when stickToBottom
+      // flipped back to true (the effect re-runs on state change).
+      vi.clearAllMocks()
+
+      // New content arrives — the effect should fire again and scroll
+      rerender({ contentDependency: ["new message"] })
+
+      expect(element.scrollTo).toHaveBeenCalledWith({
+        top: 1000,
+        behavior: "smooth",
+      })
+    })
+  })
+
   describe("edge cases", () => {
     it("handles container with no scroll (content fits)", () => {
       const element = createMockScrollContainer({
@@ -653,6 +893,62 @@ describe("findScrollableParent", () => {
     })
 
     expect(findScrollableParent(child)).toBe(parent)
+
+    vi.restoreAllMocks()
+  })
+
+  it("finds an ancestor that is actually overflowing even without overflow-y set", () => {
+    const parent = document.createElement("div")
+    const child = document.createElement("div")
+    parent.appendChild(child)
+
+    Object.defineProperty(parent, "scrollHeight", {
+      configurable: true,
+      get: () => 600,
+    })
+    Object.defineProperty(parent, "clientHeight", {
+      configurable: true,
+      get: () => 300,
+    })
+
+    const original = window.getComputedStyle
+    vi.spyOn(window, "getComputedStyle").mockImplementation((el) => {
+      const style = original(el)
+      if (el === parent) {
+        return { ...style, overflowY: "visible" } as CSSStyleDeclaration
+      }
+      return style
+    })
+
+    expect(findScrollableParent(child)).toBe(parent)
+
+    vi.restoreAllMocks()
+  })
+
+  it("does not treat overflow-y:hidden ancestors as scrollable even if content overflows", () => {
+    const parent = document.createElement("div")
+    const child = document.createElement("div")
+    parent.appendChild(child)
+
+    Object.defineProperty(parent, "scrollHeight", {
+      configurable: true,
+      get: () => 600,
+    })
+    Object.defineProperty(parent, "clientHeight", {
+      configurable: true,
+      get: () => 300,
+    })
+
+    const original = window.getComputedStyle
+    vi.spyOn(window, "getComputedStyle").mockImplementation((el) => {
+      const style = original(el)
+      if (el === parent) {
+        return { ...style, overflowY: "hidden" } as CSSStyleDeclaration
+      }
+      return style
+    })
+
+    expect(findScrollableParent(child)).toBeNull()
 
     vi.restoreAllMocks()
   })

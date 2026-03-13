@@ -14,6 +14,9 @@ export interface UseAutoScrollOptions {
   contentDependency: unknown
   /** Pixel tolerance for "at bottom" detection. Default: 10 */
   bottomTolerance?: number
+  /** When true, scroll to bottom on any content change while stickToBottom
+   *  is engaged, not just during streaming. Default: false. */
+  scrollOnContentChange?: boolean
 }
 
 export interface UseAutoScrollReturn {
@@ -23,6 +26,10 @@ export interface UseAutoScrollReturn {
   stickToBottom: boolean
   /** Manually scroll to bottom and re-engage auto-scroll. */
   scrollToBottom: () => void
+  /** Re-engage stickToBottom without performing an immediate scroll.
+   *  Useful when a content change is about to happen and the post-render
+   *  effect should handle scrolling with the correct scrollHeight. */
+  engageStickToBottom: () => void
 }
 
 /**
@@ -37,6 +44,7 @@ export function useAutoScroll({
   streaming,
   contentDependency,
   bottomTolerance = 10,
+  scrollOnContentChange = false,
 }: UseAutoScrollOptions): UseAutoScrollReturn {
   const containerElRef = useRef<HTMLElement | null>(null)
   const [stickToBottom, setStickToBottom] = useState(true)
@@ -94,19 +102,21 @@ export function useAutoScroll({
     }
   }, [])
 
-  // Auto-scroll during streaming when stickToBottom is true.
+  // Auto-scroll during streaming (or on any content change if scrollOnContentChange
+  // is set) when stickToBottom is true.
   // contentDependency is included so that each new chunk triggers the scroll.
   useEffect(() => {
-    if (streaming && stickToBottom && containerElRef.current) {
+    const shouldScroll = streaming || scrollOnContentChange
+    if (shouldScroll && stickToBottom && containerElRef.current) {
       containerElRef.current.scrollTo({
         top: containerElRef.current.scrollHeight,
         // Use "instant" during streaming: rapid content updates would cancel
         // each "smooth" animation before it reaches its target, causing the
         // scroll position to fall behind.
-        behavior: "instant",
+        behavior: streaming ? "instant" : "smooth",
       })
     }
-  }, [streaming, stickToBottom, contentDependency])
+  }, [streaming, stickToBottom, contentDependency, scrollOnContentChange])
 
   // Manually re-engage and scroll to bottom
   const scrollToBottom = useCallback(() => {
@@ -117,7 +127,11 @@ export function useAutoScroll({
     })
   }, [])
 
-  return { containerRef, stickToBottom, scrollToBottom }
+  const engageStickToBottom = useCallback(() => {
+    setStickToBottom(true)
+  }, [])
+
+  return { containerRef, stickToBottom, scrollToBottom, engageStickToBottom }
 }
 
 /**
@@ -136,7 +150,12 @@ export function findScrollableParent(
     if (stopTag && el.tagName.toLowerCase() === stopTag) break
 
     const style = getComputedStyle(el)
+    const allowsVerticalScroll =
+      style.overflowY !== "hidden" && style.overflowY !== "clip"
+    const hasScrollableContent = el.scrollHeight > el.clientHeight
+
     if (
+      (allowsVerticalScroll && hasScrollableContent) ||
       style.overflowY === "auto" ||
       style.overflowY === "scroll" ||
       style.overflowY === "overlay"
