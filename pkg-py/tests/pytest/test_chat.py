@@ -272,7 +272,7 @@ def test_google_content_object_normalization():
     c = types.Content(parts=[types.Part(text="Hello world!")], role="model")
     m = message_content(c)
     assert m.content == "Hello world!"
-    assert m.role == "model"
+    assert m.role == "assistant"
 
 
 def test_google_multimodal_normalization():
@@ -294,7 +294,7 @@ def test_google_multimodal_normalization():
 
     m = message_content(c)
     assert m.content == "Here is an image: described above."
-    assert m.role == "model"
+    assert m.role == "assistant"
 
 
 def test_google_normalization():

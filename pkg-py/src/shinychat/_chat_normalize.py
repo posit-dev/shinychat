@@ -312,7 +312,12 @@ try:
         for part in message.parts:
             if hasattr(part, "text") and part.text:
                 content += part.text
-        return ChatMessage(content=content, role=message.role or "model")
+
+        if message.role in ("user", "system"):
+          role = message.role
+        else:
+          role = "assistant"
+        return ChatMessage(content=content, role=role)
 
     @message_content_chunk.register
     def _(chunk: Content):
