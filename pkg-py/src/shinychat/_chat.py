@@ -53,7 +53,7 @@ from ._chat_types import (
     ClientMessage,
     TransformedMessage,
 )
-from ._html_deps_py_shiny import chat_deps
+from ._html_deps_py_shiny import shinychat_dependency
 from ._typing_extensions import TypeGuard
 from ._utils_types import MISSING, MISSING_TYPE
 
@@ -1793,7 +1793,7 @@ def chat_ui(
             id=f"{id}_user_input",
             placeholder=placeholder,
         ),
-        chat_deps(),
+        shinychat_dependency(),
         icon_deps,
         {
             "style": css(

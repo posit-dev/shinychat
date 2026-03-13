@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, AsyncIterable, Iterable, Literal, Union
 
 from htmltools import RenderedHTML, Tag, TagChild, TagList, css
 
-from ._html_deps_py_shiny import markdown_stream_dependency
+from ._html_deps_py_shiny import shinychat_dependency
 from ._typing_extensions import TypedDict
 
 if TYPE_CHECKING:
@@ -373,7 +373,7 @@ def output_markdown_stream(
 
     return Tag(
         "shiny-markdown-stream",
-        markdown_stream_dependency(),
+        shinychat_dependency(),
         ui["dependencies"],
         {
             "style": css(

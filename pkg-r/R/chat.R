@@ -4,23 +4,6 @@
 # trimming of the message history to fit within the context window; these
 # are left for the caller to handle in the R version.
 
-chat_deps <- function() {
-  htmltools::htmlDependency(
-    "shinychat",
-    utils::packageVersion("shinychat"),
-    package = "shinychat",
-    src = "lib/shiny",
-    script = list(
-      list(src = "chat/chat.js", type = "module"),
-      list(src = "markdown-stream/markdown-stream.js", type = "module")
-    ),
-    stylesheet = c(
-      "chat/chat.css",
-      "markdown-stream/markdown-stream.css"
-    )
-  )
-}
-
 #' Create a chat UI element
 #'
 #' @description
@@ -149,7 +132,7 @@ chat_ui <- function(
         "shiny-chat-input",
         list(id = paste0(id, "_user_input"), placeholder = placeholder)
       ),
-      chat_deps(),
+      shinychat_deps(),
       htmltools::findDependencies(icon_assistant)
     )
   )

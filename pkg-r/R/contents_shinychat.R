@@ -181,7 +181,7 @@ as.tags.shinychat_tool_card <- function(x, ...) {
     htmltools::findDependencies(x$value),
     htmltools::findDependencies(x$icon),
     htmltools::findDependencies(x$footer),
-    chat_deps()
+    shinychat_deps()
   )
 
   htmltools::tag(

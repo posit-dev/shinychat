@@ -1,14 +1,3 @@
-markdown_stream_deps <- function() {
-  htmltools::htmlDependency(
-    "shinychat",
-    utils::packageVersion("shinychat"),
-    package = "shinychat",
-    src = "lib/shiny",
-    script = list(src = "markdown-stream/markdown-stream.js", type = "module"),
-    stylesheet = "markdown-stream/markdown-stream.css",
-  )
-}
-
 #' Create a UI element for a markdown stream.
 #'
 #' @description
@@ -66,10 +55,10 @@ output_markdown_stream <- function(
       ),
       content = ui[["html"]],
       "content-type" = content_type,
-      "auto-scroll" = auto_scroll,
+      "auto-scroll" = if (auto_scroll) "" else NULL,
       ...,
       ui[["dependencies"]],
-      markdown_stream_deps()
+      shinychat_deps()
     )
   )
 }
