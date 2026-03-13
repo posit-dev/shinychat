@@ -24,6 +24,7 @@ async def _():
         'status="success" '
         "expanded "
         "full-screen "
+        "data-shinychat-react "
         ">"
         "</shiny-tool-result>"
     )

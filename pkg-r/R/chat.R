@@ -371,6 +371,13 @@ chat_append_message <- function(
     operation <- NULL
   }
 
+  if (is_html) {
+    # Convert to tags (handles shinychat_tool_card -> shiny.tag)
+    # then split around data-shinychat-react elements
+    content <- htmltools::as.tags(content)
+    content <- do.call(htmltools::tagList, split_html_islands(content))
+  }
+
   if (is.character(content)) {
     # content is most likely a string, so avoid overhead in that case
     ui <- list(html = content, deps = "[]")
@@ -384,12 +391,9 @@ chat_append_message <- function(
 
   msg_content <- ui[["html"]]
   if (is_html) {
-    # Wrapped in shinychat-html so the client renders it via innerHTML
-    # as an uncontrolled island.
-    msg_content <- sprintf(
-      "\n\n<shinychat-html>\n%s\n</shinychat-html>\n\n",
-      msg_content
-    )
+    # Surround with blank lines so the markdown parser treats
+    # block-level custom elements correctly.
+    msg_content <- paste0("\n\n", msg_content, "\n\n")
   }
 
   msg <- list(
