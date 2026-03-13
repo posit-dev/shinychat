@@ -32,8 +32,9 @@ class ChatMessage:
             ui = TagList(content).render()
             content, ui_deps = ui["html"], ui["dependencies"]
             deps = deps + ui_deps
-            # Wrapped in shinychat-html so the client renders it via innerHTML
-            # as an uncontrolled island
+            # Wrapped in shinychat-html so the client renders it via the
+            # smart HtmlIsland (innerHTML for plain HTML, React for elements
+            # with data-shinychat-react)
             content = f"\n\n<shinychat-html>\n{content}\n</shinychat-html>\n\n"
 
         self.content = content

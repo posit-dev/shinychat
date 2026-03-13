@@ -97,6 +97,7 @@ export function HtmlIsland({ node }: HtmlIslandProps) {
     <>
       {segments.map((seg, idx) => {
         if (seg.kind === "html") {
+          // Index key is safe: HTML segments only grow or split (never reorder).
           return <RawHtmlSegment key={idx} html={seg.html} />
         } else {
           return (
