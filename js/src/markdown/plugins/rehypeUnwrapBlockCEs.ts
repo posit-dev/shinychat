@@ -8,7 +8,11 @@ import type { Plugin } from "unified"
  * before the CE becomes one <p>, the CE is promoted to a sibling, and content
  * after becomes another <p>.
  */
-const blockCEs = new Set(["shiny-tool-request", "shiny-tool-result"])
+const blockCEs = new Set([
+  "shiny-tool-request",
+  "shiny-tool-result",
+  "shinychat-html",
+])
 
 function isBlockCE(node: ElementContent): node is Element {
   return node.type === "element" && blockCEs.has((node as Element).tagName)

@@ -152,6 +152,13 @@ class MarkdownStream:
                         # 2. Returns a HTML string representation of the TagChild
                         #    (i.e., `div()` -> `"<div>"`).
                         ui = self._session._process_ui(x)
+                        # No surrounding newlines needed here: chunks are sent as
+                        # individual appended pieces, not embedded in a markdown
+                        # string, so there's no markdown parser to satisfy with
+                        # blank lines for block-level treatment. (Contrast with
+                        # _chat_types.py, which embeds the tag in a full markdown
+                        # string and must use blank lines to ensure block-level HTML.)
+                        ui["html"] = f"<shinychat-html>{ui['html']}</shinychat-html>"
 
                     result += ui["html"]
                     await self._send_content_message(

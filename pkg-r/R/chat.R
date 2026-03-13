@@ -384,10 +384,10 @@ chat_append_message <- function(
 
   msg_content <- ui[["html"]]
   if (is_html) {
-    # Code blocks with `{=html}` infostrings are rendered as-is by a custom
-    # rendering method in markdown-stream.ts
+    # Wrapped in shinychat-html so the client renders it via innerHTML
+    # as an uncontrolled island
     msg_content <- sprintf(
-      "\n\n````````{=html}\n%s\n````````\n\n",
+      "\n\n<shinychat-html>\n%s\n</shinychat-html>\n\n",
       msg_content
     )
   }

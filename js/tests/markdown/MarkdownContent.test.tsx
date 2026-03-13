@@ -40,6 +40,15 @@ describe("MarkdownContent (pure)", () => {
     }).not.toThrow()
   })
 
+  it("renders shinychat-html block without throwing", () => {
+    const content =
+      '<shinychat-html><div class="custom">Hello</div></shinychat-html>'
+
+    expect(() => {
+      render(<MarkdownContent content={content} contentType="markdown" />)
+    }).not.toThrow()
+  })
+
   it("renders tool tags without requiring chat contexts", () => {
     const content =
       '<shiny-tool-result request-id="req-1" tool-name="get_weather" status="success" value="Sunny" value-type="text"></shiny-tool-result>'

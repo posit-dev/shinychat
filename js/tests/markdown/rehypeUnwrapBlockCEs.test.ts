@@ -29,6 +29,13 @@ describe("rehypeUnwrapBlockCEs", () => {
     expect(html).toContain("<shiny-tool-request")
   })
 
+  it("unwraps shinychat-html from a <p> parent", () => {
+    const md = "<shinychat-html><div>hello</div></shinychat-html>"
+    const html = process(md)
+    expect(html).not.toMatch(/<p>.*<shinychat-html/)
+    expect(html).toContain("<shinychat-html")
+  })
+
   it("unwraps shiny-tool-result from a <p> parent", () => {
     const md =
       '<shiny-tool-result request-id="r1" tool-name="foo" status="success" value="ok" value-type="text"></shiny-tool-result>'

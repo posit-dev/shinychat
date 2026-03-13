@@ -31,9 +31,9 @@ class ChatMessage:
         if not isinstance(content, str):
             ui = TagList(content).render()
             content, deps = ui["html"], ui["dependencies"]
-            # Code blocks with `{=html}` infostrings are rendered as-is by a
-            # custom rendering method in markdown-stream.ts
-            content = f"\n\n````````{{=html}}\n{content}\n````````\n\n"
+            # Wrapped in shinychat-html so the client renders it via innerHTML
+            # as an uncontrolled island
+            content = f"\n\n<shinychat-html>\n{content}\n</shinychat-html>\n\n"
 
         self.content = content
         self.html_deps: list[HTMLDependency] = deps

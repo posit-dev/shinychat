@@ -6,7 +6,6 @@ import rehypeRaw from "rehype-raw"
 import rehypeSanitize from "rehype-sanitize"
 import rehypeHighlight from "rehype-highlight"
 
-import { remarkRawHtml } from "./plugins/remarkRawHtml"
 import { remarkEscapeHtml } from "./plugins/remarkEscapeHtml"
 import { rehypeExternalLinks } from "./plugins/rehypeExternalLinks"
 import { rehypeUncontrolledInputs } from "./plugins/rehypeUncontrolledInputs"
@@ -15,19 +14,15 @@ import { rehypeUnwrapBlockCEs } from "./plugins/rehypeUnwrapBlockCEs"
 
 /**
  * Frozen processor for assistant messages.
- * Includes: GFM, {=html} passthrough, raw HTML parsing,
- * external links, syntax highlighting.
+ * Includes: GFM, raw HTML parsing, external links, syntax highlighting.
  *
  * No rehypeSanitize step: the output is converted to React elements via
  * toJsxRuntime (not innerHTML), so script tags and event-handler attributes
  * are inert. Sanitization is applied only to user messages as defense-in-depth.
- *
- * SECURITY: remarkRawHtml is ONLY used here, never for user messages.
  */
 export const assistantProcessor = unified()
   .use(remarkParse)
   .use(remarkGfm)
-  .use(remarkRawHtml)
   .use(remarkRehype, { allowDangerousHtml: true })
   .use(rehypeRaw)
   .use(rehypeUnwrapBlockCEs)

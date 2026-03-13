@@ -6,12 +6,14 @@ import { CopyableCodeBlock } from "./components/CopyableCodeBlock"
 import { BootstrapTable } from "./components/BootstrapTable"
 import { ToolRequestBridge } from "../chat/ToolRequestBridge"
 import { ToolResultBridge } from "../chat/ToolResultBridge"
+import { HtmlIslandBridge } from "../chat/HtmlIslandBridge"
 
 const assistantComponents: Record<string, ComponentType<unknown>> = {
   pre: CopyableCodeBlock as ComponentType<unknown>,
   table: BootstrapTable as ComponentType<unknown>,
   "shiny-tool-request": ToolRequestBridge as ComponentType<unknown>,
   "shiny-tool-result": ToolResultBridge as ComponentType<unknown>,
+  "shinychat-html": HtmlIslandBridge as ComponentType<unknown>,
 }
 
 const userComponents: Record<string, ComponentType<unknown>> = {
