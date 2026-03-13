@@ -52,6 +52,12 @@ jobs:
       - name: 🧪 Check tests
         run: make py-check-tests
 
+      - name: 📔 Coverage report
+        if: matrix.python-version == '3.13'
+        run: |
+          uv run coverage run -m pytest
+          uv run coverage report --fail-under=0
+
       - name: 📝 Check types
         run: make py-check-types
 

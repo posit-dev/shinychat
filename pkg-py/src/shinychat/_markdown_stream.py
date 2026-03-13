@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, AsyncIterable, Iterable, Literal, Union
 
 from htmltools import RenderedHTML, Tag, TagChild, TagList, css
 
-from ._html_deps_py_shiny import markdown_stream_dependency
+from ._html_deps_py_shiny import shinychat_dependency
 from ._typing_extensions import TypedDict
 
 if TYPE_CHECKING:
@@ -147,11 +147,10 @@ class MarkdownStream:
                         # x is most likely a string, so avoid overhead in that case
                         ui: RenderedDeps = {"html": x, "deps": []}
                     else:
-                        # process_ui() does *not* render markdown->HTML, but it does:
-                        # 1. Extract and register HTMLdependency()s with the session.
-                        # 2. Returns a HTML string representation of the TagChild
-                        #    (i.e., `div()` -> `"<div>"`).
-                        ui = self._session._process_ui(x)
+                        from ._html_islands import split_html_islands
+
+                        split = split_html_islands(x)
+                        ui = self._session._process_ui(TagList(*split))
 
                     result += ui["html"]
                     await self._send_content_message(
@@ -373,7 +372,7 @@ def output_markdown_stream(
 
     return Tag(
         "shiny-markdown-stream",
-        markdown_stream_dependency(),
+        shinychat_dependency(),
         ui["dependencies"],
         {
             "style": css(

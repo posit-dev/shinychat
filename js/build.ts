@@ -126,18 +126,16 @@ async function bundleEntry({
 
 const entries: EntryConfig[] = [
   {
-    name: "markdown-stream/markdown-stream",
-    jsEntry: "src/markdown-stream/markdown-stream.ts",
-    sassEntry: "src/markdown-stream/markdown-stream.scss",
-  },
-  {
-    name: "chat/chat",
-    jsEntry: "src/chat/chat.ts",
-    sassEntry: "src/chat/chat.scss",
+    name: "shinychat",
+    jsEntry: "src/shinychat-entry.ts",
+    sassEntry: "src/shinychat.scss",
   },
 ]
 
 ;(async () => {
+  // Clean old output before building
+  await fs.rm(outDir, { recursive: true, force: true })
+
   await Promise.all(entries.map(bundleEntry))
 
   if (metafile && allEsbuildMetadata.length > 0) {

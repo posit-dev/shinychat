@@ -4,23 +4,6 @@
 # trimming of the message history to fit within the context window; these
 # are left for the caller to handle in the R version.
 
-chat_deps <- function() {
-  htmltools::htmlDependency(
-    "shinychat",
-    utils::packageVersion("shinychat"),
-    package = "shinychat",
-    src = "lib/shiny",
-    script = list(
-      list(src = "chat/chat.js", type = "module"),
-      list(src = "markdown-stream/markdown-stream.js", type = "module")
-    ),
-    stylesheet = c(
-      "chat/chat.css",
-      "markdown-stream/markdown-stream.css"
-    )
-  )
-}
-
 #' Create a chat UI element
 #'
 #' @description
@@ -149,7 +132,7 @@ chat_ui <- function(
         "shiny-chat-input",
         list(id = paste0(id, "_user_input"), placeholder = placeholder)
       ),
-      chat_deps(),
+      shinychat_deps(),
       htmltools::findDependencies(icon_assistant)
     )
   )
@@ -388,6 +371,13 @@ chat_append_message <- function(
     operation <- NULL
   }
 
+  if (is_html) {
+    # Convert to tags (handles shinychat_tool_card -> shiny.tag)
+    # then split around data-shinychat-react elements
+    content <- htmltools::as.tags(content)
+    content <- do.call(htmltools::tagList, split_html_islands(content))
+  }
+
   if (is.character(content)) {
     # content is most likely a string, so avoid overhead in that case
     ui <- list(html = content, deps = "[]")
@@ -401,12 +391,9 @@ chat_append_message <- function(
 
   msg_content <- ui[["html"]]
   if (is_html) {
-    # Code blocks with `{=html}` infostrings are rendered as-is by a custom
-    # rendering method in markdown-stream.ts
-    msg_content <- sprintf(
-      "\n\n````````{=html}\n%s\n````````\n\n",
-      msg_content
-    )
+    # Surround with blank lines so the markdown parser treats
+    # block-level custom elements correctly.
+    msg_content <- paste0("\n\n", msg_content, "\n\n")
   }
 
   msg <- list(
@@ -539,7 +526,6 @@ rlang::on_load(
   })
 )
 
-
 #' Clear all messages from a chat control
 #'
 #' @param id The ID of the chat element
@@ -580,7 +566,6 @@ chat_clear <- function(id, session = getDefaultReactiveDomain()) {
     )
   )
 }
-
 
 #' Update the user input of a chat control
 #'

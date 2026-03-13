@@ -14,28 +14,14 @@ For...
 """
 
 
-def chat_deps() -> list[HTMLDependency]:
-    dep = HTMLDependency(
-        name="shinychat-chat",
-        version=__version__,
-        source={
-            "package": "shinychat",
-            "subdir": "www/chat",
-        },
-        script={"src": "chat.js", "type": "module"},
-        stylesheet={"href": "chat.css"},
-    )
-    return [dep, markdown_stream_dependency()]
-
-
-def markdown_stream_dependency() -> HTMLDependency:
+def shinychat_dependency() -> HTMLDependency:
     return HTMLDependency(
-        name="shinychat-markdown",
+        name="shinychat",
         version=__version__,
         source={
             "package": "shinychat",
-            "subdir": "www/markdown-stream",
+            "subdir": "www",
         },
-        script={"src": "markdown-stream.js", "type": "module"},
-        stylesheet={"href": "markdown-stream.css"},
+        script={"src": "shinychat.js", "type": "module"},
+        stylesheet={"href": "shinychat.css"},
     )

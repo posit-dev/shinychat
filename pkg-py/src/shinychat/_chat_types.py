@@ -27,13 +27,17 @@ class ChatMessage:
 
         # content _can_ be a TagChild, but it's most likely just a string (of
         # markdown), so only process it if it's not a string.
-        deps = []
+        deps: list[HTMLDependency] = []
         if not isinstance(content, str):
-            ui = TagList(content).render()
-            content, deps = ui["html"], ui["dependencies"]
-            # Code blocks with `{=html}` infostrings are rendered as-is by a
-            # custom rendering method in markdown-stream.ts
-            content = f"\n\n````````{{=html}}\n{content}\n````````\n\n"
+            from ._html_islands import split_html_islands
+
+            split = split_html_islands(content)
+            ui = TagList(*split).render()
+            content, ui_deps = ui["html"], ui["dependencies"]
+            deps = deps + ui_deps
+            # Surround with blank lines so the markdown parser treats
+            # block-level custom elements correctly.
+            content = f"\n\n{content}\n\n"
 
         self.content = content
         self.html_deps: list[HTMLDependency] = deps

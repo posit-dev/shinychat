@@ -2,7 +2,7 @@
   "compilerOptions": {
     "module": "ES2022",
     "lib": ["ES2022", "dom", "dom.iterable"],
-    "jsx": "react",
+    "jsx": "react-jsx",
     "noImplicitAny": true,
     "removeComments": true,
     "preserveConstEnums": true,
@@ -18,8 +18,6 @@
     "isolatedModules": true,
     "strict": true,
     "noUncheckedIndexedAccess": true,
-    "experimentalDecorators": true,
-    "useDefineForClassFields": false,
   },
   "include": ["**/*.tsx", "**/*.ts"],
 }

@@ -181,13 +181,14 @@ as.tags.shinychat_tool_card <- function(x, ...) {
     htmltools::findDependencies(x$value),
     htmltools::findDependencies(x$icon),
     htmltools::findDependencies(x$footer),
-    chat_deps()
+    shinychat_deps()
   )
 
-  htmltools::tag(
+  tag <- htmltools::tag(
     tag_name,
     dots_list(type = NULL, !!!x, !!!deps, .homonyms = "first")
   )
+  htmltools::tagAppendAttributes(tag, `data-shinychat-react` = NA)
 }
 
 #' @export
@@ -295,25 +296,35 @@ get_tool_result_display <- function(content) {
   if (
     inherits(display, c("html", "shiny.tag", "shiny.tag.list", "htmlwidgets"))
   ) {
-    cli::cli_warn(c(
-      invalid_display_fmt,
-      "i" = "To display HTML content for tool results in {.pkg shinychat}, create a tool result with {.code extra = list(display = list(html = ...))}.",
-      "i" = "You can also use {.code markdown} or {.code text} items in {.code display} to show Markdown or plain text, respectively."
-    ))
+    cli::cli_warn(
+      c(
+        invalid_display_fmt,
+        "i" = "To display HTML content for tool results in {.pkg shinychat}, create a tool result with {.code extra = list(display = list(html = ...))}.",
+        "i" = "You can also use {.code markdown} or {.code text} items in {.code display} to show Markdown or plain text, respectively."
+      )
+    )
     return(list())
   }
 
   # fmt: skip
   expected_fields <- c(
-    "html", "markdown", "text", "show_request", "open", "title", "icon",
+    "html",
+    "markdown",
+    "text",
+    "show_request",
+    "open",
+    "title",
+    "icon",
     "footer"
   )
 
   if (!is.list(display)) {
-    cli::cli_warn(c(
-      invalid_display_fmt,
-      "x" = "Expected a list with fields {.or {.var {expected_fields}}}, not {.obj_type_friendly {display}}."
-    ))
+    cli::cli_warn(
+      c(
+        invalid_display_fmt,
+        "x" = "Expected a list with fields {.or {.var {expected_fields}}}, not {.obj_type_friendly {display}}."
+      )
+    )
     return(list())
   }
 
@@ -361,7 +372,6 @@ tool_string <- function(x) {
     jsonlite::toJSON(x@value, auto_unbox = TRUE, pretty = 2)
   }
 }
-
 
 S7::method(contents_shinychat, ellmer::Turn) <- function(content) {
   # Process all contents in the turn, filtering out empty results

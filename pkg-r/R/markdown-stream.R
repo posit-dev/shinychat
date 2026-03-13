@@ -1,14 +1,3 @@
-markdown_stream_deps <- function() {
-  htmltools::htmlDependency(
-    "shinychat",
-    utils::packageVersion("shinychat"),
-    package = "shinychat",
-    src = "lib/shiny",
-    script = list(src = "markdown-stream/markdown-stream.js", type = "module"),
-    stylesheet = "markdown-stream/markdown-stream.css",
-  )
-}
-
 #' Create a UI element for a markdown stream.
 #'
 #' @description
@@ -66,10 +55,10 @@ output_markdown_stream <- function(
       ),
       content = ui[["html"]],
       "content-type" = content_type,
-      "auto-scroll" = auto_scroll,
+      "auto-scroll" = if (auto_scroll) "" else NULL,
       ...,
       ui[["dependencies"]],
-      markdown_stream_deps()
+      shinychat_deps()
     )
   )
 }
@@ -201,10 +190,8 @@ rlang::on_load(
         # content is most likely a string, so avoid overhead in that case
         ui <- list(html = msg, deps = "[]")
       } else {
-        # process_ui() does *not* render markdown->HTML, but it does:
-        # 1. Extract and register HTMLdependency()s with the session.
-        # 2. Returns a HTML string representation of the TagChild
-        #    (i.e., `div()` -> `"<div>"`).
+        msg <- htmltools::as.tags(msg)
+        msg <- do.call(htmltools::tagList, split_html_islands(msg))
         ui <- process_ui(msg, session)
       }
 
