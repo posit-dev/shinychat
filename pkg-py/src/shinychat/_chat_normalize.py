@@ -314,9 +314,9 @@ try:
                 content += part.text
 
         if message.role in ("user", "system"):
-          role = message.role
+            role = message.role
         else:
-          role = "assistant"
+            role = "assistant"
         return ChatMessage(content=content, role=role)
 
     @message_content_chunk.register
