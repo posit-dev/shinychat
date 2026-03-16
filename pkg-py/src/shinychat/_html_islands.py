@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from itertools import groupby
+
 from htmltools import Tag, TagChild, TagList
 
 
@@ -28,8 +30,6 @@ def split_html_islands(content: TagChild | TagList) -> list[TagChild]:
         return [Tag("shinychat-html", content)]
     else:
         return [Tag("shinychat-html", content)]
-
-    from itertools import groupby
 
     result: list[TagChild] = []
     for is_react, group in groupby(children, _has_react_attr):

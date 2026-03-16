@@ -97,7 +97,7 @@ chat_ui <- function(
     if (is.character(content)) {
       ui <- list(html = paste(content, collapse = "\n"))
     } else {
-      ui <- with_current_theme(htmltools::renderTags(content))
+      ui <- with_current_theme(htmltools::renderTags(pre_process_ui(content)))
     }
 
     tag(
@@ -366,11 +366,7 @@ chat_append_message <- function(
 
   operation <- match.arg(operation)
 
-  if (is_html) {
-    content <- htmltools::tagList(!!!split_html_islands(content))
-  }
-
-  if (is.character(content)) {
+  if (is.character(content) && !is_html) {
     # content is most likely a string, so avoid overhead in that case
     ui <- list(html = content, deps = NULL)
   } else {
@@ -378,7 +374,7 @@ chat_append_message <- function(
     # 1. Extract and register HTMLdependency()s with the session.
     # 2. Returns a HTML string representation of the TagChild
     #    (i.e., `div()` -> `"<div>"`).
-    ui <- process_ui(content, session)
+    ui <- process_ui(pre_process_ui(content), session)
   }
 
   msg_content <- ui[["html"]]

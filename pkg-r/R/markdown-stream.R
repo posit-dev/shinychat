@@ -190,8 +190,7 @@ rlang::on_load(
         # content is most likely a string, so avoid overhead in that case
         ui <- list(html = msg, deps = "[]")
       } else {
-        msg <- htmltools::tagList(!!!split_html_islands(msg))
-        ui <- process_ui(msg, session)
+        ui <- process_ui(pre_process_ui(msg), session)
       }
 
       send_stream_message(

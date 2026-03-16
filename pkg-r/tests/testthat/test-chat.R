@@ -39,6 +39,17 @@ test_that("Chat component markup", {
     )
   })
 
+  # Initial messages with react elements are island-split
+  expect_snapshot({
+    react_tag <- tags$div("react", `data-shinychat-react` = NA)
+    chat_ui(
+      "chat",
+      messages = list(
+        tagList(tags$div("before"), react_tag, tags$div("after"))
+      )
+    )
+  })
+
   # TODO: it'd be nice to mock the shinyChatMessage custom messages
 })
 

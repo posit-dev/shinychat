@@ -1,14 +1,94 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, TypedDict
+from typing import Literal, Union
 
 from htmltools import HTML, HTMLDependency, TagChild, TagList
 
 from ._html_islands import split_html_islands
+from ._typing_extensions import NotRequired, TypedDict
 
 Role = Literal["assistant", "user", "system"]
 
+# ---------------------------------------------------------------------------
+# Wire-format types (mirrors js/src/transport/types.ts)
+# ---------------------------------------------------------------------------
+
+ContentType = Literal["markdown", "html", "text", "semi-markdown"]
+
+
+class MessagePayload(TypedDict):
+    role: Literal["user", "assistant"]
+    content: str
+    content_type: ContentType
+    id: NotRequired[str]
+    icon: NotRequired[str]
+    html_deps: NotRequired[list[dict[str, str]]]
+
+
+class MessageAction(TypedDict):
+    type: Literal["message"]
+    message: MessagePayload
+
+
+class ChunkStartAction(TypedDict):
+    type: Literal["chunk_start"]
+    message: MessagePayload
+
+
+class ChunkAction(TypedDict):
+    type: Literal["chunk"]
+    content: str
+    operation: Literal["append", "replace"]
+    content_type: NotRequired[ContentType]
+
+
+class ChunkEndAction(TypedDict):
+    type: Literal["chunk_end"]
+
+
+class ClearAction(TypedDict):
+    type: Literal["clear"]
+
+
+class UpdateInputAction(TypedDict):
+    type: Literal["update_input"]
+    value: NotRequired[str]
+    placeholder: NotRequired[str]
+    submit: NotRequired[bool]
+    focus: NotRequired[bool]
+
+
+class RemoveLoadingAction(TypedDict):
+    type: Literal["remove_loading"]
+
+
+class HideToolRequestAction(TypedDict):
+    type: Literal["hide_tool_request"]
+    requestId: str
+
+
+ChatAction = Union[
+    MessageAction,
+    ChunkStartAction,
+    ChunkAction,
+    ChunkEndAction,
+    ClearAction,
+    UpdateInputAction,
+    RemoveLoadingAction,
+    HideToolRequestAction,
+]
+
+
+class ShinyChatEnvelope(TypedDict):
+    id: str
+    action: ChatAction
+    html_deps: NotRequired[list[dict[str, str]]]
+
+
+# ---------------------------------------------------------------------------
+# Domain types
+# ---------------------------------------------------------------------------
 
 # TODO: content should probably be [{"type": "text", "content": "..."}, {"type": "image", ...}]
 # in order to support multiple content types...
