@@ -9,7 +9,6 @@ import rehypeHighlight from "rehype-highlight"
 import { remarkEscapeHtml } from "./plugins/remarkEscapeHtml"
 import { rehypeExternalLinks } from "./plugins/rehypeExternalLinks"
 import { rehypeUncontrolledInputs } from "./plugins/rehypeUncontrolledInputs"
-import { rehypeCEBooleans } from "./plugins/rehypeCEBooleans"
 import { rehypeUnwrapBlockCEs } from "./plugins/rehypeUnwrapBlockCEs"
 
 /**
@@ -26,7 +25,6 @@ export const markdownProcessor = unified()
   .use(remarkRehype, { allowDangerousHtml: true })
   .use(rehypeRaw)
   .use(rehypeUnwrapBlockCEs)
-  .use(rehypeCEBooleans)
   .use(rehypeUncontrolledInputs)
   .use(rehypeExternalLinks)
   .use(rehypeHighlight, { detect: false, ignoreMissing: true })
@@ -34,11 +32,10 @@ export const markdownProcessor = unified()
 
 /**
  * Frozen processor for raw HTML content.
- * Preserves HTML fragment structure while still normalizing custom element
- * booleans, uncontrolled form inputs, and external link attributes.
+ * Preserves HTML fragment structure while still normalizing uncontrolled form
+ * inputs and external link attributes.
  */
 export const htmlProcessor = unified()
-  .use(rehypeCEBooleans)
   .use(rehypeUncontrolledInputs)
   .use(rehypeExternalLinks)
   .freeze()

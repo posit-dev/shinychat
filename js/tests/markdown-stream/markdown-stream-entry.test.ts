@@ -11,7 +11,15 @@
  * type casts. The onApiReady callback is captured by spying on
  * createElement so we can invoke it manually without mounting React.
  */
-import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest"
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeAll,
+  beforeEach,
+  afterEach,
+} from "vitest"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -75,6 +83,10 @@ beforeEach(() => {
   }
 })
 
+afterEach(() => {
+  document.body.innerHTML = ""
+})
+
 // ---------------------------------------------------------------------------
 // Helper: create an element and capture the onApiReady callback without
 // actually mounting React. We do this by patching the instance's internals
@@ -108,6 +120,17 @@ function createElement_(): {
 // ---------------------------------------------------------------------------
 
 describe("MarkdownStreamElement — pending message queue", () => {
+  it("treats presence boolean attributes as enabled on connect", async () => {
+    const el = document.createElement("shiny-markdown-stream")
+    el.setAttribute("content", "streaming")
+    el.setAttribute("streaming", "")
+    document.body.appendChild(el)
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(el.querySelector(".markdown-stream-dot")).toBeTruthy()
+  })
+
   it("queues messages when api is null and dispatches them in order on API ready", () => {
     const { el, simulateApiReady } = createElement_()
     const api = createMockApi()

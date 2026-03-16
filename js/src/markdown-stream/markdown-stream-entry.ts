@@ -40,8 +40,8 @@ class MarkdownStreamElement extends HTMLElement {
     const initialContent = this.getAttribute("content") ?? ""
     const initialContentType =
       (this.getAttribute("content-type") as ContentType) ?? "markdown"
-    const initialStreaming = this.hasAttribute("streaming")
-    const autoScroll = this.hasAttribute("auto-scroll")
+    const initialStreaming = readBooleanAttr(this, "streaming")
+    const autoScroll = readBooleanAttr(this, "auto-scroll")
 
     this.reactRoot.render(
       createElement(
@@ -91,6 +91,22 @@ class MarkdownStreamElement extends HTMLElement {
       this.api!.appendContent(message.content)
     }
   }
+}
+
+function attributeToPropertyName(name: string): string {
+  return name.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())
+}
+
+function readBooleanAttr(el: HTMLElement, name: string): boolean {
+  const attrValue = el.getAttribute(name)
+
+  if (attrValue === "" || attrValue === "true") return true
+  if (attrValue === "false") return false
+
+  const propertyName = attributeToPropertyName(name)
+  const propertyValue = (el as unknown as Record<string, unknown>)[propertyName]
+
+  return propertyValue === true || propertyValue === "true"
 }
 
 if (!customElements.get("shiny-markdown-stream")) {

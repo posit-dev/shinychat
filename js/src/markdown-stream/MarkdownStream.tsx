@@ -52,7 +52,10 @@ export function MarkdownStream({
       return
     }
 
-    const scrollable = findScrollableParent(innerRef.current, CHAT_CONTAINER_TAG)
+    const scrollable = findScrollableParent(
+      innerRef.current,
+      CHAT_CONTAINER_TAG,
+    )
     if (scrollable !== scrollParentRef.current) {
       containerRef(scrollable)
       scrollParentRef.current = scrollable

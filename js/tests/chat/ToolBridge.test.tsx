@@ -270,4 +270,33 @@ describe("Tool component bridge rendering", () => {
     expect(document.querySelector(".shiny-tool-request")).toBeNull()
     expect(document.querySelector(".shiny-tool-result")).toBeTruthy()
   })
+
+  it("renders the empty-result placeholder when a tool result value is an empty string", () => {
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+      />,
+    )
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "assistant",
+          content:
+            '<shiny-tool-result data-shinychat-react request-id="req-empty" tool-name="get_weather" status="success" value="" value-type="text" show-request full-screen expanded></shiny-tool-result>',
+          content_type: "markdown",
+        },
+      })
+    })
+
+    expect(document.querySelector(".shiny-tool-result")).toBeTruthy()
+    expect(document.body.textContent).toContain("[Empty result]")
+  })
 })
