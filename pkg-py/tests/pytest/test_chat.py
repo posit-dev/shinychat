@@ -286,7 +286,7 @@ def test_google_multimodal_normalization():
     c = types.Content(
         parts=[
             types.Part(text="Here is an image:"),
-            types.Part(inline_data={"mime_type": "image/png", "data": "AAAA"}),
+            types.Part(inline_data=types.Blob(mime_type="image/png", data=b"AAAA")),
             types.Part(text=" described above."),
         ],
         role="model",
