@@ -35,6 +35,7 @@ export type ChatAction =
 export type ShinyChatEnvelope = {
   id: string
   action: ChatAction
+  html_deps?: HtmlDep[]
 }
 
 export type ShinyClientMessage = {

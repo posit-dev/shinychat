@@ -338,19 +338,17 @@ chat_append_message <- function(
   }
 
   if (!isFALSE(chunk)) {
-    msg_type <- "shiny-chat-append-message-chunk"
     if (chunk == "start") {
-      chunk_type <- "message_start"
+      chunk_type <- "start"
     } else if (chunk == "end") {
-      chunk_type <- "message_end"
+      chunk_type <- "end"
     } else if (isTRUE(chunk)) {
-      chunk_type <- NULL
+      chunk_type <- "intermediate"
     } else {
       rlang::abort("Invalid chunk argument")
     }
   } else {
-    msg_type <- "shiny-chat-append-message"
-    chunk_type <- NULL
+    chunk_type <- "complete"
   }
 
   content <- msg[["content"]]
@@ -367,9 +365,6 @@ chat_append_message <- function(
   content_type <- if (is_html) "html" else "markdown"
 
   operation <- match.arg(operation)
-  if (identical(operation, "replace")) {
-    operation <- NULL
-  }
 
   if (is_html) {
     content <- htmltools::tagList(!!!split_html_islands(content))
@@ -377,7 +372,7 @@ chat_append_message <- function(
 
   if (is.character(content)) {
     # content is most likely a string, so avoid overhead in that case
-    ui <- list(html = content, deps = "[]")
+    ui <- list(html = content, deps = NULL)
   } else {
     # process_ui() does *not* render markdown->HTML, but it does:
     # 1. Extract and register HTMLdependency()s with the session.
@@ -393,27 +388,73 @@ chat_append_message <- function(
     msg_content <- paste0("\n\n", msg_content, "\n\n")
   }
 
-  msg <- list(
-    content = msg_content,
-    role = msg[["role"]],
-    content_type = content_type,
-    html_deps = ui[["deps"]],
-    chunk_type = chunk_type,
-    operation = operation
-  )
+  html_deps <- ui[["deps"]]
 
-  if (!is.null(icon)) {
-    msg$icon <- as.character(icon)
-  }
+  icon_str <- if (!is.null(icon)) as.character(icon) else NULL
 
-  session$sendCustomMessage(
-    "shinyChatMessage",
-    list(
-      id = resolve_id(id, session),
-      handler = msg_type,
-      obj = msg
+  if (chunk_type == "start") {
+    message_payload <- list(
+      role = msg[["role"]],
+      content = msg_content,
+      content_type = content_type
     )
-  )
+    if (!is.null(icon_str)) {
+      message_payload$icon <- icon_str
+    }
+    action <- list(type = "chunk_start", message = message_payload)
+    send_chat_action(
+      id,
+      action = action,
+      html_deps = html_deps,
+      session = session
+    )
+  } else if (chunk_type == "end") {
+    if (nzchar(msg_content)) {
+      chunk_action <- list(
+        type = "chunk",
+        content = msg_content,
+        operation = operation,
+        content_type = content_type
+      )
+      send_chat_action(
+        id,
+        action = chunk_action,
+        html_deps = html_deps,
+        session = session
+      )
+    }
+    send_chat_action(id, action = list(type = "chunk_end"), session = session)
+  } else if (chunk_type == "intermediate") {
+    action <- list(
+      type = "chunk",
+      content = msg_content,
+      operation = operation,
+      content_type = content_type
+    )
+    send_chat_action(
+      id,
+      action = action,
+      html_deps = html_deps,
+      session = session
+    )
+  } else {
+    # chunk_type == "complete"
+    message_payload <- list(
+      role = msg[["role"]],
+      content = msg_content,
+      content_type = content_type
+    )
+    if (!is.null(icon_str)) {
+      message_payload$icon <- icon_str
+    }
+    action <- list(type = "message", message = message_payload)
+    send_chat_action(
+      id,
+      action = action,
+      html_deps = html_deps,
+      session = session
+    )
+  }
 
   invisible(NULL)
 }
@@ -501,7 +542,14 @@ rlang::on_load(
 
       if (S7::S7_inherits(msg, ellmer::ContentToolResult)) {
         if (!is.null(msg@request)) {
-          session$sendCustomMessage("shiny-tool-request-hide", msg@request@id)
+          send_chat_action(
+            id,
+            action = list(
+              type = "hide_tool_request",
+              requestId = msg@request@id
+            ),
+            session = session
+          )
         }
       }
 
@@ -553,15 +601,7 @@ rlang::on_load(
 #' shinyApp(ui, server)
 chat_clear <- function(id, session = getDefaultReactiveDomain()) {
   check_active_session(session)
-
-  session$sendCustomMessage(
-    "shinyChatMessage",
-    list(
-      id = resolve_id(id, session),
-      handler = "shiny-chat-clear-messages",
-      obj = NULL
-    )
-  )
+  send_chat_action(id, action = list(type = "clear"), session = session)
 }
 
 #' Update the user input of a chat control
@@ -633,12 +673,7 @@ update_chat_user_input <- function(
     )
   )
 
-  session$sendCustomMessage(
-    "shinyChatMessage",
-    list(
-      id = resolve_id(id, session),
-      handler = "shiny-chat-update-user-input",
-      obj = vals
-    )
-  )
+  action <- c(list(type = "update_input"), vals)
+
+  send_chat_action(id, action = action, session = session)
 }
