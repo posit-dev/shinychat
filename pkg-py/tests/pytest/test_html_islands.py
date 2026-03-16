@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from htmltools import Tag, TagList, div, span
-
 from shinychat._html_islands import split_html_islands
 
 

@@ -1,5 +1,4 @@
 from htmltools import Tag
-
 from shiny import reactive
 from shiny.express import input, ui
 from shinychat.express import Chat
