@@ -24,6 +24,34 @@ describe("MarkdownContent (pure)", () => {
     expect(container.textContent).toContain("**not bold**")
   })
 
+  it("renders raw HTML when contentType=html", () => {
+    const { container } = render(
+      <MarkdownContent
+        content={'<div class="custom-html">**not bold**</div><span>tail</span>'}
+        contentType="html"
+      />,
+    )
+
+    expect(container.querySelector(".custom-html")).not.toBeNull()
+    expect(container.querySelector("strong")).toBeNull()
+    expect(container.textContent).toContain("**not bold**")
+    expect(container.textContent).toContain("tail")
+  })
+
+  it("renders React-backed tool tags from html content", () => {
+    const { container } = render(
+      <MarkdownContent
+        content={
+          '<shiny-tool-request data-shinychat-react request-id="req-html" tool-name="test" arguments="{}"></shiny-tool-request>'
+        }
+        contentType="html"
+        tagToComponentMap={chatTagToComponentMap}
+      />,
+    )
+
+    expect(container.querySelector(".shiny-tool-card")).not.toBeNull()
+  })
+
   it("renders empty content without errors", () => {
     const { container } = render(
       <MarkdownContent content="" contentType="markdown" />,
@@ -125,6 +153,21 @@ describe("MarkdownContent (pure)", () => {
     )
 
     expect(spy.mock.calls.length).toBe(callCount)
+
+    spy.mockRestore()
+  })
+
+  it("does not call parseMarkdown for html content", () => {
+    const spy = vi.spyOn(markdownToReactModule, "parseMarkdown")
+
+    render(
+      <MarkdownContent
+        content={'<div class="custom-html">hello</div>'}
+        contentType="html"
+      />,
+    )
+
+    expect(spy).not.toHaveBeenCalled()
 
     spy.mockRestore()
   })

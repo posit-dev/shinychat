@@ -1,7 +1,11 @@
 import { useMemo, type ReactElement, type ComponentType } from "react"
 import type { ContentType } from "../transport/types"
-import { parseMarkdown, hastToReact } from "./markdownToReact"
-import { assistantProcessor, userProcessor } from "./processors"
+import { parseMarkdown, parseHtml, hastToReact } from "./markdownToReact"
+import {
+  markdownProcessor,
+  htmlProcessor,
+  semiMarkdownProcessor,
+} from "./processors"
 import { CopyableCodeBlock } from "./components/CopyableCodeBlock"
 import { BootstrapTable } from "./components/BootstrapTable"
 import { HtmlIsland } from "./components/HtmlIsland"
@@ -32,7 +36,12 @@ export function MarkdownContent({
 }: MarkdownContentProps): ReactElement {
   const isUser = contentType === "semi-markdown"
   const isText = contentType === "text"
-  const processor = isUser ? userProcessor : assistantProcessor
+  const isHtml = contentType === "html"
+  const processor = isHtml
+    ? htmlProcessor
+    : isUser
+      ? semiMarkdownProcessor
+      : markdownProcessor
   const resolvedTagToComponentMap = useMemo(
     () =>
       isUser
@@ -43,8 +52,13 @@ export function MarkdownContent({
 
   // Stage 1 (expensive): parse markdown string → HAST. Cached by content+processor.
   const hast = useMemo(
-    () => (isText ? null : parseMarkdown(content, processor)),
-    [content, isText, processor],
+    () =>
+      isText
+        ? null
+        : isHtml
+          ? parseHtml(content, processor)
+          : parseMarkdown(content, processor),
+    [content, isText, isHtml, processor],
   )
 
   // Stage 2 (cheap): convert HAST → React elements. Re-runs when streaming toggles.

@@ -1,5 +1,7 @@
 import { toJsxRuntime } from "hast-util-to-jsx-runtime"
+import { fromParse5 } from "hast-util-from-parse5"
 import { Fragment, jsx as reactJsx, jsxs as reactJsxs } from "react/jsx-runtime"
+import { parseFragment } from "parse5"
 import { VFile } from "vfile"
 import type { Root } from "hast"
 import type { ReactElement, ComponentType } from "react"
@@ -87,6 +89,23 @@ export function parseMarkdown(
 ): Root {
   const file = new VFile(content)
   const hast = processor.runSync(processor.parse(file), file) as Root
+  sanitizeUrls(hast)
+  return hast
+}
+
+/**
+ * Parse a raw HTML fragment to a HAST Root.
+ *
+ * Unlike parseMarkdown(), this preserves HTML fragment structure exactly
+ * instead of running the markdown parser first.
+ */
+export function parseHtml(
+  content: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  processor: Processor<any, any, any, any, any>,
+): Root {
+  const hast = fromParse5(parseFragment(content)) as Root
+  processor.runSync(hast)
   sanitizeUrls(hast)
   return hast
 }

@@ -5,8 +5,8 @@ import type { ComponentType } from "react"
 
 import { parseMarkdown, hastToReact } from "../../src/markdown/markdownToReact"
 import {
-  assistantProcessor,
-  userProcessor,
+  markdownProcessor,
+  semiMarkdownProcessor,
 } from "../../src/markdown/processors"
 
 // ---------------------------------------------------------------------------
@@ -33,13 +33,13 @@ function makeSimpleRoot(): Root {
 
 describe("parseMarkdown", () => {
   it("returns a Root node for basic markdown", () => {
-    const hast = parseMarkdown("# Hello\n\nWorld", assistantProcessor)
+    const hast = parseMarkdown("# Hello\n\nWorld", markdownProcessor)
     expect(hast.type).toBe("root")
     expect(hast.children.length).toBeGreaterThan(0)
   })
 
   it("returns an empty-ish Root for empty string", () => {
-    const hast = parseMarkdown("", assistantProcessor)
+    const hast = parseMarkdown("", markdownProcessor)
     expect(hast.type).toBe("root")
     // May have whitespace text nodes but no meaningful elements
     const elements = hast.children.filter((c) => c.type === "element")
@@ -49,7 +49,7 @@ describe("parseMarkdown", () => {
   it("sanitizes unsafe URLs (javascript: href)", () => {
     const hast = parseMarkdown(
       "[click](javascript:alert(1))",
-      assistantProcessor,
+      markdownProcessor,
     )
     // Walk tree looking for anchor href
     function findHref(node: Root | Element): string | undefined {
@@ -71,8 +71,11 @@ describe("parseMarkdown", () => {
     expect(href).toBe("")
   })
 
-  it("sanitizes unsafe URLs with userProcessor too", () => {
-    const hast = parseMarkdown("[click](javascript:alert(1))", userProcessor)
+  it("sanitizes unsafe URLs with semiMarkdownProcessor too", () => {
+    const hast = parseMarkdown(
+      "[click](javascript:alert(1))",
+      semiMarkdownProcessor,
+    )
     function findAnchor(node: Root | Element): Element | undefined {
       if (node.type === "element" && node.tagName === "a") return node
       if ("children" in node) {
@@ -93,7 +96,7 @@ describe("parseMarkdown", () => {
   })
 
   it("produces element children for non-empty input", () => {
-    const hast = parseMarkdown("Hello", assistantProcessor)
+    const hast = parseMarkdown("Hello", markdownProcessor)
     const elements = hast.children.filter((c) => c.type === "element")
     expect(elements.length).toBeGreaterThan(0)
   })
@@ -133,7 +136,7 @@ describe("hastToReact", () => {
 
 describe("streaming dot", () => {
   it("inserts a streaming dot when streaming=true", () => {
-    const hast = parseMarkdown("Hello", assistantProcessor)
+    const hast = parseMarkdown("Hello", markdownProcessor)
     const el = hastToReact(hast, { streaming: true })
     const { container } = render(el)
     const dot = container.querySelector(".markdown-stream-dot")
@@ -141,7 +144,7 @@ describe("streaming dot", () => {
   })
 
   it("does NOT insert a streaming dot when streaming=false", () => {
-    const hast = parseMarkdown("Hello", assistantProcessor)
+    const hast = parseMarkdown("Hello", markdownProcessor)
     const el = hastToReact(hast, { streaming: false })
     const { container } = render(el)
     const dot = container.querySelector(".markdown-stream-dot")
@@ -149,7 +152,7 @@ describe("streaming dot", () => {
   })
 
   it("does NOT insert a streaming dot when streaming is omitted", () => {
-    const hast = parseMarkdown("Hello", assistantProcessor)
+    const hast = parseMarkdown("Hello", markdownProcessor)
     const el = hastToReact(hast, {})
     const { container } = render(el)
     const dot = container.querySelector(".markdown-stream-dot")
@@ -157,7 +160,7 @@ describe("streaming dot", () => {
   })
 
   it("CRITICAL: does NOT mutate the original HAST tree when streaming=true", () => {
-    const hast = parseMarkdown("Hello", assistantProcessor)
+    const hast = parseMarkdown("Hello", markdownProcessor)
 
     // Record the total child count of every node before
     function countTotalChildren(node: Root | Element): number {
@@ -187,7 +190,7 @@ describe("streaming dot", () => {
   })
 
   it("repeated streaming renders do not accumulate dots", () => {
-    const hast = parseMarkdown("Hello", assistantProcessor)
+    const hast = parseMarkdown("Hello", markdownProcessor)
 
     // Render streaming three times
     for (let i = 0; i < 3; i++) {

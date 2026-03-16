@@ -13,14 +13,14 @@ import { rehypeCEBooleans } from "./plugins/rehypeCEBooleans"
 import { rehypeUnwrapBlockCEs } from "./plugins/rehypeUnwrapBlockCEs"
 
 /**
- * Frozen processor for assistant messages.
+ * Frozen processor for markdown content.
  * Includes: GFM, raw HTML parsing, external links, syntax highlighting.
  *
  * No rehypeSanitize step: the output is converted to React elements via
  * toJsxRuntime (not innerHTML), so script tags and event-handler attributes
- * are inert. Sanitization is applied only to user messages as defense-in-depth.
+ * are inert.
  */
-export const assistantProcessor = unified()
+export const markdownProcessor = unified()
   .use(remarkParse)
   .use(remarkGfm)
   .use(remarkRehype, { allowDangerousHtml: true })
@@ -33,12 +33,23 @@ export const assistantProcessor = unified()
   .freeze()
 
 /**
- * Frozen processor for user messages (semi-markdown).
+ * Frozen processor for raw HTML content.
+ * Preserves HTML fragment structure while still normalizing custom element
+ * booleans, uncontrolled form inputs, and external link attributes.
+ */
+export const htmlProcessor = unified()
+  .use(rehypeCEBooleans)
+  .use(rehypeUncontrolledInputs)
+  .use(rehypeExternalLinks)
+  .freeze()
+
+/**
+ * Frozen processor for semi-markdown content.
  * HTML tags are escaped and displayed literally.
  * No syntax highlighting, no raw HTML passthrough.
  * Sanitization provides defense-in-depth (remarkEscapeHtml already escapes HTML).
  */
-export const userProcessor = unified()
+export const semiMarkdownProcessor = unified()
   .use(remarkParse)
   .use(remarkGfm)
   .use(remarkEscapeHtml)
