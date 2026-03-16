@@ -277,6 +277,7 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     intent = content@request@arguments[["_intent"]],
     show_request = if (!isFALSE(display$show_request)) NA,
     expanded = if (isTRUE(display$open)) NA,
+    full_screen = if (isTRUE(display$full_screen)) NA,
     footer = display$footer,
     !!!tool_result_display(content, display)
   )
@@ -305,7 +306,7 @@ get_tool_result_display <- function(content) {
 
   # fmt: skip
   expected_fields <- c(
-    "html", "markdown", "text", "show_request", "open", "title", "icon",
+    "html", "markdown", "text", "show_request", "open", "full_screen", "title", "icon",
     "footer"
   )
 
