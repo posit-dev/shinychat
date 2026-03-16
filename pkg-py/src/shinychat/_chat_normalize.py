@@ -309,12 +309,15 @@ try:
     @message_content.register
     def _(message: Content):
         content = ""
-        for part in message.parts:
-            if hasattr(part, "text") and part.text:
-                content += part.text
+        parts = message.parts  # pyright: ignore[reportAttributeAccessIssue]
+        if parts is not None:
+            for part in parts:
+                if hasattr(part, "text") and part.text:
+                    content += part.text
 
-        if message.role in ("user", "system"):
-            role = message.role
+        role_val: str | None = message.role  # pyright: ignore[reportAttributeAccessIssue]
+        if role_val in ("user", "system"):
+            role = role_val
         else:
             role = "assistant"
         return ChatMessage(content=content, role=role)
