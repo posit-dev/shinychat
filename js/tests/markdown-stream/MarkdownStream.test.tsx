@@ -63,4 +63,24 @@ describe("MarkdownStream", () => {
 
     expect(containerRef).toHaveBeenCalledWith(scrollParent)
   })
+
+  it("stops scroll-parent discovery at the chat container boundary", () => {
+    render(
+      <ShinyLifecycleContext.Provider
+        value={{
+          bindAll: vi.fn(async () => {}),
+          unbindAll: vi.fn(),
+          renderDependencies: vi.fn(async () => {}),
+          showClientMessage: vi.fn(),
+        }}
+      >
+        <MarkdownStream autoScroll={true} />
+      </ShinyLifecycleContext.Provider>,
+    )
+
+    expect(findScrollableParent).toHaveBeenCalledWith(
+      expect.any(HTMLDivElement),
+      "shiny-chat-container",
+    )
+  })
 })

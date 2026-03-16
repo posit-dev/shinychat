@@ -3,6 +3,8 @@ import { ShinyBoundMarkdown } from "../markdown/ShinyBoundMarkdown"
 import { useAutoScroll, findScrollableParent } from "../markdown/useAutoScroll"
 import type { ContentType } from "../transport/types"
 
+const CHAT_CONTAINER_TAG = "shiny-chat-container"
+
 export interface MarkdownStreamProps {
   initialContent?: string
   initialContentType?: ContentType
@@ -50,7 +52,7 @@ export function MarkdownStream({
       return
     }
 
-    const scrollable = findScrollableParent(innerRef.current)
+    const scrollable = findScrollableParent(innerRef.current, CHAT_CONTAINER_TAG)
     if (scrollable !== scrollParentRef.current) {
       containerRef(scrollable)
       scrollParentRef.current = scrollable

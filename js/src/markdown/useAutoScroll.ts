@@ -142,12 +142,7 @@ export function findScrollableParent(
       style.overflowY !== "hidden" && style.overflowY !== "clip"
     const hasScrollableContent = el.scrollHeight > el.clientHeight
 
-    if (
-      (allowsVerticalScroll && hasScrollableContent) ||
-      style.overflowY === "auto" ||
-      style.overflowY === "scroll" ||
-      style.overflowY === "overlay"
-    ) {
+    if (allowsVerticalScroll && hasScrollableContent) {
       return el
     }
 

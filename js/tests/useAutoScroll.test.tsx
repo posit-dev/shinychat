@@ -829,6 +829,15 @@ describe("findScrollableParent", () => {
     grandparent.appendChild(parent)
     parent.appendChild(child)
 
+    Object.defineProperty(grandparent, "scrollHeight", {
+      configurable: true,
+      get: () => 600,
+    })
+    Object.defineProperty(grandparent, "clientHeight", {
+      configurable: true,
+      get: () => 300,
+    })
+
     // jsdom returns "" for getComputedStyle by default, so we need to
     // make the grandparent actually scrollable
     const original = window.getComputedStyle
@@ -878,10 +887,19 @@ describe("findScrollableParent", () => {
     vi.restoreAllMocks()
   })
 
-  it("recognizes overflow-y: scroll", () => {
+  it("recognizes overflow-y: scroll when content overflows", () => {
     const parent = document.createElement("div")
     const child = document.createElement("div")
     parent.appendChild(child)
+
+    Object.defineProperty(parent, "scrollHeight", {
+      configurable: true,
+      get: () => 600,
+    })
+    Object.defineProperty(parent, "clientHeight", {
+      configurable: true,
+      get: () => 300,
+    })
 
     const original = window.getComputedStyle
     vi.spyOn(window, "getComputedStyle").mockImplementation((el) => {
@@ -893,6 +911,45 @@ describe("findScrollableParent", () => {
     })
 
     expect(findScrollableParent(child)).toBe(parent)
+
+    vi.restoreAllMocks()
+  })
+
+  it("skips overflow-y:auto ancestors that do not actually scroll", () => {
+    const outer = document.createElement("div")
+    const inner = document.createElement("div")
+    const child = document.createElement("div")
+
+    outer.appendChild(inner)
+    inner.appendChild(child)
+
+    Object.defineProperty(outer, "scrollHeight", {
+      configurable: true,
+      get: () => 600,
+    })
+    Object.defineProperty(outer, "clientHeight", {
+      configurable: true,
+      get: () => 300,
+    })
+    Object.defineProperty(inner, "scrollHeight", {
+      configurable: true,
+      get: () => 300,
+    })
+    Object.defineProperty(inner, "clientHeight", {
+      configurable: true,
+      get: () => 300,
+    })
+
+    const original = window.getComputedStyle
+    vi.spyOn(window, "getComputedStyle").mockImplementation((el) => {
+      const style = original(el)
+      if (el === outer || el === inner) {
+        return { ...style, overflowY: "auto" } as CSSStyleDeclaration
+      }
+      return style
+    })
+
+    expect(findScrollableParent(child)).toBe(outer)
 
     vi.restoreAllMocks()
   })
