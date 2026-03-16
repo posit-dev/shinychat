@@ -40,9 +40,8 @@ export function ChatApp({
 
   const containerRef = useRef<ChatContainerHandle>(null)
 
-  // Single transport subscription: routes actions to the reducer and handles
-  // imperative input commands via the container ref. The textarea is fully
-  // uncontrolled, so all value/focus mutations go through the imperative handle.
+  // The textarea is fully uncontrolled, so value/focus mutations go through
+  // the imperative handle rather than the reducer.
   useEffect(() => {
     const unsubscribe = transport.onMessage(elementId, (action) => {
       if (action.type === "update_input") {

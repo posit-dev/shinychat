@@ -14,11 +14,7 @@ export interface ToolRequestProps {
   arguments: string
 }
 
-/**
- * Displays information about a pending tool request.
- * Hidden when `requestId` is in `state.hiddenToolRequests`.
- * Ports `ShinyToolRequest` from the Lit implementation.
- */
+/** Ports ShinyToolRequest from the Lit implementation. */
 export const ToolRequest = memo(function ToolRequest({
   requestId,
   toolName,

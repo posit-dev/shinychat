@@ -18,10 +18,6 @@ export const ChatMessage = memo(function ChatMessage({
   const isUser = message.role === "user"
   const isEmpty = message.content.trim() === ""
 
-  // Determine icon HTML to render:
-  // - Assistant messages: show dots_fade spinner while empty, then robot (or
-  //   custom) once content arrives
-  // - User messages: show icon only if one is explicitly provided
   let iconHtml: string | undefined
   if (isUser) {
     iconHtml = message.icon || undefined
@@ -29,8 +25,7 @@ export const ChatMessage = memo(function ChatMessage({
     iconHtml = isEmpty ? dots_fade : (message.icon ?? iconAssistant ?? robot)
   }
 
-  // Make suggestion elements keyboard-accessible. Only process elements that
-  // don't already have tabindex set (matching Lit behavior).
+  // Matches Lit implementation's behavior of making suggestion elements focusable
   const makeSuggestionsAccessible = useCallback(() => {
     if (!contentRef.current) return
     const suggestions = contentRef.current.querySelectorAll(
@@ -48,8 +43,7 @@ export const ChatMessage = memo(function ChatMessage({
     })
   }, [])
 
-  // Re-run when content changes so suggestions added mid-stream are picked up.
-  // The hasAttribute("tabindex") guard prevents redundant DOM mutations.
+  // Re-run on content changes so suggestions added mid-stream are picked up
   useEffect(() => {
     makeSuggestionsAccessible()
   }, [message.content, makeSuggestionsAccessible])

@@ -50,9 +50,6 @@ export function useAutoScroll({
   const [stickToBottom, setStickToBottom] = useState(true)
   const prevScrollTopRef = useRef<number>(0)
 
-  // Check scroll position and update stickToBottom.
-  // Direction-based: scrollTop decreased → user scrolled up → disengage.
-  // At bottom (within tolerance) → re-engage.
   const checkScrollPosition = useCallback(() => {
     const el = containerElRef.current
     if (!el) return
@@ -70,20 +67,14 @@ export function useAutoScroll({
     }
   }, [bottomTolerance])
 
-  // Store in a ref so the callback ref closure always calls the latest version
   const checkScrollPositionRef = useRef(checkScrollPosition)
   checkScrollPositionRef.current = checkScrollPosition
 
-  // Stable handler that delegates to the ref — this is what gets registered as
-  // the scroll listener, so it never goes stale even though the callback ref
-  // closure is captured once.
+  // Stable identity: captured once by the callback ref, delegates to the latest logic
   const stableScrollHandler = useRef((): void => {
     checkScrollPositionRef.current()
   })
 
-  // Callback ref: attaches the scroll listener when the element mounts and
-  // removes it when the element unmounts. Fires exactly once per mount/unmount
-  // cycle — no teardown on content changes.
   const containerRef = useCallback<RefCallback<HTMLElement>>((node) => {
     if (containerElRef.current) {
       containerElRef.current.removeEventListener(
@@ -102,9 +93,7 @@ export function useAutoScroll({
     }
   }, [])
 
-  // Auto-scroll during streaming (or on any content change if scrollOnContentChange
-  // is set) when stickToBottom is true.
-  // contentDependency is included so that each new chunk triggers the scroll.
+  // contentDependency is in the deps so each new chunk triggers a scroll
   useEffect(() => {
     const shouldScroll = streaming || scrollOnContentChange
     if (shouldScroll && stickToBottom && containerElRef.current) {
@@ -118,7 +107,6 @@ export function useAutoScroll({
     }
   }, [streaming, stickToBottom, contentDependency, scrollOnContentChange])
 
-  // Manually re-engage and scroll to bottom
   const scrollToBottom = useCallback(() => {
     setStickToBottom(true)
     containerElRef.current?.scrollTo({

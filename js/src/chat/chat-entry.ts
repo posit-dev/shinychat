@@ -11,10 +11,6 @@ const transport = getShinyTransport()
 const CHAT_INPUT_TAG = "shiny-chat-input"
 const CHAT_MESSAGE_TAG = "shiny-chat-message"
 
-/**
- * Parse initial messages from server-rendered <shiny-chat-message> elements.
- * These exist as children of <shiny-chat-messages> in the initial HTML.
- */
 function parseInitialMessages(container: HTMLElement): ChatMessageData[] {
   const messageEls = container.querySelectorAll(CHAT_MESSAGE_TAG)
   const messages: ChatMessageData[] = []
@@ -40,10 +36,6 @@ function parseInitialMessages(container: HTMLElement): ChatMessageData[] {
   return messages
 }
 
-/**
- * Thin custom element shell for <shiny-chat-container>.
- * Reads attributes from the host element and mounts a React root with <ChatApp />.
- */
 class ChatContainerElement extends HTMLElement {
   private reactRoot: Root | null = null
 
@@ -53,15 +45,12 @@ class ChatContainerElement extends HTMLElement {
     const elementId = this.getAttribute("id") ?? ""
     const iconAssistant = this.getAttribute("icon-assistant") ?? undefined
 
-    // Derive the placeholder from a child <shiny-chat-input> element, if present
     const inputEl = this.querySelector(CHAT_INPUT_TAG)
     const placeholder = inputEl?.getAttribute("placeholder") ?? undefined
 
-    // Derive the inputId: look for a child <shiny-chat-input> with an id,
-    // otherwise fall back to "<elementId>_user_input" (the R-side convention)
+    // Falls back to "<elementId>_user_input" (the R package's convention)
     const inputId = inputEl?.getAttribute("id") ?? `${elementId}_user_input`
 
-    // Parse initial messages from server-rendered HTML before React takes over
     const initialMessages = parseInitialMessages(this)
 
     // Unbind any Shiny inputs/outputs in the server-rendered content before

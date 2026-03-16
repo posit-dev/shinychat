@@ -2,9 +2,6 @@ import type { Root, Element, ElementContent, RootContent } from "hast"
 
 const SVG_DOT_CLASS = "markdown-stream-dot"
 
-/**
- * Creates a hast element node representing the streaming dot SVG.
- */
 function createDotNode(): Element {
   return {
     type: "element",
@@ -45,10 +42,7 @@ function hasTextContent(node: ElementContent): boolean {
   return false
 }
 
-/**
- * Find the innermost element where streaming content is being appended,
- * then insert the streaming dot SVG as a child (mutates the tree).
- */
+/** Insert the streaming dot SVG into the tree (mutating). */
 export function insertStreamingDot(tree: Root): void {
   if (tree.children.length === 0) return
 
@@ -147,7 +141,6 @@ function findSpinePath(root: Root): SpineEntry[] {
   return path
 }
 
-// Keep the original for internal use by insertStreamingDot
 function findInnermostStreamingElement(
   element: Root | Element,
 ): Root | Element {

@@ -91,7 +91,6 @@ export function useFullscreen(cardRef: React.RefObject<HTMLElement | null>) {
     [cardRef, exitFullscreen],
   )
 
-  // Keep trapFocusExitRef up to date with the latest trapFocusExit
   trapFocusExitRef.current = trapFocusExit
 
   const enterFullscreen = useCallback(
@@ -114,7 +113,6 @@ export function useFullscreen(cardRef: React.RefObject<HTMLElement | null>) {
     [cardRef],
   )
 
-  // Cleanup on unmount
   useEffect(() => {
     const card = cardRef.current
     const stableHandler = stableKeydownHandler.current

@@ -27,10 +27,6 @@ function isStreamingMessage(
   return "isStreaming" in message
 }
 
-/**
- * Thin custom element shell for <shiny-markdown-stream>.
- * Mounts a React root and forwards Shiny messages to the React component.
- */
 class MarkdownStreamElement extends HTMLElement {
   private reactRoot: Root | null = null
   private api: MarkdownStreamApi | null = null
@@ -101,7 +97,6 @@ if (!customElements.get("shiny-markdown-stream")) {
   customElements.define("shiny-markdown-stream", MarkdownStreamElement)
 }
 
-// Register Shiny message handler
 window.Shiny?.addCustomMessageHandler(
   "shinyMarkdownStreamMessage",
   async (message: ContentMessage | IsStreamingMessage) => {

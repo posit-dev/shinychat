@@ -157,7 +157,6 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
           await this.renderDependencies(msg.html_deps)
         }
 
-        // Translate legacy format to ChatAction(s)
         const actions = legacyToActions(envelope)
         if (actions.length === 0) {
           this.showClientMessage({

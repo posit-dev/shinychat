@@ -23,10 +23,7 @@ export interface MarkdownContentProps {
   tagToComponentMap?: Record<string, ComponentType<unknown>>
 }
 
-/**
- * Pure rendering component: converts markdown/text content to React elements.
- * Has no Shiny side effects. Wrap with ShinyBoundMarkdown to add binding.
- */
+/** Pure rendering — no Shiny side effects. Wrap with ShinyBoundMarkdown to add binding. */
 export function MarkdownContent({
   content,
   contentType,

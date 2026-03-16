@@ -20,7 +20,6 @@ declare global {
   }
 }
 
-// Declare custom elements used in JSX so TypeScript doesn't complain
 declare module "react" {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace JSX {
@@ -46,7 +45,6 @@ export interface ChatContainerProps {
   inputId: string
 }
 
-/** Imperative handle exposed by ChatContainer for programmatic input control. */
 export type ChatContainerHandle = ChatInputHandle
 
 export const ChatContainer = forwardRef<
@@ -78,7 +76,6 @@ export const ChatContainer = forwardRef<
     scrollOnContentChange: true,
   })
 
-  // Forward ChatInput's imperative handle so ChatApp can call setInputValue/focus
   useImperativeHandle(ref, () => ({
     setInputValue(...args) {
       chatInputRef.current?.setInputValue(...args)
@@ -88,7 +85,6 @@ export const ChatContainer = forwardRef<
     },
   }))
 
-  // IntersectionObserver: add/remove shadow class on textarea when sentinel scrolls off-screen
   useEffect(() => {
     const sentinel = sentinelRef.current
     const inputArea = inputAreaRef.current
@@ -111,7 +107,6 @@ export const ChatContainer = forwardRef<
     return () => observer.disconnect()
   }, [])
 
-  // External link click handler (intercepts [data-external-link] elements)
   const onContainerClick = useCallback((e: React.MouseEvent<HTMLElement>) => {
     const target = e.target as HTMLElement
     const linkEl = target.closest(
@@ -134,7 +129,6 @@ export const ChatContainer = forwardRef<
     setPendingUrl(linkEl.href)
   }, [])
 
-  // Helper: extract suggestion text and submit flag from a clicked/keydown element
   function getSuggestion(target: EventTarget | null): {
     suggestion?: string
     submit?: boolean
@@ -207,7 +201,6 @@ export const ChatContainer = forwardRef<
   }, [])
 
   return (
-    // Messages area (scrollable, grid row 1)
     <>
       <shiny-chat-messages
         ref={messagesRef}
@@ -219,7 +212,6 @@ export const ChatContainer = forwardRef<
         <ChatMessages messages={messages} iconAssistant={iconAssistant} />
       </shiny-chat-messages>
 
-      {/* Input area (sticky, grid row 2) */}
       <shiny-chat-input ref={inputAreaRef} onClick={onContainerClick}>
         <ChatInput
           ref={chatInputRef}
@@ -231,7 +223,8 @@ export const ChatContainer = forwardRef<
         />
       </shiny-chat-input>
 
-      {/* Sentinel for IntersectionObserver — sits just below the input */}
+      {/* IntersectionObserver sentinel: triggers shadow on the textarea
+          when messages scroll behind the input area */}
       <div ref={sentinelRef} style={{ width: "100%", height: 0 }} />
 
       {pendingUrl &&

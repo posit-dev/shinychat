@@ -8,11 +8,7 @@ import type { Processor } from "unified"
 import { sanitizeUrls } from "./urlSanitize"
 import { withStreamingDot } from "./streamingDot"
 
-/**
- * Map of React property names → HTML attribute names for properties where
- * they differ. Only the subset likely to appear on custom elements is
- * included; obscure legacy attributes (aLink, vSpace, etc.) are omitted.
- */
+/** React prop names → HTML attribute names (where they differ). */
 const reactToHtmlAttr: Record<string, string> = {
   className: "class",
   htmlFor: "for",
@@ -63,8 +59,6 @@ function fixCustomElementProps(
   return patched ?? props
 }
 
-// Wrappers that fix up props for custom elements before calling React's jsx/jsxs.
-// Exported so other modules (e.g. HtmlIsland) can reuse the same patched wrappers.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const jsx: typeof reactJsx = (type: any, props: any, key: any) =>
   reactJsx(

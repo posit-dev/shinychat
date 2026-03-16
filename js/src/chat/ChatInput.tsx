@@ -93,7 +93,6 @@ export const ChatInput = memo(
       isComposingRef.current = false
     }, [])
 
-    // Expose imperative setInputValue for suggestions and programmatic control
     useImperativeHandle(
       ref,
       () => ({
@@ -114,8 +113,8 @@ export const ChatInput = memo(
 
           if (submit) {
             if (!disabled) {
-              // Directly send without going through sendInput — bypasses
-              // the disabled check since the server explicitly asked to submit.
+              // Bypass sendInput() — the server explicitly asked to submit,
+              // so we skip the usual disabled guard.
               const submitContent = el.value
               if (submitContent.trim().length > 0) {
                 dispatch({

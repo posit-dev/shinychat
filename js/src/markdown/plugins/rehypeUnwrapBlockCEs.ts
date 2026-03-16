@@ -2,12 +2,7 @@ import { visit, SKIP } from "unist-util-visit"
 import type { Root, Element, ElementContent } from "hast"
 import type { Plugin } from "unified"
 
-/**
- * Set of custom element tag names that are block-level and must not appear
- * inside <p> elements. When found inside a <p>, the <p> is split: content
- * before the CE becomes one <p>, the CE is promoted to a sibling, and content
- * after becomes another <p>.
- */
+/** Block-level custom elements that must not appear inside <p>. */
 const blockCEs = new Set([
   "shiny-tool-request",
   "shiny-tool-result",
@@ -25,36 +20,28 @@ function hasContent(nodes: ElementContent[]): boolean {
   })
 }
 
-/**
- * Transformer that unwraps block-level custom elements from <p> parents.
- * Extracted so it can be called recursively to handle multiple CEs in one <p>.
- */
+/** Extracted so it can be called recursively for multiple CEs in one <p>. */
 function transform(tree: Root): void {
   visit(tree, "element", (node: Element, index, parent) => {
     if (node.tagName !== "p" || !parent || index === undefined) return
 
-    // Check if any child is a block-level custom element
     const blockIndex = node.children.findIndex(isBlockCE)
     if (blockIndex === -1) return
 
-    // Split: [before, blockCE, after] -> [<p>before</p>, blockCE, <p>after</p>]
     const before = node.children.slice(0, blockIndex)
     const blockEl = node.children[blockIndex]!
     const after = node.children.slice(blockIndex + 1)
 
     const replacements: ElementContent[] = []
 
-    // Only create a <p> for "before" if it has meaningful content
     if (before.length > 0 && hasContent(before)) {
       replacements.push({ ...node, children: before })
     }
 
     replacements.push(blockEl)
 
-    // Recursively handle "after" — it may contain more block CEs
     if (after.length > 0 && hasContent(after)) {
       const afterP: Element = { ...node, children: after }
-      // Wrap in a temporary root so we can recurse
       const tempRoot: Root = { type: "root", children: [afterP] }
       transform(tempRoot)
       replacements.push(...(tempRoot.children as ElementContent[]))

@@ -1,6 +1,3 @@
-/**
- * Formats a string as a Markdown fenced code block with the specified language.
- */
 export function markdownCodeBlock(
   content: string,
   language: string = "markdown",

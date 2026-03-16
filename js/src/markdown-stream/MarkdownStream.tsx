@@ -18,10 +18,7 @@ export type MarkdownStreamApi = {
   setContentType: (contentType: ContentType) => void
 }
 
-/**
- * Standalone MarkdownStream component for the <shiny-markdown-stream> entry point.
- * Manages its own content state (updated via imperative methods from the custom element shell).
- */
+/** Standalone component for the <shiny-markdown-stream> custom element. */
 export function MarkdownStream({
   initialContent = "",
   initialContentType = "markdown",
@@ -69,7 +66,6 @@ export function MarkdownStream({
     }
   }, [containerRef])
 
-  // Re-engage auto-scroll when streaming starts
   useEffect(() => {
     if (streaming && autoScroll) {
       scrollToBottom()

@@ -1,9 +1,7 @@
 import { useEffect, useRef } from "react"
 
-// Renders raw HTML via a ref, opting out of React's DOM management.
-// This prevents React from resetting innerHTML on re-render, which
-// would destroy content injected by external systems (e.g. Shiny
-// output bindings for widget charts and input elements).
+// Uses a ref to opt out of React's DOM management, preventing React from
+// resetting innerHTML and destroying content injected by Shiny bindings.
 export function RawHTML({
   html,
   className,

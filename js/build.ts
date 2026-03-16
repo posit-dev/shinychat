@@ -133,7 +133,6 @@ const entries: EntryConfig[] = [
 ]
 
 ;(async () => {
-  // Clean old output before building
   await fs.rm(outDir, { recursive: true, force: true })
 
   await Promise.all(entries.map(bundleEntry))
