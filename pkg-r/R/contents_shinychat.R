@@ -305,7 +305,7 @@ get_tool_result_display <- function(content) {
 
   # fmt: skip
   expected_fields <- c(
-    "html", "markdown", "text", "show_request", "open", "title", "icon",
+    "html", "markdown", "text", "show_request", "open", "full_screen", "title", "icon",
     "footer"
   )
 
