@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Improvements
+
+* Migrated Google provider from the deprecated `google-generativeai` SDK to `google-genai`. (#174)
+
 ### New features
 
 * Added `footer` parameter to `ToolResultDisplay` for displaying custom HTML content below the tool result card body. (#178)

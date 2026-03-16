@@ -293,7 +293,8 @@ except ImportError:
 # ------------------------------------------------------------------
 
 try:
-    from google.generativeai.types.generation_types import (
+    from google.genai.types import (
+        Content,
         GenerateContentResponse,
     )
 
@@ -304,6 +305,27 @@ try:
     @message_content_chunk.register
     def _(chunk: GenerateContentResponse):
         return ChatMessage(content=chunk.text)
+
+    @message_content.register
+    def _(message: Content):
+        content = ""
+        parts = message.parts  # pyright: ignore[reportAttributeAccessIssue]
+        if parts is not None:
+            for part in parts:
+                if hasattr(part, "text") and part.text:
+                    content += part.text
+
+        role_val: str | None = message.role  # pyright: ignore[reportAttributeAccessIssue]
+        if role_val in ("user", "system"):
+            role = role_val
+        else:
+            role = "assistant"
+        return ChatMessage(content=content, role=role)
+
+    @message_content_chunk.register
+    def _(chunk: Content):
+        # reuse the message logic
+        return message_content(chunk)
 
 except ImportError:
     pass
