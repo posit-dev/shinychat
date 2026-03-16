@@ -156,16 +156,6 @@ new_tool_card <- function(type, request_id, tool_name, ...) {
 
 #' @export
 as.tags.shinychat_tool_card <- function(x, ...) {
-  normalize_boolean_attr <- function(value) {
-    if (is.null(value) || identical(value, FALSE)) {
-      return(NULL)
-    }
-    if (isTRUE(value) || (length(value) == 1 && is.na(value))) {
-      return(NA)
-    }
-    value
-  }
-
   tag_name <- switch(
     x$type,
     request = "shiny-tool-request",
@@ -183,12 +173,6 @@ as.tags.shinychat_tool_card <- function(x, ...) {
   }
   if (!is.null(x$footer) && !is.character(x$footer)) {
     x$footer <- as.tags(x$footer)
-  }
-
-  for (field in c("expanded", "show_request", "full_screen")) {
-    if (field %in% names(x)) {
-      x[[field]] <- normalize_boolean_attr(x[[field]])
-    }
   }
 
   names(x) <- gsub("_", "-", names(x))
