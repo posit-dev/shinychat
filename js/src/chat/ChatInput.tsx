@@ -112,9 +112,9 @@ export const ChatInput = memo(
           updateHeight(el)
 
           if (submit) {
+            // Server-triggered submit still respects the disabled guard
+            // (we only skip sendInput() to avoid its focus/clear side-effects).
             if (!disabled) {
-              // Bypass sendInput() — the server explicitly asked to submit,
-              // so we skip the usual disabled guard.
               const submitContent = el.value
               if (submitContent.trim().length > 0) {
                 dispatch({
@@ -153,6 +153,7 @@ export const ChatInput = memo(
           className="form-control"
           rows={1}
           placeholder={placeholder}
+          disabled={disabled}
           onKeyDown={onKeyDown}
           onInput={onInput}
           onCompositionStart={onCompositionStart}
