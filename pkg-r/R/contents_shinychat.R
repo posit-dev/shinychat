@@ -277,6 +277,7 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     intent = content@request@arguments[["_intent"]],
     show_request = if (!isFALSE(display$show_request)) NA,
     expanded = if (isTRUE(display$open)) NA,
+    full_screen = if (isTRUE(display$full_screen)) NA,
     footer = display$footer,
     !!!tool_result_display(content, display)
   )
