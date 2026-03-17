@@ -1,6 +1,6 @@
 import { memo } from "react"
 import type { ChatMessageData } from "./state"
-import { ShinyBoundMarkdown } from "../markdown/ShinyBoundMarkdown"
+import { MarkdownContent } from "../markdown/MarkdownContent"
 import { robot, dots_fade } from "../utils/icons"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
 
@@ -36,7 +36,7 @@ export const ChatMessage = memo(function ChatMessage({
         />
       )}
       <div className="shiny-chat-message-content">
-        <ShinyBoundMarkdown
+        <MarkdownContent
           content={message.content}
           contentType={message.contentType}
           streaming={message.streaming}

@@ -37,19 +37,19 @@ def split_html_islands(content: TagChild | TagList) -> list[TagChild]:
     elif isinstance(content, Tag):
         if _has_react_attr(content):
             return [content]
-        return [Tag("shinychat-html", content)]
+        return [Tag("shinychat-raw-html", content)]
     elif isinstance(content, Tagifiable):
         resolved = content.tagify()
         if isinstance(resolved, Tag) and _has_react_attr(resolved):
             return [resolved]
-        return [Tag("shinychat-html", content)]
+        return [Tag("shinychat-raw-html", content)]
     else:
-        return [Tag("shinychat-html", content)]
+        return [Tag("shinychat-raw-html", content)]
 
     result: list[TagChild] = []
     for is_react, group in groupby(children, _has_react_attr):
         if is_react:
             result.extend(group)
         else:
-            result.append(Tag("shinychat-html", *group))
+            result.append(Tag("shinychat-raw-html", *group))
     return result

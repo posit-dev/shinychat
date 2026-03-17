@@ -69,9 +69,9 @@ describe("MarkdownContent (pure)", () => {
     }).not.toThrow()
   })
 
-  it("renders shinychat-html block without throwing", () => {
+  it("renders shinychat-raw-html block without throwing", () => {
     const content =
-      '<shinychat-html><div class="custom">Hello</div></shinychat-html>'
+      '<shinychat-raw-html><div class="custom">Hello</div></shinychat-raw-html>'
 
     expect(() => {
       render(<MarkdownContent content={content} contentType="markdown" />)
@@ -92,7 +92,7 @@ describe("MarkdownContent (pure)", () => {
 
   it("renders tool tags as top-level React components (server splits content)", () => {
     // The server now splits HTML islands around data-shinychat-react elements,
-    // so tool tags arrive as top-level elements (not wrapped in shinychat-html).
+    // so tool tags arrive as top-level elements (not wrapped in shinychat-raw-html).
     const content =
       '<shiny-tool-request data-shinychat-react request-id="req-1" tool-name="test" arguments="{}"></shiny-tool-request>'
 

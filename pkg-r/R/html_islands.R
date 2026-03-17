@@ -16,13 +16,13 @@ split_html_islands <- function(content) {
     if (has_react_attr(content)) {
       return(list(content))
     }
-    return(list(htmltools::tag("shinychat-html", list(content))))
+    return(list(htmltools::tag("shinychat-raw-html", list(content))))
   }
 
   if (inherits(content, "shiny.tag.list")) {
     children <- as.list(content)
   } else {
-    return(list(htmltools::tag("shinychat-html", list(content))))
+    return(list(htmltools::tag("shinychat-raw-html", list(content))))
   }
 
   is_react <- vapply(children, has_react_attr, logical(1))
@@ -34,7 +34,7 @@ split_html_islands <- function(content) {
     if (has_react_attr(group[[1]])) {
       result <- c(result, group)
     } else {
-      result <- c(result, list(htmltools::tag("shinychat-html", group)))
+      result <- c(result, list(htmltools::tag("shinychat-raw-html", group)))
     }
   }
   result

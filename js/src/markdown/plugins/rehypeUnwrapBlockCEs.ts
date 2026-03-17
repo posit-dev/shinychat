@@ -6,7 +6,7 @@ import type { Plugin } from "unified"
 const blockCEs = new Set([
   "shiny-tool-request",
   "shiny-tool-result",
-  "shinychat-html",
+  "shinychat-raw-html",
 ])
 
 function isBlockCE(node: ElementContent): node is Element {

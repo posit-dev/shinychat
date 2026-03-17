@@ -6,7 +6,7 @@ import {
   useLayoutEffect,
   useMemo,
 } from "react"
-import { ShinyBoundMarkdown } from "../markdown/ShinyBoundMarkdown"
+import { MarkdownContent } from "../markdown/MarkdownContent"
 import { useAutoScroll, findScrollableParent } from "../markdown/useAutoScroll"
 import type { ContentType } from "../transport/types"
 
@@ -108,7 +108,7 @@ export function MarkdownStream({
 
   return (
     <div ref={innerRef}>
-      <ShinyBoundMarkdown
+      <MarkdownContent
         content={content}
         contentType={contentType}
         streaming={streaming}

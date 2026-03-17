@@ -17,6 +17,8 @@ The JavaScript components are built and then copied to both Python and R package
 - Assets are copied to `pkg-r/inst/lib/shiny/` and `pkg-py/src/shinychat/www/`
 - Both packages depend on the built JS components for their web UI
 
+For a deep dive on how message content flows from server to client rendering (the HAST pipeline, innerHTML islands, Shiny binding protection, etc.), see [`memory-bank/content-rendering.md`](memory-bank/content-rendering.md).
+
 ## Common Development Commands
 
 ### JavaScript (js/)
