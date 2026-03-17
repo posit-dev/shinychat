@@ -86,3 +86,59 @@ def test_bare_string_content_wrapped():
     rendered = TagList(result).render()["html"]
     assert "<shinychat-html>" in rendered
     assert "hello world" in rendered
+
+
+def test_tagifiable_with_react_attr_emitted_bare():
+    """A Tagifiable whose tagify() produces a react-attr Tag is emitted bare."""
+    from htmltools import Tagifiable
+
+    class FakeToolResult(Tagifiable):
+        def tagify(self):
+            return Tag(
+                "shiny-tool-result",
+                data_shinychat_react=True,
+                request_id="test-123",
+                tool_name="test_tool",
+            )
+
+    result = split_html_islands(FakeToolResult())
+    rendered = TagList(result).render()["html"]
+    assert "<shinychat-html>" not in rendered
+    assert "shiny-tool-result" in rendered
+    assert "data-shinychat-react" in rendered
+
+
+def test_tagifiable_without_react_attr_wrapped():
+    """A Tagifiable whose tagify() produces a non-react Tag gets wrapped."""
+    from htmltools import Tagifiable
+
+    class FakeWidget(Tagifiable):
+        def tagify(self):
+            return div("widget content")
+
+    result = split_html_islands(FakeWidget())
+    rendered = TagList(result).render()["html"]
+    assert "<shinychat-html>" in rendered
+    assert "widget content" in rendered
+
+
+def test_tagifiable_in_taglist_splits_correctly():
+    """A Tagifiable inside a TagList is correctly identified and split."""
+    from htmltools import Tagifiable
+
+    class FakeToolResult(Tagifiable):
+        def tagify(self):
+            return Tag(
+                "shiny-tool-result",
+                data_shinychat_react=True,
+                request_id="test-456",
+            )
+
+    tl = TagList(div("before"), FakeToolResult(), div("after"))
+    result = split_html_islands(tl)
+    rendered = TagList(result).render()["html"]
+    assert rendered.count("<shinychat-html>") == 2
+    assert "shiny-tool-result" in rendered
+    for line in rendered.split("\n"):
+        if "shiny-tool-result" in line:
+            assert "shinychat-html" not in line
