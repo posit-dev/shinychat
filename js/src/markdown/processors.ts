@@ -6,6 +6,7 @@ import rehypeRaw from "rehype-raw"
 import rehypeSanitize from "rehype-sanitize"
 import rehypeHighlight from "rehype-highlight"
 
+import { rehypeAccessibleSuggestions } from "./plugins/rehypeAccessibleSuggestions"
 import { remarkEscapeHtml } from "./plugins/remarkEscapeHtml"
 import { rehypeExternalLinks } from "./plugins/rehypeExternalLinks"
 import { rehypeUncontrolledInputs } from "./plugins/rehypeUncontrolledInputs"
@@ -26,6 +27,7 @@ export const markdownProcessor = unified()
   .use(rehypeRaw)
   .use(rehypeUnwrapBlockCEs)
   .use(rehypeUncontrolledInputs)
+  .use(rehypeAccessibleSuggestions)
   .use(rehypeExternalLinks)
   .use(rehypeHighlight, { detect: false, ignoreMissing: true })
   .freeze()
@@ -37,6 +39,7 @@ export const markdownProcessor = unified()
  */
 export const htmlProcessor = unified()
   .use(rehypeUncontrolledInputs)
+  .use(rehypeAccessibleSuggestions)
   .use(rehypeExternalLinks)
   .freeze()
 

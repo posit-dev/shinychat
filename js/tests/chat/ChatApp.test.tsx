@@ -29,6 +29,39 @@ beforeEach(() => {
 // Issue #3: Suggestion handlers are plain functions (no stale closure risk)
 // ---------------------------------------------------------------------------
 describe("Issue #3: suggestion handlers work after re-renders", () => {
+  it("renders suggestion elements with keyboard accessibility attributes", () => {
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+      />,
+    )
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "assistant",
+          content:
+            "Hello! <span class='suggestion' data-suggestion='click me'>click me</span>",
+          content_type: "html",
+        },
+      })
+    })
+
+    const suggestion = document.querySelector(".suggestion")
+    expect(suggestion?.getAttribute("tabindex")).toBe("0")
+    expect(suggestion?.getAttribute("role")).toBe("button")
+    expect(suggestion?.getAttribute("aria-label")).toBe(
+      "Use chat suggestion: click me",
+    )
+  })
+
   it("suggestion click works after state changes trigger re-renders", async () => {
     const transport = createMockTransport()
     const shinyLifecycle = createMockShinyLifecycle()
