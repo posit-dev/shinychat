@@ -47,4 +47,37 @@ describe("HtmlIsland", () => {
     const { container } = render(<HtmlIsland node={node} />)
     expect(container.textContent).toBe("")
   })
+
+  it("always uses display:contents", () => {
+    const node = makeIslandNode([{ type: "text", value: "hello" }])
+    const { container } = render(<HtmlIsland node={node} />)
+    const div = container.firstElementChild as HTMLElement
+    expect(div.style.display).toBe("contents")
+  })
+
+  it("adds fill carrier classes when parent is a fill container", () => {
+    const node = makeIslandNode([{ type: "text", value: "hello" }])
+    const { container } = render(
+      <div className="html-fill-container">
+        <HtmlIsland node={node} />
+      </div>,
+    )
+    const island = container.querySelector(
+      ".html-fill-item.html-fill-container",
+    )
+    expect(island).not.toBeNull()
+    expect((island as HTMLElement).style.display).toBe("contents")
+  })
+
+  it("does not add fill carrier classes when parent is not a fill container", () => {
+    const node = makeIslandNode([{ type: "text", value: "hello" }])
+    const { container } = render(
+      <div>
+        <HtmlIsland node={node} />
+      </div>,
+    )
+    const div = container.querySelector("div > div") as HTMLElement
+    expect(div.classList.contains("html-fill-item")).toBe(false)
+    expect(div.classList.contains("html-fill-container")).toBe(false)
+  })
 })
