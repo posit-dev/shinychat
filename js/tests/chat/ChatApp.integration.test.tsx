@@ -174,7 +174,7 @@ describe("ChatApp integration: full message flow", () => {
     )
 
     const messagesEl = document.querySelector(
-      "shiny-chat-messages",
+      ".shiny-chat-messages",
     ) as HTMLElement | null
     expect(messagesEl).toBeTruthy()
     const scrollToSpy = installScrollMetrics(messagesEl!)
@@ -211,7 +211,7 @@ describe("ChatApp integration: full message flow", () => {
     )
 
     const messagesEl = document.querySelector(
-      "shiny-chat-messages",
+      ".shiny-chat-messages",
     ) as HTMLElement | null
     expect(messagesEl).toBeTruthy()
     const scrollToSpy = installScrollMetrics(messagesEl!, { scrollTop: 500 })

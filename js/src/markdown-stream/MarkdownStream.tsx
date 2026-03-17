@@ -1,4 +1,11 @@
-import { useState, useRef, useCallback, useEffect } from "react"
+import {
+  useState,
+  useRef,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+} from "react"
 import { ShinyBoundMarkdown } from "../markdown/ShinyBoundMarkdown"
 import { useAutoScroll, findScrollableParent } from "../markdown/useAutoScroll"
 import type { ContentType } from "../transport/types"
@@ -43,7 +50,7 @@ export function MarkdownStream({
     contentDependency: content,
   })
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!autoScroll || !innerRef.current) {
       if (scrollParentRef.current) {
         containerRef(null)
@@ -85,17 +92,19 @@ export function MarkdownStream({
     setContent(newContent)
   }, [])
 
-  // Notify the shell of the imperative API on mount (intentionally empty deps —
-  // the API methods are stable refs and onApiReady only needs to fire once)
-  useEffect(() => {
-    onApiReady?.({
+  const api = useMemo(
+    () => ({
       appendContent,
       replaceContent,
       setStreaming,
       setContentType,
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    }),
+    [appendContent, replaceContent],
+  )
+
+  useEffect(() => {
+    onApiReady?.(api)
+  }, [api, onApiReady])
 
   return (
     <div ref={innerRef}>

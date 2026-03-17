@@ -14,6 +14,7 @@ export interface ChatInputProps {
   transport: ChatTransport
   inputId: string
   disabled: boolean
+  hasTopShadow?: boolean
   placeholder: string
   onSend?: () => void
 }
@@ -28,7 +29,7 @@ export interface ChatInputHandle {
 
 export const ChatInput = memo(
   forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
-    { transport, inputId, disabled, placeholder, onSend },
+    { transport, inputId, disabled, hasTopShadow = false, placeholder, onSend },
     ref,
   ) {
     const dispatch = useChatDispatch()
@@ -150,10 +151,9 @@ export const ChatInput = memo(
         <textarea
           ref={textareaRef}
           id={inputId}
-          className="form-control"
+          className={hasTopShadow ? "form-control shadow" : "form-control"}
           rows={1}
           placeholder={placeholder}
-          disabled={disabled}
           onKeyDown={onKeyDown}
           onInput={onInput}
           onCompositionStart={onCompositionStart}

@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type RefCallback,
@@ -94,7 +95,7 @@ export function useAutoScroll({
   }, [])
 
   // contentDependency is in the deps so each new chunk triggers a scroll
-  useEffect(() => {
+  useLayoutEffect(() => {
     const shouldScroll = streaming || scrollOnContentChange
     if (shouldScroll && stickToBottom && containerElRef.current) {
       containerElRef.current.scrollTo({

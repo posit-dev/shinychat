@@ -20,22 +20,6 @@ declare global {
   }
 }
 
-declare module "react" {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
-  namespace JSX {
-    interface IntrinsicElements {
-      "shiny-chat-messages": React.DetailedHTMLProps<
-        React.HTMLAttributes<HTMLElement>,
-        HTMLElement
-      >
-      "shiny-chat-input": React.DetailedHTMLProps<
-        React.HTMLAttributes<HTMLElement> & { ref?: React.Ref<HTMLElement> },
-        HTMLElement
-      >
-    }
-  }
-}
-
 export interface ChatContainerProps {
   transport: ChatTransport
   messages: ChatMessageData[]
@@ -63,8 +47,8 @@ export const ChatContainer = forwardRef<
 ) {
   const chatInputRef = useRef<ChatInputHandle>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
-  const inputAreaRef = useRef<HTMLDivElement>(null)
 
+  const [inputHasShadow, setInputHasShadow] = useState(false)
   const [pendingUrl, setPendingUrl] = useState<string | null>(null)
   const pendingUrlRef = useRef<string | null>(null)
   pendingUrlRef.current = pendingUrl
@@ -87,15 +71,14 @@ export const ChatContainer = forwardRef<
 
   useEffect(() => {
     const sentinel = sentinelRef.current
-    const inputArea = inputAreaRef.current
-    if (!sentinel || !inputArea) return
+    if (!sentinel) return
 
     const observer = new IntersectionObserver(
       (entries) => {
-        const textarea = inputArea.querySelector("textarea")
-        if (!textarea) return
         const addShadow = entries[0]?.intersectionRatio === 0
-        textarea.classList.toggle("shadow", addShadow)
+        setInputHasShadow((current) =>
+          current === addShadow ? current : addShadow,
+        )
       },
       {
         threshold: [0, 1],
@@ -202,7 +185,8 @@ export const ChatContainer = forwardRef<
 
   return (
     <>
-      <shiny-chat-messages
+      <div
+        className="shiny-chat-messages"
         ref={messagesRef}
         role="log"
         aria-live="polite"
@@ -210,18 +194,24 @@ export const ChatContainer = forwardRef<
         onKeyDown={onSuggestionKeydown}
       >
         <ChatMessages messages={messages} iconAssistant={iconAssistant} />
-      </shiny-chat-messages>
+      </div>
 
-      <shiny-chat-input ref={inputAreaRef} onClick={onContainerClick}>
+      <div
+        className={
+          inputDisabled ? "shiny-chat-input disabled" : "shiny-chat-input"
+        }
+        onClick={onContainerClick}
+      >
         <ChatInput
           ref={chatInputRef}
           transport={transport}
           inputId={inputId}
           disabled={inputDisabled}
+          hasTopShadow={inputHasShadow}
           placeholder={inputPlaceholder}
           onSend={engageStickToBottom}
         />
-      </shiny-chat-input>
+      </div>
 
       {/* IntersectionObserver sentinel: triggers shadow on the textarea
           when messages scroll behind the input area */}
