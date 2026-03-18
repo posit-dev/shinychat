@@ -404,6 +404,38 @@ describe("chatReducer", () => {
     })
   })
 
+  describe("removeLoadingMessage", () => {
+    it("removes all placeholder messages, not just the last one", () => {
+      const placeholder1: ChatMessageData = {
+        id: "p1",
+        role: "assistant",
+        content: "",
+        contentType: "markdown",
+        streaming: false,
+        isPlaceholder: true,
+      }
+      const placeholder2: ChatMessageData = {
+        id: "p2",
+        role: "assistant",
+        content: "",
+        contentType: "markdown",
+        streaming: false,
+        isPlaceholder: true,
+      }
+      const state = makeState({ messages: [placeholder1, placeholder2] })
+      const next = chatReducer(state, {
+        type: "message",
+        message: {
+          role: "assistant",
+          content: "Reply",
+          content_type: "markdown",
+        },
+      })
+      expect(next.messages).toHaveLength(1)
+      expect(next.messages[0]!.isPlaceholder).toBeUndefined()
+    })
+  })
+
   describe("unknown action", () => {
     it("returns state unchanged", () => {
       const state = makeState()

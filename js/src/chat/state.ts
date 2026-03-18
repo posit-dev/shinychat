@@ -56,11 +56,7 @@ function messagePayloadToData(msg: MessagePayload): ChatMessageData {
 }
 
 function removeLoadingMessage(messages: ChatMessageData[]): ChatMessageData[] {
-  const last = messages[messages.length - 1]
-  if (last?.isPlaceholder) {
-    return messages.slice(0, -1)
-  }
-  return messages
+  return messages.filter((m) => !m.isPlaceholder)
 }
 
 export function chatReducer(state: ChatState, action: AnyAction): ChatState {
