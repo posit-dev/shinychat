@@ -7,6 +7,7 @@ import {
 import {
   chatReducer,
   initialState,
+  allMessages,
   type ChatMessageData,
   type ChatToolState,
 } from "./state"
@@ -75,6 +76,11 @@ export function ChatApp({
     [state.hiddenToolRequests],
   )
 
+  const messages = useMemo(
+    () => allMessages(state),
+    [state.messages, state.streamingMessage],
+  )
+
   return (
     <ShinyLifecycleContext.Provider value={shinyLifecycle}>
       <ChatToolContext.Provider value={toolState}>
@@ -82,7 +88,7 @@ export function ChatApp({
           <ChatContainer
             ref={containerRef}
             transport={transport}
-            messages={state.messages}
+            messages={messages}
             inputDisabled={state.inputDisabled}
             inputPlaceholder={state.inputPlaceholder}
             iconAssistant={iconAssistant}

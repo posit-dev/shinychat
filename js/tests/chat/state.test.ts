@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import {
   chatReducer,
   initialState,
+  allMessages,
   type ChatState,
   type ChatMessageData,
 } from "../../src/chat/state"
@@ -138,7 +139,7 @@ describe("chatReducer", () => {
   })
 
   describe("chunk_start", () => {
-    it("removes placeholder, adds streaming message, keeps input disabled", () => {
+    it("removes placeholder, sets streamingMessage, keeps input disabled", () => {
       const placeholder: ChatMessageData = {
         id: "p",
         role: "assistant",
@@ -159,9 +160,10 @@ describe("chatReducer", () => {
           content_type: "markdown",
         },
       })
-      expect(next.messages).toHaveLength(1)
-      expect(next.messages[0]!.streaming).toBe(true)
-      expect(next.messages[0]!.content).toBe("Hel")
+      expect(next.messages).toHaveLength(0)
+      expect(next.streamingMessage).not.toBeNull()
+      expect(next.streamingMessage!.streaming).toBe(true)
+      expect(next.streamingMessage!.content).toBe("Hel")
       expect(next.inputDisabled).toBe(true)
     })
   })
@@ -169,24 +171,26 @@ describe("chatReducer", () => {
   describe("chunk", () => {
     it("appends content when operation is 'append'", () => {
       const msg = makeAssistantMsg({ streaming: true, content: "Hel" })
-      const state = makeState({ messages: [msg] })
+      const state = makeState({ streamingMessage: msg })
       const next = chatReducer(state, {
         type: "chunk",
         content: "lo",
         operation: "append",
       })
-      expect(next.messages[0]!.content).toBe("Hello")
+      expect(next.streamingMessage!.content).toBe("Hello")
+      expect(next.messages).toBe(state.messages)
     })
 
     it("replaces content when operation is 'replace'", () => {
       const msg = makeAssistantMsg({ streaming: true, content: "old" })
-      const state = makeState({ messages: [msg] })
+      const state = makeState({ streamingMessage: msg })
       const next = chatReducer(state, {
         type: "chunk",
         content: "new",
         operation: "replace",
       })
-      expect(next.messages[0]!.content).toBe("new")
+      expect(next.streamingMessage!.content).toBe("new")
+      expect(next.messages).toBe(state.messages)
     })
 
     it("updates contentType when chunk provides one", () => {
@@ -194,14 +198,14 @@ describe("chatReducer", () => {
         streaming: true,
         contentType: "markdown",
       })
-      const state = makeState({ messages: [msg] })
+      const state = makeState({ streamingMessage: msg })
       const next = chatReducer(state, {
         type: "chunk",
         content: "x",
         operation: "append",
         content_type: "html",
       })
-      expect(next.messages[0]!.contentType).toBe("html")
+      expect(next.streamingMessage!.contentType).toBe("html")
     })
 
     it("keeps contentType when chunk does not provide one", () => {
@@ -209,17 +213,17 @@ describe("chatReducer", () => {
         streaming: true,
         contentType: "markdown",
       })
-      const state = makeState({ messages: [msg] })
+      const state = makeState({ streamingMessage: msg })
       const next = chatReducer(state, {
         type: "chunk",
         content: "x",
         operation: "append",
       })
-      expect(next.messages[0]!.contentType).toBe("markdown")
+      expect(next.streamingMessage!.contentType).toBe("markdown")
     })
 
-    it("returns state unchanged when no messages exist", () => {
-      const state = makeState({ messages: [] })
+    it("returns state unchanged when streamingMessage is null", () => {
+      const state = makeState({ streamingMessage: null })
       const next = chatReducer(state, {
         type: "chunk",
         content: "x",
@@ -228,7 +232,7 @@ describe("chatReducer", () => {
       expect(next).toBe(state)
     })
 
-    it("returns state unchanged when last message is not assistant", () => {
+    it("returns state unchanged when streamingMessage is not assistant", () => {
       const userMsg: ChatMessageData = {
         id: "u",
         role: "user",
@@ -236,7 +240,7 @@ describe("chatReducer", () => {
         contentType: "semi-markdown",
         streaming: false,
       }
-      const state = makeState({ messages: [userMsg] })
+      const state = makeState({ streamingMessage: userMsg })
       const next = chatReducer(state, {
         type: "chunk",
         content: "x",
@@ -245,9 +249,9 @@ describe("chatReducer", () => {
       expect(next).toBe(state)
     })
 
-    it("returns state unchanged when last message is not streaming", () => {
+    it("returns state unchanged when streamingMessage is not streaming", () => {
       const msg = makeAssistantMsg({ streaming: false })
-      const state = makeState({ messages: [msg] })
+      const state = makeState({ streamingMessage: msg })
       const next = chatReducer(state, {
         type: "chunk",
         content: "x",
@@ -258,36 +262,25 @@ describe("chatReducer", () => {
   })
 
   describe("chunk_end", () => {
-    it("sets streaming to false and re-enables input", () => {
+    it("moves streamingMessage to messages with streaming:false and re-enables input", () => {
       const msg = makeAssistantMsg({ streaming: true })
-      const state = makeState({ messages: [msg], inputDisabled: true })
+      const state = makeState({ streamingMessage: msg, inputDisabled: true })
       const next = chatReducer(state, { type: "chunk_end" })
+      expect(next.streamingMessage).toBeNull()
+      expect(next.messages).toHaveLength(1)
       expect(next.messages[0]!.streaming).toBe(false)
       expect(next.inputDisabled).toBe(false)
     })
 
-    it("returns state unchanged when no messages exist", () => {
-      const state = makeState({ messages: [] })
-      const next = chatReducer(state, { type: "chunk_end" })
-      expect(next.messages).toHaveLength(0)
-    })
-
-    it("returns state unchanged when last message is not streaming", () => {
-      const msg = makeAssistantMsg({ streaming: false })
-      const state = makeState({ messages: [msg] })
+    it("returns state unchanged when streamingMessage is null", () => {
+      const state = makeState({ streamingMessage: null })
       const next = chatReducer(state, { type: "chunk_end" })
       expect(next).toBe(state)
     })
 
-    it("returns state unchanged when last message is a user message", () => {
-      const userMsg: ChatMessageData = {
-        id: "u",
-        role: "user",
-        content: "Hi",
-        contentType: "semi-markdown",
-        streaming: false,
-      }
-      const state = makeState({ messages: [userMsg] })
+    it("returns state unchanged when streamingMessage is not streaming", () => {
+      const msg = makeAssistantMsg({ streaming: false })
+      const state = makeState({ streamingMessage: msg })
       const next = chatReducer(state, { type: "chunk_end" })
       expect(next).toBe(state)
     })
@@ -371,7 +364,7 @@ describe("chatReducer", () => {
   describe("chunk hiddenToolRequests handling", () => {
     it("does not derive hidden tool requests from rendered chunk HTML", () => {
       const msg = makeAssistantMsg({ streaming: true, content: "" })
-      const state = makeState({ messages: [msg] })
+      const state = makeState({ streamingMessage: msg })
       const next = chatReducer(state, {
         type: "chunk",
         content:
@@ -442,5 +435,26 @@ describe("chatReducer", () => {
       const next = chatReducer(state, { type: "bogus" } as never)
       expect(next).toBe(state)
     })
+  })
+})
+
+describe("allMessages", () => {
+  it("returns messages when streamingMessage is null", () => {
+    const msg = makeAssistantMsg()
+    const state = makeState({ messages: [msg], streamingMessage: null })
+    expect(allMessages(state)).toBe(state.messages)
+  })
+
+  it("appends streamingMessage to messages when present", () => {
+    const committed = makeAssistantMsg({ id: "committed" })
+    const streaming = makeAssistantMsg({ id: "streaming", streaming: true })
+    const state = makeState({
+      messages: [committed],
+      streamingMessage: streaming,
+    })
+    const result = allMessages(state)
+    expect(result).toHaveLength(2)
+    expect(result[0]!.id).toBe("committed")
+    expect(result[1]!.id).toBe("streaming")
   })
 })

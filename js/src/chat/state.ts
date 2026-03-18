@@ -26,6 +26,7 @@ export interface ChatToolState {
 
 export interface ChatState extends ChatInputState, ChatToolState {
   messages: ChatMessageData[]
+  streamingMessage: ChatMessageData | null
 }
 
 // Actions that originate from the UI (not from the server)
@@ -39,9 +40,16 @@ export type AnyAction = ChatAction | UIAction
 
 export const initialState: ChatState = {
   messages: [],
+  streamingMessage: null,
   inputDisabled: false,
   inputPlaceholder: "Enter a message...",
   hiddenToolRequests: new Set(),
+}
+
+export function allMessages(state: ChatState): ChatMessageData[] {
+  return state.streamingMessage
+    ? [...state.messages, state.streamingMessage]
+    : state.messages
 }
 
 function messagePayloadToData(msg: MessagePayload): ChatMessageData {
@@ -89,6 +97,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       return {
         ...state,
         messages: [...messages, messagePayloadToData(action.message)],
+        streamingMessage: null,
         inputDisabled: false,
       }
     }
@@ -99,14 +108,14 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       newMsg.streaming = true
       return {
         ...state,
-        messages: [...messages, newMsg],
+        messages,
+        streamingMessage: newMsg,
         inputDisabled: true,
       }
     }
 
     case "chunk": {
-      const messages = [...state.messages]
-      const last = messages[messages.length - 1]
+      const last = state.streamingMessage
       if (!last || last.role !== "assistant" || !last.streaming) return state
 
       const content =
@@ -118,17 +127,19 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       // from "markdown" to "html" when UI elements appear mid-stream)
       const contentType = action.content_type ?? last.contentType
 
-      messages[messages.length - 1] = { ...last, content, contentType }
-      return { ...state, messages }
+      return { ...state, streamingMessage: { ...last, content, contentType } }
     }
 
     case "chunk_end": {
-      const last = state.messages[state.messages.length - 1]
+      const last = state.streamingMessage
       if (!last || !last.streaming) return state
 
-      const messages = [...state.messages]
-      messages[messages.length - 1] = { ...last, streaming: false }
-      return { ...state, messages, inputDisabled: false }
+      return {
+        ...state,
+        messages: [...state.messages, { ...last, streaming: false }],
+        streamingMessage: null,
+        inputDisabled: false,
+      }
     }
 
     case "clear":
@@ -147,6 +158,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       return {
         ...state,
         messages: removeLoadingMessage(state.messages),
+        streamingMessage: null,
         inputDisabled: false,
       }
     }
