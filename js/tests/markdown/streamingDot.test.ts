@@ -97,6 +97,14 @@ describe("insertStreamingDot", () => {
     expect(dot).toBeDefined()
     expect(h1.children).toContain(dot)
   })
+
+  it("streaming dot has ariaHidden property", () => {
+    const tree = makeRoot(el("p", [text("hello")]))
+    insertStreamingDot(tree)
+    const dot = findDot(tree)
+    expect(dot).toBeDefined()
+    expect(dot!.properties.ariaHidden).toBe("true")
+  })
 })
 
 describe("withStreamingDot (immutable)", () => {
