@@ -45,7 +45,7 @@ const reactToHtmlAttr: Record<string, string> = {
  *
  * Standard HTML elements are left untouched (React expects React names).
  */
-function fixCustomElementProps(
+export function fixCustomElementProps(
   type: string,
   props: Record<string, unknown>,
 ): Record<string, unknown> {
