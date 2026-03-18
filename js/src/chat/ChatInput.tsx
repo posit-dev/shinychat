@@ -154,6 +154,7 @@ export const ChatInput = memo(
           className={hasTopShadow ? "form-control shadow" : "form-control"}
           rows={1}
           placeholder={placeholder}
+          aria-disabled={disabled || undefined}
           onKeyDown={onKeyDown}
           onInput={onInput}
           onCompositionStart={onCompositionStart}

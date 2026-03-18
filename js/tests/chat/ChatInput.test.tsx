@@ -110,6 +110,16 @@ describe("ChatInput", () => {
     expect(dispatch).not.toHaveBeenCalled()
   })
 
+  it("textarea has aria-disabled when input is disabled", () => {
+    const { textarea } = renderChatInput({ disabled: true })
+    expect(textarea.getAttribute("aria-disabled")).toBe("true")
+  })
+
+  it("textarea does not have aria-disabled when input is enabled", () => {
+    const { textarea } = renderChatInput({ disabled: false })
+    expect(textarea.hasAttribute("aria-disabled")).toBe(false)
+  })
+
   it("does not send empty input", () => {
     const { textarea, dispatch } = renderChatInput()
 
