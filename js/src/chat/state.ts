@@ -136,7 +136,10 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     }
 
     case "clear":
-      return { ...state, messages: [], hiddenToolRequests: new Set() }
+      return {
+        ...initialState,
+        inputPlaceholder: state.inputPlaceholder,
+      }
 
     case "update_input":
       return {

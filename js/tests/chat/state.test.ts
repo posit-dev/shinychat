@@ -289,6 +289,16 @@ describe("chatReducer", () => {
       const next = chatReducer(state, { type: "clear" })
       expect(next.hiddenToolRequests.size).toBe(0)
     })
+
+    it("resets inputDisabled when cleared during streaming", () => {
+      const msg = makeAssistantMsg({ streaming: true })
+      const state = makeState({
+        messages: [msg],
+        inputDisabled: true,
+      })
+      const next = chatReducer(state, { type: "clear" })
+      expect(next.inputDisabled).toBe(false)
+    })
   })
 
   describe("update_input", () => {
