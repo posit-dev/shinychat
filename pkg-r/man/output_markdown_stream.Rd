@@ -27,8 +27,7 @@ as input and output bindings.}
 CommonMark). Supported content types include:
 * \code{"markdown"}: markdown text, specifically CommonMark
 * \code{"html"}: for rendering HTML content.
-* \code{"text"}: for plain text.
-* \code{"semi-markdown"}: for rendering markdown, but with HTML tags escaped.}
+* \code{"text"}: for plain text.}
 
 \item{auto_scroll}{Whether to automatically scroll to the bottom of a
 scrollable container when new content is added. Default is True.}
