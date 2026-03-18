@@ -6,7 +6,7 @@ import type { ComponentType } from "react"
 import { parseMarkdown, hastToReact } from "../../src/markdown/markdownToReact"
 import {
   markdownProcessor,
-  semiMarkdownProcessor,
+  userMarkdownProcessor,
 } from "../../src/markdown/processors"
 
 // ---------------------------------------------------------------------------
@@ -71,10 +71,10 @@ describe("parseMarkdown", () => {
     expect(href).toBe("")
   })
 
-  it("sanitizes unsafe URLs with semiMarkdownProcessor too", () => {
+  it("sanitizes unsafe URLs with userMarkdownProcessor too", () => {
     const hast = parseMarkdown(
       "[click](javascript:alert(1))",
-      semiMarkdownProcessor,
+      userMarkdownProcessor,
     )
     function findAnchor(node: Root | Element): Element | undefined {
       if (node.type === "element" && node.tagName === "a") return node

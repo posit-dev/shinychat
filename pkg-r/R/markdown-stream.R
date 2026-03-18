@@ -16,7 +16,6 @@
 #'       * `"markdown"`: markdown text, specifically CommonMark
 #'       * `"html"`: for rendering HTML content.
 #'       * `"text"`: for plain text.
-#'       * `"semi-markdown"`: for rendering markdown, but with HTML tags escaped.
 #' @param auto_scroll Whether to automatically scroll to the bottom of a
 #'   scrollable container when new content is added. Default is True.
 #' @param width The width of the UI element.

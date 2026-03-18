@@ -14,7 +14,7 @@ Role = Literal["assistant", "user", "system"]
 # Wire-format types (mirrors js/src/transport/types.ts)
 # ---------------------------------------------------------------------------
 
-ContentType = Literal["markdown", "html", "text", "semi-markdown"]
+ContentType = Literal["markdown", "html", "text"]
 
 
 class MessagePayload(TypedDict):

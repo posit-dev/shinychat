@@ -74,7 +74,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         id: crypto.randomUUID(),
         role: "user",
         content: action.content,
-        contentType: "semi-markdown",
+        contentType: "markdown",
         streaming: false,
       }
       const loadingMsg: ChatMessageData = {

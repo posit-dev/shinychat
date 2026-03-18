@@ -6,7 +6,7 @@ import { parseMarkdown, parseHtml, hastToReact } from "./markdownToReact"
 import {
   markdownProcessor,
   htmlProcessor,
-  semiMarkdownProcessor,
+  userMarkdownProcessor,
 } from "./processors"
 import { CopyableCodeBlock } from "./components/CopyableCodeBlock"
 import { BootstrapTable } from "./components/BootstrapTable"
@@ -27,6 +27,7 @@ const baseUserComponents: Record<string, ComponentType<unknown>> = {
 export interface MarkdownContentProps {
   content: string
   contentType: ContentType
+  role?: "user" | "assistant"
   streaming?: boolean
   tagToComponentMap?: Record<string, ComponentType<unknown>>
 }
@@ -35,16 +36,17 @@ export interface MarkdownContentProps {
 export function MarkdownContent({
   content,
   contentType,
+  role,
   streaming = false,
   tagToComponentMap,
 }: MarkdownContentProps): ReactElement {
-  const isUser = contentType === "semi-markdown"
+  const isUser = role === "user"
   const isText = contentType === "text"
   const isHtml = contentType === "html"
   const processor = isHtml
     ? htmlProcessor
     : isUser
-      ? semiMarkdownProcessor
+      ? userMarkdownProcessor
       : markdownProcessor
   const resolvedTagToComponentMap = useMemo(
     () =>

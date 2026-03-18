@@ -47,7 +47,7 @@ describe("chatReducer", () => {
       expect(next.messages[0]).toMatchObject({
         role: "user",
         content: "Hi",
-        contentType: "semi-markdown",
+        contentType: "markdown",
         streaming: false,
       })
       expect(next.messages[1]).toMatchObject({
@@ -237,7 +237,7 @@ describe("chatReducer", () => {
         id: "u",
         role: "user",
         content: "Hi",
-        contentType: "semi-markdown",
+        contentType: "markdown",
         streaming: false,
       }
       const state = makeState({ streamingMessage: userMsg })

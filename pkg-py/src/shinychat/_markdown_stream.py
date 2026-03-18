@@ -20,7 +20,6 @@ __all__ = (
 StreamingContentType = Literal[
     "markdown",
     "html",
-    "semi-markdown",
     "text",
 ]
 
@@ -296,7 +295,6 @@ class ExpressMarkdownStream(MarkdownStream):
                 - `"markdown"`: markdown text, specifically CommonMark
                 - `"html"`: for rendering HTML content.
                 - `"text"`: for plain text.
-                - `"semi-markdown"`: for rendering markdown, but with HTML tags escaped.
         auto_scroll
             Whether to automatically scroll to the bottom of a scrollable container
             when new content is added. Default is `True`.
@@ -350,7 +348,6 @@ def output_markdown_stream(
             - `"markdown"`: markdown text, specifically CommonMark
             - `"html"`: for rendering HTML content.
             - `"text"`: for plain text.
-            - `"semi-markdown"`: for rendering markdown, but with HTML tags escaped.
     auto_scroll
         Whether to automatically scroll to the bottom of a scrollable container
         when new content is added. Default is True.

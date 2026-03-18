@@ -44,12 +44,12 @@ export const htmlProcessor = unified()
   .freeze()
 
 /**
- * Frozen processor for semi-markdown content.
+ * Frozen processor for user message markdown content.
  * HTML tags are escaped and displayed literally.
  * No syntax highlighting, no raw HTML passthrough.
  * Sanitization provides defense-in-depth (remarkEscapeHtml already escapes HTML).
  */
-export const semiMarkdownProcessor = unified()
+export const userMarkdownProcessor = unified()
   .use(remarkParse)
   .use(remarkGfm)
   .use(remarkEscapeHtml)

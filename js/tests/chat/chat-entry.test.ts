@@ -34,7 +34,7 @@ describe("chat-entry custom element boot", () => {
         ></shiny-chat-message>
         <shiny-chat-message
           data-role="user"
-          content-type="semi-markdown"
+          content-type="markdown"
           content="User reply"
         ></shiny-chat-message>
       </shiny-chat-messages>

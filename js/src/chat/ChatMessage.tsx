@@ -39,6 +39,7 @@ export const ChatMessage = memo(function ChatMessage({
         <MarkdownContent
           content={message.content}
           contentType={message.contentType}
+          role={message.role}
           streaming={message.streaming}
           tagToComponentMap={chatTagToComponentMap}
         />
