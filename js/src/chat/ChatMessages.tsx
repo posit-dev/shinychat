@@ -1,4 +1,5 @@
 import { ChatMessage } from "./ChatMessage"
+import { MessageErrorBoundary } from "./MessageErrorBoundary"
 import type { ChatMessageData } from "./state"
 
 export function ChatMessages({
@@ -11,7 +12,9 @@ export function ChatMessages({
   return (
     <>
       {messages.map((msg) => (
-        <ChatMessage key={msg.id} message={msg} iconAssistant={iconAssistant} />
+        <MessageErrorBoundary key={msg.id}>
+          <ChatMessage message={msg} iconAssistant={iconAssistant} />
+        </MessageErrorBoundary>
       ))}
     </>
   )
