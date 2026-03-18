@@ -162,7 +162,10 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       return { ...state, hiddenToolRequests: newSet }
     }
 
-    default:
+    default: {
+      const _exhaustive: never = action
+      void _exhaustive
       return state
+    }
   }
 }
