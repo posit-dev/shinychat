@@ -755,8 +755,8 @@ class Chat:
         # Normalize various message types into a ChatMessage()
         msg = message_content_chunk(message)
 
-        if is_tool_result(message):
-            await hide_corresponding_request(message, self.id)
+        if is_tool_result(message) and message.request is not None:
+            await self._hide_tool_request(message.request.id)  # type: ignore
 
         if operation == "replace":
             self._current_stream_message = (
@@ -1397,6 +1397,13 @@ class Chat:
     async def _remove_loading_message(self):
         await self._send_action({"type": "remove_loading"})
 
+    async def _hide_tool_request(self, request_id: str) -> None:
+        action: ChatAction = {
+            "type": "hide_tool_request",
+            "requestId": request_id,
+        }
+        await self._send_action(action)
+
     async def _send_action(
         self,
         action: ChatAction,
@@ -1856,34 +1863,6 @@ class MessageStream:
             message_chunk,
             stream_id=self._stream_id,
         )
-
-
-async def hide_corresponding_request(
-    x: "chatlas.ContentToolResult", chat_id: str
-):
-    if x.request is None:
-        return
-
-    session = None
-    try:
-        from shiny.session import get_current_session
-
-        session = get_current_session()
-    except Exception:
-        return
-
-    if session is None:
-        return
-
-    action: ChatAction = {
-        "type": "hide_tool_request",
-        "requestId": x.request.id,  # type: ignore
-    }
-    envelope: dict[str, object] = {
-        "id": chat_id,
-        "action": action,
-    }
-    await session.send_custom_message("shinyChatMessage", envelope)
 
 
 def is_tool_result(val: object) -> "TypeGuard[chatlas.ContentToolResult]":
