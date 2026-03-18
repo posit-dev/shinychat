@@ -56,3 +56,8 @@ test_that("single tag without react attr gets wrapped", {
   rendered <- as.character(htmltools::tagList(result))
   expect_match(rendered, "shinychat-raw-html")
 })
+
+test_that("empty tagList returns empty list without error", {
+  result <- split_html_islands(htmltools::tagList())
+  expect_equal(result, list())
+})
