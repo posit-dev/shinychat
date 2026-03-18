@@ -25,7 +25,9 @@ split_html_islands <- function(content) {
     return(list(htmltools::tag("shinychat-raw-html", list(content))))
   }
 
-  if (length(children) == 0) return(list())
+  if (length(children) == 0) {
+    return(list())
+  }
 
   is_react <- vapply(children, has_react_attr, logical(1))
   group_id <- cumsum(c(TRUE, diff(is_react) != 0))
