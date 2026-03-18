@@ -127,10 +127,10 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     }
 
     case "chunk_end": {
-      const messages = [...state.messages]
-      const last = messages[messages.length - 1]
-      if (!last) return state
+      const last = state.messages[state.messages.length - 1]
+      if (!last || !last.streaming) return state
 
+      const messages = [...state.messages]
       messages[messages.length - 1] = { ...last, streaming: false }
       return { ...state, messages, inputDisabled: false }
     }

@@ -271,6 +271,26 @@ describe("chatReducer", () => {
       const next = chatReducer(state, { type: "chunk_end" })
       expect(next.messages).toHaveLength(0)
     })
+
+    it("returns state unchanged when last message is not streaming", () => {
+      const msg = makeAssistantMsg({ streaming: false })
+      const state = makeState({ messages: [msg] })
+      const next = chatReducer(state, { type: "chunk_end" })
+      expect(next).toBe(state)
+    })
+
+    it("returns state unchanged when last message is a user message", () => {
+      const userMsg: ChatMessageData = {
+        id: "u",
+        role: "user",
+        content: "Hi",
+        contentType: "semi-markdown",
+        streaming: false,
+      }
+      const state = makeState({ messages: [userMsg] })
+      const next = chatReducer(state, { type: "chunk_end" })
+      expect(next).toBe(state)
+    })
   })
 
   describe("clear", () => {
