@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { ShinyTransport } from "../../src/transport/shiny-transport"
-import type { ChatAction, ShinyChatEnvelope } from "../../src/transport/types"
+import {
+  isValidEnvelope,
+  type ChatAction,
+  type ShinyChatEnvelope,
+} from "../../src/transport/types"
 import { installShinyWindowStub } from "../helpers/mocks"
 
 function makeEnvelope(
@@ -9,6 +13,44 @@ function makeEnvelope(
 ): ShinyChatEnvelope {
   return { id: "chat1", action, ...overrides }
 }
+
+// ---------------------------------------------------------------------------
+// isValidEnvelope unit tests
+// ---------------------------------------------------------------------------
+
+describe("isValidEnvelope", () => {
+  it("accepts a well-formed envelope", () => {
+    expect(isValidEnvelope({ id: "chat1", action: { type: "clear" } })).toBe(
+      true,
+    )
+  })
+
+  it("rejects null", () => {
+    expect(isValidEnvelope(null)).toBe(false)
+  })
+
+  it("rejects missing id", () => {
+    expect(isValidEnvelope({ action: { type: "clear" } })).toBe(false)
+  })
+
+  it("rejects non-string id", () => {
+    expect(isValidEnvelope({ id: 123, action: { type: "clear" } })).toBe(false)
+  })
+
+  it("rejects missing action", () => {
+    expect(isValidEnvelope({ id: "chat1" })).toBe(false)
+  })
+
+  it("rejects action without type", () => {
+    expect(isValidEnvelope({ id: "chat1", action: { content: "x" } })).toBe(
+      false,
+    )
+  })
+
+  it("rejects non-string action.type", () => {
+    expect(isValidEnvelope({ id: "chat1", action: { type: 42 } })).toBe(false)
+  })
+})
 
 // ---------------------------------------------------------------------------
 // ShinyTransport integration tests
@@ -138,6 +180,77 @@ describe("ShinyTransport", () => {
 
       // Message went to pending (no active listeners); received stays empty
       expect(received).toHaveLength(0)
+    })
+  })
+
+  describe("envelope validation", () => {
+    // Helper that accepts unknown to test malformed envelopes
+    function fireRaw(payload: unknown): Promise<void> {
+      return Promise.resolve(handlers["shinyChatMessage"]!(payload))
+    }
+
+    it("drops envelope with missing id and logs warning", async () => {
+      const transport = new ShinyTransport()
+      const received: unknown[] = []
+      transport.onMessage("chat1", (a) => received.push(a))
+
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+      await fireRaw({ action: { type: "clear" } })
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("shinychat"),
+        expect.anything(),
+      )
+      expect(received).toHaveLength(0)
+      warnSpy.mockRestore()
+    })
+
+    it("drops envelope with missing action and logs warning", async () => {
+      const transport = new ShinyTransport()
+      const received: unknown[] = []
+      transport.onMessage("chat1", (a) => received.push(a))
+
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+      await fireRaw({ id: "chat1" })
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("shinychat"),
+        expect.anything(),
+      )
+      expect(received).toHaveLength(0)
+      warnSpy.mockRestore()
+    })
+
+    it("drops envelope where action has no type and logs warning", async () => {
+      const transport = new ShinyTransport()
+      const received: unknown[] = []
+      transport.onMessage("chat1", (a) => received.push(a))
+
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+      await fireRaw({ id: "chat1", action: { content: "hello" } })
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("shinychat"),
+        expect.anything(),
+      )
+      expect(received).toHaveLength(0)
+      warnSpy.mockRestore()
+    })
+
+    it("drops null envelope and logs warning", async () => {
+      const transport = new ShinyTransport()
+      const received: unknown[] = []
+      transport.onMessage("chat1", (a) => received.push(a))
+
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+      await fireRaw(null)
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("shinychat"),
+        expect.anything(),
+      )
+      expect(received).toHaveLength(0)
+      warnSpy.mockRestore()
     })
   })
 

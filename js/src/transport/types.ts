@@ -38,6 +38,17 @@ export type ShinyChatEnvelope = {
   html_deps?: HtmlDep[]
 }
 
+/** Runtime check that an unknown value has the shape of a ShinyChatEnvelope. */
+export function isValidEnvelope(x: unknown): x is ShinyChatEnvelope {
+  if (!x || typeof x !== "object") return false
+  const obj = x as Record<string, unknown>
+  if (typeof obj.id !== "string") return false
+  if (!obj.action || typeof obj.action !== "object") return false
+  if (typeof (obj.action as Record<string, unknown>).type !== "string")
+    return false
+  return true
+}
+
 export type ShinyClientMessage = {
   message: string
   headline?: string

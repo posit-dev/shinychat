@@ -1,9 +1,9 @@
-import type {
-  ChatTransport,
-  ShinyLifecycle,
-  ChatAction,
-  ShinyClientMessage,
-  ShinyChatEnvelope,
+import {
+  isValidEnvelope,
+  type ChatTransport,
+  type ShinyLifecycle,
+  type ChatAction,
+  type ShinyClientMessage,
 } from "./types"
 import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 
@@ -33,7 +33,15 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
   constructor() {
     window.Shiny?.addCustomMessageHandler(
       "shinyChatMessage",
-      async (envelope: ShinyChatEnvelope) => {
+      async (envelope: unknown) => {
+        if (!isValidEnvelope(envelope)) {
+          console.warn(
+            "[shinychat] Malformed shinyChatMessage envelope, dropping:",
+            JSON.stringify(envelope),
+          )
+          return
+        }
+
         const { id, action, html_deps } = envelope
 
         // Render HTML deps before dispatching the action
