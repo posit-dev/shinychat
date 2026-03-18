@@ -1,4 +1,4 @@
-import { visit } from "unist-util-visit"
+import { visit, SKIP } from "unist-util-visit"
 import type { Root, Html, Text } from "mdast"
 import type { Plugin } from "unified"
 
@@ -12,5 +12,6 @@ export const remarkEscapeHtml: Plugin<[], Root> = () => (tree) => {
     if (!parent || index === undefined) return
     const textNode: Text = { type: "text", value: node.value }
     parent.children.splice(index, 1, textNode)
+    return [SKIP, index]
   })
 }

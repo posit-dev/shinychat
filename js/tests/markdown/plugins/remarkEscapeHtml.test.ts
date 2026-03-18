@@ -38,4 +38,13 @@ describe("remarkEscapeHtml", () => {
     const html = process(md)
     expect(html).toContain("<strong>bold</strong>")
   })
+
+  it("escapes consecutive HTML nodes without skipping any", () => {
+    // Each tag on its own line produces separate mdast html nodes
+    const md = "<b>one</b>\n<i>two</i>\n<u>three</u>"
+    const html = process(md)
+    expect(html).toContain("&#x3C;b>")
+    expect(html).toContain("&#x3C;i>")
+    expect(html).toContain("&#x3C;u>")
+  })
 })
