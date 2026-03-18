@@ -271,6 +271,68 @@ describe("Tool component bridge rendering", () => {
     expect(document.querySelector(".shiny-tool-result")).toBeTruthy()
   })
 
+  it("renders a user-specified icon on a successful tool result", () => {
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    const folderIcon = '<svg class="bi bi-folder2-open">folder</svg>'
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+      />,
+    )
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "assistant",
+          content: `<shiny-tool-result data-shinychat-react request-id="req-icon" tool-name="list_files" tool-title="List Files" status="success" value="file1.txt" value-type="text" icon="${folderIcon.replace(/"/g, "&quot;")}"></shiny-tool-result>`,
+          content_type: "markdown",
+        },
+      })
+    })
+
+    const toolIcon = document.querySelector(".tool-icon")
+    expect(toolIcon).toBeTruthy()
+    expect(toolIcon!.innerHTML).toContain("bi-folder2-open")
+  })
+
+  it("falls back to wrench icon when no icon is specified on a successful tool result", () => {
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+      />,
+    )
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "assistant",
+          content:
+            '<shiny-tool-result data-shinychat-react request-id="req-no-icon" tool-name="get_weather" status="success" value="Sunny" value-type="text"></shiny-tool-result>',
+          content_type: "markdown",
+        },
+      })
+    })
+
+    const toolIcon = document.querySelector(".tool-icon")
+    expect(toolIcon).toBeTruthy()
+    // Should contain the default wrench SVG
+    expect(toolIcon!.innerHTML).toContain("bi-wrench-adjustable")
+  })
+
   it("renders the empty-result placeholder when a tool result value is an empty string", () => {
     const transport = createMockTransport()
     const shinyLifecycle = createMockShinyLifecycle()

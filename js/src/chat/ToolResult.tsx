@@ -18,6 +18,7 @@ export interface ToolResultProps {
   showRequest?: boolean
   fullScreen?: boolean
   expanded?: boolean
+  icon?: string
   footer?: string
 }
 
@@ -33,6 +34,7 @@ export const ToolResult = memo(function ToolResult({
   showRequest = false,
   fullScreen = false,
   expanded = false,
+  icon: iconProp,
   footer,
 }: ToolResultProps) {
   const cardRef = useRef<HTMLDivElement>(null)
@@ -40,7 +42,7 @@ export const ToolResult = memo(function ToolResult({
 
   const isError = status === "error"
   const classStatus = isError ? "text-danger" : ""
-  const icon = isError ? exclamationCircleFill : undefined
+  const icon = isError ? exclamationCircleFill : iconProp
   const titleTemplate = isError ? "{title} failed" : "{title}"
 
   return (

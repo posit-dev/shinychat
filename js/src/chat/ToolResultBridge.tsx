@@ -14,6 +14,7 @@ interface ToolResultBridgeProps {
   "show-request"?: string | boolean
   "full-screen"?: string | boolean
   expanded?: string | boolean
+  icon?: string
   footer?: string
   node?: unknown
   children?: React.ReactNode
@@ -35,6 +36,7 @@ export function ToolResultBridge({
   "show-request": showRequest,
   "full-screen": fullScreen,
   expanded,
+  icon,
   footer,
 }: ToolResultBridgeProps) {
   const dispatch = useContext(ChatDispatchContext)
@@ -61,6 +63,7 @@ export function ToolResultBridge({
         showRequest={isTruthy(showRequest)}
         fullScreen={isTruthy(fullScreen)}
         expanded={isTruthy(expanded)}
+        icon={icon}
         footer={footer}
       />
     </div>
