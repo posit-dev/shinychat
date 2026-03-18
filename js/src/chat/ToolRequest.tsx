@@ -1,6 +1,5 @@
 import { memo } from "react"
 import { ToolCard } from "./ToolCard"
-import { useChatToolState } from "./context"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { markdownCodeBlock } from "../markdown/markdownCodeBlock"
 
@@ -22,12 +21,6 @@ export const ToolRequest = memo(function ToolRequest({
   intent,
   arguments: toolArguments,
 }: ToolRequestProps) {
-  const { hiddenToolRequests } = useChatToolState()
-
-  if (hiddenToolRequests.has(requestId)) {
-    return null
-  }
-
   return (
     <ToolCard
       requestId={requestId}
