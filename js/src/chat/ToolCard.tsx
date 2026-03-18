@@ -26,10 +26,17 @@ function formatTitle(
   toolName: string,
   toolTitle: string | undefined,
   titleTemplate: string,
-): string {
+): ReactNode {
   const displayName = toolTitle || `${toolName}()`
-  const spanWrapped = `<span class="tool-title-name">${displayName}</span>`
-  return titleTemplate.replace("{title}", spanWrapped)
+  const titleSpan = <span className="tool-title-name">{displayName}</span>
+  const [before, after] = titleTemplate.split("{title}")
+  return (
+    <>
+      {before}
+      {titleSpan}
+      {after}
+    </>
+  )
 }
 
 export function ToolCard({
@@ -57,10 +64,6 @@ export function ToolCard({
   // Memoize dangerouslySetInnerHTML objects so React 19 sees stable
   // references and skips unnecessary innerHTML resets on re-render.
   const iconDSIH = useMemo(() => ({ __html: iconHtml }), [iconHtml])
-  const titleDSIH = useMemo(
-    () => ({ __html: formattedTitle }),
-    [formattedTitle],
-  )
 
   function handleClick(e: React.MouseEvent) {
     e.preventDefault()
@@ -94,10 +97,9 @@ export function ToolCard({
           className={`tool-icon${classStatus ? ` ${classStatus}` : ""}`}
           dangerouslySetInnerHTML={iconDSIH}
         />
-        <div
-          className={`tool-title${classStatus ? ` ${classStatus}` : ""}`}
-          dangerouslySetInnerHTML={titleDSIH}
-        />
+        <div className={`tool-title${classStatus ? ` ${classStatus}` : ""}`}>
+          {formattedTitle}
+        </div>
         <div className="tool-spacer" />
         {intent && <div className="tool-intent">{intent}</div>}
         <div
