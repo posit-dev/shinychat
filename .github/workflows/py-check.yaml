@@ -4,11 +4,13 @@ on:
   push:
     branches: [main]
     paths:
+      - 'js/**/*'
       - 'pkg-py/**/*'
       - 'pyproject.toml'
       - '.github/workflows/py-check.yaml'
   pull_request:
     paths:
+      - 'js/**/*'
       - 'pkg-py/**/*'
       - 'pyproject.toml'
       - '.github/workflows/py-check.yaml'

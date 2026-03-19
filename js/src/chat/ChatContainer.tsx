@@ -60,6 +60,18 @@ export const ChatContainer = forwardRef<
     scrollOnContentChange: true,
   })
 
+  // When a new non-streaming message arrives (e.g. append_message), re-engage
+  // auto-scroll so the user sees it. We don't re-engage for streaming starts
+  // (chunk_start) because the user should be able to scroll away during streaming.
+  const prevMessageCountRef = useRef(messages.length)
+  useEffect(() => {
+    const prevCount = prevMessageCountRef.current
+    prevMessageCountRef.current = messages.length
+    if (messages.length > prevCount && !isStreaming) {
+      engageStickToBottom()
+    }
+  }, [messages.length, isStreaming, engageStickToBottom])
+
   useImperativeHandle(ref, () => ({
     setInputValue(...args) {
       chatInputRef.current?.setInputValue(...args)

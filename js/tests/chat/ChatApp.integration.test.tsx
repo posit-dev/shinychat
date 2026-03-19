@@ -196,55 +196,69 @@ describe("ChatApp integration: full message flow", () => {
     })
   })
 
-  it("does not auto-scroll for a non-streaming assistant reply after the user scrolls up", async () => {
-    const transport = createMockTransport()
-    const shinyLifecycle = createMockShinyLifecycle()
+  it("auto-scrolls for a non-streaming assistant reply even after the user scrolls up", async () => {
+    vi.useFakeTimers()
 
-    render(
-      <ChatApp
-        transport={transport}
-        shinyLifecycle={shinyLifecycle}
-        elementId="test-chat"
-        inputId="test-input"
-        placeholder="Type..."
-      />,
-    )
+    try {
+      const transport = createMockTransport()
+      const shinyLifecycle = createMockShinyLifecycle()
 
-    const messagesEl = document.querySelector(
-      ".shiny-chat-messages",
-    ) as HTMLElement | null
-    expect(messagesEl).toBeTruthy()
-    const scrollToSpy = installScrollMetrics(messagesEl!, { scrollTop: 500 })
+      render(
+        <ChatApp
+          transport={transport}
+          shinyLifecycle={shinyLifecycle}
+          elementId="test-chat"
+          inputId="test-input"
+          placeholder="Type..."
+        />,
+      )
 
-    await act(async () => {
-      Object.defineProperty(messagesEl!, "scrollTop", {
-        get: () => 500,
-        configurable: true,
+      const messagesEl = document.querySelector(
+        ".shiny-chat-messages",
+      ) as HTMLElement | null
+      expect(messagesEl).toBeTruthy()
+      const scrollToSpy = installScrollMetrics(messagesEl!, { scrollTop: 500 })
+
+      // Flush the rAF that clears the programmatic scroll guard from the
+      // initial mount, so subsequent user scroll events are processed.
+      await act(async () => {
+        vi.advanceTimersByTime(16)
       })
-      messagesEl!.dispatchEvent(new Event("scroll"))
-    })
 
-    await act(async () => {
-      Object.defineProperty(messagesEl!, "scrollTop", {
-        get: () => 300,
-        configurable: true,
+      await act(async () => {
+        Object.defineProperty(messagesEl!, "scrollTop", {
+          get: () => 300,
+          configurable: true,
+        })
+        messagesEl!.dispatchEvent(new Event("scroll"))
       })
-      messagesEl!.dispatchEvent(new Event("scroll"))
-    })
 
-    scrollToSpy.mockClear()
+      scrollToSpy.mockClear()
 
-    await act(async () => {
-      transport.fire("test-chat", {
-        type: "message",
-        message: {
-          role: "assistant",
-          content: "Reply after scroll up",
-          content_type: "markdown",
-        },
+      await act(async () => {
+        transport.fire("test-chat", {
+          type: "message",
+          message: {
+            role: "assistant",
+            content: "Reply after scroll up",
+            content_type: "markdown",
+          },
+        })
       })
-    })
 
-    expect(scrollToSpy).not.toHaveBeenCalled()
+      // Flush any pending rAF from the message arrival
+      await act(async () => {
+        vi.advanceTimersByTime(16)
+      })
+
+      // Non-streaming messages re-engage stickToBottom, so a smooth scroll
+      // to the bottom is expected even when the user was scrolled away.
+      expect(scrollToSpy).toHaveBeenCalledWith({
+        top: 1000,
+        behavior: "smooth",
+      })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
