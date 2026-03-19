@@ -56,6 +56,11 @@ js-build:  ## [js] Build JS code
 	@echo "🧳 Building JS code"
 	cd $(PATH_PKG_JS) && npm run build
 
+.PHONY: js-build-dev
+js-build-dev:  ## [js] Build JS code for development (React Profiler enabled)
+	@echo "🧳 Building JS code (dev)"
+	cd $(PATH_PKG_JS) && npx tsx build.ts --dev
+
 .PHONY: js-build-watch
 js-build-watch:  ## [js] Build JS code in watch mode
 	@echo "🧳 Building JS code in watch mode"

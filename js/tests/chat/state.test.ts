@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import {
   chatReducer,
   initialState,
-  allMessages,
   type ChatState,
   type ChatMessageData,
 } from "../../src/chat/state"
@@ -435,26 +434,5 @@ describe("chatReducer", () => {
       const next = chatReducer(state, { type: "bogus" } as never)
       expect(next).toBe(state)
     })
-  })
-})
-
-describe("allMessages", () => {
-  it("returns messages when streamingMessage is null", () => {
-    const msg = makeAssistantMsg()
-    const state = makeState({ messages: [msg], streamingMessage: null })
-    expect(allMessages(state)).toBe(state.messages)
-  })
-
-  it("appends streamingMessage to messages when present", () => {
-    const committed = makeAssistantMsg({ id: "committed" })
-    const streaming = makeAssistantMsg({ id: "streaming", streaming: true })
-    const state = makeState({
-      messages: [committed],
-      streamingMessage: streaming,
-    })
-    const result = allMessages(state)
-    expect(result).toHaveLength(2)
-    expect(result[0]!.id).toBe("committed")
-    expect(result[1]!.id).toBe("streaming")
   })
 })
