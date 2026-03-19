@@ -11,6 +11,7 @@ import { remarkEscapeHtml } from "./plugins/remarkEscapeHtml"
 import { rehypeExternalLinks } from "./plugins/rehypeExternalLinks"
 import { rehypeUncontrolledInputs } from "./plugins/rehypeUncontrolledInputs"
 import { rehypeUnwrapBlockCEs } from "./plugins/rehypeUnwrapBlockCEs"
+import { rehypeLazyContinuation } from "./plugins/rehypeLazyContinuation"
 
 /**
  * Frozen processor for markdown content.
@@ -25,6 +26,7 @@ export const markdownProcessor = unified()
   .use(remarkGfm)
   .use(remarkRehype, { allowDangerousHtml: true })
   .use(rehypeRaw)
+  .use(rehypeLazyContinuation)
   .use(rehypeUnwrapBlockCEs)
   .use(rehypeUncontrolledInputs)
   .use(rehypeAccessibleSuggestions)
