@@ -8,6 +8,8 @@ import {
 } from "react"
 import { createPortal } from "react-dom"
 import { ChatMessages } from "./ChatMessages"
+import { ChatMessage } from "./ChatMessage"
+import { MessageErrorBoundary } from "./MessageErrorBoundary"
 import { ChatInput, type ChatInputHandle } from "./ChatInput"
 import { ExternalLinkDialogComponent } from "./ExternalLinkDialog"
 import { useAutoScroll } from "../markdown/useAutoScroll"
@@ -23,6 +25,7 @@ declare global {
 export interface ChatContainerProps {
   transport: ChatTransport
   messages: ChatMessageData[]
+  streamingMessage: ChatMessageData | null
   inputDisabled: boolean
   inputPlaceholder: string
   iconAssistant?: string
@@ -38,6 +41,7 @@ export const ChatContainer = forwardRef<
   {
     transport,
     messages,
+    streamingMessage,
     inputDisabled,
     inputPlaceholder,
     iconAssistant,
@@ -53,24 +57,11 @@ export const ChatContainer = forwardRef<
   const pendingUrlRef = useRef<string | null>(null)
   pendingUrlRef.current = pendingUrl
 
-  const isStreaming = messages[messages.length - 1]?.streaming ?? false
   const { containerRef: messagesRef, engageStickToBottom } = useAutoScroll({
-    streaming: isStreaming,
-    contentDependency: messages,
+    streaming: !!streamingMessage,
+    contentDependency: streamingMessage ?? messages,
     scrollOnContentChange: true,
   })
-
-  // When a new non-streaming message arrives (e.g. append_message), re-engage
-  // auto-scroll so the user sees it. We don't re-engage for streaming starts
-  // (chunk_start) because the user should be able to scroll away during streaming.
-  const prevMessageCountRef = useRef(messages.length)
-  useEffect(() => {
-    const prevCount = prevMessageCountRef.current
-    prevMessageCountRef.current = messages.length
-    if (messages.length > prevCount && !isStreaming) {
-      engageStickToBottom()
-    }
-  }, [messages.length, isStreaming, engageStickToBottom])
 
   useImperativeHandle(ref, () => ({
     setInputValue(...args) {
@@ -195,6 +186,20 @@ export const ChatContainer = forwardRef<
     setPendingUrl(null)
   }, [])
 
+  const isStreaming = !!streamingMessage
+
+  // When a new non-streaming message arrives (e.g. append_message), re-engage
+  // auto-scroll so the user sees it. We don't re-engage for streaming starts
+  // (chunk_start) because the user should be able to scroll away during streaming.
+  const prevMessageCountRef = useRef(messages.length)
+  useEffect(() => {
+    const prevCount = prevMessageCountRef.current
+    prevMessageCountRef.current = messages.length
+    if (messages.length > prevCount && !isStreaming) {
+      engageStickToBottom()
+    }
+  }, [messages.length, isStreaming, engageStickToBottom])
+
   return (
     <>
       <div
@@ -206,6 +211,14 @@ export const ChatContainer = forwardRef<
         onKeyDown={onSuggestionKeydown}
       >
         <ChatMessages messages={messages} iconAssistant={iconAssistant} />
+        {streamingMessage && (
+          <MessageErrorBoundary key={streamingMessage.id}>
+            <ChatMessage
+              message={streamingMessage}
+              iconAssistant={iconAssistant}
+            />
+          </MessageErrorBoundary>
+        )}
       </div>
 
       <div

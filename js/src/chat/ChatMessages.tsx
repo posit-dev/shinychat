@@ -1,8 +1,9 @@
+import { memo } from "react"
 import { ChatMessage } from "./ChatMessage"
 import { MessageErrorBoundary } from "./MessageErrorBoundary"
 import type { ChatMessageData } from "./state"
 
-export function ChatMessages({
+export const ChatMessages = memo(function ChatMessages({
   messages,
   iconAssistant,
 }: {
@@ -18,4 +19,4 @@ export function ChatMessages({
       ))}
     </>
   )
-}
+})

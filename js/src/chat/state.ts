@@ -46,12 +46,6 @@ export const initialState: ChatState = {
   hiddenToolRequests: new Set(),
 }
 
-export function allMessages(state: ChatState): ChatMessageData[] {
-  return state.streamingMessage
-    ? [...state.messages, state.streamingMessage]
-    : state.messages
-}
-
 function messagePayloadToData(msg: MessagePayload): ChatMessageData {
   return {
     id: msg.id ?? crypto.randomUUID(),
