@@ -116,7 +116,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
 
     case "chunk": {
       const last = state.streamingMessage
-      if (!last || last.role !== "assistant" || !last.streaming) return state
+      if (!last || !last.streaming) return state
 
       const content =
         action.operation === "append"
