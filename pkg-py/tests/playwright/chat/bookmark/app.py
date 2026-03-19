@@ -1,8 +1,8 @@
 from typing import Any
 
 from shiny.express import render
-from shinychat.express import Chat
 from shiny.types import Jsonifiable
+from shinychat.express import Chat
 
 
 class MockClient:
