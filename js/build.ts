@@ -1,6 +1,28 @@
 import { BuildOptions, build, type Metafile } from "esbuild"
 import { sassPlugin } from "esbuild-sass-plugin"
 import * as fs from "node:fs/promises"
+import { createRequire } from "node:module"
+
+const require = createRequire(import.meta.url)
+const pkg = require("./package.json") as {
+  version: string
+  license: string
+  homepage: string
+  repository: { url: string }
+}
+
+const repoUrl = pkg.repository.url
+  .replace(/^git\+https:\/\/git@/, "https://")
+  .replace(/\.git$/, "")
+
+const banner = [
+  `/*!`,
+  ` * shinychat v${pkg.version}`,
+  ` * Copyright (c) ${new Date().getFullYear()} Posit PBC`,
+  ` * ${pkg.license} License`,
+  ` * ${pkg.homepage}`,
+  ` */`,
+].join("\n")
 
 // Parse command line arguments
 const args = Object.fromEntries(
@@ -71,6 +93,7 @@ async function bundle_helper(
       sourcemap: minify,
       metafile,
       outdir: outDir,
+      banner: { js: banner, css: banner },
       ...options,
     })
 
