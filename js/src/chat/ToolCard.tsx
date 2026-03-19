@@ -126,7 +126,13 @@ export function ToolCard({
           />
         )}
       </div>
-      {footer && <RawHTML html={footer} className="card-footer" />}
+      {footer && (
+        <RawHTML
+          html={footer}
+          className="card-footer"
+          displayContents={false}
+        />
+      )}
     </div>
   )
 }

@@ -9,7 +9,7 @@ import { ShinyLifecycleContext } from "../chat/context"
 export function RawHTML({
   html,
   className,
-  displayContents = false,
+  displayContents = true,
 }: {
   html: string
   className?: string
@@ -25,11 +25,9 @@ export function RawHTML({
 
     el.innerHTML = html
 
-    if (displayContents) {
-      const parent = el.parentElement
-      if (parent?.classList.contains("html-fill-container")) {
-        setIsFillCarrier(true)
-      }
+    const parent = el.parentElement
+    if (parent?.classList.contains("html-fill-container")) {
+      setIsFillCarrier(true)
     }
 
     if (shiny && html) {
@@ -41,7 +39,7 @@ export function RawHTML({
         shiny.unbindAll(el)
       }
     }
-  }, [html, displayContents, shiny])
+  }, [html, shiny])
 
   return (
     <div
