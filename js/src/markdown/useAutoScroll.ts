@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -34,16 +35,11 @@ export interface UseAutoScrollReturn {
 
 /**
  * Auto-scrolls a container to the bottom during streaming, disengaging when the
- * user scrolls away from the bottom and re-engaging when they scroll back.
+ * user scrolls up and re-engaging when they scroll back to the bottom.
  *
- * Uses position-based detection: on every user-initiated scroll event, checks
- * whether the element is near the bottom and sets stickToBottom accordingly.
- * A programmatic-scroll guard (isProgrammaticScrollRef) suppresses scroll event
- * processing during our own scrollTo calls, preventing false disengagement when
- * content height fluctuates during streaming.
- *
- * The scroll listener is attached once via a callback ref and is never
- * torn down/re-registered during content changes.
+ * Uses direction-based detection (comparing scrollTop to its previous value)
+ * rather than flag-based detection. The scroll listener is attached once via a
+ * callback ref and is never torn down/re-registered during content changes.
  */
 export function useAutoScroll({
   streaming,
@@ -53,16 +49,23 @@ export function useAutoScroll({
 }: UseAutoScrollOptions): UseAutoScrollReturn {
   const containerElRef = useRef<HTMLElement | null>(null)
   const [stickToBottom, setStickToBottom] = useState(true)
-  const isProgrammaticScrollRef = useRef(false)
+  const prevScrollTopRef = useRef<number>(0)
 
   const checkScrollPosition = useCallback(() => {
     const el = containerElRef.current
-    if (!el || isProgrammaticScrollRef.current) return
+    if (!el) return
 
     const { scrollTop, scrollHeight, clientHeight } = el
     const isAtBottom =
       scrollTop + clientHeight >= scrollHeight - bottomTolerance
-    setStickToBottom(isAtBottom)
+    const isScrollingUp = scrollTop < prevScrollTopRef.current
+    prevScrollTopRef.current = scrollTop
+
+    if (isScrollingUp) {
+      setStickToBottom(false)
+    } else if (isAtBottom) {
+      setStickToBottom(true)
+    }
   }, [bottomTolerance])
 
   const checkScrollPositionRef = useRef(checkScrollPosition)
@@ -84,6 +87,7 @@ export function useAutoScroll({
     containerElRef.current = node
 
     if (node) {
+      prevScrollTopRef.current = node.scrollTop
       node.addEventListener("scroll", stableScrollHandler.current, {
         passive: true,
       })
@@ -94,7 +98,6 @@ export function useAutoScroll({
   useLayoutEffect(() => {
     const shouldScroll = streaming || scrollOnContentChange
     if (shouldScroll && stickToBottom && containerElRef.current) {
-      isProgrammaticScrollRef.current = true
       containerElRef.current.scrollTo({
         top: containerElRef.current.scrollHeight,
         // Use "instant" during streaming: rapid content updates would cancel
@@ -102,24 +105,15 @@ export function useAutoScroll({
         // scroll position to fall behind.
         behavior: streaming ? "instant" : "smooth",
       })
-      requestAnimationFrame(() => {
-        isProgrammaticScrollRef.current = false
-      })
     }
   }, [streaming, stickToBottom, contentDependency, scrollOnContentChange])
 
   const scrollToBottom = useCallback(() => {
     setStickToBottom(true)
-    if (containerElRef.current) {
-      isProgrammaticScrollRef.current = true
-      containerElRef.current.scrollTo({
-        top: containerElRef.current.scrollHeight,
-        behavior: "smooth",
-      })
-      requestAnimationFrame(() => {
-        isProgrammaticScrollRef.current = false
-      })
-    }
+    containerElRef.current?.scrollTo({
+      top: containerElRef.current.scrollHeight,
+      behavior: "smooth",
+    })
   }, [])
 
   const engageStickToBottom = useCallback(() => {

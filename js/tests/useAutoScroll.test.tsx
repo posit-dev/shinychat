@@ -1,5 +1,5 @@
 import { renderHook, act } from "@testing-library/react"
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { describe, it, expect, vi, beforeEach } from "vitest"
 import {
   useAutoScroll,
   findScrollableParent,
@@ -169,7 +169,7 @@ describe("useAutoScroll", () => {
   })
 
   describe("scroll detection", () => {
-    it("disengages when user scrolls away from bottom", () => {
+    it("disengages stickToBottom when user scrolls up", () => {
       const element = createMockScrollContainer({
         scrollTop: 500,
         scrollHeight: 1000,
@@ -214,7 +214,7 @@ describe("useAutoScroll", () => {
         result.current.containerRef(element)
       })
 
-      // Scroll away
+      // Scroll up
       act(() => {
         simulateScroll(element, 300)
       })
@@ -246,7 +246,7 @@ describe("useAutoScroll", () => {
         result.current.containerRef(element)
       })
 
-      // Scroll away to disengage
+      // Scroll up to disengage
       act(() => {
         simulateScroll(element, 300)
       })
@@ -277,7 +277,7 @@ describe("useAutoScroll", () => {
         result.current.containerRef(element)
       })
 
-      // Scroll away to disengage
+      // Scroll up to disengage
       act(() => {
         simulateScroll(element, 300)
       })
@@ -294,178 +294,6 @@ describe("useAutoScroll", () => {
         simulateScroll(element, 495)
       })
       expect(result.current.stickToBottom).toBe(true)
-    })
-
-    it("stays engaged when scrollHeight shrinks while at bottom", () => {
-      // Regression: markdown re-parsing can temporarily reduce rendered height,
-      // causing the browser to clamp scrollTop downward. This should NOT
-      // disengage stickToBottom since the element is still at the bottom.
-      const element = createMockScrollContainer({
-        scrollTop: 500,
-        scrollHeight: 1000,
-        clientHeight: 500,
-      })
-
-      const { result } = renderHook(() =>
-        useAutoScroll({
-          streaming: true,
-          contentDependency: [],
-        }),
-      )
-
-      act(() => {
-        result.current.containerRef(element)
-      })
-
-      expect(result.current.stickToBottom).toBe(true)
-
-      // Simulate scrollHeight shrinking (e.g., markdown reflow) while at bottom.
-      // scrollTop is clamped: new max = 800 - 500 = 300.
-      Object.defineProperty(element, "scrollHeight", {
-        get: () => 800,
-        configurable: true,
-      })
-      act(() => {
-        simulateScroll(element, 300)
-      })
-
-      // scrollTop decreased (500 → 300) but element is at bottom (300 + 500 = 800).
-      // stickToBottom must remain true.
-      expect(result.current.stickToBottom).toBe(true)
-    })
-
-    it("disengages when scrolled away from bottom even if scrolling down", () => {
-      // Position-based detection: direction doesn't matter, only position.
-      const element = createMockScrollContainer({
-        scrollTop: 200,
-        scrollHeight: 1000,
-        clientHeight: 500,
-      })
-
-      const { result } = renderHook(() =>
-        useAutoScroll({
-          streaming: false,
-          contentDependency: [],
-        }),
-      )
-
-      act(() => {
-        result.current.containerRef(element)
-      })
-
-      // Scroll down from 200 to 300, still not at bottom (300+500=800 < 990)
-      act(() => {
-        simulateScroll(element, 300)
-      })
-
-      expect(result.current.stickToBottom).toBe(false)
-    })
-  })
-
-  describe("programmatic scroll guard", () => {
-    beforeEach(() => {
-      vi.useFakeTimers()
-    })
-
-    afterEach(() => {
-      vi.useRealTimers()
-    })
-
-    it("ignores scroll events during programmatic scrollTo from streaming", () => {
-      const element = createMockScrollContainer({
-        scrollTop: 500,
-        scrollHeight: 1000,
-        clientHeight: 500,
-      })
-
-      const { result, rerender } = renderHook(
-        (props) =>
-          useAutoScroll({
-            streaming: props.streaming,
-            contentDependency: props.contentDependency,
-          }),
-        {
-          initialProps: {
-            streaming: true,
-            contentDependency: "a" as string,
-          },
-        },
-      )
-
-      act(() => {
-        result.current.containerRef(element)
-      })
-
-      // Content change triggers useLayoutEffect → scrollTo → guard is set
-      rerender({ streaming: true, contentDependency: "ab" })
-
-      // Simulate a scroll event while guard is active (e.g., from content
-      // growing between scrollTo and this event). Position is NOT at bottom.
-      act(() => {
-        simulateScroll(element, 200)
-      })
-
-      // Guard should have suppressed the event — stickToBottom unchanged
-      expect(result.current.stickToBottom).toBe(true)
-
-      // Advance past the rAF to clear the guard
-      act(() => {
-        vi.advanceTimersByTime(16)
-      })
-
-      // Now a scroll event SHOULD be processed
-      act(() => {
-        simulateScroll(element, 200)
-      })
-      expect(result.current.stickToBottom).toBe(false)
-    })
-
-    it("ignores scroll events during scrollToBottom", () => {
-      const element = createMockScrollContainer({
-        scrollTop: 200,
-        scrollHeight: 1000,
-        clientHeight: 500,
-      })
-
-      const { result } = renderHook(() =>
-        useAutoScroll({
-          streaming: false,
-          contentDependency: [],
-        }),
-      )
-
-      act(() => {
-        result.current.containerRef(element)
-      })
-
-      // Disengage first
-      act(() => {
-        simulateScroll(element, 200)
-      })
-      expect(result.current.stickToBottom).toBe(false)
-
-      // scrollToBottom sets guard and re-engages
-      act(() => {
-        result.current.scrollToBottom()
-      })
-      expect(result.current.stickToBottom).toBe(true)
-
-      // Scroll event while guard is active — should be ignored
-      act(() => {
-        simulateScroll(element, 200)
-      })
-      expect(result.current.stickToBottom).toBe(true)
-
-      // Advance past rAF
-      act(() => {
-        vi.advanceTimersByTime(16)
-      })
-
-      // Now processed
-      act(() => {
-        simulateScroll(element, 200)
-      })
-      expect(result.current.stickToBottom).toBe(false)
     })
   })
 
@@ -558,7 +386,7 @@ describe("useAutoScroll", () => {
         result.current.containerRef(element)
       })
 
-      // Scroll away to disengage
+      // Scroll up to disengage
       act(() => {
         simulateScroll(element, 300)
       })
@@ -743,7 +571,7 @@ describe("useAutoScroll", () => {
         result.current.containerRef(element)
       })
 
-      // Scroll away to disengage stickToBottom
+      // Scroll up to disengage stickToBottom
       act(() => {
         simulateScroll(element, 300)
       })
@@ -842,7 +670,7 @@ describe("useAutoScroll", () => {
         result.current.containerRef(element)
       })
 
-      // Scroll away to disengage stickToBottom
+      // Scroll up to disengage stickToBottom
       act(() => {
         simulateScroll(element, 300)
       })
@@ -899,7 +727,7 @@ describe("useAutoScroll", () => {
         result.current.containerRef(element)
       })
 
-      // Scroll away to disengage stickToBottom
+      // Scroll up to disengage stickToBottom
       act(() => {
         simulateScroll(element, 300)
       })

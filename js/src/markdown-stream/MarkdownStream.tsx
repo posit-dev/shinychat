@@ -43,9 +43,9 @@ export function MarkdownStream({
   const scrollParentRef = useRef<HTMLElement | null>(null)
 
   // Auto-scroll: the hook gives us a callback ref for the scrollable container.
-  // In standalone mode we don't own the scrollable ancestor, so we do a DOM
-  // walk to find it and wire the callback ref to the found element.
-  const { containerRef } = useAutoScroll({
+  // In standalone mode we don't own the scrollable ancestor, so we do a one-time
+  // DOM walk on mount and wire the callback ref to the found element.
+  const { containerRef, scrollToBottom } = useAutoScroll({
     streaming: autoScroll && streaming,
     contentDependency: content,
   })
@@ -59,14 +59,11 @@ export function MarkdownStream({
       return
     }
 
-    // Already found — skip the DOM walk
-    if (scrollParentRef.current) return
-
     const scrollable = findScrollableParent(
       innerRef.current,
       CHAT_CONTAINER_TAG,
     )
-    if (scrollable) {
+    if (scrollable !== scrollParentRef.current) {
       containerRef(scrollable)
       scrollParentRef.current = scrollable
     }
@@ -80,6 +77,12 @@ export function MarkdownStream({
       }
     }
   }, [containerRef])
+
+  useEffect(() => {
+    if (streaming && autoScroll) {
+      scrollToBottom()
+    }
+  }, [streaming, autoScroll, scrollToBottom])
 
   const appendContent = useCallback((chunk: string) => {
     setContent((prev) => prev + chunk)
