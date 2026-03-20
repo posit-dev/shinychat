@@ -22,7 +22,7 @@ def test_validate_stream_basic(page: Page, local_app: ShinyAppProc) -> None:
             if (scrollHeight <= clientHeight) return false;
             return Math.abs((scrollTop + clientHeight) - scrollHeight) <= 1;
         }""",
-        ".card-body",
+        arg=".card-body",
         timeout=5000,
     )
 
