@@ -3,27 +3,6 @@ from shiny.playwright import controller
 from shiny.run import ShinyAppProc
 
 
-def is_element_scrolled_to_bottom(page: Page, selector: str) -> bool:
-    return page.evaluate(
-        """(selector) => {
-        const element = document.querySelector(selector);
-        if (!element) return false;
-
-        // Get the exact scroll values (rounded to handle float values)
-        const scrollTop = Math.round(element.scrollTop);
-        const scrollHeight = Math.round(element.scrollHeight);
-        const clientHeight = Math.round(element.clientHeight);
-
-        // Check if the element is scrollable
-        if (scrollHeight <= clientHeight) return false;
-
-        // Check if we're at the bottom (allowing for 1px difference due to rounding)
-        return Math.abs((scrollTop + clientHeight) - scrollHeight) <= 1;
-    }""",
-        selector,
-    )
-
-
 def test_validate_stream_basic(page: Page, local_app: ShinyAppProc) -> None:
     page.goto(local_app.url)
 
@@ -32,10 +11,19 @@ def test_validate_stream_basic(page: Page, local_app: ShinyAppProc) -> None:
     expect(stream).to_contain_text("pip install shiny")
 
     # Check that the card body container (the parent of the markdown stream) is scrolled
-    # all the way to the bottom
-    is_scrolled = is_element_scrolled_to_bottom(page, ".card-body")
-    assert is_scrolled, (
-        "The card body container should be scrolled to the bottom"
+    # all the way to the bottom. Smooth scrolling may still be animating, so poll until done.
+    page.wait_for_function(
+        """(selector) => {
+            const el = document.querySelector(selector);
+            if (!el) return false;
+            const scrollTop = Math.round(el.scrollTop);
+            const scrollHeight = Math.round(el.scrollHeight);
+            const clientHeight = Math.round(el.clientHeight);
+            if (scrollHeight <= clientHeight) return false;
+            return Math.abs((scrollTop + clientHeight) - scrollHeight) <= 1;
+        }""",
+        ".card-body",
+        timeout=5000,
     )
 
     stream2 = page.locator("#shiny_readme_err")

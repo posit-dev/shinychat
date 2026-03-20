@@ -196,7 +196,7 @@ describe("ChatApp integration: full message flow", () => {
     })
   })
 
-  it("does not auto-scroll for a non-streaming assistant reply after the user scrolls up", async () => {
+  it("re-engages auto-scroll for a non-streaming assistant reply even after the user scrolls up", async () => {
     const transport = createMockTransport()
     const shinyLifecycle = createMockShinyLifecycle()
 
@@ -245,6 +245,11 @@ describe("ChatApp integration: full message flow", () => {
       })
     })
 
-    expect(scrollToSpy).not.toHaveBeenCalled()
+    // Non-streaming messages re-engage stickToBottom (via engageStickToBottom
+    // in ChatContainer), so scrollTo IS expected even after the user scrolled up.
+    expect(scrollToSpy).toHaveBeenCalledWith({
+      top: 1000,
+      behavior: "smooth",
+    })
   })
 })

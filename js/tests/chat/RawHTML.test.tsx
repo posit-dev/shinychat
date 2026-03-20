@@ -35,16 +35,18 @@ describe("RawHTML", () => {
     expect(div.className).toBe("card-footer")
   })
 
-  it("does not apply display:contents by default", () => {
+  it("applies display:contents by default", () => {
     const { container } = render(<RawHTML html="hello" />)
     const div = container.firstElementChild as HTMLElement
-    expect(div.style.display).toBe("")
+    expect(div.style.display).toBe("contents")
   })
 
-  it("applies display:contents when displayContents is true", () => {
-    const { container } = render(<RawHTML html="hello" displayContents />)
+  it("does not apply display:contents when displayContents is false", () => {
+    const { container } = render(
+      <RawHTML html="hello" displayContents={false} />,
+    )
     const div = container.firstElementChild as HTMLElement
-    expect(div.style.display).toBe("contents")
+    expect(div.style.display).toBe("")
   })
 
   it("adds fill carrier classes when parent is a fill container", () => {

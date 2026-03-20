@@ -327,7 +327,7 @@ describe("useAutoScroll", () => {
 
       expect(element.scrollTo).toHaveBeenCalledWith({
         top: 1000,
-        behavior: "instant",
+        behavior: "smooth",
       })
     })
 
@@ -616,7 +616,7 @@ describe("useAutoScroll", () => {
       })
     })
 
-    it("uses instant behavior for streaming scrolls", () => {
+    it("uses smooth behavior for streaming scrolls", () => {
       const element = createMockScrollContainer({
         scrollTop: 500,
         scrollHeight: 1000,
@@ -646,7 +646,7 @@ describe("useAutoScroll", () => {
 
       expect(element.scrollTo).toHaveBeenCalledWith({
         top: 1000,
-        behavior: "instant",
+        behavior: "smooth",
       })
     })
   })
