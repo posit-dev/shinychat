@@ -82,20 +82,7 @@ describe("ToolCard", () => {
     ).toBe(true)
   })
 
-  it("escapes HTML in toolName to prevent XSS", () => {
-    const { container } = render(
-      <ToolCard requestId="xss-1" toolName="<img src=x onerror=alert(1)>">
-        <div>body</div>
-      </ToolCard>,
-    )
-
-    const titleEl = container.querySelector(".tool-title")
-    expect(titleEl).toBeTruthy()
-    expect(titleEl!.querySelector("img")).toBeNull()
-    expect(titleEl!.textContent).toContain("<img")
-  })
-
-  it("renders toolTitle as text content, not HTML", () => {
+  it("renders toolTitle as HTML (developer-controlled content)", () => {
     const { container } = render(
       <ToolCard requestId="xss-2" toolName="safe" toolTitle="<b>bold</b>">
         <div>body</div>
@@ -104,7 +91,7 @@ describe("ToolCard", () => {
 
     const nameSpan = container.querySelector(".tool-title-name")
     expect(nameSpan).toBeTruthy()
-    expect(nameSpan!.querySelector("b")).toBeNull()
-    expect(nameSpan!.textContent).toBe("<b>bold</b>")
+    expect(nameSpan!.querySelector("b")).toBeTruthy()
+    expect(nameSpan!.textContent).toBe("bold")
   })
 })

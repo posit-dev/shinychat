@@ -22,23 +22,6 @@ export interface ToolCardProps {
   children?: ReactNode
 }
 
-function formatTitle(
-  toolName: string,
-  toolTitle: string | undefined,
-  titleTemplate: string,
-): ReactNode {
-  const displayName = toolTitle || `${toolName}()`
-  const titleSpan = <span className="tool-title-name">{displayName}</span>
-  const [before, after] = titleTemplate.split("{title}")
-  return (
-    <>
-      {before}
-      {titleSpan}
-      {after}
-    </>
-  )
-}
-
 export function ToolCard({
   requestId,
   toolName,
@@ -59,11 +42,19 @@ export function ToolCard({
   const headerId = `tool-header-${requestId}`
   const contentId = `tool-content-${requestId}`
   const iconHtml = icon || wrenchAdjustable
-  const formattedTitle = formatTitle(toolName, toolTitle, titleTemplate)
+  const displayName = toolTitle || `${toolName}()`
+  const formattedTitle = titleTemplate.replace(
+    "{title}",
+    `<span class="tool-title-name">${displayName}</span>`,
+  )
 
   // Memoize dangerouslySetInnerHTML objects so React 19 sees stable
   // references and skips unnecessary innerHTML resets on re-render.
   const iconDSIH = useMemo(() => ({ __html: iconHtml }), [iconHtml])
+  const titleDSIH = useMemo(
+    () => ({ __html: formattedTitle }),
+    [formattedTitle],
+  )
 
   function handleClick(e: React.MouseEvent) {
     e.preventDefault()
@@ -97,9 +88,10 @@ export function ToolCard({
           className={`tool-icon${classStatus ? ` ${classStatus}` : ""}`}
           dangerouslySetInnerHTML={iconDSIH}
         />
-        <div className={`tool-title${classStatus ? ` ${classStatus}` : ""}`}>
-          {formattedTitle}
-        </div>
+        <div
+          className={`tool-title${classStatus ? ` ${classStatus}` : ""}`}
+          dangerouslySetInnerHTML={titleDSIH}
+        />
         <div className="tool-spacer" />
         {intent && <div className="tool-intent">{intent}</div>}
         <div
