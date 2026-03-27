@@ -20,6 +20,8 @@ template:
   light-switch: true
   theme: github-light
   theme-dark: github-dark
+  includes:
+    in_header: pkgdown/_plausible.html
   bslib:
     brand: pkgdown/_brand.yml
 
