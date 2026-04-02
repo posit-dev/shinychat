@@ -86,6 +86,19 @@ version-file = "pkg-py/src/shinychat/__version.py"
 include = ["pkg-py"]
 exclude = ["pkg-py/_dev"]
 
+[tool.pytest.ini_options]
+testpaths = ["pkg-py/tests"]
+
+[tool.coverage.run]
+source = ["pkg-py/src/shinychat"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "if TYPE_CHECKING:",
+    "pragma: no cover",
+]
+
 [tool.tox]
 legacy_tox_ini = """
 [tox]

@@ -41,10 +41,25 @@ js-lint:  ## [js] Lint JS code
 	@echo "📐 Linting JS code"
 	cd $(PATH_PKG_JS) && npm run lint
 
+.PHONY: js-test
+js-test:  ## [js] Run JS tests
+	@echo "🧪 Running JS tests"
+	cd $(PATH_PKG_JS) && npm test
+
+.PHONY: js-coverage
+js-coverage:  ## [js] Generate JS coverage report
+	@echo "📔 Generating JS coverage report"
+	cd $(PATH_PKG_JS) && npx vitest run --coverage
+
 .PHONY: js-build
 js-build:  ## [js] Build JS code
 	@echo "🧳 Building JS code"
 	cd $(PATH_PKG_JS) && npm run build
+
+.PHONY: js-build-dev
+js-build-dev:  ## [js] Build JS code for development (React Profiler enabled)
+	@echo "🧳 Building JS code (dev)"
+	cd $(PATH_PKG_JS) && npx tsx build.ts --dev
 
 .PHONY: js-build-watch
 js-build-watch:  ## [js] Build JS code in watch mode
@@ -89,6 +104,11 @@ r-check-format:  ## [r] Check format
 	@echo "📐 Checking R format"
 	air format --check $(PATH_PKG_R)/
 
+.PHONY: r-coverage
+r-coverage:  ## [r] Generate R coverage report
+	@echo "📔 Generating R coverage report"
+	cd $(PATH_PKG_R) && Rscript -e "covr::report(covr::package_coverage(), file = 'coverage-report.html', browse = FALSE)"
+
 .PHONY: r-update-dist
 r-update-dist: ## [r] Update shinychat web assets
 	@echo ""
@@ -97,8 +117,7 @@ r-update-dist: ## [r] Update shinychat web assets
 		rm -rf $(PATH_PKG_R)/inst/lib/shiny; \
 	fi
 	mkdir -p $(PATH_PKG_R)/inst/lib/shiny
-	cp -r $(PATH_PKG_JS)/dist/chat $(PATH_PKG_R)/inst/lib/shiny/
-	cp -r $(PATH_PKG_JS)/dist/markdown-stream $(PATH_PKG_R)/inst/lib/shiny/
+	cp -r $(PATH_PKG_JS)/dist/* $(PATH_PKG_R)/inst/lib/shiny/
 	(git rev-parse HEAD) > "$(PATH_PKG_R)/inst/lib/shiny/GIT_VERSION"
 
 .PHONY: r-docs-render
@@ -214,8 +233,7 @@ py-update-dist: ## [py] Update shinychat web assets
 		rm -rf $(PATH_PKG_PY)/src/shinychat/www; \
 	fi
 	mkdir -p $(PATH_PKG_PY)/src/shinychat/www
-	cp -r $(PATH_PKG_JS)/dist/chat $(PATH_PKG_PY)/src/shinychat/www/
-	cp -r $(PATH_PKG_JS)/dist/markdown-stream $(PATH_PKG_PY)/src/shinychat/www/
+	cp -r $(PATH_PKG_JS)/dist/* $(PATH_PKG_PY)/src/shinychat/www/
 	(git rev-parse HEAD) > "$(PATH_PKG_PY)/src/shinychat/www/GIT_VERSION"
 
 .PHONY: help

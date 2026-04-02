@@ -13,3 +13,14 @@ resolve_id <- function(id, session = shiny::getDefaultReactiveDomain()) {
   }
   session$ns(id)
 }
+
+send_chat_action <- function(id, action, html_deps = NULL, session) {
+  envelope <- list(
+    id = resolve_id(id, session),
+    action = action
+  )
+  if (!is.null(html_deps)) {
+    envelope$html_deps <- html_deps
+  }
+  session$sendCustomMessage("shinyChatMessage", envelope)
+}

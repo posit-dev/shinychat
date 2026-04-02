@@ -1,6 +1,28 @@
 import { BuildOptions, build, type Metafile } from "esbuild"
 import { sassPlugin } from "esbuild-sass-plugin"
 import * as fs from "node:fs/promises"
+import { createRequire } from "node:module"
+
+const require = createRequire(import.meta.url)
+const pkg = require("./package.json") as {
+  version: string
+  license: string
+  homepage: string
+  repository: { url: string }
+}
+
+const repoUrl = pkg.repository.url
+  .replace(/^git\+https:\/\/git@/, "https://")
+  .replace(/\.git$/, "")
+
+const banner = [
+  `/*!`,
+  ` * shinychat v${pkg.version}`,
+  ` * Copyright (c) ${new Date().getFullYear()} Posit PBC`,
+  ` * ${pkg.license} License`,
+  ` * ${pkg.homepage}`,
+  ` */`,
+].join("\n")
 
 // Parse command line arguments
 const args = Object.fromEntries(
@@ -12,9 +34,11 @@ const args = Object.fromEntries(
     }),
 )
 
-const minify = args.minify !== "false"
+const dev = args.dev === "true"
+const minify = !dev && args.minify !== "false"
 const metafile = args.metafile !== "false"
 
+if (dev) console.log("Development mode: React DevTools Profiler enabled")
 if (!minify) console.log("Disabling minification")
 if (!metafile) console.log("Disabling metafile generation")
 
@@ -68,9 +92,11 @@ async function bundle_helper(
       minify,
       // No need to clean up old source maps, as `minify==false` only during `npm run watch-fast`
       // GHA will run `npm run build` which will minify
-      sourcemap: minify,
+      sourcemap: minify || dev,
       metafile,
       outdir: outDir,
+      banner: { js: banner, css: banner },
+      define: dev ? { "process.env.NODE_ENV": '"development"' } : undefined,
       ...options,
     })
 
@@ -126,18 +152,15 @@ async function bundleEntry({
 
 const entries: EntryConfig[] = [
   {
-    name: "markdown-stream/markdown-stream",
-    jsEntry: "src/markdown-stream/markdown-stream.ts",
-    sassEntry: "src/markdown-stream/markdown-stream.scss",
-  },
-  {
-    name: "chat/chat",
-    jsEntry: "src/chat/chat.ts",
-    sassEntry: "src/chat/chat.scss",
+    name: "shinychat",
+    jsEntry: "src/shinychat-entry.ts",
+    sassEntry: "src/shinychat.scss",
   },
 ]
 
 ;(async () => {
+  await fs.rm(outDir, { recursive: true, force: true })
+
   await Promise.all(entries.map(bundleEntry))
 
   if (metafile && allEsbuildMetadata.length > 0) {

@@ -255,8 +255,8 @@
   }
 }
 
-shiny-tool-result,
-shiny-tool-request {
+.shiny-tool-result,
+.shiny-tool-request {
   display: block;
   margin: 1em 0;
   border-radius: var(--bs-border-radius, 4px);
@@ -269,13 +269,13 @@ shiny-tool-request {
   }
 }
 
-shiny-tool-result+p,
-shiny-tool-request+p {
+.shiny-tool-result+p,
+.shiny-tool-request+p {
   margin-top: 1rem;
 }
 
-shiny-tool-result,
-shiny-tool-request {
+.shiny-tool-result,
+.shiny-tool-request {
   &:first-child {
     margin-top: 0;
   }
@@ -283,8 +283,4 @@ shiny-tool-request {
   &:last-child {
     margin-bottom: 0;
   }
-}
-
-shiny-tool-request[hidden]+shiny-tool-result:first-of-type {
-  margin-top: 0;
 }

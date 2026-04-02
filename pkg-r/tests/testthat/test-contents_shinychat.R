@@ -233,6 +233,30 @@ test_that("ContentToolResult with additional display options from result", {
   expect_equal(res_tags$attribs[["tool-title"]], "Custom Title")
 })
 
+test_that("ContentToolResult with HTML() title preserves markup", {
+  local_shinychat_tool_display(opt = "rich")
+
+  result <- new_tool_result(
+    value = "test",
+    extra = list(
+      display = list(
+        text = "test",
+        title = HTML("Map of <i>Paris</i>")
+      )
+    )
+  )
+  res <- contents_shinychat(result)
+  expect_s3_class(res$tool_title, "html")
+  expect_equal(as.character(res$tool_title), "Map of <i>Paris</i>")
+
+  # htmltools always escapes attribute values, but the browser decodes them,
+  # so JS getAttribute() returns the original HTML string. The Playwright
+
+  # test (test_html_title.py) verifies the end-to-end rendering.
+  res_tags <- as.tags(res)
+  expect_equal(res_tags$attribs[["tool-title"]], HTML("Map of <i>Paris</i>"))
+})
+
 test_that("ContentToolResult handles icon and dependencies from tool definition", {
   local_shinychat_tool_display(opt = "rich")
 

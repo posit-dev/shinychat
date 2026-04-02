@@ -21,12 +21,12 @@ tool_show_map <- tool(
       value = "Map shown to the user.",
       extra = list(
         display = list(
+          title = HTML(sprintf("Map of <b>%s</b>", title)),
           html = map,
           show_request = FALSE,
           open = TRUE,
           full_screen = TRUE
-        ),
-        title = sprintf("Map of %s", title)
+        )
       )
     )
   },

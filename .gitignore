@@ -13,3 +13,6 @@ README.html
 README_files
 shiny_bookmarks
 .worktrees
+docs/plans
+js/coverage/
+pkg-r/coverage-report.html

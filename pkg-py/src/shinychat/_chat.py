@@ -48,12 +48,14 @@ from ._chat_tokenizer import (
     get_default_tokenizer,
 )
 from ._chat_types import (
+    ChatAction,
     ChatMessage,
     ChatMessageDict,
-    ClientMessage,
+    ContentType,
+    MessagePayload,
     TransformedMessage,
 )
-from ._html_deps_py_shiny import chat_deps
+from ._html_deps_py_shiny import shinychat_dependency
 from ._typing_extensions import TypeGuard
 from ._utils_types import MISSING, MISSING_TYPE
 
@@ -753,8 +755,8 @@ class Chat:
         # Normalize various message types into a ChatMessage()
         msg = message_content_chunk(message)
 
-        if is_tool_result(message):
-            await hide_corresponding_request(message)
+        if is_tool_result(message) and message.request is not None:
+            await self._hide_tool_request(message.request.id)  # type: ignore
 
         if operation == "replace":
             self._current_stream_message = (
@@ -973,44 +975,50 @@ class Chat:
             # System messages are not displayed in the UI
             return
 
-        if chunk:
-            msg_type = "shiny-chat-append-message-chunk"
-        else:
-            msg_type = "shiny-chat-append-message"
-
-        chunk_type = None
-        if chunk == "start":
-            chunk_type = "message_start"
-        elif chunk == "end":
-            chunk_type = "message_end"
-
         content = message.content_client
-        content_type = "html" if isinstance(content, HTML) else "markdown"
-
-        # TODO: pass along dependencies for both content and icon (if any)
-        msg = ClientMessage(
-            content=str(content),
-            role=message.role,
-            content_type=content_type,
-            chunk_type=chunk_type,
-            operation=operation,
-        )
-
-        if icon is not None:
-            msg["icon"] = str(icon)
+        content_type: ContentType = "html" if isinstance(content, HTML) else "markdown"
 
         # Register deps with the session and get the dictionary format
         # for client-side rendering
         deps = message.html_deps
+        html_deps: list[dict[str, str]] | None = None
         if deps:
             processed = self._session._process_ui(TagList(*deps))
-            msg["html_deps"] = processed["deps"]
+            html_deps = processed["deps"]
 
-        # print(msg)
+        msg_payload: MessagePayload = {
+            "role": message.role,
+            "content": str(content),
+            "content_type": content_type,
+        }
+        if icon is not None:
+            msg_payload["icon"] = str(icon)
 
-        await self._send_custom_message(msg_type, msg)
-        # TODO: Joe said it's a good idea to yield here, but I'm not sure why?
-        # await asyncio.sleep(0)
+        if chunk == "start":
+            action: ChatAction = {"type": "chunk_start", "message": msg_payload}
+            await self._send_action(action, html_deps)
+        elif chunk == "end":
+            if str(content):
+                chunk_action: ChatAction = {
+                    "type": "chunk",
+                    "content": str(content),
+                    "operation": operation,
+                    "content_type": content_type,
+                }
+                await self._send_action(chunk_action, html_deps)
+            await self._send_action({"type": "chunk_end"})
+        elif chunk is True:
+            chunk_action = {
+                "type": "chunk",
+                "content": str(content),
+                "operation": operation,
+                "content_type": content_type,
+            }
+            await self._send_action(chunk_action, html_deps)
+        else:
+            # chunk == False: complete message
+            action = {"type": "message", "message": msg_payload}
+            await self._send_action(action, html_deps)
 
     @overload
     def transform_user_input(
@@ -1335,21 +1343,17 @@ class Chat:
                 "An input `value` must be provided when `submit` or `focus` are `True`."
             )
 
-        obj = _utils.drop_none(
-            {
-                "value": value,
-                "placeholder": placeholder,
-                "submit": submit,
-                "focus": focus,
-            }
-        )
+        action: ChatAction = {"type": "update_input"}
+        if value is not None:
+            action["value"] = value
+        if placeholder is not None:
+            action["placeholder"] = placeholder
+        if submit:
+            action["submit"] = submit
+        if focus:
+            action["focus"] = focus
 
-        msg = {
-            "id": self.id,
-            "handler": "shiny-chat-update-user-input",
-            "obj": obj,
-        }
-
+        msg: dict[str, object] = {"id": self.id, "action": action}
         self._session._send_message_sync({"custom": {"shinyChatMessage": msg}})
 
     def set_user_message(self, value: str):
@@ -1369,7 +1373,7 @@ class Chat:
         Clear all chat messages.
         """
         self._messages.set(())
-        await self._send_custom_message("shiny-chat-clear-messages", None)
+        await self._send_action({"type": "clear"})
 
     def destroy(self):
         """
@@ -1391,21 +1395,27 @@ class Chat:
         self._cancel_bookmarking_callbacks = None
 
     async def _remove_loading_message(self):
-        await self._send_custom_message(
-            "shiny-chat-remove-loading-message", None
-        )
+        await self._send_action({"type": "remove_loading"})
 
-    async def _send_custom_message(
-        self, handler: str, obj: ClientMessage | None
+    async def _hide_tool_request(self, request_id: str) -> None:
+        action: ChatAction = {
+            "type": "hide_tool_request",
+            "requestId": request_id,
+        }
+        await self._send_action(action)
+
+    async def _send_action(
+        self,
+        action: ChatAction,
+        html_deps: list[dict[str, str]] | None = None,
     ):
-        await self._session.send_custom_message(
-            "shinyChatMessage",
-            {
-                "id": self.id,
-                "handler": handler,
-                "obj": obj,
-            },
-        )
+        envelope: dict[str, object] = {
+            "id": self.id,
+            "action": action,
+        }
+        if html_deps:
+            envelope["html_deps"] = html_deps
+        await self._session.send_custom_message("shinyChatMessage", envelope)
 
     def enable_bookmarking(
         self,
@@ -1793,7 +1803,7 @@ def chat_ui(
             id=f"{id}_user_input",
             placeholder=placeholder,
         ),
-        chat_deps(),
+        shinychat_dependency(),
         icon_deps,
         {
             "style": css(
@@ -1853,27 +1863,6 @@ class MessageStream:
             message_chunk,
             stream_id=self._stream_id,
         )
-
-
-async def hide_corresponding_request(x: "chatlas.ContentToolResult"):
-    if x.request is None:
-        return
-
-    session = None
-    try:
-        from shiny.session import get_current_session
-
-        session = get_current_session()
-    except Exception:
-        return
-
-    if session is None:
-        return
-
-    await session.send_custom_message(
-        "shiny-tool-request-hide",
-        x.request.id,  # type: ignore
-    )
 
 
 def is_tool_result(val: object) -> "TypeGuard[chatlas.ContentToolResult]":

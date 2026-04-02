@@ -11,6 +11,10 @@ as_generator <- function(x) {
   }
 }
 
+pre_process_ui <- function(ui) {
+  htmltools::tagList(!!!split_html_islands(ui))
+}
+
 process_ui <- function(ui, session) {
   process_deps <- asNamespace("shiny")[["processDeps"]]
   if (!is.function(process_deps)) {

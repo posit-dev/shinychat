@@ -91,9 +91,9 @@ class Chat(UiBase):
             id=id,
             loc=f"#{id}",
         )
-        self.loc_messages = self.loc.locator("> shiny-chat-messages")
+        self.loc_messages = self.loc.locator("> .shiny-chat-messages")
         self.loc_latest_message = self.loc_messages.locator("> :last-child")
-        self.loc_input_container = self.loc.locator("> shiny-chat-input")
+        self.loc_input_container = self.loc.locator("> .shiny-chat-input")
         self.loc_input = self.loc_input_container.locator("textarea")
         self.loc_input_button = self.loc_input_container.locator(
             ".shiny-chat-btn-send"
