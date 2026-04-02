@@ -43,6 +43,7 @@ format:
     theme: [brand]
     highlight-style: github
     toc: true
+    include-in-header: _plausible.html
 
 lightbox: auto
 

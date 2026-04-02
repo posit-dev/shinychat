@@ -50,6 +50,7 @@ test = [
     "tox-uv>=1",
 ]
 dev = [
+    "griffe<2",
     "quartodoc>=0.10.0",
     "ruff>=0.6.5",
     {include-group = "test"},
