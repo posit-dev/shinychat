@@ -41,8 +41,7 @@ output_markdown_stream(
   The content type. Default is `"markdown"` (specifically, CommonMark).
   Supported content types include: \* `"markdown"`: markdown text,
   specifically CommonMark \* `"html"`: for rendering HTML content. \*
-  `"text"`: for plain text. \* `"semi-markdown"`: for rendering
-  markdown, but with HTML tags escaped.
+  `"text"`: for plain text.
 
 - auto_scroll:
 

@@ -2,6 +2,10 @@
 
 ## shinychat (development version)
 
+- Added `footer` field to `ToolResultDisplay` for displaying custom HTML
+  content below the tool result card body.
+  ([\#178](https://github.com/posit-dev/shinychat/issues/178))
+
 - Tool result cards now support a fullscreen toggle. Set
   `full_screen = TRUE` in the `display` list (or set
   `res$full_screen <- NA` in a custom
