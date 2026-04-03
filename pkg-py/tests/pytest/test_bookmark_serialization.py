@@ -12,7 +12,7 @@ import json
 
 from chatlas import ContentToolResult, Turn
 from htmltools import HTMLDependency, tags
-from shinychat._chat_normalize_chatlas import ToolResultDisplay
+from shinychat.types import ToolResultDisplay
 
 
 def test_turn_serialization_with_htmldep_in_tool_result():
@@ -32,6 +32,13 @@ def test_turn_serialization_with_htmldep_in_tool_result():
 
     # Must be JSON-serializable
     json_str = json.dumps(dumped)
+
+    # Verify the serialized dependencies are JSON dicts (not live HTMLDependency objects)
+    display_data = dumped["contents"][0]["extra"]["display"]
+    deps = display_data["html"]["dependencies"]
+    assert len(deps) == 1
+    assert deps[0]["name"] == "my-dep"
+    assert deps[0]["version"] == "1.0"
 
     # Must round-trip back to a valid Turn
     restored = Turn.model_validate(json.loads(json_str))
