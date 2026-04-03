@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Bug fixes
+
+* Fixed bookmark serialization failure when a `ToolResultDisplay` contained `HTMLDependency` objects in its `html`, `icon`, or `footer` fields. (#188)
+
 ### Improvements
 
 * Migrated Google provider from the deprecated `google-generativeai` SDK to `google-genai`. (#174)
