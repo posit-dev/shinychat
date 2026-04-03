@@ -61,8 +61,12 @@ class ToolCardComponent(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     @field_serializer("icon")
-    def _serialize_icon(self, value: TagChild):
-        return TagList(value).render()
+    def _serialize_icon(self, value: TagChild) -> dict[str, Any]:
+        rendered = TagList(value).render()
+        return {
+            "html": rendered["html"],
+            "dependencies": [dep.as_dict() for dep in rendered["dependencies"]],
+        }
 
     @field_validator("icon", mode="before")
     @classmethod
@@ -234,8 +238,12 @@ class ToolResultDisplay(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     @field_serializer("html", "icon", "footer")
-    def _serialize_html_icon(self, value: TagChild):
-        return TagList(value).render()
+    def _serialize_html_icon(self, value: TagChild) -> dict[str, Any]:
+        rendered = TagList(value).render()
+        return {
+            "html": rendered["html"],
+            "dependencies": [dep.as_dict() for dep in rendered["dependencies"]],
+        }
 
     @field_validator("html", "icon", "footer", mode="before")
     @classmethod
