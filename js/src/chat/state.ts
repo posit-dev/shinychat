@@ -3,6 +3,7 @@ import type {
   ChatAction,
   MessagePayload,
 } from "../transport/types"
+import { uuid } from "../utils/uuid"
 
 export interface ChatMessageData {
   id: string
@@ -48,7 +49,7 @@ export const initialState: ChatState = {
 
 function messagePayloadToData(msg: MessagePayload): ChatMessageData {
   return {
-    id: msg.id ?? crypto.randomUUID(),
+    id: msg.id ?? uuid(),
     role: msg.role,
     content: msg.content,
     contentType: msg.content_type,
@@ -65,14 +66,14 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
   switch (action.type) {
     case "INPUT_SENT": {
       const userMsg: ChatMessageData = {
-        id: crypto.randomUUID(),
+        id: uuid(),
         role: "user",
         content: action.content,
         contentType: "markdown",
         streaming: false,
       }
       const loadingMsg: ChatMessageData = {
-        id: crypto.randomUUID(),
+        id: uuid(),
         role: "assistant",
         content: "",
         contentType: "markdown",

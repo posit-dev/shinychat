@@ -4,6 +4,7 @@ import { ChatApp } from "./ChatApp"
 import { getShinyTransport } from "../transport/shiny-transport"
 import type { ChatMessageData } from "./state"
 import type { ContentType } from "../transport/types"
+import { uuid } from "../utils/uuid"
 
 // Single shared transport instance for all chat instances on the page
 const transport = getShinyTransport()
@@ -24,7 +25,7 @@ function parseInitialMessages(container: HTMLElement): ChatMessageData[] {
     const icon = el.getAttribute("icon") ?? undefined
 
     messages.push({
-      id: crypto.randomUUID(),
+      id: uuid(),
       role,
       content,
       contentType,
