@@ -5,14 +5,13 @@ import {
   type ChatState,
   type ChatMessageData,
 } from "../../src/chat/state"
+import { uuid } from "../../src/utils/uuid"
 
-// crypto.randomUUID is used by the reducer; stub it for deterministic IDs
+vi.mock("../../src/utils/uuid")
+
 beforeEach(() => {
   let counter = 0
-  vi.spyOn(crypto, "randomUUID").mockImplementation(
-    () =>
-      `uuid-${++counter}` as `${string}-${string}-${string}-${string}-${string}`,
-  )
+  vi.mocked(uuid).mockImplementation(() => `uuid-${++counter}`)
 })
 
 function makeState(overrides: Partial<ChatState> = {}): ChatState {
@@ -96,7 +95,7 @@ describe("chatReducer", () => {
       expect(next.messages).toHaveLength(1)
     })
 
-    it("assigns crypto.randomUUID when message has no id", () => {
+    it("assigns uuid() when message has no id", () => {
       const state = makeState()
       const next = chatReducer(state, {
         type: "message",
