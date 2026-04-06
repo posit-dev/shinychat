@@ -1472,6 +1472,7 @@ class Chat:
 
         resolved_bookmark_id_str = str(self.id)
         resolved_bookmark_id_msgs_str = resolved_bookmark_id_str + "--msgs"
+        resolved_bookmark_id_deps_str = resolved_bookmark_id_str + "--deps"
         get_state: Callable[[], Awaitable[Jsonifiable]]
         set_state: Callable[[Jsonifiable], Awaitable[None]]
 
@@ -1566,6 +1567,17 @@ class Chat:
                     format=MISSING
                 )
 
+                # Also save any HTML dependencies needed by the messages
+                all_deps: list[dict[str, object]] = []
+                for m in self._messages():
+                    deps = m.html_deps or []
+                    for dep in deps:
+                        dep_dict = dep.as_dict(lib_prefix=session.app.lib_prefix)
+                        if dep_dict not in all_deps:
+                            all_deps.append(dep_dict)
+                if all_deps:
+                    state.values[resolved_bookmark_id_deps_str] = all_deps
+
         # Attempt to stop the initialization of the `ui.Chat(messages=)` messages
         self._init_chat.destroy()
 
@@ -1588,6 +1600,20 @@ class Chat:
             if not isinstance(msgs, list):
                 raise ValueError(
                     f"Bookmark value with id (`{resolved_bookmark_id_msgs_str}`) must be a list of messages."
+                )
+
+            # Re-send any HTML dependencies that were saved alongside the
+            # messages. The static file routes for these deps were already
+            # registered by the original session (same App instance), so the
+            # client just needs to load the CSS/JS URLs.
+            saved_deps = state.values.get(resolved_bookmark_id_deps_str)
+            if saved_deps:
+                # Send a "remove_loading" action carrying the deps. The
+                # transport layer renders deps before dispatching the
+                # action, and "remove_loading" is harmless here (no
+                # loading indicator exists at restore time).
+                await self._send_action(
+                    {"type": "remove_loading"}, html_deps=saved_deps
                 )
 
             for message_dict in msgs:
