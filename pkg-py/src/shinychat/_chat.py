@@ -1605,7 +1605,7 @@ class Chat:
             # Re-send any HTML dependencies that were saved alongside the
             # messages. The way we do this is admittedly hacky...ideally
             # the bookmarked messages would already contain the deps, but
-            # that would require digging into transfomed message logic,
+            # that would require digging into transformed message logic,
             # which we're trying to move away from, so I'm opting to just
             # save the deps separately and re-send them on restore.
             saved_deps = state.values.get(resolved_bookmark_id_deps_str)
