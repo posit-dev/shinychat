@@ -17,12 +17,7 @@ from shinychat.express import Chat
 
 app_opts(bookmark_store="server")
 
-# Create a CSS file for the HTMLDependency
 CSS_DIR = Path(__file__).parent / "_test_assets"
-CSS_DIR.mkdir(exist_ok=True)
-(CSS_DIR / "custom.css").write_text(
-    ".custom-styled-card { border: 3px solid red; padding: 12px; background: #fff0f0; }"
-)
 
 custom_dep = HTMLDependency(
     name="custom-styled-card",

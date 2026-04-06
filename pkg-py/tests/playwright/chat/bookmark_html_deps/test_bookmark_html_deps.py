@@ -40,12 +40,7 @@ def test_html_deps_restored_after_bookmark(
     expect(card).to_be_visible(timeout=10_000)
 
     # Verify the CSS dependency is loaded: the card should have a red border
-    border_color = card.evaluate(
-        "el => getComputedStyle(el).borderColor"
-    )
-    assert "rgb(255, 0, 0)" in border_color, (
-        f"Expected red border on first render, got: {border_color}"
-    )
+    expect(card).to_have_css("border-color", "rgb(255, 0, 0)", timeout=5_000)
 
     # Wait for the bookmark URL
     page.wait_for_url(re.compile(r"\?_state_id_="), timeout=10_000)
@@ -62,12 +57,6 @@ def test_html_deps_restored_after_bookmark(
     card = page.locator(".custom-styled-card")
     expect(card).to_be_visible(timeout=10_000)
 
-    # CRITICAL: Verify the CSS dependency was re-loaded
-    # Without the fix, the CSS is NOT loaded on restore, so the border will be absent
-    border_color = card.evaluate(
-        "el => getComputedStyle(el).borderColor"
-    )
-    assert "rgb(255, 0, 0)" in border_color, (
-        f"Expected red border after bookmark restore, got: {border_color}. "
-        "HTMLDependency was not re-sent during bookmark restore."
-    )
+    # CRITICAL: Verify the CSS dependency was re-loaded.
+    # Without the fix, the CSS is NOT loaded on restore.
+    expect(card).to_have_css("border-color", "rgb(255, 0, 0)", timeout=5_000)
