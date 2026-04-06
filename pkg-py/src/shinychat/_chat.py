@@ -1568,7 +1568,7 @@ class Chat:
                 )
 
                 # Also save any HTML dependencies needed by the messages
-                seen: set[tuple[str, str]] = set()
+                seen: set[tuple[str, object]] = set()
                 all_deps: list[dict[str, object]] = []
                 for m in self._messages():
                     for dep in m.html_deps or []:
