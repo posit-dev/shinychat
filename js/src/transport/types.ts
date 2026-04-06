@@ -30,6 +30,7 @@ export type ChatAction =
       focus?: boolean
     }
   | { type: "remove_loading" }
+  | { type: "load_deps" }
   | { type: "hide_tool_request"; requestId: string }
 
 export type ShinyChatEnvelope = {

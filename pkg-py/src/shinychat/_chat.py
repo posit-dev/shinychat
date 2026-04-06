@@ -1568,13 +1568,16 @@ class Chat:
                 )
 
                 # Also save any HTML dependencies needed by the messages
+                seen: set[tuple[str, str]] = set()
                 all_deps: list[dict[str, object]] = []
                 for m in self._messages():
-                    deps = m.html_deps or []
-                    for dep in deps:
-                        dep_dict = dep.as_dict(lib_prefix=session.app.lib_prefix)
-                        if dep_dict not in all_deps:
-                            all_deps.append(dep_dict)
+                    for dep in m.html_deps or []:
+                        key = (dep.name, dep.version)
+                        if key not in seen:
+                            seen.add(key)
+                            all_deps.append(
+                                dep.as_dict(lib_prefix=session.app.lib_prefix)
+                            )
                 if all_deps:
                     state.values[resolved_bookmark_id_deps_str] = all_deps
 
@@ -1603,15 +1606,15 @@ class Chat:
                 )
 
             # Re-send any HTML dependencies that were saved alongside the
-            # messages. The way we do this is admittedly hacky...ideally
-            # the bookmarked messages would already contain the deps, but
-            # that would require digging into transformed message logic,
-            # which we're trying to move away from, so I'm opting to just
-            # save the deps separately and re-send them on restore.
+            # messages. The static file routes were already registered by the
+            # original session (same App instance), so the client just needs
+            # to load the CSS/JS URLs. The "load_deps" action is a no-op in
+            # the reducer — deps are rendered by the transport layer before
+            # the action is dispatched.
             saved_deps = state.values.get(resolved_bookmark_id_deps_str)
             if saved_deps:
                 await self._send_action(
-                    {"type": "remove_loading"}, html_deps=saved_deps
+                    {"type": "load_deps"}, html_deps=saved_deps
                 )
 
             for message_dict in msgs:
