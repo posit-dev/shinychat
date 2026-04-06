@@ -1472,6 +1472,7 @@ class Chat:
 
         resolved_bookmark_id_str = str(self.id)
         resolved_bookmark_id_msgs_str = resolved_bookmark_id_str + "--msgs"
+        resolved_bookmark_id_deps_str = resolved_bookmark_id_str + "--deps"
         get_state: Callable[[], Awaitable[Jsonifiable]]
         set_state: Callable[[Jsonifiable], Awaitable[None]]
 
@@ -1566,6 +1567,25 @@ class Chat:
                     format=MISSING
                 )
 
+                # Also save any HTML dependencies needed by the messages
+                # The way we do this is admittedly hacky...ideally the bookmarked
+                # messages would already contain the deps, but that would require
+                # digging into transformed message logic, which we're trying to
+                # move away from, so I'm opting to just save the deps separately
+                # and re-send them on restore.
+                seen: set[tuple[str, object]] = set()
+                all_deps: list[dict[str, object]] = []
+                for m in self._messages():
+                    for dep in m.html_deps or []:
+                        key = (dep.name, dep.version)
+                        if key not in seen:
+                            seen.add(key)
+                            all_deps.append(
+                                dep.as_dict(lib_prefix=session.app.lib_prefix)
+                            )
+                if all_deps:
+                    state.values[resolved_bookmark_id_deps_str] = all_deps
+
         # Attempt to stop the initialization of the `ui.Chat(messages=)` messages
         self._init_chat.destroy()
 
@@ -1588,6 +1608,13 @@ class Chat:
             if not isinstance(msgs, list):
                 raise ValueError(
                     f"Bookmark value with id (`{resolved_bookmark_id_msgs_str}`) must be a list of messages."
+                )
+
+            # Re-render any HTML dependencies needed by the messages.
+            saved_deps = state.values.get(resolved_bookmark_id_deps_str)
+            if saved_deps:
+                await self._send_action(
+                    {"type": "render_deps"}, html_deps=saved_deps
                 )
 
             for message_dict in msgs:
