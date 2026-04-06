@@ -1603,15 +1603,13 @@ class Chat:
                 )
 
             # Re-send any HTML dependencies that were saved alongside the
-            # messages. The static file routes for these deps were already
-            # registered by the original session (same App instance), so the
-            # client just needs to load the CSS/JS URLs.
+            # messages. The way we do this is admittedly hacky...ideally
+            # the bookmarked messages would already contain the deps, but
+            # that would require digging into transfomed message logic,
+            # which we're trying to move away from, so I'm opting to just
+            # save the deps separately and re-send them on restore.
             saved_deps = state.values.get(resolved_bookmark_id_deps_str)
             if saved_deps:
-                # Send a "remove_loading" action carrying the deps. The
-                # transport layer renders deps before dispatching the
-                # action, and "remove_loading" is harmless here (no
-                # loading indicator exists at restore time).
                 await self._send_action(
                     {"type": "remove_loading"}, html_deps=saved_deps
                 )
