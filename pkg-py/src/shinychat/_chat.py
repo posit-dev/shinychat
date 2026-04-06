@@ -976,7 +976,9 @@ class Chat:
             return
 
         content = message.content_client
-        content_type: ContentType = "html" if isinstance(content, HTML) else "markdown"
+        content_type: ContentType = (
+            "html" if isinstance(content, HTML) else "markdown"
+        )
 
         # Register deps with the session and get the dictionary format
         # for client-side rendering
@@ -1606,15 +1608,11 @@ class Chat:
                 )
 
             # Re-send any HTML dependencies that were saved alongside the
-            # messages. The static file routes were already registered by the
-            # original session (same App instance), so the client just needs
-            # to load the CSS/JS URLs. The "load_deps" action is a no-op in
-            # the reducer — deps are rendered by the transport layer before
-            # the action is dispatched.
+            # messages.
             saved_deps = state.values.get(resolved_bookmark_id_deps_str)
             if saved_deps:
                 await self._send_action(
-                    {"type": "load_deps"}, html_deps=saved_deps
+                    {"type": "render_deps"}, html_deps=saved_deps
                 )
 
             for message_dict in msgs:

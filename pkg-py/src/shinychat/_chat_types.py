@@ -63,8 +63,8 @@ class RemoveLoadingAction(TypedDict):
     type: Literal["remove_loading"]
 
 
-class LoadDepsAction(TypedDict):
-    type: Literal["load_deps"]
+class RenderDepsAction(TypedDict):
+    type: Literal["render_deps"]
 
 
 class HideToolRequestAction(TypedDict):
@@ -80,7 +80,7 @@ ChatAction = Union[
     ClearAction,
     UpdateInputAction,
     RemoveLoadingAction,
-    LoadDepsAction,
+    RenderDepsAction,
     HideToolRequestAction,
 ]
 
