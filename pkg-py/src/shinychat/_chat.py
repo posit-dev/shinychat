@@ -1568,6 +1568,11 @@ class Chat:
                 )
 
                 # Also save any HTML dependencies needed by the messages
+                # The way we do this is admittedly hacky...ideally the bookmarked
+                # messages would already contain the deps, but that would require
+                # digging into transformed message logic, which we're trying to
+                # move away from, so I'm opting to just save the deps separately
+                # and re-send them on restore.
                 seen: set[tuple[str, object]] = set()
                 all_deps: list[dict[str, object]] = []
                 for m in self._messages():
