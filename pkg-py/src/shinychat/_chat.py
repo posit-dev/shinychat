@@ -976,9 +976,7 @@ class Chat:
             return
 
         content = message.content_client
-        content_type: ContentType = (
-            "html" if isinstance(content, HTML) else "markdown"
-        )
+        content_type: ContentType = "html" if isinstance(content, HTML) else "markdown"
 
         # Register deps with the session and get the dictionary format
         # for client-side rendering
@@ -1607,8 +1605,7 @@ class Chat:
                     f"Bookmark value with id (`{resolved_bookmark_id_msgs_str}`) must be a list of messages."
                 )
 
-            # Re-send any HTML dependencies that were saved alongside the
-            # messages.
+            # Re-render any HTML dependencies needed by the messages.
             saved_deps = state.values.get(resolved_bookmark_id_deps_str)
             if saved_deps:
                 await self._send_action(
