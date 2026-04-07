@@ -163,6 +163,16 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       // this action reached the reducer. Nothing to update in state.
       return state
 
+    case "restore_messages": {
+      const messages = action.messages.map(messagePayloadToData)
+      return {
+        ...state,
+        messages,
+        streamingMessage: null,
+        inputDisabled: false,
+      }
+    }
+
     case "hide_tool_request": {
       if (state.hiddenToolRequests.has(action.requestId)) return state
       const newSet = new Set(state.hiddenToolRequests)

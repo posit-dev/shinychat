@@ -32,6 +32,7 @@ export type ChatAction =
   | { type: "remove_loading" }
   | { type: "render_deps" }
   | { type: "hide_tool_request"; requestId: string }
+  | { type: "restore_messages"; messages: MessagePayload[] }
 
 export type ChatMessageInput = {
   role: "user" | "assistant"

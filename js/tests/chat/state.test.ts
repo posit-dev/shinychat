@@ -427,6 +427,55 @@ describe("chatReducer", () => {
     })
   })
 
+  describe("restore_messages", () => {
+    it("bulk-loads messages into state, replacing existing", () => {
+      const state = makeState({
+        messages: [makeAssistantMsg()],
+      })
+      const next = chatReducer(state, {
+        type: "restore_messages",
+        messages: [
+          { role: "user", content: "Hello", content_type: "markdown" },
+          { role: "assistant", content: "Hi!", content_type: "markdown" },
+        ],
+      })
+
+      expect(next.messages).toHaveLength(2)
+      expect(next.messages[0]).toMatchObject({
+        role: "user",
+        content: "Hello",
+      })
+      expect(next.messages[1]).toMatchObject({
+        role: "assistant",
+        content: "Hi!",
+      })
+      expect(next.streamingMessage).toBeNull()
+      expect(next.inputDisabled).toBe(false)
+    })
+
+    it("clears streaming state on restore", () => {
+      const msg = makeAssistantMsg({ streaming: true })
+      const state = makeState({
+        streamingMessage: msg,
+        inputDisabled: true,
+      })
+      const next = chatReducer(state, {
+        type: "restore_messages",
+        messages: [
+          { role: "assistant", content: "Restored", content_type: "html" },
+        ],
+      })
+
+      expect(next.streamingMessage).toBeNull()
+      expect(next.inputDisabled).toBe(false)
+      expect(next.messages).toHaveLength(1)
+      expect(next.messages[0]).toMatchObject({
+        content: "Restored",
+        contentType: "html",
+      })
+    })
+  })
+
   describe("unknown action", () => {
     it("returns state unchanged", () => {
       const state = makeState()
