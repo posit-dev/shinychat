@@ -16,7 +16,7 @@ from shinychat._chat_types import (
     ChatMessage,
     ChatMessageDict,
     Role,
-    TransformedMessage,
+    StoredMessage,
 )
 from shinychat._utils_types import MISSING
 
@@ -49,8 +49,8 @@ def is_type_in_union(type: object, union: object) -> bool:
     return False
 
 
-def transformed_message(content: str, role: Role) -> TransformedMessage:
-    return TransformedMessage.from_chat_message(
+def transformed_message(content: str, role: Role) -> StoredMessage:
+    return StoredMessage.from_chat_message(
         ChatMessage(content=content, role=role)
     )
 
@@ -114,7 +114,7 @@ def test_chat_message_trimming():
             msgs, token_limits=(103, 0), format=MISSING
         )
         assert len(trimmed) == 2
-        contents = [msg.content_server for msg in trimmed]
+        contents = [str(msg.content) for msg in trimmed]
         assert contents == [content1, content3]
 
         content1 = generate_content(50)
@@ -146,7 +146,7 @@ def test_chat_message_trimming():
             msgs, token_limits=(103, 0), format=MISSING
         )
         assert len(trimmed) == 3
-        contents = [msg.content_server for msg in trimmed]
+        contents = [str(msg.content) for msg in trimmed]
         assert contents == [content1, content3, content4]
 
         content1 = generate_content(50)
@@ -168,7 +168,7 @@ def test_chat_message_trimming():
             msgs, token_limits=(30, 0), format="anthropic"
         )
         assert len(trimmed) == 1
-        contents = [msg.content_server for msg in trimmed]
+        contents = [str(msg.content) for msg in trimmed]
         assert contents == [content2]
 
 

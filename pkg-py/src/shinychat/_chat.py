@@ -53,7 +53,7 @@ from ._chat_types import (
     ChatMessageDict,
     ContentType,
     MessagePayload,
-    TransformedMessage,
+    StoredMessage,
 )
 from ._html_deps_py_shiny import shinychat_dependency
 from ._typing_extensions import TypeGuard
@@ -256,12 +256,12 @@ class Chat:
 
         with session_context(self._session):
             # Initialize message state
-            self._messages: reactive.Value[tuple[TransformedMessage, ...]] = (
+            self._messages: reactive.Value[tuple[StoredMessage, ...]] = (
                 reactive.Value(())
             )
 
             self._latest_user_input: reactive.Value[
-                TransformedMessage | None
+                StoredMessage | None
             ] = reactive.Value(None)
 
             @reactive.extended_task
@@ -417,8 +417,6 @@ class Chat:
         *,
         format: Literal["anthropic"],
         token_limits: tuple[int, int] | None = None,
-        transform_user: Literal["all", "last", "none"] = "all",
-        transform_assistant: bool = False,
     ) -> tuple[AnthropicMessage, ...]: ...
 
     @overload
@@ -427,8 +425,6 @@ class Chat:
         *,
         format: Literal["google"],
         token_limits: tuple[int, int] | None = None,
-        transform_user: Literal["all", "last", "none"] = "all",
-        transform_assistant: bool = False,
     ) -> tuple[GoogleMessage, ...]: ...
 
     @overload
@@ -437,8 +433,6 @@ class Chat:
         *,
         format: Literal["langchain"],
         token_limits: tuple[int, int] | None = None,
-        transform_user: Literal["all", "last", "none"] = "all",
-        transform_assistant: bool = False,
     ) -> tuple[LangChainMessage, ...]: ...
 
     @overload
@@ -447,8 +441,6 @@ class Chat:
         *,
         format: Literal["openai"],
         token_limits: tuple[int, int] | None = None,
-        transform_user: Literal["all", "last", "none"] = "all",
-        transform_assistant: bool = False,
     ) -> tuple[OpenAIMessage, ...]: ...
 
     @overload
@@ -457,8 +449,6 @@ class Chat:
         *,
         format: Literal["ollama"],
         token_limits: tuple[int, int] | None = None,
-        transform_user: Literal["all", "last", "none"] = "all",
-        transform_assistant: bool = False,
     ) -> tuple[OllamaMessage, ...]: ...
 
     @overload
@@ -467,8 +457,6 @@ class Chat:
         *,
         format: MISSING_TYPE = MISSING,
         token_limits: tuple[int, int] | None = None,
-        transform_user: Literal["all", "last", "none"] = "all",
-        transform_assistant: bool = False,
     ) -> tuple[ChatMessageDict, ...]: ...
 
     def messages(
@@ -476,8 +464,6 @@ class Chat:
         *,
         format: "MISSING_TYPE | ProviderMessageFormat" = MISSING,
         token_limits: tuple[int, int] | None = None,
-        transform_user: Literal["all", "last", "none"] = "all",
-        transform_assistant: bool = False,
     ) -> tuple[ChatMessageDict | ProviderMessage, ...]:
         """
         Reactively read chat messages
@@ -526,23 +512,8 @@ class Chat:
                 "See here for more details: https://github.com/posit-dev/shinychat/pull/91"
             )
 
-        if transform_user != "all":
-            warn_deprecated(
-                "`.messages(transform_user=...)` is deprecated. "
-                "Message transformation features will be removed in a future version. "
-                "See here for more details: https://github.com/posit-dev/shinychat/pull/91"
-            )
-
-        if transform_assistant:
-            warn_deprecated(
-                "`.messages(transform_assistant=...)` is deprecated. "
-                "Message transformation features will be removed in a future version. "
-                "See here for more details: https://github.com/posit-dev/shinychat/pull/91"
-            )
-
         messages = self._messages()
 
-        # Anthropic requires a user message first and no system messages
         if format == "anthropic":
             messages = self._trim_anthropic_messages(messages)
 
@@ -550,19 +521,8 @@ class Chat:
             messages = self._trim_messages(messages, token_limits, format)
 
         res: list[ChatMessageDict | ProviderMessage] = []
-        for i, m in enumerate(messages):
-            transform = False
-            if m.role == "assistant":
-                transform = transform_assistant
-            elif m.role == "user":
-                transform = transform_user == "all" or (
-                    transform_user == "last" and i == len(messages) - 1
-                )
-            content_key = getattr(
-                m, "transform_key" if transform else "pre_transform_key"
-            )
-            content = getattr(m, content_key)
-            chat_msg = ChatMessageDict(content=str(content), role=m.role)
+        for m in messages:
+            chat_msg = ChatMessageDict(content=str(m.content), role=m.role)
             if not isinstance(format, MISSING_TYPE):
                 chat_msg = as_provider_message(chat_msg, format)
             res.append(chat_msg)
@@ -963,19 +923,19 @@ class Chat:
     # Send a message to the UI
     async def _send_append_message(
         self,
-        message: TransformedMessage | ChatMessage,
+        message: StoredMessage | ChatMessage,
         chunk: ChunkOption = False,
         operation: Literal["append", "replace"] = "append",
         icon: HTML | Tag | TagList | None = None,
     ):
-        if not isinstance(message, TransformedMessage):
-            message = TransformedMessage.from_chat_message(message)
+        if not isinstance(message, StoredMessage):
+            message = StoredMessage.from_chat_message(message)
 
         if message.role == "system":
             # System messages are not displayed in the UI
             return
 
-        content = message.content_client
+        content = message.content
         content_type: ContentType = "html" if isinstance(content, HTML) else "markdown"
 
         # Register deps with the session and get the dictionary format
@@ -1122,8 +1082,8 @@ class Chat:
         message: ChatMessage,
         chunk: ChunkOption = False,
         chunk_content: str = "",
-    ) -> TransformedMessage | None:
-        res = TransformedMessage.from_chat_message(message)
+    ) -> StoredMessage | None:
+        res = StoredMessage.from_chat_message(message)
 
         if message.role == "user" and self._transform_user is not None:
             content = await self._transform_user(message.content)
@@ -1142,7 +1102,7 @@ class Chat:
         if content is None:
             return None
 
-        setattr(res, res.transform_key, content)
+        res.content = content
         return res
 
     def _needs_transform(self, message: ChatMessage) -> bool:
@@ -1158,13 +1118,13 @@ class Chat:
     # Just before storing, handle chunk msg type and calculate tokens
     def _store_message(
         self,
-        message: TransformedMessage | ChatMessage,
+        message: StoredMessage | ChatMessage,
         index: int | None = None,
     ) -> None:
         from shiny import reactive
 
-        if not isinstance(message, TransformedMessage):
-            message = TransformedMessage.from_chat_message(message)
+        if not isinstance(message, StoredMessage):
+            message = StoredMessage.from_chat_message(message)
 
         with reactive.isolate():
             messages = self._messages()
@@ -1183,10 +1143,10 @@ class Chat:
 
     def _trim_messages(
         self,
-        messages: tuple[TransformedMessage, ...],
+        messages: tuple[StoredMessage, ...],
         token_limits: tuple[int, int],
         format: MISSING_TYPE | ProviderMessageFormat,
-    ) -> tuple[TransformedMessage, ...]:
+    ) -> tuple[StoredMessage, ...]:
         n_total, n_reserve = token_limits
         if n_total <= n_reserve:
             raise ValueError(
@@ -1201,7 +1161,7 @@ class Chat:
         n_other_messages: int = 0
         token_counts: list[int] = []
         for m in messages:
-            count = self._get_token_count(m.content_server)
+            count = self._get_token_count(str(m.content))
             token_counts.append(count)
             if m.role == "system":
                 n_system_tokens += count
@@ -1220,7 +1180,7 @@ class Chat:
 
         # Now, iterate through the messages in reverse order and appending
         # until we run out of tokens
-        messages2: list[TransformedMessage] = []
+        messages2: list[StoredMessage] = []
         n_other_messages2: int = 0
         token_counts.reverse()
         for i, m in enumerate(reversed(messages)):
@@ -1245,8 +1205,8 @@ class Chat:
 
     def _trim_anthropic_messages(
         self,
-        messages: tuple[TransformedMessage, ...],
-    ) -> tuple[TransformedMessage, ...]:
+        messages: tuple[StoredMessage, ...],
+    ) -> tuple[StoredMessage, ...]:
         if any(m.role == "system" for m in messages):
             raise ValueError(
                 "Anthropic requires a system prompt to be specified in it's `.create()` method "
@@ -1307,9 +1267,7 @@ class Chat:
         msg = self._latest_user_input()
         if msg is None:
             return None
-        key = "content_server" if transform else "content_client"
-        val = getattr(msg, key)
-        return str(val)
+        return str(msg.content)
 
     def _user_input(self) -> str:
         id = self.user_input_id

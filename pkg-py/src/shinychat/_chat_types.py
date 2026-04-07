@@ -121,31 +121,17 @@ class ChatMessage:
         self.html_deps: list[HTMLDependency] = deps
 
 
-# A message once transformed have been applied
 @dataclass
-class TransformedMessage:
-    content_client: str | HTML
-    content_server: str
+class StoredMessage:
+    content: str | HTML
     role: Role
-    transform_key: Literal["content_client", "content_server"]
-    pre_transform_key: Literal["content_client", "content_server"]
     html_deps: list[HTMLDependency] | None = None
 
     @classmethod
-    def from_chat_message(cls, message: ChatMessage) -> "TransformedMessage":
-        if message.role == "user":
-            transform_key = "content_server"
-            pre_transform_key = "content_client"
-        else:
-            transform_key = "content_client"
-            pre_transform_key = "content_server"
-
-        return TransformedMessage(
-            content_client=message.content,
-            content_server=message.content,
+    def from_chat_message(cls, message: ChatMessage) -> "StoredMessage":
+        return StoredMessage(
+            content=message.content,
             role=message.role,
-            transform_key=transform_key,
-            pre_transform_key=pre_transform_key,
-            html_deps=message.html_deps,
+            html_deps=message.html_deps if message.html_deps else None,
         )
 
