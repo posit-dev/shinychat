@@ -20,7 +20,7 @@ from typing import (
 )
 from weakref import WeakValueDictionary
 
-from htmltools import HTML, Tag, TagAttrValue, TagChild, TagList, css
+from htmltools import HTML, HTMLDependency, Tag, TagAttrValue, TagChild, TagList, css
 
 from . import _utils
 from ._chat_bookmark import (
@@ -236,6 +236,7 @@ class Chat:
 
         # Chunked messages get accumulated (using this property) before changing state
         self._current_stream_message: str = ""
+        self._current_stream_deps: list[HTMLDependency] = []
         self._current_stream_id: str | None = None
         self._pending_messages: list[PendingMessage] = []
 
@@ -720,6 +721,10 @@ class Chat:
         # Normalize various message types into a ChatMessage()
         msg = message_content_chunk(message)
 
+        # Accumulate HTML dependencies across all chunks in this stream
+        if msg.html_deps:
+            self._current_stream_deps.extend(msg.html_deps)
+
         if is_tool_result(message) and message.request is not None:
             await self._hide_tool_request(message.request.id)  # type: ignore
 
@@ -745,6 +750,8 @@ class Chat:
                 if msg is None:
                     return
                 if chunk == "end":
+                    if self._current_stream_deps:
+                        msg.html_deps = self._current_stream_deps
                     self._store_message(msg)
             elif chunk == "end":
                 # When `operation="append"`, msg.content is just a chunk, but we must
@@ -752,7 +759,8 @@ class Chat:
                 self._store_message(
                     ChatMessage(
                         content=self._current_stream_message, role=msg.role
-                    )
+                    ),
+                    deps=self._current_stream_deps if self._current_stream_deps else None,
                 )
 
             # Send the message to the client
@@ -766,6 +774,7 @@ class Chat:
             if chunk == "end":
                 self._current_stream_id = None
                 self._current_stream_message = ""
+                self._current_stream_deps = []
                 self._message_stream_checkpoint = ""
 
     async def append_message_stream(
@@ -1125,11 +1134,15 @@ class Chat:
         self,
         message: StoredMessage | ChatMessage,
         index: int | None = None,
+        deps: list[HTMLDependency] | None = None,
     ) -> None:
         from shiny import reactive
 
         if not isinstance(message, StoredMessage):
             message = StoredMessage.from_chat_message(message)
+
+        if deps is not None:
+            message.html_deps = deps
 
         with reactive.isolate():
             messages = self._messages()
