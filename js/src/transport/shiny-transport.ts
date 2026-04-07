@@ -65,7 +65,7 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
     )
   }
 
-  sendInput(id: string, value: string): void {
+  sendInput(id: string, value: unknown): void {
     if (!window.Shiny?.setInputValue) return
     window.Shiny.setInputValue(id, value, { priority: "event" })
   }

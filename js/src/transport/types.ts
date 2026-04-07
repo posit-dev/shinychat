@@ -33,6 +33,12 @@ export type ChatAction =
   | { type: "render_deps" }
   | { type: "hide_tool_request"; requestId: string }
 
+export type ChatMessageInput = {
+  role: "user" | "assistant"
+  content: string
+  content_type: ContentType
+}
+
 export type ShinyChatEnvelope = {
   id: string
   action: ChatAction
@@ -58,7 +64,7 @@ export type ShinyClientMessage = {
 
 /** Core transport: message passing between client and server. */
 export interface ChatTransport {
-  sendInput(id: string, value: string): void
+  sendInput(id: string, value: unknown): void
   onMessage(id: string, callback: (action: ChatAction) => void): () => void
 }
 

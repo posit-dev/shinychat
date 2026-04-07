@@ -249,6 +249,122 @@ describe("Issue #4: single transport subscription", () => {
 })
 
 // ---------------------------------------------------------------------------
+// setInputValue on message completion
+// ---------------------------------------------------------------------------
+describe("setInputValue on message completion", () => {
+  it("sends input value after a non-streamed message action", () => {
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+      />,
+    )
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "assistant",
+          content: "Hello!",
+          content_type: "markdown",
+        },
+      })
+    })
+
+    expect(transport.sendInput).toHaveBeenCalledWith("test-chat_message", {
+      role: "assistant",
+      content: "Hello!",
+      content_type: "markdown",
+    })
+  })
+
+  it("sends input value after a streamed message completes (chunk_end)", () => {
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+      />,
+    )
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "chunk_start",
+        message: {
+          role: "assistant",
+          content: "Hel",
+          content_type: "markdown",
+        },
+      })
+    })
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "chunk",
+        content: "lo!",
+        operation: "append",
+      })
+    })
+
+    // sendInput should NOT have been called yet (still streaming)
+    expect(transport.sendInput).not.toHaveBeenCalledWith(
+      "test-chat_message",
+      expect.anything(),
+    )
+
+    act(() => {
+      transport.fire("test-chat", { type: "chunk_end" })
+    })
+
+    expect(transport.sendInput).toHaveBeenCalledWith("test-chat_message", {
+      role: "assistant",
+      content: "Hello!",
+      content_type: "markdown",
+    })
+  })
+
+  it("sends input value for user messages too", () => {
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+      />,
+    )
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "user",
+          content: "Hi there",
+          content_type: "markdown",
+        },
+      })
+    })
+
+    expect(transport.sendInput).toHaveBeenCalledWith("test-chat_message", {
+      role: "user",
+      content: "Hi there",
+      content_type: "markdown",
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
 // External link dialog integration tests
 // NOTE: These tests are expected to fail until Tasks 3-4 refactor the dialog
 // out of a singleton createRoot and into a React portal rendered in the same
