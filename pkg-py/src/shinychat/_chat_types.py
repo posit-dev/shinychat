@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Literal, Union
 
-from htmltools import HTML, HTMLDependency, TagChild, TagList
+from htmltools import HTMLDependency, TagChild, TagList
 
 from ._html_islands import split_html_islands
 from ._typing_extensions import NotRequired, TypedDict
@@ -72,6 +71,11 @@ class HideToolRequestAction(TypedDict):
     requestId: str
 
 
+class RestoreMessagesAction(TypedDict):
+    type: Literal["restore_messages"]
+    messages: list[MessagePayload]
+
+
 ChatAction = Union[
     MessageAction,
     ChunkStartAction,
@@ -82,6 +86,7 @@ ChatAction = Union[
     RemoveLoadingAction,
     RenderDepsAction,
     HideToolRequestAction,
+    RestoreMessagesAction,
 ]
 
 
@@ -124,33 +129,4 @@ class ChatMessage:
 
         self.content = content
         self.html_deps: list[HTMLDependency] = deps
-
-
-# A message once transformed have been applied
-@dataclass
-class TransformedMessage:
-    content_client: str | HTML
-    content_server: str
-    role: Role
-    transform_key: Literal["content_client", "content_server"]
-    pre_transform_key: Literal["content_client", "content_server"]
-    html_deps: list[HTMLDependency] | None = None
-
-    @classmethod
-    def from_chat_message(cls, message: ChatMessage) -> "TransformedMessage":
-        if message.role == "user":
-            transform_key = "content_server"
-            pre_transform_key = "content_client"
-        else:
-            transform_key = "content_client"
-            pre_transform_key = "content_server"
-
-        return TransformedMessage(
-            content_client=message.content,
-            content_server=message.content,
-            role=message.role,
-            transform_key=transform_key,
-            pre_transform_key=pre_transform_key,
-            html_deps=message.html_deps,
-        )
 

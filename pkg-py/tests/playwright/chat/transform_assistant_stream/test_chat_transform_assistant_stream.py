@@ -22,10 +22,12 @@ def test_validate_chat_transform_assistant(
     chat.send_user_input()
     chat.expect_latest_message("Simple response...DONE!", timeout=30 * 1000)
 
+    # messages() returns the transformed content since that's what
+    # the client echoes back via setInputValue
     message_state_expected = tuple(
         [
             {"content": "foo", "role": "user"},
-            {"content": "Simple response", "role": "assistant"},
+            {"content": "Simple response...DONE!", "role": "assistant"},
         ]
     )
     message_state.expect_value(str(message_state_expected))

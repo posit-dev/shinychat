@@ -4,40 +4,13 @@ import inspect
 import sys
 import types
 from datetime import datetime
-from typing import Union, cast, get_args, get_origin
+from typing import Union, get_args, get_origin
 
-import pytest
-from shiny import Session
-from shiny.module import ResolvedId
-from shiny.session import session_context
-from shinychat import Chat
 from shinychat._chat_normalize import message_content, message_content_chunk
 from shinychat._chat_types import (
     ChatMessage,
     ChatMessageDict,
-    Role,
-    TransformedMessage,
 )
-from shinychat._utils_types import MISSING
-
-# ----------------------------------------------------------------------
-# Helpers
-# ----------------------------------------------------------------------
-
-
-class _MockSession:
-    ns: ResolvedId = ResolvedId("")
-    app: object = None
-    id: str = "mock-session"
-
-    def on_ended(self, callback: object) -> None:
-        pass
-
-    def _increment_busy_count(self) -> None:
-        pass
-
-
-test_session = cast(Session, _MockSession())
 
 
 # Check if a type is part of a Union
@@ -47,129 +20,6 @@ def is_type_in_union(type: object, union: object) -> bool:
     if origin is Union or origin is types.UnionType:
         return type in get_args(union)
     return False
-
-
-def transformed_message(content: str, role: Role) -> TransformedMessage:
-    return TransformedMessage.from_chat_message(
-        ChatMessage(content=content, role=role)
-    )
-
-
-def test_chat_message_trimming():
-    with session_context(test_session):
-        chat = Chat(id="chat")
-
-        # Default tokenizer gives a token count
-        def generate_content(token_count: int) -> str:
-            n = int(token_count / 2)
-            return " ".join(["foo" for _ in range(1, n)])
-
-        msgs = (
-            transformed_message(
-                content=generate_content(102),
-                role="system",
-            ),
-        )
-
-        # Throws since system message is too long
-        with pytest.raises(ValueError):
-            chat._trim_messages(msgs, token_limits=(100, 0), format=MISSING)
-
-        msgs = (
-            transformed_message(content=generate_content(100), role="system"),
-            transformed_message(content=generate_content(2), role="user"),
-        )
-
-        # Throws since only the system message fits
-        with pytest.raises(ValueError):
-            chat._trim_messages(msgs, token_limits=(100, 0), format=MISSING)
-
-        # Raising the limit should allow both messages to fit
-        trimmed = chat._trim_messages(
-            msgs, token_limits=(103, 0), format=MISSING
-        )
-        assert len(trimmed) == 2
-
-        content1 = generate_content(100)
-        content2 = generate_content(10)
-        content3 = generate_content(2)
-
-        msgs = (
-            transformed_message(
-                content=content1,
-                role="system",
-            ),
-            transformed_message(
-                content=content2,
-                role="user",
-            ),
-            transformed_message(
-                content=content3,
-                role="user",
-            ),
-        )
-
-        # Should discard the 1st user message
-        trimmed = chat._trim_messages(
-            msgs, token_limits=(103, 0), format=MISSING
-        )
-        assert len(trimmed) == 2
-        contents = [msg.content_server for msg in trimmed]
-        assert contents == [content1, content3]
-
-        content1 = generate_content(50)
-        content2 = generate_content(10)
-        content3 = generate_content(50)
-        content4 = generate_content(2)
-
-        msgs = (
-            transformed_message(
-                content=content1,
-                role="system",
-            ),
-            transformed_message(
-                content=content2,
-                role="user",
-            ),
-            transformed_message(
-                content=content3,
-                role="system",
-            ),
-            transformed_message(
-                content=content4,
-                role="user",
-            ),
-        )
-
-        # Should discard the 1st user message
-        trimmed = chat._trim_messages(
-            msgs, token_limits=(103, 0), format=MISSING
-        )
-        assert len(trimmed) == 3
-        contents = [msg.content_server for msg in trimmed]
-        assert contents == [content1, content3, content4]
-
-        content1 = generate_content(50)
-        content2 = generate_content(10)
-
-        msgs = (
-            transformed_message(
-                content=content1,
-                role="assistant",
-            ),
-            transformed_message(
-                content=content2,
-                role="user",
-            ),
-        )
-
-        # Anthropic requires 1st message to be a user message
-        trimmed = chat._trim_messages(
-            msgs, token_limits=(30, 0), format="anthropic"
-        )
-        assert len(trimmed) == 1
-        contents = [msg.content_server for msg in trimmed]
-        assert contents == [content2]
 
 
 # ------------------------------------------------------------------------------------

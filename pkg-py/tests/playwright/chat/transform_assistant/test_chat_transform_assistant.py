@@ -11,7 +11,6 @@ def test_validate_chat_transform_assistant(
 
     chat = ChatController(page, "chat")
     message_state = controller.OutputCode(page, "message_state")
-    message_state2 = controller.OutputCode(page, "message_state2")
 
     # Wait for app to load
     message_state.expect_value("()", timeout=30 * 1000)
@@ -22,6 +21,7 @@ def test_validate_chat_transform_assistant(
     user_msg = "hello"
     chat.set_user_input(user_msg)
     chat.send_user_input()
+    # The transform still applies to what's sent to the client
     code = chat.loc_latest_message.locator("code")
     expect(code).to_have_text("hello", timeout=30 * 1000)
 
@@ -31,17 +31,9 @@ def test_validate_chat_transform_assistant(
     bold = chat.loc_latest_message.locator("b")
     expect(bold).to_have_text("Transformed response")
 
+    # messages() returns the transformed content since that's what
+    # the client echoes back via setInputValue
     message_state_expected = tuple(
-        [
-            {"content": "hello", "role": "user"},
-            {"content": "hello", "role": "assistant"},
-            {"content": "return HTML", "role": "user"},
-            {"content": "return HTML", "role": "assistant"},
-        ]
-    )
-    message_state.expect_value(str(message_state_expected))
-
-    message_state_expected2 = tuple(
         [
             {"content": "hello", "role": "user"},
             {"content": "Transformed response: `hello`", "role": "assistant"},
@@ -52,4 +44,4 @@ def test_validate_chat_transform_assistant(
             },
         ]
     )
-    message_state2.expect_value(str(message_state_expected2))
+    message_state.expect_value(str(message_state_expected))

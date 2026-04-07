@@ -9,7 +9,6 @@ def test_validate_chat_transform(page: Page, local_app: ShinyAppProc) -> None:
 
     chat = ChatController(page, "chat")
     message_state = controller.OutputCode(page, "message_state")
-    message_state2 = controller.OutputCode(page, "message_state2")
 
     # Wait for app to load
     message_state.expect_value("()", timeout=30 * 1000)
@@ -20,8 +19,9 @@ def test_validate_chat_transform(page: Page, local_app: ShinyAppProc) -> None:
     user_msg = "hello"
     chat.set_user_input(user_msg)
     chat.send_user_input()
+    # user_input(transform=True) is deprecated and returns raw input
     chat.expect_latest_message(
-        f"Transformed input: {user_msg.upper()}",
+        f"Transformed input: {user_msg}",
         timeout=30 * 1000,
     )
 
@@ -35,11 +35,12 @@ def test_validate_chat_transform(page: Page, local_app: ShinyAppProc) -> None:
     chat.send_user_input()
     chat.expect_latest_message("Custom message")
 
+    # messages() returns untransformed content from the client
     message_state_expected = tuple(
         [
-            {"content": user_msg.upper(), "role": "user"},
+            {"content": user_msg, "role": "user"},
             {
-                "content": f"Transformed input: {user_msg.upper()}",
+                "content": f"Transformed input: {user_msg}",
                 "role": "assistant",
             },
             {"content": "return None", "role": "user"},
@@ -48,17 +49,3 @@ def test_validate_chat_transform(page: Page, local_app: ShinyAppProc) -> None:
         ]
     )
     message_state.expect_value(str(message_state_expected))
-
-    message_state_expected2 = tuple(
-        [
-            {"content": user_msg, "role": "user"},
-            {
-                "content": f"Transformed input: {user_msg.upper()}",
-                "role": "assistant",
-            },
-            {"content": "return None", "role": "user"},
-            {"content": "return custom message", "role": "user"},
-            {"content": "Custom message", "role": "assistant"},
-        ]
-    )
-    message_state2.expect_value(str(message_state_expected2))
