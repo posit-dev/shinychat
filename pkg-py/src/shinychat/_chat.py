@@ -523,6 +523,11 @@ class Chat:
         res: list[ChatMessageDict | ProviderMessage] = []
         for m in messages:
             chat_msg = ChatMessageDict(content=str(m.content), role=m.role)
+            if m.html_deps and self._session is not None:
+                chat_msg["html_deps"] = [
+                    dep.as_dict(lib_prefix=self._session.app.lib_prefix)
+                    for dep in m.html_deps
+                ]
             if not isinstance(format, MISSING_TYPE):
                 chat_msg = as_provider_message(chat_msg, format)
             res.append(chat_msg)
