@@ -487,13 +487,6 @@ class Chat:
         token_limits
             Deprecated. Token counting and message trimming features will be removed in
             a future version.
-        transform_user
-            Deprecated. Message transformation features will be removed in a future
-            version.
-        transform_assistant
-            Deprecated. Message transformation features will be removed in a future
-            version.
-
         Note
         ----
         Messages are listed in the order they were added. As a result, when this method

@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * Fixed bookmark serialization failure when a `ToolResultDisplay` contained `HTMLDependency` objects in its `html`, `icon`, or `footer` fields. (#188)
 
+* Fixed `HTMLDependency` objects being lost during streaming message accumulation, causing CSS/JS to be missing after bookmark restore for streamed messages. (#192, #193)
+
+### Breaking changes
+
+* Removed the deprecated `transform_user` and `transform_assistant` parameters from `.messages()`. These were deprecated in favor of the `.transform_user_input()` and `.transform_assistant_response()` decorators. (#193)
+
+* `ChatMessageDict` (returned by `.messages()`) may now include an `html_deps` key containing serialized `HTMLDependency` dicts. Code that unpacks or iterates these dicts with a fixed set of keys should be updated to handle the new field. (#193)
+
 ### Improvements
 
 * Migrated Google provider from the deprecated `google-generativeai` SDK to `google-genai`. (#174)
