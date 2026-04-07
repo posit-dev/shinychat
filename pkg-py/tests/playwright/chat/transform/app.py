@@ -36,11 +36,3 @@ async def _():
 @render.code
 def message_state():
     return str(chat.messages())
-
-
-"chat.messages(transform_user='none'):"
-
-
-@render.code
-def message_state2():
-    return str(chat.messages(transform_user="none"))

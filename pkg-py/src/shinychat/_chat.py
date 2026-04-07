@@ -20,7 +20,15 @@ from typing import (
 )
 from weakref import WeakValueDictionary
 
-from htmltools import HTML, HTMLDependency, Tag, TagAttrValue, TagChild, TagList, css
+from htmltools import (
+    HTML,
+    HTMLDependency,
+    Tag,
+    TagAttrValue,
+    TagChild,
+    TagList,
+    css,
+)
 
 from . import _utils
 from ._chat_bookmark import (
@@ -941,6 +949,7 @@ class Chat:
         chunk: ChunkOption = False,
         operation: Literal["append", "replace"] = "append",
         icon: HTML | Tag | TagList | None = None,
+        html_deps_serialized: list[dict[str, object]] | None = None,
     ):
         if not isinstance(message, StoredMessage):
             message = StoredMessage.from_chat_message(message)
@@ -954,10 +963,12 @@ class Chat:
 
         # Register deps with the session and get the dictionary format
         # for client-side rendering
-        deps = message.html_deps
         html_deps: list[dict[str, str]] | None = None
-        if deps:
-            processed = self._session._process_ui(TagList(*deps))
+        if html_deps_serialized:
+            # Pre-serialized deps (e.g., from bookmark restore) bypass _process_ui
+            html_deps = html_deps_serialized  # type: ignore[assignment]
+        elif message.html_deps:
+            processed = self._session._process_ui(TagList(*message.html_deps))
             html_deps = processed["deps"]
 
         msg_payload: MessagePayload = {
@@ -1567,7 +1578,16 @@ class Chat:
                 )
 
             for message_dict in msgs:
-                await self.append_message(message_dict)
+                msg = ChatMessage(
+                    content=message_dict["content"],
+                    role=message_dict.get("role", "assistant"),
+                )
+                stored = StoredMessage.from_chat_message(msg)
+                self._store_message(stored)
+                await self._send_append_message(
+                    stored,
+                    html_deps_serialized=message_dict.get("html_deps"),
+                )
 
         def _cancel_bookmarking():
             _on_bookmark_client()
