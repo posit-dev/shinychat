@@ -50,6 +50,21 @@ export function ChatApp({
   // the imperative handle rather than the reducer.
   useEffect(() => {
     const unsubscribe = transport.onMessage(elementId, (action) => {
+      // Bookmark save: serialize current messages and respond via sendInput
+      if ((action as Record<string, unknown>).type === "_bookmark_save") {
+        const bookmarkAction = action as unknown as {
+          type: "_bookmark_save"
+          key: string
+        }
+        const messages = stateRef.current.messages.map((msg) => ({
+          role: msg.role,
+          content: msg.content,
+          content_type: msg.contentType,
+        }))
+        transport.sendInput(bookmarkAction.key, messages)
+        return
+      }
+
       if (action.type === "update_input") {
         // Placeholder updates go through the reducer (it's the only
         // remaining field the reducer tracks for update_input).

@@ -32,6 +32,17 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
 
   constructor() {
     window.Shiny?.addCustomMessageHandler(
+      "shinyChatBookmarkSave",
+      (data: { id: string; key: string }) => {
+        const callbacks = this.listeners.get(data.id)
+        if (!callbacks) return
+        for (const cb of callbacks) {
+          cb({ type: "_bookmark_save", key: data.key } as never)
+        }
+      },
+    )
+
+    window.Shiny?.addCustomMessageHandler(
       "shinyChatMessage",
       async (envelope: unknown) => {
         if (!isValidEnvelope(envelope)) {

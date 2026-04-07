@@ -365,6 +365,86 @@ describe("setInputValue on message completion", () => {
 })
 
 // ---------------------------------------------------------------------------
+// Bookmark save/restore
+// ---------------------------------------------------------------------------
+describe("Bookmark save", () => {
+  it("responds to _bookmark_save with serialized messages", () => {
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+      />,
+    )
+
+    // Add some messages
+    act(() => {
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "user",
+          content: "Hello",
+          content_type: "markdown",
+        },
+      })
+    })
+    act(() => {
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "assistant",
+          content: "Hi there!",
+          content_type: "html",
+        },
+      })
+    })
+
+    // Clear sendInput mock to isolate bookmark save call
+    vi.mocked(transport.sendInput).mockClear()
+
+    // Fire bookmark save
+    act(() => {
+      transport.fire("test-chat", {
+        type: "_bookmark_save",
+        key: "bookmark-key-123",
+      } as never)
+    })
+
+    expect(transport.sendInput).toHaveBeenCalledWith("bookmark-key-123", [
+      { role: "user", content: "Hello", content_type: "markdown" },
+      { role: "assistant", content: "Hi there!", content_type: "html" },
+    ])
+  })
+
+  it("responds with empty array when no messages exist", () => {
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+      />,
+    )
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "_bookmark_save",
+        key: "bookmark-key-456",
+      } as never)
+    })
+
+    expect(transport.sendInput).toHaveBeenCalledWith("bookmark-key-456", [])
+  })
+})
+
+// ---------------------------------------------------------------------------
 // External link dialog integration tests
 // NOTE: These tests are expected to fail until Tasks 3-4 refactor the dialog
 // out of a singleton createRoot and into a React portal rendered in the same
