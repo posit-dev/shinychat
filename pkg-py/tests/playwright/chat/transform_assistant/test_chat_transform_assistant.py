@@ -35,12 +35,13 @@ def test_validate_chat_transform_assistant(
     # the client echoes back via setInputValue
     message_state_expected = tuple(
         [
-            {"content": "hello", "role": "user"},
-            {"content": "Transformed response: `hello`", "role": "assistant"},
-            {"content": "return HTML", "role": "user"},
+            {"content": "hello", "role": "user", "content_type": "markdown"},
+            {"content": "Transformed response: `hello`", "role": "assistant", "content_type": "markdown"},
+            {"content": "return HTML", "role": "user", "content_type": "markdown"},
             {
                 "content": "<b>Transformed response</b>: return HTML",
                 "role": "assistant",
+                "content_type": "html",
             },
         ]
     )

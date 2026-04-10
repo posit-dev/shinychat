@@ -26,8 +26,8 @@ def test_validate_chat_transform_assistant(
     # the client echoes back via setInputValue
     message_state_expected = tuple(
         [
-            {"content": "foo", "role": "user"},
-            {"content": "Simple response...DONE!", "role": "assistant"},
+            {"content": "foo", "role": "user", "content_type": "markdown"},
+            {"content": "Simple response...DONE!", "role": "assistant", "content_type": "markdown"},
         ]
     )
     message_state.expect_value(str(message_state_expected))

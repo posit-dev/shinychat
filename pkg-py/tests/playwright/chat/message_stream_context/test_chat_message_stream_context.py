@@ -74,19 +74,20 @@ def test_validate_chat_message_stream_context(
     message_state = controller.OutputCode(page, "message_state")
     message_state_expected = tuple(
         [
-            {"content": "Basic stream", "role": "assistant"},
-            {"content": "Finished", "role": "assistant"},
-            {"content": "Hello", "role": "user"},
-            {"content": "You said: Hello", "role": "assistant"},
+            {"content": "Basic stream", "role": "assistant", "content_type": "markdown"},
+            {"content": "Finished", "role": "assistant", "content_type": "markdown"},
+            {"content": "Hello", "role": "user", "content_type": "markdown"},
+            {"content": "You said: Hello", "role": "assistant", "content_type": "markdown"},
             {
                 "content": "Outer startInner startInner endOuter end",
                 "role": "assistant",
+                "content_type": "markdown",
             },
-            {"content": "Outer startInner endOuter end", "role": "assistant"},
-            {"content": "Inner startInner endOuter end", "role": "assistant"},
-            {"content": "Outer startInner endOuter end", "role": "assistant"},
-            {"content": "Goodbye", "role": "user"},
-            {"content": "You said: Goodbye", "role": "assistant"},
+            {"content": "Outer startInner endOuter end", "role": "assistant", "content_type": "markdown"},
+            {"content": "Inner startInner endOuter end", "role": "assistant", "content_type": "markdown"},
+            {"content": "Outer startInner endOuter end", "role": "assistant", "content_type": "markdown"},
+            {"content": "Goodbye", "role": "user", "content_type": "markdown"},
+            {"content": "You said: Goodbye", "role": "assistant", "content_type": "markdown"},
         ]
     )
     message_state.expect_value(str(message_state_expected))

@@ -29,6 +29,6 @@ def test_validate_chat(page: Page, local_app: ShinyAppProc) -> None:
     chat.expect_messages(re.compile(r"\s*".join(messages)))
 
     message_state_expected = tuple(
-        [{"content": message, "role": "assistant"} for message in messages]
+        [{"content": message, "role": "assistant", "content_type": "markdown"} for message in messages]
     )
     message_state.expect_value(str(message_state_expected))

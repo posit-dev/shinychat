@@ -105,6 +105,7 @@ class ShinyChatEnvelope(TypedDict):
 class ChatMessageDict(TypedDict):
     content: str
     role: Role
+    content_type: NotRequired[ContentType]
 
 
 class ChatMessage:

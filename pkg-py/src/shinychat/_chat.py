@@ -293,6 +293,7 @@ class Chat:
                 chat_msg = ChatMessageDict(
                     content=msg_input["content"],
                     role=msg_input["role"],
+                    content_type=msg_input["content_type"],
                 )
                 self._messages_list.set(current + (chat_msg,))
 
@@ -1343,6 +1344,7 @@ class Chat:
                     ChatMessageDict(
                         content=m.get("content", ""),
                         role=m.get("role", "assistant"),
+                        content_type=m.get("content_type", "markdown"),
                     )
                     for m in msgs
                 )

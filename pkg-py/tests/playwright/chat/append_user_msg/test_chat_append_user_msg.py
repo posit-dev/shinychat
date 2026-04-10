@@ -17,5 +17,5 @@ def test_validate_chat_append_user_message(
 
     # Verify that the message state is as expected
     message_state = controller.OutputCode(page, "message_state")
-    message_state_expected = ({"content": "A user message", "role": "user"},)
+    message_state_expected = ({"content": "A user message", "role": "user", "content_type": "markdown"},)
     message_state.expect_value(str(message_state_expected))

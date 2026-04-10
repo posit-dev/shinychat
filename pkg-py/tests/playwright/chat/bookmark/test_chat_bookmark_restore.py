@@ -65,10 +65,10 @@ def test_bookmark_restore_preserves_user_messages(
     message_state = controller.OutputCode(page, "message_state")
     message_state_expected = tuple(
         [
-            {"content": "Hello", "role": "user"},
-            {"content": "You said: Hello", "role": "assistant"},
-            {"content": "World", "role": "user"},
-            {"content": "You said: World", "role": "assistant"},
+            {"content": "Hello", "role": "user", "content_type": "markdown"},
+            {"content": "You said: Hello", "role": "assistant", "content_type": "markdown"},
+            {"content": "World", "role": "user", "content_type": "markdown"},
+            {"content": "You said: World", "role": "assistant", "content_type": "markdown"},
         ]
     )
     message_state.expect_value(str(message_state_expected))
