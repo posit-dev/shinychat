@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import inspect
-import warnings
 from contextlib import asynccontextmanager
 from typing import (
     TYPE_CHECKING,
@@ -382,12 +381,9 @@ class Chat:
                             "A on_user_submit function should not take more than 1 argument"
                         )
                     elif len(fn_params) == 1:
-                        with warnings.catch_warnings():
-                            warnings.simplefilter("ignore")
-                            input = self.user_input(transform=True)
+                        input = self.user_input()
                         # The line immediately below handles the possibility of input
-                        # being transformed to None. Technically, input should never be
-                        # None at this point (since the handler should be suspended).
+                        # being None outside the normal submit flow.
                         input = "" if input is None else input
                         afunc = _utils.wrap_async(cast(UserSubmitFunction1, fn))
                         await afunc(input)
@@ -454,34 +450,30 @@ class Chat:
         tuple[ChatMessageDict, ...]
             A tuple of chat messages.
         """
-        from shiny._deprecated import warn_deprecated
-
         if not isinstance(format, MISSING_TYPE):
-            warn_deprecated(
-                "`.messages(format=...)` is deprecated. "
-                "Provider-specific message formatting will be removed in a future version. "
-                "See here for more details: https://github.com/posit-dev/shinychat/pull/91"
+            raise removed_api_error(
+                "messages(format=...)",
+                "Call `messages()` with default arguments and handle provider-specific "
+                "message formatting outside of `Chat`.",
             )
 
         if token_limits is not None:
-            warn_deprecated(
-                "`.messages(token_limits=...)` is deprecated. "
-                "Token counting and message trimming features will be removed in a future version. "
-                "See here for more details: https://github.com/posit-dev/shinychat/pull/91"
+            raise removed_api_error(
+                "messages(token_limits=...)",
+                "Apply token counting and history trimming outside of `Chat` before "
+                "sending messages to your model provider.",
             )
 
         if transform_user != "all":
-            warn_deprecated(
-                "`.messages(transform_user=...)` is deprecated and has no effect. "
-                "Message transformation features will be removed in a future version. "
-                "See here for more details: https://github.com/posit-dev/shinychat/pull/91"
+            raise removed_api_error(
+                "messages(transform_user=...)",
+                "Read `messages()` as-is and transform user content manually where needed.",
             )
 
         if transform_assistant:
-            warn_deprecated(
-                "`.messages(transform_assistant=...)` is deprecated and has no effect. "
-                "Message transformation features will be removed in a future version. "
-                "See here for more details: https://github.com/posit-dev/shinychat/pull/91"
+            raise removed_api_error(
+                "messages(transform_assistant=...)",
+                "Read `messages()` as-is and transform assistant content manually where needed.",
             )
 
         messages = self._messages_list()
@@ -970,21 +962,11 @@ class Chat:
         """
         Deprecated. User input transformation features will be removed in a future version.
         """
-        from shiny._deprecated import warn_deprecated
-
-        warn_deprecated(
-            "The `.transform_user_input` decorator is deprecated. "
-            "User input transformation features will be removed in a future version. "
-            "See here for more details: https://github.com/posit-dev/shinychat/pull/91"
+        raise removed_api_error(
+            "transform_user_input()",
+            "Transform user input explicitly inside `on_user_submit()` or before "
+            "calling `append_message()`.",
         )
-
-        def _set_transform(fn: TransformUserInput | TransformUserInputAsync):
-            self._transform_user = _utils.wrap_async(fn)
-
-        if fn is None:
-            return _set_transform
-        else:
-            return _set_transform(fn)
 
     @overload
     def transform_assistant_response(
@@ -1075,13 +1057,10 @@ class Chat:
           2. Maintaining message state separately from `.messages()`.
 
         """
-        from shiny._deprecated import warn_deprecated
-
         if transform:
-            warn_deprecated(
-                "`.user_input(transform=...)` is deprecated. "
-                "User input transformation features will be removed in a future version. "
-                "See here for more details: https://github.com/posit-dev/shinychat/pull/91"
+            raise removed_api_error(
+                "user_input(transform=True)",
+                "Read raw input with `user_input()` and transform it manually.",
             )
 
         return self._latest_user_input_raw()
@@ -1672,6 +1651,12 @@ def is_tool_result(val: object) -> "TypeGuard[chatlas.ContentToolResult]":
         return isinstance(val, ContentToolResult)
     except ImportError:
         return False
+
+
+def removed_api_error(api: str, replacement: str) -> NotImplementedError:
+    return NotImplementedError(
+        f"`Chat.{api}` is no longer supported. {replacement}"
+    )
 
 
 CHAT_INSTANCES: WeakValueDictionary[str, Chat] = WeakValueDictionary()

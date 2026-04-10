@@ -4,8 +4,13 @@ import inspect
 import sys
 import types
 from datetime import datetime
-from typing import Union, get_args, get_origin
+from typing import Union, cast, get_args, get_origin
 
+import pytest
+from shiny import Session
+from shiny.module import ResolvedId
+from shiny.session import session_context
+from shinychat import Chat
 from shinychat._chat_normalize import message_content, message_content_chunk
 from shinychat._chat_types import (
     ChatMessage,
@@ -20,6 +25,66 @@ def is_type_in_union(type: object, union: object) -> bool:
     if origin is Union or origin is types.UnionType:
         return type in get_args(union)
     return False
+
+
+class _MockInputs:
+    def __getitem__(self, key: object):
+        def _missing():
+            return None
+
+        return _missing
+
+
+class _MockSession:
+    ns: ResolvedId = ResolvedId("")
+    app: object = None
+    id: str = "mock-session"
+    input = _MockInputs()
+
+    def on_ended(self, callback: object) -> None:
+        pass
+
+    def _increment_busy_count(self) -> None:
+        pass
+
+
+test_session = cast(Session, _MockSession())
+
+
+def make_chat() -> Chat:
+    with session_context(test_session):
+        return Chat(id="chat")
+
+
+def test_user_input_transform_raises_informative_error():
+    chat = make_chat()
+
+    with pytest.raises(NotImplementedError, match="user_input\\(transform=True\\)"):
+        chat.user_input(transform=True)
+
+
+def test_transform_user_input_raises_informative_error():
+    chat = make_chat()
+
+    with pytest.raises(NotImplementedError, match="transform_user_input"):
+        chat.transform_user_input(lambda x: x)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected"),
+    [
+        ({"format": "anthropic"}, "messages(format=...)"),
+        ({"token_limits": (100, 0)}, "messages(token_limits=...)"),
+        ({"transform_user": "last"}, "messages(transform_user=...)"),
+        ({"transform_assistant": True}, "messages(transform_assistant=...)"),
+    ],
+)
+def test_messages_removed_deprecated_arguments_raise(kwargs: dict[str, object], expected: str):
+    chat = make_chat()
+
+    with pytest.raises(NotImplementedError) as exc_info:
+        chat.messages(**kwargs)
+    assert expected in str(exc_info.value)
 
 
 # ------------------------------------------------------------------------------------
