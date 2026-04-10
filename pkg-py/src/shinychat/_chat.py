@@ -172,8 +172,8 @@ class Chat:
         * `"sanitize"`: Sanitize the error message before displaying it to the user.
         * `"unhandled"`: Do not display any error message to the user.
     tokenizer
-        Deprecated. Token counting and message trimming features will be removed in a
-        future version.
+        Deprecated. Token counting and message trimming via `Chat.messages()` is no
+        longer supported.
     """
 
     def __init__(
@@ -204,7 +204,6 @@ class Chat:
 
         self.id = resolve_id(id)
         self.user_input_id = ResolvedId(f"{self.id}_user_input")
-        self._transform_user: TransformUserInputAsync | None = None
         self._transform_assistant: (
             TransformAssistantResponseChunkAsync | None
         ) = None
@@ -297,20 +296,13 @@ class Chat:
                 )
                 self._messages_list.set(current + (chat_msg,))
 
-            # When user input is submitted, handle transforms and suspension
+            # When user input is submitted, capture the raw input and clear any prior
+            # suspension state.
             @reactive.effect(priority=9999)
             @reactive.event(self._user_input)
             async def _on_user_input():
                 user_text = self._user_input()
                 self._latest_user_input_raw.set(user_text)
-
-                if self._transform_user is not None:
-                    transformed = await self._transform_user(user_text)
-                    if transformed is None:
-                        await self._remove_loading_message()
-                        self._suspend_input_handler = True
-                        return
-
                 self._suspend_input_handler = False
 
             self._effects.append(_init_chat)
@@ -433,11 +425,11 @@ class Chat:
         Parameters
         ----------
         format
-            Deprecated. Provider-specific message formatting will be removed in a future
-            version.
+            Unsupported when non-default. Provider-specific formatting must be handled
+            outside of `Chat`.
         token_limits
-            Deprecated. Token counting and message trimming features will be removed in
-            a future version.
+            Unsupported when non-default. Token counting and trimming must be handled
+            outside of `Chat`.
 
         Note
         ----
@@ -556,13 +548,8 @@ class Chat:
 
         msg = message_content(message)
 
-        # Apply transform if present (deprecated but still functional)
-        if msg.role == "user" and self._transform_user is not None:
-            content = await self._transform_user(cast(str, msg.content))
-            if content is None:
-                return
-            msg.content = content
-        elif msg.role == "assistant" and self._transform_assistant is not None:
+        # Assistant transforms are still supported while that deprecated API remains.
+        if msg.role == "assistant" and self._transform_assistant is not None:
             content = await self._transform_assistant(
                 cast(str, msg.content), cast(str, msg.content), True
             )
@@ -960,7 +947,7 @@ class Chat:
         self, fn: TransformUserInput | TransformUserInputAsync | None = None
     ) -> None | Callable[[TransformUserInput | TransformUserInputAsync], None]:
         """
-        Deprecated. User input transformation features will be removed in a future version.
+        Unsupported. User input transformation must be done explicitly by app code.
         """
         raise removed_api_error(
             "transform_user_input()",
@@ -1040,13 +1027,12 @@ class Chat:
         Parameters
         ----------
         transform
-            Whether to apply the user input transformation function (if one was
-            provided).
+            Unsupported when `True`.
 
         Returns
         -------
         str | None
-            The user input message (before any transformation).
+            The raw user input message.
 
         Note
         ----

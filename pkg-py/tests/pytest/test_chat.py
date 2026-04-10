@@ -56,6 +56,12 @@ def make_chat() -> Chat:
         return Chat(id="chat")
 
 
+def test_chat_no_longer_tracks_user_transform_state():
+    chat = make_chat()
+
+    assert not hasattr(chat, "_transform_user")
+
+
 def test_user_input_transform_raises_informative_error():
     chat = make_chat()
 
