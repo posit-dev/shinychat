@@ -4,7 +4,7 @@ import inspect
 import sys
 import types
 from datetime import datetime
-from typing import Union, cast, get_args, get_origin
+from typing import Any, Union, cast, get_args, get_origin
 
 import pytest
 from shiny import Session
@@ -83,7 +83,7 @@ def test_messages_removed_deprecated_arguments_raise(kwargs: dict[str, object], 
     chat = make_chat()
 
     with pytest.raises(NotImplementedError) as exc_info:
-        chat.messages(**kwargs)
+        chat.messages(**cast(Any, kwargs))
     assert expected in str(exc_info.value)
 
 

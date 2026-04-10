@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal, Union
 
-from htmltools import HTMLDependency, TagChild, TagList
+from htmltools import HTML, HTMLDependency, TagChild, TagList
 
 from ._html_islands import split_html_islands
 from ._typing_extensions import NotRequired, TypedDict
@@ -127,6 +127,5 @@ class ChatMessage:
             # block-level custom elements correctly.
             content = f"\n\n{content}\n\n"
 
-        self.content = content
+        self.content: str | HTML = content
         self.html_deps: list[HTMLDependency] = deps
-

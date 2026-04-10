@@ -558,13 +558,13 @@ class Chat:
 
         # Apply transform if present (deprecated but still functional)
         if msg.role == "user" and self._transform_user is not None:
-            content = await self._transform_user(msg.content)
+            content = await self._transform_user(cast(str, msg.content))
             if content is None:
                 return
             msg.content = content
         elif msg.role == "assistant" and self._transform_assistant is not None:
             content = await self._transform_assistant(
-                msg.content, msg.content, True
+                cast(str, msg.content), cast(str, msg.content), True
             )
             if content is None:
                 return
@@ -689,11 +689,11 @@ class Chat:
 
         if operation == "replace":
             self._current_stream_message = (
-                self._message_stream_checkpoint + msg.content
+                self._message_stream_checkpoint + cast(str, msg.content)
             )
             msg.content = self._current_stream_message
         else:
-            self._current_stream_message += msg.content
+            self._current_stream_message += cast(str, msg.content)
 
         try:
             # Apply assistant transform if present (deprecated but still functional)
@@ -701,11 +701,11 @@ class Chat:
                 msg.role == "assistant"
                 and self._transform_assistant is not None
             ):
-                chunk_content = msg.content
+                chunk_content = cast(str, msg.content)
                 msg.content = self._current_stream_message
                 operation = "replace"
                 content = await self._transform_assistant(
-                    msg.content,
+                    cast(str, msg.content),
                     chunk_content,
                     chunk == "end" or chunk is False,
                 )
@@ -1272,7 +1272,10 @@ class Chat:
                 lambda: self.messages(format=MISSING), ignore_init=True
             )
             async def _():
-                messages = self.messages(format=MISSING)
+                messages = cast(
+                    tuple[ChatMessageDict, ...],
+                    self.messages(format=MISSING),
+                )
 
                 if len(messages) == 0:
                     return
