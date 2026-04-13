@@ -84,6 +84,8 @@ shinychat.playwright.ChatController.loc_latest_message py:attribute 1 api/playwr
 shinychat.playwright._chat.Chat.loc_latest_message py:attribute 1 api/playwright.ChatController.html#shinychat.playwright.ChatController.loc_latest_message shinychat.playwright.ChatController.loc_latest_message
 shinychat.playwright.ChatController.loc_messages py:attribute 1 api/playwright.ChatController.html#shinychat.playwright.ChatController.loc_messages -
 shinychat.playwright._chat.Chat.loc_messages py:attribute 1 api/playwright.ChatController.html#shinychat.playwright.ChatController.loc_messages shinychat.playwright.ChatController.loc_messages
+shinychat.playwright.ChatController.loc_scroll_container py:attribute 1 api/playwright.ChatController.html#shinychat.playwright.ChatController.loc_scroll_container -
+shinychat.playwright._chat.Chat.loc_scroll_container py:attribute 1 api/playwright.ChatController.html#shinychat.playwright.ChatController.loc_scroll_container shinychat.playwright.ChatController.loc_scroll_container
 shinychat.playwright.ChatController.send_user_input py:function 1 api/playwright.ChatController.html#shinychat.playwright.ChatController.send_user_input -
 shinychat.playwright._chat.Chat.send_user_input py:function 1 api/playwright.ChatController.html#shinychat.playwright.ChatController.send_user_input shinychat.playwright.ChatController.send_user_input
 shinychat.playwright.ChatController.set_user_input py:function 1 api/playwright.ChatController.html#shinychat.playwright.ChatController.set_user_input -
