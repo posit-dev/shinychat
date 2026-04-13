@@ -1,18 +1,18 @@
 import {
   useState,
   useRef,
-  useEffect,
   useCallback,
   forwardRef,
   useImperativeHandle,
 } from "react"
 import { createPortal } from "react-dom"
+import { useStickToBottom } from "use-stick-to-bottom"
 import { ChatMessages } from "./ChatMessages"
 import { ChatMessage } from "./ChatMessage"
 import { MessageErrorBoundary } from "./MessageErrorBoundary"
 import { ChatInput, type ChatInputHandle } from "./ChatInput"
+import { ScrollToBottomButton } from "./ScrollToBottomButton"
 import { ExternalLinkDialogComponent } from "./ExternalLinkDialog"
-import { useAutoScroll } from "../markdown/useAutoScroll"
 import type { ChatMessageData } from "./state"
 import type { ChatTransport } from "../transport/types"
 
@@ -50,18 +50,13 @@ export const ChatContainer = forwardRef<
   ref,
 ) {
   const chatInputRef = useRef<ChatInputHandle>(null)
-  const sentinelRef = useRef<HTMLDivElement>(null)
 
-  const [inputHasShadow, setInputHasShadow] = useState(false)
   const [pendingUrl, setPendingUrl] = useState<string | null>(null)
   const pendingUrlRef = useRef<string | null>(null)
   pendingUrlRef.current = pendingUrl
 
-  const { containerRef: messagesRef, engageStickToBottom } = useAutoScroll({
-    streaming: !!streamingMessage,
-    contentDependency: streamingMessage ?? messages,
-    scrollOnContentChange: true,
-  })
+  const { scrollRef, contentRef, isAtBottom, scrollToBottom } =
+    useStickToBottom({ resize: "smooth" })
 
   useImperativeHandle(ref, () => ({
     setInputValue(...args) {
@@ -71,27 +66,6 @@ export const ChatContainer = forwardRef<
       chatInputRef.current?.focus()
     },
   }))
-
-  useEffect(() => {
-    const sentinel = sentinelRef.current
-    if (!sentinel) return
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const addShadow = entries[0]?.intersectionRatio === 0
-        setInputHasShadow((current) =>
-          current === addShadow ? current : addShadow,
-        )
-      },
-      {
-        threshold: [0, 1],
-        rootMargin: "0px",
-      },
-    )
-
-    observer.observe(sentinel)
-    return () => observer.disconnect()
-  }, [])
 
   const onContainerClick = useCallback((e: React.MouseEvent<HTMLElement>) => {
     const target = e.target as HTMLElement
@@ -186,39 +160,38 @@ export const ChatContainer = forwardRef<
     setPendingUrl(null)
   }, [])
 
-  const isStreaming = !!streamingMessage
-
-  // When a new non-streaming message arrives (e.g. append_message), re-engage
-  // auto-scroll so the user sees it. We don't re-engage for streaming starts
-  // (chunk_start) because the user should be able to scroll away during streaming.
-  const prevMessageCountRef = useRef(messages.length)
-  useEffect(() => {
-    const prevCount = prevMessageCountRef.current
-    prevMessageCountRef.current = messages.length
-    if (messages.length > prevCount && !isStreaming) {
-      engageStickToBottom()
-    }
-  }, [messages.length, isStreaming, engageStickToBottom])
+  const onSend = useCallback(() => {
+    scrollToBottom()
+  }, [scrollToBottom])
 
   return (
     <>
-      <div
-        className="shiny-chat-messages"
-        ref={messagesRef}
-        role="log"
-        aria-live="polite"
-        onClick={onMessagesClick}
-        onKeyDown={onSuggestionKeydown}
-      >
-        <ChatMessages messages={messages} iconAssistant={iconAssistant} />
-        {streamingMessage && (
-          <MessageErrorBoundary key={streamingMessage.id}>
-            <ChatMessage
-              message={streamingMessage}
-              iconAssistant={iconAssistant}
-            />
-          </MessageErrorBoundary>
-        )}
+      <div className="shiny-chat-messages-wrapper">
+        <div className="shiny-chat-messages" ref={scrollRef}>
+          <div
+            className="shiny-chat-messages-content"
+            ref={contentRef}
+            role="log"
+            aria-live="polite"
+            onClick={onMessagesClick}
+            onKeyDown={onSuggestionKeydown}
+          >
+            <ChatMessages messages={messages} iconAssistant={iconAssistant} />
+            {streamingMessage && (
+              <MessageErrorBoundary key={streamingMessage.id}>
+                <ChatMessage
+                  message={streamingMessage}
+                  iconAssistant={iconAssistant}
+                />
+              </MessageErrorBoundary>
+            )}
+          </div>
+        </div>
+        <ScrollToBottomButton
+          isAtBottom={isAtBottom}
+          scrollToBottom={scrollToBottom}
+          streaming={!!streamingMessage}
+        />
       </div>
 
       <div
@@ -232,15 +205,11 @@ export const ChatContainer = forwardRef<
           transport={transport}
           inputId={inputId}
           disabled={inputDisabled}
-          hasTopShadow={inputHasShadow}
+          hasTopShadow={!isAtBottom}
           placeholder={inputPlaceholder}
-          onSend={engageStickToBottom}
+          onSend={onSend}
         />
       </div>
-
-      {/* IntersectionObserver sentinel: triggers shadow on the textarea
-          when messages scroll behind the input area */}
-      <div ref={sentinelRef} style={{ width: "100%", height: 0 }} />
 
       {pendingUrl &&
         createPortal(
