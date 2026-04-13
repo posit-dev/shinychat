@@ -64,7 +64,7 @@ shiny-chat-container {
 .shiny-chat-messages-wrapper {
   position: relative;
   min-height: 0; // Allow grid child to shrink
-  overflow: hidden; // Clip the absolutely-positioned button
+  overflow: clip; // Clip the absolutely-positioned button without creating a scroll container
 }
 
 // Scroll container — useStickToBottom attaches scrollRef here
@@ -215,7 +215,7 @@ shiny-chat-container {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 6px;
+  padding: 8px;
   border: var(--shiny-chat-border);
   border-radius: 50%;
   background-color: var(--bs-body-bg, #fff);
@@ -230,6 +230,11 @@ shiny-chat-container {
   &:hover {
     background-color: var(--bs-tertiary-bg, #f8f9fa);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--bs-primary, #007bc2);
+    outline-offset: 2px;
   }
 
   svg {
@@ -271,6 +276,12 @@ shiny-chat-container {
 @keyframes shiny-chat-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shiny-chat-scroll-to-bottom.streaming::before {
+    animation: none;
   }
 }
 
