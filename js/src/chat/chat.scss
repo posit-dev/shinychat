@@ -236,16 +236,29 @@ shiny-chat-container {
     display: block;
   }
 
-  // Spinning border arc while streaming
+  // Spinning gradient border while streaming
   &.streaming {
+    --_streaming-gradient: var(
+      --shiny-chat-streaming-color,
+      var(--bs-indigo, #4b00c1),
+      var(--bs-purple, #74149c),
+      var(--bs-pink, #bf007f)
+    );
+
     &::before {
       content: "";
       position: absolute;
       inset: -2px;
       border-radius: 50%;
-      border: 2px solid transparent;
-      border-top-color: var(--bs-primary, #007bc2);
-      animation: shiny-chat-spin 0.8s linear infinite;
+      background: linear-gradient(120deg, var(--_streaming-gradient), transparent);
+      animation: shiny-chat-spin 1.2s linear infinite;
+
+      // Mask out the center so only the 2px border ring is visible
+      mask: radial-gradient(
+        farthest-side,
+        transparent calc(100% - 2px),
+        #000 calc(100% - 2px)
+      );
     }
   }
 }
