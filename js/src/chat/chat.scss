@@ -60,17 +60,33 @@ shiny-chat-container {
   }
 }
 
+// Wrapper positions the scroll-to-bottom button over the messages area
+.shiny-chat-messages-wrapper {
+  position: relative;
+  min-height: 0; // Allow grid child to shrink
+  overflow: hidden; // Clip the absolutely-positioned button
+}
+
+// Scroll container — useStickToBottom attaches scrollRef here
 .shiny-chat-messages {
-  display: flex;
-  flex-direction: column;
-  gap: 2rem;
+  height: 100%;
   overflow: auto;
-  margin-bottom: 1rem;
 
   // Make space for the scroll bar
   --_scroll-margin: 1rem;
   padding-right: var(--_scroll-margin);
   margin-right: calc(-1 * var(--_scroll-margin));
+}
+
+// Content wrapper — useStickToBottom attaches contentRef here
+.shiny-chat-messages-content {
+  --shiny-chat-messages-padding-bottom: 4rem;
+
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  // Extra breathing room so the last message isn't flush against the input
+  padding-bottom: var(--shiny-chat-messages-padding-bottom);
 }
 
 // React renders messages as <div class="shiny-chat-message"> (not custom elements),
@@ -149,8 +165,7 @@ shiny-chat-container {
 
   margin-top: calc(-1 * var(--_input-padding-top));
   position: sticky;
-  bottom: calc(-1 * var(--_input-padding-bottom) + 4px);
-  // 4px: autoscroll adds 2px to height, this keeps input from wiggling when scrolling on top of chat
+  bottom: calc(-1 * var(--_input-padding-bottom));
   padding-block: var(--_input-padding-top) var(--_input-padding-bottom);
 
   textarea {
@@ -187,6 +202,58 @@ shiny-chat-container {
 */
 .shiny-busy:has(.shiny-chat-input.disabled)::after {
   display: none;
+}
+
+/* Scroll-to-bottom button — absolutely positioned within the messages wrapper */
+.shiny-chat-scroll-to-bottom {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border: var(--shiny-chat-border);
+  border-radius: 50%;
+  background-color: var(--bs-body-bg, #fff);
+  color: var(--bs-body-color, #212529);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  transition:
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+  line-height: 1;
+
+  &:hover {
+    background-color: var(--bs-tertiary-bg, #f8f9fa);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+  }
+
+  svg {
+    display: block;
+  }
+
+  // Spinning border arc while streaming
+  &.streaming {
+    &::before {
+      content: "";
+      position: absolute;
+      inset: -2px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      border-top-color: var(--bs-primary, #007bc2);
+      animation: shiny-chat-spin 0.8s linear infinite;
+    }
+  }
+}
+
+@keyframes shiny-chat-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* External link dialog styling */
