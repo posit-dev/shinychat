@@ -254,6 +254,11 @@ shiny-chat-container {
       animation: shiny-chat-spin 1.2s linear infinite;
 
       // Mask out the center so only the 2px border ring is visible
+      -webkit-mask: radial-gradient(
+        farthest-side,
+        transparent calc(100% - 2px),
+        #000 calc(100% - 2px)
+      );
       mask: radial-gradient(
         farthest-side,
         transparent calc(100% - 2px),
