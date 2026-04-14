@@ -191,7 +191,7 @@ describe("chatReducer", () => {
       expect(next.messages).toBe(state.messages)
     })
 
-    it("updates contentType when chunk provides one", () => {
+    it("ignores contentType provided by a chunk (locked to chunk_start)", () => {
       const msg = makeAssistantMsg({
         streaming: true,
         contentType: "markdown",
@@ -203,7 +203,7 @@ describe("chatReducer", () => {
         operation: "append",
         content_type: "html",
       })
-      expect(next.streamingMessage!.contentType).toBe("html")
+      expect(next.streamingMessage!.contentType).toBe("markdown")
     })
 
     it("keeps contentType when chunk does not provide one", () => {
