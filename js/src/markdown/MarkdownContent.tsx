@@ -15,9 +15,10 @@ import { RawHTML } from "../chat/RawHTML"
 const baseAssistantComponents: Record<string, ComponentType<unknown>> = {
   pre: CopyableCodeBlock as ComponentType<unknown>,
   table: BootstrapTable as ComponentType<unknown>,
-  "shinychat-raw-html": (({ node }: { node?: Element }) => (
-    <RawHTML html={node ? toHtml(node.children) : ""} displayContents />
-  )) as ComponentType<unknown>,
+  "shinychat-raw-html": (({ node }: { node?: Element }) => {
+    const html = node ? toHtml(node.children) : ""
+    return <RawHTML html={html} displayContents />
+  }) as ComponentType<unknown>,
 }
 
 const baseUserComponents: Record<string, ComponentType<unknown>> = {
@@ -48,6 +49,7 @@ export function MarkdownContent({
     : isUser
       ? userMarkdownProcessor
       : markdownProcessor
+
   const resolvedTagToComponentMap = useMemo(
     () =>
       isUser

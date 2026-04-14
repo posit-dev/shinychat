@@ -118,11 +118,11 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
           ? last.content + action.content
           : action.content
 
-      // Update contentType if the chunk provides one (e.g., transition
-      // from "markdown" to "html" when UI elements appear mid-stream)
-      const contentType = action.content_type ?? last.contentType
-
-      return { ...state, streamingMessage: { ...last, content, contentType } }
+      // Do not update contentType mid-stream: switching processors between
+      // chunks causes HAST structural changes that unmount/remount HTML islands
+      // (e.g. <shinychat-raw-html>). The markdownProcessor already handles raw
+      // HTML via rehypeRaw, so the chunk_start contentType is sufficient.
+      return { ...state, streamingMessage: { ...last, content } }
     }
 
     case "chunk_end": {
