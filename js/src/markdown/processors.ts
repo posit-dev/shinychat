@@ -7,6 +7,7 @@ import rehypeSanitize from "rehype-sanitize"
 import rehypeHighlight from "rehype-highlight"
 
 import { rehypeAccessibleSuggestions } from "./plugins/rehypeAccessibleSuggestions"
+import { rehypeSnapshotHtmlIslands } from "./plugins/rehypeSnapshotHtmlIslands"
 import { remarkEscapeHtml } from "./plugins/remarkEscapeHtml"
 import { rehypeExternalLinks } from "./plugins/rehypeExternalLinks"
 import { rehypeUncontrolledInputs } from "./plugins/rehypeUncontrolledInputs"
@@ -26,6 +27,7 @@ export const markdownProcessor = unified()
   .use(remarkGfm)
   .use(remarkRehype, { allowDangerousHtml: true })
   .use(rehypeRaw)
+  .use(rehypeSnapshotHtmlIslands)
   .use(rehypeLazyContinuation)
   .use(rehypeUnwrapBlockCEs)
   .use(rehypeUncontrolledInputs)
