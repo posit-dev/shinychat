@@ -137,6 +137,7 @@ shiny-chat-container {
   /* Vertically center the 2nd column (message content) */
   .shiny-chat-message-content {
     align-self: center;
+    padding-right: 1px;
   }
 }
 
