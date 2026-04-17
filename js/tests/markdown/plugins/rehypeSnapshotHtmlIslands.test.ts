@@ -10,6 +10,7 @@ import {
   HTML_ISLAND_RAW_HTML,
 } from "../../../src/markdown/plugins/rehypeSnapshotHtmlIslands"
 import rehypeStringify from "rehype-stringify"
+import type { Element } from "hast"
 
 function snapshotFromMarkdown(md: string): string | undefined {
   let snapshot: string | undefined
@@ -21,7 +22,7 @@ function snapshotFromMarkdown(md: string): string | undefined {
     .use(rehypeSnapshotHtmlIslands)
     .use(rehypeAccessibleSuggestions)
     .use(() => (tree) => {
-      visit(tree, "element", (node) => {
+      visit(tree, "element", (node: Element) => {
         if (node.tagName === "shinychat-raw-html") {
           snapshot = node.data?.[HTML_ISLAND_RAW_HTML] as string | undefined
         }
