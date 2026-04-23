@@ -74,6 +74,7 @@ else:
 __all__ = (
     "Chat",
     "ChatExpress",
+    "ChatMessage",
     "chat_ui",
     "ChatMessageDict",
 )

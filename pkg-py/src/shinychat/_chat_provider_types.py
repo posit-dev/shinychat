@@ -3,6 +3,17 @@ from typing import TYPE_CHECKING, Literal, Union
 
 from ._chat_types import ChatMessageDict
 
+__all__ = (
+    "AnthropicMessage",
+    "GoogleMessage",
+    "LangChainMessage",
+    "OllamaMessage",
+    "OpenAIMessage",
+    "ProviderMessage",
+    "ProviderMessageFormat",
+    "as_provider_message",
+)
+
 if TYPE_CHECKING:
     from anthropic.types import (  # pyright: ignore[reportMissingImports]
         MessageParam as AnthropicMessage,
