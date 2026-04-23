@@ -154,7 +154,7 @@ shiny-chat-container {
 
 .shiny-chat-message,
 .shiny-chat-user-message {
-  &.content-type-text {
+  .content-type-text {
     white-space: pre;
     overflow-x: auto;
   }

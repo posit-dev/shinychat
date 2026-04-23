@@ -207,6 +207,11 @@ describe("chatReducer", () => {
         operation: "replace",
       })
       expect(next.streamingMessage!.content).toBe("new")
+      expect(next.streamingMessage!.segments).toHaveLength(1)
+      expect(next.streamingMessage!.segments![0]).toEqual({
+        content: "new",
+        contentType: "markdown",
+      })
       expect(next.messages).toBe(state.messages)
     })
 
@@ -269,7 +274,7 @@ describe("chatReducer", () => {
       expect(next.streamingMessage!.content).toBe("hello<div>widget</div>")
     })
 
-    it("replace operation scopes to current segment", () => {
+    it("replace operation resets all segments", () => {
       const msg = makeAssistantMsg({
         streaming: true,
         content: "old",
@@ -285,15 +290,28 @@ describe("chatReducer", () => {
         content: "new",
         operation: "replace",
       })
-      expect(next.streamingMessage!.segments).toHaveLength(2)
+      expect(next.streamingMessage!.segments).toHaveLength(1)
       expect(next.streamingMessage!.segments![0]).toEqual({
-        content: "frozen",
-        contentType: "markdown",
-      })
-      expect(next.streamingMessage!.segments![1]).toEqual({
         content: "new",
         contentType: "html",
       })
+      expect(next.streamingMessage!.content).toBe("new")
+    })
+
+    it("updates contentType to match latest segment on type transition", () => {
+      const msg = makeAssistantMsg({
+        streaming: true,
+        content: "hello",
+        contentType: "markdown",
+      })
+      const state = makeState({ streamingMessage: msg })
+      const next = chatReducer(state, {
+        type: "chunk",
+        content: "<div>widget</div>",
+        operation: "append",
+        content_type: "html",
+      })
+      expect(next.streamingMessage!.contentType).toBe("html")
     })
 
     it("keeps contentType when chunk does not provide one", () => {

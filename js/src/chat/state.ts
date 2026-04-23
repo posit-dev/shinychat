@@ -120,23 +120,44 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       const last = state.streamingMessage
       if (!last || !last.streaming) return state
 
+      const chunkType =
+        action.content_type ??
+        last.segments![last.segments!.length - 1]!.contentType
+
+      if (action.operation === "replace") {
+        const segments = [{ content: action.content, contentType: chunkType }]
+        return {
+          ...state,
+          streamingMessage: {
+            ...last,
+            content: action.content,
+            contentType: chunkType,
+            segments,
+          },
+        }
+      }
+
       const segments = [...last.segments!]
       const current = segments[segments.length - 1]!
-      const chunkType = action.content_type ?? current.contentType
 
       if (chunkType !== current.contentType) {
         segments.push({ content: action.content, contentType: chunkType })
       } else {
-        const content =
-          action.operation === "append"
-            ? current.content + action.content
-            : action.content
+        const content = current.content + action.content
         segments[segments.length - 1] = { ...current, content }
       }
 
       const content = segments.map((s) => s.content).join("")
 
-      return { ...state, streamingMessage: { ...last, content, segments } }
+      return {
+        ...state,
+        streamingMessage: {
+          ...last,
+          content,
+          contentType: chunkType,
+          segments,
+        },
+      }
     }
 
     case "chunk_end": {
