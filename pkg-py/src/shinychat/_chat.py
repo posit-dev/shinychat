@@ -33,7 +33,7 @@ from ._chat_bookmark import (
 )
 from ._chat_normalize import message_content, message_content_chunk
 from ._chat_provider_types import (
-    AnthropicMessage,  # pyright: ignore[reportAttributeAccessIssue]
+    AnthropicMessage,
     GoogleMessage,
     LangChainMessage,
     OllamaMessage,
@@ -74,6 +74,7 @@ else:
 __all__ = (
     "Chat",
     "ChatExpress",
+    "ChatMessage",
     "chat_ui",
     "ChatMessageDict",
 )
