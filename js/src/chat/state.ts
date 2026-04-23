@@ -5,6 +5,11 @@ import type {
 } from "../transport/types"
 import { uuid } from "../utils/uuid"
 
+export interface ContentSegment {
+  content: string
+  contentType: ContentType
+}
+
 export interface ChatMessageData {
   id: string
   role: "user" | "assistant"
@@ -14,6 +19,7 @@ export interface ChatMessageData {
   /** True for the empty placeholder message shown while waiting for the assistant to respond. */
   isPlaceholder?: boolean
   icon?: string
+  segments?: ContentSegment[]
 }
 
 export interface ChatInputState {
@@ -55,6 +61,7 @@ function messagePayloadToData(msg: MessagePayload): ChatMessageData {
     contentType: msg.content_type,
     streaming: false,
     icon: msg.icon,
+    segments: [{ content: msg.content, contentType: msg.content_type }],
   }
 }
 
@@ -113,16 +120,23 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       const last = state.streamingMessage
       if (!last || !last.streaming) return state
 
-      const content =
-        action.operation === "append"
-          ? last.content + action.content
-          : action.content
+      const segments = [...last.segments!]
+      const current = segments[segments.length - 1]!
+      const chunkType = action.content_type ?? current.contentType
 
-      // Update contentType if the chunk provides one (e.g., transition
-      // from "markdown" to "html" when UI elements appear mid-stream)
-      const contentType = action.content_type ?? last.contentType
+      if (chunkType !== current.contentType) {
+        segments.push({ content: action.content, contentType: chunkType })
+      } else {
+        const content =
+          action.operation === "append"
+            ? current.content + action.content
+            : action.content
+        segments[segments.length - 1] = { ...current, content }
+      }
 
-      return { ...state, streamingMessage: { ...last, content, contentType } }
+      const content = segments.map((s) => s.content).join("")
+
+      return { ...state, streamingMessage: { ...last, content, segments } }
     }
 
     case "chunk_end": {

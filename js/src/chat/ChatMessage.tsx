@@ -36,13 +36,20 @@ export const ChatMessage = memo(function ChatMessage({
         />
       )}
       <div className="shiny-chat-message-content">
-        <MarkdownContent
-          content={message.content}
-          contentType={message.contentType}
-          role={message.role}
-          streaming={message.streaming}
-          tagToComponentMap={chatTagToComponentMap}
-        />
+        {(
+          message.segments ?? [
+            { content: message.content, contentType: message.contentType },
+          ]
+        ).map((seg, i, arr) => (
+          <MarkdownContent
+            key={i}
+            content={seg.content}
+            contentType={seg.contentType}
+            role={message.role}
+            streaming={message.streaming && i === arr.length - 1}
+            tagToComponentMap={chatTagToComponentMap}
+          />
+        ))}
       </div>
     </div>
   )
