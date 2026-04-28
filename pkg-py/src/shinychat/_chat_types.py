@@ -23,7 +23,7 @@ class MessagePayload(TypedDict):
     content_type: ContentType
     id: NotRequired[str]
     icon: NotRequired[str]
-    html_deps: NotRequired[list[dict[str, str]]]
+    html_deps: NotRequired[list[dict[str, object]]]
 
 
 class MessageAction(TypedDict):
@@ -83,7 +83,7 @@ ChatAction = Union[
 class ShinyChatEnvelope(TypedDict):
     id: str
     action: ChatAction
-    html_deps: NotRequired[list[dict[str, str]]]
+    html_deps: NotRequired[list[dict[str, object]]]
 
 
 # ---------------------------------------------------------------------------

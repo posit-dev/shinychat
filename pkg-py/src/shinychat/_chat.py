@@ -957,10 +957,9 @@ class Chat:
 
         # Register deps with the session and get the dictionary format
         # for client-side rendering
-        html_deps: list[dict[str, str]] | None = None
+        html_deps: list[dict[str, object]] | None = None
         if html_deps_serialized:
-            # Pre-serialized deps (e.g., from bookmark restore) bypass _process_ui
-            html_deps = html_deps_serialized  # type: ignore[assignment]
+            html_deps = html_deps_serialized
         elif message.html_deps:
             processed = self._session._process_ui(TagList(*message.html_deps))
             html_deps = processed["deps"]
@@ -1388,7 +1387,7 @@ class Chat:
     async def _send_action(
         self,
         action: ChatAction,
-        html_deps: list[dict[str, str]] | None = None,
+        html_deps: list[dict[str, object]] | None = None,
     ):
         envelope: dict[str, object] = {
             "id": self.id,
