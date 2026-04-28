@@ -1572,11 +1572,10 @@ class Chat:
                 )
 
             for message_dict in msgs:
-                msg = ChatMessage(
+                stored = StoredMessage(
                     content=message_dict["content"],
                     role=message_dict.get("role", "assistant"),
                 )
-                stored = StoredMessage.from_chat_message(msg)
                 self._store_message(stored)
                 await self._send_append_message(
                     stored,
