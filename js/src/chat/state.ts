@@ -5,6 +5,11 @@ import type {
 } from "../transport/types"
 import { uuid } from "../utils/uuid"
 
+export interface ContentSegment {
+  content: string
+  contentType: ContentType
+}
+
 export interface ChatMessageData {
   id: string
   role: "user" | "assistant"
@@ -14,6 +19,7 @@ export interface ChatMessageData {
   /** True for the empty placeholder message shown while waiting for the assistant to respond. */
   isPlaceholder?: boolean
   icon?: string
+  segments?: ContentSegment[]
 }
 
 export interface ChatInputState {
@@ -55,6 +61,7 @@ function messagePayloadToData(msg: MessagePayload): ChatMessageData {
     contentType: msg.content_type,
     streaming: false,
     icon: msg.icon,
+    segments: [{ content: msg.content, contentType: msg.content_type }],
   }
 }
 
@@ -113,16 +120,44 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       const last = state.streamingMessage
       if (!last || !last.streaming) return state
 
-      const content =
-        action.operation === "append"
-          ? last.content + action.content
-          : action.content
+      const chunkType =
+        action.content_type ??
+        last.segments![last.segments!.length - 1]!.contentType
 
-      // Update contentType if the chunk provides one (e.g., transition
-      // from "markdown" to "html" when UI elements appear mid-stream)
-      const contentType = action.content_type ?? last.contentType
+      if (action.operation === "replace") {
+        const segments = [{ content: action.content, contentType: chunkType }]
+        return {
+          ...state,
+          streamingMessage: {
+            ...last,
+            content: action.content,
+            contentType: chunkType,
+            segments,
+          },
+        }
+      }
 
-      return { ...state, streamingMessage: { ...last, content, contentType } }
+      const segments = [...last.segments!]
+      const current = segments[segments.length - 1]!
+
+      if (chunkType !== current.contentType) {
+        segments.push({ content: action.content, contentType: chunkType })
+      } else {
+        const content = current.content + action.content
+        segments[segments.length - 1] = { ...current, content }
+      }
+
+      const content = segments.map((s) => s.content).join("")
+
+      return {
+        ...state,
+        streamingMessage: {
+          ...last,
+          content,
+          contentType: chunkType,
+          segments,
+        },
+      }
     }
 
     case "chunk_end": {

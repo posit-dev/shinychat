@@ -56,7 +56,11 @@ class Chat(UiBase):
     """
     loc_messages: Locator
     """
-    Playwright `Locator` for the chat messages.
+    Playwright `Locator` for the chat messages content container.
+    """
+    loc_scroll_container: Locator
+    """
+    Playwright `Locator` for the scrollable messages container.
     """
     loc_latest_message: Locator
     """
@@ -91,7 +95,8 @@ class Chat(UiBase):
             id=id,
             loc=f"#{id}",
         )
-        self.loc_messages = self.loc.locator("> .shiny-chat-messages")
+        self.loc_messages = self.loc.locator(".shiny-chat-messages-content")
+        self.loc_scroll_container = self.loc.locator(".shiny-chat-messages")
         self.loc_latest_message = self.loc_messages.locator("> :last-child")
         self.loc_input_container = self.loc.locator("> .shiny-chat-input")
         self.loc_input = self.loc_input_container.locator("textarea")
