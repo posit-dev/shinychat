@@ -61,7 +61,6 @@ from ._chat_types import (
     ContentType,
     MessagePayload,
     StoredMessage,
-    StoredMessageDict,
 )
 from ._html_deps_py_shiny import shinychat_dependency
 from ._typing_extensions import TypeGuard
@@ -523,11 +522,13 @@ class Chat:
             messages = self._trim_messages(messages, token_limits, format)
 
         res: list[ChatMessageDict | ProviderMessage] = []
-        for message_dict in self._message_dicts(messages):
+        for m in messages:
+            chat_msg = ChatMessageDict(content=str(m.content), role=m.role)
+            if m.html_deps:
+                chat_msg["html_deps"] = m.html_deps
             if not isinstance(format, MISSING_TYPE):
-                res.append(as_provider_message(message_dict, format))
-                continue
-            res.append(message_dict)
+                chat_msg = as_provider_message(chat_msg, format)
+            res.append(chat_msg)
 
         return tuple(res)
 
@@ -1150,36 +1151,6 @@ class Chat:
         )
         return StoredMessage.from_chat_message(message, html_deps=html_deps)
 
-    def _message_dicts(
-        self, messages: tuple[StoredMessage, ...] | None = None
-    ) -> tuple[ChatMessageDict, ...]:
-        if messages is None:
-            from shiny import reactive
-
-            with reactive.isolate():
-                messages = self._messages()
-        return tuple(
-            ChatMessageDict(content=str(m.content), role=m.role)
-            for m in messages
-        )
-
-    def _stored_message_dicts(
-        self, messages: tuple[StoredMessage, ...] | None = None
-    ) -> tuple[StoredMessageDict, ...]:
-        if messages is None:
-            from shiny import reactive
-
-            with reactive.isolate():
-                messages = self._messages()
-
-        res: list[StoredMessageDict] = []
-        for m in messages:
-            msg = StoredMessageDict(content=str(m.content), role=m.role)
-            if m.html_deps:
-                msg["html_deps"] = m.html_deps
-            res.append(msg)
-        return tuple(res)
-
     # Just before storing, handle chunk msg type and calculate tokens
     def _store_message(
         self,
@@ -1570,8 +1541,8 @@ class Chat:
                 # This does NOT contain the `chat.ui(messages=)` values.
                 # When restoring, the `chat.ui(messages=)` values will need to be kept
                 # and the `ui.Chat(messages=)` values will need to be reset
-                state.values[resolved_bookmark_id_msgs_str] = (
-                    self._stored_message_dicts()
+                state.values[resolved_bookmark_id_msgs_str] = self.messages(
+                    format=MISSING
                 )
 
         # Attempt to stop the initialization of the `ui.Chat(messages=)` messages

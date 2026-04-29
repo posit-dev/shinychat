@@ -252,32 +252,6 @@ def test_stream_replace_discards_stale_html_dependencies():
         assert captured[0].html_deps is None
 
 
-def test_chat_message_dicts_hide_html_deps_but_bookmark_dicts_keep_them():
-    with session_context(test_session):
-        chat = Chat(id="chat")
-        expected_html_deps: list[dict[str, object]] = [
-            {"name": "custom-styled-card", "version": "1.0.0"}
-        ]
-        chat._store_message(
-            StoredMessage(
-                content="Restored message",
-                role="assistant",
-                html_deps=expected_html_deps,
-            )
-        )
-
-        assert chat._message_dicts() == (
-            ChatMessageDict(content="Restored message", role="assistant"),
-        )
-        assert chat._stored_message_dicts() == (
-            {
-                "content": "Restored message",
-                "role": "assistant",
-                "html_deps": expected_html_deps,
-            },
-        )
-
-
 # ------------------------------------------------------------------------------------
 # Unit tests for message_content() and message_content_chunk().
 #
