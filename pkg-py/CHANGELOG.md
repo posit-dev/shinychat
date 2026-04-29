@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
-* Removed the deprecated `transform_user` and `transform_assistant` parameters from `.messages()`. As a result, `.messages()` now _always_ returns transformed content (i.e., the result of applying `.transform_user_input()` / `.transform_assistant_response()`, if any), meaning that it's a truer reflection of UI than LLM message state. This change reflects a greater change in philosophy that `shinychat` shouldn't be managing LLM message state (a backend framework like `chatlas`, `langchain`, `pydantic`, etc. should do this instead). (#193)
+* Removed the deprecated `transform_user` and `transform_assistant` parameters from `.messages()`. As a result, `.messages()` now _always_ returns transformed content (i.e., the result of applying `.transform_user_input()` / `.transform_assistant_response()`, if any), meaning it's better reflection of UI state than LLM-facing message state. This change reflects a greater change in philosophy that `shinychat` shouldn't be managing LLM message state (a backend framework like `chatlas`, `langchain`, `pydantic`, etc. should do this instead). (#193)
 
 * Removed the deprecated `transform` parameter from `.user_input()`. `.user_input()` now always returns the currently stored user message content, which matches the simplified transform handling used by `.messages()`. (#193)
 
