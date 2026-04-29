@@ -669,12 +669,7 @@ specified in model's completion method.</code></pre>
 </section>
 <section id="shinychat.express.Chat.messages" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.express.Chat.messages">messages</h3>
-<div class="sourceCode" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>express.Chat.messages(</span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>    <span class="bu">format</span><span class="op">=</span>MISSING,</span>
-<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>    token_limits<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>    transform_user<span class="op">=</span><span class="st">'all'</span>,</span>
-<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>    transform_assistant<span class="op">=</span><span class="va">False</span>,</span>
-<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>express.Chat.messages(<span class="bu">format</span><span class="op">=</span>MISSING, token_limits<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Reactively read chat messages</p>
 <p>Obtain chat messages within a reactive context.</p>
 <section id="parameters-3" class="level4 doc-section doc-section-parameters">
@@ -700,18 +695,6 @@ specified in model's completion method.</code></pre>
 <td><a href="`tuple`">tuple</a>[<a href="`int`">int</a>, <a href="`int`">int</a>] | None</td>
 <td>Deprecated. Token counting and message trimming features will be removed in a future version.</td>
 <td><code>None</code></td>
-</tr>
-<tr class="odd">
-<td>transform_user</td>
-<td><a href="`typing.Literal`">Literal</a>['all', 'last', 'none']</td>
-<td>Deprecated. Message transformation features will be removed in a future version.</td>
-<td><code>'all'</code></td>
-</tr>
-<tr class="even">
-<td>transform_assistant</td>
-<td><a href="`bool`">bool</a></td>
-<td>Deprecated. Message transformation features will be removed in a future version.</td>
-<td><code>False</code></td>
 </tr>
 </tbody>
 </table>
@@ -917,29 +900,8 @@ specified in model's completion method.</code></pre>
 </section>
 <section id="shinychat.express.Chat.user_input" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.express.Chat.user_input">user_input</h3>
-<div class="sourceCode" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>express.Chat.user_input(transform<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>express.Chat.user_input()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Reactively read the user’s message.</p>
-<section id="parameters-7" class="level4 doc-section doc-section-parameters">
-<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-7">Parameters</h4>
-<table class="caption-top table">
-<thead>
-<tr class="header">
-<th>Name</th>
-<th>Type</th>
-<th>Description</th>
-<th>Default</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>transform</td>
-<td><a href="`bool`">bool</a></td>
-<td>Whether to apply the user input transformation function (if one was provided).</td>
-<td><code>False</code></td>
-</tr>
-</tbody>
-</table>
-</section>
 <section id="returns-3" class="level4 doc-section doc-section-returns">
 <h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-3">Returns</h4>
 <table class="caption-top table">
@@ -954,7 +916,7 @@ specified in model's completion method.</code></pre>
 <tr class="odd">
 <td></td>
 <td><a href="`str`">str</a> | None</td>
-<td>The user input message (before any transformation).</td>
+<td>The user input message.</td>
 </tr>
 </tbody>
 </table>
