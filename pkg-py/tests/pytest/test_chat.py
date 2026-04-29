@@ -55,6 +55,14 @@ def transformed_message(content: str, role: Role) -> StoredMessage:
     )
 
 
+def test_chat_user_input_no_longer_accepts_transform_argument():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+
+        with pytest.raises(TypeError):
+            chat.user_input(transform=True)
+
+
 def test_chat_message_trimming():
     with session_context(test_session):
         chat = Chat(id="chat")

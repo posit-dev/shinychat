@@ -26,7 +26,7 @@ async def capitalize(input: str) -> Union[str, None]:
 
 @chat.on_user_submit
 async def _():
-    user = chat.user_input(transform=True)
+    user = chat.user_input()
     await chat.append_message(f"Transformed input: {user}")
 
 

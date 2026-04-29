@@ -383,9 +383,7 @@ class Chat:
                             "A on_user_submit function should not take more than 1 argument"
                         )
                     elif len(fn_params) == 1:
-                        with warnings.catch_warnings():
-                            warnings.simplefilter("ignore")
-                            input = self.user_input(transform=True)
+                        input = self.user_input()
                         # The line immediately below handles the possibility of input
                         # being transformed to None. Technically, input should never be
                         # None at this point (since the handler should be suspended).
@@ -1263,20 +1261,14 @@ class Chat:
         else:
             return len(encoded)
 
-    def user_input(self, transform: bool = False) -> str | None:
+    def user_input(self) -> str | None:
         """
         Reactively read the user's message.
-
-        Parameters
-        ----------
-        transform
-            Whether to apply the user input transformation function (if one was
-            provided).
 
         Returns
         -------
         str | None
-            The user input message (before any transformation).
+            The user input message.
 
         Note
         ----
@@ -1287,15 +1279,6 @@ class Chat:
           2. Maintaining message state separately from `.messages()`.
 
         """
-        from shiny._deprecated import warn_deprecated
-
-        if transform:
-            warn_deprecated(
-                "`.user_input(transform=...)` is deprecated. "
-                "User input transformation features will be removed in a future version. "
-                "See here for more details: https://github.com/posit-dev/shinychat/pull/91"
-            )
-
         msg = self._latest_user_input()
         if msg is None:
             return None
