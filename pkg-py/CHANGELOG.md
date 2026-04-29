@@ -5,17 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-04-29
 
 ### Experimental internal changes
 
 * The chat UI's rendering layer has been migrated from Lit to React. This significantly improves streaming performance — incoming chunks no longer clear previous DOM state — and makes the codebase more maintainable. One trade-off is that certain Shiny UI elements embedded in chat messages may not work as well as before (e.g., inline `<script>` tags are generally not supported inside a React runtime). If you encounter issues, please [let us know](https://github.com/posit-dev/shinychat/issues).
 
-### Bug fixes
+### New features
 
-* Fixed bookmark serialization failure when a `ToolResultDisplay` contained `HTMLDependency` objects in its `html`, `icon`, or `footer` fields. (#188)
+* Tool result cards now support a fullscreen toggle. Set `full_screen=True` in `ToolResultDisplay()` to add a button that expands the card to fill the viewport. Press `Escape`, click the backdrop, or use the close button to exit fullscreen. (#179)
 
-* Fixed `HTMLDependency` objects being lost during streaming message accumulation, causing CSS/JS to be missing after bookmark restore for streamed messages. (#192, #193)
+* Added `footer` parameter to `ToolResultDisplay` for displaying custom HTML content below the tool result card body. (#178)
 
 ### Breaking changes
 
@@ -27,13 +27,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Improvements
 
+* Streaming messages now support mid-stream content type transitions. When the content type changes during streaming, previous content is preserved as a frozen segment, maintaining HTML islands and Shiny bindings. (#199)
+
+* Replaced the custom auto-scroll implementation with the `use-stick-to-bottom` library for smoother stick-to-bottom behavior during streaming. A centered "scroll to bottom" button now appears when the user scrolls away from the bottom. (#195)
+
 * Migrated Google provider from the deprecated `google-generativeai` SDK to `google-genai`. (#174)
 
-### New features
 
-* Added `footer` parameter to `ToolResultDisplay` for displaying custom HTML content below the tool result card body. (#178)
+### Bug fixes
 
-* Tool result cards now support a fullscreen toggle. Set `full_screen=True` in `ToolResultDisplay()` to add a button that expands the card to fill the viewport. Press `Escape`, click the backdrop, or use the close button to exit fullscreen.
+* Fixed some issues with bookmarking. (#188, #192, #193)
+
+* Fixed chat message content touching the right edge of the container. (#197)
+
+* Fixed content inside tool cards (e.g., widgets, plots) not re-laying out when the card is collapsed or expanded. (#180)
+
+* Fixed the chat UI crashing on non-HTTPS contexts (e.g., RStudio Server over plain HTTP) due to `crypto.randomUUID()` being unavailable outside secure contexts. (#186, #187)
+
+* Fixed pyright 1.1.409 compatibility by adding missing `__all__` exports. (#200)
 
 ## [0.2.9] - 2026-02-09
 

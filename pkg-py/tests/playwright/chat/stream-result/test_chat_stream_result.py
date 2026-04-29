@@ -16,6 +16,7 @@ def test_validate_chat_stream_result(
 
     expect(chat.loc).to_be_visible(timeout=10 * 1000)
 
+    chat.expect_user_input("Press Enter to start the stream", timeout=10 * 1000)
     chat.send_user_input()
 
     messages = [
