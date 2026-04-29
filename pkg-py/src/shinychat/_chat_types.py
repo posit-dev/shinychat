@@ -126,13 +126,16 @@ class ChatMessage:
 class StoredMessage:
     content: str | HTML
     role: Role
-    html_deps: list[HTMLDependency] | None = None
+    html_deps: list[dict[str, object]] | None = None
 
     @classmethod
-    def from_chat_message(cls, message: ChatMessage) -> "StoredMessage":
+    def from_chat_message(
+        cls,
+        message: ChatMessage,
+        html_deps: list[dict[str, object]] | None = None,
+    ) -> "StoredMessage":
         return StoredMessage(
             content=message.content,
             role=message.role,
-            html_deps=message.html_deps if message.html_deps else None,
+            html_deps=html_deps,
         )
-

@@ -526,11 +526,8 @@ class Chat:
         res: list[ChatMessageDict | ProviderMessage] = []
         for m in messages:
             chat_msg = ChatMessageDict(content=str(m.content), role=m.role)
-            if m.html_deps and self._session is not None:
-                chat_msg["html_deps"] = [
-                    dep.as_dict(lib_prefix=self._session.app.lib_prefix)
-                    for dep in m.html_deps
-                ]
+            if m.html_deps:
+                chat_msg["html_deps"] = m.html_deps
             if not isinstance(format, MISSING_TYPE):
                 chat_msg = as_provider_message(chat_msg, format)
             res.append(chat_msg)
@@ -752,9 +749,12 @@ class Chat:
                 if msg is None:
                     return
                 if chunk == "end":
-                    if self._current_stream_deps:
-                        msg.html_deps = self._current_stream_deps
-                    self._store_message(msg)
+                    self._store_message(
+                        msg,
+                        deps=self._current_stream_deps
+                        if self._current_stream_deps
+                        else None,
+                    )
             elif chunk == "end":
                 # When `operation="append"`, msg.content is just a chunk, but we must
                 # store the full message
@@ -943,10 +943,8 @@ class Chat:
         chunk: ChunkOption = False,
         operation: Literal["append", "replace"] = "append",
         icon: HTML | Tag | TagList | None = None,
-        html_deps_serialized: list[dict[str, object]] | None = None,
     ):
-        if not isinstance(message, StoredMessage):
-            message = StoredMessage.from_chat_message(message)
+        message = self._as_stored_message(message)
 
         if message.role == "system":
             # System messages are not displayed in the UI
@@ -954,15 +952,6 @@ class Chat:
 
         content = message.content
         content_type: ContentType = "html" if isinstance(content, HTML) else "markdown"
-
-        # Register deps with the session and get the dictionary format
-        # for client-side rendering
-        html_deps: list[dict[str, object]] | None = None
-        if html_deps_serialized:
-            html_deps = html_deps_serialized
-        elif message.html_deps:
-            processed = self._session._process_ui(TagList(*message.html_deps))
-            html_deps = processed["deps"]
 
         msg_payload: MessagePayload = {
             "role": message.role,
@@ -974,7 +963,7 @@ class Chat:
 
         if chunk == "start":
             action: ChatAction = {"type": "chunk_start", "message": msg_payload}
-            await self._send_action(action, html_deps)
+            await self._send_action(action, message.html_deps)
         elif chunk == "end":
             if str(content):
                 chunk_action: ChatAction = {
@@ -983,7 +972,7 @@ class Chat:
                     "operation": operation,
                     "content_type": content_type,
                 }
-                await self._send_action(chunk_action, html_deps)
+                await self._send_action(chunk_action, message.html_deps)
             await self._send_action({"type": "chunk_end"})
         elif chunk is True:
             chunk_action = {
@@ -992,11 +981,11 @@ class Chat:
                 "operation": operation,
                 "content_type": content_type,
             }
-            await self._send_action(chunk_action, html_deps)
+            await self._send_action(chunk_action, message.html_deps)
         else:
             # chunk == False: complete message
             action = {"type": "message", "message": msg_payload}
-            await self._send_action(action, html_deps)
+            await self._send_action(action, message.html_deps)
 
     @overload
     def transform_user_input(
@@ -1101,7 +1090,7 @@ class Chat:
         chunk: ChunkOption = False,
         chunk_content: str = "",
     ) -> StoredMessage | None:
-        res = StoredMessage.from_chat_message(message)
+        res = self._as_stored_message(message)
 
         if message.role == "user" and self._transform_user is not None:
             content = await self._transform_user(message.content)
@@ -1133,6 +1122,31 @@ class Chat:
             return True
         return False
 
+    def _serialize_html_deps(
+        self, deps: list[HTMLDependency] | None
+    ) -> list[dict[str, object]] | None:
+        if not deps:
+            return None
+        if self._session is None:
+            return None
+        processed = self._session._process_ui(TagList(*deps))
+        return cast(list[dict[str, object]], processed["deps"])
+
+    def _as_stored_message(
+        self,
+        message: StoredMessage | ChatMessage,
+        deps: list[HTMLDependency] | None = None,
+    ) -> StoredMessage:
+        if isinstance(message, StoredMessage):
+            if deps is not None:
+                message.html_deps = self._serialize_html_deps(deps)
+            return message
+
+        html_deps = self._serialize_html_deps(
+            deps if deps is not None else message.html_deps
+        )
+        return StoredMessage.from_chat_message(message, html_deps=html_deps)
+
     # Just before storing, handle chunk msg type and calculate tokens
     def _store_message(
         self,
@@ -1142,11 +1156,7 @@ class Chat:
     ) -> None:
         from shiny import reactive
 
-        if not isinstance(message, StoredMessage):
-            message = StoredMessage.from_chat_message(message)
-
-        if deps is not None:
-            message.html_deps = deps
+        message = self._as_stored_message(message, deps=deps)
 
         with reactive.isolate():
             messages = self._messages()
@@ -1574,12 +1584,10 @@ class Chat:
                 stored = StoredMessage(
                     content=message_dict["content"],
                     role=message_dict.get("role", "assistant"),
+                    html_deps=message_dict.get("html_deps"),
                 )
                 self._store_message(stored)
-                await self._send_append_message(
-                    stored,
-                    html_deps_serialized=message_dict.get("html_deps"),
-                )
+                await self._send_append_message(stored)
 
         def _cancel_bookmarking():
             _on_bookmark_client()
