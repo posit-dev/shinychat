@@ -9,7 +9,6 @@ client when the message is restored from a bookmark.
 import re
 
 from playwright.sync_api import Page, expect
-from shiny.playwright import controller
 from shiny.run import ShinyAppProc
 from shinychat.playwright import ChatController
 
@@ -62,8 +61,15 @@ def test_html_deps_restored_after_bookmark(
     # Without the fix, the CSS is NOT loaded on restore.
     expect(card).to_have_css("border-color", "rgb(255, 0, 0)", timeout=5_000)
 
-    # Server-side chat state should also retain the dependency after restore, not
-    # just the already-rendered DOM. Otherwise a subsequent bookmark/restore cycle
-    # can silently lose the CSS/JS.
-    message_state = controller.OutputCode(page, "message_state")
-    expect(message_state.loc).to_contain_text("'html_deps':", timeout=10_000)
+    # A subsequent bookmark/restore cycle should still preserve the dependency,
+    # which verifies that bookmark state retained the dep metadata internally.
+    page.get_by_role("button", name="Bookmark").click()
+    page.wait_for_url(re.compile(r"\?_state_id_="), timeout=10_000)
+    second_bookmark_url = page.url
+
+    page.goto(second_bookmark_url)
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+    card = page.locator(".custom-styled-card")
+    expect(card).to_be_visible(timeout=10_000)
+    expect(card).to_have_css("border-color", "rgb(255, 0, 0)", timeout=5_000)

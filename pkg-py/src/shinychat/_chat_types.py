@@ -95,6 +95,11 @@ class ShinyChatEnvelope(TypedDict):
 class ChatMessageDict(TypedDict):
     content: str
     role: Role
+
+
+class StoredMessageDict(TypedDict):
+    content: str
+    role: Role
     html_deps: NotRequired[list[dict[str, object]]]
 
 

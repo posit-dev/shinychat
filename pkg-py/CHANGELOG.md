@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * Removed the deprecated `transform` parameter from `.user_input()`. `.user_input()` now always returns the currently stored user message content, which matches the simplified transform handling used by `.messages()`. (#193)
 
-* `ChatMessageDict` (returned by `.messages()`) may now include an `html_deps` key containing serialized `HTMLDependency` dicts. Code that unpacks or iterates these dicts with a fixed set of keys should be updated to handle the new field. (#193)
+* Bookmark serialization now keeps `HTMLDependency` metadata internal to stored chat state. Public `ChatMessageDict` values returned by `.messages()` remain plain `content`/`role` dictionaries, so they stay round-trippable through APIs like `.append_message()`. (#202)
 
 ### Improvements
 

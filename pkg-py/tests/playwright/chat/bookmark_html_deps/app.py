@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from htmltools import HTMLDependency, TagList, tags
-from shiny.express import app_opts, render, ui
+from shiny.express import app_opts, ui
 from shiny.types import Jsonifiable
 from shinychat.express import Chat
 
@@ -65,11 +65,3 @@ async def handle_user_input(user_input: str):
         {"role": "assistant", "content": f"Styled response to: {user_input}"}
     )
     await chat.append_message(styled_message)
-
-
-"chat.messages():"
-
-
-@render.code
-def message_state():
-    return str(chat.messages())

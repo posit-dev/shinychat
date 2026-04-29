@@ -252,55 +252,30 @@ def test_stream_replace_discards_stale_html_dependencies():
         assert captured[0].html_deps is None
 
 
-def test_append_message_preserves_html_deps_from_message_dict():
+def test_chat_message_dicts_hide_html_deps_but_bookmark_dicts_keep_them():
     with session_context(test_session):
         chat = Chat(id="chat")
-        captured: list[StoredMessage] = []
         expected_html_deps = [
             {"name": "custom-styled-card", "version": "1.0.0"}
         ]
-
-        async def _noop_send(*args: object, **kwargs: object) -> None:
-            return None
-
-        def _capture_store(
-            message: StoredMessage | ChatMessage,
-            index: int | None = None,
-            deps: list[HTMLDependency] | None = None,
-        ) -> None:
-            del index
-            captured.append(chat._as_stored_message(message, deps=deps))
-
-        chat._send_append_message = _noop_send  # type: ignore[method-assign]
-        chat._store_message = _capture_store  # type: ignore[method-assign]
-
-        async def _exercise_append() -> None:
-            await chat.append_message(
-                ChatMessageDict(
-                    content="Restored message",
-                    role="assistant",
-                    html_deps=expected_html_deps,
-                )
+        chat._store_message(
+            StoredMessage(
+                content="Restored message",
+                role="assistant",
+                html_deps=expected_html_deps,
             )
+        )
 
-        exc: list[BaseException] = []
-
-        def _run_in_thread() -> None:
-            try:
-                asyncio.run(_exercise_append())
-            except BaseException as err:
-                exc.append(err)
-
-        thread = threading.Thread(target=_run_in_thread)
-        thread.start()
-        thread.join()
-
-        if exc:
-            raise exc[0]
-
-        assert len(captured) == 1
-        assert captured[0].content == "Restored message"
-        assert captured[0].html_deps == expected_html_deps
+        assert chat._message_dicts() == (
+            ChatMessageDict(content="Restored message", role="assistant"),
+        )
+        assert chat._stored_message_dicts() == (
+            {
+                "content": "Restored message",
+                "role": "assistant",
+                "html_deps": expected_html_deps,
+            },
+        )
 
 
 # ------------------------------------------------------------------------------------
