@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import inspect
-import warnings
 from contextlib import asynccontextmanager
 from typing import (
     TYPE_CHECKING,
