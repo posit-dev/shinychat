@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import sys
+import threading
 import types
 from datetime import datetime
 from typing import Any, Union, cast, get_args, get_origin
@@ -231,7 +232,20 @@ def test_stream_replace_discards_stale_html_dependencies():
                 stream_id="stream-id",
             )
 
-        asyncio.run(_exercise_stream())
+        exc: list[BaseException] = []
+
+        def _run_in_thread() -> None:
+            try:
+                asyncio.run(_exercise_stream())
+            except BaseException as err:
+                exc.append(err)
+
+        thread = threading.Thread(target=_run_in_thread)
+        thread.start()
+        thread.join()
+
+        if exc:
+            raise exc[0]
 
         assert len(captured) == 1
         assert captured[0].content == "final"
