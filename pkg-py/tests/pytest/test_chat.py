@@ -4,7 +4,7 @@ import inspect
 import sys
 import types
 from datetime import datetime
-from typing import Union, cast, get_args, get_origin
+from typing import Any, Union, cast, get_args, get_origin
 
 import pytest
 from shiny import Session
@@ -60,7 +60,7 @@ def test_chat_user_input_no_longer_accepts_transform_argument():
         chat = Chat(id="chat")
 
         with pytest.raises(TypeError):
-            chat.user_input(transform=True)
+            cast(Any, chat.user_input)(transform=True)
 
 
 def test_chat_message_trimming():
