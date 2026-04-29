@@ -52,7 +52,7 @@ def is_type_in_union(type: object, union: object) -> bool:
     return False
 
 
-def transformed_message(content: str, role: Role) -> StoredMessage:
+def stored_message(content: str, role: Role) -> StoredMessage:
     return StoredMessage.from_chat_message(
         ChatMessage(content=content, role=role)
     )
@@ -76,7 +76,7 @@ def test_chat_message_trimming():
             return " ".join(["foo" for _ in range(1, n)])
 
         msgs = (
-            transformed_message(
+            stored_message(
                 content=generate_content(102),
                 role="system",
             ),
@@ -87,8 +87,8 @@ def test_chat_message_trimming():
             chat._trim_messages(msgs, token_limits=(100, 0), format=MISSING)
 
         msgs = (
-            transformed_message(content=generate_content(100), role="system"),
-            transformed_message(content=generate_content(2), role="user"),
+            stored_message(content=generate_content(100), role="system"),
+            stored_message(content=generate_content(2), role="user"),
         )
 
         # Throws since only the system message fits
@@ -106,15 +106,15 @@ def test_chat_message_trimming():
         content3 = generate_content(2)
 
         msgs = (
-            transformed_message(
+            stored_message(
                 content=content1,
                 role="system",
             ),
-            transformed_message(
+            stored_message(
                 content=content2,
                 role="user",
             ),
-            transformed_message(
+            stored_message(
                 content=content3,
                 role="user",
             ),
@@ -134,19 +134,19 @@ def test_chat_message_trimming():
         content4 = generate_content(2)
 
         msgs = (
-            transformed_message(
+            stored_message(
                 content=content1,
                 role="system",
             ),
-            transformed_message(
+            stored_message(
                 content=content2,
                 role="user",
             ),
-            transformed_message(
+            stored_message(
                 content=content3,
                 role="system",
             ),
-            transformed_message(
+            stored_message(
                 content=content4,
                 role="user",
             ),
@@ -164,11 +164,11 @@ def test_chat_message_trimming():
         content2 = generate_content(10)
 
         msgs = (
-            transformed_message(
+            stored_message(
                 content=content1,
                 role="assistant",
             ),
-            transformed_message(
+            stored_message(
                 content=content2,
                 role="user",
             ),
