@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * Fixed bookmark serialization failure when a `ToolResultDisplay` contained `HTMLDependency` objects in its `html`, `icon`, or `footer` fields. (#188)
 
+* Fixed `HTMLDependency` objects being lost during streaming message accumulation, causing CSS/JS to be missing after bookmark restore for streamed messages. (#192, #193)
+
+### Breaking changes
+
+* Removed the deprecated `transform_user` and `transform_assistant` parameters from `.messages()`. As a result, `.messages()` now _always_ returns transformed content (i.e., the result of applying `.transform_user_input()` / `.transform_assistant_response()`, if any), meaning it's better reflection of UI state than LLM-facing message state. This change reflects a greater change in philosophy that `shinychat` shouldn't be managing LLM message state (a backend framework like `chatlas`, `langchain`, `pydantic`, etc. should do this instead). (#193)
+
+* Removed the deprecated `transform` parameter from `.user_input()`. `.user_input()` now always returns the currently stored user message content, which matches the simplified transform handling used by `.messages()`. (#193)
+
+* `ChatMessageDict` (returned by `.messages()`) may now include an `html_deps` key containing serialized `HTMLDependency` dicts. Code that unpacks or iterates these dicts with a fixed set of keys should be updated to handle the new field. (#193)
+
 ### Improvements
 
 * Migrated Google provider from the deprecated `google-generativeai` SDK to `google-genai`. (#174)

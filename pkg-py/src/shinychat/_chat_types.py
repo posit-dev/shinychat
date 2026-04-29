@@ -23,7 +23,7 @@ class MessagePayload(TypedDict):
     content_type: ContentType
     id: NotRequired[str]
     icon: NotRequired[str]
-    html_deps: NotRequired[list[dict[str, str]]]
+    html_deps: NotRequired[list[dict[str, object]]]
 
 
 class MessageAction(TypedDict):
@@ -63,10 +63,6 @@ class RemoveLoadingAction(TypedDict):
     type: Literal["remove_loading"]
 
 
-class RenderDepsAction(TypedDict):
-    type: Literal["render_deps"]
-
-
 class HideToolRequestAction(TypedDict):
     type: Literal["hide_tool_request"]
     requestId: str
@@ -80,7 +76,6 @@ ChatAction = Union[
     ClearAction,
     UpdateInputAction,
     RemoveLoadingAction,
-    RenderDepsAction,
     HideToolRequestAction,
 ]
 
@@ -88,7 +83,7 @@ ChatAction = Union[
 class ShinyChatEnvelope(TypedDict):
     id: str
     action: ChatAction
-    html_deps: NotRequired[list[dict[str, str]]]
+    html_deps: NotRequired[list[dict[str, object]]]
 
 
 # ---------------------------------------------------------------------------
@@ -100,6 +95,7 @@ class ShinyChatEnvelope(TypedDict):
 class ChatMessageDict(TypedDict):
     content: str
     role: Role
+    html_deps: NotRequired[list[dict[str, object]]]
 
 
 class ChatMessage:
@@ -126,31 +122,20 @@ class ChatMessage:
         self.html_deps: list[HTMLDependency] = deps
 
 
-# A message once transformed have been applied
 @dataclass
-class TransformedMessage:
-    content_client: str | HTML
-    content_server: str
+class StoredMessage:
+    content: str | HTML
     role: Role
-    transform_key: Literal["content_client", "content_server"]
-    pre_transform_key: Literal["content_client", "content_server"]
-    html_deps: list[HTMLDependency] | None = None
+    html_deps: list[dict[str, object]] | None = None
 
     @classmethod
-    def from_chat_message(cls, message: ChatMessage) -> "TransformedMessage":
-        if message.role == "user":
-            transform_key = "content_server"
-            pre_transform_key = "content_client"
-        else:
-            transform_key = "content_client"
-            pre_transform_key = "content_server"
-
-        return TransformedMessage(
-            content_client=message.content,
-            content_server=message.content,
+    def from_chat_message(
+        cls,
+        message: ChatMessage,
+        html_deps: list[dict[str, object]] | None = None,
+    ) -> "StoredMessage":
+        return StoredMessage(
+            content=message.content,
             role=message.role,
-            transform_key=transform_key,
-            pre_transform_key=pre_transform_key,
-            html_deps=message.html_deps,
+            html_deps=html_deps,
         )
-

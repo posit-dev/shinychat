@@ -1,17 +1,17 @@
 """
-Test app: HTMLDependency objects must be re-sent during bookmark restore.
+Test app: HTMLDependency objects must survive bookmark restore for streamed messages.
 
-When a chat message includes HTML with an HTMLDependency (e.g., tool result
-styling), the CSS/JS is loaded on the client via renderDependenciesAsync().
-On bookmark restore, the message HTML is restored but the dependency must also
-be re-sent so the styling takes effect.
+Same scenario as bookmark_html_deps, but the response is delivered via
+append_message_stream() instead of append_message(). This tests whether
+HTML dependencies are properly accumulated during streaming and then
+included in the stored message for bookmark serialization.
 """
 
 from pathlib import Path
 from typing import Any
 
 from htmltools import HTMLDependency, TagList, tags
-from shiny.express import app_opts, render, ui
+from shiny.express import app_opts
 from shiny.types import Jsonifiable
 from shinychat.express import Chat
 
@@ -47,29 +47,24 @@ client = MockClient()
 
 chat = Chat(id="chat")
 chat.ui()
-ui.input_bookmark_button("Bookmark")
 chat.enable_bookmarking(client, bookmark_on="response")
+
+
+async def styled_response_stream(user_input: str):
+    """An async generator that yields a styled HTML chunk (with HTMLDependency)."""
+    yield TagList(
+        custom_dep,
+        tags.div(
+            {"class": "custom-styled-card"},
+            f"Streamed styled response to: {user_input}",
+        ),
+    )
 
 
 @chat.on_user_submit
 async def handle_user_input(user_input: str):
     client.turns.append({"role": "user", "content": user_input})
-    styled_message = TagList(
-        custom_dep,
-        tags.div(
-            {"class": "custom-styled-card"},
-            f"Styled response to: {user_input}",
-        ),
-    )
     client.turns.append(
-        {"role": "assistant", "content": f"Styled response to: {user_input}"}
+        {"role": "assistant", "content": f"Streamed styled response to: {user_input}"}
     )
-    await chat.append_message(styled_message)
-
-
-"chat.messages():"
-
-
-@render.code
-def message_state():
-    return str(chat.messages())
+    await chat.append_message_stream(styled_response_stream(user_input))

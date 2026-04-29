@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import sys
+import threading
 import types
 from datetime import datetime
-from typing import Union, cast, get_args, get_origin
+from typing import Any, Union, cast, get_args, get_origin
 
 import pytest
+from htmltools import HTMLDependency, TagList, tags
 from shiny import Session
 from shiny.module import ResolvedId
 from shiny.session import session_context
@@ -16,7 +19,7 @@ from shinychat._chat_types import (
     ChatMessage,
     ChatMessageDict,
     Role,
-    TransformedMessage,
+    StoredMessage,
 )
 from shinychat._utils_types import MISSING
 
@@ -49,10 +52,18 @@ def is_type_in_union(type: object, union: object) -> bool:
     return False
 
 
-def transformed_message(content: str, role: Role) -> TransformedMessage:
-    return TransformedMessage.from_chat_message(
+def transformed_message(content: str, role: Role) -> StoredMessage:
+    return StoredMessage.from_chat_message(
         ChatMessage(content=content, role=role)
     )
+
+
+def test_chat_user_input_no_longer_accepts_transform_argument():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+
+        with pytest.raises(TypeError):
+            cast(Any, chat.user_input)(transform=True)
 
 
 def test_chat_message_trimming():
@@ -114,7 +125,7 @@ def test_chat_message_trimming():
             msgs, token_limits=(103, 0), format=MISSING
         )
         assert len(trimmed) == 2
-        contents = [msg.content_server for msg in trimmed]
+        contents = [str(msg.content) for msg in trimmed]
         assert contents == [content1, content3]
 
         content1 = generate_content(50)
@@ -146,7 +157,7 @@ def test_chat_message_trimming():
             msgs, token_limits=(103, 0), format=MISSING
         )
         assert len(trimmed) == 3
-        contents = [msg.content_server for msg in trimmed]
+        contents = [str(msg.content) for msg in trimmed]
         assert contents == [content1, content3, content4]
 
         content1 = generate_content(50)
@@ -168,8 +179,77 @@ def test_chat_message_trimming():
             msgs, token_limits=(30, 0), format="anthropic"
         )
         assert len(trimmed) == 1
-        contents = [msg.content_server for msg in trimmed]
+        contents = [str(msg.content) for msg in trimmed]
         assert contents == [content2]
+
+
+def test_stream_replace_discards_stale_html_dependencies():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        captured: list[StoredMessage] = []
+
+        custom_dep = HTMLDependency(
+            name="custom-styled-card",
+            version="1.0.0",
+            source={"subdir": "."},
+            stylesheet={"href": "custom.css"},
+        )
+
+        async def _noop_send(*args: object, **kwargs: object) -> None:
+            return None
+
+        def _capture_store(
+            message: StoredMessage | ChatMessage,
+            index: int | None = None,
+            deps: list[HTMLDependency] | None = None,
+        ) -> None:
+            del index
+            captured.append(chat._as_stored_message(message, deps=deps))
+
+        chat._send_append_message = _noop_send  # type: ignore[method-assign]
+        chat._store_message = _capture_store  # type: ignore[method-assign]
+        chat._serialize_html_deps = lambda deps: (  # type: ignore[method-assign]
+            None
+            if not deps
+            else [
+                {"name": dep.name, "version": dep.version} for dep in deps
+            ]
+        )
+
+        async def _exercise_stream() -> None:
+            await chat._append_message_chunk(
+                "", chunk="start", stream_id="stream-id"
+            )
+            await chat._append_message_chunk(
+                TagList(custom_dep, tags.div("ephemeral")),
+                chunk=True,
+                stream_id="stream-id",
+            )
+            await chat._append_message_chunk(
+                "final",
+                chunk="end",
+                operation="replace",
+                stream_id="stream-id",
+            )
+
+        exc: list[BaseException] = []
+
+        def _run_in_thread() -> None:
+            try:
+                asyncio.run(_exercise_stream())
+            except BaseException as err:
+                exc.append(err)
+
+        thread = threading.Thread(target=_run_in_thread)
+        thread.start()
+        thread.join()
+
+        if exc:
+            raise exc[0]
+
+        assert len(captured) == 1
+        assert captured[0].content == "final"
+        assert captured[0].html_deps is None
 
 
 # ------------------------------------------------------------------------------------

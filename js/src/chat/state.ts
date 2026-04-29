@@ -193,11 +193,6 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       }
     }
 
-    case "render_deps":
-      // Dependencies were already rendered by the transport layer before
-      // this action reached the reducer. Nothing to update in state.
-      return state
-
     case "hide_tool_request": {
       if (state.hiddenToolRequests.has(action.requestId)) return state
       const newSet = new Set(state.hiddenToolRequests)

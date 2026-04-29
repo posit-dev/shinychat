@@ -1,38 +1,31 @@
 """
-Test that HTMLDependency objects are restored during bookmark restore.
+Test that HTMLDependency objects are restored during bookmark restore
+for messages delivered via append_message_stream().
 
-This test verifies that when a chat message includes HTML content with
-HTMLDependency objects (CSS/JS), those dependencies are re-sent to the
-client when the message is restored from a bookmark.
+This is the streaming counterpart to test_bookmark_html_deps. It verifies
+that deps sent during streaming chunks are accumulated on the stored message
+so they can be serialized into the bookmark state and re-sent on restore.
 """
 
 import re
 
 from playwright.sync_api import Page, expect
-from shiny.playwright import controller
 from shiny.run import ShinyAppProc
 from shinychat.playwright import ChatController
 
 
-def test_html_deps_restored_after_bookmark(
+def test_html_deps_restored_after_bookmark_stream(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     """
-    HTMLDependency CSS should be present after bookmark restore.
-
-    Steps:
-    1. Send a message that triggers HTML with an HTMLDependency (custom CSS)
-    2. Verify the CSS is loaded (red border visible)
-    3. Bookmark
-    4. Navigate to the bookmark URL
-    5. Verify the CSS is still loaded (red border visible)
+    HTMLDependency CSS should be present after bookmark restore (streaming path).
     """
     page.goto(local_app.url)
 
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30_000)
 
-    # Send a message to trigger the styled response
+    # Send a message to trigger the streamed styled response
     chat.set_user_input("hello")
     chat.send_user_input(method="enter")
 
@@ -59,11 +52,6 @@ def test_html_deps_restored_after_bookmark(
     expect(card).to_be_visible(timeout=10_000)
 
     # CRITICAL: Verify the CSS dependency was re-loaded.
-    # Without the fix, the CSS is NOT loaded on restore.
+    # Without accumulating deps during streaming, the stored message has
+    # html_deps=None, so nothing is saved in the bookmark state.
     expect(card).to_have_css("border-color", "rgb(255, 0, 0)", timeout=5_000)
-
-    # Server-side chat state should also retain the dependency after restore, not
-    # just the already-rendered DOM. Otherwise a subsequent bookmark/restore cycle
-    # can silently lose the CSS/JS.
-    message_state = controller.OutputCode(page, "message_state")
-    expect(message_state.loc).to_contain_text("'html_deps':", timeout=10_000)
