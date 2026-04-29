@@ -52,7 +52,7 @@ def is_type_in_union(type: object, union: object) -> bool:
     return False
 
 
-def transformed_message(content: str, role: Role) -> StoredMessage:
+def stored_message(content: str, role: Role) -> StoredMessage:
     return StoredMessage.from_chat_message(
         ChatMessage(content=content, role=role)
     )
@@ -76,7 +76,7 @@ def test_chat_message_trimming():
             return " ".join(["foo" for _ in range(1, n)])
 
         msgs = (
-            transformed_message(
+            stored_message(
                 content=generate_content(102),
                 role="system",
             ),
@@ -87,8 +87,8 @@ def test_chat_message_trimming():
             chat._trim_messages(msgs, token_limits=(100, 0), format=MISSING)
 
         msgs = (
-            transformed_message(content=generate_content(100), role="system"),
-            transformed_message(content=generate_content(2), role="user"),
+            stored_message(content=generate_content(100), role="system"),
+            stored_message(content=generate_content(2), role="user"),
         )
 
         # Throws since only the system message fits
@@ -106,15 +106,15 @@ def test_chat_message_trimming():
         content3 = generate_content(2)
 
         msgs = (
-            transformed_message(
+            stored_message(
                 content=content1,
                 role="system",
             ),
-            transformed_message(
+            stored_message(
                 content=content2,
                 role="user",
             ),
-            transformed_message(
+            stored_message(
                 content=content3,
                 role="user",
             ),
@@ -134,19 +134,19 @@ def test_chat_message_trimming():
         content4 = generate_content(2)
 
         msgs = (
-            transformed_message(
+            stored_message(
                 content=content1,
                 role="system",
             ),
-            transformed_message(
+            stored_message(
                 content=content2,
                 role="user",
             ),
-            transformed_message(
+            stored_message(
                 content=content3,
                 role="system",
             ),
-            transformed_message(
+            stored_message(
                 content=content4,
                 role="user",
             ),
@@ -164,11 +164,11 @@ def test_chat_message_trimming():
         content2 = generate_content(10)
 
         msgs = (
-            transformed_message(
+            stored_message(
                 content=content1,
                 role="assistant",
             ),
-            transformed_message(
+            stored_message(
                 content=content2,
                 role="user",
             ),
@@ -250,6 +250,57 @@ def test_stream_replace_discards_stale_html_dependencies():
         assert len(captured) == 1
         assert captured[0].content == "final"
         assert captured[0].html_deps is None
+
+
+def test_append_message_preserves_html_deps_from_message_dict():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        captured: list[StoredMessage] = []
+        expected_html_deps = [
+            {"name": "custom-styled-card", "version": "1.0.0"}
+        ]
+
+        async def _noop_send(*args: object, **kwargs: object) -> None:
+            return None
+
+        def _capture_store(
+            message: StoredMessage | ChatMessage,
+            index: int | None = None,
+            deps: list[HTMLDependency] | None = None,
+        ) -> None:
+            del index
+            captured.append(chat._as_stored_message(message, deps=deps))
+
+        chat._send_append_message = _noop_send  # type: ignore[method-assign]
+        chat._store_message = _capture_store  # type: ignore[method-assign]
+
+        async def _exercise_append() -> None:
+            await chat.append_message(
+                ChatMessageDict(
+                    content="Restored message",
+                    role="assistant",
+                    html_deps=expected_html_deps,
+                )
+            )
+
+        exc: list[BaseException] = []
+
+        def _run_in_thread() -> None:
+            try:
+                asyncio.run(_exercise_append())
+            except BaseException as err:
+                exc.append(err)
+
+        thread = threading.Thread(target=_run_in_thread)
+        thread.start()
+        thread.join()
+
+        if exc:
+            raise exc[0]
+
+        assert len(captured) == 1
+        assert captured[0].content == "Restored message"
+        assert captured[0].html_deps == expected_html_deps
 
 
 # ------------------------------------------------------------------------------------

@@ -599,7 +599,7 @@ class Chat:
             self._pending_messages.append((message, False, "append", None))
             return
 
-        msg = message_content(message)
+        msg = self._replayable_stored_message(message) or message_content(message)
         msg = await self._transform_message(msg)
         if msg is None:
             return
@@ -1090,7 +1090,7 @@ class Chat:
 
     async def _transform_message(
         self,
-        message: ChatMessage,
+        message: StoredMessage | ChatMessage,
         chunk: ChunkOption = False,
         chunk_content: str = "",
     ) -> StoredMessage | None:
@@ -1135,6 +1135,19 @@ class Chat:
             return None
         processed = self._session._process_ui(TagList(*deps))
         return cast(list[dict[str, object]], processed["deps"])
+
+    def _replayable_stored_message(self, message: object) -> StoredMessage | None:
+        if not isinstance(message, dict) or "html_deps" not in message:
+            return None
+        if "content" not in message:
+            raise ValueError("Message dictionary must have a 'content' key")
+        return StoredMessage(
+            content=cast(str, message["content"]),
+            role=cast(str, message.get("role", "assistant")),
+            html_deps=cast(
+                list[dict[str, object]] | None, message.get("html_deps")
+            ),
+        )
 
     def _as_stored_message(
         self,
