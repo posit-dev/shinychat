@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import sys
 import types
@@ -7,6 +8,7 @@ from datetime import datetime
 from typing import Any, Union, cast, get_args, get_origin
 
 import pytest
+from htmltools import HTMLDependency, TagList, tags
 from shiny import Session
 from shiny.module import ResolvedId
 from shiny.session import session_context
@@ -178,6 +180,62 @@ def test_chat_message_trimming():
         assert len(trimmed) == 1
         contents = [str(msg.content) for msg in trimmed]
         assert contents == [content2]
+
+
+def test_stream_replace_discards_stale_html_dependencies():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        captured: list[StoredMessage] = []
+
+        custom_dep = HTMLDependency(
+            name="custom-styled-card",
+            version="1.0.0",
+            source={"subdir": "."},
+            stylesheet={"href": "custom.css"},
+        )
+
+        async def _noop_send(*args: object, **kwargs: object) -> None:
+            return None
+
+        def _capture_store(
+            message: StoredMessage | ChatMessage,
+            index: int | None = None,
+            deps: list[HTMLDependency] | None = None,
+        ) -> None:
+            del index
+            captured.append(chat._as_stored_message(message, deps=deps))
+
+        chat._send_append_message = _noop_send  # type: ignore[method-assign]
+        chat._store_message = _capture_store  # type: ignore[method-assign]
+        chat._serialize_html_deps = lambda deps: (  # type: ignore[method-assign]
+            None
+            if not deps
+            else [
+                {"name": dep.name, "version": dep.version} for dep in deps
+            ]
+        )
+
+        async def _exercise_stream() -> None:
+            await chat._append_message_chunk(
+                "", chunk="start", stream_id="stream-id"
+            )
+            await chat._append_message_chunk(
+                TagList(custom_dep, tags.div("ephemeral")),
+                chunk=True,
+                stream_id="stream-id",
+            )
+            await chat._append_message_chunk(
+                "final",
+                chunk="end",
+                operation="replace",
+                stream_id="stream-id",
+            )
+
+        asyncio.run(_exercise_stream())
+
+        assert len(captured) == 1
+        assert captured[0].content == "final"
+        assert captured[0].html_deps is None
 
 
 # ------------------------------------------------------------------------------------

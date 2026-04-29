@@ -250,6 +250,7 @@ class Chat:
 
         # For tracking message stream state when entering/exiting nested streams
         self._message_stream_checkpoint: str = ""
+        self._message_stream_deps_checkpoint: list[HTMLDependency] = []
 
         # If a user input message is transformed into a response, we need to cancel
         # the next user input submit handling
@@ -671,7 +672,9 @@ class Chat:
         """
         # Checkpoint the current stream state so operation="replace"  can return to it
         old_checkpoint = self._message_stream_checkpoint
+        old_deps_checkpoint = self._message_stream_deps_checkpoint.copy()
         self._message_stream_checkpoint = self._current_stream_message
+        self._message_stream_deps_checkpoint = self._current_stream_deps.copy()
 
         # No stream currently exists, start one
         stream_id = self._current_stream_id
@@ -687,6 +690,7 @@ class Chat:
         finally:
             # Restore the checkpoint
             self._message_stream_checkpoint = old_checkpoint
+            self._message_stream_deps_checkpoint = old_deps_checkpoint
 
             # If this was the root stream, end it
             if is_root_stream:
@@ -716,10 +720,7 @@ class Chat:
 
         # Normalize various message types into a ChatMessage()
         msg = message_content_chunk(message)
-
-        # Accumulate HTML dependencies across all chunks in this stream
-        if msg.html_deps:
-            self._current_stream_deps.extend(msg.html_deps)
+        chunk_deps = msg.html_deps or []
 
         if is_tool_result(message) and message.request is not None:
             await self._hide_tool_request(message.request.id)  # type: ignore
@@ -728,9 +729,14 @@ class Chat:
             self._current_stream_message = (
                 self._message_stream_checkpoint + msg.content
             )
+            self._current_stream_deps = [
+                *self._message_stream_deps_checkpoint,
+                *chunk_deps,
+            ]
             msg.content = self._current_stream_message
         else:
             self._current_stream_message += msg.content
+            self._current_stream_deps.extend(chunk_deps)
 
         try:
             if self._needs_transform(msg):
@@ -775,6 +781,7 @@ class Chat:
                 self._current_stream_message = ""
                 self._current_stream_deps = []
                 self._message_stream_checkpoint = ""
+                self._message_stream_deps_checkpoint = []
 
     async def append_message_stream(
         self,
