@@ -1,16 +1,32 @@
-# shinychat (development version)
+# shinychat 0.4.0
 
 ## Experimental internal changes
 
 * The chat UI's rendering layer has been migrated from Lit to React. This significantly improves streaming performance — incoming chunks no longer clear previous DOM state — and makes the codebase more maintainable. One trade-off is that certain Shiny UI elements embedded in chat messages may not work as well as before (e.g., inline `<script>` tags are generally not supported inside a React runtime). If you encounter issues, please [let us know](https://github.com/posit-dev/shinychat/issues).
 
-## New features and improvements
+## New features
+
+* Tool result cards now support a fullscreen toggle. Set `full_screen = TRUE` in the `display` list (or set `res$full_screen <- NA` in a custom `contents_shinychat()` method) to add a button that expands the card to fill the viewport. Press `Escape`, click the backdrop, or use the close button to exit fullscreen. (#179)
 
 * Added `footer` field to `ToolResultDisplay` for displaying custom HTML content below the tool result card body. (#178)
 
-* Tool result cards now support a fullscreen toggle. Set `full_screen = TRUE` in the `display` list (or set `res$full_screen <- NA` in a custom `contents_shinychat()` method) to add a button that expands the card to fill the viewport. Press `Escape`, click the backdrop, or use the close button to exit fullscreen.
+## Improvements
 
-* Fixed an issue where user chat messages would display the default assistant icon. (#162)
+* Streaming messages now support mid-stream content type transitions. When the content type changes during streaming, previous content is preserved as a frozen segment, maintaining HTML islands and Shiny bindings. (#199)
+
+* Replaced the custom auto-scroll implementation with the `use-stick-to-bottom` library for smoother stick-to-bottom behavior during streaming. A centered "scroll to bottom" button now appears when the user scrolls away from the bottom. (#195)
+
+## Bug fixes
+
+* Fixed user chat messages displaying the default assistant icon. (#162)
+
+* Fixed `full_screen` not being passed through properly to tool result cards. (#183)
+
+* Fixed chat message content touching the right edge of the container. (#197)
+
+* Fixed content inside tool cards (e.g., widgets, plots) not re-laying out when the card is collapsed or expanded. (#180)
+
+* Constrained images in markdown content with `max-width: 100%`. (#168)
 
 # shinychat 0.3.0
 

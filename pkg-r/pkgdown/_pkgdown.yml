@@ -73,5 +73,7 @@ reference:
 
 news:
   releases:
+  - text: "v0.4.0"
+    href: https://github.com/posit-dev/shinychat/releases/tag/r/v0.4.0
   - text: "v0.3.0"
     href: https://shiny.posit.co/blog/posts/shinychat-tool-ui/
