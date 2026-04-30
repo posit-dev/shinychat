@@ -364,7 +364,7 @@ def output_markdown_stream(
     if isinstance(content, str):
         ui: RenderedHTML = {"html": content, "dependencies": []}
     else:
-        ui = TagList(content).render()
+        ui = TagList(*split_html_islands(content)).render()
 
     return Tag(
         "shiny-markdown-stream",
