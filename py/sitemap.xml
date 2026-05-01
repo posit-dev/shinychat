@@ -2,26 +2,26 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/index.html</loc>
-    <lastmod>2026-04-30T00:17:04.209Z</lastmod>
+    <lastmod>2026-05-01T00:03:31.595Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/chat_ui.html</loc>
-    <lastmod>2026-04-30T00:17:49.353Z</lastmod>
+    <lastmod>2026-05-01T00:04:01.668Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/playwright.ChatController.html</loc>
-    <lastmod>2026-04-30T00:17:49.390Z</lastmod>
+    <lastmod>2026-05-01T00:04:01.717Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/Chat.html</loc>
-    <lastmod>2026-04-30T00:17:49.349Z</lastmod>
+    <lastmod>2026-05-01T00:04:01.663Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/express.Chat.html</loc>
-    <lastmod>2026-04-30T00:17:49.379Z</lastmod>
+    <lastmod>2026-05-01T00:04:01.702Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/index.html</loc>
-    <lastmod>2026-04-30T00:17:49.314Z</lastmod>
+    <lastmod>2026-05-01T00:04:01.617Z</lastmod>
   </url>
 </urlset>
