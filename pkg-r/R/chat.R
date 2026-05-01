@@ -97,7 +97,9 @@ chat_ui <- function(
     if (is.character(content)) {
       ui <- list(html = paste(content, collapse = "\n"))
     } else {
-      ui <- with_current_theme(htmltools::renderTags(pre_process_ui(content)))
+      ui <- with_current_theme({
+        htmltools::renderTags(pre_process_ui(content))
+      })
     }
 
     tag(
