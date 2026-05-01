@@ -42,7 +42,7 @@ output_markdown_stream <- function(
   } else {
     ui <- with_current_theme({
       htmltools::renderTags(pre_process_ui(content))
-  })
+    })
   }
 
   htmltools::tag(
