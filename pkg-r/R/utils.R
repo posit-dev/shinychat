@@ -1,7 +1,7 @@
 sanitized_chat_error <- function(err) {
   needs_sanitized <-
     isTRUE(getOption("shiny.sanitize.errors")) &&
-      !inherits(err, "shiny.custom.error")
+    !inherits(err, "shiny.custom.error")
 
   if (needs_sanitized) {
     "\n\n**An error occurred.** Please try again or contact the app author."
