@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-04-30
+
+### Bug fixes
+
+* Fixed Shiny input bindings inside `MarkdownStream`'s initial `content` failing to bind on WebKit. The `content` parameter now routes non-string content through `split_html_islands()`, consistent with how streamed content is already handled. (#205)
+
 ## [0.3.0] - 2026-04-29
 
 ### Experimental internal changes
