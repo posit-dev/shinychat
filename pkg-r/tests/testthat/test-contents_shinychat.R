@@ -387,14 +387,16 @@ test_that("consolidates adjacent turn types in a Chat object", {
   withr::local_options(OPENAI_API_KEY = "boop")
   chat <- ellmer::chat_openai()
 
-  chat$set_turns(list(
-    ellmer::AssistantTurn(
-      contents = list(ellmer::ContentText("Hello"))
-    ),
-    ellmer::AssistantTurn(
-      contents = list(ellmer::ContentText("World"))
+  chat$set_turns(
+    list(
+      ellmer::AssistantTurn(
+        contents = list(ellmer::ContentText("Hello"))
+      ),
+      ellmer::AssistantTurn(
+        contents = list(ellmer::ContentText("World"))
+      )
     )
-  ))
+  )
 
   messages <- contents_shinychat(chat)
   expect_length(messages, 1)
@@ -406,14 +408,16 @@ test_that("doesn't consolidate adjacent turns with different roles in a Chat obj
   withr::local_options(OPENAI_API_KEY = "boop")
   chat <- ellmer::chat_openai()
 
-  chat$set_turns(list(
-    ellmer::UserTurn(
-      contents = list(ellmer::ContentText("Question"))
-    ),
-    ellmer::AssistantTurn(
-      contents = list(ellmer::ContentText("Answer"))
+  chat$set_turns(
+    list(
+      ellmer::UserTurn(
+        contents = list(ellmer::ContentText("Question"))
+      ),
+      ellmer::AssistantTurn(
+        contents = list(ellmer::ContentText("Answer"))
+      )
     )
-  ))
+  )
 
   messages <- contents_shinychat(chat)
   expect_length(messages, 2) # Previous consolidated message + 2 new messages
@@ -425,19 +429,21 @@ test_that("drops requests and moves results to assistant turn role in a Chat obj
   withr::local_options(OPENAI_API_KEY = "boop")
   chat <- ellmer::chat_openai()
 
-  chat$set_turns(list(
-    ellmer::AssistantTurn(
-      contents = list(
-        ellmer::ContentText("Hello"),
-        new_tool_request()
-      )
-    ),
-    ellmer::UserTurn(
-      contents = list(
-        new_tool_result(value = "success")
+  chat$set_turns(
+    list(
+      ellmer::AssistantTurn(
+        contents = list(
+          ellmer::ContentText("Hello"),
+          new_tool_request()
+        )
+      ),
+      ellmer::UserTurn(
+        contents = list(
+          new_tool_result(value = "success")
+        )
       )
     )
-  ))
+  )
 
   messages <- contents_shinychat(chat)
   expect_length(messages, 1)

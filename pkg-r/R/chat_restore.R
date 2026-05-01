@@ -194,7 +194,6 @@ chat_restore <- function(
   invisible(NULL)
 }
 
-
 # Method currently hooked into `chat_append_stream()` and `markdown_stream()`
 # When the incoming stream ends, possibly update the URL given the `id`
 chat_update_bookmark <- function(
@@ -218,7 +217,6 @@ chat_update_bookmark <- function(
   return(prom)
 }
 
-
 # These methods exist to set flags within the session.
 # These flags will determine if the session should be bookmarked when a response has completed.
 # `chat_update_bookmark()` will check if the flag is set and update the URL if it is.
@@ -236,7 +234,6 @@ set_session_bookmark_on_response <- function(session, id, enable) {
     value = if (enable) TRUE else NULL
   )
 }
-
 
 has_session_chat_bookmark_info <- function(session, id) {
   return(!is.null(get_session_chat_bookmark_info(session, id)))

@@ -16,16 +16,18 @@ TOOL_OPTS <- list(
 ui <- bslib::page_fillable(
   shinychat::chat_mod_ui(
     "chat",
-    messages = list(list(
-      role = "assistant",
-      content = htmltools::HTML(
-        '<span class="suggestion submit">In three separate but parallel tool calls list the files in apps, data, docs</span>
+    messages = list(
+      list(
+        role = "assistant",
+        content = htmltools::HTML(
+          '<span class="suggestion submit">In three separate but parallel tool calls list the files in apps, data, docs</span>
 
 <span class="suggestion submit">Write some basic R code that demonstrates how to use the tidyverse.</span>
 
 <span class="suggestion submit">Brainstorm 10 ideas for a name for a package that creates interactive sparklines in tables.</span>'
+        )
       )
-    ))
+    )
   ),
   actionButton("click", "Click me")
 )
