@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
-* Fixed Shiny input bindings inside `MarkdownStream`'s initial `content` failing to bind on WebKit. The `content` parameter now routes non-string content through `split_html_islands()`, consistent with how streamed content is already handled. (#205)
+* Fixed an issue where Shiny UI components (e.g., inputs) passed to `MarkdownStream`'s `content` parameter could fail to initialize, especially on WebKit-based browsers. (#205)
 
 ## [0.3.0] - 2026-04-29
 
