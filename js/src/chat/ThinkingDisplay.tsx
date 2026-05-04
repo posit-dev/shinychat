@@ -80,7 +80,7 @@ function getHeaderText(message: ChatMessageData): string {
   if (message.streaming) {
     return message.topic ? `${message.topic}` : "Thinking"
   }
-  if (message.durationMs != null) {
+  if (message.durationMs != null && message.durationMs > 0) {
     const seconds = Math.round(message.durationMs / 1000)
     if (seconds < 1) return "Thought for less than a second"
     return `Thought for ${seconds}s`
