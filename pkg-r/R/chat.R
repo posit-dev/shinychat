@@ -513,6 +513,7 @@ rlang::on_load(
     icon = NULL,
     session = shiny::getDefaultReactiveDomain()
   ) {
+    chunk_started <- FALSE
     chat_append_ <- function(content, chunk = TRUE, ...) {
       chat_append_message(
         id,
@@ -524,7 +525,12 @@ rlang::on_load(
       )
     }
 
-    chat_append_("", chunk = "start", icon = icon)
+    ensure_chunk_started <- function() {
+      if (!chunk_started) {
+        chat_append_("", chunk = "start", icon = icon)
+        chunk_started <<- TRUE
+      }
+    }
 
     thinking_state <- new_thinking_state()
 
@@ -566,6 +572,7 @@ rlang::on_load(
         end_thinking(id, thinking_state, session)
       }
 
+      ensure_chunk_started()
       chat_append_(msg)
     }
 
@@ -573,7 +580,11 @@ rlang::on_load(
       end_thinking(id, thinking_state, session)
     }
 
-    chat_append_("", chunk = "end")
+    if (chunk_started) {
+      chat_append_("", chunk = "end")
+    } else {
+      send_chat_action(id, action = list(type = "remove_loading"), session = session)
+    }
 
     res <- res$as_list()
     if (every(res, is.character)) {

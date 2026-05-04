@@ -15,7 +15,7 @@ handle_thinking_chunk <- function(id, text, thinking_state, session) {
       session = session
     )
     thinking_state$active <- TRUE
-    thinking_state$start_time <- proc.time()["elapsed"]
+    thinking_state$start_time <- unname(proc.time()["elapsed"])
   }
 
   result <- extract_topics(text, thinking_state)
@@ -29,9 +29,9 @@ handle_thinking_chunk <- function(id, text, thinking_state, session) {
 }
 
 end_thinking <- function(id, thinking_state, session) {
-  duration_ms <- round(
+  duration_ms <- unname(round(
     (proc.time()["elapsed"] - thinking_state$start_time) * 1000
-  )
+  ))
 
   send_chat_action(
     id,

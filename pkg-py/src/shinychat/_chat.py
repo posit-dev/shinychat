@@ -929,11 +929,17 @@ class Chat:
 
         id = _utils.private_random_id()
         thinking = ThinkingState()
+        chunk_started = False
 
         empty = ChatMessageDict(content="", role="assistant")
-        await self._append_message_chunk(
-            empty, chunk="start", stream_id=id, icon=icon
-        )
+
+        async def ensure_chunk_started():
+            nonlocal chunk_started
+            if not chunk_started:
+                await self._append_message_chunk(
+                    empty, chunk="start", stream_id=id, icon=icon
+                )
+                chunk_started = True
 
         try:
             async for msg in message:
@@ -944,12 +950,16 @@ class Chat:
                 if thinking.active:
                     await self._end_thinking(thinking)
 
+                await ensure_chunk_started()
                 await self._append_message_chunk(msg, chunk=True, stream_id=id)
             return self._current_stream_message
         finally:
             if thinking.active:
                 await self._end_thinking(thinking)
-            await self._append_message_chunk(empty, chunk="end", stream_id=id)
+            if chunk_started:
+                await self._append_message_chunk(empty, chunk="end", stream_id=id)
+            else:
+                await self._send_action({"type": "remove_loading"})
             await self._flush_pending_messages()
 
     async def _handle_thinking_chunk(self, msg: Any, thinking: "ThinkingState") -> None:
