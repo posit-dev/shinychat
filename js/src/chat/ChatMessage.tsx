@@ -44,7 +44,7 @@ export const ChatMessage = memo(function ChatMessage({
               key={i}
               content={seg.content}
               contentType={seg.contentType}
-              role={message.role}
+              role={message.role === "thinking" ? "assistant" : message.role}
               streaming={message.streaming && i === arr.length - 1}
               tagToComponentMap={chatTagToComponentMap}
             />

@@ -12,7 +12,7 @@ export interface ContentSegment {
 
 export interface ChatMessageData {
   id: string
-  role: "user" | "assistant"
+  role: "user" | "assistant" | "thinking"
   content: string
   contentType: ContentType
   streaming: boolean
@@ -20,6 +20,12 @@ export interface ChatMessageData {
   isPlaceholder?: boolean
   icon?: string
   segments?: ContentSegment[]
+  /** Duration in milliseconds, set when thinking_end arrives. */
+  durationMs?: number
+  /** Current topic label for thinking messages. */
+  topic?: string | null
+  /** Timestamp (Date.now()) when thinking started, for client-side duration fallback. */
+  startedAt?: number
 }
 
 export interface ChatInputState {
@@ -198,6 +204,53 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       const newSet = new Set(state.hiddenToolRequests)
       newSet.add(action.requestId)
       return { ...state, hiddenToolRequests: newSet }
+    }
+
+    case "thinking_start": {
+      const messages = removeLoadingMessage(state.messages)
+      const thinkingMsg: ChatMessageData = {
+        id: uuid(),
+        role: "thinking",
+        content: "",
+        contentType: "markdown",
+        streaming: true,
+        startedAt: Date.now(),
+      }
+      return {
+        ...state,
+        messages,
+        streamingMessage: thinkingMsg,
+        inputDisabled: true,
+      }
+    }
+
+    case "thinking": {
+      const last = state.streamingMessage
+      if (!last || last.role !== "thinking") return state
+
+      return {
+        ...state,
+        streamingMessage: {
+          ...last,
+          content: last.content + action.content,
+          ...(action.topic !== undefined ? { topic: action.topic } : {}),
+        },
+      }
+    }
+
+    case "thinking_end": {
+      const last = state.streamingMessage
+      if (!last || last.role !== "thinking") return state
+
+      return {
+        ...state,
+        messages: [
+          ...state.messages,
+          { ...last, streaming: false, durationMs: action.duration_ms },
+        ],
+        streamingMessage: null,
+        inputDisabled: true,
+      }
     }
 
     default: {
