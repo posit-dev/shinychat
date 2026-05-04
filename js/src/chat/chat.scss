@@ -308,6 +308,8 @@ shiny-chat-container {
   --shinychat-thinking-header-color: var(--bs-secondary-color, #6c757d);
   --shinychat-thinking-border-color: var(--bs-border-color, #dee2e6);
   --shinychat-thinking-content-color: var(--bs-secondary-color, #6c757d);
+  // Chevron is 12px wide; border aligns to its horizontal center
+  --_chevron-center: 6px;
 
   font-size: 0.875rem;
 }
@@ -335,6 +337,11 @@ shiny-chat-container {
   flex-shrink: 0;
   display: flex;
   align-items: center;
+  transition: transform 0.2s ease;
+
+  &[data-expanded] {
+    transform: rotate(90deg);
+  }
 }
 
 .shinychat-thinking-label {
@@ -375,17 +382,47 @@ shiny-chat-container {
 }
 
 .shinychat-thinking-content {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.2s ease;
+  // Align left border with center of chevron
+  margin-left: calc(var(--_chevron-center) - 1px);
   border-left: 2px solid var(--shinychat-thinking-border-color);
-  margin-left: 0.75rem;
+
+  &[data-expanded] {
+    grid-template-rows: 1fr;
+  }
+}
+
+.shinychat-thinking-content-inner {
+  overflow: hidden;
   padding-left: 0.75rem;
-  padding-block: 0.25rem;
+  padding-block: 0;
   color: var(--shinychat-thinking-content-color);
   font-size: 0.9em;
+  // Smooth padding transition with content
+  transition: padding-block 0.2s ease;
+
+  [data-expanded] > & {
+    padding-block: 0.25rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .shinychat-thinking-dots .dot {
     animation: none;
     opacity: 0.6;
+  }
+
+  .shinychat-thinking-chevron {
+    transition: none;
+  }
+
+  .shinychat-thinking-content {
+    transition: none;
+  }
+
+  .shinychat-thinking-content-inner {
+    transition: none;
   }
 }

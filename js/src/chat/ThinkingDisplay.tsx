@@ -1,10 +1,54 @@
-import { useState, useEffect, useRef, memo } from "react"
+import { useState, useEffect, useRef, memo, useCallback } from "react"
 import type { ChatMessageData } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
 
 interface ThinkingDisplayProps {
   message: ChatMessageData
+}
+
+const TOPIC_MIN_DISPLAY_MS = 2500
+
+function useDisplayedTopic(topic: string | null | undefined): string | null {
+  const [displayed, setDisplayed] = useState<string | null>(null)
+  const lastSetAt = useRef(0)
+  const pendingTopic = useRef<string | null>(null)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (!topic) return
+
+    const now = Date.now()
+    const elapsed = now - lastSetAt.current
+
+    if (elapsed >= TOPIC_MIN_DISPLAY_MS || !displayed) {
+      setDisplayed(topic)
+      lastSetAt.current = now
+      pendingTopic.current = null
+    } else {
+      pendingTopic.current = topic
+      if (!timerRef.current) {
+        const remaining = TOPIC_MIN_DISPLAY_MS - elapsed
+        timerRef.current = setTimeout(() => {
+          timerRef.current = null
+          if (pendingTopic.current) {
+            setDisplayed(pendingTopic.current)
+            lastSetAt.current = Date.now()
+            pendingTopic.current = null
+          }
+        }, remaining)
+      }
+    }
+
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current)
+        timerRef.current = null
+      }
+    }
+  }, [topic, displayed])
+
+  return displayed
 }
 
 function ChevronIcon({ expanded }: { expanded: boolean }) {
@@ -16,10 +60,7 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
       viewBox="0 0 12 12"
       fill="none"
       aria-hidden="true"
-      style={{
-        transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
-        transition: "transform 0.15s ease",
-      }}
+      {...(expanded ? { "data-expanded": "" } : {})}
     >
       <path
         d="M4.5 2.5L8 6L4.5 9.5"
@@ -39,6 +80,10 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
   const [userToggled, setUserToggled] = useState(false)
   const prevStreamingRef = useRef(message.streaming)
 
+  const displayedTopic = useDisplayedTopic(
+    message.streaming ? message.topic : null,
+  )
+
   // Auto-collapse when thinking completes (unless user has re-expanded after)
   useEffect(() => {
     if (prevStreamingRef.current && !message.streaming && !userToggled) {
@@ -48,14 +93,14 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
     prevStreamingRef.current = message.streaming
   }, [message.streaming, userToggled])
 
-  const handleToggle = () => {
+  const handleToggle = useCallback(() => {
     setExpanded((prev) => !prev)
     if (!message.streaming) {
       setUserToggled(true)
     }
-  }
+  }, [message.streaming])
 
-  const headerText = getHeaderText(message)
+  const headerText = getHeaderText(message, displayedTopic)
 
   return (
     <div
@@ -78,13 +123,15 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
           </span>
         )}
       </button>
-      {expanded && (
-        <div
-          className="shinychat-thinking-content"
-          id={`thinking-content-${message.id}`}
-          role="region"
-          aria-labelledby={`thinking-header-${message.id}`}
-        >
+      <div
+        className="shinychat-thinking-content"
+        id={`thinking-content-${message.id}`}
+        role="region"
+        aria-labelledby={`thinking-header-${message.id}`}
+        aria-hidden={!expanded}
+        data-expanded={expanded || undefined}
+      >
+        <div className="shinychat-thinking-content-inner">
           <MarkdownContent
             content={message.content}
             contentType="markdown"
@@ -93,14 +140,17 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
             tagToComponentMap={chatTagToComponentMap}
           />
         </div>
-      )}
+      </div>
     </div>
   )
 })
 
-function getHeaderText(message: ChatMessageData): string {
+function getHeaderText(
+  message: ChatMessageData,
+  displayedTopic: string | null,
+): string {
   if (message.streaming) {
-    return message.topic ? `${message.topic}` : "Thinking"
+    return displayedTopic ?? "Thinking"
   }
   if (message.durationMs != null && message.durationMs > 0) {
     const seconds = Math.round(message.durationMs / 1000)
