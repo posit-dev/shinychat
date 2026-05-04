@@ -136,6 +136,10 @@ S7::method(contents_shinychat, ellmer::ContentText) <- function(content) {
   content@text
 }
 
+S7::method(contents_shinychat, ellmer::ContentThinking) <- function(content) {
+  structure(list(thinking = content@thinking), class = "shinychat_thinking")
+}
+
 new_tool_card <- function(type, request_id, tool_name, ...) {
   type <- arg_match(type, c("request", "result"))
 

@@ -526,6 +526,8 @@ rlang::on_load(
 
     chat_append_("", chunk = "start", icon = icon)
 
+    thinking_state <- new_thinking_state()
+
     res <- fastmap::fastqueue(200)
 
     for (msg in stream) {
@@ -555,7 +557,20 @@ rlang::on_load(
         msg <- contents_shinychat(msg)
       }
 
+      if (inherits(msg, "shinychat_thinking")) {
+        handle_thinking_chunk(id, msg$thinking, thinking_state, session)
+        next
+      }
+
+      if (thinking_state$active) {
+        end_thinking(id, thinking_state, session)
+      }
+
       chat_append_(msg)
+    }
+
+    if (thinking_state$active) {
+      end_thinking(id, thinking_state, session)
     }
 
     chat_append_("", chunk = "end")
