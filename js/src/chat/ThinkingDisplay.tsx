@@ -2,10 +2,34 @@ import { useState, useEffect, useRef, memo } from "react"
 import type { ChatMessageData } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
-import "./ThinkingDisplay.css"
 
 interface ThinkingDisplayProps {
   message: ChatMessageData
+}
+
+function ChevronIcon({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      className="shinychat-thinking-chevron"
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      fill="none"
+      aria-hidden="true"
+      style={{
+        transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
+        transition: "transform 0.15s ease",
+      }}
+    >
+      <path
+        d="M4.5 2.5L8 6L4.5 9.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
 }
 
 export const ThinkingDisplay = memo(function ThinkingDisplay({
@@ -44,9 +68,7 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
         aria-expanded={expanded}
         aria-controls={`thinking-content-${message.id}`}
       >
-        <span className="shinychat-thinking-chevron" aria-hidden="true">
-          {expanded ? "▾" : "▸"}
-        </span>
+        <ChevronIcon expanded={expanded} />
         <span className="shinychat-thinking-label">{headerText}</span>
         {message.streaming && (
           <span className="shinychat-thinking-dots" aria-hidden="true">

@@ -302,3 +302,90 @@ shiny-chat-container {
   word-break: break-all;
   font-weight: 500;
 }
+
+/* Thinking display */
+.shinychat-thinking {
+  --shinychat-thinking-header-color: var(--bs-secondary-color, #6c757d);
+  --shinychat-thinking-border-color: var(--bs-border-color, #dee2e6);
+  --shinychat-thinking-content-color: var(--bs-secondary-color, #6c757d);
+
+  font-size: 0.875rem;
+}
+
+.shinychat-thinking-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  padding-block: 0.5em;
+  padding-inline: 0;
+  line-height: 1;
+  color: var(--shinychat-thinking-header-color);
+  cursor: pointer;
+  font-size: inherit;
+  transition: color 0.15s;
+
+  &:hover {
+    color: var(--bs-body-color, #212529);
+  }
+}
+
+.shinychat-thinking-chevron {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.shinychat-thinking-label {
+  font-weight: 500;
+}
+
+.shinychat-thinking-dots {
+  display: inline-flex;
+  gap: 0.15rem;
+  margin-left: 0.25rem;
+  align-items: center;
+
+  .dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background-color: currentColor;
+    animation: shinychat-thinking-dot-pulse 1.4s ease-in-out infinite;
+
+    &:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+    &:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+  }
+}
+
+@keyframes shinychat-thinking-dot-pulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.3;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+.shinychat-thinking-content {
+  border-left: 2px solid var(--shinychat-thinking-border-color);
+  margin-left: 0.75rem;
+  padding-left: 0.75rem;
+  padding-block: 0.25rem;
+  color: var(--shinychat-thinking-content-color);
+  font-size: 0.9em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shinychat-thinking-dots .dot {
+    animation: none;
+    opacity: 0.6;
+  }
+}
