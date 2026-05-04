@@ -68,6 +68,21 @@ class HideToolRequestAction(TypedDict):
     requestId: str
 
 
+class ThinkingStartAction(TypedDict):
+    type: Literal["thinking_start"]
+
+
+class ThinkingAction(TypedDict):
+    type: Literal["thinking"]
+    content: str
+    topic: NotRequired[str]
+
+
+class ThinkingEndAction(TypedDict):
+    type: Literal["thinking_end"]
+    duration_ms: int
+
+
 ChatAction = Union[
     MessageAction,
     ChunkStartAction,
@@ -77,6 +92,9 @@ ChatAction = Union[
     UpdateInputAction,
     RemoveLoadingAction,
     HideToolRequestAction,
+    ThinkingStartAction,
+    ThinkingAction,
+    ThinkingEndAction,
 ]
 
 

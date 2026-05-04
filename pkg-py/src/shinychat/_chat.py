@@ -75,6 +75,8 @@ if TYPE_CHECKING:
     from shiny.types import Jsonifiable
     from shiny.ui.css import CssUnit
 
+    from ._thinking import ThinkingState
+
 else:
     chatlas = object
 
@@ -128,6 +130,18 @@ PendingMessage = Tuple[
     Literal["append", "replace"],
     Union[str, None],
 ]
+
+
+def _is_content_thinking(msg: Any) -> bool:
+    """Check if a message is a ContentThinking object from chatlas."""
+    try:
+        from chatlas.types import (
+            ContentThinking,  # pyright: ignore[reportAttributeAccessIssue]
+        )
+
+        return isinstance(msg, ContentThinking)
+    except ImportError:
+        return False
 
 
 class Chat:
@@ -911,7 +925,10 @@ class Chat:
         message: AsyncIterable[Any],
         icon: HTML | Tag | None = None,
     ):
+        from ._thinking import ThinkingState
+
         id = _utils.private_random_id()
+        thinking = ThinkingState()
 
         empty = ChatMessageDict(content="", role="assistant")
         await self._append_message_chunk(
@@ -920,11 +937,38 @@ class Chat:
 
         try:
             async for msg in message:
+                if _is_content_thinking(msg):
+                    await self._handle_thinking_chunk(msg, thinking)
+                    continue
+
+                if thinking.active:
+                    await self._end_thinking(thinking)
+
                 await self._append_message_chunk(msg, chunk=True, stream_id=id)
             return self._current_stream_message
         finally:
+            if thinking.active:
+                await self._end_thinking(thinking)
             await self._append_message_chunk(empty, chunk="end", stream_id=id)
             await self._flush_pending_messages()
+
+    async def _handle_thinking_chunk(self, msg: Any, thinking: "ThinkingState") -> None:
+        if not thinking.active:
+            thinking.start()
+            await self._send_action({"type": "thinking_start"})
+
+        text = msg.thinking if hasattr(msg, "thinking") else str(msg)
+        cleaned, topic = thinking.accumulator.process(text)
+
+        if cleaned:
+            action: dict[str, object] = {"type": "thinking", "content": cleaned}
+            if topic is not None:
+                action["topic"] = topic
+            await self._send_action(action)  # type: ignore
+
+    async def _end_thinking(self, thinking: "ThinkingState") -> None:
+        duration_ms = thinking.end()
+        await self._send_action({"type": "thinking_end", "duration_ms": duration_ms})  # type: ignore
 
     async def _flush_pending_messages(self):
         pending = self._pending_messages
