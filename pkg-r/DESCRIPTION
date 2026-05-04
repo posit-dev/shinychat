@@ -24,7 +24,7 @@ Imports:
     bslib,
     cli,
     coro,
-    ellmer (>= 0.3.0),
+    ellmer (>= 0.4.0.9000),
     fastmap,
     htmltools,
     jsonlite,
@@ -39,6 +39,8 @@ Suggests:
     later,
     testthat (>= 3.0.0),
     withr
+Remotes:
+    tidyverse/ellmer
 Config/Needs/website: tidyverse/tidytemplate, rmarkdown, weathR, gt, glue,
     bsicons
 Config/testthat/edition: 3
