@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is shinychat, an AI Chat UI component for Shiny applications, supporting both Python and R implementations. The project is structured as a monorepo with three main packages:
 
-- **js/**: TypeScript/JavaScript source for the chat UI components (built with Lit)
+- **js/**: TypeScript/JavaScript source for the chat UI components (built with React)
 - **pkg-py/**: Python package for Shiny for Python
 - **pkg-r/**: R package for Shiny for R
 
