@@ -1,6 +1,6 @@
 import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 
-export type ContentType = "markdown" | "html" | "text"
+export type ContentType = "markdown" | "html" | "text" | "thinking"
 
 export type MessagePayload = {
   id?: string
@@ -31,9 +31,6 @@ export type ChatAction =
     }
   | { type: "remove_loading" }
   | { type: "hide_tool_request"; requestId: string }
-  | { type: "thinking_start" }
-  | { type: "thinking"; content: string; topic?: string }
-  | { type: "thinking_end"; duration_ms: number }
 
 export type ShinyChatEnvelope = {
   id: string

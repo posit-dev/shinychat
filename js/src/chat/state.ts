@@ -20,12 +20,14 @@ export interface ChatMessageData {
   isPlaceholder?: boolean
   icon?: string
   segments?: ContentSegment[]
-  /** Duration in milliseconds, set when thinking_end arrives. */
+  /** Duration in milliseconds for thinking messages (client-computed). */
   durationMs?: number
   /** Current topic label for thinking messages. */
   topic?: string | null
-  /** Timestamp (Date.now()) when thinking started, for client-side duration fallback. */
+  /** Timestamp (Date.now()) when thinking started, for duration computation. */
   startedAt?: number
+  /** Buffer for partial <topic> tags split across chunks. */
+  topicBuffer?: string
 }
 
 export interface ChatInputState {
@@ -60,19 +62,51 @@ export const initialState: ChatState = {
 }
 
 function messagePayloadToData(msg: MessagePayload): ChatMessageData {
+  const role = msg.content_type === "thinking" ? "thinking" : msg.role
   return {
     id: msg.id ?? uuid(),
-    role: msg.role,
+    role,
     content: msg.content,
     contentType: msg.content_type,
     streaming: false,
     icon: msg.icon,
     segments: [{ content: msg.content, contentType: msg.content_type }],
+    ...(role === "thinking" ? { startedAt: Date.now() } : {}),
   }
 }
 
 function removeLoadingMessage(messages: ChatMessageData[]): ChatMessageData[] {
   return messages.filter((m) => !m.isPlaceholder)
+}
+
+const TOPIC_TAG_RE = /<topic>(.*?)<\/topic>/g
+const PARTIAL_OPEN_RE = /<(?:t(?:o(?:p(?:i(?:c(?:>[^<]*)?)?)?)?)?)?\s*$/
+
+interface TopicResult {
+  cleaned: string
+  topic: string | null
+  buffer: string
+}
+
+function extractTopics(text: string, buffer: string): TopicResult {
+  let combined = buffer + text
+  let topic: string | null = null
+
+  // Extract complete <topic>...</topic> tags
+  combined = combined.replace(TOPIC_TAG_RE, (_match, captured: string) => {
+    topic = captured
+    return ""
+  })
+
+  // Check for partial opening tag at the end
+  let newBuffer = ""
+  const partialMatch = PARTIAL_OPEN_RE.exec(combined)
+  if (partialMatch && partialMatch[0]) {
+    newBuffer = partialMatch[0]
+    combined = combined.slice(0, partialMatch.index)
+  }
+
+  return { cleaned: combined, topic, buffer: newBuffer }
 }
 
 export function chatReducer(state: ChatState, action: AnyAction): ChatState {
@@ -130,6 +164,33 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         action.content_type ??
         last.segments![last.segments!.length - 1]!.contentType
 
+      // Content type changed: finalize the current message, start a new one
+      if (isContentTypeTransition(last.contentType, chunkType)) {
+        const newMsg: ChatMessageData = {
+          id: uuid(),
+          role: chunkType === "thinking" ? "thinking" : "assistant",
+          content: action.content,
+          contentType: chunkType,
+          streaming: true,
+          segments: [{ content: action.content, contentType: chunkType }],
+          ...(chunkType === "thinking" ? { startedAt: Date.now() } : {}),
+        }
+        // If the current message is empty, just replace it (don't add an empty message)
+        if (!last.content) {
+          return {
+            ...state,
+            streamingMessage: newMsg,
+          }
+        }
+        const finalized = finalizeMessage(last)
+        return {
+          ...state,
+          messages: [...state.messages, finalized],
+          streamingMessage: newMsg,
+        }
+      }
+
+      // Same content type: append as before
       if (action.operation === "replace") {
         const segments = [{ content: action.content, contentType: chunkType }]
         return {
@@ -139,6 +200,32 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
             content: action.content,
             contentType: chunkType,
             segments,
+          },
+        }
+      }
+
+      // For thinking content, extract topics (with cross-chunk buffering)
+      if (chunkType === "thinking") {
+        const { cleaned, topic, buffer } = extractTopics(
+          action.content,
+          last.topicBuffer ?? "",
+        )
+        const newContent = last.content + cleaned
+        const segments = [...last.segments!]
+        const current = segments[segments.length - 1]!
+        segments[segments.length - 1] = {
+          ...current,
+          content: current.content + cleaned,
+        }
+        return {
+          ...state,
+          streamingMessage: {
+            ...last,
+            content: newContent,
+            contentType: chunkType,
+            segments,
+            topicBuffer: buffer,
+            ...(topic !== null ? { topic } : {}),
           },
         }
       }
@@ -172,7 +259,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
 
       return {
         ...state,
-        messages: [...state.messages, { ...last, streaming: false }],
+        messages: [...state.messages, finalizeMessage(last)],
         streamingMessage: null,
         inputDisabled: false,
       }
@@ -206,57 +293,28 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       return { ...state, hiddenToolRequests: newSet }
     }
 
-    case "thinking_start": {
-      const messages = removeLoadingMessage(state.messages)
-      const thinkingMsg: ChatMessageData = {
-        id: uuid(),
-        role: "thinking",
-        content: "",
-        contentType: "markdown",
-        streaming: true,
-        startedAt: Date.now(),
-      }
-      return {
-        ...state,
-        messages,
-        streamingMessage: thinkingMsg,
-        inputDisabled: true,
-      }
-    }
-
-    case "thinking": {
-      const last = state.streamingMessage
-      if (!last || last.role !== "thinking") return state
-
-      return {
-        ...state,
-        streamingMessage: {
-          ...last,
-          content: last.content + action.content,
-          ...(action.topic !== undefined ? { topic: action.topic } : {}),
-        },
-      }
-    }
-
-    case "thinking_end": {
-      const last = state.streamingMessage
-      if (!last || last.role !== "thinking") return state
-
-      return {
-        ...state,
-        messages: [
-          ...state.messages,
-          { ...last, streaming: false, durationMs: action.duration_ms },
-        ],
-        streamingMessage: null,
-        inputDisabled: true,
-      }
-    }
-
     default: {
       const _exhaustive: never = action
       void _exhaustive
       return state
     }
   }
+}
+
+function isContentTypeTransition(
+  current: ContentType,
+  incoming: ContentType,
+): boolean {
+  if (current === incoming) return false
+  // thinking ↔ non-thinking is always a transition
+  if (current === "thinking" || incoming === "thinking") return true
+  return false
+}
+
+function finalizeMessage(msg: ChatMessageData): ChatMessageData {
+  const finalized: ChatMessageData = { ...msg, streaming: false }
+  if (msg.role === "thinking" && msg.startedAt) {
+    finalized.durationMs = Date.now() - msg.startedAt
+  }
+  return finalized
 }

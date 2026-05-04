@@ -75,7 +75,6 @@ if TYPE_CHECKING:
     from shiny.types import Jsonifiable
     from shiny.ui.css import CssUnit
 
-    from ._thinking import ThinkingState
 
 else:
     chatlas = object
@@ -722,6 +721,7 @@ class Chat:
         stream_id: str,
         operation: Literal["append", "replace"] = "append",
         icon: HTML | Tag | TagList | None = None,
+        content_type_override: "ContentType | None" = None,
     ) -> None:
         # If currently we're in a *different* stream, queue the message chunk
         if self._current_stream_id and self._current_stream_id != stream_id:
@@ -788,6 +788,7 @@ class Chat:
                 chunk=chunk,
                 operation=operation,
                 icon=icon,
+                content_type_override=content_type_override,
             )
         finally:
             if chunk == "end":
@@ -925,60 +926,31 @@ class Chat:
         message: AsyncIterable[Any],
         icon: HTML | Tag | None = None,
     ):
-        from ._thinking import ThinkingState
-
         id = _utils.private_random_id()
-        thinking = ThinkingState()
-        chunk_started = False
 
         empty = ChatMessageDict(content="", role="assistant")
-
-        async def ensure_chunk_started():
-            nonlocal chunk_started
-            if not chunk_started:
-                await self._append_message_chunk(
-                    empty, chunk="start", stream_id=id, icon=icon
-                )
-                chunk_started = True
+        await self._append_message_chunk(
+            empty, chunk="start", stream_id=id, icon=icon
+        )
 
         try:
             async for msg in message:
                 if _is_content_thinking(msg):
-                    await self._handle_thinking_chunk(msg, thinking)
+                    thinking_text = msg.thinking if hasattr(msg, "thinking") else str(msg)
+                    thinking_msg = ChatMessage(content=thinking_text, role="assistant")
+                    await self._append_message_chunk(
+                        thinking_msg,
+                        chunk=True,
+                        stream_id=id,
+                        content_type_override="thinking",
+                    )
                     continue
 
-                if thinking.active:
-                    await self._end_thinking(thinking)
-
-                await ensure_chunk_started()
                 await self._append_message_chunk(msg, chunk=True, stream_id=id)
             return self._current_stream_message
         finally:
-            if thinking.active:
-                await self._end_thinking(thinking)
-            if chunk_started:
-                await self._append_message_chunk(empty, chunk="end", stream_id=id)
-            else:
-                await self._send_action({"type": "remove_loading"})
+            await self._append_message_chunk(empty, chunk="end", stream_id=id)
             await self._flush_pending_messages()
-
-    async def _handle_thinking_chunk(self, msg: Any, thinking: "ThinkingState") -> None:
-        if not thinking.active:
-            thinking.start()
-            await self._send_action({"type": "thinking_start"})
-
-        text = msg.thinking if hasattr(msg, "thinking") else str(msg)
-        cleaned, topic = thinking.accumulator.process(text)
-
-        if cleaned:
-            action: dict[str, object] = {"type": "thinking", "content": cleaned}
-            if topic is not None:
-                action["topic"] = topic
-            await self._send_action(action)  # type: ignore
-
-    async def _end_thinking(self, thinking: "ThinkingState") -> None:
-        duration_ms = thinking.end()
-        await self._send_action({"type": "thinking_end", "duration_ms": duration_ms})  # type: ignore
 
     async def _flush_pending_messages(self):
         pending = self._pending_messages
@@ -1001,6 +973,7 @@ class Chat:
         chunk: ChunkOption = False,
         operation: Literal["append", "replace"] = "append",
         icon: HTML | Tag | TagList | None = None,
+        content_type_override: "ContentType | None" = None,
     ):
         message = self._as_stored_message(message)
 
@@ -1009,7 +982,11 @@ class Chat:
             return
 
         content = message.content
-        content_type: ContentType = "html" if isinstance(content, HTML) else "markdown"
+        content_type: ContentType = (
+            content_type_override
+            if content_type_override is not None
+            else "html" if isinstance(content, HTML) else "markdown"
+        )
 
         msg_payload: MessagePayload = {
             "role": message.role,

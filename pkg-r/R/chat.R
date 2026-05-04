@@ -354,6 +354,10 @@ chat_append_message <- function(
   }
 
   content <- msg[["content"]]
+  is_thinking <- inherits(content, "shinychat_thinking")
+  if (is_thinking) {
+    content <- unclass(content)
+  }
   is_html <- inherits(
     content,
     c(
@@ -364,7 +368,7 @@ chat_append_message <- function(
       "shinychat_tool_card"
     )
   )
-  content_type <- if (is_html) "html" else "markdown"
+  content_type <- if (is_thinking) "thinking" else if (is_html) "html" else "markdown"
 
   operation <- match.arg(operation)
 
@@ -513,7 +517,6 @@ rlang::on_load(
     icon = NULL,
     session = shiny::getDefaultReactiveDomain()
   ) {
-    chunk_started <- FALSE
     chat_append_ <- function(content, chunk = TRUE, ...) {
       chat_append_message(
         id,
@@ -525,14 +528,7 @@ rlang::on_load(
       )
     }
 
-    ensure_chunk_started <- function() {
-      if (!chunk_started) {
-        chat_append_("", chunk = "start", icon = icon)
-        chunk_started <<- TRUE
-      }
-    }
-
-    thinking_state <- new_thinking_state()
+    chat_append_("", chunk = "start", icon = icon)
 
     res <- fastmap::fastqueue(200)
 
@@ -563,28 +559,10 @@ rlang::on_load(
         msg <- contents_shinychat(msg)
       }
 
-      if (inherits(msg, "shinychat_thinking")) {
-        handle_thinking_chunk(id, msg$thinking, thinking_state, session)
-        next
-      }
-
-      if (thinking_state$active) {
-        end_thinking(id, thinking_state, session)
-      }
-
-      ensure_chunk_started()
       chat_append_(msg)
     }
 
-    if (thinking_state$active) {
-      end_thinking(id, thinking_state, session)
-    }
-
-    if (chunk_started) {
-      chat_append_("", chunk = "end")
-    } else {
-      send_chat_action(id, action = list(type = "remove_loading"), session = session)
-    }
+    chat_append_("", chunk = "end")
 
     res <- res$as_list()
     if (every(res, is.character)) {
