@@ -1,0 +1,88 @@
+.shinychat-thinking {
+  --shinychat-thinking-header-color: var(--bs-secondary-color, #6c757d);
+  --shinychat-thinking-border-color: var(--bs-border-color, #dee2e6);
+  --shinychat-thinking-content-color: var(--bs-secondary-color, #6c757d);
+
+  margin-block: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.shinychat-thinking-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: none;
+  border: none;
+  padding: 0.25rem 0.5rem;
+  color: var(--shinychat-thinking-header-color);
+  cursor: pointer;
+  font-size: inherit;
+  border-radius: 0.25rem;
+  transition: background-color 0.15s;
+}
+
+.shinychat-thinking-header:hover {
+  background-color: color-mix(
+    in srgb,
+    var(--shinychat-thinking-header-color) 8%,
+    transparent
+  );
+}
+
+.shinychat-thinking-chevron {
+  font-size: 0.7em;
+  line-height: 1;
+}
+
+.shinychat-thinking-label {
+  font-weight: 500;
+}
+
+.shinychat-thinking-dots {
+  display: inline-flex;
+  gap: 0.15rem;
+  margin-left: 0.25rem;
+}
+
+.shinychat-thinking-dots .dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: currentColor;
+  animation: shinychat-thinking-dot-pulse 1.4s ease-in-out infinite;
+}
+
+.shinychat-thinking-dots .dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.shinychat-thinking-dots .dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes shinychat-thinking-dot-pulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.3;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+.shinychat-thinking-content {
+  border-left: 2px solid var(--shinychat-thinking-border-color);
+  margin-left: 0.75rem;
+  padding-left: 0.75rem;
+  padding-block: 0.25rem;
+  color: var(--shinychat-thinking-content-color);
+  font-size: 0.9em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shinychat-thinking-dots .dot {
+    animation: none;
+    opacity: 0.6;
+  }
+}
