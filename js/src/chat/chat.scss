@@ -360,9 +360,10 @@ shiny-chat-container {
   align-items: center;
 
   .dot {
-    width: 4px;
-    height: 4px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
+    aspect-ratio: 1;
     background-color: currentColor;
     animation: shinychat-thinking-dot-pulse 1.4s ease-in-out infinite;
 
