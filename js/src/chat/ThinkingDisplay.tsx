@@ -141,6 +141,7 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
       data-streaming={thinking.streaming || undefined}
     >
       <button
+        id={`thinking-header-${messageId}`}
         className="shinychat-thinking-header"
         onClick={handleToggle}
         aria-expanded={expanded}
