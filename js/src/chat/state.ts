@@ -10,9 +10,18 @@ export interface ContentSegment {
   contentType: ContentType
 }
 
+export interface ThinkingData {
+  content: string
+  topic?: string | null
+  topicBuffer?: string
+  startedAt?: number
+  durationMs?: number
+  streaming: boolean
+}
+
 export interface ChatMessageData {
   id: string
-  role: "user" | "assistant" | "thinking"
+  role: "user" | "assistant"
   content: string
   contentType: ContentType
   streaming: boolean
@@ -20,14 +29,7 @@ export interface ChatMessageData {
   isPlaceholder?: boolean
   icon?: string
   segments?: ContentSegment[]
-  /** Duration in milliseconds for thinking messages (client-computed). */
-  durationMs?: number
-  /** Current topic label for thinking messages. */
-  topic?: string | null
-  /** Timestamp (Date.now()) when thinking started, for duration computation. */
-  startedAt?: number
-  /** Buffer for partial <topic> tags split across chunks. */
-  topicBuffer?: string
+  thinking?: ThinkingData
 }
 
 export interface ChatInputState {
@@ -62,16 +64,30 @@ export const initialState: ChatState = {
 }
 
 function messagePayloadToData(msg: MessagePayload): ChatMessageData {
-  const role = msg.content_type === "thinking" ? "thinking" : msg.role
+  if (msg.content_type === "thinking") {
+    return {
+      id: msg.id ?? uuid(),
+      role: "assistant",
+      content: "",
+      contentType: "markdown",
+      streaming: false,
+      icon: msg.icon,
+      segments: [],
+      thinking: {
+        content: msg.content,
+        streaming: false,
+        startedAt: Date.now(),
+      },
+    }
+  }
   return {
     id: msg.id ?? uuid(),
-    role,
+    role: msg.role,
     content: msg.content,
     contentType: msg.content_type,
     streaming: false,
     icon: msg.icon,
     segments: [{ content: msg.content, contentType: msg.content_type }],
-    ...(role === "thinking" ? { startedAt: Date.now() } : {}),
   }
 }
 
@@ -162,35 +178,47 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
 
       const chunkType =
         action.content_type ??
-        last.segments![last.segments!.length - 1]!.contentType
+        (last.thinking?.streaming
+          ? "thinking"
+          : last.segments![last.segments!.length - 1]!.contentType)
 
-      // Content type changed: finalize the current message, start a new one
-      if (isContentTypeTransition(last.contentType, chunkType)) {
-        const newMsg: ChatMessageData = {
-          id: uuid(),
-          role: chunkType === "thinking" ? "thinking" : "assistant",
-          content: action.content,
-          contentType: chunkType,
+      // Thinking content: accumulate in the thinking field
+      if (chunkType === "thinking") {
+        const thinking = last.thinking ?? {
+          content: "",
           streaming: true,
-          segments: [{ content: action.content, contentType: chunkType }],
-          ...(chunkType === "thinking" ? { startedAt: Date.now() } : {}),
+          startedAt: Date.now(),
         }
-        // If the current message is empty, just replace it (don't add an empty message)
-        if (!last.content) {
-          return {
-            ...state,
-            streamingMessage: newMsg,
-          }
-        }
-        const finalized = finalizeMessage(last)
+        const { cleaned, topic, buffer } = extractTopics(
+          action.content,
+          thinking.topicBuffer ?? "",
+        )
         return {
           ...state,
-          messages: [...state.messages, finalized],
-          streamingMessage: newMsg,
+          streamingMessage: {
+            ...last,
+            thinking: {
+              ...thinking,
+              content: thinking.content + cleaned,
+              topicBuffer: buffer,
+              streaming: true,
+              ...(topic !== null ? { topic } : {}),
+            },
+          },
         }
       }
 
-      // Same content type: append as before
+      // Non-thinking content arriving: finalize thinking if it was streaming
+      const thinking = last.thinking?.streaming
+        ? {
+            ...last.thinking,
+            streaming: false,
+            durationMs: last.thinking.startedAt
+              ? Date.now() - last.thinking.startedAt
+              : undefined,
+          }
+        : last.thinking
+
       if (action.operation === "replace") {
         const segments = [{ content: action.content, contentType: chunkType }]
         return {
@@ -200,40 +228,15 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
             content: action.content,
             contentType: chunkType,
             segments,
+            thinking,
           },
         }
       }
 
-      // For thinking content, extract topics (with cross-chunk buffering)
-      if (chunkType === "thinking") {
-        const { cleaned, topic, buffer } = extractTopics(
-          action.content,
-          last.topicBuffer ?? "",
-        )
-        const newContent = last.content + cleaned
-        const segments = [...last.segments!]
-        const current = segments[segments.length - 1]!
-        segments[segments.length - 1] = {
-          ...current,
-          content: current.content + cleaned,
-        }
-        return {
-          ...state,
-          streamingMessage: {
-            ...last,
-            content: newContent,
-            contentType: chunkType,
-            segments,
-            topicBuffer: buffer,
-            ...(topic !== null ? { topic } : {}),
-          },
-        }
-      }
+      const segments = [...(last.segments ?? [])]
+      const current = segments[segments.length - 1]
 
-      const segments = [...last.segments!]
-      const current = segments[segments.length - 1]!
-
-      if (chunkType !== current.contentType) {
+      if (!current || chunkType !== current.contentType) {
         segments.push({ content: action.content, contentType: chunkType })
       } else {
         const content = current.content + action.content
@@ -249,6 +252,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
           content,
           contentType: chunkType,
           segments,
+          thinking,
         },
       }
     }
@@ -301,20 +305,16 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
   }
 }
 
-function isContentTypeTransition(
-  current: ContentType,
-  incoming: ContentType,
-): boolean {
-  if (current === incoming) return false
-  // thinking ↔ non-thinking is always a transition
-  if (current === "thinking" || incoming === "thinking") return true
-  return false
-}
-
 function finalizeMessage(msg: ChatMessageData): ChatMessageData {
   const finalized: ChatMessageData = { ...msg, streaming: false }
-  if (msg.role === "thinking" && msg.startedAt) {
-    finalized.durationMs = Date.now() - msg.startedAt
+  if (finalized.thinking?.streaming) {
+    finalized.thinking = {
+      ...finalized.thinking,
+      streaming: false,
+      durationMs: finalized.thinking.startedAt
+        ? Date.now() - finalized.thinking.startedAt
+        : undefined,
+    }
   }
   return finalized
 }

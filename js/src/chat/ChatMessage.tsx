@@ -1,6 +1,7 @@
 import { memo } from "react"
 import type { ChatMessageData } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
+import { ThinkingDisplay } from "./ThinkingDisplay"
 import { robot, dots_fade } from "../utils/icons"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
 
@@ -38,13 +39,16 @@ export const ChatMessage = memo(function ChatMessage({
         />
       )}
       <div className="shiny-chat-message-content">
+        {message.thinking && (
+          <ThinkingDisplay thinking={message.thinking} messageId={message.id} />
+        )}
         {segments.map((seg, i, arr) => {
           const el = (
             <MarkdownContent
               key={i}
               content={seg.content}
               contentType={seg.contentType}
-              role={message.role === "thinking" ? "assistant" : message.role}
+              role={message.role}
               streaming={message.streaming && i === arr.length - 1}
               tagToComponentMap={chatTagToComponentMap}
             />

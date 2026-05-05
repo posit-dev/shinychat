@@ -6,12 +6,13 @@ import {
   useCallback,
   useLayoutEffect,
 } from "react"
-import type { ChatMessageData } from "./state"
+import type { ThinkingData } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
 
 interface ThinkingDisplayProps {
-  message: ChatMessageData
+  thinking: ThinkingData
+  messageId: string
 }
 
 const TOPIC_MIN_DISPLAY_MS = 2500
@@ -104,45 +105,46 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
 }
 
 export const ThinkingDisplay = memo(function ThinkingDisplay({
-  message,
+  thinking,
+  messageId,
 }: ThinkingDisplayProps) {
   const [expanded, setExpanded] = useState(false)
   const [userToggled, setUserToggled] = useState(false)
-  const prevStreamingRef = useRef(message.streaming)
+  const prevStreamingRef = useRef(thinking.streaming)
 
   const displayedTopic = useDisplayedTopic(
-    message.streaming ? message.topic : null,
+    thinking.streaming ? thinking.topic : null,
   )
 
   // Auto-collapse when thinking completes (unless user has re-expanded after)
   useEffect(() => {
-    if (prevStreamingRef.current && !message.streaming && !userToggled) {
+    if (prevStreamingRef.current && !thinking.streaming && !userToggled) {
       const timer = setTimeout(() => setExpanded(false), 600)
       return () => clearTimeout(timer)
     }
-    prevStreamingRef.current = message.streaming
-  }, [message.streaming, userToggled])
+    prevStreamingRef.current = thinking.streaming
+  }, [thinking.streaming, userToggled])
 
   const handleToggle = useCallback(() => {
     setExpanded((prev) => !prev)
-    if (!message.streaming) {
+    if (!thinking.streaming) {
       setUserToggled(true)
     }
-  }, [message.streaming])
+  }, [thinking.streaming])
 
-  const headerText = getHeaderText(message, displayedTopic)
+  const headerText = getHeaderText(thinking, displayedTopic)
   const { visible: labelText, fading: labelFading } = useFadingText(headerText)
 
   return (
     <div
       className="shinychat-thinking"
-      data-streaming={message.streaming || undefined}
+      data-streaming={thinking.streaming || undefined}
     >
       <button
         className="shinychat-thinking-header"
         onClick={handleToggle}
         aria-expanded={expanded}
-        aria-controls={`thinking-content-${message.id}`}
+        aria-controls={`thinking-content-${messageId}`}
       >
         <ChevronIcon expanded={expanded} />
         <span
@@ -151,7 +153,7 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
         >
           {labelText}
         </span>
-        {message.streaming && (
+        {thinking.streaming && (
           <span className="shinychat-thinking-dots" aria-hidden="true">
             <span className="dot" />
             <span className="dot" />
@@ -161,18 +163,18 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
       </button>
       <div
         className="shinychat-thinking-content"
-        id={`thinking-content-${message.id}`}
+        id={`thinking-content-${messageId}`}
         role="region"
-        aria-labelledby={`thinking-header-${message.id}`}
+        aria-labelledby={`thinking-header-${messageId}`}
         aria-hidden={!expanded}
         data-expanded={expanded || undefined}
       >
         <div className="shinychat-thinking-content-inner">
           <MarkdownContent
-            content={message.content}
+            content={thinking.content}
             contentType="markdown"
             role="assistant"
-            streaming={message.streaming}
+            streaming={thinking.streaming}
             tagToComponentMap={chatTagToComponentMap}
           />
         </div>
@@ -182,14 +184,14 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
 })
 
 function getHeaderText(
-  message: ChatMessageData,
+  thinking: ThinkingData,
   displayedTopic: string | null,
 ): string {
-  if (message.streaming) {
+  if (thinking.streaming) {
     return displayedTopic ?? "Thinking"
   }
-  if (message.durationMs != null && message.durationMs > 0) {
-    const seconds = Math.round(message.durationMs / 1000)
+  if (thinking.durationMs != null && thinking.durationMs > 0) {
+    const seconds = Math.round(thinking.durationMs / 1000)
     if (seconds < 1) return "Thought for less than a second"
     return `Thought for ${seconds}s`
   }

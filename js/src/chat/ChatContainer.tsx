@@ -9,7 +9,6 @@ import { createPortal } from "react-dom"
 import { useStickToBottom } from "use-stick-to-bottom"
 import { ChatMessages } from "./ChatMessages"
 import { ChatMessage } from "./ChatMessage"
-import { ThinkingDisplay } from "./ThinkingDisplay"
 import { MessageErrorBoundary } from "./MessageErrorBoundary"
 import { ChatInput, type ChatInputHandle } from "./ChatInput"
 import { ScrollToBottomButton } from "./ScrollToBottomButton"
@@ -180,14 +179,10 @@ export const ChatContainer = forwardRef<
             <ChatMessages messages={messages} iconAssistant={iconAssistant} />
             {streamingMessage && (
               <MessageErrorBoundary key={streamingMessage.id}>
-                {streamingMessage.role === "thinking" ? (
-                  <ThinkingDisplay message={streamingMessage} />
-                ) : (
-                  <ChatMessage
-                    message={streamingMessage}
-                    iconAssistant={iconAssistant}
-                  />
-                )}
+                <ChatMessage
+                  message={streamingMessage}
+                  iconAssistant={iconAssistant}
+                />
               </MessageErrorBoundary>
             )}
           </div>
