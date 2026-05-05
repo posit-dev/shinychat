@@ -346,6 +346,11 @@ shiny-chat-container {
 
 .shinychat-thinking-label {
   font-weight: 500;
+  transition: opacity 0.2s ease;
+
+  &[data-fading] {
+    opacity: 0;
+  }
 }
 
 .shinychat-thinking-dots {
@@ -423,6 +428,10 @@ shiny-chat-container {
   }
 
   .shinychat-thinking-content-inner {
+    transition: none;
+  }
+
+  .shinychat-thinking-label {
     transition: none;
   }
 }

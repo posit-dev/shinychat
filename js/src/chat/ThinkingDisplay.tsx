@@ -1,4 +1,11 @@
-import { useState, useEffect, useRef, memo, useCallback } from "react"
+import {
+  useState,
+  useEffect,
+  useRef,
+  memo,
+  useCallback,
+  useLayoutEffect,
+} from "react"
 import type { ChatMessageData } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
@@ -51,6 +58,29 @@ function useDisplayedTopic(topic: string | null | undefined): string | null {
   return displayed
 }
 
+const FADE_DURATION_MS = 200
+
+function useFadingText(text: string): { visible: string; fading: boolean } {
+  const [visible, setVisible] = useState(text)
+  const [fading, setFading] = useState(false)
+  const pendingText = useRef(text)
+
+  useLayoutEffect(() => {
+    if (text === visible) return
+    pendingText.current = text
+    setFading(true)
+
+    const timer = setTimeout(() => {
+      setVisible(pendingText.current)
+      setFading(false)
+    }, FADE_DURATION_MS)
+
+    return () => clearTimeout(timer)
+  }, [text, visible])
+
+  return { visible, fading }
+}
+
 function ChevronIcon({ expanded }: { expanded: boolean }) {
   return (
     <svg
@@ -101,6 +131,7 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
   }, [message.streaming])
 
   const headerText = getHeaderText(message, displayedTopic)
+  const { visible: labelText, fading: labelFading } = useFadingText(headerText)
 
   return (
     <div
@@ -114,7 +145,12 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
         aria-controls={`thinking-content-${message.id}`}
       >
         <ChevronIcon expanded={expanded} />
-        <span className="shinychat-thinking-label">{headerText}</span>
+        <span
+          className="shinychat-thinking-label"
+          data-fading={labelFading || undefined}
+        >
+          {labelText}
+        </span>
         {message.streaming && (
           <span className="shinychat-thinking-dots" aria-hidden="true">
             <span className="dot" />
