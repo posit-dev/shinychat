@@ -92,10 +92,10 @@ function extractTopics(text: string, buffer: string): TopicResult {
   let combined = buffer + text
   let topic: string | null = null
 
-  // Extract complete <topic>...</topic> tags
+  // Replace complete <topic>...</topic> tags with bold markdown labels
   combined = combined.replace(TOPIC_TAG_RE, (_match, captured: string) => {
     topic = captured
-    return ""
+    return `\n\n<div class="shinychat-thinking-topic">${captured}</div>\n\n`
   })
 
   // Check for partial opening tag at the end

@@ -413,6 +413,10 @@ shiny-chat-container {
   }
 }
 
+.shinychat-thinking-topic {
+  font-weight: 600;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .shinychat-thinking-dots .dot {
     animation: none;
