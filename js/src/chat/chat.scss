@@ -394,6 +394,7 @@ shiny-chat-container {
 
   &[data-expanded] {
     grid-template-rows: 1fr;
+    max-height: 33dvh;
   }
 }
 
@@ -407,7 +408,7 @@ shiny-chat-container {
 
   [data-expanded] > & {
     padding-block: 0.25rem;
-    max-height: 60vh;
+    max-height: 33dvh;
     overflow-y: auto;
   }
 }
