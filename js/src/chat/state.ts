@@ -318,9 +318,13 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       }
 
     case "remove_loading": {
+      const messages = removeLoadingMessage(state.messages)
+      if (state.streamingMessage) {
+        messages.push(finalizeMessage(state.streamingMessage))
+      }
       return {
         ...state,
-        messages: removeLoadingMessage(state.messages),
+        messages,
         streamingMessage: null,
         inputDisabled: false,
       }
