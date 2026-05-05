@@ -187,6 +187,39 @@ class Chat:
     when responses should be aware of the chat history, support tool calls, etc.
     See this [article](https://posit-dev.github.io/chatlas/web-apps.html) to learn more.
 
+    Thinking display
+    ----------------
+
+    When a model produces reasoning or "thinking" tokens, shinychat renders them
+    in a collapsible panel above the response. The panel streams the model's
+    reasoning in real time, then auto-collapses when the response begins.
+
+    Two paths are supported:
+
+    1. **chatlas `ContentThinking` objects.** Models with a structured thinking
+       API (e.g., Claude with extended thinking) emit `ContentThinking` objects
+       during streaming. shinychat detects these and routes them to the thinking
+       panel automatically.
+
+    2. **Raw `<thinking>` tags.** Many open-source and local models (DeepSeek,
+       QwQ, Qwen, etc.) emit `<thinking>...</thinking>` tags in their markdown
+       output. shinychat detects these tags during streaming and renders the
+       enclosed text in the thinking panel with no extra configuration.
+
+    **Topic labels:** You can get labeled sub-sections within the thinking panel
+    by asking the model to emit `<topic>...</topic>` tags in its reasoning.
+    These show up as section headings inside the panel, and the current topic
+    appears in the collapsed header as a live status indicator.
+
+    To use topic labels, add something like this to your system prompt::
+
+        When thinking through a problem, wrap brief topic labels in <topic> tags
+        to indicate what you're currently reasoning about. For example:
+        <topic>parsing the input</topic>
+
+    Topic labels are optional. Without them, the thinking panel still works --
+    it just won't have sub-section headings.
+
     Parameters
     ----------
     id
