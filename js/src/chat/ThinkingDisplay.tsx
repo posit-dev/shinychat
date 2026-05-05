@@ -154,11 +154,15 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
           {labelText}
         </span>
         {thinking.streaming && (
-          <span className="shinychat-thinking-dots" aria-hidden="true">
-            <span className="dot" />
-            <span className="dot" />
-            <span className="dot" />
-          </span>
+          <svg
+            className="shinychat-thinking-dot"
+            width="8"
+            height="8"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <circle cx="4" cy="4" r="4" />
+          </svg>
         )}
       </button>
       <div
