@@ -232,6 +232,8 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       if (lastBlock?.type === "thinking" && lastBlock.streaming) {
         blocks[blocks.length - 1] = {
           ...lastBlock,
+          content: lastBlock.content + (lastBlock.topicBuffer ?? ""),
+          topicBuffer: "",
           streaming: false,
           durationMs: lastBlock.startedAt
             ? Date.now() - lastBlock.startedAt
@@ -344,6 +346,8 @@ function finalizeMessage(msg: ChatMessageData): ChatMessageData {
     if (block.type === "thinking" && block.streaming) {
       return {
         ...block,
+        content: block.content + (block.topicBuffer ?? ""),
+        topicBuffer: "",
         streaming: false,
         durationMs: block.startedAt ? Date.now() - block.startedAt : undefined,
       }
