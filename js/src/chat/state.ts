@@ -33,6 +33,10 @@ export interface ChatMessageData {
   isPlaceholder?: boolean
   icon?: string
   blocks: MessageBlock[]
+  /** Tracks whether streaming content is inside an unclosed <thinking> tag */
+  insideThinkingTag?: boolean
+  /** Buffers partial tag text at chunk boundaries (e.g. "<thi" or "</thin") */
+  tagBuffer?: string
 }
 
 export interface ChatInputState {
@@ -156,6 +160,121 @@ function extractTopicsComplete(text: string): {
   return { cleaned, topic }
 }
 
+interface ThinkingTagSegment {
+  type: "thinking" | "content"
+  text: string
+}
+
+interface ThinkingTagState {
+  insideThinkingTag: boolean
+  tagBuffer: string
+}
+
+const THINKING_OPEN = "<thinking>\n"
+const THINKING_OPEN_NO_NL = "<thinking>"
+const THINKING_CLOSE = "\n</thinking>"
+const THINKING_CLOSE_NO_NL = "</thinking>"
+
+function processThinkingTags(
+  chunk: string,
+  state: ThinkingTagState,
+): { segments: ThinkingTagSegment[]; state: ThinkingTagState } {
+  let text = state.tagBuffer + chunk
+  let inside = state.insideThinkingTag
+  const segments: ThinkingTagSegment[] = []
+  let tagBuffer = ""
+
+  while (text.length > 0) {
+    if (!inside) {
+      // Look for <thinking> open tag
+      const openIdx = text.indexOf(THINKING_OPEN)
+      const openIdxNoNl =
+        openIdx === -1 ? text.indexOf(THINKING_OPEN_NO_NL) : -1
+      const idx = openIdx !== -1 ? openIdx : openIdxNoNl
+      const tag = openIdx !== -1 ? THINKING_OPEN : THINKING_OPEN_NO_NL
+
+      if (idx !== -1) {
+        // Only treat as thinking if it's at the start of content (top-level)
+        const before = text.slice(0, idx)
+        if (before.trim()) {
+          // There's non-whitespace before the tag — not top-level
+          segments.push({ type: "content", text })
+          text = ""
+        } else {
+          if (before) {
+            segments.push({ type: "content", text: before })
+          }
+          inside = true
+          text = text.slice(idx + tag.length)
+        }
+      } else {
+        // Check for partial <thinking at end
+        const partial = findPartialTag(text, THINKING_OPEN_NO_NL)
+        if (partial > 0 && text.slice(0, text.length - partial).trim() === "") {
+          // Could be start of a top-level <thinking> tag
+          tagBuffer = text.slice(text.length - partial)
+          const before = text.slice(0, text.length - partial)
+          if (before) {
+            segments.push({ type: "content", text: before })
+          }
+          text = ""
+        } else {
+          segments.push({ type: "content", text })
+          text = ""
+        }
+      }
+    } else {
+      // Inside thinking — look for </thinking> close tag
+      const closeIdx = text.indexOf(THINKING_CLOSE)
+      const closeIdxNoNl =
+        closeIdx === -1 ? text.indexOf(THINKING_CLOSE_NO_NL) : -1
+      const idx = closeIdx !== -1 ? closeIdx : closeIdxNoNl
+      const tag = closeIdx !== -1 ? THINKING_CLOSE : THINKING_CLOSE_NO_NL
+
+      if (idx !== -1) {
+        const thinkingText = text.slice(0, idx)
+        if (thinkingText) {
+          segments.push({ type: "thinking", text: thinkingText })
+        }
+        inside = false
+        text = text.slice(idx + tag.length)
+        // Skip optional trailing newlines after </thinking>
+        if (text.startsWith("\n")) text = text.slice(1)
+        if (text.startsWith("\n")) text = text.slice(1)
+      } else {
+        // Check for partial </thinking at end
+        const partial = findPartialTag(text, THINKING_CLOSE_NO_NL)
+        if (partial > 0) {
+          tagBuffer = text.slice(text.length - partial)
+          const thinkingText = text.slice(0, text.length - partial)
+          if (thinkingText) {
+            segments.push({ type: "thinking", text: thinkingText })
+          }
+          text = ""
+        } else {
+          segments.push({ type: "thinking", text })
+          text = ""
+        }
+      }
+    }
+  }
+
+  return {
+    segments,
+    state: { insideThinkingTag: inside, tagBuffer },
+  }
+}
+
+function findPartialTag(text: string, tag: string): number {
+  // Check if the end of text matches a prefix of the tag
+  for (let len = Math.min(tag.length - 1, text.length); len > 0; len--) {
+    if (text.endsWith(tag.slice(0, len))) {
+      return len
+    }
+  }
+  return 0
+}
+
 const TOPIC_TAG_RE = /<topic>(.*?)<\/topic>/g
 const PARTIAL_OPEN_RE = /<(?:t(?:o(?:p(?:i(?:c(?:>[^<]*)?)?)?)?)?)?\s*$/
 
@@ -241,17 +360,16 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       const last = state.streamingMessage
       if (!last || !last.streaming) return state
 
+      const explicitType = action.content_type
       const lastBlock = last.blocks[last.blocks.length - 1]
-      const chunkType =
-        action.content_type ??
-        (lastBlock?.type === "thinking"
-          ? "thinking"
-          : ((lastBlock as ContentBlock | undefined)?.contentType ??
-            "markdown"))
+      const defaultContentType =
+        (lastBlock?.type === "content"
+          ? (lastBlock as ContentBlock).contentType
+          : undefined) ?? "markdown"
 
-      const blocks = [...last.blocks]
-
-      if (chunkType === "thinking") {
+      // If server explicitly says "thinking", use the direct thinking path
+      if (explicitType === "thinking") {
+        const blocks = [...last.blocks]
         const tail = lastBlock?.type === "thinking" ? lastBlock : null
         if (tail) {
           const { cleaned, topic, buffer } = extractTopics(
@@ -265,7 +383,6 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
             ...(topic !== null ? { topic } : {}),
           }
         } else {
-          // Start a new thinking block
           const { cleaned, topic, buffer } = extractTopics(action.content, "")
           blocks.push({
             type: "thinking",
@@ -282,7 +399,127 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         }
       }
 
-      // Non-thinking content: finalize any trailing thinking block
+      // No explicit content_type — detect <thinking> tags in content
+      const chunkType = explicitType ?? defaultContentType
+
+      // If we're inside a thinking tag or the chunk might contain one,
+      // process through the tag state machine
+      if (
+        last.insideThinkingTag ||
+        last.tagBuffer ||
+        action.content.includes("<")
+      ) {
+        const tagState: ThinkingTagState = {
+          insideThinkingTag: last.insideThinkingTag ?? false,
+          tagBuffer: last.tagBuffer ?? "",
+        }
+        const { segments, state: newTagState } = processThinkingTags(
+          action.content,
+          tagState,
+        )
+
+        // If we were tracking tag state, found thinking segments, or just entered a thinking tag
+        const hadTagState = !!(last.insideThinkingTag || last.tagBuffer)
+        const hasThinking = segments.some((s) => s.type === "thinking")
+        const enteredThinking = newTagState.insideThinkingTag
+
+        if (hadTagState || hasThinking || enteredThinking) {
+          const blocks = [...last.blocks]
+
+          for (const seg of segments) {
+            if (seg.type === "thinking") {
+              const tail = blocks[blocks.length - 1]
+              if (tail?.type === "thinking" && tail.streaming) {
+                const { cleaned, topic, buffer } = extractTopics(
+                  seg.text,
+                  tail.topicBuffer ?? "",
+                )
+                blocks[blocks.length - 1] = {
+                  ...tail,
+                  content: tail.content + cleaned,
+                  topicBuffer: buffer,
+                  ...(topic !== null ? { topic } : {}),
+                }
+              } else {
+                const { cleaned, topic, buffer } = extractTopics(seg.text, "")
+                blocks.push({
+                  type: "thinking",
+                  content: cleaned,
+                  topicBuffer: buffer,
+                  streaming: true,
+                  startedAt: Date.now(),
+                  ...(topic !== null ? { topic } : {}),
+                })
+              }
+            } else {
+              // Content segment — finalize any trailing streaming thinking block
+              const tail = blocks[blocks.length - 1]
+              if (tail?.type === "thinking" && tail.streaming) {
+                blocks[blocks.length - 1] = {
+                  ...tail,
+                  content: tail.content + (tail.topicBuffer ?? ""),
+                  topicBuffer: "",
+                  streaming: false,
+                  durationMs: tail.startedAt
+                    ? Date.now() - tail.startedAt
+                    : undefined,
+                }
+              }
+              // Append to existing content block or create new
+              const lastContent = blocks[blocks.length - 1]
+              if (
+                lastContent?.type === "content" &&
+                lastContent.contentType === chunkType
+              ) {
+                blocks[blocks.length - 1] = {
+                  ...lastContent,
+                  content: lastContent.content + seg.text,
+                }
+              } else if (seg.text) {
+                blocks.push({
+                  type: "content",
+                  content: seg.text,
+                  contentType: chunkType,
+                })
+              }
+            }
+          }
+
+          const content = blocks
+            .filter((b): b is ContentBlock => b.type === "content")
+            .map((b) => b.content)
+            .join("")
+
+          return {
+            ...state,
+            streamingMessage: {
+              ...last,
+              content,
+              contentType: chunkType,
+              blocks,
+              insideThinkingTag: newTagState.insideThinkingTag,
+              tagBuffer: newTagState.tagBuffer,
+            },
+          }
+        }
+
+        // Tag detection ran but found nothing — update tag buffer state if needed
+        if (newTagState.tagBuffer) {
+          return {
+            ...state,
+            streamingMessage: {
+              ...last,
+              insideThinkingTag: newTagState.insideThinkingTag,
+              tagBuffer: newTagState.tagBuffer,
+            },
+          }
+        }
+      }
+
+      // Standard non-thinking content path
+      const blocks = [...last.blocks]
+
+      // Finalize any trailing thinking block
       if (lastBlock?.type === "thinking" && lastBlock.streaming) {
         blocks[blocks.length - 1] = {
           ...lastBlock,
@@ -296,7 +533,6 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       }
 
       if (action.operation === "replace") {
-        // Replace removes all content blocks and adds a single new one
         const newBlocks: MessageBlock[] = blocks.filter(
           (b) => b.type === "thinking",
         )
@@ -315,7 +551,6 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
           },
         }
       } else {
-        // Append: extend matching content block or start a new one
         const tail = blocks[blocks.length - 1]
         if (tail?.type === "content" && tail.contentType === chunkType) {
           blocks[blocks.length - 1] = {
@@ -343,6 +578,8 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
           content,
           contentType: chunkType,
           blocks,
+          insideThinkingTag: false,
+          tagBuffer: "",
         },
       }
     }

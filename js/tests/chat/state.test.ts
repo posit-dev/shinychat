@@ -1014,5 +1014,91 @@ describe("chatReducer", () => {
       expect(msg.blocks).toHaveLength(1)
       expect(msg.blocks[0]!.type).toBe("content")
     })
+
+    it("streams thinking in real-time when <thinking> tag arrives across chunks", () => {
+      let state = makeState()
+      state = chatReducer(state, {
+        type: "chunk_start",
+        message: { role: "assistant", content: "", content_type: "markdown" },
+      })
+      // First chunk: opening tag
+      state = chatReducer(state, {
+        type: "chunk",
+        content: "<thinking>\n",
+        operation: "append",
+      })
+      expect(state.streamingMessage!.insideThinkingTag).toBe(true)
+      expect(state.streamingMessage!.blocks).toHaveLength(0)
+
+      // Second chunk: thinking content
+      state = chatReducer(state, {
+        type: "chunk",
+        content: "Let me reason about this...",
+        operation: "append",
+      })
+      expect(state.streamingMessage!.blocks).toHaveLength(1)
+      expect(state.streamingMessage!.blocks[0]!.type).toBe("thinking")
+      expect(
+        (state.streamingMessage!.blocks[0] as { streaming: boolean }).streaming,
+      ).toBe(true)
+      expect(
+        (state.streamingMessage!.blocks[0] as { content: string }).content,
+      ).toBe("Let me reason about this...")
+
+      // Third chunk: closing tag + content start
+      state = chatReducer(state, {
+        type: "chunk",
+        content: "\n</thinking>\n\nHere is the answer.",
+        operation: "append",
+      })
+      expect(state.streamingMessage!.insideThinkingTag).toBe(false)
+      expect(state.streamingMessage!.blocks).toHaveLength(2)
+      expect(state.streamingMessage!.blocks[0]!.type).toBe("thinking")
+      expect(
+        (state.streamingMessage!.blocks[0] as { streaming: boolean }).streaming,
+      ).toBe(false)
+      expect(state.streamingMessage!.blocks[1]!.type).toBe("content")
+      expect(
+        (state.streamingMessage!.blocks[1] as { content: string }).content,
+      ).toBe("Here is the answer.")
+    })
+
+    it("streams thinking across many small chunks (simulating token-by-token)", () => {
+      let state = makeState()
+      state = chatReducer(state, {
+        type: "chunk_start",
+        message: { role: "assistant", content: "", content_type: "markdown" },
+      })
+
+      const chunks = [
+        "<thinking>\n",
+        "First ",
+        "part of ",
+        "thinking.\n",
+        "\n</thinking>\n\n",
+        "The ",
+        "response.",
+      ]
+
+      for (const chunk of chunks) {
+        state = chatReducer(state, {
+          type: "chunk",
+          content: chunk,
+          operation: "append",
+        })
+      }
+
+      state = chatReducer(state, { type: "chunk_end" })
+      const msg = state.messages[0]!
+      expect(msg.blocks).toHaveLength(2)
+      expect(msg.blocks[0]!.type).toBe("thinking")
+      expect((msg.blocks[0] as { content: string }).content).toBe(
+        "First part of thinking.\n",
+      )
+      expect(msg.blocks[1]!.type).toBe("content")
+      expect((msg.blocks[1] as { content: string }).content).toBe(
+        "The response.",
+      )
+    })
   })
 })
