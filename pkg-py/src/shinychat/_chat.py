@@ -128,6 +128,7 @@ PendingMessage = Tuple[
     ChunkOption,
     Literal["append", "replace"],
     Union[str, None],
+    "Union[ContentType, None]",
 ]
 
 
@@ -609,7 +610,7 @@ class Chat:
         """
         # If we're in a stream, queue the message
         if self._current_stream_id:
-            self._pending_messages.append((message, False, "append", None))
+            self._pending_messages.append((message, False, "append", None, None))
             return
 
         msg = message_content(message)
@@ -726,7 +727,7 @@ class Chat:
         # If currently we're in a *different* stream, queue the message chunk
         if self._current_stream_id and self._current_stream_id != stream_id:
             self._pending_messages.append(
-                (message, chunk, operation, stream_id)
+                (message, chunk, operation, stream_id, content_type_override)
             )
             return
 
@@ -955,7 +956,7 @@ class Chat:
     async def _flush_pending_messages(self):
         pending = self._pending_messages
         self._pending_messages = []
-        for msg, chunk, operation, stream_id in pending:
+        for msg, chunk, operation, stream_id, content_type_override in pending:
             if chunk is False:
                 await self.append_message(msg)
             else:
@@ -964,6 +965,7 @@ class Chat:
                     chunk=chunk,
                     operation=operation,
                     stream_id=cast(str, stream_id),
+                    content_type_override=content_type_override,
                 )
 
     # Send a message to the UI
