@@ -15,20 +15,18 @@ export const ChatMessage = memo(function ChatMessage({
   iconAssistant,
 }: ChatMessageProps) {
   const isUser = message.role === "user"
-  const isEmpty = message.content.trim() === ""
+  const hasContent =
+    message.content.trim() !== "" ||
+    message.blocks.some((b) => b.type === "thinking")
 
   let iconHtml: string | undefined
   if (isUser) {
     iconHtml = message.icon || undefined
   } else {
-    iconHtml = isEmpty ? dots_fade : (message.icon ?? iconAssistant ?? robot)
+    iconHtml = hasContent ? (message.icon ?? iconAssistant ?? robot) : dots_fade
   }
 
   const roleClass = isUser ? "shiny-chat-user-message" : "shiny-chat-message"
-
-  const segments = message.segments ?? [
-    { content: message.content, contentType: message.contentType },
-  ]
 
   return (
     <div className={roleClass}>
@@ -39,21 +37,28 @@ export const ChatMessage = memo(function ChatMessage({
         />
       )}
       <div className="shiny-chat-message-content">
-        {message.thinking && (
-          <ThinkingDisplay thinking={message.thinking} messageId={message.id} />
-        )}
-        {segments.map((seg, i, arr) => {
+        {message.blocks.map((block, i) => {
+          if (block.type === "thinking") {
+            return (
+              <ThinkingDisplay
+                key={i}
+                thinking={block}
+                messageId={`${message.id}-${i}`}
+              />
+            )
+          }
+          const isLast = i === message.blocks.length - 1
           const el = (
             <MarkdownContent
               key={i}
-              content={seg.content}
-              contentType={seg.contentType}
+              content={block.content}
+              contentType={block.contentType}
               role={message.role}
-              streaming={message.streaming && i === arr.length - 1}
+              streaming={message.streaming && isLast}
               tagToComponentMap={chatTagToComponentMap}
             />
           )
-          if (seg.contentType === "text") {
+          if (block.contentType === "text") {
             return (
               <div key={i} className="content-type-text">
                 {el}

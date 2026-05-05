@@ -5,12 +5,14 @@ import type {
 } from "../transport/types"
 import { uuid } from "../utils/uuid"
 
-export interface ContentSegment {
+export interface ContentBlock {
+  type: "content"
   content: string
   contentType: ContentType
 }
 
-export interface ThinkingData {
+export interface ThinkingBlock {
+  type: "thinking"
   content: string
   topic?: string | null
   topicBuffer?: string
@@ -18,6 +20,8 @@ export interface ThinkingData {
   durationMs?: number
   streaming: boolean
 }
+
+export type MessageBlock = ContentBlock | ThinkingBlock
 
 export interface ChatMessageData {
   id: string
@@ -28,8 +32,7 @@ export interface ChatMessageData {
   /** True for the empty placeholder message shown while waiting for the assistant to respond. */
   isPlaceholder?: boolean
   icon?: string
-  segments?: ContentSegment[]
-  thinking?: ThinkingData
+  blocks: MessageBlock[]
 }
 
 export interface ChatInputState {
@@ -72,12 +75,14 @@ function messagePayloadToData(msg: MessagePayload): ChatMessageData {
       contentType: "markdown",
       streaming: false,
       icon: msg.icon,
-      segments: [],
-      thinking: {
-        content: msg.content,
-        streaming: false,
-        startedAt: Date.now(),
-      },
+      blocks: [
+        {
+          type: "thinking",
+          content: msg.content,
+          streaming: false,
+          startedAt: Date.now(),
+        },
+      ],
     }
   }
   return {
@@ -87,7 +92,9 @@ function messagePayloadToData(msg: MessagePayload): ChatMessageData {
     contentType: msg.content_type,
     streaming: false,
     icon: msg.icon,
-    segments: [{ content: msg.content, contentType: msg.content_type }],
+    blocks: [
+      { type: "content", content: msg.content, contentType: msg.content_type },
+    ],
   }
 }
 
@@ -134,6 +141,9 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         content: action.content,
         contentType: "markdown",
         streaming: false,
+        blocks: [
+          { type: "content", content: action.content, contentType: "markdown" },
+        ],
       }
       const loadingMsg: ChatMessageData = {
         id: uuid(),
@@ -142,6 +152,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         contentType: "markdown",
         streaming: false,
         isPlaceholder: true,
+        blocks: [],
       }
       return {
         ...state,
@@ -176,74 +187,98 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       const last = state.streamingMessage
       if (!last || !last.streaming) return state
 
+      const lastBlock = last.blocks[last.blocks.length - 1]
       const chunkType =
         action.content_type ??
-        (last.thinking?.streaming
+        (lastBlock?.type === "thinking"
           ? "thinking"
-          : last.segments![last.segments!.length - 1]!.contentType)
+          : ((lastBlock as ContentBlock | undefined)?.contentType ??
+            "markdown"))
 
-      // Thinking content: accumulate in the thinking field
+      const blocks = [...last.blocks]
+
       if (chunkType === "thinking") {
-        const thinking = last.thinking ?? {
-          content: "",
-          streaming: true,
-          startedAt: Date.now(),
+        const tail = lastBlock?.type === "thinking" ? lastBlock : null
+        if (tail) {
+          const { cleaned, topic, buffer } = extractTopics(
+            action.content,
+            tail.topicBuffer ?? "",
+          )
+          blocks[blocks.length - 1] = {
+            ...tail,
+            content: tail.content + cleaned,
+            topicBuffer: buffer,
+            ...(topic !== null ? { topic } : {}),
+          }
+        } else {
+          // Start a new thinking block
+          const { cleaned, topic, buffer } = extractTopics(action.content, "")
+          blocks.push({
+            type: "thinking",
+            content: cleaned,
+            topicBuffer: buffer,
+            streaming: true,
+            startedAt: Date.now(),
+            ...(topic !== null ? { topic } : {}),
+          })
         }
-        const { cleaned, topic, buffer } = extractTopics(
-          action.content,
-          thinking.topicBuffer ?? "",
-        )
         return {
           ...state,
-          streamingMessage: {
-            ...last,
-            thinking: {
-              ...thinking,
-              content: thinking.content + cleaned,
-              topicBuffer: buffer,
-              streaming: true,
-              ...(topic !== null ? { topic } : {}),
-            },
-          },
+          streamingMessage: { ...last, blocks },
         }
       }
 
-      // Non-thinking content arriving: finalize thinking if it was streaming
-      const thinking = last.thinking?.streaming
-        ? {
-            ...last.thinking,
-            streaming: false,
-            durationMs: last.thinking.startedAt
-              ? Date.now() - last.thinking.startedAt
-              : undefined,
-          }
-        : last.thinking
+      // Non-thinking content: finalize any trailing thinking block
+      if (lastBlock?.type === "thinking" && lastBlock.streaming) {
+        blocks[blocks.length - 1] = {
+          ...lastBlock,
+          streaming: false,
+          durationMs: lastBlock.startedAt
+            ? Date.now() - lastBlock.startedAt
+            : undefined,
+        }
+      }
 
       if (action.operation === "replace") {
-        const segments = [{ content: action.content, contentType: chunkType }]
+        // Replace removes all content blocks and adds a single new one
+        const newBlocks: MessageBlock[] = blocks.filter(
+          (b) => b.type === "thinking",
+        )
+        newBlocks.push({
+          type: "content",
+          content: action.content,
+          contentType: chunkType,
+        })
         return {
           ...state,
           streamingMessage: {
             ...last,
             content: action.content,
             contentType: chunkType,
-            segments,
-            thinking,
+            blocks: newBlocks,
           },
+        }
+      } else {
+        // Append: extend matching content block or start a new one
+        const tail = blocks[blocks.length - 1]
+        if (tail?.type === "content" && tail.contentType === chunkType) {
+          blocks[blocks.length - 1] = {
+            ...tail,
+            content: tail.content + action.content,
+          }
+        } else {
+          blocks.push({
+            type: "content",
+            content: action.content,
+            contentType: chunkType,
+          })
         }
       }
 
-      const segments = [...(last.segments ?? [])]
-      const current = segments[segments.length - 1]
-
-      if (!current || chunkType !== current.contentType) {
-        segments.push({ content: action.content, contentType: chunkType })
-      } else {
-        const content = current.content + action.content
-        segments[segments.length - 1] = { ...current, content }
-      }
-
-      const content = segments.map((s) => s.content).join("")
+      const content = blocks
+        .filter((b): b is ContentBlock => b.type === "content")
+        .map((b) => b.content)
+        .join("")
 
       return {
         ...state,
@@ -251,8 +286,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
           ...last,
           content,
           contentType: chunkType,
-          segments,
-          thinking,
+          blocks,
         },
       }
     }
@@ -306,15 +340,15 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
 }
 
 function finalizeMessage(msg: ChatMessageData): ChatMessageData {
-  const finalized: ChatMessageData = { ...msg, streaming: false }
-  if (finalized.thinking?.streaming) {
-    finalized.thinking = {
-      ...finalized.thinking,
-      streaming: false,
-      durationMs: finalized.thinking.startedAt
-        ? Date.now() - finalized.thinking.startedAt
-        : undefined,
+  const blocks = msg.blocks.map((block) => {
+    if (block.type === "thinking" && block.streaming) {
+      return {
+        ...block,
+        streaming: false,
+        durationMs: block.startedAt ? Date.now() - block.startedAt : undefined,
+      }
     }
-  }
-  return finalized
+    return block
+  })
+  return { ...msg, streaming: false, blocks }
 }

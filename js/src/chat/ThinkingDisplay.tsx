@@ -6,12 +6,12 @@ import {
   useCallback,
   useLayoutEffect,
 } from "react"
-import type { ThinkingData } from "./state"
+import type { ThinkingBlock } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
 
 interface ThinkingDisplayProps {
-  thinking: ThinkingData
+  thinking: ThinkingBlock
   messageId: string
 }
 
@@ -184,7 +184,7 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
 })
 
 function getHeaderText(
-  thinking: ThinkingData,
+  thinking: ThinkingBlock,
   displayedTopic: string | null,
 ): string {
   if (thinking.streaming) {
