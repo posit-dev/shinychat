@@ -61,7 +61,23 @@ function useDisplayedTopic(topic: string | null | undefined): string | null {
 
 const FADE_DURATION_MS = 200
 
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  )
+  useEffect(() => {
+    const mql = window.matchMedia("(prefers-reduced-motion: reduce)")
+    const handler = (e: MediaQueryListEvent) => setReduced(e.matches)
+    mql.addEventListener("change", handler)
+    return () => mql.removeEventListener("change", handler)
+  }, [])
+  return reduced
+}
+
 function useFadingText(text: string): { visible: string; fading: boolean } {
+  const reducedMotion = usePrefersReducedMotion()
   const [visible, setVisible] = useState(text)
   const [fading, setFading] = useState(false)
   const pendingText = useRef(text)
@@ -69,15 +85,21 @@ function useFadingText(text: string): { visible: string; fading: boolean } {
   useLayoutEffect(() => {
     if (text === visible) return
     pendingText.current = text
-    setFading(true)
 
+    if (reducedMotion) {
+      setVisible(text)
+      setFading(false)
+      return
+    }
+
+    setFading(true)
     const timer = setTimeout(() => {
       setVisible(pendingText.current)
       setFading(false)
     }, FADE_DURATION_MS)
 
     return () => clearTimeout(timer)
-  }, [text, visible])
+  }, [text, visible, reducedMotion])
 
   return { visible, fading }
 }
@@ -118,9 +140,12 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
 
   // Auto-collapse when thinking completes (unless user has re-expanded after)
   useEffect(() => {
-    if (prevStreamingRef.current && !thinking.streaming && !userToggled) {
-      const timer = setTimeout(() => setExpanded(false), 600)
-      return () => clearTimeout(timer)
+    if (prevStreamingRef.current && !thinking.streaming) {
+      if (!userToggled) {
+        const timer = setTimeout(() => setExpanded(false), 600)
+        return () => clearTimeout(timer)
+      }
+      prevStreamingRef.current = thinking.streaming
     }
     prevStreamingRef.current = thinking.streaming
   }, [thinking.streaming, userToggled])
@@ -171,7 +196,7 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
         id={`thinking-content-${messageId}`}
         role="region"
         aria-labelledby={`thinking-header-${messageId}`}
-        aria-hidden={!expanded}
+        aria-hidden={!expanded ? "true" : undefined}
         data-expanded={expanded || undefined}
       >
         <div className="shinychat-thinking-content-inner">
