@@ -397,11 +397,12 @@ shiny-chat-container {
   padding-block: 0;
   color: var(--shinychat-thinking-content-color);
   font-size: 0.9em;
-  // Smooth padding transition with content
   transition: padding-block 0.2s ease;
 
   [data-expanded] > & {
     padding-block: 0.25rem;
+    max-height: 60vh;
+    overflow-y: auto;
   }
 }
 
