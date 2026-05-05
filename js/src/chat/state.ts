@@ -85,21 +85,75 @@ function messagePayloadToData(msg: MessagePayload): ChatMessageData {
       ],
     }
   }
+
+  const blocks = splitThinkingBlocks(msg.content, msg.content_type)
+  const contentOnly = blocks
+    .filter((b): b is ContentBlock => b.type === "content")
+    .map((b) => b.content)
+    .join("")
+
   return {
     id: msg.id ?? uuid(),
     role: msg.role,
-    content: msg.content,
+    content: contentOnly,
     contentType: msg.content_type,
     streaming: false,
     icon: msg.icon,
-    blocks: [
-      { type: "content", content: msg.content, contentType: msg.content_type },
-    ],
+    blocks,
   }
 }
 
 function removeLoadingMessage(messages: ChatMessageData[]): ChatMessageData[] {
   return messages.filter((m) => !m.isPlaceholder)
+}
+
+const THINKING_TAG_RE = /<thinking>\n?([\s\S]*?)\n?<\/thinking>\n*/g
+
+function splitThinkingBlocks(
+  content: string,
+  contentType: ContentType,
+): MessageBlock[] {
+  if (contentType === "thinking") {
+    return [{ type: "thinking", content, streaming: false }]
+  }
+
+  const blocks: MessageBlock[] = []
+  let lastIndex = 0
+
+  for (const match of content.matchAll(THINKING_TAG_RE)) {
+    const before = content.slice(lastIndex, match.index)
+    if (before) {
+      blocks.push({ type: "content", content: before, contentType })
+    }
+    const thinkingContent = match[1] ?? ""
+    const { cleaned, topic } = extractTopicsComplete(thinkingContent)
+    blocks.push({
+      type: "thinking",
+      content: cleaned,
+      streaming: false,
+      ...(topic !== null ? { topic } : {}),
+    })
+    lastIndex = match.index + match[0].length
+  }
+
+  const remaining = content.slice(lastIndex)
+  if (remaining) {
+    blocks.push({ type: "content", content: remaining, contentType })
+  }
+
+  return blocks
+}
+
+function extractTopicsComplete(text: string): {
+  cleaned: string
+  topic: string | null
+} {
+  let topic: string | null = null
+  const cleaned = text.replace(TOPIC_TAG_RE, (_match, captured: string) => {
+    topic = captured
+    return `\n\n<div class="shinychat-thinking-topic">${captured}</div>\n\n`
+  })
+  return { cleaned, topic }
 }
 
 const TOPIC_TAG_RE = /<topic>(.*?)<\/topic>/g
@@ -346,17 +400,31 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
 }
 
 function finalizeMessage(msg: ChatMessageData): ChatMessageData {
-  const blocks = msg.blocks.map((block) => {
+  const blocks: MessageBlock[] = []
+  for (const block of msg.blocks) {
     if (block.type === "thinking" && block.streaming) {
-      return {
+      blocks.push({
         ...block,
         content: block.content + (block.topicBuffer ?? ""),
         topicBuffer: "",
         streaming: false,
         durationMs: block.startedAt ? Date.now() - block.startedAt : undefined,
-      }
+      })
+    } else if (
+      block.type === "content" &&
+      THINKING_TAG_RE.test(block.content)
+    ) {
+      THINKING_TAG_RE.lastIndex = 0
+      blocks.push(...splitThinkingBlocks(block.content, block.contentType))
+    } else {
+      blocks.push(block)
     }
-    return block
-  })
-  return { ...msg, streaming: false, blocks }
+  }
+
+  const content = blocks
+    .filter((b): b is ContentBlock => b.type === "content")
+    .map((b) => b.content)
+    .join("")
+
+  return { ...msg, content, streaming: false, blocks }
 }

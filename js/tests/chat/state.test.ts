@@ -898,4 +898,121 @@ describe("chatReducer", () => {
       expect(next).toBe(state)
     })
   })
+
+  describe("<thinking> tag detection", () => {
+    it("splits <thinking> tags in non-streaming message into ThinkingBlock + ContentBlock", () => {
+      const state = makeState()
+      const next = chatReducer(state, {
+        type: "message",
+        message: {
+          role: "assistant",
+          content:
+            "<thinking>\nI need to figure this out\n</thinking>\n\nHere is my answer.",
+          content_type: "markdown",
+        },
+      })
+      const msg = next.messages[0]!
+      expect(msg.blocks).toHaveLength(2)
+      expect(msg.blocks[0]!.type).toBe("thinking")
+      expect((msg.blocks[0] as { content: string }).content).toBe(
+        "I need to figure this out",
+      )
+      expect(msg.blocks[1]!.type).toBe("content")
+      expect((msg.blocks[1] as { content: string }).content).toBe(
+        "Here is my answer.",
+      )
+      expect(msg.content).toBe("Here is my answer.")
+    })
+
+    it("handles multiple <thinking> blocks interleaved with content", () => {
+      const state = makeState()
+      const next = chatReducer(state, {
+        type: "message",
+        message: {
+          role: "assistant",
+          content:
+            "<thinking>\nFirst thought\n</thinking>\n\nSome text\n\n<thinking>\nSecond thought\n</thinking>\n\nMore text",
+          content_type: "markdown",
+        },
+      })
+      const msg = next.messages[0]!
+      expect(msg.blocks).toHaveLength(4)
+      expect(msg.blocks[0]!.type).toBe("thinking")
+      expect(msg.blocks[1]!.type).toBe("content")
+      expect(msg.blocks[2]!.type).toBe("thinking")
+      expect(msg.blocks[3]!.type).toBe("content")
+    })
+
+    it("extracts <topic> tags within <thinking> blocks", () => {
+      const state = makeState()
+      const next = chatReducer(state, {
+        type: "message",
+        message: {
+          role: "assistant",
+          content:
+            "<thinking>\n<topic>Planning</topic>\nLet me plan this\n</thinking>\n\nDone.",
+          content_type: "markdown",
+        },
+      })
+      const msg = next.messages[0]!
+      const thinkingBlock = msg.blocks[0] as { topic?: string | null }
+      expect(thinkingBlock.topic).toBe("Planning")
+    })
+
+    it("detects <thinking> tags in streamed content at finalization", () => {
+      let state = makeState()
+      state = chatReducer(state, {
+        type: "chunk_start",
+        message: { role: "assistant", content: "", content_type: "markdown" },
+      })
+      state = chatReducer(state, {
+        type: "chunk",
+        content:
+          "<thinking>\nHmm let me think\n</thinking>\n\nThe answer is 42.",
+        operation: "append",
+      })
+      state = chatReducer(state, { type: "chunk_end" })
+
+      const msg = state.messages[0]!
+      expect(msg.blocks).toHaveLength(2)
+      expect(msg.blocks[0]!.type).toBe("thinking")
+      expect((msg.blocks[0] as { content: string }).content).toBe(
+        "Hmm let me think",
+      )
+      expect(msg.blocks[1]!.type).toBe("content")
+      expect((msg.blocks[1] as { content: string }).content).toBe(
+        "The answer is 42.",
+      )
+    })
+
+    it("leaves messages without <thinking> tags unchanged", () => {
+      const state = makeState()
+      const next = chatReducer(state, {
+        type: "message",
+        message: {
+          role: "assistant",
+          content: "Just a normal response",
+          content_type: "markdown",
+        },
+      })
+      const msg = next.messages[0]!
+      expect(msg.blocks).toHaveLength(1)
+      expect(msg.blocks[0]!.type).toBe("content")
+    })
+
+    it("does not treat inline <thinking> in code blocks as thinking", () => {
+      const state = makeState()
+      const next = chatReducer(state, {
+        type: "message",
+        message: {
+          role: "assistant",
+          content: "Use `<thinking>` tags for reasoning.",
+          content_type: "markdown",
+        },
+      })
+      const msg = next.messages[0]!
+      expect(msg.blocks).toHaveLength(1)
+      expect(msg.blocks[0]!.type).toBe("content")
+    })
+  })
 })

@@ -258,6 +258,7 @@ class Chat:
 
         # Chunked messages get accumulated (using this property) before changing state
         self._current_stream_message: str = ""
+        self._current_stream_thinking: str = ""
         self._current_stream_deps: list[HTMLDependency] = []
         self._current_stream_id: str | None = None
         self._pending_messages: list[PendingMessage] = []
@@ -795,6 +796,7 @@ class Chat:
             if chunk == "end":
                 self._current_stream_id = None
                 self._current_stream_message = ""
+                self._current_stream_thinking = ""
                 self._current_stream_deps = []
                 self._message_stream_checkpoint = ""
                 self._message_stream_deps_checkpoint = []
@@ -938,11 +940,11 @@ class Chat:
             async for msg in message:
                 if _is_content_thinking(msg):
                     thinking_text = msg.thinking if hasattr(msg, "thinking") else str(msg)
+                    self._current_stream_thinking += thinking_text
                     thinking_msg = ChatMessage(content=thinking_text, role="assistant")
-                    await self._append_message_chunk(
+                    await self._send_append_message(
                         thinking_msg,
                         chunk=True,
-                        stream_id=id,
                         content_type_override="thinking",
                     )
                     continue
@@ -950,6 +952,13 @@ class Chat:
                 await self._append_message_chunk(msg, chunk=True, stream_id=id)
             return self._current_stream_message
         finally:
+            if self._current_stream_thinking:
+                self._current_stream_message = (
+                    "<thinking>\n"
+                    + self._current_stream_thinking
+                    + "\n</thinking>\n\n"
+                    + self._current_stream_message
+                )
             await self._append_message_chunk(empty, chunk="end", stream_id=id)
             await self._flush_pending_messages()
 
