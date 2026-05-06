@@ -137,8 +137,30 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
   const prevStreamingRef = useRef(thinking.streaming)
   const outerStopScroll = useChatStopScroll()
 
-  const { scrollRef: innerScrollRef, contentRef: innerContentRef } =
-    useStickToBottom({ resize: "smooth" })
+  const {
+    scrollRef: innerScrollRef,
+    contentRef: innerContentRef,
+    scrollToBottom: innerScrollToBottom,
+  } = useStickToBottom({ resize: "smooth" })
+
+  // When the inner container transitions from non-overflowing to overflowing,
+  // kick stick-to-bottom into gear so it follows the stream.
+  const wasOverflowing = useRef(false)
+  useEffect(() => {
+    const el = innerScrollRef.current
+    if (!el || !expanded || !thinking.streaming) return
+    const isOverflowing = el.scrollHeight > el.clientHeight
+    if (isOverflowing && !wasOverflowing.current) {
+      innerScrollToBottom()
+    }
+    wasOverflowing.current = isOverflowing
+  }, [
+    thinking.content,
+    expanded,
+    thinking.streaming,
+    innerScrollToBottom,
+    innerScrollRef,
+  ])
 
   const displayedTopic = useDisplayedTopic(
     thinking.streaming ? thinking.topic : null,
@@ -157,12 +179,19 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
   }, [thinking.streaming, userToggled])
 
   const handleToggle = useCallback(() => {
-    setExpanded((prev) => !prev)
+    setExpanded((prev) => {
+      if (prev) {
+        outerStopScroll?.()
+      } else if (thinking.streaming) {
+        wasOverflowing.current = false
+        innerScrollToBottom()
+      }
+      return !prev
+    })
     if (!thinking.streaming) {
       setUserToggled(true)
     }
-    outerStopScroll?.()
-  }, [thinking.streaming, outerStopScroll])
+  }, [thinking.streaming, outerStopScroll, innerScrollToBottom])
 
   const headerText = getHeaderText(thinking, displayedTopic)
   const { visible: labelText, fading: labelFading } = useFadingText(headerText)
