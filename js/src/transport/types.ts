@@ -1,12 +1,15 @@
 import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 
-export type ContentType = "markdown" | "html" | "text" | "thinking"
+export type ContentType = "markdown" | "html" | "text"
+
+export type BlockType = "thinking" | "content"
 
 export type MessagePayload = {
   id?: string
   role: "user" | "assistant"
   content: string
   content_type: ContentType
+  block_type?: BlockType
   icon?: string
   html_deps?: HtmlDep[]
 }
@@ -19,6 +22,7 @@ export type ChatAction =
       content: string
       operation: "append" | "replace"
       content_type?: ContentType
+      block_type?: BlockType
     }
   | { type: "chunk_end" }
   | { type: "clear" }

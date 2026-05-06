@@ -14,13 +14,15 @@ Role = Literal["assistant", "user", "system"]
 # Wire-format types (mirrors js/src/transport/types.ts)
 # ---------------------------------------------------------------------------
 
-ContentType = Literal["markdown", "html", "text", "thinking"]
+ContentType = Literal["markdown", "html", "text"]
+BlockType = Literal["thinking", "content"]
 
 
 class MessagePayload(TypedDict):
     role: Literal["user", "assistant"]
     content: str
     content_type: ContentType
+    block_type: NotRequired[BlockType]
     id: NotRequired[str]
     icon: NotRequired[str]
     html_deps: NotRequired[list[dict[str, object]]]
@@ -41,6 +43,7 @@ class ChunkAction(TypedDict):
     content: str
     operation: Literal["append", "replace"]
     content_type: NotRequired[ContentType]
+    block_type: NotRequired[BlockType]
 
 
 class ChunkEndAction(TypedDict):

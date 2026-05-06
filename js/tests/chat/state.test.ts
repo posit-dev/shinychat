@@ -562,14 +562,15 @@ describe("chatReducer", () => {
   })
 
   describe("thinking blocks", () => {
-    it("chunk_start with thinking content_type creates a thinking block", () => {
+    it("chunk_start with block_type thinking creates a thinking block", () => {
       const state = makeState()
       const next = chatReducer(state, {
         type: "chunk_start",
         message: {
           role: "assistant",
           content: "reasoning...",
-          content_type: "thinking",
+          content_type: "markdown",
+          block_type: "thinking",
         },
       })
       expect(next.streamingMessage).not.toBeNull()
@@ -596,7 +597,7 @@ describe("chatReducer", () => {
       const next = chatReducer(state, {
         type: "chunk",
         content: " part2",
-        content_type: "thinking",
+        block_type: "thinking",
         operation: "append",
       })
       const block = next.streamingMessage!.blocks[0] as {
@@ -655,7 +656,7 @@ describe("chatReducer", () => {
       const next = chatReducer(state, {
         type: "chunk",
         content: "before <topic>analyzing</topic> after",
-        content_type: "thinking",
+        block_type: "thinking",
         operation: "append",
       })
       const block = next.streamingMessage!.blocks[0] as {
@@ -682,7 +683,7 @@ describe("chatReducer", () => {
       const next1 = chatReducer(state, {
         type: "chunk",
         content: "some text <top",
-        content_type: "thinking",
+        block_type: "thinking",
         operation: "append",
       })
       const block1 = next1.streamingMessage!.blocks[0] as {
@@ -697,7 +698,7 @@ describe("chatReducer", () => {
       const next2 = chatReducer(next1, {
         type: "chunk",
         content: "ic>hello</topic> more",
-        content_type: "thinking",
+        block_type: "thinking",
         operation: "append",
       })
       const block2 = next2.streamingMessage!.blocks[0] as {
@@ -776,13 +777,14 @@ describe("chatReducer", () => {
         message: {
           role: "assistant",
           content: "",
-          content_type: "thinking",
+          content_type: "markdown",
+          block_type: "thinking",
         },
       })
       s = chatReducer(s, {
         type: "chunk",
         content: "thought1",
-        content_type: "thinking",
+        block_type: "thinking",
         operation: "append",
       })
       s = chatReducer(s, {
@@ -794,7 +796,7 @@ describe("chatReducer", () => {
       s = chatReducer(s, {
         type: "chunk",
         content: "thought2",
-        content_type: "thinking",
+        block_type: "thinking",
         operation: "append",
       })
       s = chatReducer(s, {
@@ -863,7 +865,7 @@ describe("chatReducer", () => {
       const next = chatReducer(state, {
         type: "chunk",
         content: "",
-        content_type: "thinking",
+        block_type: "thinking",
         operation: "append",
       })
       expect(next.streamingMessage!.blocks).toHaveLength(1)

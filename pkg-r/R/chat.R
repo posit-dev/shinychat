@@ -407,9 +407,7 @@ chat_append_message <- function(
       "shinychat_tool_card"
     )
   )
-  content_type <- if (is_thinking) {
-    "thinking"
-  } else if (is_html) {
+  content_type <- if (is_html) {
     "html"
   } else {
     "markdown"
@@ -438,6 +436,7 @@ chat_append_message <- function(
   html_deps <- ui[["deps"]]
 
   icon_str <- if (!is.null(icon)) as.character(icon) else NULL
+  block_type <- if (is_thinking) "thinking" else NULL
 
   if (chunk_type == "start") {
     message_payload <- list(
@@ -445,6 +444,9 @@ chat_append_message <- function(
       content = msg_content,
       content_type = content_type
     )
+    if (!is.null(block_type)) {
+      message_payload$block_type <- block_type
+    }
     if (!is.null(icon_str)) {
       message_payload$icon <- icon_str
     }
@@ -463,6 +465,9 @@ chat_append_message <- function(
         operation = operation,
         content_type = content_type
       )
+      if (!is.null(block_type)) {
+        chunk_action$block_type <- block_type
+      }
       send_chat_action(
         id,
         action = chunk_action,
@@ -478,6 +483,9 @@ chat_append_message <- function(
       operation = operation,
       content_type = content_type
     )
+    if (!is.null(block_type)) {
+      action$block_type <- block_type
+    }
     send_chat_action(
       id,
       action = action,
@@ -491,6 +499,9 @@ chat_append_message <- function(
       content = msg_content,
       content_type = content_type
     )
+    if (!is.null(block_type)) {
+      message_payload$block_type <- block_type
+    }
     if (!is.null(icon_str)) {
       message_payload$icon <- icon_str
     }

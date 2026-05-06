@@ -71,7 +71,7 @@ export const initialState: ChatState = {
 }
 
 function messagePayloadToData(msg: MessagePayload): ChatMessageData {
-  if (msg.content_type === "thinking") {
+  if (msg.block_type === "thinking") {
     return {
       id: msg.id ?? uuid(),
       role: "assistant",
@@ -117,10 +117,6 @@ function splitThinkingBlocks(
   content: string,
   contentType: ContentType,
 ): MessageBlock[] {
-  if (contentType === "thinking") {
-    return [{ type: "thinking", content, streaming: false }]
-  }
-
   // Skip splitting for non-markdown content types where <thinking> tags
   // are likely literal content rather than thinking markers
   if (contentType !== "markdown") {
@@ -394,8 +390,8 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
           ? (lastBlock as ContentBlock).contentType
           : undefined) ?? "markdown"
 
-      // If server explicitly says "thinking", use the direct thinking path
-      if (explicitType === "thinking") {
+      // If server explicitly says block_type="thinking", use the direct path
+      if (action.block_type === "thinking") {
         const blocks = [...last.blocks]
         const tail = lastBlock?.type === "thinking" ? lastBlock : null
         if (tail) {
@@ -426,7 +422,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         }
       }
 
-      // No explicit content_type — detect <thinking> tags in content
+      // No explicit block_type — detect <thinking> tags in content
       const chunkType = explicitType ?? defaultContentType
 
       // If we're inside a thinking tag or the chunk might contain one,
