@@ -6,6 +6,8 @@
 \alias{shinychat-package}
 \title{shinychat: Chat UI Component for 'shiny'}
 \description{
+\if{html}{\figure{logo.svg}{options: style='float: right' alt='logo' width='120'}}
+
 Provides a scrolling chat interface with multiline input, suitable for creating chatbot apps based on Large Language Models (LLMs). Designed to work particularly well with the 'ellmer' R package for calling LLMs.
 }
 \seealso{
@@ -22,6 +24,7 @@ Useful links:
 
 Authors:
 \itemize{
+  \item Garrick Aden-Buie \email{garrick@adenbuie.com} (\href{https://orcid.org/0000-0002-7111-0077}{ORCID})
   \item Joe Cheng \email{joe@posit.co}
   \item Carson Sievert \email{carson@posit.co}
   \item Barret Schloerke \email{barret@posit.co} (\href{https://orcid.org/0000-0001-9986-114X}{ORCID})

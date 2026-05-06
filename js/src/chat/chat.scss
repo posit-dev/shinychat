@@ -150,6 +150,12 @@ shiny-chat-container {
   max-width: 100%;
   // User messages don't have an icon by default
   grid-template-columns: auto;
+  // Prevent structural wrapper/button elements from appearing in clipboard copies
+  user-select: none;
+
+  .shiny-chat-message-content {
+    user-select: text;
+  }
 }
 
 .shiny-chat-message,
