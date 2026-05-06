@@ -137,7 +137,7 @@ S7::method(contents_shinychat, ellmer::ContentText) <- function(content) {
 }
 
 S7::method(contents_shinychat, ellmer::ContentThinking) <- function(content) {
-  structure(content@thinking, class = "shinychat_thinking")
+  content@thinking
 }
 
 new_tool_card <- function(type, request_id, tool_name, ...) {

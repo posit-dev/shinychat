@@ -71,25 +71,6 @@ export const initialState: ChatState = {
 }
 
 function messagePayloadToData(msg: MessagePayload): ChatMessageData {
-  if (msg.block_type === "thinking") {
-    return {
-      id: msg.id ?? uuid(),
-      role: "assistant",
-      content: "",
-      contentType: "markdown",
-      streaming: false,
-      icon: msg.icon,
-      blocks: [
-        {
-          type: "thinking",
-          content: msg.content,
-          streaming: false,
-          startedAt: Date.now(),
-        },
-      ],
-    }
-  }
-
   const blocks = splitThinkingBlocks(msg.content, msg.content_type)
   const contentOnly = blocks
     .filter((b): b is ContentBlock => b.type === "content")
@@ -390,39 +371,6 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
           ? (lastBlock as ContentBlock).contentType
           : undefined) ?? "markdown"
 
-      // If server explicitly says block_type="thinking", use the direct path
-      if (action.block_type === "thinking") {
-        const blocks = [...last.blocks]
-        const tail = lastBlock?.type === "thinking" ? lastBlock : null
-        if (tail) {
-          const { cleaned, topic, buffer } = extractTopics(
-            action.content,
-            tail.topicBuffer ?? "",
-          )
-          blocks[blocks.length - 1] = {
-            ...tail,
-            content: tail.content + cleaned,
-            topicBuffer: buffer,
-            ...(topic !== null ? { topic } : {}),
-          }
-        } else {
-          const { cleaned, topic, buffer } = extractTopics(action.content, "")
-          blocks.push({
-            type: "thinking",
-            content: cleaned,
-            topicBuffer: buffer,
-            streaming: true,
-            startedAt: Date.now(),
-            ...(topic !== null ? { topic } : {}),
-          })
-        }
-        return {
-          ...state,
-          streamingMessage: { ...last, blocks },
-        }
-      }
-
-      // No explicit block_type — detect <thinking> tags in content
       const chunkType = explicitType ?? defaultContentType
 
       // If we're inside a thinking tag or the chunk might contain one,

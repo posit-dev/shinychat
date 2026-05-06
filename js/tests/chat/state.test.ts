@@ -562,81 +562,78 @@ describe("chatReducer", () => {
   })
 
   describe("thinking blocks", () => {
-    it("chunk_start with block_type thinking creates a thinking block", () => {
-      const state = makeState()
-      const next = chatReducer(state, {
+    it("thinking tags in streamed chunks create thinking blocks", () => {
+      let state = makeState()
+      state = chatReducer(state, {
         type: "chunk_start",
-        message: {
-          role: "assistant",
-          content: "reasoning...",
-          content_type: "markdown",
-          block_type: "thinking",
-        },
+        message: { role: "assistant", content: "", content_type: "markdown" },
       })
-      expect(next.streamingMessage).not.toBeNull()
-      expect(next.streamingMessage!.blocks).toHaveLength(1)
-      expect(next.streamingMessage!.blocks[0]!.type).toBe("thinking")
-      const block = next.streamingMessage!.blocks[0] as {
+      state = chatReducer(state, {
+        type: "chunk",
+        content: "<thinking>\nreasoning...",
+        operation: "append",
+      })
+      expect(state.streamingMessage!.blocks).toHaveLength(1)
+      expect(state.streamingMessage!.blocks[0]!.type).toBe("thinking")
+      const block = state.streamingMessage!.blocks[0] as {
         type: "thinking"
         content: string
         streaming: boolean
       }
       expect(block.content).toBe("reasoning...")
-      expect(block.streaming).toBe(false)
+      expect(block.streaming).toBe(true)
     })
 
     it("thinking chunks append to existing thinking block", () => {
-      const streamingMsg = makeAssistantMsg({
-        streaming: true,
-        content: "",
-        blocks: [
-          { type: "thinking", content: "part1", streaming: true, startedAt: 1 },
-        ],
+      let state = makeState()
+      state = chatReducer(state, {
+        type: "chunk_start",
+        message: { role: "assistant", content: "", content_type: "markdown" },
       })
-      const state = makeState({ streamingMessage: streamingMsg })
-      const next = chatReducer(state, {
+      state = chatReducer(state, {
         type: "chunk",
-        content: " part2",
-        block_type: "thinking",
+        content: "<thinking>\npart1",
         operation: "append",
       })
-      const block = next.streamingMessage!.blocks[0] as {
+      state = chatReducer(state, {
+        type: "chunk",
+        content: " part2",
+        operation: "append",
+      })
+      const block = state.streamingMessage!.blocks[0] as {
         type: "thinking"
         content: string
       }
       expect(block.content).toBe("part1 part2")
     })
 
-    it("transition from thinking to markdown finalizes thinking block", () => {
-      vi.spyOn(Date, "now").mockReturnValue(5000)
-      const streamingMsg = makeAssistantMsg({
-        streaming: true,
-        content: "",
-        blocks: [
-          {
-            type: "thinking",
-            content: "thought",
-            streaming: true,
-            startedAt: 3000,
-          },
-        ],
+    it("closing thinking tag finalizes thinking block with duration", () => {
+      let state = makeState()
+      state = chatReducer(state, {
+        type: "chunk_start",
+        message: { role: "assistant", content: "", content_type: "markdown" },
       })
-      const state = makeState({ streamingMessage: streamingMsg })
-      const next = chatReducer(state, {
+      vi.spyOn(Date, "now").mockReturnValue(3000)
+      state = chatReducer(state, {
         type: "chunk",
-        content: "response",
-        content_type: "markdown",
+        content: "<thinking>\nthought",
         operation: "append",
       })
-      expect(next.streamingMessage!.blocks).toHaveLength(2)
-      const thinkBlock = next.streamingMessage!.blocks[0] as {
+      vi.spyOn(Date, "now").mockReturnValue(5000)
+      state = chatReducer(state, {
+        type: "chunk",
+        content: "\n</thinking>\n\nresponse",
+        operation: "append",
+      })
+      expect(state.streamingMessage!.blocks).toHaveLength(2)
+      const thinkBlock = state.streamingMessage!.blocks[0] as {
         type: "thinking"
         streaming: boolean
         durationMs: number
       }
       expect(thinkBlock.streaming).toBe(false)
       expect(thinkBlock.durationMs).toBe(2000)
-      const contentBlock = next.streamingMessage!.blocks[1] as {
+      const contentBlock = state.streamingMessage!.blocks[1] as {
         type: "content"
         content: string
       }
@@ -645,21 +642,22 @@ describe("chatReducer", () => {
     })
 
     it("topic tags are extracted from thinking content", () => {
-      const streamingMsg = makeAssistantMsg({
-        streaming: true,
-        content: "",
-        blocks: [
-          { type: "thinking", content: "", streaming: true, startedAt: 1 },
-        ],
+      let state = makeState()
+      state = chatReducer(state, {
+        type: "chunk_start",
+        message: { role: "assistant", content: "", content_type: "markdown" },
       })
-      const state = makeState({ streamingMessage: streamingMsg })
-      const next = chatReducer(state, {
+      state = chatReducer(state, {
         type: "chunk",
-        content: "before <topic>analyzing</topic> after",
-        block_type: "thinking",
+        content: "<thinking>\n",
         operation: "append",
       })
-      const block = next.streamingMessage!.blocks[0] as {
+      state = chatReducer(state, {
+        type: "chunk",
+        content: "before <topic>analyzing</topic> after",
+        operation: "append",
+      })
+      const block = state.streamingMessage!.blocks[0] as {
         type: "thinking"
         content: string
         topic: string | null
@@ -670,23 +668,24 @@ describe("chatReducer", () => {
     })
 
     it("partial topic tag is buffered across chunks", () => {
-      const streamingMsg = makeAssistantMsg({
-        streaming: true,
-        content: "",
-        blocks: [
-          { type: "thinking", content: "", streaming: true, startedAt: 1 },
-        ],
+      let state = makeState()
+      state = chatReducer(state, {
+        type: "chunk_start",
+        message: { role: "assistant", content: "", content_type: "markdown" },
       })
-      const state = makeState({ streamingMessage: streamingMsg })
-
-      // First chunk ends with partial tag
-      const next1 = chatReducer(state, {
+      state = chatReducer(state, {
         type: "chunk",
-        content: "some text <top",
-        block_type: "thinking",
+        content: "<thinking>\n",
         operation: "append",
       })
-      const block1 = next1.streamingMessage!.blocks[0] as {
+
+      // First chunk ends with partial tag
+      state = chatReducer(state, {
+        type: "chunk",
+        content: "some text <top",
+        operation: "append",
+      })
+      const block1 = state.streamingMessage!.blocks[0] as {
         type: "thinking"
         content: string
         topicBuffer: string
@@ -695,13 +694,12 @@ describe("chatReducer", () => {
       expect(block1.content).toBe("some text ")
 
       // Second chunk completes the tag
-      const next2 = chatReducer(next1, {
+      state = chatReducer(state, {
         type: "chunk",
         content: "ic>hello</topic> more",
-        block_type: "thinking",
         operation: "append",
       })
-      const block2 = next2.streamingMessage!.blocks[0] as {
+      const block2 = state.streamingMessage!.blocks[0] as {
         type: "thinking"
         content: string
         topic: string | null
@@ -740,28 +738,23 @@ describe("chatReducer", () => {
       expect(block.streaming).toBe(false)
     })
 
-    it("topicBuffer is flushed on transition to markdown", () => {
-      const streamingMsg = makeAssistantMsg({
-        streaming: true,
-        content: "",
-        blocks: [
-          {
-            type: "thinking",
-            content: "thought ",
-            topicBuffer: "<t",
-            streaming: true,
-            startedAt: 1,
-          },
-        ],
+    it("topicBuffer is flushed on transition to content", () => {
+      let state = makeState()
+      state = chatReducer(state, {
+        type: "chunk_start",
+        message: { role: "assistant", content: "", content_type: "markdown" },
       })
-      const state = makeState({ streamingMessage: streamingMsg })
-      const next = chatReducer(state, {
+      state = chatReducer(state, {
         type: "chunk",
-        content: "response",
-        content_type: "markdown",
+        content: "<thinking>\nthought <t",
         operation: "append",
       })
-      const thinkBlock = next.streamingMessage!.blocks[0] as {
+      state = chatReducer(state, {
+        type: "chunk",
+        content: "\n</thinking>\n\nresponse",
+        operation: "append",
+      })
+      const thinkBlock = state.streamingMessage!.blocks[0] as {
         type: "thinking"
         content: string
         topicBuffer: string
@@ -771,43 +764,34 @@ describe("chatReducer", () => {
     })
 
     it("multiple thinking→content cycles produce interleaved blocks", () => {
-      const state = makeState()
-      let s = chatReducer(state, {
+      let state = makeState()
+      state = chatReducer(state, {
         type: "chunk_start",
-        message: {
-          role: "assistant",
-          content: "",
-          content_type: "markdown",
-          block_type: "thinking",
-        },
+        message: { role: "assistant", content: "", content_type: "markdown" },
       })
-      s = chatReducer(s, {
+      state = chatReducer(state, {
         type: "chunk",
-        content: "thought1",
-        block_type: "thinking",
+        content: "<thinking>\nthought1\n</thinking>\n\n",
         operation: "append",
       })
-      s = chatReducer(s, {
+      state = chatReducer(state, {
         type: "chunk",
         content: "response1",
-        content_type: "markdown",
         operation: "append",
       })
-      s = chatReducer(s, {
+      state = chatReducer(state, {
         type: "chunk",
-        content: "thought2",
-        block_type: "thinking",
+        content: "<thinking>\nthought2\n</thinking>\n\n",
         operation: "append",
       })
-      s = chatReducer(s, {
+      state = chatReducer(state, {
         type: "chunk",
         content: "response2",
-        content_type: "markdown",
         operation: "append",
       })
-      s = chatReducer(s, { type: "chunk_end" })
+      state = chatReducer(state, { type: "chunk_end" })
 
-      const msg = s.messages[s.messages.length - 1]!
+      const msg = state.messages[state.messages.length - 1]!
       expect(msg.blocks).toHaveLength(4)
       expect(msg.blocks[0]!.type).toBe("thinking")
       expect(msg.blocks[1]!.type).toBe("content")
@@ -851,29 +835,6 @@ describe("chatReducer", () => {
       expect(block.topicBuffer).toBe("")
       expect(block.durationMs).toBe(2000)
       vi.restoreAllMocks()
-    })
-
-    it("empty thinking chunk does not create duplicate blocks", () => {
-      const streamingMsg = makeAssistantMsg({
-        streaming: true,
-        content: "",
-        blocks: [
-          { type: "thinking", content: "text", streaming: true, startedAt: 1 },
-        ],
-      })
-      const state = makeState({ streamingMessage: streamingMsg })
-      const next = chatReducer(state, {
-        type: "chunk",
-        content: "",
-        block_type: "thinking",
-        operation: "append",
-      })
-      expect(next.streamingMessage!.blocks).toHaveLength(1)
-      const block = next.streamingMessage!.blocks[0] as {
-        type: "thinking"
-        content: string
-      }
-      expect(block.content).toBe("text")
     })
 
     it("thinking block with no startedAt has undefined durationMs", () => {

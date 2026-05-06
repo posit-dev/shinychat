@@ -55,7 +55,6 @@ from ._chat_tokenizer import (
     get_default_tokenizer,
 )
 from ._chat_types import (
-    BlockType,
     ChatAction,
     ChatMessage,
     ChatMessageDict,
@@ -129,20 +128,9 @@ PendingMessage = Tuple[
     ChunkOption,
     Literal["append", "replace"],
     Union[str, None],
-    "Union[BlockType, None]",
 ]
 
 
-def _is_content_thinking(msg: Any) -> bool:
-    """Check if a message is a ContentThinking object from chatlas."""
-    try:
-        from chatlas.types import (
-            ContentThinking,  # pyright: ignore[reportAttributeAccessIssue]
-        )
-
-        return isinstance(msg, ContentThinking)
-    except ImportError:
-        return False
 
 
 class Chat:
@@ -644,7 +632,7 @@ class Chat:
         """
         # If we're in a stream, queue the message
         if self._current_stream_id:
-            self._pending_messages.append((message, False, "append", None, None))
+            self._pending_messages.append((message, False, "append", None))
             return
 
         msg = message_content(message)
@@ -756,12 +744,11 @@ class Chat:
         stream_id: str,
         operation: Literal["append", "replace"] = "append",
         icon: HTML | Tag | TagList | None = None,
-        block_type: "BlockType | None" = None,
     ) -> None:
         # If currently we're in a *different* stream, queue the message chunk
         if self._current_stream_id and self._current_stream_id != stream_id:
             self._pending_messages.append(
-                (message, chunk, operation, stream_id, block_type)
+                (message, chunk, operation, stream_id)
             )
             return
 
@@ -823,7 +810,6 @@ class Chat:
                 chunk=chunk,
                 operation=operation,
                 icon=icon,
-                block_type=block_type,
             )
         finally:
             if chunk == "end":
@@ -970,16 +956,6 @@ class Chat:
 
         try:
             async for msg in message:
-                if _is_content_thinking(msg):
-                    thinking_text = msg.thinking if hasattr(msg, "thinking") else str(msg)
-                    thinking_msg = ChatMessage(content=thinking_text, role="assistant")
-                    await self._send_append_message(
-                        thinking_msg,
-                        chunk=True,
-                        block_type="thinking",
-                    )
-                    continue
-
                 await self._append_message_chunk(msg, chunk=True, stream_id=id)
             return self._current_stream_message
         finally:
@@ -989,7 +965,7 @@ class Chat:
     async def _flush_pending_messages(self):
         pending = self._pending_messages
         self._pending_messages = []
-        for msg, chunk, operation, stream_id, block_type in pending:
+        for msg, chunk, operation, stream_id in pending:
             if chunk is False:
                 await self.append_message(msg)
             else:
@@ -998,7 +974,6 @@ class Chat:
                     chunk=chunk,
                     operation=operation,
                     stream_id=cast(str, stream_id),
-                    block_type=block_type,
                 )
 
     # Send a message to the UI
@@ -1008,7 +983,6 @@ class Chat:
         chunk: ChunkOption = False,
         operation: Literal["append", "replace"] = "append",
         icon: HTML | Tag | TagList | None = None,
-        block_type: "BlockType | None" = None,
     ):
         message = self._as_stored_message(message)
 
@@ -1026,8 +1000,6 @@ class Chat:
             "content": str(content),
             "content_type": content_type,
         }
-        if block_type is not None:
-            msg_payload["block_type"] = block_type
         if icon is not None:
             msg_payload["icon"] = str(icon)
 
@@ -1042,8 +1014,6 @@ class Chat:
                     "operation": operation,
                     "content_type": content_type,
                 }
-                if block_type is not None:
-                    chunk_action["block_type"] = block_type
                 await self._send_action(chunk_action, message.html_deps)
             await self._send_action({"type": "chunk_end"})
         elif chunk is True:
@@ -1053,8 +1023,6 @@ class Chat:
                 "operation": operation,
                 "content_type": content_type,
             }
-            if block_type is not None:
-                chunk_action["block_type"] = block_type
             await self._send_action(chunk_action, message.html_deps)
         else:
             # chunk == False: complete message
