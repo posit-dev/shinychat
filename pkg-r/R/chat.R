@@ -407,7 +407,13 @@ chat_append_message <- function(
       "shinychat_tool_card"
     )
   )
-  content_type <- if (is_thinking) "thinking" else if (is_html) "html" else "markdown"
+  content_type <- if (is_thinking) {
+    "thinking"
+  } else if (is_html) {
+    "html"
+  } else {
+    "markdown"
+  }
 
   operation <- match.arg(operation)
 
