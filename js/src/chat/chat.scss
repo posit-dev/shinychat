@@ -362,11 +362,17 @@ shiny-chat-container {
 .shinychat-thinking-dot {
   margin-left: 0;
   fill: currentColor;
-  opacity: 0.6;
-  animation: shinychat-thinking-dot-pulse 1.75s infinite
-    cubic-bezier(0.18, 0.89, 0.32, 1.28);
-  animation-delay: 1s;
+  opacity: 0;
   transform-origin: center;
+  animation:
+    shinychat-thinking-dot-appear 0.2s ease 500ms forwards,
+    shinychat-thinking-dot-pulse 1.75s infinite cubic-bezier(0.18, 0.89, 0.32, 1.28) 500ms;
+}
+
+@keyframes shinychat-thinking-dot-appear {
+  to {
+    opacity: 0.6;
+  }
 }
 
 @keyframes shinychat-thinking-dot-pulse {
@@ -419,8 +425,7 @@ shiny-chat-container {
 
 @media (prefers-reduced-motion: reduce) {
   .shinychat-thinking-dot {
-    animation: none;
-    opacity: 0.6;
+    animation: shinychat-thinking-dot-appear 0s ease 500ms forwards;
   }
 
   .shinychat-thinking-chevron {

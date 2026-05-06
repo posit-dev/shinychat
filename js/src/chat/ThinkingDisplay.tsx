@@ -167,6 +167,10 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
   const headerText = getHeaderText(thinking, displayedTopic)
   const { visible: labelText, fading: labelFading } = useFadingText(headerText)
 
+  if (!thinking.streaming && !thinking.content.trim()) {
+    return null
+  }
+
   return (
     <div
       className="shinychat-thinking"
@@ -230,7 +234,7 @@ function getHeaderText(
   if (thinking.streaming) {
     return displayedTopic ?? "Thinking"
   }
-  if (thinking.durationMs != null && thinking.durationMs > 0) {
+  if (thinking.durationMs != null && thinking.durationMs >= 500) {
     const seconds = Math.round(thinking.durationMs / 1000)
     if (seconds < 1) return "Thought for less than a second"
     return `Thought for ${seconds}s`
