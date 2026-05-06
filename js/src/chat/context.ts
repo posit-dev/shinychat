@@ -2,8 +2,15 @@ import { createContext, useContext, type Dispatch } from "react"
 import type { ShinyLifecycle } from "../transport/types"
 import type { ChatToolState, AnyAction } from "./state"
 import { initialState } from "./state"
+import type { StopScroll } from "use-stick-to-bottom"
 
 export const ShinyLifecycleContext = createContext<ShinyLifecycle | null>(null)
+
+export const ChatScrollContext = createContext<StopScroll | null>(null)
+
+export function useChatStopScroll(): StopScroll | null {
+  return useContext(ChatScrollContext)
+}
 
 const initialToolState: ChatToolState = {
   hiddenToolRequests: initialState.hiddenToolRequests,
