@@ -277,6 +277,7 @@ function findPartialTag(text: string, tag: string): number {
 
 const TOPIC_TAG_RE = /<topic>(.*?)<\/topic>/g
 const PARTIAL_OPEN_RE = /<(?:t(?:o(?:p(?:i(?:c(?:>[^<]*)?)?)?)?)?)?\s*$/
+const PARTIAL_CLOSE_RE = /<(?:\/(?:t(?:o(?:p(?:i(?:c(?:>)?)?)?)?)?)?)?\s*$/
 
 interface TopicResult {
   cleaned: string
@@ -294,9 +295,16 @@ function extractTopics(text: string, buffer: string): TopicResult {
     return `\n\n<div class="shinychat-thinking-topic">${captured}</div>\n\n`
   })
 
-  // Check for partial opening tag at the end
+  // Check for partial opening or closing tag at the end
   let newBuffer = ""
-  const partialMatch = PARTIAL_OPEN_RE.exec(combined)
+  const partialOpen = PARTIAL_OPEN_RE.exec(combined)
+  const partialClose = PARTIAL_CLOSE_RE.exec(combined)
+  const partialMatch =
+    partialOpen && partialClose
+      ? partialOpen.index > partialClose.index
+        ? partialOpen
+        : partialClose
+      : partialOpen || partialClose
   if (partialMatch && partialMatch[0]) {
     newBuffer = partialMatch[0]
     combined = combined.slice(0, partialMatch.index)

@@ -6,9 +6,11 @@ import {
   useCallback,
   useLayoutEffect,
 } from "react"
+import { useStickToBottom } from "use-stick-to-bottom"
 import type { ThinkingBlock } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
+import { useChatStopScroll } from "./context"
 
 interface ThinkingDisplayProps {
   thinking: ThinkingBlock
@@ -133,6 +135,10 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
   const [expanded, setExpanded] = useState(false)
   const [userToggled, setUserToggled] = useState(false)
   const prevStreamingRef = useRef(thinking.streaming)
+  const outerStopScroll = useChatStopScroll()
+
+  const { scrollRef: innerScrollRef, contentRef: innerContentRef } =
+    useStickToBottom({ resize: "smooth" })
 
   const displayedTopic = useDisplayedTopic(
     thinking.streaming ? thinking.topic : null,
@@ -155,7 +161,8 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
     if (!thinking.streaming) {
       setUserToggled(true)
     }
-  }, [thinking.streaming])
+    outerStopScroll?.()
+  }, [thinking.streaming, outerStopScroll])
 
   const headerText = getHeaderText(thinking, displayedTopic)
   const { visible: labelText, fading: labelFading } = useFadingText(headerText)
@@ -197,16 +204,19 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
         role="region"
         aria-labelledby={`thinking-header-${messageId}`}
         aria-hidden={!expanded ? "true" : undefined}
+        inert={!expanded || undefined}
         data-expanded={expanded || undefined}
       >
-        <div className="shinychat-thinking-content-inner">
-          <MarkdownContent
-            content={thinking.content}
-            contentType="markdown"
-            role="assistant"
-            streaming={thinking.streaming}
-            tagToComponentMap={chatTagToComponentMap}
-          />
+        <div className="shinychat-thinking-content-inner" ref={innerScrollRef}>
+          <div ref={innerContentRef}>
+            <MarkdownContent
+              content={thinking.content}
+              contentType="markdown"
+              role="assistant"
+              streaming={thinking.streaming}
+              tagToComponentMap={chatTagToComponentMap}
+            />
+          </div>
         </div>
       </div>
     </div>
