@@ -26,7 +26,7 @@ generics and methods in the \href{https://rconsortium.github.io/S7/articles/S7.h
 
 We'll work through a short example creating a custom display for the results
 of a tool that gets local weather forecasts. We first need to create a custom
-class that extends \link[ellmer:Content]{ellmer::ContentToolResult}.
+class that extends \link[ellmer:ContentToolResult]{ellmer::ContentToolResult}.
 
 \if{html}{\out{<div class="sourceCode r">}}\preformatted{library(ellmer)
 
