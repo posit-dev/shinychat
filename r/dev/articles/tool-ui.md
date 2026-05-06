@@ -13,6 +13,7 @@ Let’s start with a simple weather forecasting tool to demonstrate the
 default behavior:
 
 ``` r
+
 library(shinychat)
 library(ellmer)
 library(weathR) # for forecasts via `point_tomorrow()`
@@ -35,6 +36,7 @@ a chat object. When the LLM calls the tool, ellmer automatically
 evaluates the tool call and returns the result to the LLM.
 
 ``` r
+
 chat <- ellmer::chat("openai/gpt-4.1-nano", echo = "output")
 chat$register_tool(get_weather_forecast)
 chat$chat("What's the weather in Boston like today?")
@@ -93,6 +95,7 @@ tool requests and results to shinychat by setting `stream = "content"`
 in the `$stream_async()` call.
 
 ``` r
+
 server <- function(input, output, session) {
   client <- ellmer::chat("openai/gpt-4.1-nano")
   client$register_tool(get_weather_forecast)
@@ -125,6 +128,7 @@ If the tool annotations include a `title` or `icon`, shinychat will use
 them in the tool request and result displays.
 
 ``` r
+
 get_weather_forecast <- tool(
   function(lat, lon) {
     point_tomorrow(lat, lon, short = FALSE)
@@ -171,6 +175,7 @@ forecasted temperatures. Note that we need to also update the tool’s
 can provide a meaningful title.
 
 ``` r
+
 get_weather_forecast <- tool(
   function(lat, lon, location_name) {
     forecast <- point_tomorrow(lat, lon, short = FALSE)
@@ -227,6 +232,7 @@ doesn’t need any arguments, but we include a `` `_intent` `` argument in
 the tool function and we include a description to explain its purpose.
 
 ``` r
+
 tool_random_number <- tool(
   function(`_intent`) {
     runif(1)
@@ -297,6 +303,7 @@ show the user a nicely formatted HTML table using
 [gt](https://gt.rstudio.com).
 
 ``` r
+
 get_weather_forecast <- tool(
   function(lat, lon, location_name) {
     forecast_data <- point_tomorrow(lat, lon, short = FALSE)
@@ -338,6 +345,7 @@ tool result. It’s less appropriate in our weather tool, but we could use
 markdown to summarize the forecast in a few sentences.
 
 ``` r
+
 get_weather_forecast <- tool(
   function(lat, lon, location_name) {
     forecast_data <- point_tomorrow(lat, lon, short = FALSE)
@@ -434,6 +442,7 @@ To adjust the display for debugging or verification purposes, set the
 environment variable) to one of the following values:
 
 ``` r
+
 # Disable tool UI entirely
 options(shinychat.tool_display = "none")
 

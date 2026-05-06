@@ -12,6 +12,7 @@ generation.
 You can install shinychat from CRAN with:
 
 ``` r
+
 install.packages("shinychat")
 ```
 
@@ -19,6 +20,7 @@ Or, install the development version of shinychat from
 [GitHub](https://github.com/) with:
 
 ``` r
+
 # install.packages("pak")
 pak::pak("posit-dev/shinychat/pkg-r")
 ```
@@ -32,6 +34,7 @@ You’ll also need to install the [ellmer](https://ellmer.tidyverse.org/)
 package (with `install.packages("ellmer")`).
 
 ``` r
+
 library(shiny)
 library(shinychat)
 

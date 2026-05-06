@@ -53,10 +53,17 @@
 
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="development version" id="shinychat-development-version">shinychat (development version)<a class="anchor" aria-label="anchor" href="#shinychat-development-version"></a></h2>
+<div class="section level3">
+<h3 id="experimental-internal-changes-development-version">Experimental internal changes<a class="anchor" aria-label="anchor" href="#experimental-internal-changes-development-version"></a></h3>
+<ul><li>The chat UI’s rendering layer has been migrated from Lit to React. This significantly improves streaming performance — incoming chunks no longer clear previous DOM state — and makes the codebase more maintainable. One trade-off is that certain Shiny UI elements embedded in chat messages may not work as well as before (e.g., inline <code>&lt;script&gt;</code> tags are generally not supported inside a React runtime). If you encounter issues, please <a href="https://github.com/posit-dev/shinychat/issues" class="external-link">let us know</a>.</li>
+</ul></div>
+<div class="section level3">
+<h3 id="new-features-and-improvements-development-version">New features and improvements<a class="anchor" aria-label="anchor" href="#new-features-and-improvements-development-version"></a></h3>
 <ul><li><p>Added <code>footer</code> field to <code>ToolResultDisplay</code> for displaying custom HTML content below the tool result card body. (<a href="https://github.com/posit-dev/shinychat/issues/178" class="external-link">#178</a>)</p></li>
 <li><p>Tool result cards now support a fullscreen toggle. Set <code>full_screen = TRUE</code> in the <code>display</code> list (or set <code>res$full_screen &lt;- NA</code> in a custom <code><a href="../reference/contents_shinychat.html">contents_shinychat()</a></code> method) to add a button that expands the card to fill the viewport. Press <code>Escape</code>, click the backdrop, or use the close button to exit fullscreen.</p></li>
 <li><p>Fixed an issue where user chat messages would display the default assistant icon. (<a href="https://github.com/posit-dev/shinychat/issues/162" class="external-link">#162</a>)</p></li>
 </ul></div>
+</div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="0.3.0" id="shinychat-030">shinychat 0.3.0<a class="anchor" aria-label="anchor" href="#shinychat-030"></a></h2><p class="text-muted">CRAN release: 2025-11-20</p>
 <div class="section level3">

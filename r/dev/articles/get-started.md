@@ -9,6 +9,7 @@ user interface for your chatbot.
 You will need to install both shinychat and ellmer.
 
 ``` r
+
 install.packages(c("shinychat", "ellmer"))
 ```
 
@@ -33,6 +34,7 @@ particular model, use the `chat_*()` function’s `model` argument. For
 example:
 
 ``` r
+
 ellmer::chat_openai(model = "o3")
 ```
 
@@ -72,6 +74,7 @@ for your desired chat function. Save the file as `app.R` and then run
 the app.
 
 ``` r
+
 library(shiny)
 library(shinychat)
 
@@ -104,6 +107,7 @@ Screenshot of a conversation using shinychat.
 Let’s take a closer look at the code in `app.R`.
 
 ``` r
+
 library(shiny)
 library(shinychat)
 
@@ -162,6 +166,7 @@ Use the `chat_*()` function’s `system_prompt` argument to provide the
 LLM with more information about how you would like it to behave.
 
 ``` r
+
 chat <- ellmer::chat_ollama(system_prompt = "You are a helpful assistant")
 ```
 
@@ -181,6 +186,7 @@ You can specify messages to show when the chat first loads by using
 messages.
 
 ``` r
+
 chat_ui(
     id = "chat",
     messages = "**Hello!** How can I help you today?"
@@ -198,6 +204,7 @@ class to the relevant portions of the message. Similarly, use the
 automatically.
 
 ``` r
+
 messages <-
   '
   **Hello!** How can I help you today?
@@ -258,6 +265,7 @@ anchored at the bottom of the page and the chat to fill the remaining
 space.
 
 ``` r
+
 ui <- bslib::page_fillable(
   chat_ui("chat", messages = "Welcome!"),
   fillable_mobile = TRUE
@@ -278,6 +286,7 @@ to create a sidebar page. Then, set the chat and sidebar’s heights to
 `100%` so that the chat element fills the sidebar.
 
 ``` r
+
 library(shiny)
 library(bslib)
 library(shinychat)
@@ -328,6 +337,7 @@ other handy features like `full_screen = TRUE` to make the chat
 full-screen when embedded inside a larger app.
 
 ``` r
+
 library(shiny)
 library(bslib)
 library(shinychat)

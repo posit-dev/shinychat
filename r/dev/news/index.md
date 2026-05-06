@@ -2,6 +2,19 @@
 
 ## shinychat (development version)
 
+### Experimental internal changes
+
+- The chat UI’s rendering layer has been migrated from Lit to React.
+  This significantly improves streaming performance — incoming chunks no
+  longer clear previous DOM state — and makes the codebase more
+  maintainable. One trade-off is that certain Shiny UI elements embedded
+  in chat messages may not work as well as before (e.g., inline
+  `<script>` tags are generally not supported inside a React runtime).
+  If you encounter issues, please [let us
+  know](https://github.com/posit-dev/shinychat/issues).
+
+### New features and improvements
+
 - Added `footer` field to `ToolResultDisplay` for displaying custom HTML
   content below the tool result card body.
   ([\#178](https://github.com/posit-dev/shinychat/issues/178))
