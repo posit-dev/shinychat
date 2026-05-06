@@ -121,10 +121,29 @@ function splitThinkingBlocks(
     return [{ type: "thinking", content, streaming: false }]
   }
 
+  // Skip splitting for non-markdown content types where <thinking> tags
+  // are likely literal content rather than thinking markers
+  if (contentType !== "markdown") {
+    return [{ type: "content", content, contentType }]
+  }
+
+  // Find code fence regions to exclude from thinking tag detection
+  const fenceRanges: Array<[number, number]> = []
+  const fenceRe = /^(`{3,}|~{3,}).*\n([\s\S]*?)^\1\s*$/gm
+  for (const m of content.matchAll(fenceRe)) {
+    fenceRanges.push([m.index, m.index + m[0].length])
+  }
+
+  function isInsideFence(idx: number): boolean {
+    return fenceRanges.some(([start, end]) => idx >= start && idx < end)
+  }
+
   const blocks: MessageBlock[] = []
   let lastIndex = 0
 
   for (const match of content.matchAll(THINKING_TAG_RE)) {
+    if (isInsideFence(match.index)) continue
+
     const before = content.slice(lastIndex, match.index)
     if (before) {
       blocks.push({ type: "content", content: before, contentType })

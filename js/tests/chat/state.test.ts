@@ -1015,6 +1015,29 @@ describe("chatReducer", () => {
       expect(msg.blocks[0]!.type).toBe("content")
     })
 
+    it("does not treat <thinking> inside fenced code blocks as thinking", () => {
+      const state = makeState()
+      const content = [
+        "Here's how to use thinking tags:",
+        "",
+        "```xml",
+        "<thinking>",
+        "This is reasoning content",
+        "</thinking>",
+        "```",
+        "",
+        "The model will reason before responding.",
+      ].join("\n")
+      const next = chatReducer(state, {
+        type: "message",
+        message: { role: "assistant", content, content_type: "markdown" },
+      })
+      const msg = next.messages[0]!
+      expect(msg.blocks).toHaveLength(1)
+      expect(msg.blocks[0]!.type).toBe("content")
+      expect(msg.blocks[0]!.content).toBe(content)
+    })
+
     it("streams thinking in real-time when <thinking> tag arrives across chunks", () => {
       let state = makeState()
       state = chatReducer(state, {
