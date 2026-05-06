@@ -51,7 +51,7 @@ container, if the container is
 
 \item{icon_assistant}{The icon to use for the assistant chat messages.
 Can be HTML or a tag in the form of \code{\link[htmltools:HTML]{htmltools::HTML()}} or
-\code{\link[htmltools:builder]{htmltools::tags()}}. If \code{None}, a default robot icon is used.}
+\code{\link[htmltools:tags]{htmltools::tags()}}. If \code{None}, a default robot icon is used.}
 }
 \value{
 A Shiny tag object, suitable for inclusion in a Shiny UI
