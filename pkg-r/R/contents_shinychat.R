@@ -140,8 +140,10 @@ S7::method(contents_shinychat, ellmer::ContentThinking) <- function(content) {
   structure(content@thinking, class = "shinychat_thinking")
 }
 
-S7::method(contents_shinychat, ellmer::ContentThinkingDelta) <- function(content) {
-  structure(content@thinking, class = "shinychat_thinking")
+if (exists("ContentThinkingDelta", envir = asNamespace("ellmer"))) {
+  S7::method(contents_shinychat, ellmer::ContentThinkingDelta) <- function(content) {
+    structure(content@thinking, class = "shinychat_thinking")
+  }
 }
 
 new_tool_card <- function(type, request_id, tool_name, ...) {
