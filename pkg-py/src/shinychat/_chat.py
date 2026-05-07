@@ -183,17 +183,18 @@ class Chat:
     in a collapsible panel above the response. The panel streams the model's
     reasoning in real time, then auto-collapses when the response begins.
 
-    Two paths are supported:
+    Thinking is detected via `<thinking>...</thinking>` tags in the streamed
+    content. This works uniformly across all providers:
 
-    1. **chatlas `ContentThinking` objects.** Models with a structured thinking
-       API (e.g., Claude with extended thinking) emit `ContentThinking` objects
-       during streaming. shinychat detects these and routes them to the thinking
-       panel automatically.
+    * **Structured thinking APIs** (e.g., Claude extended thinking, OpenAI
+      reasoning) — chatlas/ellmer emit `<thinking>` tag boundaries around
+      thinking content during streaming.
+    * **Raw tags from models** (DeepSeek, QwQ, Qwen, etc.) — these models
+      emit `<thinking>...</thinking>` tags directly in their markdown output.
 
-    2. **Raw `<thinking>` tags.** Many open-source and local models (DeepSeek,
-       QwQ, Qwen, etc.) emit `<thinking>...</thinking>` tags in their markdown
-       output. shinychat detects these tags during streaming and renders the
-       enclosed text in the thinking panel with no extra configuration.
+    In both cases, shinychat's client-side tag parser detects the tags and
+    renders the enclosed text in a collapsible thinking panel with no extra
+    configuration.
 
     **Topic labels:** You can get labeled sub-sections within the thinking panel
     by asking the model to emit `<topic>...</topic>` tags in its reasoning.

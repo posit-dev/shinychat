@@ -166,8 +166,9 @@ try:
     def _(chunk: ContentToolResult):
         return message_content(chunk)
 
-    # ContentThinking is handled directly in _append_message_stream,
-    # but register it here so message_content_chunk doesn't raise for it.
+    # ContentThinking flows through message_content_chunk like any other
+    # chunk — its .thinking text (with upstream tag boundaries) is sent
+    # to the client where the tag parser handles it.
     try:
         from chatlas.types import (
             ContentThinking,  # pyright: ignore[reportAttributeAccessIssue]
