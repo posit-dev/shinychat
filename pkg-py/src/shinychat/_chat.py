@@ -132,8 +132,7 @@ PendingMessage = Tuple[
 ]
 
 
-def _is_content_thinking_delta(msg: Any) -> bool:
-    """Check if a message is a ContentThinkingDelta object from chatlas."""
+def is_content_thinking_delta(msg: object) -> "TypeGuard[chatlas.ContentThinkingDelta]":
     try:
         from chatlas.types import (
             ContentThinkingDelta,  # pyright: ignore[reportAttributeAccessIssue]
@@ -969,7 +968,7 @@ class Chat:
 
         try:
             async for msg in message:
-                if _is_content_thinking_delta(msg):
+                if is_content_thinking_delta(msg):
                     thinking_text: str = msg.thinking
                     thinking_msg = ChatMessage(content=thinking_text, role="assistant")
                     await self._send_append_message(
