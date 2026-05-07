@@ -969,16 +969,14 @@ class Chat:
         try:
             async for msg in message:
                 if is_content_thinking_delta(msg):
-                    thinking_text: str = msg.thinking
-                    thinking_msg = ChatMessage(content=thinking_text, role="assistant")
                     await self._send_append_message(
-                        thinking_msg,
+                        ChatMessage(content=msg.thinking, role="assistant"),
                         chunk=True,
                         content_type_override="thinking",
                     )
                     if msg.phase == "start":
                         self._current_stream_message += "<thinking>\n"
-                    self._current_stream_message += thinking_text
+                    self._current_stream_message += msg.thinking
                     if msg.phase == "end":
                         self._current_stream_message += "\n</thinking>\n\n"
                     continue
