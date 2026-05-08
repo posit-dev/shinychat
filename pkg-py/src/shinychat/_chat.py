@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 from contextlib import asynccontextmanager
+from copy import deepcopy
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -39,6 +40,12 @@ from ._chat_bookmark import (
     set_chatlas_state,
 )
 from ._chat_normalize import message_content, message_content_chunk
+from ._chat_segments import (
+    append_to_segments,
+    segments_content,
+    segments_deps,
+    serialize_segments,
+)
 from ._chat_provider_types import (
     AnthropicMessage,  # pyright: ignore[reportAttributeAccessIssue]
     GoogleMessage,
@@ -55,11 +62,15 @@ from ._chat_tokenizer import (
     get_default_tokenizer,
 )
 from ._chat_types import (
+    BookmarkMessageDict,
     ChatAction,
     ChatMessage,
     ChatMessageDict,
+    ContentSegment,
     ContentType,
     MessagePayload,
+    Role,
+    StoredContentSegment,
     StoredMessage,
 )
 from ._html_deps_py_shiny import shinychat_dependency
@@ -243,14 +254,12 @@ class Chat:
         self.on_error = on_error
 
         # Chunked messages get accumulated (using this property) before changing state
-        self._current_stream_message: str = ""
-        self._current_stream_deps: list[HTMLDependency] = []
+        self._current_stream_segments: list[ContentSegment] = []
         self._current_stream_id: str | None = None
         self._pending_messages: list[PendingMessage] = []
 
         # For tracking message stream state when entering/exiting nested streams
-        self._message_stream_checkpoint: str = ""
-        self._message_stream_deps_checkpoint: list[HTMLDependency] = []
+        self._message_stream_segments_checkpoint: list[ContentSegment] = []
 
         # If a user input message is transformed into a response, we need to cancel
         # the next user input submit handling
@@ -532,6 +541,22 @@ class Chat:
 
         return tuple(res)
 
+    def _messages_for_bookmark(self) -> list[BookmarkMessageDict]:
+        from shiny import reactive
+
+        with reactive.isolate():
+            messages = self._messages()
+
+        result: list[BookmarkMessageDict] = []
+        for m in messages:
+            msg = BookmarkMessageDict(content=str(m.content), role=m.role)
+            if m.segments:
+                msg["segments"] = m.segments
+            elif m.html_deps:
+                msg["html_deps"] = m.html_deps
+            result.append(msg)
+        return result
+
     async def append_message(
         self,
         message: Any,
@@ -671,10 +696,8 @@ class Chat:
         "final" content.
         """
         # Checkpoint the current stream state so operation="replace"  can return to it
-        old_checkpoint = self._message_stream_checkpoint
-        old_deps_checkpoint = self._message_stream_deps_checkpoint.copy()
-        self._message_stream_checkpoint = self._current_stream_message
-        self._message_stream_deps_checkpoint = self._current_stream_deps.copy()
+        old_checkpoint = self._message_stream_segments_checkpoint
+        self._message_stream_segments_checkpoint = deepcopy(self._current_stream_segments)
 
         # No stream currently exists, start one
         stream_id = self._current_stream_id
@@ -689,8 +712,7 @@ class Chat:
             yield MessageStream(self, stream_id)
         finally:
             # Restore the checkpoint
-            self._message_stream_checkpoint = old_checkpoint
-            self._message_stream_deps_checkpoint = old_deps_checkpoint
+            self._message_stream_segments_checkpoint = old_checkpoint
 
             # If this was the root stream, end it
             if is_root_stream:
@@ -725,48 +747,71 @@ class Chat:
         if is_tool_result(message) and message.request is not None:
             await self._hide_tool_request(message.request.id)  # type: ignore
 
-        if operation == "replace":
-            self._current_stream_message = (
-                self._message_stream_checkpoint + msg.content
-            )
-            self._current_stream_deps = [
-                *self._message_stream_deps_checkpoint,
-                *chunk_deps,
-            ]
-            msg.content = self._current_stream_message
+        # Detect the content type from the original message before normalization.
+        # HTML is a UserString (not a str subclass), so ChatMessage processes it
+        # into a plain str with <shinychat-raw-html> wrapping. For segment storage
+        # we want the raw HTML string and the "html" content type.
+        if isinstance(message, HTML):
+            chunk_content_type: ContentType = "html"
+            chunk_segment_content: str = str(message)
         else:
-            self._current_stream_message += msg.content
-            self._current_stream_deps.extend(chunk_deps)
+            chunk_content_type = "markdown"
+            chunk_segment_content = str(msg.content)
+
+        if operation == "replace":
+            self._current_stream_segments = deepcopy(
+                self._message_stream_segments_checkpoint
+            )
+
+        append_to_segments(
+            self._current_stream_segments,
+            chunk_segment_content,
+            chunk_content_type,
+            chunk_deps or None,
+        )
+
+        if operation == "replace":
+            msg.content = segments_content(self._current_stream_segments)
 
         try:
+            transformed = False
             if self._needs_transform(msg):
                 # Transforming may change the meaning of msg.content to be a *replace*
                 # not *append*. So, update msg.content and the operation accordingly.
                 chunk_content = msg.content
-                msg.content = self._current_stream_message
+                msg.content = segments_content(self._current_stream_segments)
                 operation = "replace"
                 msg = await self._transform_message(
                     msg, chunk=chunk, chunk_content=chunk_content
                 )
+                transformed = True
                 # Act like nothing happened if transformed to None
                 if msg is None:
                     return
                 if chunk == "end":
-                    self._store_message(
-                        msg,
-                        deps=self._current_stream_deps
-                        if self._current_stream_deps
-                        else None,
-                    )
+                    stream_deps = segments_deps(self._current_stream_segments) or None
+                    self._store_message(msg, deps=stream_deps)
             elif chunk == "end":
                 # When `operation="append"`, msg.content is just a chunk, but we must
                 # store the full message
+                segs = serialize_segments(self._current_stream_segments, self._serialize_html_deps)
+                content = segments_content(self._current_stream_segments)
+                stream_deps = segments_deps(self._current_stream_segments) or None
                 self._store_message(
-                    ChatMessage(
-                        content=self._current_stream_message, role=msg.role
+                    StoredMessage(
+                        content=content,
+                        role=msg.role,
+                        segments=segs,
                     ),
-                    deps=self._current_stream_deps if self._current_stream_deps else None,
+                    deps=stream_deps,
                 )
+
+            # Determine content_type from the current (last) segment.
+            # When transformed, leave as None so _send_append_message infers
+            # the type from the transformed payload itself.
+            send_content_type: ContentType | None = None
+            if not transformed and self._current_stream_segments:
+                send_content_type = self._current_stream_segments[-1].content_type
 
             # Send the message to the client
             await self._send_append_message(
@@ -774,14 +819,13 @@ class Chat:
                 chunk=chunk,
                 operation=operation,
                 icon=icon,
+                content_type=send_content_type,
             )
         finally:
             if chunk == "end":
                 self._current_stream_id = None
-                self._current_stream_message = ""
-                self._current_stream_deps = []
-                self._message_stream_checkpoint = ""
-                self._message_stream_deps_checkpoint = []
+                self._current_stream_segments = []
+                self._message_stream_segments_checkpoint = []
 
     async def append_message_stream(
         self,
@@ -921,7 +965,7 @@ class Chat:
         try:
             async for msg in message:
                 await self._append_message_chunk(msg, chunk=True, stream_id=id)
-            return self._current_stream_message
+            return segments_content(self._current_stream_segments)
         finally:
             await self._append_message_chunk(empty, chunk="end", stream_id=id)
             await self._flush_pending_messages()
@@ -947,6 +991,7 @@ class Chat:
         chunk: ChunkOption = False,
         operation: Literal["append", "replace"] = "append",
         icon: HTML | Tag | TagList | None = None,
+        content_type: ContentType | None = None,
     ):
         message = self._as_stored_message(message)
 
@@ -955,7 +1000,8 @@ class Chat:
             return
 
         content = message.content
-        content_type: ContentType = "html" if isinstance(content, HTML) else "markdown"
+        if content_type is None:
+            content_type = "html" if isinstance(content, HTML) else "markdown"
 
         msg_payload: MessagePayload = {
             "role": message.role,
@@ -990,6 +1036,41 @@ class Chat:
             # chunk == False: complete message
             action = {"type": "message", "message": msg_payload}
             await self._send_action(action, message.html_deps)
+
+    async def _restore_bookmark_message(self, message_dict: dict[str, Any]) -> None:
+        segments: list[StoredContentSegment] | None = message_dict.get("segments")
+        role: Role = message_dict.get("role", "assistant")
+        content: str = message_dict["content"]
+        html_deps = message_dict.get("html_deps")
+
+        stored = StoredMessage(
+            content=content,
+            role=role,
+            html_deps=html_deps,
+            segments=segments,
+        )
+        self._store_message(stored)
+
+        if segments:
+            # Replay as streaming sequence to preserve per-segment content types
+            await self._send_append_message(
+                StoredMessage(content="", role=role),
+                chunk="start",
+                content_type=segments[0]["content_type"],
+            )
+            for seg in segments:
+                await self._send_append_message(
+                    StoredMessage(content=seg["content"], role=role, html_deps=seg.get("html_deps")),
+                    chunk=True,
+                    content_type=seg["content_type"],
+                )
+            await self._send_append_message(
+                StoredMessage(content="", role=role),
+                chunk="end",
+                content_type=segments[-1]["content_type"],
+            )
+        else:
+            await self._send_append_message(stored)
 
     @overload
     def transform_user_input(
@@ -1541,9 +1622,7 @@ class Chat:
                 # This does NOT contain the `chat.ui(messages=)` values.
                 # When restoring, the `chat.ui(messages=)` values will need to be kept
                 # and the `ui.Chat(messages=)` values will need to be reset
-                state.values[resolved_bookmark_id_msgs_str] = self.messages(
-                    format=MISSING
-                )
+                state.values[resolved_bookmark_id_msgs_str] = self._messages_for_bookmark()
 
         # Attempt to stop the initialization of the `ui.Chat(messages=)` messages
         self._init_chat.destroy()
@@ -1570,13 +1649,7 @@ class Chat:
                 )
 
             for message_dict in msgs:
-                stored = StoredMessage(
-                    content=message_dict["content"],
-                    role=message_dict.get("role", "assistant"),
-                    html_deps=message_dict.get("html_deps"),
-                )
-                self._store_message(stored)
-                await self._send_append_message(stored)
+                await self._restore_bookmark_message(message_dict)
 
         def _cancel_bookmarking():
             _on_bookmark_client()

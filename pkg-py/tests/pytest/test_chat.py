@@ -19,6 +19,7 @@ from shinychat._chat_types import (
     ChatMessage,
     ChatMessageDict,
     Role,
+    StoredContentSegment,
     StoredMessage,
 )
 from shinychat._utils_types import MISSING
@@ -50,6 +51,22 @@ def is_type_in_union(type: object, union: object) -> bool:
     if origin is Union or origin is types.UnionType:
         return type in get_args(union)
     return False
+
+
+def run_async(coro_fn: Any) -> None:
+    exc: list[BaseException] = []
+
+    def _run() -> None:
+        try:
+            asyncio.run(coro_fn())
+        except BaseException as err:
+            exc.append(err)
+
+    t = threading.Thread(target=_run)
+    t.start()
+    t.join()
+    if exc:
+        raise exc[0]
 
 
 def stored_message(content: str, role: Role) -> StoredMessage:
@@ -697,6 +714,328 @@ def test_as_ollama_message():
     )
 
 
+def test_stream_accumulates_segments_by_content_type():
+    """Chunks with different content types create separate segments."""
+    from htmltools import HTML
+
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        captured: list[StoredMessage] = []
+
+        async def _noop_send(*args: object, **kwargs: object) -> None:
+            return None
+
+        def _capture_store(
+            message: StoredMessage | ChatMessage,
+            index: int | None = None,
+            deps: list[HTMLDependency] | None = None,
+        ) -> None:
+            del index
+            captured.append(chat._as_stored_message(message, deps=deps))
+
+        chat._send_append_message = _noop_send  # type: ignore[method-assign]
+        chat._store_message = _capture_store  # type: ignore[method-assign]
+
+        async def _exercise_stream() -> None:
+            await chat._append_message_chunk(
+                "", chunk="start", stream_id="s1"
+            )
+            # Markdown chunk
+            await chat._append_message_chunk(
+                "hello ", chunk=True, stream_id="s1"
+            )
+            # Another markdown chunk (same type, should merge)
+            await chat._append_message_chunk(
+                "world", chunk=True, stream_id="s1"
+            )
+            # HTML chunk (different type, new segment)
+            await chat._append_message_chunk(
+                HTML("<b>!</b>"), chunk=True, stream_id="s1"
+            )
+            await chat._append_message_chunk(
+                "", chunk="end", stream_id="s1"
+            )
+
+        run_async(_exercise_stream)
+
+        assert len(captured) == 1
+        msg = captured[0]
+        assert msg.segments is not None
+        assert len(msg.segments) == 2
+        assert msg.segments[0]["content"] == "hello world"
+        assert msg.segments[0]["content_type"] == "markdown"
+        assert msg.segments[1]["content"] == "<b>!</b>"
+        assert msg.segments[1]["content_type"] == "html"
+        # Flat content is the join of all segments
+        assert str(msg.content) == "hello world<b>!</b>"
+
+
+def test_messages_for_bookmark_includes_segments():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+
+        seg1 = StoredContentSegment(content="hello ", content_type="markdown")
+        seg2 = StoredContentSegment(content="<b>world</b>", content_type="html")
+
+        chat._store_message(
+            StoredMessage(
+                content="hello <b>world</b>",
+                role="assistant",
+                segments=[seg1, seg2],
+            )
+        )
+
+        result = chat._messages_for_bookmark()
+        assert len(result) == 1
+        msg = result[0]
+        assert msg["content"] == "hello <b>world</b>"
+        assert msg["role"] == "assistant"
+        assert "segments" in msg
+        assert len(msg["segments"]) == 2
+        assert msg["segments"][0]["content_type"] == "markdown"
+        assert msg["segments"][1]["content_type"] == "html"
+        # When segments exist, top-level html_deps should NOT be present
+        # (deps live per-segment to avoid double-sending on restore)
+        assert "html_deps" not in msg
+
+
+def test_messages_for_bookmark_without_segments():
+    """Messages without segments still serialize correctly (legacy path)."""
+    with session_context(test_session):
+        chat = Chat(id="chat")
+
+        chat._store_message(
+            StoredMessage(content="plain text", role="user")
+        )
+
+        result = chat._messages_for_bookmark()
+        assert len(result) == 1
+        msg = result[0]
+        assert msg["content"] == "plain text"
+        assert msg["role"] == "user"
+        assert "segments" not in msg
+
+
+def test_restore_message_with_segments_sends_streaming_sequence():
+    """Multi-segment messages restore via chunk_start/chunk/chunk_end to preserve segment boundaries."""
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        sent_actions: list[dict[str, Any]] = []
+
+        async def _capture_send(action: Any, deps: Any = None) -> None:
+            sent_actions.append(action)
+
+        chat._send_action = _capture_send  # type: ignore[method-assign]
+
+        bookmark_data = {
+            "content": "hello <b>world</b>",
+            "role": "assistant",
+            "segments": [
+                {"content": "hello ", "content_type": "markdown"},
+                {"content": "<b>world</b>", "content_type": "html"},
+            ],
+        }
+
+        async def _exercise() -> None:
+            await chat._restore_bookmark_message(bookmark_data)
+
+        run_async(_exercise)
+
+        # Should have: chunk_start, chunk (md), chunk (html), chunk_end
+        types = [a["type"] for a in sent_actions]
+        assert types == ["chunk_start", "chunk", "chunk", "chunk_end"]
+        # chunk_start should have empty content (like live streaming)
+        assert sent_actions[0]["message"]["content"] == ""
+        assert sent_actions[1]["content_type"] == "markdown"
+        assert sent_actions[2]["content_type"] == "html"
+
+
+def test_restore_legacy_message_without_segments():
+    """Legacy bookmarks (no segments key) restore as a single complete message."""
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        sent_actions: list[dict[str, Any]] = []
+
+        async def _capture_send(action: Any, deps: Any = None) -> None:
+            sent_actions.append(action)
+
+        chat._send_action = _capture_send  # type: ignore[method-assign]
+
+        legacy_data = {"content": "hello world", "role": "assistant"}
+
+        async def _exercise() -> None:
+            await chat._restore_bookmark_message(legacy_data)
+
+        run_async(_exercise)
+
+        # Legacy: sent as a single complete message
+        assert len(sent_actions) == 1
+        assert sent_actions[0]["type"] == "message"
+
+
+def test_stream_html_deps_survive_segment_serialization():
+    """HTML deps from a TagList chunk are preserved in the serialized segment."""
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        captured: list[StoredMessage] = []
+
+        async def _noop_send(*args: object, **kwargs: object) -> None:
+            return None
+
+        def _capture_store(
+            message: StoredMessage | ChatMessage,
+            index: int | None = None,
+            deps: list[HTMLDependency] | None = None,
+        ) -> None:
+            del index
+            captured.append(chat._as_stored_message(message, deps=deps))
+
+        chat._send_append_message = _noop_send  # type: ignore[method-assign]
+        chat._store_message = _capture_store  # type: ignore[method-assign]
+        chat._serialize_html_deps = lambda deps: (  # type: ignore[method-assign]
+            None
+            if not deps
+            else [{"name": dep.name, "version": dep.version} for dep in deps]
+        )
+
+        custom_dep = HTMLDependency(
+            name="my-widget", version="2.0", source={"subdir": "."}
+        )
+
+        async def _exercise() -> None:
+            await chat._append_message_chunk(
+                "", chunk="start", stream_id="s1"
+            )
+            await chat._append_message_chunk(
+                TagList(custom_dep, tags.div("widget")),
+                chunk=True,
+                stream_id="s1",
+            )
+            await chat._append_message_chunk(
+                "", chunk="end", stream_id="s1"
+            )
+
+        run_async(_exercise)
+
+        assert len(captured) == 1
+        msg = captured[0]
+        assert msg.segments is not None
+        assert len(msg.segments) == 1
+        assert msg.segments[0]["content_type"] == "markdown"
+        assert msg.segments[0].get("html_deps") is not None
+        assert msg.segments[0]["html_deps"][0]["name"] == "my-widget"
+
+
+def test_restore_single_segment_uses_correct_content_type():
+    """A single-segment message restores via streaming sequence with the segment's content_type."""
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        sent_actions: list[dict[str, Any]] = []
+
+        async def _capture_send(action: Any, deps: Any = None) -> None:
+            sent_actions.append(action)
+
+        chat._send_action = _capture_send  # type: ignore[method-assign]
+
+        bookmark_data = {
+            "content": "<div>only html</div>",
+            "role": "assistant",
+            "segments": [
+                {"content": "<div>only html</div>", "content_type": "html"},
+            ],
+        }
+
+        async def _exercise() -> None:
+            await chat._restore_bookmark_message(bookmark_data)
+
+        run_async(_exercise)
+
+        types = [a["type"] for a in sent_actions]
+        assert types == ["chunk_start", "chunk", "chunk_end"]
+        assert sent_actions[1]["content_type"] == "html"
+
+
+def test_restore_single_segment_resends_segment_html_deps():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        sent_actions: list[dict[str, Any]] = []
+        sent_deps: list[Any] = []
+
+        async def _capture_send(action: Any, deps: Any = None) -> None:
+            sent_actions.append(action)
+            sent_deps.append(deps)
+
+        chat._send_action = _capture_send  # type: ignore[method-assign]
+
+        bookmark_data = {
+            "content": "<div>only html</div>",
+            "role": "assistant",
+            "segments": [
+                {
+                    "content": "<div>only html</div>",
+                    "content_type": "html",
+                    "html_deps": [{"name": "my-widget", "version": "1.0"}],
+                },
+            ],
+        }
+
+        async def _exercise() -> None:
+            await chat._restore_bookmark_message(bookmark_data)
+
+        run_async(_exercise)
+
+        types = [a["type"] for a in sent_actions]
+        assert types == ["chunk_start", "chunk", "chunk_end"]
+        # Deps are sent with the chunk action
+        chunk_deps = [d for d in sent_deps if d is not None]
+        assert len(chunk_deps) == 1
+        assert chunk_deps[0] == [{"name": "my-widget", "version": "1.0"}]
+
+
+def test_nested_stream_checkpoint_preserves_segments():
+    """Nested message_stream_context restores checkpoint segments correctly on replace."""
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        captured: list[StoredMessage] = []
+
+        async def _noop_send(*args: object, **kwargs: object) -> None:
+            return None
+
+        def _capture_store(
+            message: StoredMessage | ChatMessage,
+            index: int | None = None,
+            deps: list[HTMLDependency] | None = None,
+        ) -> None:
+            del index
+            captured.append(chat._as_stored_message(message, deps=deps))
+
+        chat._send_append_message = _noop_send  # type: ignore[method-assign]
+        chat._store_message = _capture_store  # type: ignore[method-assign]
+        chat._serialize_html_deps = lambda deps: (  # type: ignore[method-assign]
+            None if not deps else [{"name": d.name} for d in deps]
+        )
+
+        async def _exercise() -> None:
+            async with chat.message_stream_context() as outer:
+                await outer.append("before ")
+                async with chat.message_stream_context() as inner:
+                    await inner.append("ephemeral")
+                    await inner.replace("replaced")
+                await outer.append(" after")
+
+        run_async(_exercise)
+
+        assert len(captured) == 1
+        msg = captured[0]
+        assert str(msg.content) == "before replaced after"
+
+        assert msg.segments is not None
+        # All chunks are markdown, so they should merge into one segment
+        assert len(msg.segments) == 1
+        assert msg.segments[0]["content_type"] == "markdown"
+        assert msg.segments[0]["content"] == "before replaced after"
+
+
 class MyObject:
     content = "Hello world!"
 
@@ -725,3 +1064,81 @@ def test_custom_objects():
     m = message_content_chunk(chunk)
     assert m.content == "Hello world!"
     assert m.role == "assistant"
+
+
+def test_stream_sends_correct_content_type_per_chunk():
+    """Each chunk sent to the client carries the content type of its segment."""
+    from htmltools import HTML
+
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        sent_actions: list[dict[str, Any]] = []
+
+        async def _capture_send(action: Any, deps: Any = None) -> None:
+            sent_actions.append(action)
+
+        chat._send_action = _capture_send  # type: ignore[method-assign]
+        chat._store_message = lambda *a, **kw: None  # type: ignore[method-assign]
+        chat._serialize_html_deps = lambda deps: (  # type: ignore[method-assign]
+            None if not deps else [{"name": d.name} for d in deps]
+        )
+
+        async def _exercise() -> None:
+            await chat._append_message_chunk(
+                "", chunk="start", stream_id="s1"
+            )
+            await chat._append_message_chunk(
+                "markdown text", chunk=True, stream_id="s1"
+            )
+            await chat._append_message_chunk(
+                HTML("<div>html</div>"), chunk=True, stream_id="s1"
+            )
+            await chat._append_message_chunk(
+                "", chunk="end", stream_id="s1"
+            )
+
+        run_async(_exercise)
+
+        # Filter to chunk actions (skip chunk_start, chunk_end)
+        chunks = [a for a in sent_actions if a.get("type") == "chunk"]
+        assert len(chunks) >= 2
+        # First chunk is markdown
+        assert chunks[0]["content_type"] == "markdown"
+        # Second chunk is html
+        assert chunks[1]["content_type"] == "html"
+
+
+def test_stream_transform_uses_transformed_content_type():
+    from htmltools import HTML
+
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        sent_actions: list[dict[str, Any]] = []
+
+        async def _capture_send(action: Any, deps: Any = None) -> None:
+            sent_actions.append(action)
+
+        chat._send_action = _capture_send  # type: ignore[method-assign]
+        chat._store_message = lambda *a, **kw: None  # type: ignore[method-assign]
+
+        @chat.transform_assistant_response
+        def transform(content: str, chunk: str, done: bool) -> str | HTML:
+            del chunk
+            if done:
+                return HTML(f"<b>{content}</b>")
+            return content
+
+        async def _exercise() -> None:
+            await chat._append_message_chunk(
+                "", chunk="start", stream_id="s1"
+            )
+            await chat._append_message_chunk(
+                "hello", chunk="end", stream_id="s1"
+            )
+
+        run_async(_exercise)
+
+        chunks = [a for a in sent_actions if a.get("type") == "chunk"]
+        assert len(chunks) == 1
+        assert chunks[0]["content"] == "<b>hello</b>"
+        assert chunks[0]["content_type"] == "html"

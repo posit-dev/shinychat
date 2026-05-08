@@ -90,12 +90,14 @@ class ShinyChatEnvelope(TypedDict):
 # Domain types
 # ---------------------------------------------------------------------------
 
-# TODO: content should probably be [{"type": "text", "content": "..."}, {"type": "image", ...}]
-# in order to support multiple content types...
 class ChatMessageDict(TypedDict):
     content: str
     role: Role
     html_deps: NotRequired[list[dict[str, object]]]
+
+
+class BookmarkMessageDict(ChatMessageDict):
+    segments: NotRequired[list[StoredContentSegment]]
 
 
 class ChatMessage:
@@ -127,6 +129,7 @@ class StoredMessage:
     content: str | HTML
     role: Role
     html_deps: list[dict[str, object]] | None = None
+    segments: list[StoredContentSegment] | None = None
 
     @classmethod
     def from_chat_message(
@@ -139,3 +142,16 @@ class StoredMessage:
             role=message.role,
             html_deps=html_deps,
         )
+
+
+@dataclass
+class ContentSegment:
+    content: str
+    content_type: ContentType
+    html_deps: list[HTMLDependency] | None = None
+
+
+class StoredContentSegment(TypedDict):
+    content: str
+    content_type: ContentType
+    html_deps: NotRequired[list[dict[str, object]]]
