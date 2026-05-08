@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Bug fixes
+
+* Fixed bookmark restore for messages containing mixed content types (e.g., HTML followed by markdown). Previously, the entire message was tagged with the first content type on restore, corrupting the rendering of later segments. (#213)
+
 ## [0.3.1] - 2026-04-30
 
 ### Bug fixes
