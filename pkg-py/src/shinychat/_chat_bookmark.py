@@ -1,8 +1,19 @@
+from __future__ import annotations
+
 import importlib.util
-from typing import Any, Awaitable, Callable, Protocol, runtime_checkable
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Awaitable,
+    Callable,
+    Protocol,
+    runtime_checkable,
+)
 
 from htmltools import TagChild
-from shiny.types import Jsonifiable
+
+if TYPE_CHECKING:
+    from shiny.types import Jsonifiable
 
 chatlas_is_installed = importlib.util.find_spec("chatlas") is not None
 
