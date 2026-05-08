@@ -779,7 +779,6 @@ def test_messages_for_bookmark_includes_segments():
 
         chat._store_message(
             StoredMessage(
-                content="hello <b>world</b>",
                 role="assistant",
                 segments=[seg1, seg2],
             )
@@ -788,32 +787,32 @@ def test_messages_for_bookmark_includes_segments():
         result = chat._messages_for_bookmark()
         assert len(result) == 1
         msg = result[0]
-        assert msg["content"] == "hello <b>world</b>"
         assert msg["role"] == "assistant"
-        assert "segments" in msg
         assert len(msg["segments"]) == 2
+        assert msg["segments"][0]["content"] == "hello "
         assert msg["segments"][0]["content_type"] == "markdown"
+        assert msg["segments"][1]["content"] == "<b>world</b>"
         assert msg["segments"][1]["content_type"] == "html"
-        # When segments exist, top-level html_deps should NOT be present
-        # (deps live per-segment to avoid double-sending on restore)
-        assert "html_deps" not in msg
 
 
-def test_messages_for_bookmark_without_segments():
-    """Messages without segments still serialize correctly (legacy path)."""
+def test_messages_for_bookmark_single_segment():
+    """Messages with a single segment serialize correctly."""
     with session_context(test_session):
         chat = Chat(id="chat")
 
         chat._store_message(
-            StoredMessage(content="plain text", role="user")
+            StoredMessage(
+                role="user",
+                segments=[StoredContentSegment(content="plain text", content_type="markdown")],
+            )
         )
 
         result = chat._messages_for_bookmark()
         assert len(result) == 1
         msg = result[0]
-        assert msg["content"] == "plain text"
         assert msg["role"] == "user"
-        assert "segments" not in msg
+        assert len(msg["segments"]) == 1
+        assert msg["segments"][0]["content"] == "plain text"
 
 
 def test_restore_message_with_segments_sends_single_message():
@@ -885,7 +884,6 @@ def test_send_message_includes_segments_in_payload():
         chat._send_action = _capture_send  # type: ignore[method-assign]
 
         stored = StoredMessage(
-            content="hello <b>world</b>",
             role="assistant",
             segments=[
                 StoredContentSegment(content="hello ", content_type="markdown"),
@@ -1061,6 +1059,7 @@ def test_restore_then_bookmark_canonicalizes_segment_deps():
 
         rebound = chat._messages_for_bookmark()
         assert len(rebound) == 1
+        assert "segments" in rebound[0]
         assert rebound[0]["segments"] == bookmark_data["segments"]
         assert "html_deps" not in rebound[0]
 

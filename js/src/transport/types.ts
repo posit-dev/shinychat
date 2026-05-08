@@ -10,11 +10,9 @@ export type MessagePayloadSegment = {
 export type MessagePayload = {
   id?: string
   role: "user" | "assistant"
-  content: string
-  content_type: ContentType
   icon?: string
+  segments: MessagePayloadSegment[]
   html_deps?: HtmlDep[]
-  segments?: MessagePayloadSegment[]
 }
 
 export type ChatAction =

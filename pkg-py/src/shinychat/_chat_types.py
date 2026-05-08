@@ -24,13 +24,10 @@ class MessagePayloadSegment(TypedDict):
 
 class MessagePayload(TypedDict):
     role: Literal["user", "assistant"]
-    content: str
-    # Redundant when segments is present; kept for backward compat with older JS.
-    content_type: ContentType
+    segments: list[MessagePayloadSegment]
     id: NotRequired[str]
     icon: NotRequired[str]
     html_deps: NotRequired[list[dict[str, object]]]
-    segments: NotRequired[list[MessagePayloadSegment]]
 
 
 class MessageAction(TypedDict):
@@ -104,11 +101,8 @@ class ChatMessageDict(TypedDict):
 
 
 class BookmarkMessageDict(TypedDict):
-    content: str
     role: Role
-    # When segments are present, deps live per-segment (not at the top level).
-    html_deps: NotRequired[list[dict[str, object]]]
-    segments: NotRequired[list[StoredContentSegment]]
+    segments: list[StoredContentSegment]
 
 
 class ChatMessage:
@@ -137,10 +131,17 @@ class ChatMessage:
 
 @dataclass
 class StoredMessage:
-    content: str | HTML
     role: Role
-    html_deps: list[dict[str, object]] | None = None
-    segments: list[StoredContentSegment] | None = None
+    segments: list[StoredContentSegment]
+
+    @property
+    def content(self) -> str:
+        return "".join(s["content"] for s in self.segments)
+
+    @property
+    def html_deps(self) -> list[dict[str, object]] | None:
+        deps = [d for s in self.segments for d in (s.get("html_deps") or [])]
+        return deps or None
 
     @classmethod
     def from_chat_message(
@@ -148,11 +149,11 @@ class StoredMessage:
         message: ChatMessage,
         html_deps: list[dict[str, object]] | None = None,
     ) -> "StoredMessage":
-        return StoredMessage(
-            content=message.content,
-            role=message.role,
-            html_deps=html_deps,
-        )
+        content_type: ContentType = "html" if isinstance(message.content, HTML) else "markdown"
+        seg = StoredContentSegment(content=str(message.content), content_type=content_type)
+        if html_deps:
+            seg["html_deps"] = html_deps
+        return StoredMessage(role=message.role, segments=[seg])
 
 
 @dataclass

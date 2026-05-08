@@ -91,8 +91,7 @@ describe("ShinyTransport", () => {
         type: "message",
         message: {
           role: "assistant",
-          content: "queued",
-          content_type: "markdown",
+          segments: [{ content: "queued", content_type: "markdown" }],
         },
       })
       await fire(envelope)
@@ -113,8 +112,7 @@ describe("ShinyTransport", () => {
         type: "message",
         message: {
           role: "assistant",
-          content: "live",
-          content_type: "markdown",
+          segments: [{ content: "live", content_type: "markdown" }],
         },
       })
       await fire(envelope)
@@ -135,8 +133,7 @@ describe("ShinyTransport", () => {
         type: "message",
         message: {
           role: "assistant",
-          content: "stale",
-          content_type: "markdown",
+          segments: [{ content: "stale", content_type: "markdown" }],
         },
       })
       await fire(envelope)
@@ -277,8 +274,7 @@ describe("ShinyTransport", () => {
             type: "message",
             message: {
               role: "assistant",
-              content: "with deps",
-              content_type: "markdown",
+              segments: [{ content: "with deps", content_type: "markdown" }],
             },
           },
           { html_deps: [{ name: "x", version: "1.0.0", src: { href: "/" } }] },

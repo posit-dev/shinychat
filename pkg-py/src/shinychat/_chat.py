@@ -548,15 +548,10 @@ class Chat:
         with reactive.isolate():
             messages = self._messages()
 
-        result: list[BookmarkMessageDict] = []
-        for m in messages:
-            msg = BookmarkMessageDict(content=str(m.content), role=m.role)
-            if m.segments:
-                msg["segments"] = m.segments
-            elif m.html_deps:
-                msg["html_deps"] = m.html_deps
-            result.append(msg)
-        return result
+        return [
+            BookmarkMessageDict(role=m.role, segments=m.segments)
+            for m in messages
+        ]
 
     async def append_message(
         self,
@@ -804,10 +799,8 @@ class Chat:
                 # When `operation="append"`, msg.content is just a chunk, but we must
                 # store the full message
                 segs = serialize_segments(self._current_stream_segments, self._serialize_html_deps)
-                content = stream_content
                 self._store_message(
                     StoredMessage(
-                        content=content,
                         role=msg.role,
                         segments=segs,
                     ),
@@ -1003,35 +996,30 @@ class Chat:
         message = self._as_stored_message(message)
 
         if message.role == "system":
-            # System messages are not displayed in the UI
             return
 
         content = message.content
         if content_type is None:
-            content_type = "html" if isinstance(content, HTML) else "markdown"
+            content_type = message.segments[-1]["content_type"] if message.segments else "markdown"
 
         msg_payload: MessagePayload = {
             "role": message.role,
-            "content": str(content),
-            "content_type": content_type,
+            "segments": [
+                {"content": s["content"], "content_type": s["content_type"]}
+                for s in message.segments
+            ],
         }
         if icon is not None:
             msg_payload["icon"] = str(icon)
-
-        if isinstance(message, StoredMessage) and message.segments:
-            msg_payload["segments"] = [
-                {"content": s["content"], "content_type": s["content_type"]}
-                for s in message.segments
-            ]
 
         if chunk == "start":
             action: ChatAction = {"type": "chunk_start", "message": msg_payload}
             await self._send_action(action, message.html_deps)
         elif chunk == "end":
-            if str(content):
+            if content:
                 chunk_action: ChatAction = {
                     "type": "chunk",
-                    "content": str(content),
+                    "content": content,
                     "operation": operation,
                     "content_type": content_type,
                 }
@@ -1040,37 +1028,28 @@ class Chat:
         elif chunk is True:
             chunk_action = {
                 "type": "chunk",
-                "content": str(content),
+                "content": content,
                 "operation": operation,
                 "content_type": content_type,
             }
             await self._send_action(chunk_action, message.html_deps)
         else:
-            # chunk == False: complete message
             action = {"type": "message", "message": msg_payload}
             await self._send_action(action, message.html_deps)
 
     async def _restore_bookmark_message(self, message_dict: dict[str, Any]) -> None:
         segments: list[StoredContentSegment] | None = message_dict.get("segments")
         role: Role = message_dict.get("role", "assistant")
-        content: str = message_dict["content"]
-        html_deps = message_dict.get("html_deps")
 
-        # Collect deps from segments and hoist to top-level for the envelope
-        if segments:
-            all_deps: list[dict[str, object]] = []
-            for seg in segments:
-                seg_deps = seg.get("html_deps")
-                if seg_deps:
-                    all_deps.extend(seg_deps)
-            html_deps = all_deps if all_deps else html_deps
+        if segments is None:
+            content: str = message_dict.get("content", "")
+            seg = StoredContentSegment(content=content, content_type="markdown")
+            legacy_deps = message_dict.get("html_deps")
+            if legacy_deps:
+                seg["html_deps"] = legacy_deps
+            segments = [seg]
 
-        stored = StoredMessage(
-            content=content,
-            role=role,
-            html_deps=html_deps,
-            segments=segments,
-        )
+        stored = StoredMessage(role=role, segments=segments)
         self._store_message(stored)
         await self._send_append_message(stored)
 
@@ -1196,8 +1175,12 @@ class Chat:
         if content is None:
             return None
 
-        res.content = content
-        return res
+        content_type: ContentType = "html" if isinstance(content, HTML) else "markdown"
+        seg = StoredContentSegment(content=str(content), content_type=content_type)
+        existing_deps = res.html_deps
+        if existing_deps:
+            seg["html_deps"] = existing_deps
+        return StoredMessage(role=res.role, segments=[seg])
 
     def _needs_transform(self, message: ChatMessage) -> bool:
         if message.role == "user" and self._transform_user is not None:
@@ -1226,7 +1209,11 @@ class Chat:
     ) -> StoredMessage:
         if isinstance(message, StoredMessage):
             if deps is not None:
-                message.html_deps = self._serialize_html_deps(deps)
+                serialized = self._serialize_html_deps(deps)
+                if serialized and message.segments:
+                    seg = message.segments[0]
+                    existing = seg.get("html_deps") or []
+                    seg["html_deps"] = existing + serialized
             return message
 
         html_deps = self._serialize_html_deps(

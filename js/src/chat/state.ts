@@ -54,18 +54,18 @@ export const initialState: ChatState = {
 }
 
 function messagePayloadToData(msg: MessagePayload): ChatMessageData {
-  const segments: ContentSegment[] = msg.segments
-    ? msg.segments.map((s) => ({
-        content: s.content,
-        contentType: s.content_type,
-      }))
-    : [{ content: msg.content, contentType: msg.content_type }]
+  const segments: ContentSegment[] = msg.segments.map((s) => ({
+    content: s.content,
+    contentType: s.content_type,
+  }))
+
+  const lastSegment = segments[segments.length - 1]
 
   return {
     id: msg.id ?? uuid(),
     role: msg.role,
-    content: msg.content,
-    contentType: msg.content_type,
+    content: segments.map((s) => s.content).join(""),
+    contentType: lastSegment?.contentType ?? "markdown",
     streaming: false,
     icon: msg.icon,
     segments,

@@ -58,7 +58,10 @@ describe("ChatApp integration: full message flow", () => {
     await act(async () => {
       transport.fire("test-chat", {
         type: "chunk_start",
-        message: { role: "assistant", content: "", content_type: "markdown" },
+        message: {
+          role: "assistant",
+          segments: [{ content: "", content_type: "markdown" }],
+        },
       })
     })
 
@@ -94,7 +97,10 @@ describe("ChatApp integration: full message flow", () => {
     await act(async () => {
       transport.fire("test-chat", {
         type: "chunk_start",
-        message: { role: "assistant", content: "", content_type: "markdown" },
+        message: {
+          role: "assistant",
+          segments: [{ content: "", content_type: "markdown" }],
+        },
       })
     })
 
@@ -134,8 +140,7 @@ describe("ChatApp integration: full message flow", () => {
         type: "message",
         message: {
           role: "assistant",
-          content: "Complete reply",
-          content_type: "markdown",
+          segments: [{ content: "Complete reply", content_type: "markdown" }],
         },
       })
     })
@@ -162,8 +167,7 @@ describe("ChatApp integration: full message flow", () => {
         type: "message",
         message: {
           role: "assistant",
-          content: "Reply",
-          content_type: "markdown",
+          segments: [{ content: "Reply", content_type: "markdown" }],
         },
       })
     })
