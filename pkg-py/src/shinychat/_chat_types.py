@@ -25,6 +25,7 @@ class MessagePayloadSegment(TypedDict):
 class MessagePayload(TypedDict):
     role: Literal["user", "assistant"]
     content: str
+    # Redundant when segments is present; kept for backward compat with older JS.
     content_type: ContentType
     id: NotRequired[str]
     icon: NotRequired[str]
@@ -102,7 +103,11 @@ class ChatMessageDict(TypedDict):
     html_deps: NotRequired[list[dict[str, object]]]
 
 
-class BookmarkMessageDict(ChatMessageDict):
+class BookmarkMessageDict(TypedDict):
+    content: str
+    role: Role
+    # When segments are present, deps live per-segment (not at the top level).
+    html_deps: NotRequired[list[dict[str, object]]]
     segments: NotRequired[list[StoredContentSegment]]
 
 

@@ -19,13 +19,20 @@ def segments_deps(segments: list[ContentSegment]) -> list[HTMLDependency]:
     return deps
 
 
+def copy_segments(segments: list[ContentSegment]) -> list[ContentSegment]:
+    return [
+        ContentSegment(s.content, s.content_type, list(s.html_deps) if s.html_deps else None)
+        for s in segments
+    ]
+
+
 def append_to_segments(
     segments: list[ContentSegment],
     content: str,
     content_type: ContentType,
     deps: list[HTMLDependency] | None = None,
 ) -> None:
-    if not content and not deps:
+    if not content and deps is None:
         return
     if segments and segments[-1].content_type == content_type:
         segments[-1].content += content

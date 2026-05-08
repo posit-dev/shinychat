@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import inspect
 from contextlib import asynccontextmanager
-from copy import deepcopy
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -52,6 +51,7 @@ from ._chat_provider_types import (
 )
 from ._chat_segments import (
     append_to_segments,
+    copy_segments,
     segments_content,
     segments_deps,
     serialize_segments,
@@ -697,7 +697,7 @@ class Chat:
         """
         # Checkpoint the current stream state so operation="replace"  can return to it
         old_checkpoint = self._message_stream_segments_checkpoint
-        self._message_stream_segments_checkpoint = deepcopy(self._current_stream_segments)
+        self._message_stream_segments_checkpoint = copy_segments(self._current_stream_segments)
 
         # No stream currently exists, start one
         stream_id = self._current_stream_id
@@ -759,7 +759,7 @@ class Chat:
             chunk_segment_content = str(msg.content)
 
         if operation == "replace":
-            self._current_stream_segments = deepcopy(
+            self._current_stream_segments = copy_segments(
                 self._message_stream_segments_checkpoint
             )
 
