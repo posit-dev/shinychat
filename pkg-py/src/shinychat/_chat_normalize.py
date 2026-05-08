@@ -166,8 +166,8 @@ try:
     def _(chunk: ContentToolResult):
         return message_content(chunk)
 
-    # ContentThinking is handled directly in _append_message_stream,
-    # but register it here so message_content_chunk doesn't raise for it.
+    # ContentThinking chunks are streamed to the UI with content_type="thinking"
+    # and buffered in _append_message_stream for storage as wrapped <thinking> blocks.
     try:
         from chatlas.types import (
             ContentThinking,  # pyright: ignore[reportAttributeAccessIssue]
@@ -175,11 +175,11 @@ try:
 
         @message_content.register
         def _(message: ContentThinking):
-            return ChatMessage(content=message.thinking)
+            return ChatMessage(content=message.thinking, content_type="thinking")
 
         @message_content_chunk.register
         def _(chunk: ContentThinking):
-            return ChatMessage(content=chunk.thinking)
+            return ChatMessage(content=chunk.thinking, content_type="thinking")
     except ImportError:
         pass
 

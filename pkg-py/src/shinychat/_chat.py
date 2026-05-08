@@ -128,7 +128,6 @@ PendingMessage = Tuple[
     ChunkOption,
     Literal["append", "replace"],
     Union[str, None],
-    "Union[ContentType, None]",
 ]
 
 
@@ -291,7 +290,6 @@ class Chat:
 
         # Chunked messages get accumulated (using this property) before changing state
         self._current_stream_message: str = ""
-        self._current_stream_thinking: str = ""
         self._current_stream_deps: list[HTMLDependency] = []
         self._current_stream_id: str | None = None
         self._pending_messages: list[PendingMessage] = []
@@ -644,7 +642,7 @@ class Chat:
         """
         # If we're in a stream, queue the message
         if self._current_stream_id:
-            self._pending_messages.append((message, False, "append", None, None))
+            self._pending_messages.append((message, False, "append", None))
             return
 
         msg = message_content(message)
@@ -756,12 +754,11 @@ class Chat:
         stream_id: str,
         operation: Literal["append", "replace"] = "append",
         icon: HTML | Tag | TagList | None = None,
-        content_type_override: "ContentType | None" = None,
     ) -> None:
         # If currently we're in a *different* stream, queue the message chunk
         if self._current_stream_id and self._current_stream_id != stream_id:
             self._pending_messages.append(
-                (message, chunk, operation, stream_id, content_type_override)
+                (message, chunk, operation, stream_id)
             )
             return
 
@@ -783,7 +780,7 @@ class Chat:
                 *chunk_deps,
             ]
             msg.content = self._current_stream_message
-        else:
+        elif msg.content_type != "thinking":
             self._current_stream_message += msg.content
             self._current_stream_deps.extend(chunk_deps)
 
@@ -823,13 +820,11 @@ class Chat:
                 chunk=chunk,
                 operation=operation,
                 icon=icon,
-                content_type_override=content_type_override,
             )
         finally:
             if chunk == "end":
                 self._current_stream_id = None
                 self._current_stream_message = ""
-                self._current_stream_thinking = ""
                 self._current_stream_deps = []
                 self._message_stream_checkpoint = ""
                 self._message_stream_deps_checkpoint = []
@@ -969,36 +964,42 @@ class Chat:
             empty, chunk="start", stream_id=id, icon=icon
         )
 
+        async def flush_thinking(thinking_buffer: str) -> None:
+            wrapped = ChatMessage(
+                content=f"<thinking>\n{thinking_buffer}\n</thinking>\n\n",
+                role="assistant",
+            )
+            await self._append_message_chunk(wrapped, chunk=True, stream_id=id)
+
         try:
+            thinking_buffer = ""
             async for msg in message:
                 if _is_content_thinking(msg):
                     thinking_text = msg.thinking if hasattr(msg, "thinking") else str(msg)
-                    self._current_stream_thinking += thinking_text
-                    thinking_msg = ChatMessage(content=thinking_text, role="assistant")
-                    await self._send_append_message(
-                        thinking_msg,
-                        chunk=True,
-                        content_type_override="thinking",
+                    thinking_buffer += thinking_text
+                    await self._append_message_chunk(
+                        message_content_chunk(msg), chunk=True, stream_id=id
                     )
                     continue
 
+                if thinking_buffer:
+                    await flush_thinking(thinking_buffer)
+                    thinking_buffer = ""
+
                 await self._append_message_chunk(msg, chunk=True, stream_id=id)
+
+            if thinking_buffer:
+                await flush_thinking(thinking_buffer)
+
             return self._current_stream_message
         finally:
-            if self._current_stream_thinking:
-                self._current_stream_message = (
-                    "<thinking>\n"
-                    + self._current_stream_thinking
-                    + "\n</thinking>\n\n"
-                    + self._current_stream_message
-                )
             await self._append_message_chunk(empty, chunk="end", stream_id=id)
             await self._flush_pending_messages()
 
     async def _flush_pending_messages(self):
         pending = self._pending_messages
         self._pending_messages = []
-        for msg, chunk, operation, stream_id, content_type_override in pending:
+        for msg, chunk, operation, stream_id in pending:
             if chunk is False:
                 await self.append_message(msg)
             else:
@@ -1007,7 +1008,6 @@ class Chat:
                     chunk=chunk,
                     operation=operation,
                     stream_id=cast(str, stream_id),
-                    content_type_override=content_type_override,
                 )
 
     # Send a message to the UI
@@ -1017,8 +1017,12 @@ class Chat:
         chunk: ChunkOption = False,
         operation: Literal["append", "replace"] = "append",
         icon: HTML | Tag | TagList | None = None,
-        content_type_override: "ContentType | None" = None,
     ):
+        content_type: ContentType = (
+            message.content_type
+            if isinstance(message, ChatMessage)
+            else "html" if isinstance(message.content, HTML) else "markdown"
+        )
         message = self._as_stored_message(message)
 
         if message.role == "system":
@@ -1026,11 +1030,6 @@ class Chat:
             return
 
         content = message.content
-        content_type: ContentType = (
-            content_type_override
-            if content_type_override is not None
-            else "html" if isinstance(content, HTML) else "markdown"
-        )
 
         msg_payload: MessagePayload = {
             "role": message.role,
