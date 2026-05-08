@@ -964,12 +964,10 @@ class Chat:
             empty, chunk="start", stream_id=id, icon=icon
         )
 
-        async def flush_thinking(thinking_buffer: str) -> None:
-            wrapped = ChatMessage(
-                content=f"<thinking>\n{thinking_buffer}\n</thinking>\n\n",
-                role="assistant",
+        def flush_thinking(thinking_buffer: str) -> None:
+            self._current_stream_message += (
+                f"<thinking>\n{thinking_buffer}\n</thinking>\n\n"
             )
-            await self._append_message_chunk(wrapped, chunk=True, stream_id=id)
 
         try:
             thinking_buffer = ""
@@ -983,13 +981,13 @@ class Chat:
                     continue
 
                 if thinking_buffer:
-                    await flush_thinking(thinking_buffer)
+                    flush_thinking(thinking_buffer)
                     thinking_buffer = ""
 
                 await self._append_message_chunk(msg, chunk=True, stream_id=id)
 
             if thinking_buffer:
-                await flush_thinking(thinking_buffer)
+                flush_thinking(thinking_buffer)
 
             return self._current_stream_message
         finally:
