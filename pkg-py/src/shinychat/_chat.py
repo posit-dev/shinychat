@@ -793,8 +793,11 @@ class Chat:
                 if msg is None:
                     return
                 if chunk == "end":
-                    stream_deps = segments_deps(self._current_stream_segments) or None
-                    self._store_message(msg, deps=stream_deps)
+                    stream_deps = segments_deps(self._current_stream_segments)
+                    serialized_deps = self._serialize_html_deps(stream_deps)
+                    if serialized_deps and msg.segments:
+                        msg.segments[0]["html_deps"] = serialized_deps
+                    self._store_message(msg)
             elif chunk == "end":
                 # When `operation="append"`, msg.content is just a chunk, but we must
                 # store the full message
@@ -1205,32 +1208,21 @@ class Chat:
     def _as_stored_message(
         self,
         message: StoredMessage | ChatMessage,
-        deps: list[HTMLDependency] | None = None,
     ) -> StoredMessage:
         if isinstance(message, StoredMessage):
-            if deps is not None:
-                serialized = self._serialize_html_deps(deps)
-                if serialized and message.segments:
-                    seg = message.segments[0]
-                    existing = seg.get("html_deps") or []
-                    seg["html_deps"] = existing + serialized
             return message
 
-        html_deps = self._serialize_html_deps(
-            deps if deps is not None else message.html_deps
-        )
+        html_deps = self._serialize_html_deps(message.html_deps)
         return StoredMessage.from_chat_message(message, html_deps=html_deps)
 
-    # Just before storing, handle chunk msg type and calculate tokens
     def _store_message(
         self,
         message: StoredMessage | ChatMessage,
         index: int | None = None,
-        deps: list[HTMLDependency] | None = None,
     ) -> None:
         from shiny import reactive
 
-        message = self._as_stored_message(message, deps=deps)
+        message = self._as_stored_message(message)
 
         with reactive.isolate():
             messages = self._messages()

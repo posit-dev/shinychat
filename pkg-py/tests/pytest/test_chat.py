@@ -218,10 +218,9 @@ def test_stream_replace_discards_stale_html_dependencies():
         def _capture_store(
             message: StoredMessage | ChatMessage,
             index: int | None = None,
-            deps: list[HTMLDependency] | None = None,
         ) -> None:
             del index
-            captured.append(chat._as_stored_message(message, deps=deps))
+            captured.append(chat._as_stored_message(message))
 
         chat._send_append_message = _noop_send  # type: ignore[method-assign]
         chat._store_message = _capture_store  # type: ignore[method-assign]
@@ -728,10 +727,9 @@ def test_stream_accumulates_segments_by_content_type():
         def _capture_store(
             message: StoredMessage | ChatMessage,
             index: int | None = None,
-            deps: list[HTMLDependency] | None = None,
         ) -> None:
             del index
-            captured.append(chat._as_stored_message(message, deps=deps))
+            captured.append(chat._as_stored_message(message))
 
         chat._send_append_message = _noop_send  # type: ignore[method-assign]
         chat._store_message = _capture_store  # type: ignore[method-assign]
@@ -918,10 +916,9 @@ def test_stream_html_deps_survive_segment_serialization():
         def _capture_store(
             message: StoredMessage | ChatMessage,
             index: int | None = None,
-            deps: list[HTMLDependency] | None = None,
         ) -> None:
             del index
-            captured.append(chat._as_stored_message(message, deps=deps))
+            captured.append(chat._as_stored_message(message))
 
         chat._send_append_message = _noop_send  # type: ignore[method-assign]
         chat._store_message = _capture_store  # type: ignore[method-assign]
@@ -1076,10 +1073,9 @@ def test_nested_stream_checkpoint_preserves_segments():
         def _capture_store(
             message: StoredMessage | ChatMessage,
             index: int | None = None,
-            deps: list[HTMLDependency] | None = None,
         ) -> None:
             del index
-            captured.append(chat._as_stored_message(message, deps=deps))
+            captured.append(chat._as_stored_message(message))
 
         chat._send_append_message = _noop_send  # type: ignore[method-assign]
         chat._store_message = _capture_store  # type: ignore[method-assign]
@@ -1122,10 +1118,9 @@ def test_nested_stream_replace_rejects_mixed_checkpoint():
         def _capture_store(
             message: StoredMessage | ChatMessage,
             index: int | None = None,
-            deps: list[HTMLDependency] | None = None,
         ) -> None:
             del index
-            captured.append(chat._as_stored_message(message, deps=deps))
+            captured.append(chat._as_stored_message(message))
 
         chat._send_append_message = _noop_send  # type: ignore[method-assign]
         chat._store_message = _capture_store  # type: ignore[method-assign]
