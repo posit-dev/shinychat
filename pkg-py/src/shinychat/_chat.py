@@ -128,19 +128,7 @@ PendingMessage = Tuple[
     ChunkOption,
     Literal["append", "replace"],
     Union[str, None],
-    "Union[ContentType, None]",
 ]
-
-
-def is_content_thinking_delta(msg: object) -> "TypeGuard[chatlas.ContentThinkingDelta]":
-    try:
-        from chatlas.types import (
-            ContentThinkingDelta,  # pyright: ignore[reportAttributeAccessIssue]
-        )
-
-        return isinstance(msg, ContentThinkingDelta)
-    except ImportError:
-        return False
 
 
 class Chat:
@@ -642,7 +630,7 @@ class Chat:
         """
         # If we're in a stream, queue the message
         if self._current_stream_id:
-            self._pending_messages.append((message, False, "append", None, None))
+            self._pending_messages.append((message, False, "append", None))
             return
 
         msg = message_content(message)
@@ -652,6 +640,7 @@ class Chat:
         self._store_message(msg)
         await self._send_append_message(
             message=msg,
+            content_type=resolve_content_type(message, msg.content),
             chunk=False,
             icon=icon,
         )
@@ -754,12 +743,11 @@ class Chat:
         stream_id: str,
         operation: Literal["append", "replace"] = "append",
         icon: HTML | Tag | TagList | None = None,
-        content_type_override: "ContentType | None" = None,
     ) -> None:
         # If currently we're in a *different* stream, queue the message chunk
         if self._current_stream_id and self._current_stream_id != stream_id:
             self._pending_messages.append(
-                (message, chunk, operation, stream_id, content_type_override)
+                (message, chunk, operation, stream_id)
             )
             return
 
@@ -818,10 +806,10 @@ class Chat:
             # Send the message to the client
             await self._send_append_message(
                 message=msg,
+                content_type=resolve_content_type(message, msg.content),
                 chunk=chunk,
                 operation=operation,
                 icon=icon,
-                content_type_override=content_type_override,
             )
         finally:
             if chunk == "end":
@@ -968,19 +956,6 @@ class Chat:
 
         try:
             async for msg in message:
-                if is_content_thinking_delta(msg):
-                    await self._send_append_message(
-                        ChatMessage(content=msg.thinking, role="assistant"),
-                        chunk=True,
-                        content_type_override="thinking",
-                    )
-                    if msg.phase == "start":
-                        self._current_stream_message += "<thinking>\n"
-                    self._current_stream_message += msg.thinking
-                    if msg.phase == "end":
-                        self._current_stream_message += "\n</thinking>\n\n"
-                    continue
-
                 await self._append_message_chunk(msg, chunk=True, stream_id=id)
             return self._current_stream_message
         finally:
@@ -990,7 +965,7 @@ class Chat:
     async def _flush_pending_messages(self):
         pending = self._pending_messages
         self._pending_messages = []
-        for msg, chunk, operation, stream_id, content_type_override in pending:
+        for msg, chunk, operation, stream_id in pending:
             if chunk is False:
                 await self.append_message(msg)
             else:
@@ -999,17 +974,16 @@ class Chat:
                     chunk=chunk,
                     operation=operation,
                     stream_id=cast(str, stream_id),
-                    content_type_override=content_type_override,
                 )
 
     # Send a message to the UI
     async def _send_append_message(
         self,
         message: StoredMessage | ChatMessage,
+        content_type: "ContentType",
         chunk: ChunkOption = False,
         operation: Literal["append", "replace"] = "append",
         icon: HTML | Tag | TagList | None = None,
-        content_type_override: "ContentType | None" = None,
     ):
         message = self._as_stored_message(message)
 
@@ -1018,11 +992,6 @@ class Chat:
             return
 
         content = message.content
-        content_type: ContentType = (
-            content_type_override
-            if content_type_override is not None
-            else "html" if isinstance(content, HTML) else "markdown"
-        )
 
         msg_payload: MessagePayload = {
             "role": message.role,
@@ -1643,7 +1612,12 @@ class Chat:
                     html_deps=message_dict.get("html_deps"),
                 )
                 self._store_message(stored)
-                await self._send_append_message(stored)
+                await self._send_append_message(
+                    stored,
+                    content_type=resolve_content_type(
+                        message_dict, stored.content
+                    ),
+                )
 
         def _cancel_bookmarking():
             _on_bookmark_client()
@@ -1924,6 +1898,24 @@ def is_tool_result(val: object) -> "TypeGuard[chatlas.ContentToolResult]":
         return isinstance(val, ContentToolResult)
     except ImportError:
         return False
+
+
+def is_content_thinking(msg: object) -> bool:
+    try:
+        from chatlas.types import (
+            ContentThinking,  # pyright: ignore[reportAttributeAccessIssue]
+            ContentThinkingDelta,  # pyright: ignore[reportAttributeAccessIssue]
+        )
+
+        return isinstance(msg, (ContentThinking, ContentThinkingDelta))
+    except ImportError:
+        return False
+
+
+def resolve_content_type(message: object, content: object) -> "ContentType":
+    if is_content_thinking(message):
+        return "thinking"
+    return "html" if isinstance(content, HTML) else "markdown"
 
 
 CHAT_INSTANCES: WeakValueDictionary[str, Chat] = WeakValueDictionary()
