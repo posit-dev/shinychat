@@ -36,9 +36,13 @@ describe("ChatInputState / ChatToolState isolation", () => {
         type: "message",
         message: {
           role: "assistant",
-          content:
-            '<shiny-tool-request request-id="r1" tool-name="foo" arguments="{}"></shiny-tool-request>',
-          content_type: "html",
+          segments: [
+            {
+              content:
+                '<shiny-tool-request request-id="r1" tool-name="foo" arguments="{}"></shiny-tool-request>',
+              content_type: "html",
+            },
+          ],
         },
       })
     })
@@ -75,9 +79,13 @@ describe("ChatInputState / ChatToolState isolation", () => {
         type: "message",
         message: {
           role: "assistant",
-          content:
-            '<shiny-tool-request request-id="r2" tool-name="bar" arguments="{}"></shiny-tool-request>',
-          content_type: "html",
+          segments: [
+            {
+              content:
+                '<shiny-tool-request request-id="r2" tool-name="bar" arguments="{}"></shiny-tool-request>',
+              content_type: "html",
+            },
+          ],
         },
       })
     })

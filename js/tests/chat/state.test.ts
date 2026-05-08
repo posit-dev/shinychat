@@ -76,8 +76,7 @@ describe("chatReducer", () => {
         type: "message",
         message: {
           role: "assistant",
-          content: "Reply",
-          content_type: "markdown",
+          segments: [{ content: "Reply", content_type: "markdown" }],
         },
       })
       expect(next.messages).toHaveLength(1)
@@ -92,8 +91,7 @@ describe("chatReducer", () => {
         type: "message",
         message: {
           role: "assistant",
-          content: "Hello",
-          content_type: "markdown",
+          segments: [{ content: "Hello", content_type: "markdown" }],
         },
       })
       expect(next.messages).toHaveLength(1)
@@ -105,8 +103,7 @@ describe("chatReducer", () => {
         type: "message",
         message: {
           role: "assistant",
-          content: "Hi",
-          content_type: "markdown",
+          segments: [{ content: "Hi", content_type: "markdown" }],
         },
       })
       expect(next.messages[0]!.id).toBe("uuid-1")
@@ -119,8 +116,7 @@ describe("chatReducer", () => {
         message: {
           id: "custom-id",
           role: "assistant",
-          content: "Hi",
-          content_type: "markdown",
+          segments: [{ content: "Hi", content_type: "markdown" }],
         },
       })
       expect(next.messages[0]!.id).toBe("custom-id")
@@ -132,8 +128,7 @@ describe("chatReducer", () => {
         type: "message",
         message: {
           role: "assistant",
-          content: "<b>Hi</b>",
-          content_type: "html",
+          segments: [{ content: "<b>Hi</b>", content_type: "html" }],
         },
       })
       expect(next.messages[0]!.contentType).toBe("html")
@@ -158,8 +153,7 @@ describe("chatReducer", () => {
         type: "chunk_start",
         message: {
           role: "assistant",
-          content: "Hel",
-          content_type: "markdown",
+          segments: [{ content: "Hel", content_type: "markdown" }],
         },
       })
       expect(next.messages).toHaveLength(0)
@@ -175,8 +169,7 @@ describe("chatReducer", () => {
         type: "chunk_start",
         message: {
           role: "assistant",
-          content: "Hel",
-          content_type: "markdown",
+          segments: [{ content: "Hel", content_type: "markdown" }],
         },
       })
       expect(next.streamingMessage!.segments).toEqual([
@@ -526,8 +519,7 @@ describe("chatReducer", () => {
         type: "message",
         message: {
           role: "assistant",
-          content: "Reply",
-          content_type: "markdown",
+          segments: [{ content: "Reply", content_type: "markdown" }],
         },
       })
       expect(next.messages).toHaveLength(1)

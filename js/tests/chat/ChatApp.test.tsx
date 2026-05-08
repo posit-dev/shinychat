@@ -47,9 +47,13 @@ describe("Issue #3: suggestion handlers work after re-renders", () => {
         type: "message",
         message: {
           role: "assistant",
-          content:
-            "Hello! <span class='suggestion' data-suggestion='click me'>click me</span>",
-          content_type: "html",
+          segments: [
+            {
+              content:
+                "Hello! <span class='suggestion' data-suggestion='click me'>click me</span>",
+              content_type: "html",
+            },
+          ],
         },
       })
     })
@@ -86,9 +90,13 @@ describe("Issue #3: suggestion handlers work after re-renders", () => {
         type: "message",
         message: {
           role: "assistant",
-          content:
-            "Hello! <span class='suggestion' data-suggestion='click me'>click me</span>",
-          content_type: "html",
+          segments: [
+            {
+              content:
+                "Hello! <span class='suggestion' data-suggestion='click me'>click me</span>",
+              content_type: "html",
+            },
+          ],
         },
       })
     })
@@ -274,8 +282,12 @@ describe("External link dialog", () => {
         type: "message",
         message: {
           role: "assistant",
-          content: "Visit [Example](https://example.com) for more info.",
-          content_type: "markdown",
+          segments: [
+            {
+              content: "Visit [Example](https://example.com) for more info.",
+              content_type: "markdown",
+            },
+          ],
         },
       })
     })
