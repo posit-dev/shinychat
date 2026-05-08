@@ -766,7 +766,7 @@ def test_stream_accumulates_segments_by_content_type():
         assert msg.segments[0]["content_type"] == "markdown"
         assert msg.segments[1]["content"] == "<b>!</b>"
         assert msg.segments[1]["content_type"] == "html"
-        # Flat content is the join of all segments
+        # Flat content is lossy; segments preserve the mixed-content fidelity
         assert str(msg.content) == "hello world<b>!</b>"
 
 
@@ -1076,6 +1076,55 @@ def test_nested_stream_checkpoint_preserves_segments():
         assert msg.segments[0]["content"] == "before replaced after"
 
 
+def test_nested_stream_replace_rejects_mixed_checkpoint():
+    """Replacing from a mixed checkpoint should raise instead of flattening segments."""
+    from htmltools import HTML
+
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        captured: list[StoredMessage] = []
+
+        async def _noop_send(*args: object, **kwargs: object) -> None:
+            return None
+
+        def _capture_store(
+            message: StoredMessage | ChatMessage,
+            index: int | None = None,
+            deps: list[HTMLDependency] | None = None,
+        ) -> None:
+            del index
+            captured.append(chat._as_stored_message(message, deps=deps))
+
+        chat._send_append_message = _noop_send  # type: ignore[method-assign]
+        chat._store_message = _capture_store  # type: ignore[method-assign]
+        chat._serialize_html_deps = lambda deps: (  # type: ignore[method-assign]
+            None if not deps else [{"name": d.name} for d in deps]
+        )
+
+        async def _exercise() -> None:
+            async with chat.message_stream_context() as outer:
+                await outer.append("before ")
+                await outer.append(HTML("<b>html</b>"))
+                async with chat.message_stream_context() as inner:
+                    with pytest.raises(
+                        ValueError, match="Cannot replace from a mixed-content checkpoint"
+                    ):
+                        await inner.replace("replaced")
+                await outer.append(" after")
+
+        run_async(_exercise)
+
+        assert len(captured) == 1
+        msg = captured[0]
+        assert str(msg.content) == "before <b>html</b> after"
+        assert msg.segments is not None
+        assert msg.segments == [
+            {"content": "before ", "content_type": "markdown"},
+            {"content": "<b>html</b>", "content_type": "html"},
+            {"content": " after", "content_type": "markdown"},
+        ]
+
+
 class MyObject:
     content = "Hello world!"
 
@@ -1182,3 +1231,42 @@ def test_stream_transform_uses_transformed_content_type():
         assert len(chunks) == 1
         assert chunks[0]["content"] == "<b>hello</b>"
         assert chunks[0]["content_type"] == "html"
+
+
+def test_stream_uses_lossy_flat_content_for_html_segments():
+    from htmltools import HTML
+    from shiny import reactive
+
+    with session_context(test_session):
+        chat = Chat(id="chat")
+
+        async def _noop_send(*args: object, **kwargs: object) -> None:
+            return None
+
+        chat._send_action = _noop_send  # type: ignore[method-assign]
+
+        async def _exercise() -> None:
+            await chat._append_message_chunk(
+                "", chunk="start", stream_id="s1"
+            )
+            await chat._append_message_chunk(
+                "hello ", chunk=True, stream_id="s1"
+            )
+            await chat._append_message_chunk(
+                HTML("<b>world</b>"), chunk=True, stream_id="s1"
+            )
+            await chat._append_message_chunk(
+                "", chunk="end", stream_id="s1"
+            )
+
+        run_async(_exercise)
+
+        with reactive.isolate():
+            messages = chat._messages()
+
+        assert len(messages) == 1
+        assert str(messages[0].content) == "hello <b>world</b>"
+        assert messages[0].segments == [
+            {"content": "hello ", "content_type": "markdown"},
+            {"content": "<b>world</b>", "content_type": "html"},
+        ]

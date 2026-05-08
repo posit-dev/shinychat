@@ -26,6 +26,13 @@ def copy_segments(segments: list[ContentSegment]) -> list[ContentSegment]:
     ]
 
 
+def has_mixed_content_types(segments: list[ContentSegment]) -> bool:
+    if not segments:
+        return False
+    first_content_type = segments[0].content_type
+    return any(seg.content_type != first_content_type for seg in segments[1:])
+
+
 def append_to_segments(
     segments: list[ContentSegment],
     content: str,

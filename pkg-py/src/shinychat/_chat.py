@@ -52,6 +52,7 @@ from ._chat_provider_types import (
 from ._chat_segments import (
     append_to_segments,
     copy_segments,
+    has_mixed_content_types,
     segments_content,
     segments_deps,
     serialize_segments,
@@ -759,6 +760,12 @@ class Chat:
             chunk_segment_content = str(msg.content)
 
         if operation == "replace":
+            if has_mixed_content_types(
+                self._message_stream_segments_checkpoint
+            ):
+                raise ValueError(
+                    "Cannot replace from a mixed-content checkpoint."
+                )
             self._current_stream_segments = copy_segments(
                 self._message_stream_segments_checkpoint
             )
@@ -770,8 +777,10 @@ class Chat:
             chunk_deps or None,
         )
 
+        stream_content = segments_content(self._current_stream_segments)
+
         if operation == "replace":
-            msg.content = segments_content(self._current_stream_segments)
+            msg.content = stream_content
 
         try:
             transformed = False
@@ -779,7 +788,7 @@ class Chat:
                 # Transforming may change the meaning of msg.content to be a *replace*
                 # not *append*. So, update msg.content and the operation accordingly.
                 chunk_content = msg.content
-                msg.content = segments_content(self._current_stream_segments)
+                msg.content = stream_content
                 operation = "replace"
                 msg = await self._transform_message(
                     msg, chunk=chunk, chunk_content=chunk_content
@@ -795,7 +804,7 @@ class Chat:
                 # When `operation="append"`, msg.content is just a chunk, but we must
                 # store the full message
                 segs = serialize_segments(self._current_stream_segments, self._serialize_html_deps)
-                content = segments_content(self._current_stream_segments)
+                content = stream_content
                 self._store_message(
                     StoredMessage(
                         content=content,
