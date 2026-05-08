@@ -2,6 +2,11 @@ import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 
 export type ContentType = "markdown" | "html" | "text"
 
+export type MessagePayloadSegment = {
+  content: string
+  content_type: ContentType
+}
+
 export type MessagePayload = {
   id?: string
   role: "user" | "assistant"
@@ -9,6 +14,7 @@ export type MessagePayload = {
   content_type: ContentType
   icon?: string
   html_deps?: HtmlDep[]
+  segments?: MessagePayloadSegment[]
 }
 
 export type ChatAction =

@@ -816,8 +816,8 @@ def test_messages_for_bookmark_without_segments():
         assert "segments" not in msg
 
 
-def test_restore_message_with_segments_sends_streaming_sequence():
-    """Multi-segment messages restore via chunk_start/chunk/chunk_end to preserve segment boundaries."""
+def test_restore_message_with_segments_sends_single_message():
+    """Messages with segments restore as a single 'message' action carrying segments."""
     with session_context(test_session):
         chat = Chat(id="chat")
         sent_actions: list[dict[str, Any]] = []
@@ -841,13 +841,13 @@ def test_restore_message_with_segments_sends_streaming_sequence():
 
         run_async(_exercise)
 
-        # Should have: chunk_start, chunk (md), chunk (html), chunk_end
-        types = [a["type"] for a in sent_actions]
-        assert types == ["chunk_start", "chunk", "chunk", "chunk_end"]
-        # chunk_start should have empty content (like live streaming)
-        assert sent_actions[0]["message"]["content"] == ""
-        assert sent_actions[1]["content_type"] == "markdown"
-        assert sent_actions[2]["content_type"] == "html"
+        assert len(sent_actions) == 1
+        assert sent_actions[0]["type"] == "message"
+        payload = sent_actions[0]["message"]
+        assert payload["segments"] == [
+            {"content": "hello ", "content_type": "markdown"},
+            {"content": "<b>world</b>", "content_type": "html"},
+        ]
 
 
 def test_restore_legacy_message_without_segments():
@@ -871,6 +871,41 @@ def test_restore_legacy_message_without_segments():
         # Legacy: sent as a single complete message
         assert len(sent_actions) == 1
         assert sent_actions[0]["type"] == "message"
+
+
+def test_send_message_includes_segments_in_payload():
+    """When a StoredMessage has segments, the 'message' action payload includes them."""
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        sent_actions: list[dict[str, Any]] = []
+
+        async def _capture_send(action: Any, deps: Any = None) -> None:
+            sent_actions.append(action)
+
+        chat._send_action = _capture_send  # type: ignore[method-assign]
+
+        stored = StoredMessage(
+            content="hello <b>world</b>",
+            role="assistant",
+            segments=[
+                StoredContentSegment(content="hello ", content_type="markdown"),
+                StoredContentSegment(content="<b>world</b>", content_type="html"),
+            ],
+        )
+
+        async def _exercise() -> None:
+            await chat._send_append_message(stored)
+
+        run_async(_exercise)
+
+        assert len(sent_actions) == 1
+        assert sent_actions[0]["type"] == "message"
+        payload = sent_actions[0]["message"]
+        assert "segments" in payload
+        assert payload["segments"] == [
+            {"content": "hello ", "content_type": "markdown"},
+            {"content": "<b>world</b>", "content_type": "html"},
+        ]
 
 
 def test_stream_html_deps_survive_segment_serialization():
@@ -922,12 +957,13 @@ def test_stream_html_deps_survive_segment_serialization():
         assert msg.segments is not None
         assert len(msg.segments) == 1
         assert msg.segments[0]["content_type"] == "markdown"
-        assert msg.segments[0].get("html_deps") is not None
-        assert msg.segments[0]["html_deps"][0]["name"] == "my-widget"
+        seg_deps = msg.segments[0].get("html_deps")
+        assert seg_deps is not None
+        assert seg_deps[0]["name"] == "my-widget"
 
 
-def test_restore_single_segment_uses_correct_content_type():
-    """A single-segment message restores via streaming sequence with the segment's content_type."""
+def test_restore_single_segment_sends_single_message():
+    """Single-segment messages also restore as a single 'message' action."""
     with session_context(test_session):
         chat = Chat(id="chat")
         sent_actions: list[dict[str, Any]] = []
@@ -950,12 +986,15 @@ def test_restore_single_segment_uses_correct_content_type():
 
         run_async(_exercise)
 
-        types = [a["type"] for a in sent_actions]
-        assert types == ["chunk_start", "chunk", "chunk_end"]
-        assert sent_actions[1]["content_type"] == "html"
+        assert len(sent_actions) == 1
+        assert sent_actions[0]["type"] == "message"
+        assert sent_actions[0]["message"]["segments"] == [
+            {"content": "<div>only html</div>", "content_type": "html"},
+        ]
 
 
-def test_restore_single_segment_resends_segment_html_deps():
+def test_restore_segment_deps_hoisted_to_envelope():
+    """Segment html_deps are hoisted to the envelope, not sent per-segment on the wire."""
     with session_context(test_session):
         chat = Chat(id="chat")
         sent_actions: list[dict[str, Any]] = []
@@ -984,12 +1023,13 @@ def test_restore_single_segment_resends_segment_html_deps():
 
         run_async(_exercise)
 
-        types = [a["type"] for a in sent_actions]
-        assert types == ["chunk_start", "chunk", "chunk_end"]
-        # Deps are sent with the chunk action
-        chunk_deps = [d for d in sent_deps if d is not None]
-        assert len(chunk_deps) == 1
-        assert chunk_deps[0] == [{"name": "my-widget", "version": "1.0"}]
+        assert len(sent_actions) == 1
+        assert sent_actions[0]["type"] == "message"
+        # Wire segments should NOT contain html_deps
+        for seg in sent_actions[0]["message"]["segments"]:
+            assert "html_deps" not in seg
+        # Deps hoisted to envelope
+        assert sent_deps[0] == [{"name": "my-widget", "version": "1.0"}]
 
 
 def test_nested_stream_checkpoint_preserves_segments():

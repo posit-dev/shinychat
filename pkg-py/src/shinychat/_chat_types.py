@@ -17,6 +17,11 @@ Role = Literal["assistant", "user", "system"]
 ContentType = Literal["markdown", "html", "text"]
 
 
+class MessagePayloadSegment(TypedDict):
+    content: str
+    content_type: ContentType
+
+
 class MessagePayload(TypedDict):
     role: Literal["user", "assistant"]
     content: str
@@ -24,6 +29,7 @@ class MessagePayload(TypedDict):
     id: NotRequired[str]
     icon: NotRequired[str]
     html_deps: NotRequired[list[dict[str, object]]]
+    segments: NotRequired[list[MessagePayloadSegment]]
 
 
 class MessageAction(TypedDict):

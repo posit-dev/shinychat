@@ -40,12 +40,6 @@ from ._chat_bookmark import (
     set_chatlas_state,
 )
 from ._chat_normalize import message_content, message_content_chunk
-from ._chat_segments import (
-    append_to_segments,
-    segments_content,
-    segments_deps,
-    serialize_segments,
-)
 from ._chat_provider_types import (
     AnthropicMessage,  # pyright: ignore[reportAttributeAccessIssue]
     GoogleMessage,
@@ -55,6 +49,12 @@ from ._chat_provider_types import (
     ProviderMessage,
     ProviderMessageFormat,
     as_provider_message,
+)
+from ._chat_segments import (
+    append_to_segments,
+    segments_content,
+    segments_deps,
+    serialize_segments,
 )
 from ._chat_tokenizer import (
     TokenEncoding,
@@ -552,7 +552,7 @@ class Chat:
             msg = BookmarkMessageDict(content=str(m.content), role=m.role)
             if m.segments:
                 msg["segments"] = m.segments
-            elif m.html_deps:
+            if m.html_deps:
                 msg["html_deps"] = m.html_deps
             result.append(msg)
         return result
@@ -796,14 +796,12 @@ class Chat:
                 # store the full message
                 segs = serialize_segments(self._current_stream_segments, self._serialize_html_deps)
                 content = segments_content(self._current_stream_segments)
-                stream_deps = segments_deps(self._current_stream_segments) or None
                 self._store_message(
                     StoredMessage(
                         content=content,
                         role=msg.role,
                         segments=segs,
                     ),
-                    deps=stream_deps,
                 )
 
             # Determine content_type from the current (last) segment.
@@ -1011,6 +1009,12 @@ class Chat:
         if icon is not None:
             msg_payload["icon"] = str(icon)
 
+        if isinstance(message, StoredMessage) and message.segments:
+            msg_payload["segments"] = [
+                {"content": s["content"], "content_type": s["content_type"]}
+                for s in message.segments
+            ]
+
         if chunk == "start":
             action: ChatAction = {"type": "chunk_start", "message": msg_payload}
             await self._send_action(action, message.html_deps)
@@ -1043,6 +1047,15 @@ class Chat:
         content: str = message_dict["content"]
         html_deps = message_dict.get("html_deps")
 
+        # Collect deps from segments and hoist to top-level for the envelope
+        if segments:
+            all_deps: list[dict[str, object]] = []
+            for seg in segments:
+                seg_deps = seg.get("html_deps")
+                if seg_deps:
+                    all_deps.extend(seg_deps)
+            html_deps = all_deps if all_deps else html_deps
+
         stored = StoredMessage(
             content=content,
             role=role,
@@ -1050,27 +1063,7 @@ class Chat:
             segments=segments,
         )
         self._store_message(stored)
-
-        if segments:
-            # Replay as streaming sequence to preserve per-segment content types
-            await self._send_append_message(
-                StoredMessage(content="", role=role),
-                chunk="start",
-                content_type=segments[0]["content_type"],
-            )
-            for seg in segments:
-                await self._send_append_message(
-                    StoredMessage(content=seg["content"], role=role, html_deps=seg.get("html_deps")),
-                    chunk=True,
-                    content_type=seg["content_type"],
-                )
-            await self._send_append_message(
-                StoredMessage(content="", role=role),
-                chunk="end",
-                content_type=segments[-1]["content_type"],
-            )
-        else:
-            await self._send_append_message(stored)
+        await self._send_append_message(stored)
 
     @overload
     def transform_user_input(
