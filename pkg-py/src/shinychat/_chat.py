@@ -553,7 +553,7 @@ class Chat:
             msg = BookmarkMessageDict(content=str(m.content), role=m.role)
             if m.segments:
                 msg["segments"] = m.segments
-            if m.html_deps:
+            elif m.html_deps:
                 msg["html_deps"] = m.html_deps
             result.append(msg)
         return result

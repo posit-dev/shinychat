@@ -1032,6 +1032,39 @@ def test_restore_segment_deps_hoisted_to_envelope():
         assert sent_deps[0] == [{"name": "my-widget", "version": "1.0"}]
 
 
+def test_restore_then_bookmark_canonicalizes_segment_deps():
+    """Re-bookmarking a restored segmented message should omit duplicate top-level deps."""
+    with session_context(test_session):
+        chat = Chat(id="chat")
+
+        async def _noop_send(action: Any, deps: Any = None) -> None:
+            del action, deps
+
+        chat._send_action = _noop_send  # type: ignore[method-assign]
+
+        bookmark_data = {
+            "content": "<div>only html</div>",
+            "role": "assistant",
+            "segments": [
+                {
+                    "content": "<div>only html</div>",
+                    "content_type": "html",
+                    "html_deps": [{"name": "my-widget", "version": "1.0"}],
+                },
+            ],
+        }
+
+        async def _exercise() -> None:
+            await chat._restore_bookmark_message(bookmark_data)
+
+        run_async(_exercise)
+
+        rebound = chat._messages_for_bookmark()
+        assert len(rebound) == 1
+        assert rebound[0]["segments"] == bookmark_data["segments"]
+        assert "html_deps" not in rebound[0]
+
+
 def test_nested_stream_checkpoint_preserves_segments():
     """Nested message_stream_context restores checkpoint segments correctly on replace."""
     with session_context(test_session):
