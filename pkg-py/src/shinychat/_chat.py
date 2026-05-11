@@ -68,6 +68,7 @@ from ._utils_types import MISSING, MISSING_TYPE
 
 if TYPE_CHECKING:
     import chatlas
+    from chatlas.types import ContentThinkingDelta
     from shiny.bookmark import BookmarkState, RestoreState
     from shiny.bookmark._types import BookmarkStore
     from shiny.reactive import ExtendedTask
@@ -129,21 +130,6 @@ PendingMessage = Tuple[
     Literal["append", "replace"],
     Union[str, None],
 ]
-
-
-def _is_content_thinking(msg: Any) -> "TypeGuard[chatlas.ContentThinking]":  # pyright: ignore[reportAttributeAccessIssue]
-    """Check if a message is a ContentThinking object from chatlas."""
-    try:
-        try:
-            from chatlas.types import (
-                ContentThinking,  # pyright: ignore[reportAttributeAccessIssue]
-            )
-        except ImportError:
-            from chatlas._content import ContentThinking
-
-        return isinstance(msg, ContentThinking)
-    except ImportError:
-        return False
 
 
 class Chat:
@@ -967,6 +953,9 @@ class Chat:
             empty, chunk="start", stream_id=id, icon=icon
         )
 
+        # TODO: this is a pragmatic hack to store thinking state in a way that it
+        # can be restored later. Longer term, stored message state should support
+        # mixed content types (the thinking handling here could then be removed)
         def flush_thinking(thinking_buffer: str) -> None:
             self._current_stream_message += (
                 f"<thinking>\n{thinking_buffer}\n</thinking>\n\n"
@@ -975,7 +964,7 @@ class Chat:
         try:
             thinking_buffer = ""
             async for msg in message:
-                if _is_content_thinking(msg):
+                if is_thinking_delta(msg):
                     thinking_buffer += msg.thinking
                     await self._append_message_chunk(
                         msg, chunk=True, stream_id=id
@@ -1922,6 +1911,14 @@ class MessageStream:
             message_chunk,
             stream_id=self._stream_id,
         )
+
+
+def is_thinking_delta(msg: Any) -> TypeGuard[ContentThinkingDelta]:
+    try:
+        from chatlas.types import ContentThinkingDelta
+        return isinstance(msg, ContentThinkingDelta)
+    except ImportError:
+        return False
 
 
 def is_tool_result(val: object) -> "TypeGuard[chatlas.ContentToolResult]":
