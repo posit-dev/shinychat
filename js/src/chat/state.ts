@@ -375,6 +375,9 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       const messages = removeLoadingMessage(state.messages)
       const newMsg = messagePayloadToData(action.message)
       newMsg.streaming = true
+      newMsg.blocks = newMsg.blocks.map((b) =>
+        b.type === "thinking" ? { ...b, streaming: true } : b,
+      )
       return {
         ...state,
         messages,
@@ -397,7 +400,10 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       // If server explicitly says "thinking", use the direct thinking path
       if (explicitType === "thinking") {
         const blocks = [...last.blocks]
-        const tail = lastBlock?.type === "thinking" ? lastBlock : null
+        const tail =
+          lastBlock?.type === "thinking" && lastBlock.streaming
+            ? lastBlock
+            : null
         if (tail) {
           const { cleaned, topic, buffer } = extractTopics(
             action.content,

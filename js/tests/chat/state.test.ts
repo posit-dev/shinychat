@@ -581,7 +581,7 @@ describe("chatReducer", () => {
         streaming: boolean
       }
       expect(block.content).toBe("reasoning...")
-      expect(block.streaming).toBe(false)
+      expect(block.streaming).toBe(true)
     })
 
     it("thinking chunks append to existing thinking block", () => {
