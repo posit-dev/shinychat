@@ -131,12 +131,15 @@ PendingMessage = Tuple[
 ]
 
 
-def _is_content_thinking(msg: Any) -> bool:
+def _is_content_thinking(msg: Any) -> "TypeGuard[chatlas.ContentThinking]":  # pyright: ignore[reportAttributeAccessIssue]
     """Check if a message is a ContentThinking object from chatlas."""
     try:
-        from chatlas.types import (
-            ContentThinking,  # pyright: ignore[reportAttributeAccessIssue]
-        )
+        try:
+            from chatlas.types import (
+                ContentThinking,  # pyright: ignore[reportAttributeAccessIssue]
+            )
+        except ImportError:
+            from chatlas._content import ContentThinking
 
         return isinstance(msg, ContentThinking)
     except ImportError:
@@ -973,10 +976,9 @@ class Chat:
             thinking_buffer = ""
             async for msg in message:
                 if _is_content_thinking(msg):
-                    thinking_text = msg.thinking if hasattr(msg, "thinking") else str(msg)
-                    thinking_buffer += thinking_text
+                    thinking_buffer += msg.thinking
                     await self._append_message_chunk(
-                        message_content_chunk(msg), chunk=True, stream_id=id
+                        msg, chunk=True, stream_id=id
                     )
                     continue
 
