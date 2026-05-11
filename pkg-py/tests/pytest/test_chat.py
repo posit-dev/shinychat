@@ -36,6 +36,9 @@ class _MockSession:
     def on_ended(self, callback: object) -> None:
         pass
 
+    def on_destroy(self, callback: object) -> None:
+        pass
+
     def _increment_busy_count(self) -> None:
         pass
 
