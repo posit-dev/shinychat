@@ -1,6 +1,6 @@
 import type {
-  ContentType,
   ChatAction,
+  ContentType,
   MessagePayload,
 } from "../transport/types"
 import { uuid } from "../utils/uuid"
@@ -14,12 +14,11 @@ export interface ChatMessageData {
   id: string
   role: "user" | "assistant"
   content: string
-  contentType: ContentType
   streaming: boolean
   /** True for the empty placeholder message shown while waiting for the assistant to respond. */
   isPlaceholder?: boolean
   icon?: string
-  segments?: ContentSegment[]
+  segments: ContentSegment[]
 }
 
 export interface ChatInputState {
@@ -59,13 +58,10 @@ function messagePayloadToData(msg: MessagePayload): ChatMessageData {
     contentType: s.content_type,
   }))
 
-  const lastSegment = segments[segments.length - 1]
-
   return {
     id: msg.id ?? uuid(),
     role: msg.role,
     content: segments.map((s) => s.content).join(""),
-    contentType: lastSegment?.contentType ?? "markdown",
     streaming: false,
     icon: msg.icon,
     segments,
@@ -83,16 +79,16 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         id: uuid(),
         role: "user",
         content: action.content,
-        contentType: "markdown",
         streaming: false,
+        segments: [{ content: action.content, contentType: "markdown" }],
       }
       const loadingMsg: ChatMessageData = {
         id: uuid(),
         role: "assistant",
         content: "",
-        contentType: "markdown",
         streaming: false,
         isPlaceholder: true,
+        segments: [{ content: "", contentType: "markdown" }],
       }
       return {
         ...state,
@@ -127,9 +123,10 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       const last = state.streamingMessage
       if (!last || !last.streaming) return state
 
+      // segments is always non-empty: initialized with at least one segment on chunk_start
       const chunkType =
         action.content_type ??
-        last.segments![last.segments!.length - 1]!.contentType
+        last.segments[last.segments.length - 1]!.contentType
 
       if (action.operation === "replace") {
         const segments = [{ content: action.content, contentType: chunkType }]
@@ -138,13 +135,12 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
           streamingMessage: {
             ...last,
             content: action.content,
-            contentType: chunkType,
             segments,
           },
         }
       }
 
-      const segments = [...last.segments!]
+      const segments = [...last.segments]
       const current = segments[segments.length - 1]!
 
       if (chunkType !== current.contentType) {
@@ -161,7 +157,6 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         streamingMessage: {
           ...last,
           content,
-          contentType: chunkType,
           segments,
         },
       }

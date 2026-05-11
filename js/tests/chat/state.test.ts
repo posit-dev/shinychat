@@ -25,12 +25,9 @@ function makeAssistantMsg(
     id: "msg-1",
     role: "assistant",
     content: "Hello",
-    contentType: "markdown",
     streaming: false,
+    segments: [{ content: "Hello", contentType: "markdown" }],
     ...overrides,
-  }
-  if (base.segments === undefined) {
-    base.segments = [{ content: base.content, contentType: base.contentType }]
   }
   return base
 }
@@ -49,8 +46,8 @@ describe("chatReducer", () => {
       expect(next.messages[0]).toMatchObject({
         role: "user",
         content: "Hi",
-        contentType: "markdown",
         streaming: false,
+        segments: [{ content: "Hi", contentType: "markdown" }],
       })
       expect(next.messages[1]).toMatchObject({
         role: "assistant",
@@ -67,9 +64,9 @@ describe("chatReducer", () => {
         id: "p",
         role: "assistant",
         content: "",
-        contentType: "markdown",
         streaming: false,
         isPlaceholder: true,
+        segments: [{ content: "", contentType: "markdown" }],
       }
       const state = makeState({ messages: [placeholder], inputDisabled: true })
       const next = chatReducer(state, {
@@ -122,7 +119,7 @@ describe("chatReducer", () => {
       expect(next.messages[0]!.id).toBe("custom-id")
     })
 
-    it("maps content_type to contentType", () => {
+    it("maps content_type to segment contentType", () => {
       const state = makeState()
       const next = chatReducer(state, {
         type: "message",
@@ -131,7 +128,7 @@ describe("chatReducer", () => {
           segments: [{ content: "<b>Hi</b>", content_type: "html" }],
         },
       })
-      expect(next.messages[0]!.contentType).toBe("html")
+      expect(next.messages[0]!.segments[0]!.contentType).toBe("html")
     })
   })
 
@@ -141,9 +138,9 @@ describe("chatReducer", () => {
         id: "p",
         role: "assistant",
         content: "",
-        contentType: "markdown",
         streaming: false,
         isPlaceholder: true,
+        segments: [{ content: "", contentType: "markdown" }],
       }
       const state = makeState({
         messages: [placeholder],
@@ -180,7 +177,11 @@ describe("chatReducer", () => {
 
   describe("chunk", () => {
     it("appends content when operation is 'append'", () => {
-      const msg = makeAssistantMsg({ streaming: true, content: "Hel" })
+      const msg = makeAssistantMsg({
+        streaming: true,
+        content: "Hel",
+        segments: [{ content: "Hel", contentType: "markdown" }],
+      })
       const state = makeState({ streamingMessage: msg })
       const next = chatReducer(state, {
         type: "chunk",
@@ -212,7 +213,7 @@ describe("chatReducer", () => {
       const msg = makeAssistantMsg({
         streaming: true,
         content: "hello",
-        contentType: "markdown",
+        segments: [{ content: "hello", contentType: "markdown" }],
       })
       const state = makeState({ streamingMessage: msg })
       const next = chatReducer(state, {
@@ -236,7 +237,7 @@ describe("chatReducer", () => {
       const msg = makeAssistantMsg({
         streaming: true,
         content: "hel",
-        contentType: "markdown",
+        segments: [{ content: "hel", contentType: "markdown" }],
       })
       const state = makeState({ streamingMessage: msg })
       const next = chatReducer(state, {
@@ -255,7 +256,7 @@ describe("chatReducer", () => {
       const msg = makeAssistantMsg({
         streaming: true,
         content: "hello",
-        contentType: "markdown",
+        segments: [{ content: "hello", contentType: "markdown" }],
       })
       const state = makeState({ streamingMessage: msg })
       const next = chatReducer(state, {
@@ -271,7 +272,7 @@ describe("chatReducer", () => {
       const msg = makeAssistantMsg({
         streaming: true,
         content: "old",
-        contentType: "markdown",
+        segments: [{ content: "old", contentType: "markdown" }],
       })
       msg.segments = [
         { content: "frozen", contentType: "markdown" },
@@ -291,36 +292,6 @@ describe("chatReducer", () => {
       expect(next.streamingMessage!.content).toBe("new")
     })
 
-    it("updates contentType to match latest segment on type transition", () => {
-      const msg = makeAssistantMsg({
-        streaming: true,
-        content: "hello",
-        contentType: "markdown",
-      })
-      const state = makeState({ streamingMessage: msg })
-      const next = chatReducer(state, {
-        type: "chunk",
-        content: "<div>widget</div>",
-        operation: "append",
-        content_type: "html",
-      })
-      expect(next.streamingMessage!.contentType).toBe("html")
-    })
-
-    it("keeps contentType when chunk does not provide one", () => {
-      const msg = makeAssistantMsg({
-        streaming: true,
-        contentType: "markdown",
-      })
-      const state = makeState({ streamingMessage: msg })
-      const next = chatReducer(state, {
-        type: "chunk",
-        content: "x",
-        operation: "append",
-      })
-      expect(next.streamingMessage!.contentType).toBe("markdown")
-    })
-
     it("returns state unchanged when streamingMessage is null", () => {
       const state = makeState({ streamingMessage: null })
       const next = chatReducer(state, {
@@ -336,8 +307,8 @@ describe("chatReducer", () => {
         id: "u",
         role: "user",
         content: "Hi",
-        contentType: "markdown",
         streaming: false,
+        segments: [{ content: "Hi", contentType: "markdown" }],
       }
       const state = makeState({ streamingMessage: userMsg })
       const next = chatReducer(state, {
@@ -438,9 +409,9 @@ describe("chatReducer", () => {
         id: "p",
         role: "assistant",
         content: "",
-        contentType: "markdown",
         streaming: false,
         isPlaceholder: true,
+        segments: [{ content: "", contentType: "markdown" }],
       }
       const state = makeState({
         messages: [placeholder],
@@ -502,17 +473,17 @@ describe("chatReducer", () => {
         id: "p1",
         role: "assistant",
         content: "",
-        contentType: "markdown",
         streaming: false,
         isPlaceholder: true,
+        segments: [{ content: "", contentType: "markdown" }],
       }
       const placeholder2: ChatMessageData = {
         id: "p2",
         role: "assistant",
         content: "",
-        contentType: "markdown",
         streaming: false,
         isPlaceholder: true,
+        segments: [{ content: "", contentType: "markdown" }],
       }
       const state = makeState({ messages: [placeholder1, placeholder2] })
       const next = chatReducer(state, {

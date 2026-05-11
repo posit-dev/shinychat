@@ -279,16 +279,28 @@ describe("Tool component bridge rendering", () => {
             role: "assistant",
             content:
               '<shiny-tool-request data-shinychat-react request-id="req-preloaded" tool-name="search" arguments="{}"></shiny-tool-request>',
-            contentType: "markdown",
             streaming: false,
+            segments: [
+              {
+                content:
+                  '<shiny-tool-request data-shinychat-react request-id="req-preloaded" tool-name="search" arguments="{}"></shiny-tool-request>',
+                contentType: "markdown",
+              },
+            ],
           },
           {
             id: "msg-result",
             role: "assistant",
             content:
               '<shiny-tool-result data-shinychat-react request-id="req-preloaded" tool-name="search" status="success" value="Done" value-type="text"></shiny-tool-result>',
-            contentType: "markdown",
             streaming: false,
+            segments: [
+              {
+                content:
+                  '<shiny-tool-result data-shinychat-react request-id="req-preloaded" tool-name="search" status="success" value="Done" value-type="text"></shiny-tool-result>',
+                contentType: "markdown",
+              },
+            ],
           },
         ]}
       />,

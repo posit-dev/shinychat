@@ -25,9 +25,7 @@ export const ChatMessage = memo(function ChatMessage({
 
   const roleClass = isUser ? "shiny-chat-user-message" : "shiny-chat-message"
 
-  const segments = message.segments ?? [
-    { content: message.content, contentType: message.contentType },
-  ]
+  const segments = message.segments
 
   return (
     <div className={roleClass}>
