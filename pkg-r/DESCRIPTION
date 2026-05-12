@@ -35,13 +35,7 @@ Imports:
     shiny (>= 1.10.0)
 Suggests:
     covr,
-    knitr,
-    later,
-    testthat (>= 3.0.0),
-    withr
-Remotes:
-    tidyverse/ellmer
-Config/Needs/website: tidyverse/tidytemplate, rmarkdown, weathR, gt, glue,
+    knitr,nfig/Needs/website: tidyverse/tidytemplate, rmarkdown, weathR, gt, glue,
     bsicons
 Config/roxygen2/version: 8.0.0
 Config/testthat/edition: 3
