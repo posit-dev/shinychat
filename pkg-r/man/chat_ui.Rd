@@ -65,6 +65,46 @@ To respond to user input, listen for \code{input$ID_user_input} (for example, if
 \code{id="my_chat"}, user input will be at \code{input$my_chat_user_input}), and use
 \code{\link[=chat_append]{chat_append()}} to append messages to the chat.
 }
+\section{Thinking display}{
+
+
+When a model produces reasoning or "thinking" tokens, shinychat renders them
+in a collapsible panel above the response. The panel shows a live stream of
+the model's reasoning while it thinks, then auto-collapses when the response
+begins.
+
+Thinking display works automatically with any model that supports it. Two
+paths are supported:
+\enumerate{
+\item \strong{ellmer's \code{ContentThinking} objects.} Models that provide a structured
+thinking API (e.g., Claude with extended thinking) emit \code{ContentThinking}
+objects when you stream with \code{stream = "content"}. shinychat detects these
+and routes them to the thinking panel. This is what \code{chat_append()} uses
+internally when you pass it an ellmer content stream.
+\item \strong{Raw \verb{<thinking>} tags.} Many open-source and local models (DeepSeek,
+QwQ, Qwen, etc.) emit \verb{<thinking>...</thinking>} tags directly in their
+markdown output. shinychat detects these tags during streaming and renders
+the enclosed text in the thinking panel with no extra configuration.
+}
+\subsection{Topic labels}{
+
+You can optionally get labeled sub-sections within the thinking panel by
+asking the model to emit \verb{<topic>...</topic>} tags in its reasoning. These
+are extracted and rendered as section headings inside the thinking display,
+and the current topic appears in the collapsed header as a live status.
+
+To use topic labels, add something like this to your system prompt:
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{When thinking through a problem, wrap brief topic labels in <topic> tags
+to indicate what you're currently reasoning about. For example:
+<topic>parsing the input</topic>
+}\if{html}{\out{</div>}}
+
+Topic labels are entirely optional. Without them, the thinking panel still
+works -- it just won't have sub-section headings.
+}
+}
+
 \examples{
 \dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
 library(shiny)

@@ -13,6 +13,7 @@ import { MessageErrorBoundary } from "./MessageErrorBoundary"
 import { ChatInput, type ChatInputHandle } from "./ChatInput"
 import { ScrollToBottomButton } from "./ScrollToBottomButton"
 import { ExternalLinkDialogComponent } from "./ExternalLinkDialog"
+import { ChatScrollContext } from "./context"
 import type { ChatMessageData } from "./state"
 import type { ChatTransport } from "../transport/types"
 
@@ -55,7 +56,7 @@ export const ChatContainer = forwardRef<
   const pendingUrlRef = useRef<string | null>(null)
   pendingUrlRef.current = pendingUrl
 
-  const { scrollRef, contentRef, isAtBottom, scrollToBottom } =
+  const { scrollRef, contentRef, isAtBottom, scrollToBottom, stopScroll } =
     useStickToBottom({ resize: "smooth" })
 
   useImperativeHandle(ref, () => ({
@@ -176,15 +177,17 @@ export const ChatContainer = forwardRef<
             onClick={onMessagesClick}
             onKeyDown={onSuggestionKeydown}
           >
-            <ChatMessages messages={messages} iconAssistant={iconAssistant} />
-            {streamingMessage && (
-              <MessageErrorBoundary key={streamingMessage.id}>
-                <ChatMessage
-                  message={streamingMessage}
-                  iconAssistant={iconAssistant}
-                />
-              </MessageErrorBoundary>
-            )}
+            <ChatScrollContext.Provider value={stopScroll}>
+              <ChatMessages messages={messages} iconAssistant={iconAssistant} />
+              {streamingMessage && (
+                <MessageErrorBoundary key={streamingMessage.id}>
+                  <ChatMessage
+                    message={streamingMessage}
+                    iconAssistant={iconAssistant}
+                  />
+                </MessageErrorBoundary>
+              )}
+            </ChatScrollContext.Provider>
           </div>
         </div>
         <ScrollToBottomButton

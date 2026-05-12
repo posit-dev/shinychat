@@ -308,3 +308,145 @@ shiny-chat-container {
   word-break: break-all;
   font-weight: 500;
 }
+
+/* Thinking display */
+.shinychat-thinking {
+  --shinychat-thinking-header-color: var(--bs-secondary-color, #6c757d);
+  --shinychat-thinking-border-color: var(--bs-border-color, #dee2e6);
+  --shinychat-thinking-content-color: var(--bs-secondary-color, #6c757d);
+  // Chevron is 12px wide; border aligns to its horizontal center
+  --_chevron-center: 6px;
+
+  font-size: 0.875rem;
+}
+
+.shinychat-thinking-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  padding-block: 0.5em;
+  padding-inline: 0;
+  line-height: 1;
+  color: var(--shinychat-thinking-header-color);
+  cursor: pointer;
+  font-size: inherit;
+  transition: color 0.15s;
+  border-radius: 4px;
+
+  &:hover {
+    color: var(--bs-body-color, #212529);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--bs-primary, #007bc2);
+    outline-offset: 2px;
+  }
+}
+
+.shinychat-thinking-chevron {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  transition: transform 0.2s ease;
+
+  &[data-expanded] {
+    transform: rotate(90deg);
+  }
+}
+
+.shinychat-thinking-label {
+  font-weight: 500;
+  transition: opacity 0.2s ease;
+
+  &[data-fading] {
+    opacity: 0;
+  }
+}
+
+.shinychat-thinking-dot {
+  margin-left: 0;
+  fill: currentColor;
+  opacity: 0;
+  transform-origin: center;
+  animation:
+    shinychat-thinking-dot-appear 0.2s ease 500ms forwards,
+    shinychat-thinking-dot-pulse 1.75s infinite cubic-bezier(0.18, 0.89, 0.32, 1.28) 500ms;
+}
+
+@keyframes shinychat-thinking-dot-appear {
+  to {
+    opacity: 0.6;
+  }
+}
+
+@keyframes shinychat-thinking-dot-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(0.4);
+    opacity: 0.3;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+}
+
+.shinychat-thinking-content {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.2s ease;
+  // Align left border with center of chevron
+  margin-left: calc(var(--_chevron-center) - 1px);
+  border-left: 2px solid var(--shinychat-thinking-border-color);
+
+  &[data-expanded] {
+    grid-template-rows: 1fr;
+    max-height: 33dvh;
+  }
+}
+
+.shinychat-thinking-content-inner {
+  overflow: hidden;
+  padding-left: 0.75rem;
+  padding-block: 0;
+  color: var(--shinychat-thinking-content-color);
+  font-size: 0.9em;
+  transition: padding-block 0.2s ease;
+
+  [data-expanded] > & {
+    padding-block: 0.25rem;
+    max-height: 33dvh;
+    overflow-y: auto;
+  }
+}
+
+.shinychat-thinking-topic {
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shinychat-thinking-dot {
+    animation: shinychat-thinking-dot-appear 0s ease 500ms forwards;
+  }
+
+  .shinychat-thinking-chevron {
+    transition: none;
+  }
+
+  .shinychat-thinking-content {
+    transition: none;
+  }
+
+  .shinychat-thinking-content-inner {
+    transition: none;
+  }
+
+  .shinychat-thinking-label {
+    transition: none;
+  }
+}

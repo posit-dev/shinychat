@@ -6,6 +6,8 @@
 
 ## New features and improvements
 
+* The chat UI now displays model reasoning/thinking content as collapsible panels above assistant responses. Thinking content streams in real-time with animated topic labels. This works with providers that support structured thinking (e.g., Claude's extended thinking via `ellmer`) and with local models that wrap reasoning in `<thinking>` tags. (#208)
+
 * Added `footer` field to `ToolResultDisplay` for displaying custom HTML content below the tool result card body. (#178)
 
 * Tool result cards now support a fullscreen toggle. Set `full_screen = TRUE` in the `display` list (or set `res$full_screen <- NA` in a custom `contents_shinychat()` method) to add a button that expands the card to fill the viewport. Press `Escape`, click the backdrop, or use the close button to exit fullscreen.

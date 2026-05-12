@@ -1,6 +1,6 @@
 import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 
-export type ContentType = "markdown" | "html" | "text"
+export type ContentType = "markdown" | "html" | "text" | "thinking"
 
 export type MessagePayload = {
   id?: string

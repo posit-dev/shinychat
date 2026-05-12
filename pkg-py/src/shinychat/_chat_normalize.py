@@ -166,6 +166,29 @@ try:
     def _(chunk: ContentToolResult):
         return message_content(chunk)
 
+    # ContentThinking is a complete thought stored in a turn, ContentThinkingDelta is
+    # a thinking chunk from .stream(content="all")
+    try:
+        from chatlas.types import ContentThinking, ContentThinkingDelta
+
+        @message_content.register
+        def _(chunk: ContentThinking):
+            return ChatMessage(content=chunk.thinking, content_type="thinking")
+
+        @message_content.register
+        def _(chunk: ContentThinkingDelta):
+            return ChatMessage(content=chunk.thinking, content_type="thinking")
+
+        @message_content_chunk.register
+        def _(chunk: ContentThinking):
+            return ChatMessage(content=chunk.thinking, content_type="thinking")
+
+        @message_content_chunk.register
+        def _(chunk: ContentThinkingDelta):
+            return ChatMessage(content=chunk.thinking, content_type="thinking")
+    except ImportError:
+        pass
+
     @message_content.register
     def _(message: Turn):
         from chatlas import ContentToolResult
