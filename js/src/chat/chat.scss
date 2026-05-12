@@ -265,9 +265,9 @@ shiny-chat-container {
       inset: -1px;
       border-radius: 50%;
       background: conic-gradient(
-        var(--_streaming-gradient),
-        transparent var(--_streaming-arc-length),
-        transparent
+        transparent,
+        transparent calc(100% - var(--_streaming-arc-length)),
+        var(--_streaming-gradient)
       );
       animation: shiny-chat-spin 1.2s linear infinite;
 
