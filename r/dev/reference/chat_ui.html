@@ -140,6 +140,42 @@ Can be HTML or a tag in the form of <code><a href="https://rstudio.github.io/htm
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>A Shiny tag object, suitable for inclusion in a Shiny UI</p>
     </div>
+    <div class="section level2">
+    <h2 id="thinking-display">Thinking display<a class="anchor" aria-label="anchor" href="#thinking-display"></a></h2>
+
+
+
+<p>When a model produces reasoning or "thinking" tokens, shinychat renders them
+in a collapsible panel above the response. The panel shows a live stream of
+the model's reasoning while it thinks, then auto-collapses when the response
+begins.</p>
+<p>Thinking display works automatically with any model that supports it. Two
+paths are supported:</p><ol><li><p><strong>ellmer's <code>ContentThinking</code> objects.</strong> Models that provide a structured
+thinking API (e.g., Claude with extended thinking) emit <code>ContentThinking</code>
+objects when you stream with <code>stream = "content"</code>. shinychat detects these
+and routes them to the thinking panel. This is what <code><a href="chat_append.html">chat_append()</a></code> uses
+internally when you pass it an ellmer content stream.</p></li>
+<li><p><strong>Raw <code>&lt;thinking&gt;</code> tags.</strong> Many open-source and local models (DeepSeek,
+QwQ, Qwen, etc.) emit <code>&lt;thinking&gt;...&lt;/thinking&gt;</code> tags directly in their
+markdown output. shinychat detects these tags during streaming and renders
+the enclosed text in the thinking panel with no extra configuration.</p></li>
+</ol><div class="section">
+<h3 id="topic-labels">Topic labels<a class="anchor" aria-label="anchor" href="#topic-labels"></a></h3>
+
+
+<p>You can optionally get labeled sub-sections within the thinking panel by
+asking the model to emit <code>&lt;topic&gt;...&lt;/topic&gt;</code> tags in its reasoning. These
+are extracted and rendered as section headings inside the thinking display,
+and the current topic appears in the collapsed header as a live status.</p>
+<p>To use topic labels, add something like this to your system prompt:</p>
+<p></p><div class="sourceCode"><pre><code><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a>When thinking through a problem, wrap brief topic labels <span class="cf">in</span> <span class="sc">&lt;</span>topic<span class="sc">&gt;</span> tags</span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a>to indicate what you<span class="st">'re currently reasoning about. For example:</span></span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a><span class="st">&lt;topic&gt;parsing the input&lt;/topic&gt;</span></span></code></pre><p></p></div>
+<p>Topic labels are entirely optional. Without them, the thinking panel still
+works – it just won't have sub-section headings.</p>
+</div>
+
+    </div>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>

@@ -15,6 +15,13 @@
 
 ### New features and improvements
 
+- The chat UI now displays model reasoning/thinking content as
+  collapsible panels above assistant responses. Thinking content streams
+  in real-time with animated topic labels. This works with providers
+  that support structured thinking (e.g., Claude’s extended thinking via
+  `ellmer`) and with local models that wrap reasoning in `<thinking>`
+  tags. ([\#208](https://github.com/posit-dev/shinychat/issues/208))
+
 - Added `footer` field to `ToolResultDisplay` for displaying custom HTML
   content below the tool result card body.
   ([\#178](https://github.com/posit-dev/shinychat/issues/178))
