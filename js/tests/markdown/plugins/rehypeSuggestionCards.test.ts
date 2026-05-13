@@ -292,6 +292,74 @@ describe("rehypeSuggestionCards", () => {
     })
   })
 
+  describe("pending suggestion lists (mid-stream)", () => {
+    it("marks data-pending when a trailing list has one suggestion and one empty li", () => {
+      const md = ["- <span class='suggestion'>first option</span>", "- "].join(
+        "\n",
+      )
+
+      const html = process(md)
+
+      expect(html).toContain("shiny-chat-suggestion-list")
+      expect(html).toContain("data-pending")
+      expect(html).not.toContain("shiny-chat-suggestion-list-item-body")
+    })
+
+    it("does not mark a regular list with plain-text items as pending", () => {
+      const md = ["- first item text", "- "].join("\n")
+
+      const html = process(md)
+
+      expect(html).not.toContain("shiny-chat-suggestion-list")
+      expect(html).not.toContain("data-pending")
+    })
+
+    it("does not mark a list of only empty li as pending", () => {
+      const md = ["- ", "- "].join("\n")
+
+      const html = process(md)
+
+      expect(html).not.toContain("data-pending")
+    })
+
+    it("does not mark as pending when the list is not the last top-level child", () => {
+      const md = [
+        "- <span class='suggestion'>first</span>",
+        "- ",
+        "",
+        "trailing text",
+      ].join("\n")
+
+      const html = process(md)
+
+      expect(html).not.toContain("data-pending")
+    })
+
+    it("does not mark a fully qualifying list as pending (promotes instead)", () => {
+      const md = [
+        "- <span class='suggestion'>first</span>",
+        "- <span class='suggestion'>second</span>",
+      ].join("\n")
+
+      const html = process(md)
+
+      expect(html).toContain("shiny-chat-suggestion-list-item-body")
+      expect(html).not.toContain("data-pending")
+    })
+
+    it("marks ordered pending lists as well", () => {
+      const md = [
+        "1. <span class='suggestion'>first option</span>",
+        "1. ",
+      ].join("\n")
+
+      const html = process(md)
+
+      expect(html).toContain("shiny-chat-suggestion-list--ordered")
+      expect(html).toContain("data-pending")
+    })
+  })
+
   describe("end-to-end with rehypeAccessibleSuggestions", () => {
     it("cards also get tabindex and role from rehypeAccessibleSuggestions", () => {
       const md = [

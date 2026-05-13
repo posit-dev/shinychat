@@ -13,6 +13,21 @@ shiny-chat-container {
     );
     gap: 0.75rem;
 
+    &[data-pending] {
+      display: block;
+      color: var(--bs-secondary-color, #6c757d);
+      font-style: italic;
+      animation: shiny-chat-suggestion-pending-pulse 1.5s ease-in-out infinite;
+
+      > li {
+        display: none;
+      }
+
+      &::before {
+        content: "Generating suggestions…";
+      }
+    }
+
     // single-card clamp — when the list contains exactly one li, cap width.
     // Uses :has() (Safari 15.4+, Chrome 105+, Firefox 121+). All evergreen
     // browsers in scope for shinychat support it; if a fallback is needed,
@@ -64,5 +79,21 @@ shiny-chat-container {
     .shiny-chat-suggestion-list-item-body {
       color: var(--bs-secondary-color, #6c757d);
     }
+  }
+}
+
+@keyframes shiny-chat-suggestion-pending-pulse {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  shiny-chat-container .shiny-chat-suggestion-list[data-pending] {
+    animation: none;
   }
 }

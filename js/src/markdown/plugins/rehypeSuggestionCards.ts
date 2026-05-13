@@ -150,12 +150,66 @@ function promoteListToCards(list: Element, ordered: boolean): void {
   }
 }
 
+function isPendingSuggestionList(node: Element): boolean {
+  const kids = node.children as ElementContent[]
+  if (kids.some(isNonWhitespaceText)) return false
+
+  const elements = kids.filter((c) => c.type === "element") as Element[]
+  if (elements.length === 0) return false
+
+  let sawSuggestion = false
+
+  for (const child of elements) {
+    if (child.tagName !== "li") return false
+
+    const liKids = child.children as ElementContent[]
+    if (liKids.some(isNonWhitespaceText)) return false
+
+    const liElements = significantChildren(liKids).filter(
+      (c) => c.type === "element",
+    ) as Element[]
+
+    if (liElements.length === 0) continue
+    if (liElements.length > 1) return false
+
+    const onlyEl = liElements[0]
+    if (!onlyEl || !isSuggestionElement(onlyEl)) return false
+    sawSuggestion = true
+  }
+
+  return sawSuggestion
+}
+
+function markListPending(list: Element, ordered: boolean): void {
+  const classes = ["shiny-chat-suggestion-list"]
+  if (ordered) classes.push("shiny-chat-suggestion-list--ordered")
+  list.properties.className = appendClass(list.properties.className, ...classes)
+  list.properties.dataPending = ""
+}
+
+function lastElementChild(children: RootContent[]): Element | null {
+  for (let i = children.length - 1; i >= 0; i--) {
+    const child = children[i]
+    if (child && child.type === "element") return child
+  }
+  return null
+}
+
 export const rehypeSuggestionCards: Plugin<[], Root> = () => (tree) => {
+  const lastEl = lastElementChild(tree.children)
+
   for (const child of tree.children) {
     if (child.type !== "element") continue
     const el = child as Element
     if (el.tagName !== "ul" && el.tagName !== "ol") continue
-    if (!isQualifyingList(el)) continue
-    promoteListToCards(el, el.tagName === "ol")
+
+    if (isQualifyingList(el)) {
+      promoteListToCards(el, el.tagName === "ol")
+      continue
+    }
+
+    if (el === lastEl && isPendingSuggestionList(el)) {
+      markListPending(el, el.tagName === "ol")
+    }
   }
 }
