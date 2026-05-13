@@ -119,7 +119,7 @@ shiny-chat-container {
         &::after {
           content: "✓";
           opacity: 1;
-          transform: none;
+          transform: translateX(2px);
         }
       }
     }
