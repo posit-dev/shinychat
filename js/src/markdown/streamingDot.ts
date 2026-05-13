@@ -1,4 +1,5 @@
 import type { Root, Element, ElementContent, RootContent } from "hast"
+import { SUGGESTION_PENDING_ATTR } from "./plugins/suggestionHelpers"
 
 const SVG_DOT_CLASS = "markdown-stream-dot"
 
@@ -46,7 +47,7 @@ function hasTextContent(node: ElementContent): boolean {
 
 function isPendingList(node: Element): boolean {
   if (node.tagName !== "ul" && node.tagName !== "ol") return false
-  return node.properties != null && "dataPending" in node.properties
+  return node.properties != null && SUGGESTION_PENDING_ATTR in node.properties
 }
 
 /** Insert the streaming dot SVG into the tree (mutating). */

@@ -1,27 +1,7 @@
 import { visit } from "unist-util-visit"
-import type { Root, Element, RootContent } from "hast"
+import type { Root, Element } from "hast"
 import type { Plugin } from "unified"
-
-function hasSuggestionClass(className: unknown): boolean {
-  if (typeof className === "string") {
-    return className.split(/\s+/).includes("suggestion")
-  }
-  if (Array.isArray(className)) return className.includes("suggestion")
-  return false
-}
-
-function getTextContent(children: RootContent[] | undefined): string {
-  if (!children) return ""
-
-  return children
-    .map((child) => {
-      if (child.type === "text") return child.value
-      if (child.type === "element") return getTextContent(child.children)
-      return ""
-    })
-    .join("")
-    .trim()
-}
+import { hasSuggestionClass, getTextContent } from "./suggestionHelpers"
 
 /**
  * Rehype plugin that makes suggestion nodes keyboard-focusable at render time.
