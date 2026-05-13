@@ -141,6 +141,10 @@ shiny-chat-container {
   }
 }
 
+.shiny-chat-message-content > hr:first-child {
+  display: none;
+}
+
 /* Align the user message to the right */
 .shiny-chat-user-message {
   align-self: flex-end;
