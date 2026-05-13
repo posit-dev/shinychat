@@ -126,13 +126,12 @@ shiny-chat-container {
 
     &.shiny-chat-suggestion-list--ordered .shiny-chat-suggestion-list-item {
       counter-reset: card-number calc(var(--_card-index, 0) + 1);
-      padding-left: 2rem;
 
       &::before {
         content: counter(card-number);
         position: absolute;
         top: 0.6rem;
-        left: 0.85rem;
+        right: 0.85rem;
         font-size: 0.7em;
         font-weight: 600;
         font-variant-numeric: tabular-nums;
