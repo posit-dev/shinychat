@@ -18,8 +18,15 @@ function process(md: string): string {
     .use(remarkRehype, { allowDangerousHtml: true })
     .use(rehypeRaw)
     .use(rehypeSuggestionCards)
-    .use(() => (tree) => {
-      finalizePendingSuggestionLists(tree as Root)
+    .use(() => (tree, file, next) => {
+      const result = finalizePendingSuggestionLists(tree as Root)
+      // Replace the tree in place by copying properties from the returned root.
+      // unified transformers must mutate the passed-in tree; returning a new
+      // object is not supported, so we patch the children and other own props.
+      if (result !== tree) {
+        Object.assign(tree, result)
+      }
+      next()
     })
     .use(rehypeStringify)
   return String(proc.processSync(md))
@@ -45,8 +52,12 @@ function processWithA11y(md: string): string {
     .use(rehypeRaw)
     .use(rehypeAccessibleSuggestions)
     .use(rehypeSuggestionCards)
-    .use(() => (tree) => {
-      finalizePendingSuggestionLists(tree as Root)
+    .use(() => (tree, file, next) => {
+      const result = finalizePendingSuggestionLists(tree as Root)
+      if (result !== tree) {
+        Object.assign(tree, result)
+      }
+      next()
     })
     .use(rehypeStringify)
   return String(proc.processSync(md))
@@ -416,9 +427,10 @@ describe("rehypeSuggestionCards", () => {
       expect(html).toContain("data-pending")
     })
 
-    it("stays pending when a later li contains partial raw-html text", () => {
-      // mid-stream snapshot: first <li> is a complete suggestion, second
-      // <li> contains a partial open tag the parser has surfaced as text.
+    it("does NOT mark as pending when a later li contains partial raw-html text (plain text disqualifies)", () => {
+      // Under the strict rule, any <li> whose sole significant content is
+      // plain text (including a partial open tag surfaced as text by the parser)
+      // immediately disqualifies the list — it can no longer be marked pending.
       const md = [
         "<ul>",
         "<li><span class='suggestion'>first option</span></li>",
@@ -428,14 +440,12 @@ describe("rehypeSuggestionCards", () => {
 
       const html = processStreaming(md)
 
-      expect(html).toContain("shiny-chat-suggestion-list")
-      expect(html).toContain("data-pending")
+      expect(html).not.toContain("data-pending")
     })
 
-    it("stays pending when a later li has a complete suggestion next to text", () => {
-      // first <li> already a complete suggestion; second <li> has
-      // unrelated text (could be a half-typed item before the model
-      // adds the next suggestion).
+    it("does NOT mark as pending when a later li has plain text (no suggestion)", () => {
+      // first <li> is a complete suggestion; second <li> has plain text —
+      // this immediately disqualifies the list under the new strict rule.
       const md = [
         "- <span class='suggestion'>first option</span>",
         "- some text that has not yet become a suggestion",
@@ -443,7 +453,44 @@ describe("rehypeSuggestionCards", () => {
 
       const html = processStreaming(md)
 
-      expect(html).toContain("data-pending")
+      expect(html).not.toContain("data-pending")
+    })
+
+    it("does NOT mark as pending when a later li has a suggestion plus trailing text", () => {
+      // first <li> is a complete suggestion; second <li> has a suggestion
+      // with adjacent text — disqualifies because sig.length > 1.
+      const md = [
+        "- <span class='suggestion'>first option</span>",
+        "- <span class='suggestion'>second option</span> trailing text",
+      ].join("\n")
+
+      const html = processStreaming(md)
+
+      expect(html).not.toContain("data-pending")
+    })
+
+    it("does NOT mark as pending (suggestion+trailing) when finalized — plain list, no data-pending", () => {
+      const md = [
+        "- <span class='suggestion'>first option</span>",
+        "- <span class='suggestion'>second option</span> trailing text",
+      ].join("\n")
+
+      const html = process(md)
+
+      expect(html).not.toContain("data-pending")
+      expect(html).not.toContain("shiny-chat-suggestion-list-item-body")
+    })
+
+    it("does NOT mark as pending (plain text li) when finalized — plain list, no data-pending", () => {
+      const md = [
+        "- <span class='suggestion'>first option</span>",
+        "- just text",
+      ].join("\n")
+
+      const html = process(md)
+
+      expect(html).not.toContain("data-pending")
+      expect(html).not.toContain("shiny-chat-suggestion-list-item-body")
     })
   })
 
@@ -459,6 +506,97 @@ describe("rehypeSuggestionCards", () => {
       expect(html).toContain("shiny-chat-suggestion-list")
       expect(html).toContain('tabindex="0"')
       expect(html).toContain('role="button"')
+    })
+  })
+
+  describe("role attributes (#4)", () => {
+    it("sets role=list on the wrapper and role=listitem on each promoted li", () => {
+      const md = [
+        "- <span class='suggestion'>first</span>",
+        "- <span class='suggestion'>second</span>",
+      ].join("\n")
+
+      const html = process(md)
+
+      expect(html).toContain('role="list"')
+      // Two li elements should have role="listitem"
+      const matches = html.match(/role="listitem"/g)
+      expect(matches).not.toBeNull()
+      expect(matches!.length).toBe(2)
+    })
+
+    it("sets role=list on a promoted ol wrapper and role=listitem on each li", () => {
+      const md = [
+        "1. <span class='suggestion'>first</span>",
+        "2. <span class='suggestion'>second</span>",
+      ].join("\n")
+
+      const html = process(md)
+
+      expect(html).toContain('role="list"')
+      const matches = html.match(/role="listitem"/g)
+      expect(matches).not.toBeNull()
+      expect(matches!.length).toBe(2)
+    })
+  })
+
+  describe("aria-label shapes (#5)", () => {
+    it("ul without title: 'Use chat suggestion: <bodyText>'", () => {
+      const md = [
+        "- <span class='suggestion'>do the thing</span>",
+        "- <span class='suggestion'>other thing</span>",
+      ].join("\n")
+
+      const html = process(md)
+
+      expect(html).toContain('aria-label="Use chat suggestion: do the thing"')
+      expect(html).toContain('aria-label="Use chat suggestion: other thing"')
+    })
+
+    it("ul with title: 'Use chat suggestion: <title> — <bodyText>'", () => {
+      const md = [
+        "- <span class='suggestion' title='Alpha'>body alpha</span>",
+        "- <span class='suggestion' title='Beta'>body beta</span>",
+      ].join("\n")
+
+      const html = process(md)
+
+      expect(html).toContain(
+        'aria-label="Use chat suggestion: Alpha — body alpha"',
+      )
+      expect(html).toContain(
+        'aria-label="Use chat suggestion: Beta — body beta"',
+      )
+    })
+
+    it("ol without title: 'Use chat suggestion #<n>: <bodyText>'", () => {
+      const md = [
+        "1. <span class='suggestion'>first thing</span>",
+        "2. <span class='suggestion'>second thing</span>",
+      ].join("\n")
+
+      const html = process(md)
+
+      expect(html).toContain('aria-label="Use chat suggestion #1: first thing"')
+      expect(html).toContain(
+        'aria-label="Use chat suggestion #2: second thing"',
+      )
+    })
+
+    it("ol with title: 'Use chat suggestion #<n>: <title> — <bodyText>'", () => {
+      const md = [
+        "1. <span class='suggestion' title='Step One'>do first</span>",
+        "2. <span class='suggestion' title='Step Two'>do second</span>",
+      ].join("\n")
+
+      const html = process(md)
+
+      expect(html).toContain(
+        'aria-label="Use chat suggestion #1: Step One — do first"',
+      )
+      expect(html).toContain(
+        'aria-label="Use chat suggestion #2: Step Two — do second"',
+      )
     })
   })
 })

@@ -117,6 +117,9 @@ export function parseHtml(
  * When streaming=true a new tree is produced with the streaming dot appended,
  * using an immutable path-copy (O(depth)) rather than a full structuredClone
  * (O(tree-size)). The original cached HAST is never mutated.
+ *
+ * When streaming=false, finalizePendingSuggestionLists returns a new tree
+ * (or the original if nothing was pending) — the cached HAST is never mutated.
  */
 export function hastToReact(
   hast: Root,
@@ -126,8 +129,8 @@ export function hastToReact(
   },
 ): ReactElement {
   const { tagToComponentMap, streaming } = options
-  if (!streaming) finalizePendingSuggestionLists(hast)
-  const tree = streaming ? withStreamingDot(hast) : hast
+  const finalized = streaming ? hast : finalizePendingSuggestionLists(hast)
+  const tree = streaming ? withStreamingDot(finalized) : finalized
 
   return toJsxRuntime(tree, {
     Fragment,

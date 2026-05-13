@@ -1,26 +1,11 @@
 import type { Root, Element, ElementContent, RootContent } from "hast"
 import type { Plugin } from "unified"
-
-function hasSuggestionClass(className: unknown): boolean {
-  if (typeof className === "string") {
-    return className.split(/\s+/).includes("suggestion")
-  }
-  if (Array.isArray(className)) return className.includes("suggestion")
-  return false
-}
-
-function getTextContent(children: RootContent[] | undefined): string {
-  if (!children) return ""
-
-  return children
-    .map((child) => {
-      if (child.type === "text") return child.value
-      if (child.type === "element") return getTextContent(child.children)
-      return ""
-    })
-    .join("")
-    .trim()
-}
+import {
+  SUGGESTION_PENDING_ATTR,
+  hasSuggestionClass,
+  getTextContent,
+  isSuggestionElement,
+} from "./suggestionHelpers"
 
 function isNonWhitespaceText(node: RootContent): boolean {
   return node.type === "text" && node.value.trim() !== ""
@@ -32,13 +17,6 @@ function significantChildren(children: ElementContent[]): ElementContent[] {
       child.type === "element" ||
       (child.type === "text" && child.value.trim() !== ""),
   )
-}
-
-function isSuggestionElement(node: ElementContent): node is Element {
-  if (node.type !== "element") return false
-  const props = node.properties
-  if (!props) return false
-  return hasSuggestionClass(props.className) || "dataSuggestion" in props
 }
 
 function isQualifyingList(node: Element): boolean {
@@ -118,6 +96,7 @@ function promoteListToCards(list: Element, ordered: boolean): void {
   const classes = ["shiny-chat-suggestion-list"]
   if (ordered) classes.push("shiny-chat-suggestion-list--ordered")
   list.properties.className = appendClass(list.properties.className, ...classes)
+  list.properties.role = "list"
 
   let itemIndex = 0
 
@@ -164,39 +143,85 @@ function promoteListToCards(list: Element, ordered: boolean): void {
       suggestionEl.properties.dataSuggestion = bodyText
     }
 
+    // aria-label: always set (overwriting any label from rehypeAccessibleSuggestions)
+    // so the announcement reflects the full visible card content.
+    if (ordered) {
+      const n = itemIndex + 1
+      suggestionEl.properties.ariaLabel = titleStr
+        ? `Use chat suggestion #${n}: ${titleStr} — ${bodyText}`
+        : `Use chat suggestion #${n}: ${bodyText}`
+    } else {
+      suggestionEl.properties.ariaLabel = titleStr
+        ? `Use chat suggestion: ${titleStr} — ${bodyText}`
+        : `Use chat suggestion: ${bodyText}`
+    }
+
+    // CSS custom property for staggered animation; avoids the @for Sass loop.
+    const existingStyle = suggestionEl.properties.style
+    const styleDecl = `--_card-index:${itemIndex}`
+    suggestionEl.properties.style =
+      typeof existingStyle === "string" && existingStyle !== ""
+        ? `${styleDecl};${existingStyle}`
+        : styleDecl
+
     delete suggestionEl.properties.title
+
+    // role="listitem" on the <li> so the list/listitem pairing is announced
+    // correctly even when CSS resets the default list role.
+    ;(child as Element).properties.role = "listitem"
 
     itemIndex++
   }
 }
 
-function liHasDirectSuggestion(li: Element): boolean {
-  for (const child of li.children) {
-    if (isSuggestionElement(child)) return true
-  }
-  return false
-}
-
-// Lenient: a trailing list is "pending" as soon as any <li> has a
-// direct suggestion child. We do not constrain what the other <li>s
-// contain — they may hold partial raw HTML being streamed (e.g. an
-// unclosed `<span class="suggestion"` that the parser surfaces as
-// text, or stray text from a half-typed item). Pending sticks for the
-// entire stream of the list because the caller only invokes us while
-// the list is the last top-level child; once a new block lands after
-// it, the list is re-evaluated through the strict qualifying path
-// instead. We check direct <li> children only so a qualifying list
-// nested inside another <li> does not promote the outer list.
+/**
+ * Determine whether a trailing (last top-level) list should be treated as a
+ * pending suggestion list while it is still being streamed.
+ *
+ * A list is pending when ALL of the following hold:
+ *   1. Every direct <li> child is either:
+ *      (a) empty / whitespace-only, OR
+ *      (b) contains EXACTLY one significant child (whitespace text nodes are
+ *          ignored) AND that child is a suggestion element.
+ *   2. At least one <li> satisfies (b) — i.e. the list is not trivially empty.
+ *
+ * Any <li> that has a suggestion element alongside other significant content
+ * (trailing text, a second element, etc.) immediately disqualifies the list,
+ * as does any <li> whose sole significant child is plain text.
+ *
+ * We only inspect direct <li> children so a qualifying nested list does not
+ * promote its outer list. Once a new block-level element follows the list in
+ * the tree the list is no longer trailing and is re-evaluated through the
+ * strict isQualifyingList path instead.
+ */
 function isPendingSuggestionList(node: Element): boolean {
   const kids = node.children as ElementContent[]
   const elements = kids.filter((c) => c.type === "element") as Element[]
   if (elements.length === 0) return false
 
   let sawSuggestion = false
+
   for (const el of elements) {
     if (el.tagName !== "li") return false
-    if (liHasDirectSuggestion(el)) sawSuggestion = true
+
+    const liKids = el.children as ElementContent[]
+    const sig = significantChildren(liKids)
+
+    if (sig.length === 0) {
+      // (a) empty / whitespace-only — allowed
+      continue
+    }
+
+    if (sig.length === 1 && isSuggestionElement(sig[0]!)) {
+      // (b) exactly one significant child that is a suggestion element
+      sawSuggestion = true
+      continue
+    }
+
+    // Any other combination disqualifies the list
+    return false
   }
+
   return sawSuggestion
 }
 
@@ -204,7 +229,7 @@ function markListPending(list: Element, ordered: boolean): void {
   const classes = ["shiny-chat-suggestion-list"]
   if (ordered) classes.push("shiny-chat-suggestion-list--ordered")
   list.properties.className = appendClass(list.properties.className, ...classes)
-  list.properties.dataPending = ""
+  list.properties[SUGGESTION_PENDING_ATTR] = ""
 }
 
 function lastElementChild(children: RootContent[]): Element | null {
@@ -245,34 +270,102 @@ export const rehypeSuggestionCards: Plugin<[], Root> = () => (tree) => {
 }
 
 /**
+ * Shallow-copy the pending list's spine down to the suggestion element level
+ * so that `promoteListToCards` can mutate the copy without touching the cached
+ * original HAST. The copies share reference to all unmodified subtrees.
+ *
+ * Spine: list → li[] → suggestion element inside each li.
+ */
+function cloneListForPromotion(original: Element): Element {
+  const el: Element = {
+    ...original,
+    properties: { ...original.properties },
+    // Clone the children array so we can replace individual li entries.
+    children: original.children.map((child) => {
+      if (child.type !== "element" || child.tagName !== "li") return child
+      const li = child as Element
+      // Clone the li and its children array so promoteListToCards can splice.
+      const liCopy: Element = {
+        ...li,
+        properties: { ...li.properties },
+        children: li.children.map((liChild) => {
+          if (!isSuggestionElement(liChild)) return liChild
+          // Clone the suggestion element itself — promoteListToCards mutates
+          // its .properties and .children.
+          const suggEl = liChild as Element
+          return {
+            ...suggEl,
+            properties: { ...suggEl.properties },
+            // children are re-wrapped by promoteListToCards, so a shallow copy
+            // of the array is sufficient (the child nodes themselves are not mutated).
+            children: [...suggEl.children],
+          } as Element
+        }),
+      }
+      return liCopy
+    }),
+  }
+  return el
+}
+
+/**
  * Finalize pending suggestion lists at end-of-stream.
  *
- * Called from `hastToReact` when `streaming` is false. For each
- * top-level list marked `data-pending`: if it now qualifies, promote
- * to cards; otherwise strip the pending markers and let it render as
- * a native list.
+ * Called from `hastToReact` when `streaming` is false. Returns a NEW Root
+ * with only the pending list's spine shallow-copied (sibling subtrees are
+ * shared by reference), mirroring the path-copy strategy used by
+ * `withStreamingDot`. If no pending list is found the original tree is
+ * returned unchanged (identity return — no allocation).
+ *
+ * The cached HAST passed in is never mutated.
  */
-export function finalizePendingSuggestionLists(tree: Root): void {
-  for (const child of tree.children) {
-    if (child.type !== "element") continue
+export function finalizePendingSuggestionLists(tree: Root): Root {
+  // Find indices of pending lists so we can decide whether any work is needed.
+  const pendingIndices: number[] = []
+  for (let i = 0; i < tree.children.length; i++) {
+    const child = tree.children[i]
+    if (!child || child.type !== "element") continue
     const el = child as Element
     if (el.tagName !== "ul" && el.tagName !== "ol") continue
-    const props = el.properties
-    if (!props || !("dataPending" in props)) continue
+    if (el.properties && SUGGESTION_PENDING_ATTR in el.properties)
+      pendingIndices.push(i)
+  }
 
-    delete props.dataPending
+  if (pendingIndices.length === 0) return tree
+
+  // Shallow-copy the root children array; non-pending children are shared.
+  const newChildren = [...tree.children] as RootContent[]
+
+  for (const idx of pendingIndices) {
+    const original = newChildren[idx] as Element
+
+    // Deep-copy the list spine so promoteListToCards can mutate safely
+    // without touching the cached original HAST.
+    const el = cloneListForPromotion(original)
+    newChildren[idx] = el as RootContent
+
+    delete el.properties[SUGGESTION_PENDING_ATTR]
 
     if (isQualifyingList(el)) {
       promoteListToCards(el, el.tagName === "ol")
     } else {
-      props.className = removeClass(
-        props.className,
+      el.properties.className = removeClass(
+        el.properties.className,
         "shiny-chat-suggestion-list",
         "shiny-chat-suggestion-list--ordered",
       )
-      if (Array.isArray(props.className) && props.className.length === 0) {
-        delete props.className
+      if (
+        Array.isArray(el.properties.className) &&
+        el.properties.className.length === 0
+      ) {
+        delete el.properties.className
       }
     }
   }
+
+  return { ...tree, children: newChildren }
 }
+
+// Re-export shared helpers that other modules (e.g. streamingDot) consume via
+// this module to avoid having to update every importer.
+export { hasSuggestionClass, getTextContent, isSuggestionElement }

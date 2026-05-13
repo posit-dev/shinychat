@@ -68,6 +68,7 @@ shiny-chat-container {
       transition: border-color 0.15s ease, background-color 0.15s ease;
       animation: shiny-chat-suggestion-card-reveal 0.3s
         cubic-bezier(0.18, 0.89, 0.32, 1.28) both;
+      animation-delay: calc(var(--_card-reveal-stagger) * var(--_card-index, 0));
 
       &:hover {
         border-color: rgba(var(--bs-link-color-rgb, 0, 123, 194), 0.5);
@@ -95,12 +96,6 @@ shiny-chat-container {
 
     .shiny-chat-suggestion-list-item-body {
       color: var(--bs-secondary-color, #6c757d);
-    }
-
-    @for $i from 1 through 12 {
-      > li:nth-child(#{$i}) > .shiny-chat-suggestion-list-item {
-        animation-delay: calc(var(--_card-reveal-stagger) * #{$i - 1});
-      }
     }
   }
 }

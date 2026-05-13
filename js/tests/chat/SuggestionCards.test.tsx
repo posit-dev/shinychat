@@ -133,6 +133,67 @@ describe("SuggestionCards: click behavior", () => {
   })
 })
 
+describe("SuggestionCards: aria-label matches visible text (#5 / test-d)", () => {
+  it("ul titled cards have aria-label containing title and body", async () => {
+    await renderWithSuggestions()
+
+    const cards = document.querySelectorAll<HTMLElement>(
+      ".shiny-chat-suggestion-list-item",
+    )
+
+    // SUGGESTION_HTML uses title="Foo" body="do thing" and title="Bar" body="other thing"
+    expect(cards[0]!.getAttribute("aria-label")).toBe(
+      "Use chat suggestion: Foo — do thing",
+    )
+    expect(cards[1]!.getAttribute("aria-label")).toBe(
+      "Use chat suggestion: Bar — other thing",
+    )
+  })
+
+  it("ol titled cards have aria-label with index prefix, title, and body", async () => {
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    const OL_HTML =
+      "<ol>" +
+      '<li><span class="suggestion" title="Step One">do first</span></li>' +
+      '<li><span class="suggestion" title="Step Two">do second</span></li>' +
+      "</ol>"
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat-ol"
+        inputId="test-input-ol"
+        placeholder="Type..."
+      />,
+    )
+
+    await act(async () => {
+      transport.fire("test-chat-ol", {
+        type: "message",
+        message: {
+          role: "assistant",
+          content: OL_HTML,
+          content_type: "html",
+        },
+      })
+    })
+
+    const cards = document.querySelectorAll<HTMLElement>(
+      ".shiny-chat-suggestion-list--ordered .shiny-chat-suggestion-list-item",
+    )
+
+    expect(cards[0]!.getAttribute("aria-label")).toBe(
+      "Use chat suggestion #1: Step One — do first",
+    )
+    expect(cards[1]!.getAttribute("aria-label")).toBe(
+      "Use chat suggestion #2: Step Two — do second",
+    )
+  })
+})
+
 describe("SuggestionCards: roving tabindex", () => {
   it("focusing the first card gives it tabIndex=0 and sets siblings to tabIndex=-1", async () => {
     await renderWithSuggestions()
