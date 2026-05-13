@@ -178,16 +178,30 @@ function promoteListToCards(list: Element, ordered: boolean): void {
  * Determine whether a trailing (last top-level) list should be treated as a
  * pending suggestion list while it is still being streamed.
  *
+ * This function is ONLY called for the last top-level block, which is by
+ * definition still mid-stream. The final <li> is therefore treated as
+ * in-progress and is excluded from disqualification checks — while a
+ * suggestion span is being emitted, the parser may surface it as a plain-text
+ * node (e.g. `<span class="suggestion"`) before the tag closes. Skipping the
+ * last <li> prevents a jarring flip from pending cards back to a plain bullet
+ * list and then back again as the markup completes.
+ *
+ * On stream end, `finalizePendingSuggestionLists` re-runs the strict
+ * `isQualifyingList` check. If the final state doesn't actually qualify the
+ * pending marker is cleanly removed — no permanent false promotion.
+ *
  * A list is pending when ALL of the following hold:
- *   1. Every direct <li> child is either:
+ *   1. Every direct <li> child EXCEPT the last one is either:
  *      (a) empty / whitespace-only, OR
  *      (b) contains EXACTLY one significant child (whitespace text nodes are
  *          ignored) AND that child is a suggestion element.
- *   2. At least one <li> satisfies (b) — i.e. the list is not trivially empty.
+ *   2. At least one non-last <li> satisfies (b), OR the list has only a
+ *      single <li> (which is itself the in-progress last item).
  *
- * Any <li> that has a suggestion element alongside other significant content
- * (trailing text, a second element, etc.) immediately disqualifies the list,
- * as does any <li> whose sole significant child is plain text.
+ * Any non-last <li> that has a suggestion element alongside other significant
+ * content (trailing text, a second element, etc.) immediately disqualifies
+ * the list, as does any non-last <li> whose sole significant child is plain
+ * text.
  *
  * We only inspect direct <li> children so a qualifying nested list does not
  * promote its outer list. Once a new block-level element follows the list in
@@ -199,9 +213,18 @@ function isPendingSuggestionList(node: Element): boolean {
   const elements = kids.filter((c) => c.type === "element") as Element[]
   if (elements.length === 0) return false
 
+  // A single <li> is itself the in-progress last item — allow pending so the
+  // very first suggestion card doesn't flash as an unstyled bullet while
+  // the span is still being streamed.
+  if (elements.length === 1) {
+    return elements[0]!.tagName === "li"
+  }
+
+  // Evaluate all <li> elements except the last; the last is in-progress.
+  const nonLast = elements.slice(0, -1)
   let sawSuggestion = false
 
-  for (const el of elements) {
+  for (const el of nonLast) {
     if (el.tagName !== "li") return false
 
     const liKids = el.children as ElementContent[]
@@ -221,6 +244,9 @@ function isPendingSuggestionList(node: Element): boolean {
     // Any other combination disqualifies the list
     return false
   }
+
+  // Also verify the last element is an <li> (not some other tag)
+  if (elements[elements.length - 1]!.tagName !== "li") return false
 
   return sawSuggestion
 }

@@ -427,10 +427,10 @@ describe("rehypeSuggestionCards", () => {
       expect(html).toContain("data-pending")
     })
 
-    it("does NOT mark as pending when a later li contains partial raw-html text (plain text disqualifies)", () => {
-      // Under the strict rule, any <li> whose sole significant content is
-      // plain text (including a partial open tag surfaced as text by the parser)
-      // immediately disqualifies the list — it can no longer be marked pending.
+    it("marks as pending when the last li contains partial raw-html text (in-progress last item)", () => {
+      // The last <li> is the in-progress item — its content may be a plain-text
+      // node representing a partial open tag. Because only the non-last items are
+      // evaluated strictly, the list is still marked pending.
       const md = [
         "<ul>",
         "<li><span class='suggestion'>first option</span></li>",
@@ -440,12 +440,12 @@ describe("rehypeSuggestionCards", () => {
 
       const html = processStreaming(md)
 
-      expect(html).not.toContain("data-pending")
+      expect(html).toContain("data-pending")
     })
 
-    it("does NOT mark as pending when a later li has plain text (no suggestion)", () => {
-      // first <li> is a complete suggestion; second <li> has plain text —
-      // this immediately disqualifies the list under the new strict rule.
+    it("marks as pending when the last li has plain text (in-progress last item)", () => {
+      // The last <li> is treated as in-progress and skipped during evaluation.
+      // The first <li> has a suggestion, so sawSuggestion is true → pending.
       const md = [
         "- <span class='suggestion'>first option</span>",
         "- some text that has not yet become a suggestion",
@@ -453,12 +453,14 @@ describe("rehypeSuggestionCards", () => {
 
       const html = processStreaming(md)
 
-      expect(html).not.toContain("data-pending")
+      expect(html).toContain("data-pending")
     })
 
-    it("does NOT mark as pending when a later li has a suggestion plus trailing text", () => {
-      // first <li> is a complete suggestion; second <li> has a suggestion
-      // with adjacent text — disqualifies because sig.length > 1.
+    it("marks as pending when the last li (only item being disqualifying) has a suggestion plus trailing text", () => {
+      // The last <li> is always treated as in-progress and skipped.
+      // The first <li> is a clean suggestion, so sawSuggestion=true → pending.
+      // At stream end finalizePendingSuggestionLists re-runs isQualifyingList
+      // strictly and demotes the list (tested separately below).
       const md = [
         "- <span class='suggestion'>first option</span>",
         "- <span class='suggestion'>second option</span> trailing text",
@@ -466,7 +468,7 @@ describe("rehypeSuggestionCards", () => {
 
       const html = processStreaming(md)
 
-      expect(html).not.toContain("data-pending")
+      expect(html).toContain("data-pending")
     })
 
     it("does NOT mark as pending (suggestion+trailing) when finalized — plain list, no data-pending", () => {
@@ -491,6 +493,60 @@ describe("rehypeSuggestionCards", () => {
 
       expect(html).not.toContain("data-pending")
       expect(html).not.toContain("shiny-chat-suggestion-list-item-body")
+    })
+
+    it("marks pending: multiple complete suggestion li followed by a plain-text last li (bug regression)", () => {
+      // Regression for the mid-stream flicker bug: while a suggestion span is
+      // still open the last <li> has plain-text content. The non-last items are
+      // all valid suggestions, so the list must still be pending.
+      const md = [
+        "- <span class='suggestion'>first option</span>",
+        "- <span class='suggestion'>second option</span>",
+        '- <span class="suggestion"',
+      ].join("\n")
+
+      const html = processStreaming(md)
+
+      expect(html).toContain("data-pending")
+      expect(html).not.toContain("shiny-chat-suggestion-list-item-body")
+    })
+
+    it("marks pending: single in-progress li with no suggestion yet (solo last item)", () => {
+      // When the list has only one <li> and it is in-progress (plain text),
+      // the list should still be marked pending to avoid a flash of unstyled
+      // bullets while the very first suggestion span streams in.
+      const md = ['- <span class="suggestion"'].join("\n")
+
+      const html = processStreaming(md)
+
+      expect(html).toContain("data-pending")
+    })
+
+    it("does NOT mark pending when a non-last li mixes a suggestion with adjacent text", () => {
+      // A non-last <li> with sig.length > 1 still disqualifies the entire list.
+      const md = [
+        "- <span class='suggestion'>first option</span> extra text",
+        "- <span class='suggestion'>second option</span>",
+        "- ",
+      ].join("\n")
+
+      const html = processStreaming(md)
+
+      expect(html).not.toContain("data-pending")
+    })
+
+    it("does NOT mark pending when a non-last li is plain text with no suggestion", () => {
+      // A non-last <li> whose sole significant child is plain text (no suggestion
+      // element) still disqualifies the list.
+      const md = [
+        "- plain text item",
+        "- <span class='suggestion'>second option</span>",
+        "- ",
+      ].join("\n")
+
+      const html = processStreaming(md)
+
+      expect(html).not.toContain("data-pending")
     })
   })
 
