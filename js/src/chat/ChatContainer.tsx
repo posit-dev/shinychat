@@ -166,6 +166,41 @@ export const ChatContainer = forwardRef<
       })
   }
 
+  function handleFocusOut(e: React.FocusEvent<HTMLElement>): void {
+    const card = (e.target as HTMLElement).closest<HTMLElement>(
+      ".shiny-chat-suggestion-list-item",
+    )
+    if (!card) return
+    const grid = card.closest<HTMLElement>(".shiny-chat-suggestion-list")
+    if (!grid) return
+
+    const relatedTarget = e.relatedTarget as HTMLElement | null
+    const relatedGrid = relatedTarget?.closest<HTMLElement>(
+      ".shiny-chat-suggestion-list",
+    )
+
+    if (!relatedTarget || relatedGrid !== grid) {
+      delete grid.dataset.roved
+    }
+  }
+
+  function nextCardIndex(idx: number, len: number, key: string): number | null {
+    switch (key) {
+      case "ArrowDown":
+      case "ArrowRight":
+        return (idx + 1) % len
+      case "ArrowUp":
+      case "ArrowLeft":
+        return (idx - 1 + len) % len
+      case "Home":
+        return 0
+      case "End":
+        return len - 1
+      default:
+        return null
+    }
+  }
+
   function onSuggestionKeydown(e: React.KeyboardEvent<HTMLElement>): void {
     const target = e.target as HTMLElement
     const card = target.closest<HTMLElement>(".shiny-chat-suggestion-list-item")
@@ -176,30 +211,14 @@ export const ChatContainer = forwardRef<
         grid.querySelectorAll<HTMLElement>(".shiny-chat-suggestion-list-item"),
       )
       const idx = cards.indexOf(card)
-      let next = -1
-      switch (e.key) {
-        case "ArrowDown":
-        case "ArrowRight":
-          next = (idx + 1) % cards.length
-          break
-        case "ArrowUp":
-        case "ArrowLeft":
-          next = (idx - 1 + cards.length) % cards.length
-          break
-        case "Home":
-          next = 0
-          break
-        case "End":
-          next = cards.length - 1
-          break
-      }
-      if (next !== -1) {
+      const nextIdx = nextCardIndex(idx, cards.length, e.key)
+      if (nextIdx !== null) {
         e.preventDefault()
         const current = cards[idx]!
-        const target = cards[next]!
+        const next = cards[nextIdx]!
         current.tabIndex = -1
-        target.tabIndex = 0
-        target.focus()
+        next.tabIndex = 0
+        next.focus()
         return
       }
     }
@@ -239,6 +258,7 @@ export const ChatContainer = forwardRef<
             aria-live="polite"
             onClick={onMessagesClick}
             onFocus={handleFocusIn}
+            onBlur={handleFocusOut}
             onKeyDown={onSuggestionKeydown}
           >
             <ChatScrollContext.Provider value={stopScroll}>
