@@ -218,6 +218,8 @@ ui <- bslib::page_fillable(
 knitr::include_graphics("images/chat-suggestions.png")
 ```
 
+A markdown list (`<ul>` or `<ol>`) in which every item contains a single suggestion element is automatically rendered as a grid of clickable cards instead of inline chips. Each suggestion accepts an optional `title` attribute (plain text), which becomes the card heading; the suggestion's body becomes the card description. For ordered lists (`<ol>`), the list-item number is included in the heading.
+
 Messages can also contain arbitrary Shiny UI [components](https://shiny.posit.co/r/components/), so you could even include something like a [tooltip](https://shiny.posit.co/r/components/display-messages/tooltips/) to provide additional details on demand.
 
 #### Mid-conversation
