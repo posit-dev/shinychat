@@ -171,4 +171,24 @@ describe("MarkdownContent (pure)", () => {
 
     spy.mockRestore()
   })
+
+  it("renders qualifying suggestion list with card classes", () => {
+    const md = [
+      "- <span class='suggestion' title='Foo'>do thing</span>",
+      "- <span class='suggestion' title='Bar'>other thing</span>",
+    ].join("\n")
+
+    const { container } = render(
+      <MarkdownContent content={md} contentType="markdown" />,
+    )
+
+    expect(
+      container.querySelector(".shiny-chat-suggestion-list"),
+    ).not.toBeNull()
+    const items = container.querySelectorAll(".shiny-chat-suggestion-list-item")
+    expect(items.length).toBe(2)
+    // Plugin sets data-suggestion to body text, not title
+    expect((items[0] as HTMLElement).dataset.suggestion).toBe("do thing")
+    expect((items[1] as HTMLElement).dataset.suggestion).toBe("other thing")
+  })
 })

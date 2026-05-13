@@ -129,6 +129,17 @@ export const ChatContainer = forwardRef<
       submit: shouldSubmit,
       focus: !shouldSubmit,
     })
+
+    const cardEl = (e.target as HTMLElement).closest<HTMLElement>(
+      ".shiny-chat-suggestion-list-item",
+    )
+    const grid = cardEl?.closest<HTMLElement>(".shiny-chat-suggestion-list")
+    if (cardEl && grid) {
+      grid
+        .querySelectorAll<HTMLElement>("[data-last-clicked]")
+        .forEach((el) => el.removeAttribute("data-last-clicked"))
+      cardEl.setAttribute("data-last-clicked", "")
+    }
   }
 
   function onSuggestionClick(e: React.MouseEvent<HTMLElement>): void {
@@ -140,7 +151,59 @@ export const ChatContainer = forwardRef<
     onSuggestionClick(e)
   }
 
+  function handleFocusIn(e: React.FocusEvent<HTMLElement>): void {
+    const card = (e.target as HTMLElement).closest<HTMLElement>(
+      ".shiny-chat-suggestion-list-item",
+    )
+    if (!card) return
+    const grid = card.closest<HTMLElement>(".shiny-chat-suggestion-list")
+    if (!grid || grid.dataset.roved !== undefined) return
+    grid.dataset.roved = ""
+    grid
+      .querySelectorAll<HTMLElement>(".shiny-chat-suggestion-list-item")
+      .forEach((el) => {
+        if (el !== card) el.tabIndex = -1
+      })
+  }
+
   function onSuggestionKeydown(e: React.KeyboardEvent<HTMLElement>): void {
+    const target = e.target as HTMLElement
+    const card = target.closest<HTMLElement>(".shiny-chat-suggestion-list-item")
+    const grid = card?.closest<HTMLElement>(".shiny-chat-suggestion-list")
+
+    if (card && grid) {
+      const cards = Array.from(
+        grid.querySelectorAll<HTMLElement>(".shiny-chat-suggestion-list-item"),
+      )
+      const idx = cards.indexOf(card)
+      let next = -1
+      switch (e.key) {
+        case "ArrowDown":
+        case "ArrowRight":
+          next = (idx + 1) % cards.length
+          break
+        case "ArrowUp":
+        case "ArrowLeft":
+          next = (idx - 1 + cards.length) % cards.length
+          break
+        case "Home":
+          next = 0
+          break
+        case "End":
+          next = cards.length - 1
+          break
+      }
+      if (next !== -1) {
+        e.preventDefault()
+        const current = cards[idx]!
+        const target = cards[next]!
+        current.tabIndex = -1
+        target.tabIndex = 0
+        target.focus()
+        return
+      }
+    }
+
     const isEnterOrSpace = e.key === "Enter" || e.key === " "
     if (!isEnterOrSpace) return
     handleSuggestionEvent(e)
@@ -175,6 +238,7 @@ export const ChatContainer = forwardRef<
             role="log"
             aria-live="polite"
             onClick={onMessagesClick}
+            onFocus={handleFocusIn}
             onKeyDown={onSuggestionKeydown}
           >
             <ChatScrollContext.Provider value={stopScroll}>
