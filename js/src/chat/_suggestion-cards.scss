@@ -1,11 +1,16 @@
 shiny-chat-container {
   .shiny-chat-suggestion-list {
+    --shiny-chat-suggestion-card-min-width: 175px;
+
     list-style: none;
     padding: 0;
     margin-block: 0.5rem;
+    font-size: 0.875rem;
     display: grid;
-    // pixel values flagged for visual review
-    grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+    grid-template-columns: repeat(
+      auto-fit,
+      minmax(min(var(--shiny-chat-suggestion-card-min-width), 100%), 1fr)
+    );
     gap: 0.75rem;
 
     // single-card clamp — when the list contains exactly one li, cap width.
@@ -58,7 +63,6 @@ shiny-chat-container {
 
     .shiny-chat-suggestion-list-item-body {
       color: var(--bs-secondary-color, #6c757d);
-      font-size: 0.95em;
     }
   }
 }
