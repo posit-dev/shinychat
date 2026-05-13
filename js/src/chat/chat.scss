@@ -252,7 +252,7 @@ shiny-chat-container {
     display: block;
   }
 
-  // Spinning gradient border while streaming
+  // Spinning gradient arc while streaming
   &.streaming {
     --_streaming-gradient: var(
       --shiny-chat-streaming-color,
@@ -260,25 +260,31 @@ shiny-chat-container {
       var(--bs-purple, #74149c),
       var(--bs-pink, #bf007f)
     );
+    --_streaming-arc-length: 30%;
+    --_streaming-arc-thickness: 1.5px;
 
     &::before {
       content: "";
       position: absolute;
-      inset: -2px;
+      inset: -1px;
       border-radius: 50%;
-      background: linear-gradient(120deg, var(--_streaming-gradient), transparent);
+      background: conic-gradient(
+        transparent,
+        transparent calc(100% - var(--_streaming-arc-length)),
+        var(--_streaming-gradient)
+      );
       animation: shiny-chat-spin 1.2s linear infinite;
 
-      // Mask out the center so only the 2px border ring is visible
+      // Mask out the center so only a thin ring is visible
       -webkit-mask: radial-gradient(
         farthest-side,
-        transparent calc(100% - 3px),
-        #000 calc(100% - 1px)
+        transparent calc(100% - var(--_streaming-arc-thickness) - 0.5px),
+        #000 calc(100% - 0.5px)
       );
       mask: radial-gradient(
         farthest-side,
-        transparent calc(100% - 3px),
-        #000 calc(100% - 1px)
+        transparent calc(100% - var(--_streaming-arc-thickness) - 0.5px),
+        #000 calc(100% - 0.5px)
       );
     }
   }
