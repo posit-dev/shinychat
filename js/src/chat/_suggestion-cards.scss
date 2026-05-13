@@ -59,8 +59,7 @@ shiny-chat-container {
     .shiny-chat-suggestion-list-item {
       display: block;
       position: relative;
-      counter-reset: card-number calc(var(--_card-index, 0) + 1);
-      padding: 0.75rem 2rem 0.75rem 2rem;
+      padding: 0.75rem 2rem 0.75rem 1rem;
       border: var(--shiny-chat-border);
       border-radius: 8px;
       background-color: var(--bs-body-bg, #fff);
@@ -71,21 +70,6 @@ shiny-chat-container {
       animation: shiny-chat-suggestion-card-reveal 0.3s
         cubic-bezier(0.22, 1, 0.36, 1) both;
       animation-delay: calc(var(--_card-reveal-stagger) * var(--_card-index, 0));
-
-      &::before {
-        content: counter(card-number);
-        position: absolute;
-        top: 0.6rem;
-        left: 0.85rem;
-        font-size: 0.7em;
-        font-weight: 600;
-        font-variant-numeric: tabular-nums;
-        line-height: 1;
-        color: color-mix(in oklch, var(--bs-secondary-color, #6c757d) 70%, var(--bs-primary, #007bc2));
-        opacity: 0.6;
-        transition: opacity 0.15s ease-out, color 0.15s ease-out;
-        pointer-events: none;
-      }
 
       &::after {
         content: "→";
@@ -107,10 +91,6 @@ shiny-chat-container {
         transform: translateY(-1px);
         box-shadow: 0 4px 12px -6px color-mix(in oklch, var(--bs-primary, #007bc2) 35%, transparent);
 
-        &::before {
-          opacity: 1;
-        }
-
         &::after {
           opacity: 1;
           transform: translateX(2px);
@@ -125,10 +105,6 @@ shiny-chat-container {
         outline: 2px solid var(--bs-primary, #007bc2);
         outline-offset: 2px;
 
-        &::before {
-          opacity: 1;
-        }
-
         &::after {
           opacity: 1;
           transform: translateX(2px);
@@ -140,15 +116,40 @@ shiny-chat-container {
         border-color: var(--bs-primary, #007bc2);
         background-color: color-mix(in oklch, var(--bs-body-bg, #fff) 92%, var(--bs-primary, #007bc2));
 
-        &::before {
-          content: "✓";
-          color: var(--bs-primary, #007bc2);
-          opacity: 1;
-        }
-
         &::after {
-          content: none;
+          content: "✓";
+          opacity: 1;
+          transform: none;
         }
+      }
+    }
+
+    &.shiny-chat-suggestion-list--ordered .shiny-chat-suggestion-list-item {
+      counter-reset: card-number calc(var(--_card-index, 0) + 1);
+      padding-left: 2rem;
+
+      &::before {
+        content: counter(card-number);
+        position: absolute;
+        top: 0.6rem;
+        left: 0.85rem;
+        font-size: 0.7em;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+        color: color-mix(in oklch, var(--bs-secondary-color, #6c757d) 70%, var(--bs-primary, #007bc2));
+        opacity: 0.6;
+        transition: opacity 0.15s ease-out, color 0.15s ease-out;
+        pointer-events: none;
+      }
+
+      &:hover::before,
+      &:focus-visible::before {
+        opacity: 1;
+      }
+
+      &[data-last-clicked]::before {
+        opacity: 1;
       }
     }
 

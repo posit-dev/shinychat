@@ -116,15 +116,9 @@ function promoteListToCards(list: Element, ordered: boolean): void {
         ? rawTitle.trim()
         : null
 
-    let titleEl: Element | null = null
-
-    if (ordered) {
-      const prefix = `${itemIndex + 1}.`
-      const titleText = titleStr ? `${prefix} ${titleStr}` : prefix
-      titleEl = makeTextDiv("shiny-chat-suggestion-list-item-title", titleText)
-    } else if (titleStr) {
-      titleEl = makeTextDiv("shiny-chat-suggestion-list-item-title", titleStr)
-    }
+    const titleEl: Element | null = titleStr
+      ? makeTextDiv("shiny-chat-suggestion-list-item-title", titleStr)
+      : null
 
     const bodyEl = makeDiv(
       "shiny-chat-suggestion-list-item-body",

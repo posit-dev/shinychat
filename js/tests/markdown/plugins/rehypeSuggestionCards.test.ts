@@ -128,12 +128,15 @@ describe("rehypeSuggestionCards", () => {
 
       expect(html).toContain("shiny-chat-suggestion-list--ordered")
       expect(html).toContain("shiny-chat-suggestion-list-item-title")
-      expect(html).toContain("1. Foo")
-      expect(html).toContain("2. Bar")
-      expect(html).toContain("3. Baz")
+      expect(html).toContain("Foo")
+      expect(html).toContain("Bar")
+      expect(html).toContain("Baz")
+      expect(html).not.toContain("1. Foo")
+      expect(html).not.toContain("2. Bar")
+      expect(html).not.toContain("3. Baz")
     })
 
-    it("renders numbered-only titles for ol items without title attribute", () => {
+    it("does not render a title element for ol items without title attribute", () => {
       const md = [
         "1. <span class='suggestion'>first</span>",
         "2. <span class='suggestion'>second</span>",
@@ -143,10 +146,7 @@ describe("rehypeSuggestionCards", () => {
       const html = process(md)
 
       expect(html).toContain("shiny-chat-suggestion-list--ordered")
-      expect(html).toContain("shiny-chat-suggestion-list-item-title")
-      expect(html).toContain(">1.<")
-      expect(html).toContain(">2.<")
-      expect(html).toContain(">3.<")
+      expect(html).not.toContain("shiny-chat-suggestion-list-item-title")
     })
   })
 
