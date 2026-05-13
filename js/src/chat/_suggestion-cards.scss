@@ -1,6 +1,6 @@
 shiny-chat-container {
   .shiny-chat-suggestion-list {
-    --shiny-chat-suggestion-card-min-width: 175px;
+    --_card-min-width: var(--shiny-chat-suggestion-card-min-width, 175px);
 
     list-style: none;
     padding: 0;
@@ -9,7 +9,7 @@ shiny-chat-container {
     display: grid;
     grid-template-columns: repeat(
       auto-fit,
-      minmax(min(var(--shiny-chat-suggestion-card-min-width), 100%), 1fr)
+      minmax(min(var(--_card-min-width), 100%), 1fr)
     );
     gap: 0.75rem;
 
