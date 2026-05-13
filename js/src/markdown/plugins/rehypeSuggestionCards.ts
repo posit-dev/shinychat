@@ -71,14 +71,34 @@ function isQualifyingList(node: Element): boolean {
 function appendClass(
   className: unknown,
   ...additions: string[]
-): string | Array<string | number> {
+): Array<string | number> {
+  let existing: Array<string | number>
   if (Array.isArray(className)) {
-    return [...className, ...additions] as Array<string | number>
+    existing = [...className] as Array<string | number>
+  } else if (typeof className === "string" && className.trim() !== "") {
+    existing = className.split(/\s+/).filter(Boolean)
+  } else {
+    existing = []
   }
-  if (typeof className === "string" && className.trim() !== "") {
-    return [className, ...additions]
+  for (const a of additions) {
+    if (!existing.includes(a)) existing.push(a)
   }
-  return [...additions]
+  return existing
+}
+
+function removeClass(
+  className: unknown,
+  ...removals: string[]
+): Array<string | number> {
+  let existing: Array<string | number>
+  if (Array.isArray(className)) {
+    existing = [...className] as Array<string | number>
+  } else if (typeof className === "string" && className.trim() !== "") {
+    existing = className.split(/\s+/).filter(Boolean)
+  } else {
+    existing = []
+  }
+  return existing.filter((c) => !removals.includes(String(c)))
 }
 
 function makeDiv(cls: string, children: ElementContent[]): Element {
@@ -150,33 +170,33 @@ function promoteListToCards(list: Element, ordered: boolean): void {
   }
 }
 
+function liHasDirectSuggestion(li: Element): boolean {
+  for (const child of li.children) {
+    if (isSuggestionElement(child)) return true
+  }
+  return false
+}
+
+// Lenient: a trailing list is "pending" as soon as any <li> has a
+// direct suggestion child. We do not constrain what the other <li>s
+// contain — they may hold partial raw HTML being streamed (e.g. an
+// unclosed `<span class="suggestion"` that the parser surfaces as
+// text, or stray text from a half-typed item). Pending sticks for the
+// entire stream of the list because the caller only invokes us while
+// the list is the last top-level child; once a new block lands after
+// it, the list is re-evaluated through the strict qualifying path
+// instead. We check direct <li> children only so a qualifying list
+// nested inside another <li> does not promote the outer list.
 function isPendingSuggestionList(node: Element): boolean {
   const kids = node.children as ElementContent[]
-  if (kids.some(isNonWhitespaceText)) return false
-
   const elements = kids.filter((c) => c.type === "element") as Element[]
   if (elements.length === 0) return false
 
   let sawSuggestion = false
-
-  for (const child of elements) {
-    if (child.tagName !== "li") return false
-
-    const liKids = child.children as ElementContent[]
-    if (liKids.some(isNonWhitespaceText)) return false
-
-    const liElements = significantChildren(liKids).filter(
-      (c) => c.type === "element",
-    ) as Element[]
-
-    if (liElements.length === 0) continue
-    if (liElements.length > 1) return false
-
-    const onlyEl = liElements[0]
-    if (!onlyEl || !isSuggestionElement(onlyEl)) return false
-    sawSuggestion = true
+  for (const el of elements) {
+    if (el.tagName !== "li") return false
+    if (liHasDirectSuggestion(el)) sawSuggestion = true
   }
-
   return sawSuggestion
 }
 
@@ -203,13 +223,56 @@ export const rehypeSuggestionCards: Plugin<[], Root> = () => (tree) => {
     const el = child as Element
     if (el.tagName !== "ul" && el.tagName !== "ol") continue
 
-    if (isQualifyingList(el)) {
-      promoteListToCards(el, el.tagName === "ol")
+    // Trailing list: stay in (or enter) pending while it is the last
+    // top-level block. Never promote here — even a fully-qualifying
+    // trailing list may still be mid-stream (the model may be about
+    // to add another item). Promotion happens only when a new block
+    // follows (below) or when streaming ends and
+    // finalizePendingSuggestionLists runs.
+    if (el === lastEl) {
+      if (isPendingSuggestionList(el)) {
+        markListPending(el, el.tagName === "ol")
+      }
       continue
     }
 
-    if (el === lastEl && isPendingSuggestionList(el)) {
-      markListPending(el, el.tagName === "ol")
+    // A new block follows this list → it is finalized. Promote if it
+    // qualifies; otherwise leave it as a regular list.
+    if (isQualifyingList(el)) {
+      promoteListToCards(el, el.tagName === "ol")
+    }
+  }
+}
+
+/**
+ * Finalize pending suggestion lists at end-of-stream.
+ *
+ * Called from `hastToReact` when `streaming` is false. For each
+ * top-level list marked `data-pending`: if it now qualifies, promote
+ * to cards; otherwise strip the pending markers and let it render as
+ * a native list.
+ */
+export function finalizePendingSuggestionLists(tree: Root): void {
+  for (const child of tree.children) {
+    if (child.type !== "element") continue
+    const el = child as Element
+    if (el.tagName !== "ul" && el.tagName !== "ol") continue
+    const props = el.properties
+    if (!props || !("dataPending" in props)) continue
+
+    delete props.dataPending
+
+    if (isQualifyingList(el)) {
+      promoteListToCards(el, el.tagName === "ol")
+    } else {
+      props.className = removeClass(
+        props.className,
+        "shiny-chat-suggestion-list",
+        "shiny-chat-suggestion-list--ordered",
+      )
+      if (Array.isArray(props.className) && props.className.length === 0) {
+        delete props.className
+      }
     }
   }
 }

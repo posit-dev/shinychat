@@ -4,10 +4,29 @@ import remarkParse from "remark-parse"
 import remarkRehype from "remark-rehype"
 import rehypeRaw from "rehype-raw"
 import rehypeStringify from "rehype-stringify"
-import { rehypeSuggestionCards } from "../../../src/markdown/plugins/rehypeSuggestionCards"
+import {
+  rehypeSuggestionCards,
+  finalizePendingSuggestionLists,
+} from "../../../src/markdown/plugins/rehypeSuggestionCards"
 import { rehypeAccessibleSuggestions } from "../../../src/markdown/plugins/rehypeAccessibleSuggestions"
+import type { Root } from "hast"
 
+// Simulates the end-of-stream render: rehype + finalization (streaming=false).
 function process(md: string): string {
+  const proc = unified()
+    .use(remarkParse)
+    .use(remarkRehype, { allowDangerousHtml: true })
+    .use(rehypeRaw)
+    .use(rehypeSuggestionCards)
+    .use(() => (tree) => {
+      finalizePendingSuggestionLists(tree as Root)
+    })
+    .use(rehypeStringify)
+  return String(proc.processSync(md))
+}
+
+// Simulates a mid-stream render: rehype without finalization.
+function processStreaming(md: string): string {
   return String(
     unified()
       .use(remarkParse)
@@ -20,16 +39,17 @@ function process(md: string): string {
 }
 
 function processWithA11y(md: string): string {
-  return String(
-    unified()
-      .use(remarkParse)
-      .use(remarkRehype, { allowDangerousHtml: true })
-      .use(rehypeRaw)
-      .use(rehypeAccessibleSuggestions)
-      .use(rehypeSuggestionCards)
-      .use(rehypeStringify)
-      .processSync(md),
-  )
+  const proc = unified()
+    .use(remarkParse)
+    .use(remarkRehype, { allowDangerousHtml: true })
+    .use(rehypeRaw)
+    .use(rehypeAccessibleSuggestions)
+    .use(rehypeSuggestionCards)
+    .use(() => (tree) => {
+      finalizePendingSuggestionLists(tree as Root)
+    })
+    .use(rehypeStringify)
+  return String(proc.processSync(md))
 }
 
 describe("rehypeSuggestionCards", () => {
@@ -155,44 +175,56 @@ describe("rehypeSuggestionCards", () => {
       const md = [
         "- <span class='suggestion'>option</span> extra text",
         "- <span class='suggestion'>option two</span>",
+        "",
+        "Trailing block.",
       ].join("\n")
 
       const html = process(md)
 
-      expect(html).not.toContain("shiny-chat-suggestion-list")
+      expect(html).not.toContain("shiny-chat-suggestion-list-item-body")
+      expect(html).not.toContain("data-pending")
     })
 
     it("does not promote a li with two suggestion spans", () => {
       const md = [
         "- <span class='suggestion'>one</span><span class='suggestion'>two</span>",
         "- <span class='suggestion'>three</span>",
+        "",
+        "Trailing block.",
       ].join("\n")
 
       const html = process(md)
 
-      expect(html).not.toContain("shiny-chat-suggestion-list")
+      expect(html).not.toContain("shiny-chat-suggestion-list-item-body")
+      expect(html).not.toContain("data-pending")
     })
 
     it("does not promote a li with a suggestion class span and a data-suggestion span", () => {
       const md = [
         "- <span class='suggestion'>one</span><span data-suggestion='two'>label</span>",
         "- <span class='suggestion'>three</span>",
+        "",
+        "Trailing block.",
       ].join("\n")
 
       const html = process(md)
 
-      expect(html).not.toContain("shiny-chat-suggestion-list")
+      expect(html).not.toContain("shiny-chat-suggestion-list-item-body")
+      expect(html).not.toContain("data-pending")
     })
 
     it("does not promote a list with plain-text li items", () => {
       const md = [
         "- plain text item",
         "- <span class='suggestion'>option</span>",
+        "",
+        "Trailing block.",
       ].join("\n")
 
       const html = process(md)
 
-      expect(html).not.toContain("shiny-chat-suggestion-list")
+      expect(html).not.toContain("shiny-chat-suggestion-list-item-body")
+      expect(html).not.toContain("data-pending")
     })
 
     it("does not promote a qualifying ul nested inside another ul", () => {
@@ -298,7 +330,7 @@ describe("rehypeSuggestionCards", () => {
         "\n",
       )
 
-      const html = process(md)
+      const html = processStreaming(md)
 
       expect(html).toContain("shiny-chat-suggestion-list")
       expect(html).toContain("data-pending")
@@ -308,7 +340,7 @@ describe("rehypeSuggestionCards", () => {
     it("does not mark a regular list with plain-text items as pending", () => {
       const md = ["- first item text", "- "].join("\n")
 
-      const html = process(md)
+      const html = processStreaming(md)
 
       expect(html).not.toContain("shiny-chat-suggestion-list")
       expect(html).not.toContain("data-pending")
@@ -317,7 +349,7 @@ describe("rehypeSuggestionCards", () => {
     it("does not mark a list of only empty li as pending", () => {
       const md = ["- ", "- "].join("\n")
 
-      const html = process(md)
+      const html = processStreaming(md)
 
       expect(html).not.toContain("data-pending")
     })
@@ -330,12 +362,24 @@ describe("rehypeSuggestionCards", () => {
         "trailing text",
       ].join("\n")
 
-      const html = process(md)
+      const html = processStreaming(md)
 
       expect(html).not.toContain("data-pending")
     })
 
-    it("does not mark a fully qualifying list as pending (promotes instead)", () => {
+    it("keeps a fully qualifying trailing list pending mid-stream (does not promote)", () => {
+      const md = [
+        "- <span class='suggestion'>first</span>",
+        "- <span class='suggestion'>second</span>",
+      ].join("\n")
+
+      const html = processStreaming(md)
+
+      expect(html).toContain("data-pending")
+      expect(html).not.toContain("shiny-chat-suggestion-list-item-body")
+    })
+
+    it("promotes a fully qualifying list after finalization (end of stream)", () => {
       const md = [
         "- <span class='suggestion'>first</span>",
         "- <span class='suggestion'>second</span>",
@@ -347,15 +391,58 @@ describe("rehypeSuggestionCards", () => {
       expect(html).not.toContain("data-pending")
     })
 
+    it("strips pending markers from a non-qualifying list after finalization", () => {
+      const md = [
+        "- <span class='suggestion'>only suggestion</span>",
+        "- plain text item",
+      ].join("\n")
+
+      const html = process(md)
+
+      expect(html).not.toContain("data-pending")
+      expect(html).not.toContain("shiny-chat-suggestion-list")
+      expect(html).not.toContain("shiny-chat-suggestion-list-item-body")
+    })
+
     it("marks ordered pending lists as well", () => {
       const md = [
         "1. <span class='suggestion'>first option</span>",
         "1. ",
       ].join("\n")
 
-      const html = process(md)
+      const html = processStreaming(md)
 
       expect(html).toContain("shiny-chat-suggestion-list--ordered")
+      expect(html).toContain("data-pending")
+    })
+
+    it("stays pending when a later li contains partial raw-html text", () => {
+      // mid-stream snapshot: first <li> is a complete suggestion, second
+      // <li> contains a partial open tag the parser has surfaced as text.
+      const md = [
+        "<ul>",
+        "<li><span class='suggestion'>first option</span></li>",
+        "<li>&lt;span class=&quot;suggestion&quot;</li>",
+        "</ul>",
+      ].join("\n")
+
+      const html = processStreaming(md)
+
+      expect(html).toContain("shiny-chat-suggestion-list")
+      expect(html).toContain("data-pending")
+    })
+
+    it("stays pending when a later li has a complete suggestion next to text", () => {
+      // first <li> already a complete suggestion; second <li> has
+      // unrelated text (could be a half-typed item before the model
+      // adds the next suggestion).
+      const md = [
+        "- <span class='suggestion'>first option</span>",
+        "- some text that has not yet become a suggestion",
+      ].join("\n")
+
+      const html = processStreaming(md)
+
       expect(html).toContain("data-pending")
     })
   })
