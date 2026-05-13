@@ -23,7 +23,7 @@ shiny-chat-container {
       color: var(--bs-secondary-color, #6c757d);
       font-style: italic;
       animation: shiny-chat-suggestion-pending-pulse 1.75s
-        cubic-bezier(0.18, 0.89, 0.32, 1.28) infinite;
+        ease-in-out infinite;
       animation-delay: 250ms;
 
       > li {
@@ -65,14 +65,18 @@ shiny-chat-container {
       cursor: pointer;
       color: inherit;
       text-decoration: none;
-      transition: border-color 0.15s ease, background-color 0.15s ease;
+      transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.12s ease-out;
       animation: shiny-chat-suggestion-card-reveal 0.3s
-        cubic-bezier(0.18, 0.89, 0.32, 1.28) both;
+        cubic-bezier(0.22, 1, 0.36, 1) both;
       animation-delay: calc(var(--_card-reveal-stagger) * var(--_card-index, 0));
 
       &:hover {
         border-color: rgba(var(--bs-link-color-rgb, 0, 123, 194), 0.5);
         background-color: var(--bs-tertiary-bg, #f8f9fa);
+      }
+
+      &:active {
+        transform: translateY(1px);
       }
 
       &:focus-visible {
@@ -81,8 +85,9 @@ shiny-chat-container {
       }
 
       &[data-last-clicked] {
-        outline: 2px solid var(--bs-primary, #007bc2);
-        outline-offset: -2px; // sits on the border, never clashes with focus-visible
+        // selected state: tinted surface + brand-colored border, no inset ring
+        border-color: var(--bs-primary, #007bc2);
+        background-color: color-mix(in oklch, var(--bs-body-bg, #fff) 92%, var(--bs-primary, #007bc2));
       }
 
       // suppress any inline-chip ::after glyphs (defensive — list-item class is distinct)
@@ -103,11 +108,11 @@ shiny-chat-container {
 @keyframes shiny-chat-suggestion-card-reveal {
   from {
     opacity: 0;
-    transform: scale(0.9);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
-    transform: scale(1);
+    transform: translateY(0);
   }
 }
 
