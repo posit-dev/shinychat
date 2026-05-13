@@ -25,6 +25,7 @@ shiny-chat-container {
       animation: shiny-chat-suggestion-pending-pulse 1.75s
         ease-in-out infinite;
       animation-delay: 250ms;
+      gap: 0.25em;
 
       > li {
         display: none;
@@ -35,10 +36,7 @@ shiny-chat-container {
       }
 
       > .markdown-stream-dot {
-        // Override the SVG's inline margin-left:.25em
         margin-left: 0 !important;
-        width: 0.55em;
-        height: 0.55em;
         fill: currentColor;
       }
     }
