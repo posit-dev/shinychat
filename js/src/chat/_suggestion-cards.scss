@@ -14,10 +14,13 @@ shiny-chat-container {
     gap: 0.75rem;
 
     &[data-pending] {
-      display: block;
+      display: flex;
+      align-items: center;
       color: var(--bs-secondary-color, #6c757d);
       font-style: italic;
-      animation: shiny-chat-suggestion-pending-pulse 1.5s ease-in-out infinite;
+      animation: shiny-chat-suggestion-pending-pulse 1.75s
+        cubic-bezier(0.18, 0.89, 0.32, 1.28) infinite;
+      animation-delay: 250ms;
 
       > li {
         display: none;
@@ -25,6 +28,12 @@ shiny-chat-container {
 
       &::before {
         content: "Generating suggestions…";
+      }
+
+      > .markdown-stream-dot {
+        // Override the SVG's inline margin-left:.25em
+        margin-left: 0 !important;
+        fill: currentColor;
       }
     }
 
@@ -85,10 +94,10 @@ shiny-chat-container {
 @keyframes shiny-chat-suggestion-pending-pulse {
   0%,
   100% {
-    opacity: 0.6;
+    opacity: 1;
   }
   50% {
-    opacity: 1;
+    opacity: 0.4;
   }
 }
 
@@ -97,3 +106,4 @@ shiny-chat-container {
     animation: none;
   }
 }
+

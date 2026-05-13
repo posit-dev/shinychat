@@ -43,6 +43,11 @@ function hasTextContent(node: ElementContent): boolean {
   return false
 }
 
+function isPendingList(node: Element): boolean {
+  if (node.tagName !== "ul" && node.tagName !== "ol") return false
+  return node.properties != null && "dataPending" in node.properties
+}
+
 /** Insert the streaming dot SVG into the tree (mutating). */
 export function insertStreamingDot(tree: Root): void {
   if (tree.children.length === 0) return
@@ -128,6 +133,7 @@ function findSpinePath(root: Root): SpineEntry[] {
 
     if (recurseInto.has(tagName)) {
       path.push({ index: lastMeaningfulIndex })
+      if (isPendingList(lastMeaningfulChild)) return path
       current = lastMeaningfulChild
       continue
     }
@@ -169,6 +175,7 @@ function findInnermostStreamingElement(
     const tagName = lastMeaningfulChild.tagName
 
     if (recurseInto.has(tagName)) {
+      if (isPendingList(lastMeaningfulChild)) return lastMeaningfulChild
       current = lastMeaningfulChild
       continue
     }
