@@ -24,7 +24,7 @@ Imports:
     bslib,
     cli,
     coro,
-    ellmer (>= 0.4.0.9000),
+    ellmer (>= 0.4.1),
     fastmap,
     htmltools,
     jsonlite,
@@ -35,7 +35,11 @@ Imports:
     shiny (>= 1.10.0)
 Suggests:
     covr,
-    knitr,nfig/Needs/website: tidyverse/tidytemplate, rmarkdown, weathR, gt, glue,
+    knitr,
+    later,
+    testthat (>= 3.0.0),
+    withr
+Config/Needs/website: tidyverse/tidytemplate, rmarkdown, weathR, gt, glue,
     bsicons
 Config/roxygen2/version: 8.0.0
 Config/testthat/edition: 3
