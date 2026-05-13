@@ -62,7 +62,8 @@ shiny-chat-container {
       padding: 0.75rem 2rem 0.75rem 1rem;
       border: var(--shiny-chat-border);
       border-radius: 8px;
-      background-color: var(--bs-body-bg, #fff);
+      background-color: color-mix(in oklch, var(--bs-body-bg, #fff) 96%, var(--bs-primary, #007bc2));
+      box-shadow: inset 0 1px 0 color-mix(in oklch, var(--bs-body-bg, #fff) 70%, transparent);
       cursor: pointer;
       color: inherit;
       text-decoration: none;
@@ -87,7 +88,7 @@ shiny-chat-container {
 
       &:hover {
         border-color: rgba(var(--bs-link-color-rgb, 0, 123, 194), 0.5);
-        background-color: var(--bs-tertiary-bg, #f8f9fa);
+        background-color: color-mix(in oklch, var(--bs-body-bg, #fff) 88%, var(--bs-primary, #007bc2));
         transform: translateY(-1px);
         box-shadow: 0 4px 12px -6px color-mix(in oklch, var(--bs-primary, #007bc2) 35%, transparent);
 
@@ -114,7 +115,7 @@ shiny-chat-container {
       &[data-last-clicked] {
         // selected state: tinted surface + brand-colored border, no inset ring
         border-color: var(--bs-primary, #007bc2);
-        background-color: color-mix(in oklch, var(--bs-body-bg, #fff) 92%, var(--bs-primary, #007bc2));
+        background-color: color-mix(in oklch, var(--bs-body-bg, #fff) 86%, var(--bs-primary, #007bc2));
 
         &::after {
           content: "✓";
@@ -127,10 +128,13 @@ shiny-chat-container {
     .shiny-chat-suggestion-list-item-title {
       font-weight: 600;
       margin-bottom: 0.25rem;
+      line-height: 1.25;
+      letter-spacing: -0.005em;
     }
 
     .shiny-chat-suggestion-list-item-body {
-      color: var(--bs-secondary-color, #6c757d);
+      line-height: 1.45;
+      color: color-mix(in oklch, var(--bs-secondary-color, #6c757d) 88%, var(--bs-primary, #007bc2));
     }
   }
 }
