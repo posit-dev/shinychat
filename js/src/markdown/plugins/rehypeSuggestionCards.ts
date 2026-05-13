@@ -169,16 +169,23 @@ function promoteListToCards(list: Element, ordered: boolean): void {
 }
 
 /**
+ * Matches the trimmed text of a partial `<span` opening tag that has not yet
+ * received its closing `>`. Anchored at both ends; each character past `<` is
+ * optional so that bare `<`, `<s`, `<sp`, `<spa`, `<span`, or `<span ` followed
+ * by partial attributes (with no `>`) all qualify. Rejects complete tags
+ * (`<span>`, `<span ...>`) and unrelated tags (`<div`, `<spam`, etc.).
+ */
+const PARTIAL_SPAN_OPENING_RE = /^\s*<(s(p(a(n(\s[^>]*)?)?)?)?)?$/i
+
+/**
  * Determine whether a trailing (last top-level) list should be treated as a
  * pending suggestion list while it is still being streamed.
  *
  * This function is ONLY called for the last top-level block, which is by
- * definition still mid-stream. The final <li> is therefore treated as
- * in-progress and is excluded from disqualification checks — while a
- * suggestion span is being emitted, the parser may surface it as a plain-text
- * node (e.g. `<span class="suggestion"`) before the tag closes. Skipping the
- * last <li> prevents a jarring flip from pending cards back to a plain bullet
- * list and then back again as the markup completes.
+ * definition still mid-stream. The last <li> is treated as in-progress and
+ * is evaluated with a relaxed rule — while a suggestion span is being emitted,
+ * the parser may surface it as a plain-text node (e.g. `<span class="suggestion"`)
+ * before the tag closes.
  *
  * On stream end, `finalizePendingSuggestionLists` re-runs the strict
  * `isQualifyingList` check. If the final state doesn't actually qualify the
@@ -189,13 +196,20 @@ function promoteListToCards(list: Element, ordered: boolean): void {
  *      (a) empty / whitespace-only, OR
  *      (b) contains EXACTLY one significant child (whitespace text nodes are
  *          ignored) AND that child is a suggestion element.
- *   2. At least one non-last <li> satisfies (b), OR the list has only a
- *      single <li> (which is itself the in-progress last item).
+ *   2. The last <li> is "in-progress", meaning its sole significant child is
+ *      one of:
+ *      (a) absent (empty / whitespace-only li), OR
+ *      (b) a suggestion element (complete), OR
+ *      (c) a text node whose trimmed value matches PARTIAL_SPAN_OPENING_RE
+ *          (a partial `<span` opening tag with no closing `>`).
+ *   3. At least one non-last <li> satisfies rule 1(b), OR the list has only a
+ *      single <li> that qualifies as in-progress under rule 2.
  *
  * Any non-last <li> that has a suggestion element alongside other significant
  * content (trailing text, a second element, etc.) immediately disqualifies
  * the list, as does any non-last <li> whose sole significant child is plain
- * text.
+ * text. The last <li> with mixed content, plain text not matching the partial
+ * span pattern, or an element that is not a suggestion also disqualifies.
  *
  * We only inspect direct <li> children so a qualifying nested list does not
  * promote its outer list. Once a new block-level element follows the list in
@@ -207,14 +221,11 @@ function isPendingSuggestionList(node: Element): boolean {
   const elements = kids.filter((c) => c.type === "element") as Element[]
   if (elements.length === 0) return false
 
-  // A single <li> is itself the in-progress last item — allow pending so the
-  // very first suggestion card doesn't flash as an unstyled bullet while
-  // the span is still being streamed.
-  if (elements.length === 1) {
-    return elements[0]!.tagName === "li"
-  }
+  // Verify the last element is an <li>
+  const lastEl = elements[elements.length - 1]!
+  if (lastEl.tagName !== "li") return false
 
-  // Evaluate all <li> elements except the last; the last is in-progress.
+  // Evaluate all <li> elements except the last under the strict rule.
   const nonLast = elements.slice(0, -1)
   let sawSuggestion = false
 
@@ -239,10 +250,26 @@ function isPendingSuggestionList(node: Element): boolean {
     return false
   }
 
-  // Also verify the last element is an <li> (not some other tag)
-  if (elements[elements.length - 1]!.tagName !== "li") return false
+  // Evaluate the last <li> under the relaxed in-progress rule.
+  const lastSig = significantChildren(lastEl.children as ElementContent[])
 
-  return sawSuggestion
+  if (lastSig.length === 0) {
+    // (a) empty / whitespace-only last <li> — in-progress
+  } else if (lastSig.length === 1 && isSuggestionElement(lastSig[0]!)) {
+    // (b) complete suggestion element — still in-progress (more items may follow)
+    sawSuggestion = true
+  } else if (
+    lastSig.length === 1 &&
+    lastSig[0]!.type === "text" &&
+    PARTIAL_SPAN_OPENING_RE.test(lastSig[0]!.value)
+  ) {
+    // (c) partial <span opening tag text — suggestion is still being streamed
+  } else {
+    // Anything else (plain text, mixed content, non-suggestion element) disqualifies
+    return false
+  }
+
+  return sawSuggestion || elements.length === 1
 }
 
 function markListPending(list: Element, ordered: boolean): void {
