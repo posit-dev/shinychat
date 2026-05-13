@@ -37,6 +37,8 @@ shiny-chat-container {
       > .markdown-stream-dot {
         // Override the SVG's inline margin-left:.25em
         margin-left: 0 !important;
+        width: 0.55em;
+        height: 0.55em;
         fill: currentColor;
       }
     }

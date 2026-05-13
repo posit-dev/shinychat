@@ -9,6 +9,7 @@ function createDotNode(): Element {
     properties: {
       width: 12,
       height: 12,
+      viewBox: "0 0 12 12",
       xmlns: "http://www.w3.org/2000/svg",
       className: [SVG_DOT_CLASS],
       style: "margin-left:.25em;margin-top:-.25em",
