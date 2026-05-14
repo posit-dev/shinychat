@@ -37,6 +37,7 @@ function renderChatInput(
         disabled={props.disabled ?? false}
         placeholder={props.placeholder ?? "Type here..."}
         onSend={props.onSend}
+        userMessages={[]}
       />
     </ChatDispatchContext.Provider>,
   )
@@ -293,6 +294,7 @@ describe("ChatInput", () => {
             inputId="test-input"
             disabled={true}
             placeholder="Type here..."
+            userMessages={[]}
           />
         </ChatDispatchContext.Provider>,
       )
@@ -312,6 +314,7 @@ describe("ChatInput", () => {
             inputId="test-input"
             disabled={false}
             placeholder="Type here..."
+            userMessages={[]}
           />
         </ChatDispatchContext.Provider>,
       )

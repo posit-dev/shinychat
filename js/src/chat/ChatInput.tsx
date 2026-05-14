@@ -7,6 +7,7 @@ import {
   memo,
 } from "react"
 import { useChatDispatch } from "./context"
+import { useInputHistory } from "./useInputHistory"
 import type { ChatTransport } from "../transport/types"
 import { arrowUpCircleFill } from "../utils/icons"
 
@@ -17,6 +18,7 @@ export interface ChatInputProps {
   hasTopShadow?: boolean
   placeholder: string
   onSend?: () => void
+  userMessages: string[]
 }
 
 export interface ChatInputHandle {
@@ -29,7 +31,15 @@ export interface ChatInputHandle {
 
 export const ChatInput = memo(
   forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
-    { transport, inputId, disabled, hasTopShadow = false, placeholder, onSend },
+    {
+      transport,
+      inputId,
+      disabled,
+      hasTopShadow = false,
+      placeholder,
+      onSend,
+      userMessages,
+    },
     ref,
   ) {
     const dispatch = useChatDispatch()
@@ -37,6 +47,7 @@ export const ChatInput = memo(
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const isComposingRef = useRef(false)
     const [hasText, setHasText] = useState(false)
+    const { recall, reset } = useInputHistory(userMessages)
 
     function updateHeight(el: HTMLTextAreaElement): void {
       if (el.scrollHeight === 0) return
@@ -60,10 +71,11 @@ export const ChatInput = memo(
         el.value = ""
         setHasText(false)
         updateHeight(el)
+        reset()
 
         if (focusAfter) el.focus()
       },
-      [disabled, dispatch, transport, inputId, onSend],
+      [disabled, dispatch, transport, inputId, onSend, reset],
     )
 
     const onKeyDown = useCallback(
@@ -71,12 +83,32 @@ export const ChatInput = memo(
         const isEnter = e.code === "Enter" && !e.shiftKey
         const el = textareaRef.current
         if (!el) return
+
+        const isUp = e.code === "ArrowUp"
+        const isDown = e.code === "ArrowDown"
+
+        if (
+          (isUp || isDown) &&
+          el.value.length === 0 &&
+          !isComposingRef.current
+        ) {
+          const value = recall(isUp ? "up" : "down")
+          if (value !== undefined) {
+            e.preventDefault()
+            el.value = value
+            updateHeight(el)
+            setHasText(value.trim().length > 0)
+            el.setSelectionRange(value.length, value.length)
+          }
+          return
+        }
+
         if (isEnter && !isComposingRef.current && el.value.trim().length > 0) {
           e.preventDefault()
           sendInput()
         }
       },
-      [sendInput],
+      [sendInput, recall],
     )
 
     const onInput = useCallback((): void => {

@@ -4,6 +4,7 @@ import {
   useCallback,
   forwardRef,
   useImperativeHandle,
+  useMemo,
 } from "react"
 import { createPortal } from "react-dom"
 import { useStickToBottom } from "use-stick-to-bottom"
@@ -50,6 +51,11 @@ export const ChatContainer = forwardRef<
   },
   ref,
 ) {
+  const userMessages = useMemo(
+    () => messages.filter((m) => m.role === "user").map((m) => m.content),
+    [messages],
+  )
+
   const chatInputRef = useRef<ChatInputHandle>(null)
 
   const [pendingUrl, setPendingUrl] = useState<string | null>(null)
@@ -295,6 +301,7 @@ export const ChatContainer = forwardRef<
           hasTopShadow={!isAtBottom}
           placeholder={inputPlaceholder}
           onSend={onSend}
+          userMessages={userMessages}
         />
       </div>
 
