@@ -68,8 +68,8 @@ from shiny.express import input
 from chatlas import ChatAnthropic, StreamController
 from shinychat.express import Chat
 
-chat = Chat(id="chat", enable_cancel=True)
-chat.ui()
+chat = Chat(id="chat")
+chat.ui(enable_cancel=True)
 
 client = ChatAnthropic(system_prompt="You are a helpful assistant.")
 ctrl: StreamController | None = None
