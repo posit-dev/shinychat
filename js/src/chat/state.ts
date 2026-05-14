@@ -718,16 +718,22 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     }
 
     case "greeting": {
-      if (state.greeting?.dismissed) return state
+      const prior = state.greeting
       const dismissible = action.options.dismissible !== false
-      const autoDismiss = dismissible && state.messages.length > 0
+      // If a greeting was already dismissed, accept the new content silently so
+      // it surfaces the next time the message list is cleared. Otherwise apply
+      // the standard auto-dismiss rule when initial messages exist.
+      const autoDismiss = prior?.dismissed
+        ? true
+        : dismissible && state.messages.length > 0
+      const visible = prior?.dismissed ? false : !autoDismiss
       return {
         ...state,
         greeting: {
           content: action.content,
           contentType: action.content_type,
           streaming: false,
-          visible: !autoDismiss,
+          visible,
           dismissed: autoDismiss,
           dismissing: false,
           options: action.options,
@@ -743,16 +749,19 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     }
 
     case "greeting_start": {
-      if (state.greeting?.dismissed) return state
+      const prior = state.greeting
       const dismissible = action.options.dismissible !== false
-      const autoDismiss = dismissible && state.messages.length > 0
+      const autoDismiss = prior?.dismissed
+        ? true
+        : dismissible && state.messages.length > 0
+      const visible = prior?.dismissed ? false : !autoDismiss
       return {
         ...state,
         greeting: {
           content: action.content,
           contentType: action.content_type,
           streaming: true,
-          visible: !autoDismiss,
+          visible,
           dismissed: autoDismiss,
           dismissing: false,
           options: action.options,
@@ -777,7 +786,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
 
     case "greeting_chunk": {
       const greeting = state.greeting
-      if (!greeting || greeting.dismissed || !greeting.streaming) return state
+      if (!greeting || !greeting.streaming) return state
 
       const chunkType = action.content_type ?? greeting.contentType
       let blocks: ContentBlock[]

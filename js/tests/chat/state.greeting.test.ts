@@ -111,7 +111,7 @@ describe("chatReducer — greeting actions", () => {
       expect(next.greeting).toMatchObject({ visible: true, dismissed: false })
     })
 
-    it("is a no-op when current greeting is already dismissed", () => {
+    it("updates content while preserving dismissed state", () => {
       const state = makeState({
         greeting: {
           content: "old",
@@ -130,7 +130,12 @@ describe("chatReducer — greeting actions", () => {
         content_type: "markdown",
         options: {},
       })
-      expect(next).toBe(state)
+      expect(next.greeting).toMatchObject({
+        content: "new",
+        visible: false,
+        dismissed: true,
+        dismissing: false,
+      })
     })
   })
 
@@ -173,7 +178,7 @@ describe("chatReducer — greeting actions", () => {
       expect(next.greeting).toMatchObject({ visible: false, dismissed: true })
     })
 
-    it("is a no-op when current greeting is already dismissed", () => {
+    it("updates streaming greeting while preserving dismissed state", () => {
       const state = makeState({
         greeting: {
           content: "old",
@@ -192,7 +197,12 @@ describe("chatReducer — greeting actions", () => {
         content_type: "markdown",
         options: {},
       })
-      expect(next).toBe(state)
+      expect(next.greeting).toMatchObject({
+        content: "new",
+        streaming: true,
+        visible: false,
+        dismissed: true,
+      })
     })
 
     it("creates an empty blocks array when content is empty string", () => {
@@ -280,10 +290,10 @@ describe("chatReducer — greeting actions", () => {
       expect(next).toBe(state)
     })
 
-    it("is a no-op when greeting is dismissed", () => {
+    it("buffers chunks into a dismissed but streaming greeting", () => {
       const state = makeState({
         greeting: {
-          content: "dismissed",
+          content: "",
           contentType: "markdown",
           streaming: true,
           visible: false,
@@ -295,10 +305,14 @@ describe("chatReducer — greeting actions", () => {
       })
       const next = chatReducer(state, {
         type: "greeting_chunk",
-        content: "x",
+        content: "hidden update",
         operation: "append",
       })
-      expect(next).toBe(state)
+      expect(next.greeting).toMatchObject({
+        content: "hidden update",
+        visible: false,
+        dismissed: true,
+      })
     })
 
     it("is a no-op when greeting is not streaming", () => {
@@ -584,6 +598,46 @@ describe("chatReducer — greeting actions", () => {
       const state = makeState({ greeting: null })
       const next = chatReducer(state, { type: "clear" })
       expect(next.greeting).toBeNull()
+    })
+
+    it("surfaces an updated-while-dismissed greeting after clear", () => {
+      // Start with an initial visible greeting
+      let state = makeState()
+      state = chatReducer(state, {
+        type: "greeting",
+        content: "original",
+        content_type: "markdown",
+        options: {},
+      })
+      // User dismisses it via INPUT_SENT
+      state = chatReducer(state, {
+        type: "INPUT_SENT",
+        content: "hi",
+        role: "user",
+      })
+      expect(state.greeting).toMatchObject({
+        visible: false,
+        dismissed: true,
+      })
+      // Server updates the greeting while dismissed
+      state = chatReducer(state, {
+        type: "greeting",
+        content: "refreshed",
+        content_type: "markdown",
+        options: {},
+      })
+      expect(state.greeting).toMatchObject({
+        content: "refreshed",
+        visible: false,
+        dismissed: true,
+      })
+      // User clears the chat → updated greeting re-appears
+      state = chatReducer(state, { type: "clear" })
+      expect(state.greeting).toMatchObject({
+        content: "refreshed",
+        visible: true,
+        dismissed: false,
+      })
     })
   })
 })
