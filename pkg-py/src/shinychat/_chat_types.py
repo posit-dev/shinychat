@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Union
+from typing import AsyncIterator, Literal, Union
 
-from htmltools import HTML, HTMLDependency, TagChild, TagList
+from htmltools import HTML, HTMLDependency, Tag, TagChild, TagList
 
 from ._html_islands import split_html_islands
 from ._typing_extensions import NotRequired, TypedDict
@@ -127,6 +127,91 @@ class ChatMessage:
 
         self.content = content
         self.html_deps: list[HTMLDependency] = deps
+
+
+class ChatGreeting:
+    def __init__(
+        self,
+        content: Union[str, HTML, Tag, TagList, "AsyncIterator[str]"],
+        *,
+        dismissible: bool = True,
+        as_assistant_message: bool = False,
+        include_in_history: bool = False,
+    ):
+        if dismissible and as_assistant_message:
+            raise ValueError(
+                "`dismissible` and `as_assistant_message` cannot both be `True`. "
+                "A greeting displayed as an assistant message is part of the conversation "
+                "and cannot be dismissed."
+            )
+
+        self.dismissible = dismissible
+        self.as_assistant_message = as_assistant_message
+        self.include_in_history = include_in_history
+
+        if isinstance(content, AsyncIterator):
+            self.content: Union[str, AsyncIterator[str]] = content
+            self.content_type: ContentType = "markdown"
+            self.html_deps: list[HTMLDependency] = []
+            return
+
+        deps: list[HTMLDependency] = []
+        content_type: ContentType = "markdown"
+        if isinstance(content, str):
+            pass
+        elif isinstance(content, HTML):
+            content_type = "html"
+            content = str(content)
+        else:
+            split = split_html_islands(content)
+            ui = TagList(*split).render()
+            content, ui_deps = ui["html"], ui["dependencies"]
+            deps = deps + ui_deps
+            content = f"\n\n{content}\n\n"
+            content_type = "html"
+
+        self.content = content
+        self.content_type = content_type
+        self.html_deps = deps
+
+
+def chat_greeting(
+    content: Union[str, HTML, Tag, TagList, "AsyncIterator[str]"],
+    *,
+    dismissible: bool = True,
+    as_assistant_message: bool = False,
+    include_in_history: bool = False,
+) -> ChatGreeting:
+    """
+    Create a greeting for a chat UI.
+
+    A greeting is a welcome message displayed at the top of the chat before any
+    conversation messages. It can be static (set via :func:`~shinychat.chat_ui`) or
+    dynamic (set via :meth:`~shinychat.Chat.set_greeting`).
+
+    Parameters
+    ----------
+    content
+        The greeting content. Can be a markdown string, :class:`~htmltools.HTML`,
+        :class:`~htmltools.Tag`, :class:`~htmltools.TagList`, or an
+        :class:`~typing.AsyncIterator` of strings (streaming, only valid via
+        :meth:`~shinychat.Chat.set_greeting`).
+    dismissible
+        Whether the greeting can be dismissed when the user sends a message.
+        Cannot be ``True`` when ``as_assistant_message`` is ``True``.
+    as_assistant_message
+        Whether to render the greeting as a regular assistant message instead of
+        the stand-alone greeting style.
+    include_in_history
+        Whether to include the greeting in the model's conversation history.
+        Server-only — not sent to the client.
+    """
+    return ChatGreeting(
+        content,
+        dismissible=dismissible,
+        as_assistant_message=as_assistant_message,
+        include_in_history=include_in_history,
+    )
 
 
 @dataclass

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 from contextlib import asynccontextmanager
 from typing import (
     TYPE_CHECKING,
@@ -56,11 +57,13 @@ from ._chat_tokenizer import (
 )
 from ._chat_types import (
     ChatAction,
+    ChatGreeting,
     ChatMessage,
     ChatMessageDict,
     ContentType,
     MessagePayload,
     StoredMessage,
+    chat_greeting,
 )
 from ._html_deps_py_shiny import shinychat_dependency
 from ._typing_extensions import TypeGuard
@@ -83,7 +86,9 @@ else:
 __all__ = (
     "Chat",
     "ChatExpress",
+    "ChatGreeting",
     "ChatMessage",
+    "chat_greeting",
     "chat_ui",
     "ChatMessageDict",
 )
@@ -1674,6 +1679,7 @@ class ChatExpress(Chat):
         messages: Optional[
             Iterable[str | TagChild | ChatMessageDict | ChatMessage | Any]
         ] = None,
+        greeting: Optional[Union[str, HTML, Tag, TagList, ChatGreeting]] = None,
         placeholder: str = "Enter a message...",
         width: "CssUnit" = "min(680px, 100%)",
         height: "CssUnit" = "auto",
@@ -1691,6 +1697,10 @@ class ChatExpress(Chat):
             string or a dictionary with `content` and `role` keys. The `content` key
             should contain the message text, and the `role` key can be "assistant" or
             "user".
+        greeting
+            An optional greeting to display at the top of the chat before any conversation
+            messages. Can be a markdown string or a :func:`~shinychat.chat_greeting`
+            object.
         placeholder
             Placeholder text for the chat input.
         width
@@ -1711,6 +1721,7 @@ class ChatExpress(Chat):
         return chat_ui(
             id=self.id,
             messages=messages,
+            greeting=greeting,
             placeholder=placeholder,
             width=width,
             height=height,
@@ -1778,6 +1789,7 @@ def chat_ui(
     messages: Optional[
         Iterable[str | TagChild | ChatMessageDict | ChatMessage | Any]
     ] = None,
+    greeting: Optional[Union[str, HTML, Tag, TagList, ChatGreeting]] = None,
     placeholder: str = "Enter a message...",
     width: "CssUnit" = "min(680px, 100%)",
     height: "CssUnit" = "auto",
@@ -1813,6 +1825,11 @@ def chat_ui(
 
         **NOTE:** content may include specially formatted **input suggestion** links
         (see :method:`~shiny.ui.Chat.append_message` for more info).
+    greeting
+        An optional greeting to display at the top of the chat before any conversation
+        messages. Can be a markdown string or a :func:`~shinychat.chat_greeting` object.
+        For a dynamic or streaming greeting, use :meth:`~shinychat.Chat.set_greeting`
+        from the server instead.
     placeholder
         Placeholder text for the chat input.
     width
@@ -1857,8 +1874,29 @@ def chat_ui(
             )
         )
 
+    greeting_attr: Optional[str] = None
+    greeting_deps: list[HTMLDependency] = []
+    if greeting is not None:
+        if not isinstance(greeting, ChatGreeting):
+            greeting = chat_greeting(greeting)
+
+        if hasattr(greeting.content, "__aiter__"):
+            raise ValueError(
+                "An async iterator is not valid as a static `greeting` in `chat_ui()`. "
+                "Use `await chat.set_greeting()` from the server to stream a greeting."
+            )
+
+        greeting_payload: dict[str, object] = {
+            "content": greeting.content,
+            "content_type": greeting.content_type,
+            "options": {"dismissible": greeting.dismissible},
+        }
+        greeting_attr = json.dumps(greeting_payload)
+        greeting_deps = greeting.html_deps
+
     res = Tag(
         "shiny-chat-container",
+        *greeting_deps,
         Tag("shiny-chat-messages", *message_tags),
         Tag(
             "shiny-chat-input",
@@ -1876,6 +1914,7 @@ def chat_ui(
         id=id,
         placeholder=placeholder,
         fill=fill,
+        greeting=greeting_attr,
         # Also include icon on the parent so that when messages are dynamically added,
         # we know the default icon has changed
         icon_assistant=icon_attr,
