@@ -54,6 +54,80 @@ uv shiny run --reload app.py
 ```
 
 
+## Stream cancellation
+
+shinychat supports cancelling in-progress AI response streams. Set `enable_cancel=True` when creating the chat UI to show a stop button during streaming. Users can also press Escape while the chat has focus to cancel.
+
+For cooperative cancellation, [chatlas](https://posit-dev.github.io/chatlas/) provides a `StreamController` that you pass to `stream_async()`. Create a fresh controller for each request and cancel it when the user clicks stop.
+
+**Shiny Express**
+
+```{.python file="app.py"}
+from shiny import reactive
+from shiny.express import input
+from chatlas import ChatAnthropic, StreamController
+from shinychat.express import Chat
+
+chat = Chat(id="chat", enable_cancel=True)
+chat.ui()
+
+client = ChatAnthropic(system_prompt="You are a helpful assistant.")
+ctrl: StreamController | None = None
+
+@chat.on_user_submit
+async def handle_user_input(user_input: str):
+    global ctrl
+    ctrl = StreamController()
+    response = await client.stream_async(user_input, controller=ctrl)
+    await chat.append_message_stream(response)
+
+@reactive.effect
+@reactive.event(input.chat_cancel)
+def handle_cancel():
+    if ctrl is not None:
+        ctrl.cancel()
+```
+
+**Shiny Core**
+
+```{.python file="app.py"}
+from shiny import App, reactive, ui
+from chatlas import ChatAnthropic, StreamController
+from shinychat import Chat, chat_ui
+
+app_ui = ui.page_fillable(
+    chat_ui("chat", enable_cancel=True),
+)
+
+def server(input, output, session):
+    client = ChatAnthropic(system_prompt="You are a helpful assistant.")
+    chat = Chat("chat")
+    ctrl: StreamController | None = None
+
+    @chat.on_user_submit
+    async def handle_user_input(user_input: str):
+        nonlocal ctrl
+        ctrl = StreamController()
+        response = await client.stream_async(user_input, controller=ctrl)
+        await chat.append_message_stream(response)
+
+    @reactive.effect
+    @reactive.event(input.chat_cancel)
+    def handle_cancel():
+        if ctrl is not None:
+            ctrl.cancel()
+
+app = App(app_ui, server)
+```
+
+Key points:
+
+- `enable_cancel=True` shows the stop button while a response is streaming.
+- A fresh `StreamController()` is created for each request so previous cancellations don't affect new ones.
+- Pass the controller to `stream_async(controller=ctrl)` so chatlas can honour the cancellation signal.
+- The cancel input fires as `input.<id>_cancel` (e.g. `input.chat_cancel`). Observe it with `@reactive.event` to call `ctrl.cancel()`. This is needed in both Express and Core apps.
+- Partial responses are automatically preserved in chat history by chatlas when a stream is cancelled.
+
 ## Learn more
 
 The official shiny website offers the best starting point for learning about shinychat:
