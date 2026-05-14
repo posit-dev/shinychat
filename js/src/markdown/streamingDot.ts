@@ -1,4 +1,5 @@
 import type { Root, Element, ElementContent, RootContent } from "hast"
+import { SUGGESTION_PENDING_ATTR } from "./plugins/suggestionHelpers"
 
 const SVG_DOT_CLASS = "markdown-stream-dot"
 
@@ -9,6 +10,7 @@ function createDotNode(): Element {
     properties: {
       width: 12,
       height: 12,
+      viewBox: "0 0 12 12",
       xmlns: "http://www.w3.org/2000/svg",
       className: [SVG_DOT_CLASS],
       style: "margin-left:.25em;margin-top:-.25em",
@@ -41,6 +43,11 @@ const inlineContainers = new Set([
 function hasTextContent(node: ElementContent): boolean {
   if (node.type === "text") return /\S/.test(node.value)
   return false
+}
+
+function isPendingList(node: Element): boolean {
+  if (node.tagName !== "ul" && node.tagName !== "ol") return false
+  return node.properties != null && SUGGESTION_PENDING_ATTR in node.properties
 }
 
 /** Insert the streaming dot SVG into the tree (mutating). */
@@ -128,6 +135,7 @@ function findSpinePath(root: Root): SpineEntry[] {
 
     if (recurseInto.has(tagName)) {
       path.push({ index: lastMeaningfulIndex })
+      if (isPendingList(lastMeaningfulChild)) return path
       current = lastMeaningfulChild
       continue
     }
@@ -169,6 +177,7 @@ function findInnermostStreamingElement(
     const tagName = lastMeaningfulChild.tagName
 
     if (recurseInto.has(tagName)) {
+      if (isPendingList(lastMeaningfulChild)) return lastMeaningfulChild
       current = lastMeaningfulChild
       continue
     }

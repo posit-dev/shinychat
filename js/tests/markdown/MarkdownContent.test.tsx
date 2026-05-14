@@ -171,4 +171,64 @@ describe("MarkdownContent (pure)", () => {
 
     spy.mockRestore()
   })
+
+  it("renders qualifying suggestion list with card classes", () => {
+    const md = [
+      "- <span class='suggestion' title='Foo'>do thing</span>",
+      "- <span class='suggestion' title='Bar'>other thing</span>",
+    ].join("\n")
+
+    const { container } = render(
+      <MarkdownContent content={md} contentType="markdown" />,
+    )
+
+    expect(
+      container.querySelector(".shiny-chat-suggestion-list"),
+    ).not.toBeNull()
+    const items = container.querySelectorAll(".shiny-chat-suggestion-list-item")
+    expect(items.length).toBe(2)
+    // Plugin sets data-suggestion to body text, not title
+    expect((items[0] as HTMLElement).dataset.suggestion).toBe("do thing")
+    expect((items[1] as HTMLElement).dataset.suggestion).toBe("other thing")
+  })
+
+  it("streaming round-trip: data-pending present while streaming, cards after, no mutation of cached HAST", () => {
+    // A suggestion list that qualifies — it is the last top-level child so the
+    // plugin marks it data-pending while streaming=true.
+    const md = [
+      "- <span class='suggestion' title='Foo'>do thing</span>",
+      "- <span class='suggestion' title='Bar'>other thing</span>",
+    ].join("\n")
+
+    // 1. Render with streaming=true → list is pending, no cards yet.
+    const { container, rerender } = render(
+      <MarkdownContent content={md} contentType="markdown" streaming={true} />,
+    )
+
+    expect(container.querySelector("[data-pending]")).not.toBeNull()
+    expect(
+      container.querySelector(".shiny-chat-suggestion-list-item"),
+    ).toBeNull()
+
+    // 2. Rerender with streaming=false → cards promoted, no data-pending.
+    rerender(
+      <MarkdownContent content={md} contentType="markdown" streaming={false} />,
+    )
+
+    expect(container.querySelector("[data-pending]")).toBeNull()
+    expect(
+      container.querySelector(".shiny-chat-suggestion-list-item"),
+    ).not.toBeNull()
+
+    // 3. Rerender again with streaming=true → data-pending should be present
+    //    again, proving the cached HAST was not mutated by the finalization.
+    rerender(
+      <MarkdownContent content={md} contentType="markdown" streaming={true} />,
+    )
+
+    expect(container.querySelector("[data-pending]")).not.toBeNull()
+    expect(
+      container.querySelector(".shiny-chat-suggestion-list-item"),
+    ).toBeNull()
+  })
 })

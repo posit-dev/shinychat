@@ -129,6 +129,17 @@ export const ChatContainer = forwardRef<
       submit: shouldSubmit,
       focus: !shouldSubmit,
     })
+
+    const cardEl = (e.target as HTMLElement).closest<HTMLElement>(
+      ".shiny-chat-suggestion-list-item",
+    )
+    const grid = cardEl?.closest<HTMLElement>(".shiny-chat-suggestion-list")
+    if (cardEl && grid) {
+      grid
+        .querySelectorAll<HTMLElement>("[data-last-clicked]")
+        .forEach((el) => el.removeAttribute("data-last-clicked"))
+      cardEl.setAttribute("data-last-clicked", "")
+    }
   }
 
   function onSuggestionClick(e: React.MouseEvent<HTMLElement>): void {
@@ -140,7 +151,78 @@ export const ChatContainer = forwardRef<
     onSuggestionClick(e)
   }
 
+  function handleFocusIn(e: React.FocusEvent<HTMLElement>): void {
+    const card = (e.target as HTMLElement).closest<HTMLElement>(
+      ".shiny-chat-suggestion-list-item",
+    )
+    if (!card) return
+    const grid = card.closest<HTMLElement>(".shiny-chat-suggestion-list")
+    if (!grid || grid.dataset.roved !== undefined) return
+    grid.dataset.roved = ""
+    grid
+      .querySelectorAll<HTMLElement>(".shiny-chat-suggestion-list-item")
+      .forEach((el) => {
+        if (el !== card) el.tabIndex = -1
+      })
+  }
+
+  function handleFocusOut(e: React.FocusEvent<HTMLElement>): void {
+    const card = (e.target as HTMLElement).closest<HTMLElement>(
+      ".shiny-chat-suggestion-list-item",
+    )
+    if (!card) return
+    const grid = card.closest<HTMLElement>(".shiny-chat-suggestion-list")
+    if (!grid) return
+
+    const relatedTarget = e.relatedTarget as HTMLElement | null
+    const relatedGrid = relatedTarget?.closest<HTMLElement>(
+      ".shiny-chat-suggestion-list",
+    )
+
+    if (!relatedTarget || relatedGrid !== grid) {
+      delete grid.dataset.roved
+    }
+  }
+
+  function nextCardIndex(idx: number, len: number, key: string): number | null {
+    switch (key) {
+      case "ArrowDown":
+      case "ArrowRight":
+        return (idx + 1) % len
+      case "ArrowUp":
+      case "ArrowLeft":
+        return (idx - 1 + len) % len
+      case "Home":
+        return 0
+      case "End":
+        return len - 1
+      default:
+        return null
+    }
+  }
+
   function onSuggestionKeydown(e: React.KeyboardEvent<HTMLElement>): void {
+    const target = e.target as HTMLElement
+    const card = target.closest<HTMLElement>(".shiny-chat-suggestion-list-item")
+    const grid = card?.closest<HTMLElement>(".shiny-chat-suggestion-list")
+
+    if (card && grid) {
+      const cards = Array.from(
+        grid.querySelectorAll<HTMLElement>(".shiny-chat-suggestion-list-item"),
+      )
+      const idx = cards.indexOf(card)
+      const nextIdx = nextCardIndex(idx, cards.length, e.key)
+      if (nextIdx !== null) {
+        e.preventDefault()
+        const current = cards[idx]!
+        const next = cards[nextIdx]!
+        current.tabIndex = -1
+        next.tabIndex = 0
+        next.focus()
+        return
+      }
+    }
+
     const isEnterOrSpace = e.key === "Enter" || e.key === " "
     if (!isEnterOrSpace) return
     handleSuggestionEvent(e)
@@ -175,6 +257,8 @@ export const ChatContainer = forwardRef<
             role="log"
             aria-live="polite"
             onClick={onMessagesClick}
+            onFocus={handleFocusIn}
+            onBlur={handleFocusOut}
             onKeyDown={onSuggestionKeydown}
           >
             <ChatScrollContext.Provider value={stopScroll}>
