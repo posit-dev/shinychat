@@ -1458,10 +1458,9 @@ class Chat:
               Use this before setting a new greeting when implementing a regenerate
               pattern.
             * A markdown string, :class:`~htmltools.HTML`, :class:`~htmltools.Tag`, or
-              :class:`~htmltools.TagList`: displayed as a stand-alone greeting (or
-              as an assistant message when ``as_assistant_message=True``).
+              :class:`~htmltools.TagList`: displayed as a stand-alone greeting.
             * A :func:`~shinychat.chat_greeting` object with options such as
-              ``dismissible`` and ``as_assistant_message``.
+              ``dismissible``.
             * A :class:`~shinychat.chat_greeting` wrapping an
               :class:`~typing.AsyncIterator` of strings: streams the greeting content
               chunk-by-chunk.
@@ -1486,7 +1485,6 @@ class Chat:
             greeting = chat_greeting(
                 "## Welcome!",
                 dismissible=True,
-                as_assistant_message=False,
             )
             await chat.set_greeting(greeting)
         ```
@@ -1515,14 +1513,6 @@ class Chat:
 
         if not isinstance(greeting, ChatGreeting):
             greeting = chat_greeting(greeting)
-
-        if greeting.as_assistant_message:
-            content = greeting.content
-            if isinstance(content, AsyncIterator):
-                await self.append_message_stream(content)
-            else:
-                await self.append_message(content)
-            return
 
         options: GreetingOptions = {"dismissible": greeting.dismissible}
         html_deps = self._serialize_html_deps(greeting.html_deps) if greeting.html_deps else None

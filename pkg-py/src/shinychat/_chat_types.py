@@ -173,18 +173,9 @@ class ChatGreeting:
         content: Union[str, HTML, Tag, TagList, "AsyncIterator[str]"],
         *,
         dismissible: bool = True,
-        as_assistant_message: bool = False,
         include_in_history: bool = False,
     ):
-        if dismissible and as_assistant_message:
-            raise ValueError(
-                "`dismissible` and `as_assistant_message` cannot both be `True`. "
-                "A greeting displayed as an assistant message is part of the conversation "
-                "and cannot be dismissed."
-            )
-
         self.dismissible = dismissible
-        self.as_assistant_message = as_assistant_message
         self.include_in_history = include_in_history
 
         if isinstance(content, AsyncIterator):
@@ -217,7 +208,6 @@ def chat_greeting(
     content: Union[str, HTML, Tag, TagList, "AsyncIterator[str]"],
     *,
     dismissible: bool = True,
-    as_assistant_message: bool = False,
     include_in_history: bool = False,
 ) -> ChatGreeting:
     """
@@ -236,10 +226,6 @@ def chat_greeting(
         :meth:`~shinychat.Chat.set_greeting`).
     dismissible
         Whether the greeting can be dismissed when the user sends a message.
-        Cannot be ``True`` when ``as_assistant_message`` is ``True``.
-    as_assistant_message
-        Whether to render the greeting as a regular assistant message instead of
-        the stand-alone greeting style.
     include_in_history
         Whether to include the greeting in the model's conversation history.
         Server-only — not sent to the client.
@@ -247,7 +233,6 @@ def chat_greeting(
     return ChatGreeting(
         content,
         dismissible=dismissible,
-        as_assistant_message=as_assistant_message,
         include_in_history=include_in_history,
     )
 

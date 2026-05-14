@@ -3,16 +3,15 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
-from typing import AsyncIterator, cast
+from typing import cast
 
 import pytest
-from htmltools import HTML, TagList, tags
+from htmltools import HTML, tags
 from shiny import Session
 from shiny.module import ResolvedId
 from shiny.session import session_context
 from shinychat import Chat, chat_greeting, chat_ui
 from shinychat._chat_types import ChatGreeting
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -75,7 +74,6 @@ def test_chat_greeting_defaults():
     assert g.content == "## Hello"
     assert g.content_type == "markdown"
     assert g.dismissible is True
-    assert g.as_assistant_message is False
     assert g.include_in_history is False
     assert g.html_deps == []
 
@@ -84,7 +82,6 @@ def test_chat_greeting_all_options():
     g = chat_greeting(
         "hi",
         dismissible=False,
-        as_assistant_message=False,
         include_in_history=True,
     )
     assert g.dismissible is False
@@ -119,16 +116,6 @@ def test_chat_greeting_async_iterator_not_consumed():
     assert g.content is it
     assert g.content_type == "markdown"
     assert g.html_deps == []
-
-
-def test_chat_greeting_dismissible_and_as_assistant_message_raises():
-    with pytest.raises(ValueError, match="dismissible"):
-        chat_greeting("hi", dismissible=True, as_assistant_message=True)
-
-
-def test_chat_greeting_non_dismissible_as_assistant_message_ok():
-    g = chat_greeting("hi", dismissible=False, as_assistant_message=True)
-    assert g.as_assistant_message is True
 
 
 # ---------------------------------------------------------------------------
@@ -273,28 +260,6 @@ def test_set_greeting_html_content_type():
     assert action["type"] == "greeting"
     assert action["content_type"] == "html"
     assert "<b>hi</b>" in action["content"]
-
-
-def test_set_greeting_as_assistant_message_delegates_to_append_message():
-    mock, sess = make_session()
-    append_called: list[object] = []
-
-    async def _run():
-        with session_context(sess):
-            chat = Chat(id="chat")
-
-            async def _fake_append(content, **kwargs):
-                append_called.append(content)
-
-            chat.append_message = _fake_append  # type: ignore[method-assign]
-            g = chat_greeting("## Hi", dismissible=False, as_assistant_message=True)
-            await chat.set_greeting(g)
-
-    run_async(_run())
-
-    assert len(append_called) == 1
-    assert "## Hi" in str(append_called[0])
-    assert len(mock._sent) == 0
 
 
 def test_set_greeting_async_iterator_streams_chunks():
