@@ -18,10 +18,7 @@
 #'     inputs/outputs.
 #'   * A generator or promise (only valid when used with `chat_set_greeting()`).
 #' @param dismissible Whether the greeting is automatically dismissed when the
-#'   user sends a message. Defaults to `TRUE`. Cannot be `TRUE` when
-#'   `as_assistant_message` is also `TRUE`.
-#' @param as_assistant_message Whether to display the greeting as a regular
-#'   assistant message instead of a stand-alone greeting. Defaults to `FALSE`.
+#'   user sends a message. Defaults to `TRUE`.
 #' @param include_in_history Whether to include the greeting content in the
 #'   model's conversation history. This is a server-side option only and does
 #'   not affect the client-side rendering. Defaults to `FALSE`.
@@ -53,20 +50,12 @@
 chat_greeting <- function(
   content,
   dismissible = TRUE,
-  as_assistant_message = FALSE,
   include_in_history = FALSE
 ) {
-  if (isTRUE(dismissible) && isTRUE(as_assistant_message)) {
-    cli::cli_abort(
-      "{.arg dismissible} and {.arg as_assistant_message} cannot both be {.code TRUE}."
-    )
-  }
-
   structure(
     list(
       content = content,
       dismissible = dismissible,
-      as_assistant_message = as_assistant_message,
       include_in_history = include_in_history
     ),
     class = "chat_greeting"
@@ -857,10 +846,6 @@ chat_set_greeting <- function(
 
   if (!inherits(greeting, "chat_greeting")) {
     greeting <- chat_greeting(greeting)
-  }
-
-  if (isTRUE(greeting$as_assistant_message)) {
-    return(chat_append(id, greeting$content, session = session))
   }
 
   content <- greeting$content

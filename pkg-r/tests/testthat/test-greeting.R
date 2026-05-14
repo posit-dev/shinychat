@@ -23,7 +23,6 @@ test_that("chat_greeting() returns class 'chat_greeting' with all fields", {
   expect_s3_class(g, "chat_greeting")
   expect_equal(g$content, "Hello")
   expect_true(g$dismissible)
-  expect_false(g$as_assistant_message)
   expect_false(g$include_in_history)
 })
 
@@ -31,7 +30,6 @@ test_that("chat_greeting() stores non-default option values", {
   g <- chat_greeting(
     "Hi",
     dismissible = FALSE,
-    as_assistant_message = FALSE,
     include_in_history = TRUE
   )
   expect_false(g$dismissible)
@@ -50,13 +48,6 @@ test_that("chat_greeting() accepts htmltools tag content", {
   g <- chat_greeting(tag_content)
   expect_s3_class(g, "chat_greeting")
   expect_s3_class(g$content, "shiny.tag")
-})
-
-test_that("chat_greeting() errors when dismissible and as_assistant_message are both TRUE", {
-  expect_error(
-    chat_greeting("Hi", dismissible = TRUE, as_assistant_message = TRUE),
-    regexp = "dismissible.*as_assistant_message"
-  )
 })
 
 
@@ -189,25 +180,6 @@ test_that("chat_set_greeting() include_in_history never sent to client", {
   action <- msgs[[1]]$message$action
   expect_false("include_in_history" %in% names(action))
   expect_false("include_in_history" %in% names(action$options))
-})
-
-test_that("chat_set_greeting() as_assistant_message delegates to chat_append (message actions, not greeting)", {
-  spy <- mock_session_with_spy()
-  shiny::withReactiveDomain(spy$session, {
-    p <- chat_set_greeting(
-      "chat",
-      chat_greeting("Hi", as_assistant_message = TRUE, dismissible = FALSE),
-      session = spy$session
-    )
-    done <- FALSE
-    promises::then(p, function(x) { done <<- TRUE }, function(e) { done <<- TRUE })
-    while (!done) later::run_now(0.1)
-  })
-  msgs <- spy_messages(spy)
-  action_types <- vapply(msgs, function(m) m$message$action$type, character(1))
-  expect_false(any(action_types %in% c("greeting", "greeting_start", "greeting_clear")))
-  expect_true("chunk_start" %in% action_types)
-  expect_true("chunk_end" %in% action_types)
 })
 
 test_that("chat_set_greeting() generator sends greeting_start, greeting_chunk(s), greeting_end", {

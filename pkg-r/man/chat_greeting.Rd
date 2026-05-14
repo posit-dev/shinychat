@@ -4,12 +4,7 @@
 \alias{chat_greeting}
 \title{Create a greeting for a chat UI}
 \usage{
-chat_greeting(
-  content,
-  dismissible = TRUE,
-  as_assistant_message = FALSE,
-  include_in_history = FALSE
-)
+chat_greeting(content, dismissible = TRUE, include_in_history = FALSE)
 }
 \arguments{
 \item{content}{The greeting content. Can be:
@@ -22,11 +17,7 @@ inputs/outputs.
 }}
 
 \item{dismissible}{Whether the greeting is automatically dismissed when the
-user sends a message. Defaults to \code{TRUE}. Cannot be \code{TRUE} when
-\code{as_assistant_message} is also \code{TRUE}.}
-
-\item{as_assistant_message}{Whether to display the greeting as a regular
-assistant message instead of a stand-alone greeting. Defaults to \code{FALSE}.}
+user sends a message. Defaults to \code{TRUE}.}
 
 \item{include_in_history}{Whether to include the greeting content in the
 model's conversation history. This is a server-side option only and does
