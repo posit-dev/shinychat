@@ -137,17 +137,15 @@ function promoteListToCards(list: Element, ordered: boolean): void {
       suggestionEl.properties.dataSuggestion = bodyText
     }
 
-    if (!("ariaLabel" in suggestionEl.properties)) {
-      if (ordered) {
-        const n = itemIndex + 1
-        suggestionEl.properties.ariaLabel = titleStr
-          ? `Use chat suggestion #${n}: ${titleStr} — ${bodyText}`
-          : `Use chat suggestion #${n}: ${bodyText}`
-      } else {
-        suggestionEl.properties.ariaLabel = titleStr
-          ? `Use chat suggestion: ${titleStr} — ${bodyText}`
-          : `Use chat suggestion: ${bodyText}`
-      }
+    if (ordered) {
+      const n = itemIndex + 1
+      suggestionEl.properties.ariaLabel = titleStr
+        ? `Use chat suggestion #${n}: ${titleStr} — ${bodyText}`
+        : `Use chat suggestion #${n}: ${bodyText}`
+    } else {
+      suggestionEl.properties.ariaLabel = titleStr
+        ? `Use chat suggestion: ${titleStr} — ${bodyText}`
+        : `Use chat suggestion: ${bodyText}`
     }
 
     // CSS custom property for staggered animation; avoids the @for Sass loop.
