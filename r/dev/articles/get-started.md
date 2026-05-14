@@ -228,6 +228,13 @@ suggestions.](images/chat-suggestions.png)
 
 Screenshot of a chatbot with input suggestions.
 
+A markdown list (`<ul>` or `<ol>`) in which every item contains a single
+suggestion element is automatically rendered as a grid of clickable
+cards instead of inline chips. Each suggestion accepts an optional
+`title` attribute (plain text), which becomes the card heading; the
+suggestion’s body becomes the card description. For ordered lists
+(`<ol>`), the list-item number is included in the heading.
+
 Messages can also contain arbitrary Shiny UI
 [components](https://shiny.posit.co/r/components/), so you could even
 include something like a

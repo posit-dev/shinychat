@@ -331,6 +331,14 @@ on the suggestion submit the input automatically.</p>
 Screenshot of a chatbot with input suggestions.
 </p>
 </div>
+<p>A markdown list (<code>&lt;ul&gt;</code> or <code>&lt;ol&gt;</code>)
+in which every item contains a single suggestion element is
+automatically rendered as a grid of clickable cards instead of inline
+chips. Each suggestion accepts an optional <code>title</code> attribute
+(plain text), which becomes the card heading; the suggestion’s body
+becomes the card description. For ordered lists
+(<code>&lt;ol&gt;</code>), the list-item number is included in the
+heading.</p>
 <p>Messages can also contain arbitrary Shiny UI <a href="https://shiny.posit.co/r/components/" class="external-link">components</a>, so you could
 even include something like a <a href="https://shiny.posit.co/r/components/display-messages/tooltips/" class="external-link">tooltip</a>
 to provide additional details on demand.</p>
