@@ -1,12 +1,4 @@
-import {
-  useState,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useContext,
-  memo,
-  type CSSProperties,
-} from "react"
+import { useState, useEffect, useRef, useContext, memo } from "react"
 import type { GreetingData } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
@@ -37,22 +29,12 @@ export const ChatGreeting = memo(function ChatGreeting({
   const reducedMotion = usePrefersReducedMotion()
   const dispatch = useContext(ChatDispatchContext)
   const outerRef = useRef<HTMLDivElement>(null)
-  // Captured each layout pass while the greeting is at its natural height, so
-  // the dismiss animation can interpolate from a known starting height set
-  // inline in the same render that flips data-dismissing.
-  const lastHeightRef = useRef<number | null>(null)
   // Reveal animation runs once per component instance. Replacements that keep
   // the wrapper mounted (chat_set_greeting on a visible greeting) skip it;
   // unmount+remount (clear → re-show, regenerate pattern) re-runs it.
   const [entering, setEntering] = useState(true)
 
   const dismissing = greeting.dismissing
-
-  useLayoutEffect(() => {
-    if (!dismissing && outerRef.current) {
-      lastHeightRef.current = outerRef.current.offsetHeight
-    }
-  })
 
   useEffect(() => {
     if (!entering) return
@@ -94,13 +76,6 @@ export const ChatGreeting = memo(function ChatGreeting({
     return null
   }
 
-  const style: CSSProperties | undefined =
-    dismissing && lastHeightRef.current != null
-      ? ({
-          "--_dismiss-height": `${lastHeightRef.current}px`,
-        } as CSSProperties)
-      : undefined
-
   const lastBlockIndex = greeting.blocks.length - 1
 
   const className = entering
@@ -111,7 +86,6 @@ export const ChatGreeting = memo(function ChatGreeting({
     <div
       className={className}
       ref={outerRef}
-      style={style}
       {...(dismissing ? { "data-dismissing": "" } : {})}
     >
       <div className="shiny-chat-greeting-content">

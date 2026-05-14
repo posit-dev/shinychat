@@ -253,21 +253,25 @@ export const ChatContainer = forwardRef<
   return (
     <>
       <div className="shiny-chat-messages-wrapper">
-        <div className="shiny-chat-messages" ref={scrollRef}>
+        <div
+          className="shiny-chat-messages"
+          ref={scrollRef}
+          onClick={onMessagesClick}
+          onFocus={handleFocusIn}
+          onBlur={handleFocusOut}
+          onKeyDown={onSuggestionKeydown}
+        >
           <ChatScrollContext.Provider value={stopScroll}>
             {/* Greeting lives outside contentRef so its growth (e.g. while a
                 streaming greeting fills in) does not trigger useStickToBottom
-                — only message growth does. */}
+                — only message growth does. Suggestion clicks inside the
+                greeting still reach the messages-level handlers via bubbling. */}
             {greeting != null && <ChatGreeting greeting={greeting} />}
             <div
               className="shiny-chat-messages-content"
               ref={contentRef}
               role="log"
               aria-live="polite"
-              onClick={onMessagesClick}
-              onFocus={handleFocusIn}
-              onBlur={handleFocusOut}
-              onKeyDown={onSuggestionKeydown}
               {...(greeting?.dismissing
                 ? { "data-greeting-dismissing": "" }
                 : {})}

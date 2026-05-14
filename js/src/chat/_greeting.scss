@@ -29,8 +29,7 @@ shiny-chat-container {
   }
 
   &[data-dismissing] {
-    animation: shiny-chat-greeting-dismiss 250ms ease-out both;
-    overflow: hidden;
+    animation: shiny-chat-greeting-dismiss 200ms ease-out both;
   }
 }
 
@@ -68,13 +67,9 @@ shiny-chat-container {
 @keyframes shiny-chat-greeting-dismiss {
   from {
     opacity: 1;
-    height: var(--_dismiss-height, auto);
-    margin-bottom: 0;
   }
   to {
     opacity: 0;
-    height: 0;
-    margin-bottom: -2rem;
   }
 }
 
