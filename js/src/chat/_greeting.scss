@@ -35,15 +35,24 @@ shiny-chat-container {
 
 // When no messages have arrived yet, center the greeting vertically in the
 // scroll area. Auto margins absorb spare flex space; once messages-content has
-// children, no spare → greeting stays at the top of natural flow.
-.shiny-chat-messages:has(> .shiny-chat-messages-content:empty)
+// visible children, no spare → greeting stays at the top of natural flow.
+//
+// While a dismiss animation is in flight, messages-content already has its
+// hidden replies in the DOM but none of them are visible (see the
+// [data-greeting-dismissing] rule below). Treat that state as equivalent to
+// :empty so the greeting holds its centered position until it fully fades out
+// — otherwise the centering flips off as soon as INPUT_SENT lands and the
+// greeting jumps to the top mid-fade.
+.shiny-chat-messages:has(
+    > .shiny-chat-messages-content:is(:empty, [data-greeting-dismissing])
+  )
   > .shiny-chat-greeting {
   margin-block: auto;
 }
 
-// Suppress the messages-content bottom padding when it has no children so the
-// centered greeting is truly centered.
-.shiny-chat-messages-content:empty {
+// Suppress the messages-content bottom padding while it has no visible
+// children so the centered greeting is truly centered.
+.shiny-chat-messages-content:is(:empty, [data-greeting-dismissing]) {
   padding-bottom: 0;
 }
 
