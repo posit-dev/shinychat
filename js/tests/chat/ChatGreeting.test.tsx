@@ -49,22 +49,35 @@ describe("ChatGreeting", () => {
     expect(container.querySelector(".shiny-chat-greeting")).toBeNull()
   })
 
-  it("sets data-dismissing attribute when visible transitions to false (animation mode)", () => {
-    const { container, rerender } = render(
-      <ChatGreeting greeting={makeGreeting({ visible: true })} />,
-    )
-
-    act(() => {
-      rerender(
-        <ChatGreeting
-          greeting={makeGreeting({ visible: false, dismissed: true })}
-        />,
+  it("keeps greeting in DOM during pre-dismiss delay, then flips data-dismissing", () => {
+    vi.useFakeTimers()
+    try {
+      const { container, rerender } = render(
+        <ChatGreeting greeting={makeGreeting({ visible: true })} />,
       )
-    })
 
-    const el = container.querySelector(".shiny-chat-greeting")
-    expect(el).not.toBeNull()
-    expect(el?.hasAttribute("data-dismissing")).toBe(true)
+      act(() => {
+        rerender(
+          <ChatGreeting
+            greeting={makeGreeting({ visible: false, dismissed: true })}
+          />,
+        )
+      })
+
+      const pre = container.querySelector(".shiny-chat-greeting")
+      expect(pre).not.toBeNull()
+      expect(pre?.hasAttribute("data-dismissing")).toBe(false)
+
+      act(() => {
+        vi.advanceTimersByTime(500)
+      })
+
+      const post = container.querySelector(".shiny-chat-greeting")
+      expect(post).not.toBeNull()
+      expect(post?.hasAttribute("data-dismissing")).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("removes immediately (no data-dismissing) when prefers-reduced-motion is set", () => {
