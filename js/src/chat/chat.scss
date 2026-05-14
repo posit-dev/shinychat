@@ -73,6 +73,10 @@ shiny-chat-container {
 .shiny-chat-messages {
   height: 100%;
   overflow: auto;
+  // Flex column so a stand-alone greeting can margin-block:auto into the
+  // vertical center of the scroll area when no messages exist yet.
+  display: flex;
+  flex-direction: column;
 
   // Make space for the scroll bar
   --_scroll-margin: 1rem;

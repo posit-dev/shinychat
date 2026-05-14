@@ -254,21 +254,24 @@ export const ChatContainer = forwardRef<
     <>
       <div className="shiny-chat-messages-wrapper">
         <div className="shiny-chat-messages" ref={scrollRef}>
-          <div
-            className="shiny-chat-messages-content"
-            ref={contentRef}
-            role="log"
-            aria-live="polite"
-            onClick={onMessagesClick}
-            onFocus={handleFocusIn}
-            onBlur={handleFocusOut}
-            onKeyDown={onSuggestionKeydown}
-            {...(greeting?.dismissing
-              ? { "data-greeting-dismissing": "" }
-              : {})}
-          >
-            <ChatScrollContext.Provider value={stopScroll}>
-              {greeting != null && <ChatGreeting greeting={greeting} />}
+          <ChatScrollContext.Provider value={stopScroll}>
+            {/* Greeting lives outside contentRef so its growth (e.g. while a
+                streaming greeting fills in) does not trigger useStickToBottom
+                — only message growth does. */}
+            {greeting != null && <ChatGreeting greeting={greeting} />}
+            <div
+              className="shiny-chat-messages-content"
+              ref={contentRef}
+              role="log"
+              aria-live="polite"
+              onClick={onMessagesClick}
+              onFocus={handleFocusIn}
+              onBlur={handleFocusOut}
+              onKeyDown={onSuggestionKeydown}
+              {...(greeting?.dismissing
+                ? { "data-greeting-dismissing": "" }
+                : {})}
+            >
               <ChatMessages messages={messages} iconAssistant={iconAssistant} />
               {streamingMessage && (
                 <MessageErrorBoundary key={streamingMessage.id}>
@@ -278,8 +281,8 @@ export const ChatContainer = forwardRef<
                   />
                 </MessageErrorBoundary>
               )}
-            </ChatScrollContext.Provider>
-          </div>
+            </div>
+          </ChatScrollContext.Provider>
         </div>
         <ScrollToBottomButton
           isAtBottom={isAtBottom}
