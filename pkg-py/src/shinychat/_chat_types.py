@@ -68,6 +68,39 @@ class HideToolRequestAction(TypedDict):
     requestId: str
 
 
+class GreetingOptions(TypedDict):
+    dismissible: NotRequired[bool]
+
+
+class GreetingAction(TypedDict):
+    type: Literal["greeting"]
+    content: str
+    content_type: ContentType
+    options: GreetingOptions
+
+
+class GreetingStartAction(TypedDict):
+    type: Literal["greeting_start"]
+    content: str
+    content_type: ContentType
+    options: GreetingOptions
+
+
+class GreetingChunkAction(TypedDict):
+    type: Literal["greeting_chunk"]
+    content: str
+    operation: Literal["append", "replace"]
+    content_type: NotRequired[ContentType]
+
+
+class GreetingEndAction(TypedDict):
+    type: Literal["greeting_end"]
+
+
+class GreetingClearAction(TypedDict):
+    type: Literal["greeting_clear"]
+
+
 ChatAction = Union[
     MessageAction,
     ChunkStartAction,
@@ -77,6 +110,11 @@ ChatAction = Union[
     UpdateInputAction,
     RemoveLoadingAction,
     HideToolRequestAction,
+    GreetingAction,
+    GreetingStartAction,
+    GreetingChunkAction,
+    GreetingEndAction,
+    GreetingClearAction,
 ]
 
 

@@ -7,6 +7,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     AsyncIterable,
+    AsyncIterator,
     Awaitable,
     Callable,
     Iterable,
@@ -61,6 +62,7 @@ from ._chat_types import (
     ChatMessage,
     ChatMessageDict,
     ContentType,
+    GreetingOptions,
     MessagePayload,
     StoredMessage,
     chat_greeting,
@@ -1435,6 +1437,121 @@ class Chat:
         """
         self._messages.set(())
         await self._send_action({"type": "clear"})
+
+    async def set_greeting(
+        self,
+        greeting: "str | HTML | Tag | TagList | ChatGreeting | None",
+    ) -> None:
+        """
+        Set or clear the chat greeting.
+
+        A greeting is displayed at the top of the chat before any conversation messages.
+        It can be static content, streaming content from an async iterator, or ``None``
+        to remove an existing greeting.
+
+        Parameters
+        ----------
+        greeting
+            The greeting content. Can be:
+
+            * ``None``: clears the current greeting entirely (distinct from dismissal).
+              Use this before setting a new greeting when implementing a regenerate
+              pattern.
+            * A markdown string, :class:`~htmltools.HTML`, :class:`~htmltools.Tag`, or
+              :class:`~htmltools.TagList`: displayed as a stand-alone greeting (or
+              as an assistant message when ``as_assistant_message=True``).
+            * A :func:`~shinychat.chat_greeting` object with options such as
+              ``dismissible`` and ``as_assistant_message``.
+            * A :class:`~shinychat.chat_greeting` wrapping an
+              :class:`~typing.AsyncIterator` of strings: streams the greeting content
+              chunk-by-chunk.
+
+        Examples
+        --------
+        Static greeting (stand-alone, dismissible by default):
+
+        ```python
+        @reactive.effect
+        async def _():
+            await chat.set_greeting("## Welcome!\\n\\nHow can I help you today?")
+        ```
+
+        Static greeting with custom options:
+
+        ```python
+        from shinychat import chat_greeting
+
+        @reactive.effect
+        async def _():
+            greeting = chat_greeting(
+                "## Welcome!",
+                dismissible=True,
+                as_assistant_message=False,
+            )
+            await chat.set_greeting(greeting)
+        ```
+
+        Streaming greeting from an async iterator:
+
+        ```python
+        @reactive.effect
+        async def _():
+            async def token_stream():
+                for token in ["Hello", " there", "!"]:
+                    yield token
+
+            await chat.set_greeting(chat_greeting(token_stream()))
+        ```
+
+        Clear the greeting (e.g., before setting a new one):
+
+        ```python
+        await chat.set_greeting(None)
+        ```
+        """
+        if greeting is None:
+            await self._send_action({"type": "greeting_clear"})
+            return
+
+        if not isinstance(greeting, ChatGreeting):
+            greeting = chat_greeting(greeting)
+
+        if greeting.as_assistant_message:
+            content = greeting.content
+            if isinstance(content, AsyncIterator):
+                await self.append_message_stream(content)
+            else:
+                await self.append_message(content)
+            return
+
+        options: GreetingOptions = {"dismissible": greeting.dismissible}
+        html_deps = self._serialize_html_deps(greeting.html_deps) if greeting.html_deps else None
+
+        content = greeting.content
+        if isinstance(content, AsyncIterator):
+            start_action: ChatAction = {
+                "type": "greeting_start",
+                "content": "",
+                "content_type": greeting.content_type,
+                "options": options,
+            }
+            await self._send_action(start_action)
+            async for chunk in content:
+                chunk_action: ChatAction = {
+                    "type": "greeting_chunk",
+                    "content": chunk,
+                    "operation": "append",
+                }
+                await self._send_action(chunk_action)
+            await self._send_action({"type": "greeting_end"})
+        else:
+            action: ChatAction = {
+                "type": "greeting",
+                "content": str(content),
+                "content_type": greeting.content_type,
+                "options": options,
+            }
+            await self._send_action(action, html_deps)
 
     def destroy(self):
         """
