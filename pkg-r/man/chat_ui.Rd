@@ -8,6 +8,7 @@ chat_ui(
   id,
   ...,
   messages = NULL,
+  greeting = NULL,
   placeholder = "Enter a message...",
   width = "min(680px, 100\%)",
   height = "auto",
@@ -38,6 +39,12 @@ interpreted as markdown as long as they're not inside HTML.
 \item A named list of \code{content} and \code{role}. The \code{content} can contain content
 as described above, and the \code{role} can be "assistant" or "user".
 }}
+
+\item{greeting}{An optional greeting to display when the chat first loads.
+Can be a \code{\link[=chat_greeting]{chat_greeting()}} object, or a plain string (which is
+auto-wrapped with default options). The greeting is dismissed when the
+user sends their first message. For example:
+\code{greeting = chat_greeting("## Hello!\\n\\nHow can I help you today?")}}
 
 \item{placeholder}{The placeholder text for the chat's user input field}
 

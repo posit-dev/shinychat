@@ -4,6 +4,75 @@
 # trimming of the message history to fit within the context window; these
 # are left for the caller to handle in the R version.
 
+#' Create a greeting for a chat UI
+#'
+#' @description
+#' Creates a greeting object for use with [chat_ui()] or `chat_set_greeting()`.
+#' A greeting is displayed when the chat first loads and is dismissed when the
+#' user sends their first message.
+#'
+#' @param content The greeting content. Can be:
+#'   * A string, interpreted as markdown.
+#'   * An [htmltools::HTML()] object, rendered as raw HTML.
+#'   * An htmltools tag or [htmltools::tagList()], including Shiny
+#'     inputs/outputs.
+#'   * A generator or promise (only valid when used with `chat_set_greeting()`).
+#' @param dismissible Whether the greeting is automatically dismissed when the
+#'   user sends a message. Defaults to `TRUE`. Cannot be `TRUE` when
+#'   `as_assistant_message` is also `TRUE`.
+#' @param as_assistant_message Whether to display the greeting as a regular
+#'   assistant message instead of a stand-alone greeting. Defaults to `FALSE`.
+#' @param include_in_history Whether to include the greeting content in the
+#'   model's conversation history. This is a server-side option only and does
+#'   not affect the client-side rendering. Defaults to `FALSE`.
+#'
+#' @returns An S3 object of class `"chat_greeting"`.
+#'
+#' @examplesIf interactive()
+#' library(shiny)
+#' library(bslib)
+#' library(shinychat)
+#'
+#' ui <- page_fillable(
+#'   chat_ui(
+#'     "chat",
+#'     greeting = chat_greeting("## Welcome!\n\nHow can I help you today?")
+#'   )
+#' )
+#'
+#' server <- function(input, output, session) {
+#'   observeEvent(input$chat_user_input, {
+#'     response <- paste0("You said: ", input$chat_user_input)
+#'     chat_append("chat", response)
+#'   })
+#' }
+#'
+#' shinyApp(ui, server)
+#'
+#' @export
+chat_greeting <- function(
+  content,
+  dismissible = TRUE,
+  as_assistant_message = FALSE,
+  include_in_history = FALSE
+) {
+  if (isTRUE(dismissible) && isTRUE(as_assistant_message)) {
+    cli::cli_abort(
+      "{.arg dismissible} and {.arg as_assistant_message} cannot both be {.code TRUE}."
+    )
+  }
+
+  structure(
+    list(
+      content = content,
+      dismissible = dismissible,
+      as_assistant_message = as_assistant_message,
+      include_in_history = include_in_history
+    ),
+    class = "chat_greeting"
+  )
+}
+
 #' Create a chat UI element
 #'
 #' @description
@@ -31,6 +100,11 @@
 #'   * A named list of `content` and `role`. The `content` can contain content
 #'     as described above, and the `role` can be "assistant" or "user".
 #'
+#' @param greeting An optional greeting to display when the chat first loads.
+#'   Can be a [chat_greeting()] object, or a plain string (which is
+#'   auto-wrapped with default options). The greeting is dismissed when the
+#'   user sends their first message. For example:
+#'   `greeting = chat_greeting("## Hello!\n\nHow can I help you today?")`
 #' @param placeholder The placeholder text for the chat's user input field
 #' @param width The CSS width of the chat element
 #' @param height The CSS height of the chat element
@@ -112,6 +186,7 @@ chat_ui <- function(
   id,
   ...,
   messages = NULL,
+  greeting = NULL,
   placeholder = "Enter a message...",
   width = "min(680px, 100%)",
   height = "auto",
@@ -152,6 +227,60 @@ chat_ui <- function(
     )
   })
 
+  # Process greeting -------------------------------------------------------
+  greeting_attr <- NULL
+  greeting_deps <- list()
+
+  if (!is.null(greeting)) {
+    # Auto-wrap plain strings and HTML/tag content
+    if (!inherits(greeting, "chat_greeting")) {
+      greeting <- chat_greeting(greeting)
+    }
+
+    content <- greeting$content
+
+    # Generators/promises are not allowed in chat_ui() (static context)
+    if (
+      inherits(content, "coro_generator_instance") ||
+        promises::is.promising(content)
+    ) {
+      cli::cli_abort(
+        c(
+          "A generator or promise cannot be used as a static {.arg greeting} in {.fn chat_ui}.",
+          i = "Use {.fn chat_set_greeting} from the server to set a dynamic or streaming greeting."
+        )
+      )
+    }
+
+    if (is.character(content) && !inherits(content, "html")) {
+      # Plain markdown string
+      greeting_content <- content
+      greeting_content_type <- "markdown"
+    } else if (inherits(content, "html") && !inherits(content, c("shiny.tag", "shiny.tag.list"))) {
+      # htmltools::HTML() — raw HTML string
+      greeting_content <- as.character(content)
+      greeting_content_type <- "html"
+    } else {
+      # htmltools tag or tagList — render to HTML and collect deps
+      rendered <- with_current_theme({
+        htmltools::renderTags(pre_process_ui(content))
+      })
+      greeting_content <- rendered[["html"]]
+      greeting_content_type <- "html"
+      greeting_deps <- rendered[["dependencies"]]
+    }
+
+    greeting_payload <- list(
+      content = greeting_content,
+      content_type = greeting_content_type,
+      options = list(
+        dismissible = isTRUE(greeting$dismissible)
+      )
+    )
+    greeting_attr <- jsonlite::toJSON(greeting_payload, auto_unbox = TRUE)
+  }
+
+  # Build UI ---------------------------------------------------------------
   res <- tag(
     "shiny-chat-container",
     rlang::list2(
@@ -167,6 +296,7 @@ chat_ui <- function(
       `icon-assistant` = if (!is.null(icon_assistant)) {
         as.character(icon_assistant)
       },
+      greeting = greeting_attr,
       ...,
       tag("shiny-chat-messages", message_tags),
       tag(
@@ -174,7 +304,8 @@ chat_ui <- function(
         list(id = paste0(id, "_user_input"), placeholder = placeholder)
       ),
       shinychat_deps(),
-      htmltools::findDependencies(icon_assistant)
+      htmltools::findDependencies(icon_assistant),
+      greeting_deps
     )
   )
 
