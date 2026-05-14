@@ -1,4 +1,11 @@
-import { useState, useEffect, useRef, memo } from "react"
+import {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  memo,
+  type CSSProperties,
+} from "react"
 import type { GreetingData } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
@@ -28,30 +35,37 @@ export const ChatGreeting = memo(function ChatGreeting({
   const reducedMotion = usePrefersReducedMotion()
   const [dismissing, setDismissing] = useState(false)
   const [removed, setRemoved] = useState(false)
-  const prevVisibleRef = useRef(greeting.visible)
+  const [prevVisible, setPrevVisible] = useState(greeting.visible)
   const outerRef = useRef<HTMLDivElement>(null)
+  // Captured during the last render where the greeting was still visible, so
+  // the dismiss animation can interpolate from the real rendered height
+  // without a layout-effect detour that would let a no-greeting frame paint.
+  const lastHeightRef = useRef<number | null>(null)
 
-  useEffect(() => {
-    const wasVisible = prevVisibleRef.current
-    prevVisibleRef.current = greeting.visible
-
-    if (wasVisible && !greeting.visible) {
+  // Detect visible:true → visible:false (and the inverse) synchronously during
+  // render so `dismissing` flips in the same commit that sets visible=false.
+  // Without this, there's a one-frame gap where the component renders nothing
+  // before the useEffect for the prop change runs, causing the greeting to
+  // briefly disappear and then re-appear to animate out.
+  if (prevVisible !== greeting.visible) {
+    setPrevVisible(greeting.visible)
+    if (prevVisible && !greeting.visible) {
       if (reducedMotion) {
         setRemoved(true)
       } else {
-        const el = outerRef.current
-        if (el) {
-          el.style.setProperty("--_dismiss-height", `${el.offsetHeight}px`)
-        }
         setDismissing(true)
       }
-    }
-
-    if (greeting.visible) {
+    } else if (greeting.visible) {
       setDismissing(false)
       setRemoved(false)
     }
-  }, [greeting.visible, reducedMotion])
+  }
+
+  useLayoutEffect(() => {
+    if (greeting.visible && !dismissing && outerRef.current) {
+      lastHeightRef.current = outerRef.current.offsetHeight
+    }
+  })
 
   useEffect(() => {
     if (!dismissing) return
@@ -71,12 +85,20 @@ export const ChatGreeting = memo(function ChatGreeting({
     return null
   }
 
+  const style: CSSProperties | undefined =
+    dismissing && lastHeightRef.current != null
+      ? ({
+          "--_dismiss-height": `${lastHeightRef.current}px`,
+        } as CSSProperties)
+      : undefined
+
   const lastBlockIndex = greeting.blocks.length - 1
 
   return (
     <div
       className="shiny-chat-greeting"
       ref={outerRef}
+      style={style}
       {...(dismissing ? { "data-dismissing": "" } : {})}
     >
       <div className="shiny-chat-greeting-content">
