@@ -1,5 +1,5 @@
 shiny-chat-container {
-  --shiny-chat-greeting-max-width: 540px;
+  --shiny-chat-greeting-max-width: 680px;
   --shiny-chat-greeting-color: var(--bs-secondary-color, #6c757d);
 }
 
@@ -7,7 +7,6 @@ shiny-chat-container {
   margin-inline: auto;
   max-width: var(--shiny-chat-greeting-max-width);
   padding: 1.5rem;
-  text-align: center;
   color: var(--shiny-chat-greeting-color);
   animation: shiny-chat-greeting-reveal 300ms cubic-bezier(0.22, 1, 0.36, 1)
     both;
