@@ -19,9 +19,6 @@
 #'   * A generator or promise (only valid when used with `chat_set_greeting()`).
 #' @param dismissible Whether the greeting is automatically dismissed when the
 #'   user sends a message. Defaults to `TRUE`.
-#' @param include_in_history Whether to include the greeting content in the
-#'   model's conversation history. This is a server-side option only and does
-#'   not affect the client-side rendering. Defaults to `FALSE`.
 #'
 #' @returns An S3 object of class `"chat_greeting"`.
 #'
@@ -49,14 +46,12 @@
 #' @export
 chat_greeting <- function(
   content,
-  dismissible = TRUE,
-  include_in_history = FALSE
+  dismissible = TRUE
 ) {
   structure(
     list(
       content = content,
-      dismissible = dismissible,
-      include_in_history = include_in_history
+      dismissible = dismissible
     ),
     class = "chat_greeting"
   )

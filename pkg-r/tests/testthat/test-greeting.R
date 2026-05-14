@@ -23,17 +23,11 @@ test_that("chat_greeting() returns class 'chat_greeting' with all fields", {
   expect_s3_class(g, "chat_greeting")
   expect_equal(g$content, "Hello")
   expect_true(g$dismissible)
-  expect_false(g$include_in_history)
 })
 
 test_that("chat_greeting() stores non-default option values", {
-  g <- chat_greeting(
-    "Hi",
-    dismissible = FALSE,
-    include_in_history = TRUE
-  )
+  g <- chat_greeting("Hi", dismissible = FALSE)
   expect_false(g$dismissible)
-  expect_true(g$include_in_history)
 })
 
 test_that("chat_greeting() accepts HTML() content", {
@@ -53,7 +47,7 @@ test_that("chat_greeting() accepts htmltools tag content", {
 
 # ── chat_ui(greeting = ...) ───────────────────────────────────────────────────
 
-test_that("chat_ui() plain string greeting produces markdown content_type, dismissible, no include_in_history", {
+test_that("chat_ui() plain string greeting produces markdown content_type and dismissible", {
   ui <- chat_ui("chat", greeting = "## Hello")
   attr_raw <- ui$attribs$greeting
   expect_false(is.null(attr_raw))
@@ -61,8 +55,6 @@ test_that("chat_ui() plain string greeting produces markdown content_type, dismi
   expect_equal(payload$content, "## Hello")
   expect_equal(payload$content_type, "markdown")
   expect_true(payload$options$dismissible)
-  expect_false("include_in_history" %in% names(payload))
-  expect_false("include_in_history" %in% names(payload$options))
 })
 
 test_that("chat_ui() chat_greeting with dismissible=FALSE serializes correctly", {
@@ -72,15 +64,6 @@ test_that("chat_ui() chat_greeting with dismissible=FALSE serializes correctly",
   expect_equal(payload$content, "## Hi")
   expect_equal(payload$content_type, "markdown")
   expect_false(payload$options$dismissible)
-  expect_false("include_in_history" %in% names(payload))
-})
-
-test_that("chat_ui() include_in_history never appears in serialized JSON even when TRUE", {
-  g <- chat_greeting("Hi", include_in_history = TRUE)
-  ui <- chat_ui("chat", greeting = g)
-  payload <- jsonlite::fromJSON(ui$attribs$greeting)
-  expect_false("include_in_history" %in% names(payload))
-  expect_false("include_in_history" %in% names(payload$options))
 })
 
 test_that("chat_ui() HTML() greeting produces html content_type", {
@@ -152,7 +135,6 @@ test_that("chat_set_greeting() plain string sends greeting action with markdown 
   expect_equal(action$type, "greeting")
   expect_equal(action$content_type, "markdown")
   expect_true(action$options$dismissible)
-  expect_false("include_in_history" %in% names(action))
 })
 
 test_that("chat_set_greeting() HTML() content sends html content_type", {
@@ -165,21 +147,6 @@ test_that("chat_set_greeting() HTML() content sends html content_type", {
   expect_equal(action$type, "greeting")
   expect_equal(action$content_type, "html")
   expect_equal(action$content, "<b>hi</b>")
-})
-
-test_that("chat_set_greeting() include_in_history never sent to client", {
-  spy <- mock_session_with_spy()
-  shiny::withReactiveDomain(spy$session, {
-    chat_set_greeting(
-      "chat",
-      chat_greeting("Hi", include_in_history = TRUE),
-      session = spy$session
-    )
-  })
-  msgs <- spy_messages(spy)
-  action <- msgs[[1]]$message$action
-  expect_false("include_in_history" %in% names(action))
-  expect_false("include_in_history" %in% names(action$options))
 })
 
 test_that("chat_set_greeting() generator sends greeting_start, greeting_chunk(s), greeting_end", {

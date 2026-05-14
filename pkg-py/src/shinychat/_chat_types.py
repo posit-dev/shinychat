@@ -173,10 +173,8 @@ class ChatGreeting:
         content: Union[str, HTML, Tag, TagList, "AsyncIterator[str]"],
         *,
         dismissible: bool = True,
-        include_in_history: bool = False,
     ):
         self.dismissible = dismissible
-        self.include_in_history = include_in_history
 
         if isinstance(content, AsyncIterator):
             self.content: Union[str, AsyncIterator[str]] = content
@@ -208,7 +206,6 @@ def chat_greeting(
     content: Union[str, HTML, Tag, TagList, "AsyncIterator[str]"],
     *,
     dismissible: bool = True,
-    include_in_history: bool = False,
 ) -> ChatGreeting:
     """
     Create a greeting for a chat UI.
@@ -226,14 +223,10 @@ def chat_greeting(
         :meth:`~shinychat.Chat.set_greeting`).
     dismissible
         Whether the greeting can be dismissed when the user sends a message.
-    include_in_history
-        Whether to include the greeting in the model's conversation history.
-        Server-only — not sent to the client.
     """
     return ChatGreeting(
         content,
         dismissible=dismissible,
-        include_in_history=include_in_history,
     )
 
 

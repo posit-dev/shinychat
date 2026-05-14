@@ -4,7 +4,7 @@
 \alias{chat_greeting}
 \title{Create a greeting for a chat UI}
 \usage{
-chat_greeting(content, dismissible = TRUE, include_in_history = FALSE)
+chat_greeting(content, dismissible = TRUE)
 }
 \arguments{
 \item{content}{The greeting content. Can be:
@@ -18,10 +18,6 @@ inputs/outputs.
 
 \item{dismissible}{Whether the greeting is automatically dismissed when the
 user sends a message. Defaults to \code{TRUE}.}
-
-\item{include_in_history}{Whether to include the greeting content in the
-model's conversation history. This is a server-side option only and does
-not affect the client-side rendering. Defaults to \code{FALSE}.}
 }
 \value{
 An S3 object of class \code{"chat_greeting"}.

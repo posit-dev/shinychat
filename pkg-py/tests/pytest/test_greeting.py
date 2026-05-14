@@ -74,7 +74,6 @@ def test_chat_greeting_defaults():
     assert g.content == "## Hello"
     assert g.content_type == "markdown"
     assert g.dismissible is True
-    assert g.include_in_history is False
     assert g.html_deps == []
 
 
@@ -82,10 +81,8 @@ def test_chat_greeting_all_options():
     g = chat_greeting(
         "hi",
         dismissible=False,
-        include_in_history=True,
     )
     assert g.dismissible is False
-    assert g.include_in_history is True
 
 
 def test_chat_greeting_str_content_type():
@@ -144,7 +141,6 @@ def test_chat_ui_plain_string_greeting():
     assert payload["content"] == "## Hi"
     assert payload["content_type"] == "markdown"
     assert payload["options"]["dismissible"] is True
-    assert "include_in_history" not in payload
 
 
 def test_chat_ui_chat_greeting_object():
@@ -159,7 +155,6 @@ def test_chat_ui_chat_greeting_object():
     assert payload["content"] == "## Hi"
     assert payload["content_type"] == "markdown"
     assert payload["options"]["dismissible"] is False
-    assert "include_in_history" not in payload
 
 
 def test_chat_ui_tag_greeting_has_html_content_type():
@@ -187,19 +182,6 @@ def test_chat_ui_async_iterator_raises():
 
     with pytest.raises(ValueError, match="async iterator"):
         chat_ui("chat", greeting=chat_greeting(stream()))
-
-
-def test_chat_ui_include_in_history_not_in_wire():
-    g = chat_greeting("hi", include_in_history=True)
-    tag = chat_ui("chat", greeting=g)
-    rendered = tag.get_html_string()
-    import re
-
-    m = re.search(r'greeting="([^"]*)"', rendered)
-    assert m is not None
-    payload = json.loads(m.group(1).replace("&quot;", '"'))
-    assert "include_in_history" not in payload
-    assert "include_in_history" not in payload.get("options", {})
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +223,6 @@ def test_set_greeting_static_string_sends_greeting_action():
     assert action["content"] == "## Welcome!"
     assert action["content_type"] == "markdown"
     assert action["options"]["dismissible"] is True
-    assert "include_in_history" not in action
 
 
 def test_set_greeting_html_content_type():
