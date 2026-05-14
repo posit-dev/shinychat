@@ -5,6 +5,7 @@ shiny-chat-container {
 
 .shiny-chat-greeting {
   margin-inline: auto;
+  width: 100%;
   max-width: var(--shiny-chat-greeting-max-width);
   padding: 1.5rem;
   color: var(--shiny-chat-greeting-color);
