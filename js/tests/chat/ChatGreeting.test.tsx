@@ -112,7 +112,11 @@ describe("ChatGreeting", () => {
     )
     const el = container.querySelector(".shiny-chat-greeting") as HTMLElement
     act(() => {
-      el.dispatchEvent(new Event("animationend"))
+      const event = new Event("animationend")
+      Object.defineProperty(event, "animationName", {
+        value: "shiny-chat-greeting-dismiss",
+      })
+      el.dispatchEvent(event)
     })
     expect(dispatch).toHaveBeenCalledWith({ type: "greeting_dismissed" })
   })

@@ -41,6 +41,10 @@ export const ChatGreeting = memo(function ChatGreeting({
   // the dismiss animation can interpolate from a known starting height set
   // inline in the same render that flips data-dismissing.
   const lastHeightRef = useRef<number | null>(null)
+  // Reveal animation runs once per component instance. Replacements that keep
+  // the wrapper mounted (chat_set_greeting on a visible greeting) skip it;
+  // unmount+remount (clear → re-show, regenerate pattern) re-runs it.
+  const [entering, setEntering] = useState(true)
 
   const dismissing = greeting.dismissing
 
@@ -51,6 +55,23 @@ export const ChatGreeting = memo(function ChatGreeting({
   })
 
   useEffect(() => {
+    if (!entering) return
+    if (reducedMotion) {
+      setEntering(false)
+      return
+    }
+    const el = outerRef.current
+    if (!el) return
+    function onAnimationEnd(e: AnimationEvent) {
+      if (e.animationName === "shiny-chat-greeting-reveal") {
+        setEntering(false)
+      }
+    }
+    el.addEventListener("animationend", onAnimationEnd)
+    return () => el.removeEventListener("animationend", onAnimationEnd)
+  }, [entering, reducedMotion])
+
+  useEffect(() => {
     if (!dismissing) return
     if (reducedMotion) {
       dispatch?.({ type: "greeting_dismissed" })
@@ -59,8 +80,10 @@ export const ChatGreeting = memo(function ChatGreeting({
     const el = outerRef.current
     if (!el) return
 
-    function onAnimationEnd() {
-      dispatch?.({ type: "greeting_dismissed" })
+    function onAnimationEnd(e: AnimationEvent) {
+      if (e.animationName === "shiny-chat-greeting-dismiss") {
+        dispatch?.({ type: "greeting_dismissed" })
+      }
     }
 
     el.addEventListener("animationend", onAnimationEnd, { once: true })
@@ -80,9 +103,13 @@ export const ChatGreeting = memo(function ChatGreeting({
 
   const lastBlockIndex = greeting.blocks.length - 1
 
+  const className = entering
+    ? "shiny-chat-greeting shiny-chat-greeting--enter"
+    : "shiny-chat-greeting"
+
   return (
     <div
-      className="shiny-chat-greeting"
+      className={className}
       ref={outerRef}
       style={style}
       {...(dismissing ? { "data-dismissing": "" } : {})}

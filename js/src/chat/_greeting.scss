@@ -9,8 +9,11 @@ shiny-chat-container {
   max-width: var(--shiny-chat-greeting-max-width);
   padding: 1.5rem;
   color: var(--shiny-chat-greeting-color);
-  animation: shiny-chat-greeting-reveal 300ms cubic-bezier(0.22, 1, 0.36, 1)
-    both;
+
+  &.shiny-chat-greeting--enter {
+    animation: shiny-chat-greeting-reveal 300ms
+      cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
 
   h1,
   h2,
@@ -73,7 +76,7 @@ shiny-chat-container {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .shiny-chat-greeting,
+  .shiny-chat-greeting.shiny-chat-greeting--enter,
   .shiny-chat-greeting[data-dismissing] {
     animation: none;
   }
