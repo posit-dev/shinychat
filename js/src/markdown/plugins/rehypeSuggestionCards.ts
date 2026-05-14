@@ -137,17 +137,17 @@ function promoteListToCards(list: Element, ordered: boolean): void {
       suggestionEl.properties.dataSuggestion = bodyText
     }
 
-    // aria-label: always set (overwriting any label from rehypeAccessibleSuggestions)
-    // so the announcement reflects the full visible card content.
-    if (ordered) {
-      const n = itemIndex + 1
-      suggestionEl.properties.ariaLabel = titleStr
-        ? `Use chat suggestion #${n}: ${titleStr} — ${bodyText}`
-        : `Use chat suggestion #${n}: ${bodyText}`
-    } else {
-      suggestionEl.properties.ariaLabel = titleStr
-        ? `Use chat suggestion: ${titleStr} — ${bodyText}`
-        : `Use chat suggestion: ${bodyText}`
+    if (!("ariaLabel" in suggestionEl.properties)) {
+      if (ordered) {
+        const n = itemIndex + 1
+        suggestionEl.properties.ariaLabel = titleStr
+          ? `Use chat suggestion #${n}: ${titleStr} — ${bodyText}`
+          : `Use chat suggestion #${n}: ${bodyText}`
+      } else {
+        suggestionEl.properties.ariaLabel = titleStr
+          ? `Use chat suggestion: ${titleStr} — ${bodyText}`
+          : `Use chat suggestion: ${bodyText}`
+      }
     }
 
     // CSS custom property for staggered animation; avoids the @for Sass loop.
