@@ -37,6 +37,8 @@ export interface ChatMessageData {
   insideThinkingTag?: boolean
   /** Buffers partial tag text at chunk boundaries (e.g. "<thi" or "</thin") */
   tagBuffer?: string
+  /** True when the stream was cancelled by the user before it completed. */
+  cancelled?: boolean
 }
 
 export interface ChatInputState {
@@ -51,14 +53,17 @@ export interface ChatToolState {
 export interface ChatState extends ChatInputState, ChatToolState {
   messages: ChatMessageData[]
   streamingMessage: ChatMessageData | null
+  cancelRequested: boolean
 }
 
 // Actions that originate from the UI (not from the server)
-export type UIAction = {
-  type: "INPUT_SENT"
-  content: string
-  role: "user"
-}
+export type UIAction =
+  | {
+      type: "INPUT_SENT"
+      content: string
+      role: "user"
+    }
+  | { type: "CANCEL_REQUESTED" }
 
 export type AnyAction = ChatAction | UIAction
 
@@ -67,6 +72,7 @@ export const initialState: ChatState = {
   streamingMessage: null,
   inputDisabled: false,
   inputPlaceholder: "Enter a message...",
+  cancelRequested: false,
   hiddenToolRequests: new Set(),
 }
 
@@ -621,12 +627,22 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       const last = state.streamingMessage
       if (!last || !last.streaming) return state
 
+      const finalized = finalizeMessage(last)
+      const withCancel = state.cancelRequested
+        ? { ...finalized, cancelled: true }
+        : finalized
+
       return {
         ...state,
-        messages: [...state.messages, finalizeMessage(last)],
+        messages: [...state.messages, withCancel],
         streamingMessage: null,
         inputDisabled: false,
+        cancelRequested: false,
       }
+    }
+
+    case "CANCEL_REQUESTED": {
+      return { ...state, cancelRequested: true }
     }
 
     case "clear":
@@ -644,13 +660,18 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     case "remove_loading": {
       const messages = removeLoadingMessage(state.messages)
       if (state.streamingMessage) {
-        messages.push(finalizeMessage(state.streamingMessage))
+        const finalized = finalizeMessage(state.streamingMessage)
+        const withCancel = state.cancelRequested
+          ? { ...finalized, cancelled: true }
+          : finalized
+        messages.push(withCancel)
       }
       return {
         ...state,
         messages,
         streamingMessage: null,
         inputDisabled: false,
+        cancelRequested: false,
       }
     }
 

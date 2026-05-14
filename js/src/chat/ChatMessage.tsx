@@ -67,6 +67,9 @@ export const ChatMessage = memo(function ChatMessage({
           }
           return el
         })}
+        {message.cancelled && (
+          <div className="shiny-chat-message-cancelled">Response cancelled</div>
+        )}
       </div>
     </div>
   )
