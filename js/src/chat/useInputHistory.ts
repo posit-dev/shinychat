@@ -6,6 +6,12 @@ export function useInputHistory(userMessages: string[]): {
 } {
   const indexRef = useRef<number>(-1)
   const draftsRef = useRef(new Map<number, string>())
+  const prevMessagesRef = useRef(userMessages)
+  if (prevMessagesRef.current !== userMessages) {
+    prevMessagesRef.current = userMessages
+    indexRef.current = -1
+    draftsRef.current.clear()
+  }
 
   const recall = useCallback(
     (direction: "up" | "down", currentValue: string): string | undefined => {

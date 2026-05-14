@@ -87,10 +87,9 @@ export const ChatInput = memo(
         const isUp = e.code === "ArrowUp"
         const isDown = e.code === "ArrowDown"
 
-        const atEnd = el.selectionStart === el.value.length
         if (
           (isUp || isDown) &&
-          (el.value.length === 0 || atEnd) &&
+          el.selectionStart === el.value.length &&
           !isComposingRef.current
         ) {
           const value = recall(isUp ? "up" : "down", el.value)

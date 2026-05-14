@@ -22,6 +22,7 @@ function renderChatInput(
     disabled: boolean
     placeholder: string
     onSend: () => void
+    userMessages: string[]
   }> = {},
   ref?: React.RefObject<ChatInputHandle | null>,
 ) {
@@ -37,7 +38,7 @@ function renderChatInput(
         disabled={props.disabled ?? false}
         placeholder={props.placeholder ?? "Type here..."}
         onSend={props.onSend}
-        userMessages={[]}
+        userMessages={props.userMessages ?? []}
       />
     </ChatDispatchContext.Provider>,
   )
@@ -324,6 +325,117 @@ describe("ChatInput", () => {
         ref.current?.setInputValue("x", { submit: true })
       })
       expect(transport.sendInput).toHaveBeenCalledWith("test-input", "x")
+    })
+  })
+
+  describe("input history navigation", () => {
+    const history = ["first", "second", "third"]
+
+    function setCursorAtEnd(textarea: HTMLTextAreaElement): void {
+      Object.defineProperty(textarea, "selectionStart", {
+        get: () => textarea.value.length,
+        configurable: true,
+      })
+    }
+
+    it("ArrowUp on empty input recalls most recent message", () => {
+      const { textarea } = renderChatInput({ userMessages: history })
+      setCursorAtEnd(textarea)
+
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+
+      expect(textarea.value).toBe("third")
+    })
+
+    it("ArrowUp cycles backward through history", () => {
+      const { textarea } = renderChatInput({ userMessages: history })
+      setCursorAtEnd(textarea)
+
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      expect(textarea.value).toBe("third")
+
+      setCursorAtEnd(textarea)
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      expect(textarea.value).toBe("second")
+
+      setCursorAtEnd(textarea)
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      expect(textarea.value).toBe("first")
+    })
+
+    it("ArrowDown past most recent clears input", () => {
+      const { textarea } = renderChatInput({ userMessages: history })
+      setCursorAtEnd(textarea)
+
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      expect(textarea.value).toBe("third")
+
+      setCursorAtEnd(textarea)
+      fireEvent.keyDown(textarea, { code: "ArrowDown" })
+      expect(textarea.value).toBe("")
+    })
+
+    it("ArrowDown from fresh state is a no-op", () => {
+      const { textarea } = renderChatInput({ userMessages: history })
+      setCursorAtEnd(textarea)
+
+      fireEvent.keyDown(textarea, { code: "ArrowDown" })
+
+      expect(textarea.value).toBe("")
+    })
+
+    it("does not trigger when cursor is not at end", () => {
+      const { textarea } = renderChatInput({ userMessages: history })
+
+      textarea.value = "some text"
+      fireEvent.input(textarea)
+      Object.defineProperty(textarea, "selectionStart", {
+        get: () => 4,
+        configurable: true,
+      })
+
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+
+      expect(textarea.value).toBe("some text")
+    })
+
+    it("does not trigger during IME composition", () => {
+      const { textarea } = renderChatInput({ userMessages: history })
+      setCursorAtEnd(textarea)
+
+      fireEvent.compositionStart(textarea)
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+
+      expect(textarea.value).toBe("")
+    })
+
+    it("no-op when history is empty", () => {
+      const { textarea } = renderChatInput({ userMessages: [] })
+      setCursorAtEnd(textarea)
+
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+
+      expect(textarea.value).toBe("")
+    })
+
+    it("resets history index after send", () => {
+      const { textarea } = renderChatInput({ userMessages: history })
+      setCursorAtEnd(textarea)
+
+      // Navigate to "second"
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      setCursorAtEnd(textarea)
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      expect(textarea.value).toBe("second")
+
+      // Send it
+      fireEvent.keyDown(textarea, { code: "Enter" })
+      expect(textarea.value).toBe("")
+
+      // Next ArrowUp should start from most recent again
+      setCursorAtEnd(textarea)
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      expect(textarea.value).toBe("third")
     })
   })
 })
