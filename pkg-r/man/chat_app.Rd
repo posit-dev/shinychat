@@ -13,6 +13,7 @@ chat_mod_ui(id, ..., client = deprecated(), messages = NULL)
 chat_mod_server(
   id,
   client,
+  greeting = NULL,
   bookmark_on_input = TRUE,
   bookmark_on_response = TRUE
 )
@@ -38,6 +39,13 @@ limitations; or disable bookmarking by setting this to \code{"disable"}.}
 \item{messages}{Initial messages shown in the chat, used only when \code{client}
 (in \code{chat_mod_ui()}) doesn't already contain turns. Passed to \code{messages}
 in \code{\link[=chat_ui]{chat_ui()}}.}
+
+\item{greeting}{Optional greeting to set when the module initializes.
+Accepts the same inputs as \code{\link[=chat_set_greeting]{chat_set_greeting()}} -- a string, an
+\code{\link[htmltools:HTML]{htmltools::HTML()}} object, \code{\link[htmltools:tagList]{htmltools::tagList()}}, a generator/stream,
+or a \code{chat_greeting()} wrapper. For greetings that need to react to
+per-session state or be replaced later, leave this \code{NULL} and call the
+returned \code{set_greeting()} helper instead.}
 
 \item{bookmark_on_input}{A logical value determines if the bookmark should be updated when the user submits a message. Default is \code{TRUE}.}
 
@@ -66,6 +74,10 @@ each message is a list with \code{role} and \code{content} fields. The
 updated after clearing. It can be one of: \code{"clear"} the chat history;
 \code{"set"} the chat history to \code{messages}; \code{"append"} \code{messages} to the
 existing chat history; or \code{"keep"} the existing chat history.
+\item \code{set_greeting()}: A function to set, stream, or clear the chat
+greeting. Takes the same arguments as \code{\link[=chat_set_greeting]{chat_set_greeting()}}, except
+for \code{id} and \code{session}, which are supplied automatically. Pass
+\code{NULL} to clear the greeting.
 \item \code{client}: The chat client object, which is mutated as you chat.
 }
 }

@@ -92,6 +92,10 @@
 #'       updated after clearing. It can be one of: `"clear"` the chat history;
 #'       `"set"` the chat history to `messages`; `"append"` `messages` to the
 #'       existing chat history; or `"keep"` the existing chat history.
+#'     * `set_greeting()`: A function to set, stream, or clear the chat
+#'       greeting. Takes the same arguments as [chat_set_greeting()], except
+#'       for `id` and `session`, which are supplied automatically. Pass
+#'       `NULL` to clear the greeting.
 #'     * `client`: The chat client object, which is mutated as you chat.
 #'
 #' @describeIn chat_app A simple Shiny app for live chatting. Note that this
@@ -159,10 +163,17 @@ chat_mod_ui <- function(
 
 #' @describeIn chat_app A simple chat app module server.
 #' @inheritParams chat_restore
+#' @param greeting Optional greeting to set when the module initializes.
+#'   Accepts the same inputs as [chat_set_greeting()] -- a string, an
+#'   [htmltools::HTML()] object, [htmltools::tagList()], a generator/stream,
+#'   or a `chat_greeting()` wrapper. For greetings that need to react to
+#'   per-session state or be replaced later, leave this `NULL` and call the
+#'   returned `set_greeting()` helper instead.
 #' @export
 chat_mod_server <- function(
   id,
   client,
+  greeting = NULL,
   bookmark_on_input = TRUE,
   bookmark_on_response = TRUE
 ) {
@@ -231,6 +242,14 @@ chat_mod_server <- function(
       chat_append("chat", response, role = role, icon = icon, session = session)
     }
 
+    set_greeting_mod <- function(greeting) {
+      chat_set_greeting("chat", greeting, session = session)
+    }
+
+    if (!is.null(greeting)) {
+      set_greeting_mod(greeting)
+    }
+
     client_clear <- function(
       messages = NULL,
       client_history = c("clear", "set", "append", "keep")
@@ -280,7 +299,8 @@ chat_mod_server <- function(
       client = client,
       append = chat_append_mod,
       update_user_input = chat_update_user_input,
-      clear = client_clear
+      clear = client_clear,
+      set_greeting = set_greeting_mod
     )
   })
 }
