@@ -39,6 +39,10 @@ export const ChatGreeting = memo(function ChatGreeting({
       if (reducedMotion) {
         setRemoved(true)
       } else {
+        const el = outerRef.current
+        if (el) {
+          el.style.setProperty("--_dismiss-height", `${el.offsetHeight}px`)
+        }
         setDismissing(true)
       }
     }
