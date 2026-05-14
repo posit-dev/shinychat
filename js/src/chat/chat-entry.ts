@@ -3,7 +3,7 @@ import { createElement } from "react"
 import { ChatApp } from "./ChatApp"
 import { getShinyTransport } from "../transport/shiny-transport"
 import type { ChatMessageData } from "./state"
-import type { ContentType } from "../transport/types"
+import type { ContentType, GreetingOptions } from "../transport/types"
 import { uuid } from "../utils/uuid"
 
 // Single shared transport instance for all chat instances on the page
@@ -38,6 +38,34 @@ function parseInitialMessages(container: HTMLElement): ChatMessageData[] {
   return messages
 }
 
+interface InitialGreeting {
+  content: string
+  contentType: ContentType
+  options: GreetingOptions
+}
+
+function parseInitialGreeting(
+  container: HTMLElement,
+): InitialGreeting | undefined {
+  const raw = container.getAttribute("greeting")
+  if (!raw) return undefined
+  try {
+    const parsed = JSON.parse(raw) as {
+      content?: string
+      content_type?: string
+      options?: GreetingOptions
+    }
+    if (!parsed.content) return undefined
+    return {
+      content: parsed.content,
+      contentType: (parsed.content_type as ContentType) ?? "markdown",
+      options: parsed.options ?? {},
+    }
+  } catch {
+    return undefined
+  }
+}
+
 class ChatContainerElement extends HTMLElement {
   private reactRoot: Root | null = null
 
@@ -55,6 +83,8 @@ class ChatContainerElement extends HTMLElement {
 
     const initialMessages = parseInitialMessages(this)
 
+    const initialGreeting = parseInitialGreeting(this)
+
     // Unbind any Shiny inputs/outputs in the server-rendered content before
     // React replaces the DOM. Without this, Shiny's internal binding registry
     // retains stale references, preventing re-binding of the new React-rendered
@@ -71,6 +101,7 @@ class ChatContainerElement extends HTMLElement {
         inputId,
         placeholder,
         initialMessages,
+        initialGreeting,
       }),
     )
   }

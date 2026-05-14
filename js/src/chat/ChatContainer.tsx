@@ -9,12 +9,13 @@ import { createPortal } from "react-dom"
 import { useStickToBottom } from "use-stick-to-bottom"
 import { ChatMessages } from "./ChatMessages"
 import { ChatMessage } from "./ChatMessage"
+import { ChatGreeting } from "./ChatGreeting"
 import { MessageErrorBoundary } from "./MessageErrorBoundary"
 import { ChatInput, type ChatInputHandle } from "./ChatInput"
 import { ScrollToBottomButton } from "./ScrollToBottomButton"
 import { ExternalLinkDialogComponent } from "./ExternalLinkDialog"
 import { ChatScrollContext } from "./context"
-import type { ChatMessageData } from "./state"
+import type { ChatMessageData, GreetingData } from "./state"
 import type { ChatTransport } from "../transport/types"
 
 declare global {
@@ -31,6 +32,7 @@ export interface ChatContainerProps {
   inputPlaceholder: string
   iconAssistant?: string
   inputId: string
+  greeting?: GreetingData | null
 }
 
 export type ChatContainerHandle = ChatInputHandle
@@ -47,6 +49,7 @@ export const ChatContainer = forwardRef<
     inputPlaceholder,
     iconAssistant,
     inputId,
+    greeting,
   },
   ref,
 ) {
@@ -262,6 +265,7 @@ export const ChatContainer = forwardRef<
             onKeyDown={onSuggestionKeydown}
           >
             <ChatScrollContext.Provider value={stopScroll}>
+              {greeting != null && <ChatGreeting greeting={greeting} />}
               <ChatMessages messages={messages} iconAssistant={iconAssistant} />
               {streamingMessage && (
                 <MessageErrorBoundary key={streamingMessage.id}>

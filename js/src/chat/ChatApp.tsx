@@ -9,9 +9,20 @@ import {
   initialState,
   type ChatMessageData,
   type ChatToolState,
+  type GreetingData,
 } from "./state"
 import { ChatContainer, type ChatContainerHandle } from "./ChatContainer"
-import type { ChatTransport, ShinyLifecycle } from "../transport/types"
+import type {
+  ChatTransport,
+  ShinyLifecycle,
+  GreetingOptions,
+} from "../transport/types"
+
+interface InitialGreeting {
+  content: string
+  contentType: import("../transport/types").ContentType
+  options: GreetingOptions
+}
 
 interface ChatAppProps {
   transport: ChatTransport
@@ -21,6 +32,30 @@ interface ChatAppProps {
   inputId: string
   placeholder?: string
   initialMessages?: ChatMessageData[]
+  initialGreeting?: InitialGreeting
+}
+
+function makeInitialGreeting(
+  greeting: InitialGreeting,
+  messagesLength: number,
+): GreetingData {
+  const dismissible = greeting.options.dismissible !== false
+  const autoDismiss = dismissible && messagesLength > 0
+  return {
+    content: greeting.content,
+    contentType: greeting.contentType,
+    streaming: false,
+    visible: !autoDismiss,
+    dismissed: autoDismiss,
+    options: greeting.options,
+    blocks: [
+      {
+        type: "content",
+        content: greeting.content,
+        contentType: greeting.contentType,
+      },
+    ],
+  }
 }
 
 export function ChatApp({
@@ -31,11 +66,16 @@ export function ChatApp({
   inputId,
   placeholder,
   initialMessages,
+  initialGreeting,
 }: ChatAppProps) {
+  const messages = initialMessages ?? []
   const [state, dispatch] = useReducer(chatReducer, {
     ...initialState,
     inputPlaceholder: placeholder ?? initialState.inputPlaceholder,
-    messages: initialMessages ?? [],
+    messages,
+    greeting: initialGreeting
+      ? makeInitialGreeting(initialGreeting, messages.length)
+      : null,
   })
 
   const containerRef = useRef<ChatContainerHandle>(null)
@@ -88,6 +128,7 @@ export function ChatApp({
             inputPlaceholder={state.inputPlaceholder}
             iconAssistant={iconAssistant}
             inputId={inputId}
+            greeting={state.greeting}
           />
         </ChatDispatchContext.Provider>
       </ChatToolContext.Provider>

@@ -2,6 +2,10 @@ import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 
 export type ContentType = "markdown" | "html" | "text" | "thinking"
 
+export interface GreetingOptions {
+  dismissible?: boolean
+}
+
 export type MessagePayload = {
   id?: string
   role: "user" | "assistant"
@@ -31,6 +35,26 @@ export type ChatAction =
     }
   | { type: "remove_loading" }
   | { type: "hide_tool_request"; requestId: string }
+  | {
+      type: "greeting"
+      content: string
+      content_type: ContentType
+      options: GreetingOptions
+    }
+  | {
+      type: "greeting_start"
+      content: string
+      content_type: ContentType
+      options: GreetingOptions
+    }
+  | {
+      type: "greeting_chunk"
+      content: string
+      operation: "append" | "replace"
+      content_type?: ContentType
+    }
+  | { type: "greeting_end" }
+  | { type: "greeting_clear" }
 
 export type ShinyChatEnvelope = {
   id: string

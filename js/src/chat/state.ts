@@ -2,6 +2,7 @@ import type {
   ContentType,
   ChatAction,
   MessagePayload,
+  GreetingOptions,
 } from "../transport/types"
 import { uuid } from "../utils/uuid"
 
@@ -39,6 +40,16 @@ export interface ChatMessageData {
   tagBuffer?: string
 }
 
+export interface GreetingData {
+  content: string
+  contentType: ContentType
+  streaming: boolean
+  visible: boolean
+  dismissed: boolean
+  options: GreetingOptions
+  blocks: ContentBlock[]
+}
+
 export interface ChatInputState {
   inputDisabled: boolean
   inputPlaceholder: string
@@ -51,6 +62,7 @@ export interface ChatToolState {
 export interface ChatState extends ChatInputState, ChatToolState {
   messages: ChatMessageData[]
   streamingMessage: ChatMessageData | null
+  greeting: GreetingData | null
 }
 
 // Actions that originate from the UI (not from the server)
@@ -65,6 +77,7 @@ export type AnyAction = ChatAction | UIAction
 export const initialState: ChatState = {
   messages: [],
   streamingMessage: null,
+  greeting: null,
   inputDisabled: false,
   inputPlaceholder: "Enter a message...",
   hiddenToolRequests: new Set(),
@@ -354,20 +367,30 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         isPlaceholder: true,
         blocks: [],
       }
+      const greetingDismissedByInput =
+        state.greeting?.options.dismissible !== false && state.greeting?.visible
+          ? { ...state.greeting, visible: false, dismissed: true }
+          : state.greeting
       return {
         ...state,
         messages: [...state.messages, userMsg, loadingMsg],
         inputDisabled: true,
+        greeting: greetingDismissedByInput ?? null,
       }
     }
 
     case "message": {
       const messages = removeLoadingMessage(state.messages)
+      const greetingDismissedByMessage =
+        state.greeting?.options.dismissible !== false && state.greeting?.visible
+          ? { ...state.greeting, visible: false, dismissed: true }
+          : state.greeting
       return {
         ...state,
         messages: [...messages, messagePayloadToData(action.message)],
         streamingMessage: null,
         inputDisabled: false,
+        greeting: greetingDismissedByMessage ?? null,
       }
     }
 
@@ -378,11 +401,16 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       newMsg.blocks = newMsg.blocks.map((b) =>
         b.type === "thinking" ? { ...b, streaming: true } : b,
       )
+      const greetingDismissedByChunkStart =
+        state.greeting?.options.dismissible !== false && state.greeting?.visible
+          ? { ...state.greeting, visible: false, dismissed: true }
+          : state.greeting
       return {
         ...state,
         messages,
         streamingMessage: newMsg,
         inputDisabled: true,
+        greeting: greetingDismissedByChunkStart ?? null,
       }
     }
 
@@ -629,11 +657,16 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       }
     }
 
-    case "clear":
+    case "clear": {
+      const greetingAfterClear = state.greeting
+        ? { ...state.greeting, visible: true, dismissed: false }
+        : null
       return {
         ...initialState,
         inputPlaceholder: state.inputPlaceholder,
+        greeting: greetingAfterClear,
       }
+    }
 
     case "update_input":
       return {
@@ -660,6 +693,104 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       newSet.add(action.requestId)
       return { ...state, hiddenToolRequests: newSet }
     }
+
+    case "greeting": {
+      if (state.greeting?.dismissed) return state
+      const dismissible = action.options.dismissible !== false
+      const autoDismiss = dismissible && state.messages.length > 0
+      return {
+        ...state,
+        greeting: {
+          content: action.content,
+          contentType: action.content_type,
+          streaming: false,
+          visible: !autoDismiss,
+          dismissed: autoDismiss,
+          options: action.options,
+          blocks: [
+            {
+              type: "content",
+              content: action.content,
+              contentType: action.content_type,
+            },
+          ],
+        },
+      }
+    }
+
+    case "greeting_start": {
+      if (state.greeting?.dismissed) return state
+      const dismissible = action.options.dismissible !== false
+      const autoDismiss = dismissible && state.messages.length > 0
+      return {
+        ...state,
+        greeting: {
+          content: action.content,
+          contentType: action.content_type,
+          streaming: true,
+          visible: !autoDismiss,
+          dismissed: autoDismiss,
+          options: action.options,
+          blocks: action.content
+            ? [
+                {
+                  type: "content",
+                  content: action.content,
+                  contentType: action.content_type,
+                },
+              ]
+            : [],
+        },
+      }
+    }
+
+    case "greeting_chunk": {
+      const greeting = state.greeting
+      if (!greeting || greeting.dismissed || !greeting.streaming) return state
+
+      const chunkType = action.content_type ?? greeting.contentType
+      let blocks: ContentBlock[]
+
+      if (action.operation === "replace") {
+        blocks = [
+          { type: "content", content: action.content, contentType: chunkType },
+        ]
+      } else {
+        const existing = [...greeting.blocks]
+        const last = existing[existing.length - 1]
+        if (last && last.contentType === chunkType) {
+          existing[existing.length - 1] = {
+            ...last,
+            content: last.content + action.content,
+          }
+          blocks = existing
+        } else {
+          blocks = [
+            ...existing,
+            {
+              type: "content",
+              content: action.content,
+              contentType: chunkType,
+            },
+          ]
+        }
+      }
+
+      const content = blocks.map((b) => b.content).join("")
+      return {
+        ...state,
+        greeting: { ...greeting, content, contentType: chunkType, blocks },
+      }
+    }
+
+    case "greeting_end": {
+      const greeting = state.greeting
+      if (!greeting?.streaming) return state
+      return { ...state, greeting: { ...greeting, streaming: false } }
+    }
+
+    case "greeting_clear":
+      return { ...state, greeting: null }
 
     default: {
       const _exhaustive: never = action
