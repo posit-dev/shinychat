@@ -263,6 +263,9 @@ export const ChatContainer = forwardRef<
             onFocus={handleFocusIn}
             onBlur={handleFocusOut}
             onKeyDown={onSuggestionKeydown}
+            {...(greeting?.dismissing
+              ? { "data-greeting-dismissing": "" }
+              : {})}
           >
             <ChatScrollContext.Provider value={stopScroll}>
               {greeting != null && <ChatGreeting greeting={greeting} />}

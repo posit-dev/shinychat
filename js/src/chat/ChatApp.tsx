@@ -47,6 +47,7 @@ function makeInitialGreeting(
     streaming: false,
     visible: !autoDismiss,
     dismissed: autoDismiss,
+    dismissing: false,
     options: greeting.options,
     blocks: [
       {

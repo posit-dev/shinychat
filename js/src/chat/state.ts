@@ -46,6 +46,7 @@ export interface GreetingData {
   streaming: boolean
   visible: boolean
   dismissed: boolean
+  dismissing: boolean
   options: GreetingOptions
   blocks: ContentBlock[]
 }
@@ -66,11 +67,13 @@ export interface ChatState extends ChatInputState, ChatToolState {
 }
 
 // Actions that originate from the UI (not from the server)
-export type UIAction = {
-  type: "INPUT_SENT"
-  content: string
-  role: "user"
-}
+export type UIAction =
+  | {
+      type: "INPUT_SENT"
+      content: string
+      role: "user"
+    }
+  | { type: "greeting_dismissed" }
 
 export type AnyAction = ChatAction | UIAction
 
@@ -369,7 +372,12 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       }
       const greetingDismissedByInput =
         state.greeting?.options.dismissible !== false && state.greeting?.visible
-          ? { ...state.greeting, visible: false, dismissed: true }
+          ? {
+              ...state.greeting,
+              visible: false,
+              dismissed: true,
+              dismissing: true,
+            }
           : state.greeting
       return {
         ...state,
@@ -383,7 +391,12 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       const messages = removeLoadingMessage(state.messages)
       const greetingDismissedByMessage =
         state.greeting?.options.dismissible !== false && state.greeting?.visible
-          ? { ...state.greeting, visible: false, dismissed: true }
+          ? {
+              ...state.greeting,
+              visible: false,
+              dismissed: true,
+              dismissing: true,
+            }
           : state.greeting
       return {
         ...state,
@@ -403,7 +416,12 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       )
       const greetingDismissedByChunkStart =
         state.greeting?.options.dismissible !== false && state.greeting?.visible
-          ? { ...state.greeting, visible: false, dismissed: true }
+          ? {
+              ...state.greeting,
+              visible: false,
+              dismissed: true,
+              dismissing: true,
+            }
           : state.greeting
       return {
         ...state,
@@ -659,7 +677,12 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
 
     case "clear": {
       const greetingAfterClear = state.greeting
-        ? { ...state.greeting, visible: true, dismissed: false }
+        ? {
+            ...state.greeting,
+            visible: true,
+            dismissed: false,
+            dismissing: false,
+          }
         : null
       return {
         ...initialState,
@@ -706,6 +729,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
           streaming: false,
           visible: !autoDismiss,
           dismissed: autoDismiss,
+          dismissing: false,
           options: action.options,
           blocks: [
             {
@@ -730,6 +754,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
           streaming: true,
           visible: !autoDismiss,
           dismissed: autoDismiss,
+          dismissing: false,
           options: action.options,
           blocks: action.content
             ? [
@@ -742,6 +767,12 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
             : [],
         },
       }
+    }
+
+    case "greeting_dismissed": {
+      const greeting = state.greeting
+      if (!greeting || !greeting.dismissing) return state
+      return { ...state, greeting: { ...greeting, dismissing: false } }
     }
 
     case "greeting_chunk": {

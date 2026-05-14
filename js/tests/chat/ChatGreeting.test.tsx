@@ -1,7 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { render, act } from "@testing-library/react"
 import { ChatGreeting } from "../../src/chat/ChatGreeting"
+import { ChatDispatchContext } from "../../src/chat/context"
 import type { GreetingData } from "../../src/chat/state"
+import type { AnyAction } from "../../src/chat/state"
+
+function renderWithDispatch(
+  element: React.ReactElement,
+  dispatch: (a: AnyAction) => void = () => {},
+) {
+  return render(
+    <ChatDispatchContext.Provider value={dispatch}>
+      {element}
+    </ChatDispatchContext.Provider>,
+  )
+}
 
 function makeGreeting(overrides: Partial<GreetingData> = {}): GreetingData {
   return {
@@ -10,6 +23,7 @@ function makeGreeting(overrides: Partial<GreetingData> = {}): GreetingData {
     streaming: false,
     visible: true,
     dismissed: false,
+    dismissing: false,
     options: {},
     blocks: [{ type: "content", content: "Hello!", contentType: "markdown" }],
     ...overrides,
@@ -36,12 +50,14 @@ afterEach(() => {
 
 describe("ChatGreeting", () => {
   it("renders content when visible:true", () => {
-    const { container } = render(<ChatGreeting greeting={makeGreeting()} />)
+    const { container } = renderWithDispatch(
+      <ChatGreeting greeting={makeGreeting()} />,
+    )
     expect(container.querySelector(".shiny-chat-greeting")).not.toBeNull()
   })
 
   it("renders nothing when visible:false and not dismissing", () => {
-    const { container } = render(
+    const { container } = renderWithDispatch(
       <ChatGreeting
         greeting={makeGreeting({ visible: false, dismissed: true })}
       />,
@@ -49,52 +65,55 @@ describe("ChatGreeting", () => {
     expect(container.querySelector(".shiny-chat-greeting")).toBeNull()
   })
 
-  it("keeps greeting in DOM during pre-dismiss delay, then flips data-dismissing", () => {
-    vi.useFakeTimers()
-    try {
-      const { container, rerender } = render(
-        <ChatGreeting greeting={makeGreeting({ visible: true })} />,
-      )
-
-      act(() => {
-        rerender(
-          <ChatGreeting
-            greeting={makeGreeting({ visible: false, dismissed: true })}
-          />,
-        )
-      })
-
-      const pre = container.querySelector(".shiny-chat-greeting")
-      expect(pre).not.toBeNull()
-      expect(pre?.hasAttribute("data-dismissing")).toBe(false)
-
-      act(() => {
-        vi.advanceTimersByTime(500)
-      })
-
-      const post = container.querySelector(".shiny-chat-greeting")
-      expect(post).not.toBeNull()
-      expect(post?.hasAttribute("data-dismissing")).toBe(true)
-    } finally {
-      vi.useRealTimers()
-    }
+  it("renders with data-dismissing when greeting.dismissing is true", () => {
+    const { container } = renderWithDispatch(
+      <ChatGreeting
+        greeting={makeGreeting({
+          visible: false,
+          dismissed: true,
+          dismissing: true,
+        })}
+      />,
+    )
+    const el = container.querySelector(".shiny-chat-greeting")
+    expect(el).not.toBeNull()
+    expect(el?.hasAttribute("data-dismissing")).toBe(true)
   })
 
-  it("removes immediately (no data-dismissing) when prefers-reduced-motion is set", () => {
+  it("dispatches greeting_dismissed immediately when prefers-reduced-motion is set", () => {
     mockMatchMedia(true)
+    const dispatch = vi.fn()
 
-    const { container, rerender } = render(
-      <ChatGreeting greeting={makeGreeting({ visible: true })} />,
+    renderWithDispatch(
+      <ChatGreeting
+        greeting={makeGreeting({
+          visible: false,
+          dismissed: true,
+          dismissing: true,
+        })}
+      />,
+      dispatch,
     )
 
-    act(() => {
-      rerender(
-        <ChatGreeting
-          greeting={makeGreeting({ visible: false, dismissed: true })}
-        />,
-      )
-    })
+    expect(dispatch).toHaveBeenCalledWith({ type: "greeting_dismissed" })
+  })
 
-    expect(container.querySelector(".shiny-chat-greeting")).toBeNull()
+  it("dispatches greeting_dismissed on animationend", () => {
+    const dispatch = vi.fn()
+    const { container } = renderWithDispatch(
+      <ChatGreeting
+        greeting={makeGreeting({
+          visible: false,
+          dismissed: true,
+          dismissing: true,
+        })}
+      />,
+      dispatch,
+    )
+    const el = container.querySelector(".shiny-chat-greeting") as HTMLElement
+    act(() => {
+      el.dispatchEvent(new Event("animationend"))
+    })
+    expect(dispatch).toHaveBeenCalledWith({ type: "greeting_dismissed" })
   })
 })

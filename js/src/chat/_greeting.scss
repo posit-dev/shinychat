@@ -42,6 +42,12 @@ shiny-chat-container {
   padding-bottom: 0;
 }
 
+// While the greeting is collapsing, hide any newly-added messages so the
+// greeting finishes its exit animation before the reply pops into view.
+.shiny-chat-messages-content[data-greeting-dismissing] > *:not(.shiny-chat-greeting) {
+  display: none;
+}
+
 @keyframes shiny-chat-greeting-reveal {
   from {
     opacity: 0;

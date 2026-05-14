@@ -3,12 +3,14 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
+  useContext,
   memo,
   type CSSProperties,
 } from "react"
 import type { GreetingData } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
+import { ChatDispatchContext } from "./context"
 
 interface ChatGreetingProps {
   greeting: GreetingData
@@ -29,42 +31,18 @@ function usePrefersReducedMotion(): boolean {
   return reduced
 }
 
-// Time the new user / assistant messages settle into the DOM before the
-// greeting starts its collapse animation — without this the eye has to track
-// too much movement at once.
-const DISMISS_DELAY_MS = 350
-
 export const ChatGreeting = memo(function ChatGreeting({
   greeting,
 }: ChatGreetingProps) {
   const reducedMotion = usePrefersReducedMotion()
-  const [dismissing, setDismissing] = useState(false)
-  const [pendingDismiss, setPendingDismiss] = useState(false)
-  const [removed, setRemoved] = useState(false)
-  const [prevVisible, setPrevVisible] = useState(greeting.visible)
+  const dispatch = useContext(ChatDispatchContext)
   const outerRef = useRef<HTMLDivElement>(null)
   // Captured each layout pass while the greeting is at its natural height, so
   // the dismiss animation can interpolate from a known starting height set
   // inline in the same render that flips data-dismissing.
   const lastHeightRef = useRef<number | null>(null)
 
-  // Detect visible:true → visible:false (and the inverse) synchronously during
-  // render. Without this, the next commit returns null briefly before
-  // dismissing flips, and the greeting visually disappears then re-appears.
-  if (prevVisible !== greeting.visible) {
-    setPrevVisible(greeting.visible)
-    if (prevVisible && !greeting.visible) {
-      if (reducedMotion) {
-        setRemoved(true)
-      } else {
-        setPendingDismiss(true)
-      }
-    } else if (greeting.visible) {
-      setDismissing(false)
-      setPendingDismiss(false)
-      setRemoved(false)
-    }
-  }
+  const dismissing = greeting.dismissing
 
   useLayoutEffect(() => {
     if (!dismissing && outerRef.current) {
@@ -73,29 +51,23 @@ export const ChatGreeting = memo(function ChatGreeting({
   })
 
   useEffect(() => {
-    if (!pendingDismiss) return
-    const timer = window.setTimeout(() => {
-      setPendingDismiss(false)
-      setDismissing(true)
-    }, DISMISS_DELAY_MS)
-    return () => window.clearTimeout(timer)
-  }, [pendingDismiss])
-
-  useEffect(() => {
     if (!dismissing) return
+    if (reducedMotion) {
+      dispatch?.({ type: "greeting_dismissed" })
+      return
+    }
     const el = outerRef.current
     if (!el) return
 
     function onAnimationEnd() {
-      setRemoved(true)
-      setDismissing(false)
+      dispatch?.({ type: "greeting_dismissed" })
     }
 
     el.addEventListener("animationend", onAnimationEnd, { once: true })
     return () => el.removeEventListener("animationend", onAnimationEnd)
-  }, [dismissing])
+  }, [dismissing, reducedMotion, dispatch])
 
-  if (removed || (!greeting.visible && !pendingDismiss && !dismissing)) {
+  if (!greeting.visible && !dismissing) {
     return null
   }
 

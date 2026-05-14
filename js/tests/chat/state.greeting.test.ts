@@ -119,6 +119,7 @@ describe("chatReducer — greeting actions", () => {
           streaming: false,
           visible: false,
           dismissed: true,
+          dismissing: false,
           options: {},
           blocks: [],
         },
@@ -180,6 +181,7 @@ describe("chatReducer — greeting actions", () => {
           streaming: false,
           visible: false,
           dismissed: true,
+          dismissing: false,
           options: {},
           blocks: [],
         },
@@ -214,6 +216,7 @@ describe("chatReducer — greeting actions", () => {
           streaming: true,
           visible: true,
           dismissed: false,
+          dismissing: false,
           options: {},
           blocks: [{ type: "content", content, contentType: "markdown" }],
         },
@@ -285,6 +288,7 @@ describe("chatReducer — greeting actions", () => {
           streaming: true,
           visible: false,
           dismissed: true,
+          dismissing: false,
           options: {},
           blocks: [],
         },
@@ -305,8 +309,11 @@ describe("chatReducer — greeting actions", () => {
           streaming: false,
           visible: true,
           dismissed: false,
+          dismissing: false,
           options: {},
-          blocks: [{ type: "content", content: "final", contentType: "markdown" }],
+          blocks: [
+            { type: "content", content: "final", contentType: "markdown" },
+          ],
         },
       })
       const next = chatReducer(state, {
@@ -327,8 +334,11 @@ describe("chatReducer — greeting actions", () => {
           streaming: true,
           visible: true,
           dismissed: false,
+          dismissing: false,
           options: {},
-          blocks: [{ type: "content", content: "done", contentType: "markdown" }],
+          blocks: [
+            { type: "content", content: "done", contentType: "markdown" },
+          ],
         },
       })
       const next = chatReducer(state, { type: "greeting_end" })
@@ -344,6 +354,7 @@ describe("chatReducer — greeting actions", () => {
           streaming: false,
           visible: true,
           dismissed: false,
+          dismissing: false,
           options: {},
           blocks: [],
         },
@@ -368,6 +379,7 @@ describe("chatReducer — greeting actions", () => {
           streaming: false,
           visible: true,
           dismissed: false,
+          dismissing: false,
           options: {},
           blocks: [],
         },
@@ -384,6 +396,7 @@ describe("chatReducer — greeting actions", () => {
           streaming: false,
           visible: false,
           dismissed: true,
+          dismissing: false,
           options: {},
           blocks: [],
         },
@@ -414,6 +427,7 @@ describe("chatReducer — greeting actions", () => {
           streaming: false,
           visible: true,
           dismissed: false,
+          dismissing: false,
           options: { dismissible: true },
           blocks: [],
         },
@@ -434,6 +448,7 @@ describe("chatReducer — greeting actions", () => {
           streaming: false,
           visible: true,
           dismissed: false,
+          dismissing: false,
           options: { dismissible: false },
           blocks: [],
         },
@@ -456,13 +471,18 @@ describe("chatReducer — greeting actions", () => {
           streaming: false,
           visible: true,
           dismissed: false,
+          dismissing: false,
           options: {},
           blocks: [],
         },
       })
       const next = chatReducer(state, {
         type: "message",
-        message: { role: "assistant", content: "Reply", content_type: "markdown" },
+        message: {
+          role: "assistant",
+          content: "Reply",
+          content_type: "markdown",
+        },
       })
       expect(next.greeting).toMatchObject({ visible: false, dismissed: true })
     })
@@ -475,13 +495,18 @@ describe("chatReducer — greeting actions", () => {
           streaming: false,
           visible: true,
           dismissed: false,
+          dismissing: false,
           options: { dismissible: false },
           blocks: [],
         },
       })
       const next = chatReducer(state, {
         type: "message",
-        message: { role: "assistant", content: "Reply", content_type: "markdown" },
+        message: {
+          role: "assistant",
+          content: "Reply",
+          content_type: "markdown",
+        },
       })
       expect(next.greeting).toMatchObject({ visible: true, dismissed: false })
     })
@@ -496,13 +521,18 @@ describe("chatReducer — greeting actions", () => {
           streaming: false,
           visible: true,
           dismissed: false,
+          dismissing: false,
           options: {},
           blocks: [],
         },
       })
       const next = chatReducer(state, {
         type: "chunk_start",
-        message: { role: "assistant", content: "...", content_type: "markdown" },
+        message: {
+          role: "assistant",
+          content: "...",
+          content_type: "markdown",
+        },
       })
       expect(next.greeting).toMatchObject({ visible: false, dismissed: true })
     })
@@ -515,13 +545,18 @@ describe("chatReducer — greeting actions", () => {
           streaming: false,
           visible: true,
           dismissed: false,
+          dismissing: false,
           options: { dismissible: false },
           blocks: [],
         },
       })
       const next = chatReducer(state, {
         type: "chunk_start",
-        message: { role: "assistant", content: "...", content_type: "markdown" },
+        message: {
+          role: "assistant",
+          content: "...",
+          content_type: "markdown",
+        },
       })
       expect(next.greeting).toMatchObject({ visible: true, dismissed: false })
     })
@@ -536,6 +571,7 @@ describe("chatReducer — greeting actions", () => {
           streaming: false,
           visible: false,
           dismissed: true,
+          dismissing: false,
           options: {},
           blocks: [],
         },
