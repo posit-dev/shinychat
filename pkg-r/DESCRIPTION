@@ -37,6 +37,7 @@ Suggests:
     covr,
     knitr,
     later,
+    R6,
     testthat (>= 3.0.0),
     withr
 Config/Needs/website: tidyverse/tidytemplate, rmarkdown, weathR, gt, glue,
