@@ -12,6 +12,7 @@ from htmltools import (
     ReprHtml,
     Tag,
     Tagifiable,
+    Tagified,
     TagList,
 )
 from packaging import version
@@ -83,7 +84,7 @@ class ToolRequestComponent(ToolCardComponent):
     arguments: str = ""
     "The function arguments as requested by the LLM, typically in JSON format."
 
-    def tagify(self):
+    def tagify(self) -> Tagified:
         icon_ui = TagList(self.icon).render()
 
         return Tag(
@@ -97,7 +98,7 @@ class ToolRequestComponent(ToolCardComponent):
             expanded="" if self.expanded else None,
             arguments=self.arguments,
             *icon_ui["dependencies"],
-        )
+        ).tagify()
 
 
 ValueType = Literal["html", "markdown", "text", "code"]
@@ -137,7 +138,7 @@ class ToolResultComponent(ToolCardComponent):
     full_screen: bool = False
     "Controls whether a fullscreen toggle button is displayed on the card."
 
-    def tagify(self):
+    def tagify(self) -> Tagified:
         icon_ui = TagList(self.icon).render()
 
         if self.value_type == "html":
@@ -169,7 +170,7 @@ class ToolResultComponent(ToolCardComponent):
             *icon_ui["dependencies"],
             *value_ui["dependencies"],
             *footer_ui["dependencies"],
-        )
+        ).tagify()
 
 
 class ToolResultDisplay(BaseModel):

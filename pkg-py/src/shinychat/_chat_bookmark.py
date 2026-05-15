@@ -10,7 +10,7 @@ from typing import (
     runtime_checkable,
 )
 
-from htmltools import TagChild
+from htmltools import Tagified
 
 if TYPE_CHECKING:
     from shiny.types import Jsonifiable
@@ -68,7 +68,7 @@ class BookmarkCancelCallback:
     def __call__(self):
         self.cancel()
 
-    def tagify(self) -> TagChild:
+    def tagify(self) -> Tagified:
         return ""
 
 
