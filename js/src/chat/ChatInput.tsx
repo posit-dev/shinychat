@@ -9,7 +9,7 @@ import {
 import { useChatDispatch } from "./context"
 import { useInputHistory } from "./useInputHistory"
 import type { ChatTransport } from "../transport/types"
-import { arrowUpCircleFill } from "../utils/icons"
+import { arrowUpCircleFill, stopCircleFill } from "../utils/icons"
 
 export interface ChatInputProps {
   transport: ChatTransport
@@ -19,6 +19,10 @@ export interface ChatInputProps {
   placeholder: string
   onSend?: () => void
   userMessages: string[]
+  enableCancel?: boolean
+  cancelRequested?: boolean
+  isStreaming?: boolean
+  onCancel?: () => void
 }
 
 export interface ChatInputHandle {
@@ -39,6 +43,10 @@ export const ChatInput = memo(
       placeholder,
       onSend,
       userMessages,
+      enableCancel,
+      cancelRequested,
+      isStreaming,
+      onCancel,
     },
     ref,
   ) {
@@ -177,6 +185,7 @@ export const ChatInput = memo(
     )
 
     const sendButtonDisabled = disabled || !hasText
+    const showStopButton = enableCancel && isStreaming
 
     return (
       <>
@@ -194,15 +203,27 @@ export const ChatInput = memo(
           aria-label="Chat message"
           data-shiny-no-bind-input
         />
-        <button
-          type="button"
-          className="shiny-chat-btn-send"
-          title="Send message"
-          aria-label="Send message"
-          disabled={sendButtonDisabled}
-          onClick={() => sendInput()}
-          dangerouslySetInnerHTML={{ __html: arrowUpCircleFill }}
-        />
+        {showStopButton ? (
+          <button
+            type="button"
+            className="shiny-chat-btn-send shiny-chat-btn-cancel"
+            title="Stop generating"
+            aria-label="Stop generating"
+            disabled={cancelRequested}
+            onClick={onCancel}
+            dangerouslySetInnerHTML={{ __html: stopCircleFill }}
+          />
+        ) : (
+          <button
+            type="button"
+            className="shiny-chat-btn-send"
+            title="Send message"
+            aria-label="Send message"
+            disabled={sendButtonDisabled}
+            onClick={() => sendInput()}
+            dangerouslySetInnerHTML={{ __html: arrowUpCircleFill }}
+          />
+        )}
       </>
     )
   }),

@@ -19,8 +19,10 @@ interface ChatAppProps {
   elementId: string
   iconAssistant?: string
   inputId: string
+  cancelId?: string
   placeholder?: string
   initialMessages?: ChatMessageData[]
+  enableCancel?: boolean
 }
 
 export function ChatApp({
@@ -29,8 +31,10 @@ export function ChatApp({
   elementId,
   iconAssistant,
   inputId,
+  cancelId,
   placeholder,
   initialMessages,
+  enableCancel,
 }: ChatAppProps) {
   const [state, dispatch] = useReducer(chatReducer, {
     ...initialState,
@@ -88,6 +92,9 @@ export function ChatApp({
             inputPlaceholder={state.inputPlaceholder}
             iconAssistant={iconAssistant}
             inputId={inputId}
+            cancelId={cancelId}
+            enableCancel={enableCancel}
+            cancelRequested={state.cancelRequested}
           />
         </ChatDispatchContext.Provider>
       </ChatToolContext.Provider>
