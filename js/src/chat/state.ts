@@ -625,7 +625,28 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
 
     case "chunk_end": {
       const last = state.streamingMessage
-      if (!last || !last.streaming) return state
+      if (!last || !last.streaming) {
+        if (state.cancelRequested) {
+          const messages = removeLoadingMessage(state.messages)
+          const cancelledMsg: ChatMessageData = {
+            id: uuid(),
+            role: "assistant",
+            content: "",
+            contentType: "markdown",
+            streaming: false,
+            cancelled: true,
+            blocks: [],
+          }
+          return {
+            ...state,
+            messages: [...messages, cancelledMsg],
+            streamingMessage: null,
+            inputDisabled: false,
+            cancelRequested: false,
+          }
+        }
+        return state
+      }
 
       const finalized = finalizeMessage(last)
       const withCancel = state.cancelRequested

@@ -149,8 +149,11 @@ shiny-chat-container {
 .shiny-chat-message-cancelled {
   font-size: 0.8em;
   opacity: 0.5;
-  margin-top: 0.5em;
   font-style: italic;
+
+  &:not(:first-child) {
+    margin-top: 0.5em;
+  }
 }
 
 /* Align the user message to the right */
