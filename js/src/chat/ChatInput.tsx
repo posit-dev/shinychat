@@ -8,7 +8,7 @@ import {
 } from "react"
 import { useChatDispatch } from "./context"
 import type { ChatTransport } from "../transport/types"
-import { arrowUpCircleFill } from "../utils/icons"
+import { arrowUpCircleFill, stopCircleFill } from "../utils/icons"
 
 export interface ChatInputProps {
   transport: ChatTransport
@@ -17,6 +17,10 @@ export interface ChatInputProps {
   hasTopShadow?: boolean
   placeholder: string
   onSend?: () => void
+  enableCancel?: boolean
+  cancelRequested?: boolean
+  isStreaming?: boolean
+  onCancel?: () => void
 }
 
 export interface ChatInputHandle {
@@ -29,7 +33,18 @@ export interface ChatInputHandle {
 
 export const ChatInput = memo(
   forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
-    { transport, inputId, disabled, hasTopShadow = false, placeholder, onSend },
+    {
+      transport,
+      inputId,
+      disabled,
+      hasTopShadow = false,
+      placeholder,
+      onSend,
+      enableCancel,
+      cancelRequested,
+      isStreaming,
+      onCancel,
+    },
     ref,
   ) {
     const dispatch = useChatDispatch()
@@ -145,6 +160,7 @@ export const ChatInput = memo(
     )
 
     const sendButtonDisabled = disabled || !hasText
+    const showStopButton = enableCancel && isStreaming
 
     return (
       <>
@@ -162,15 +178,27 @@ export const ChatInput = memo(
           aria-label="Chat message"
           data-shiny-no-bind-input
         />
-        <button
-          type="button"
-          className="shiny-chat-btn-send"
-          title="Send message"
-          aria-label="Send message"
-          disabled={sendButtonDisabled}
-          onClick={() => sendInput()}
-          dangerouslySetInnerHTML={{ __html: arrowUpCircleFill }}
-        />
+        {showStopButton ? (
+          <button
+            type="button"
+            className="shiny-chat-btn-send shiny-chat-btn-cancel"
+            title="Stop generating"
+            aria-label="Stop generating"
+            disabled={cancelRequested}
+            onClick={onCancel}
+            dangerouslySetInnerHTML={{ __html: stopCircleFill }}
+          />
+        ) : (
+          <button
+            type="button"
+            className="shiny-chat-btn-send"
+            title="Send message"
+            aria-label="Send message"
+            disabled={sendButtonDisabled}
+            onClick={() => sendInput()}
+            dangerouslySetInnerHTML={{ __html: arrowUpCircleFill }}
+          />
+        )}
       </>
     )
   }),

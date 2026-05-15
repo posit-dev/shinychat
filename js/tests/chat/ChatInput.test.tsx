@@ -12,6 +12,7 @@ import { createRef } from "react"
 function createMockTransport(): ChatTransport {
   return {
     sendInput: vi.fn(),
+    sendCancel: vi.fn(),
     onMessage: vi.fn(() => () => {}),
   }
 }
@@ -22,6 +23,10 @@ function renderChatInput(
     disabled: boolean
     placeholder: string
     onSend: () => void
+    enableCancel: boolean
+    cancelRequested: boolean
+    isStreaming: boolean
+    onCancel: () => void
   }> = {},
   ref?: React.RefObject<ChatInputHandle | null>,
 ) {
@@ -37,6 +42,10 @@ function renderChatInput(
         disabled={props.disabled ?? false}
         placeholder={props.placeholder ?? "Type here..."}
         onSend={props.onSend}
+        enableCancel={props.enableCancel}
+        cancelRequested={props.cancelRequested}
+        isStreaming={props.isStreaming}
+        onCancel={props.onCancel}
       />
     </ChatDispatchContext.Provider>,
   )
@@ -321,6 +330,68 @@ describe("ChatInput", () => {
         ref.current?.setInputValue("x", { submit: true })
       })
       expect(transport.sendInput).toHaveBeenCalledWith("test-input", "x")
+    })
+  })
+
+  describe("stop button", () => {
+    it("shows stop button instead of send button when streaming with cancel enabled", () => {
+      renderChatInput({ enableCancel: true, isStreaming: true })
+      expect(
+        screen.getByRole("button", { name: "Stop generating" }),
+      ).toBeTruthy()
+      expect(screen.queryByRole("button", { name: "Send message" })).toBeNull()
+    })
+
+    it("shows send button when not streaming even with cancel enabled", () => {
+      renderChatInput({ enableCancel: true, isStreaming: false })
+      expect(screen.getByRole("button", { name: "Send message" })).toBeTruthy()
+      expect(
+        screen.queryByRole("button", { name: "Stop generating" }),
+      ).toBeNull()
+    })
+
+    it("shows send button when cancel is not enabled even while streaming", () => {
+      renderChatInput({ enableCancel: false, isStreaming: true })
+      expect(screen.getByRole("button", { name: "Send message" })).toBeTruthy()
+      expect(
+        screen.queryByRole("button", { name: "Stop generating" }),
+      ).toBeNull()
+    })
+
+    it("calls onCancel when stop button is clicked", () => {
+      const onCancel = vi.fn()
+      renderChatInput({
+        enableCancel: true,
+        isStreaming: true,
+        onCancel,
+      })
+      const button = screen.getByRole("button", { name: "Stop generating" })
+      fireEvent.click(button)
+      expect(onCancel).toHaveBeenCalledTimes(1)
+    })
+
+    it("stop button is disabled when cancelRequested is true", () => {
+      renderChatInput({
+        enableCancel: true,
+        isStreaming: true,
+        cancelRequested: true,
+      })
+      const button = screen.getByRole("button", {
+        name: "Stop generating",
+      }) as HTMLButtonElement
+      expect(button.disabled).toBe(true)
+    })
+
+    it("stop button is enabled when cancelRequested is false", () => {
+      renderChatInput({
+        enableCancel: true,
+        isStreaming: true,
+        cancelRequested: false,
+      })
+      const button = screen.getByRole("button", {
+        name: "Stop generating",
+      }) as HTMLButtonElement
+      expect(button.disabled).toBe(false)
     })
   })
 })

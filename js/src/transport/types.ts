@@ -58,6 +58,7 @@ export type ShinyClientMessage = {
 /** Core transport: message passing between client and server. */
 export interface ChatTransport {
   sendInput(id: string, value: string): void
+  sendCancel(id: string): void
   onMessage(id: string, callback: (action: ChatAction) => void): () => void
 }
 
