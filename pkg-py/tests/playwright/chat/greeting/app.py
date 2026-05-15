@@ -27,15 +27,26 @@ Here are some more topics to explore.
 - <span class="suggestion">How do neural networks learn?</span>
 """
 
+if hasattr(ui, "toolbar"):
+    _header_buttons = ui.toolbar(
+        ui.toolbar_input_button("clear_chat", "Clear"),
+        ui.toolbar_input_button("clear_chat_and_greeting", "Reset"),
+        align="right",
+    )
+else:
+    _header_buttons = ui.TagList(
+        ui.input_action_button("clear_chat", "Clear", class_="btn-sm"),
+        ui.input_action_button(
+            "clear_chat_and_greeting", "Reset", class_="btn-sm"
+        ),
+    )
+
 app_ui = ui.page_fillable(
     ui.card(
         ui.card_header(
             "Greeting test app",
-            ui.toolbar(
-                ui.toolbar_input_button("clear_chat", "Clear"),
-                ui.toolbar_input_button("clear_chat_and_greeting", "Reset"),
-                align="right",
-            ),
+            _header_buttons,
+            class_="d-flex gap-2 align-items-center",
         ),
         chat_ui("chat", placeholder="Ask me anything...", fill=True),
     ),
