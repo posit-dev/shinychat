@@ -938,6 +938,9 @@ rlang::on_load(
 #' Clear all messages from a chat control
 #'
 #' @param id The ID of the chat element
+#' @param greeting If `TRUE`, also clears the greeting. When the greeting is
+#'   cleared, `greeting_requested` will fire again (if the chat is visible),
+#'   allowing the server to generate a new greeting.
 #' @param session The Shiny session object
 #'
 #' @export
@@ -963,9 +966,13 @@ rlang::on_load(
 #' }
 #'
 #' shinyApp(ui, server)
-chat_clear <- function(id, session = getDefaultReactiveDomain()) {
+chat_clear <- function(id, greeting = FALSE, session = getDefaultReactiveDomain()) {
   check_active_session(session)
-  send_chat_action(id, action = list(type = "clear"), session = session)
+  action <- list(type = "clear")
+  if (isTRUE(greeting)) {
+    action$greeting <- TRUE
+  }
+  send_chat_action(id, action = action, session = session)
 }
 
 #' Update the user input of a chat control

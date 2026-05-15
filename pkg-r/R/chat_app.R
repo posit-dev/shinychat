@@ -252,6 +252,7 @@ chat_mod_server <- function(
 
     client_clear <- function(
       messages = NULL,
+      greeting = FALSE,
       client_history = c("clear", "set", "append", "keep")
     ) {
       client_history <- arg_match(client_history)
@@ -272,7 +273,7 @@ chat_mod_server <- function(
         }
       }
 
-      chat_clear("chat", session = session)
+      chat_clear("chat", greeting = greeting, session = session)
       if (!is.null(messages)) {
         for (msg in messages) {
           chat_append("chat", msg$content, role = msg$role, session = session)

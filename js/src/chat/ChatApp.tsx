@@ -109,12 +109,11 @@ export function ChatApp({
     return unsubscribe
   }, [transport, elementId])
 
-  // Visibility-gated `<inputId>_greeting_requested` input.
+  // State-driven `<inputId>_greeting_requested` input.
   //
-  // Fires "init" on first paint and "cleared" after each chat clear, but
-  // only once the chat element is actually visible to the user. If the chat
-  // is in a hidden tab (display:none) or scrolled out of view, the request
-  // is deferred until it intersects the viewport.
+  // Fires when all three conditions hold: the chat container is visible
+  // (IntersectionObserver), no messages exist, and no greeting is set.
+  // Visibility gating covers hidden tabs and scrolled-out-of-view cases.
   const [isVisible, setIsVisible] = useState(false)
 
   useEffect(() => {
@@ -122,7 +121,6 @@ export function ChatApp({
     const el = document.getElementById(elementId)
     if (!el) return
     if (typeof IntersectionObserver === "undefined") {
-      // Test environments (jsdom) lack IntersectionObserver. Assume visible.
       setIsVisible(true)
       return
     }
@@ -134,17 +132,24 @@ export function ChatApp({
     return () => io.disconnect()
   }, [elementId])
 
+  const shouldRequestGreeting =
+    isVisible && state.messages.length === 0 && state.greeting === null
+
+  const greetingRequestSentRef = useRef(false)
+
   useEffect(() => {
-    if (!isVisible) return
-    if (state.greetingRequestPending === null) return
+    if (!shouldRequestGreeting) {
+      greetingRequestSentRef.current = false
+      return
+    }
+    if (greetingRequestSentRef.current) return
     if (!window.Shiny?.setInputValue) return
-    window.Shiny.setInputValue(
-      `${elementId}_greeting_requested`,
-      state.greetingRequestPending,
-      { priority: "event" },
-    )
-    dispatch({ type: "greeting_request_sent" })
-  }, [isVisible, state.greetingRequestPending, elementId])
+
+    greetingRequestSentRef.current = true
+    window.Shiny.setInputValue(`${elementId}_greeting_requested`, Date.now(), {
+      priority: "event",
+    })
+  }, [shouldRequestGreeting, elementId])
 
   const toolState: ChatToolState = useMemo(
     () => ({

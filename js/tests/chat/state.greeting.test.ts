@@ -640,4 +640,58 @@ describe("chatReducer — greeting actions", () => {
       })
     })
   })
+
+  describe("clear with greeting flag", () => {
+    it("sets greeting to null when action.greeting is true", () => {
+      const state = makeState({
+        greeting: {
+          content: "Hello",
+          contentType: "markdown",
+          streaming: false,
+          visible: true,
+          dismissed: false,
+          dismissing: false,
+          options: {},
+          blocks: [],
+        },
+      })
+      const next = chatReducer(state, { type: "clear", greeting: true })
+      expect(next.greeting).toBeNull()
+      expect(next.messages).toEqual([])
+    })
+
+    it("clears a dismissed greeting when action.greeting is true", () => {
+      const state = makeState({
+        greeting: {
+          content: "Hello",
+          contentType: "markdown",
+          streaming: false,
+          visible: false,
+          dismissed: true,
+          dismissing: false,
+          options: {},
+          blocks: [],
+        },
+      })
+      const next = chatReducer(state, { type: "clear", greeting: true })
+      expect(next.greeting).toBeNull()
+    })
+
+    it("re-shows greeting when action.greeting is falsy", () => {
+      const state = makeState({
+        greeting: {
+          content: "Hello",
+          contentType: "markdown",
+          streaming: false,
+          visible: false,
+          dismissed: true,
+          dismissing: false,
+          options: {},
+          blocks: [],
+        },
+      })
+      const next = chatReducer(state, { type: "clear" })
+      expect(next.greeting).toMatchObject({ visible: true, dismissed: false })
+    })
+  })
 })

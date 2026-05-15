@@ -171,3 +171,30 @@ test_that("chat_set_greeting() generator sends greeting_start, greeting_chunk(s)
   operations <- vapply(chunk_msgs, function(m) m$message$action$operation, character(1))
   expect_true(all(operations == "append"))
 })
+
+
+# ── chat_clear() greeting parameter ─────────────────────────────────────────
+
+test_that("chat_clear() sends clear action without greeting field by default", {
+  spy <- mock_session_with_spy()
+  shiny::withReactiveDomain(spy$session, {
+    chat_clear("chat", session = spy$session)
+  })
+  msgs <- spy_messages(spy)
+  expect_length(msgs, 1)
+  action <- msgs[[1]]$message$action
+  expect_equal(action$type, "clear")
+  expect_null(action$greeting)
+})
+
+test_that("chat_clear(greeting = TRUE) includes greeting in action", {
+  spy <- mock_session_with_spy()
+  shiny::withReactiveDomain(spy$session, {
+    chat_clear("chat", greeting = TRUE, session = spy$session)
+  })
+  msgs <- spy_messages(spy)
+  expect_length(msgs, 1)
+  action <- msgs[[1]]$message$action
+  expect_equal(action$type, "clear")
+  expect_true(action$greeting)
+})

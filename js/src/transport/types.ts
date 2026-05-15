@@ -25,7 +25,7 @@ export type ChatAction =
       content_type?: ContentType
     }
   | { type: "chunk_end" }
-  | { type: "clear" }
+  | { type: "clear"; greeting?: boolean }
   | {
       type: "update_input"
       value?: string

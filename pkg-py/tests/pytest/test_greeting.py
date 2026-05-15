@@ -267,3 +267,42 @@ def test_set_greeting_async_iterator_streams_chunks():
 
     for _, env in mock._sent[1:-1]:
         assert env["action"]["operation"] == "append"
+
+
+# ---------------------------------------------------------------------------
+# clear_messages() greeting parameter
+# ---------------------------------------------------------------------------
+
+
+def test_clear_messages_sends_clear_action_without_greeting_by_default():
+    mock, sess = make_session()
+
+    async def _run():
+        with session_context(sess):
+            chat = Chat(id="chat")
+            await chat.clear_messages()
+
+    run_async(_run())
+
+    assert len(mock._sent) == 1
+    type_, envelope = mock._sent[0]
+    assert type_ == "shinyChatMessage"
+    assert envelope["action"]["type"] == "clear"
+    assert "greeting" not in envelope["action"]
+
+
+def test_clear_messages_greeting_true_includes_greeting_in_action():
+    mock, sess = make_session()
+
+    async def _run():
+        with session_context(sess):
+            chat = Chat(id="chat")
+            await chat.clear_messages(greeting=True)
+
+    run_async(_run())
+
+    assert len(mock._sent) == 1
+    type_, envelope = mock._sent[0]
+    assert type_ == "shinyChatMessage"
+    assert envelope["action"]["type"] == "clear"
+    assert envelope["action"]["greeting"] is True

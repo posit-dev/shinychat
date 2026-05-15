@@ -1431,12 +1431,21 @@ class Chat:
 
         self.update_user_input(value=value)
 
-    async def clear_messages(self):
+    async def clear_messages(self, *, greeting: bool = False):
         """
         Clear all chat messages.
+
+        Parameters
+        ----------
+        greeting
+            If ``True``, also clears the greeting, which will cause
+            ``greeting_requested`` to fire again if the chat is visible.
         """
         self._messages.set(())
-        await self._send_action({"type": "clear"})
+        action: dict[str, object] = {"type": "clear"}
+        if greeting:
+            action["greeting"] = True
+        await self._send_action(action)
 
     async def set_greeting(
         self,

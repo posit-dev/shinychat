@@ -60,13 +60,10 @@ export interface ChatToolState {
   hiddenToolRequests: Set<string>
 }
 
-export type GreetingRequestReason = "init" | "cleared"
-
 export interface ChatState extends ChatInputState, ChatToolState {
   messages: ChatMessageData[]
   streamingMessage: ChatMessageData | null
   greeting: GreetingData | null
-  greetingRequestPending: GreetingRequestReason | null
 }
 
 // Actions that originate from the UI (not from the server)
@@ -77,7 +74,6 @@ export type UIAction =
       role: "user"
     }
   | { type: "greeting_dismissed" }
-  | { type: "greeting_request_sent" }
 
 export type AnyAction = ChatAction | UIAction
 
@@ -85,7 +81,6 @@ export const initialState: ChatState = {
   messages: [],
   streamingMessage: null,
   greeting: null,
-  greetingRequestPending: "init",
   inputDisabled: false,
   inputPlaceholder: "Enter a message...",
   hiddenToolRequests: new Set(),
@@ -681,19 +676,20 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     }
 
     case "clear": {
-      const greetingAfterClear = state.greeting
-        ? {
-            ...state.greeting,
-            visible: true,
-            dismissed: false,
-            dismissing: false,
-          }
-        : null
+      const greetingAfterClear = action.greeting
+        ? null
+        : state.greeting
+          ? {
+              ...state.greeting,
+              visible: true,
+              dismissed: false,
+              dismissing: false,
+            }
+          : null
       return {
         ...initialState,
         inputPlaceholder: state.inputPlaceholder,
         greeting: greetingAfterClear,
-        greetingRequestPending: "cleared",
       }
     }
 
@@ -788,11 +784,6 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       const greeting = state.greeting
       if (!greeting || !greeting.dismissing) return state
       return { ...state, greeting: { ...greeting, dismissing: false } }
-    }
-
-    case "greeting_request_sent": {
-      if (state.greetingRequestPending === null) return state
-      return { ...state, greetingRequestPending: null }
     }
 
     case "greeting_chunk": {
