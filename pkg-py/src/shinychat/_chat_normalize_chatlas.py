@@ -100,7 +100,23 @@ class ToolRequestComponent(ToolCardComponent):
         )
 
 
-ValueType = Literal["html", "markdown", "text", "code"]
+ValueType = Literal["html", "markdown", "text", "code", "content_extra"]
+
+
+def _is_content_extra(value: object) -> bool:
+    from chatlas._content import ContentImageInline, ContentImageRemote, ContentPDF
+    return isinstance(value, (ContentImageInline, ContentImageRemote, ContentPDF))
+
+
+def _as_content_extra_item(value: object) -> dict[str, str]:
+    from chatlas._content import ContentImageInline, ContentImageRemote, ContentPDF
+    if isinstance(value, ContentImageRemote):
+        return {"type": "image", "src": value.url}
+    elif isinstance(value, ContentImageInline):
+        return {"type": "image", "src": f"data:{value.image_content_type};base64,{value.data}"}
+    elif isinstance(value, ContentPDF):
+        return {"type": "pdf", "filename": value.filename or "document.pdf"}
+    raise TypeError(f"Unexpected content extra type: {type(value)}")
 
 
 class ToolResultComponent(ToolCardComponent):
@@ -388,6 +404,12 @@ def tool_result_display(
 
     if display.text is not None:
         return display.text, "text"
+
+    if _is_content_extra(x.value):
+        return json.dumps([_as_content_extra_item(x.value)]), "content_extra"
+
+    if isinstance(x.value, (list, tuple)) and all(_is_content_extra(v) for v in x.value):
+        return json.dumps([_as_content_extra_item(v) for v in x.value]), "content_extra"
 
     return str(x.get_model_value()), "code"
 
