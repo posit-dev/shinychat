@@ -141,9 +141,9 @@ def _as_content_extra_item_or_text(value: object) -> dict[str, str]:
     if _is_content_extra(value):
         return _as_content_extra_item(value)
     elif isinstance(value, ContentText):
-        return {"type": "text", "value": value.text, "value_type": "code"}
+        return {"type": "text", "value": value.text, "value_type": "markdown"}
     else:
-        return {"type": "text", "value": str(value), "value_type": "code"}
+        return {"type": "text", "value": str(value), "value_type": "markdown"}
 
 
 class ToolResultComponent(ToolCardComponent):

@@ -402,9 +402,9 @@ as_content_extra_item_or_text <- function(x) {
   if (is_content_extra(x)) {
     as_content_extra_item(x)
   } else if (S7::S7_inherits(x, ellmer::ContentText)) {
-    list(type = "text", value = x@text, value_type = "code")
+    list(type = "text", value = x@text, value_type = "markdown")
   } else {
-    list(type = "text", value = as.character(x), value_type = "code")
+    list(type = "text", value = as.character(x), value_type = "markdown")
   }
 }
 
