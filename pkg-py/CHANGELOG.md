@@ -9,9 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### New features
 
-* Added `chat_greeting()` for creating welcome messages that appear when the chat is empty. Greetings can be set statically via `chat_ui(greeting=)` or dynamically with `Chat.set_greeting()`, and are dismissed when the user sends their first message. (#217)
-
-* Added `greeting_requested` input, which fires when the chat is visible, empty, and has no greeting, enabling LLM-generated welcome messages. (#217)
+* Added `chat_greeting()` for creating welcome messages that appear when the chat is empty. Greetings can be set statically via `chat_ui(greeting=)` or dynamically with `Chat.set_greeting()`, and are dismissed when the user sends their first message. A new `{id}_greeting_requested` input fires when the chat is visible, empty, and has no greeting, enabling LLM-generated welcome messages. (#217)
 
 * Markdown lists where every item is a `<span class="suggestion">` are now rendered as a grid of clickable suggestion cards. Each suggestion's text content becomes both the card label and the value sent on click. To add a short heading above the body text, set the `title` attribute on the span — e.g. `<span class="suggestion" title="Heading">Body text shown on the card.</span>`. Only the body text (not the title) is submitted when the card is clicked. Cards stream in with staggered animations and support keyboard navigation (arrow keys, Home/End) with roving tabindex. (#219)
 

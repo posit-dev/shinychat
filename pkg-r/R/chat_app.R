@@ -170,18 +170,25 @@ chat_mod_ui <- function(
 #'
 #' @section Greeting:
 #'
-#' The `greeting` parameter in `chat_mod_server()` supports three modes:
+#' When `greeting` is a **function**, the module calls it each time the
+#' `greeting_requested` event fires — on first view when the chat is empty,
+#' and again after `clear(greeting = TRUE)`. The function should return a
+#' [chat_greeting()] (typically wrapping a stream). Static values (strings,
+#' [chat_greeting()] objects) are set once at init and do not regenerate.
 #'
-#' **Static value.** A string or [chat_greeting()] is set once when the module
-#' initializes. It will not regenerate after [chat_clear()].
+#' **One-argument function** (recommended). The module clones the `client`
+#' passed to `chat_mod_server()`, wipes its turn history, and passes the
+#' fresh clone to your function. This avoids manually creating and configuring
+#' a separate client:
 #'
 #' ```r
-#' chat_mod_server("chat", client, greeting = "## Welcome!\n\nHow can I help?")
+#' chat_mod_server("chat", client, greeting = function(client) {
+#'   stream <- client$stream_async("Generate a short welcome message.")
+#'   chat_greeting(stream)
+#' })
 #' ```
 #'
-#' **Zero-argument function.** Called each time `greeting_requested` fires
-#' (when the chat is visible with no messages or greeting, including after
-#' `clear(greeting = TRUE)`). You manage the LLM client yourself:
+#' **Zero-argument function.** You create and manage your own client:
 #'
 #' ```r
 #' chat_mod_server("chat", client, greeting = function() {
@@ -191,20 +198,14 @@ chat_mod_ui <- function(
 #' })
 #' ```
 #'
-#' **One-argument function.** The module clones the `client`, wipes its turn
-#' history, and passes the fresh clone to your function. This avoids manually
-#' creating and configuring a separate client:
+#' **Static value.** Set once; does not regenerate after `clear()`:
 #'
 #' ```r
-#' chat_mod_server("chat", client, greeting = function(client) {
-#'   stream <- client$stream_async("Generate a short welcome message.")
-#'   chat_greeting(stream)
-#' })
+#' chat_mod_server("chat", client, greeting = "## Welcome!\n\nHow can I help?")
 #' ```
 #'
-#' In all function modes, `clear(greeting = TRUE)` triggers the function
-#' again automatically. The returned `set_greeting()` helper is available for
-#' cases where you need to set a greeting outside the greeting lifecycle.
+#' The returned `set_greeting()` helper is available for cases where you need
+#' to set a greeting outside the greeting lifecycle.
 #'
 #' @export
 chat_mod_server <- function(

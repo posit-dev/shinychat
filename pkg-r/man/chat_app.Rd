@@ -104,17 +104,24 @@ app is suitable for interactive use by a single user; do not use
 \section{Greeting}{
 
 
-The \code{greeting} parameter in \code{chat_mod_server()} supports three modes:
+When \code{greeting} is a \strong{function}, the module calls it each time the
+\code{greeting_requested} event fires — on first view when the chat is empty,
+and again after \code{clear(greeting = TRUE)}. The function should return a
+\code{\link[=chat_greeting]{chat_greeting()}} (typically wrapping a stream). Static values (strings,
+\code{\link[=chat_greeting]{chat_greeting()}} objects) are set once at init and do not regenerate.
 
-\strong{Static value.} A string or \code{\link[=chat_greeting]{chat_greeting()}} is set once when the module
-initializes. It will not regenerate after \code{\link[=chat_clear]{chat_clear()}}.
+\strong{One-argument function} (recommended). The module clones the \code{client}
+passed to \code{chat_mod_server()}, wipes its turn history, and passes the
+fresh clone to your function. This avoids manually creating and configuring
+a separate client:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_mod_server("chat", client, greeting = "## Welcome!\\n\\nHow can I help?")
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_mod_server("chat", client, greeting = function(client) \{
+  stream <- client$stream_async("Generate a short welcome message.")
+  chat_greeting(stream)
+\})
 }\if{html}{\out{</div>}}
 
-\strong{Zero-argument function.} Called each time \code{greeting_requested} fires
-(when the chat is visible with no messages or greeting, including after
-\code{clear(greeting = TRUE)}). You manage the LLM client yourself:
+\strong{Zero-argument function.} You create and manage your own client:
 
 \if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_mod_server("chat", client, greeting = function() \{
   greeter <- ellmer::chat_openai(model = "gpt-4o")
@@ -123,19 +130,13 @@ initializes. It will not regenerate after \code{\link[=chat_clear]{chat_clear()}
 \})
 }\if{html}{\out{</div>}}
 
-\strong{One-argument function.} The module clones the \code{client}, wipes its turn
-history, and passes the fresh clone to your function. This avoids manually
-creating and configuring a separate client:
+\strong{Static value.} Set once; does not regenerate after \code{clear()}:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_mod_server("chat", client, greeting = function(client) \{
-  stream <- client$stream_async("Generate a short welcome message.")
-  chat_greeting(stream)
-\})
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_mod_server("chat", client, greeting = "## Welcome!\\n\\nHow can I help?")
 }\if{html}{\out{</div>}}
 
-In all function modes, \code{clear(greeting = TRUE)} triggers the function
-again automatically. The returned \code{set_greeting()} helper is available for
-cases where you need to set a greeting outside the greeting lifecycle.
+The returned \code{set_greeting()} helper is available for cases where you need
+to set a greeting outside the greeting lifecycle.
 }
 
 \examples{
