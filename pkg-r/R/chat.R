@@ -240,7 +240,10 @@ chat_ui <- function(
       # Plain markdown string
       greeting_content <- content
       greeting_content_type <- "markdown"
-    } else if (inherits(content, "html") && !inherits(content, c("shiny.tag", "shiny.tag.list"))) {
+    } else if (
+      inherits(content, "html") &&
+        !inherits(content, c("shiny.tag", "shiny.tag.list"))
+    ) {
       # htmltools::HTML() — raw HTML string
       greeting_content <- as.character(content)
       greeting_content_type <- "html"
@@ -835,7 +838,11 @@ chat_set_greeting <- function(
   check_active_session(session)
 
   if (is.null(greeting)) {
-    send_chat_action(id, action = list(type = "greeting_clear"), session = session)
+    send_chat_action(
+      id,
+      action = list(type = "greeting_clear"),
+      session = session
+    )
     return(invisible(NULL))
   }
 
@@ -878,7 +885,12 @@ chat_set_greeting <- function(
     content_type = greeting_content_type,
     options = options
   )
-  send_chat_action(id, action = action, html_deps = html_deps, session = session)
+  send_chat_action(
+    id,
+    action = action,
+    html_deps = html_deps,
+    session = session
+  )
   invisible(NULL)
 }
 
@@ -966,7 +978,11 @@ rlang::on_load(
 #' }
 #'
 #' shinyApp(ui, server)
-chat_clear <- function(id, greeting = FALSE, session = getDefaultReactiveDomain()) {
+chat_clear <- function(
+  id,
+  greeting = FALSE,
+  session = getDefaultReactiveDomain()
+) {
   check_active_session(session)
   action <- list(type = "clear")
   if (isTRUE(greeting)) {

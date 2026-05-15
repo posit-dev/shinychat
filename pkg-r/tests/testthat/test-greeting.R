@@ -7,7 +7,10 @@ mock_session_with_spy <- function() {
   spy_env <- new.env(parent = emptyenv())
   spy_env$messages <- list()
   sess$sendCustomMessage <- function(type, msg) {
-    spy_env$messages[[length(spy_env$messages) + 1]] <- list(type = type, message = msg)
+    spy_env$messages[[length(spy_env$messages) + 1]] <- list(
+      type = type,
+      message = msg
+    )
   }
   list(session = sess, spy_env = spy_env)
 }
@@ -107,7 +110,10 @@ test_that("chat_ui() snapshot for plain string greeting", {
 })
 
 test_that("chat_ui() snapshot for chat_greeting with dismissible=FALSE", {
-  expect_snapshot(chat_ui("chat", greeting = chat_greeting("## Hi", dismissible = FALSE)))
+  expect_snapshot(chat_ui(
+    "chat",
+    greeting = chat_greeting("## Hi", dismissible = FALSE)
+  ))
 })
 
 
@@ -140,7 +146,11 @@ test_that("chat_set_greeting() plain string sends greeting action with markdown 
 test_that("chat_set_greeting() HTML() content sends html content_type", {
   spy <- mock_session_with_spy()
   shiny::withReactiveDomain(spy$session, {
-    chat_set_greeting("chat", chat_greeting(HTML("<b>hi</b>")), session = spy$session)
+    chat_set_greeting(
+      "chat",
+      chat_greeting(HTML("<b>hi</b>")),
+      session = spy$session
+    )
   })
   msgs <- spy_messages(spy)
   action <- msgs[[1]]$message$action
@@ -153,13 +163,25 @@ test_that("chat_set_greeting() generator sends greeting_start, greeting_chunk(s)
   spy <- mock_session_with_spy()
   chunks <- c("He", "ll", "o")
   gen <- coro::async_generator(function() {
-    for (ch in chunks) yield(ch)
+    for (ch in chunks) {
+      yield(ch)
+    }
   })
   shiny::withReactiveDomain(spy$session, {
     p <- chat_set_greeting("chat", chat_greeting(gen()), session = spy$session)
     done <- FALSE
-    promises::then(p, function(x) { done <<- TRUE }, function(e) { done <<- TRUE })
-    while (!done) later::run_now(0.1)
+    promises::then(
+      p,
+      function(x) {
+        done <<- TRUE
+      },
+      function(e) {
+        done <<- TRUE
+      }
+    )
+    while (!done) {
+      later::run_now(0.1)
+    }
   })
   msgs <- spy_messages(spy)
   action_types <- vapply(msgs, function(m) m$message$action$type, character(1))
@@ -167,8 +189,15 @@ test_that("chat_set_greeting() generator sends greeting_start, greeting_chunk(s)
   expect_equal(action_types[[length(action_types)]], "greeting_end")
   chunk_types <- action_types[action_types == "greeting_chunk"]
   expect_gte(length(chunk_types), 1)
-  chunk_msgs <- Filter(function(m) m$message$action$type == "greeting_chunk", msgs)
-  operations <- vapply(chunk_msgs, function(m) m$message$action$operation, character(1))
+  chunk_msgs <- Filter(
+    function(m) m$message$action$type == "greeting_chunk",
+    msgs
+  )
+  operations <- vapply(
+    chunk_msgs,
+    function(m) m$message$action$operation,
+    character(1)
+  )
   expect_true(all(operations == "append"))
 })
 
@@ -230,7 +259,12 @@ suppress_restore_warnings <- function(expr) {
     warning = function(w) {
       # Suppress expected warnings/errors from chat_restore's set_ui observer,
       # which calls ellmer internals not implemented on the mock client.
-      if (grepl("non-function|set_ui|tools|no applicable method", conditionMessage(w))) {
+      if (
+        grepl(
+          "non-function|set_ui|tools|no applicable method",
+          conditionMessage(w)
+        )
+      ) {
         invokeRestart("muffleWarning")
       }
     }
@@ -309,7 +343,10 @@ test_that("chat_mod_server() calls one-arg greeting with a cloned client on chat
 test_that("chat_mod_server() one-arg greeting receives a client with empty turns", {
   received_turns <- NULL
   client_with_turns <- mock_chat_client()
-  client_with_turns$set_turns(list(list(role = "user", content = "prior message")))
+  client_with_turns$set_turns(list(list(
+    role = "user",
+    content = "prior message"
+  )))
   suppress_restore_warnings(
     shiny::testServer(
       chat_mod_server,
@@ -330,7 +367,10 @@ test_that("chat_mod_server() one-arg greeting receives a client with empty turns
 
 test_that("chat_mod_server() one-arg greeting does not clear original client turns", {
   client_with_turns <- mock_chat_client()
-  client_with_turns$set_turns(list(list(role = "user", content = "prior message")))
+  client_with_turns$set_turns(list(list(
+    role = "user",
+    content = "prior message"
+  )))
   suppress_restore_warnings(
     shiny::testServer(
       chat_mod_server,
