@@ -418,6 +418,57 @@ describe("ChatInput", () => {
       expect(textarea.value).toBe("")
     })
 
+    it("does not enter recall when input has text (cursor at end)", () => {
+      const { textarea } = renderChatInput({ userMessages: history })
+
+      textarea.value = "some text"
+      fireEvent.input(textarea)
+      setCursorAtEnd(textarea)
+
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+
+      expect(textarea.value).toBe("some text")
+    })
+
+    it("allows recall when in active mode with edited text", () => {
+      const { textarea } = renderChatInput({ userMessages: history })
+      setCursorAtEnd(textarea)
+
+      // Enter recall mode from empty input
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      expect(textarea.value).toBe("third")
+
+      // Edit the recalled text
+      textarea.value = "third edited"
+      fireEvent.input(textarea)
+      setCursorAtEnd(textarea)
+
+      // Should still navigate because recall mode is active
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      expect(textarea.value).toBe("second")
+    })
+
+    it("stays in recall mode after returning to blank slot and typing", () => {
+      const { textarea } = renderChatInput({ userMessages: history })
+      setCursorAtEnd(textarea)
+
+      // Enter recall mode and navigate back to blank
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      expect(textarea.value).toBe("third")
+      setCursorAtEnd(textarea)
+      fireEvent.keyDown(textarea, { code: "ArrowDown" })
+      expect(textarea.value).toBe("")
+
+      // Type something new
+      textarea.value = "new text"
+      fireEvent.input(textarea)
+      setCursorAtEnd(textarea)
+
+      // Up arrow should still work because recall mode is still active
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      expect(textarea.value).toBe("third")
+    })
+
     it("no-op when history is empty", () => {
       const { textarea } = renderChatInput({ userMessages: [] })
       setCursorAtEnd(textarea)

@@ -55,7 +55,7 @@ export const ChatInput = memo(
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const isComposingRef = useRef(false)
     const [hasText, setHasText] = useState(false)
-    const { recall, reset } = useInputHistory(userMessages)
+    const { recall, reset, isActive } = useInputHistory(userMessages)
 
     function updateHeight(el: HTMLTextAreaElement): void {
       if (el.scrollHeight === 0) return
@@ -95,11 +95,10 @@ export const ChatInput = memo(
         const isUp = e.code === "ArrowUp"
         const isDown = e.code === "ArrowDown"
 
-        if (
-          (isUp || isDown) &&
-          el.selectionStart === el.value.length &&
-          !isComposingRef.current
-        ) {
+        const atEnd = el.selectionStart === el.value.length
+        const canRecall = isActive() ? atEnd : el.value.length === 0
+
+        if ((isUp || isDown) && canRecall && !isComposingRef.current) {
           const value = recall(isUp ? "up" : "down", el.value)
           if (value !== undefined) {
             e.preventDefault()
@@ -116,7 +115,7 @@ export const ChatInput = memo(
           sendInput()
         }
       },
-      [sendInput, recall],
+      [sendInput, recall, isActive],
     )
 
     const onInput = useCallback((): void => {

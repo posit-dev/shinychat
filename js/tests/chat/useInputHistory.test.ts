@@ -126,6 +126,34 @@ describe("useInputHistory", () => {
     })
   })
 
+  describe("isActive", () => {
+    it("returns false initially", () => {
+      const { result } = renderHook(() => useInputHistory(["first", "second"]))
+      expect(result.current.isActive()).toBe(false)
+    })
+
+    it("returns true after navigating into history", () => {
+      const { result } = renderHook(() => useInputHistory(["first", "second"]))
+      result.current.recall("up", "")
+      expect(result.current.isActive()).toBe(true)
+    })
+
+    it("stays active after navigating back to blank slot", () => {
+      const { result } = renderHook(() => useInputHistory(["first", "second"]))
+      result.current.recall("up", "")
+      result.current.recall("down", "second")
+      expect(result.current.isActive()).toBe(true)
+    })
+
+    it("returns false after reset", () => {
+      const { result } = renderHook(() => useInputHistory(["first", "second"]))
+      result.current.recall("up", "")
+      expect(result.current.isActive()).toBe(true)
+      act(() => result.current.reset())
+      expect(result.current.isActive()).toBe(false)
+    })
+  })
+
   describe("stale index handling", () => {
     it("clamps stale index when history shrinks", () => {
       const { result, rerender } = renderHook(
