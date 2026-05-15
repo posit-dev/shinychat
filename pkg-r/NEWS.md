@@ -6,6 +6,8 @@
 
 ## New features and improvements
 
+* Tool result cards now render images and PDFs returned by ellmer tools. When a tool returns `content_image_file()`, `content_image_url()`, or `content_pdf_file()`, the result is displayed as an inline image or a PDF filename badge. Mixed content lists (e.g., `list(ContentText("summary"), content_image_file("plot.png"))`) are rendered with items interleaved in order. (#225)
+
 * Added `enable_cancel` parameter to `chat_ui()` to show a stop button that lets users cancel an in-progress AI response. Press the stop button or hit Escape to cancel. `chat_mod_ui()` enables cancellation by default, and `chat_mod_server()` handles the cancellation wiring automatically, using the stream cancellation features introduced in ellmer v0.4.1. (#221)
 
 * Markdown lists where every item is a `<span class="suggestion">` are now rendered as a grid of clickable suggestion cards. Each suggestion's text content becomes both the card label and the value sent on click. To add a short heading above the body text, set the `title` attribute on the span — e.g. `<span class="suggestion" title="Heading">Body text shown on the card.</span>`. Only the body text (not the title) is submitted when the card is clicked. Cards stream in with staggered animations and support keyboard navigation (arrow keys, Home/End) with roving tabindex. (#219)
