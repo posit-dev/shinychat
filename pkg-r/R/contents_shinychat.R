@@ -398,19 +398,28 @@ tool_default_display <- function(content) {
   value <- content@value
 
   if (tool_errored(content)) {
-    return(list(value = strip_ansi(tool_error_string(content)), value_type = "code"))
+    return(list(
+      value = strip_ansi(tool_error_string(content)),
+      value_type = "code"
+    ))
   }
 
   if (is_content_extra(value)) {
     return(list(
-      value = jsonlite::toJSON(list(as_content_extra_item(value)), auto_unbox = TRUE),
+      value = jsonlite::toJSON(
+        list(as_content_extra_item(value)),
+        auto_unbox = TRUE
+      ),
       value_type = "content_extra"
     ))
   }
 
   if (is.list(value) && every(value, is_content_extra)) {
     return(list(
-      value = jsonlite::toJSON(map(value, as_content_extra_item), auto_unbox = TRUE),
+      value = jsonlite::toJSON(
+        map(value, as_content_extra_item),
+        auto_unbox = TRUE
+      ),
       value_type = "content_extra"
     ))
   }
