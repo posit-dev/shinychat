@@ -180,6 +180,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <ul>
   <li><a href="#installation" id="toc-installation" class="nav-link active" data-scroll-target="#installation">Installation</a></li>
   <li><a href="#starter-example" id="toc-starter-example" class="nav-link" data-scroll-target="#starter-example">Starter example</a></li>
+  <li><a href="#stream-cancellation" id="toc-stream-cancellation" class="nav-link" data-scroll-target="#stream-cancellation">Stream cancellation</a></li>
   <li><a href="#learn-more" id="toc-learn-more" class="nav-link" data-scroll-target="#learn-more">Learn more</a></li>
   </ul>
 <div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/shinychat/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li><li><a href="https://github.com/posit-dev/shinychat/edit/main/pkg-py/docs/index.qmd" class="toc-action"><i class="bi empty"></i>Edit this page</a></li></ul></div></nav>
@@ -219,6 +220,65 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.append_message(<span class="ss">f"You said: </span><span class="sc">{</span>user_input<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>To run the app, execute the following command in your terminal (or via the <a href="https://marketplace.visualstudio.com/items?itemName=Posit.shiny">Shiny extension</a>):</p>
 <div class="sourceCode" id="cb5"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> shiny run <span class="at">--reload</span> app.py</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="stream-cancellation" class="level2">
+<h2 class="anchored" data-anchor-id="stream-cancellation">Stream cancellation</h2>
+<p>shinychat supports cancelling in-progress AI response streams. Set <code>enable_cancel=True</code> when creating the chat UI to show a stop button during streaming. Users can also press Escape while the chat has focus to cancel.</p>
+<p>For cooperative cancellation, <a href="https://posit-dev.github.io/chatlas/">chatlas</a> provides a <code>StreamController</code> that you pass to <code>stream_async()</code>. The controller automatically resets itself between streams, so you only need to create it once.</p>
+<p><strong>Shiny Express</strong></p>
+<div class="sourceCode" id="cb6" data-file="app.py"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shiny <span class="im">import</span> reactive</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shiny.express <span class="im">import</span> <span class="bu">input</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> chatlas <span class="im">import</span> ChatAnthropic, StreamController</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shinychat.express <span class="im">import</span> Chat</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>chat <span class="op">=</span> Chat(<span class="bu">id</span><span class="op">=</span><span class="st">"chat"</span>)</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>chat.ui(enable_cancel<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>client <span class="op">=</span> ChatAnthropic(system_prompt<span class="op">=</span><span class="st">"You are a helpful assistant."</span>)</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>ctrl <span class="op">=</span> StreamController()</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a><span class="at">@chat.on_user_submit</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> handle_user_input(user_input: <span class="bu">str</span>):</span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>    response <span class="op">=</span> <span class="cf">await</span> client.stream_async(user_input, controller<span class="op">=</span>ctrl)</span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.append_message_stream(response)</span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.effect</span></span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.event</span>(<span class="bu">input</span>.chat_cancel)</span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> handle_cancel():</span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a>    ctrl.cancel()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><strong>Shiny Core</strong></p>
+<div class="sourceCode" id="cb7" data-file="app.py"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shiny <span class="im">import</span> App, reactive, ui</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> chatlas <span class="im">import</span> ChatAnthropic, StreamController</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shinychat <span class="im">import</span> Chat, chat_ui</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>app_ui <span class="op">=</span> ui.page_fillable(</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    chat_ui(<span class="st">"chat"</span>, enable_cancel<span class="op">=</span><span class="va">True</span>),</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> server(<span class="bu">input</span>, output, session):</span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>    client <span class="op">=</span> ChatAnthropic(system_prompt<span class="op">=</span><span class="st">"You are a helpful assistant."</span>)</span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>    chat <span class="op">=</span> Chat(<span class="st">"chat"</span>)</span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>    ctrl <span class="op">=</span> StreamController()</span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">@chat.on_user_submit</span></span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">async</span> <span class="kw">def</span> handle_user_input(user_input: <span class="bu">str</span>):</span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a>        response <span class="op">=</span> <span class="cf">await</span> client.stream_async(user_input, controller<span class="op">=</span>ctrl)</span>
+<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a>        <span class="cf">await</span> chat.append_message_stream(response)</span>
+<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-19"><a href="#cb7-19" aria-hidden="true" tabindex="-1"></a>    <span class="at">@reactive.effect</span></span>
+<span id="cb7-20"><a href="#cb7-20" aria-hidden="true" tabindex="-1"></a>    <span class="at">@reactive.event</span>(<span class="bu">input</span>.chat_cancel)</span>
+<span id="cb7-21"><a href="#cb7-21" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> handle_cancel():</span>
+<span id="cb7-22"><a href="#cb7-22" aria-hidden="true" tabindex="-1"></a>        ctrl.cancel()</span>
+<span id="cb7-23"><a href="#cb7-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-24"><a href="#cb7-24" aria-hidden="true" tabindex="-1"></a>app <span class="op">=</span> App(app_ui, server)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Key points:</p>
+<ul>
+<li><code>enable_cancel=True</code> shows the stop button while a response is streaming.</li>
+<li><code>StreamController()</code> is created once and reused — it automatically resets between streams.</li>
+<li>Pass the controller to <code>stream_async(controller=ctrl)</code> so chatlas can honour the cancellation signal.</li>
+<li>The cancel input fires as <code>input.&lt;id&gt;_cancel</code> (e.g.&nbsp;<code>input.chat_cancel</code>). Observe it with <code>@reactive.event</code> to call <code>ctrl.cancel()</code>. This is needed in both Express and Core apps.</li>
+<li>Partial responses are automatically preserved in chat history by chatlas when a stream is cancelled.</li>
+</ul>
 </section>
 <section id="learn-more" class="level2">
 <h2 class="anchored" data-anchor-id="learn-more">Learn more</h2>
