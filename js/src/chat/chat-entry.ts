@@ -58,11 +58,7 @@ class ChatContainerElement extends HTMLElement {
 
     const initialMessages = parseInitialMessages(this)
 
-    const footerEl = this.querySelector(CHAT_FOOTER_TAG)
-    const footerHtml = footerEl ? footerEl.innerHTML : undefined
-    // Remove the server-rendered footer from the DOM so that any Shiny
-    // inputs it contains (e.g. toolbar buttons) aren't re-bound by an
-    // outer bindAll (from renderUI) after we've already extracted the HTML.
+    const footerEl = this.querySelector(CHAT_FOOTER_TAG) as Element | null
     footerEl?.remove()
 
     // Unbind any Shiny inputs/outputs in the server-rendered content before
@@ -83,7 +79,7 @@ class ChatContainerElement extends HTMLElement {
         placeholder,
         initialMessages,
         enableCancel,
-        footerHtml,
+        footerEl: footerEl ?? undefined,
       }),
     )
   }
