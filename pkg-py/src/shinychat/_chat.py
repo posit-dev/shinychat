@@ -1439,8 +1439,12 @@ class Chat:
         Parameters
         ----------
         greeting
-            If ``True``, also clears the greeting, which will cause
-            ``greeting_requested`` to fire again if the chat is visible.
+            If ``True``, also clears the greeting in addition to conversation
+            messages. Clearing the greeting causes the ``{id}_greeting_requested``
+            input to fire again (if the chat is visible with no greeting and no
+            messages), enabling a regenerate pattern: clear the greeting, then
+            react to the request to generate a new one via
+            :meth:`~shinychat.Chat.set_greeting`.
         """
         self._messages.set(())
         action: ClearAction = {"type": "clear"}
@@ -1471,9 +1475,17 @@ class Chat:
               :class:`~htmltools.TagList`: displayed as a stand-alone greeting.
             * A :func:`~shinychat.chat_greeting` object with options such as
               ``dismissible``.
-            * A :class:`~shinychat.chat_greeting` wrapping an
+            * A :func:`~shinychat.chat_greeting` wrapping an
               :class:`~typing.AsyncIterator` of strings: streams the greeting content
               chunk-by-chunk.
+
+        Notes
+        -----
+        When no greeting is set and the chat is visible with no messages, an input
+        named ``{id}_greeting_requested`` fires (where ``{id}`` is the chat's ID).
+        Use ``@reactive.event(input.{id}_greeting_requested)`` to generate a greeting
+        on demand. This input fires on first load and again after
+        :meth:`~shinychat.Chat.clear_messages` is called with ``greeting=True``.
 
         Examples
         --------
@@ -1509,6 +1521,36 @@ class Chat:
                     yield token
 
             await chat.set_greeting(chat_greeting(token_stream()))
+        ```
+
+        LLM-generated greeting using ``greeting_requested``:
+
+        ```python
+        import chatlas
+        from shinychat import Chat, chat_greeting
+
+        chat_model = chatlas.ChatOpenAI(model="gpt-4o")
+        chat = Chat(id="chat")
+
+        @reactive.effect
+        @reactive.event(input.chat_greeting_requested)
+        async def _():
+            response = await chat_model.stream_async(
+                "Write a short, friendly welcome message."
+            )
+            await chat.set_greeting(chat_greeting(response))
+        ```
+
+        Regenerate pattern (clear and re-request):
+
+        ```python
+        @reactive.effect
+        @reactive.event(input.regenerate)
+        async def _():
+            await chat.clear_messages(greeting=True)
+
+        # greeting_requested fires again after clear_messages(greeting=True),
+        # so the LLM-generated greeting handler above will run again.
         ```
 
         Clear the greeting (e.g., before setting a new one):
@@ -1947,6 +1989,12 @@ def chat_ui(
         messages. Can be a markdown string or a :func:`~shinychat.chat_greeting` object.
         For a dynamic or streaming greeting, use :meth:`~shinychat.Chat.set_greeting`
         from the server instead.
+
+        When no greeting is set and the chat is visible with no messages, an input
+        named ``{id}_greeting_requested`` fires. Use this input with
+        ``@reactive.event(input.{id}_greeting_requested)`` to generate a greeting
+        on demand from the server. It fires again after
+        :meth:`~shinychat.Chat.clear_messages` is called with ``greeting=True``.
     placeholder
         Placeholder text for the chat input.
     width

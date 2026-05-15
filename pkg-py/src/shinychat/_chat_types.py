@@ -223,7 +223,41 @@ def chat_greeting(
         :class:`~typing.AsyncIterator` of strings (streaming, only valid via
         :meth:`~shinychat.Chat.set_greeting`).
     dismissible
-        Whether the greeting can be dismissed when the user sends a message.
+        Whether the greeting can be dismissed when the user sends a message. When
+        ``True`` (the default), the greeting is hidden once the user sends their first
+        message. Set to ``False`` to keep the greeting visible throughout the
+        conversation, which is useful for persistent instructions or navigation.
+
+    Examples
+    --------
+    Basic greeting:
+
+    ```python
+    from shinychat import chat_greeting
+
+    chat_greeting("## Welcome!\\n\\nHow can I help you today?")
+    ```
+
+    Non-dismissible greeting that stays visible:
+
+    ```python
+    chat_greeting("Please select a topic to get started.", dismissible=False)
+    ```
+
+    Greeting with suggestion cards (uses ``<span class="suggestion">``):
+
+    ```python
+    chat_greeting(
+        "## Welcome!\\n\\n"
+        '<span class="suggestion">Summarize this dataset</span>\\n'
+        '<span class="suggestion">Show me recent trends</span>'
+    )
+    ```
+
+    See Also
+    --------
+    :func:`~shinychat.chat_ui` : Set a static greeting in the UI definition.
+    :meth:`~shinychat.Chat.set_greeting` : Set or stream a greeting from the server.
     """
     return ChatGreeting(
         content,
