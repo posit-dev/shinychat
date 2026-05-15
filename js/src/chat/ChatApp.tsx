@@ -1,4 +1,4 @@
-import { useReducer, useEffect, useRef, useMemo } from "react"
+import { useReducer, useEffect, useRef, useMemo, useState } from "react"
 import {
   ShinyLifecycleContext,
   ChatToolContext,
@@ -108,6 +108,43 @@ export function ChatApp({
     })
     return unsubscribe
   }, [transport, elementId])
+
+  // Visibility-gated `<inputId>_greeting_requested` input.
+  //
+  // Fires "init" on first paint and "cleared" after each chat clear, but
+  // only once the chat element is actually visible to the user. If the chat
+  // is in a hidden tab (display:none) or scrolled out of view, the request
+  // is deferred until it intersects the viewport.
+  const [isVisible, setIsVisible] = useState(false)
+
+  useEffect(() => {
+    if (!elementId) return
+    const el = document.getElementById(elementId)
+    if (!el) return
+    if (typeof IntersectionObserver === "undefined") {
+      // Test environments (jsdom) lack IntersectionObserver. Assume visible.
+      setIsVisible(true)
+      return
+    }
+    const io = new IntersectionObserver(
+      (entries) => setIsVisible(entries[0]?.isIntersecting ?? false),
+      { threshold: 0 },
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [elementId])
+
+  useEffect(() => {
+    if (!isVisible) return
+    if (state.greetingRequestPending === null) return
+    if (!window.Shiny?.setInputValue) return
+    window.Shiny.setInputValue(
+      `${elementId}_greeting_requested`,
+      state.greetingRequestPending,
+      { priority: "event" },
+    )
+    dispatch({ type: "greeting_request_sent" })
+  }, [isVisible, state.greetingRequestPending, elementId])
 
   const toolState: ChatToolState = useMemo(
     () => ({
