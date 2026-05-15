@@ -29,8 +29,12 @@ greeting is shown when the chat first loads and is dismissed when the user
 sends their first message.
 
 Call \code{chat_set_greeting()} from the server to display a dynamic or streaming
-greeting. Pass \code{NULL} to clear the current greeting entirely (useful before
-setting a new one with the regenerate pattern).
+greeting. This is typically used inside an \code{\link[shiny:observeEvent]{shiny::observeEvent()}} watching
+\verb{input$<id>_greeting_requested} -- an event that fires when the chat is
+visible, has no messages, and has no greeting set. See the \strong{Greeting}
+section in \code{\link[=chat_ui]{chat_ui()}} for details on \code{greeting_requested}.
+
+Pass \code{NULL} to clear the current greeting entirely.
 }
 \examples{
 \dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
@@ -82,19 +86,48 @@ library(shiny)
 library(bslib)
 library(shinychat)
 
-# Clear and replace greeting (regenerate pattern)
+# LLM-generated greeting using greeting_requested
+ui <- page_fillable(chat_ui("chat"))
+
+server <- function(input, output, session) {
+  chat_client <- ellmer::chat_openai(model = "gpt-4o")
+
+  observeEvent(input$chat_greeting_requested, {
+    stream <- chat_client$stream_async(
+      "Generate a short, friendly welcome message."
+    )
+    chat_set_greeting("chat", chat_greeting(stream))
+  })
+
+  observeEvent(input$chat_user_input, {
+    stream <- chat_client$stream_async(input$chat_user_input)
+    chat_append("chat", stream)
+  })
+}
+
+shinyApp(ui, server)
+\dontshow{\}) # examplesIf}
+\dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
+library(shiny)
+library(bslib)
+library(shinychat)
+
+# Regenerate pattern: chat_clear(greeting = TRUE) triggers greeting_requested
 ui <- page_fillable(
   chat_ui("chat"),
   actionButton("regenerate", "New greeting")
 )
 
 server <- function(input, output, session) {
-  chat_set_greeting("chat", "## Hello!")
+  observeEvent(input$chat_greeting_requested, {
+    chat_set_greeting(
+      "chat",
+      paste("## Welcome!\n\nGenerated at", Sys.time())
+    )
+  })
 
   observeEvent(input$regenerate, {
-    chat_set_greeting("chat", NULL)
-    chat_clear("chat")
-    chat_set_greeting("chat", "## Welcome back!")
+    chat_clear("chat", greeting = TRUE)
   })
 
   observeEvent(input$chat_user_input, {

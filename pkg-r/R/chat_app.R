@@ -164,11 +164,48 @@ chat_mod_ui <- function(
 #' @describeIn chat_app A simple chat app module server.
 #' @inheritParams chat_restore
 #' @param greeting Optional greeting to set when the module initializes.
-#'   Accepts the same inputs as [chat_set_greeting()] -- a string, an
-#'   [htmltools::HTML()] object, [htmltools::tagList()], a generator/stream,
-#'   or a `chat_greeting()` wrapper. For greetings that need to react to
-#'   per-session state or be replaced later, leave this `NULL` and call the
-#'   returned `set_greeting()` helper instead.
+#'   Accepts a static value (string, [htmltools::HTML()], [htmltools::tagList()],
+#'   or [chat_greeting()]) or a **function** that generates the greeting
+#'   dynamically. See the **Greeting** section below for details.
+#'
+#' @section Greeting:
+#'
+#' The `greeting` parameter in `chat_mod_server()` supports three modes:
+#'
+#' **Static value.** A string or [chat_greeting()] is set once when the module
+#' initializes. It will not regenerate after [chat_clear()].
+#'
+#' ```r
+#' chat_mod_server("chat", client, greeting = "## Welcome!\n\nHow can I help?")
+#' ```
+#'
+#' **Zero-argument function.** Called each time `greeting_requested` fires
+#' (when the chat is visible with no messages or greeting, including after
+#' `clear(greeting = TRUE)`). You manage the LLM client yourself:
+#'
+#' ```r
+#' chat_mod_server("chat", client, greeting = function() {
+#'   greeter <- ellmer::chat_openai(model = "gpt-4o")
+#'   stream <- greeter$stream_async("Generate a short welcome message.")
+#'   chat_greeting(stream)
+#' })
+#' ```
+#'
+#' **One-argument function.** The module clones the `client`, wipes its turn
+#' history, and passes the fresh clone to your function. This avoids manually
+#' creating and configuring a separate client:
+#'
+#' ```r
+#' chat_mod_server("chat", client, greeting = function(client) {
+#'   stream <- client$stream_async("Generate a short welcome message.")
+#'   chat_greeting(stream)
+#' })
+#' ```
+#'
+#' In all function modes, `clear(greeting = TRUE)` triggers the function
+#' again automatically. The returned `set_greeting()` helper is available for
+#' cases where you need to set a greeting outside the greeting lifecycle.
+#'
 #' @export
 chat_mod_server <- function(
   id,

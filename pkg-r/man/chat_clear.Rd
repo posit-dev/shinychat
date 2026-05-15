@@ -16,7 +16,9 @@ allowing the server to generate a new greeting.}
 \item{session}{The Shiny session object}
 }
 \description{
-Clear all messages from a chat control
+Removes all messages from the chat UI. Set \code{greeting = TRUE} to also
+clear the greeting, which re-triggers \code{greeting_requested} (see the
+\strong{Greeting} section in \code{\link[=chat_ui]{chat_ui()}}).
 }
 \examples{
 \dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
@@ -37,6 +39,35 @@ server <- function(input, output, session) {
   observeEvent(input$chat_user_input, {
     response <- paste0("You said: ", input$chat_user_input)
     chat_append("chat", response)
+  })
+}
+
+shinyApp(ui, server)
+\dontshow{\}) # examplesIf}
+\dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
+
+library(shiny)
+library(bslib)
+library(shinychat)
+
+# Regenerate greeting on clear
+ui <- page_fillable(
+  chat_ui("chat"),
+  actionButton("new_chat", "New chat")
+)
+
+server <- function(input, output, session) {
+  observeEvent(input$chat_greeting_requested, {
+    chat_set_greeting("chat", "## Welcome!\n\nHow can I help?")
+  })
+
+  observeEvent(input$new_chat, {
+    # Clearing with greeting = TRUE triggers greeting_requested again
+    chat_clear("chat", greeting = TRUE)
+  })
+
+  observeEvent(input$chat_user_input, {
+    chat_append("chat", paste0("You said: ", input$chat_user_input))
   })
 }
 

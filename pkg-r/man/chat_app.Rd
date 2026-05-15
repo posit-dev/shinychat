@@ -41,11 +41,9 @@ limitations; or disable bookmarking by setting this to \code{"disable"}.}
 in \code{\link[=chat_ui]{chat_ui()}}.}
 
 \item{greeting}{Optional greeting to set when the module initializes.
-Accepts the same inputs as \code{\link[=chat_set_greeting]{chat_set_greeting()}} -- a string, an
-\code{\link[htmltools:HTML]{htmltools::HTML()}} object, \code{\link[htmltools:tagList]{htmltools::tagList()}}, a generator/stream,
-or a \code{chat_greeting()} wrapper. For greetings that need to react to
-per-session state or be replaced later, leave this \code{NULL} and call the
-returned \code{set_greeting()} helper instead.}
+Accepts a static value (string, \code{\link[htmltools:HTML]{htmltools::HTML()}}, \code{\link[htmltools:tagList]{htmltools::tagList()}},
+or \code{\link[=chat_greeting]{chat_greeting()}}) or a \strong{function} that generates the greeting
+dynamically. See the \strong{Greeting} section below for details.}
 
 \item{bookmark_on_input}{A logical value determines if the bookmark should be updated when the user submits a message. Default is \code{TRUE}.}
 
@@ -103,6 +101,43 @@ app is suitable for interactive use by a single user; do not use
 \item \code{chat_mod_server()}: A simple chat app module server.
 
 }}
+\section{Greeting}{
+
+
+The \code{greeting} parameter in \code{chat_mod_server()} supports three modes:
+
+\strong{Static value.} A string or \code{\link[=chat_greeting]{chat_greeting()}} is set once when the module
+initializes. It will not regenerate after \code{\link[=chat_clear]{chat_clear()}}.
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_mod_server("chat", client, greeting = "## Welcome!\\n\\nHow can I help?")
+}\if{html}{\out{</div>}}
+
+\strong{Zero-argument function.} Called each time \code{greeting_requested} fires
+(when the chat is visible with no messages or greeting, including after
+\code{clear(greeting = TRUE)}). You manage the LLM client yourself:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_mod_server("chat", client, greeting = function() \{
+  greeter <- ellmer::chat_openai(model = "gpt-4o")
+  stream <- greeter$stream_async("Generate a short welcome message.")
+  chat_greeting(stream)
+\})
+}\if{html}{\out{</div>}}
+
+\strong{One-argument function.} The module clones the \code{client}, wipes its turn
+history, and passes the fresh clone to your function. This avoids manually
+creating and configuring a separate client:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_mod_server("chat", client, greeting = function(client) \{
+  stream <- client$stream_async("Generate a short welcome message.")
+  chat_greeting(stream)
+\})
+}\if{html}{\out{</div>}}
+
+In all function modes, \code{clear(greeting = TRUE)} triggers the function
+again automatically. The returned \code{set_greeting()} helper is available for
+cases where you need to set a greeting outside the greeting lifecycle.
+}
+
 \examples{
 \dontrun{
 # Interactive in the console ----

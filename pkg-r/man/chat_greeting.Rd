@@ -23,10 +23,38 @@ user sends a message. Defaults to \code{TRUE}.}
 An S3 object of class \code{"chat_greeting"}.
 }
 \description{
-Creates a greeting object for use with \code{\link[=chat_ui]{chat_ui()}} or \code{chat_set_greeting()}.
+Creates a greeting object for use with \code{\link[=chat_ui]{chat_ui()}} or \code{\link[=chat_set_greeting]{chat_set_greeting()}}.
 A greeting is displayed when the chat first loads and is dismissed when the
 user sends their first message.
 }
+\section{Patterns}{
+
+
+\strong{Non-dismissible greeting} (stays visible after the user sends a message):
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_greeting("Please read our [terms of service](https://example.com).", dismissible = FALSE)
+}\if{html}{\out{</div>}}
+
+\strong{Greeting with suggestion cards} (clickable chips that fill the input):
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_greeting(paste(
+  "## Welcome!\\n\\n",
+  "Try one of these:\\n\\n",
+  '<span class="suggestion">Summarize my data</span>\\n',
+  '<span class="suggestion">Create a plot</span>\\n',
+  '<span class="suggestion">Explain this code</span>'
+))
+}\if{html}{\out{</div>}}
+
+\strong{Greeting with HTML tags} (Shiny inputs/outputs):
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_greeting(htmltools::tagList(
+  htmltools::h2("Welcome!"),
+  shiny::selectInput("model", "Choose a model:", c("gpt-4o", "claude-3"))
+))
+}\if{html}{\out{</div>}}
+}
+
 \examples{
 \dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
 library(shiny)
