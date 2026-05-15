@@ -1,7 +1,6 @@
 import asyncio
 
-from shiny import App, reactive, ui
-
+from shiny import App, reactive, ui  # noqa: I001
 from shinychat import Chat, chat_greeting, chat_ui
 
 GREETING_CONTENT = """\
@@ -43,12 +42,8 @@ app_ui = ui.page_fillable(
 )
 
 
-greeting_count = 0
-
-
 def server(input, output, session):
-    global greeting_count
-    greeting_count = 0
+    greeting_count = reactive.value(0)
 
     chat = Chat(id="chat")
 
@@ -60,9 +55,9 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.chat_greeting_requested)
     async def _generate_greeting():
-        global greeting_count
-        greeting_count += 1
-        content = GREETING_CONTENT if greeting_count % 2 == 1 else GREETING_CONTENT_2
+        count = greeting_count() + 1
+        greeting_count.set(count)
+        content = GREETING_CONTENT if count % 2 == 1 else GREETING_CONTENT_2
 
         async def stream():
             for line in content.split("\n"):
