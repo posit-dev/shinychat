@@ -60,6 +60,10 @@ class ChatContainerElement extends HTMLElement {
 
     const footerEl = this.querySelector(CHAT_FOOTER_TAG)
     const footerHtml = footerEl ? footerEl.innerHTML : undefined
+    // Remove the server-rendered footer from the DOM so that any Shiny
+    // inputs it contains (e.g. toolbar buttons) aren't re-bound by an
+    // outer bindAll (from renderUI) after we've already extracted the HTML.
+    footerEl?.remove()
 
     // Unbind any Shiny inputs/outputs in the server-rendered content before
     // React replaces the DOM. Without this, Shiny's internal binding registry
@@ -85,6 +89,7 @@ class ChatContainerElement extends HTMLElement {
   }
 
   disconnectedCallback() {
+    transport.unbindAll(this)
     this.reactRoot?.unmount()
     this.reactRoot = null
   }
