@@ -394,11 +394,17 @@ as_content_extra_item <- function(x) {
   }
 }
 
-as_text_value <- function(x) {
-  if (inherits(x, "AsIs") || inherits(x, "json") || is.character(x)) {
-    paste(as.character(x), collapse = "\n")
+is_content <- function(x) {
+  S7::S7_inherits(x, ellmer::Content)
+}
+
+as_content_extra_item_or_text <- function(x) {
+  if (is_content_extra(x)) {
+    as_content_extra_item(x)
+  } else if (S7::S7_inherits(x, ellmer::ContentText)) {
+    list(type = "text", value = x@text, value_type = "code")
   } else {
-    jsonlite::toJSON(x, auto_unbox = TRUE, pretty = 2, force = TRUE)
+    list(type = "text", value = as.character(x), value_type = "code")
   }
 }
 
@@ -422,14 +428,8 @@ tool_default_display <- function(content) {
     ))
   }
 
-  if (is.list(value) && some(value, is_content_extra)) {
-    items <- map(value, function(v) {
-      if (is_content_extra(v)) {
-        as_content_extra_item(v)
-      } else {
-        list(type = "text", value = as_text_value(v), value_type = "code")
-      }
-    })
+  if (is.list(value) && some(value, is_content)) {
+    items <- map(value, as_content_extra_item_or_text)
     return(list(
       value = jsonlite::toJSON(items, auto_unbox = TRUE),
       value_type = "content_extra"

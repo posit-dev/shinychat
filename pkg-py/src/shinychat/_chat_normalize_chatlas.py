@@ -103,12 +103,19 @@ class ToolRequestComponent(ToolCardComponent):
 ValueType = Literal["html", "markdown", "text", "code", "content_extra"]
 
 
+def _is_content(value: object) -> bool:
+    from chatlas._content import Content
+
+    return isinstance(value, Content)
+
+
 def _is_content_extra(value: object) -> bool:
     from chatlas._content import (
         ContentImageInline,
         ContentImageRemote,
         ContentPDF,
     )
+
     return isinstance(value, (ContentImageInline, ContentImageRemote, ContentPDF))
 
 
@@ -118,6 +125,7 @@ def _as_content_extra_item(value: object) -> dict[str, str]:
         ContentImageRemote,
         ContentPDF,
     )
+
     if isinstance(value, ContentImageRemote):
         return {"type": "image", "src": value.url}
     elif isinstance(value, ContentImageInline):
@@ -125,6 +133,17 @@ def _as_content_extra_item(value: object) -> dict[str, str]:
     elif isinstance(value, ContentPDF):
         return {"type": "pdf", "filename": value.filename or "document.pdf"}
     raise TypeError(f"Unexpected content extra type: {type(value)}")
+
+
+def _as_content_extra_item_or_text(value: object) -> dict[str, str]:
+    from chatlas._content import ContentText
+
+    if _is_content_extra(value):
+        return _as_content_extra_item(value)
+    elif isinstance(value, ContentText):
+        return {"type": "text", "value": value.text, "value_type": "code"}
+    else:
+        return {"type": "text", "value": str(value), "value_type": "code"}
 
 
 class ToolResultComponent(ToolCardComponent):
@@ -416,10 +435,9 @@ def tool_result_display(
     if _is_content_extra(x.value):
         return json.dumps([_as_content_extra_item(x.value)]), "content_extra"
 
-    if isinstance(x.value, (list, tuple)) and any(_is_content_extra(v) for v in x.value):
+    if isinstance(x.value, (list, tuple)) and any(_is_content(v) for v in x.value):
         items = [
-            _as_content_extra_item(v) if _is_content_extra(v)
-            else {"type": "text", "value": str(v), "value_type": "code"}
+            _as_content_extra_item_or_text(v)
             for v in x.value
         ]
         return json.dumps(items), "content_extra"
