@@ -373,9 +373,8 @@ If you are building a custom chat UI with `chat_ui()` directly, you can enable c
 The key steps are:
 
 1. Pass `enable_cancel = TRUE` to `chat_ui()` to show the stop button during streaming.
-2. Create a fresh `ellmer::stream_controller()` for each request and store it in a `reactiveVal()`.
-3. Pass the controller to `chat$stream_async()` via the `controller` argument.
-4. Observe `input$<id>_cancel` (where `<id>` is your chat element's ID) and call `ctrl$cancel()` when it fires.
+2. Create an `ellmer::stream_controller()` and pass it to `chat$stream_async()` via the `controller` argument. The controller automatically resets between streams, so you only need to create it once.
+3. Observe `input$<id>_cancel` (where `<id>` is your chat element's ID) and call `ctrl$cancel()` when it fires.
 
 ```r
 ui <- page_fillable(
@@ -384,8 +383,7 @@ ui <- page_fillable(
 
 server <- function(input, output, session) {
   chat <- ellmer::chat_openai(system_prompt = "You are a helpful assistant.")
-
-  current_controller <- reactiveVal(NULL)
+  ctrl <- ellmer::stream_controller()
 
   chat_task <- ExtendedTask$new(function(user_input, controller) {
     stream <- chat$stream_async(
@@ -400,14 +398,11 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$chat_user_input, {
-    ctrl <- ellmer::stream_controller()
-    current_controller(ctrl)
     chat_task$invoke(input$chat_user_input, controller = ctrl)
   })
 
   observeEvent(input$chat_cancel, {
-    ctrl <- current_controller()
-    if (!is.null(ctrl)) ctrl$cancel()
+    ctrl$cancel()
   })
 }
 

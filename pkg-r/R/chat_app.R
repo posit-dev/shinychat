@@ -195,12 +195,10 @@ chat_mod_server <- function(
 
     last_turn <- shiny::reactiveVal(NULL, label = "last_turn")
     last_input <- shiny::reactiveVal(NULL, label = "last_input")
-    current_controller <- shiny::reactiveVal(NULL, label = "stream_controller")
+    ctrl <- ellmer::stream_controller()
 
     shiny::observeEvent(input$chat_user_input, label = "on_chat_user_input", {
       last_input(input$chat_user_input)
-      ctrl <- ellmer::stream_controller()
-      current_controller(ctrl)
       append_stream_task$invoke(
         client,
         "chat",
@@ -210,10 +208,7 @@ chat_mod_server <- function(
     })
 
     shiny::observeEvent(input$chat_cancel, label = "on_chat_cancel", {
-      ctrl <- current_controller()
-      if (!is.null(ctrl)) {
-        ctrl$cancel()
-      }
+      ctrl$cancel()
     })
 
     shiny::observe(label = "update_last_turn", {
