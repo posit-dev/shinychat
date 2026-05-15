@@ -305,9 +305,9 @@ class Chat:
                 reactive.Value(())
             )
 
-            self._latest_user_input: reactive.Value[
-                StoredMessage | None
-            ] = reactive.Value(None)
+            self._latest_user_input: reactive.Value[StoredMessage | None] = (
+                reactive.Value(None)
+            )
 
             @reactive.extended_task
             async def _mock_task() -> str:
@@ -807,7 +807,9 @@ class Chat:
                     ChatMessage(
                         content=self._current_stream_message, role=msg.role
                     ),
-                    deps=self._current_stream_deps if self._current_stream_deps else None,
+                    deps=self._current_stream_deps
+                    if self._current_stream_deps
+                    else None,
                 )
 
             # Send the message to the client
@@ -1024,7 +1026,9 @@ class Chat:
         content_type: ContentType = (
             message.content_type
             if isinstance(message, ChatMessage)
-            else "html" if isinstance(message.content, HTML) else "markdown"
+            else "html"
+            if isinstance(message.content, HTML)
+            else "markdown"
         )
         message = self._as_stored_message(message)
 
@@ -1948,6 +1952,7 @@ class MessageStream:
 def is_thinking_delta(msg: Any) -> TypeGuard[ContentThinkingDelta]:
     try:
         from chatlas.types import ContentThinkingDelta
+
         return isinstance(msg, ContentThinkingDelta)
     except ImportError:
         return False

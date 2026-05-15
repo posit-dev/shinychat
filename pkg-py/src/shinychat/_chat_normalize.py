@@ -145,7 +145,9 @@ try:
     @message_content.register
     def _(message: ContentText):
         text = message.text
-        if text.startswith("<tool-content") or text.startswith("</tool-content"):
+        if text.startswith("<tool-content") or text.startswith(
+            "</tool-content"
+        ):
             return ChatMessage(content="")
         return ChatMessage(content=text)
 
@@ -154,7 +156,11 @@ try:
         return message_content(chunk)
 
     try:
-        from chatlas._content import ContentImageInline, ContentImageRemote, ContentPDF
+        from chatlas._content import (
+            ContentImageInline,
+            ContentImageRemote,
+            ContentPDF,
+        )
 
         @message_content.register
         def _(message: ContentImageInline):
