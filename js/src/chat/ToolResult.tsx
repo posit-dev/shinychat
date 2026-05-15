@@ -3,8 +3,26 @@ import { ToolCard } from "./ToolCard"
 import { RawHTML } from "./RawHTML"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { markdownCodeBlock } from "../markdown/markdownCodeBlock"
-import { exclamationCircleFill } from "../utils/icons"
+import { exclamationCircleFill, filePdfFill } from "../utils/icons"
 import { useFullscreen } from "./useFullscreen"
+
+interface ContentExtraItem {
+  type: "image" | "pdf"
+  src?: string
+  filename?: string
+}
+
+function PdfBadge({ filename }: { filename: string }) {
+  return (
+    <div className="shinychat-pdf badge fs-6 text-bg-secondary">
+      <span
+        className="shinychat-pdf__icon me-1"
+        dangerouslySetInnerHTML={{ __html: filePdfFill }}
+      />
+      <span className="shinychat-pdf__filename font-monospace">{filename}</span>
+    </div>
+  )
+}
 
 export interface ToolResultProps {
   requestId: string
@@ -118,6 +136,32 @@ function renderResult(
     resultContent = <RawHTML html={displayValue} />
   } else if (valueType === "text") {
     resultContent = <p>{displayValue}</p>
+  } else if (valueType === "content_extra") {
+    try {
+      const items = JSON.parse(value) as ContentExtraItem[]
+      resultContent = (
+        <div className="shinychat-content-extra">
+          {items.map((item, i) => {
+            if (item.type === "image") {
+              return (
+                <img key={i} src={item.src} className="shinychat-tool-image" />
+              )
+            } else if (item.type === "pdf") {
+              return <PdfBadge key={i} filename={item.filename ?? ""} />
+            }
+            return null
+          })}
+        </div>
+      )
+    } catch {
+      resultContent = (
+        <MarkdownContent
+          content={markdownCodeBlock(displayValue, "text")}
+          contentType="markdown"
+          streaming={false}
+        />
+      )
+    }
   } else {
     const markdownContent =
       valueType !== "markdown"
