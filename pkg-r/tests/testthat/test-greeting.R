@@ -198,3 +198,162 @@ test_that("chat_clear(greeting = TRUE) includes greeting in action", {
   expect_equal(action$type, "clear")
   expect_true(action$greeting)
 })
+
+
+# ── chat_mod_server() greeting function ──────────────────────────────────────
+
+# Helper: minimal R6 mock that satisfies check_ellmer_chat() and chat_restore().
+# Requires get_tools() so that the chat_restore set_ui observer does not crash
+# and block subsequent observers.
+mock_chat_client <- function(turns = list()) {
+  R6::R6Class(
+    "Chat",
+    cloneable = TRUE,
+    public = list(
+      turns = turns,
+      set_turns = function(t) {
+        self$turns <- t
+        invisible(self)
+      },
+      get_turns = function() self$turns,
+      get_tools = function() list(),
+      last_turn = function() NULL
+    )
+  )$new()
+}
+
+# Helper: suppress expected warnings from chat_restore()'s set_ui observer,
+# which calls into ellmer internals not available on the mock client.
+suppress_restore_warnings <- function(expr) {
+  withCallingHandlers(
+    expr,
+    warning = function(w) {
+      # Suppress expected warnings/errors from chat_restore's set_ui observer,
+      # which calls ellmer internals not implemented on the mock client.
+      if (grepl("non-function|set_ui|tools|no applicable method", conditionMessage(w))) {
+        invokeRestart("muffleWarning")
+      }
+    }
+  )
+}
+
+test_that("arity detection: zero-arg greeting function has formals length 0", {
+  expect_equal(length(formals(function() {})), 0L)
+})
+
+test_that("arity detection: one-arg greeting function has formals length 1", {
+  expect_equal(length(formals(function(client) {})), 1L)
+})
+
+test_that("chat_mod_server() calls zero-arg greeting on chat_greeting_requested", {
+  called <- FALSE
+  suppress_restore_warnings(
+    shiny::testServer(
+      chat_mod_server,
+      args = list(
+        client = mock_chat_client(),
+        greeting = function() {
+          called <<- TRUE
+          "## Hello"
+        }
+      ),
+      {
+        expect_false(called)
+        session$setInputs(chat_greeting_requested = 1L)
+        expect_true(called)
+      }
+    )
+  )
+})
+
+test_that("chat_mod_server() zero-arg greeting is not called without input trigger", {
+  called <- FALSE
+  suppress_restore_warnings(
+    shiny::testServer(
+      chat_mod_server,
+      args = list(
+        client = mock_chat_client(),
+        greeting = function() {
+          called <<- TRUE
+          "## Hello"
+        }
+      ),
+      {
+        # No setInputs — observer must not fire
+        expect_false(called)
+      }
+    )
+  )
+})
+
+test_that("chat_mod_server() calls one-arg greeting with a cloned client on chat_greeting_requested", {
+  received_greeter <- NULL
+  suppress_restore_warnings(
+    shiny::testServer(
+      chat_mod_server,
+      args = list(
+        client = mock_chat_client(),
+        greeting = function(greeter) {
+          received_greeter <<- greeter
+          "## Hello"
+        }
+      ),
+      {
+        session$setInputs(chat_greeting_requested = 1L)
+        expect_true(inherits(received_greeter, "Chat"))
+      }
+    )
+  )
+})
+
+test_that("chat_mod_server() one-arg greeting receives a client with empty turns", {
+  received_turns <- NULL
+  client_with_turns <- mock_chat_client()
+  client_with_turns$set_turns(list(list(role = "user", content = "prior message")))
+  suppress_restore_warnings(
+    shiny::testServer(
+      chat_mod_server,
+      args = list(
+        client = client_with_turns,
+        greeting = function(greeter) {
+          received_turns <<- greeter$get_turns()
+          "## Hello"
+        }
+      ),
+      {
+        session$setInputs(chat_greeting_requested = 1L)
+        expect_equal(length(received_turns), 0L)
+      }
+    )
+  )
+})
+
+test_that("chat_mod_server() one-arg greeting does not clear original client turns", {
+  client_with_turns <- mock_chat_client()
+  client_with_turns$set_turns(list(list(role = "user", content = "prior message")))
+  suppress_restore_warnings(
+    shiny::testServer(
+      chat_mod_server,
+      args = list(
+        client = client_with_turns,
+        greeting = function(greeter) "## Hello"
+      ),
+      {
+        session$setInputs(chat_greeting_requested = 1L)
+        expect_equal(length(client_with_turns$get_turns()), 1L)
+      }
+    )
+  )
+})
+
+test_that("chat_mod_server() does not error with static string greeting", {
+  expect_no_error(
+    suppress_restore_warnings(
+      shiny::testServer(
+        chat_mod_server,
+        args = list(client = mock_chat_client(), greeting = "## Static"),
+        {}
+      )
+    )
+  )
+})

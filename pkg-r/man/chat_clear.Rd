@@ -4,10 +4,14 @@
 \alias{chat_clear}
 \title{Clear all messages from a chat control}
 \usage{
-chat_clear(id, session = getDefaultReactiveDomain())
+chat_clear(id, greeting = FALSE, session = getDefaultReactiveDomain())
 }
 \arguments{
 \item{id}{The ID of the chat element}
+
+\item{greeting}{If \code{TRUE}, also clears the greeting. When the greeting is
+cleared, \code{greeting_requested} will fire again (if the chat is visible),
+allowing the server to generate a new greeting.}
 
 \item{session}{The Shiny session object}
 }

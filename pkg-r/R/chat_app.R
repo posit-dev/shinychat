@@ -246,7 +246,21 @@ chat_mod_server <- function(
       chat_set_greeting("chat", greeting, session = session)
     }
 
-    if (!is.null(greeting)) {
+    if (is.function(greeting)) {
+      shiny::observeEvent(
+        input$chat_greeting_requested,
+        label = "on_greeting_requested",
+        {
+          if (length(formals(greeting)) == 0) {
+            set_greeting_mod(greeting())
+          } else {
+            greeter <- client$clone()
+            greeter$set_turns(list())
+            set_greeting_mod(greeting(greeter))
+          }
+        }
+      )
+    } else if (!is.null(greeting)) {
       set_greeting_mod(greeting)
     }
 
