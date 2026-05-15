@@ -15,6 +15,7 @@ import { ChatInput, type ChatInputHandle } from "./ChatInput"
 import { ScrollToBottomButton } from "./ScrollToBottomButton"
 import { ExternalLinkDialogComponent } from "./ExternalLinkDialog"
 import { ChatScrollContext, useChatDispatch } from "./context"
+import { RawHTML } from "./RawHTML"
 import type { ChatMessageData } from "./state"
 import type { ChatTransport } from "../transport/types"
 
@@ -35,6 +36,7 @@ export interface ChatContainerProps {
   cancelId?: string
   enableCancel?: boolean
   cancelRequested?: boolean
+  footerHtml?: string
 }
 
 export type ChatContainerHandle = ChatInputHandle
@@ -54,6 +56,7 @@ export const ChatContainer = forwardRef<
     cancelId,
     enableCancel,
     cancelRequested,
+    footerHtml,
   },
   ref,
 ) {
@@ -344,6 +347,14 @@ export const ChatContainer = forwardRef<
           onCancel={cancelStream}
         />
       </div>
+
+      {footerHtml && (
+        <RawHTML
+          html={footerHtml}
+          className="shiny-chat-footer"
+          displayContents={false}
+        />
+      )}
 
       {pendingUrl &&
         createPortal(

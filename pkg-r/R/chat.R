@@ -46,6 +46,12 @@
 #'   usage with `chat_ui()`, observe `input$<id>_cancel` to handle cancellation
 #'   (e.g., by calling `ctrl$cancel()` on an ellmer `stream_controller()`).
 #'   Defaults to `FALSE`.
+#' @param footer Optional HTML content to display below the chat input.
+#'   This can be any HTML content (tags, tag lists, or character strings).
+#'   Useful for adding disclaimers, attribution, or other information.
+#'   The footer text is styled slightly smaller and lighter than body text
+#'   by default. Customize with CSS properties `--shiny-chat-footer-font-size`
+#'   and `--shiny-chat-footer-color` on the chat container or footer element.
 #' @section Thinking display:
 #'
 #' When a model produces reasoning or "thinking" tokens, shinychat renders them
@@ -123,7 +129,8 @@ chat_ui <- function(
   height = "auto",
   fill = TRUE,
   icon_assistant = NULL,
-  enable_cancel = FALSE
+  enable_cancel = FALSE,
+  footer = NULL
 ) {
   attrs <- rlang::list2(...)
   if (!all(nzchar(rlang::names2(attrs)))) {
@@ -159,6 +166,16 @@ chat_ui <- function(
     )
   })
 
+  footer_tag <- NULL
+  footer_deps <- NULL
+  if (!is.null(footer)) {
+    footer_ui <- with_current_theme({
+      htmltools::renderTags(footer)
+    })
+    footer_tag <- tag("shiny-chat-footer", list(htmltools::HTML(footer_ui[["html"]])))
+    footer_deps <- footer_ui[["dependencies"]]
+  }
+
   res <- tag(
     "shiny-chat-container",
     rlang::list2(
@@ -181,8 +198,10 @@ chat_ui <- function(
         "shiny-chat-input",
         list(id = paste0(id, "_user_input"), placeholder = placeholder)
       ),
+      footer_tag,
       shinychat_deps(),
-      htmltools::findDependencies(icon_assistant)
+      htmltools::findDependencies(icon_assistant),
+      footer_deps
     )
   )
 

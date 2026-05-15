@@ -1680,6 +1680,7 @@ class ChatExpress(Chat):
         fill: bool = True,
         icon_assistant: HTML | Tag | TagList | None = None,
         enable_cancel: bool = False,
+        footer: Optional[TagChild] = None,
         **kwargs: TagAttrValue,
     ) -> Tag:
         """
@@ -1712,6 +1713,13 @@ class ChatExpress(Chat):
             ``input.<id>_cancel`` on the server and call ``ctrl.cancel()`` on a
             chatlas ``StreamController`` to actually stop the stream. Defaults to
             ``False``.
+        footer
+            Optional HTML content to display below the chat input.
+            This can be any HTML content (tags, tag lists, or strings).
+            Useful for adding disclaimers, attribution, or other information.
+            The footer text is styled slightly smaller and lighter than body text
+            by default. Customize with CSS properties ``--shiny-chat-footer-font-size``
+            and ``--shiny-chat-footer-color`` on the chat container or footer element.
         kwargs
             Additional attributes for the chat container element.
         """
@@ -1725,6 +1733,7 @@ class ChatExpress(Chat):
             fill=fill,
             icon_assistant=icon_assistant,
             enable_cancel=enable_cancel,
+            footer=footer,
             **kwargs,
         )
 
@@ -1793,6 +1802,7 @@ def chat_ui(
     fill: bool = True,
     icon_assistant: Optional[HTML | Tag | TagList] = None,
     enable_cancel: bool = False,
+    footer: Optional[TagChild] = None,
     **kwargs: TagAttrValue,
 ) -> Tag:
     """
@@ -1842,6 +1852,13 @@ def chat_ui(
         ``input.<id>_cancel`` on the server and call ``ctrl.cancel()`` on a
         chatlas ``StreamController`` to actually stop the stream. Defaults to
         ``False``.
+    footer
+        Optional HTML content to display below the chat input.
+        This can be any HTML content (tags, tag lists, or strings).
+        Useful for adding disclaimers, attribution, or other information.
+        The footer text is styled slightly smaller and lighter than body text
+        by default. Customize with CSS properties ``--shiny-chat-footer-font-size``
+        and ``--shiny-chat-footer-color`` on the chat container or footer element.
     kwargs
         Additional attributes for the chat container element.
     """
@@ -1874,6 +1891,17 @@ def chat_ui(
             )
         )
 
+    footer_tag = None
+    footer_deps = None
+    if footer is not None:
+        if isinstance(footer, str):
+            footer_tag = Tag("shiny-chat-footer", HTML(footer))
+        elif isinstance(footer, (Tag, TagList)):
+            footer_tag = Tag("shiny-chat-footer", HTML(str(footer)))
+            footer_deps = footer.get_dependencies()
+        else:
+            footer_tag = Tag("shiny-chat-footer", HTML(str(footer)))
+
     res = Tag(
         "shiny-chat-container",
         Tag("shiny-chat-messages", *message_tags),
@@ -1882,8 +1910,10 @@ def chat_ui(
             id=f"{id}_user_input",
             placeholder=placeholder,
         ),
+        footer_tag,
         shinychat_dependency(),
         icon_deps,
+        footer_deps,
         {
             "style": css(
                 width=as_css_unit(width),
