@@ -172,7 +172,10 @@ chat_ui <- function(
     footer_ui <- with_current_theme({
       htmltools::renderTags(footer)
     })
-    footer_tag <- tag("shiny-chat-footer", list(htmltools::HTML(footer_ui[["html"]])))
+    footer_tag <- tag(
+      "shiny-chat-footer",
+      list(htmltools::HTML(footer_ui[["html"]]))
+    )
     footer_deps <- footer_ui[["dependencies"]]
   }
 
