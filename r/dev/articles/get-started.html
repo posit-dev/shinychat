@@ -477,6 +477,91 @@ Screenshot of a chatbot embedded in a card with a header and tooltip.
 </div>
 </div>
 </div>
+<div class="section level2">
+<h2 id="stream-cancellation">Stream cancellation<a class="anchor" aria-label="anchor" href="#stream-cancellation"></a>
+</h2>
+<p>shinychat supports cancelling an in-progress AI response. When
+cancellation is enabled, a stop button appears in the chat input area
+during streaming. Users can also press Escape while the chat has focus
+to cancel the current response. Any partial response already received is
+preserved in the chat history.</p>
+<div class="section level3">
+<h3 id="using-the-chat-module-recommended">Using the chat module (recommended)<a class="anchor" aria-label="anchor" href="#using-the-chat-module-recommended"></a>
+</h3>
+<p>The easiest way to add cancellation support is to use the
+<code><a href="../reference/chat_app.html">chat_mod_ui()</a></code> and <code><a href="../reference/chat_app.html">chat_mod_server()</a></code> functions.
+The module handles everything automatically — the stop button is shown
+during streaming and wired up internally, with no extra code
+required.</p>
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://shiny.posit.co/" class="external-link">shiny</a></span><span class="op">)</span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://rstudio.github.io/bslib/" class="external-link">bslib</a></span><span class="op">)</span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://posit-dev.github.io/shinychat/r/">shinychat</a></span><span class="op">)</span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://ellmer.tidyverse.org" class="external-link">ellmer</a></span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">ui</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rstudio.github.io/bslib/reference/page_fillable.html" class="external-link">page_fillable</a></span><span class="op">(</span></span>
+<span>  <span class="fu"><a href="../reference/chat_app.html">chat_mod_ui</a></span><span class="op">(</span><span class="st">"chat"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">server</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">input</span>, <span class="va">output</span>, <span class="va">session</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="va">chat</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://ellmer.tidyverse.org/reference/chat_anthropic.html" class="external-link">chat_anthropic</a></span><span class="op">(</span>system_prompt <span class="op">=</span> <span class="st">"You are a helpful assistant."</span><span class="op">)</span></span>
+<span>  <span class="fu"><a href="../reference/chat_app.html">chat_mod_server</a></span><span class="op">(</span><span class="st">"chat"</span>, client <span class="op">=</span> <span class="va">chat</span><span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/shinyApp.html" class="external-link">shinyApp</a></span><span class="op">(</span><span class="va">ui</span>, <span class="va">server</span><span class="op">)</span></span></code></pre></div>
+</div>
+<div class="section level3">
+<h3 id="manual-approach">Manual approach<a class="anchor" aria-label="anchor" href="#manual-approach"></a>
+</h3>
+<p>If you are building a custom chat UI with <code><a href="../reference/chat_ui.html">chat_ui()</a></code>
+directly, you can enable cancellation by setting
+<code>enable_cancel = TRUE</code> and wiring up the cancel input in your
+server function.</p>
+<p>The key steps are:</p>
+<ol style="list-style-type: decimal">
+<li>Pass <code>enable_cancel = TRUE</code> to <code><a href="../reference/chat_ui.html">chat_ui()</a></code> to
+show the stop button during streaming.</li>
+<li>Create an <code><a href="https://ellmer.tidyverse.org/reference/stream_controller.html" class="external-link">ellmer::stream_controller()</a></code> and pass it to
+<code>chat$stream_async()</code> via the <code>controller</code>
+argument. The controller automatically resets between streams, so you
+only need to create it once.</li>
+<li>Observe <code>input$&lt;id&gt;_cancel</code> (where
+<code>&lt;id&gt;</code> is your chat element’s ID) and call
+<code>ctrl$cancel()</code> when it fires.</li>
+</ol>
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">ui</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rstudio.github.io/bslib/reference/page_fillable.html" class="external-link">page_fillable</a></span><span class="op">(</span></span>
+<span>  <span class="fu"><a href="../reference/chat_ui.html">chat_ui</a></span><span class="op">(</span><span class="st">"chat"</span>, enable_cancel <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">server</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">input</span>, <span class="va">output</span>, <span class="va">session</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="va">chat</span> <span class="op">&lt;-</span> <span class="fu">ellmer</span><span class="fu">::</span><span class="fu"><a href="https://ellmer.tidyverse.org/reference/chat_openai.html" class="external-link">chat_openai</a></span><span class="op">(</span>system_prompt <span class="op">=</span> <span class="st">"You are a helpful assistant."</span><span class="op">)</span></span>
+<span>  <span class="va">ctrl</span> <span class="op">&lt;-</span> <span class="fu">ellmer</span><span class="fu">::</span><span class="fu"><a href="https://ellmer.tidyverse.org/reference/stream_controller.html" class="external-link">stream_controller</a></span><span class="op">(</span><span class="op">)</span></span>
+<span></span>
+<span>  <span class="va">chat_task</span> <span class="op">&lt;-</span> <span class="va"><a href="https://rdrr.io/pkg/shiny/man/ExtendedTask.html" class="external-link">ExtendedTask</a></span><span class="op">$</span><span class="fu">new</span><span class="op">(</span><span class="kw">function</span><span class="op">(</span><span class="va">user_input</span>, <span class="va">controller</span><span class="op">)</span> <span class="op">{</span></span>
+<span>    <span class="va">stream</span> <span class="op">&lt;-</span> <span class="va">chat</span><span class="op">$</span><span class="fu">stream_async</span><span class="op">(</span></span>
+<span>      <span class="va">user_input</span>,</span>
+<span>      stream <span class="op">=</span> <span class="st">"content"</span>,</span>
+<span>      controller <span class="op">=</span> <span class="va">controller</span></span>
+<span>    <span class="op">)</span></span>
+<span>    <span class="va">p</span> <span class="op">&lt;-</span> <span class="fu">promises</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/promises/reference/promise_resolve.html" class="external-link">promise_resolve</a></span><span class="op">(</span><span class="va">stream</span><span class="op">)</span></span>
+<span>    <span class="fu">promises</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/promises/reference/then.html" class="external-link">then</a></span><span class="op">(</span><span class="va">p</span>, <span class="kw">function</span><span class="op">(</span><span class="va">stream</span><span class="op">)</span> <span class="op">{</span></span>
+<span>      <span class="fu"><a href="../reference/chat_append.html">chat_append</a></span><span class="op">(</span><span class="st">"chat"</span>, <span class="va">stream</span><span class="op">)</span></span>
+<span>    <span class="op">}</span><span class="op">)</span></span>
+<span>  <span class="op">}</span><span class="op">)</span></span>
+<span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/pkg/shiny/man/observeEvent.html" class="external-link">observeEvent</a></span><span class="op">(</span><span class="va">input</span><span class="op">$</span><span class="va">chat_user_input</span>, <span class="op">{</span></span>
+<span>    <span class="va">chat_task</span><span class="op">$</span><span class="fu">invoke</span><span class="op">(</span><span class="va">input</span><span class="op">$</span><span class="va">chat_user_input</span>, controller <span class="op">=</span> <span class="va">ctrl</span><span class="op">)</span></span>
+<span>  <span class="op">}</span><span class="op">)</span></span>
+<span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/pkg/shiny/man/observeEvent.html" class="external-link">observeEvent</a></span><span class="op">(</span><span class="va">input</span><span class="op">$</span><span class="va">chat_cancel</span>, <span class="op">{</span></span>
+<span>    <span class="va">ctrl</span><span class="op">$</span><span class="fu">cancel</span><span class="op">(</span><span class="op">)</span></span>
+<span>  <span class="op">}</span><span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/shinyApp.html" class="external-link">shinyApp</a></span><span class="op">(</span><span class="va">ui</span>, <span class="va">server</span><span class="op">)</span></span></code></pre></div>
+</div>
+</div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside>
 </div>

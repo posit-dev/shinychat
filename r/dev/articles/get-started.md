@@ -380,3 +380,94 @@ shinyApp(ui, server)
 tooltip.](images/chat-card.png)
 
 Screenshot of a chatbot embedded in a card with a header and tooltip.
+
+## Stream cancellation
+
+shinychat supports cancelling an in-progress AI response. When
+cancellation is enabled, a stop button appears in the chat input area
+during streaming. Users can also press Escape while the chat has focus
+to cancel the current response. Any partial response already received is
+preserved in the chat history.
+
+### Using the chat module (recommended)
+
+The easiest way to add cancellation support is to use the
+[`chat_mod_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+and
+[`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+functions. The module handles everything automatically — the stop button
+is shown during streaming and wired up internally, with no extra code
+required.
+
+``` r
+
+library(shiny)
+library(bslib)
+library(shinychat)
+library(ellmer)
+
+ui <- page_fillable(
+  chat_mod_ui("chat")
+)
+
+server <- function(input, output, session) {
+  chat <- chat_anthropic(system_prompt = "You are a helpful assistant.")
+  chat_mod_server("chat", client = chat)
+}
+
+shinyApp(ui, server)
+```
+
+### Manual approach
+
+If you are building a custom chat UI with
+[`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
+directly, you can enable cancellation by setting `enable_cancel = TRUE`
+and wiring up the cancel input in your server function.
+
+The key steps are:
+
+1.  Pass `enable_cancel = TRUE` to
+    [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
+    to show the stop button during streaming.
+2.  Create an
+    [`ellmer::stream_controller()`](https://ellmer.tidyverse.org/reference/stream_controller.html)
+    and pass it to `chat$stream_async()` via the `controller` argument.
+    The controller automatically resets between streams, so you only
+    need to create it once.
+3.  Observe `input$<id>_cancel` (where `<id>` is your chat element’s ID)
+    and call `ctrl$cancel()` when it fires.
+
+``` r
+
+ui <- page_fillable(
+  chat_ui("chat", enable_cancel = TRUE)
+)
+
+server <- function(input, output, session) {
+  chat <- ellmer::chat_openai(system_prompt = "You are a helpful assistant.")
+  ctrl <- ellmer::stream_controller()
+
+  chat_task <- ExtendedTask$new(function(user_input, controller) {
+    stream <- chat$stream_async(
+      user_input,
+      stream = "content",
+      controller = controller
+    )
+    p <- promises::promise_resolve(stream)
+    promises::then(p, function(stream) {
+      chat_append("chat", stream)
+    })
+  })
+
+  observeEvent(input$chat_user_input, {
+    chat_task$invoke(input$chat_user_input, controller = ctrl)
+  })
+
+  observeEvent(input$chat_cancel, {
+    ctrl$cancel()
+  })
+}
+
+shinyApp(ui, server)
+```

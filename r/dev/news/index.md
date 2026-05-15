@@ -15,6 +15,17 @@
 
 ### New features and improvements
 
+- Added `enable_cancel` parameter to
+  [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
+  to show a stop button that lets users cancel an in-progress AI
+  response. Press the stop button or hit Escape to cancel.
+  [`chat_mod_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  enables cancellation by default, and
+  [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  handles the cancellation wiring automatically, using the stream
+  cancellation features introduced in ellmer v0.4.1.
+  ([\#221](https://github.com/posit-dev/shinychat/issues/221))
+
 - Markdown lists where every item is a `<span class="suggestion">` are
   now rendered as a grid of clickable suggestion cards. Each
   suggestion’s text content becomes both the card label and the value

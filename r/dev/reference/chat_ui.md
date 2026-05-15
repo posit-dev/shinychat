@@ -21,7 +21,8 @@ chat_ui(
   width = "min(680px, 100%)",
   height = "auto",
   fill = TRUE,
-  icon_assistant = NULL
+  icon_assistant = NULL,
+  enable_cancel = FALSE
 )
 ```
 
@@ -84,6 +85,16 @@ chat_ui(
   or
   [`htmltools::tags()`](https://rstudio.github.io/htmltools/reference/builder.html).
   If `None`, a default robot icon is used.
+
+- enable_cancel:
+
+  If `TRUE`, show a stop button during streaming that allows the user to
+  cancel the in-progress response. When using
+  [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md),
+  cancellation is wired up automatically. For manual usage with
+  `chat_ui()`, observe `input$<id>_cancel` to handle cancellation (e.g.,
+  by calling `ctrl$cancel()` on an ellmer `stream_controller()`).
+  Defaults to `FALSE`.
 
 ## Value
 
