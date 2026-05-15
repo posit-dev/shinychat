@@ -7,9 +7,11 @@ import { exclamationCircleFill, filePdfFill } from "../utils/icons"
 import { useFullscreen } from "./useFullscreen"
 
 interface ContentExtraItem {
-  type: "image" | "pdf"
+  type: "image" | "pdf" | "text"
   src?: string
   filename?: string
+  value?: string
+  value_type?: "html" | "markdown" | "text" | "code"
 }
 
 function PdfBadge({ filename }: { filename: string }) {
@@ -21,6 +23,35 @@ function PdfBadge({ filename }: { filename: string }) {
       />
       <span className="shinychat-pdf__filename font-monospace">{filename}</span>
     </div>
+  )
+}
+
+function ContentExtraText({
+  value,
+  valueType,
+}: {
+  value: string
+  valueType: string
+}) {
+  if (valueType === "html") {
+    return <RawHTML html={value} />
+  } else if (valueType === "text") {
+    return <p>{value}</p>
+  } else if (valueType === "markdown") {
+    return (
+      <MarkdownContent
+        content={value}
+        contentType="markdown"
+        streaming={false}
+      />
+    )
+  }
+  return (
+    <MarkdownContent
+      content={markdownCodeBlock(value, "text")}
+      contentType="markdown"
+      streaming={false}
+    />
   )
 }
 
@@ -148,6 +179,14 @@ function renderResult(
               )
             } else if (item.type === "pdf") {
               return <PdfBadge key={i} filename={item.filename ?? ""} />
+            } else if (item.type === "text") {
+              return (
+                <ContentExtraText
+                  key={i}
+                  value={item.value ?? ""}
+                  valueType={item.value_type ?? "code"}
+                />
+              )
             }
             return null
           })}

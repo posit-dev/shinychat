@@ -394,6 +394,14 @@ as_content_extra_item <- function(x) {
   }
 }
 
+as_text_value <- function(x) {
+  if (inherits(x, "AsIs") || inherits(x, "json") || is.character(x)) {
+    paste(as.character(x), collapse = "\n")
+  } else {
+    jsonlite::toJSON(x, auto_unbox = TRUE, pretty = 2, force = TRUE)
+  }
+}
+
 tool_default_display <- function(content) {
   value <- content@value
 
@@ -414,12 +422,16 @@ tool_default_display <- function(content) {
     ))
   }
 
-  if (is.list(value) && every(value, is_content_extra)) {
+  if (is.list(value) && some(value, is_content_extra)) {
+    items <- map(value, function(v) {
+      if (is_content_extra(v)) {
+        as_content_extra_item(v)
+      } else {
+        list(type = "text", value = as_text_value(v), value_type = "code")
+      }
+    })
     return(list(
-      value = jsonlite::toJSON(
-        map(value, as_content_extra_item),
-        auto_unbox = TRUE
-      ),
+      value = jsonlite::toJSON(items, auto_unbox = TRUE),
       value_type = "content_extra"
     ))
   }
