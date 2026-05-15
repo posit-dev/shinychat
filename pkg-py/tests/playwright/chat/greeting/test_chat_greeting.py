@@ -1,5 +1,3 @@
-import re
-
 from playwright.sync_api import Page, expect
 from shiny.run import ShinyAppProc
 from shinychat.playwright import ChatController
