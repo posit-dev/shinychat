@@ -49,6 +49,7 @@ class ChunkEndAction(TypedDict):
 
 class ClearAction(TypedDict):
     type: Literal["clear"]
+    greeting: NotRequired[bool]
 
 
 class UpdateInputAction(TypedDict):

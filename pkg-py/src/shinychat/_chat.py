@@ -61,6 +61,7 @@ from ._chat_types import (
     ChatGreeting,
     ChatMessage,
     ChatMessageDict,
+    ClearAction,
     ContentType,
     GreetingOptions,
     MessagePayload,
@@ -1442,7 +1443,7 @@ class Chat:
             ``greeting_requested`` to fire again if the chat is visible.
         """
         self._messages.set(())
-        action: dict[str, object] = {"type": "clear"}
+        action: ClearAction = {"type": "clear"}
         if greeting:
             action["greeting"] = True
         await self._send_action(action)

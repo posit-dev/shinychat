@@ -28,9 +28,9 @@ Here are some more topics to explore.
 """
 
 if hasattr(ui, "toolbar"):
-    _header_buttons = ui.toolbar(
-        ui.toolbar_input_button("clear_chat", "Clear"),
-        ui.toolbar_input_button("clear_chat_and_greeting", "Reset"),
+    _header_buttons = ui.toolbar(  # pyright: ignore[reportAttributeAccessIssue]
+        ui.toolbar_input_button("clear_chat", "Clear"),  # pyright: ignore[reportAttributeAccessIssue]
+        ui.toolbar_input_button("clear_chat_and_greeting", "Reset"),  # pyright: ignore[reportAttributeAccessIssue]
         align="right",
     )
 else:
