@@ -206,7 +206,7 @@ chat_mod_server <- function(
     pending_swap <- shiny::reactiveVal(NULL, label = "pending_swap")
     ctrl <- ellmer::stream_controller()
 
-    do_swap <- function(new_client, sync) {
+    swap_client <- function(new_client, sync) {
       if (sync) {
         new_client$set_turns(client$get_turns())
         new_client$set_system_prompt(client$get_system_prompt())
@@ -232,7 +232,7 @@ chat_mod_server <- function(
         return(invisible())
       }
 
-      do_swap(new_client, sync)
+      swap_client(new_client, sync)
     }
 
     shiny::observeEvent(input$chat_user_input, label = "on_chat_user_input", {
@@ -259,7 +259,7 @@ chat_mod_server <- function(
 
       if (!is.null(swap) && status != "running") {
         pending_swap(NULL)
-        do_swap(swap$client, swap$sync)
+        swap_client(swap$client, swap$sync)
       }
     })
 
