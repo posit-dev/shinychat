@@ -132,6 +132,23 @@ function removeLoadingMessage(messages: ChatMessageData[]): ChatMessageData[] {
   return messages.filter((m) => !m.isPlaceholder)
 }
 
+function dismissGreeting(greeting: GreetingData | null): GreetingData | null {
+  if (greeting?.options.dismissible !== false && greeting?.visible) {
+    return { ...greeting, visible: false, dismissed: true, dismissing: true }
+  }
+  return greeting
+}
+
+function computeGreetingVisibility(
+  prior: GreetingData | null,
+  dismissible: boolean,
+  hasMessages: boolean,
+): { autoDismiss: boolean; visible: boolean } {
+  const autoDismiss = prior?.dismissed ? true : dismissible && hasMessages
+  const visible = prior?.dismissed ? false : !autoDismiss
+  return { autoDismiss, visible }
+}
+
 const THINKING_TAG_RE = /<thinking>\n?([\s\S]*?)\n?<\/thinking>\n*/g
 
 function splitThinkingBlocks(
@@ -375,40 +392,22 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         isPlaceholder: true,
         blocks: [],
       }
-      const greetingDismissedByInput =
-        state.greeting?.options.dismissible !== false && state.greeting?.visible
-          ? {
-              ...state.greeting,
-              visible: false,
-              dismissed: true,
-              dismissing: true,
-            }
-          : state.greeting
       return {
         ...state,
         messages: [...state.messages, userMsg, loadingMsg],
         inputDisabled: true,
-        greeting: greetingDismissedByInput ?? null,
+        greeting: dismissGreeting(state.greeting),
       }
     }
 
     case "message": {
       const messages = removeLoadingMessage(state.messages)
-      const greetingDismissedByMessage =
-        state.greeting?.options.dismissible !== false && state.greeting?.visible
-          ? {
-              ...state.greeting,
-              visible: false,
-              dismissed: true,
-              dismissing: true,
-            }
-          : state.greeting
       return {
         ...state,
         messages: [...messages, messagePayloadToData(action.message)],
         streamingMessage: null,
         inputDisabled: false,
-        greeting: greetingDismissedByMessage ?? null,
+        greeting: dismissGreeting(state.greeting),
       }
     }
 
@@ -419,21 +418,12 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       newMsg.blocks = newMsg.blocks.map((b) =>
         b.type === "thinking" ? { ...b, streaming: true } : b,
       )
-      const greetingDismissedByChunkStart =
-        state.greeting?.options.dismissible !== false && state.greeting?.visible
-          ? {
-              ...state.greeting,
-              visible: false,
-              dismissed: true,
-              dismissing: true,
-            }
-          : state.greeting
       return {
         ...state,
         messages,
         streamingMessage: newMsg,
         inputDisabled: true,
-        greeting: greetingDismissedByChunkStart ?? null,
+        greeting: dismissGreeting(state.greeting),
       }
     }
 
@@ -712,6 +702,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     }
 
     case "clear": {
+      // action.greeting=true means "also clear the greeting"; otherwise restore it as visible
       const greetingAfterClear = action.greeting
         ? null
         : state.greeting
@@ -761,15 +752,15 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     }
 
     case "greeting": {
-      const prior = state.greeting
       const dismissible = action.options.dismissible !== false
       // If a greeting was already dismissed, accept the new content silently so
       // it surfaces the next time the message list is cleared. Otherwise apply
       // the standard auto-dismiss rule when initial messages exist.
-      const autoDismiss = prior?.dismissed
-        ? true
-        : dismissible && state.messages.length > 0
-      const visible = prior?.dismissed ? false : !autoDismiss
+      const { autoDismiss, visible } = computeGreetingVisibility(
+        state.greeting,
+        dismissible,
+        state.messages.length > 0,
+      )
       return {
         ...state,
         greeting: {
@@ -792,12 +783,12 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     }
 
     case "greeting_start": {
-      const prior = state.greeting
       const dismissible = action.options.dismissible !== false
-      const autoDismiss = prior?.dismissed
-        ? true
-        : dismissible && state.messages.length > 0
-      const visible = prior?.dismissed ? false : !autoDismiss
+      const { autoDismiss, visible } = computeGreetingVisibility(
+        state.greeting,
+        dismissible,
+        state.messages.length > 0,
+      )
       return {
         ...state,
         greeting: {
