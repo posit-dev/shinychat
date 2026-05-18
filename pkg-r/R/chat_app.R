@@ -93,9 +93,10 @@
 #'       `"set"` the chat history to `messages`; `"append"` `messages` to the
 #'       existing chat history; or `"keep"` the existing chat history.
 #'     * `set_greeting()`: A function to set, stream, or clear the chat
-#'       greeting. Takes the same arguments as [chat_set_greeting()], except
-#'       for `id` and `session`, which are supplied automatically. Pass
-#'       `NULL` to clear the greeting.
+#'       greeting. Pass a [chat_greeting()] object, a plain string, or
+#'       `NULL` to clear. Streaming greetings run inside an
+#'       [shiny::ExtendedTask] so the session stays responsive; if called
+#'       while a greeting is already streaming, the new greeting is queued.
 #'     * `client`: The chat client object, which is mutated as you chat.
 #'
 #' @describeIn chat_app A simple Shiny app for live chatting. Note that this
@@ -177,9 +178,12 @@ chat_mod_ui <- function(
 #' [chat_greeting()] (typically wrapping a stream). Static values (strings,
 #' [chat_greeting()] objects) are set once at init and do not regenerate.
 #'
-#' **One-argument function** (recommended). The module clones the `client`
+#' The module detects **named arguments** in the greeting function to decide
+#' what to pass. Currently the only recognized argument is `client`.
+#'
+#' **`function(client)`** (recommended). The module clones the `client`
 #' passed to `chat_mod_server()`, wipes its turn history, and passes the
-#' fresh clone to your function. This avoids manually creating and configuring
+#' fresh clone as `client`. This avoids manually creating and configuring
 #' a separate client:
 #'
 #' ```r
@@ -189,7 +193,7 @@ chat_mod_ui <- function(
 #' })
 #' ```
 #'
-#' **Zero-argument function.** You create and manage your own client:
+#' **`function()`** (zero arguments). You create and manage your own client:
 #'
 #' ```r
 #' chat_mod_server("chat", client, greeting = function() {
@@ -230,6 +234,17 @@ chat_mod_server <- function(
       promises::then(p, function(stream) {
         chat_append(ui_id, stream)
       })
+    }
+  )
+
+  greeting_stream_task <- shiny::ExtendedTask$new(
+    function(ui_id, greeting, session) {
+      result <- chat_set_greeting(ui_id, greeting, session = session)
+      if (is.null(result)) {
+        promises::promise_resolve(NULL)
+      } else {
+        result
+      }
     }
   )
 
@@ -289,21 +304,25 @@ chat_mod_server <- function(
     }
 
     set_greeting_mod <- function(greeting) {
-      chat_set_greeting("chat", greeting, session = session)
+      greeting_stream_task$invoke("chat", greeting, session)
     }
 
     if (is.function(greeting)) {
+      greeting_fmls <- names(formals(greeting))
+
       shiny::observeEvent(
         input$chat_greeting_requested,
         label = "on_greeting_requested",
         {
-          if (length(formals(greeting)) == 0) {
-            set_greeting_mod(greeting())
-          } else {
+          args <- list()
+          if ("client" %in% greeting_fmls) {
             greeter <- client$clone()
             greeter$set_turns(list())
-            set_greeting_mod(greeting(greeter))
+            args$client <- greeter
           }
+          greeting_stream_task$invoke(
+            "chat", do.call(greeting, args), session
+          )
         }
       )
     } else if (!is.null(greeting)) {

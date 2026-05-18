@@ -969,6 +969,14 @@ chat_set_greeting <- function(
     return(chat_set_greeting_stream(id, stream, options, session))
   }
 
+  if (is.function(content)) {
+    cli::cli_abort(c(
+      "{.fn chat_set_greeting} does not accept a function as greeting content.",
+      "i" = "Pass the {.emph result} of calling your function, not the function itself.",
+      "i" = "To use a greeting function with automatic lifecycle management, pass it to the {.arg greeting} argument of {.fn chat_mod_server}."
+    ))
+  }
+
   if (is.character(content) && !inherits(content, "html")) {
     greeting_content <- content
     greeting_content_type <- "markdown"
