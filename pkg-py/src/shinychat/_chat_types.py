@@ -185,12 +185,7 @@ class ChatGreeting:
 
         deps: list[HTMLDependency] = []
         content_type: ContentType = "markdown"
-        if isinstance(content, str):
-            pass
-        elif isinstance(content, HTML):
-            content_type = "html"
-            content = str(content)
-        else:
+        if not isinstance(content, str):
             split = split_html_islands(content)
             ui = TagList(*split).render()
             content, ui_deps = ui["html"], ui["dependencies"]
