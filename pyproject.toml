@@ -5,7 +5,7 @@ readme = "pkg-py/README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 dependencies = [
-    "htmltools>=0.6.0",
+    "htmltools>=0.7.0",
     "shiny>=1.4.0",
 ]
 dynamic = ["version"]
