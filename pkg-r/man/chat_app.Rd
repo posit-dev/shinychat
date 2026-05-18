@@ -73,9 +73,10 @@ updated after clearing. It can be one of: \code{"clear"} the chat history;
 \code{"set"} the chat history to \code{messages}; \code{"append"} \code{messages} to the
 existing chat history; or \code{"keep"} the existing chat history.
 \item \code{set_greeting()}: A function to set, stream, or clear the chat
-greeting. Takes the same arguments as \code{\link[=chat_set_greeting]{chat_set_greeting()}}, except
-for \code{id} and \code{session}, which are supplied automatically. Pass
-\code{NULL} to clear the greeting.
+greeting. Pass a \code{\link[=chat_greeting]{chat_greeting()}} object, a plain string, or
+\code{NULL} to clear. Streaming greetings run inside an
+\link[shiny:ExtendedTask]{shiny::ExtendedTask} so the session stays responsive; if called
+while a greeting is already streaming, the new greeting is queued.
 \item \code{client}: The chat client object, which is mutated as you chat.
 }
 }
@@ -110,9 +111,12 @@ and again after \code{clear(greeting = TRUE)}. The function should return a
 \code{\link[=chat_greeting]{chat_greeting()}} (typically wrapping a stream). Static values (strings,
 \code{\link[=chat_greeting]{chat_greeting()}} objects) are set once at init and do not regenerate.
 
-\strong{One-argument function} (recommended). The module clones the \code{client}
+The module detects \strong{named arguments} in the greeting function to decide
+what to pass. Currently the only recognized argument is \code{client}.
+
+\strong{\verb{function(client)}} (recommended). The module clones the \code{client}
 passed to \code{chat_mod_server()}, wipes its turn history, and passes the
-fresh clone to your function. This avoids manually creating and configuring
+fresh clone as \code{client}. This avoids manually creating and configuring
 a separate client:
 
 \if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_mod_server("chat", client, greeting = function(client) \{
@@ -121,7 +125,7 @@ a separate client:
 \})
 }\if{html}{\out{</div>}}
 
-\strong{Zero-argument function.} You create and manage your own client:
+\strong{\verb{function()}} (zero arguments). You create and manage your own client:
 
 \if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_mod_server("chat", client, greeting = function() \{
   greeter <- ellmer::chat_openai(model = "gpt-4o")
