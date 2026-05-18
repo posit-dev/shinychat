@@ -130,7 +130,9 @@ chat_restore <- function(
         return()
       }
 
-      if (!is.null(cancel_set_ui)) cancel_set_ui$destroy()
+      if (!is.null(cancel_set_ui)) {
+        cancel_set_ui$destroy()
+      }
       client_set_state(client, client_state)
 
       # Set the UI
