@@ -7,6 +7,7 @@ import {
   memo,
 } from "react"
 import { useChatDispatch } from "./context"
+import { useInputHistory } from "./useInputHistory"
 import type { ChatTransport } from "../transport/types"
 import { arrowUpCircleFill, stopCircleFill } from "../utils/icons"
 
@@ -17,6 +18,7 @@ export interface ChatInputProps {
   hasTopShadow?: boolean
   placeholder: string
   onSend?: () => void
+  userMessages: string[]
   enableCancel?: boolean
   cancelRequested?: boolean
   isStreaming?: boolean
@@ -40,6 +42,7 @@ export const ChatInput = memo(
       hasTopShadow = false,
       placeholder,
       onSend,
+      userMessages,
       enableCancel,
       cancelRequested,
       isStreaming,
@@ -52,6 +55,7 @@ export const ChatInput = memo(
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const isComposingRef = useRef(false)
     const [hasText, setHasText] = useState(false)
+    const { recall, reset, isActive } = useInputHistory(userMessages)
 
     function updateHeight(el: HTMLTextAreaElement): void {
       if (el.scrollHeight === 0) return
@@ -75,10 +79,11 @@ export const ChatInput = memo(
         el.value = ""
         setHasText(false)
         updateHeight(el)
+        reset()
 
         if (focusAfter) el.focus()
       },
-      [disabled, dispatch, transport, inputId, onSend],
+      [disabled, dispatch, transport, inputId, onSend, reset],
     )
 
     const onKeyDown = useCallback(
@@ -86,12 +91,31 @@ export const ChatInput = memo(
         const isEnter = e.code === "Enter" && !e.shiftKey
         const el = textareaRef.current
         if (!el) return
+
+        const isUp = e.code === "ArrowUp"
+        const isDown = e.code === "ArrowDown"
+
+        const atEnd = el.selectionStart === el.value.length
+        const canRecall = isActive() ? atEnd : el.value.length === 0
+
+        if ((isUp || isDown) && canRecall && !isComposingRef.current) {
+          const value = recall(isUp ? "up" : "down", el.value)
+          if (value !== undefined) {
+            e.preventDefault()
+            el.value = value
+            updateHeight(el)
+            setHasText(value.trim().length > 0)
+            el.setSelectionRange(value.length, value.length)
+          }
+          return
+        }
+
         if (isEnter && !isComposingRef.current && el.value.trim().length > 0) {
           e.preventDefault()
           sendInput()
         }
       },
-      [sendInput],
+      [sendInput, recall, isActive],
     )
 
     const onInput = useCallback((): void => {
@@ -140,6 +164,7 @@ export const ChatInput = memo(
                 })
                 transport.sendInput(inputId, submitContent)
                 onSend?.()
+                reset()
               }
             }
             // Always restore old value (the submitted value was temporary)
@@ -156,7 +181,7 @@ export const ChatInput = memo(
           textareaRef.current?.focus()
         },
       }),
-      [disabled, dispatch, transport, inputId, onSend],
+      [disabled, dispatch, transport, inputId, onSend, reset],
     )
 
     const sendButtonDisabled = disabled || !hasText
