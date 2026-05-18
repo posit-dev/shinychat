@@ -164,6 +164,7 @@ export const ChatInput = memo(
                 })
                 transport.sendInput(inputId, submitContent)
                 onSend?.()
+                reset()
               }
             }
             // Always restore old value (the submitted value was temporary)
@@ -180,7 +181,7 @@ export const ChatInput = memo(
           textareaRef.current?.focus()
         },
       }),
-      [disabled, dispatch, transport, inputId, onSend],
+      [disabled, dispatch, transport, inputId, onSend, reset],
     )
 
     const sendButtonDisabled = disabled || !hasText

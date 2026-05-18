@@ -497,6 +497,34 @@ describe("ChatInput", () => {
       fireEvent.keyDown(textarea, { code: "ArrowUp" })
       expect(textarea.value).toBe("third")
     })
+
+    it("resets history after programmatic submit via setInputValue", () => {
+      const ref = createRef<ChatInputHandle>()
+      const { textarea } = renderChatInput({ userMessages: history }, ref)
+      setCursorAtEnd(textarea)
+
+      // Navigate into history
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      setCursorAtEnd(textarea)
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      expect(textarea.value).toBe("second")
+
+      // Programmatic submit (e.g. suggestion click) — restores old value
+      act(() => {
+        ref.current?.setInputValue("suggestion text", { submit: true })
+      })
+      // Old value "second" is restored by setInputValue's submit logic
+      expect(textarea.value).toBe("second")
+
+      // Clear the input to test recall from fresh state
+      textarea.value = ""
+      fireEvent.input(textarea)
+      setCursorAtEnd(textarea)
+
+      // History should be reset; ArrowUp starts from most recent
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      expect(textarea.value).toBe("third")
+    })
   })
 
   describe("stop button", () => {
