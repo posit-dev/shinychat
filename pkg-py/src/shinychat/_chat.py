@@ -305,9 +305,9 @@ class Chat:
                 reactive.Value(())
             )
 
-            self._latest_user_input: reactive.Value[StoredMessage | None] = (
-                reactive.Value(None)
-            )
+            self._latest_user_input: reactive.Value[
+                StoredMessage | None
+            ] = reactive.Value(None)
 
             @reactive.extended_task
             async def _mock_task() -> str:
@@ -807,9 +807,7 @@ class Chat:
                     ChatMessage(
                         content=self._current_stream_message, role=msg.role
                     ),
-                    deps=self._current_stream_deps
-                    if self._current_stream_deps
-                    else None,
+                    deps=self._current_stream_deps if self._current_stream_deps else None,
                 )
 
             # Send the message to the client
@@ -1026,9 +1024,7 @@ class Chat:
         content_type: ContentType = (
             message.content_type
             if isinstance(message, ChatMessage)
-            else "html"
-            if isinstance(message.content, HTML)
-            else "markdown"
+            else "html" if isinstance(message.content, HTML) else "markdown"
         )
         message = self._as_stored_message(message)
 
@@ -1683,7 +1679,6 @@ class ChatExpress(Chat):
         height: "CssUnit" = "auto",
         fill: bool = True,
         icon_assistant: HTML | Tag | TagList | None = None,
-        enable_cancel: bool = False,
         **kwargs: TagAttrValue,
     ) -> Tag:
         """
@@ -1709,13 +1704,6 @@ class ChatExpress(Chat):
             The icon to use for the assistant chat messages. Can be a HTML or a tag in
             the form of :class:`~htmltools.HTML` or :class:`~htmltools.Tag`. If `None`,
             a default robot icon is used.
-        enable_cancel
-            Whether to show a stop button during streaming that allows the user to
-            cancel the in-progress response. When ``True``, the chat UI shows a stop
-            button in place of the send button while streaming. You must observe
-            ``input.<id>_cancel`` on the server and call ``ctrl.cancel()`` on a
-            chatlas ``StreamController`` to actually stop the stream. Defaults to
-            ``False``.
         kwargs
             Additional attributes for the chat container element.
         """
@@ -1728,7 +1716,6 @@ class ChatExpress(Chat):
             height=height,
             fill=fill,
             icon_assistant=icon_assistant,
-            enable_cancel=enable_cancel,
             **kwargs,
         )
 
@@ -1796,7 +1783,6 @@ def chat_ui(
     height: "CssUnit" = "auto",
     fill: bool = True,
     icon_assistant: Optional[HTML | Tag | TagList] = None,
-    enable_cancel: bool = False,
     **kwargs: TagAttrValue,
 ) -> Tag:
     """
@@ -1839,13 +1825,6 @@ def chat_ui(
             The icon to use for the assistant chat messages. Can be a HTML or a tag in
             the form of :class:`~htmltools.HTML` or :class:`~htmltools.Tag`. If `None`,
             a default robot icon is used.
-    enable_cancel
-        Whether to show a stop button during streaming that allows the user to
-        cancel the in-progress response. When ``True``, the chat UI shows a stop
-        button in place of the send button while streaming. You must observe
-        ``input.<id>_cancel`` on the server and call ``ctrl.cancel()`` on a
-        chatlas ``StreamController`` to actually stop the stream. Defaults to
-        ``False``.
     kwargs
         Additional attributes for the chat container element.
     """
@@ -1897,7 +1876,6 @@ def chat_ui(
         id=id,
         placeholder=placeholder,
         fill=fill,
-        enable_cancel=enable_cancel,
         # Also include icon on the parent so that when messages are dynamically added,
         # we know the default icon has changed
         icon_assistant=icon_attr,
@@ -1952,7 +1930,6 @@ class MessageStream:
 def is_thinking_delta(msg: Any) -> TypeGuard[ContentThinkingDelta]:
     try:
         from chatlas.types import ContentThinkingDelta
-
         return isinstance(msg, ContentThinkingDelta)
     except ImportError:
         return False

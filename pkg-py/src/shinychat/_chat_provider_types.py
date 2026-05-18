@@ -105,9 +105,7 @@ def as_google_message(message: ChatMessageDict) -> "GoogleMessage":
         )
     elif role == "assistant":
         role = "model"
-    return gtypes.Content(
-        parts=[gtypes.Part(text=message["content"])], role=role
-    )
+    return gtypes.Content(parts=[gtypes.Part(text=message["content"])], role=role)
 
 
 def as_langchain_message(message: ChatMessageDict) -> "LangChainMessage":

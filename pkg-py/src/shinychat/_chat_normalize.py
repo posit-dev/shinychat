@@ -156,11 +156,8 @@ try:
         return message_content(chunk)
 
     try:
-        from chatlas._content import (
-            ContentImageInline,
-            ContentImageRemote,
-            ContentPDF,
-        )
+        from chatlas._content import ContentPDF
+        from chatlas.types import ContentImageInline, ContentImageRemote
 
         @message_content.register
         def _(message: ContentImageInline):
