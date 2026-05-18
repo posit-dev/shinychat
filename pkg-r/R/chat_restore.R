@@ -23,6 +23,10 @@
 #' @param ... Used for future parameter expansion.
 #' @param bookmark_on_input A logical value determines if the bookmark should be updated when the user submits a message. Default is `TRUE`.
 #' @param bookmark_on_response A logical value determines if the bookmark should be updated when the response stream completes. Default is `TRUE`.
+#' @param restore_ui Whether to render the client's existing turns into the
+#'   chat UI on registration. Default is `TRUE`. Set to `FALSE` when
+#'   re-registering bookmarks after a client swap (where the UI already reflects
+#'   the conversation).
 #' @param session The Shiny session object
 #' @returns Returns nothing (\code{invisible(NULL)}).
 #'
@@ -61,6 +65,7 @@ chat_restore <- function(
   ...,
   bookmark_on_input = TRUE,
   bookmark_on_response = TRUE,
+  restore_ui = TRUE,
   session = getDefaultReactiveDomain()
 ) {
   rlang::check_dots_empty()
@@ -109,10 +114,13 @@ chat_restore <- function(
       state$values[[id]] <- client_state
     })
 
-  cancel_set_ui <- shiny::observe(label = "set_ui", {
-    client_set_ui(client, id = id)
-    cancel_set_ui$destroy()
-  })
+  cancel_set_ui <- NULL
+  if (restore_ui) {
+    cancel_set_ui <- shiny::observe(label = "set_ui", {
+      client_set_ui(client, id = id)
+      cancel_set_ui$destroy()
+    })
+  }
 
   # Restore
   cancel_on_restore_client <-
@@ -122,7 +130,7 @@ chat_restore <- function(
         return()
       }
 
-      cancel_set_ui$destroy()
+      if (!is.null(cancel_set_ui)) cancel_set_ui$destroy()
       client_set_state(client, client_state)
 
       # Set the UI

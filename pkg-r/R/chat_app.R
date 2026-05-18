@@ -218,7 +218,8 @@ chat_mod_server <- function(
         client,
         session = session,
         bookmark_on_input = bookmark_on_input,
-        bookmark_on_response = bookmark_on_response
+        bookmark_on_response = bookmark_on_response,
+        restore_ui = FALSE
       )
       invisible()
     }
@@ -248,7 +249,7 @@ chat_mod_server <- function(
       ctrl$cancel()
     })
 
-    shiny::observe(label = "update_last_turn", {
+    shiny::observe(label = "on_stream_complete", {
       status <- append_stream_task$status()
       swap <- pending_swap()
 
