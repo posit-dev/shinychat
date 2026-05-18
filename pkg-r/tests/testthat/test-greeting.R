@@ -327,8 +327,8 @@ test_that("chat_mod_server() calls one-arg greeting with a cloned client on chat
       chat_mod_server,
       args = list(
         client = mock_chat_client(),
-        greeting = function(greeter) {
-          received_greeter <<- greeter
+        greeting = function(client) {
+          received_greeter <<- client
           "## Hello"
         }
       ),
@@ -352,8 +352,8 @@ test_that("chat_mod_server() one-arg greeting receives a client with empty turns
       chat_mod_server,
       args = list(
         client = client_with_turns,
-        greeting = function(greeter) {
-          received_turns <<- greeter$get_turns()
+        greeting = function(client) {
+          received_turns <<- client$get_turns()
           "## Hello"
         }
       ),
@@ -376,7 +376,7 @@ test_that("chat_mod_server() one-arg greeting does not clear original client tur
       chat_mod_server,
       args = list(
         client = client_with_turns,
-        greeting = function(greeter) "## Hello"
+        greeting = function(client) "## Hello"
       ),
       {
         session$setInputs(chat_greeting_requested = 1L)
