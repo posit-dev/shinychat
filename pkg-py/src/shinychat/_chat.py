@@ -1892,11 +1892,8 @@ def chat_ui(
         )
 
     footer_tag = None
-    footer_deps = None
     if footer is not None:
-        if isinstance(footer, (Tag, TagList)):
-            footer_deps = footer.get_dependencies()
-        footer_tag = Tag("shiny-chat-footer", HTML(str(footer)))
+        footer_tag = Tag("shiny-chat-footer", footer)
 
     res = Tag(
         "shiny-chat-container",
@@ -1909,7 +1906,6 @@ def chat_ui(
         footer_tag,
         shinychat_dependency(),
         icon_deps,
-        footer_deps,
         {
             "style": css(
                 width=as_css_unit(width),

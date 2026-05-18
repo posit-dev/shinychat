@@ -167,16 +167,8 @@ chat_ui <- function(
   })
 
   footer_tag <- NULL
-  footer_deps <- NULL
   if (!is.null(footer)) {
-    footer_ui <- with_current_theme({
-      htmltools::renderTags(footer)
-    })
-    footer_tag <- tag(
-      "shiny-chat-footer",
-      list(htmltools::HTML(footer_ui[["html"]]))
-    )
-    footer_deps <- footer_ui[["dependencies"]]
+    footer_tag <- tag("shiny-chat-footer", list(footer))
   }
 
   res <- tag(
@@ -203,8 +195,7 @@ chat_ui <- function(
       ),
       footer_tag,
       shinychat_deps(),
-      htmltools::findDependencies(icon_assistant),
-      footer_deps
+      htmltools::findDependencies(icon_assistant)
     )
   )
 
