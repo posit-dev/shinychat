@@ -11,6 +11,7 @@ const transport = getShinyTransport()
 
 const CHAT_INPUT_TAG = "shiny-chat-input"
 const CHAT_MESSAGE_TAG = "shiny-chat-message"
+const CHAT_FOOTER_TAG = "shiny-chat-footer"
 
 function parseInitialMessages(container: HTMLElement): ChatMessageData[] {
   const messageEls = container.querySelectorAll(CHAT_MESSAGE_TAG)
@@ -57,6 +58,9 @@ class ChatContainerElement extends HTMLElement {
 
     const initialMessages = parseInitialMessages(this)
 
+    const footerEl = this.querySelector(CHAT_FOOTER_TAG) as Element | null
+    footerEl?.remove()
+
     // Unbind any Shiny inputs/outputs in the server-rendered content before
     // React replaces the DOM. Without this, Shiny's internal binding registry
     // retains stale references, preventing re-binding of the new React-rendered
@@ -75,11 +79,13 @@ class ChatContainerElement extends HTMLElement {
         placeholder,
         initialMessages,
         enableCancel,
+        footerEl: footerEl ?? undefined,
       }),
     )
   }
 
   disconnectedCallback() {
+    transport.unbindAll(this)
     this.reactRoot?.unmount()
     this.reactRoot = null
   }

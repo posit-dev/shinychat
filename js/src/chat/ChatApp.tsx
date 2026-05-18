@@ -23,6 +23,7 @@ interface ChatAppProps {
   placeholder?: string
   initialMessages?: ChatMessageData[]
   enableCancel?: boolean
+  footerEl?: Element
 }
 
 export function ChatApp({
@@ -35,6 +36,7 @@ export function ChatApp({
   placeholder,
   initialMessages,
   enableCancel,
+  footerEl,
 }: ChatAppProps) {
   const [state, dispatch] = useReducer(chatReducer, {
     ...initialState,
@@ -95,6 +97,7 @@ export function ChatApp({
             cancelId={cancelId}
             enableCancel={enableCancel}
             cancelRequested={state.cancelRequested}
+            footerEl={footerEl}
           />
         </ChatDispatchContext.Provider>
       </ChatToolContext.Provider>

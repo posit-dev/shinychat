@@ -13,7 +13,8 @@ chat_ui(
   height = "auto",
   fill = TRUE,
   icon_assistant = NULL,
-  enable_cancel = FALSE
+  enable_cancel = FALSE,
+  footer = NULL
 )
 }
 \arguments{
@@ -60,6 +61,13 @@ allows the user to cancel the in-progress response. When using
 usage with \code{chat_ui()}, observe \verb{input$<id>_cancel} to handle cancellation
 (e.g., by calling \code{ctrl$cancel()} on an ellmer \code{stream_controller()}).
 Defaults to \code{FALSE}.}
+
+\item{footer}{Optional HTML content to display below the chat input.
+This can be any HTML content (tags, tag lists, or character strings).
+Useful for adding disclaimers, attribution, or other information.
+The footer text is styled slightly smaller and lighter than body text
+by default. Customize with CSS properties \code{--shiny-chat-footer-font-size}
+and \code{--shiny-chat-footer-color} on the chat container or footer element.}
 }
 \value{
 A Shiny tag object, suitable for inclusion in a Shiny UI
