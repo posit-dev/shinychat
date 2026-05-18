@@ -66,6 +66,9 @@ each message is a list with \code{role} and \code{content} fields. The
 updated after clearing. It can be one of: \code{"clear"} the chat history;
 \code{"set"} the chat history to \code{messages}; \code{"append"} \code{messages} to the
 existing chat history; or \code{"keep"} the existing chat history.
+\item \code{status}: A reactive value indicating the current chat interaction
+state. Returns \code{"idle"} when no response is in progress, or
+\code{"streaming"} while a response is actively being received.
 \item \code{client}: The current chat client object (an active binding that
 always reflects the latest client, even after \code{set_client()}
 is called).

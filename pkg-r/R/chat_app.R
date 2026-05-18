@@ -92,6 +92,9 @@
 #'       updated after clearing. It can be one of: `"clear"` the chat history;
 #'       `"set"` the chat history to `messages`; `"append"` `messages` to the
 #'       existing chat history; or `"keep"` the existing chat history.
+#'     * `status`: A reactive value indicating the current chat interaction
+#'       state. Returns `"idle"` when no response is in progress, or
+#'       `"streaming"` while a response is actively being received.
 #'     * `client`: The current chat client object (an active binding that
 #'       always reflects the latest client, even after `set_client()`
 #'       is called).
@@ -331,6 +334,9 @@ chat_mod_server <- function(
     ret <- new.env(parent = emptyenv())
     ret$last_turn <- shiny::reactive(last_turn(), label = "mod_last_turn")
     ret$last_input <- shiny::reactive(last_input(), label = "mod_last_input")
+    ret$status <- shiny::reactive(label = "mod_status", {
+      if (append_stream_task$status() == "running") "streaming" else "idle"
+    })
     makeActiveBinding("client", function() client, ret)
     ret$append <- chat_append_mod
     ret$update_user_input <- chat_update_user_input
