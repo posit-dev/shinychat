@@ -13,7 +13,8 @@ chat_ui(
   width = "min(680px, 100\%)",
   height = "auto",
   fill = TRUE,
-  icon_assistant = NULL
+  icon_assistant = NULL,
+  enable_cancel = FALSE
 )
 }
 \arguments{
@@ -59,6 +60,13 @@ container, if the container is
 \item{icon_assistant}{The icon to use for the assistant chat messages.
 Can be HTML or a tag in the form of \code{\link[htmltools:HTML]{htmltools::HTML()}} or
 \code{\link[htmltools:tags]{htmltools::tags()}}. If \code{None}, a default robot icon is used.}
+
+\item{enable_cancel}{If \code{TRUE}, show a stop button during streaming that
+allows the user to cancel the in-progress response. When using
+\code{\link[=chat_mod_server]{chat_mod_server()}}, cancellation is wired up automatically. For manual
+usage with \code{chat_ui()}, observe \verb{input$<id>_cancel} to handle cancellation
+(e.g., by calling \code{ctrl$cancel()} on an ellmer \code{stream_controller()}).
+Defaults to \code{FALSE}.}
 }
 \value{
 A Shiny tag object, suitable for inclusion in a Shiny UI

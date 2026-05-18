@@ -413,6 +413,52 @@ describe("chatReducer", () => {
       const next = chatReducer(state, { type: "chunk_end" })
       expect(next).toBe(state)
     })
+
+    it("marks message as cancelled when cancelRequested is true", () => {
+      const msg = makeAssistantMsg({ streaming: true })
+      const state = makeState({
+        streamingMessage: msg,
+        inputDisabled: true,
+        cancelRequested: true,
+      })
+      const next = chatReducer(state, { type: "chunk_end" })
+      expect(next.messages).toHaveLength(1)
+      expect(next.messages[0]!.cancelled).toBe(true)
+      expect(next.cancelRequested).toBe(false)
+    })
+
+    it("does not mark message as cancelled when cancelRequested is false", () => {
+      const msg = makeAssistantMsg({ streaming: true })
+      const state = makeState({
+        streamingMessage: msg,
+        inputDisabled: true,
+        cancelRequested: false,
+      })
+      const next = chatReducer(state, { type: "chunk_end" })
+      expect(next.messages).toHaveLength(1)
+      expect(next.messages[0]!.cancelled).toBeUndefined()
+      expect(next.cancelRequested).toBe(false)
+    })
+  })
+
+  describe("CANCEL_REQUESTED", () => {
+    it("sets cancelRequested to true", () => {
+      const state = makeState({ cancelRequested: false })
+      const next = chatReducer(state, { type: "CANCEL_REQUESTED" })
+      expect(next.cancelRequested).toBe(true)
+    })
+
+    it("does not affect other state", () => {
+      const msg = makeAssistantMsg({ streaming: true })
+      const state = makeState({
+        streamingMessage: msg,
+        inputDisabled: true,
+        cancelRequested: false,
+      })
+      const next = chatReducer(state, { type: "CANCEL_REQUESTED" })
+      expect(next.streamingMessage).toBe(msg)
+      expect(next.inputDisabled).toBe(true)
+    })
   })
 
   describe("clear", () => {
@@ -440,6 +486,12 @@ describe("chatReducer", () => {
       })
       const next = chatReducer(state, { type: "clear" })
       expect(next.inputDisabled).toBe(false)
+    })
+
+    it("resets cancelRequested when cleared during cancel", () => {
+      const state = makeState({ cancelRequested: true })
+      const next = chatReducer(state, { type: "clear" })
+      expect(next.cancelRequested).toBe(false)
     })
   })
 
@@ -488,6 +540,37 @@ describe("chatReducer", () => {
       const next = chatReducer(state, { type: "remove_loading" })
       expect(next.messages).toHaveLength(1)
       expect(next.inputDisabled).toBe(false)
+    })
+
+    it("marks finalized streaming message as cancelled when cancelRequested is true", () => {
+      const msg = makeAssistantMsg({ streaming: true })
+      const state = makeState({
+        streamingMessage: msg,
+        inputDisabled: true,
+        cancelRequested: true,
+      })
+      const next = chatReducer(state, { type: "remove_loading" })
+      const finalized = next.messages[next.messages.length - 1]!
+      expect(finalized.cancelled).toBe(true)
+      expect(next.cancelRequested).toBe(false)
+    })
+
+    it("does not mark finalized streaming message as cancelled when cancelRequested is false", () => {
+      const msg = makeAssistantMsg({ streaming: true })
+      const state = makeState({
+        streamingMessage: msg,
+        inputDisabled: true,
+        cancelRequested: false,
+      })
+      const next = chatReducer(state, { type: "remove_loading" })
+      const finalized = next.messages[next.messages.length - 1]!
+      expect(finalized.cancelled).toBeUndefined()
+    })
+
+    it("resets cancelRequested even without a streaming message", () => {
+      const state = makeState({ cancelRequested: true })
+      const next = chatReducer(state, { type: "remove_loading" })
+      expect(next.cancelRequested).toBe(false)
     })
   })
 

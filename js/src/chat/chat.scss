@@ -151,6 +151,16 @@ shiny-chat-container {
   display: none;
 }
 
+.shiny-chat-message-cancelled {
+  font-size: 0.8em;
+  opacity: 0.5;
+  font-style: italic;
+
+  &:not(:first-child) {
+    margin-top: 0.5em;
+  }
+}
+
 /* Align the user message to the right */
 .shiny-chat-user-message {
   align-self: flex-end;
@@ -209,6 +219,9 @@ shiny-chat-container {
     &:disabled {
       cursor: not-allowed;
       color: var(--bs-gray-500, #8d959e);
+    }
+    &.shiny-chat-btn-cancel {
+      color: var(--bs-danger, #dc3545);
     }
   }
 }

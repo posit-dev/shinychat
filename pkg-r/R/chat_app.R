@@ -157,6 +157,7 @@ chat_mod_ui <- function(
   chat_ui(
     shiny::NS(id, "chat"),
     messages = messages,
+    enable_cancel = TRUE,
     ...
   )
 }
@@ -218,10 +219,11 @@ chat_mod_server <- function(
   check_ellmer_chat(client)
 
   append_stream_task <- shiny::ExtendedTask$new(
-    function(client, ui_id, user_input) {
+    function(client, ui_id, user_input, controller = NULL) {
       stream <- client$stream_async(
         user_input,
-        stream = "content"
+        stream = "content",
+        controller = controller
       )
 
       p <- promises::promise_resolve(stream)
@@ -242,14 +244,20 @@ chat_mod_server <- function(
 
     last_turn <- shiny::reactiveVal(NULL, label = "last_turn")
     last_input <- shiny::reactiveVal(NULL, label = "last_input")
+    ctrl <- ellmer::stream_controller()
 
     shiny::observeEvent(input$chat_user_input, label = "on_chat_user_input", {
       last_input(input$chat_user_input)
       append_stream_task$invoke(
         client,
         "chat",
-        input$chat_user_input
+        input$chat_user_input,
+        controller = ctrl
       )
+    })
+
+    shiny::observeEvent(input$chat_cancel, label = "on_chat_cancel", {
+      ctrl$cancel()
     })
 
     shiny::observe(label = "update_last_turn", {

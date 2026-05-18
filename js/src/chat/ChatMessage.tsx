@@ -17,7 +17,8 @@ export const ChatMessage = memo(function ChatMessage({
   const isUser = message.role === "user"
   const hasContent =
     message.content.trim() !== "" ||
-    message.blocks.some((b) => b.type === "thinking")
+    message.blocks.some((b) => b.type === "thinking") ||
+    message.cancelled
 
   let iconHtml: string | undefined
   if (isUser) {
@@ -67,6 +68,9 @@ export const ChatMessage = memo(function ChatMessage({
           }
           return el
         })}
+        {message.cancelled && (
+          <div className="shiny-chat-message-cancelled">Response cancelled</div>
+        )}
       </div>
     </div>
   )

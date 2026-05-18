@@ -74,12 +74,14 @@ class ChatContainerElement extends HTMLElement {
 
     const elementId = this.getAttribute("id") ?? ""
     const iconAssistant = this.getAttribute("icon-assistant") ?? undefined
+    const enableCancel = this.hasAttribute("enable-cancel")
 
     const inputEl = this.querySelector(CHAT_INPUT_TAG)
     const placeholder = inputEl?.getAttribute("placeholder") ?? undefined
 
     // Falls back to "<elementId>_user_input" (the R package's convention)
     const inputId = inputEl?.getAttribute("id") ?? `${elementId}_user_input`
+    const cancelId = `${elementId}_cancel`
 
     const initialMessages = parseInitialMessages(this)
 
@@ -99,9 +101,11 @@ class ChatContainerElement extends HTMLElement {
         elementId,
         iconAssistant,
         inputId,
+        cancelId,
         placeholder,
         initialMessages,
         initialGreeting,
+        enableCancel,
       }),
     )
   }

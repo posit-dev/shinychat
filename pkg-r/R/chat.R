@@ -165,6 +165,12 @@ chat_greeting <- function(
 #' @param icon_assistant The icon to use for the assistant chat messages.
 #'   Can be HTML or a tag in the form of [htmltools::HTML()] or
 #'   [htmltools::tags()]. If `None`, a default robot icon is used.
+#' @param enable_cancel If `TRUE`, show a stop button during streaming that
+#'   allows the user to cancel the in-progress response. When using
+#'   [chat_mod_server()], cancellation is wired up automatically. For manual
+#'   usage with `chat_ui()`, observe `input$<id>_cancel` to handle cancellation
+#'   (e.g., by calling `ctrl$cancel()` on an ellmer `stream_controller()`).
+#'   Defaults to `FALSE`.
 #' @section Thinking display:
 #'
 #' When a model produces reasoning or "thinking" tokens, shinychat renders them
@@ -242,7 +248,8 @@ chat_ui <- function(
   width = "min(680px, 100%)",
   height = "auto",
   fill = TRUE,
-  icon_assistant = NULL
+  icon_assistant = NULL,
+  enable_cancel = FALSE
 ) {
   attrs <- rlang::list2(...)
   if (!all(nzchar(rlang::names2(attrs)))) {
@@ -345,6 +352,7 @@ chat_ui <- function(
       ),
       placeholder = placeholder,
       fill = if (isTRUE(fill)) NA else NULL,
+      `enable-cancel` = if (isTRUE(enable_cancel)) NA else NULL,
       # Also include icon on the parent so that when messages are dynamically added,
       # we know the default icon has changed
       `icon-assistant` = if (!is.null(icon_assistant)) {

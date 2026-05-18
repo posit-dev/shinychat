@@ -12,6 +12,7 @@ import { createRef } from "react"
 function createMockTransport(): ChatTransport {
   return {
     sendInput: vi.fn(),
+    sendCancel: vi.fn(),
     onMessage: vi.fn(() => () => {}),
   }
 }
@@ -22,6 +23,11 @@ function renderChatInput(
     disabled: boolean
     placeholder: string
     onSend: () => void
+    userMessages: string[]
+    enableCancel: boolean
+    cancelRequested: boolean
+    isStreaming: boolean
+    onCancel: () => void
   }> = {},
   ref?: React.RefObject<ChatInputHandle | null>,
 ) {
@@ -37,6 +43,11 @@ function renderChatInput(
         disabled={props.disabled ?? false}
         placeholder={props.placeholder ?? "Type here..."}
         onSend={props.onSend}
+        userMessages={props.userMessages ?? []}
+        enableCancel={props.enableCancel}
+        cancelRequested={props.cancelRequested}
+        isStreaming={props.isStreaming}
+        onCancel={props.onCancel}
       />
     </ChatDispatchContext.Provider>,
   )
@@ -293,6 +304,7 @@ describe("ChatInput", () => {
             inputId="test-input"
             disabled={true}
             placeholder="Type here..."
+            userMessages={[]}
           />
         </ChatDispatchContext.Provider>,
       )
@@ -312,6 +324,7 @@ describe("ChatInput", () => {
             inputId="test-input"
             disabled={false}
             placeholder="Type here..."
+            userMessages={[]}
           />
         </ChatDispatchContext.Provider>,
       )
@@ -321,6 +334,258 @@ describe("ChatInput", () => {
         ref.current?.setInputValue("x", { submit: true })
       })
       expect(transport.sendInput).toHaveBeenCalledWith("test-input", "x")
+    })
+  })
+
+  describe("input history navigation", () => {
+    const history = ["first", "second", "third"]
+
+    function setCursorAtEnd(textarea: HTMLTextAreaElement): void {
+      Object.defineProperty(textarea, "selectionStart", {
+        get: () => textarea.value.length,
+        configurable: true,
+      })
+    }
+
+    it("ArrowUp on empty input recalls most recent message", () => {
+      const { textarea } = renderChatInput({ userMessages: history })
+      setCursorAtEnd(textarea)
+
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+
+      expect(textarea.value).toBe("third")
+    })
+
+    it("ArrowUp cycles backward through history", () => {
+      const { textarea } = renderChatInput({ userMessages: history })
+      setCursorAtEnd(textarea)
+
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      expect(textarea.value).toBe("third")
+
+      setCursorAtEnd(textarea)
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      expect(textarea.value).toBe("second")
+
+      setCursorAtEnd(textarea)
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      expect(textarea.value).toBe("first")
+    })
+
+    it("ArrowDown past most recent clears input", () => {
+      const { textarea } = renderChatInput({ userMessages: history })
+      setCursorAtEnd(textarea)
+
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      expect(textarea.value).toBe("third")
+
+      setCursorAtEnd(textarea)
+      fireEvent.keyDown(textarea, { code: "ArrowDown" })
+      expect(textarea.value).toBe("")
+    })
+
+    it("ArrowDown from fresh state is a no-op", () => {
+      const { textarea } = renderChatInput({ userMessages: history })
+      setCursorAtEnd(textarea)
+
+      fireEvent.keyDown(textarea, { code: "ArrowDown" })
+
+      expect(textarea.value).toBe("")
+    })
+
+    it("does not trigger when cursor is not at end", () => {
+      const { textarea } = renderChatInput({ userMessages: history })
+
+      textarea.value = "some text"
+      fireEvent.input(textarea)
+      Object.defineProperty(textarea, "selectionStart", {
+        get: () => 4,
+        configurable: true,
+      })
+
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+
+      expect(textarea.value).toBe("some text")
+    })
+
+    it("does not trigger during IME composition", () => {
+      const { textarea } = renderChatInput({ userMessages: history })
+      setCursorAtEnd(textarea)
+
+      fireEvent.compositionStart(textarea)
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+
+      expect(textarea.value).toBe("")
+    })
+
+    it("does not enter recall when input has text (cursor at end)", () => {
+      const { textarea } = renderChatInput({ userMessages: history })
+
+      textarea.value = "some text"
+      fireEvent.input(textarea)
+      setCursorAtEnd(textarea)
+
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+
+      expect(textarea.value).toBe("some text")
+    })
+
+    it("allows recall when in active mode with edited text", () => {
+      const { textarea } = renderChatInput({ userMessages: history })
+      setCursorAtEnd(textarea)
+
+      // Enter recall mode from empty input
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      expect(textarea.value).toBe("third")
+
+      // Edit the recalled text
+      textarea.value = "third edited"
+      fireEvent.input(textarea)
+      setCursorAtEnd(textarea)
+
+      // Should still navigate because recall mode is active
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      expect(textarea.value).toBe("second")
+    })
+
+    it("stays in recall mode after returning to blank slot and typing", () => {
+      const { textarea } = renderChatInput({ userMessages: history })
+      setCursorAtEnd(textarea)
+
+      // Enter recall mode and navigate back to blank
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      expect(textarea.value).toBe("third")
+      setCursorAtEnd(textarea)
+      fireEvent.keyDown(textarea, { code: "ArrowDown" })
+      expect(textarea.value).toBe("")
+
+      // Type something new
+      textarea.value = "new text"
+      fireEvent.input(textarea)
+      setCursorAtEnd(textarea)
+
+      // Up arrow should still work because recall mode is still active
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      expect(textarea.value).toBe("third")
+    })
+
+    it("no-op when history is empty", () => {
+      const { textarea } = renderChatInput({ userMessages: [] })
+      setCursorAtEnd(textarea)
+
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+
+      expect(textarea.value).toBe("")
+    })
+
+    it("resets history index after send", () => {
+      const { textarea } = renderChatInput({ userMessages: history })
+      setCursorAtEnd(textarea)
+
+      // Navigate to "second"
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      setCursorAtEnd(textarea)
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      expect(textarea.value).toBe("second")
+
+      // Send it
+      fireEvent.keyDown(textarea, { code: "Enter" })
+      expect(textarea.value).toBe("")
+
+      // Next ArrowUp should start from most recent again
+      setCursorAtEnd(textarea)
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      expect(textarea.value).toBe("third")
+    })
+
+    it("resets history after programmatic submit via setInputValue", () => {
+      const ref = createRef<ChatInputHandle>()
+      const { textarea } = renderChatInput({ userMessages: history }, ref)
+      setCursorAtEnd(textarea)
+
+      // Navigate into history
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      setCursorAtEnd(textarea)
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      expect(textarea.value).toBe("second")
+
+      // Programmatic submit (e.g. suggestion click) — restores old value
+      act(() => {
+        ref.current?.setInputValue("suggestion text", { submit: true })
+      })
+      // Old value "second" is restored by setInputValue's submit logic
+      expect(textarea.value).toBe("second")
+
+      // Clear the input to test recall from fresh state
+      textarea.value = ""
+      fireEvent.input(textarea)
+      setCursorAtEnd(textarea)
+
+      // History should be reset; ArrowUp starts from most recent
+      fireEvent.keyDown(textarea, { code: "ArrowUp" })
+      expect(textarea.value).toBe("third")
+    })
+  })
+
+  describe("stop button", () => {
+    it("shows stop button instead of send button when streaming with cancel enabled", () => {
+      renderChatInput({ enableCancel: true, isStreaming: true })
+      expect(
+        screen.getByRole("button", { name: "Stop generating" }),
+      ).toBeTruthy()
+      expect(screen.queryByRole("button", { name: "Send message" })).toBeNull()
+    })
+
+    it("shows send button when not streaming even with cancel enabled", () => {
+      renderChatInput({ enableCancel: true, isStreaming: false })
+      expect(screen.getByRole("button", { name: "Send message" })).toBeTruthy()
+      expect(
+        screen.queryByRole("button", { name: "Stop generating" }),
+      ).toBeNull()
+    })
+
+    it("shows send button when cancel is not enabled even while streaming", () => {
+      renderChatInput({ enableCancel: false, isStreaming: true })
+      expect(screen.getByRole("button", { name: "Send message" })).toBeTruthy()
+      expect(
+        screen.queryByRole("button", { name: "Stop generating" }),
+      ).toBeNull()
+    })
+
+    it("calls onCancel when stop button is clicked", () => {
+      const onCancel = vi.fn()
+      renderChatInput({
+        enableCancel: true,
+        isStreaming: true,
+        onCancel,
+      })
+      const button = screen.getByRole("button", { name: "Stop generating" })
+      fireEvent.click(button)
+      expect(onCancel).toHaveBeenCalledTimes(1)
+    })
+
+    it("stop button is disabled when cancelRequested is true", () => {
+      renderChatInput({
+        enableCancel: true,
+        isStreaming: true,
+        cancelRequested: true,
+      })
+      const button = screen.getByRole("button", {
+        name: "Stop generating",
+      }) as HTMLButtonElement
+      expect(button.disabled).toBe(true)
+    })
+
+    it("stop button is enabled when cancelRequested is false", () => {
+      renderChatInput({
+        enableCancel: true,
+        isStreaming: true,
+        cancelRequested: false,
+      })
+      const button = screen.getByRole("button", {
+        name: "Stop generating",
+      }) as HTMLButtonElement
+      expect(button.disabled).toBe(false)
     })
   })
 })

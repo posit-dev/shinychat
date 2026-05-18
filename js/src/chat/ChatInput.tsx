@@ -7,8 +7,9 @@ import {
   memo,
 } from "react"
 import { useChatDispatch } from "./context"
+import { useInputHistory } from "./useInputHistory"
 import type { ChatTransport } from "../transport/types"
-import { arrowUpCircleFill } from "../utils/icons"
+import { arrowUpCircleFill, stopCircleFill } from "../utils/icons"
 
 export interface ChatInputProps {
   transport: ChatTransport
@@ -17,6 +18,11 @@ export interface ChatInputProps {
   hasTopShadow?: boolean
   placeholder: string
   onSend?: () => void
+  userMessages: string[]
+  enableCancel?: boolean
+  cancelRequested?: boolean
+  isStreaming?: boolean
+  onCancel?: () => void
 }
 
 export interface ChatInputHandle {
@@ -29,7 +35,19 @@ export interface ChatInputHandle {
 
 export const ChatInput = memo(
   forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
-    { transport, inputId, disabled, hasTopShadow = false, placeholder, onSend },
+    {
+      transport,
+      inputId,
+      disabled,
+      hasTopShadow = false,
+      placeholder,
+      onSend,
+      userMessages,
+      enableCancel,
+      cancelRequested,
+      isStreaming,
+      onCancel,
+    },
     ref,
   ) {
     const dispatch = useChatDispatch()
@@ -37,6 +55,7 @@ export const ChatInput = memo(
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const isComposingRef = useRef(false)
     const [hasText, setHasText] = useState(false)
+    const { recall, reset, isActive } = useInputHistory(userMessages)
 
     function updateHeight(el: HTMLTextAreaElement): void {
       if (el.scrollHeight === 0) return
@@ -60,10 +79,11 @@ export const ChatInput = memo(
         el.value = ""
         setHasText(false)
         updateHeight(el)
+        reset()
 
         if (focusAfter) el.focus()
       },
-      [disabled, dispatch, transport, inputId, onSend],
+      [disabled, dispatch, transport, inputId, onSend, reset],
     )
 
     const onKeyDown = useCallback(
@@ -71,12 +91,31 @@ export const ChatInput = memo(
         const isEnter = e.code === "Enter" && !e.shiftKey
         const el = textareaRef.current
         if (!el) return
+
+        const isUp = e.code === "ArrowUp"
+        const isDown = e.code === "ArrowDown"
+
+        const atEnd = el.selectionStart === el.value.length
+        const canRecall = isActive() ? atEnd : el.value.length === 0
+
+        if ((isUp || isDown) && canRecall && !isComposingRef.current) {
+          const value = recall(isUp ? "up" : "down", el.value)
+          if (value !== undefined) {
+            e.preventDefault()
+            el.value = value
+            updateHeight(el)
+            setHasText(value.trim().length > 0)
+            el.setSelectionRange(value.length, value.length)
+          }
+          return
+        }
+
         if (isEnter && !isComposingRef.current && el.value.trim().length > 0) {
           e.preventDefault()
           sendInput()
         }
       },
-      [sendInput],
+      [sendInput, recall, isActive],
     )
 
     const onInput = useCallback((): void => {
@@ -125,6 +164,7 @@ export const ChatInput = memo(
                 })
                 transport.sendInput(inputId, submitContent)
                 onSend?.()
+                reset()
               }
             }
             // Always restore old value (the submitted value was temporary)
@@ -141,10 +181,11 @@ export const ChatInput = memo(
           textareaRef.current?.focus()
         },
       }),
-      [disabled, dispatch, transport, inputId, onSend],
+      [disabled, dispatch, transport, inputId, onSend, reset],
     )
 
     const sendButtonDisabled = disabled || !hasText
+    const showStopButton = enableCancel && isStreaming
 
     return (
       <>
@@ -162,15 +203,27 @@ export const ChatInput = memo(
           aria-label="Chat message"
           data-shiny-no-bind-input
         />
-        <button
-          type="button"
-          className="shiny-chat-btn-send"
-          title="Send message"
-          aria-label="Send message"
-          disabled={sendButtonDisabled}
-          onClick={() => sendInput()}
-          dangerouslySetInnerHTML={{ __html: arrowUpCircleFill }}
-        />
+        {showStopButton ? (
+          <button
+            type="button"
+            className="shiny-chat-btn-send shiny-chat-btn-cancel"
+            title="Stop generating"
+            aria-label="Stop generating"
+            disabled={cancelRequested}
+            onClick={onCancel}
+            dangerouslySetInnerHTML={{ __html: stopCircleFill }}
+          />
+        ) : (
+          <button
+            type="button"
+            className="shiny-chat-btn-send"
+            title="Send message"
+            aria-label="Send message"
+            disabled={sendButtonDisabled}
+            onClick={() => sendInput()}
+            dangerouslySetInnerHTML={{ __html: arrowUpCircleFill }}
+          />
+        )}
       </>
     )
   }),

@@ -5,6 +5,7 @@ import {
   useEffect,
   forwardRef,
   useImperativeHandle,
+  useMemo,
 } from "react"
 import { createPortal } from "react-dom"
 import { useStickToBottom } from "use-stick-to-bottom"
@@ -15,7 +16,7 @@ import { MessageErrorBoundary } from "./MessageErrorBoundary"
 import { ChatInput, type ChatInputHandle } from "./ChatInput"
 import { ScrollToBottomButton } from "./ScrollToBottomButton"
 import { ExternalLinkDialogComponent } from "./ExternalLinkDialog"
-import { ChatScrollContext } from "./context"
+import { ChatScrollContext, useChatDispatch } from "./context"
 import type { ChatMessageData, GreetingData } from "./state"
 import type { ChatTransport } from "../transport/types"
 
@@ -34,6 +35,9 @@ export interface ChatContainerProps {
   iconAssistant?: string
   inputId: string
   greeting?: GreetingData | null
+  cancelId?: string
+  enableCancel?: boolean
+  cancelRequested?: boolean
 }
 
 export type ChatContainerHandle = ChatInputHandle
@@ -51,9 +55,17 @@ export const ChatContainer = forwardRef<
     iconAssistant,
     inputId,
     greeting,
+    cancelId,
+    enableCancel,
+    cancelRequested,
   },
   ref,
 ) {
+  const userMessages = useMemo(
+    () => messages.filter((m) => m.role === "user").map((m) => m.content),
+    [messages],
+  )
+
   const chatInputRef = useRef<ChatInputHandle>(null)
 
   const [pendingUrl, setPendingUrl] = useState<string | null>(null)
@@ -103,6 +115,42 @@ export const ChatContainer = forwardRef<
       mo.disconnect()
     }
   }, [scrollRef])
+
+  const dispatch = useChatDispatch()
+
+  const isStreaming = !!streamingMessage
+
+  const cancelStream = useCallback((): void => {
+    if (!enableCancel || !cancelId || !isStreaming || cancelRequested) return
+    dispatch({ type: "CANCEL_REQUESTED" })
+    transport.sendCancel(cancelId)
+  }, [
+    enableCancel,
+    cancelId,
+    isStreaming,
+    cancelRequested,
+    dispatch,
+    transport,
+  ])
+
+  const cancelStreamRef = useRef(cancelStream)
+  cancelStreamRef.current = cancelStream
+
+  useEffect(() => {
+    if (!enableCancel) return
+
+    const container = scrollRef.current?.closest("shiny-chat-container")
+    if (!container) return
+
+    const handleKeyDown = (e: Event): void => {
+      if (e.defaultPrevented) return
+      if ((e as KeyboardEvent).key !== "Escape") return
+      cancelStreamRef.current()
+    }
+
+    container.addEventListener("keydown", handleKeyDown)
+    return () => container.removeEventListener("keydown", handleKeyDown)
+  }, [enableCancel, scrollRef])
 
   useImperativeHandle(ref, () => ({
     setInputValue(...args) {
@@ -351,6 +399,11 @@ export const ChatContainer = forwardRef<
           hasTopShadow={!isAtBottom}
           placeholder={inputPlaceholder}
           onSend={onSend}
+          userMessages={userMessages}
+          enableCancel={enableCancel}
+          cancelRequested={cancelRequested}
+          isStreaming={isStreaming}
+          onCancel={cancelStream}
         />
       </div>
 

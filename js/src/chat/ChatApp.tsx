@@ -30,9 +30,11 @@ interface ChatAppProps {
   elementId: string
   iconAssistant?: string
   inputId: string
+  cancelId?: string
   placeholder?: string
   initialMessages?: ChatMessageData[]
   initialGreeting?: InitialGreeting
+  enableCancel?: boolean
 }
 
 function makeInitialGreeting(
@@ -65,9 +67,11 @@ export function ChatApp({
   elementId,
   iconAssistant,
   inputId,
+  cancelId,
   placeholder,
   initialMessages,
   initialGreeting,
+  enableCancel,
 }: ChatAppProps) {
   const messages = initialMessages ?? []
   const [state, dispatch] = useReducer(chatReducer, {
@@ -172,6 +176,9 @@ export function ChatApp({
             iconAssistant={iconAssistant}
             inputId={inputId}
             greeting={state.greeting}
+            cancelId={cancelId}
+            enableCancel={enableCancel}
+            cancelRequested={state.cancelRequested}
           />
         </ChatDispatchContext.Provider>
       </ChatToolContext.Provider>
