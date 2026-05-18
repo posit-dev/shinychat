@@ -321,7 +321,9 @@ chat_mod_server <- function(
             args$client <- greeter
           }
           greeting_stream_task$invoke(
-            "chat", do.call(greeting, args), session
+            "chat",
+            do.call(greeting, args),
+            session
           )
         }
       )
