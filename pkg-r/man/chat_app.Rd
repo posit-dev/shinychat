@@ -48,7 +48,7 @@ in \code{\link[=chat_ui]{chat_ui()}}.}
 \item \code{chat_app()} returns a \code{\link[shiny:shinyApp]{shiny::shinyApp()}} object.
 \item \code{chat_mod_ui()} returns the UI for a shinychat module.
 \item \code{chat_mod_server()} includes the shinychat module server logic, and
-returns a list containing:
+returns an environment containing:
 \itemize{
 \item \code{last_input}: A reactive value containing the last user input.
 \item \code{last_turn}: A reactive value containing the last assistant turn.
@@ -66,7 +66,15 @@ each message is a list with \code{role} and \code{content} fields. The
 updated after clearing. It can be one of: \code{"clear"} the chat history;
 \code{"set"} the chat history to \code{messages}; \code{"append"} \code{messages} to the
 existing chat history; or \code{"keep"} the existing chat history.
-\item \code{client}: The chat client object, which is mutated as you chat.
+\item \code{client}: The current chat client object (an active binding that
+always reflects the latest client, even after \code{set_client()}
+is called).
+\item \code{set_client(new_client, sync = TRUE)}: Replace the chat client used by
+the module. When \code{sync} is \code{TRUE} (the default), the new client
+inherits conversation turns, system prompt, and tools from the previous
+client so the conversation continues seamlessly. Set \code{sync = FALSE} to
+use the new client as-is. If a response is currently streaming, the
+swap is deferred until the stream completes.
 }
 }
 }
