@@ -3,24 +3,10 @@ import type { GreetingData } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
 import { ChatDispatchContext } from "./context"
+import { usePrefersReducedMotion } from "./usePrefersReducedMotion"
 
 interface ChatGreetingProps {
   greeting: GreetingData
-}
-
-function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-  )
-  useEffect(() => {
-    const mql = window.matchMedia("(prefers-reduced-motion: reduce)")
-    const handler = (e: MediaQueryListEvent) => setReduced(e.matches)
-    mql.addEventListener("change", handler)
-    return () => mql.removeEventListener("change", handler)
-  }, [])
-  return reduced
 }
 
 export const ChatGreeting = memo(function ChatGreeting({
