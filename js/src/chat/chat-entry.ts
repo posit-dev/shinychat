@@ -1,6 +1,7 @@
 import { createRoot, type Root } from "react-dom/client"
 import { createElement } from "react"
 import { ChatApp } from "./ChatApp"
+import type { InitialGreeting } from "./ChatApp"
 import { getShinyTransport } from "../transport/shiny-transport"
 import type { ChatMessageData } from "./state"
 import type { ContentType, GreetingOptions } from "../transport/types"
@@ -36,12 +37,6 @@ function parseInitialMessages(container: HTMLElement): ChatMessageData[] {
   })
 
   return messages
-}
-
-interface InitialGreeting {
-  content: string
-  contentType: ContentType
-  options: GreetingOptions
 }
 
 function parseInitialGreeting(

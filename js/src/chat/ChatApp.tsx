@@ -18,7 +18,7 @@ import type {
   GreetingOptions,
 } from "../transport/types"
 
-interface InitialGreeting {
+export interface InitialGreeting {
   content: string
   contentType: import("../transport/types").ContentType
   options: GreetingOptions
