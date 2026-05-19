@@ -12,9 +12,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from chatlas._content import ContentPDF as ContentPDF
+    from chatlas._content import ContentPDF as ContentPDF  # noqa: PLC0414
 else:
     try:
-        from chatlas.types import ContentPDF as ContentPDF
+        from chatlas.types import ContentPDF as ContentPDF  # noqa: PLC0414
     except (ImportError, AttributeError):
-        from chatlas._content import ContentPDF as ContentPDF
+        from chatlas._content import ContentPDF as ContentPDF  # noqa: PLC0414
