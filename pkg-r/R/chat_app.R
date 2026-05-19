@@ -74,7 +74,7 @@
 #'   * `chat_app()` returns a [shiny::shinyApp()] object.
 #'   * `chat_mod_ui()` returns the UI for a shinychat module.
 #'   * `chat_mod_server()` includes the shinychat module server logic, and
-#'     returns a list containing:
+#'     returns an environment containing:
 #'
 #'     * `last_input`: A reactive value containing the last user input.
 #'     * `last_turn`: A reactive value containing the last assistant turn.
@@ -92,7 +92,19 @@
 #'       updated after clearing. It can be one of: `"clear"` the chat history;
 #'       `"set"` the chat history to `messages`; `"append"` `messages` to the
 #'       existing chat history; or `"keep"` the existing chat history.
-#'     * `client`: The chat client object, which is mutated as you chat.
+#'     * `status`: A reactive value indicating the current chat interaction
+#'       state. Returns `"idle"` when no response is in progress, or
+#'       `"streaming"` while a response is actively being received.
+#'     * `client`: The current chat client object (an active binding that
+#'       always reflects the latest client, even after `set_client()`
+#'       is called).
+#'     * `set_client(new_client, sync = TRUE)`: Replace the chat client used by
+#'       the module. When `sync` is `TRUE` (the default), the new client
+#'       inherits conversation turns, system prompt, and tools from the previous
+#'       client so the conversation continues seamlessly. Set `sync = FALSE` to
+#'       use the new client as-is. If a response is currently streaming, the
+#'       swap is deferred until the stream completes. If called multiple times
+#'       while streaming, only the most recent new client is used.
 #'
 #' @describeIn chat_app A simple Shiny app for live chatting. Note that this
 #'   app is suitable for interactive use by a single user; do not use
@@ -185,7 +197,7 @@ chat_mod_server <- function(
   )
 
   shiny::moduleServer(id, function(input, output, session) {
-    chat_restore(
+    cancel_bookmarks <- chat_restore(
       "chat",
       client,
       session = session,
@@ -195,7 +207,38 @@ chat_mod_server <- function(
 
     last_turn <- shiny::reactiveVal(NULL, label = "last_turn")
     last_input <- shiny::reactiveVal(NULL, label = "last_input")
+    pending_swap <- shiny::reactiveVal(NULL, label = "pending_swap")
     ctrl <- ellmer::stream_controller()
+
+    swap_client <- function(new_client, sync) {
+      if (sync) {
+        new_client$set_turns(client$get_turns())
+        new_client$set_system_prompt(client$get_system_prompt())
+        new_client$set_tools(client$get_tools())
+      }
+      client <<- new_client
+      cancel_bookmarks()
+      cancel_bookmarks <<- chat_restore(
+        "chat",
+        client,
+        session = session,
+        bookmark_on_input = bookmark_on_input,
+        bookmark_on_response = bookmark_on_response,
+        restore_ui = FALSE
+      )
+      invisible()
+    }
+
+    set_client <- function(new_client, sync = TRUE) {
+      check_ellmer_chat(new_client)
+
+      if (append_stream_task$status() == "running") {
+        pending_swap(list(client = new_client, sync = sync))
+        return(invisible())
+      }
+
+      swap_client(new_client, sync)
+    }
 
     shiny::observeEvent(input$chat_user_input, label = "on_chat_user_input", {
       last_input(input$chat_user_input)
@@ -211,9 +254,17 @@ chat_mod_server <- function(
       ctrl$cancel()
     })
 
-    shiny::observe(label = "update_last_turn", {
-      if (append_stream_task$status() == "success") {
+    shiny::observe(label = "on_stream_complete", {
+      status <- append_stream_task$status()
+      swap <- pending_swap()
+
+      if (status == "success") {
         last_turn(client$last_turn())
+      }
+
+      if (!is.null(swap) && status != "running") {
+        pending_swap(NULL)
+        swap_client(swap$client, swap$sync)
       }
     })
 
@@ -282,13 +333,18 @@ chat_mod_server <- function(
       last_input(NULL)
     }
 
-    list(
-      last_turn = shiny::reactive(last_turn(), label = "mod_last_turn"),
-      last_input = shiny::reactive(last_input(), label = "mod_last_input"),
-      client = client,
-      append = chat_append_mod,
-      update_user_input = chat_update_user_input,
-      clear = client_clear
-    )
+    ret <- new.env(parent = emptyenv())
+    ret$last_turn <- shiny::reactive(last_turn(), label = "mod_last_turn")
+    ret$last_input <- shiny::reactive(last_input(), label = "mod_last_input")
+    ret$status <- shiny::reactive(label = "mod_status", {
+      if (append_stream_task$status() == "running") "streaming" else "idle"
+    })
+    makeActiveBinding("client", function() client, ret)
+    ret$append <- chat_append_mod
+    ret$update_user_input <- chat_update_user_input
+    ret$clear <- client_clear
+    ret$set_client <- set_client
+    lockEnvironment(ret)
+    ret
   })
 }
