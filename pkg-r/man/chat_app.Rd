@@ -77,6 +77,9 @@ greeting. Pass a \code{\link[=chat_greeting]{chat_greeting()}} object, a plain s
 \code{NULL} to clear. Streaming greetings run inside an
 \link[shiny:ExtendedTask]{shiny::ExtendedTask} so the session stays responsive; if called
 while a greeting is already streaming, the new greeting is queued.
+If the greeting has already been dismissed, calling \code{set_greeting()}
+updates the content but does not make it visible again; call
+\code{clear(greeting = TRUE)} first to show a new greeting after dismissal.
 \item \code{client}: The chat client object, which is mutated as you chat.
 }
 }

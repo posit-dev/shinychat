@@ -34,6 +34,11 @@ greeting. This is typically used inside an \code{\link[shiny:observeEvent]{shiny
 visible, has no messages, and has no greeting set. See the \strong{Greeting}
 section in \code{\link[=chat_ui]{chat_ui()}} for details on \code{greeting_requested}.
 
+If the greeting has already been dismissed, calling this function updates
+the greeting content but does not make it visible again. To show a new
+greeting after dismissal, first clear the chat with
+\code{chat_clear(id, greeting = TRUE)}.
+
 Pass \code{NULL} to clear the current greeting entirely.
 }
 \examples{
