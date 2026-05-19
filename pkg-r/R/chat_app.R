@@ -199,7 +199,7 @@ chat_mod_server <- function(
   shiny::moduleServer(id, function(input, output, session) {
     chat_restore(
       "chat",
-      function() client,
+      client,
       session = session,
       bookmark_on_input = bookmark_on_input,
       bookmark_on_response = bookmark_on_response

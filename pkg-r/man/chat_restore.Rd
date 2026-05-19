@@ -16,10 +16,7 @@ chat_restore(
 \arguments{
 \item{id}{The ID of the chat element}
 
-\item{client}{The \pkg{ellmer} LLM chat client, or a function that returns
-one (called without arguments). When a function is supplied, bookmark
-callbacks always resolve the \emph{current} client at the time they fire, so
-swapping the client does not require re-registering bookmarks.}
+\item{client}{The \pkg{ellmer} LLM chat client.}
 
 \item{...}{Used for future parameter expansion.}
 
