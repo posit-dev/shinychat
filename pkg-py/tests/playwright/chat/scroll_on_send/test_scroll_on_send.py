@@ -15,7 +15,9 @@ def test_scroll_to_bottom_on_send(page: Page, local_app: ShinyAppProc) -> None:
     expect(chat.loc).to_be_visible(timeout=30_000)
 
     # Wait for all initial messages to render
-    chat.expect_latest_message("Message 19: padding to fill the chat area.", timeout=30_000)
+    chat.expect_latest_message(
+        "Message 19: padding to fill the chat area.", timeout=30_000
+    )
 
     messages_el = chat.loc_scroll_container
 
@@ -30,7 +32,9 @@ def test_scroll_to_bottom_on_send(page: Page, local_app: ShinyAppProc) -> None:
     chat.send_user_input(method="enter")
 
     # Wait for the user message to appear in the DOM
-    user_msg = messages_el.locator(".shiny-chat-user-message").filter(has_text="Hello from the test")
+    user_msg = messages_el.locator(".shiny-chat-user-message").filter(
+        has_text="Hello from the test"
+    )
     expect(user_msg).to_be_visible(timeout=5_000)
 
     # Wait until the scroll settles within 20px of the bottom.

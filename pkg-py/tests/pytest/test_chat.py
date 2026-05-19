@@ -214,9 +214,7 @@ def test_stream_replace_discards_stale_html_dependencies():
         chat._serialize_html_deps = lambda deps: (  # type: ignore[method-assign]
             None
             if not deps
-            else [
-                {"name": dep.name, "version": dep.version} for dep in deps
-            ]
+            else [{"name": dep.name, "version": dep.version} for dep in deps]
         )
 
         async def _exercise_stream() -> None:
@@ -369,7 +367,9 @@ def test_google_multimodal_normalization():
     c = types.Content(
         parts=[
             types.Part(text="Here is an image:"),
-            types.Part(inline_data=types.Blob(mime_type="image/png", data=b"AAAA")),
+            types.Part(
+                inline_data=types.Blob(mime_type="image/png", data=b"AAAA")
+            ),
             types.Part(text=" described above."),
         ],
         role="model",
@@ -602,7 +602,9 @@ def test_as_google_message():
     from google.genai.models import Models
 
     contents_annotation = (
-        inspect.signature(Models.generate_content).parameters["contents"].annotation
+        inspect.signature(Models.generate_content)
+        .parameters["contents"]
+        .annotation
     )
     assert is_type_in_union(types.Content, contents_annotation)
 
