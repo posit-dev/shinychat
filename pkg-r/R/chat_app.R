@@ -216,14 +216,6 @@ chat_mod_server <- function(
         new_client$set_tools(client$get_tools())
       }
       client <<- new_client
-      chat_restore(
-        "chat",
-        client,
-        session = session,
-        bookmark_on_input = bookmark_on_input,
-        bookmark_on_response = bookmark_on_response,
-        restore_ui = FALSE
-      )
       invisible()
     }
 
