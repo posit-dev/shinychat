@@ -56,6 +56,8 @@ reference:
   - chat_append
   - chat_append_message
   - chat_clear
+  - chat_greeting
+  - chat_set_greeting
   - update_chat_user_input
 
 - title: Streaming markdown interface

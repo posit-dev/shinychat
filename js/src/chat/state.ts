@@ -2,6 +2,7 @@ import type {
   ContentType,
   ChatAction,
   MessagePayload,
+  GreetingOptions,
 } from "../transport/types"
 import { uuid } from "../utils/uuid"
 
@@ -41,6 +42,15 @@ export interface ChatMessageData {
   cancelled?: boolean
 }
 
+export interface GreetingData {
+  content: string
+  contentType: ContentType
+  streaming: boolean
+  status: "visible" | "dismissing" | "dismissed"
+  options: GreetingOptions
+  blocks: ContentBlock[]
+}
+
 export interface ChatInputState {
   inputDisabled: boolean
   inputPlaceholder: string
@@ -53,6 +63,7 @@ export interface ChatToolState {
 export interface ChatState extends ChatInputState, ChatToolState {
   messages: ChatMessageData[]
   streamingMessage: ChatMessageData | null
+  greeting: GreetingData | null
   cancelRequested: boolean
 }
 
@@ -63,6 +74,7 @@ export type UIAction =
       content: string
       role: "user"
     }
+  | { type: "greeting_dismissed" }
   | { type: "CANCEL_REQUESTED" }
 
 export type AnyAction = ChatAction | UIAction
@@ -70,6 +82,7 @@ export type AnyAction = ChatAction | UIAction
 export const initialState: ChatState = {
   messages: [],
   streamingMessage: null,
+  greeting: null,
   inputDisabled: false,
   inputPlaceholder: "Enter a message...",
   cancelRequested: false,
@@ -115,6 +128,26 @@ function messagePayloadToData(msg: MessagePayload): ChatMessageData {
 
 function removeLoadingMessage(messages: ChatMessageData[]): ChatMessageData[] {
   return messages.filter((m) => !m.isPlaceholder)
+}
+
+function dismissGreeting(greeting: GreetingData | null): GreetingData | null {
+  if (
+    greeting?.options.dismissible !== false &&
+    greeting?.status === "visible"
+  ) {
+    return { ...greeting, status: "dismissing" }
+  }
+  return greeting
+}
+
+function computeGreetingVisibility(
+  prior: GreetingData | null,
+  dismissible: boolean,
+  hasMessages: boolean,
+): "visible" | "dismissing" | "dismissed" {
+  if (prior?.status === "dismissed") return "dismissed"
+  if (dismissible && hasMessages) return "dismissed"
+  return "visible"
 }
 
 const THINKING_TAG_RE = /<thinking>\n?([\s\S]*?)\n?<\/thinking>\n*/g
@@ -364,6 +397,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         ...state,
         messages: [...state.messages, userMsg, loadingMsg],
         inputDisabled: true,
+        greeting: dismissGreeting(state.greeting),
       }
     }
 
@@ -374,6 +408,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         messages: [...messages, messagePayloadToData(action.message)],
         streamingMessage: null,
         inputDisabled: false,
+        greeting: dismissGreeting(state.greeting),
       }
     }
 
@@ -389,6 +424,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         messages,
         streamingMessage: newMsg,
         inputDisabled: true,
+        greeting: dismissGreeting(state.greeting),
       }
     }
 
@@ -666,11 +702,22 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       return { ...state, cancelRequested: true }
     }
 
-    case "clear":
+    case "clear": {
+      // action.greeting=true means "also clear the greeting"; otherwise restore it as visible
+      const greetingAfterClear = action.greeting
+        ? null
+        : state.greeting
+          ? {
+              ...state.greeting,
+              status: "visible" as const,
+            }
+          : null
       return {
         ...initialState,
         inputPlaceholder: state.inputPlaceholder,
+        greeting: greetingAfterClear,
       }
+    }
 
     case "update_input":
       return {
@@ -702,6 +749,117 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       newSet.add(action.requestId)
       return { ...state, hiddenToolRequests: newSet }
     }
+
+    case "greeting": {
+      const dismissible = action.options.dismissible !== false
+      // If a greeting was already dismissed, accept the new content silently so
+      // it surfaces the next time the message list is cleared. Otherwise apply
+      // the standard auto-dismiss rule when initial messages exist.
+      const status = computeGreetingVisibility(
+        state.greeting,
+        dismissible,
+        state.messages.length > 0,
+      )
+      return {
+        ...state,
+        greeting: {
+          content: action.content,
+          contentType: action.content_type,
+          streaming: false,
+          status,
+          options: action.options,
+          blocks: [
+            {
+              type: "content",
+              content: action.content,
+              contentType: action.content_type,
+            },
+          ],
+        },
+      }
+    }
+
+    case "greeting_start": {
+      const dismissible = action.options.dismissible !== false
+      const status = computeGreetingVisibility(
+        state.greeting,
+        dismissible,
+        state.messages.length > 0,
+      )
+      return {
+        ...state,
+        greeting: {
+          content: action.content,
+          contentType: action.content_type,
+          streaming: true,
+          status,
+          options: action.options,
+          blocks: action.content
+            ? [
+                {
+                  type: "content",
+                  content: action.content,
+                  contentType: action.content_type,
+                },
+              ]
+            : [],
+        },
+      }
+    }
+
+    case "greeting_dismissed": {
+      const greeting = state.greeting
+      if (!greeting || greeting.status !== "dismissing") return state
+      return { ...state, greeting: { ...greeting, status: "dismissed" } }
+    }
+
+    case "greeting_chunk": {
+      const greeting = state.greeting
+      if (!greeting || !greeting.streaming) return state
+
+      const chunkType = action.content_type ?? greeting.contentType
+      let blocks: ContentBlock[]
+
+      if (action.operation === "replace") {
+        blocks = [
+          { type: "content", content: action.content, contentType: chunkType },
+        ]
+      } else {
+        const existing = [...greeting.blocks]
+        const last = existing[existing.length - 1]
+        if (last && last.contentType === chunkType) {
+          existing[existing.length - 1] = {
+            ...last,
+            content: last.content + action.content,
+          }
+          blocks = existing
+        } else {
+          blocks = [
+            ...existing,
+            {
+              type: "content",
+              content: action.content,
+              contentType: chunkType,
+            },
+          ]
+        }
+      }
+
+      const content = blocks.map((b) => b.content).join("")
+      return {
+        ...state,
+        greeting: { ...greeting, content, contentType: chunkType, blocks },
+      }
+    }
+
+    case "greeting_end": {
+      const greeting = state.greeting
+      if (!greeting?.streaming) return state
+      return { ...state, greeting: { ...greeting, streaming: false } }
+    }
+
+    case "greeting_clear":
+      return { ...state, greeting: null }
 
     default: {
       const _exhaustive: never = action
