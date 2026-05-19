@@ -1037,7 +1037,7 @@ rlang::on_load(
         break
       }
 
-      if (is.character(msg)) {
+      if (is.character(msg) && !inherits(msg, "html")) {
         ui <- list(html = msg, deps = NULL)
         chunk_content_type <- "markdown"
       } else {
