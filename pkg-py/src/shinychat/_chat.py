@@ -1475,7 +1475,7 @@ class Chat:
 
     def enable_bookmarking(
         self,
-        client: "ClientWithState | chatlas.Chat[Any, Any]",
+        client: "ClientWithState | chatlas.Chat[Any, Any] | Callable[[], ClientWithState | chatlas.Chat[Any, Any]]",
         /,
         *,
         bookmark_on: Optional[Literal["response"]] = "response",
@@ -1494,6 +1494,11 @@ class Chat:
             The chat client instance to use for bookmarking. This can be a Chat model
             provider from [chatlas](https://posit-dev.github.io/chatlas/), or more
             generally, an instance following the `ClientWithState` protocol.
+
+            Alternatively, a function (called without arguments) that returns the client
+            instance. When a function is supplied, bookmark callbacks always resolve the
+            *current* client at the time they fire, so swapping the client does not
+            require re-registering bookmarks.
         bookmark_on
             The event to trigger the bookmarking on. Supported values include:
 
@@ -1531,19 +1536,54 @@ class Chat:
         get_state: Callable[[], Awaitable[Jsonifiable]]
         set_state: Callable[[Jsonifiable], Awaitable[None]]
 
-        # Retrieve get_state/set_state functions from the client
-        if isinstance(client, ClientWithState):
-            # Do client with state stuff here
-            get_state = _utils.wrap_async(client.get_state)
-            set_state = _utils.wrap_async(client.set_state)
+        if (
+            callable(client)
+            and not isinstance(client, ClientWithState)
+            and not is_chatlas_chat_client(client)
+        ):
+            # Caller supplied a getter; resolve once now for validation
+            get_client = client
+            client_now = get_client()
+        else:
+            client_now = client
+            get_client = None
 
-        elif is_chatlas_chat_client(client):
-            get_state = get_chatlas_state(client)
-            set_state = set_chatlas_state(client)
+        # Retrieve get_state/set_state functions from the client
+        if isinstance(client_now, ClientWithState):
+            if get_client is not None:
+                # Defer resolution to callback time
+                def get_state_lazy() -> Awaitable[Jsonifiable]:
+                    c = get_client()
+                    return _utils.wrap_async(c.get_state)()  # type: ignore[union-attr]
+
+                def set_state_lazy(value: Jsonifiable) -> Awaitable[None]:
+                    c = get_client()
+                    return _utils.wrap_async(c.set_state)(value)  # type: ignore[union-attr]
+
+                get_state = get_state_lazy
+                set_state = set_state_lazy
+            else:
+                get_state = _utils.wrap_async(client_now.get_state)
+                set_state = _utils.wrap_async(client_now.set_state)
+
+        elif is_chatlas_chat_client(client_now):
+            if get_client is not None:
+                # Defer resolution to callback time
+                def get_state_chatlas() -> Awaitable[Jsonifiable]:
+                    return get_chatlas_state(get_client())()
+
+                def set_state_chatlas(value: Jsonifiable) -> Awaitable[None]:
+                    return set_chatlas_state(get_client())(value)
+
+                get_state = get_state_chatlas
+                set_state = set_state_chatlas
+            else:
+                get_state = get_chatlas_state(client_now)
+                set_state = set_chatlas_state(client_now)
 
         else:
             raise ValueError(
-                "Bookmarking requires a client that supports "
+                "Bookmarking requires a client (or a function returning one) that supports "
                 "`async def get_state(self) -> shiny.types.Jsonifiable` (which returns an object that can be used when bookmarking to save the state of the `client=`) and "
                 "`async def set_state(self, value: Jsonifiable)` (which should restore the `client=`'s state given the `state=`)."
             )
@@ -1730,7 +1770,7 @@ class ChatExpress(Chat):
 
     def enable_bookmarking(
         self,
-        client: "ClientWithState | chatlas.Chat[Any, Any]",
+        client: "ClientWithState | chatlas.Chat[Any, Any] | Callable[[], ClientWithState | chatlas.Chat[Any, Any]]",
         /,
         *,
         bookmark_store: "Optional[BookmarkStore]" = None,
@@ -1750,6 +1790,11 @@ class ChatExpress(Chat):
             The chat client instance to use for bookmarking. This can be a Chat model
             provider from [chatlas](https://posit-dev.github.io/chatlas/), or more
             generally, an instance following the `ClientWithState` protocol.
+
+            Alternatively, a function (called without arguments) that returns the client
+            instance. When a function is supplied, bookmark callbacks always resolve the
+            *current* client at the time they fire, so swapping the client does not
+            require re-registering bookmarks.
         bookmark_store
             A convenience parameter to set the `shiny.express.app_opts(bookmark_store=)`
             which is required for bookmarking (and `.enable_bookmarking()`). If `None`,
