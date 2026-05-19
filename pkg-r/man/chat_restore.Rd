@@ -10,6 +10,7 @@ chat_restore(
   ...,
   bookmark_on_input = TRUE,
   bookmark_on_response = TRUE,
+  restore_ui = TRUE,
   session = getDefaultReactiveDomain()
 )
 }
@@ -23,6 +24,11 @@ chat_restore(
 \item{bookmark_on_input}{A logical value determines if the bookmark should be updated when the user submits a message. Default is \code{TRUE}.}
 
 \item{bookmark_on_response}{A logical value determines if the bookmark should be updated when the response stream completes. Default is \code{TRUE}.}
+
+\item{restore_ui}{Whether to render the client's existing turns into the
+chat UI on registration. Default is \code{TRUE}. Set to \code{FALSE} when
+re-registering bookmarks after a client swap (where the UI already reflects
+the conversation).}
 
 \item{session}{The Shiny session object}
 }
