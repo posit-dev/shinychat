@@ -33,7 +33,10 @@ the conversation).}
 \item{session}{The Shiny session object}
 }
 \value{
-Returns nothing (\code{invisible(NULL)}).
+Invisibly returns a function that, when called, cancels all
+bookmark registrations made by this call. This is useful when swapping
+the chat client: cancel the previous bookmarks, then call
+\code{chat_restore()} again with the new client.
 }
 \description{
 Adds Shiny bookmarking hooks to save and restore the \pkg{ellmer} chat

@@ -197,7 +197,7 @@ chat_mod_server <- function(
   )
 
   shiny::moduleServer(id, function(input, output, session) {
-    chat_restore(
+    cancel_bookmarks <- chat_restore(
       "chat",
       client,
       session = session,
@@ -217,7 +217,8 @@ chat_mod_server <- function(
         new_client$set_tools(client$get_tools())
       }
       client <<- new_client
-      chat_restore(
+      cancel_bookmarks()
+      cancel_bookmarks <<- chat_restore(
         "chat",
         client,
         session = session,
