@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import AsyncIterator, Literal, Union
+from typing import AsyncIterable, Literal, Union
 
 from htmltools import HTML, HTMLDependency, Tag, TagChild, TagList
 
@@ -171,14 +171,14 @@ class ChatMessage:
 class ChatGreeting:
     def __init__(
         self,
-        content: Union[str, HTML, Tag, TagList, "AsyncIterator[str]"],
+        content: Union[str, HTML, Tag, TagList, "AsyncIterable[str]"],
         *,
         dismissible: bool = True,
     ):
         self.dismissible = dismissible
 
-        if isinstance(content, AsyncIterator):
-            self.content: Union[str, AsyncIterator[str]] = content
+        if isinstance(content, AsyncIterable):
+            self.content: Union[str, AsyncIterable[str]] = content
             self.content_type: ContentType = "markdown"
             self.html_deps: list[HTMLDependency] = []
             return
@@ -199,7 +199,7 @@ class ChatGreeting:
 
 
 def chat_greeting(
-    content: Union[str, HTML, Tag, TagList, "AsyncIterator[str]"],
+    content: Union[str, HTML, Tag, TagList, "AsyncIterable[str]"],
     *,
     dismissible: bool = True,
 ) -> ChatGreeting:
@@ -215,7 +215,7 @@ def chat_greeting(
     content
         The greeting content. Can be a markdown string, :class:`~htmltools.HTML`,
         :class:`~htmltools.Tag`, :class:`~htmltools.TagList`, or an
-        :class:`~typing.AsyncIterator` of strings (streaming, only valid via
+        :class:`~typing.AsyncIterable` of strings (streaming, only valid via
         :meth:`~shinychat.Chat.set_greeting`).
     dismissible
         Whether the greeting can be dismissed when the user sends a message. When

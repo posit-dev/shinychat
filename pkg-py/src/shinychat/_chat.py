@@ -7,7 +7,6 @@ from typing import (
     TYPE_CHECKING,
     Any,
     AsyncIterable,
-    AsyncIterator,
     Awaitable,
     Callable,
     Iterable,
@@ -1476,7 +1475,7 @@ class Chat:
             * A :func:`~shinychat.chat_greeting` object with options such as
               ``dismissible``.
             * A :func:`~shinychat.chat_greeting` wrapping an
-              :class:`~typing.AsyncIterator` of strings: streams the greeting content
+              :class:`~typing.AsyncIterable` of strings: streams the greeting content
               chunk-by-chunk.
 
         Notes
@@ -1570,7 +1569,7 @@ class Chat:
         html_deps = self._serialize_html_deps(greeting.html_deps) if greeting.html_deps else None
 
         content = greeting.content
-        if isinstance(content, AsyncIterator):
+        if isinstance(content, AsyncIterable):
             start_action: ChatAction = {
                 "type": "greeting_start",
                 "content": "",

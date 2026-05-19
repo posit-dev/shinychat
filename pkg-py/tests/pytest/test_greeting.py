@@ -61,6 +61,36 @@ def test_chat_greeting_async_iterator_not_consumed():
     assert g.html_deps == []
 
 
+def test_chat_greeting_custom_async_iterable():
+    """Objects that implement __aiter__ without subclassing AsyncIterator should be treated as streams."""
+
+    class CustomAsyncIterable:
+        def __init__(self, items):
+            self._items = items
+
+        def __aiter__(self):
+            return self._Iterator(self._items)
+
+        class _Iterator:
+            def __init__(self, items):
+                self._items = iter(items)
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                try:
+                    return next(self._items)
+                except StopIteration:
+                    raise StopAsyncIteration
+
+    it = CustomAsyncIterable(["hello", " ", "world"])
+    g = chat_greeting(it)
+    assert g.content is it
+    assert g.content_type == "markdown"
+    assert g.html_deps == []
+
+
 # ---------------------------------------------------------------------------
 # chat_ui(greeting=) tests
 # ---------------------------------------------------------------------------
