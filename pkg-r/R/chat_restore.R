@@ -19,7 +19,10 @@
 #' client to `chat_restore()`.
 #'
 #' @param id The ID of the chat element
-#' @param client The \pkg{ellmer} LLM chat client.
+#' @param client The \pkg{ellmer} LLM chat client, or a function that returns
+#'   one (called without arguments). When a function is supplied, bookmark
+#'   callbacks always resolve the *current* client at the time they fire, so
+#'   swapping the client does not require re-registering bookmarks.
 #' @param ... Used for future parameter expansion.
 #' @param bookmark_on_input A logical value determines if the bookmark should be updated when the user submits a message. Default is `TRUE`.
 #' @param bookmark_on_response A logical value determines if the bookmark should be updated when the response stream completes. Default is `TRUE`.
@@ -67,9 +70,19 @@ chat_restore <- function(
   stopifnot(is.character(id) && length(id) == 1)
 
   rlang::check_installed("ellmer")
-  if (!(inherits(client, "R6") && inherits(client, "Chat"))) {
+
+  if (rlang::is_function(client)) {
+    # Caller supplied a getter; resolve once now for validation and initial UI
+    get_client <- client
+    client_now <- get_client()
+  } else {
+    client_now <- client
+    get_client <- function() client
+  }
+
+  if (!(inherits(client_now, "R6") && inherits(client_now, "Chat"))) {
     rlang::abort(
-      "`client` must be an `ellmer::Chat()` object. If you would like to have {shinychat} support your own package, please submit a GitHub Issue at https://github.com/posit-dev/shinychat"
+      "`client` must be an `ellmer::Chat()` object or a function that returns one. If you would like to have {shinychat} support your own package, please submit a GitHub Issue at https://github.com/posit-dev/shinychat"
     )
   }
   bookmark_on_input <- rlang::is_true(bookmark_on_input)
@@ -103,13 +116,13 @@ chat_restore <- function(
       )
     }
 
-    client_state <- client_get_state(client)
+    client_state <- client_get_state(get_client())
 
     state$values[[id]] <- client_state
   })
 
   cancel_set_ui <- shiny::observe(label = "set_ui", {
-    client_set_ui(client, id = id)
+    client_set_ui(client_now, id = id)
     cancel_set_ui$destroy()
   })
 
@@ -121,11 +134,11 @@ chat_restore <- function(
     }
 
     cancel_set_ui$destroy()
-    client_set_state(client, client_state)
+    client_set_state(get_client(), client_state)
 
     # Set the UI
     shiny::withReactiveDomain(session, {
-      client_set_ui(client, id = id)
+      client_set_ui(get_client(), id = id)
     })
   })
 
