@@ -77,7 +77,8 @@ the module. When \code{sync} is \code{TRUE} (the default), the new client
 inherits conversation turns, system prompt, and tools from the previous
 client so the conversation continues seamlessly. Set \code{sync = FALSE} to
 use the new client as-is. If a response is currently streaming, the
-swap is deferred until the stream completes.
+swap is deferred until the stream completes. If called multiple times
+while streaming, only the most recent new client is used.
 }
 }
 }

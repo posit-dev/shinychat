@@ -103,7 +103,8 @@
 #'       inherits conversation turns, system prompt, and tools from the previous
 #'       client so the conversation continues seamlessly. Set `sync = FALSE` to
 #'       use the new client as-is. If a response is currently streaming, the
-#'       swap is deferred until the stream completes.
+#'       swap is deferred until the stream completes. If called multiple times
+#'       while streaming, only the most recent new client is used.
 #'
 #' @describeIn chat_app A simple Shiny app for live chatting. Note that this
 #'   app is suitable for interactive use by a single user; do not use
