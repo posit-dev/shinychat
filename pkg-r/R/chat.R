@@ -824,6 +824,11 @@ rlang::on_load(
 #' visible, has no messages, and has no greeting set. See the **Greeting**
 #' section in [chat_ui()] for details on `greeting_requested`.
 #'
+#' If the greeting has already been dismissed, calling this function updates
+#' the greeting content but does not make it visible again. To show a new
+#' greeting after dismissal, first clear the chat with
+#' `chat_clear(id, greeting = TRUE)`.
+#'
 #' Pass `NULL` to clear the current greeting entirely.
 #'
 #' @param id The ID of the chat element

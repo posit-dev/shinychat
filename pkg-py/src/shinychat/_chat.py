@@ -1462,6 +1462,11 @@ class Chat:
         It can be static content, streaming content from an async iterator, or ``None``
         to remove an existing greeting.
 
+        If the greeting has already been dismissed, calling this method updates the
+        greeting content but does not make it visible again. To show a new greeting
+        after dismissal, first clear the chat with
+        ``await chat.clear_messages(greeting=True)``.
+
         Parameters
         ----------
         greeting

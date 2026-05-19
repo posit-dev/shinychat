@@ -97,6 +97,9 @@
 #'       `NULL` to clear. Streaming greetings run inside an
 #'       [shiny::ExtendedTask] so the session stays responsive; if called
 #'       while a greeting is already streaming, the new greeting is queued.
+#'       If the greeting has already been dismissed, calling `set_greeting()`
+#'       updates the content but does not make it visible again; call
+#'       `clear(greeting = TRUE)` first to show a new greeting after dismissal.
 #'     * `client`: The chat client object, which is mutated as you chat.
 #'
 #' @describeIn chat_app A simple Shiny app for live chatting. Note that this
