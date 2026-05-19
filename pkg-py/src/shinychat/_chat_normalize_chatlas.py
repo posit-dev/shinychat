@@ -21,6 +21,13 @@ from typing_extensions import TypeAliasType
 if TYPE_CHECKING:
     from chatlas.types import ContentToolRequest, ContentToolResult
 
+    # `Tagified` is only available in htmltools >= 0.7.0; keep the
+    # import behind TYPE_CHECKING so this module still loads against
+    # the currently-released htmltools. The `from __future__ import
+    # annotations` line above defers the annotation, so the name
+    # never needs to resolve at runtime.
+    from htmltools import Tagified
+
 __all__ = [
     "ToolResultDisplay",
 ]
@@ -83,7 +90,7 @@ class ToolRequestComponent(ToolCardComponent):
     arguments: str = ""
     "The function arguments as requested by the LLM, typically in JSON format."
 
-    def tagify(self):
+    def tagify(self) -> Tagified:
         icon_ui = TagList(self.icon).render()
 
         return Tag(
@@ -97,7 +104,7 @@ class ToolRequestComponent(ToolCardComponent):
             expanded="" if self.expanded else None,
             arguments=self.arguments,
             *icon_ui["dependencies"],
-        )
+        ).tagify()
 
 
 ValueType = Literal["html", "markdown", "text", "code", "content_extra"]
@@ -181,7 +188,7 @@ class ToolResultComponent(ToolCardComponent):
     full_screen: bool = False
     "Controls whether a fullscreen toggle button is displayed on the card."
 
-    def tagify(self):
+    def tagify(self) -> Tagified:
         icon_ui = TagList(self.icon).render()
 
         if self.value_type == "html":
@@ -213,7 +220,7 @@ class ToolResultComponent(ToolCardComponent):
             *icon_ui["dependencies"],
             *value_ui["dependencies"],
             *footer_ui["dependencies"],
-        )
+        ).tagify()
 
 
 class ToolResultDisplay(BaseModel):

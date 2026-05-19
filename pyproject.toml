@@ -5,7 +5,7 @@ readme = "pkg-py/README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 dependencies = [
-    "htmltools>=0.6.0",
+    "htmltools>=0.7.0",
     "shiny>=1.4.0",
 ]
 dynamic = ["version"]
@@ -58,6 +58,13 @@ dev = [
 
 [tool.uv]
 upgrade-package = ["shinychat"]
+
+# TODO(htmltools-105): remove this source override before merging.
+# Pins htmltools to the PR branch that adds the `Tagified` alias
+# (posit-dev/py-htmltools#106). Flip back to the released htmltools
+# once it ships.
+[tool.uv.sources]
+htmltools = { git = "https://github.com/posit-dev/py-htmltools.git", branch = "main" }
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]

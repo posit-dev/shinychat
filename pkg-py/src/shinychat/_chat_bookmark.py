@@ -10,9 +10,13 @@ from typing import (
     runtime_checkable,
 )
 
-from htmltools import TagChild
-
 if TYPE_CHECKING:
+    # `Tagified` is only available in htmltools >= 0.7.0; keep the
+    # import behind TYPE_CHECKING so this module still loads against
+    # the currently-released htmltools. The `from __future__ import
+    # annotations` line above defers the annotation, so the name
+    # never needs to resolve at runtime.
+    from htmltools import Tagified
     from shiny.types import Jsonifiable
 
 chatlas_is_installed = importlib.util.find_spec("chatlas") is not None
@@ -68,7 +72,7 @@ class BookmarkCancelCallback:
     def __call__(self):
         self.cancel()
 
-    def tagify(self) -> TagChild:
+    def tagify(self) -> Tagified:
         return ""
 
 
