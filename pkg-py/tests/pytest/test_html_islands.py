@@ -17,12 +17,14 @@ def test_plain_html_wrapped_in_single_island():
 
 def test_react_element_emitted_bare():
     """A single react element is emitted without any wrapper."""
-    tl = TagList(Tag("shiny-tool-result", data_shinychat_react=True, request_id="abc"))
+    tl = TagList(
+        Tag("shiny-tool-result", data_shinychat_react=True, request_id="abc")
+    )
     result = split_html_islands(tl)
     rendered = TagList(result).render()["html"]
     assert "<shinychat-raw-html>" not in rendered
     assert "shiny-tool-result" in rendered
-    assert 'data-shinychat-react' in rendered
+    assert "data-shinychat-react" in rendered
 
 
 def test_mixed_content_splits_around_react():

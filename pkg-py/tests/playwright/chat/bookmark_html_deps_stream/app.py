@@ -65,6 +65,9 @@ async def styled_response_stream(user_input: str):
 async def handle_user_input(user_input: str):
     client.turns.append({"role": "user", "content": user_input})
     client.turns.append(
-        {"role": "assistant", "content": f"Streamed styled response to: {user_input}"}
+        {
+            "role": "assistant",
+            "content": f"Streamed styled response to: {user_input}",
+        }
     )
     await chat.append_message_stream(styled_response_stream(user_input))

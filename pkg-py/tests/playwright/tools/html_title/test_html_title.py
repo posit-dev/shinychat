@@ -3,9 +3,7 @@ from shiny.run import ShinyAppProc
 from shinychat.playwright import ChatController
 
 
-def test_tool_title_renders_html(
-    page: Page, local_app: ShinyAppProc
-) -> None:
+def test_tool_title_renders_html(page: Page, local_app: ShinyAppProc) -> None:
     page.goto(local_app.url)
 
     chat = ChatController(page, "chat")
