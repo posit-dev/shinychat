@@ -145,6 +145,9 @@ try:
     @message_content.register
     def _(message: ContentText):
         text = message.text
+        # chatlas' expand_tool_result() inserts <tool-content> XML wrapper
+        # tags when moving images/PDFs out of tool results during UserTurn
+        # construction. Suppress these so they don't appear as visible text.
         if text.startswith("<tool-content") or text.startswith(
             "</tool-content"
         ):
