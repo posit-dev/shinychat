@@ -42,14 +42,13 @@ function makeInitialGreeting(
   messagesLength: number,
 ): GreetingData {
   const dismissible = greeting.options.dismissible !== false
-  const autoDismiss = dismissible && messagesLength > 0
+  const status: GreetingData["status"] =
+    dismissible && messagesLength > 0 ? "dismissed" : "visible"
   return {
     content: greeting.content,
     contentType: greeting.contentType,
     streaming: false,
-    visible: !autoDismiss,
-    dismissed: autoDismiss,
-    dismissing: false,
+    status,
     options: greeting.options,
     blocks: [
       {

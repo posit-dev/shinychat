@@ -21,9 +21,7 @@ function makeGreeting(overrides: Partial<GreetingData> = {}): GreetingData {
     content: "Hello!",
     contentType: "markdown",
     streaming: false,
-    visible: true,
-    dismissed: false,
-    dismissing: false,
+    status: "visible",
     options: {},
     blocks: [{ type: "content", content: "Hello!", contentType: "markdown" }],
     ...overrides,
@@ -49,31 +47,23 @@ afterEach(() => {
 })
 
 describe("ChatGreeting", () => {
-  it("renders content when visible:true", () => {
+  it("renders content when status:visible", () => {
     const { container } = renderWithDispatch(
       <ChatGreeting greeting={makeGreeting()} />,
     )
     expect(container.querySelector(".shiny-chat-greeting")).not.toBeNull()
   })
 
-  it("renders nothing when visible:false and not dismissing", () => {
+  it("renders nothing when status:dismissed", () => {
     const { container } = renderWithDispatch(
-      <ChatGreeting
-        greeting={makeGreeting({ visible: false, dismissed: true })}
-      />,
+      <ChatGreeting greeting={makeGreeting({ status: "dismissed" })} />,
     )
     expect(container.querySelector(".shiny-chat-greeting")).toBeNull()
   })
 
-  it("renders with data-dismissing when greeting.dismissing is true", () => {
+  it("renders with data-dismissing when status:dismissing", () => {
     const { container } = renderWithDispatch(
-      <ChatGreeting
-        greeting={makeGreeting({
-          visible: false,
-          dismissed: true,
-          dismissing: true,
-        })}
-      />,
+      <ChatGreeting greeting={makeGreeting({ status: "dismissing" })} />,
     )
     const el = container.querySelector(".shiny-chat-greeting")
     expect(el).not.toBeNull()
@@ -85,13 +75,7 @@ describe("ChatGreeting", () => {
     const dispatch = vi.fn()
 
     renderWithDispatch(
-      <ChatGreeting
-        greeting={makeGreeting({
-          visible: false,
-          dismissed: true,
-          dismissing: true,
-        })}
-      />,
+      <ChatGreeting greeting={makeGreeting({ status: "dismissing" })} />,
       dispatch,
     )
 
@@ -101,13 +85,7 @@ describe("ChatGreeting", () => {
   it("dispatches greeting_dismissed on animationend", () => {
     const dispatch = vi.fn()
     const { container } = renderWithDispatch(
-      <ChatGreeting
-        greeting={makeGreeting({
-          visible: false,
-          dismissed: true,
-          dismissing: true,
-        })}
-      />,
+      <ChatGreeting greeting={makeGreeting({ status: "dismissing" })} />,
       dispatch,
     )
     const el = container.querySelector(".shiny-chat-greeting") as HTMLElement

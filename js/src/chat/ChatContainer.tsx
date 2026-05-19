@@ -362,7 +362,7 @@ export const ChatContainer = forwardRef<
               ref={contentRef}
               role="log"
               aria-live="polite"
-              {...(greeting?.dismissing
+              {...(greeting?.status === "dismissing"
                 ? { "data-greeting-dismissing": "" }
                 : {})}
             >

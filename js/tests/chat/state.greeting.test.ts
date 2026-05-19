@@ -15,7 +15,7 @@ function makeState(overrides: Partial<ChatState> = {}): ChatState {
 
 describe("chatReducer — greeting actions", () => {
   describe("greeting", () => {
-    it("sets greeting with visible:true, dismissed:false, streaming:false when no messages", () => {
+    it("sets greeting with status:visible, streaming:false when no messages", () => {
       const state = makeState()
       const next = chatReducer(state, {
         type: "greeting",
@@ -26,8 +26,7 @@ describe("chatReducer — greeting actions", () => {
       expect(next.greeting).toMatchObject({
         content: "Hello!",
         contentType: "markdown",
-        visible: true,
-        dismissed: false,
+        status: "visible",
         streaming: false,
       })
     })
@@ -64,7 +63,7 @@ describe("chatReducer — greeting actions", () => {
         content_type: "markdown",
         options: { dismissible: true },
       })
-      expect(next.greeting).toMatchObject({ visible: false, dismissed: true })
+      expect(next.greeting).toMatchObject({ status: "dismissed" })
     })
 
     it("auto-dismisses when options.dismissible is omitted (defaults to dismissible) and messages exist", () => {
@@ -86,7 +85,7 @@ describe("chatReducer — greeting actions", () => {
         content_type: "markdown",
         options: {},
       })
-      expect(next.greeting).toMatchObject({ visible: false, dismissed: true })
+      expect(next.greeting).toMatchObject({ status: "dismissed" })
     })
 
     it("does not auto-dismiss when dismissible:false even if messages exist", () => {
@@ -108,7 +107,7 @@ describe("chatReducer — greeting actions", () => {
         content_type: "markdown",
         options: { dismissible: false },
       })
-      expect(next.greeting).toMatchObject({ visible: true, dismissed: false })
+      expect(next.greeting).toMatchObject({ status: "visible" })
     })
 
     it("updates content while preserving dismissed state", () => {
@@ -117,9 +116,7 @@ describe("chatReducer — greeting actions", () => {
           content: "old",
           contentType: "markdown",
           streaming: false,
-          visible: false,
-          dismissed: true,
-          dismissing: false,
+          status: "dismissed",
           options: {},
           blocks: [],
         },
@@ -132,9 +129,7 @@ describe("chatReducer — greeting actions", () => {
       })
       expect(next.greeting).toMatchObject({
         content: "new",
-        visible: false,
-        dismissed: true,
-        dismissing: false,
+        status: "dismissed",
       })
     })
   })
@@ -151,8 +146,7 @@ describe("chatReducer — greeting actions", () => {
       expect(next.greeting).toMatchObject({
         content: "Streaming…",
         streaming: true,
-        visible: true,
-        dismissed: false,
+        status: "visible",
       })
     })
 
@@ -175,7 +169,7 @@ describe("chatReducer — greeting actions", () => {
         content_type: "markdown",
         options: {},
       })
-      expect(next.greeting).toMatchObject({ visible: false, dismissed: true })
+      expect(next.greeting).toMatchObject({ status: "dismissed" })
     })
 
     it("updates streaming greeting while preserving dismissed state", () => {
@@ -184,9 +178,7 @@ describe("chatReducer — greeting actions", () => {
           content: "old",
           contentType: "markdown",
           streaming: false,
-          visible: false,
-          dismissed: true,
-          dismissing: false,
+          status: "dismissed",
           options: {},
           blocks: [],
         },
@@ -200,8 +192,7 @@ describe("chatReducer — greeting actions", () => {
       expect(next.greeting).toMatchObject({
         content: "new",
         streaming: true,
-        visible: false,
-        dismissed: true,
+        status: "dismissed",
       })
     })
 
@@ -224,9 +215,7 @@ describe("chatReducer — greeting actions", () => {
           content,
           contentType: "markdown",
           streaming: true,
-          visible: true,
-          dismissed: false,
-          dismissing: false,
+          status: "visible",
           options: {},
           blocks: [{ type: "content", content, contentType: "markdown" }],
         },
@@ -296,9 +285,7 @@ describe("chatReducer — greeting actions", () => {
           content: "",
           contentType: "markdown",
           streaming: true,
-          visible: false,
-          dismissed: true,
-          dismissing: false,
+          status: "dismissed",
           options: {},
           blocks: [],
         },
@@ -310,8 +297,7 @@ describe("chatReducer — greeting actions", () => {
       })
       expect(next.greeting).toMatchObject({
         content: "hidden update",
-        visible: false,
-        dismissed: true,
+        status: "dismissed",
       })
     })
 
@@ -321,9 +307,7 @@ describe("chatReducer — greeting actions", () => {
           content: "final",
           contentType: "markdown",
           streaming: false,
-          visible: true,
-          dismissed: false,
-          dismissing: false,
+          status: "visible",
           options: {},
           blocks: [
             { type: "content", content: "final", contentType: "markdown" },
@@ -346,9 +330,7 @@ describe("chatReducer — greeting actions", () => {
           content: "done",
           contentType: "markdown",
           streaming: true,
-          visible: true,
-          dismissed: false,
-          dismissing: false,
+          status: "visible",
           options: {},
           blocks: [
             { type: "content", content: "done", contentType: "markdown" },
@@ -366,9 +348,7 @@ describe("chatReducer — greeting actions", () => {
           content: "done",
           contentType: "markdown",
           streaming: false,
-          visible: true,
-          dismissed: false,
-          dismissing: false,
+          status: "visible",
           options: {},
           blocks: [],
         },
@@ -391,9 +371,7 @@ describe("chatReducer — greeting actions", () => {
           content: "Hello",
           contentType: "markdown",
           streaming: false,
-          visible: true,
-          dismissed: false,
-          dismissing: false,
+          status: "visible",
           options: {},
           blocks: [],
         },
@@ -408,9 +386,7 @@ describe("chatReducer — greeting actions", () => {
           content: "old",
           contentType: "markdown",
           streaming: false,
-          visible: false,
-          dismissed: true,
-          dismissing: false,
+          status: "dismissed",
           options: {},
           blocks: [],
         },
@@ -426,8 +402,7 @@ describe("chatReducer — greeting actions", () => {
       })
       expect(renewed.greeting).toMatchObject({
         content: "new",
-        visible: true,
-        dismissed: false,
+        status: "visible",
       })
     })
   })
@@ -439,9 +414,7 @@ describe("chatReducer — greeting actions", () => {
           content: "Hello",
           contentType: "markdown",
           streaming: false,
-          visible: true,
-          dismissed: false,
-          dismissing: false,
+          status: "visible",
           options: { dismissible: true },
           blocks: [],
         },
@@ -451,7 +424,7 @@ describe("chatReducer — greeting actions", () => {
         content: "hi",
         role: "user",
       })
-      expect(next.greeting).toMatchObject({ visible: false, dismissed: true })
+      expect(next.greeting).toMatchObject({ status: "dismissing" })
     })
 
     it("does not dismiss a non-dismissible greeting on user input", () => {
@@ -460,9 +433,7 @@ describe("chatReducer — greeting actions", () => {
           content: "Hello",
           contentType: "markdown",
           streaming: false,
-          visible: true,
-          dismissed: false,
-          dismissing: false,
+          status: "visible",
           options: { dismissible: false },
           blocks: [],
         },
@@ -472,7 +443,7 @@ describe("chatReducer — greeting actions", () => {
         content: "hi",
         role: "user",
       })
-      expect(next.greeting).toMatchObject({ visible: true, dismissed: false })
+      expect(next.greeting).toMatchObject({ status: "visible" })
     })
   })
 
@@ -483,9 +454,7 @@ describe("chatReducer — greeting actions", () => {
           content: "Hello",
           contentType: "markdown",
           streaming: false,
-          visible: true,
-          dismissed: false,
-          dismissing: false,
+          status: "visible",
           options: {},
           blocks: [],
         },
@@ -498,7 +467,7 @@ describe("chatReducer — greeting actions", () => {
           content_type: "markdown",
         },
       })
-      expect(next.greeting).toMatchObject({ visible: false, dismissed: true })
+      expect(next.greeting).toMatchObject({ status: "dismissing" })
     })
 
     it("does not dismiss a non-dismissible greeting when a message arrives", () => {
@@ -507,9 +476,7 @@ describe("chatReducer — greeting actions", () => {
           content: "Hello",
           contentType: "markdown",
           streaming: false,
-          visible: true,
-          dismissed: false,
-          dismissing: false,
+          status: "visible",
           options: { dismissible: false },
           blocks: [],
         },
@@ -522,7 +489,7 @@ describe("chatReducer — greeting actions", () => {
           content_type: "markdown",
         },
       })
-      expect(next.greeting).toMatchObject({ visible: true, dismissed: false })
+      expect(next.greeting).toMatchObject({ status: "visible" })
     })
   })
 
@@ -533,9 +500,7 @@ describe("chatReducer — greeting actions", () => {
           content: "Hello",
           contentType: "markdown",
           streaming: false,
-          visible: true,
-          dismissed: false,
-          dismissing: false,
+          status: "visible",
           options: {},
           blocks: [],
         },
@@ -548,7 +513,7 @@ describe("chatReducer — greeting actions", () => {
           content_type: "markdown",
         },
       })
-      expect(next.greeting).toMatchObject({ visible: false, dismissed: true })
+      expect(next.greeting).toMatchObject({ status: "dismissing" })
     })
 
     it("does not dismiss a non-dismissible greeting when streaming starts", () => {
@@ -557,9 +522,7 @@ describe("chatReducer — greeting actions", () => {
           content: "Hello",
           contentType: "markdown",
           streaming: false,
-          visible: true,
-          dismissed: false,
-          dismissing: false,
+          status: "visible",
           options: { dismissible: false },
           blocks: [],
         },
@@ -572,26 +535,24 @@ describe("chatReducer — greeting actions", () => {
           content_type: "markdown",
         },
       })
-      expect(next.greeting).toMatchObject({ visible: true, dismissed: false })
+      expect(next.greeting).toMatchObject({ status: "visible" })
     })
   })
 
   describe("clear re-shows greeting", () => {
-    it("restores a dismissed greeting to visible:true, dismissed:false", () => {
+    it("restores a dismissed greeting to status:visible", () => {
       const state = makeState({
         greeting: {
           content: "Hello",
           contentType: "markdown",
           streaming: false,
-          visible: false,
-          dismissed: true,
-          dismissing: false,
+          status: "dismissed",
           options: {},
           blocks: [],
         },
       })
       const next = chatReducer(state, { type: "clear" })
-      expect(next.greeting).toMatchObject({ visible: true, dismissed: false })
+      expect(next.greeting).toMatchObject({ status: "visible" })
     })
 
     it("preserves null greeting after clear when no greeting was set", () => {
@@ -616,8 +577,7 @@ describe("chatReducer — greeting actions", () => {
         role: "user",
       })
       expect(state.greeting).toMatchObject({
-        visible: false,
-        dismissed: true,
+        status: "dismissing",
       })
       // Server updates the greeting while dismissed
       state = chatReducer(state, {
@@ -628,15 +588,13 @@ describe("chatReducer — greeting actions", () => {
       })
       expect(state.greeting).toMatchObject({
         content: "refreshed",
-        visible: false,
-        dismissed: true,
+        status: "dismissed",
       })
       // User clears the chat → updated greeting re-appears
       state = chatReducer(state, { type: "clear" })
       expect(state.greeting).toMatchObject({
         content: "refreshed",
-        visible: true,
-        dismissed: false,
+        status: "visible",
       })
     })
   })
@@ -648,9 +606,7 @@ describe("chatReducer — greeting actions", () => {
           content: "Hello",
           contentType: "markdown",
           streaming: false,
-          visible: true,
-          dismissed: false,
-          dismissing: false,
+          status: "visible",
           options: {},
           blocks: [],
         },
@@ -666,9 +622,7 @@ describe("chatReducer — greeting actions", () => {
           content: "Hello",
           contentType: "markdown",
           streaming: false,
-          visible: false,
-          dismissed: true,
-          dismissing: false,
+          status: "dismissed",
           options: {},
           blocks: [],
         },
@@ -683,15 +637,13 @@ describe("chatReducer — greeting actions", () => {
           content: "Hello",
           contentType: "markdown",
           streaming: false,
-          visible: false,
-          dismissed: true,
-          dismissing: false,
+          status: "dismissed",
           options: {},
           blocks: [],
         },
       })
       const next = chatReducer(state, { type: "clear" })
-      expect(next.greeting).toMatchObject({ visible: true, dismissed: false })
+      expect(next.greeting).toMatchObject({ status: "visible" })
     })
   })
 })

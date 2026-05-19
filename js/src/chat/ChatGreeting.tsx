@@ -20,7 +20,7 @@ export const ChatGreeting = memo(function ChatGreeting({
   // unmount+remount (clear → re-show, regenerate pattern) re-runs it.
   const [entering, setEntering] = useState(true)
 
-  const dismissing = greeting.dismissing
+  const dismissing = greeting.status === "dismissing"
 
   useEffect(() => {
     if (!entering) return
@@ -58,7 +58,7 @@ export const ChatGreeting = memo(function ChatGreeting({
     return () => el.removeEventListener("animationend", onAnimationEnd)
   }, [dismissing, reducedMotion, dispatch])
 
-  if (!greeting.visible && !dismissing) {
+  if (greeting.status === "dismissed") {
     return null
   }
 
