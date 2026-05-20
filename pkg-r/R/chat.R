@@ -971,7 +971,26 @@ chat_set_greeting <- function(
       promises::is.promising(content)
   ) {
     stream <- as_generator(content)
-    return(chat_set_greeting_stream(id, stream, options, session))
+    result <- chat_set_greeting_stream(id, stream, options, session)
+    result <- promises::catch(result, function(reason) {
+      class(reason) <- c("shiny.silent.error", class(reason))
+      cnd_signal(reason)
+    })
+    promises::catch(result, function(reason) {
+      send_chat_action(
+        id,
+        action = list(type = "greeting_end"),
+        session = session
+      )
+      rlang::warn(
+        sprintf(
+          "ERROR: An error occurred in `chat_set_greeting(id=\"%s\")`",
+          session$ns(id)
+        ),
+        parent = reason
+      )
+    })
+    return(result)
   }
 
   if (is.function(content)) {
@@ -1034,8 +1053,6 @@ rlang::on_load(
       options = options
     ))
 
-    on.exit(send_greeting_action(list(type = "greeting_end")))
-
     for (msg in stream) {
       if (promises::is.promising(msg)) {
         msg <- await(msg)
@@ -1064,6 +1081,8 @@ rlang::on_load(
         session = session
       )
     }
+
+    send_greeting_action(list(type = "greeting_end"))
     invisible(NULL)
   })
 )
