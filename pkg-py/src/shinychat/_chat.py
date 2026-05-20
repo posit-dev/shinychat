@@ -1582,14 +1582,16 @@ class Chat:
                 "options": options,
             }
             await self._send_action(start_action)
-            async for chunk in content:
-                chunk_action: ChatAction = {
-                    "type": "greeting_chunk",
-                    "content": chunk,
-                    "operation": "append",
-                }
-                await self._send_action(chunk_action)
-            await self._send_action({"type": "greeting_end"})
+            try:
+                async for chunk in content:
+                    chunk_action: ChatAction = {
+                        "type": "greeting_chunk",
+                        "content": chunk,
+                        "operation": "append",
+                    }
+                    await self._send_action(chunk_action)
+            finally:
+                await self._send_action({"type": "greeting_end"})
         else:
             action: ChatAction = {
                 "type": "greeting",

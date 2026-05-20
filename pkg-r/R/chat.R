@@ -1034,6 +1034,8 @@ rlang::on_load(
       options = options
     ))
 
+    on.exit(send_greeting_action(list(type = "greeting_end")))
+
     for (msg in stream) {
       if (promises::is.promising(msg)) {
         msg <- await(msg)
@@ -1062,8 +1064,6 @@ rlang::on_load(
         session = session
       )
     }
-
-    send_greeting_action(list(type = "greeting_end"))
     invisible(NULL)
   })
 )
