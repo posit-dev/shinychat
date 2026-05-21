@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from typing import Any, cast
 
 import pytest
@@ -197,13 +198,30 @@ def _make_spy_chat():
     return chat, spy
 
 
+def _run_async(coro_fn):
+    """Run an async function in a separate thread to avoid event loop conflicts."""
+    exc: list[BaseException] = []
+
+    def _target():
+        try:
+            asyncio.run(coro_fn())
+        except BaseException as err:
+            exc.append(err)
+
+    thread = threading.Thread(target=_target)
+    thread.start()
+    thread.join()
+    if exc:
+        raise exc[0]
+
+
 def test_set_greeting_none_sends_greeting_clear():
     chat, spy = _make_spy_chat()
 
     async def _run():
         await chat.set_greeting(None)
 
-    asyncio.run(_run())
+    _run_async(_run)
     actions = _spy_actions(spy)
     assert len(actions) == 1
     assert actions[0]["type"] == "greeting_clear"
@@ -215,7 +233,7 @@ def test_set_greeting_string_sends_greeting_action():
     async def _run():
         await chat.set_greeting("Hello")
 
-    asyncio.run(_run())
+    _run_async(_run)
     actions = _spy_actions(spy)
     assert len(actions) == 1
     assert actions[0]["type"] == "greeting"
@@ -230,7 +248,7 @@ def test_set_greeting_html_sends_html_content_type():
     async def _run():
         await chat.set_greeting(chat_greeting(HTML("<b>hi</b>")))
 
-    asyncio.run(_run())
+    _run_async(_run)
     actions = _spy_actions(spy)
     assert len(actions) == 1
     assert actions[0]["type"] == "greeting"
@@ -248,7 +266,7 @@ def test_set_greeting_stream_sends_start_chunks_end():
 
         await chat.set_greeting(chat_greeting(stream()))
 
-    asyncio.run(_run())
+    _run_async(_run)
     actions = _spy_actions(spy)
     types = [a["type"] for a in actions]
     assert types[0] == "greeting_start"
@@ -264,7 +282,7 @@ def test_set_greeting_non_dismissible():
     async def _run():
         await chat.set_greeting(chat_greeting("Hi", dismissible=False))
 
-    asyncio.run(_run())
+    _run_async(_run)
     actions = _spy_actions(spy)
     assert actions[0]["options"]["dismissible"] is False
 
