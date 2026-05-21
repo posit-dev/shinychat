@@ -614,6 +614,150 @@ describe("chatReducer — greeting actions", () => {
     })
   })
 
+  describe("greeting_dismissed", () => {
+    it("transitions dismissing to dismissed", () => {
+      const state = makeState({
+        greeting: {
+          content: "Hello",
+          contentType: "markdown",
+          streaming: false,
+          status: "dismissing",
+          options: {},
+          blocks: [],
+        },
+      })
+      const next = chatReducer(state, { type: "greeting_dismissed" })
+      expect(next.greeting).toMatchObject({ status: "dismissed" })
+    })
+
+    it("is a no-op when greeting is null", () => {
+      const state = makeState({ greeting: null })
+      const next = chatReducer(state, { type: "greeting_dismissed" })
+      expect(next).toBe(state)
+    })
+
+    it("is a no-op when status is visible (not dismissing)", () => {
+      const state = makeState({
+        greeting: {
+          content: "Hello",
+          contentType: "markdown",
+          streaming: false,
+          status: "visible",
+          options: {},
+          blocks: [],
+        },
+      })
+      const next = chatReducer(state, { type: "greeting_dismissed" })
+      expect(next).toBe(state)
+    })
+
+    it("is a no-op when status is already dismissed", () => {
+      const state = makeState({
+        greeting: {
+          content: "Hello",
+          contentType: "markdown",
+          streaming: false,
+          status: "dismissed",
+          options: {},
+          blocks: [],
+        },
+      })
+      const next = chatReducer(state, { type: "greeting_dismissed" })
+      expect(next).toBe(state)
+    })
+  })
+
+  describe("greeting replacement during dismissing animation", () => {
+    it("accepts new greeting content while status is dismissing (with messages)", () => {
+      const state = makeState({
+        messages: [
+          {
+            id: "m1",
+            role: "user",
+            content: "hi",
+            contentType: "markdown",
+            streaming: false,
+            blocks: [],
+          },
+        ],
+        greeting: {
+          content: "old",
+          contentType: "markdown",
+          streaming: false,
+          status: "dismissing",
+          options: {},
+          blocks: [],
+        },
+      })
+      const next = chatReducer(state, {
+        type: "greeting",
+        content: "new",
+        content_type: "markdown",
+        options: {},
+      })
+      expect(next.greeting).toMatchObject({
+        content: "new",
+        status: "dismissed",
+      })
+    })
+
+    it("accepts greeting_start while status is dismissing (with messages)", () => {
+      const state = makeState({
+        messages: [
+          {
+            id: "m1",
+            role: "user",
+            content: "hi",
+            contentType: "markdown",
+            streaming: false,
+            blocks: [],
+          },
+        ],
+        greeting: {
+          content: "old",
+          contentType: "markdown",
+          streaming: false,
+          status: "dismissing",
+          options: {},
+          blocks: [],
+        },
+      })
+      const next = chatReducer(state, {
+        type: "greeting_start",
+        content: "",
+        content_type: "markdown",
+        options: {},
+      })
+      expect(next.greeting).toMatchObject({
+        streaming: true,
+        status: "dismissed",
+      })
+    })
+
+    it("replaces greeting as visible when dismissing with no messages (edge case)", () => {
+      const state = makeState({
+        greeting: {
+          content: "old",
+          contentType: "markdown",
+          streaming: false,
+          status: "dismissing",
+          options: {},
+          blocks: [],
+        },
+      })
+      const next = chatReducer(state, {
+        type: "greeting",
+        content: "new",
+        content_type: "markdown",
+        options: {},
+      })
+      expect(next.greeting).toMatchObject({
+        content: "new",
+        status: "visible",
+      })
+    })
+  })
+
   describe("clear with greeting flag", () => {
     it("sets greeting to null when action.greeting is true", () => {
       const state = makeState({

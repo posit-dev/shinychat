@@ -82,6 +82,31 @@ describe("ChatGreeting", () => {
     expect(dispatch).toHaveBeenCalledWith({ type: "greeting_dismissed" })
   })
 
+  it("renders greeting content text", () => {
+    const { container } = renderWithDispatch(
+      <ChatGreeting
+        greeting={makeGreeting({
+          content: "Welcome!",
+          blocks: [
+            { type: "content", content: "Welcome!", contentType: "markdown" },
+          ],
+        })}
+      />,
+    )
+    const content = container.querySelector(".shiny-chat-greeting-content")
+    expect(content).not.toBeNull()
+    expect(content?.textContent).toContain("Welcome!")
+  })
+
+  it("renders nothing when blocks are empty", () => {
+    const { container } = renderWithDispatch(
+      <ChatGreeting greeting={makeGreeting({ blocks: [] })} />,
+    )
+    const content = container.querySelector(".shiny-chat-greeting-content")
+    expect(content).not.toBeNull()
+    expect(content?.children.length).toBe(0)
+  })
+
   it("dispatches greeting_dismissed on animationend", () => {
     const dispatch = vi.fn()
     const { container } = renderWithDispatch(
