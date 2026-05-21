@@ -63,6 +63,13 @@ upgrade-package = ["shinychat"]
 # Pins htmltools to PR #120 (the sibling-classes refactor for
 # tagified content). Flip back to the released htmltools once 0.7.0
 # ships.
+#
+# NB: shiny also needs the py-shiny#2244 branch for the
+# Renderer.tagify() / App._render_page() fixes required by the new
+# Tagifiable contract, but a `[tool.uv.sources]` override for shiny
+# creates a circular resolution (shiny→shinychat→shiny). The
+# Makefile installs that shiny build after `uv sync` instead — see
+# the `py-install-pr-shiny` target in Makefile.
 [tool.uv.sources]
 htmltools = { git = "https://github.com/posit-dev/py-htmltools.git", branch = "main" }
 

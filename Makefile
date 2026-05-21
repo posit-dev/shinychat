@@ -131,8 +131,35 @@ r-docs-preview: ## [r] Build R docs
 	cd $(PATH_PKG_R) && Rscript -e "pkgdown::preview_site()"
 
 .PHONY: py-setup
-py-setup:  ## [py] Setup python environment
+py-setup: py-install-pr-shiny  ## [py] Setup python environment
+
+.PHONY: py-sync
+py-sync:
 	uv sync --all-extras --all-groups --upgrade
+
+# TODO(htmltools-116): remove this target before merging. Installs
+# py-shiny from the posit-dev/py-shiny#2244 branch for the
+# Renderer.tagify() / App._render_page() fixes required by the new
+# Tagifiable contract (htmltools 0.7.0 / py-htmltools#120). Pinning
+# shiny via [tool.uv.sources] would create a circular resolution
+# (shiny → shinychat → shiny), so we install it post-sync with
+# --no-deps. Drop this target once py-shiny#2244 merges and a release
+# ships.
+.PHONY: py-install-pr-shiny
+py-install-pr-shiny: py-sync
+	@echo ""
+	@echo "📦 Installing py-shiny from posit-dev/py-shiny#2244"
+	# Use `uv pip install` (not `uv sync`) so the install runs at the
+	# package level and bypasses workspace resolution — `uv sync` would
+	# choke on the shiny → shinychat circular reference. `--no-deps` so
+	# uv doesn't replace the workspace shinychat with a PyPI build to
+	# satisfy py-shiny's own `shinychat>=0.1.0` requirement. Install
+	# `opentelemetry-api` separately because py-shiny#2244 added it as
+	# a new dep that the released shiny on PyPI didn't have, so `uv
+	# sync` won't have brought it in either.
+	uv pip install --reinstall --no-deps \
+		"shiny @ git+https://github.com/posit-dev/py-shiny.git@schloerke/htmltools-105-tagified-types"
+	uv pip install "opentelemetry-api>=1.20.0"
 
 .PHONY: py-check
 py-check:  py-check-format py-check-types py-check-tests ## [py] Run python checks
@@ -147,8 +174,11 @@ py-check-tox:  ## [py] Run python checks across versions with tox
 py-check-tests:  ## [py] Run python tests
 	@echo ""
 	@echo "🧪 Running tests with pytest"
-	uv run playwright install
-	uv run pytest
+	# Use --no-sync so the post-sync overrides applied in py-setup
+	# (notably the py-shiny#2244 install) aren't reverted by an
+	# implicit re-sync before each `uv run`. See py-install-pr-shiny.
+	uv run --no-sync playwright install
+	uv run --no-sync pytest
 
 .PHONY: py-check-types
 py-check-types:  ## [py] Run python type checks
