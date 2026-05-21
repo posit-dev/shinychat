@@ -59,13 +59,9 @@ dev = [
 [tool.uv]
 upgrade-package = ["shinychat"]
 
-# NB: shiny>=1.6.2 depends on `shinychat>=0.1.0` (this project),
-# which uv refuses to satisfy through the workspace. As a result
-# `uv lock`/`uv sync` can't resolve a tree with the latest shiny
-# (the lockfile is pinned to an older shiny that lacks the
-# Renderer.tagify() / App._render_page() updates for htmltools
-# 0.7.0). The Makefile's `py-install-pr-shiny` target installs the
-# latest shiny on top of the synced venv as a post-sync workaround.
+# shiny>=1.6.2 depends on `shinychat` (this project), which uv can't
+# satisfy through the workspace. See `py-install-pr-shiny` in the
+# Makefile for the post-sync workaround.
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]

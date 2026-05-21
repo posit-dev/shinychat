@@ -173,13 +173,15 @@ py-check-tox:  ## [py] Run python checks across versions with tox
 	@echo "🔄 Running tests and type checking with tox for Python 3.10--3.14"
 	uv run tox run-parallel
 
+# `--no-sync` everywhere below is required: without it, each `uv run`
+# implicitly re-syncs the lockfile-pinned shiny back over the latest
+# shiny installed by `py-install-pr-shiny`. See that target for why
+# we need the latest shiny in the first place.
+
 .PHONY: py-check-tests
 py-check-tests:  ## [py] Run python tests
 	@echo ""
 	@echo "🧪 Running tests with pytest"
-	# Use --no-sync so the post-sync overrides applied in py-setup
-	# (notably the py-shiny#2244 install) aren't reverted by an
-	# implicit re-sync before each `uv run`. See py-install-pr-shiny.
 	uv run --no-sync playwright install
 	uv run --no-sync pytest
 
@@ -187,14 +189,12 @@ py-check-tests:  ## [py] Run python tests
 py-check-types:  ## [py] Run python type checks
 	@echo ""
 	@echo "📝 Checking types with pyright"
-	# --no-sync so the post-sync py-shiny#2244 override isn't reverted.
 	uv run --no-sync pyright
 
 .PHONY: py-check-format
 py-check-format:
 	@echo ""
 	@echo "📐 Checking format with ruff"
-	# --no-sync so the post-sync py-shiny#2244 override isn't reverted.
 	uv run --no-sync ruff check pkg-py --config pyproject.toml
 
 .PHONY: py-format

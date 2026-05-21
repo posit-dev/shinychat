@@ -20,12 +20,6 @@ from typing_extensions import TypeAliasType
 
 if TYPE_CHECKING:
     from chatlas.types import ContentToolRequest, ContentToolResult
-
-    # `Tagified` is only available in htmltools >= 0.7.0; keep the
-    # import behind TYPE_CHECKING so this module still loads against
-    # the currently-released htmltools. The `from __future__ import
-    # annotations` line above defers the annotation, so the name
-    # never needs to resolve at runtime.
     from htmltools import Tagified
 
 __all__ = [
