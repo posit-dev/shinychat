@@ -855,6 +855,9 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     case "greeting_end": {
       const greeting = state.greeting
       if (!greeting?.streaming) return state
+      if (!greeting.content) {
+        return { ...state, greeting: null }
+      }
       return { ...state, greeting: { ...greeting, streaming: false } }
     }
 

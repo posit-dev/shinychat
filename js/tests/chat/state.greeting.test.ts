@@ -342,6 +342,21 @@ describe("chatReducer — greeting actions", () => {
       expect(next.greeting?.content).toBe("done")
     })
 
+    it("clears greeting when stream produced no content", () => {
+      const state = makeState({
+        greeting: {
+          content: "",
+          contentType: "markdown",
+          streaming: true,
+          status: "visible",
+          options: {},
+          blocks: [],
+        },
+      })
+      const next = chatReducer(state, { type: "greeting_end" })
+      expect(next.greeting).toBeNull()
+    })
+
     it("is a no-op when greeting is not streaming", () => {
       const state = makeState({
         greeting: {
