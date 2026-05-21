@@ -34,6 +34,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Need full history + tags so hatch-vcs computes a real
+          # workspace version (e.g. 0.3.2.devN+gSHA, derived from the
+          # latest py/v* tag) instead of the fallback 0.1.dev1+gSHA.
+          # The fallback sorts before 0.1.0 (PEP 440), so it can't
+          # satisfy shiny>=1.5's transitive `shinychat>=0.1.0` and
+          # uv silently downgrades shiny to 1.4.0, which lacks the
+          # htmltools-0.7.0 Tagifiable fixes.
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: 🚀 Install uv
         uses: astral-sh/setup-uv@v6.1.0
@@ -45,15 +55,6 @@ jobs:
 
       - name: 📦 Install the project
         run: uv sync --python ${{ matrix.python-version }} --all-extras --all-groups
-
-      # Workaround for the shiny → shinychat circular dep that
-      # prevents uv from resolving a tree with shiny>=1.6.2. The
-      # lockfile is pinned to an older shiny that lacks the
-      # Renderer.tagify() / App._render_page() updates required by
-      # htmltools 0.7.0; this step installs the latest shiny on top
-      # of the synced venv. See `py-install-pr-shiny` in the Makefile.
-      - name: 📦 Install latest shiny (post-sync workaround)
-        run: make py-install-pr-shiny
 
       - name: 📜 Show uv.lock
         run: cat uv.lock
