@@ -56,13 +56,6 @@ dev = [
     {include-group = "test"},
 ]
 
-[tool.uv]
-upgrade-package = ["shinychat"]
-
-# shiny>=1.6.2 depends on `shinychat` (this project), which uv can't
-# satisfy through the workspace. See `py-install-pr-shiny` in the
-# Makefile for the post-sync workaround.
-
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
