@@ -202,6 +202,17 @@ test_that("chat_set_greeting() generator sends greeting_start, greeting_chunk(s)
 })
 
 
+test_that("chat_set_greeting() errors when given a function", {
+  spy <- mock_session_with_spy()
+  shiny::withReactiveDomain(spy$session, {
+    expect_error(
+      chat_set_greeting("chat", function() "hi", session = spy$session),
+      "does not accept a function"
+    )
+  })
+})
+
+
 # ── chat_clear() greeting parameter ─────────────────────────────────────────
 
 test_that("chat_clear() sends clear action without greeting field by default", {
@@ -271,12 +282,10 @@ suppress_restore_warnings <- function(expr) {
   )
 }
 
-test_that("arity detection: zero-arg greeting function has formals length 0", {
-  expect_equal(length(formals(function() {})), 0L)
-})
-
-test_that("arity detection: one-arg greeting function has formals length 1", {
-  expect_equal(length(formals(function(client) {})), 1L)
+test_that("named-arg detection: 'client' in formals identifies one-arg greeting", {
+  expect_true("client" %in% names(formals(function(client) {})))
+  expect_false("client" %in% names(formals(function() {})))
+  expect_false("client" %in% names(formals(function(x) {})))
 })
 
 test_that("chat_mod_server() calls zero-arg greeting on chat_greeting_requested", {

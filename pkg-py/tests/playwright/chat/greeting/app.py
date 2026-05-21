@@ -60,7 +60,6 @@ def server(input, output, session):
 
     @chat.on_user_submit
     async def _(user_input: str):
-        await asyncio.sleep(0.05)
         await chat.append_message(f"You said: {user_input}")
 
     @reactive.effect
