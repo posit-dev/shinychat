@@ -114,7 +114,7 @@ def test_tagifiable_without_react_attr_wrapped():
 
     class FakeWidget(Tagifiable):
         def tagify(self):
-            return div("widget content")
+            return div("widget content").tagify()
 
     result = split_html_islands(FakeWidget())
     rendered = TagList(result).render()["html"]
@@ -132,7 +132,7 @@ def test_tagifiable_in_taglist_splits_correctly():
                 "shiny-tool-result",
                 data_shinychat_react=True,
                 request_id="test-456",
-            )
+            ).tagify()
 
     tl = TagList(div("before"), FakeToolResult(), div("after"))
     result = split_html_islands(tl)
