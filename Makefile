@@ -131,7 +131,7 @@ r-docs-preview: ## [r] Build R docs
 	cd $(PATH_PKG_R) && Rscript -e "pkgdown::preview_site()"
 
 .PHONY: py-setup
-py-setup: py-install-pr-shiny  ## [py] Setup python environment
+py-setup: py-sync py-install-pr-shiny  ## [py] Setup python environment
 
 .PHONY: py-sync
 py-sync:
@@ -145,8 +145,12 @@ py-sync:
 # (shiny → shinychat → shiny), so we install it post-sync with
 # --no-deps. Drop this target once py-shiny#2244 merges and a release
 # ships.
+#
+# This target intentionally does NOT depend on `py-sync` so callers
+# (Makefile and CI) can choose when to sync; CI syncs in a separate
+# step before invoking this target.
 .PHONY: py-install-pr-shiny
-py-install-pr-shiny: py-sync
+py-install-pr-shiny:
 	@echo ""
 	@echo "📦 Installing py-shiny from posit-dev/py-shiny#2244"
 	# Use `uv pip install` (not `uv sync`) so the install runs at the
@@ -184,13 +188,15 @@ py-check-tests:  ## [py] Run python tests
 py-check-types:  ## [py] Run python type checks
 	@echo ""
 	@echo "📝 Checking types with pyright"
-	uv run pyright
+	# --no-sync so the post-sync py-shiny#2244 override isn't reverted.
+	uv run --no-sync pyright
 
 .PHONY: py-check-format
 py-check-format:
 	@echo ""
 	@echo "📐 Checking format with ruff"
-	uv run ruff check pkg-py --config pyproject.toml
+	# --no-sync so the post-sync py-shiny#2244 override isn't reverted.
+	uv run --no-sync ruff check pkg-py --config pyproject.toml
 
 .PHONY: py-format
 py-format: ## [py] Format python code
