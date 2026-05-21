@@ -34,6 +34,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Need full history + tags so hatch-vcs computes a real
+          # workspace version (e.g. 0.3.2.devN+gSHA, derived from the
+          # latest py/v* tag) instead of the fallback 0.1.dev1+gSHA.
+          # The fallback sorts before 0.1.0 (PEP 440), so it can't
+          # satisfy shiny>=1.5's transitive `shinychat>=0.1.0` and
+          # uv silently downgrades shiny to 1.4.0, which lacks the
+          # htmltools-0.7.0 Tagifiable fixes.
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: 🚀 Install uv
         uses: astral-sh/setup-uv@v6.1.0
