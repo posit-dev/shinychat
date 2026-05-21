@@ -131,8 +131,48 @@ r-docs-preview: ## [r] Build R docs
 	cd $(PATH_PKG_R) && Rscript -e "pkgdown::preview_site()"
 
 .PHONY: py-setup
-py-setup:  ## [py] Setup python environment
+py-setup: py-sync py-install-pr-shiny  ## [py] Setup python environment
+
+.PHONY: py-sync
+py-sync:
 	uv sync --all-extras --all-groups --upgrade
+
+# Post-sync workaround for the shiny → shinychat circular dep.
+#
+# shiny>=1.6.2 depends on `shinychat>=0.1.0`. shinychat is *this*
+# project; uv refuses to satisfy that transitive constraint with the
+# workspace shinychat ("the name is shadowed by your project"), so
+# `uv lock`/`uv sync` cannot resolve a tree that includes shiny>=1.6.2.
+# The lockfile is pinned to an older shiny (1.4.0) — uv sync works,
+# but the env's shiny lacks the Renderer.tagify() / App._render_page()
+# updates required by the new Tagifiable contract (htmltools 0.7.0).
+#
+# Fix at the env level: install latest shiny on top of the synced
+# venv with `uv pip install` (which bypasses workspace resolution)
+# and `--no-deps` (so uv doesn't try to replace the workspace
+# shinychat to satisfy shiny's own `shinychat>=0.1.0`). Install
+# `opentelemetry-api` separately because shiny added it as a new
+# transitive dep but it's not in our shiny-1.4.0 lockfile.
+#
+# Intentionally does NOT depend on `py-sync` so callers (Makefile and
+# CI) can choose when to sync; CI syncs in a separate step before
+# invoking this target.
+#
+# This target (and the `--no-sync` flags in the `py-check-*` targets
+# below, and the `[tool.uv]` NB in pyproject.toml) can all be dropped
+# once one of the following lands:
+#   - py-shiny stops depending on `shinychat` at runtime — e.g., moves
+#     it to a `shiny[chat]` extra. That breaks the cycle outright and
+#     `uv lock` / `uv sync` will resolve cleanly.
+#   - uv learns to satisfy a workspace-shadowed transitive dep with
+#     the workspace itself. Tracked upstream at
+#     https://github.com/astral-sh/uv/issues/9610.
+.PHONY: py-install-pr-shiny
+py-install-pr-shiny:
+	@echo ""
+	@echo "📦 Installing latest shiny over the synced venv"
+	uv pip install --reinstall --no-deps "shiny>=1.6.2"
+	uv pip install "opentelemetry-api>=1.20.0"
 
 .PHONY: py-check
 py-check:  py-check-format py-check-types py-check-tests ## [py] Run python checks
@@ -143,24 +183,29 @@ py-check-tox:  ## [py] Run python checks across versions with tox
 	@echo "🔄 Running tests and type checking with tox for Python 3.10--3.14"
 	uv run tox run-parallel
 
+# `--no-sync` everywhere below is required: without it, each `uv run`
+# implicitly re-syncs the lockfile-pinned shiny back over the latest
+# shiny installed by `py-install-pr-shiny`. See that target for why
+# we need the latest shiny in the first place.
+
 .PHONY: py-check-tests
 py-check-tests:  ## [py] Run python tests
 	@echo ""
 	@echo "🧪 Running tests with pytest"
-	uv run playwright install
-	uv run pytest
+	uv run --no-sync playwright install
+	uv run --no-sync pytest
 
 .PHONY: py-check-types
 py-check-types:  ## [py] Run python type checks
 	@echo ""
 	@echo "📝 Checking types with pyright"
-	uv run pyright
+	uv run --no-sync pyright
 
 .PHONY: py-check-format
 py-check-format:
 	@echo ""
 	@echo "📐 Checking format with ruff"
-	uv run ruff check pkg-py --config pyproject.toml
+	uv run --no-sync ruff check pkg-py --config pyproject.toml
 
 .PHONY: py-format
 py-format: ## [py] Format python code

@@ -1,7 +1,7 @@
 import importlib.util
 from typing import Any, Awaitable, Callable, Protocol, runtime_checkable
 
-from htmltools import TagChild
+from htmltools import Tagified
 from shiny.types import Jsonifiable
 
 chatlas_is_installed = importlib.util.find_spec("chatlas") is not None
@@ -57,7 +57,7 @@ class BookmarkCancelCallback:
     def __call__(self):
         self.cancel()
 
-    def tagify(self) -> TagChild:
+    def tagify(self) -> Tagified:
         return ""
 
 
