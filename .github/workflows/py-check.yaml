@@ -46,13 +46,13 @@ jobs:
       - name: 📦 Install the project
         run: uv sync --python ${{ matrix.python-version }} --all-extras --all-groups
 
-      # TODO(htmltools-116): drop this step once py-shiny#2244 merges
-      # and a release ships. Installs shiny from the py-shiny PR
-      # branch (the Renderer.tagify() / App._render_page() fixes
-      # required by the new Tagifiable contract). See
-      # `py-install-pr-shiny` in the Makefile for why this is a
-      # post-sync step rather than a [tool.uv.sources] override.
-      - name: 📦 Install py-shiny#2244 (post-sync override)
+      # Workaround for the shiny → shinychat circular dep that
+      # prevents uv from resolving a tree with shiny>=1.6.2. The
+      # lockfile is pinned to an older shiny that lacks the
+      # Renderer.tagify() / App._render_page() updates required by
+      # htmltools 0.7.0; this step installs the latest shiny on top
+      # of the synced venv. See `py-install-pr-shiny` in the Makefile.
+      - name: 📦 Install latest shiny (post-sync workaround)
         run: make py-install-pr-shiny
 
       - name: 📜 Show uv.lock

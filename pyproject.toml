@@ -59,12 +59,13 @@ dev = [
 [tool.uv]
 upgrade-package = ["shinychat"]
 
-# NB: shiny also needs the py-shiny#2244 branch for the
-# Renderer.tagify() / App._render_page() fixes required by the new
-# Tagifiable contract, but a `[tool.uv.sources]` override for shiny
-# creates a circular resolution (shiny→shinychat→shiny). The
-# Makefile installs that shiny build after `uv sync` instead — see
-# the `py-install-pr-shiny` target in Makefile.
+# NB: shiny>=1.6.2 depends on `shinychat>=0.1.0` (this project),
+# which uv refuses to satisfy through the workspace. As a result
+# `uv lock`/`uv sync` can't resolve a tree with the latest shiny
+# (the lockfile is pinned to an older shiny that lacks the
+# Renderer.tagify() / App._render_page() updates for htmltools
+# 0.7.0). The Makefile's `py-install-pr-shiny` target installs the
+# latest shiny on top of the synced venv as a post-sync workaround.
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]

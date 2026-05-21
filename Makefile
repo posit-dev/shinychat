@@ -137,32 +137,31 @@ py-setup: py-sync py-install-pr-shiny  ## [py] Setup python environment
 py-sync:
 	uv sync --all-extras --all-groups --upgrade
 
-# TODO(htmltools-116): remove this target before merging. Installs
-# py-shiny from the posit-dev/py-shiny#2244 branch for the
-# Renderer.tagify() / App._render_page() fixes required by the new
-# Tagifiable contract (htmltools 0.7.0 / py-htmltools#120). Pinning
-# shiny via [tool.uv.sources] would create a circular resolution
-# (shiny → shinychat → shiny), so we install it post-sync with
-# --no-deps. Drop this target once py-shiny#2244 merges and a release
-# ships.
+# Post-sync workaround for the shiny → shinychat circular dep.
 #
-# This target intentionally does NOT depend on `py-sync` so callers
-# (Makefile and CI) can choose when to sync; CI syncs in a separate
-# step before invoking this target.
+# shiny>=1.6.2 depends on `shinychat>=0.1.0`. shinychat is *this*
+# project; uv refuses to satisfy that transitive constraint with the
+# workspace shinychat ("the name is shadowed by your project"), so
+# `uv lock`/`uv sync` cannot resolve a tree that includes shiny>=1.6.2.
+# The lockfile is pinned to an older shiny (1.4.0) — uv sync works,
+# but the env's shiny lacks the Renderer.tagify() / App._render_page()
+# updates required by the new Tagifiable contract (htmltools 0.7.0).
+#
+# Fix at the env level: install latest shiny on top of the synced
+# venv with `uv pip install` (which bypasses workspace resolution)
+# and `--no-deps` (so uv doesn't try to replace the workspace
+# shinychat to satisfy shiny's own `shinychat>=0.1.0`). Install
+# `opentelemetry-api` separately because shiny added it as a new
+# transitive dep but it's not in our shiny-1.4.0 lockfile.
+#
+# Intentionally does NOT depend on `py-sync` so callers (Makefile and
+# CI) can choose when to sync; CI syncs in a separate step before
+# invoking this target.
 .PHONY: py-install-pr-shiny
 py-install-pr-shiny:
 	@echo ""
-	@echo "📦 Installing py-shiny from posit-dev/py-shiny#2244"
-	# Use `uv pip install` (not `uv sync`) so the install runs at the
-	# package level and bypasses workspace resolution — `uv sync` would
-	# choke on the shiny → shinychat circular reference. `--no-deps` so
-	# uv doesn't replace the workspace shinychat with a PyPI build to
-	# satisfy py-shiny's own `shinychat>=0.1.0` requirement. Install
-	# `opentelemetry-api` separately because py-shiny#2244 added it as
-	# a new dep that the released shiny on PyPI didn't have, so `uv
-	# sync` won't have brought it in either.
-	uv pip install --reinstall --no-deps \
-		"shiny @ git+https://github.com/posit-dev/py-shiny.git@schloerke/htmltools-105-tagified-types"
+	@echo "📦 Installing latest shiny over the synced venv"
+	uv pip install --reinstall --no-deps "shiny>=1.6.2"
 	uv pip install "opentelemetry-api>=1.20.0"
 
 .PHONY: py-check
