@@ -11,6 +11,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * Updated for compatibility with htmltools 0.7.0. `split_html_islands` now recognizes the new `TagifiedTag` / `TagifiedTagList` sibling classes when deciding which children carry the `data-shinychat-react` attribute, and `Tool*Component.tagify()` implementations are annotated with `htmltools.Tagified` and return fully-tagified output per the new Tagifiable contract. (#226)
 
+## [0.4.0] - Unreleased
+
+### New features
+
+* Tool result cards now render images and PDFs returned by chatlas tools. When a tool returns `ContentImageInline`, `ContentImageRemote`, or `ContentPDF`, the result is displayed as an inline image or a PDF filename badge. Mixed content lists (e.g., `[ContentText("summary"), content_image_file("plot.png")]`) are rendered with items interleaved in order. Standalone image and PDF content items in turn history are also rendered correctly. (#225)
+
+* Added `enable_cancel` parameter to `chat_ui()` and `Chat.ui()` to show a stop button that lets users cancel an in-progress AI response. Press the stop button or hit Escape to cancel. Wire up the `input.<id>_cancel` event to a `chatlas.StreamController` (introduced in chatlas v0.18.0) to connect the UI to your chat provider. (#221)
+
+* Markdown lists where every item is a `<span class="suggestion">` are now rendered as a grid of clickable suggestion cards. Each suggestion's text content becomes both the card label and the value sent on click. To add a short heading above the body text, set the `title` attribute on the span — e.g. `<span class="suggestion" title="Heading">Body text shown on the card.</span>`. Only the body text (not the title) is submitted when the card is clicked. Cards stream in with staggered animations and support keyboard navigation (arrow keys, Home/End) with roving tabindex. (#219)
+
+* The chat UI now displays model reasoning/thinking content as collapsible panels above assistant responses. Thinking content streams in real-time with animated topic labels. This works with providers that support structured thinking (e.g., Claude's extended thinking via `chatlas`) and with local models that wrap reasoning in `<thinking>` tags. (#208)
+
+### Improvements
+
+* Updated minimum `chatlas` version to `>=0.15.0`. (#208)
+
 ## [0.3.1] - 2026-04-30
 
 ### Bug fixes

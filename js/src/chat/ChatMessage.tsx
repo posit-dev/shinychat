@@ -1,6 +1,7 @@
 import { memo } from "react"
 import type { ChatMessageData } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
+import { ThinkingDisplay } from "./ThinkingDisplay"
 import { robot, dots_fade } from "../utils/icons"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
 
@@ -14,20 +15,19 @@ export const ChatMessage = memo(function ChatMessage({
   iconAssistant,
 }: ChatMessageProps) {
   const isUser = message.role === "user"
-  const isEmpty = message.content.trim() === ""
+  const hasContent =
+    message.content.trim() !== "" ||
+    message.blocks.some((b) => b.type === "thinking") ||
+    message.cancelled
 
   let iconHtml: string | undefined
   if (isUser) {
     iconHtml = message.icon || undefined
   } else {
-    iconHtml = isEmpty ? dots_fade : (message.icon ?? iconAssistant ?? robot)
+    iconHtml = hasContent ? (message.icon ?? iconAssistant ?? robot) : dots_fade
   }
 
   const roleClass = isUser ? "shiny-chat-user-message" : "shiny-chat-message"
-
-  const segments = message.segments ?? [
-    { content: message.content, contentType: message.contentType },
-  ]
 
   return (
     <div className={roleClass}>
@@ -38,18 +38,28 @@ export const ChatMessage = memo(function ChatMessage({
         />
       )}
       <div className="shiny-chat-message-content">
-        {segments.map((seg, i, arr) => {
+        {message.blocks.map((block, i) => {
+          if (block.type === "thinking") {
+            return (
+              <ThinkingDisplay
+                key={i}
+                thinking={block}
+                messageId={`${message.id}-${i}`}
+              />
+            )
+          }
+          const isLast = i === message.blocks.length - 1
           const el = (
             <MarkdownContent
               key={i}
-              content={seg.content}
-              contentType={seg.contentType}
+              content={block.content}
+              contentType={block.contentType}
               role={message.role}
-              streaming={message.streaming && i === arr.length - 1}
+              streaming={message.streaming && isLast}
               tagToComponentMap={chatTagToComponentMap}
             />
           )
-          if (seg.contentType === "text") {
+          if (block.contentType === "text") {
             return (
               <div key={i} className="content-type-text">
                 {el}
@@ -58,6 +68,9 @@ export const ChatMessage = memo(function ChatMessage({
           }
           return el
         })}
+        {message.cancelled && (
+          <div className="shiny-chat-message-cancelled">Response cancelled</div>
+        )}
       </div>
     </div>
   )

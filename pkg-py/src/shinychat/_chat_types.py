@@ -14,7 +14,7 @@ Role = Literal["assistant", "user", "system"]
 # Wire-format types (mirrors js/src/transport/types.ts)
 # ---------------------------------------------------------------------------
 
-ContentType = Literal["markdown", "html", "text"]
+ContentType = Literal["markdown", "html", "text", "thinking"]
 
 
 class MessagePayload(TypedDict):
@@ -90,6 +90,7 @@ class ShinyChatEnvelope(TypedDict):
 # Domain types
 # ---------------------------------------------------------------------------
 
+
 # TODO: content should probably be [{"type": "text", "content": "..."}, {"type": "image", ...}]
 # in order to support multiple content types...
 class ChatMessageDict(TypedDict):
@@ -103,8 +104,12 @@ class ChatMessage:
         self,
         content: TagChild,
         role: Role = "assistant",
+        content_type: "ContentType | None" = None,
     ):
         self.role: Role = role
+        self.content_type: ContentType = (
+            content_type if content_type is not None else "markdown"
+        )
 
         # content _can_ be a TagChild, but it's most likely just a string (of
         # markdown), so only process it if it's not a string.
@@ -117,6 +122,8 @@ class ChatMessage:
             # Surround with blank lines so the markdown parser treats
             # block-level custom elements correctly.
             content = f"\n\n{content}\n\n"
+            if content_type is None:
+                self.content_type = "html"
 
         self.content = content
         self.html_deps: list[HTMLDependency] = deps

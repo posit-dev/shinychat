@@ -2,8 +2,10 @@ import {
   useState,
   useRef,
   useCallback,
+  useEffect,
   forwardRef,
   useImperativeHandle,
+  useMemo,
 } from "react"
 import { createPortal } from "react-dom"
 import { useStickToBottom } from "use-stick-to-bottom"
@@ -13,6 +15,7 @@ import { MessageErrorBoundary } from "./MessageErrorBoundary"
 import { ChatInput, type ChatInputHandle } from "./ChatInput"
 import { ScrollToBottomButton } from "./ScrollToBottomButton"
 import { ExternalLinkDialogComponent } from "./ExternalLinkDialog"
+import { ChatScrollContext, useChatDispatch } from "./context"
 import type { ChatMessageData } from "./state"
 import type { ChatTransport } from "../transport/types"
 
@@ -30,6 +33,9 @@ export interface ChatContainerProps {
   inputPlaceholder: string
   iconAssistant?: string
   inputId: string
+  cancelId?: string
+  enableCancel?: boolean
+  cancelRequested?: boolean
 }
 
 export type ChatContainerHandle = ChatInputHandle
@@ -46,17 +52,61 @@ export const ChatContainer = forwardRef<
     inputPlaceholder,
     iconAssistant,
     inputId,
+    cancelId,
+    enableCancel,
+    cancelRequested,
   },
   ref,
 ) {
+  const userMessages = useMemo(
+    () => messages.filter((m) => m.role === "user").map((m) => m.content),
+    [messages],
+  )
+
   const chatInputRef = useRef<ChatInputHandle>(null)
 
   const [pendingUrl, setPendingUrl] = useState<string | null>(null)
   const pendingUrlRef = useRef<string | null>(null)
   pendingUrlRef.current = pendingUrl
 
-  const { scrollRef, contentRef, isAtBottom, scrollToBottom } =
+  const { scrollRef, contentRef, isAtBottom, scrollToBottom, stopScroll } =
     useStickToBottom({ resize: "smooth" })
+
+  const dispatch = useChatDispatch()
+
+  const isStreaming = !!streamingMessage
+
+  const cancelStream = useCallback((): void => {
+    if (!enableCancel || !cancelId || !isStreaming || cancelRequested) return
+    dispatch({ type: "CANCEL_REQUESTED" })
+    transport.sendCancel(cancelId)
+  }, [
+    enableCancel,
+    cancelId,
+    isStreaming,
+    cancelRequested,
+    dispatch,
+    transport,
+  ])
+
+  const cancelStreamRef = useRef(cancelStream)
+  cancelStreamRef.current = cancelStream
+
+  useEffect(() => {
+    if (!enableCancel) return
+
+    const container = scrollRef.current?.closest("shiny-chat-container")
+    if (!container) return
+
+    const handleKeyDown = (e: Event): void => {
+      if (e.defaultPrevented) return
+      if ((e as KeyboardEvent).key !== "Escape") return
+      cancelStreamRef.current()
+    }
+
+    container.addEventListener("keydown", handleKeyDown)
+    return () => container.removeEventListener("keydown", handleKeyDown)
+  }, [enableCancel, scrollRef])
 
   useImperativeHandle(ref, () => ({
     setInputValue(...args) {
@@ -128,6 +178,17 @@ export const ChatContainer = forwardRef<
       submit: shouldSubmit,
       focus: !shouldSubmit,
     })
+
+    const cardEl = (e.target as HTMLElement).closest<HTMLElement>(
+      ".shiny-chat-suggestion-list-item",
+    )
+    const grid = cardEl?.closest<HTMLElement>(".shiny-chat-suggestion-list")
+    if (cardEl && grid) {
+      grid
+        .querySelectorAll<HTMLElement>("[data-last-clicked]")
+        .forEach((el) => el.removeAttribute("data-last-clicked"))
+      cardEl.setAttribute("data-last-clicked", "")
+    }
   }
 
   function onSuggestionClick(e: React.MouseEvent<HTMLElement>): void {
@@ -139,7 +200,78 @@ export const ChatContainer = forwardRef<
     onSuggestionClick(e)
   }
 
+  function handleFocusIn(e: React.FocusEvent<HTMLElement>): void {
+    const card = (e.target as HTMLElement).closest<HTMLElement>(
+      ".shiny-chat-suggestion-list-item",
+    )
+    if (!card) return
+    const grid = card.closest<HTMLElement>(".shiny-chat-suggestion-list")
+    if (!grid || grid.dataset.roved !== undefined) return
+    grid.dataset.roved = ""
+    grid
+      .querySelectorAll<HTMLElement>(".shiny-chat-suggestion-list-item")
+      .forEach((el) => {
+        if (el !== card) el.tabIndex = -1
+      })
+  }
+
+  function handleFocusOut(e: React.FocusEvent<HTMLElement>): void {
+    const card = (e.target as HTMLElement).closest<HTMLElement>(
+      ".shiny-chat-suggestion-list-item",
+    )
+    if (!card) return
+    const grid = card.closest<HTMLElement>(".shiny-chat-suggestion-list")
+    if (!grid) return
+
+    const relatedTarget = e.relatedTarget as HTMLElement | null
+    const relatedGrid = relatedTarget?.closest<HTMLElement>(
+      ".shiny-chat-suggestion-list",
+    )
+
+    if (!relatedTarget || relatedGrid !== grid) {
+      delete grid.dataset.roved
+    }
+  }
+
+  function nextCardIndex(idx: number, len: number, key: string): number | null {
+    switch (key) {
+      case "ArrowDown":
+      case "ArrowRight":
+        return (idx + 1) % len
+      case "ArrowUp":
+      case "ArrowLeft":
+        return (idx - 1 + len) % len
+      case "Home":
+        return 0
+      case "End":
+        return len - 1
+      default:
+        return null
+    }
+  }
+
   function onSuggestionKeydown(e: React.KeyboardEvent<HTMLElement>): void {
+    const target = e.target as HTMLElement
+    const card = target.closest<HTMLElement>(".shiny-chat-suggestion-list-item")
+    const grid = card?.closest<HTMLElement>(".shiny-chat-suggestion-list")
+
+    if (card && grid) {
+      const cards = Array.from(
+        grid.querySelectorAll<HTMLElement>(".shiny-chat-suggestion-list-item"),
+      )
+      const idx = cards.indexOf(card)
+      const nextIdx = nextCardIndex(idx, cards.length, e.key)
+      if (nextIdx !== null) {
+        e.preventDefault()
+        const current = cards[idx]!
+        const next = cards[nextIdx]!
+        current.tabIndex = -1
+        next.tabIndex = 0
+        next.focus()
+        return
+      }
+    }
+
     const isEnterOrSpace = e.key === "Enter" || e.key === " "
     if (!isEnterOrSpace) return
     handleSuggestionEvent(e)
@@ -174,17 +306,21 @@ export const ChatContainer = forwardRef<
             role="log"
             aria-live="polite"
             onClick={onMessagesClick}
+            onFocus={handleFocusIn}
+            onBlur={handleFocusOut}
             onKeyDown={onSuggestionKeydown}
           >
-            <ChatMessages messages={messages} iconAssistant={iconAssistant} />
-            {streamingMessage && (
-              <MessageErrorBoundary key={streamingMessage.id}>
-                <ChatMessage
-                  message={streamingMessage}
-                  iconAssistant={iconAssistant}
-                />
-              </MessageErrorBoundary>
-            )}
+            <ChatScrollContext.Provider value={stopScroll}>
+              <ChatMessages messages={messages} iconAssistant={iconAssistant} />
+              {streamingMessage && (
+                <MessageErrorBoundary key={streamingMessage.id}>
+                  <ChatMessage
+                    message={streamingMessage}
+                    iconAssistant={iconAssistant}
+                  />
+                </MessageErrorBoundary>
+              )}
+            </ChatScrollContext.Provider>
           </div>
         </div>
         <ScrollToBottomButton
@@ -208,6 +344,11 @@ export const ChatContainer = forwardRef<
           hasTopShadow={!isAtBottom}
           placeholder={inputPlaceholder}
           onSend={onSend}
+          userMessages={userMessages}
+          enableCancel={enableCancel}
+          cancelRequested={cancelRequested}
+          isStreaming={isStreaming}
+          onCancel={cancelStream}
         />
       </div>
 

@@ -19,7 +19,6 @@ strip_ansi <- function(text) {
   gsub(ansi_pattern, "", text)
 }
 
-
 shinychat_deps <- function() {
   htmltools::htmlDependency(
     "shinychat",

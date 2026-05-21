@@ -218,6 +218,8 @@ ui <- bslib::page_fillable(
 knitr::include_graphics("images/chat-suggestions.png")
 ```
 
+A markdown list (`<ul>` or `<ol>`) in which every item contains a single suggestion element is automatically rendered as a grid of clickable cards instead of inline chips. Each suggestion accepts an optional `title` attribute (plain text), which becomes the card heading; the suggestion's body becomes the card description. For ordered lists (`<ol>`), the list-item number is included in the heading.
+
 Messages can also contain arbitrary Shiny UI [components](https://shiny.posit.co/r/components/), so you could even include something like a [tooltip](https://shiny.posit.co/r/components/display-messages/tooltips/) to provide additional details on demand.
 
 #### Mid-conversation
@@ -336,4 +338,73 @@ shinyApp(ui, server)
 
 ```{r, echo=FALSE, fig.cap="Screenshot of a chatbot embedded in a card with a header and tooltip.", fig.align='center', out.extra='class="rounded shadow"', out.width='100%'}
 knitr::include_graphics("images/chat-card.png")
+```
+
+## Stream cancellation
+
+shinychat supports cancelling an in-progress AI response. When cancellation is enabled, a stop button appears in the chat input area during streaming. Users can also press Escape while the chat has focus to cancel the current response. Any partial response already received is preserved in the chat history.
+
+### Using the chat module (recommended)
+
+The easiest way to add cancellation support is to use the `chat_mod_ui()` and `chat_mod_server()` functions. The module handles everything automatically — the stop button is shown during streaming and wired up internally, with no extra code required.
+
+```r
+library(shiny)
+library(bslib)
+library(shinychat)
+library(ellmer)
+
+ui <- page_fillable(
+  chat_mod_ui("chat")
+)
+
+server <- function(input, output, session) {
+  chat <- chat_anthropic(system_prompt = "You are a helpful assistant.")
+  chat_mod_server("chat", client = chat)
+}
+
+shinyApp(ui, server)
+```
+
+### Manual approach
+
+If you are building a custom chat UI with `chat_ui()` directly, you can enable cancellation by setting `enable_cancel = TRUE` and wiring up the cancel input in your server function.
+
+The key steps are:
+
+1. Pass `enable_cancel = TRUE` to `chat_ui()` to show the stop button during streaming.
+2. Create an `ellmer::stream_controller()` and pass it to `chat$stream_async()` via the `controller` argument. The controller automatically resets between streams, so you only need to create it once.
+3. Observe `input$<id>_cancel` (where `<id>` is your chat element's ID) and call `ctrl$cancel()` when it fires.
+
+```r
+ui <- page_fillable(
+  chat_ui("chat", enable_cancel = TRUE)
+)
+
+server <- function(input, output, session) {
+  chat <- ellmer::chat_openai(system_prompt = "You are a helpful assistant.")
+  ctrl <- ellmer::stream_controller()
+
+  chat_task <- ExtendedTask$new(function(user_input, controller) {
+    stream <- chat$stream_async(
+      user_input,
+      stream = "content",
+      controller = controller
+    )
+    p <- promises::promise_resolve(stream)
+    promises::then(p, function(stream) {
+      chat_append("chat", stream)
+    })
+  })
+
+  observeEvent(input$chat_user_input, {
+    chat_task$invoke(input$chat_user_input, controller = ctrl)
+  })
+
+  observeEvent(input$chat_cancel, {
+    ctrl$cancel()
+  })
+}
+
+shinyApp(ui, server)
 ```

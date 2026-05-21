@@ -1,6 +1,6 @@
 import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 
-export type ContentType = "markdown" | "html" | "text"
+export type ContentType = "markdown" | "html" | "text" | "thinking"
 
 export type MessagePayload = {
   id?: string
@@ -58,6 +58,7 @@ export type ShinyClientMessage = {
 /** Core transport: message passing between client and server. */
 export interface ChatTransport {
   sendInput(id: string, value: string): void
+  sendCancel(id: string): void
   onMessage(id: string, callback: (action: ChatAction) => void): () => void
 }
 

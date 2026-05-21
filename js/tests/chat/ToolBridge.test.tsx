@@ -254,6 +254,14 @@ describe("Tool component bridge rendering", () => {
               '<shiny-tool-request data-shinychat-react request-id="req-preloaded" tool-name="search" arguments="{}"></shiny-tool-request>',
             contentType: "markdown",
             streaming: false,
+            blocks: [
+              {
+                type: "content",
+                content:
+                  '<shiny-tool-request data-shinychat-react request-id="req-preloaded" tool-name="search" arguments="{}"></shiny-tool-request>',
+                contentType: "markdown",
+              },
+            ],
           },
           {
             id: "msg-result",
@@ -262,6 +270,14 @@ describe("Tool component bridge rendering", () => {
               '<shiny-tool-result data-shinychat-react request-id="req-preloaded" tool-name="search" status="success" value="Done" value-type="text"></shiny-tool-result>',
             contentType: "markdown",
             streaming: false,
+            blocks: [
+              {
+                type: "content",
+                content:
+                  '<shiny-tool-result data-shinychat-react request-id="req-preloaded" tool-name="search" status="success" value="Done" value-type="text"></shiny-tool-result>',
+                contentType: "markdown",
+              },
+            ],
           },
         ]}
       />,

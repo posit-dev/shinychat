@@ -40,6 +40,51 @@
 #' @param icon_assistant The icon to use for the assistant chat messages.
 #'   Can be HTML or a tag in the form of [htmltools::HTML()] or
 #'   [htmltools::tags()]. If `None`, a default robot icon is used.
+#' @param enable_cancel If `TRUE`, show a stop button during streaming that
+#'   allows the user to cancel the in-progress response. When using
+#'   [chat_mod_server()], cancellation is wired up automatically. For manual
+#'   usage with `chat_ui()`, observe `input$<id>_cancel` to handle cancellation
+#'   (e.g., by calling `ctrl$cancel()` on an ellmer `stream_controller()`).
+#'   Defaults to `FALSE`.
+#' @section Thinking display:
+#'
+#' When a model produces reasoning or "thinking" tokens, shinychat renders them
+#' in a collapsible panel above the response. The panel shows a live stream of
+#' the model's reasoning while it thinks, then auto-collapses when the response
+#' begins.
+#'
+#' Thinking display works automatically with any model that supports it. Two
+#' paths are supported:
+#'
+#' 1. **ellmer's `ContentThinking` objects.** Models that provide a structured
+#'    thinking API (e.g., Claude with extended thinking) emit `ContentThinking`
+#'    objects when you stream with `stream = "content"`. shinychat detects these
+#'    and routes them to the thinking panel. This is what `chat_append()` uses
+#'    internally when you pass it an ellmer content stream.
+#'
+#' 2. **Raw `<thinking>` tags.** Many open-source and local models (DeepSeek,
+#'    QwQ, Qwen, etc.) emit `<thinking>...</thinking>` tags directly in their
+#'    markdown output. shinychat detects these tags during streaming and renders
+#'    the enclosed text in the thinking panel with no extra configuration.
+#'
+#' ## Topic labels
+#'
+#' You can optionally get labeled sub-sections within the thinking panel by
+#' asking the model to emit `<topic>...</topic>` tags in its reasoning. These
+#' are extracted and rendered as section headings inside the thinking display,
+#' and the current topic appears in the collapsed header as a live status.
+#'
+#' To use topic labels, add something like this to your system prompt:
+#'
+#' ```
+#' When thinking through a problem, wrap brief topic labels in <topic> tags
+#' to indicate what you're currently reasoning about. For example:
+#' <topic>parsing the input</topic>
+#' ```
+#'
+#' Topic labels are entirely optional. Without them, the thinking panel still
+#' works -- it just won't have sub-section headings.
+#'
 #' @returns A Shiny tag object, suitable for inclusion in a Shiny UI
 #'
 #' @examplesIf interactive()
@@ -77,7 +122,8 @@ chat_ui <- function(
   width = "min(680px, 100%)",
   height = "auto",
   fill = TRUE,
-  icon_assistant = NULL
+  icon_assistant = NULL,
+  enable_cancel = FALSE
 ) {
   attrs <- rlang::list2(...)
   if (!all(nzchar(rlang::names2(attrs)))) {
@@ -123,6 +169,7 @@ chat_ui <- function(
       ),
       placeholder = placeholder,
       fill = if (isTRUE(fill)) NA else NULL,
+      `enable-cancel` = if (isTRUE(enable_cancel)) NA else NULL,
       # Also include icon on the parent so that when messages are dynamically added,
       # we know the default icon has changed
       `icon-assistant` = if (!is.null(icon_assistant)) {
@@ -354,6 +401,10 @@ chat_append_message <- function(
   }
 
   content <- msg[["content"]]
+  is_thinking <- inherits(content, "shinychat_thinking")
+  if (is_thinking) {
+    content <- unclass(content)
+  }
   is_html <- inherits(
     content,
     c(
@@ -364,7 +415,13 @@ chat_append_message <- function(
       "shinychat_tool_card"
     )
   )
-  content_type <- if (is_html) "html" else "markdown"
+  content_type <- if (is_thinking) {
+    "thinking"
+  } else if (is_html) {
+    "html"
+  } else {
+    "markdown"
+  }
 
   operation <- match.arg(operation)
 

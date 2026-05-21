@@ -42,7 +42,7 @@ output_markdown_stream <- function(
   } else {
     ui <- with_current_theme({
       htmltools::renderTags(pre_process_ui(content))
-  })
+    })
   }
 
   htmltools::tag(
@@ -157,7 +157,6 @@ markdown_stream <- function(
   # chooses not to do anything with it).
   result
 }
-
 
 markdown_stream_impl <- NULL
 rlang::on_load(

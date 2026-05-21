@@ -14,6 +14,7 @@ export function createMockTransport(): ChatTransport & {
 
   return {
     sendInput: vi.fn(),
+    sendCancel: vi.fn(),
     onMessage(id, callback) {
       if (!listeners.has(id)) listeners.set(id, new Set())
       listeners.get(id)!.add(callback)

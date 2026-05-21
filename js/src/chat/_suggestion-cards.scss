@@ -1,0 +1,196 @@
+shiny-chat-container {
+  .shiny-chat-suggestion-list {
+    --_card-min-width: var(--shiny-chat-suggestion-card-min-width, 175px);
+    --_card-reveal-stagger: var(
+      --shiny-chat-suggestion-card-reveal-stagger,
+      100ms
+    );
+
+    list-style: none;
+    padding: 0;
+    margin-block: 0.5rem;
+    font-size: 0.875rem;
+    display: grid;
+    grid-template-columns: repeat(
+      auto-fit,
+      minmax(min(var(--_card-min-width), 100%), 1fr)
+    );
+    gap: 0.75rem;
+
+    &[data-pending] {
+      display: flex;
+      align-items: center;
+      color: var(--bs-secondary-color, #6c757d);
+      font-style: italic;
+      animation: shiny-chat-suggestion-pending-pulse 1.75s
+        ease-in-out infinite;
+      animation-delay: 250ms;
+      gap: 0.25em;
+
+      > li {
+        display: none;
+      }
+
+      &::before {
+        content: "Generating suggestions…";
+      }
+
+      > .markdown-stream-dot {
+        margin-left: 0 !important;
+        fill: currentColor;
+      }
+    }
+
+    // single-card clamp — when the list contains exactly one li, cap width.
+    // Uses :has() (Safari 15.4+, Chrome 105+, Firefox 121+). All evergreen
+    // browsers in scope for shinychat support it; if a fallback is needed,
+    // the plugin can set a `.shiny-chat-suggestion-list--single` modifier
+    // when only one <li> qualifies and target that class instead.
+    &:has(> li:only-child) {
+      grid-template-columns: minmax(0, 360px);
+    }
+
+    > li {
+      display: contents; // li is structural only; suggestion is the card surface
+    }
+
+    .shiny-chat-suggestion-list-item {
+      display: block;
+      position: relative;
+      padding: 0.75rem 2rem 0.75rem 1rem;
+      border: var(--shiny-chat-border);
+      border-radius: 8px;
+      background-color: var(--bs-body-bg, #fff);
+      cursor: pointer;
+      color: inherit;
+      text-decoration: none;
+      transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.12s ease-out, box-shadow 0.15s ease;
+      animation: shiny-chat-suggestion-card-reveal 0.3s
+        cubic-bezier(0.22, 1, 0.36, 1) both;
+      animation-delay: calc(var(--_card-reveal-stagger) * var(--_card-index, 0));
+
+      &::after {
+        content: "→";
+        position: absolute;
+        right: 0.75rem;
+        bottom: 0.6rem;
+        font-size: 0.95em;
+        line-height: 1;
+        opacity: 0.35;
+        color: var(--bs-primary, #007bc2);
+        transition: opacity 0.15s ease-out, transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+        transform: translateX(0);
+        pointer-events: none;
+      }
+
+      &:hover {
+        border-color: rgba(var(--bs-link-color-rgb, 0, 123, 194), 0.5);
+        background-color: var(--bs-tertiary-bg, #f8f9fa);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px -6px color-mix(in oklch, var(--bs-primary, #007bc2) 35%, transparent);
+
+        &::after {
+          opacity: 1;
+          transform: translateX(2px);
+        }
+      }
+
+      &:active {
+        transform: translateY(1px);
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--bs-primary, #007bc2);
+        outline-offset: 2px;
+
+        &::after {
+          opacity: 1;
+          transform: translateX(2px);
+        }
+      }
+
+      &[data-last-clicked] {
+        // selected state: tinted surface + brand-colored border, no inset ring
+        border-color: var(--bs-primary, #007bc2);
+        background-color: color-mix(in oklch, var(--bs-body-bg, #fff) 92%, var(--bs-primary, #007bc2));
+
+        &::after {
+          content: "✓";
+          opacity: 1;
+          transform: translateX(2px);
+        }
+      }
+    }
+
+    &.shiny-chat-suggestion-list--ordered .shiny-chat-suggestion-list-item {
+      counter-reset: card-number calc(var(--_card-index, 0) + 1);
+
+      &::before {
+        content: counter(card-number);
+        position: absolute;
+        top: 0.6rem;
+        right: 0.85rem;
+        font-size: 0.7em;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+        color: color-mix(in oklch, var(--bs-secondary-color, #6c757d) 70%, var(--bs-primary, #007bc2));
+        opacity: 0.6;
+        transition: opacity 0.15s ease-out, color 0.15s ease-out;
+        pointer-events: none;
+      }
+
+      &:hover::before,
+      &:focus-visible::before {
+        opacity: 1;
+      }
+
+      &[data-last-clicked]::before {
+        opacity: 1;
+      }
+    }
+
+    .shiny-chat-suggestion-list-item-title {
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+
+    .shiny-chat-suggestion-list-item-body {
+      color: var(--bs-secondary-color, #6c757d);
+    }
+  }
+}
+
+@keyframes shiny-chat-suggestion-card-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shiny-chat-suggestion-pending-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  shiny-chat-container .shiny-chat-suggestion-list[data-pending],
+  shiny-chat-container .shiny-chat-suggestion-list-item {
+    animation: none;
+  }
+
+  shiny-chat-container .shiny-chat-suggestion-list-item,
+  shiny-chat-container .shiny-chat-suggestion-list-item::after {
+    transform: none !important;
+  }
+}
+

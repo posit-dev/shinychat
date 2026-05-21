@@ -80,7 +80,6 @@ method(client_set_state, S7::new_S3_class(c("Chat", "R6"))) <-
     client$set_turns(replayed_turns)
   }
 
-
 method(client_set_ui, S7::new_S3_class(c("Chat", "R6"))) <-
   function(client, ..., id) {
     # TODO-future: Disable bookmarking when restoring. Leverage `tryCatch(finally={})`
@@ -103,7 +102,6 @@ method(client_set_ui, S7::new_S3_class(c("Chat", "R6"))) <-
       }
     })
   }
-
 
 # Used to avoid R CMD check NOTE about unused imports
 `_ignore` <- function() {
