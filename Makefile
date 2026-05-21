@@ -157,6 +157,16 @@ py-sync:
 # Intentionally does NOT depend on `py-sync` so callers (Makefile and
 # CI) can choose when to sync; CI syncs in a separate step before
 # invoking this target.
+#
+# This target (and the `--no-sync` flags in the `py-check-*` targets
+# below, and the `[tool.uv]` NB in pyproject.toml) can all be dropped
+# once one of the following lands:
+#   - py-shiny stops depending on `shinychat` at runtime — e.g., moves
+#     it to a `shiny[chat]` extra. That breaks the cycle outright and
+#     `uv lock` / `uv sync` will resolve cleanly.
+#   - uv learns to satisfy a workspace-shadowed transitive dep with
+#     the workspace itself. Tracked upstream at
+#     https://github.com/astral-sh/uv/issues/9610.
 .PHONY: py-install-pr-shiny
 py-install-pr-shiny:
 	@echo ""
