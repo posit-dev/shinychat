@@ -5,7 +5,7 @@ readme = "pkg-py/README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 dependencies = [
-    "htmltools>=0.6.0",
+    "htmltools>=0.7.0",
     "shiny>=1.4.0",
 ]
 dynamic = ["version"]
@@ -58,6 +58,10 @@ dev = [
 
 [tool.uv]
 upgrade-package = ["shinychat"]
+
+# shiny>=1.6.2 depends on `shinychat` (this project), which uv can't
+# satisfy through the workspace. See `py-install-pr-shiny` in the
+# Makefile for the post-sync workaround.
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]

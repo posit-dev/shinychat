@@ -46,6 +46,15 @@ jobs:
       - name: 📦 Install the project
         run: uv sync --python ${{ matrix.python-version }} --all-extras --all-groups
 
+      # Workaround for the shiny → shinychat circular dep that
+      # prevents uv from resolving a tree with shiny>=1.6.2. The
+      # lockfile is pinned to an older shiny that lacks the
+      # Renderer.tagify() / App._render_page() updates required by
+      # htmltools 0.7.0; this step installs the latest shiny on top
+      # of the synced venv. See `py-install-pr-shiny` in the Makefile.
+      - name: 📦 Install latest shiny (post-sync workaround)
+        run: make py-install-pr-shiny
+
       - name: 📜 Show uv.lock
         run: cat uv.lock
 
