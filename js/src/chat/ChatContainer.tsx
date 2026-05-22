@@ -2,7 +2,6 @@ import {
   useState,
   useRef,
   useCallback,
-  useContext,
   useEffect,
   forwardRef,
   useImperativeHandle,
@@ -15,11 +14,8 @@ import { MessageErrorBoundary } from "./MessageErrorBoundary"
 import { ChatInput, type ChatInputHandle } from "./ChatInput"
 import { ScrollToBottomButton } from "./ScrollToBottomButton"
 import { ExternalLinkDialogComponent } from "./ExternalLinkDialog"
-import {
-  ChatScrollContext,
-  ShinyLifecycleContext,
-  useChatDispatch,
-} from "./context"
+import { RawDOM } from "./RawDOM"
+import { ChatScrollContext, useChatDispatch } from "./context"
 import type { ChatMessageData } from "./state"
 import type { ChatTransport } from "../transport/types"
 
@@ -65,8 +61,6 @@ export const ChatContainer = forwardRef<
   ref,
 ) {
   const chatInputRef = useRef<ChatInputHandle>(null)
-  const footerRef = useRef<HTMLDivElement>(null)
-  const shiny = useContext(ShinyLifecycleContext)
 
   const [pendingUrl, setPendingUrl] = useState<string | null>(null)
   const pendingUrlRef = useRef<string | null>(null)
@@ -110,18 +104,6 @@ export const ChatContainer = forwardRef<
     container.addEventListener("keydown", handleKeyDown)
     return () => container.removeEventListener("keydown", handleKeyDown)
   }, [enableCancel, scrollRef])
-
-  useEffect(() => {
-    const el = footerRef.current
-    if (!el || !footerEl) return
-    while (footerEl.firstChild) {
-      el.appendChild(footerEl.firstChild)
-    }
-    if (shiny) shiny.bindAll(el)
-    return () => {
-      if (shiny && el) shiny.unbindAll(el)
-    }
-  }, [footerEl, shiny])
 
   useImperativeHandle(ref, () => ({
     setInputValue(...args) {
@@ -366,7 +348,7 @@ export const ChatContainer = forwardRef<
         />
       </div>
 
-      {footerEl && <div ref={footerRef} className="shiny-chat-footer" />}
+      {footerEl && <RawDOM source={footerEl} className="shiny-chat-footer" />}
 
       {pendingUrl &&
         createPortal(

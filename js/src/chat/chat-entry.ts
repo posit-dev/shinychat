@@ -41,6 +41,7 @@ function parseInitialMessages(container: HTMLElement): ChatMessageData[] {
 
 class ChatContainerElement extends HTMLElement {
   private reactRoot: Root | null = null
+  private footerEl: Element | null = null
 
   connectedCallback() {
     if (this.reactRoot) return
@@ -58,8 +59,10 @@ class ChatContainerElement extends HTMLElement {
 
     const initialMessages = parseInitialMessages(this)
 
-    const footerEl = this.querySelector(CHAT_FOOTER_TAG) as Element | null
-    footerEl?.remove()
+    if (!this.footerEl) {
+      this.footerEl = this.querySelector(CHAT_FOOTER_TAG)
+      this.footerEl?.remove()
+    }
 
     // Unbind any Shiny inputs/outputs in the server-rendered content before
     // React replaces the DOM. Without this, Shiny's internal binding registry
@@ -79,7 +82,7 @@ class ChatContainerElement extends HTMLElement {
         placeholder,
         initialMessages,
         enableCancel,
-        footerEl: footerEl ?? undefined,
+        footerEl: this.footerEl ?? undefined,
       }),
     )
   }
