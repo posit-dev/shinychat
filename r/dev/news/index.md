@@ -15,6 +15,31 @@
 
 ### New features and improvements
 
+- Added
+  [`chat_greeting()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_greeting.md)
+  for creating welcome messages that appear when the chat is empty.
+  Greetings can be set statically via `chat_ui(greeting=)` or
+  dynamically from the server with
+  [`chat_set_greeting()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_set_greeting.md).
+  They are automatically dismissed when the user sends their first
+  message. A new `greeting_requested` input fires when the chat is
+  visible, empty, and has no greeting, enabling LLM-generated welcome
+  messages. `chat_mod_server(greeting=)` accepts a function for
+  auto-generated greetings.
+  ([\#217](https://github.com/posit-dev/shinychat/issues/217))
+
+- Tool result cards now render images and PDFs returned by ellmer tools.
+  When a tool returns
+  [`content_image_file()`](https://ellmer.tidyverse.org/reference/content_image_url.html),
+  [`content_image_url()`](https://ellmer.tidyverse.org/reference/content_image_url.html),
+  or
+  [`content_pdf_file()`](https://ellmer.tidyverse.org/reference/content_pdf_file.html),
+  the result is displayed as an inline image or a PDF filename badge.
+  Mixed content lists (e.g.,
+  `list(ContentText("summary"), content_image_file("plot.png"))`) are
+  rendered with items interleaved in order.
+  ([\#225](https://github.com/posit-dev/shinychat/issues/225))
+
 - Added `enable_cancel` parameter to
   [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
   to show a stop button that lets users cancel an in-progress AI

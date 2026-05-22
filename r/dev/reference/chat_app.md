@@ -20,6 +20,7 @@ chat_mod_ui(id, ..., client = deprecated(), messages = NULL)
 chat_mod_server(
   id,
   client,
+  greeting = NULL,
   bookmark_on_input = TRUE,
   bookmark_on_response = TRUE
 )
@@ -61,6 +62,17 @@ chat_mod_server(
   `chat_mod_ui()`) doesn't already contain turns. Passed to `messages`
   in
   [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md).
+
+- greeting:
+
+  Optional greeting to set when the module initializes. Accepts a static
+  value (string,
+  [`htmltools::HTML()`](https://rstudio.github.io/htmltools/reference/HTML.html),
+  [`htmltools::tagList()`](https://rstudio.github.io/htmltools/reference/tagList.html),
+  or
+  [`chat_greeting()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_greeting.md))
+  or a **function** that generates the greeting dynamically. See the
+  **Greeting** section below for details.
 
 - bookmark_on_input:
 
@@ -107,6 +119,18 @@ chat_mod_server(
     `messages` to the existing chat history; or `"keep"` the existing
     chat history.
 
+  - `set_greeting()`: A function to set, stream, or clear the chat
+    greeting. Pass a
+    [`chat_greeting()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_greeting.md)
+    object, a plain string, or `NULL` to clear. Streaming greetings run
+    inside an
+    [shiny::ExtendedTask](https://rdrr.io/pkg/shiny/man/ExtendedTask.html)
+    so the session stays responsive; if called while a greeting is
+    already streaming, the new greeting is queued. If the greeting has
+    already been dismissed, calling `set_greeting()` updates the content
+    but does not make it visible again; call `clear(greeting = TRUE)`
+    first to show a new greeting after dismissal.
+
   - `client`: The chat client object, which is mutated as you chat.
 
 ## Functions
@@ -118,6 +142,45 @@ chat_mod_server(
 - `chat_mod_ui()`: A simple chat app module UI.
 
 - `chat_mod_server()`: A simple chat app module server.
+
+## Greeting
+
+When `greeting` is a **function**, the module calls it each time the
+`greeting_requested` event fires — on first view when the chat is empty,
+and again after `clear(greeting = TRUE)`. The function should return a
+[`chat_greeting()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_greeting.md)
+(typically wrapping a stream). Static values (strings,
+[`chat_greeting()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_greeting.md)
+objects) are set once at init and do not regenerate.
+
+The module detects **named arguments** in the greeting function to
+decide what to pass. Currently the only recognized argument is `client`.
+
+**`function(client)`** (recommended). The module clones the `client`
+passed to `chat_mod_server()`, wipes its turn history, and passes the
+fresh clone as `client`. This avoids manually creating and configuring a
+separate client:
+
+    chat_mod_server("chat", client, greeting = function(client) {
+      stream <- client$stream_async("Generate a short welcome message.")
+      chat_greeting(stream)
+    })
+
+**`function()`** (zero arguments). You create and manage your own
+client:
+
+    chat_mod_server("chat", client, greeting = function() {
+      greeter <- ellmer::chat_openai(model = "gpt-4o")
+      stream <- greeter$stream_async("Generate a short welcome message.")
+      chat_greeting(stream)
+    })
+
+**Static value.** Set once; does not regenerate after `clear()`:
+
+    chat_mod_server("chat", client, greeting = "## Welcome!\n\nHow can I help?")
+
+The returned `set_greeting()` helper is available for cases where you
+need to set a greeting outside the greeting lifecycle.
 
 ## Examples
 

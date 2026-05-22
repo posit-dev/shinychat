@@ -14,6 +14,10 @@
   : Low-level function to append a message to a chat control
 - [`chat_clear()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_clear.md)
   : Clear all messages from a chat control
+- [`chat_greeting()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_greeting.md)
+  : Create a greeting for a chat UI
+- [`chat_set_greeting()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_set_greeting.md)
+  : Set the greeting for a chat UI
 - [`update_chat_user_input()`](https://posit-dev.github.io/shinychat/r/dev/reference/update_chat_user_input.md)
   : Update the user input of a chat control
 
