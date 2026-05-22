@@ -84,6 +84,8 @@ class ChatContainerElement extends HTMLElement {
 
     if (!this.footerEl) {
       this.footerEl = this.querySelector(CHAT_FOOTER_TAG)
+      // Detach from the DOM before React takes over this container.
+      // RawDOM later adopts the children, preserving their DOM state.
       this.footerEl?.remove()
     }
 
