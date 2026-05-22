@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from functools import singledispatch
 
-from htmltools import HTML, Tagifiable
+from htmltools import HTML, Tag, Tagifiable
 
 from ._chat_types import ChatMessage
 
@@ -165,7 +165,7 @@ try:
     @message_content.register
     def _(message: ContentImageInline):
         src = f"data:{message.image_content_type};base64,{message.data}"
-        return ChatMessage(content=f'<img src="{src}" />')
+        return ChatMessage(content=Tag("img", src=src))
 
     @message_content_chunk.register
     def _(chunk: ContentImageInline):
@@ -173,7 +173,7 @@ try:
 
     @message_content.register
     def _(message: ContentImageRemote):
-        return ChatMessage(content=f'<img src="{message.url}" />')
+        return ChatMessage(content=Tag("img", src=message.url))
 
     @message_content_chunk.register
     def _(chunk: ContentImageRemote):
