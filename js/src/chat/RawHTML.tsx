@@ -1,5 +1,5 @@
 import { useContext, useEffect, useRef, useState } from "react"
-import { ShinyLifecycleContext } from "../chat/context"
+import { ShinyLifecycleContext } from "./context"
 
 // Uses a ref to opt out of React's DOM management, preventing React from
 // resetting innerHTML and destroying content injected by Shiny bindings.
