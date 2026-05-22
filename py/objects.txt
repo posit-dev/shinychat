@@ -20,6 +20,8 @@ shinychat.Chat.messages py:function 1 api/Chat.html#shinychat.Chat.messages -
 shinychat._chat.Chat.messages py:function 1 api/Chat.html#shinychat.Chat.messages shinychat.Chat.messages
 shinychat.Chat.on_user_submit py:function 1 api/Chat.html#shinychat.Chat.on_user_submit -
 shinychat._chat.Chat.on_user_submit py:function 1 api/Chat.html#shinychat.Chat.on_user_submit shinychat.Chat.on_user_submit
+shinychat.Chat.set_greeting py:function 1 api/Chat.html#shinychat.Chat.set_greeting -
+shinychat._chat.Chat.set_greeting py:function 1 api/Chat.html#shinychat.Chat.set_greeting shinychat.Chat.set_greeting
 shinychat.Chat.set_user_message py:function 1 api/Chat.html#shinychat.Chat.set_user_message -
 shinychat._chat.Chat.set_user_message py:function 1 api/Chat.html#shinychat.Chat.set_user_message shinychat.Chat.set_user_message
 shinychat.Chat.transform_assistant_response py:function 1 api/Chat.html#shinychat.Chat.transform_assistant_response -
@@ -34,6 +36,8 @@ shinychat.Chat py:class 1 api/Chat.html#shinychat.Chat -
 shinychat._chat.Chat py:class 1 api/Chat.html#shinychat.Chat shinychat.Chat
 shinychat.chat_ui py:function 1 api/chat_ui.html#shinychat.chat_ui -
 shinychat._chat.chat_ui py:function 1 api/chat_ui.html#shinychat.chat_ui shinychat.chat_ui
+shinychat.chat_greeting py:function 1 api/chat_greeting.html#shinychat.chat_greeting -
+shinychat._chat_types.chat_greeting py:function 1 api/chat_greeting.html#shinychat.chat_greeting shinychat.chat_greeting
 shinychat.express.Chat.append_message py:function 1 api/express.Chat.html#shinychat.express.Chat.append_message -
 shinychat._chat.Chat.append_message py:function 1 api/express.Chat.html#shinychat.express.Chat.append_message shinychat.express.Chat.append_message
 shinychat.express.Chat.append_message_stream py:function 1 api/express.Chat.html#shinychat.express.Chat.append_message_stream -
@@ -52,6 +56,8 @@ shinychat.express.Chat.messages py:function 1 api/express.Chat.html#shinychat.ex
 shinychat._chat.Chat.messages py:function 1 api/express.Chat.html#shinychat.express.Chat.messages shinychat.express.Chat.messages
 shinychat.express.Chat.on_user_submit py:function 1 api/express.Chat.html#shinychat.express.Chat.on_user_submit -
 shinychat._chat.Chat.on_user_submit py:function 1 api/express.Chat.html#shinychat.express.Chat.on_user_submit shinychat.express.Chat.on_user_submit
+shinychat.express.Chat.set_greeting py:function 1 api/express.Chat.html#shinychat.express.Chat.set_greeting -
+shinychat._chat.Chat.set_greeting py:function 1 api/express.Chat.html#shinychat.express.Chat.set_greeting shinychat.express.Chat.set_greeting
 shinychat.express.Chat.set_user_message py:function 1 api/express.Chat.html#shinychat.express.Chat.set_user_message -
 shinychat._chat.Chat.set_user_message py:function 1 api/express.Chat.html#shinychat.express.Chat.set_user_message shinychat.express.Chat.set_user_message
 shinychat.express.Chat.transform_assistant_response py:function 1 api/express.Chat.html#shinychat.express.Chat.transform_assistant_response -

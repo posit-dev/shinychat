@@ -208,6 +208,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
  <span class="menu-text">chat_ui</span></a>
   </div>
 </li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../api/chat_greeting.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">chat_greeting</span></a>
+  </div>
+</li>
       </ul>
   </li>
         <li class="sidebar-item sidebar-item-section">
@@ -269,6 +275,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#shinychat.Chat.message_stream_context" id="toc-shinychat.Chat.message_stream_context" class="nav-link" data-scroll-target="#shinychat.Chat.message_stream_context">message_stream_context</a></li>
   <li><a href="#shinychat.Chat.messages" id="toc-shinychat.Chat.messages" class="nav-link" data-scroll-target="#shinychat.Chat.messages">messages</a></li>
   <li><a href="#shinychat.Chat.on_user_submit" id="toc-shinychat.Chat.on_user_submit" class="nav-link" data-scroll-target="#shinychat.Chat.on_user_submit">on_user_submit</a></li>
+  <li><a href="#shinychat.Chat.set_greeting" id="toc-shinychat.Chat.set_greeting" class="nav-link" data-scroll-target="#shinychat.Chat.set_greeting">set_greeting</a></li>
   <li><a href="#shinychat.Chat.set_user_message" id="toc-shinychat.Chat.set_user_message" class="nav-link" data-scroll-target="#shinychat.Chat.set_user_message">set_user_message</a></li>
   <li><a href="#shinychat.Chat.transform_assistant_response" id="toc-shinychat.Chat.transform_assistant_response" class="nav-link" data-scroll-target="#shinychat.Chat.transform_assistant_response">transform_assistant_response</a></li>
   <li><a href="#shinychat.Chat.transform_user_input" id="toc-shinychat.Chat.transform_user_input" class="nav-link" data-scroll-target="#shinychat.Chat.transform_user_input">transform_user_input</a></li>
@@ -421,22 +428,26 @@ to indicate what you're currently reasoning about. For example:
 <td>Define a function to invoke when user input is submitted.</td>
 </tr>
 <tr class="odd">
+<td><a href="#shinychat.Chat.set_greeting">set_greeting</a></td>
+<td>Set or clear the chat greeting.</td>
+</tr>
+<tr class="even">
 <td><a href="#shinychat.Chat.set_user_message">set_user_message</a></td>
 <td>Deprecated. Use <code>update_user_input(value=value)</code> instead.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><a href="#shinychat.Chat.transform_assistant_response">transform_assistant_response</a></td>
 <td>Deprecated. Assistant response transformation features will be removed in a future version.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><a href="#shinychat.Chat.transform_user_input">transform_user_input</a></td>
 <td>Deprecated. User input transformation features will be removed in a future version.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><a href="#shinychat.Chat.update_user_input">update_user_input</a></td>
 <td>Update the user input.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><a href="#shinychat.Chat.user_input">user_input</a></td>
 <td>Reactively read the user’s message.</td>
 </tr>
@@ -603,8 +614,29 @@ specified in model's completion method.</code></pre>
 </section>
 <section id="shinychat.Chat.clear_messages" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.Chat.clear_messages">clear_messages</h3>
-<div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>Chat.clear_messages()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>Chat.clear_messages(greeting<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Clear all chat messages.</p>
+<section id="parameters-3" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-3">Parameters</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>greeting</td>
+<td><a href="`bool`">bool</a></td>
+<td>If <code>True</code>, also clears the greeting in addition to conversation messages. Clearing the greeting causes the <code>{id}_greeting_requested</code> input to fire again (if the chat is visible with no greeting and no messages), enabling a regenerate pattern: clear the greeting, then react to the request to generate a new one via :meth:<code>~shinychat.Chat.set_greeting</code>.</td>
+<td><code>False</code></td>
+</tr>
+</tbody>
+</table>
+</section>
 </section>
 <section id="shinychat.Chat.destroy" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.Chat.destroy">destroy</h3>
@@ -616,8 +648,8 @@ specified in model's completion method.</code></pre>
 <div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>Chat.enable_bookmarking(client, <span class="op">/</span>, <span class="op">*</span>, bookmark_on<span class="op">=</span><span class="st">'response'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Enable bookmarking for the chat instance.</p>
 <p>This method registers <code>on_bookmark</code> and <code>on_restore</code> hooks on <code>session.bookmark</code> (:class:<code>shiny.bookmark.Bookmark</code>) to save/restore chat state on both the <code>Chat</code> and <code>client=</code> instances. In order for this method to actually work correctly, a <code>bookmark_store=</code> must be specified in <code>shiny.App()</code>.</p>
-<section id="parameters-3" class="level4 doc-section doc-section-parameters">
-<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-3">Parameters</h4>
+<section id="parameters-4" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-4">Parameters</h4>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -740,8 +772,8 @@ specified in model's completion method.</code></pre>
 <div class="sourceCode" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>Chat.messages(<span class="bu">format</span><span class="op">=</span>MISSING, token_limits<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Reactively read chat messages</p>
 <p>Obtain chat messages within a reactive context.</p>
-<section id="parameters-4" class="level4 doc-section doc-section-parameters">
-<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-4">Parameters</h4>
+<section id="parameters-5" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-5">Parameters</h4>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -806,8 +838,8 @@ specified in model's completion method.</code></pre>
 <ol start="2" type="1">
 <li>Append that response to the chat component using <code>.append_message()</code> ( or <code>.append_message_stream()</code> if the response is streamed).</li>
 </ol>
-<section id="parameters-5" class="level4 doc-section doc-section-parameters">
-<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-5">Parameters</h4>
+<section id="parameters-6" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-6">Parameters</h4>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -832,27 +864,114 @@ specified in model's completion method.</code></pre>
 <p>This method creates a reactive effect that only gets invalidated when the user submits a message. Thus, the function <code>fn</code> can read other reactive dependencies, but it will only be re-invoked when the user submits a message.</p>
 </section>
 </section>
+<section id="shinychat.Chat.set_greeting" class="level3">
+<h3 class="anchored" data-anchor-id="shinychat.Chat.set_greeting">set_greeting</h3>
+<div class="sourceCode" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>Chat.set_greeting(greeting)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Set or clear the chat greeting.</p>
+<p>A greeting is displayed at the top of the chat before any conversation messages. It can be static content, streaming content from an async iterator, or <code>None</code> to remove an existing greeting.</p>
+<p>If the greeting has already been dismissed, calling this method updates the greeting content but does not make it visible again. To show a new greeting after dismissal, first clear the chat with <code>await chat.clear_messages(greeting=True)</code>.</p>
+<section id="parameters-7" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-7">Parameters</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 1%">
+<col style="width: 9%">
+<col style="width: 87%">
+<col style="width: 1%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>greeting</td>
+<td>'str | HTML | Tag | TagList | ChatGreeting | None'</td>
+<td>The greeting content. Can be: * <code>None</code>: clears the current greeting entirely (distinct from dismissal). Use this before setting a new greeting when implementing a regenerate pattern. * A markdown string, :class:<code>~htmltools.HTML</code>, :class:<code>~htmltools.Tag</code>, or :class:<code>~htmltools.TagList</code>: displayed as a stand-alone greeting. * A :func:<code>~shinychat.chat_greeting</code> object with options such as <code>dismissible</code>. * A :func:<code>~shinychat.chat_greeting</code> wrapping an :class:<code>~typing.AsyncIterable</code> of strings: streams the greeting content chunk-by-chunk.</td>
+<td><em>required</em></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="notes" class="level4 doc-section doc-section-notes">
+<h4 class="doc-section doc-section-notes anchored" data-anchor-id="notes">Notes</h4>
+<p>When no greeting is set and the chat is visible with no messages, an input named <code>{id}_greeting_requested</code> fires (where <code>{id}</code> is the chat’s ID). Use <code>@reactive.event(input.{id}_greeting_requested)</code> to generate a greeting on demand. This input fires on first load and again after :meth:<code>~shinychat.Chat.clear_messages</code> is called with <code>greeting=True</code>.</p>
+</section>
+<section id="examples" class="level4 doc-section doc-section-examples">
+<h4 class="doc-section doc-section-examples anchored" data-anchor-id="examples">Examples</h4>
+<p>Static greeting (stand-alone, dismissible by default):</p>
+<div class="sourceCode" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.effect</span></span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> _():</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.set_greeting(<span class="st">"## Welcome!</span><span class="ch">\n\n</span><span class="st">How can I help you today?"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Static greeting with custom options:</p>
+<div class="sourceCode" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shinychat <span class="im">import</span> chat_greeting</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.effect</span></span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> _():</span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>    greeting <span class="op">=</span> chat_greeting(</span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>        <span class="st">"## Welcome!"</span>,</span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>        dismissible<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.set_greeting(greeting)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Streaming greeting from an async iterator:</p>
+<div class="sourceCode" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.effect</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> _():</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">async</span> <span class="kw">def</span> token_stream():</span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> token <span class="kw">in</span> [<span class="st">"Hello"</span>, <span class="st">" there"</span>, <span class="st">"!"</span>]:</span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>            <span class="cf">yield</span> token</span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.set_greeting(chat_greeting(token_stream()))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>LLM-generated greeting using <code>greeting_requested</code>:</p>
+<div class="sourceCode" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> chatlas</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shinychat <span class="im">import</span> Chat, chat_greeting</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>chat_model <span class="op">=</span> chatlas.ChatOpenAI(model<span class="op">=</span><span class="st">"gpt-4o"</span>)</span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>chat <span class="op">=</span> Chat(<span class="bu">id</span><span class="op">=</span><span class="st">"chat"</span>)</span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.effect</span></span>
+<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.event</span>(<span class="bu">input</span>.chat_greeting_requested)</span>
+<span id="cb22-9"><a href="#cb22-9" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> _():</span>
+<span id="cb22-10"><a href="#cb22-10" aria-hidden="true" tabindex="-1"></a>    response <span class="op">=</span> <span class="cf">await</span> chat_model.stream_async(</span>
+<span id="cb22-11"><a href="#cb22-11" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Write a short, friendly welcome message."</span></span>
+<span id="cb22-12"><a href="#cb22-12" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb22-13"><a href="#cb22-13" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.set_greeting(chat_greeting(response))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Regenerate pattern (clear and re-request):</p>
+<div class="sourceCode" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.effect</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.event</span>(<span class="bu">input</span>.regenerate)</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> _():</span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.clear_messages(greeting<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a><span class="co"># greeting_requested fires again after clear_messages(greeting=True),</span></span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a><span class="co"># so the LLM-generated greeting handler above will run again.</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Clear the greeting (e.g., before setting a new one):</p>
+<div class="sourceCode" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="cf">await</span> chat.set_greeting(<span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+</section>
 <section id="shinychat.Chat.set_user_message" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.Chat.set_user_message">set_user_message</h3>
-<div class="sourceCode" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>Chat.set_user_message(value)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>Chat.set_user_message(value)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Deprecated. Use <code>update_user_input(value=value)</code> instead.</p>
 </section>
 <section id="shinychat.Chat.transform_assistant_response" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.Chat.transform_assistant_response">transform_assistant_response</h3>
-<div class="sourceCode" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>Chat.transform_assistant_response(fn<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>Chat.transform_assistant_response(fn<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Deprecated. Assistant response transformation features will be removed in a future version.</p>
 </section>
 <section id="shinychat.Chat.transform_user_input" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.Chat.transform_user_input">transform_user_input</h3>
-<div class="sourceCode" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>Chat.transform_user_input(fn<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>Chat.transform_user_input(fn<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Deprecated. User input transformation features will be removed in a future version.</p>
 </section>
 <section id="shinychat.Chat.update_user_input" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.Chat.update_user_input">update_user_input</h3>
-<div class="sourceCode" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>Chat.update_user_input(value<span class="op">=</span><span class="va">None</span>, placeholder<span class="op">=</span><span class="va">None</span>, submit<span class="op">=</span><span class="va">False</span>, focus<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>Chat.update_user_input(value<span class="op">=</span><span class="va">None</span>, placeholder<span class="op">=</span><span class="va">None</span>, submit<span class="op">=</span><span class="va">False</span>, focus<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Update the user input.</p>
-<section id="parameters-6" class="level4 doc-section doc-section-parameters">
-<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-6">Parameters</h4>
+<section id="parameters-8" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-8">Parameters</h4>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -893,7 +1012,7 @@ specified in model's completion method.</code></pre>
 </section>
 <section id="shinychat.Chat.user_input" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.Chat.user_input">user_input</h3>
-<div class="sourceCode" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>Chat.user_input()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>Chat.user_input()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Reactively read the user’s message.</p>
 <section id="returns-3" class="level4 doc-section doc-section-returns">
 <h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-3">Returns</h4>
