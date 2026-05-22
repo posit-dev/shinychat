@@ -20,6 +20,7 @@ from typing_extensions import TypeAliasType
 
 if TYPE_CHECKING:
     from chatlas.types import ContentToolRequest, ContentToolResult
+    from htmltools import Tagified
 
 __all__ = [
     "ToolResultDisplay",
@@ -83,7 +84,7 @@ class ToolRequestComponent(ToolCardComponent):
     arguments: str = ""
     "The function arguments as requested by the LLM, typically in JSON format."
 
-    def tagify(self):
+    def tagify(self) -> Tagified:
         icon_ui = TagList(self.icon).render()
 
         return Tag(
@@ -97,10 +98,54 @@ class ToolRequestComponent(ToolCardComponent):
             expanded="" if self.expanded else None,
             arguments=self.arguments,
             *icon_ui["dependencies"],
-        )
+        ).tagify()
 
 
-ValueType = Literal["html", "markdown", "text", "code"]
+ValueType = Literal["html", "markdown", "text", "code", "content_extra"]
+
+
+def is_content(value: object) -> bool:
+    from chatlas.types import Content
+
+    return isinstance(value, Content)
+
+
+def is_content_extra(value: object) -> bool:
+    from chatlas.types import ContentImageInline, ContentImageRemote
+
+    from ._chatlas_compat import ContentPDF
+
+    return isinstance(
+        value, (ContentImageInline, ContentImageRemote, ContentPDF)
+    )
+
+
+def as_content_extra_item(value: object) -> dict[str, str]:
+    from chatlas.types import ContentImageInline, ContentImageRemote
+
+    from ._chatlas_compat import ContentPDF
+
+    if isinstance(value, ContentImageRemote):
+        return {"type": "image", "src": value.url}
+    elif isinstance(value, ContentImageInline):
+        return {
+            "type": "image",
+            "src": f"data:{value.image_content_type};base64,{value.data}",
+        }
+    elif isinstance(value, ContentPDF):
+        return {"type": "pdf", "filename": value.filename or "document.pdf"}
+    raise TypeError(f"Unexpected content extra type: {type(value)}")
+
+
+def as_content_extra_item_or_text(value: object) -> dict[str, str]:
+    from chatlas.types import ContentText
+
+    if is_content_extra(value):
+        return as_content_extra_item(value)
+    elif isinstance(value, ContentText):
+        return {"type": "text", "value": value.text, "value_type": "markdown"}
+    else:
+        return {"type": "text", "value": str(value), "value_type": "markdown"}
 
 
 class ToolResultComponent(ToolCardComponent):
@@ -137,7 +182,7 @@ class ToolResultComponent(ToolCardComponent):
     full_screen: bool = False
     "Controls whether a fullscreen toggle button is displayed on the card."
 
-    def tagify(self):
+    def tagify(self) -> Tagified:
         icon_ui = TagList(self.icon).render()
 
         if self.value_type == "html":
@@ -169,7 +214,7 @@ class ToolResultComponent(ToolCardComponent):
             *icon_ui["dependencies"],
             *value_ui["dependencies"],
             *footer_ui["dependencies"],
-        )
+        ).tagify()
 
 
 class ToolResultDisplay(BaseModel):
@@ -388,6 +433,15 @@ def tool_result_display(
 
     if display.text is not None:
         return display.text, "text"
+
+    if is_content_extra(x.value):
+        return json.dumps([as_content_extra_item(x.value)]), "content_extra"
+
+    if isinstance(x.value, (list, tuple)) and any(
+        is_content(v) for v in x.value
+    ):
+        items = [as_content_extra_item_or_text(v) for v in x.value]
+        return json.dumps(items), "content_extra"
 
     return str(x.get_model_value()), "code"
 

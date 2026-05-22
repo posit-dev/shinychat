@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 from contextlib import asynccontextmanager
 from typing import (
     TYPE_CHECKING,
@@ -56,11 +57,15 @@ from ._chat_tokenizer import (
 )
 from ._chat_types import (
     ChatAction,
+    ChatGreeting,
     ChatMessage,
     ChatMessageDict,
+    ClearAction,
     ContentType,
+    GreetingOptions,
     MessagePayload,
     StoredMessage,
+    chat_greeting,
 )
 from ._html_deps_py_shiny import shinychat_dependency
 from ._typing_extensions import TypeGuard
@@ -83,7 +88,9 @@ else:
 __all__ = (
     "Chat",
     "ChatExpress",
+    "ChatGreeting",
     "ChatMessage",
+    "chat_greeting",
     "chat_ui",
     "ChatMessageDict",
 )
@@ -1424,12 +1431,175 @@ class Chat:
 
         self.update_user_input(value=value)
 
-    async def clear_messages(self):
+    async def clear_messages(self, *, greeting: bool = False):
         """
         Clear all chat messages.
+
+        Parameters
+        ----------
+        greeting
+            If ``True``, also clears the greeting in addition to conversation
+            messages. Clearing the greeting causes the ``{id}_greeting_requested``
+            input to fire again (if the chat is visible with no greeting and no
+            messages), enabling a regenerate pattern: clear the greeting, then
+            react to the request to generate a new one via
+            :meth:`~shinychat.Chat.set_greeting`.
         """
         self._messages.set(())
-        await self._send_action({"type": "clear"})
+        action: ClearAction = {"type": "clear"}
+        if greeting:
+            action["greeting"] = True
+        await self._send_action(action)
+
+    async def set_greeting(
+        self,
+        greeting: "str | HTML | Tag | TagList | ChatGreeting | None",
+    ) -> None:
+        """
+        Set or clear the chat greeting.
+
+        A greeting is displayed at the top of the chat before any conversation messages.
+        It can be static content, streaming content from an async iterator, or ``None``
+        to remove an existing greeting.
+
+        If the greeting has already been dismissed, calling this method updates the
+        greeting content but does not make it visible again. To show a new greeting
+        after dismissal, first clear the chat with
+        ``await chat.clear_messages(greeting=True)``.
+
+        Parameters
+        ----------
+        greeting
+            The greeting content. Can be:
+
+            * ``None``: clears the current greeting entirely (distinct from dismissal).
+              Use this before setting a new greeting when implementing a regenerate
+              pattern.
+            * A markdown string, :class:`~htmltools.HTML`, :class:`~htmltools.Tag`, or
+              :class:`~htmltools.TagList`: displayed as a stand-alone greeting.
+            * A :func:`~shinychat.chat_greeting` object with options such as
+              ``dismissible``.
+            * A :func:`~shinychat.chat_greeting` wrapping an
+              :class:`~typing.AsyncIterable` of strings: streams the greeting content
+              chunk-by-chunk.
+
+        Notes
+        -----
+        When no greeting is set and the chat is visible with no messages, an input
+        named ``{id}_greeting_requested`` fires (where ``{id}`` is the chat's ID).
+        Use ``@reactive.event(input.{id}_greeting_requested)`` to generate a greeting
+        on demand. This input fires on first load and again after
+        :meth:`~shinychat.Chat.clear_messages` is called with ``greeting=True``.
+
+        Examples
+        --------
+        Static greeting (stand-alone, dismissible by default):
+
+        ```python
+        @reactive.effect
+        async def _():
+            await chat.set_greeting("## Welcome!\\n\\nHow can I help you today?")
+        ```
+
+        Static greeting with custom options:
+
+        ```python
+        from shinychat import chat_greeting
+
+        @reactive.effect
+        async def _():
+            greeting = chat_greeting(
+                "## Welcome!",
+                dismissible=True,
+            )
+            await chat.set_greeting(greeting)
+        ```
+
+        Streaming greeting from an async iterator:
+
+        ```python
+        @reactive.effect
+        async def _():
+            async def token_stream():
+                for token in ["Hello", " there", "!"]:
+                    yield token
+
+            await chat.set_greeting(chat_greeting(token_stream()))
+        ```
+
+        LLM-generated greeting using ``greeting_requested``:
+
+        ```python
+        import chatlas
+        from shinychat import Chat, chat_greeting
+
+        chat_model = chatlas.ChatOpenAI(model="gpt-4o")
+        chat = Chat(id="chat")
+
+        @reactive.effect
+        @reactive.event(input.chat_greeting_requested)
+        async def _():
+            response = await chat_model.stream_async(
+                "Write a short, friendly welcome message."
+            )
+            await chat.set_greeting(chat_greeting(response))
+        ```
+
+        Regenerate pattern (clear and re-request):
+
+        ```python
+        @reactive.effect
+        @reactive.event(input.regenerate)
+        async def _():
+            await chat.clear_messages(greeting=True)
+
+        # greeting_requested fires again after clear_messages(greeting=True),
+        # so the LLM-generated greeting handler above will run again.
+        ```
+
+        Clear the greeting (e.g., before setting a new one):
+
+        ```python
+        await chat.set_greeting(None)
+        ```
+        """
+        if greeting is None:
+            await self._send_action({"type": "greeting_clear"})
+            return
+
+        if not isinstance(greeting, ChatGreeting):
+            greeting = chat_greeting(greeting)
+
+        options: GreetingOptions = {"dismissible": greeting.dismissible}
+        html_deps = self._serialize_html_deps(greeting.html_deps) if greeting.html_deps else None
+
+        content = greeting.content
+        if isinstance(content, AsyncIterable):
+            start_action: ChatAction = {
+                "type": "greeting_start",
+                "content": "",
+                "content_type": greeting.content_type,
+                "options": options,
+            }
+            await self._send_action(start_action)
+            try:
+                async for chunk in content:
+                    chunk_action: ChatAction = {
+                        "type": "greeting_chunk",
+                        "content": chunk,
+                        "operation": "append",
+                    }
+                    await self._send_action(chunk_action)
+            finally:
+                await self._send_action({"type": "greeting_end"})
+        else:
+            action: ChatAction = {
+                "type": "greeting",
+                "content": str(content),
+                "content_type": greeting.content_type,
+                "options": options,
+            }
+            await self._send_action(action, html_deps)
 
     def destroy(self):
         """
@@ -1674,6 +1844,7 @@ class ChatExpress(Chat):
         messages: Optional[
             Iterable[str | TagChild | ChatMessageDict | ChatMessage | Any]
         ] = None,
+        greeting: Optional[Union[str, HTML, Tag, TagList, ChatGreeting]] = None,
         placeholder: str = "Enter a message...",
         width: "CssUnit" = "min(680px, 100%)",
         height: "CssUnit" = "auto",
@@ -1692,6 +1863,10 @@ class ChatExpress(Chat):
             string or a dictionary with `content` and `role` keys. The `content` key
             should contain the message text, and the `role` key can be "assistant" or
             "user".
+        greeting
+            An optional greeting to display at the top of the chat before any conversation
+            messages. Can be a markdown string or a :func:`~shinychat.chat_greeting`
+            object.
         placeholder
             Placeholder text for the chat input.
         width
@@ -1719,6 +1894,7 @@ class ChatExpress(Chat):
         return chat_ui(
             id=self.id,
             messages=messages,
+            greeting=greeting,
             placeholder=placeholder,
             width=width,
             height=height,
@@ -1787,6 +1963,7 @@ def chat_ui(
     messages: Optional[
         Iterable[str | TagChild | ChatMessageDict | ChatMessage | Any]
     ] = None,
+    greeting: Optional[Union[str, HTML, Tag, TagList, ChatGreeting]] = None,
     placeholder: str = "Enter a message...",
     width: "CssUnit" = "min(680px, 100%)",
     height: "CssUnit" = "auto",
@@ -1823,6 +2000,17 @@ def chat_ui(
 
         **NOTE:** content may include specially formatted **input suggestion** links
         (see :method:`~shiny.ui.Chat.append_message` for more info).
+    greeting
+        An optional greeting to display at the top of the chat before any conversation
+        messages. Can be a markdown string or a :func:`~shinychat.chat_greeting` object.
+        For a dynamic or streaming greeting, use :meth:`~shinychat.Chat.set_greeting`
+        from the server instead.
+
+        When no greeting is set and the chat is visible with no messages, an input
+        named ``{id}_greeting_requested`` fires. Use this input with
+        ``@reactive.event(input.{id}_greeting_requested)`` to generate a greeting
+        on demand from the server. It fires again after
+        :meth:`~shinychat.Chat.clear_messages` is called with ``greeting=True``.
     placeholder
         Placeholder text for the chat input.
     width
@@ -1874,8 +2062,29 @@ def chat_ui(
             )
         )
 
+    greeting_attr: Optional[str] = None
+    greeting_deps: list[HTMLDependency] = []
+    if greeting is not None:
+        if not isinstance(greeting, ChatGreeting):
+            greeting = chat_greeting(greeting)
+
+        if hasattr(greeting.content, "__aiter__"):
+            raise ValueError(
+                "An async iterator is not valid as a static `greeting` in `chat_ui()`. "
+                "Use `await chat.set_greeting()` from the server to stream a greeting."
+            )
+
+        greeting_payload: dict[str, object] = {
+            "content": greeting.content,
+            "content_type": greeting.content_type,
+            "options": {"dismissible": greeting.dismissible},
+        }
+        greeting_attr = json.dumps(greeting_payload)
+        greeting_deps = greeting.html_deps
+
     res = Tag(
         "shiny-chat-container",
+        *greeting_deps,
         Tag("shiny-chat-messages", *message_tags),
         Tag(
             "shiny-chat-input",
@@ -1893,6 +2102,7 @@ def chat_ui(
         id=id,
         placeholder=placeholder,
         fill=fill,
+        greeting=greeting_attr,
         enable_cancel=enable_cancel,
         # Also include icon on the parent so that when messages are dynamically added,
         # we know the default icon has changed

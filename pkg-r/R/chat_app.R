@@ -92,6 +92,14 @@
 #'       updated after clearing. It can be one of: `"clear"` the chat history;
 #'       `"set"` the chat history to `messages`; `"append"` `messages` to the
 #'       existing chat history; or `"keep"` the existing chat history.
+#'     * `set_greeting()`: A function to set, stream, or clear the chat
+#'       greeting. Pass a [chat_greeting()] object, a plain string, or
+#'       `NULL` to clear. Streaming greetings run inside an
+#'       [shiny::ExtendedTask] so the session stays responsive; if called
+#'       while a greeting is already streaming, the new greeting is queued.
+#'       If the greeting has already been dismissed, calling `set_greeting()`
+#'       updates the content but does not make it visible again; call
+#'       `clear(greeting = TRUE)` first to show a new greeting after dismissal.
 #'     * `status`: A reactive value indicating the current chat interaction
 #'       state. Returns `"idle"` when no response is in progress, or
 #'       `"streaming"` while a response is actively being received.
@@ -172,10 +180,58 @@ chat_mod_ui <- function(
 
 #' @describeIn chat_app A simple chat app module server.
 #' @inheritParams chat_restore
+#' @param greeting Optional greeting to set when the module initializes.
+#'   Accepts a static value (string, [htmltools::HTML()], [htmltools::tagList()],
+#'   or [chat_greeting()]) or a **function** that generates the greeting
+#'   dynamically. See the **Greeting** section below for details.
+#'
+#' @section Greeting:
+#'
+#' When `greeting` is a **function**, the module calls it each time the
+#' `greeting_requested` event fires — on first view when the chat is empty,
+#' and again after `clear(greeting = TRUE)`. The function should return a
+#' [chat_greeting()] (typically wrapping a stream). Static values (strings,
+#' [chat_greeting()] objects) are set once at init and do not regenerate.
+#'
+#' The module detects **named arguments** in the greeting function to decide
+#' what to pass. Currently the only recognized argument is `client`.
+#'
+#' **`function(client)`** (recommended). The module clones the `client`
+#' passed to `chat_mod_server()`, wipes its turn history, and passes the
+#' fresh clone as `client`. This avoids manually creating and configuring
+#' a separate client:
+#'
+#' ```r
+#' chat_mod_server("chat", client, greeting = function(client) {
+#'   stream <- client$stream_async("Generate a short welcome message.")
+#'   chat_greeting(stream)
+#' })
+#' ```
+#'
+#' **`function()`** (zero arguments). You create and manage your own client:
+#'
+#' ```r
+#' chat_mod_server("chat", client, greeting = function() {
+#'   greeter <- ellmer::chat_openai(model = "gpt-4o")
+#'   stream <- greeter$stream_async("Generate a short welcome message.")
+#'   chat_greeting(stream)
+#' })
+#' ```
+#'
+#' **Static value.** Set once; does not regenerate after `clear()`:
+#'
+#' ```r
+#' chat_mod_server("chat", client, greeting = "## Welcome!\n\nHow can I help?")
+#' ```
+#'
+#' The returned `set_greeting()` helper is available for cases where you need
+#' to set a greeting outside the greeting lifecycle.
+#'
 #' @export
 chat_mod_server <- function(
   id,
   client,
+  greeting = NULL,
   bookmark_on_input = TRUE,
   bookmark_on_response = TRUE
 ) {
@@ -193,6 +249,17 @@ chat_mod_server <- function(
       promises::then(p, function(stream) {
         chat_append(ui_id, stream)
       })
+    }
+  )
+
+  greeting_stream_task <- shiny::ExtendedTask$new(
+    function(ui_id, greeting, session) {
+      result <- chat_set_greeting(ui_id, greeting, session = session)
+      if (is.null(result)) {
+        promises::promise_resolve(NULL)
+      } else {
+        result
+      }
     }
   )
 
@@ -290,8 +357,37 @@ chat_mod_server <- function(
       chat_append("chat", response, role = role, icon = icon, session = session)
     }
 
+    set_greeting_mod <- function(greeting) {
+      greeting_stream_task$invoke("chat", greeting, session)
+    }
+
+    if (is.function(greeting)) {
+      greeting_fmls <- names(formals(greeting))
+
+      shiny::observeEvent(
+        input$chat_greeting_requested,
+        label = "on_greeting_requested",
+        {
+          args <- list()
+          if ("client" %in% greeting_fmls) {
+            greeter <- client$clone()
+            greeter$set_turns(list())
+            args$client <- greeter
+          }
+          greeting_stream_task$invoke(
+            "chat",
+            do.call(greeting, args),
+            session
+          )
+        }
+      )
+    } else if (!is.null(greeting)) {
+      set_greeting_mod(greeting)
+    }
+
     client_clear <- function(
       messages = NULL,
+      greeting = FALSE,
       client_history = c("clear", "set", "append", "keep")
     ) {
       client_history <- arg_match(client_history)
@@ -312,7 +408,7 @@ chat_mod_server <- function(
         }
       }
 
-      chat_clear("chat", session = session)
+      chat_clear("chat", greeting = greeting, session = session)
       if (!is.null(messages)) {
         for (msg in messages) {
           chat_append("chat", msg$content, role = msg$role, session = session)
@@ -343,6 +439,7 @@ chat_mod_server <- function(
     ret$append <- chat_append_mod
     ret$update_user_input <- chat_update_user_input
     ret$clear <- client_clear
+    ret$set_greeting <- set_greeting_mod
     ret$set_client <- set_client
     lockEnvironment(ret)
     ret

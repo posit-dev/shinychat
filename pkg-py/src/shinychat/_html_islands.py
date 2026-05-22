@@ -2,12 +2,19 @@ from __future__ import annotations
 
 from itertools import groupby
 
-from htmltools import Tag, TagChild, Tagifiable, TagList
+from htmltools import (
+    Tag,
+    TagChild,
+    Tagifiable,
+    TagifiedTag,
+    TagifiedTagList,
+    TagList,
+)
 
 
 def _resolve_tagifiable(content: TagChild) -> TagChild:
     """Resolve a Tagifiable to its Tag form (if it isn't already a Tag/TagList/str)."""
-    if isinstance(content, (Tag, TagList, str)):
+    if isinstance(content, (Tag, TagifiedTag, TagList, TagifiedTagList, str)):
         return content
     if isinstance(content, Tagifiable):
         return content.tagify()
@@ -17,7 +24,7 @@ def _resolve_tagifiable(content: TagChild) -> TagChild:
 def _has_react_attr(child: TagChild) -> bool:
     """Check if a tag child has the data-shinychat-react attribute."""
     child = _resolve_tagifiable(child)
-    if isinstance(child, Tag):
+    if isinstance(child, (Tag, TagifiedTag)):
         return "data-shinychat-react" in child.attrs
     return False
 
@@ -32,15 +39,15 @@ def split_html_islands(content: TagChild | TagList) -> list[TagChild]:
 
     Returns a list of TagChild items ready to be serialized.
     """
-    if isinstance(content, TagList):
+    if isinstance(content, (TagList, TagifiedTagList)):
         children = list(content)
-    elif isinstance(content, Tag):
+    elif isinstance(content, (Tag, TagifiedTag)):
         if _has_react_attr(content):
             return [content]
         return [Tag("shinychat-raw-html", content)]
     elif isinstance(content, Tagifiable):
         resolved = content.tagify()
-        if isinstance(resolved, Tag) and _has_react_attr(resolved):
+        if isinstance(resolved, (Tag, TagifiedTag)) and _has_react_attr(resolved):
             return [resolved]
         return [Tag("shinychat-raw-html", content)]
     else:

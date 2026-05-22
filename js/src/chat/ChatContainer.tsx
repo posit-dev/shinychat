@@ -5,17 +5,19 @@ import {
   useEffect,
   forwardRef,
   useImperativeHandle,
+  useMemo,
 } from "react"
 import { createPortal } from "react-dom"
 import { useStickToBottom } from "use-stick-to-bottom"
 import { ChatMessages } from "./ChatMessages"
 import { ChatMessage } from "./ChatMessage"
+import { ChatGreeting } from "./ChatGreeting"
 import { MessageErrorBoundary } from "./MessageErrorBoundary"
 import { ChatInput, type ChatInputHandle } from "./ChatInput"
 import { ScrollToBottomButton } from "./ScrollToBottomButton"
 import { ExternalLinkDialogComponent } from "./ExternalLinkDialog"
 import { ChatScrollContext, useChatDispatch } from "./context"
-import type { ChatMessageData } from "./state"
+import type { ChatMessageData, GreetingData } from "./state"
 import type { ChatTransport } from "../transport/types"
 
 declare global {
@@ -32,6 +34,7 @@ export interface ChatContainerProps {
   inputPlaceholder: string
   iconAssistant?: string
   inputId: string
+  greeting?: GreetingData | null
   cancelId?: string
   enableCancel?: boolean
   cancelRequested?: boolean
@@ -51,20 +54,67 @@ export const ChatContainer = forwardRef<
     inputPlaceholder,
     iconAssistant,
     inputId,
+    greeting,
     cancelId,
     enableCancel,
     cancelRequested,
   },
   ref,
 ) {
+  const userMessages = useMemo(
+    () => messages.filter((m) => m.role === "user").map((m) => m.content),
+    [messages],
+  )
+
   const chatInputRef = useRef<ChatInputHandle>(null)
 
   const [pendingUrl, setPendingUrl] = useState<string | null>(null)
   const pendingUrlRef = useRef<string | null>(null)
   pendingUrlRef.current = pendingUrl
 
-  const { scrollRef, contentRef, isAtBottom, scrollToBottom, stopScroll } =
+  const { scrollRef, contentRef, scrollToBottom, stopScroll } =
     useStickToBottom({ resize: "smooth" })
+
+  // Track scroll position of the scroll container directly. useStickToBottom's
+  // own `isAtBottom` is computed from contentRef, which excludes the greeting
+  // (intentionally — the greeting must not engage stick-to-bottom). But the
+  // scroll-to-bottom button and the input's top shadow should still appear
+  // when a long greeting alone overflows. Derive an `isAtBottom` from the
+  // scroll container itself so it covers both cases uniformly.
+  const [isAtBottom, setIsAtBottom] = useState(true)
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+
+    const update = () => {
+      const dist = el.scrollHeight - el.scrollTop - el.clientHeight
+      // ~1px fudge for fractional pixel rounding.
+      setIsAtBottom(dist <= 1)
+    }
+
+    update()
+    el.addEventListener("scroll", update, { passive: true })
+
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    const observeChildren = () => {
+      Array.from(el.children).forEach((c) => ro.observe(c))
+    }
+    observeChildren()
+
+    const mo = new MutationObserver(() => {
+      observeChildren()
+      update()
+    })
+    mo.observe(el, { childList: true })
+
+    return () => {
+      el.removeEventListener("scroll", update)
+      ro.disconnect()
+      mo.disconnect()
+    }
+  }, [scrollRef])
 
   const dispatch = useChatDispatch()
 
@@ -293,18 +343,29 @@ export const ChatContainer = forwardRef<
   return (
     <>
       <div className="shiny-chat-messages-wrapper">
-        <div className="shiny-chat-messages" ref={scrollRef}>
-          <div
-            className="shiny-chat-messages-content"
-            ref={contentRef}
-            role="log"
-            aria-live="polite"
-            onClick={onMessagesClick}
-            onFocus={handleFocusIn}
-            onBlur={handleFocusOut}
-            onKeyDown={onSuggestionKeydown}
-          >
-            <ChatScrollContext.Provider value={stopScroll}>
+        <div
+          className="shiny-chat-messages"
+          ref={scrollRef}
+          onClick={onMessagesClick}
+          onFocus={handleFocusIn}
+          onBlur={handleFocusOut}
+          onKeyDown={onSuggestionKeydown}
+        >
+          <ChatScrollContext.Provider value={stopScroll}>
+            {/* Greeting lives outside contentRef so its growth (e.g. while a
+                streaming greeting fills in) does not trigger useStickToBottom
+                — only message growth does. Suggestion clicks inside the
+                greeting still reach the messages-level handlers via bubbling. */}
+            {greeting != null && <ChatGreeting greeting={greeting} />}
+            <div
+              className="shiny-chat-messages-content"
+              ref={contentRef}
+              role="log"
+              aria-live="polite"
+              {...(greeting?.status === "dismissing"
+                ? { "data-greeting-dismissing": "" }
+                : {})}
+            >
               <ChatMessages messages={messages} iconAssistant={iconAssistant} />
               {streamingMessage && (
                 <MessageErrorBoundary key={streamingMessage.id}>
@@ -314,13 +375,13 @@ export const ChatContainer = forwardRef<
                   />
                 </MessageErrorBoundary>
               )}
-            </ChatScrollContext.Provider>
-          </div>
+            </div>
+          </ChatScrollContext.Provider>
         </div>
         <ScrollToBottomButton
           isAtBottom={isAtBottom}
           scrollToBottom={scrollToBottom}
-          streaming={!!streamingMessage}
+          streaming={!!streamingMessage || !!greeting?.streaming}
         />
       </div>
 
@@ -338,6 +399,7 @@ export const ChatContainer = forwardRef<
           hasTopShadow={!isAtBottom}
           placeholder={inputPlaceholder}
           onSend={onSend}
+          userMessages={userMessages}
           enableCancel={enableCancel}
           cancelRequested={cancelRequested}
           isStreaming={isStreaming}

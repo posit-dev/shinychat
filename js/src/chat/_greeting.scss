@@ -1,0 +1,90 @@
+shiny-chat-container {
+  --shiny-chat-greeting-max-width: 680px;
+  --shiny-chat-greeting-color: var(--bs-secondary-color, #6c757d);
+}
+
+.shiny-chat-greeting {
+  margin-inline: auto;
+  width: 100%;
+  max-width: var(--shiny-chat-greeting-max-width);
+  padding: 1.5rem;
+  color: var(--shiny-chat-greeting-color);
+
+  &.shiny-chat-greeting--enter {
+    animation: shiny-chat-greeting-reveal 300ms
+      cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    color: var(--bs-body-color);
+  }
+
+  .shiny-chat-suggestion-list {
+    max-width: var(--shiny-chat-greeting-max-width);
+  }
+
+  &[data-dismissing] {
+    animation: shiny-chat-greeting-dismiss 200ms ease-out both;
+  }
+}
+
+// When no messages have arrived yet, center the greeting vertically in the
+// scroll area. Auto margins absorb spare flex space; once messages-content has
+// visible children, no spare → greeting stays at the top of natural flow.
+//
+// While a dismiss animation is in flight, messages-content already has its
+// hidden replies in the DOM but none of them are visible (see the
+// [data-greeting-dismissing] rule below). Treat that state as equivalent to
+// :empty so the greeting holds its centered position until it fully fades out
+// — otherwise the centering flips off as soon as INPUT_SENT lands and the
+// greeting jumps to the top mid-fade.
+.shiny-chat-messages:has(
+    > .shiny-chat-messages-content:is(:empty, [data-greeting-dismissing])
+  )
+  > .shiny-chat-greeting {
+  margin-block: auto;
+}
+
+// Suppress the messages-content bottom padding while it has no visible
+// children so the centered greeting is truly centered.
+.shiny-chat-messages-content:is(:empty, [data-greeting-dismissing]) {
+  padding-bottom: 0;
+}
+
+// While the greeting is collapsing, hide message-list children so the greeting
+// finishes its exit animation before the reply pops into view.
+.shiny-chat-messages-content[data-greeting-dismissing] > * {
+  display: none;
+}
+
+@keyframes shiny-chat-greeting-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shiny-chat-greeting-dismiss {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shiny-chat-greeting.shiny-chat-greeting--enter,
+  .shiny-chat-greeting[data-dismissing] {
+    animation: none;
+  }
+}

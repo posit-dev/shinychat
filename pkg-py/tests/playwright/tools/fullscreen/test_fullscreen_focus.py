@@ -34,9 +34,7 @@ def test_fullscreen_enter_creates_overlay(
     expect(page.locator(".shiny-tool-fullscreen-exit")).to_be_attached()
 
 
-def test_fullscreen_escape_exits(
-    page: Page, local_app: ShinyAppProc
-) -> None:
+def test_fullscreen_escape_exits(page: Page, local_app: ShinyAppProc) -> None:
     """Pressing Escape should exit fullscreen mode."""
     page.goto(local_app.url)
     chat = ChatController(page, "chat")
@@ -131,9 +129,7 @@ def test_fullscreen_shift_tab_reaches_close_button(
     expect(close_btn).to_be_focused()
 
 
-def test_fullscreen_focus_cycles(
-    page: Page, local_app: ShinyAppProc
-) -> None:
+def test_fullscreen_focus_cycles(page: Page, local_app: ShinyAppProc) -> None:
     """Focus should cycle between card elements and close button, never escaping."""
     page.goto(local_app.url)
     chat = ChatController(page, "chat")
