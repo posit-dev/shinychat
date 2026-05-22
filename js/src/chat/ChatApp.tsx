@@ -1,4 +1,4 @@
-import { useReducer, useEffect, useRef, useMemo } from "react"
+import { useReducer, useEffect, useRef, useMemo, useState } from "react"
 import {
   ShinyLifecycleContext,
   ChatToolContext,
@@ -9,9 +9,20 @@ import {
   initialState,
   type ChatMessageData,
   type ChatToolState,
+  type GreetingData,
 } from "./state"
 import { ChatContainer, type ChatContainerHandle } from "./ChatContainer"
-import type { ChatTransport, ShinyLifecycle } from "../transport/types"
+import type {
+  ChatTransport,
+  ShinyLifecycle,
+  GreetingOptions,
+} from "../transport/types"
+
+export interface InitialGreeting {
+  content: string
+  contentType: import("../transport/types").ContentType
+  options: GreetingOptions
+}
 
 interface ChatAppProps {
   transport: ChatTransport
@@ -22,8 +33,32 @@ interface ChatAppProps {
   cancelId?: string
   placeholder?: string
   initialMessages?: ChatMessageData[]
+  initialGreeting?: InitialGreeting
   enableCancel?: boolean
   footerEl?: Element
+}
+
+function makeInitialGreeting(
+  greeting: InitialGreeting,
+  messagesLength: number,
+): GreetingData {
+  const dismissible = greeting.options.dismissible !== false
+  const status: GreetingData["status"] =
+    dismissible && messagesLength > 0 ? "dismissed" : "visible"
+  return {
+    content: greeting.content,
+    contentType: greeting.contentType,
+    streaming: false,
+    status,
+    options: greeting.options,
+    blocks: [
+      {
+        type: "content",
+        content: greeting.content,
+        contentType: greeting.contentType,
+      },
+    ],
+  }
 }
 
 export function ChatApp({
@@ -35,13 +70,18 @@ export function ChatApp({
   cancelId,
   placeholder,
   initialMessages,
+  initialGreeting,
   enableCancel,
   footerEl,
 }: ChatAppProps) {
+  const messages = initialMessages ?? []
   const [state, dispatch] = useReducer(chatReducer, {
     ...initialState,
     inputPlaceholder: placeholder ?? initialState.inputPlaceholder,
-    messages: initialMessages ?? [],
+    messages,
+    greeting: initialGreeting
+      ? makeInitialGreeting(initialGreeting, messages.length)
+      : null,
   })
 
   const containerRef = useRef<ChatContainerHandle>(null)
@@ -74,6 +114,48 @@ export function ChatApp({
     return unsubscribe
   }, [transport, elementId])
 
+  // State-driven `<inputId>_greeting_requested` input.
+  //
+  // Fires when all three conditions hold: the chat container is visible
+  // (IntersectionObserver), no messages exist, and no greeting is set.
+  // Visibility gating covers hidden tabs and scrolled-out-of-view cases.
+  const [isVisible, setIsVisible] = useState(false)
+
+  useEffect(() => {
+    if (!elementId) return
+    const el = document.getElementById(elementId)
+    if (!el) return
+    if (typeof IntersectionObserver === "undefined") {
+      setIsVisible(true)
+      return
+    }
+    const io = new IntersectionObserver(
+      (entries) => setIsVisible(entries[0]?.isIntersecting ?? false),
+      { threshold: 0 },
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [elementId])
+
+  const shouldRequestGreeting =
+    isVisible && state.messages.length === 0 && state.greeting === null
+
+  const greetingRequestSentRef = useRef(false)
+
+  useEffect(() => {
+    if (!shouldRequestGreeting) {
+      greetingRequestSentRef.current = false
+      return
+    }
+    if (greetingRequestSentRef.current) return
+    if (!window.Shiny?.setInputValue) return
+
+    greetingRequestSentRef.current = true
+    window.Shiny.setInputValue(`${elementId}_greeting_requested`, Date.now(), {
+      priority: "event",
+    })
+  }, [shouldRequestGreeting, elementId])
+
   const toolState: ChatToolState = useMemo(
     () => ({
       hiddenToolRequests: state.hiddenToolRequests,
@@ -94,6 +176,7 @@ export function ChatApp({
             inputPlaceholder={state.inputPlaceholder}
             iconAssistant={iconAssistant}
             inputId={inputId}
+            greeting={state.greeting}
             cancelId={cancelId}
             enableCancel={enableCancel}
             cancelRequested={state.cancelRequested}

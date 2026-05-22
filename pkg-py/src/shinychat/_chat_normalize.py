@@ -144,10 +144,47 @@ try:
 
     @message_content.register
     def _(message: ContentText):
-        return ChatMessage(content=message.text)
+        text = message.text
+        # chatlas' expand_tool_result() inserts <tool-content> XML wrapper
+        # tags when moving images/PDFs out of tool results during UserTurn
+        # construction. Suppress these so they don't appear as visible text.
+        if text.startswith("<tool-content") or text.startswith(
+            "</tool-content"
+        ):
+            return ChatMessage(content="")
+        return ChatMessage(content=text)
 
     @message_content_chunk.register
     def _(chunk: ContentText):
+        return message_content(chunk)
+
+    from chatlas.types import ContentImageInline, ContentImageRemote
+
+    from ._chatlas_compat import ContentPDF
+
+    @message_content.register
+    def _(message: ContentImageInline):
+        src = f"data:{message.image_content_type};base64,{message.data}"
+        return ChatMessage(content=f'<img src="{src}" />')
+
+    @message_content_chunk.register
+    def _(chunk: ContentImageInline):
+        return message_content(chunk)
+
+    @message_content.register
+    def _(message: ContentImageRemote):
+        return ChatMessage(content=f'<img src="{message.url}" />')
+
+    @message_content_chunk.register
+    def _(chunk: ContentImageRemote):
+        return message_content(chunk)
+
+    @message_content.register
+    def _(message: ContentPDF):
+        return ChatMessage(content=message.filename or "document.pdf")
+
+    @message_content_chunk.register
+    def _(chunk: ContentPDF):
         return message_content(chunk)
 
     @message_content.register

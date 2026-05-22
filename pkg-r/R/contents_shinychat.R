@@ -344,7 +344,7 @@ tool_result_display <- function(content, display = NULL) {
   use_basic_display <- opt_shinychat_tool_display() == "basic"
 
   if (tool_errored(content) || use_basic_display || !has_display) {
-    return(list(value = tool_string(content), value_type = "code"))
+    return(tool_default_display(content))
   }
 
   if (is.list(display)) {
@@ -355,7 +355,7 @@ tool_result_display <- function(content, display = NULL) {
     }
   }
 
-  list(value = tool_string(content), value_type = "code")
+  tool_default_display(content)
 }
 
 # Copied from
@@ -364,19 +364,79 @@ tool_errored <- function(x) !is.null(x@error)
 tool_error_string <- function(x) {
   if (inherits(x@error, "condition")) conditionMessage(x@error) else x@error
 }
-tool_string <- function(x) {
-  if (tool_errored(x)) {
-    # Changed from original: if tool errored, just return the error message
-    strip_ansi(tool_error_string(x))
-  } else if (inherits(x@value, "AsIs")) {
+tool_string_value <- function(x) {
+  if (inherits(x@value, "AsIs")) {
     x@value
   } else if (inherits(x@value, "json")) {
     x@value
   } else if (is.character(x@value)) {
     paste(x@value, collapse = "\n")
   } else {
-    jsonlite::toJSON(x@value, auto_unbox = TRUE, pretty = 2)
+    jsonlite::toJSON(x@value, auto_unbox = TRUE, pretty = 2, force = TRUE)
   }
+}
+
+is_content_extra <- function(x) {
+  is_content_image(x) || S7::S7_inherits(x, ellmer::ContentPDF)
+}
+
+is_content_image <- function(x) {
+  S7::S7_inherits(x, ellmer::ContentImage)
+}
+
+as_content_extra_item <- function(x) {
+  if (S7::S7_inherits(x, ellmer::ContentImageRemote)) {
+    list(type = "image", src = x@url)
+  } else if (S7::S7_inherits(x, ellmer::ContentImageInline)) {
+    list(type = "image", src = paste0("data:", x@type, ";base64,", x@data))
+  } else if (S7::S7_inherits(x, ellmer::ContentPDF)) {
+    list(type = "pdf", filename = x@filename %||% "document.pdf")
+  }
+}
+
+is_content <- function(x) {
+  S7::S7_inherits(x, ellmer::Content)
+}
+
+as_content_extra_item_or_text <- function(x) {
+  if (is_content_extra(x)) {
+    as_content_extra_item(x)
+  } else if (S7::S7_inherits(x, ellmer::ContentText)) {
+    list(type = "text", value = x@text, value_type = "markdown")
+  } else {
+    list(type = "text", value = as.character(x), value_type = "markdown")
+  }
+}
+
+tool_default_display <- function(content) {
+  value <- content@value
+
+  if (tool_errored(content)) {
+    return(list(
+      value = strip_ansi(tool_error_string(content)),
+      value_type = "code"
+    ))
+  }
+
+  if (is_content_extra(value)) {
+    return(list(
+      value = jsonlite::toJSON(
+        list(as_content_extra_item(value)),
+        auto_unbox = TRUE
+      ),
+      value_type = "content_extra"
+    ))
+  }
+
+  if (is.list(value) && some(value, is_content)) {
+    items <- map(value, as_content_extra_item_or_text)
+    return(list(
+      value = jsonlite::toJSON(items, auto_unbox = TRUE),
+      value_type = "content_extra"
+    ))
+  }
+
+  list(value = tool_string_value(content), value_type = "code")
 }
 
 S7::method(contents_shinychat, ellmer::Turn) <- function(content) {

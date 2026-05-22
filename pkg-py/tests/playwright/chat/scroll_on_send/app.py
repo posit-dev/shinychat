@@ -8,7 +8,9 @@ ui.page_opts(title="Scroll on Send Test")
 chat = Chat(id="chat")
 
 # Fill chat with enough messages to make it scrollable
-initial_messages = [f"Message {i}: padding to fill the chat area." for i in range(20)]
+initial_messages = [
+    f"Message {i}: padding to fill the chat area." for i in range(20)
+]
 
 chat.ui(messages=initial_messages, height="400px")
 

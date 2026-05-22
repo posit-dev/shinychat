@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Union
+from typing import AsyncIterable, Literal, Union
 
-from htmltools import HTML, HTMLDependency, TagChild, TagList
+from htmltools import HTML, HTMLDependency, Tag, TagChild, TagList
 
 from ._html_islands import split_html_islands
 from ._typing_extensions import NotRequired, TypedDict
@@ -49,6 +49,7 @@ class ChunkEndAction(TypedDict):
 
 class ClearAction(TypedDict):
     type: Literal["clear"]
+    greeting: NotRequired[bool]
 
 
 class UpdateInputAction(TypedDict):
@@ -68,6 +69,39 @@ class HideToolRequestAction(TypedDict):
     requestId: str
 
 
+class GreetingOptions(TypedDict):
+    dismissible: NotRequired[bool]
+
+
+class GreetingAction(TypedDict):
+    type: Literal["greeting"]
+    content: str
+    content_type: ContentType
+    options: GreetingOptions
+
+
+class GreetingStartAction(TypedDict):
+    type: Literal["greeting_start"]
+    content: str
+    content_type: ContentType
+    options: GreetingOptions
+
+
+class GreetingChunkAction(TypedDict):
+    type: Literal["greeting_chunk"]
+    content: str
+    operation: Literal["append", "replace"]
+    content_type: NotRequired[ContentType]
+
+
+class GreetingEndAction(TypedDict):
+    type: Literal["greeting_end"]
+
+
+class GreetingClearAction(TypedDict):
+    type: Literal["greeting_clear"]
+
+
 ChatAction = Union[
     MessageAction,
     ChunkStartAction,
@@ -77,6 +111,11 @@ ChatAction = Union[
     UpdateInputAction,
     RemoveLoadingAction,
     HideToolRequestAction,
+    GreetingAction,
+    GreetingStartAction,
+    GreetingChunkAction,
+    GreetingEndAction,
+    GreetingClearAction,
 ]
 
 
@@ -127,6 +166,98 @@ class ChatMessage:
 
         self.content = content
         self.html_deps: list[HTMLDependency] = deps
+
+
+class ChatGreeting:
+    def __init__(
+        self,
+        content: Union[str, HTML, Tag, TagList, "AsyncIterable[str]"],
+        *,
+        dismissible: bool = True,
+    ):
+        self.dismissible = dismissible
+
+        if isinstance(content, AsyncIterable):
+            self.content: Union[str, AsyncIterable[str]] = content
+            self.content_type: ContentType = "markdown"
+            self.html_deps: list[HTMLDependency] = []
+            return
+
+        deps: list[HTMLDependency] = []
+        content_type: ContentType = "markdown"
+        if not isinstance(content, str):
+            split = split_html_islands(content)
+            ui = TagList(*split).render()
+            content, ui_deps = ui["html"], ui["dependencies"]
+            deps = deps + ui_deps
+            content = f"\n\n{content}\n\n"
+            content_type = "html"
+
+        self.content = content
+        self.content_type = content_type
+        self.html_deps = deps
+
+
+def chat_greeting(
+    content: Union[str, HTML, Tag, TagList, "AsyncIterable[str]"],
+    *,
+    dismissible: bool = True,
+) -> ChatGreeting:
+    """
+    Create a greeting for a chat UI.
+
+    A greeting is a welcome message displayed at the top of the chat before any
+    conversation messages. It can be static (set via :func:`~shinychat.chat_ui`) or
+    dynamic (set via :meth:`~shinychat.Chat.set_greeting`).
+
+    Parameters
+    ----------
+    content
+        The greeting content. Can be a markdown string, :class:`~htmltools.HTML`,
+        :class:`~htmltools.Tag`, :class:`~htmltools.TagList`, or an
+        :class:`~typing.AsyncIterable` of strings (streaming, only valid via
+        :meth:`~shinychat.Chat.set_greeting`).
+    dismissible
+        Whether the greeting can be dismissed when the user sends a message. When
+        ``True`` (the default), the greeting is hidden once the user sends their first
+        message. Set to ``False`` to keep the greeting visible throughout the
+        conversation, which is useful for persistent instructions or navigation.
+
+    Examples
+    --------
+    Basic greeting:
+
+    ```python
+    from shinychat import chat_greeting
+
+    chat_greeting("## Welcome!\\n\\nHow can I help you today?")
+    ```
+
+    Non-dismissible greeting that stays visible:
+
+    ```python
+    chat_greeting("Please select a topic to get started.", dismissible=False)
+    ```
+
+    Greeting with suggestion cards (uses ``<span class="suggestion">``):
+
+    ```python
+    chat_greeting(
+        "## Welcome!\\n\\n"
+        '<span class="suggestion">Summarize this dataset</span>\\n'
+        '<span class="suggestion">Show me recent trends</span>'
+    )
+    ```
+
+    See Also
+    --------
+    :func:`~shinychat.chat_ui` : Set a static greeting in the UI definition.
+    :meth:`~shinychat.Chat.set_greeting` : Set or stream a greeting from the server.
+    """
+    return ChatGreeting(
+        content,
+        dismissible=dismissible,
+    )
 
 
 @dataclass

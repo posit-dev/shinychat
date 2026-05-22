@@ -1,4 +1,5 @@
 from .._chat import ChatMessage, ChatMessageDict
+from .._chat_types import ChatGreeting
 
 try:
     from .._chat_normalize_chatlas import ToolResultDisplay
@@ -16,6 +17,7 @@ except ImportError:
 
 
 __all__ = [
+    "ChatGreeting",
     "ChatMessage",
     "ChatMessageDict",
     "ToolResultDisplay",

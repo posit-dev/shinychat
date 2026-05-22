@@ -13,6 +13,7 @@ chat_mod_ui(id, ..., client = deprecated(), messages = NULL)
 chat_mod_server(
   id,
   client,
+  greeting = NULL,
   bookmark_on_input = TRUE,
   bookmark_on_response = TRUE
 )
@@ -38,6 +39,11 @@ limitations; or disable bookmarking by setting this to \code{"disable"}.}
 \item{messages}{Initial messages shown in the chat, used only when \code{client}
 (in \code{chat_mod_ui()}) doesn't already contain turns. Passed to \code{messages}
 in \code{\link[=chat_ui]{chat_ui()}}.}
+
+\item{greeting}{Optional greeting to set when the module initializes.
+Accepts a static value (string, \code{\link[htmltools:HTML]{htmltools::HTML()}}, \code{\link[htmltools:tagList]{htmltools::tagList()}},
+or \code{\link[=chat_greeting]{chat_greeting()}}) or a \strong{function} that generates the greeting
+dynamically. See the \strong{Greeting} section below for details.}
 
 \item{bookmark_on_input}{A logical value determines if the bookmark should be updated when the user submits a message. Default is \code{TRUE}.}
 
@@ -66,6 +72,14 @@ each message is a list with \code{role} and \code{content} fields. The
 updated after clearing. It can be one of: \code{"clear"} the chat history;
 \code{"set"} the chat history to \code{messages}; \code{"append"} \code{messages} to the
 existing chat history; or \code{"keep"} the existing chat history.
+\item \code{set_greeting()}: A function to set, stream, or clear the chat
+greeting. Pass a \code{\link[=chat_greeting]{chat_greeting()}} object, a plain string, or
+\code{NULL} to clear. Streaming greetings run inside an
+\link[shiny:ExtendedTask]{shiny::ExtendedTask} so the session stays responsive; if called
+while a greeting is already streaming, the new greeting is queued.
+If the greeting has already been dismissed, calling \code{set_greeting()}
+updates the content but does not make it visible again; call
+\code{clear(greeting = TRUE)} first to show a new greeting after dismissal.
 \item \code{client}: The chat client object, which is mutated as you chat.
 }
 }
@@ -91,6 +105,47 @@ app is suitable for interactive use by a single user; do not use
 \item \code{chat_mod_server()}: A simple chat app module server.
 
 }}
+\section{Greeting}{
+
+
+When \code{greeting} is a \strong{function}, the module calls it each time the
+\code{greeting_requested} event fires — on first view when the chat is empty,
+and again after \code{clear(greeting = TRUE)}. The function should return a
+\code{\link[=chat_greeting]{chat_greeting()}} (typically wrapping a stream). Static values (strings,
+\code{\link[=chat_greeting]{chat_greeting()}} objects) are set once at init and do not regenerate.
+
+The module detects \strong{named arguments} in the greeting function to decide
+what to pass. Currently the only recognized argument is \code{client}.
+
+\strong{\verb{function(client)}} (recommended). The module clones the \code{client}
+passed to \code{chat_mod_server()}, wipes its turn history, and passes the
+fresh clone as \code{client}. This avoids manually creating and configuring
+a separate client:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_mod_server("chat", client, greeting = function(client) \{
+  stream <- client$stream_async("Generate a short welcome message.")
+  chat_greeting(stream)
+\})
+}\if{html}{\out{</div>}}
+
+\strong{\verb{function()}} (zero arguments). You create and manage your own client:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_mod_server("chat", client, greeting = function() \{
+  greeter <- ellmer::chat_openai(model = "gpt-4o")
+  stream <- greeter$stream_async("Generate a short welcome message.")
+  chat_greeting(stream)
+\})
+}\if{html}{\out{</div>}}
+
+\strong{Static value.} Set once; does not regenerate after \code{clear()}:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_mod_server("chat", client, greeting = "## Welcome!\\n\\nHow can I help?")
+}\if{html}{\out{</div>}}
+
+The returned \code{set_greeting()} helper is available for cases where you need
+to set a greeting outside the greeting lifecycle.
+}
+
 \examples{
 \dontrun{
 # Interactive in the console ----

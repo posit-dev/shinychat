@@ -5,11 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.2] - Unreleased
+## [0.4.0] - Unreleased
 
 ### New features
 
 * Added `footer` parameter to `chat_ui()` and `Chat.ui()` for displaying arbitrary HTML content below the chat input. Useful for disclaimers, attribution, or interactive toolbars. Styled with sensible defaults and customizable via `--shiny-chat-footer-font-size` and `--shiny-chat-footer-color` CSS custom properties. (#224)
+
+* Added `chat_greeting()` for creating welcome messages that appear when the chat is empty. Greetings can be set statically via `chat_ui(greeting=)` or dynamically with `Chat.set_greeting()`, and are dismissed when the user sends their first message. A new `{id}_greeting_requested` input fires when the chat is visible, empty, and has no greeting, enabling LLM-generated welcome messages. (#217)
+
+* Tool result cards now render images and PDFs returned by chatlas tools. When a tool returns `ContentImageInline`, `ContentImageRemote`, or `ContentPDF`, the result is displayed as an inline image or a PDF filename badge. Mixed content lists (e.g., `[ContentText("summary"), content_image_file("plot.png")]`) are rendered with items interleaved in order. Standalone image and PDF content items in turn history are also rendered correctly. (#225)
 
 * Added `enable_cancel` parameter to `chat_ui()` and `Chat.ui()` to show a stop button that lets users cancel an in-progress AI response. Press the stop button or hit Escape to cancel. Wire up the `input.<id>_cancel` event to a `chatlas.StreamController` (introduced in chatlas v0.18.0) to connect the UI to your chat provider. (#221)
 
@@ -20,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Improvements
 
 * Updated minimum `chatlas` version to `>=0.15.0`. (#208)
+
+## [0.3.2] - 2026-05-21
+
+### Bug fixes
+
+* Updated for compatibility with htmltools 0.7.0. `split_html_islands` now recognizes the new `TagifiedTag` / `TagifiedTagList` sibling classes when deciding which children carry the `data-shinychat-react` attribute, and `Tool*Component.tagify()` implementations are annotated with `htmltools.Tagified` and return fully-tagified output per the new Tagifiable contract. (#226)
 
 ## [0.3.1] - 2026-04-30
 
