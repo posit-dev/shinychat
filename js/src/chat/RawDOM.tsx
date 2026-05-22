@@ -1,8 +1,9 @@
-import { useEffect, useRef } from "react"
+import { useContext, useEffect, useRef } from "react"
+import { ShinyLifecycleContext } from "./context"
 
-// Adopts pre-bound DOM nodes from a source element into the React tree.
-// Unlike RawHTML (which sets innerHTML from a string and binds from scratch),
-// this preserves existing Shiny bindings by moving the original nodes.
+// Adopts DOM nodes from a source element into the React tree, managing
+// Shiny binding lifecycle around each move. Unbinds before moving nodes
+// in, rebinds after; reverses on cleanup so nodes survive React unmount.
 export function RawDOM({
   source,
   className,
@@ -11,19 +12,25 @@ export function RawDOM({
   className?: string
 }) {
   const ref = useRef<HTMLDivElement>(null)
+  const shiny = useContext(ShinyLifecycleContext)
 
   useEffect(() => {
     const el = ref.current
     if (!el) return
+
+    if (shiny) shiny.unbindAll(source as HTMLElement)
     while (source.firstChild) {
       el.appendChild(source.firstChild)
     }
+    if (shiny) shiny.bindAll(el)
+
     return () => {
+      if (shiny) shiny.unbindAll(el)
       while (el.firstChild) {
         source.appendChild(el.firstChild)
       }
     }
-  }, [source])
+  }, [source, shiny])
 
   return <div ref={ref} className={className} />
 }
