@@ -54,7 +54,7 @@ export const ChatGreeting = memo(function ChatGreeting({
       }
     }
 
-    el.addEventListener("animationend", onAnimationEnd, { once: true })
+    el.addEventListener("animationend", onAnimationEnd)
     return () => el.removeEventListener("animationend", onAnimationEnd)
   }, [dismissing, reducedMotion, dispatch])
 
