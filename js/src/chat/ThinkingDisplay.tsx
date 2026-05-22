@@ -11,6 +11,7 @@ import type { ThinkingBlock } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
 import { useChatStopScroll } from "./context"
+import { usePrefersReducedMotion } from "./usePrefersReducedMotion"
 
 interface ThinkingDisplayProps {
   thinking: ThinkingBlock
@@ -62,21 +63,6 @@ function useDisplayedTopic(topic: string | null | undefined): string | null {
 }
 
 const FADE_DURATION_MS = 200
-
-function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-  )
-  useEffect(() => {
-    const mql = window.matchMedia("(prefers-reduced-motion: reduce)")
-    const handler = (e: MediaQueryListEvent) => setReduced(e.matches)
-    mql.addEventListener("change", handler)
-    return () => mql.removeEventListener("change", handler)
-  }, [])
-  return reduced
-}
 
 function useFadingText(text: string): { visible: string; fading: boolean } {
   const reducedMotion = usePrefersReducedMotion()
