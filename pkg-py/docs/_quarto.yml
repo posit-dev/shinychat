@@ -71,6 +71,18 @@ quartodoc:
         - Chat
         - chat_ui
         - chat_greeting
+    - title: Chat Module
+      options:
+        signature_name: relative
+        include_imports: false
+        include_inherited: false
+        include_attributes: true
+        include_classes: true
+        include_functions: true
+      contents:
+        - chat_mod_ui
+        - chat_mod_server
+        - ChatServerState
     - title: Shiny Express
       options:
         signature_name: relative
