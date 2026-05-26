@@ -286,8 +286,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    fill<span class="op">=</span><span class="va">True</span>,</span>
 <span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    icon_assistant<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    enable_cancel<span class="op">=</span><span class="va">False</span>,</span>
-<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs,</span>
-<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    footer<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs,</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>UI container for a chat component (Shiny Core).</p>
 <p>This function is for locating a :class:<code>~shiny.ui.Chat</code> instance in a Shiny Core app. If you are using Shiny Express, use the :method:<code>~shiny.ui.Chat.ui</code> method instead.</p>
 <section id="parameters" class="level2 doc-section doc-section-parameters">
@@ -357,6 +358,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td><code>False</code></td>
 </tr>
 <tr class="even">
+<td>footer</td>
+<td><a href="`typing.Optional`">Optional</a>[<a href="`htmltools.TagChild`">TagChild</a>]</td>
+<td>Optional HTML content to display below the chat input. This can be any HTML content (tags, tag lists, or strings). Useful for adding disclaimers, attribution, or other information. The footer text is styled slightly smaller and lighter than body text by default. Customize with CSS properties <code>--shiny-chat-footer-font-size</code> and <code>--shiny-chat-footer-color</code> on the chat container or footer element.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="odd">
 <td>kwargs</td>
 <td><a href="`htmltools.TagAttrValue`">TagAttrValue</a></td>
 <td>Additional attributes for the chat container element.</td>
