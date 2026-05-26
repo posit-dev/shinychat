@@ -6,6 +6,8 @@
 
 ## New features and improvements
 
+* Added `footer` parameter to `chat_ui()` for displaying arbitrary HTML content below the chat input. Useful for disclaimers, attribution, or interactive toolbars. Styled with sensible defaults and customizable via `--shiny-chat-footer-font-size` and `--shiny-chat-footer-color` CSS custom properties. (#224)
+
 * Added `chat_greeting()` for creating welcome messages that appear when the chat is empty. Greetings can be set statically via `chat_ui(greeting=)` or dynamically from the server with `chat_set_greeting()`. They are automatically dismissed when the user sends their first message. A new `greeting_requested` input fires when the chat is visible, empty, and has no greeting, enabling LLM-generated welcome messages. `chat_mod_server(greeting=)` accepts a function for auto-generated greetings. (#217)
 
 * Tool result cards now render images and PDFs returned by ellmer tools. When a tool returns `content_image_file()`, `content_image_url()`, or `content_pdf_file()`, the result is displayed as an inline image or a PDF filename badge. Mixed content lists (e.g., `list(ContentText("summary"), content_image_file("plot.png"))`) are rendered with items interleaved in order. (#225)

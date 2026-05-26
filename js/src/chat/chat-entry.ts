@@ -12,6 +12,7 @@ const transport = getShinyTransport()
 
 const CHAT_INPUT_TAG = "shiny-chat-input"
 const CHAT_MESSAGE_TAG = "shiny-chat-message"
+const CHAT_FOOTER_TAG = "shiny-chat-footer"
 
 function parseInitialMessages(container: HTMLElement): ChatMessageData[] {
   const messageEls = container.querySelectorAll(CHAT_MESSAGE_TAG)
@@ -63,6 +64,7 @@ function parseInitialGreeting(
 
 class ChatContainerElement extends HTMLElement {
   private reactRoot: Root | null = null
+  private footerEl: Element | null = null
 
   connectedCallback() {
     if (this.reactRoot) return
@@ -79,6 +81,13 @@ class ChatContainerElement extends HTMLElement {
     const cancelId = `${elementId}_cancel`
 
     const initialMessages = parseInitialMessages(this)
+
+    if (!this.footerEl) {
+      this.footerEl = this.querySelector(CHAT_FOOTER_TAG)
+      // Detach from the DOM before React takes over this container.
+      // RawDOM later adopts the children, preserving their DOM state.
+      this.footerEl?.remove()
+    }
 
     const initialGreeting = parseInitialGreeting(this)
 
@@ -101,11 +110,13 @@ class ChatContainerElement extends HTMLElement {
         initialMessages,
         initialGreeting,
         enableCancel,
+        footerEl: this.footerEl ?? undefined,
       }),
     )
   }
 
   disconnectedCallback() {
+    transport.unbindAll(this)
     this.reactRoot?.unmount()
     this.reactRoot = null
   }

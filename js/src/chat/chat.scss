@@ -11,6 +11,9 @@ shiny-chat-container {
   grid-template-columns: 1fr;
   grid-template-rows: 1fr auto;
   margin: 0 auto;
+  &:has(.shiny-chat-footer) {
+    grid-template-rows: 1fr auto auto;
+  }
   gap: 0;
   padding: var(--_chat-container-padding);
   padding-bottom: 0; // Bottom padding is on input element
@@ -224,6 +227,17 @@ shiny-chat-container {
       color: var(--bs-danger, #dc3545);
     }
   }
+}
+
+.shiny-chat-footer {
+  --shiny-chat-footer-font-size: 0.8125em;
+  --shiny-chat-footer-color: var(--bs-secondary-color, #6c757d);
+
+  font-size: var(--shiny-chat-footer-font-size);
+  color: var(--shiny-chat-footer-color);
+  text-align: center;
+  padding-block: 0.25rem;
+  padding-inline: var(--_chat-container-padding);
 }
 
 /*
