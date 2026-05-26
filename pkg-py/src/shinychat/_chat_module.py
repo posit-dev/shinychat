@@ -65,7 +65,8 @@ def chat_mod_ui(
     UI for a batteries-included chat module.
 
     Use with :func:`~shinychat.chat_mod_server` to create a complete chat interface
-    that automatically wires a chatlas client to the chat UI.
+    that automatically wires a chatlas client to the chat UI. Stream cancellation is
+    enabled by default.
 
     Parameters
     ----------
@@ -141,7 +142,7 @@ class ChatServerState:
         """
         return self._last_input_rv()
 
-    def last_turn(self) -> Any:
+    def last_turn(self) -> Optional[Any]:
         """
         Reactively read the last assistant turn.
 
@@ -161,7 +162,8 @@ class ChatServerState:
     @property
     def client(self) -> chatlas.Chat[Any, Any]:
         """
-        The current chatlas client.
+        The current chatlas client. Not reactive — reading this in a reactive context
+        does not create a dependency.
         """
         return self._client_ref[0]
 
@@ -195,7 +197,7 @@ class ChatServerState:
         self,
         response: Any,
         *,
-        role: str = "assistant",
+        role: Literal["assistant", "user"] = "assistant",
         icon: Optional[Union[HTML, Tag, TagList]] = None,
     ) -> None:
         """
@@ -222,7 +224,7 @@ class ChatServerState:
 
     async def clear(
         self,
-        messages: Optional[list[Any]] = None,
+        messages: Optional[list[Union[dict[str, str], str]]] = None,
         greeting: bool = False,
         client_history: Literal["clear", "set", "append", "keep"] = "clear",
     ) -> None:
@@ -236,8 +238,9 @@ class ChatServerState:
             dict with ``role`` and ``content`` keys, or a string (treated as an assistant
             message).
         greeting
-            If ``True``, also clear the greeting, which causes the
-            ``{id}_greeting_requested`` input to fire again.
+            If ``True``, also clear the greeting. If the module was created with a
+            greeting function, the function will be called again to generate a new
+            greeting.
         client_history
             How to handle the chatlas client's turn history:
 
@@ -309,10 +312,10 @@ def chat_mod_server(
 
         - A static string, :class:`~htmltools.HTML`, :class:`~htmltools.TagList`, or
           :func:`~shinychat.chat_greeting`.
-        - A callable that returns a greeting. The callable may optionally accept a
-          ``client`` argument; if so, a fresh clone of ``client`` (with empty turn
-          history) is passed to it. The callable is re-invoked each time
-          ``{id}_greeting_requested`` fires (on first view and after ``clear()``).
+        - A callable (sync or async) that returns a greeting. The callable may
+          optionally accept a ``client`` argument; if so, a fresh clone of ``client``
+          (with empty turn history) is passed to it. The callable is re-invoked each
+          time the chat needs a greeting (on first view and after ``clear()``).
     bookmark_on_response
         Whether to trigger a bookmark when the assistant finishes responding.
 
