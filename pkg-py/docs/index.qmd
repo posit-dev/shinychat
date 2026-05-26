@@ -121,6 +121,29 @@ Key points:
 - Pass the controller to `stream_async(controller=ctrl)` so chatlas can honour the cancellation signal.
 - The cancel input fires as `input.<id>_cancel` (e.g. `input.chat_cancel`). Observe it with `@reactive.event` to call `ctrl.cancel()`. This is needed in both Express and Core apps.
 - Partial responses are automatically preserved in chat history by chatlas when a stream is cancelled.
+- If you use `chat_mod_server()`, cancellation is handled automatically — no manual wiring needed.
+
+## Chat module
+
+For Shiny Core apps that use [chatlas](https://posit-dev.github.io/chatlas/), `chat_mod_ui()` and `chat_mod_server()` provide a batteries-included chat interface that handles streaming, cancellation, and bookmarking automatically.
+
+```{.python file="app.py"}
+from shiny import App, ui
+from chatlas import ChatAnthropic
+from shinychat import chat_mod_ui, chat_mod_server
+
+app_ui = ui.page_fillable(
+    chat_mod_ui("chat"),
+)
+
+def server(input, output, session):
+    client = ChatAnthropic(system_prompt="You are a helpful assistant.")
+    chat = chat_mod_server("chat", client=client)
+
+app = App(app_ui, server)
+```
+
+The returned `ChatServerState` object provides reactive accessors like `chat.status()` and `chat.last_turn()`, along with methods like `chat.set_client()` for swapping models mid-session. See the [API reference](api/index.qmd) for the full interface.
 
 ## Learn more
 
