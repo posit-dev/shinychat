@@ -33,6 +33,20 @@ __all__ = (
 )
 
 
+def _messages_to_turns(messages: list[dict[str, str]]) -> list[Any]:
+    from chatlas import AssistantTurn, UserTurn
+
+    turns: list[Any] = []
+    for msg in messages:
+        role = msg.get("role", "assistant")
+        content = msg.get("content", "")
+        if role == "user":
+            turns.append(UserTurn(content))
+        else:
+            turns.append(AssistantTurn(content))
+    return turns
+
+
 def chat_mod_ui(
     id: str,
     *,
@@ -275,7 +289,6 @@ def chat_mod_server(
     greeting: Optional[
         Union[str, HTML, TagList, ChatGreeting, Callable[..., Any]]
     ] = None,
-    bookmark_on_input: bool = True,
     bookmark_on_response: bool = True,
 ) -> ChatServerState:
     """
@@ -300,8 +313,6 @@ def chat_mod_server(
           ``client`` argument; if so, a fresh clone of ``client`` (with empty turn
           history) is passed to it. The callable is re-invoked each time
           ``{id}_greeting_requested`` fires (on first view and after ``clear()``).
-    bookmark_on_input
-        Whether to trigger a bookmark when the user submits a message.
     bookmark_on_response
         Whether to trigger a bookmark when the assistant finishes responding.
 
@@ -328,7 +339,6 @@ def chat_mod_server(
         session: Any,
         client: Any,
         greeting: Any,
-        bookmark_on_input: bool,
         bookmark_on_response: bool,
     ) -> ChatServerState:
         chat = Chat("chat")
@@ -430,9 +440,10 @@ def chat_mod_server(
             if client_history == "clear":
                 client_ref[0].set_turns([])
             elif client_history == "set":
-                client_ref[0].set_turns([])
+                client_ref[0].set_turns(_messages_to_turns(normalized))
             elif client_history == "append":
-                pass
+                existing = client_ref[0].get_turns()
+                client_ref[0].set_turns(existing + _messages_to_turns(normalized))
             # "keep" does nothing
 
             _last_turn.set(None)
@@ -486,6 +497,5 @@ def chat_mod_server(
         id,
         client=client,
         greeting=greeting,
-        bookmark_on_input=bookmark_on_input,
         bookmark_on_response=bookmark_on_response,
     )

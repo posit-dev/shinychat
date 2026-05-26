@@ -12,15 +12,14 @@ def test_chat_module_renders(page: Page, local_app: ShinyAppProc) -> None:
     expect(chat.loc).to_be_visible(timeout=30_000)
 
 
-def test_chat_module_cancel_button_present(
+def test_chat_module_cancel_enabled(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     page.goto(local_app.url)
 
     chat = ChatController(page, "chatmod-chat")
     expect(chat.loc).to_be_visible(timeout=30_000)
-    cancel_btn = chat.loc.locator(".shiny-chat-btn-cancel")
-    expect(cancel_btn).to_be_hidden()
+    expect(chat.loc).to_have_attribute("enable-cancel", "")
 
 
 def test_chat_module_submit_and_receive_response(
