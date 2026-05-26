@@ -16,6 +16,7 @@ import { MessageErrorBoundary } from "./MessageErrorBoundary"
 import { ChatInput, type ChatInputHandle } from "./ChatInput"
 import { ScrollToBottomButton } from "./ScrollToBottomButton"
 import { ExternalLinkDialogComponent } from "./ExternalLinkDialog"
+import { RawDOM } from "./RawDOM"
 import { ChatScrollContext, useChatDispatch } from "./context"
 import type { ChatMessageData, GreetingData } from "./state"
 import type { ChatTransport } from "../transport/types"
@@ -38,6 +39,7 @@ export interface ChatContainerProps {
   cancelId?: string
   enableCancel?: boolean
   cancelRequested?: boolean
+  footerEl?: Element
 }
 
 export type ChatContainerHandle = ChatInputHandle
@@ -58,6 +60,7 @@ export const ChatContainer = forwardRef<
     cancelId,
     enableCancel,
     cancelRequested,
+    footerEl,
   },
   ref,
 ) {
@@ -406,6 +409,8 @@ export const ChatContainer = forwardRef<
           onCancel={cancelStream}
         />
       </div>
+
+      {footerEl && <RawDOM source={footerEl} className="shiny-chat-footer" />}
 
       {pendingUrl &&
         createPortal(
