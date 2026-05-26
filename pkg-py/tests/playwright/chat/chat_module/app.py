@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from shiny import App, Inputs, Outputs, Session, reactive, render, ui
-
+from shiny import App, Inputs, Outputs, Session, render, ui
 from shinychat import chat_mod_server, chat_mod_ui
 
 

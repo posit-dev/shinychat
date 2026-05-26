@@ -224,7 +224,9 @@ class ChatServerState:
             await self._chat.append_message_stream(response, icon=stream_icon)
         else:
             msg: ChatMessageDict = {
-                "content": str(response) if not isinstance(response, (HTML, Tag, TagList)) else response,  # type: ignore[typeddict-item]
+                "content": str(response)
+                if not isinstance(response, (HTML, Tag, TagList))
+                else response,  # type: ignore[typeddict-item]
                 "role": role,  # type: ignore[typeddict-item]
             }
             await self._chat.append_message(msg, icon=icon)
@@ -274,7 +276,9 @@ class ChatServerState:
         """
         await self._set_greeting_fn(greeting)
 
-    def set_client(self, new_client: chatlas.Chat[Any, Any], *, sync: bool = True) -> None:
+    def set_client(
+        self, new_client: chatlas.Chat[Any, Any], *, sync: bool = True
+    ) -> None:
         """
         Replace the chatlas client.
 
@@ -356,8 +360,12 @@ def chat_mod_server(
 
         _last_input: reactive.Value[Optional[str]] = reactive.Value(None)
         _last_turn: reactive.Value[Any] = reactive.Value(None)
-        _status: reactive.Value[Literal["streaming", "idle"]] = reactive.Value("idle")
-        _pending_swap: reactive.Value[Optional[dict[str, Any]]] = reactive.Value(None)
+        _status: reactive.Value[Literal["streaming", "idle"]] = reactive.Value(
+            "idle"
+        )
+        _pending_swap: reactive.Value[Optional[dict[str, Any]]] = (
+            reactive.Value(None)
+        )
 
         def _swap_client(new_client: Any, sync: bool) -> None:
             if sync:
@@ -392,7 +400,9 @@ def chat_mod_server(
         async def _handle_submit(user_input: str) -> None:
             _last_input.set(user_input)
             _status.set("streaming")
-            response = await client_ref[0].stream_async(user_input, content="all")
+            response = await client_ref[0].stream_async(
+                user_input, content="all"
+            )
             await chat.append_message_stream(response)
 
         @reactive.effect
@@ -434,18 +444,24 @@ def chat_mod_server(
                     if isinstance(msg, str):
                         normalized.append({"role": "assistant", "content": msg})
                     elif isinstance(msg, dict):
-                        normalized.append({
-                            "role": msg.get("role", "assistant"),
-                            "content": str(msg.get("content", "")),
-                        })
+                        normalized.append(
+                            {
+                                "role": msg.get("role", "assistant"),
+                                "content": str(msg.get("content", "")),
+                            }
+                        )
                     else:
-                        normalized.append({"role": "assistant", "content": str(msg)})
+                        normalized.append(
+                            {"role": "assistant", "content": str(msg)}
+                        )
 
                 for msg in normalized:
-                    await chat.append_message({
-                        "content": msg["content"],
-                        "role": msg["role"],
-                    })
+                    await chat.append_message(
+                        {
+                            "content": msg["content"],
+                            "role": msg["role"],
+                        }
+                    )
 
             if client_history == "clear":
                 client_ref[0].set_turns([])
@@ -453,7 +469,9 @@ def chat_mod_server(
                 client_ref[0].set_turns(_messages_to_turns(normalized))
             elif client_history == "append":
                 existing = client_ref[0].get_turns()
-                client_ref[0].set_turns(existing + _messages_to_turns(normalized))
+                client_ref[0].set_turns(
+                    existing + _messages_to_turns(normalized)
+                )
             # "keep" does nothing
 
             _last_turn.set(None)

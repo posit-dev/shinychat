@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, cast
+from typing import cast
 
 import pytest
-from htmltools import HTML, Tag, TagList, tags
+from htmltools import HTML, Tag, tags
 from shiny import Session
 from shiny.module import ResolvedId
 from shiny.session import session_context
-
-from shinychat import ChatServerState, chat_mod_ui, chat_mod_server
-
+from shinychat import ChatServerState, chat_mod_ui
 
 # ---------------------------------------------------------------------------
 # Helpers
