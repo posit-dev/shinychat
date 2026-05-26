@@ -382,7 +382,7 @@ def chat_mod_server(
         async def _handle_submit(user_input: str) -> None:
             _last_input.set(user_input)
             _status.set("streaming")
-            response = client_ref[0].stream_async(user_input, content="all")
+            response = await client_ref[0].stream_async(user_input, content="all")
             await chat.append_message_stream(response)
 
         @reactive.effect
