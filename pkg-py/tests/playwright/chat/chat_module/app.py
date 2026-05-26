@@ -12,7 +12,7 @@ class MockChat:
         self._system_prompt: str = ""
         self._tools: list[Any] = []
 
-    def stream_async(self, user_input: str, content: str = "all"):
+    async def stream_async(self, user_input: str, content: str = "all"):
         async def _stream():
             for word in f"Echo: {user_input}".split():
                 yield word + " "
