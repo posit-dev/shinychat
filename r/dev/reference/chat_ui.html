@@ -83,7 +83,8 @@ enter new messages.</p>
 <span>  height <span class="op">=</span> <span class="st">"auto"</span>,</span>
 <span>  fill <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  icon_assistant <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  enable_cancel <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span>  enable_cancel <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  footer <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -153,6 +154,15 @@ allows the user to cancel the in-progress response. When using
 usage with <code>chat_ui()</code>, observe <code>input$&lt;id&gt;_cancel</code> to handle cancellation
 (e.g., by calling <code>ctrl$cancel()</code> on an ellmer <code>stream_controller()</code>).
 Defaults to <code>FALSE</code>.</p></dd>
+
+
+<dt id="arg-footer">footer<a class="anchor" aria-label="anchor" href="#arg-footer"></a></dt>
+<dd><p>Optional HTML content to display below the chat input.
+This can be any HTML content (tags, tag lists, or character strings).
+Useful for adding disclaimers, attribution, or other information.
+The footer text is styled slightly smaller and lighter than body text
+by default. Customize with CSS properties <code>--shiny-chat-footer-font-size</code>
+and <code>--shiny-chat-footer-color</code> on the chat container or footer element.</p></dd>
 
 </dl></div>
     <div class="section level2">

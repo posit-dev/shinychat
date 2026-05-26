@@ -23,7 +23,8 @@ chat_ui(
   height = "auto",
   fill = TRUE,
   icon_assistant = NULL,
-  enable_cancel = FALSE
+  enable_cancel = FALSE,
+  footer = NULL
 )
 ```
 
@@ -105,6 +106,15 @@ chat_ui(
   `chat_ui()`, observe `input$<id>_cancel` to handle cancellation (e.g.,
   by calling `ctrl$cancel()` on an ellmer `stream_controller()`).
   Defaults to `FALSE`.
+
+- footer:
+
+  Optional HTML content to display below the chat input. This can be any
+  HTML content (tags, tag lists, or character strings). Useful for
+  adding disclaimers, attribution, or other information. The footer text
+  is styled slightly smaller and lighter than body text by default.
+  Customize with CSS properties `--shiny-chat-footer-font-size` and
+  `--shiny-chat-footer-color` on the chat container or footer element.
 
 ## Value
 

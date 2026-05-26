@@ -15,6 +15,14 @@
 
 ### New features and improvements
 
+- Added `footer` parameter to
+  [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
+  for displaying arbitrary HTML content below the chat input. Useful for
+  disclaimers, attribution, or interactive toolbars. Styled with
+  sensible defaults and customizable via `--shiny-chat-footer-font-size`
+  and `--shiny-chat-footer-color` CSS custom properties.
+  ([\#224](https://github.com/posit-dev/shinychat/issues/224))
+
 - Added
   [`chat_greeting()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_greeting.md)
   for creating welcome messages that appear when the chat is empty.
