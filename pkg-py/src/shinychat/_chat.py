@@ -81,6 +81,8 @@ if TYPE_CHECKING:
     from shiny.types import Jsonifiable
     from shiny.ui.css import CssUnit
 
+    from ._chat_auto import ChatAutoServer
+
 
 else:
     chatlas = object
@@ -1672,12 +1674,6 @@ class Chat:
 
             When this method triggers a bookmark, it also updates the URL query string to reflect the bookmarked state.
 
-
-        Raises
-        ------
-        ValueError
-            If the Shiny App does have bookmarking enabled.
-
         Returns
         -------
         :
@@ -1689,12 +1685,6 @@ class Chat:
         session = get_current_session()
         if session is None or session.is_stub_session():
             return BookmarkCancelCallback(lambda: None)
-
-        if session.bookmark.store == "disable":
-            raise ValueError(
-                "Bookmarking requires a `bookmark_store` to be set. "
-                "Please set `bookmark_store=` in `shiny.App()` or `shiny.express.app_opts()."
-            )
 
         resolved_bookmark_id_str = str(self.id)
         resolved_bookmark_id_msgs_str = resolved_bookmark_id_str + "--msgs"
@@ -1913,6 +1903,67 @@ class ChatExpress(Chat):
             **kwargs,
         )
 
+    def ui_auto(
+        self,
+        client: "chatlas.Chat[Any, Any]",
+        *,
+        greeting: "str | HTML | Tag | TagList | ChatGreeting | Callable[..., Any] | None" = None,
+        bookmark_on: "Optional[Literal['response']]" = "response",
+        **kwargs: Any,
+    ) -> "ChatAutoServer":
+        """
+        Create a UI element and wire up a chatlas client for this `Chat`.
+
+        This is a convenience method that combines :meth:`ui` and
+        :func:`~shinychat.chat_auto_server` into a single call. It creates the
+        chat UI and registers handlers for streaming, cancellation, and optional
+        bookmarking.
+
+        Parameters
+        ----------
+        client
+            A chatlas ``Chat`` instance used to generate responses.
+        greeting
+            An optional greeting to display at the top of the chat before any
+            conversation messages. Can be a markdown string, an
+            :class:`~htmltools.HTML` object, a :class:`~htmltools.Tag`, a
+            :class:`~shinychat.ChatGreeting`, or a callable that returns any of
+            the above.
+        bookmark_on
+            When to trigger a bookmark. Passed to
+            :meth:`~shinychat.Chat.enable_bookmarking`.
+        kwargs
+            Additional keyword arguments forwarded to :func:`~shinychat.chat_ui`.
+
+        Returns
+        -------
+        :
+            A :class:`~shinychat.ChatAutoServer` that exposes the wired-up chat.
+        """
+        from ._chat_auto import chat_auto_server
+
+        if callable(greeting) and not isinstance(
+            greeting, (str, HTML, Tag, TagList, ChatGreeting)
+        ):
+            ui_greeting = None
+        else:
+            ui_greeting = greeting  # type: ignore[assignment]
+        tag = chat_ui(
+            id=self.id,
+            enable_cancel=True,
+            greeting=ui_greeting,
+            **kwargs,
+        )
+
+        result = chat_auto_server(
+            self.id,
+            client,
+            greeting=greeting,
+            bookmark_on=bookmark_on,
+        )
+        result._tag = tag
+        return result
+
     def enable_bookmarking(
         self,
         client: "ClientWithState | chatlas.Chat[Any, Any]",
@@ -1946,11 +1997,6 @@ class ChatExpress(Chat):
             - `None`: no bookmark is triggered
 
             When this method triggers a bookmark, it also updates the URL query string to reflect the bookmarked state.
-
-        Raises
-        ------
-        ValueError
-            If the Shiny App does have bookmarking enabled.
 
         Returns
         -------

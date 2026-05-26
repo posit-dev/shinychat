@@ -7,7 +7,7 @@ pagetitle: "Get Started"
 <!-- badges: start -->
 <!-- badges: end -->
 
-**shinychat** provides a [Shiny](https://shiny.posit.co/py) toolkit for building generative AI applications like chatbots and streaming content. It works best with [chatlas](https://posit-dev.github.io/chatlas/), but also works great with other LLM frameworks such as LangChain, Pydantic AI, and more.
+**shinychat** provides a [Shiny](https://shiny.posit.co/py) toolkit for building generative AI chatbots. It works best with [chatlas](https://posit-dev.github.io/chatlas/), but also supports other LLM frameworks such as LangChain, Pydantic AI, and more.
 
 ## Installation
 
@@ -29,22 +29,41 @@ Or, install the development version of shinychat from [GitHub](https://github.co
 uv pip install git+https://github.com/posit-dev/shinychat.git
 ```
 
-## Starter example
+## Quick start
 
-With shiny installed, you're ready to run your first shinychat app. Create a new file named `app.py` with the following content:
+The fastest way to build a chatbot with shinychat is to hand a [chatlas](https://posit-dev.github.io/chatlas/) client to `ui_auto()` (Express) or `chat_auto_ui()`/`chat_auto_server()` (Core). This gives you streaming, cancellation, bookmarking, and more out of the box — no manual wiring required.
+
+**Shiny Express**
 
 ```{.python file="app.py"}
+from chatlas import ChatAnthropic
+from shiny.express import app_opts, ui
 from shinychat.express import Chat
 
-# Create a chat instance and display it
+client = ChatAnthropic(system_prompt="You are a helpful assistant.")
 chat = Chat(id="chat")
-chat.ui()
+chat.ui_auto(client)
 
-# Define a callback to run when the user submits a message
-@chat.on_user_submit
-async def handle_user_input(user_input: str):
-    # Simply echo the user's input back to them
-    await chat.append_message(f"You said: {user_input}")
+ui.page_opts(fillable=True)
+app_opts(bookmark_store="url")
+```
+
+**Shiny Core**
+
+```{.python file="app.py"}
+from shiny import App, ui
+from chatlas import ChatAnthropic
+from shinychat import chat_auto_ui, chat_auto_server
+
+app_ui = ui.page_fillable(
+    chat_auto_ui("chat"),
+)
+
+def server(input, output, session):
+    client = ChatAnthropic(system_prompt="You are a helpful assistant.")
+    chat = chat_auto_server("chat", client=client)
+
+app = App(app_ui, server, bookmark_store="url")
 ```
 
 To run the app, execute the following command in your terminal (or via the [Shiny extension](https://marketplace.visualstudio.com/items?itemName=Posit.shiny)):
@@ -53,12 +72,28 @@ To run the app, execute the following command in your terminal (or via the [Shin
 uv shiny run --reload app.py
 ```
 
+The returned `ChatAutoServer` object provides a read/write `.client` property for swapping models mid-session and `.clear()` for resetting the conversation. For lower-level chat methods such as appending messages, updating the input, or inspecting stream state, use `chat.chat.<method>()` on the underlying `Chat` instance. See the [API reference](api/index.qmd) for the full interface.
 
-## Stream cancellation
+## Lower-level interface
 
-shinychat supports cancelling in-progress AI response streams. Set `enable_cancel=True` when creating the chat UI to show a stop button during streaming. Users can also press Escape while the chat has focus to cancel.
+When you need full control over the server-side logic — or you're using an LLM framework other than chatlas — use `Chat`/`chat_ui` directly. This means wiring up streaming, cancellation, and bookmarking yourself, but gives you complete flexibility over how messages are generated and displayed.
 
-For cooperative cancellation, [chatlas](https://posit-dev.github.io/chatlas/) provides a `StreamController` that you pass to `stream_async()`. The controller automatically resets itself between streams, so you only need to create it once.
+Here's a minimal echo example:
+
+```{.python file="app.py"}
+from shinychat.express import Chat
+
+chat = Chat(id="chat")
+chat.ui()
+
+@chat.on_user_submit
+async def handle_user_input(user_input: str):
+    await chat.append_message(f"You said: {user_input}")
+```
+
+### Stream cancellation
+
+When using the lower-level interface with chatlas, you'll need to wire up cancellation manually. Set `enable_cancel=True` on the chat UI to show a stop button during streaming, then use a `StreamController` to handle the cancellation signal.
 
 **Shiny Express**
 
@@ -119,7 +154,7 @@ Key points:
 - `enable_cancel=True` shows the stop button while a response is streaming.
 - `StreamController()` is created once and reused — it automatically resets between streams.
 - Pass the controller to `stream_async(controller=ctrl)` so chatlas can honour the cancellation signal.
-- The cancel input fires as `input.<id>_cancel` (e.g. `input.chat_cancel`). Observe it with `@reactive.event` to call `ctrl.cancel()`. This is needed in both Express and Core apps.
+- The cancel input fires as `input.<id>_cancel` (e.g. `input.chat_cancel`). Observe it with `@reactive.event` to call `ctrl.cancel()`.
 - Partial responses are automatically preserved in chat history by chatlas when a stream is cancelled.
 
 ## Learn more
