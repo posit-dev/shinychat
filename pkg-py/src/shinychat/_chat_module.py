@@ -53,6 +53,7 @@ def chat_mod_ui(
     messages: Optional[
         Iterable[Union[str, TagChild, ChatMessageDict, ChatMessage, Any]]
     ] = None,
+    greeting: Optional[Union[str, HTML, Tag, TagList, ChatGreeting]] = None,
     placeholder: str = "Enter a message...",
     width: CssUnit = "min(680px, 100%)",
     height: CssUnit = "auto",
@@ -74,6 +75,11 @@ def chat_mod_ui(
         The module ID. Must match the ``id`` passed to :func:`~shinychat.chat_mod_server`.
     messages
         Initial messages to display in the chat.
+    greeting
+        A static greeting to display at the top of the chat before any conversation
+        messages. Can be a markdown string or a :func:`~shinychat.chat_greeting` object.
+        For dynamic or streaming greetings, use the ``greeting`` parameter of
+        :func:`~shinychat.chat_mod_server` instead.
     placeholder
         Placeholder text for the chat input.
     width
@@ -96,6 +102,7 @@ def chat_mod_ui(
     return chat_ui(
         ResolvedId(f"{resolved}-chat"),
         messages=messages,
+        greeting=greeting,
         enable_cancel=True,
         placeholder=placeholder,
         width=width,
