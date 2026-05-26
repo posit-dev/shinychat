@@ -145,7 +145,7 @@ dynamically. See the <strong>Greeting</strong> section below for details.</p></d
 <ul><li><p><code>chat_app()</code> returns a <code><a href="https://rdrr.io/pkg/shiny/man/shinyApp.html" class="external-link">shiny::shinyApp()</a></code> object.</p></li>
 <li><p><code>chat_mod_ui()</code> returns the UI for a shinychat module.</p></li>
 <li><p><code>chat_mod_server()</code> includes the shinychat module server logic, and
-returns a list containing:</p><ul><li><p><code>last_input</code>: A reactive value containing the last user input.</p></li>
+returns an environment containing:</p><ul><li><p><code>last_input</code>: A reactive value containing the last user input.</p></li>
 <li><p><code>last_turn</code>: A reactive value containing the last assistant turn.</p></li>
 <li><p><code>update_user_input()</code>: A function to update the chat input or submit a
 new user input. Takes the same arguments as <code><a href="update_chat_user_input.html">update_chat_user_input()</a></code>,
@@ -169,7 +169,19 @@ while a greeting is already streaming, the new greeting is queued.
 If the greeting has already been dismissed, calling <code>set_greeting()</code>
 updates the content but does not make it visible again; call
 <code>clear(greeting = TRUE)</code> first to show a new greeting after dismissal.</p></li>
-<li><p><code>client</code>: The chat client object, which is mutated as you chat.</p></li>
+<li><p><code>status</code>: A reactive value indicating the current chat interaction
+state. Returns <code>"idle"</code> when no response is in progress, or
+<code>"streaming"</code> while a response is actively being received.</p></li>
+<li><p><code>client</code>: The current chat client object (an active binding that
+always reflects the latest client, even after <code>set_client()</code>
+is called).</p></li>
+<li><p><code>set_client(new_client, sync = TRUE)</code>: Replace the chat client used by
+the module. When <code>sync</code> is <code>TRUE</code> (the default), the new client
+inherits conversation turns, system prompt, and tools from the previous
+client so the conversation continues seamlessly. Set <code>sync = FALSE</code> to
+use the new client as-is. If a response is currently streaming, the
+swap is deferred until the stream completes. If called multiple times
+while streaming, only the most recent new client is used.</p></li>
 </ul></li>
 </ul></div>
     <div class="section level2">

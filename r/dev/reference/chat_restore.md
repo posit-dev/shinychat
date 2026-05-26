@@ -27,6 +27,7 @@ chat_restore(
   ...,
   bookmark_on_input = TRUE,
   bookmark_on_response = TRUE,
+  restore_ui = TRUE,
   session = getDefaultReactiveDomain()
 )
 ```
@@ -55,13 +56,23 @@ chat_restore(
   A logical value determines if the bookmark should be updated when the
   response stream completes. Default is `TRUE`.
 
+- restore_ui:
+
+  Whether to render the client's existing turns into the chat UI on
+  registration. Default is `TRUE`. Set to `FALSE` when re-registering
+  bookmarks after a client swap (where the UI already reflects the
+  conversation).
+
 - session:
 
   The Shiny session object
 
 ## Value
 
-Returns nothing (`invisible(NULL)`).
+Invisibly returns a function that, when called, cancels all bookmark
+registrations made by this call. This is useful when swapping the chat
+client: cancel the previous bookmarks, then call `chat_restore()` again
+with the new client.
 
 ## Examples
 

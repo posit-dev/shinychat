@@ -93,7 +93,7 @@ chat_mod_server(
 - `chat_mod_ui()` returns the UI for a shinychat module.
 
 - `chat_mod_server()` includes the shinychat module server logic, and
-  returns a list containing:
+  returns an environment containing:
 
   - `last_input`: A reactive value containing the last user input.
 
@@ -131,7 +131,22 @@ chat_mod_server(
     but does not make it visible again; call `clear(greeting = TRUE)`
     first to show a new greeting after dismissal.
 
-  - `client`: The chat client object, which is mutated as you chat.
+  - `status`: A reactive value indicating the current chat interaction
+    state. Returns `"idle"` when no response is in progress, or
+    `"streaming"` while a response is actively being received.
+
+  - `client`: The current chat client object (an active binding that
+    always reflects the latest client, even after `set_client()` is
+    called).
+
+  - `set_client(new_client, sync = TRUE)`: Replace the chat client used
+    by the module. When `sync` is `TRUE` (the default), the new client
+    inherits conversation turns, system prompt, and tools from the
+    previous client so the conversation continues seamlessly. Set
+    `sync = FALSE` to use the new client as-is. If a response is
+    currently streaming, the swap is deferred until the stream
+    completes. If called multiple times while streaming, only the most
+    recent new client is used.
 
 ## Functions
 
