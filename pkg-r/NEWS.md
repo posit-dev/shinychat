@@ -6,6 +6,12 @@
 
 ## New features and improvements
 
+* `chat_mod_server()` now returns a `set_client(new_client, sync = TRUE)` function for swapping the chat client used by the module at runtime. When `sync = TRUE` (the default), the new client inherits the current conversation's turns, system prompt, and tools so the conversation continues seamlessly. If a response is currently streaming, the swap is deferred until the stream completes. (#227)
+
+* `chat_mod_server()` now returns a `status` reactive that reports the current interaction state: `"idle"` when no response is in progress, or `"streaming"` while a response is actively being received. (#227)
+
+* `chat_restore()` now invisibly returns a cancel function that tears down all bookmark registrations made by that call. This is useful when swapping the chat client via `set_client()`, which handles the re-registration automatically. (#227)
+
 * Added `footer` parameter to `chat_ui()` for displaying arbitrary HTML content below the chat input. Useful for disclaimers, attribution, or interactive toolbars. Styled with sensible defaults and customizable via `--shiny-chat-footer-font-size` and `--shiny-chat-footer-color` CSS custom properties. (#224)
 
 * Added `chat_greeting()` for creating welcome messages that appear when the chat is empty. Greetings can be set statically via `chat_ui(greeting=)` or dynamically from the server with `chat_set_greeting()`. They are automatically dismissed when the user sends their first message. A new `greeting_requested` input fires when the chat is visible, empty, and has no greeting, enabling LLM-generated welcome messages. `chat_mod_server(greeting=)` accepts a function for auto-generated greetings. (#217)

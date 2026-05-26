@@ -23,8 +23,15 @@
 #' @param ... Used for future parameter expansion.
 #' @param bookmark_on_input A logical value determines if the bookmark should be updated when the user submits a message. Default is `TRUE`.
 #' @param bookmark_on_response A logical value determines if the bookmark should be updated when the response stream completes. Default is `TRUE`.
+#' @param restore_ui Whether to render the client's existing turns into the
+#'   chat UI on registration. Default is `TRUE`. Set to `FALSE` when
+#'   re-registering bookmarks after a client swap (where the UI already reflects
+#'   the conversation).
 #' @param session The Shiny session object
-#' @returns Returns nothing (\code{invisible(NULL)}).
+#' @returns Invisibly returns a function that, when called, cancels all
+#'   bookmark registrations made by this call. This is useful when swapping
+#'   the chat client: cancel the previous bookmarks, then call
+#'   `chat_restore()` again with the new client.
 #'
 #' @examplesIf interactive()
 #' library(shiny)
@@ -61,6 +68,7 @@ chat_restore <- function(
   ...,
   bookmark_on_input = TRUE,
   bookmark_on_response = TRUE,
+  restore_ui = TRUE,
   session = getDefaultReactiveDomain()
 ) {
   rlang::check_dots_empty()
@@ -109,10 +117,13 @@ chat_restore <- function(
       state$values[[id]] <- client_state
     })
 
-  cancel_set_ui <- shiny::observe(label = "set_ui", {
-    client_set_ui(client, id = id)
-    cancel_set_ui$destroy()
-  })
+  cancel_set_ui <- NULL
+  if (restore_ui) {
+    cancel_set_ui <- shiny::observe(label = "set_ui", {
+      client_set_ui(client, id = id)
+      cancel_set_ui$destroy()
+    })
+  }
 
   # Restore
   cancel_on_restore_client <-
@@ -122,7 +133,9 @@ chat_restore <- function(
         return()
       }
 
-      cancel_set_ui$destroy()
+      if (!is.null(cancel_set_ui)) {
+        cancel_set_ui$destroy()
+      }
       client_set_state(client, client_state)
 
       # Set the UI
@@ -164,34 +177,23 @@ chat_restore <- function(
       })
   }
 
-  # Set callbacks to cancel if `chat_restore(id, client)` is called again with the same id
-  # Only allow for bookmarks for each chat once. Last bookmark method would win if all values were to be computed.
-  # Remove previous `on*()` methods under same hash (.. odd author behavior)
-  previous_info <- get_session_chat_bookmark_info(session, id)
-  if (!is.null(previous_info)) {
-    for (cancel_session_registration in previous_info$callbacks_to_cancel) {
-      try({
-        cancel_session_registration()
-      })
+  # Return a single cancel callback that tears down all registrations
+  cancel_all <- function() {
+    # session$onBookmark() and shiny::onBookmarked() return cancel functions
+    if (!is.null(cancel_on_bookmark_client)) {
+      cancel_on_bookmark_client()
     }
+    if (!is.null(cancel_on_restore_client)) {
+      cancel_on_restore_client()
+    }
+    if (!is.null(cancel_update_bookmark)) {
+      cancel_update_bookmark()
+    }
+    # observeEvent() returns an Observer with $destroy()
+    if (!is.null(cancel_bookmark_on_input)) cancel_bookmark_on_input$destroy()
   }
 
-  # Store callbacks to cancel in case a new call to `chat_restore(id, client)` is called with the same id
-  set_session_chat_bookmark_info(
-    session,
-    id,
-    value = list(
-      callbacks_to_cancel = c(
-        cancel_on_bookmark_client,
-        cancel_on_restore_client,
-        cancel_bookmark_on_input,
-        cancel_update_bookmark
-      )
-    )
-  )
-
-  # Don't return anything, even by chance
-  invisible(NULL)
+  invisible(cancel_all)
 }
 
 # Method currently hooked into `chat_append_stream()` and `markdown_stream()`
