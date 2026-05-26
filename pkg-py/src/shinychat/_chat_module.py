@@ -75,11 +75,11 @@ def chat_mod_ui(
     kwargs
         Additional attributes for the chat container element.
     """
-    from shiny.module import resolve_id
+    from shiny.module import ResolvedId, resolve_id
 
     resolved = resolve_id(id)
     return chat_ui(
-        f"{resolved}-chat",
+        ResolvedId(f"{resolved}-chat"),
         messages=messages,
         enable_cancel=True,
         placeholder=placeholder,
