@@ -53,7 +53,7 @@ app_ui = ui.page_fillable(
 
 def server(input: Inputs, output: Outputs, session: Session):
     client = MockChat()
-    state = chat_mod_server("chatmod", client=client)
+    state = chat_mod_server("chatmod", client=client)  # pyright: ignore[reportArgumentType]
 
     @output
     @render.text
