@@ -81,7 +81,7 @@ if TYPE_CHECKING:
     from shiny.types import Jsonifiable
     from shiny.ui.css import CssUnit
 
-    from ._chat_auto import ChatAutoServer
+    from ._chat_client import ChatClient
 
 
 else:
@@ -243,6 +243,9 @@ class Chat:
         self,
         id: str,
         *,
+        client: "chatlas.Chat[Any, Any] | None" = None,
+        greeting: "str | HTML | Tag | TagList | ChatGreeting | Callable[..., Any] | None" = None,
+        bookmark_on: "Optional[Literal['response']]" = "response",
         messages: Sequence[Any] = (),
         on_error: Literal["auto", "actual", "sanitize", "unhandled"] = "auto",
         tokenizer: TokenEncoding | None = None,
@@ -369,6 +372,68 @@ class Chat:
         if instance is not None:
             instance.destroy()
         CHAT_INSTANCES[instance_id] = self
+
+        self.client: "ChatClient | None" = None
+        if client is not None:
+            self._setup_client(client, greeting=greeting, bookmark_on=bookmark_on)
+
+    def _setup_client(
+        self,
+        client: "chatlas.Chat[Any, Any]",
+        *,
+        greeting: "str | HTML | Tag | TagList | ChatGreeting | Callable[..., Any] | None" = None,
+        bookmark_on: "Optional[Literal['response']]" = "response",
+    ) -> None:
+        from chatlas import StreamController
+        from shiny import reactive
+
+        from ._chat_client import ChatClient, setup_greeting
+
+        chat_client = ChatClient(
+            chat=self,
+            client=client,
+            bookmark_on=bookmark_on,
+        )
+        self.client = chat_client
+
+        controller = StreamController()
+
+        @self.on_user_submit
+        async def _on_user_submit(user_input: str) -> None:
+            response = await chat_client.value.stream_async(
+                user_input,
+                content="all",
+                controller=controller,
+            )
+            await self.append_message_stream(response)
+
+        cancel_input_id = f"{self.id}_cancel"
+
+        @reactive.effect
+        @reactive.event(self._session.input[cancel_input_id])
+        async def _on_cancel() -> None:
+            controller.cancel()
+
+        @reactive.effect
+        async def _on_stream_complete() -> None:
+            status = self.latest_message_stream.status()
+            if status == "running":
+                return
+
+            swap = chat_client._pending_swap
+            if swap is None:
+                return
+            chat_client._pending_swap = None
+            new_client, sync = swap
+            chat_client._swap_client(new_client, sync=sync)
+
+        self._effects.append(_on_cancel)
+        self._effects.append(_on_stream_complete)
+
+        cancel_bm = self.enable_bookmarking(client, bookmark_on=bookmark_on)
+        chat_client._cancel_bookmarking = cancel_bm
+
+        setup_greeting(self, chat_client, greeting, self._session)
 
     @overload
     def on_user_submit(self, fn: UserSubmitFunction) -> Effect_: ...
@@ -1674,6 +1739,12 @@ class Chat:
 
             When this method triggers a bookmark, it also updates the URL query string to reflect the bookmarked state.
 
+
+        Raises
+        ------
+        ValueError
+            If the Shiny App does have bookmarking enabled.
+
         Returns
         -------
         :
@@ -1840,7 +1911,7 @@ class ChatExpress(Chat):
         height: "CssUnit" = "auto",
         fill: bool = True,
         icon_assistant: HTML | Tag | TagList | None = None,
-        enable_cancel: bool = False,
+        enable_cancel: "bool | MISSING_TYPE" = MISSING,
         footer: Optional[TagChild] = None,
         **kwargs: TagAttrValue,
     ) -> Tag:
@@ -1877,7 +1948,8 @@ class ChatExpress(Chat):
             button in place of the send button while streaming. You must observe
             ``input.<id>_cancel`` on the server and call ``ctrl.cancel()`` on a
             chatlas ``StreamController`` to actually stop the stream. Defaults to
-            ``False``.
+            ``True`` when a ``client=`` was provided to :class:`~shinychat.Chat`,
+            ``False`` otherwise.
         footer
             Optional HTML content to display below the chat input.
             This can be any HTML content (tags, tag lists, or strings).
@@ -1889,6 +1961,12 @@ class ChatExpress(Chat):
             Additional attributes for the chat container element.
         """
 
+        resolved_cancel: bool = (
+            self.client is not None
+            if isinstance(enable_cancel, MISSING_TYPE)
+            else enable_cancel
+        )
+
         return chat_ui(
             id=self.id,
             messages=messages,
@@ -1898,71 +1976,10 @@ class ChatExpress(Chat):
             height=height,
             fill=fill,
             icon_assistant=icon_assistant,
-            enable_cancel=enable_cancel,
+            enable_cancel=resolved_cancel,
             footer=footer,
             **kwargs,
         )
-
-    def ui_auto(
-        self,
-        client: "chatlas.Chat[Any, Any]",
-        *,
-        greeting: "str | HTML | Tag | TagList | ChatGreeting | Callable[..., Any] | None" = None,
-        bookmark_on: "Optional[Literal['response']]" = "response",
-        **kwargs: Any,
-    ) -> "ChatAutoServer":
-        """
-        Create a UI element and wire up a chatlas client for this `Chat`.
-
-        This is a convenience method that combines :meth:`ui` and
-        :func:`~shinychat.chat_auto_server` into a single call. It creates the
-        chat UI and registers handlers for streaming, cancellation, and optional
-        bookmarking.
-
-        Parameters
-        ----------
-        client
-            A chatlas ``Chat`` instance used to generate responses.
-        greeting
-            An optional greeting to display at the top of the chat before any
-            conversation messages. Can be a markdown string, an
-            :class:`~htmltools.HTML` object, a :class:`~htmltools.Tag`, a
-            :class:`~shinychat.ChatGreeting`, or a callable that returns any of
-            the above.
-        bookmark_on
-            When to trigger a bookmark. Passed to
-            :meth:`~shinychat.Chat.enable_bookmarking`.
-        kwargs
-            Additional keyword arguments forwarded to :func:`~shinychat.chat_ui`.
-
-        Returns
-        -------
-        :
-            A :class:`~shinychat.ChatAutoServer` that exposes the wired-up chat.
-        """
-        from ._chat_auto import chat_auto_server
-
-        if callable(greeting) and not isinstance(
-            greeting, (str, HTML, Tag, TagList, ChatGreeting)
-        ):
-            ui_greeting = None
-        else:
-            ui_greeting = greeting  # type: ignore[assignment]
-        tag = chat_ui(
-            id=self.id,
-            enable_cancel=True,
-            greeting=ui_greeting,
-            **kwargs,
-        )
-
-        result = chat_auto_server(
-            self.id,
-            client,
-            greeting=greeting,
-            bookmark_on=bookmark_on,
-        )
-        result._tag = tag
-        return result
 
     def enable_bookmarking(
         self,
@@ -1997,6 +2014,11 @@ class ChatExpress(Chat):
             - `None`: no bookmark is triggered
 
             When this method triggers a bookmark, it also updates the URL query string to reflect the bookmarked state.
+
+        Raises
+        ------
+        ValueError
+            If the Shiny App does have bookmarking enabled.
 
         Returns
         -------

@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### New features
 
-* Added `chat_auto_ui()`, `chat_auto_server()`, and `Chat.ui_auto()` — a batteries-included API that wires streaming, cancellation, and bookmarking to a chatlas client automatically. Hand it a chatlas client and get a complete chat interface with no manual plumbing. The returned `ChatAutoServer` lets you swap models mid-session (`.client`), reset the conversation (`.clear()`), and access the underlying `Chat` for lower-level operations.
+* `Chat()` now accepts an optional `client=` parameter. When provided, streaming, cancellation, bookmarking, and greeting handling are wired up automatically — no manual plumbing required. The `chat.client` property exposes a `ChatClient` wrapper with `.value` (the raw chatlas client), `.set()` for swapping models mid-session, and `.clear()` for resetting the conversation with flexible history management.
 
 * Added `footer` parameter to `chat_ui()` and `Chat.ui()` for displaying arbitrary HTML content below the chat input. Useful for disclaimers, attribution, or interactive toolbars. Styled with sensible defaults and customizable via `--shiny-chat-footer-font-size` and `--shiny-chat-footer-color` CSS custom properties. (#224)
 

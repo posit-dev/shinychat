@@ -8,7 +8,7 @@ class MockClient:
         self.turns: list[object] = []
 
     async def get_state(self) -> Jsonifiable:
-        return {"version": 1, "turns": self.turns}
+        return {"version": 1, "turns": self.turns}  # type: ignore[return-value]
 
     async def set_state(self, state: Jsonifiable) -> None:
         assert isinstance(state, dict)

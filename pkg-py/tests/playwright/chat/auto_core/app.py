@@ -1,5 +1,5 @@
 from shiny import App, Inputs, Outputs, Session, render, ui
-from shinychat import chat_auto_server, chat_auto_ui
+from shinychat import Chat, chat_ui
 
 
 class MockChatClient:
@@ -49,18 +49,18 @@ class MockChatClient:
 
 
 app_ui = ui.page_fillable(
-    chat_auto_ui("chat"),
+    chat_ui("chat", enable_cancel=True),
     ui.output_code("message_state"),
 )
 
 
 def server(input: Inputs, output: Outputs, session: Session) -> None:
     client = MockChatClient()
-    chat = chat_auto_server("chat", client, greeting="Welcome!")
+    chat = Chat("chat", client=client, greeting="Welcome!")  # type: ignore[arg-type]
 
     @render.code
     def message_state():
-        return str(chat.chat.messages())
+        return str(chat.messages())
 
 
 app = App(app_ui, server)

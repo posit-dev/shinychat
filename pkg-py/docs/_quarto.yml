@@ -69,20 +69,9 @@ quartodoc:
         include_functions: true
       contents:
         - Chat
+        - ChatClient
         - chat_ui
         - chat_greeting
-    - title: Auto-wired Chat
-      options:
-        signature_name: relative
-        include_imports: false
-        include_inherited: false
-        include_attributes: true
-        include_classes: true
-        include_functions: true
-      contents:
-        - chat_auto_ui
-        - chat_auto_server
-        - ChatAutoServer
     - title: Shiny Express
       options:
         signature_name: relative

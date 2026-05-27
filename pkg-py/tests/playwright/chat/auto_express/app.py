@@ -50,14 +50,13 @@ class MockChatClient:
 
 client = MockChatClient()
 
-chat = Chat(id="chat")
-auto = chat.ui_auto(client, greeting="Welcome to the test!")
-auto
+chat = Chat(id="chat", client=client, greeting="Welcome to the test!")  # type: ignore[arg-type]
+chat.ui()
 
 
-"auto.messages():"
+"chat.messages():"
 
 
 @render.code
 def message_state():
-    return str(auto.chat.messages())
+    return str(chat.messages())

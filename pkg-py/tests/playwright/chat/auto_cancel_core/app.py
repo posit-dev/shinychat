@@ -2,8 +2,7 @@ import asyncio
 
 import chatlas
 from shiny import App, Inputs, Outputs, Session, reactive, render, ui
-
-from shinychat import chat_auto_server, chat_auto_ui
+from shinychat import Chat, chat_ui
 
 
 class ObservableStreamController(chatlas.StreamController):
@@ -64,7 +63,7 @@ class SlowChatClient:
 
 
 app_ui = ui.page_fillable(
-    chat_auto_ui("chat"),
+    chat_ui("chat", enable_cancel=True),
     ui.output_code("cancel_requested"),
 )
 
@@ -75,10 +74,11 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     ObservableStreamController.cancel_requested = cancel_requested_value
     client = SlowChatClient()
 
-    chat = chat_auto_server("chat", client)
+    Chat("chat", client=client)  # type: ignore[arg-type]
 
     @render.code
     def cancel_requested() -> str:
         return str(cancel_requested_value())
+
 
 app = App(app_ui, server)

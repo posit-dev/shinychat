@@ -33,6 +33,8 @@ def test_send_message_gets_response(page: Page, local_app: ShinyAppProc) -> None
     chat.set_user_input(user_message)
     chat.send_user_input(method="enter")
     chat.expect_latest_message(f"You said: {user_message}", timeout=30_000)
+
+
 def test_messages_reflect_conversation(page: Page, local_app: ShinyAppProc) -> None:
     page.goto(local_app.url)
     chat = ChatController(page, "chat")
@@ -45,6 +47,5 @@ def test_messages_reflect_conversation(page: Page, local_app: ShinyAppProc) -> N
     chat.send_user_input(method="enter")
     chat.expect_latest_message(f"You said: {user_message}", timeout=30_000)
 
-    # messages() should contain both user and assistant turns
     message_state.expect.to_contain_text(user_message, timeout=10_000)
     message_state.expect.to_contain_text(f"You said: {user_message}", timeout=10_000)

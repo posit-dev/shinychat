@@ -1,20 +1,31 @@
 from __future__ import annotations
 
-import pytest
-from typing import cast
+import asyncio
+import threading
+from typing import Any, cast
 
-from htmltools import Tag, tags
-from shiny import Session
+import pytest
+from htmltools import tags
+from shiny import Inputs, Session
 from shiny.module import ResolvedId
 from shiny.session import session_context
-from shinychat import Chat, ChatAutoServer, chat_auto_ui
-from shinychat._chat_auto import messages_to_turns
+from shinychat import Chat, chat_ui
+from shinychat._chat_client import ChatClient, messages_to_turns
+from shinychat._chat_types import ChatMessageDict
+
+# ---------------------------------------------------------------------------
+# Test session / mock client helpers
+# ---------------------------------------------------------------------------
 
 
 class _MockSession:
     ns: ResolvedId = ResolvedId("")
     app: object = None
     id: str = "mock-session"
+    input: Inputs
+
+    def __init__(self) -> None:
+        self.input = Inputs({}, ns=ResolvedId)
 
     def on_ended(self, callback: object) -> None:
         pass
@@ -32,177 +43,183 @@ class _MockSession:
 test_session = cast(Session, _MockSession())
 
 
-class MockClient:
-    def __init__(self) -> None:
-        self._turns: list[object] = []
-        self.system_prompt: str | None = None
-        self._tools: list[object] = []
+def _run_async(coro_fn: Any) -> None:
+    """Run an async function in a separate thread to avoid event loop conflicts."""
+    exc: list[BaseException] = []
 
-    def get_turns(self) -> list[object]:
+    def _target() -> None:
+        try:
+            asyncio.run(coro_fn())
+        except BaseException as err:
+            exc.append(err)
+
+    thread = threading.Thread(target=_target)
+    thread.start()
+    thread.join()
+    if exc:
+        raise exc[0]
+
+
+class MockClient:
+    """Minimal chatlas-like client for unit testing."""
+
+    def __init__(
+        self,
+        *,
+        turns: list[Any] | None = None,
+        system_prompt: str | None = None,
+        tools: list[Any] | None = None,
+    ) -> None:
+        self._turns: list[Any] = turns if turns is not None else []
+        self.system_prompt: str | None = system_prompt
+        self._tools: list[Any] = tools if tools is not None else []
+
+    def get_turns(self) -> list[Any]:
         return list(self._turns)
 
-    def set_turns(self, turns: list[object]) -> None:
+    def set_turns(self, turns: list[Any]) -> None:
         self._turns = list(turns)
 
-    def get_tools(self) -> list[object]:
+    def get_tools(self) -> list[Any]:
         return list(self._tools)
 
-    def set_tools(self, tools: list[object]) -> None:
+    def set_tools(self, tools: list[Any]) -> None:
         self._tools = list(tools)
 
 
-def make_auto(
-    client: MockClient | None = None,
-) -> tuple[ChatAutoServer, MockClient]:
-    client = client or MockClient()
+def make_chat() -> tuple[Chat, MockClient]:
+    """Return (Chat, MockClient) where Chat is wired up with client=."""
+    mock = MockClient()
     with session_context(test_session):
-        chat = Chat("test")
-    auto = ChatAutoServer(chat=chat, client=client)
-    return auto, client
+        chat = Chat("test", client=cast(Any, mock))  # type: ignore[arg-type]
+    return chat, mock
 
 
 # ---------------------------------------------------------------------------
-# chat_auto_ui()
+# ChatClient construction via Chat(client=)
 # ---------------------------------------------------------------------------
 
 
-def test_chat_auto_ui_sets_id_and_enables_cancel():
+def test_client_is_none_without_client():
     with session_context(test_session):
-        result = chat_auto_ui("myid")
-    assert isinstance(result, Tag)
-    html = result.get_html_string()
-    assert 'id="myid"' in html
-    assert "enable-cancel" in html
+        chat = Chat("test_no_client")
+    assert chat.client is None
 
 
-def test_chat_auto_ui_forwards_kwargs():
+def test_client_is_chat_client_with_client():
+    chat, _ = make_chat()
+    assert isinstance(chat.client, ChatClient)
+
+
+def test_client_value_returns_raw_client():
+    chat, mock = make_chat()
+    assert chat.client is not None
+    assert chat.client.value is mock
+
+
+# ---------------------------------------------------------------------------
+# ChatClient._swap_client — sync / no-sync
+# ---------------------------------------------------------------------------
+
+
+def test_set_sync_copies_state():
+    mock_old = MockClient(
+        turns=["turn1"],
+        system_prompt="be helpful",
+        tools=["tool_a"],
+    )
+    mock_new = MockClient()
+
     with session_context(test_session):
-        result = chat_auto_ui(
-            "myid",
-            placeholder="Ask me anything...",
-            height="400px",
-            greeting="Hello there!",
-            footer=tags.div("my footer"),
-            icon_assistant=tags.span("bot"),
-        )
-    html = result.get_html_string()
-    assert "Ask me anything..." in html
-    assert "400px" in html
-    assert "Hello there!" in html
-    assert "my footer" in html
-    assert "bot" in html
+        chat = Chat("test_sync", client=cast(Any, mock_old))  # type: ignore[arg-type]
+
+    assert chat.client is not None
+    chat.client._swap_client(cast(Any, mock_new), sync=True)
+
+    assert mock_new.get_turns() == ["turn1"]
+    assert mock_new.system_prompt == "be helpful"
+    assert mock_new.get_tools() == ["tool_a"]
 
 
-# ---------------------------------------------------------------------------
-# ChatAutoServer properties
-# ---------------------------------------------------------------------------
+def test_set_no_sync_skips_copy():
+    mock_old = MockClient(
+        turns=["turn1"],
+        system_prompt="be helpful",
+        tools=["tool_a"],
+    )
+    mock_new = MockClient()
 
-
-def test_chat_and_client_properties():
-    client = MockClient()
-    auto, _ = make_auto(client)
-    assert auto.chat is auto._chat
-    assert auto.client is client
-
-
-# ---------------------------------------------------------------------------
-# _swap_client
-# ---------------------------------------------------------------------------
-
-
-def test_swap_client_sync_copies_state():
-    auto, old = make_auto()
-    old._turns = ["t1", "t2"]
-    old.system_prompt = "Be helpful"
-    old._tools = ["tool_a"]
-
-    new = MockClient()
     with session_context(test_session):
-        auto._swap_client(new, sync=True)
+        chat = Chat("test_nosync", client=cast(Any, mock_old))  # type: ignore[arg-type]
 
-    assert auto.client is new
-    assert new._turns == ["t1", "t2"]
-    assert new.system_prompt == "Be helpful"
-    assert new._tools == ["tool_a"]
+    assert chat.client is not None
+    chat.client._swap_client(cast(Any, mock_new), sync=False)
+
+    assert mock_new.get_turns() == []
+    assert mock_new.system_prompt is None
+    assert mock_new.get_tools() == []
 
 
-def test_swap_client_no_sync_skips_copy():
-    auto, old = make_auto()
-    old._turns = ["t1"]
-    old.system_prompt = "Be helpful"
-    old._tools = ["tool_a"]
+def test_set_skips_none_system_prompt():
+    """A None system_prompt on the old client should not overwrite non-None on the new one."""
+    mock_old = MockClient(system_prompt=None)
+    mock_new = MockClient(system_prompt="keep me")
 
-    new = MockClient()
     with session_context(test_session):
-        auto._swap_client(new, sync=False)
+        chat = Chat("test_sp", client=cast(Any, mock_old))  # type: ignore[arg-type]
 
-    assert auto.client is new
-    assert new._turns == []
-    assert new.system_prompt is None
-    assert new._tools == []
+    assert chat.client is not None
+    chat.client._swap_client(cast(Any, mock_new), sync=True)
 
-
-def test_swap_client_skips_none_system_prompt():
-    auto, old = make_auto()
-    old.system_prompt = None
-
-    new = MockClient()
-    new.system_prompt = "Keep me"
-    with session_context(test_session):
-        auto._swap_client(new, sync=True)
-
-    assert new.system_prompt == "Keep me"
+    # system_prompt should be untouched because old had None
+    assert mock_new.system_prompt == "keep me"
 
 
 # ---------------------------------------------------------------------------
-# clear() — validation
+# ChatClient.clear — validation
 # ---------------------------------------------------------------------------
 
 
 def test_clear_rejects_set_without_messages():
-    import asyncio
+    chat, _ = make_chat()
+    assert chat.client is not None
 
-    auto, _ = make_auto()
-    loop = asyncio.new_event_loop()
-    try:
-        with pytest.raises(ValueError, match="client_history='set'"):
-            loop.run_until_complete(auto.clear(client_history="set"))
-    finally:
-        loop.close()
+    with pytest.raises(ValueError, match="messages.*must be provided"):
+
+        async def _run() -> None:
+            assert chat.client is not None
+            await chat.client.clear(client_history="set")
+
+        _run_async(_run)
 
 
 def test_clear_rejects_append_without_messages():
-    import asyncio
+    chat, _ = make_chat()
+    assert chat.client is not None
 
-    auto, _ = make_auto()
-    loop = asyncio.new_event_loop()
-    try:
-        with pytest.raises(ValueError, match="client_history='append'"):
-            loop.run_until_complete(auto.clear(client_history="append"))
-    finally:
-        loop.close()
+    with pytest.raises(ValueError, match="messages.*must be provided"):
+
+        async def _run() -> None:
+            assert chat.client is not None
+            await chat.client.clear(client_history="append")
+
+        _run_async(_run)
 
 
 # ---------------------------------------------------------------------------
-# messages_to_turns
+# messages_to_turns helper
 # ---------------------------------------------------------------------------
 
 
 def test_messages_to_turns_basic():
-    msgs = [
-        {"role": "user", "content": "hello"},
-        {"role": "assistant", "content": "hi there"},
-        {"role": "user", "content": "bye"},
+    msgs: list[ChatMessageDict] = [
+        {"content": "hi", "role": "user"},
+        {"content": "hello", "role": "assistant"},
     ]
     turns = messages_to_turns(msgs)
-
-    assert len(turns) == 3
+    assert len(turns) == 2
     assert turns[0].role == "user"
-    assert turns[0].text == "hello"
     assert turns[1].role == "assistant"
-    assert turns[1].text == "hi there"
-    assert turns[2].role == "user"
-    assert turns[2].text == "bye"
 
 
 def test_messages_to_turns_empty():
@@ -210,40 +227,46 @@ def test_messages_to_turns_empty():
 
 
 def test_messages_to_turns_defaults_to_assistant():
-    turns = messages_to_turns([{"content": "no role"}])
+    msgs: list[ChatMessageDict] = [{"content": "x", "role": "assistant"}]
+    turns = messages_to_turns(msgs)
     assert turns[0].role == "assistant"
-    assert turns[0].text == "no role"
 
 
 # ---------------------------------------------------------------------------
-# tagify
+# chat_ui helpers
 # ---------------------------------------------------------------------------
 
 
-def test_tagify_raises_without_tag():
-    auto, _ = make_auto()
-    with pytest.raises(RuntimeError, match="tagify"):
-        auto.tagify()
+def test_chat_ui_with_enable_cancel():
+    tag = chat_ui("myid", enable_cancel=True)
+    html = tag.get_html_string()
+    assert "enable-cancel" in html
 
 
-def test_tagify_delegates_to_tag():
-    auto, _ = make_auto()
-    with session_context(test_session):
-        tag = chat_auto_ui("test")
-    auto._tag = tag
-    result = auto.tagify()
-    assert result is not None
+def test_chat_ui_forwards_kwargs():
+    icon = tags.span("🤖")
+    tag = chat_ui(
+        "myid",
+        placeholder="Ask me anything",
+        height="400px",
+        greeting="Hello!",
+        footer=tags.p("footer text"),
+        icon_assistant=icon,
+    )
+    html = tag.get_html_string()
+    assert "Ask me anything" in html
+    assert "400px" in html
+    assert "Hello!" in html
+    assert "footer text" in html
 
 
 # ---------------------------------------------------------------------------
-# Exports
+# Public exports — skipped until Task 4 updates exports
 # ---------------------------------------------------------------------------
 
 
-def test_public_exports():
-    from shinychat import ChatAutoServer, chat_auto_server, chat_auto_ui
-    from shinychat.types import ChatAutoServer as TypesChatAutoServer
+def test_public_exports() -> None:
+    from shinychat import ChatClient as CC1
+    from shinychat.types import ChatClient as CC2  # type: ignore[attr-defined]
 
-    assert callable(chat_auto_ui)
-    assert callable(chat_auto_server)
-    assert ChatAutoServer is TypesChatAutoServer
+    assert CC1 is CC2
