@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Bug fixes
+
+* Fixed a bug where `<thinking>` tags inside fenced code blocks (` ``` `) or inline backtick spans were incorrectly treated as model reasoning content and hidden from the visible output. Also fixes a chunk-boundary false positive where a chunk ending with a non-newline character followed by a chunk beginning with `<thinking>` would enter thinking mode. (#235)
+
 ## [0.4.0] - 2026-05-26
 
 ### New features
