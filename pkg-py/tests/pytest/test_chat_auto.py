@@ -261,12 +261,11 @@ def test_chat_ui_forwards_kwargs():
 
 
 # ---------------------------------------------------------------------------
-# Public exports — skipped until Task 4 updates exports
+# Public exports
 # ---------------------------------------------------------------------------
 
 
 def test_public_exports() -> None:
-    from shinychat import ChatClient as CC1
-    from shinychat.types import ChatClient as CC2  # type: ignore[attr-defined]
+    from shinychat.types import ChatClient as CC
 
-    assert CC1 is CC2
+    assert CC is ChatClient

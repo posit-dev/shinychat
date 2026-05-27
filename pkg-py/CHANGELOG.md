@@ -5,27 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.0] - Unreleased
+## [Unreleased]
 
 ### New features
 
 * `Chat()` now accepts an optional `client=` parameter. When provided, streaming, cancellation, bookmarking, and greeting handling are wired up automatically — no manual plumbing required. The `chat.client` property exposes a `ChatClient` wrapper with `.value` (the raw chatlas client), `.set()` for swapping models mid-session, and `.clear()` for resetting the conversation with flexible history management.
 
-* Added `footer` parameter to `chat_ui()` and `Chat.ui()` for displaying arbitrary HTML content below the chat input. Useful for disclaimers, attribution, or interactive toolbars. Styled with sensible defaults and customizable via `--shiny-chat-footer-font-size` and `--shiny-chat-footer-color` CSS custom properties. (#224)
+## [0.4.0] - 2026-05-26
 
-* Added `chat_greeting()` for creating welcome messages that appear when the chat is empty. Greetings can be set statically via `chat_ui(greeting=)` or dynamically with `Chat.set_greeting()`, and are dismissed when the user sends their first message. A new `{id}_greeting_requested` input fires when the chat is visible, empty, and has no greeting, enabling LLM-generated welcome messages. (#217)
-
-* Tool result cards now render images and PDFs returned by chatlas tools. When a tool returns `ContentImageInline`, `ContentImageRemote`, or `ContentPDF`, the result is displayed as an inline image or a PDF filename badge. Mixed content lists (e.g., `[ContentText("summary"), content_image_file("plot.png")]`) are rendered with items interleaved in order. Standalone image and PDF content items in turn history are also rendered correctly. (#225)
-
-* Added `enable_cancel` parameter to `chat_ui()` and `Chat.ui()` to show a stop button that lets users cancel an in-progress AI response. Press the stop button or hit Escape to cancel. Wire up the `input.<id>_cancel` event to a `chatlas.StreamController` (introduced in chatlas v0.18.0) to connect the UI to your chat provider. (#221)
-
-* Markdown lists where every item is a `<span class="suggestion">` are now rendered as a grid of clickable suggestion cards. Each suggestion's text content becomes both the card label and the value sent on click. To add a short heading above the body text, set the `title` attribute on the span — e.g. `<span class="suggestion" title="Heading">Body text shown on the card.</span>`. Only the body text (not the title) is submitted when the card is clicked. Cards stream in with staggered animations and support keyboard navigation (arrow keys, Home/End) with roving tabindex. (#219)
+### New features
 
 * The chat UI now displays model reasoning/thinking content as collapsible panels above assistant responses. Thinking content streams in real-time with animated topic labels. This works with providers that support structured thinking (e.g., Claude's extended thinking via `chatlas`) and with local models that wrap reasoning in `<thinking>` tags. (#208)
 
+* Added `chat_greeting()` for creating welcome messages that appear when the chat is empty. Greetings can be set statically via `chat_ui(greeting=)` or dynamically with `Chat.set_greeting()`, and are dismissed when the user sends their first message. A new `{id}_greeting_requested` input fires when the chat is visible, empty, and has no greeting, enabling LLM-generated welcome messages. (#217)
+
+* Added `enable_cancel` parameter to `chat_ui()` and `Chat.ui()` to show a stop button that lets users cancel an in-progress AI response. Press the stop button or hit Escape to cancel. Wire up the `input.<id>_cancel` event to a `chatlas.StreamController` (introduced in chatlas v0.18.0) to connect the UI to your chat provider. (#221)
+
+* Added `footer` parameter to `chat_ui()` and `Chat.ui()` for displaying arbitrary HTML content below the chat input. Useful for disclaimers, attribution, or interactive toolbars. Styled with sensible defaults and customizable via `--shiny-chat-footer-font-size` and `--shiny-chat-footer-color` CSS custom properties. (#224)
+
+* The chat input now supports history navigation: press Up/Down arrow keys when the input is empty to cycle through previously sent messages. Editing a recalled message locks navigation until the input is cleared. (#222)
+
 ### Improvements
 
+* Tool result cards now render images and PDFs returned by chatlas tools. When a tool returns `ContentImageInline`, `ContentImageRemote`, or `ContentPDF`, the result is displayed as an inline image or a PDF filename badge. Mixed content lists (e.g., `[ContentText("summary"), content_image_file("plot.png")]`) are rendered with items interleaved in order. Standalone image and PDF content items in turn history are also rendered correctly. (#225)
+
+* Markdown lists where every item is a `<span class="suggestion">` are now rendered as a grid of clickable suggestion cards. Each suggestion's text content becomes both the card label and the value sent on click. To add a short heading above the body text, set the `title` attribute on the span — e.g. `<span class="suggestion" title="Heading">Body text shown on the card.</span>`. Only the body text (not the title) is submitted when the card is clicked. Cards stream in with staggered animations and support keyboard navigation (arrow keys, Home/End) with roving tabindex. (#219)
+
 * Updated minimum `chatlas` version to `>=0.15.0`. (#208)
+
+### Bug fixes
+
+* Fixed a circular import error triggered when `import shinychat` ran before `shiny` had fully initialized. (#212)
+
+* Fixed extra newlines appearing when copying user message text. (#209)
+
 
 ## [0.3.2] - 2026-05-21
 
