@@ -5,8 +5,6 @@ import inspect
 from typing import (
     TYPE_CHECKING,
     Any,
-    Literal,
-    Optional,
 )
 
 if TYPE_CHECKING:
@@ -32,11 +30,9 @@ class ChatClient:
         *,
         chat: "Chat",
         client: "chatlas.Chat[Any, Any]",
-        bookmark_on: "Optional[Literal['response']]" = "response",
     ) -> None:
         self._chat = chat
         self._client = client
-        self._bookmark_on: Optional[Literal["response"]] = bookmark_on
         # (new_client, sync) stored when a swap is requested mid-stream
         self._pending_swap: tuple["chatlas.Chat[Any, Any]", bool] | None = None
         self._cancel_bookmarking: Any = None
@@ -98,7 +94,7 @@ class ChatClient:
             self._cancel_bookmarking = None
 
         cancel = self._chat.enable_bookmarking(
-            new_client, bookmark_on=self._bookmark_on
+            new_client, bookmark_on="response"
         )
         self._cancel_bookmarking = cancel
 
@@ -172,18 +168,19 @@ def messages_to_turns(
 
 def setup_greeting(
     chat: "Chat",
-    chat_client: "ChatClient",
+    chat_client: "ChatClient | None",
     greeting: "str | HTML | Tag | TagList | ChatGreeting | Any | None",
     session: "Session",
 ) -> None:
     """
-    Wire up greeting handling for a client-backed chat.
+    Wire up greeting handling for a chat.
 
     For static greetings (str / HTML / Tag / TagList / ChatGreeting), registers
     a reactive effect on ``{id}_greeting_requested`` that sends the greeting.
 
     For callable greetings the function is inspected for a ``client`` parameter.
-    If present, a deep-copy of the client with empty turns is passed to it.
+    If present (and a ``chat_client`` is available), a deep-copy of the client
+    with empty turns is passed to it.
     """
     if greeting is None:
         return
@@ -200,7 +197,7 @@ def setup_greeting(
             @reactive.effect
             @reactive.event(session.input[f"{chat.id}_greeting_requested"])
             async def _on_greeting_requested() -> None:
-                if "client" in sig.parameters:
+                if "client" in sig.parameters and chat_client is not None:
                     client_copy = copy.deepcopy(chat_client.value)
                     client_copy.set_turns([])
                     result = fn(client=client_copy)
@@ -210,13 +207,10 @@ def setup_greeting(
                 if inspect.isawaitable(result):
                     result = await result
 
-                # result is the greeting content from the callable
                 await chat.set_greeting(result)  # type: ignore[arg-type]
 
         chat._effects.append(_on_greeting_requested)
     else:
-        # Static greeting — wire up the greeting_requested input
-        # Cast: we've verified greeting is a static type (str/HTML/Tag/TagList/ChatGreeting)
         from htmltools import HTML, Tag, TagList
 
         from ._chat_types import ChatGreeting

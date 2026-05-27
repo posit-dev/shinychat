@@ -222,6 +222,21 @@ class Chat:
     id
         A unique identifier for the chat session. In Shiny Core, make sure this id
         matches a corresponding :func:`~shiny.ui.chat_ui` call in the UI.
+    client
+        A chatlas client (e.g., ``chatlas.ChatOpenAI()``). When provided,
+        streaming, cancellation, and bookmarking are wired up automatically.
+        The resulting :attr:`chat.client` exposes a
+        :class:`~shinychat.types.ChatClient` wrapper for swapping models
+        mid-session (``.set()``) and resetting the conversation (``.clear()``).
+    greeting
+        Content to display as a welcome message before any conversation. Can be
+        a string, :class:`~htmltools.HTML`, :class:`~htmltools.Tag`,
+        :class:`~htmltools.TagList`, :class:`~shinychat.chat_greeting`, or a
+        callable that returns one of those types. A callable greeting is invoked
+        when the chat is visible and empty; if the callable accepts a ``client``
+        parameter (and ``client=`` was provided), a deep-copy of the chatlas
+        client with empty turns is passed so the greeting can be LLM-generated
+        without polluting conversation history.
     messages
         Deprecated. Use `chat.ui(messages=...)` instead.
     on_error
@@ -245,7 +260,6 @@ class Chat:
         *,
         client: "chatlas.Chat[Any, Any] | None" = None,
         greeting: "str | HTML | Tag | TagList | ChatGreeting | Callable[..., Any] | None" = None,
-        bookmark_on: "Optional[Literal['response']]" = "response",
         messages: Sequence[Any] = (),
         on_error: Literal["auto", "actual", "sanitize", "unhandled"] = "auto",
         tokenizer: TokenEncoding | None = None,
@@ -375,24 +389,25 @@ class Chat:
 
         self.client: "ChatClient | None" = None
         if client is not None:
-            self._setup_client(client, greeting=greeting, bookmark_on=bookmark_on)
+            self._setup_client(client)
+
+        if greeting is not None:
+            from ._chat_client import setup_greeting
+
+            setup_greeting(self, self.client, greeting, self._session)
 
     def _setup_client(
         self,
         client: "chatlas.Chat[Any, Any]",
-        *,
-        greeting: "str | HTML | Tag | TagList | ChatGreeting | Callable[..., Any] | None" = None,
-        bookmark_on: "Optional[Literal['response']]" = "response",
     ) -> None:
         from chatlas import StreamController
         from shiny import reactive
 
-        from ._chat_client import ChatClient, setup_greeting
+        from ._chat_client import ChatClient
 
         chat_client = ChatClient(
             chat=self,
             client=client,
-            bookmark_on=bookmark_on,
         )
         self.client = chat_client
 
@@ -430,10 +445,8 @@ class Chat:
         self._effects.append(_on_cancel)
         self._effects.append(_on_stream_complete)
 
-        cancel_bm = self.enable_bookmarking(client, bookmark_on=bookmark_on)
+        cancel_bm = self.enable_bookmarking(client, bookmark_on="response")
         chat_client._cancel_bookmarking = cancel_bm
-
-        setup_greeting(self, chat_client, greeting, self._session)
 
     @overload
     def on_user_submit(self, fn: UserSubmitFunction) -> Effect_: ...
