@@ -1169,6 +1169,108 @@ describe("chatReducer", () => {
       ).toBe("Here is the answer.")
     })
 
+    it("does not treat <thinking> as thinking when chunk boundary falls before it (not after newline)", () => {
+      // The bug: a chunk ending with a backtick (or any non-newline) followed by a chunk
+      // starting with <thinking> — the second chunk has empty `before`, which previously
+      // caused the state machine to enter thinking mode incorrectly.
+      let state = makeState()
+      state = chatReducer(state, {
+        type: "chunk_start",
+        message: { role: "assistant", content: "", content_type: "markdown" },
+      })
+      // Chunk ends just before <thinking> with a backtick — not a newline boundary
+      state = chatReducer(state, {
+        type: "chunk",
+        content: "replaces any `",
+        operation: "append",
+      })
+      // Next chunk starts with <thinking> — must NOT enter thinking mode
+      state = chatReducer(state, {
+        type: "chunk",
+        content: "<thinking>` content blocks",
+        operation: "append",
+      })
+      state = chatReducer(state, { type: "chunk_end" })
+      const msg = state.messages[0]!
+      expect(msg.blocks).toHaveLength(1)
+      expect(msg.blocks[0]!.type).toBe("content")
+      expect((msg.blocks[0] as { content: string }).content).toContain(
+        "<thinking>",
+      )
+    })
+
+    it("recognizes <thinking> when chunk boundary falls on a real newline boundary", () => {
+      // <thinking> arriving at the start of a new chunk IS valid if the previous chunk
+      // ended with a newline (e.g. in an agentic loop between turns).
+      let state = makeState()
+      state = chatReducer(state, {
+        type: "chunk_start",
+        message: { role: "assistant", content: "", content_type: "markdown" },
+      })
+      state = chatReducer(state, {
+        type: "chunk",
+        content: "tool result\n",
+        operation: "append",
+      })
+      state = chatReducer(state, {
+        type: "chunk",
+        content: "<thinking>\nreasoning\n</thinking>\n\nFinal answer.",
+        operation: "append",
+      })
+      state = chatReducer(state, { type: "chunk_end" })
+      const msg = state.messages[0]!
+      expect(msg.blocks).toHaveLength(3)
+      expect(msg.blocks[0]!.type).toBe("content")
+      expect(msg.blocks[1]!.type).toBe("thinking")
+      expect((msg.blocks[1] as { content: string }).content).toBe("reasoning")
+      expect(msg.blocks[2]!.type).toBe("content")
+    })
+
+    it("does not treat inline <thinking>...</thinking> in backtick code span as thinking (non-streaming)", () => {
+      // When both tags appear inside a backtick span the non-streaming path must exclude them
+      const state = makeState()
+      const next = chatReducer(state, {
+        type: "message",
+        message: {
+          role: "assistant",
+          content:
+            "The model wraps reasoning in `<thinking>I reason here</thinking>` tags.",
+          content_type: "markdown",
+        },
+      })
+      const msg = next.messages[0]!
+      expect(msg.blocks).toHaveLength(1)
+      expect(msg.blocks[0]!.type).toBe("content")
+    })
+
+    it("does not treat <thinking> inside a fenced code block as thinking (streaming)", () => {
+      let state = makeState()
+      state = chatReducer(state, {
+        type: "chunk_start",
+        message: { role: "assistant", content: "", content_type: "markdown" },
+      })
+      const chunks = [
+        "Here's an example:\n",
+        "```xml\n",
+        "<thinking>\n",
+        "This is code, not reasoning\n",
+        "</thinking>\n",
+        "```\n",
+        "The model will reason before responding.",
+      ]
+      for (const chunk of chunks) {
+        state = chatReducer(state, {
+          type: "chunk",
+          content: chunk,
+          operation: "append",
+        })
+      }
+      state = chatReducer(state, { type: "chunk_end" })
+      const msg = state.messages[0]!
+      expect(msg.blocks).toHaveLength(1)
+      expect(msg.blocks[0]!.type).toBe("content")
+    })
+
     it("streams thinking across many small chunks (simulating token-by-token)", () => {
       let state = makeState()
       state = chatReducer(state, {
