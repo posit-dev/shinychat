@@ -226,6 +226,24 @@ shiny-chat-container {
     &.shiny-chat-btn-cancel {
       color: var(--bs-danger, #dc3545);
     }
+    &.shiny-chat-btn-spinner {
+      pointer-events: none;
+      cursor: default;
+      svg {
+        display: block;
+        animation: shiny-chat-spin 0.75s linear infinite;
+        transform-origin: center;
+      }
+    }
+  }
+}
+
+@keyframes shiny-chat-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 
@@ -341,6 +359,12 @@ shiny-chat-container {
   border: none;
   background: none;
   max-width: min(680px, 90%);
+
+  // Bootstrap's .modal has height: 100%, which collapses to zero inside a
+  // content-sized <dialog> in Safari. Override to let it size from content.
+  .modal {
+    height: auto;
+  }
 }
 
 .shinychat-external-link-dialog::backdrop {

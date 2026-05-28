@@ -27,6 +27,10 @@ declare global {
   }
 }
 
+function openLink(url: string): void {
+  window.open(url, "_blank", "noopener,noreferrer")
+}
+
 export interface ChatContainerProps {
   transport: ChatTransport
   messages: ChatMessageData[]
@@ -167,19 +171,20 @@ export const ChatContainer = forwardRef<
   const onContainerClick = useCallback((e: React.MouseEvent<HTMLElement>) => {
     const target = e.target as HTMLElement
     const linkEl = target.closest(
-      "a[data-external-link]",
+      "a[data-shinychat-link]",
     ) as HTMLAnchorElement | null
     if (!linkEl || !linkEl.href) return
 
     e.preventDefault()
 
-    if (window.shinychat_always_open_external_links) {
-      window.open(linkEl.href, "_blank", "noopener,noreferrer")
+    const isSameOrigin = linkEl.origin === window.location.origin
+    if (isSameOrigin || window.shinychat_always_open_external_links) {
+      openLink(linkEl.href)
       return
     }
 
     if (typeof window.HTMLDialogElement === "undefined") {
-      window.open(linkEl.href, "_blank", "noopener,noreferrer")
+      openLink(linkEl.href)
       return
     }
 
@@ -326,7 +331,7 @@ export const ChatContainer = forwardRef<
 
   const handleDialogProceed = useCallback(() => {
     const url = pendingUrlRef.current
-    if (url) window.open(url, "_blank", "noopener,noreferrer")
+    if (url) openLink(url)
     setPendingUrl(null)
   }, [])
 

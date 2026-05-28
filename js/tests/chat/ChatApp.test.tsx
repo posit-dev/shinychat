@@ -284,7 +284,7 @@ describe("External link dialog", () => {
   }
 
   beforeEach(() => {
-    vi.spyOn(window, "open").mockImplementation(() => null)
+    vi.spyOn(window, "open").mockImplementation(() => ({}) as Window)
 
     HTMLDialogElement.prototype.showModal = vi.fn(function (
       this: HTMLDialogElement,
@@ -309,7 +309,7 @@ describe("External link dialog", () => {
     await renderWithExternalLink()
 
     const link = document.querySelector(
-      "a[data-external-link]",
+      "a[data-shinychat-link]",
     ) as HTMLAnchorElement | null
     expect(link).not.toBeNull()
 
@@ -326,7 +326,7 @@ describe("External link dialog", () => {
     await renderWithExternalLink()
 
     const link = document.querySelector(
-      "a[data-external-link]",
+      "a[data-shinychat-link]",
     ) as HTMLAnchorElement
 
     await act(async () => {
@@ -348,7 +348,7 @@ describe("External link dialog", () => {
     await renderWithExternalLink()
 
     const link = document.querySelector(
-      "a[data-external-link]",
+      "a[data-shinychat-link]",
     ) as HTMLAnchorElement
 
     await act(async () => {
@@ -366,7 +366,7 @@ describe("External link dialog", () => {
     await renderWithExternalLink()
 
     const link = document.querySelector(
-      "a[data-external-link]",
+      "a[data-shinychat-link]",
     ) as HTMLAnchorElement
 
     // First click — show dialog and click "Always open external links"
@@ -389,11 +389,48 @@ describe("External link dialog", () => {
     expect(screen.queryByRole("dialog")).toBeNull()
   })
 
+  it("same-origin link opens directly without dialog", async () => {
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+      />,
+    )
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "assistant",
+          content: "Visit [this page](/some-path) for more info.",
+          content_type: "markdown",
+        },
+      })
+    })
+
+    const link = document.querySelector(
+      "a[data-shinychat-link]",
+    ) as HTMLAnchorElement
+    expect(link).not.toBeNull()
+
+    await act(async () => {
+      fireEvent.click(link!)
+    })
+
+    expect(window.open).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole("dialog")).toBeNull()
+  })
+
   it("no dialog or singleton container appended to body after unmount", async () => {
     const { unmount } = await renderWithExternalLink()
 
     const link = document.querySelector(
-      "a[data-external-link]",
+      "a[data-shinychat-link]",
     ) as HTMLAnchorElement
 
     await act(async () => {

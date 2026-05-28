@@ -38,6 +38,10 @@ export interface ChatMessageData {
   insideThinkingTag?: boolean
   /** Buffers partial tag text at chunk boundaries (e.g. "<thi" or "</thin") */
   tagBuffer?: string
+  /** Tracks whether streaming content is inside a fenced code block */
+  insideFence?: boolean
+  /** The opening fence marker (e.g. "```" or "~~~") when insideFence is true */
+  fenceMarker?: string
   /** True when the stream was cancelled by the user before it completed. */
   cancelled?: boolean
 }
@@ -166,10 +170,14 @@ function splitThinkingBlocks(
     return [{ type: "content", content, contentType }]
   }
 
-  // Find code fence regions to exclude from thinking tag detection
+  // Find code fence regions and inline code spans to exclude from thinking tag detection
   const fenceRanges: Array<[number, number]> = []
   const fenceRe = /^(`{3,}|~{3,}).*\n([\s\S]*?)^\1\s*$/gm
   for (const m of content.matchAll(fenceRe)) {
+    fenceRanges.push([m.index, m.index + m[0].length])
+  }
+  const inlineCodeRe = /`[^`\n]+`/g
+  for (const m of content.matchAll(inlineCodeRe)) {
     fenceRanges.push([m.index, m.index + m[0].length])
   }
 
@@ -226,6 +234,8 @@ interface ThinkingTagSegment {
 interface ThinkingTagState {
   insideThinkingTag: boolean
   tagBuffer: string
+  insideFence: boolean
+  fenceMarker: string
 }
 
 const THINKING_OPEN = "<thinking>\n"
@@ -233,56 +243,137 @@ const THINKING_OPEN_NO_NL = "<thinking>"
 const THINKING_CLOSE = "\n</thinking>"
 const THINKING_CLOSE_NO_NL = "</thinking>"
 
+// Matches a fenced code block opening at the start of a line (``` or ~~~, with optional info string)
+const FENCE_OPEN_RE = /^(`{3,}|~{3,})[^\n]*(\n|$)/m
+
+function buildFenceCloseRe(marker: string): RegExp {
+  const ch = marker[0]
+  return new RegExp(`^${ch}{${marker.length},}[ \\t]*(?:\\n|$)`, "m")
+}
+
+// Returns true if the last content block ends with a newline, or if blocks is empty / ends with
+// a thinking block (both are structural boundaries equivalent to a newline).
+function lastContentEndsWithNewline(blocks: MessageBlock[]): boolean {
+  if (blocks.length === 0) return true
+  const last = blocks[blocks.length - 1]!
+  if (last.type === "thinking") return true
+  return last.content === "" || last.content.endsWith("\n")
+}
+
 function processThinkingTags(
   chunk: string,
   state: ThinkingTagState,
+  prevContentEndsWithNewline: boolean,
 ): { segments: ThinkingTagSegment[]; state: ThinkingTagState } {
   let text = state.tagBuffer + chunk
-  let inside = state.insideThinkingTag
+
+  type Mode = "outside" | "thinking" | "fence"
+  let mode: Mode = state.insideThinkingTag
+    ? "thinking"
+    : state.insideFence
+      ? "fence"
+      : "outside"
+  let fenceMarker = state.fenceMarker
+
+  // If a tagBuffer was set, the content before it was all whitespace (a newline boundary).
+  let localPrevEndsWithNewline = state.tagBuffer
+    ? true
+    : prevContentEndsWithNewline
+
   const segments: ThinkingTagSegment[] = []
   let tagBuffer = ""
 
   while (text.length > 0) {
-    if (!inside) {
-      // Look for <thinking> open tag
+    if (mode === "outside") {
+      const fenceMatch = FENCE_OPEN_RE.exec(text)
+      // A fence match at index 0 is only a real line-start if the previous content ended with \n
+      const fenceIsLineStart =
+        fenceMatch !== null &&
+        (fenceMatch.index > 0 || localPrevEndsWithNewline)
+
       const openIdx = text.indexOf(THINKING_OPEN)
       const openIdxNoNl =
         openIdx === -1 ? text.indexOf(THINKING_OPEN_NO_NL) : -1
-      const idx = openIdx !== -1 ? openIdx : openIdxNoNl
-      const tag = openIdx !== -1 ? THINKING_OPEN : THINKING_OPEN_NO_NL
+      const thinkingIdx = openIdx !== -1 ? openIdx : openIdxNoNl
+      const thinkingTag = openIdx !== -1 ? THINKING_OPEN : THINKING_OPEN_NO_NL
 
-      if (idx !== -1) {
-        // Only treat as thinking if it's at the start of content (top-level)
-        const before = text.slice(0, idx)
-        if (before.trim()) {
-          // There's non-whitespace before the tag — not top-level
+      const fenceBeforeThinking =
+        fenceIsLineStart &&
+        (thinkingIdx === -1 || fenceMatch!.index < thinkingIdx)
+
+      if (fenceBeforeThinking) {
+        // Emit content up to and including the fence opener line, enter fence mode
+        const fenceOpenText = text.slice(
+          0,
+          fenceMatch!.index + fenceMatch![0].length,
+        )
+        if (fenceOpenText)
+          segments.push({ type: "content", text: fenceOpenText })
+        localPrevEndsWithNewline = fenceOpenText.endsWith("\n")
+        fenceMarker = fenceMatch![1] ?? ""
+        mode = "fence"
+        text = text.slice(fenceMatch!.index + fenceMatch![0].length)
+      } else if (thinkingIdx !== -1) {
+        const before = text.slice(0, thinkingIdx)
+        // <thinking> is only a real thinking tag when it starts at a line boundary:
+        // no non-whitespace before it in the current text, and preceded by a newline
+        // (either within `before` or carried over from the previous chunk).
+        const isTopLevel =
+          before.trim() === "" &&
+          (before.includes("\n") || localPrevEndsWithNewline)
+
+        if (!isTopLevel) {
           segments.push({ type: "content", text })
+          localPrevEndsWithNewline = text.endsWith("\n")
           text = ""
         } else {
           if (before) {
             segments.push({ type: "content", text: before })
           }
-          inside = true
-          text = text.slice(idx + tag.length)
+          mode = "thinking"
+          text = text.slice(thinkingIdx + thinkingTag.length)
         }
       } else {
-        // Check for partial <thinking at end
+        // No fence or thinking found — check for partial <thinking at end
         const partial = findPartialTag(text, THINKING_OPEN_NO_NL)
-        if (partial > 0 && text.slice(0, text.length - partial).trim() === "") {
-          // Could be start of a top-level <thinking> tag
+        const beforePartial = text.slice(0, text.length - partial)
+        if (
+          partial > 0 &&
+          beforePartial.trim() === "" &&
+          (beforePartial.includes("\n") || localPrevEndsWithNewline)
+        ) {
           tagBuffer = text.slice(text.length - partial)
-          const before = text.slice(0, text.length - partial)
-          if (before) {
-            segments.push({ type: "content", text: before })
-          }
+          if (beforePartial)
+            segments.push({ type: "content", text: beforePartial })
           text = ""
         } else {
           segments.push({ type: "content", text })
+          localPrevEndsWithNewline = text.endsWith("\n")
           text = ""
         }
       }
+    } else if (mode === "fence") {
+      // Inside a fenced code block — emit everything as content until the matching closer
+      const closerRe = buildFenceCloseRe(fenceMarker)
+      const closerMatch = closerRe.exec(text)
+
+      if (closerMatch !== null) {
+        const fenceContent = text.slice(
+          0,
+          closerMatch.index + closerMatch[0].length,
+        )
+        if (fenceContent) segments.push({ type: "content", text: fenceContent })
+        localPrevEndsWithNewline = fenceContent.endsWith("\n")
+        mode = "outside"
+        fenceMarker = ""
+        text = text.slice(closerMatch.index + closerMatch[0].length)
+      } else {
+        segments.push({ type: "content", text })
+        localPrevEndsWithNewline = text.endsWith("\n")
+        text = ""
+      }
     } else {
-      // Inside thinking — look for </thinking> close tag
+      // mode === "thinking" — look for </thinking> close tag
       const closeIdx = text.indexOf(THINKING_CLOSE)
       const closeIdxNoNl =
         closeIdx === -1 ? text.indexOf(THINKING_CLOSE_NO_NL) : -1
@@ -294,7 +385,8 @@ function processThinkingTags(
         if (thinkingText) {
           segments.push({ type: "thinking", text: thinkingText })
         }
-        inside = false
+        mode = "outside"
+        localPrevEndsWithNewline = true
         text = text.slice(idx + tag.length)
         // Skip optional trailing newlines after </thinking>
         if (text.startsWith("\n")) text = text.slice(1)
@@ -319,7 +411,12 @@ function processThinkingTags(
 
   return {
     segments,
-    state: { insideThinkingTag: inside, tagBuffer },
+    state: {
+      insideThinkingTag: mode === "thinking",
+      tagBuffer,
+      insideFence: mode === "fence",
+      fenceMarker,
+    },
   }
 }
 
@@ -477,28 +574,46 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       // No explicit content_type — detect <thinking> tags in content
       const chunkType = explicitType ?? defaultContentType
 
-      // If we're inside a thinking tag or the chunk might contain one,
+      // If we're inside a thinking/fence tag or the chunk might contain one,
       // process through the tag state machine
       if (
         last.insideThinkingTag ||
         last.tagBuffer ||
-        action.content.includes("<")
+        last.insideFence ||
+        action.content.includes("<") ||
+        action.content.includes("```") ||
+        action.content.includes("~~~")
       ) {
         const tagState: ThinkingTagState = {
           insideThinkingTag: last.insideThinkingTag ?? false,
           tagBuffer: last.tagBuffer ?? "",
+          insideFence: last.insideFence ?? false,
+          fenceMarker: last.fenceMarker ?? "",
         }
         const { segments, state: newTagState } = processThinkingTags(
           action.content,
           tagState,
+          lastContentEndsWithNewline(last.blocks),
         )
 
-        // If we were tracking tag state, found thinking segments, or just entered a thinking tag
-        const hadTagState = !!(last.insideThinkingTag || last.tagBuffer)
+        // If we were tracking tag state, found thinking segments, just entered a thinking tag,
+        // or fence state changed (entering or exiting a fenced code block)
+        const hadTagState = !!(
+          last.insideThinkingTag ||
+          last.tagBuffer ||
+          last.insideFence
+        )
         const hasThinking = segments.some((s) => s.type === "thinking")
         const enteredThinking = newTagState.insideThinkingTag
+        const fenceStateChanged =
+          newTagState.insideFence !== (last.insideFence ?? false)
 
-        if (hadTagState || hasThinking || enteredThinking) {
+        if (
+          hadTagState ||
+          hasThinking ||
+          enteredThinking ||
+          fenceStateChanged
+        ) {
           const blocks = [...last.blocks]
 
           for (const seg of segments) {
@@ -574,6 +689,8 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
               blocks,
               insideThinkingTag: newTagState.insideThinkingTag,
               tagBuffer: newTagState.tagBuffer,
+              insideFence: newTagState.insideFence,
+              fenceMarker: newTagState.fenceMarker,
             },
           }
         }
@@ -586,6 +703,8 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
               ...last,
               insideThinkingTag: newTagState.insideThinkingTag,
               tagBuffer: newTagState.tagBuffer,
+              insideFence: newTagState.insideFence,
+              fenceMarker: newTagState.fenceMarker,
             },
           }
         }
