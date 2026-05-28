@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Improvements
+
+* All navigating links in assistant messages now open in a new tab to preserve the app's session state. Cross-origin links still show the confirmation dialog; same-origin links open directly. (#238)
+
 ### Bug fixes
+
+* Fixed the external link confirmation dialog not rendering in Safari. The backdrop overlay appeared but the dialog content was invisible due to a Bootstrap/`<dialog>` CSS interaction. (#201, #238)
+
+* Fixed pressing Escape to dismiss the external link dialog leaving it in a broken state where subsequent link clicks no longer worked. (#238)
 
 * Fixed a bug where `<thinking>` tags inside fenced code blocks (` ``` `) or inline backtick spans were incorrectly treated as model reasoning content and hidden from the visible output. Also fixes a chunk-boundary false positive where a chunk ending with a non-newline character followed by a chunk beginning with `<thinking>` would enter thinking mode. (#235)
 
