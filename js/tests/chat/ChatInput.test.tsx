@@ -600,7 +600,11 @@ describe("ChatInput", () => {
     })
 
     it("shows spinner (not cancel button) when pending even with enableCancel", () => {
-      renderChatInput({ disabled: true, isStreaming: false, enableCancel: true })
+      renderChatInput({
+        disabled: true,
+        isStreaming: false,
+        enableCancel: true,
+      })
       expect(screen.getByRole("button", { name: "Loading" })).toBeTruthy()
       expect(
         screen.queryByRole("button", { name: "Stop generating" }),
