@@ -9,7 +9,7 @@ import {
 import { useChatDispatch } from "./context"
 import { useInputHistory } from "./useInputHistory"
 import type { ChatTransport } from "../transport/types"
-import { arrowUpCircleFill, stopCircleFill } from "../utils/icons"
+import { arrowUpCircleFill, spinnerArc, stopCircleFill } from "../utils/icons"
 
 export interface ChatInputProps {
   transport: ChatTransport
@@ -185,7 +185,9 @@ export const ChatInput = memo(
     )
 
     const sendButtonDisabled = disabled || !hasText
-    const showStopButton = enableCancel && isStreaming
+    const isPending = disabled && !isStreaming
+    const showCancelButton = !!enableCancel && !!isStreaming && !cancelRequested
+    const showSpinner = isPending || !!cancelRequested
 
     return (
       <>
@@ -203,15 +205,21 @@ export const ChatInput = memo(
           aria-label="Chat message"
           data-shiny-no-bind-input
         />
-        {showStopButton ? (
+        {showCancelButton ? (
           <button
             type="button"
             className="shiny-chat-btn-send shiny-chat-btn-cancel"
             title="Stop generating"
             aria-label="Stop generating"
-            disabled={cancelRequested}
             onClick={onCancel}
             dangerouslySetInnerHTML={{ __html: stopCircleFill }}
+          />
+        ) : showSpinner ? (
+          <button
+            type="button"
+            className={`shiny-chat-btn-send shiny-chat-btn-spinner${cancelRequested ? " shiny-chat-btn-cancel" : ""}`}
+            aria-label="Loading"
+            dangerouslySetInnerHTML={{ __html: spinnerArc }}
           />
         ) : (
           <button
