@@ -129,6 +129,23 @@ describe("ExternalLinkDialogComponent", () => {
     expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalledOnce()
   })
 
+  it("calls onCancel when the native cancel event fires (e.g. Escape key)", () => {
+    const onCancel = vi.fn()
+
+    const { container } = render(
+      <ExternalLinkDialogComponent
+        url="https://example.com"
+        onProceed={vi.fn()}
+        onAlways={vi.fn()}
+        onCancel={onCancel}
+      />,
+    )
+
+    const dialog = container.querySelector("dialog")!
+    fireEvent(dialog, new Event("cancel"))
+    expect(onCancel).toHaveBeenCalledOnce()
+  })
+
   it("calls onProceed as fallback when showModal throws", () => {
     HTMLDialogElement.prototype.showModal = vi.fn(() => {
       throw new Error("showModal not supported")
