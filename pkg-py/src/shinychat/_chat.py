@@ -424,6 +424,15 @@ class Chat:
 
         cancel_input_id = f"{self.id}_cancel"
 
+        # Because a `client=` wires up cancellation automatically, enable the
+        # stop button in the UI without requiring `enable_cancel=True` in
+        # `chat_ui()`. The button only surfaces while streaming, so sending this
+        # once on session start (the effect has no reactive dependencies) is
+        # enough.
+        @reactive.effect
+        async def _enable_cancel_ui() -> None:
+            await self._send_action({"type": "update_cancel", "enable_cancel": True})
+
         @reactive.effect
         @reactive.event(self._session.input[cancel_input_id])
         async def _on_cancel() -> None:
@@ -442,6 +451,7 @@ class Chat:
             new_client, sync = swap
             chat_client._swap_client(new_client, sync=sync)
 
+        self._effects.append(_enable_cancel_ui)
         self._effects.append(_on_cancel)
         self._effects.append(_on_stream_complete)
 

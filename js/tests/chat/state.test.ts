@@ -64,6 +64,26 @@ describe("chatReducer", () => {
     })
   })
 
+  describe("update_cancel", () => {
+    it("enables cancel when enable_cancel is true", () => {
+      const state = makeState({ enableCancel: false })
+      const next = chatReducer(state, {
+        type: "update_cancel",
+        enable_cancel: true,
+      })
+      expect(next.enableCancel).toBe(true)
+    })
+
+    it("disables cancel when enable_cancel is false", () => {
+      const state = makeState({ enableCancel: true })
+      const next = chatReducer(state, {
+        type: "update_cancel",
+        enable_cancel: false,
+      })
+      expect(next.enableCancel).toBe(false)
+    })
+  })
+
   describe("message", () => {
     it("removes loading placeholder and appends message", () => {
       const placeholder: ChatMessageData = {

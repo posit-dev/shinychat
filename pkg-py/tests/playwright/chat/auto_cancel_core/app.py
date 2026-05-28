@@ -62,8 +62,10 @@ class SlowChatClient:
         self._turns = state.get("turns", [])
 
 
+# Note: `enable_cancel=True` is intentionally omitted here. Passing a
+# `client=` to `Chat` should auto-enable the stop button via a server message.
 app_ui = ui.page_fillable(
-    chat_ui("chat", enable_cancel=True),
+    chat_ui("chat"),
     ui.output_code("cancel_requested"),
 )
 

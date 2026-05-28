@@ -34,6 +34,7 @@ export type ChatAction =
       focus?: boolean
     }
   | { type: "remove_loading" }
+  | { type: "update_cancel"; enable_cancel: boolean }
   | { type: "hide_tool_request"; requestId: string }
   | {
       type: "greeting"

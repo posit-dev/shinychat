@@ -56,7 +56,7 @@ from chatlas import ChatAnthropic
 from shinychat import Chat, chat_ui
 
 app_ui = ui.page_fillable(
-    chat_ui("chat", enable_cancel=True),
+    chat_ui("chat"),
 )
 
 def server(input, output, session):

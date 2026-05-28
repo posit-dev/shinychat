@@ -69,6 +69,8 @@ export interface ChatState extends ChatInputState, ChatToolState {
   streamingMessage: ChatMessageData | null
   greeting: GreetingData | null
   cancelRequested: boolean
+  /** Whether the stop/cancel button is available during streaming. */
+  enableCancel: boolean
 }
 
 // Actions that originate from the UI (not from the server)
@@ -90,6 +92,7 @@ export const initialState: ChatState = {
   inputDisabled: false,
   inputPlaceholder: "Enter a message...",
   cancelRequested: false,
+  enableCancel: false,
   hiddenToolRequests: new Set(),
 }
 
@@ -821,6 +824,10 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       return { ...state, cancelRequested: true }
     }
 
+    case "update_cancel": {
+      return { ...state, enableCancel: action.enable_cancel }
+    }
+
     case "clear": {
       // action.greeting=true means "also clear the greeting"; otherwise restore it as visible
       const greetingAfterClear = action.greeting
@@ -835,6 +842,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         ...initialState,
         inputPlaceholder: state.inputPlaceholder,
         greeting: greetingAfterClear,
+        enableCancel: state.enableCancel,
       }
     }
 

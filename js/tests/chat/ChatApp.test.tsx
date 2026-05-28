@@ -450,3 +450,59 @@ describe("External link dialog", () => {
     expect(document.querySelector("dialog")).toBeNull()
   })
 })
+
+describe("server-controlled cancel", () => {
+  function startStreaming(transport: ReturnType<typeof createMockTransport>) {
+    act(() => {
+      transport.fire("test-chat", {
+        type: "chunk_start",
+        message: { role: "assistant", content: "", content_type: "markdown" },
+      })
+    })
+  }
+
+  it("does not show the stop button while streaming when enableCancel is unset", () => {
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+        cancelId="test-chat_cancel"
+      />,
+    )
+
+    startStreaming(transport)
+
+    expect(screen.queryByRole("button", { name: "Stop generating" })).toBeNull()
+  })
+
+  it("shows the stop button after an update_cancel message enables it", () => {
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+        cancelId="test-chat_cancel"
+      />,
+    )
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "update_cancel",
+        enable_cancel: true,
+      })
+    })
+
+    startStreaming(transport)
+
+    expect(screen.getByRole("button", { name: "Stop generating" })).toBeTruthy()
+  })
+})
