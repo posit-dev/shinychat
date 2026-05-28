@@ -167,14 +167,14 @@ describe("ChatInput", () => {
     expect((button as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it("send button is disabled when ChatInput is disabled", () => {
+  it("shows spinner instead of send button when ChatInput is disabled", () => {
     const { textarea } = renderChatInput({ disabled: true })
 
     textarea.value = "hello"
     fireEvent.input(textarea)
 
-    const button = screen.getByRole("button", { name: "Send message" })
-    expect((button as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.queryByRole("button", { name: "Send message" })).toBeNull()
+    expect(screen.getByRole("button", { name: "Loading" })).toBeTruthy()
   })
 
   it("send button is enabled when textarea has text", () => {
@@ -564,16 +564,16 @@ describe("ChatInput", () => {
       expect(onCancel).toHaveBeenCalledTimes(1)
     })
 
-    it("stop button is disabled when cancelRequested is true", () => {
+    it("shows spinner instead of stop button when cancelRequested is true", () => {
       renderChatInput({
         enableCancel: true,
         isStreaming: true,
         cancelRequested: true,
       })
-      const button = screen.getByRole("button", {
-        name: "Stop generating",
-      }) as HTMLButtonElement
-      expect(button.disabled).toBe(true)
+      expect(
+        screen.queryByRole("button", { name: "Stop generating" }),
+      ).toBeNull()
+      expect(screen.getByRole("button", { name: "Loading" })).toBeTruthy()
     })
 
     it("stop button is enabled when cancelRequested is false", () => {
@@ -586,6 +586,25 @@ describe("ChatInput", () => {
         name: "Stop generating",
       }) as HTMLButtonElement
       expect(button.disabled).toBe(false)
+    })
+  })
+
+  describe("spinner button", () => {
+    it("shows spinner when disabled but not yet streaming (pending state)", () => {
+      renderChatInput({ disabled: true, isStreaming: false })
+      expect(screen.getByRole("button", { name: "Loading" })).toBeTruthy()
+      expect(screen.queryByRole("button", { name: "Send message" })).toBeNull()
+      expect(
+        screen.queryByRole("button", { name: "Stop generating" }),
+      ).toBeNull()
+    })
+
+    it("shows spinner (not cancel button) when pending even with enableCancel", () => {
+      renderChatInput({ disabled: true, isStreaming: false, enableCancel: true })
+      expect(screen.getByRole("button", { name: "Loading" })).toBeTruthy()
+      expect(
+        screen.queryByRole("button", { name: "Stop generating" }),
+      ).toBeNull()
     })
   })
 })
