@@ -359,6 +359,12 @@ shiny-chat-container {
   border: none;
   background: none;
   max-width: min(680px, 90%);
+
+  // Bootstrap's .modal has height: 100%, which collapses to zero inside a
+  // content-sized <dialog> in Safari. Override to let it size from content.
+  .modal {
+    height: auto;
+  }
 }
 
 .shinychat-external-link-dialog::backdrop {

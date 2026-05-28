@@ -30,14 +30,20 @@ export function ExternalLinkDialogComponent({
       onProceedRef.current()
     }
 
-    // Close dialog when clicking the backdrop (outside the modal content)
     const handleClick = (e: MouseEvent) => {
       if (e.target === dialog) {
         onCancelRef.current()
       }
     }
+    const handleCancel = () => {
+      onCancelRef.current()
+    }
     dialog.addEventListener("click", handleClick)
-    return () => dialog.removeEventListener("click", handleClick)
+    dialog.addEventListener("cancel", handleCancel)
+    return () => {
+      dialog.removeEventListener("click", handleClick)
+      dialog.removeEventListener("cancel", handleCancel)
+    }
   }, [])
 
   return (

@@ -3,7 +3,7 @@ import type { Root, Element } from "hast"
 import type { Plugin } from "unified"
 
 /**
- * Rehype plugin that adds external link attributes to absolute URLs.
+ * Rehype plugin that marks navigating links for click interception.
  * Must run AFTER rehype-sanitize (or the attributes get stripped).
  */
 export const rehypeExternalLinks: Plugin<[], Root> = () => (tree) => {
@@ -11,13 +11,14 @@ export const rehypeExternalLinks: Plugin<[], Root> = () => (tree) => {
     if (node.tagName !== "a") return
     const href = node.properties?.href
     if (typeof href !== "string") return
-    if (/^(https?:)?\/\//.test(href)) {
-      node.properties = {
-        ...node.properties,
-        dataExternalLink: "",
-        target: "_blank",
-        rel: "noopener noreferrer",
-      }
+    if (href.startsWith("#")) return
+    if (/^[a-z][a-z0-9+.-]*:/i.test(href) && !/^https?:/i.test(href)) return
+
+    node.properties = {
+      ...node.properties,
+      dataShinychatLink: "",
+      target: "_blank",
+      rel: "noopener noreferrer",
     }
   })
 }
