@@ -226,6 +226,24 @@ shiny-chat-container {
     &.shiny-chat-btn-cancel {
       color: var(--bs-danger, #dc3545);
     }
+    &.shiny-chat-btn-spinner {
+      pointer-events: none;
+      cursor: default;
+      svg {
+        display: block;
+        animation: shiny-chat-spin 0.75s linear infinite;
+        transform-origin: center;
+      }
+    }
+  }
+}
+
+@keyframes shiny-chat-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 
