@@ -167,13 +167,14 @@ export const ChatContainer = forwardRef<
   const onContainerClick = useCallback((e: React.MouseEvent<HTMLElement>) => {
     const target = e.target as HTMLElement
     const linkEl = target.closest(
-      "a[data-external-link]",
+      "a[data-shinychat-link]",
     ) as HTMLAnchorElement | null
     if (!linkEl || !linkEl.href) return
 
     e.preventDefault()
 
-    if (window.shinychat_always_open_external_links) {
+    const isSameOrigin = linkEl.origin === window.location.origin
+    if (isSameOrigin || window.shinychat_always_open_external_links) {
       window.open(linkEl.href, "_blank", "noopener,noreferrer")
       return
     }

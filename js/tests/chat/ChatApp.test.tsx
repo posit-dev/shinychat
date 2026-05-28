@@ -309,7 +309,7 @@ describe("External link dialog", () => {
     await renderWithExternalLink()
 
     const link = document.querySelector(
-      "a[data-external-link]",
+      "a[data-shinychat-link]",
     ) as HTMLAnchorElement | null
     expect(link).not.toBeNull()
 
@@ -326,7 +326,7 @@ describe("External link dialog", () => {
     await renderWithExternalLink()
 
     const link = document.querySelector(
-      "a[data-external-link]",
+      "a[data-shinychat-link]",
     ) as HTMLAnchorElement
 
     await act(async () => {
@@ -348,7 +348,7 @@ describe("External link dialog", () => {
     await renderWithExternalLink()
 
     const link = document.querySelector(
-      "a[data-external-link]",
+      "a[data-shinychat-link]",
     ) as HTMLAnchorElement
 
     await act(async () => {
@@ -366,7 +366,7 @@ describe("External link dialog", () => {
     await renderWithExternalLink()
 
     const link = document.querySelector(
-      "a[data-external-link]",
+      "a[data-shinychat-link]",
     ) as HTMLAnchorElement
 
     // First click — show dialog and click "Always open external links"
@@ -393,7 +393,7 @@ describe("External link dialog", () => {
     const { unmount } = await renderWithExternalLink()
 
     const link = document.querySelector(
-      "a[data-external-link]",
+      "a[data-shinychat-link]",
     ) as HTMLAnchorElement
 
     await act(async () => {
