@@ -9,6 +9,7 @@ from htmltools import tags
 from shiny import Inputs, Session
 from shiny.module import ResolvedId
 from shiny.session import session_context
+from shiny.types import NotifyException
 from shinychat import Chat, chat_ui
 from shinychat._chat_client import ChatClient, messages_to_turns
 from shinychat._chat_types import ChatMessageDict
@@ -272,13 +273,14 @@ def test_clear_rejects_when_stream_is_running():
     chat = _StubChat(stream_status="running")
     client = ChatClient(chat=cast(Any, chat), client=cast(Any, MockClient()))
 
-    with pytest.raises(RuntimeError, match="response stream is running"):
+    with pytest.raises(NotifyException, match="response stream is running") as exc_info:
 
         async def _run() -> None:
             await client.clear()
 
         _run_async(_run)
 
+    assert exc_info.value.sanitize is False
     assert chat.clear_calls == []
     assert chat.appended_messages == []
 

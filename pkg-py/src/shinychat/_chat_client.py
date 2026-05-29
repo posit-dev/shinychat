@@ -130,11 +130,12 @@ class ChatClient:
 
         Raises
         ------
-        RuntimeError
+        shiny.types.NotifyException
             If an assistant response is currently streaming. To avoid this
             error, guard the call by checking
             ``chat.latest_message_stream.status() != "running"`` before calling
-            :meth:`clear`.
+            :meth:`clear`. The notification message is shown without
+            sanitization because it is a fixed, user-safe string.
         """
         valid_history = ("clear", "set", "append", "keep")
         if client_history not in valid_history:
@@ -152,10 +153,13 @@ class ChatClient:
                 '`client_history="append"`.'
             )
         if self._chat.latest_message_stream.status() == "running":
-            raise RuntimeError(
+            from shiny.types import NotifyException
+
+            raise NotifyException(
                 "`chat.client.clear()` cannot be called while a response stream "
                 "is running. Guard the call by checking "
-                '`chat.latest_message_stream.status() != "running"` first.'
+                '`chat.latest_message_stream.status() != "running"` first.',
+                sanitize=False,
             )
 
         await self._chat.clear_messages(greeting=greeting)
