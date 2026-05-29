@@ -156,9 +156,8 @@ class ChatClient:
             from shiny.types import NotifyException
 
             raise NotifyException(
-                "`chat.client.clear()` cannot be called while a response stream "
-                "is running. Guard the call by checking "
-                '`chat.latest_message_stream.status() != "running"` first.',
+                "Can't modify chat history while a response is still being "
+                "generated. Please wait for it to finish or stop it first.",
                 sanitize=False,
             )
 

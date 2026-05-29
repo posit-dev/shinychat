@@ -273,7 +273,10 @@ def test_clear_rejects_when_stream_is_running():
     chat = _StubChat(stream_status="running")
     client = ChatClient(chat=cast(Any, chat), client=cast(Any, MockClient()))
 
-    with pytest.raises(NotifyException, match="response stream is running") as exc_info:
+    with pytest.raises(
+        NotifyException,
+        match="Can't modify chat history while a response is still being generated. Please wait for it to finish or stop it first.",
+    ) as exc_info:
 
         async def _run() -> None:
             await client.clear()
