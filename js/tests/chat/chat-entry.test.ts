@@ -1,4 +1,12 @@
-import { describe, it, expect, beforeAll, beforeEach, afterEach } from "vitest"
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  beforeEach,
+  afterEach,
+  vi,
+} from "vitest"
 import { act, waitFor } from "@testing-library/react"
 import { installShinyWindowStub } from "../helpers/mocks"
 
@@ -116,5 +124,81 @@ describe("chat-entry custom element boot", () => {
         host.remove()
       }).not.toThrow()
     })
+  })
+
+  it("tears down when genuinely removed (not moved)", async () => {
+    const host = document.createElement("shiny-chat-container")
+    host.setAttribute("id", "remove-chat")
+    host.innerHTML = `
+      <shiny-chat-messages></shiny-chat-messages>
+      <shiny-chat-input></shiny-chat-input>
+    `
+
+    await act(async () => {
+      document.body.appendChild(host)
+    })
+
+    await waitFor(() => {
+      expect(host.querySelector("textarea")).not.toBeNull()
+    })
+
+    const unbindAll = window.Shiny!.unbindAll as ReturnType<typeof vi.fn>
+    const callsForHost = () =>
+      unbindAll.mock.calls.filter((args) => args[0] === host).length
+    const before = callsForHost()
+
+    await act(async () => {
+      host.remove()
+      // Let the deferred teardown timer fire (no reconnect cancels it).
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    expect(callsForHost()).toBeGreaterThan(before)
+  })
+
+  it("preserves the rendered conversation when moved to another container", async () => {
+    const left = document.createElement("div")
+    const right = document.createElement("div")
+    document.body.append(left, right)
+
+    const host = document.createElement("shiny-chat-container")
+    host.setAttribute("id", "move-chat")
+    host.innerHTML = `
+      <shiny-chat-messages>
+        <shiny-chat-message
+          data-role="assistant"
+          content-type="markdown"
+          content="Hello from the server"
+        ></shiny-chat-message>
+      </shiny-chat-messages>
+      <shiny-chat-input id="move-input"></shiny-chat-input>
+    `
+
+    await act(async () => {
+      left.appendChild(host)
+    })
+
+    await waitFor(() => {
+      expect(host.textContent).toContain("Hello from the server")
+    })
+
+    // Capture the rendered message element so we can prove it survives the
+    // move intact rather than being torn down and rebuilt from scratch.
+    const messageBefore = host.querySelector(".shiny-chat-message")
+    expect(messageBefore).not.toBeNull()
+
+    // Simulate the move: appendTo another container triggers
+    // disconnectedCallback -> connectedCallback.
+    await act(async () => {
+      right.appendChild(host)
+    })
+
+    await waitFor(() => {
+      expect(host.querySelector("textarea")).not.toBeNull()
+    })
+
+    expect(host.textContent).toContain("Hello from the server")
+    // Same DOM node => React state (including any streamed messages) preserved.
+    expect(host.querySelector(".shiny-chat-message")).toBe(messageBefore)
   })
 })
