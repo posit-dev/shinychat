@@ -127,6 +127,14 @@ class ChatClient:
             * ``"append"``: appends ``messages`` to the client's existing turns.
               Requires ``messages`` to be provided.
             * ``"keep"``: leaves the client's turns untouched.
+
+        Raises
+        ------
+        RuntimeError
+            If an assistant response is currently streaming. To avoid this
+            error, guard the call by checking
+            ``chat.latest_message_stream.status() != "running"`` before calling
+            :meth:`clear`.
         """
         valid_history = ("clear", "set", "append", "keep")
         if client_history not in valid_history:
@@ -146,7 +154,8 @@ class ChatClient:
         if self._chat.latest_message_stream.status() == "running":
             raise RuntimeError(
                 "`chat.client.clear()` cannot be called while a response stream "
-                "is running. Cancel the stream or wait for it to finish first."
+                "is running. Guard the call by checking "
+                '`chat.latest_message_stream.status() != "running"` first.'
             )
 
         await self._chat.clear_messages(greeting=greeting)
