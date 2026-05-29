@@ -394,7 +394,7 @@ class Chat:
         if greeting is not None:
             from ._chat_client import setup_greeting
 
-            setup_greeting(self, self.client, greeting, self._session)
+            setup_greeting(self, greeting, self._session)
 
     def _setup_client(
         self,

@@ -5,6 +5,7 @@ import inspect
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
 )
 
 if TYPE_CHECKING:
@@ -168,72 +169,39 @@ def messages_to_turns(
 
 def setup_greeting(
     chat: "Chat",
-    chat_client: "ChatClient | None",
-    greeting: "str | HTML | Tag | TagList | ChatGreeting | Any | None",
+    greeting: "str | HTML | Tag | TagList | ChatGreeting | Callable[..., Any] | None",
     session: "Session",
 ) -> None:
-    """
-    Wire up greeting handling for a chat.
-
-    For static greetings (str / HTML / Tag / TagList / ChatGreeting), registers
-    a reactive effect on ``{id}_greeting_requested`` that sends the greeting.
-
-    For callable greetings the function is inspected for a ``client`` parameter.
-    If present (and a ``chat_client`` is available), a deep-copy of the client
-    with empty turns is passed to it.
-    """
     if greeting is None:
         return
 
+    from htmltools import HTML, Tag, TagList
     from shiny import reactive
     from shiny.session import session_context
 
-    if callable(greeting) and not _is_static_greeting(greeting):
-        fn = greeting
-        sig = inspect.signature(fn)
-
-        with session_context(session):
-
-            @reactive.effect
-            @reactive.event(session.input[f"{chat.id}_greeting_requested"])
-            async def _on_greeting_requested() -> None:
-                if "client" in sig.parameters and chat_client is not None:
-                    client_copy = copy.deepcopy(chat_client.value)
-                    client_copy.set_turns([])
-                    result = fn(client=client_copy)
-                else:
-                    result = fn()
-
-                if inspect.isawaitable(result):
-                    result = await result
-
-                await chat.set_greeting(result)  # type: ignore[arg-type]
-
-        chat._effects.append(_on_greeting_requested)
-    else:
-        from htmltools import HTML, Tag, TagList
-
-        from ._chat_types import ChatGreeting
-
-        if isinstance(greeting, (str, HTML, Tag, TagList, ChatGreeting)):
-            static_greeting = greeting
-        else:
-            static_greeting = str(greeting)
-
-        with session_context(session):
-
-            @reactive.effect
-            @reactive.event(session.input[f"{chat.id}_greeting_requested"])
-            async def _on_greeting_requested_static() -> None:
-                await chat.set_greeting(static_greeting)
-
-        chat._effects.append(_on_greeting_requested_static)
-
-
-def _is_static_greeting(obj: Any) -> bool:
-    """Return True if obj is a str/HTML/Tag/TagList/ChatGreeting (not a callable greeting)."""
-    from htmltools import HTML, Tag, TagList
-
     from ._chat_types import ChatGreeting
 
-    return isinstance(obj, (str, HTML, Tag, TagList, ChatGreeting))
+    with session_context(session):
+
+        @reactive.effect
+        @reactive.event(session.input[f"{chat.id}_greeting_requested"])
+        async def _on_greeting_requested() -> None:
+            # A static greeting is sent as-is; otherwise it's a callable (sync
+            # or async) that produces the greeting on demand.
+            if isinstance(greeting, (str, HTML, Tag, TagList, ChatGreeting)):
+                return await chat.set_greeting(greeting)
+
+            sig = inspect.signature(greeting)
+            if "client" in sig.parameters and chat.client is not None:
+                client_copy = copy.deepcopy(chat.client.value)
+                client_copy.set_turns([])
+                result = greeting(client=client_copy)
+            else:
+                result = greeting()
+
+            if inspect.isawaitable(result):
+                result = await result
+
+            await chat.set_greeting(result)  # type: ignore[arg-type]
+
+    chat._effects.append(_on_greeting_requested)
