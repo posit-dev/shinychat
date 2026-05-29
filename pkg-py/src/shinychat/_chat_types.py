@@ -64,6 +64,11 @@ class RemoveLoadingAction(TypedDict):
     type: Literal["remove_loading"]
 
 
+class UpdateCancelAction(TypedDict):
+    type: Literal["update_cancel"]
+    enable_cancel: bool
+
+
 class HideToolRequestAction(TypedDict):
     type: Literal["hide_tool_request"]
     requestId: str
@@ -110,6 +115,7 @@ ChatAction = Union[
     ClearAction,
     UpdateInputAction,
     RemoveLoadingAction,
+    UpdateCancelAction,
     HideToolRequestAction,
     GreetingAction,
     GreetingStartAction,

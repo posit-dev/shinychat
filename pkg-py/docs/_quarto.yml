@@ -69,6 +69,7 @@ quartodoc:
         include_functions: true
       contents:
         - Chat
+        - types.ChatClient
         - chat_ui
         - chat_greeting
     - title: Shiny Express

@@ -1,4 +1,5 @@
 from .._chat import ChatMessage, ChatMessageDict
+from .._chat_client import ChatClient
 from .._chat_types import ChatGreeting
 
 try:
@@ -17,6 +18,7 @@ except ImportError:
 
 
 __all__ = [
+    "ChatClient",
     "ChatGreeting",
     "ChatMessage",
     "ChatMessageDict",

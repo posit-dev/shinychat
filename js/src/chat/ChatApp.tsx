@@ -82,6 +82,8 @@ export function ChatApp({
     greeting: initialGreeting
       ? makeInitialGreeting(initialGreeting, messages.length)
       : null,
+    enableCancel: enableCancel ?? initialState.enableCancel,
+    enableCancelExplicit: enableCancel !== undefined,
   })
 
   const containerRef = useRef<ChatContainerHandle>(null)
@@ -178,7 +180,7 @@ export function ChatApp({
             inputId={inputId}
             greeting={state.greeting}
             cancelId={cancelId}
-            enableCancel={enableCancel}
+            enableCancel={state.enableCancel}
             cancelRequested={state.cancelRequested}
             footerEl={footerEl}
           />

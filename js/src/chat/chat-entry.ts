@@ -71,7 +71,12 @@ class ChatContainerElement extends HTMLElement {
 
     const elementId = this.getAttribute("id") ?? ""
     const iconAssistant = this.getAttribute("icon-assistant") ?? undefined
-    const enableCancel = this.hasAttribute("enable-cancel")
+    // Any present value other than "false" counts as enabled, which keeps the
+    // R package's bare `enable-cancel` boolean attribute working. Absent (null)
+    // defers the choice to the server (`client=`) via `update_cancel`.
+    const enableCancelAttr = this.getAttribute("enable-cancel")
+    const enableCancel =
+      enableCancelAttr === null ? undefined : enableCancelAttr !== "false"
 
     const inputEl = this.querySelector(CHAT_INPUT_TAG)
     const placeholder = inputEl?.getAttribute("placeholder") ?? undefined

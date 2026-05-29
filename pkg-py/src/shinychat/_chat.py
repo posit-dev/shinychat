@@ -81,6 +81,8 @@ if TYPE_CHECKING:
     from shiny.types import Jsonifiable
     from shiny.ui.css import CssUnit
 
+    from ._chat_client import ChatClient
+
 
 else:
     chatlas = object
@@ -220,6 +222,26 @@ class Chat:
     id
         A unique identifier for the chat session. In Shiny Core, make sure this id
         matches a corresponding :func:`~shiny.ui.chat_ui` call in the UI.
+    client
+        A chatlas client (e.g., ``chatlas.ChatOpenAI()``). When provided,
+        streaming, cancellation, and bookmarking are wired up automatically.
+        This includes registering an :meth:`~shinychat.Chat.on_user_submit`
+        callback that streams the client's response to each user message, so you
+        don't need to write one yourself. Any additional ``@chat.on_user_submit``
+        handlers you register still run, in addition to (not in place of) this
+        one.
+        The resulting :attr:`chat.client` exposes a
+        :class:`~shinychat.types.ChatClient` wrapper for swapping models
+        mid-session (``.set()``) and resetting the conversation (``.clear()``).
+    greeting
+        Content to display as a welcome message before any conversation. Can be
+        a string, :class:`~htmltools.HTML`, :class:`~htmltools.Tag`,
+        :class:`~htmltools.TagList`, :class:`~shinychat.chat_greeting`, or a
+        callable that returns one of those types. A callable greeting is invoked
+        when the chat is visible and empty; if the callable accepts a ``client``
+        parameter (and ``client=`` was provided), a deep-copy of the chatlas
+        client with empty turns is passed so the greeting can be LLM-generated
+        without polluting conversation history.
     messages
         Deprecated. Use `chat.ui(messages=...)` instead.
     on_error
@@ -241,6 +263,8 @@ class Chat:
         self,
         id: str,
         *,
+        client: "chatlas.Chat[Any, Any] | None" = None,
+        greeting: "str | HTML | Tag | TagList | ChatGreeting | Callable[..., Any] | None" = None,
         messages: Sequence[Any] = (),
         on_error: Literal["auto", "actual", "sanitize", "unhandled"] = "auto",
         tokenizer: TokenEncoding | None = None,
@@ -367,6 +391,83 @@ class Chat:
         if instance is not None:
             instance.destroy()
         CHAT_INSTANCES[instance_id] = self
+
+        self.client: "ChatClient | None" = None
+        if client is not None:
+            self._setup_client(client)
+
+        if greeting is not None:
+            from ._chat_client import setup_greeting
+
+            setup_greeting(self, greeting, self._session)
+
+    def _setup_client(
+        self,
+        client: "chatlas.Chat[Any, Any]",
+    ) -> None:
+        from chatlas import StreamController
+        from shiny import reactive
+        from shiny.session import session_context
+
+        from ._chat_client import ChatClient
+
+        chat_client = ChatClient(
+            chat=self,
+            client=client,
+        )
+        self.client = chat_client
+
+        controller = StreamController()
+        cancel_input_id = f"{self.id}_cancel"
+
+        # Match the rest of `__init__`: create these effects under the chat's
+        # own session so they attach correctly even when `Chat(...)` is
+        # constructed outside that session's reactive context.
+        with session_context(self._session):
+
+            @self.on_user_submit
+            async def _on_user_submit(user_input: str) -> None:
+                response = await chat_client.value.stream_async(
+                    user_input,
+                    content="all",
+                    controller=controller,
+                )
+                await self.append_message_stream(response)
+
+            # A `client=` wires up cancellation, so enable the stop button
+            # without requiring `enable_cancel=True` in `chat_ui()`. It only
+            # surfaces while streaming, so sending this once at session start
+            # (the effect has no reactive dependencies) is enough.
+            @reactive.effect
+            async def _enable_cancel_ui() -> None:
+                await self._send_action(
+                    {"type": "update_cancel", "enable_cancel": True}
+                )
+
+            @reactive.effect
+            @reactive.event(self._session.input[cancel_input_id])
+            async def _on_cancel() -> None:
+                controller.cancel()
+
+            @reactive.effect
+            async def _on_stream_complete() -> None:
+                status = self.latest_message_stream.status()
+                if status == "running":
+                    return
+
+                swap = chat_client._pending_swap
+                if swap is None:
+                    return
+                chat_client._pending_swap = None
+                new_client, sync = swap
+                chat_client._swap_client(new_client, sync=sync)
+
+            self._effects.append(_enable_cancel_ui)
+            self._effects.append(_on_cancel)
+            self._effects.append(_on_stream_complete)
+
+            cancel_bm = self.enable_bookmarking(client, bookmark_on="response")
+            chat_client._cancel_bookmarking = cancel_bm
 
     @overload
     def on_user_submit(self, fn: UserSubmitFunction) -> Effect_: ...
@@ -1690,12 +1791,6 @@ class Chat:
         if session is None or session.is_stub_session():
             return BookmarkCancelCallback(lambda: None)
 
-        if session.bookmark.store == "disable":
-            raise ValueError(
-                "Bookmarking requires a `bookmark_store` to be set. "
-                "Please set `bookmark_store=` in `shiny.App()` or `shiny.express.app_opts()."
-            )
-
         resolved_bookmark_id_str = str(self.id)
         resolved_bookmark_id_msgs_str = resolved_bookmark_id_str + "--msgs"
         get_state: Callable[[], Awaitable[Jsonifiable]]
@@ -1850,7 +1945,7 @@ class ChatExpress(Chat):
         height: "CssUnit" = "auto",
         fill: bool = True,
         icon_assistant: HTML | Tag | TagList | None = None,
-        enable_cancel: bool = False,
+        enable_cancel: "bool | MISSING_TYPE" = MISSING,
         footer: Optional[TagChild] = None,
         **kwargs: TagAttrValue,
     ) -> Tag:
@@ -1887,7 +1982,8 @@ class ChatExpress(Chat):
             button in place of the send button while streaming. You must observe
             ``input.<id>_cancel`` on the server and call ``ctrl.cancel()`` on a
             chatlas ``StreamController`` to actually stop the stream. Defaults to
-            ``False``.
+            ``True`` when a ``client=`` was provided to :class:`~shinychat.Chat`,
+            ``False`` otherwise.
         footer
             Optional HTML content to display below the chat input.
             This can be any HTML content (tags, tag lists, or strings).
@@ -1899,6 +1995,9 @@ class ChatExpress(Chat):
             Additional attributes for the chat container element.
         """
 
+        # Don't resolve a default here: when `enable_cancel` is unset, a
+        # `client=` enables the stop button at runtime via `update_cancel`
+        # (see `_setup_client`). Forward the tri-state and let the client decide.
         return chat_ui(
             id=self.id,
             messages=messages,
@@ -1978,7 +2077,7 @@ def chat_ui(
     height: "CssUnit" = "auto",
     fill: bool = True,
     icon_assistant: Optional[HTML | Tag | TagList] = None,
-    enable_cancel: bool = False,
+    enable_cancel: "bool | MISSING_TYPE" = MISSING,
     footer: Optional[TagChild] = None,
     **kwargs: TagAttrValue,
 ) -> Tag:
@@ -2038,8 +2137,10 @@ def chat_ui(
         cancel the in-progress response. When ``True``, the chat UI shows a stop
         button in place of the send button while streaming. You must observe
         ``input.<id>_cancel`` on the server and call ``ctrl.cancel()`` on a
-        chatlas ``StreamController`` to actually stop the stream. Defaults to
-        ``False``.
+        chatlas ``StreamController`` to actually stop the stream. When left
+        unset (the default), a chat driven by a ``client=`` enables the stop
+        button automatically; otherwise it stays hidden. Passing an explicit
+        ``True``/``False`` always wins over that automatic behavior.
     footer
         Optional HTML content to display below the chat input.
         This can be any HTML content (tags, tag lists, or strings).
@@ -2083,6 +2184,15 @@ def chat_ui(
     if footer is not None:
         footer_tag = Tag("shiny-chat-footer", footer)
 
+    # Tri-state attribute: omitted = "no explicit preference" (lets a `client=`
+    # auto-enable the stop button at runtime), "true"/"false" = explicit choice
+    # that the client honors over any `update_cancel` message.
+    enable_cancel_attr: Optional[str] = (
+        None
+        if isinstance(enable_cancel, MISSING_TYPE)
+        else ("true" if enable_cancel else "false")
+    )
+
     greeting_attr: Optional[str] = None
     greeting_deps: list[HTMLDependency] = []
     if greeting is not None:
@@ -2125,7 +2235,7 @@ def chat_ui(
         placeholder=placeholder,
         fill=fill,
         greeting=greeting_attr,
-        enable_cancel=enable_cancel,
+        enable_cancel=enable_cancel_attr,
         # Also include icon on the parent so that when messages are dynamically added,
         # we know the default icon has changed
         icon_assistant=icon_attr,

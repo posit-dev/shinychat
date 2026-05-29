@@ -89,9 +89,6 @@ chat_restore <- function(
     )
   }
 
-  # Verify bookmark store is not disabled. Bookmark options: "disable", "url", "server"
-  bookmark_store <- shiny::getShinyOption("bookmarkStore", "disable")
-
   # Exclude works with bookmark names
   excluded_names <- session$getBookmarkExclude()
   id_user_input <- paste0(id, "_user_input")
