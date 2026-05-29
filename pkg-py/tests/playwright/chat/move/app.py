@@ -1,5 +1,4 @@
 from shiny.express import ui
-
 from shinychat.express import Chat
 
 # Regression test app for posit-dev/shinychat#121: moving a chat component to
