@@ -179,8 +179,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
    
   <ul>
   <li><a href="#installation" id="toc-installation" class="nav-link active" data-scroll-target="#installation">Installation</a></li>
-  <li><a href="#starter-example" id="toc-starter-example" class="nav-link" data-scroll-target="#starter-example">Starter example</a></li>
-  <li><a href="#stream-cancellation" id="toc-stream-cancellation" class="nav-link" data-scroll-target="#stream-cancellation">Stream cancellation</a></li>
+  <li><a href="#quick-start" id="toc-quick-start" class="nav-link" data-scroll-target="#quick-start">Quick start</a></li>
+  <li><a href="#lower-level-interface" id="toc-lower-level-interface" class="nav-link" data-scroll-target="#lower-level-interface">Lower-level interface</a></li>
   <li><a href="#learn-more" id="toc-learn-more" class="nav-link" data-scroll-target="#learn-more">Learn more</a></li>
   </ul>
 <div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/shinychat/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li><li><a href="https://github.com/posit-dev/shinychat/edit/main/pkg-py/docs/index.qmd" class="toc-action"><i class="bi empty"></i>Edit this page</a></li></ul></div></nav>
@@ -204,27 +204,39 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p>Or, install the development version of shinychat from <a href="https://github.com/posit-dev/shinychat">GitHub</a> with:</p>
 <div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> pip install git+https://github.com/posit-dev/shinychat.git</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </section>
-<section id="starter-example" class="level2">
-<h2 class="anchored" data-anchor-id="starter-example">Starter example</h2>
-<p>With shiny installed, you’re ready to run your first shinychat app. Create a new file named <code>app.py</code> with the following content:</p>
-<div class="sourceCode" id="cb4" data-file="app.py"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shinychat.express <span class="im">import</span> Chat</span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Create a chat instance and display it</span></span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>chat <span class="op">=</span> Chat(<span class="bu">id</span><span class="op">=</span><span class="st">"chat"</span>)</span>
-<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>chat.ui()</span>
-<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Define a callback to run when the user submits a message</span></span>
-<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="at">@chat.on_user_submit</span></span>
-<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> handle_user_input(user_input: <span class="bu">str</span>):</span>
-<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Simply echo the user's input back to them</span></span>
-<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.append_message(<span class="ss">f"You said: </span><span class="sc">{</span>user_input<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>To run the app, execute the following command in your terminal (or via the <a href="https://marketplace.visualstudio.com/items?itemName=Posit.shiny">Shiny extension</a>):</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> shiny run <span class="at">--reload</span> app.py</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<section id="quick-start" class="level2">
+<h2 class="anchored" data-anchor-id="quick-start">Quick start</h2>
+<p>The fastest way to build a chatbot with shinychat is to pass a <a href="https://posit-dev.github.io/chatlas/">chatlas</a> client to <code>Chat(client=)</code>. This gives you streaming, cancellation, bookmarking, and more out of the box — no manual wiring required.</p>
+<p><strong>Shiny Express</strong></p>
+<div class="sourceCode" id="cb4" data-file="app.py"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> chatlas <span class="im">import</span> ChatAnthropic</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shiny.express <span class="im">import</span> app_opts, ui</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shinychat.express <span class="im">import</span> Chat</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>client <span class="op">=</span> ChatAnthropic(system_prompt<span class="op">=</span><span class="st">"You are a helpful assistant."</span>)</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>chat <span class="op">=</span> Chat(<span class="bu">id</span><span class="op">=</span><span class="st">"chat"</span>, client<span class="op">=</span>client)</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>chat.ui()</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>ui.page_opts(fillable<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>app_opts(bookmark_store<span class="op">=</span><span class="st">"url"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><strong>Shiny Core</strong></p>
+<div class="sourceCode" id="cb5" data-file="app.py"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shiny <span class="im">import</span> App, ui</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> chatlas <span class="im">import</span> ChatAnthropic</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shinychat <span class="im">import</span> Chat, chat_ui</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>app_ui <span class="op">=</span> ui.page_fillable(</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    chat_ui(<span class="st">"chat"</span>),</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> server(<span class="bu">input</span>, output, session):</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>    client <span class="op">=</span> ChatAnthropic(system_prompt<span class="op">=</span><span class="st">"You are a helpful assistant."</span>)</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>    chat <span class="op">=</span> Chat(<span class="st">"chat"</span>, client<span class="op">=</span>client)</span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>app <span class="op">=</span> App(app_ui, server, bookmark_store<span class="op">=</span><span class="st">"url"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The <code>chat.client</code> property provides a <code>.set()</code> method for swapping models mid-session and <code>.clear()</code> for resetting the conversation. For lower-level chat methods such as appending messages, updating the input, or inspecting stream state, call them directly on <code>chat</code>. See the <a href="./api/index.html">API reference</a> for the full interface.</p>
 </section>
-<section id="stream-cancellation" class="level2">
-<h2 class="anchored" data-anchor-id="stream-cancellation">Stream cancellation</h2>
-<p>shinychat supports cancelling in-progress AI response streams. Set <code>enable_cancel=True</code> when creating the chat UI to show a stop button during streaming. Users can also press Escape while the chat has focus to cancel.</p>
-<p>For cooperative cancellation, <a href="https://posit-dev.github.io/chatlas/">chatlas</a> provides a <code>StreamController</code> that you pass to <code>stream_async()</code>. The controller automatically resets itself between streams, so you only need to create it once.</p>
+<section id="lower-level-interface" class="level2">
+<h2 class="anchored" data-anchor-id="lower-level-interface">Lower-level interface</h2>
+<p>When you need full control over the server-side logic — or you’re using an LLM framework other than chatlas — omit the <code>client=</code> argument and wire things up manually. This means handling streaming, cancellation, and bookmarking yourself, but gives you complete flexibility over how messages are generated and displayed.</p>
 <p><strong>Shiny Express</strong></p>
 <div class="sourceCode" id="cb6" data-file="app.py"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shiny <span class="im">import</span> reactive</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shiny.express <span class="im">import</span> <span class="bu">input</span></span>

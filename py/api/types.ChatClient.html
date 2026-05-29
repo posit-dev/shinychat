@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>index – shinychat</title>
+<title>types.chatclient – shinychat</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -19,6 +19,41 @@ ul.task-list li input[type="checkbox"] {
   width: 0.8em;
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
 }
 </style>
 
@@ -76,8 +111,10 @@ ul.task-list li input[type="checkbox"] {
 
 
 <meta property="og:title" content="shinychat">
+<meta property="og:description" content="Chat UI Component for Shiny">
 <meta property="og:site_name" content="shinychat">
 <meta name="twitter:title" content="shinychat">
+<meta name="twitter:description" content="Chat UI Component for Shiny">
 <meta name="twitter:card" content="summary">
 </head>
 
@@ -132,7 +169,7 @@ ul.task-list li input[type="checkbox"] {
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../api/index.html">shinychat Reference</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../api/Chat.html">Shiny Core</a></li><li class="breadcrumb-item"><a href="../api/types.ChatClient.html">types.ChatClient</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
     </div>
@@ -146,7 +183,7 @@ ul.task-list li input[type="checkbox"] {
     <ul class="list-unstyled mt-1">
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../api/index.html" class="sidebar-item-text sidebar-link active">
+  <a href="../api/index.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">shinychat Reference</span></a>
   </div>
 </li>
@@ -167,7 +204,7 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../api/types.ChatClient.html" class="sidebar-item-text sidebar-link">
+  <a href="../api/types.ChatClient.html" class="sidebar-item-text sidebar-link active">
  <span class="menu-text">types.ChatClient</span></a>
   </div>
 </li>
@@ -229,69 +266,158 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#shinychat-reference" id="toc-shinychat-reference" class="nav-link active" data-scroll-target="#shinychat-reference">shinychat Reference</a>
+  <li><a href="#shinychat.types.ChatClient" id="toc-shinychat.types.ChatClient" class="nav-link active" data-scroll-target="#shinychat.types.ChatClient">types.ChatClient</a>
   <ul class="collapse">
-  <li><a href="#shiny-core" id="toc-shiny-core" class="nav-link" data-scroll-target="#shiny-core">Shiny Core</a></li>
-  <li><a href="#shiny-express" id="toc-shiny-express" class="nav-link" data-scroll-target="#shiny-express">Shiny Express</a></li>
-  <li><a href="#testing" id="toc-testing" class="nav-link" data-scroll-target="#testing">Testing</a></li>
+  <li><a href="#attributes" id="toc-attributes" class="nav-link" data-scroll-target="#attributes">Attributes</a></li>
+  <li><a href="#methods" id="toc-methods" class="nav-link" data-scroll-target="#methods">Methods</a>
+  <ul class="collapse">
+  <li><a href="#shinychat.types.ChatClient.clear" id="toc-shinychat.types.ChatClient.clear" class="nav-link" data-scroll-target="#shinychat.types.ChatClient.clear">clear</a></li>
+  <li><a href="#shinychat.types.ChatClient.set" id="toc-shinychat.types.ChatClient.set" class="nav-link" data-scroll-target="#shinychat.types.ChatClient.set">set</a></li>
+  </ul></li>
   </ul></li>
   </ul>
-<div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/shinychat/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li><li><a href="https://github.com/posit-dev/shinychat/edit/main/pkg-py/docs/api/index.qmd" class="toc-action"><i class="bi empty"></i>Edit this page</a></li></ul></div></nav>
+<div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/shinychat/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li><li><a href="https://github.com/posit-dev/shinychat/edit/main/pkg-py/docs/api/types.ChatClient.qmd" class="toc-action"><i class="bi empty"></i>Edit this page</a></li></ul></div></nav>
     </div>
 <!-- main -->
-<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"></header>
+<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../api/Chat.html">Shiny Core</a></li><li class="breadcrumb-item"><a href="../api/types.ChatClient.html">types.ChatClient</a></li></ol></nav></header>
 
 
 
 
-<section id="shinychat-reference" class="level1 doc doc-index">
-<h1 class="doc doc-index">shinychat Reference</h1>
-<section id="shiny-core" class="level2">
-<h2 class="anchored" data-anchor-id="shiny-core">Shiny Core</h2>
+<section id="shinychat.types.ChatClient" class="level1">
+<h1>types.ChatClient</h1>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>types.ChatClient(chat, client)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Wraps a chatlas client bound to a :class:<code>~shinychat.Chat</code> instance.</p>
+<p>This class is created automatically when you pass a <code>client=</code> argument to :class:<code>~shinychat.Chat</code>. It holds the current client, handles deferred swaps during streaming, and wires up bookmarking.</p>
+<section id="attributes" class="level2">
+<h2 class="anchored" data-anchor-id="attributes">Attributes</h2>
 <table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Description</th>
+</tr>
+</thead>
 <tbody>
 <tr class="odd">
-<td><a href="../api/Chat.html#shinychat.Chat">Chat</a></td>
-<td>Create a chat interface.</td>
-</tr>
-<tr class="even">
-<td><a href="../api/types.ChatClient.html#shinychat.types.ChatClient">types.ChatClient</a></td>
-<td>Wraps a chatlas client bound to a :class:<code>~shinychat.Chat</code> instance.</td>
-</tr>
-<tr class="odd">
-<td><a href="../api/chat_ui.html#shinychat.chat_ui">chat_ui</a></td>
-<td>UI container for a chat component (Shiny Core).</td>
-</tr>
-<tr class="even">
-<td><a href="../api/chat_greeting.html#shinychat.chat_greeting">chat_greeting</a></td>
-<td>Create a greeting for a chat UI.</td>
+<td><a href="#shinychat.types.ChatClient.value">value</a></td>
+<td>The underlying chatlas client.</td>
 </tr>
 </tbody>
 </table>
 </section>
-<section id="shiny-express" class="level2">
-<h2 class="anchored" data-anchor-id="shiny-express">Shiny Express</h2>
+<section id="methods" class="level2">
+<h2 class="anchored" data-anchor-id="methods">Methods</h2>
 <table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Description</th>
+</tr>
+</thead>
 <tbody>
 <tr class="odd">
-<td><a href="../api/express.Chat.html#shinychat.express.Chat">express.Chat</a></td>
+<td><a href="#shinychat.types.ChatClient.clear">clear</a></td>
+<td>Clear chat messages and optionally reset the client’s turn history.</td>
+</tr>
+<tr class="even">
+<td><a href="#shinychat.types.ChatClient.set">set</a></td>
+<td>Replace the chatlas client.</td>
+</tr>
+</tbody>
+</table>
+<section id="shinychat.types.ChatClient.clear" class="level3">
+<h3 class="anchored" data-anchor-id="shinychat.types.ChatClient.clear">clear</h3>
+<div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>types.ChatClient.clear(messages<span class="op">=</span><span class="va">None</span>, greeting<span class="op">=</span><span class="va">False</span>, client_history<span class="op">=</span><span class="st">'clear'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Clear chat messages and optionally reset the client’s turn history.</p>
+<section id="parameters" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>messages</td>
+<td>'list[ChatMessageDict] | None'</td>
+<td>A list of messages to set or append on the client. Required when <code>client_history</code> is <code>"set"</code> or <code>"append"</code>, and not allowed with <code>"clear"</code> or <code>"keep"</code>.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="even">
+<td>greeting</td>
+<td><a href="`bool`">bool</a></td>
+<td>Passed to :meth:<code>~shinychat.Chat.clear_messages</code>.</td>
+<td><code>False</code></td>
+</tr>
+<tr class="odd">
+<td>client_history</td>
+<td><a href="`typing.Literal`">Literal</a>['clear', 'set', 'append', 'keep']</td>
+<td>How to handle the client’s turn history: * <code>"clear"</code> (default): removes all turns from the client. * <code>"set"</code>: sets the client’s turns to <code>messages</code>. Requires <code>messages</code> to be provided. * <code>"append"</code>: appends <code>messages</code> to the client’s existing turns. Requires <code>messages</code> to be provided. * <code>"keep"</code>: leaves the client’s turns untouched.</td>
+<td><code>'clear'</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="raises" class="level4 doc-section doc-section-raises">
+<h4 class="doc-section doc-section-raises anchored" data-anchor-id="raises">Raises</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
 <td></td>
+<td><a href="`shiny`">shiny</a>.<a href="`shiny.types`">types</a>.<a href="`shiny.types.NotifyException`">NotifyException</a></td>
+<td>If an assistant response is currently streaming. To avoid this error, guard the call by checking <code>chat.latest_message_stream.status() != "running"</code> before calling :meth:<code>clear</code>. The notification message is shown without sanitization because it is a fixed, user-safe string.</td>
 </tr>
 </tbody>
 </table>
 </section>
-<section id="testing" class="level2">
-<h2 class="anchored" data-anchor-id="testing">Testing</h2>
+</section>
+<section id="shinychat.types.ChatClient.set" class="level3">
+<h3 class="anchored" data-anchor-id="shinychat.types.ChatClient.set">set</h3>
+<div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>types.ChatClient.<span class="bu">set</span>(new_client, <span class="op">*</span>, sync<span class="op">=</span><span class="va">True</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Replace the chatlas client.</p>
+<p>If a response stream is currently running the swap is deferred until the stream completes.</p>
+<section id="parameters-1" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-1">Parameters</h4>
 <table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
 <tbody>
 <tr class="odd">
-<td><a href="../api/playwright.ChatController.html#shinychat.playwright.ChatController">playwright.ChatController</a></td>
-<td>Controller for :func:<code>shiny.ui.chat</code>.</td>
+<td>new_client</td>
+<td>'chatlas.Chat[Any, Any]'</td>
+<td>The replacement chatlas client.</td>
+<td><em>required</em></td>
+</tr>
+<tr class="even">
+<td>sync</td>
+<td><a href="`bool`">bool</a></td>
+<td>When <code>True</code> (the default), copies turns, system_prompt, and tools from the old client to the new one before swapping.</td>
+<td><code>True</code></td>
 </tr>
 </tbody>
 </table>
 
 
+</section>
+</section>
 </section>
 </section>
 
@@ -703,7 +829,7 @@ ul.task-list li input[type="checkbox"] {
 </div>   
     <div class="nav-footer-center">
       &nbsp;
-    <div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/posit-dev/shinychat/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li><li><a href="https://github.com/posit-dev/shinychat/edit/main/pkg-py/docs/api/index.qmd" class="toc-action"><i class="bi empty"></i>Edit this page</a></li></ul></div></div>
+    <div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/posit-dev/shinychat/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li><li><a href="https://github.com/posit-dev/shinychat/edit/main/pkg-py/docs/api/types.ChatClient.qmd" class="toc-action"><i class="bi empty"></i>Edit this page</a></li></ul></div></div>
     <div class="nav-footer-right">
       &nbsp;
     </div>

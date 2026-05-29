@@ -204,6 +204,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../api/types.ChatClient.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">types.ChatClient</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../api/chat_ui.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">chat_ui</span></a>
   </div>
@@ -294,7 +300,15 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <section id="shinychat.Chat" class="level1">
 <h1>Chat</h1>
-<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>Chat(<span class="bu">id</span>, <span class="op">*</span>, messages<span class="op">=</span>(), on_error<span class="op">=</span><span class="st">'auto'</span>, tokenizer<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>Chat(</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="bu">id</span>,</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    client<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    greeting<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    messages<span class="op">=</span>(),</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    on_error<span class="op">=</span><span class="st">'auto'</span>,</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    tokenizer<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Create a chat interface.</p>
 <p>A UI component for building conversational interfaces. With it, end users can submit messages, which will cause a <code>.on_user_submit()</code> callback to run. That callback gets passed the user input message, which can be used to generate a response. The response can then be appended to the chat using <code>.append_message()</code> or <code>.append_message_stream()</code>.</p>
 <p>Here’s a rough outline for how to implement a <code>Chat</code>:</p>
@@ -346,6 +360,18 @@ to indicate what you're currently reasoning about. For example:
 <td><a href="`str`">str</a></td>
 <td>A unique identifier for the chat session. In Shiny Core, make sure this id matches a corresponding :func:<code>~shiny.ui.chat_ui</code> call in the UI.</td>
 <td><em>required</em></td>
+</tr>
+<tr class="even">
+<td>client</td>
+<td>'chatlas.Chat[Any, Any] | None'</td>
+<td>A chatlas client (e.g., <code>chatlas.ChatOpenAI()</code>). When provided, streaming, cancellation, and bookmarking are wired up automatically. This includes registering an :meth:<code>~shinychat.Chat.on_user_submit</code> callback that streams the client’s response to each user message, so you don’t need to write one yourself. Any additional <code>@chat.on_user_submit</code> handlers you register still run, in addition to (not in place of) this one. The resulting :attr:<code>chat.client</code> exposes a :class:<code>~shinychat.types.ChatClient</code> wrapper for swapping models mid-session (<code>.set()</code>) and resetting the conversation (<code>.clear()</code>).</td>
+<td><code>None</code></td>
+</tr>
+<tr class="odd">
+<td>greeting</td>
+<td>'str | HTML | Tag | TagList | ChatGreeting | Callable[…, Any] | None'</td>
+<td>Content to display as a welcome message before any conversation. Can be a string, :class:<code>~htmltools.HTML</code>, :class:<code>~htmltools.Tag</code>, :class:<code>~htmltools.TagList</code>, :class:<code>~shinychat.chat_greeting</code>, or a callable that returns one of those types. A callable greeting is invoked when the chat is visible and empty; if the callable accepts a <code>client</code> parameter (and <code>client=</code> was provided), a deep-copy of the chatlas client with empty turns is passed so the greeting can be LLM-generated without polluting conversation history.</td>
+<td><code>None</code></td>
 </tr>
 <tr class="even">
 <td>messages</td>

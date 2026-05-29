@@ -34,6 +34,14 @@ shinychat.Chat.user_input py:function 1 api/Chat.html#shinychat.Chat.user_input 
 shinychat._chat.Chat.user_input py:function 1 api/Chat.html#shinychat.Chat.user_input shinychat.Chat.user_input
 shinychat.Chat py:class 1 api/Chat.html#shinychat.Chat -
 shinychat._chat.Chat py:class 1 api/Chat.html#shinychat.Chat shinychat.Chat
+shinychat.types.ChatClient.clear py:function 1 api/types.ChatClient.html#shinychat.types.ChatClient.clear -
+shinychat._chat_client.ChatClient.clear py:function 1 api/types.ChatClient.html#shinychat.types.ChatClient.clear shinychat.types.ChatClient.clear
+shinychat.types.ChatClient.set py:function 1 api/types.ChatClient.html#shinychat.types.ChatClient.set -
+shinychat._chat_client.ChatClient.set py:function 1 api/types.ChatClient.html#shinychat.types.ChatClient.set shinychat.types.ChatClient.set
+shinychat.types.ChatClient.value py:attribute 1 api/types.ChatClient.html#shinychat.types.ChatClient.value -
+shinychat._chat_client.ChatClient.value py:attribute 1 api/types.ChatClient.html#shinychat.types.ChatClient.value shinychat.types.ChatClient.value
+shinychat.types.ChatClient py:class 1 api/types.ChatClient.html#shinychat.types.ChatClient -
+shinychat._chat_client.ChatClient py:class 1 api/types.ChatClient.html#shinychat.types.ChatClient shinychat.types.ChatClient
 shinychat.chat_ui py:function 1 api/chat_ui.html#shinychat.chat_ui -
 shinychat._chat.chat_ui py:function 1 api/chat_ui.html#shinychat.chat_ui shinychat.chat_ui
 shinychat.chat_greeting py:function 1 api/chat_greeting.html#shinychat.chat_greeting -
