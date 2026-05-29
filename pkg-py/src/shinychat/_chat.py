@@ -1984,12 +1984,10 @@ class ChatExpress(Chat):
             Additional attributes for the chat container element.
         """
 
-        resolved_cancel: bool = (
-            self.client is not None
-            if isinstance(enable_cancel, MISSING_TYPE)
-            else enable_cancel
-        )
-
+        # `enable_cancel` is forwarded through to `chat_ui()` as a tri-state
+        # (unset / True / False). When it's unset and a `client=` is driving the
+        # chat, the stop button is enabled at runtime via an `update_cancel`
+        # message (see `_setup_client`); an explicit value here vetoes that.
         return chat_ui(
             id=self.id,
             messages=messages,
@@ -1999,7 +1997,7 @@ class ChatExpress(Chat):
             height=height,
             fill=fill,
             icon_assistant=icon_assistant,
-            enable_cancel=resolved_cancel,
+            enable_cancel=enable_cancel,
             footer=footer,
             **kwargs,
         )
@@ -2069,7 +2067,7 @@ def chat_ui(
     height: "CssUnit" = "auto",
     fill: bool = True,
     icon_assistant: Optional[HTML | Tag | TagList] = None,
-    enable_cancel: bool = False,
+    enable_cancel: "bool | MISSING_TYPE" = MISSING,
     footer: Optional[TagChild] = None,
     **kwargs: TagAttrValue,
 ) -> Tag:
@@ -2129,8 +2127,10 @@ def chat_ui(
         cancel the in-progress response. When ``True``, the chat UI shows a stop
         button in place of the send button while streaming. You must observe
         ``input.<id>_cancel`` on the server and call ``ctrl.cancel()`` on a
-        chatlas ``StreamController`` to actually stop the stream. Defaults to
-        ``False``.
+        chatlas ``StreamController`` to actually stop the stream. When left
+        unset (the default), a chat driven by a ``client=`` enables the stop
+        button automatically; otherwise it stays hidden. Passing an explicit
+        ``True``/``False`` always wins over that automatic behavior.
     footer
         Optional HTML content to display below the chat input.
         This can be any HTML content (tags, tag lists, or strings).
@@ -2174,6 +2174,15 @@ def chat_ui(
     if footer is not None:
         footer_tag = Tag("shiny-chat-footer", footer)
 
+    # Tri-state attribute: omitted = "no explicit preference" (lets a `client=`
+    # auto-enable the stop button at runtime), "true"/"false" = explicit choice
+    # that the client honors over any `update_cancel` message.
+    enable_cancel_attr: Optional[str] = (
+        None
+        if isinstance(enable_cancel, MISSING_TYPE)
+        else ("true" if enable_cancel else "false")
+    )
+
     greeting_attr: Optional[str] = None
     greeting_deps: list[HTMLDependency] = []
     if greeting is not None:
@@ -2216,7 +2225,7 @@ def chat_ui(
         placeholder=placeholder,
         fill=fill,
         greeting=greeting_attr,
-        enable_cancel=enable_cancel,
+        enable_cancel=enable_cancel_attr,
         # Also include icon on the parent so that when messages are dynamically added,
         # we know the default icon has changed
         icon_assistant=icon_attr,

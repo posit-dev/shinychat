@@ -71,6 +71,12 @@ export interface ChatState extends ChatInputState, ChatToolState {
   cancelRequested: boolean
   /** Whether the stop/cancel button is available during streaming. */
   enableCancel: boolean
+  /**
+   * Whether `enableCancel` was set explicitly via the `enable-cancel`
+   * attribute. When true, server `update_cancel` messages are ignored so an
+   * explicit user choice always wins over the `client=` auto-default.
+   */
+  enableCancelExplicit: boolean
 }
 
 // Actions that originate from the UI (not from the server)
@@ -93,6 +99,7 @@ export const initialState: ChatState = {
   inputPlaceholder: "Enter a message...",
   cancelRequested: false,
   enableCancel: false,
+  enableCancelExplicit: false,
   hiddenToolRequests: new Set(),
 }
 
@@ -825,6 +832,9 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     }
 
     case "update_cancel": {
+      // An explicit `enable-cancel` attribute wins over the server-driven
+      // (`client=`) auto-default.
+      if (state.enableCancelExplicit) return state
       return { ...state, enableCancel: action.enable_cancel }
     }
 
@@ -843,6 +853,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         inputPlaceholder: state.inputPlaceholder,
         greeting: greetingAfterClear,
         enableCancel: state.enableCancel,
+        enableCancelExplicit: state.enableCancelExplicit,
       }
     }
 

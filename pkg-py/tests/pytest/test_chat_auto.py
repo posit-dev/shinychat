@@ -240,7 +240,22 @@ def test_messages_to_turns_defaults_to_assistant():
 def test_chat_ui_with_enable_cancel():
     tag = chat_ui("myid", enable_cancel=True)
     html = tag.get_html_string()
-    assert "enable-cancel" in html
+    assert 'enable-cancel="true"' in html
+
+
+def test_chat_ui_enable_cancel_false_is_explicit():
+    # Explicit False must be distinguishable from "unset" in the DOM so the
+    # client can veto a `client=` auto-enable.
+    tag = chat_ui("myid", enable_cancel=False)
+    html = tag.get_html_string()
+    assert 'enable-cancel="false"' in html
+
+
+def test_chat_ui_enable_cancel_unset_omits_attribute():
+    # Unset (the default) renders no attribute, signalling "no preference".
+    tag = chat_ui("myid")
+    html = tag.get_html_string()
+    assert "enable-cancel" not in html
 
 
 def test_chat_ui_forwards_kwargs():

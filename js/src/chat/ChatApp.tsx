@@ -82,7 +82,11 @@ export function ChatApp({
     greeting: initialGreeting
       ? makeInitialGreeting(initialGreeting, messages.length)
       : null,
+    // `enableCancel` is tri-state: `undefined` means "no explicit preference"
+    // (so the server `client=` may auto-enable); a concrete boolean is a
+    // user choice that locks out `update_cancel` messages.
     enableCancel: enableCancel ?? initialState.enableCancel,
+    enableCancelExplicit: enableCancel !== undefined,
   })
 
   const containerRef = useRef<ChatContainerHandle>(null)
