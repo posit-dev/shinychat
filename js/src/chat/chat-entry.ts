@@ -65,8 +65,18 @@ function parseInitialGreeting(
 class ChatContainerElement extends HTMLElement {
   private reactRoot: Root | null = null
   private footerEl: Element | null = null
+  private pendingUnmount: ReturnType<typeof setTimeout> | null = null
 
   connectedCallback() {
+    // Moving the element in the DOM fires disconnectedCallback then
+    // connectedCallback synchronously in the same tick. The deferred unmount
+    // scheduled on disconnect hasn't run yet, so cancel it here to keep the
+    // live React root (and its rendered conversation) intact across the move.
+    if (this.pendingUnmount !== null) {
+      clearTimeout(this.pendingUnmount)
+      this.pendingUnmount = null
+    }
+
     if (this.reactRoot) return
 
     const elementId = this.getAttribute("id") ?? ""
@@ -121,9 +131,15 @@ class ChatContainerElement extends HTMLElement {
   }
 
   disconnectedCallback() {
-    transport.unbindAll(this)
-    this.reactRoot?.unmount()
-    this.reactRoot = null
+    // Defer teardown so a move (disconnect immediately followed by reconnect)
+    // can cancel it. If the element is genuinely removed, no reconnect cancels
+    // the timer and cleanup runs on the next tick.
+    this.pendingUnmount = setTimeout(() => {
+      transport.unbindAll(this)
+      this.reactRoot?.unmount()
+      this.reactRoot = null
+      this.pendingUnmount = null
+    }, 0)
   }
 }
 

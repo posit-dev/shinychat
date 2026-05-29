@@ -20,6 +20,7 @@ import {
   beforeEach,
   afterEach,
 } from "vitest"
+import { act, waitFor } from "@testing-library/react"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -188,7 +189,55 @@ describe("MarkdownStreamElement — pending message queue", () => {
     expect(api.replaceContent).toHaveBeenCalledWith("immediate")
   })
 
-  it("disconnectedCallback clears the queue so messages do not replay on remount", () => {
+  it("preserves streamed content when moved to another container", async () => {
+    const left = document.createElement("div")
+    const right = document.createElement("div")
+    document.body.append(left, right)
+
+    const el = document.createElement("shiny-markdown-stream")
+    el.setAttribute("id", "move-stream")
+    el.setAttribute("content", "initial")
+
+    await act(async () => {
+      left.appendChild(el)
+    })
+
+    // Wait for the React component to render the initial content (API ready).
+    await waitFor(() => {
+      expect(el.textContent).toContain("initial")
+    })
+
+    // Stream additional content that lives only in React state — it is never
+    // written back to the `content` attribute.
+    const handle = el as unknown as {
+      handleMessage: (m: ContentMessage | IsStreamingMessage) => void
+    }
+    await act(async () => {
+      handle.handleMessage({
+        id: "move-stream",
+        content: " streamed",
+        operation: "append",
+      })
+    })
+
+    await waitFor(() => {
+      expect(el.textContent).toContain("streamed")
+    })
+
+    // Move the element: disconnectedCallback -> connectedCallback.
+    await act(async () => {
+      right.appendChild(el)
+    })
+
+    await waitFor(() => {
+      expect(el.textContent).toContain("initial")
+    })
+
+    // The streamed content must survive the move (proves React state preserved).
+    expect(el.textContent).toContain("streamed")
+  })
+
+  it("clears the queue on genuine teardown so messages do not replay on remount", async () => {
     const { el } = createElement_()
 
     const msg: ContentMessage = {
@@ -203,8 +252,10 @@ describe("MarkdownStreamElement — pending message queue", () => {
     handle.handleMessage(msg)
     expect(internals(el).pendingMessages).toHaveLength(1)
 
-    // Simulate disconnect
+    // Genuine removal: disconnect with no reconnect to cancel the deferred
+    // teardown, so the queue/api reset runs on the next tick.
     handle.disconnectedCallback()
+    await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(internals(el).pendingMessages).toHaveLength(0)
     expect(internals(el).api).toBeNull()
