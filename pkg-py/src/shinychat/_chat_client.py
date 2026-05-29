@@ -6,6 +6,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Literal,
 )
 
 if TYPE_CHECKING:
@@ -104,7 +105,7 @@ class ChatClient:
         *,
         messages: "list[ChatMessageDict] | None" = None,
         greeting: bool = False,
-        client_history: str = "clear",
+        client_history: Literal["clear", "set", "append", "keep"] = "clear",
     ) -> None:
         """
         Clear chat messages and optionally reset the client's turn history.
@@ -126,6 +127,12 @@ class ChatClient:
               Requires ``messages`` to be provided.
             * ``"keep"``: leaves the client's turns untouched.
         """
+        valid_history = ("clear", "set", "append", "keep")
+        if client_history not in valid_history:
+            raise ValueError(
+                f"`client_history={client_history!r}` is not valid. Expected "
+                'one of "clear", "set", "append", or "keep".'
+            )
         if client_history in ("set", "append") and messages is None:
             raise ValueError(
                 f"`messages` must be provided when `client_history='{client_history}'`."
@@ -186,8 +193,6 @@ def setup_greeting(
         @reactive.effect
         @reactive.event(session.input[f"{chat.id}_greeting_requested"])
         async def _on_greeting_requested() -> None:
-            # A static greeting is sent as-is; otherwise it's a callable (sync
-            # or async) that produces the greeting on demand.
             if isinstance(greeting, (str, HTML, Tag, TagList, ChatGreeting)):
                 return await chat.set_greeting(greeting)
 

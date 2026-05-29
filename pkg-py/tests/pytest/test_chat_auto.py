@@ -206,6 +206,19 @@ def test_clear_rejects_append_without_messages():
         _run_async(_run)
 
 
+def test_clear_rejects_invalid_client_history():
+    chat, _ = make_chat()
+    assert chat.client is not None
+
+    with pytest.raises(ValueError, match="not valid"):
+
+        async def _run() -> None:
+            assert chat.client is not None
+            await chat.client.clear(client_history="bogus")  # type: ignore[arg-type]
+
+        _run_async(_run)
+
+
 # ---------------------------------------------------------------------------
 # messages_to_turns helper
 # ---------------------------------------------------------------------------

@@ -225,6 +225,11 @@ class Chat:
     client
         A chatlas client (e.g., ``chatlas.ChatOpenAI()``). When provided,
         streaming, cancellation, and bookmarking are wired up automatically.
+        This includes registering an :meth:`~shinychat.Chat.on_user_submit`
+        callback that streams the client's response to each user message, so you
+        don't need to write one yourself. Any additional ``@chat.on_user_submit``
+        handlers you register still run, in addition to (not in place of) this
+        one.
         The resulting :attr:`chat.client` exposes a
         :class:`~shinychat.types.ChatClient` wrapper for swapping models
         mid-session (``.set()``) and resetting the conversation (``.clear()``).
@@ -1984,10 +1989,9 @@ class ChatExpress(Chat):
             Additional attributes for the chat container element.
         """
 
-        # `enable_cancel` is forwarded through to `chat_ui()` as a tri-state
-        # (unset / True / False). When it's unset and a `client=` is driving the
-        # chat, the stop button is enabled at runtime via an `update_cancel`
-        # message (see `_setup_client`); an explicit value here vetoes that.
+        # Don't resolve a default here: when `enable_cancel` is unset, a
+        # `client=` enables the stop button at runtime via `update_cancel`
+        # (see `_setup_client`). Forward the tri-state and let the client decide.
         return chat_ui(
             id=self.id,
             messages=messages,

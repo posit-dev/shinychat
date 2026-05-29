@@ -832,8 +832,6 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     }
 
     case "update_cancel": {
-      // An explicit `enable-cancel` attribute wins over the server-driven
-      // (`client=`) auto-default.
       if (state.enableCancelExplicit) return state
       return { ...state, enableCancel: action.enable_cancel }
     }

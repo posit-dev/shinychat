@@ -71,10 +71,9 @@ class ChatContainerElement extends HTMLElement {
 
     const elementId = this.getAttribute("id") ?? ""
     const iconAssistant = this.getAttribute("icon-assistant") ?? undefined
-    // Tri-state: absent means "no preference" (letting a server-side `client=`
-    // enable the stop button via an `update_cancel` message); any present value
-    // is an explicit user choice. `"false"` is off; anything else (incl. the
-    // R package's bare `enable-cancel` boolean attribute) is on.
+    // Any present value other than "false" counts as enabled, which keeps the
+    // R package's bare `enable-cancel` boolean attribute working. Absent (null)
+    // defers the choice to the server (`client=`) via `update_cancel`.
     const enableCancelAttr = this.getAttribute("enable-cancel")
     const enableCancel =
       enableCancelAttr === null ? undefined : enableCancelAttr !== "false"
