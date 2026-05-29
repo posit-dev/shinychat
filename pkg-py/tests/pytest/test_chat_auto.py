@@ -87,6 +87,27 @@ class MockClient:
         self._tools = list(tools)
 
 
+class _MockStreamTask:
+    def __init__(self, status: str = "initial") -> None:
+        self._status = status
+
+    def status(self) -> str:
+        return self._status
+
+
+class _StubChat:
+    def __init__(self, *, stream_status: str = "initial") -> None:
+        self.latest_message_stream = _MockStreamTask(stream_status)
+        self.clear_calls: list[bool] = []
+        self.appended_messages: list[ChatMessageDict] = []
+
+    async def clear_messages(self, *, greeting: bool = False) -> None:
+        self.clear_calls.append(greeting)
+
+    async def append_message(self, message: ChatMessageDict) -> None:
+        self.appended_messages.append(message)
+
+
 def make_chat() -> tuple[Chat, MockClient]:
     """Return (Chat, MockClient) where Chat is wired up with client=."""
     mock = MockClient()
@@ -245,6 +266,21 @@ def test_clear_rejects_invalid_client_history():
             await chat.client.clear(client_history="bogus")  # type: ignore[arg-type]
 
         _run_async(_run)
+
+
+def test_clear_rejects_when_stream_is_running():
+    chat = _StubChat(stream_status="running")
+    client = ChatClient(chat=cast(Any, chat), client=cast(Any, MockClient()))
+
+    with pytest.raises(RuntimeError, match="response stream is running"):
+
+        async def _run() -> None:
+            await client.clear()
+
+        _run_async(_run)
+
+    assert chat.clear_calls == []
+    assert chat.appended_messages == []
 
 
 # ---------------------------------------------------------------------------

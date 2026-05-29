@@ -143,6 +143,11 @@ class ChatClient:
                 '`messages` is only valid with `client_history="set"` or '
                 '`client_history="append"`.'
             )
+        if self._chat.latest_message_stream.status() == "running":
+            raise RuntimeError(
+                "`chat.client.clear()` cannot be called while a response stream "
+                "is running. Cancel the stream or wait for it to finish first."
+            )
 
         await self._chat.clear_messages(greeting=greeting)
 
