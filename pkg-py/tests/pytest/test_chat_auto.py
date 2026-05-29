@@ -206,6 +206,34 @@ def test_clear_rejects_append_without_messages():
         _run_async(_run)
 
 
+def test_clear_rejects_messages_with_clear():
+    chat, _ = make_chat()
+    assert chat.client is not None
+
+    msgs: list[ChatMessageDict] = [{"content": "hi", "role": "user"}]
+    with pytest.raises(ValueError, match='only valid with `client_history="set"'):
+
+        async def _run() -> None:
+            assert chat.client is not None
+            await chat.client.clear(messages=msgs, client_history="clear")
+
+        _run_async(_run)
+
+
+def test_clear_rejects_messages_with_keep():
+    chat, _ = make_chat()
+    assert chat.client is not None
+
+    msgs: list[ChatMessageDict] = [{"content": "hi", "role": "user"}]
+    with pytest.raises(ValueError, match='only valid with `client_history="set"'):
+
+        async def _run() -> None:
+            assert chat.client is not None
+            await chat.client.clear(messages=msgs, client_history="keep")
+
+        _run_async(_run)
+
+
 def test_clear_rejects_invalid_client_history():
     chat, _ = make_chat()
     assert chat.client is not None

@@ -113,8 +113,9 @@ class ChatClient:
         Parameters
         ----------
         messages
-            A list of messages to set or append when ``client_history`` is
-            ``"set"`` or ``"append"``. Required for those modes.
+            A list of messages to set or append on the client. Required when
+            ``client_history`` is ``"set"`` or ``"append"``, and not allowed
+            with ``"clear"`` or ``"keep"``.
         greeting
             Passed to :meth:`~shinychat.Chat.clear_messages`.
         client_history
@@ -136,6 +137,11 @@ class ChatClient:
         if client_history in ("set", "append") and messages is None:
             raise ValueError(
                 f"`messages` must be provided when `client_history='{client_history}'`."
+            )
+        if client_history in ("clear", "keep") and messages is not None:
+            raise ValueError(
+                '`messages` is only valid with `client_history="set"` or '
+                '`client_history="append"`.'
             )
 
         await self._chat.clear_messages(greeting=greeting)

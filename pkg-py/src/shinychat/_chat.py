@@ -407,6 +407,7 @@ class Chat:
     ) -> None:
         from chatlas import StreamController
         from shiny import reactive
+        from shiny.session import session_context
 
         from ._chat_client import ChatClient
 
@@ -417,51 +418,56 @@ class Chat:
         self.client = chat_client
 
         controller = StreamController()
-
-        @self.on_user_submit
-        async def _on_user_submit(user_input: str) -> None:
-            response = await chat_client.value.stream_async(
-                user_input,
-                content="all",
-                controller=controller,
-            )
-            await self.append_message_stream(response)
-
         cancel_input_id = f"{self.id}_cancel"
 
-        # Because a `client=` wires up cancellation automatically, enable the
-        # stop button in the UI without requiring `enable_cancel=True` in
-        # `chat_ui()`. The button only surfaces while streaming, so sending this
-        # once on session start (the effect has no reactive dependencies) is
-        # enough.
-        @reactive.effect
-        async def _enable_cancel_ui() -> None:
-            await self._send_action({"type": "update_cancel", "enable_cancel": True})
+        # Match the rest of `__init__`: create these effects under the chat's
+        # own session so they attach correctly even when `Chat(...)` is
+        # constructed outside that session's reactive context.
+        with session_context(self._session):
 
-        @reactive.effect
-        @reactive.event(self._session.input[cancel_input_id])
-        async def _on_cancel() -> None:
-            controller.cancel()
+            @self.on_user_submit
+            async def _on_user_submit(user_input: str) -> None:
+                response = await chat_client.value.stream_async(
+                    user_input,
+                    content="all",
+                    controller=controller,
+                )
+                await self.append_message_stream(response)
 
-        @reactive.effect
-        async def _on_stream_complete() -> None:
-            status = self.latest_message_stream.status()
-            if status == "running":
-                return
+            # A `client=` wires up cancellation, so enable the stop button
+            # without requiring `enable_cancel=True` in `chat_ui()`. It only
+            # surfaces while streaming, so sending this once at session start
+            # (the effect has no reactive dependencies) is enough.
+            @reactive.effect
+            async def _enable_cancel_ui() -> None:
+                await self._send_action(
+                    {"type": "update_cancel", "enable_cancel": True}
+                )
 
-            swap = chat_client._pending_swap
-            if swap is None:
-                return
-            chat_client._pending_swap = None
-            new_client, sync = swap
-            chat_client._swap_client(new_client, sync=sync)
+            @reactive.effect
+            @reactive.event(self._session.input[cancel_input_id])
+            async def _on_cancel() -> None:
+                controller.cancel()
 
-        self._effects.append(_enable_cancel_ui)
-        self._effects.append(_on_cancel)
-        self._effects.append(_on_stream_complete)
+            @reactive.effect
+            async def _on_stream_complete() -> None:
+                status = self.latest_message_stream.status()
+                if status == "running":
+                    return
 
-        cancel_bm = self.enable_bookmarking(client, bookmark_on="response")
-        chat_client._cancel_bookmarking = cancel_bm
+                swap = chat_client._pending_swap
+                if swap is None:
+                    return
+                chat_client._pending_swap = None
+                new_client, sync = swap
+                chat_client._swap_client(new_client, sync=sync)
+
+            self._effects.append(_enable_cancel_ui)
+            self._effects.append(_on_cancel)
+            self._effects.append(_on_stream_complete)
+
+            cancel_bm = self.enable_bookmarking(client, bookmark_on="response")
+            chat_client._cancel_bookmarking = cancel_bm
 
     @overload
     def on_user_submit(self, fn: UserSubmitFunction) -> Effect_: ...
