@@ -233,7 +233,9 @@ def test_clear_rejects_messages_with_clear():
     assert chat.client is not None
 
     msgs: list[ChatMessageDict] = [{"content": "hi", "role": "user"}]
-    with pytest.raises(ValueError, match='only valid with `client_history="set"'):
+    with pytest.raises(
+        ValueError, match='only valid with `client_history="set"'
+    ):
 
         async def _run() -> None:
             assert chat.client is not None
@@ -247,7 +249,9 @@ def test_clear_rejects_messages_with_keep():
     assert chat.client is not None
 
     msgs: list[ChatMessageDict] = [{"content": "hi", "role": "user"}]
-    with pytest.raises(ValueError, match='only valid with `client_history="set"'):
+    with pytest.raises(
+        ValueError, match='only valid with `client_history="set"'
+    ):
 
         async def _run() -> None:
             assert chat.client is not None
