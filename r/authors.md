@@ -19,16 +19,16 @@
 ## Citation
 
 Source:
-[`DESCRIPTION`](https://github.com/posit-dev/shinychat/blob/r/v0.3.0/DESCRIPTION)
+[`DESCRIPTION`](https://github.com/posit-dev/shinychat/blob/r/v0.4.0/DESCRIPTION)
 
-Cheng J, Sievert C, Aden-Buie G, Schloerke B (2025). *shinychat: Chat UI
-Component for 'shiny'*. R package version 0.3.0,
+Cheng J, Sievert C, Aden-Buie G, Schloerke B (2026). *shinychat: Chat UI
+Component for 'shiny'*. R package version 0.4.0,
 <https://posit-dev.github.io/shinychat/r/>.
 
     @Manual{,
       title = {shinychat: Chat UI Component for 'shiny'},
       author = {Joe Cheng and Carson Sievert and Garrick Aden-Buie and Barret Schloerke},
-      year = {2025},
-      note = {R package version 0.3.0},
+      year = {2026},
+      note = {R package version 0.4.0},
       url = {https://posit-dev.github.io/shinychat/r/},
     }

@@ -9,6 +9,7 @@ user interface for your chatbot.
 You will need to install both shinychat and ellmer.
 
 ``` r
+
 install.packages(c("shinychat", "ellmer"))
 ```
 
@@ -33,6 +34,7 @@ particular model, use the `chat_*()` function’s `model` argument. For
 example:
 
 ``` r
+
 ellmer::chat_openai(model = "o3")
 ```
 
@@ -72,6 +74,7 @@ for your desired chat function. Save the file as `app.R` and then run
 the app.
 
 ``` r
+
 library(shiny)
 library(shinychat)
 
@@ -104,6 +107,7 @@ Screenshot of a conversation using shinychat.
 Let’s take a closer look at the code in `app.R`.
 
 ``` r
+
 library(shiny)
 library(shinychat)
 
@@ -162,6 +166,7 @@ Use the `chat_*()` function’s `system_prompt` argument to provide the
 LLM with more information about how you would like it to behave.
 
 ``` r
+
 chat <- ellmer::chat_ollama(system_prompt = "You are a helpful assistant")
 ```
 
@@ -181,6 +186,7 @@ You can specify messages to show when the chat first loads by using
 messages.
 
 ``` r
+
 chat_ui(
     id = "chat",
     messages = "**Hello!** How can I help you today?"
@@ -198,6 +204,7 @@ class to the relevant portions of the message. Similarly, use the
 automatically.
 
 ``` r
+
 messages <-
   '
   **Hello!** How can I help you today?
@@ -220,6 +227,13 @@ ui <- bslib::page_fillable(
 suggestions.](images/chat-suggestions.png)
 
 Screenshot of a chatbot with input suggestions.
+
+A markdown list (`<ul>` or `<ol>`) in which every item contains a single
+suggestion element is automatically rendered as a grid of clickable
+cards instead of inline chips. Each suggestion accepts an optional
+`title` attribute (plain text), which becomes the card heading; the
+suggestion’s body becomes the card description. For ordered lists
+(`<ol>`), the list-item number is included in the heading.
 
 Messages can also contain arbitrary Shiny UI
 [components](https://shiny.posit.co/r/components/), so you could even
@@ -258,6 +272,7 @@ anchored at the bottom of the page and the chat to fill the remaining
 space.
 
 ``` r
+
 ui <- bslib::page_fillable(
   chat_ui("chat", messages = "Welcome!"),
   fillable_mobile = TRUE
@@ -278,6 +293,7 @@ to create a sidebar page. Then, set the chat and sidebar’s heights to
 `100%` so that the chat element fills the sidebar.
 
 ``` r
+
 library(shiny)
 library(bslib)
 library(shinychat)
@@ -328,6 +344,7 @@ other handy features like `full_screen = TRUE` to make the chat
 full-screen when embedded inside a larger app.
 
 ``` r
+
 library(shiny)
 library(bslib)
 library(shinychat)
@@ -363,3 +380,94 @@ shinyApp(ui, server)
 tooltip.](images/chat-card.png)
 
 Screenshot of a chatbot embedded in a card with a header and tooltip.
+
+## Stream cancellation
+
+shinychat supports cancelling an in-progress AI response. When
+cancellation is enabled, a stop button appears in the chat input area
+during streaming. Users can also press Escape while the chat has focus
+to cancel the current response. Any partial response already received is
+preserved in the chat history.
+
+### Using the chat module (recommended)
+
+The easiest way to add cancellation support is to use the
+[`chat_mod_ui()`](https://posit-dev.github.io/shinychat/r/reference/chat_app.md)
+and
+[`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/reference/chat_app.md)
+functions. The module handles everything automatically — the stop button
+is shown during streaming and wired up internally, with no extra code
+required.
+
+``` r
+
+library(shiny)
+library(bslib)
+library(shinychat)
+library(ellmer)
+
+ui <- page_fillable(
+  chat_mod_ui("chat")
+)
+
+server <- function(input, output, session) {
+  chat <- chat_anthropic(system_prompt = "You are a helpful assistant.")
+  chat_mod_server("chat", client = chat)
+}
+
+shinyApp(ui, server)
+```
+
+### Manual approach
+
+If you are building a custom chat UI with
+[`chat_ui()`](https://posit-dev.github.io/shinychat/r/reference/chat_ui.md)
+directly, you can enable cancellation by setting `enable_cancel = TRUE`
+and wiring up the cancel input in your server function.
+
+The key steps are:
+
+1.  Pass `enable_cancel = TRUE` to
+    [`chat_ui()`](https://posit-dev.github.io/shinychat/r/reference/chat_ui.md)
+    to show the stop button during streaming.
+2.  Create an
+    [`ellmer::stream_controller()`](https://ellmer.tidyverse.org/reference/stream_controller.html)
+    and pass it to `chat$stream_async()` via the `controller` argument.
+    The controller automatically resets between streams, so you only
+    need to create it once.
+3.  Observe `input$<id>_cancel` (where `<id>` is your chat element’s ID)
+    and call `ctrl$cancel()` when it fires.
+
+``` r
+
+ui <- page_fillable(
+  chat_ui("chat", enable_cancel = TRUE)
+)
+
+server <- function(input, output, session) {
+  chat <- ellmer::chat_openai(system_prompt = "You are a helpful assistant.")
+  ctrl <- ellmer::stream_controller()
+
+  chat_task <- ExtendedTask$new(function(user_input, controller) {
+    stream <- chat$stream_async(
+      user_input,
+      stream = "content",
+      controller = controller
+    )
+    p <- promises::promise_resolve(stream)
+    promises::then(p, function(stream) {
+      chat_append("chat", stream)
+    })
+  })
+
+  observeEvent(input$chat_user_input, {
+    chat_task$invoke(input$chat_user_input, controller = ctrl)
+  })
+
+  observeEvent(input$chat_cancel, {
+    ctrl$cancel()
+  })
+}
+
+shinyApp(ui, server)
+```

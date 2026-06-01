@@ -12,7 +12,9 @@
 <url><loc>https://posit-dev.github.io/shinychat/r/reference/chat_append.html</loc></url>
 <url><loc>https://posit-dev.github.io/shinychat/r/reference/chat_append_message.html</loc></url>
 <url><loc>https://posit-dev.github.io/shinychat/r/reference/chat_clear.html</loc></url>
+<url><loc>https://posit-dev.github.io/shinychat/r/reference/chat_greeting.html</loc></url>
 <url><loc>https://posit-dev.github.io/shinychat/r/reference/chat_restore.html</loc></url>
+<url><loc>https://posit-dev.github.io/shinychat/r/reference/chat_set_greeting.html</loc></url>
 <url><loc>https://posit-dev.github.io/shinychat/r/reference/chat_ui.html</loc></url>
 <url><loc>https://posit-dev.github.io/shinychat/r/reference/contents_shinychat.html</loc></url>
 <url><loc>https://posit-dev.github.io/shinychat/r/reference/index.html</loc></url>
