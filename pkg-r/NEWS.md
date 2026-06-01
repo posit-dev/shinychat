@@ -1,3 +1,5 @@
+# shinychat (development version)
+
 # shinychat 0.4.0
 
 ## Experimental internal changes
