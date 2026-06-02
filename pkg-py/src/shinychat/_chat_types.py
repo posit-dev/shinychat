@@ -112,6 +112,17 @@ class GreetingClearAction(TypedDict):
     type: Literal["greeting_clear"]
 
 
+class SlashCommandDef(TypedDict):
+    name: str
+    description: str
+    echo: bool
+
+
+class UpdateSlashCommandsAction(TypedDict):
+    type: Literal["update_slash_commands"]
+    commands: list[SlashCommandDef]
+
+
 ChatAction = Union[
     MessageAction,
     ChunkStartAction,
@@ -127,6 +138,7 @@ ChatAction = Union[
     GreetingChunkAction,
     GreetingEndAction,
     GreetingClearAction,
+    UpdateSlashCommandsAction,
 ]
 
 

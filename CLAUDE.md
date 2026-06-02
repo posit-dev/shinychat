@@ -53,9 +53,12 @@ The repository includes a comprehensive Makefile with prefixed targets:
 - Run `make help` to see all available targets
 
 ### Asset Distribution
-**IMPORTANT**: After any TypeScript/SCSS changes in `js/`, you must rebuild (`cd js && npm run build`) and then copy the built assets to the package(s) you're testing:
-- **R**: `make r-update-dist`
-- **Python**: `make py-update-dist`
+**CRITICAL**: The Python and R packages serve JS/CSS from their own copy of the built assets, NOT from `js/dist/` directly. After ANY change to TypeScript or SCSS files in `js/`, you MUST:
+1. Rebuild: `cd js && npm run build`
+2. Copy to packages: `make py-update-dist r-update-dist`
+3. Include the updated dist files in your commit
+
+If you skip step 2, the packages will serve stale JS and your changes will not take effect at runtime. This applies to renaming, adding features, fixing bugs — any JS/SCSS change at all.
 
 ## Testing
 

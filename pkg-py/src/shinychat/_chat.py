@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import inspect
 import json
+import re
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -58,7 +60,9 @@ from ._chat_types import (
     ContentSegment,
     GreetingOptions,
     MessagePayload,
+    Role,
     SerializedDep,
+    SlashCommandDef,
     StoredMessage,
     chat_greeting,
 )
@@ -94,6 +98,8 @@ __all__ = (
 
 # TODO: UserInput might need to be a list of dicts if we want to support multiple
 # user input content types
+TransformUserInput = Callable[[str], Union[str, None]]
+TransformUserInputAsync = Callable[[str], Awaitable[Union[str, None]]]
 TransformAssistantResponse = Callable[[str], Union[str, HTML, None]]
 TransformAssistantResponseAsync = Callable[
     [str], Awaitable[Union[str, HTML, None]]
@@ -122,6 +128,14 @@ UserSubmitFunction = Union[
     UserSubmitFunction0,
     UserSubmitFunction1,
 ]
+
+
+@dataclass(frozen=True)
+class SlashCommandRegistration:
+    handler: UserSubmitFunction | None
+    takes_args: bool
+    definition: SlashCommandDef
+
 
 ChunkOption = Literal["start", "end", True, False]
 
@@ -282,6 +296,9 @@ class Chat:
 
         self.id = resolve_id(id)
         self.user_input_id = ResolvedId(f"{self.id}_user_input")
+        self._slash_command_id = ResolvedId(f"{self.id}_slash_command")
+        self._slash_commands: dict[str, SlashCommandRegistration] = {}
+        self._transform_user: TransformUserInputAsync | None = None
         self._transform_assistant: (
             TransformAssistantResponseChunkAsync | None
         ) = None
@@ -321,6 +338,14 @@ class Chat:
                 reactive.Value(())
             )
 
+            # `None` until the first registration, which lets us skip the
+            # redundant initial sync (the client already initializes to `[]`).
+            # An empty list, by contrast, is sent so that removing the last
+            # command clears the client's palette.
+            self._slash_commands_rv: reactive.Value[
+                list[SlashCommandDef] | None
+            ] = reactive.Value(None)
+
             self._latest_user_input: reactive.Value[
                 StoredMessage | None
             ] = reactive.Value(None)
@@ -354,8 +379,49 @@ class Chat:
                 msg = ChatMessage(content=self._user_input(), role="user")
                 self._store_message(msg)
 
+            @reactive.effect
+            async def _sync_slash_commands():
+                commands = self._slash_commands_rv()
+                if commands is None:
+                    return
+                await self._send_action(
+                    {
+                        "type": "update_slash_commands",
+                        "commands": commands,
+                    }
+                )
+
+            @reactive.effect
+            @reactive.event(self._slash_command_input)
+            async def _on_slash_command():
+                data = self._slash_command_input()
+                command = data.get("command", "")
+                args = data.get("args", "")
+                echo = bool(data.get("echo", True))
+                if echo:
+                    full_text = f"/{command} {args}".rstrip()
+                    msg = ChatMessage(content=full_text, role="user")
+                    self._store_message(self._as_stored_message(msg))
+                reg = self._slash_commands.get(command)
+                try:
+                    if reg is not None and reg.handler is not None:
+                        if reg.takes_args:
+                            await _utils.wrap_async(
+                                cast(UserSubmitFunction1, reg.handler)
+                            )(args)
+                        else:
+                            await _utils.wrap_async(
+                                cast(UserSubmitFunction0, reg.handler)
+                            )()
+                except Exception as e:
+                    await self._raise_exception(e)
+                finally:
+                    await self._remove_loading_message()
+
             self._effects.append(_init_chat)
             self._effects.append(_on_user_input)
+            self._effects.append(_sync_slash_commands)
+            self._effects.append(_on_slash_command)
 
         # Prevent repeated calls to Chat() with the same id from accumulating effects
         instance_id = self.id + "_session" + self._session.id
@@ -511,6 +577,129 @@ class Chat:
             return create_effect
         else:
             return create_effect(fn)
+
+    @overload
+    def slash_command(
+        self,
+        name: str,
+        description: str,
+        *,
+        echo: bool | None = None,
+        force: bool = False,
+    ) -> Callable[[UserSubmitFunction], UserSubmitFunction]: ...
+
+    @overload
+    def slash_command(
+        self,
+        name: str,
+        description: str,
+        fn: UserSubmitFunction | None,
+        *,
+        echo: bool | None = None,
+        force: bool = False,
+    ) -> Callable[[], None]: ...
+
+    def slash_command(
+        self,
+        name: str,
+        description: str,
+        fn: UserSubmitFunction | None | MISSING_TYPE = MISSING,
+        *,
+        echo: bool | None = None,
+        force: bool = False,
+    ) -> Callable[[UserSubmitFunction], UserSubmitFunction] | Callable[[], None]:
+        """
+        Register a slash command and its handler.
+
+        Can be used as a decorator (handler supplied by decoration) or called
+        directly with ``fn=``. Pass ``fn=None`` to register a *client-side*
+        command — one with no server handler, handled in JavaScript via the
+        ``shiny:chat-slash-command`` DOM event (see the docs).
+
+        Parameters
+        ----------
+        name
+            The slash command name (without the leading ``/``). Must contain only
+            alphanumeric characters, underscores, or hyphens.
+        description
+            A short description shown in the command palette.
+        fn
+            The handler function (0 or 1 argument; one argument receives the text
+            after the command name). Omit it to use ``slash_command`` as a
+            decorator. Pass ``None`` explicitly to register a client-side command
+            with no server handler.
+        echo
+            Whether invoking the command participates in the conversation: adds
+            the ``/cmd args`` user message, shows a loading state, and stores the
+            invocation in history. Defaults to ``True`` when a handler is provided
+            and ``False`` otherwise. Set ``echo=False`` for a server handler that
+            runs purely for its side effects (e.g. opening a modal).
+        force
+            Whether to overwrite an existing command with the same name.
+
+        Returns
+        -------
+        :
+            A decorator when ``fn`` is omitted; otherwise a callable that removes
+            the command.
+        """
+
+        def _register(handler: UserSubmitFunction | None) -> None:
+            if not re.fullmatch(r"[a-zA-Z0-9_-]+", name):
+                raise ValueError(
+                    f"Slash command name must contain only alphanumeric characters, underscores, or hyphens, got {name!r}"
+                )
+            if not force and name in self._slash_commands:
+                raise ValueError(
+                    f"Slash command {name!r} is already registered. "
+                    f"Use `force=True` to overwrite it."
+                )
+            resolved_echo = (handler is not None) if echo is None else echo
+            cmd_def = SlashCommandDef(
+                name=name, description=description, echo=resolved_echo
+            )
+            self._slash_commands[name] = SlashCommandRegistration(
+                handler=handler,
+                takes_args=(
+                    handler is not None
+                    and len(inspect.signature(handler).parameters) >= 1
+                ),
+                definition=cmd_def,
+            )
+            self._slash_commands_rv.set(
+                [reg.definition for reg in self._slash_commands.values()]
+            )
+
+        if isinstance(fn, MISSING_TYPE):
+
+            def decorator(handler: UserSubmitFunction) -> UserSubmitFunction:
+                _register(handler)
+                return handler
+
+            return decorator
+        else:
+            _register(fn)
+            return self._remove_slash_command_fn(name)
+
+    def remove_slash_command(self, name: str) -> None:
+        """
+        Remove a previously registered slash command by name.
+
+        Parameters
+        ----------
+        name
+            The name of the command to remove (without the leading ``/``).
+        """
+        self._slash_commands.pop(name, None)
+        self._slash_commands_rv.set(
+            [reg.definition for reg in self._slash_commands.values()]
+        )
+
+    def _remove_slash_command_fn(self, name: str) -> Callable[[], None]:
+        def remove() -> None:
+            self.remove_slash_command(name)
+
+        return remove
 
     async def _raise_exception(
         self,
@@ -1266,6 +1455,9 @@ class Chat:
     def _user_input(self) -> str:
         id = self.user_input_id
         return cast(str, self._session.input[id]())
+
+    def _slash_command_input(self) -> dict[str, Any]:
+        return self._session.input[self._slash_command_id]()
 
     def update_user_input(
         self,

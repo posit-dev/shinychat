@@ -1,14 +1,23 @@
-sanitized_chat_error <- function(err) {
-  needs_sanitized <-
-    isTRUE(getOption("shiny.sanitize.errors")) &&
+needs_sanitized <- function(err) {
+  isTRUE(getOption("shiny.sanitize.errors")) &&
     !inherits(err, "shiny.custom.error")
+}
 
-  if (needs_sanitized) {
-    "\n\n**An error occurred.** Please try again or contact the app author."
+sanitized_error_message <- function(err) {
+  if (needs_sanitized(err)) {
+    "An error occurred. Please try again or contact the app author."
+  } else {
+    strip_ansi(conditionMessage(err))
+  }
+}
+
+sanitized_chat_error <- function(err) {
+  if (needs_sanitized(err)) {
+    sprintf("\n\n**%s**", sanitized_error_message(err))
   } else {
     sprintf(
       "\n\n**An error occurred:**\n\n```\n%s\n```",
-      strip_ansi(conditionMessage(err))
+      sanitized_error_message(err)
     )
   }
 }
