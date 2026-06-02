@@ -113,6 +113,15 @@
 #'       use the new client as-is. If a response is currently streaming, the
 #'       swap is deferred until the stream completes. If called multiple times
 #'       while streaming, only the most recent new client is used.
+#'     * `slash_command(name, description, handler, ..., echo, force)`: Register
+#'       a slash command. `handler` is required: pass a function (taking 0 or 1
+#'       argument), or `NULL` for a client-side command handled in JavaScript via
+#'       the `shiny:chat-slash-command` DOM event. `echo` controls whether
+#'       invoking the command is echoed as a user message and awaits a response;
+#'       it defaults to `TRUE` when a handler is given and `FALSE` otherwise (set
+#'       `echo = FALSE` for a handler that only performs side effects). Returns a
+#'       function that removes the command. Errors if a command with the same
+#'       name is already registered unless `force = TRUE`.
 #'
 #' @describeIn chat_app A simple Shiny app for live chatting. Note that this
 #'   app is suitable for interactive use by a single user; do not use
@@ -385,6 +394,128 @@ chat_mod_server <- function(
       set_greeting_mod(greeting)
     }
 
+    # Internal state for registered slash commands
+    # Each entry: list(handler, takes_args, definition = list(name, description, echo))
+    slash_commands <- list()
+    # Reactive mirror of the command definitions sent to the client. Updating
+    # this (rather than sending directly) lets multiple registrations during
+    # app startup coalesce into a single sync on the next flush, mirroring the
+    # Python implementation. It starts as `NULL` until the first registration,
+    # which lets us skip the redundant initial sync (the client already
+    # initializes to `[]`). An empty list, by contrast, is sent so that removing
+    # the last command clears the client's palette.
+    slash_commands_defs <- shiny::reactiveVal(
+      NULL,
+      label = "slash_commands_defs"
+    )
+
+    shiny::observeEvent(
+      input$chat_slash_command,
+      label = "on_chat_slash_command",
+      {
+        data <- input$chat_slash_command
+        reg <- slash_commands[[data$command]]
+        if (!is.null(reg) && is.function(reg$handler)) {
+          tryCatch(
+            {
+              if (isTRUE(reg$takes_args)) {
+                reg$handler(data$args %||% "")
+              } else {
+                reg$handler()
+              }
+            },
+            error = function(e) {
+              shiny::showNotification(
+                sanitized_error_message(e),
+                type = "error",
+                duration = NULL
+              )
+              rlang::warn(
+                sprintf("Error in slash command '/%s'", data$command),
+                parent = e
+              )
+            }
+          )
+        }
+        send_chat_action(
+          "chat",
+          list(type = "remove_loading"),
+          session = session
+        )
+      }
+    )
+
+    shiny::observe(label = "sync_slash_commands", {
+      defs <- slash_commands_defs()
+      if (!is.null(defs)) {
+        action <- list(
+          type = "update_slash_commands",
+          commands = unname(defs)
+        )
+        send_chat_action("chat", action, session = session)
+      }
+    })
+
+    # TODO: Support a non-module version (e.g., standalone register_slash_command())
+    slash_command_method <- function(
+      name,
+      description,
+      handler,
+      ...,
+      echo = NULL,
+      force = FALSE
+    ) {
+      rlang::check_dots_empty()
+      if (!is.character(name) || length(name) != 1) {
+        cli::cli_abort("{.arg name} must be a single string.")
+      }
+      if (!grepl("^[a-zA-Z0-9_-]+$", name)) {
+        cli::cli_abort(
+          "{.arg name} must contain only alphanumeric characters, underscores, or hyphens, got {.val {name}}."
+        )
+      }
+      if (!is.character(description) || length(description) != 1) {
+        cli::cli_abort("{.arg description} must be a single string.")
+      }
+      if (!is.null(handler) && !is.function(handler)) {
+        cli::cli_abort("{.arg handler} must be a function or {.code NULL}.")
+      }
+
+      takes_args <- FALSE
+      if (is.function(handler)) {
+        handler_args <- names(formals(handler))
+        if (length(handler_args) > 1 || identical(handler_args, "...")) {
+          cli::cli_abort("{.arg handler} must take 0 or 1 argument.")
+        }
+        takes_args <- length(handler_args) > 0
+      }
+
+      if (!force && name %in% names(slash_commands)) {
+        cli::cli_abort(
+          "Slash command {.val {name}} is already registered. Use {.code force = TRUE} to overwrite it."
+        )
+      }
+
+      resolved_echo <- if (is.null(echo)) !is.null(handler) else isTRUE(echo)
+
+      slash_commands[[name]] <<- list(
+        handler = handler,
+        takes_args = takes_args,
+        definition = list(
+          name = name,
+          description = description,
+          echo = resolved_echo
+        )
+      )
+
+      slash_commands_defs(lapply(slash_commands, `[[`, "definition"))
+
+      function() {
+        slash_commands[[name]] <<- NULL
+        slash_commands_defs(lapply(slash_commands, `[[`, "definition"))
+      }
+    }
+
     client_clear <- function(
       messages = NULL,
       greeting = FALSE,
@@ -441,6 +572,7 @@ chat_mod_server <- function(
     ret$clear <- client_clear
     ret$set_greeting <- set_greeting_mod
     ret$set_client <- set_client
+    ret$slash_command <- slash_command_method
     lockEnvironment(ret)
     ret
   })

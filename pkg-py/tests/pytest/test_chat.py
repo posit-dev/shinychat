@@ -515,6 +515,96 @@ def test_stored_message_from_chat_message_preserves_content_type():
     assert sm_thinking.segments[0].content_type == "thinking"
 
 
+def test_slash_command_errors_on_duplicate_name():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        chat.slash_command("greet", "Say hello", fn=lambda: None)
+        with pytest.raises(ValueError, match="already registered"):
+            chat.slash_command("greet", "Say hi", fn=lambda: None)
+
+
+def test_slash_command_allows_overwrite_with_force():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        chat.slash_command("greet", "Say hello", fn=lambda: None)
+        chat.slash_command("greet", "Say hi", fn=lambda: None, force=True)
+        assert chat._slash_commands["greet"].definition["description"] == "Say hi"
+
+
+def test_slash_command_remove():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        remove = chat.slash_command("greet", "Say hello", fn=lambda: None)
+        assert "greet" in chat._slash_commands
+
+        remove()
+        assert "greet" not in chat._slash_commands
+
+        # After removal, re-registering without force should succeed
+        chat.slash_command("greet", "Say hello again", fn=lambda: None)
+        assert chat._slash_commands["greet"].definition["description"] == "Say hello again"
+
+
+def test_slash_command_remove_by_name():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        chat.slash_command("greet", "Say hello", fn=lambda: None)
+        assert "greet" in chat._slash_commands
+
+        chat.remove_slash_command("greet")
+        assert "greet" not in chat._slash_commands
+
+        # Removing a non-existent command is a no-op
+        chat.remove_slash_command("greet")
+
+
+def test_slash_command_echo_defaults_to_handler_presence():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+
+        @chat.slash_command("withhandler", "Has a handler")
+        async def _():
+            ...
+
+        chat.slash_command("nohandler", "No handler", fn=None)
+
+        assert chat._slash_commands["withhandler"].definition["echo"] is True
+        assert chat._slash_commands["nohandler"].definition["echo"] is False
+        assert chat._slash_commands["nohandler"].handler is None
+
+
+def test_slash_command_echo_explicit_override():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+
+        @chat.slash_command("sideeffect", "Side effect only", echo=False)
+        async def _():
+            ...
+
+        assert chat._slash_commands["sideeffect"].definition["echo"] is False
+        assert chat._slash_commands["sideeffect"].handler is not None
+
+
+def test_slash_command_fn_none_returns_remover():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+
+        remove = chat.slash_command("temp", "Temp", fn=None)
+        assert "temp" in chat._slash_commands
+        remove()
+        assert "temp" not in chat._slash_commands
+
+
+def test_slash_command_fn_none_with_explicit_echo_true():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+
+        chat.slash_command("clientecho", "Client-side but echoed", fn=None, echo=True)
+
+        assert chat._slash_commands["clientecho"].definition["echo"] is True
+        assert chat._slash_commands["clientecho"].handler is None
+
+
 class MyObject:
     content = "Hello world!"
 

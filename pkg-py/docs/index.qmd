@@ -68,6 +68,75 @@ app = App(app_ui, server, bookmark_store="url")
 
 The `chat.client` property provides a `.set()` method for swapping models mid-session and `.clear()` for resetting the conversation. For lower-level chat methods such as appending messages, updating the input, or inspecting stream state, call them directly on `chat`. See the [API reference](api/index.qmd) for the full interface.
 
+## Slash commands
+
+Slash commands give users discoverable shortcuts -- like `/clear`, `/help`, or `/save` -- that run a server-side handler you define. They're a great fit for "meta" actions that aren't really a message to the model: resetting the conversation, opening a help dialog, exporting a transcript, and so on.
+
+Register a command with `@chat.slash_command(name, description)`. When a user runs it, the matching handler fires *instead* of `@chat.on_user_submit`, so commands never reach the LLM. A handler can take no arguments, or a single argument that receives the text typed after the command name (for `/search shiny modules`, that's `"shiny modules"`).
+
+```{.python file="app.py"}
+from shinychat.express import Chat
+
+chat = Chat(id="chat")
+chat.ui(placeholder="Type / for commands, or chat away...")
+
+@chat.slash_command("clear", "Clear the conversation")
+async def _():
+    await chat.clear_messages()
+
+@chat.slash_command("search", "Search the docs")
+async def _(args: str):
+    await chat.append_message(f"Searching for: {args}")
+
+@chat.on_user_submit
+async def handle_user_input(user_input: str):
+    await chat.append_message(f"You said: {user_input}")
+```
+
+In Shiny Core, register commands inside your server function in exactly the same way (`slash_command` is a method on `Chat`).
+
+Key points:
+
+- Users type `/` to open a palette of registered commands; arrow keys move the selection, Enter or Tab selects, and Escape dismisses it.
+- Commands bypass `@chat.on_user_submit` -- the matching handler runs instead, and nothing is sent to the model. A `/` message that doesn't match any registered command is sent as an ordinary message.
+- Handlers take 0 or 1 argument (the text after the command name). They're just app code, so they can show modals, trigger downloads, update reactive state, append messages, or do nothing visible at all.
+- Registering returns a function that removes the command when called; you can also call `chat.remove_slash_command(name)`. Re-registering an existing name raises an error unless you pass `force=True`.
+- Slash command messages (e.g. the `/search shiny modules` bubble) are tracked as part of the chat's UI state, so they're restored faithfully when an app is bookmarked and reopened.
+- The `echo` argument controls whether invoking a command is shown as a user message and awaits a response. It defaults to `True` when a handler is provided. Pass `echo=False` for a handler that only performs side effects (e.g. opening a modal) and shouldn't appear in the conversation.
+
+### Client-side slash command handlers
+
+Register a command with `fn=None` so it appears in the palette without a server
+handler, then handle it in the browser by listening for the
+`shiny:chat-slash-command` event and calling `preventDefault()`:
+
+```{.python file="app.py"}
+from shiny.express import ui
+from shinychat.express import Chat
+
+chat = Chat("chat")
+chat.ui()
+
+# No server handler — handled entirely in the browser.
+chat.slash_command("clear", "Clear the input", fn=None)
+
+ui.tags.script(
+    """
+    document.addEventListener('shiny:chat-slash-command', (e) => {
+      // e.detail = { id, command, args, echo }
+      if (e.detail.id !== 'chat' || e.detail.command !== 'clear') return;
+      e.preventDefault();           // skip the server round-trip
+      // e.detail.echo = true;      // optional: also show '/clear' as a message
+      document.querySelector('#chat textarea').value = '';
+    });
+    """
+)
+```
+
+The event is cancelable and bubbles, so you can listen on `document`. Use
+`e.detail.id` to target a specific chat. `preventDefault()` skips the server;
+set `e.detail.echo` to control whether the command appears as a user message.
+
 ## Lower-level interface
 
 When you need full control over the server-side logic — or you're using an LLM framework other than chatlas — omit the `client=` argument and wire things up manually. This means handling streaming, cancellation, and bookmarking yourself, but gives you complete flexibility over how messages are generated and displayed.
