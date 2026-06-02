@@ -4,6 +4,7 @@ import {
   initialState,
   type ChatState,
   type ChatMessageData,
+  type GreetingData,
 } from "../../src/chat/state"
 import { uuid } from "../../src/utils/uuid"
 
@@ -59,6 +60,34 @@ describe("chatReducer", () => {
         isPlaceholder: true,
       })
       expect(next.inputDisabled).toBe(true)
+    })
+
+    it("with awaitResponse=false adds only the user message and does not disable input", () => {
+      const greeting: GreetingData = {
+        content: "Hello!",
+        contentType: "markdown",
+        streaming: false,
+        status: "visible",
+        options: { dismissible: true },
+        blocks: [
+          { type: "content", content: "Hello!", contentType: "markdown" },
+        ],
+      }
+      const state = makeState({ greeting })
+      const next = chatReducer(state, {
+        type: "INPUT_SENT",
+        content: "/ping",
+        role: "user",
+        awaitResponse: false,
+      })
+
+      expect(next.messages).toHaveLength(1)
+      expect(next.messages[0]).toMatchObject({
+        role: "user",
+        content: "/ping",
+      })
+      expect(next.inputDisabled).toBe(false)
+      expect(next.greeting?.status).toBe("dismissing")
     })
   })
 
@@ -461,6 +490,30 @@ describe("chatReducer", () => {
     })
   })
 
+  describe("update_slash_commands", () => {
+    it("updates slashCommands to the provided list", () => {
+      const state = makeState({ slashCommands: [] })
+      const commands = [{ name: "help", description: "Show help", echo: true }]
+      const next = chatReducer(state, {
+        type: "update_slash_commands",
+        commands,
+      })
+      expect(next.slashCommands).toEqual(commands)
+    })
+
+    it("replaces an existing slashCommands list", () => {
+      const state = makeState({
+        slashCommands: [{ name: "old", description: "Old", echo: true }],
+      })
+      const commands = [{ name: "new", description: "New", echo: true }]
+      const next = chatReducer(state, {
+        type: "update_slash_commands",
+        commands,
+      })
+      expect(next.slashCommands).toEqual(commands)
+    })
+  })
+
   describe("clear", () => {
     it("wipes messages array", () => {
       const msg = makeAssistantMsg()
@@ -492,6 +545,17 @@ describe("chatReducer", () => {
       const state = makeState({ cancelRequested: true })
       const next = chatReducer(state, { type: "clear" })
       expect(next.cancelRequested).toBe(false)
+    })
+
+    it("preserves slashCommands across clear", () => {
+      const commands = [{ name: "help", description: "Show help", echo: true }]
+      const state = makeState({
+        messages: [makeAssistantMsg()],
+        slashCommands: commands,
+      })
+      const next = chatReducer(state, { type: "clear" })
+      expect(next.messages).toEqual([])
+      expect(next.slashCommands).toEqual(commands)
     })
   })
 

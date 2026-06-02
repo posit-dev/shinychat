@@ -19,7 +19,7 @@ import { ExternalLinkDialogComponent } from "./ExternalLinkDialog"
 import { RawDOM } from "./RawDOM"
 import { ChatScrollContext, useChatDispatch } from "./context"
 import type { ChatMessageData, GreetingData } from "./state"
-import type { ChatTransport } from "../transport/types"
+import type { ChatTransport, SlashCommandDef } from "../transport/types"
 
 declare global {
   interface Window {
@@ -44,6 +44,8 @@ export interface ChatContainerProps {
   enableCancel?: boolean
   cancelRequested?: boolean
   footerEl?: Element
+  slashCommands: SlashCommandDef[]
+  slashCommandId: string
 }
 
 export type ChatContainerHandle = ChatInputHandle
@@ -65,6 +67,8 @@ export const ChatContainer = forwardRef<
     enableCancel,
     cancelRequested,
     footerEl,
+    slashCommands,
+    slashCommandId,
   },
   ref,
 ) {
@@ -412,6 +416,8 @@ export const ChatContainer = forwardRef<
           cancelRequested={cancelRequested}
           isStreaming={isStreaming}
           onCancel={cancelStream}
+          slashCommands={slashCommands}
+          slashCommandId={slashCommandId}
         />
       </div>
 

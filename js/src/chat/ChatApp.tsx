@@ -36,6 +36,7 @@ interface ChatAppProps {
   initialGreeting?: InitialGreeting
   enableCancel?: boolean
   footerEl?: Element
+  slashCommandId?: string
 }
 
 function makeInitialGreeting(
@@ -73,6 +74,7 @@ export function ChatApp({
   initialGreeting,
   enableCancel,
   footerEl,
+  slashCommandId = "",
 }: ChatAppProps) {
   const messages = initialMessages ?? []
   const [state, dispatch] = useReducer(chatReducer, {
@@ -183,6 +185,8 @@ export function ChatApp({
             enableCancel={state.enableCancel}
             cancelRequested={state.cancelRequested}
             footerEl={footerEl}
+            slashCommands={state.slashCommands}
+            slashCommandId={slashCommandId}
           />
         </ChatDispatchContext.Provider>
       </ChatToolContext.Provider>
