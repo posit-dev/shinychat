@@ -1,0 +1,45 @@
+.shiny-chat-slash-palette {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0.25rem 0;
+  list-style: none;
+  background: var(--bs-body-bg, #fff);
+  border: var(--shiny-chat-border, var(--bs-border-width) solid var(--bs-border-color));
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  max-height: 15rem;
+  overflow-y: auto;
+  z-index: 10;
+}
+
+.shiny-chat-slash-palette-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+
+  &.highlighted {
+    background: RGBA(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.06);
+  }
+}
+
+.shiny-chat-slash-palette-name {
+  font-weight: 600;
+  font-size: 0.9em;
+}
+
+.shiny-chat-slash-palette-desc {
+  font-size: 0.8em;
+  color: var(--bs-secondary-color, #6c757d);
+}
+
+.shiny-chat-slash-palette-empty {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85em;
+  color: var(--bs-secondary-color, #6c757d);
+  font-style: italic;
+}

@@ -3,6 +3,7 @@ import type {
   ChatAction,
   MessagePayload,
   GreetingOptions,
+  SlashCommandDef,
 } from "../transport/types"
 import { uuid } from "../utils/uuid"
 
@@ -76,6 +77,7 @@ export interface ChatState extends ChatInputState, ChatToolState {
    * explicit user choice always wins over the `client=` auto-default.
    */
   enableCancelExplicit: boolean
+  slashCommands: SlashCommandDef[]
 }
 
 // Actions that originate from the UI (not from the server)
@@ -84,6 +86,8 @@ export type UIAction =
       type: "INPUT_SENT"
       content: string
       role: "user"
+      /** When false, append the user message only — no loading placeholder, no input disable. Defaults to true. */
+      awaitResponse?: boolean
     }
   | { type: "greeting_dismissed" }
   | { type: "CANCEL_REQUESTED" }
@@ -100,6 +104,7 @@ export const initialState: ChatState = {
   enableCancel: false,
   enableCancelExplicit: false,
   hiddenToolRequests: new Set(),
+  slashCommands: [],
 }
 
 function messagePayloadToData(msg: MessagePayload): ChatMessageData {
@@ -472,6 +477,15 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
           { type: "content", content: action.content, contentType: "markdown" },
         ],
       }
+
+      if (action.awaitResponse === false) {
+        return {
+          ...state,
+          messages: [...state.messages, userMsg],
+          greeting: dismissGreeting(state.greeting),
+        }
+      }
+
       const loadingMsg: ChatMessageData = {
         id: uuid(),
         role: "assistant",
@@ -828,6 +842,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         greeting: greetingAfterClear,
         enableCancel: state.enableCancel,
         enableCancelExplicit: state.enableCancelExplicit,
+        slashCommands: state.slashCommands,
       }
     }
 
@@ -975,6 +990,9 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
 
     case "greeting_clear":
       return { ...state, greeting: null }
+
+    case "update_slash_commands":
+      return { ...state, slashCommands: action.commands }
 
     default: {
       const _exhaustive: never = action
