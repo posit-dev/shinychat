@@ -16,10 +16,10 @@ chat.ui()
 
 async def fake_stream():
     yield ContentToolRequestSearch(query="ggplot2 1.0.0 release date")
-    yield ContentText(text="ggplot2 1.0.0 was released on 2015-03-09. ")
+    yield ContentText(text="ggplot2 1.0.0 was released on 2015-03-09. It is a popular R package.")
     yield ContentToolResponseFetch(url="https://ggplot2.tidyverse.org/news", status="success")
-    yield ContentCitation(citation=Citation(url="https://cran.r-project.org", title="CRAN"))
-    yield ContentCitation(citation=Citation(url="https://ggplot2.tidyverse.org", title="ggplot2"))
+    yield ContentCitation(citation=Citation(url="https://cran.r-project.org", title="CRAN", cited_text="released on 2015-03-09"))
+    yield ContentCitation(citation=Citation(url="https://ggplot2.tidyverse.org", title="ggplot2", cited_text="popular R package"))
     # duplicate URL to prove dedupe
     yield ContentCitation(citation=Citation(url="https://cran.r-project.org", title="CRAN"))
 

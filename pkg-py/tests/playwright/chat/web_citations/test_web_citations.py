@@ -34,3 +34,10 @@ def test_web_citations(page: Page, local_app: ShinyAppProc) -> None:
 
     # Sources footer: 3 citations, 2 unique URLs → exactly 2 list items
     expect(page.locator(".shiny-chat-sources li")).to_have_count(2)
+
+    # Inline citation markers: 2 cited_text matches → 2 superscript markers
+    markers = page.locator(".shiny-citation-marker")
+    expect(markers).to_have_count(2)
+
+    # First marker (for "released on 2015-03-09" → CRAN → number 1)
+    expect(markers.first).to_contain_text("1")

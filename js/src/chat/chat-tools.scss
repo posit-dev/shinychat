@@ -314,6 +314,30 @@
   color: var(--bs-danger, #dc3545);
 }
 
+.shiny-citation-marker {
+  // Override the browser's <sup> default (which floats small text too high);
+  // position it as a controlled, slightly-raised superscript instead.
+  font-size: 0.66em;
+  font-weight: 600;
+  vertical-align: baseline;
+  position: relative;
+  top: -0.4em;
+  margin-inline-start: 0.15em;
+
+  a {
+    color: var(--bs-link-color, #007bc2);
+    text-decoration: none;
+    // Subtle tinted pill for a touch more prominence.
+    background: rgba(var(--bs-link-color-rgb, 0, 123, 194), 0.12);
+    border-radius: 0.4em;
+    padding: 0.1em 0.35em;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
+
 .shiny-chat-sources {
   margin-top: 1em;
   padding-top: 0.75em;

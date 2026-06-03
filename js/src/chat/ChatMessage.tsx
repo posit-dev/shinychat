@@ -1,4 +1,4 @@
-import { memo, useState } from "react"
+import { memo, useMemo, useState } from "react"
 import type { ChatMessageData } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { ThinkingDisplay } from "./ThinkingDisplay"
@@ -15,6 +15,8 @@ import {
 } from "./attachments"
 import { TextAttachmentPreview } from "./TextAttachmentPreview"
 import { AttachmentLightbox } from "./AttachmentLightbox"
+import { parseCitations } from "./citations"
+import { insertCitationMarkers } from "./insertCitationMarkers"
 
 function parseLeadingCommand(
   content: string,
@@ -131,6 +133,17 @@ export const ChatMessage = memo(function ChatMessage({
       </div>
     ) : null
 
+  const combinedContent = message.blocks
+    .map((b) => (b.type === "thinking" ? "" : b.content))
+    .join("")
+
+  const citationEntries = useMemo(
+    () => (isUser ? [] : parseCitations(combinedContent)),
+    [combinedContent, isUser],
+  )
+
+  const placed = new Set<number>()
+
   return (
     <div className={roleClass}>
       {iconHtml && (
@@ -154,6 +167,9 @@ export const ChatMessage = memo(function ChatMessage({
             )
           }
           const isLast = i === message.blocks.length - 1
+          const blockContent = isUser
+            ? block.content
+            : insertCitationMarkers(block.content, citationEntries, placed)
 
           if (leadingCommand && i === 0) {
             const chip = <CommandChip name={leadingCommand.commandName} />
@@ -186,7 +202,7 @@ export const ChatMessage = memo(function ChatMessage({
           const el = (
             <MarkdownContent
               key={i}
-              content={block.content}
+              content={blockContent}
               contentType={block.contentType}
               role={message.role}
               streaming={message.streaming && isLast}
@@ -203,13 +219,7 @@ export const ChatMessage = memo(function ChatMessage({
           return el
         })}
         {!isUser && attachmentsEl}
-        {!isUser && (
-          <Sources
-            content={message.blocks
-              .map((b) => (b.type === "thinking" ? "" : b.content))
-              .join("")}
-          />
-        )}
+        {!isUser && <Sources content={combinedContent} />}
         {message.cancelled && (
           <div className="shiny-chat-message-cancelled">Response cancelled</div>
         )}
