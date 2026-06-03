@@ -224,6 +224,19 @@ class WebSearchComponent(BaseModel):
         ).tagify()
 
 
+class WebSearchResultsComponent(BaseModel):
+    "Mirrors the <shiny-web-search-results> React data carrier (consumed by WebActivity)."
+
+    sources: list[dict[str, Optional[str]]]
+
+    def tagify(self) -> "Tagified":
+        return Tag(
+            "shiny-web-search-results",
+            data_shinychat_react=True,
+            sources=json.dumps(self.sources),
+        ).tagify()
+
+
 class WebFetchComponent(BaseModel):
     "Mirrors the <shiny-web-fetch> React component."
 

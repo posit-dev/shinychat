@@ -12,6 +12,7 @@ import { remarkEscapeHtml } from "./plugins/remarkEscapeHtml"
 import { rehypeExternalLinks } from "./plugins/rehypeExternalLinks"
 import { rehypeUncontrolledInputs } from "./plugins/rehypeUncontrolledInputs"
 import { rehypeUnwrapBlockCEs } from "./plugins/rehypeUnwrapBlockCEs"
+import { rehypeGroupWebActivity } from "./plugins/rehypeGroupWebActivity"
 import { rehypeLazyContinuation } from "./plugins/rehypeLazyContinuation"
 
 /**
@@ -29,6 +30,7 @@ export const markdownProcessor = unified()
   .use(rehypeRaw)
   .use(rehypeLazyContinuation)
   .use(rehypeUnwrapBlockCEs)
+  .use(rehypeGroupWebActivity)
   .use(rehypeUncontrolledInputs)
   .use(rehypeAccessibleSuggestions)
   .use(rehypeSuggestionCards)
@@ -46,6 +48,9 @@ export const htmlProcessor = unified()
   .use(rehypeAccessibleSuggestions)
   .use(rehypeSuggestionCards)
   .use(rehypeExternalLinks)
+  // Web search/fetch carriers stream as HTML content (see ChatMessage), so the
+  // grouping into <shiny-web-activity> must run here, not only in markdownProcessor.
+  .use(rehypeGroupWebActivity)
   .freeze()
 
 /**

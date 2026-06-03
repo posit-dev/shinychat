@@ -22,13 +22,20 @@ def test_web_citations(page: Page, local_app: ShinyAppProc) -> None:
     # Wait for the stream to finish — Sources footer only appears after all chunks land
     expect(page.locator(".shiny-chat-sources")).to_be_visible(timeout=30 * 1000)
 
-    # Web search activity line
-    expect(page.locator(".shiny-web-search")).to_contain_text(
-        "ggplot2 1.0.0 release date"
-    )
+    # One collapsed web-activity block; expand it
+    activity = page.locator(".shiny-web-activity")
+    expect(activity).to_have_count(1)
+    # Collapsed by default: result rows not visible yet
+    expect(page.locator(".shiny-web-activity__result")).to_have_count(0)
 
-    # Web fetch activity line
-    expect(page.locator(".shiny-web-fetch")).to_contain_text(
+    activity.locator(".shiny-web-activity__header").click()
+
+    # Query, returned result rows, and the fetch node are now visible
+    expect(activity).to_contain_text("ggplot2 1.0.0 release date")
+    expect(activity).to_contain_text("2 results")
+    expect(page.locator(".shiny-web-activity__result")).to_have_count(2)
+    expect(activity).to_contain_text("cran.r-project.org")
+    expect(page.locator(".shiny-web-activity__fetch")).to_contain_text(
         "ggplot2.tidyverse.org/news"
     )
 

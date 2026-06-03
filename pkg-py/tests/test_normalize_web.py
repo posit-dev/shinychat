@@ -3,12 +3,11 @@ from chatlas.types import (
     ContentCitation,
     ContentToolRequestFetch,
     ContentToolRequestSearch,
-    ContentToolResponseSearch,
     ContentToolResponseFetch,
+    ContentToolResponseSearch,
     Source,
 )
 from htmltools import TagList
-
 from shinychat._chat_normalize import message_content
 
 
@@ -23,9 +22,21 @@ def test_search_request_renders_web_search_element():
     assert "data-shinychat-react" in html
 
 
-def test_search_response_renders_empty():
-    html = _html(ContentToolResponseSearch(sources=[Source(url="https://a.com")]))
-    assert "shiny-web" not in html
+def test_search_response_renders_results_element_with_sources():
+    html = _html(
+        ContentToolResponseSearch(
+            sources=[
+                Source(url="https://a.com", title="Alpha", domain="a.com"),
+                Source(url="https://b.com"),
+            ]
+        )
+    )
+    assert "shiny-web-search-results" in html
+    assert "data-shinychat-react" in html
+    # sources are JSON-encoded onto the element (HTML-escaped in the attribute)
+    assert "https://a.com" in html
+    assert "Alpha" in html
+    assert "https://b.com" in html
 
 
 def test_fetch_request_renders_empty():
@@ -53,9 +64,14 @@ def test_citation_renders_citation_element():
 
 
 def test_tool_display_none_suppresses(monkeypatch):
-    # ContentToolResponseSearch and ContentToolRequestFetch always render empty
-    # regardless of this setting, so they are intentionally not asserted here.
     monkeypatch.setenv("SHINYCHAT_TOOL_DISPLAY", "none")
     assert _html(ContentToolRequestSearch(query="x")).strip() == ""
-    assert _html(ContentToolResponseFetch(url="https://a.com", status="success")).strip() == ""
+    assert (
+        _html(ContentToolResponseSearch(sources=[Source(url="https://a.com")])).strip()
+        == ""
+    )
+    assert (
+        _html(ContentToolResponseFetch(url="https://a.com", status="success")).strip()
+        == ""
+    )
     assert _html(ContentCitation(citation=Citation(url="https://a.com"))).strip() == ""

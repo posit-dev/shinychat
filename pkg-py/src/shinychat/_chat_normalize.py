@@ -135,6 +135,7 @@ try:
         CitationComponent,
         WebFetchComponent,
         WebSearchComponent,
+        WebSearchResultsComponent,
         tool_display_override,
         tool_request_contents,
         tool_result_contents,
@@ -228,7 +229,13 @@ try:
 
         @message_content.register
         def _(message: ContentToolResponseSearch):
-            return ChatMessage(content="")
+            if tool_display_override() == "none":
+                return ChatMessage(content="")
+            sources = [
+                {"url": s.url, "title": s.title, "domain": s.domain}
+                for s in message.sources
+            ]
+            return ChatMessage(content=WebSearchResultsComponent(sources=sources))
 
         @message_content_chunk.register
         def _(chunk: ContentToolResponseSearch):

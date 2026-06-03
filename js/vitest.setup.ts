@@ -1,4 +1,5 @@
 import { vi } from "vitest"
+import "@testing-library/jest-dom"
 
 // jsdom doesn't provide ResizeObserver (needed by use-stick-to-bottom)
 class MockResizeObserver {
