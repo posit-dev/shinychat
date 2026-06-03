@@ -289,3 +289,56 @@
   max-width: 100%;
   border-radius: var(--bs-border-radius);
 }
+
+.shiny-web-search,
+.shiny-web-fetch {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  font-size: 0.85em;
+  opacity: 0.8;
+  margin: 0.5em 0;
+}
+
+.shiny-web-search__query {
+  font-style: italic;
+  font-weight: 500;
+}
+
+.shiny-web-fetch__url {
+  font-weight: 500;
+  word-break: break-all;
+}
+
+.shiny-web-fetch__status--error {
+  color: var(--bs-danger, #dc3545);
+}
+
+.shiny-chat-sources {
+  margin-top: 1em;
+  padding-top: 0.75em;
+  border-top: 1px solid rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.15);
+  font-size: 0.85em;
+
+  .shiny-chat-sources__label {
+    text-transform: uppercase;
+    font-size: 0.8em;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    opacity: 0.66;
+    margin-bottom: 0.4em;
+  }
+
+  .shiny-chat-sources__list {
+    margin: 0;
+    padding-inline-start: 1.5em;
+
+    li {
+      margin-bottom: 0.2em;
+    }
+
+    a {
+      word-break: break-all;
+    }
+  }
+}

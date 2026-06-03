@@ -23,11 +23,14 @@ const urlAttributes: Record<string, string[] | null> = {
   action: ["form"],
   formAction: ["button", "input"],
   cite: ["blockquote", "del", "ins", "q"],
+  // Defense-in-depth: also scrub the `url` attribute on our custom elements
+  // in case they appear in the HAST tree before React rendering.
+  url: ["shiny-citation", "shiny-web-fetch"],
 }
 
 const safeProtocol = /^(https?|ircs?|mailto|xmpp)$/i
 
-function isSafeUrl(value: string): boolean {
+export function isSafeUrl(value: string): boolean {
   const colon = value.indexOf(":")
   const questionMark = value.indexOf("?")
   const numberSign = value.indexOf("#")

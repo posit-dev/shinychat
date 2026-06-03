@@ -2,6 +2,7 @@ import { memo, useState } from "react"
 import type { ChatMessageData } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { ThinkingDisplay } from "./ThinkingDisplay"
+import { Sources } from "./Sources"
 import { robot, dots_fade } from "../utils/icons"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
 import { useSlashCommands } from "./context"
@@ -202,6 +203,13 @@ export const ChatMessage = memo(function ChatMessage({
           return el
         })}
         {!isUser && attachmentsEl}
+        {!isUser && (
+          <Sources
+            content={message.blocks
+              .map((b) => (b.type === "thinking" ? "" : b.content))
+              .join("")}
+          />
+        )}
         {message.cancelled && (
           <div className="shiny-chat-message-cancelled">Response cancelled</div>
         )}

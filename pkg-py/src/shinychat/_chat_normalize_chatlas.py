@@ -213,6 +213,49 @@ class ToolResultComponent(ToolCardComponent):
         ).tagify()
 
 
+class WebSearchComponent(BaseModel):
+    "Mirrors the <shiny-web-search> React component."
+
+    query: str
+
+    def tagify(self) -> "Tagified":
+        return Tag(
+            "shiny-web-search", data_shinychat_react=True, query=self.query
+        ).tagify()
+
+
+class WebFetchComponent(BaseModel):
+    "Mirrors the <shiny-web-fetch> React component."
+
+    url: str
+    status: Optional[str] = None
+
+    def tagify(self) -> "Tagified":
+        return Tag(
+            "shiny-web-fetch",
+            data_shinychat_react=True,
+            url=self.url,
+            status=self.status,
+        ).tagify()
+
+
+class CitationComponent(BaseModel):
+    "Mirrors the <shiny-citation> React data carrier (footer source)."
+
+    url: str
+    title: Optional[str] = None
+    cited_text: Optional[str] = None
+
+    def tagify(self) -> "Tagified":
+        return Tag(
+            "shiny-citation",
+            data_shinychat_react=True,
+            url=self.url,
+            title=self.title,
+            cited_text=self.cited_text,
+        ).tagify()
+
+
 class ToolResultDisplay(BaseModel):
     """
     Customize how tool results are displayed.
