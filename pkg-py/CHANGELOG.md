@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### New features
 
+* Assistant messages are now stored as a sequence of typed content **segments** (markdown, HTML, text, thinking) rather than a single flattened string. This fixes bookmark restore for messages that mix content types — e.g. a streamed reply that interleaves markdown, a raw-HTML widget (with its `HTMLDependency`), and reasoning — which previously lost type and dependency information on restore. Structured thinking is now stored as a first-class thinking segment, replacing the prior `<thinking>`-tag buffering workaround.
+
 * `Chat()` now accepts an optional `client=` parameter. When provided, streaming, cancellation, bookmarking, and greeting handling are wired up automatically — no manual plumbing required. The `chat.client` property exposes a `ChatClient` wrapper with `.value` (the raw chatlas client), `.set()` for swapping models mid-session, and `.clear()` for resetting the conversation with flexible history management.
 
 ### Improvements
