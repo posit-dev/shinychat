@@ -909,3 +909,41 @@ def test_stored_message_content_excludes_thinking_segments():
         ],
     )
     assert msg.content == "the answer"
+
+
+def test_streaming_thinking_chunk_wire_content_not_empty():
+    """Regression: a streamed thinking chunk must carry its text on the wire.
+
+    StoredMessage.content excludes thinking (for history/token counts), but the
+    streaming chunk action's `content` must include it or the client renders an
+    empty thinking panel.
+    """
+    from shinychat._chat_types import ChatMessage
+
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        chat._store_message = lambda *a, **k: None  # type: ignore[method-assign]
+
+        async def _exercise() -> None:
+            await chat._append_message_chunk("", chunk="start", stream_id="s1")
+            await chat._append_message_chunk(
+                ChatMessage(content="reasoning", role="assistant", content_type="thinking"),
+                chunk=True,
+                stream_id="s1",
+            )
+            await chat._append_message_chunk("", chunk="end", stream_id="s1")
+
+        run_async(_exercise)
+
+        thinking_chunks = [
+            a for a in sent
+            if a.get("type") == "chunk" and a.get("content_type") == "thinking"
+        ]
+        assert thinking_chunks, "no thinking chunk action was sent"
+        assert thinking_chunks[0]["content"] == "reasoning"

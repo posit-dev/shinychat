@@ -1148,7 +1148,10 @@ class Chat:
         if message.role == "system":
             return
 
-        content = message.content
+        # Wire content for chunk actions must include ALL segments (thinking
+        # included) so the client can render it. StoredMessage.content excludes
+        # thinking (it feeds user-facing history/token counts), so don't use it here.
+        content = "".join(s["content"] for s in message.segments)
         if content_type is None:
             content_type = message.segments[-1]["content_type"] if message.segments else "markdown"
 
