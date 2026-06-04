@@ -1005,13 +1005,11 @@ chat_set_greeting <- function(
   }
 
   if (is.function(content)) {
-    cli::cli_abort(
-      c(
-        "{.fn chat_set_greeting} does not accept a function as greeting content.",
-        "i" = "Pass the {.emph result} of calling your function, not the function itself.",
-        "i" = "To use a greeting function with automatic lifecycle management, pass it to the {.arg greeting} argument of {.fn chat_mod_server}."
-      )
-    )
+    cli::cli_abort(c(
+      "{.fn chat_set_greeting} does not accept a function as greeting content.",
+      "i" = "Pass the {.emph result} of calling your function, not the function itself.",
+      "i" = "To use a greeting function with automatic lifecycle management, pass it to the {.arg greeting} argument of {.fn chat_mod_server}."
+    ))
   }
 
   if (is.character(content) && !inherits(content, "html")) {
@@ -1059,14 +1057,12 @@ rlang::on_load(
       send_chat_action(id, action = action, session = session)
     }
 
-    send_greeting_action(
-      list(
-        type = "greeting_start",
-        content = "",
-        content_type = "markdown",
-        options = options
-      )
-    )
+    send_greeting_action(list(
+      type = "greeting_start",
+      content = "",
+      content_type = "markdown",
+      options = options
+    ))
 
     for (msg in stream) {
       if (promises::is.promising(msg)) {

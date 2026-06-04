@@ -881,17 +881,6 @@ class Chat:
         if is_tool_result(message) and message.request is not None:
             await self._hide_tool_request(message.request.id)  # type: ignore
 
-        # Detect the content type from the original message before normalization.
-        # HTML is a UserString (not a str subclass), so ChatMessage processes it
-        # into a plain str with <shinychat-raw-html> wrapping. For segment storage
-        # we want the raw HTML string and the "html" content type.
-        if isinstance(message, HTML):
-            chunk_content_type: ContentType = "html"
-            chunk_segment_content: str = str(message)
-        else:
-            chunk_content_type = msg.content_type   # "thinking" | "markdown" | "html" | "text"
-            chunk_segment_content = str(msg.content)
-
         if operation == "replace":
             if has_mixed_content_types(
                 self._message_stream_segments_checkpoint
@@ -905,8 +894,8 @@ class Chat:
 
         append_to_segments(
             self._current_stream_segments,
-            chunk_segment_content,
-            chunk_content_type,
+            msg.content,
+            msg.content_type,
             chunk_deps or None,
         )
 
@@ -1148,9 +1137,7 @@ class Chat:
         if message.role == "system":
             return
 
-        # Wire content for chunk actions must include ALL segments (thinking
-        # included) so the client can render it. StoredMessage.content excludes
-        # thinking (it feeds user-facing history/token counts), so don't use it here.
+        # Not StoredMessage.content: that drops thinking, but the wire needs it.
         content = "".join(s["content"] for s in message.segments)
         if content_type is None:
             content_type = message.segments[-1]["content_type"] if message.segments else "markdown"
@@ -1337,12 +1324,10 @@ class Chat:
         if content is None:
             return None
 
-        content_type: ContentType = "html" if isinstance(content, HTML) else "markdown"
-        seg = StoredContentSegment(content=str(content), content_type=content_type)
-        existing_deps = res.html_deps
-        if existing_deps:
-            seg["html_deps"] = existing_deps
-        return StoredMessage(role=res.role, segments=[seg])
+        return StoredMessage.from_chat_message(
+            ChatMessage(content=content, role=res.role),
+            html_deps=res.html_deps,
+        )
 
     def _needs_transform(self, message: ChatMessage) -> bool:
         if message.role == "user" and self._transform_user is not None:
