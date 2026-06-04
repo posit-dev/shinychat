@@ -30,9 +30,13 @@ describe("server-shaped chat payloads", () => {
         type: "message",
         message: {
           role: "assistant",
-          content:
-            '<div class="server-html"><span>**not bold**</span><ul><li>literal asterisk item</li></ul></div><span class="server-tail">tail</span>',
-          content_type: "html",
+          segments: [
+            {
+              content:
+                '<div class="server-html"><span>**not bold**</span><ul><li>literal asterisk item</li></ul></div><span class="server-tail">tail</span>',
+              content_type: "html",
+            },
+          ],
         },
       })
     })
@@ -63,9 +67,13 @@ describe("server-shaped chat payloads", () => {
         type: "message",
         message: {
           role: "assistant",
-          content:
-            '<shiny-tool-result data-shinychat-react request-id="req-empty-fields" tool-name="get_weather" tool-title="Get Weather" status="success" value="" value-type="text" request-call="" footer="" show-request full-screen expanded></shiny-tool-result>',
-          content_type: "html",
+          segments: [
+            {
+              content:
+                '<shiny-tool-result data-shinychat-react request-id="req-empty-fields" tool-name="get_weather" tool-title="Get Weather" status="success" value="" value-type="text" request-call="" footer="" show-request full-screen expanded></shiny-tool-result>',
+              content_type: "html",
+            },
+          ],
         },
       })
     })

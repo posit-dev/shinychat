@@ -41,8 +41,7 @@ async function renderWithSuggestions(placeholder = "Type...") {
       type: "message",
       message: {
         role: "assistant",
-        content: SUGGESTION_HTML,
-        content_type: "html",
+        segments: [{ content: SUGGESTION_HTML, content_type: "html" }],
       },
     })
   })
@@ -175,8 +174,7 @@ describe("SuggestionCards: aria-label matches visible text (#5 / test-d)", () =>
         type: "message",
         message: {
           role: "assistant",
-          content: OL_HTML,
-          content_type: "html",
+          segments: [{ content: OL_HTML, content_type: "html" }],
         },
       })
     })

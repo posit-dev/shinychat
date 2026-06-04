@@ -104,36 +104,23 @@ export const initialState: ChatState = {
 }
 
 function messagePayloadToData(msg: MessagePayload): ChatMessageData {
-  if (msg.content_type === "thinking") {
-    return {
-      id: msg.id ?? uuid(),
-      role: "assistant",
-      content: "",
-      contentType: "markdown",
-      streaming: false,
-      icon: msg.icon,
-      blocks: [
-        {
-          type: "thinking",
-          content: msg.content,
-          streaming: false,
-          startedAt: Date.now(),
-        },
-      ],
-    }
+  const blocks: MessageBlock[] = []
+  for (const seg of msg.segments) {
+    blocks.push(...splitThinkingBlocks(seg.content, seg.content_type))
   }
-
-  const blocks = splitThinkingBlocks(msg.content, msg.content_type)
   const contentOnly = blocks
     .filter((b): b is ContentBlock => b.type === "content")
     .map((b) => b.content)
     .join("")
+  const lastContent = [...blocks]
+    .reverse()
+    .find((b): b is ContentBlock => b.type === "content")
 
   return {
     id: msg.id ?? uuid(),
     role: msg.role,
     content: contentOnly,
-    contentType: msg.content_type,
+    contentType: lastContent?.contentType ?? "markdown",
     streaming: false,
     icon: msg.icon,
     blocks,

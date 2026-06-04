@@ -126,8 +126,7 @@ describe("chatReducer", () => {
         type: "message",
         message: {
           role: "assistant",
-          content: "Reply",
-          content_type: "markdown",
+          segments: [{ content: "Reply", content_type: "markdown" }],
         },
       })
       expect(next.messages).toHaveLength(1)
@@ -142,8 +141,7 @@ describe("chatReducer", () => {
         type: "message",
         message: {
           role: "assistant",
-          content: "Hello",
-          content_type: "markdown",
+          segments: [{ content: "Hello", content_type: "markdown" }],
         },
       })
       expect(next.messages).toHaveLength(1)
@@ -155,8 +153,7 @@ describe("chatReducer", () => {
         type: "message",
         message: {
           role: "assistant",
-          content: "Hi",
-          content_type: "markdown",
+          segments: [{ content: "Hi", content_type: "markdown" }],
         },
       })
       expect(next.messages[0]!.id).toBe("uuid-1")
@@ -169,8 +166,7 @@ describe("chatReducer", () => {
         message: {
           id: "custom-id",
           role: "assistant",
-          content: "Hi",
-          content_type: "markdown",
+          segments: [{ content: "Hi", content_type: "markdown" }],
         },
       })
       expect(next.messages[0]!.id).toBe("custom-id")
@@ -182,8 +178,7 @@ describe("chatReducer", () => {
         type: "message",
         message: {
           role: "assistant",
-          content: "<b>Hi</b>",
-          content_type: "html",
+          segments: [{ content: "<b>Hi</b>", content_type: "html" }],
         },
       })
       expect(next.messages[0]!.contentType).toBe("html")
@@ -209,8 +204,7 @@ describe("chatReducer", () => {
         type: "chunk_start",
         message: {
           role: "assistant",
-          content: "Hel",
-          content_type: "markdown",
+          segments: [{ content: "Hel", content_type: "markdown" }],
         },
       })
       expect(next.messages).toHaveLength(0)
@@ -226,8 +220,7 @@ describe("chatReducer", () => {
         type: "chunk_start",
         message: {
           role: "assistant",
-          content: "Hel",
-          content_type: "markdown",
+          segments: [{ content: "Hel", content_type: "markdown" }],
         },
       })
       expect(next.streamingMessage!.blocks).toEqual([
@@ -681,8 +674,7 @@ describe("chatReducer", () => {
         type: "message",
         message: {
           role: "assistant",
-          content: "Reply",
-          content_type: "markdown",
+          segments: [{ content: "Reply", content_type: "markdown" }],
         },
       })
       expect(next.messages).toHaveLength(1)
@@ -697,8 +689,7 @@ describe("chatReducer", () => {
         type: "chunk_start",
         message: {
           role: "assistant",
-          content: "reasoning...",
-          content_type: "thinking",
+          segments: [{ content: "reasoning...", content_type: "thinking" }],
         },
       })
       expect(next.streamingMessage).not.toBeNull()
@@ -904,8 +895,7 @@ describe("chatReducer", () => {
         type: "chunk_start",
         message: {
           role: "assistant",
-          content: "",
-          content_type: "thinking",
+          segments: [{ content: "", content_type: "thinking" }],
         },
       })
       s = chatReducer(s, {
@@ -1028,6 +1018,61 @@ describe("chatReducer", () => {
     })
   })
 
+  describe("segment-based message payloads", () => {
+    it("builds blocks from multiple segments incl. thinking", () => {
+      const next = chatReducer(initialState, {
+        type: "message",
+        message: {
+          role: "assistant",
+          segments: [
+            { content: "reasoning", content_type: "thinking" },
+            { content: "**answer**", content_type: "markdown" },
+          ],
+        },
+      })
+      const msg = next.messages[0]!
+      expect(msg.blocks.map((b) => b.type)).toEqual(["thinking", "content"])
+      expect(msg.blocks[0]).toMatchObject({
+        type: "thinking",
+        content: "reasoning",
+      })
+      expect(msg.content).toBe("**answer**")
+    })
+
+    it("splits inline <thinking> tags inside a markdown segment (source B)", () => {
+      const next = chatReducer(initialState, {
+        type: "message",
+        message: {
+          role: "assistant",
+          segments: [
+            {
+              content: "<thinking>\nhmm\n</thinking>\n\nhello",
+              content_type: "markdown",
+            },
+          ],
+        },
+      })
+      const msg = next.messages[0]!
+      expect(msg.blocks.map((b) => b.type)).toEqual(["thinking", "content"])
+      expect(msg.blocks[1]).toMatchObject({ content: "hello" })
+    })
+
+    it("all-thinking segments produce empty content with markdown contentType", () => {
+      const next = chatReducer(initialState, {
+        type: "message",
+        message: {
+          role: "assistant",
+          segments: [{ content: "reasoning", content_type: "thinking" }],
+        },
+      })
+      const msg = next.messages[0]!
+      expect(msg.content).toBe("")
+      expect(msg.contentType).toBe("markdown")
+      expect(msg.blocks).toHaveLength(1)
+      expect(msg.blocks[0]!.type).toBe("thinking")
+    })
+  })
+
   describe("<thinking> tag detection", () => {
     it("splits <thinking> tags in non-streaming message into ThinkingBlock + ContentBlock", () => {
       const state = makeState()
@@ -1035,9 +1080,13 @@ describe("chatReducer", () => {
         type: "message",
         message: {
           role: "assistant",
-          content:
-            "<thinking>\nI need to figure this out\n</thinking>\n\nHere is my answer.",
-          content_type: "markdown",
+          segments: [
+            {
+              content:
+                "<thinking>\nI need to figure this out\n</thinking>\n\nHere is my answer.",
+              content_type: "markdown",
+            },
+          ],
         },
       })
       const msg = next.messages[0]!
@@ -1059,9 +1108,13 @@ describe("chatReducer", () => {
         type: "message",
         message: {
           role: "assistant",
-          content:
-            "<thinking>\nFirst thought\n</thinking>\n\nSome text\n\n<thinking>\nSecond thought\n</thinking>\n\nMore text",
-          content_type: "markdown",
+          segments: [
+            {
+              content:
+                "<thinking>\nFirst thought\n</thinking>\n\nSome text\n\n<thinking>\nSecond thought\n</thinking>\n\nMore text",
+              content_type: "markdown",
+            },
+          ],
         },
       })
       const msg = next.messages[0]!
@@ -1078,9 +1131,13 @@ describe("chatReducer", () => {
         type: "message",
         message: {
           role: "assistant",
-          content:
-            "<thinking>\n<topic>Planning</topic>\nLet me plan this\n</thinking>\n\nDone.",
-          content_type: "markdown",
+          segments: [
+            {
+              content:
+                "<thinking>\n<topic>Planning</topic>\nLet me plan this\n</thinking>\n\nDone.",
+              content_type: "markdown",
+            },
+          ],
         },
       })
       const msg = next.messages[0]!
@@ -1092,7 +1149,10 @@ describe("chatReducer", () => {
       let state = makeState()
       state = chatReducer(state, {
         type: "chunk_start",
-        message: { role: "assistant", content: "", content_type: "markdown" },
+        message: {
+          role: "assistant",
+          segments: [{ content: "", content_type: "markdown" }],
+        },
       })
       state = chatReducer(state, {
         type: "chunk",
@@ -1120,8 +1180,9 @@ describe("chatReducer", () => {
         type: "message",
         message: {
           role: "assistant",
-          content: "Just a normal response",
-          content_type: "markdown",
+          segments: [
+            { content: "Just a normal response", content_type: "markdown" },
+          ],
         },
       })
       const msg = next.messages[0]!
@@ -1135,8 +1196,12 @@ describe("chatReducer", () => {
         type: "message",
         message: {
           role: "assistant",
-          content: "Use `<thinking>` tags for reasoning.",
-          content_type: "markdown",
+          segments: [
+            {
+              content: "Use `<thinking>` tags for reasoning.",
+              content_type: "markdown",
+            },
+          ],
         },
       })
       const msg = next.messages[0]!
@@ -1159,7 +1224,10 @@ describe("chatReducer", () => {
       ].join("\n")
       const next = chatReducer(state, {
         type: "message",
-        message: { role: "assistant", content, content_type: "markdown" },
+        message: {
+          role: "assistant",
+          segments: [{ content, content_type: "markdown" }],
+        },
       })
       const msg = next.messages[0]!
       expect(msg.blocks).toHaveLength(1)
@@ -1171,7 +1239,10 @@ describe("chatReducer", () => {
       let state = makeState()
       state = chatReducer(state, {
         type: "chunk_start",
-        message: { role: "assistant", content: "", content_type: "markdown" },
+        message: {
+          role: "assistant",
+          segments: [{ content: "", content_type: "markdown" }],
+        },
       })
       // First chunk: opening tag
       state = chatReducer(state, {
@@ -1222,7 +1293,10 @@ describe("chatReducer", () => {
       let state = makeState()
       state = chatReducer(state, {
         type: "chunk_start",
-        message: { role: "assistant", content: "", content_type: "markdown" },
+        message: {
+          role: "assistant",
+          segments: [{ content: "", content_type: "markdown" }],
+        },
       })
       // Chunk ends just before <thinking> with a backtick — not a newline boundary
       state = chatReducer(state, {
@@ -1251,7 +1325,10 @@ describe("chatReducer", () => {
       let state = makeState()
       state = chatReducer(state, {
         type: "chunk_start",
-        message: { role: "assistant", content: "", content_type: "markdown" },
+        message: {
+          role: "assistant",
+          segments: [{ content: "", content_type: "markdown" }],
+        },
       })
       state = chatReducer(state, {
         type: "chunk",
@@ -1279,9 +1356,13 @@ describe("chatReducer", () => {
         type: "message",
         message: {
           role: "assistant",
-          content:
-            "The model wraps reasoning in `<thinking>I reason here</thinking>` tags.",
-          content_type: "markdown",
+          segments: [
+            {
+              content:
+                "The model wraps reasoning in `<thinking>I reason here</thinking>` tags.",
+              content_type: "markdown",
+            },
+          ],
         },
       })
       const msg = next.messages[0]!
@@ -1293,7 +1374,10 @@ describe("chatReducer", () => {
       let state = makeState()
       state = chatReducer(state, {
         type: "chunk_start",
-        message: { role: "assistant", content: "", content_type: "markdown" },
+        message: {
+          role: "assistant",
+          segments: [{ content: "", content_type: "markdown" }],
+        },
       })
       const chunks = [
         "Here's an example:\n",
@@ -1321,7 +1405,10 @@ describe("chatReducer", () => {
       let state = makeState()
       state = chatReducer(state, {
         type: "chunk_start",
-        message: { role: "assistant", content: "", content_type: "markdown" },
+        message: {
+          role: "assistant",
+          segments: [{ content: "", content_type: "markdown" }],
+        },
       })
 
       const chunks = [

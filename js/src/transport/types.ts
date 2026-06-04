@@ -6,13 +6,16 @@ export interface GreetingOptions {
   dismissible?: boolean
 }
 
+export type MessagePayloadSegment = {
+  content: string
+  content_type: ContentType
+}
+
 export type MessagePayload = {
   id?: string
   role: "user" | "assistant"
-  content: string
-  content_type: ContentType
   icon?: string
-  html_deps?: HtmlDep[]
+  segments: MessagePayloadSegment[]
 }
 
 export type ChatAction =
