@@ -121,3 +121,37 @@ test_that("chat_append_stream() handles errors in the stream", {
     expect_equal(conditionMessage(res), "boom")
   })
 })
+
+test_that("chat_append_message() emits segment payloads incl. thinking", {
+  captured <- list()
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      captured[[length(captured) + 1]] <<- action
+      invisible()
+    }
+  )
+  session <- shiny::MockShinySession$new()
+
+  chat_append_message(
+    "chat",
+    list(role = "assistant", content = "hello"),
+    chunk = FALSE,
+    session = session
+  )
+  th <- structure("reasoning", class = "shinychat_thinking")
+  chat_append_message(
+    "chat",
+    list(role = "assistant", content = th),
+    chunk = TRUE,
+    session = session
+  )
+
+  msg <- captured[[1]]
+  expect_equal(msg$type, "message")
+  expect_null(msg$message$content)
+  expect_equal(msg$message$segments[[1]]$content, "hello")
+  expect_equal(msg$message$segments[[1]]$content_type, "markdown")
+
+  chunk <- captured[[2]]
+  expect_equal(chunk$content_type, "thinking")
+})
