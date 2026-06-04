@@ -50,20 +50,32 @@ from ._chat_provider_types import (
     ProviderMessageFormat,
     as_provider_message,
 )
+from ._chat_segments import (
+    append_to_segments,
+    copy_segments,
+    has_mixed_content_types,
+    segments_content,
+    segments_deps,
+    serialize_segments,
+)
 from ._chat_tokenizer import (
     TokenEncoding,
     TokenizersEncoding,
     get_default_tokenizer,
 )
 from ._chat_types import (
+    BookmarkMessageDict,
     ChatAction,
     ChatGreeting,
     ChatMessage,
     ChatMessageDict,
     ClearAction,
+    ContentSegment,
     ContentType,
     GreetingOptions,
     MessagePayload,
+    Role,
+    StoredContentSegment,
     StoredMessage,
     chat_greeting,
 )
@@ -73,7 +85,6 @@ from ._utils_types import MISSING, MISSING_TYPE
 
 if TYPE_CHECKING:
     import chatlas
-    from chatlas.types import ContentThinkingDelta
     from shiny.bookmark import BookmarkState, RestoreState
     from shiny.bookmark._types import BookmarkStore
     from shiny.reactive import ExtendedTask
@@ -309,14 +320,12 @@ class Chat:
         self.on_error = on_error
 
         # Chunked messages get accumulated (using this property) before changing state
-        self._current_stream_message: str = ""
-        self._current_stream_deps: list[HTMLDependency] = []
+        self._current_stream_segments: list[ContentSegment] = []
         self._current_stream_id: str | None = None
         self._pending_messages: list[PendingMessage] = []
 
         # For tracking message stream state when entering/exiting nested streams
-        self._message_stream_checkpoint: str = ""
-        self._message_stream_deps_checkpoint: list[HTMLDependency] = []
+        self._message_stream_segments_checkpoint: list[ContentSegment] = []
 
         # If a user input message is transformed into a response, we need to cancel
         # the next user input submit handling
@@ -820,11 +829,9 @@ class Chat:
         `.clear()` the stream back to it's initial state when ready to display the
         "final" content.
         """
-        # Checkpoint the current stream state so operation="replace"  can return to it
-        old_checkpoint = self._message_stream_checkpoint
-        old_deps_checkpoint = self._message_stream_deps_checkpoint.copy()
-        self._message_stream_checkpoint = self._current_stream_message
-        self._message_stream_deps_checkpoint = self._current_stream_deps.copy()
+        # Checkpoint the current stream state so operation="replace" can return to it
+        old_checkpoint = self._message_stream_segments_checkpoint
+        self._message_stream_segments_checkpoint = copy_segments(self._current_stream_segments)
 
         # No stream currently exists, start one
         stream_id = self._current_stream_id
@@ -839,8 +846,7 @@ class Chat:
             yield MessageStream(self, stream_id)
         finally:
             # Restore the checkpoint
-            self._message_stream_checkpoint = old_checkpoint
-            self._message_stream_deps_checkpoint = old_deps_checkpoint
+            self._message_stream_segments_checkpoint = old_checkpoint
 
             # If this was the root stream, end it
             if is_root_stream:
@@ -875,48 +881,80 @@ class Chat:
         if is_tool_result(message) and message.request is not None:
             await self._hide_tool_request(message.request.id)  # type: ignore
 
+        # Detect the content type from the original message before normalization.
+        # HTML is a UserString (not a str subclass), so ChatMessage processes it
+        # into a plain str with <shinychat-raw-html> wrapping. For segment storage
+        # we want the raw HTML string and the "html" content type.
+        if isinstance(message, HTML):
+            chunk_content_type: ContentType = "html"
+            chunk_segment_content: str = str(message)
+        else:
+            chunk_content_type = msg.content_type   # "thinking" | "markdown" | "html" | "text"
+            chunk_segment_content = str(msg.content)
+
         if operation == "replace":
-            self._current_stream_message = (
-                self._message_stream_checkpoint + msg.content
+            if has_mixed_content_types(
+                self._message_stream_segments_checkpoint
+            ):
+                raise ValueError(
+                    "Cannot replace from a mixed-content checkpoint."
+                )
+            self._current_stream_segments = copy_segments(
+                self._message_stream_segments_checkpoint
             )
-            self._current_stream_deps = [
-                *self._message_stream_deps_checkpoint,
-                *chunk_deps,
-            ]
-            msg.content = self._current_stream_message
-        elif msg.content_type != "thinking":
-            self._current_stream_message += msg.content
-            self._current_stream_deps.extend(chunk_deps)
+
+        append_to_segments(
+            self._current_stream_segments,
+            chunk_segment_content,
+            chunk_content_type,
+            chunk_deps or None,
+        )
+
+        stream_content = segments_content(self._current_stream_segments)
+
+        if operation == "replace":
+            msg.content = stream_content
 
         try:
+            transformed = False
             if self._needs_transform(msg):
                 # Transforming may change the meaning of msg.content to be a *replace*
                 # not *append*. So, update msg.content and the operation accordingly.
                 chunk_content = msg.content
-                msg.content = self._current_stream_message
+                msg.content = stream_content
                 operation = "replace"
                 msg = await self._transform_message(
                     msg, chunk=chunk, chunk_content=chunk_content
                 )
+                transformed = True
                 # Act like nothing happened if transformed to None
                 if msg is None:
                     return
                 if chunk == "end":
-                    self._store_message(
-                        msg,
-                        deps=self._current_stream_deps
-                        if self._current_stream_deps
-                        else None,
-                    )
+                    stream_deps = segments_deps(self._current_stream_segments)
+                    serialized_deps = self._serialize_html_deps(stream_deps)
+                    # _transform_message returns a single-segment StoredMessage, so all stream
+                    # deps belong on segments[0].
+                    if serialized_deps and msg.segments:
+                        msg.segments[0]["html_deps"] = serialized_deps
+                    self._store_message(msg)
             elif chunk == "end":
                 # When `operation="append"`, msg.content is just a chunk, but we must
                 # store the full message
+                segs = serialize_segments(self._current_stream_segments, self._serialize_html_deps)
                 self._store_message(
-                    ChatMessage(
-                        content=self._current_stream_message, role=msg.role
+                    StoredMessage(
+                        role=msg.role,
+                        segments=segs,
                     ),
-                    deps=self._current_stream_deps if self._current_stream_deps else None,
                 )
+
+            # Determine content_type from the current (last) segment.
+            # When transformed, leave as None so _send_append_message infers
+            # the type from the transformed payload itself.
+            send_content_type: ContentType | None = None
+            if not transformed and self._current_stream_segments:
+                send_content_type = self._current_stream_segments[-1].content_type
 
             # Send the message to the client
             await self._send_append_message(
@@ -924,14 +962,13 @@ class Chat:
                 chunk=chunk,
                 operation=operation,
                 icon=icon,
+                content_type=send_content_type,
             )
         finally:
             if chunk == "end":
                 self._current_stream_id = None
-                self._current_stream_message = ""
-                self._current_stream_deps = []
-                self._message_stream_checkpoint = ""
-                self._message_stream_deps_checkpoint = []
+                self._current_stream_segments = []
+                self._message_stream_segments_checkpoint = []
 
     async def append_message_stream(
         self,
@@ -1075,34 +1112,10 @@ class Chat:
             empty, chunk="start", stream_id=id, icon=icon
         )
 
-        # TODO: this is a pragmatic hack to store thinking state in a way that it
-        # can be restored later. Longer term, stored message state should support
-        # mixed content types (the thinking handling here could then be removed)
-        def flush_thinking(thinking_buffer: str) -> None:
-            self._current_stream_message += (
-                f"<thinking>\n{thinking_buffer}\n</thinking>\n\n"
-            )
-
         try:
-            thinking_buffer = ""
             async for msg in message:
-                if is_thinking_delta(msg):
-                    thinking_buffer += msg.thinking
-                    await self._append_message_chunk(
-                        msg, chunk=True, stream_id=id
-                    )
-                    continue
-
-                if thinking_buffer:
-                    flush_thinking(thinking_buffer)
-                    thinking_buffer = ""
-
                 await self._append_message_chunk(msg, chunk=True, stream_id=id)
-
-            if thinking_buffer:
-                flush_thinking(thinking_buffer)
-
-            return self._current_stream_message
+            return segments_content(self._current_stream_segments)
         finally:
             await self._append_message_chunk(empty, chunk="end", stream_id=id)
             await self._flush_pending_messages()
@@ -1128,24 +1141,23 @@ class Chat:
         chunk: ChunkOption = False,
         operation: Literal["append", "replace"] = "append",
         icon: HTML | Tag | TagList | None = None,
+        content_type: ContentType | None = None,
     ):
-        content_type: ContentType = (
-            message.content_type
-            if isinstance(message, ChatMessage)
-            else "html" if isinstance(message.content, HTML) else "markdown"
-        )
         message = self._as_stored_message(message)
 
         if message.role == "system":
-            # System messages are not displayed in the UI
             return
 
         content = message.content
+        if content_type is None:
+            content_type = message.segments[-1]["content_type"] if message.segments else "markdown"
 
         msg_payload: MessagePayload = {
             "role": message.role,
-            "content": str(content),
-            "content_type": content_type,
+            "segments": [
+                {"content": s["content"], "content_type": s["content_type"]}
+                for s in message.segments
+            ],
         }
         if icon is not None:
             msg_payload["icon"] = str(icon)
@@ -1154,10 +1166,10 @@ class Chat:
             action: ChatAction = {"type": "chunk_start", "message": msg_payload}
             await self._send_action(action, message.html_deps)
         elif chunk == "end":
-            if str(content):
+            if content:
                 chunk_action: ChatAction = {
                     "type": "chunk",
-                    "content": str(content),
+                    "content": content,
                     "operation": operation,
                     "content_type": content_type,
                 }
@@ -1166,15 +1178,39 @@ class Chat:
         elif chunk is True:
             chunk_action = {
                 "type": "chunk",
-                "content": str(content),
+                "content": content,
                 "operation": operation,
                 "content_type": content_type,
             }
             await self._send_action(chunk_action, message.html_deps)
         else:
-            # chunk == False: complete message
             action = {"type": "message", "message": msg_payload}
             await self._send_action(action, message.html_deps)
+
+    def _messages_for_bookmark(self) -> list[BookmarkMessageDict]:
+        from shiny import reactive
+
+        with reactive.isolate():
+            messages = self._messages()
+
+        return [
+            BookmarkMessageDict(role=m.role, segments=m.segments)
+            for m in messages
+        ]
+
+    async def _restore_bookmark_message(self, message_dict: Any) -> None:
+        # Typed Any: bookmark state is deserialized JSON, so `segments` may be
+        # absent in bookmarks written by an incompatible/older shinychat version.
+        if "segments" not in message_dict:
+            raise ValueError(
+                "Cannot restore bookmark message: missing 'segments' key "
+                "(bookmark likely written by an incompatible shinychat version)."
+            )
+        segments: list[StoredContentSegment] = message_dict["segments"]
+        role: Role = message_dict.get("role", "assistant")
+        stored = StoredMessage(role=role, segments=segments)
+        self._store_message(stored)
+        await self._send_append_message(stored)
 
     @overload
     def transform_user_input(
@@ -1298,8 +1334,12 @@ class Chat:
         if content is None:
             return None
 
-        res.content = content
-        return res
+        content_type: ContentType = "html" if isinstance(content, HTML) else "markdown"
+        seg = StoredContentSegment(content=str(content), content_type=content_type)
+        existing_deps = res.html_deps
+        if existing_deps:
+            seg["html_deps"] = existing_deps
+        return StoredMessage(role=res.role, segments=[seg])
 
     def _needs_transform(self, message: ChatMessage) -> bool:
         if message.role == "user" and self._transform_user is not None:
@@ -1324,28 +1364,21 @@ class Chat:
     def _as_stored_message(
         self,
         message: StoredMessage | ChatMessage,
-        deps: list[HTMLDependency] | None = None,
     ) -> StoredMessage:
         if isinstance(message, StoredMessage):
-            if deps is not None:
-                message.html_deps = self._serialize_html_deps(deps)
             return message
 
-        html_deps = self._serialize_html_deps(
-            deps if deps is not None else message.html_deps
-        )
+        html_deps = self._serialize_html_deps(message.html_deps)
         return StoredMessage.from_chat_message(message, html_deps=html_deps)
 
-    # Just before storing, handle chunk msg type and calculate tokens
     def _store_message(
         self,
         message: StoredMessage | ChatMessage,
         index: int | None = None,
-        deps: list[HTMLDependency] | None = None,
     ) -> None:
         from shiny import reactive
 
-        message = self._as_stored_message(message, deps=deps)
+        message = self._as_stored_message(message)
 
         with reactive.isolate():
             messages = self._messages()
@@ -1883,9 +1916,7 @@ class Chat:
                 # This does NOT contain the `chat.ui(messages=)` values.
                 # When restoring, the `chat.ui(messages=)` values will need to be kept
                 # and the `ui.Chat(messages=)` values will need to be reset
-                state.values[resolved_bookmark_id_msgs_str] = self.messages(
-                    format=MISSING
-                )
+                state.values[resolved_bookmark_id_msgs_str] = self._messages_for_bookmark()
 
         # Attempt to stop the initialization of the `ui.Chat(messages=)` messages
         self._init_chat.destroy()
@@ -1912,13 +1943,7 @@ class Chat:
                 )
 
             for message_dict in msgs:
-                stored = StoredMessage(
-                    content=message_dict["content"],
-                    role=message_dict.get("role", "assistant"),
-                    html_deps=message_dict.get("html_deps"),
-                )
-                self._store_message(stored)
-                await self._send_append_message(stored)
+                await self._restore_bookmark_message(message_dict)
 
         def _cancel_bookmarking():
             _on_bookmark_client()
@@ -2285,14 +2310,6 @@ class MessageStream:
             message_chunk,
             stream_id=self._stream_id,
         )
-
-
-def is_thinking_delta(msg: Any) -> TypeGuard[ContentThinkingDelta]:
-    try:
-        from chatlas.types import ContentThinkingDelta
-        return isinstance(msg, ContentThinkingDelta)
-    except ImportError:
-        return False
 
 
 def is_tool_result(val: object) -> "TypeGuard[chatlas.ContentToolResult]":
