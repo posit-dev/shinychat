@@ -648,8 +648,7 @@ chat_append_message <- function(
   if (chunk_type == "start") {
     message_payload <- list(
       role = msg[["role"]],
-      content = msg_content,
-      content_type = content_type
+      segments = list(list(content = msg_content, content_type = content_type))
     )
     if (!is.null(icon_str)) {
       message_payload$icon <- icon_str
@@ -694,8 +693,7 @@ chat_append_message <- function(
     # chunk_type == "complete"
     message_payload <- list(
       role = msg[["role"]],
-      content = msg_content,
-      content_type = content_type
+      segments = list(list(content = msg_content, content_type = content_type))
     )
     if (!is.null(icon_str)) {
       message_payload$icon <- icon_str

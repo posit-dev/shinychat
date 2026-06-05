@@ -51,7 +51,6 @@ describe("chatReducer — greeting actions", () => {
             id: "m1",
             role: "user",
             content: "hi",
-            contentType: "markdown",
             streaming: false,
             blocks: [],
           },
@@ -73,7 +72,6 @@ describe("chatReducer — greeting actions", () => {
             id: "m1",
             role: "user",
             content: "hi",
-            contentType: "markdown",
             streaming: false,
             blocks: [],
           },
@@ -95,7 +93,6 @@ describe("chatReducer — greeting actions", () => {
             id: "m1",
             role: "user",
             content: "hi",
-            contentType: "markdown",
             streaming: false,
             blocks: [],
           },
@@ -157,7 +154,6 @@ describe("chatReducer — greeting actions", () => {
             id: "m1",
             role: "user",
             content: "hi",
-            contentType: "markdown",
             streaming: false,
             blocks: [],
           },
@@ -478,8 +474,7 @@ describe("chatReducer — greeting actions", () => {
         type: "message",
         message: {
           role: "assistant",
-          content: "Reply",
-          content_type: "markdown",
+          segments: [{ content: "Reply", content_type: "markdown" }],
         },
       })
       expect(next.greeting).toMatchObject({ status: "dismissing" })
@@ -500,8 +495,7 @@ describe("chatReducer — greeting actions", () => {
         type: "message",
         message: {
           role: "assistant",
-          content: "Reply",
-          content_type: "markdown",
+          segments: [{ content: "Reply", content_type: "markdown" }],
         },
       })
       expect(next.greeting).toMatchObject({ status: "visible" })
@@ -524,8 +518,7 @@ describe("chatReducer — greeting actions", () => {
         type: "chunk_start",
         message: {
           role: "assistant",
-          content: "...",
-          content_type: "markdown",
+          segments: [{ content: "...", content_type: "markdown" }],
         },
       })
       expect(next.greeting).toMatchObject({ status: "dismissing" })
@@ -546,8 +539,7 @@ describe("chatReducer — greeting actions", () => {
         type: "chunk_start",
         message: {
           role: "assistant",
-          content: "...",
-          content_type: "markdown",
+          segments: [{ content: "...", content_type: "markdown" }],
         },
       })
       expect(next.greeting).toMatchObject({ status: "visible" })
@@ -675,7 +667,6 @@ describe("chatReducer — greeting actions", () => {
             id: "m1",
             role: "user",
             content: "hi",
-            contentType: "markdown",
             streaming: false,
             blocks: [],
           },
@@ -708,7 +699,6 @@ describe("chatReducer — greeting actions", () => {
             id: "m1",
             role: "user",
             content: "hi",
-            contentType: "markdown",
             streaming: false,
             blocks: [],
           },

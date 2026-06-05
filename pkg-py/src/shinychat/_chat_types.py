@@ -17,13 +17,16 @@ Role = Literal["assistant", "user", "system"]
 ContentType = Literal["markdown", "html", "text", "thinking"]
 
 
-class MessagePayload(TypedDict):
-    role: Literal["user", "assistant"]
+class MessagePayloadSegment(TypedDict):
     content: str
     content_type: ContentType
+
+
+class MessagePayload(TypedDict):
+    role: Literal["user", "assistant"]
+    segments: list[MessagePayloadSegment]
     id: NotRequired[str]
     icon: NotRequired[str]
-    html_deps: NotRequired[list[dict[str, object]]]
 
 
 class MessageAction(TypedDict):
@@ -267,10 +270,48 @@ def chat_greeting(
 
 
 @dataclass
-class StoredMessage:
-    content: str | HTML
+class ContentSegment:
+    content: str
+    content_type: ContentType
+    html_deps: list[HTMLDependency] | None = None
+
+    def __str__(self) -> str:
+        return self.stringify(self.content, self.content_type)
+
+    @staticmethod
+    def stringify(content: str, content_type: ContentType) -> str:
+        if content_type == "thinking":
+            return f"<thinking>\n{content}\n</thinking>\n\n"
+        return content
+
+
+class StoredContentSegment(TypedDict):
+    content: str
+    content_type: ContentType
+    html_deps: NotRequired[list[dict[str, object]]]
+
+
+class BookmarkMessageDict(TypedDict):
     role: Role
-    html_deps: list[dict[str, object]] | None = None
+    segments: list[StoredContentSegment]
+
+
+@dataclass
+class StoredMessage:
+    role: Role
+    segments: list[StoredContentSegment]
+
+    @property
+    def content(self) -> str:
+        return "".join(
+            ContentSegment.stringify(s["content"], s["content_type"])
+            for s in self.segments
+        )
+
+    @property
+    def html_deps(self) -> list[dict[str, object]] | None:
+        deps = [d for s in self.segments for d in (s.get("html_deps") or [])]
+        return deps or None
 
     @classmethod
     def from_chat_message(
@@ -278,8 +319,7 @@ class StoredMessage:
         message: ChatMessage,
         html_deps: list[dict[str, object]] | None = None,
     ) -> "StoredMessage":
-        return StoredMessage(
-            content=message.content,
-            role=message.role,
-            html_deps=html_deps,
-        )
+        seg = StoredContentSegment(content=str(message.content), content_type=message.content_type)
+        if html_deps:
+            seg["html_deps"] = html_deps
+        return StoredMessage(role=message.role, segments=[seg])

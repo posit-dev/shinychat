@@ -19,6 +19,7 @@ from shinychat._chat_types import (
     ChatMessage,
     ChatMessageDict,
     Role,
+    StoredContentSegment,
     StoredMessage,
 )
 from shinychat._utils_types import MISSING
@@ -55,6 +56,22 @@ def is_type_in_union(type: object, union: object) -> bool:
     return False
 
 
+def run_async(coro_fn: Any) -> None:
+    exc: list[BaseException] = []
+
+    def _run() -> None:
+        try:
+            asyncio.run(coro_fn())
+        except BaseException as err:
+            exc.append(err)
+
+    t = threading.Thread(target=_run)
+    t.start()
+    t.join()
+    if exc:
+        raise exc[0]
+
+
 def stored_message(content: str, role: Role) -> StoredMessage:
     return StoredMessage.from_chat_message(
         ChatMessage(content=content, role=role)
@@ -70,13 +87,27 @@ def test_chat_user_input_no_longer_accepts_transform_argument():
 
 
 def test_chat_message_trimming():
+    # A deterministic word tokenizer (1 token per whitespace-delimited word) keeps
+    # this test offline and free of HuggingFace download flakiness, while still
+    # exercising the trimming logic.
+    class WordTokenizer:
+        name = "word-stub"
+
+        def encode(
+            self,
+            text: str,
+            *,
+            allowed_special: Any = set(),
+            disallowed_special: Any = "all",
+        ) -> list[int]:
+            return list(range(len(text.split())))
+
     with session_context(test_session):
         chat = Chat(id="chat")
+        chat._tokenizer = WordTokenizer()
 
-        # Default tokenizer gives a token count
         def generate_content(token_count: int) -> str:
-            n = int(token_count / 2)
-            return " ".join(["foo" for _ in range(1, n)])
+            return " ".join("foo" for _ in range(token_count))
 
         msgs = (
             stored_message(
@@ -204,10 +235,9 @@ def test_stream_replace_discards_stale_html_dependencies():
         def _capture_store(
             message: StoredMessage | ChatMessage,
             index: int | None = None,
-            deps: list[HTMLDependency] | None = None,
         ) -> None:
             del index
-            captured.append(chat._as_stored_message(message, deps=deps))
+            captured.append(chat._as_stored_message(message))
 
         chat._send_append_message = _noop_send  # type: ignore[method-assign]
         chat._store_message = _capture_store  # type: ignore[method-assign]
@@ -702,6 +732,41 @@ def test_as_ollama_message():
     )
 
 
+def test_stored_message_content_joins_segments():
+    from shinychat._chat_types import StoredContentSegment, StoredMessage
+
+    msg = StoredMessage(
+        role="assistant",
+        segments=[
+            StoredContentSegment(content="a ", content_type="markdown"),
+            StoredContentSegment(content="<b>b</b>", content_type="html"),
+        ],
+    )
+    assert msg.content == "a <b>b</b>"
+
+
+def test_stored_message_from_chat_message_makes_one_segment():
+    from shinychat._chat_types import ChatMessage, StoredMessage
+
+    sm = StoredMessage.from_chat_message(ChatMessage(content="hi", role="assistant"))
+    assert len(sm.segments) == 1
+    assert sm.segments[0]["content"] == "hi"
+    assert sm.segments[0]["content_type"] == "markdown"
+
+
+def test_stored_message_from_chat_message_preserves_content_type():
+    from htmltools import HTML
+    from shinychat._chat_types import ChatMessage, StoredMessage
+
+    html_msg = ChatMessage(content=HTML("<b>bold</b>"), role="assistant")
+    sm_html = StoredMessage.from_chat_message(html_msg)
+    assert sm_html.segments[0]["content_type"] == "html"
+
+    thinking_msg = ChatMessage(content="reasoning", role="assistant", content_type="thinking")
+    sm_thinking = StoredMessage.from_chat_message(thinking_msg)
+    assert sm_thinking.segments[0]["content_type"] == "thinking"
+
+
 class MyObject:
     content = "Hello world!"
 
@@ -730,3 +795,242 @@ def test_custom_objects():
     m = message_content_chunk(chunk)
     assert m.content == "Hello world!"
     assert m.role == "assistant"
+
+
+def test_stream_thinking_creates_thinking_segment():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        captured: list[StoredMessage] = []
+
+        async def _noop_send(*a: object, **k: object) -> None:
+            return None
+
+        def _capture_store(message: StoredMessage | ChatMessage, index: int | None = None) -> None:
+            del index
+            captured.append(chat._as_stored_message(message))
+
+        chat._send_append_message = _noop_send  # type: ignore[method-assign]
+        chat._store_message = _capture_store  # type: ignore[method-assign]
+
+        async def _exercise() -> None:
+            await chat._append_message_chunk("", chunk="start", stream_id="s1")
+            await chat._append_message_chunk(
+                ChatMessage(content="reasoning", role="assistant", content_type="thinking"),
+                chunk=True,
+                stream_id="s1",
+            )
+            await chat._append_message_chunk("answer", chunk=True, stream_id="s1")
+            await chat._append_message_chunk("", chunk="end", stream_id="s1")
+
+        run_async(_exercise)
+        segs = captured[0].segments
+        assert [s["content_type"] for s in segs] == ["thinking", "markdown"]
+        assert segs[0]["content"] == "reasoning"
+        assert segs[1]["content"] == "answer"
+
+
+def test_thinking_stream_stores_segment_not_tags():
+    from shiny import reactive
+
+    with session_context(test_session):
+        chat = Chat(id="chat")
+
+        async def _noop_send(*a: object, **k: object) -> None:
+            return None
+
+        chat._send_action = _noop_send  # type: ignore[method-assign]
+
+        async def gen():
+            yield ChatMessage(content="thinking hard", role="assistant", content_type="thinking")
+            yield "the answer"
+
+        async def _exercise() -> None:
+            await chat.append_message_stream(gen())
+
+        run_async(_exercise)
+        with reactive.isolate():
+            messages = chat._messages()
+        segs = messages[0].segments
+        assert [s["content_type"] for s in segs] == ["thinking", "markdown"]
+        # Storage keeps raw segment content (no inline tags); only the string
+        # `.content` view re-wraps thinking in <thinking> tags.
+        assert "<thinking>" not in segs[0]["content"]
+
+
+def test_send_message_payload_has_segments_with_thinking():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        stored = StoredMessage(
+            role="assistant",
+            segments=[
+                StoredContentSegment(content="reasoning", content_type="thinking"),
+                StoredContentSegment(content="answer", content_type="markdown"),
+            ],
+        )
+
+        async def _exercise() -> None:
+            await chat._send_append_message(stored)
+
+        run_async(_exercise)
+        assert sent[0]["type"] == "message"
+        assert sent[0]["message"]["segments"] == [
+            {"content": "reasoning", "content_type": "thinking"},
+            {"content": "answer", "content_type": "markdown"},
+        ]
+
+
+def test_bookmark_roundtrip_thinking_segment():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        chat._store_message(
+            StoredMessage(
+                role="assistant",
+                segments=[
+                    StoredContentSegment(content="reasoning", content_type="thinking"),
+                    StoredContentSegment(content="answer", content_type="markdown"),
+                ],
+            )
+        )
+        saved = chat._messages_for_bookmark()
+        assert saved[0]["segments"][0]["content_type"] == "thinking"
+
+        async def _exercise() -> None:
+            await chat._restore_bookmark_message(saved[0])
+
+        run_async(_exercise)
+        assert sent[0]["type"] == "message"
+        assert sent[0]["message"]["segments"][0]["content_type"] == "thinking"
+
+
+def test_stored_message_content_wraps_thinking_in_tags():
+    from shinychat._chat_types import StoredContentSegment, StoredMessage
+
+    msg = StoredMessage(
+        role="assistant",
+        segments=[
+            StoredContentSegment(content="reasoning", content_type="thinking"),
+            StoredContentSegment(content="the answer", content_type="markdown"),
+        ],
+    )
+    assert msg.content == "<thinking>\nreasoning\n</thinking>\n\nthe answer"
+
+
+def test_append_message_stream_return_includes_tagged_thinking():
+    # The single-string return value must agree with StoredMessage.content:
+    # thinking is included, wrapped in <thinking> tags.
+    from shinychat._chat_types import ChatMessage
+
+    with session_context(test_session):
+        chat = Chat(id="chat")
+
+        async def _noop_send(*a: object, **k: object) -> None:
+            return None
+
+        chat._send_action = _noop_send  # type: ignore[method-assign]
+
+        async def gen():
+            yield ChatMessage(
+                content="reasoning", role="assistant", content_type="thinking"
+            )
+            yield "the answer"
+
+        result: list[str] = []
+
+        async def _exercise() -> None:
+            result.append(await chat._append_message_stream(gen()))
+
+        run_async(_exercise)
+        assert result[0] == "<thinking>\nreasoning\n</thinking>\n\nthe answer"
+
+
+def test_streaming_thinking_chunk_wire_content_not_empty():
+    """Regression: a streamed thinking chunk must carry its text on the wire.
+
+    The streaming chunk action's `content` must include the thinking text or the
+    client renders an empty thinking panel.
+    """
+    from shinychat._chat_types import ChatMessage
+
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        chat._store_message = lambda *a, **k: None  # type: ignore[method-assign]
+
+        async def _exercise() -> None:
+            await chat._append_message_chunk("", chunk="start", stream_id="s1")
+            await chat._append_message_chunk(
+                ChatMessage(content="reasoning", role="assistant", content_type="thinking"),
+                chunk=True,
+                stream_id="s1",
+            )
+            await chat._append_message_chunk("", chunk="end", stream_id="s1")
+
+        run_async(_exercise)
+
+        thinking_chunks = [
+            a for a in sent
+            if a.get("type") == "chunk" and a.get("content_type") == "thinking"
+        ]
+        assert thinking_chunks, "no thinking chunk action was sent"
+        assert thinking_chunks[0]["content"] == "reasoning"
+
+
+def test_streaming_chunk_content_type_follows_segment():
+    """Each streamed chunk action carries the content_type of its own segment.
+
+    Pins the wire content_type derivation across a mixed thinking->markdown
+    stream so it stays correct after _send_append_message infers the type
+    from the message segments rather than an explicitly threaded argument.
+    """
+    from shinychat._chat_types import ChatMessage
+
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        chat._store_message = lambda *a, **k: None  # type: ignore[method-assign]
+
+        async def _exercise() -> None:
+            await chat._append_message_chunk("", chunk="start", stream_id="s1")
+            await chat._append_message_chunk(
+                ChatMessage(content="reasoning", role="assistant", content_type="thinking"),
+                chunk=True,
+                stream_id="s1",
+            )
+            await chat._append_message_chunk(
+                ChatMessage(content="answer", role="assistant", content_type="markdown"),
+                chunk=True,
+                stream_id="s1",
+            )
+            await chat._append_message_chunk("", chunk="end", stream_id="s1")
+
+        run_async(_exercise)
+
+        chunk_types = [
+            (a["content"], a["content_type"])
+            for a in sent
+            if a.get("type") == "chunk"
+        ]
+        assert ("reasoning", "thinking") in chunk_types
+        assert ("answer", "markdown") in chunk_types

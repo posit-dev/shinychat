@@ -30,7 +30,6 @@ function parseInitialMessages(container: HTMLElement): ChatMessageData[] {
       id: uuid(),
       role,
       content,
-      contentType,
       streaming: false,
       icon,
       blocks: [{ type: "content", content, contentType }],

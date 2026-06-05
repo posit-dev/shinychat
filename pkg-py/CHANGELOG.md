@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Improvements
 
+* Bookmarking now correctly restores assistant messages that mix content types within a single message — for example a reply that combines markdown, a raw-HTML widget, and reasoning. Previously, restoring such a message could lose formatting or interactive components.
+
 * All navigating links in assistant messages now open in a new tab to preserve the app's session state. Cross-origin links still show the confirmation dialog; same-origin links open directly. (#238)
 
 ### Bug fixes

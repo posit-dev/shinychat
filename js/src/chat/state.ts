@@ -28,7 +28,6 @@ export interface ChatMessageData {
   id: string
   role: "user" | "assistant"
   content: string
-  contentType: ContentType
   streaming: boolean
   /** True for the empty placeholder message shown while waiting for the assistant to respond. */
   isPlaceholder?: boolean
@@ -104,26 +103,10 @@ export const initialState: ChatState = {
 }
 
 function messagePayloadToData(msg: MessagePayload): ChatMessageData {
-  if (msg.content_type === "thinking") {
-    return {
-      id: msg.id ?? uuid(),
-      role: "assistant",
-      content: "",
-      contentType: "markdown",
-      streaming: false,
-      icon: msg.icon,
-      blocks: [
-        {
-          type: "thinking",
-          content: msg.content,
-          streaming: false,
-          startedAt: Date.now(),
-        },
-      ],
-    }
+  const blocks: MessageBlock[] = []
+  for (const seg of msg.segments) {
+    blocks.push(...splitThinkingBlocks(seg.content, seg.content_type))
   }
-
-  const blocks = splitThinkingBlocks(msg.content, msg.content_type)
   const contentOnly = blocks
     .filter((b): b is ContentBlock => b.type === "content")
     .map((b) => b.content)
@@ -133,7 +116,6 @@ function messagePayloadToData(msg: MessagePayload): ChatMessageData {
     id: msg.id ?? uuid(),
     role: msg.role,
     content: contentOnly,
-    contentType: msg.content_type,
     streaming: false,
     icon: msg.icon,
     blocks,
@@ -485,7 +467,6 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         id: uuid(),
         role: "user",
         content: action.content,
-        contentType: "markdown",
         streaming: false,
         blocks: [
           { type: "content", content: action.content, contentType: "markdown" },
@@ -495,7 +476,6 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         id: uuid(),
         role: "assistant",
         content: "",
-        contentType: "markdown",
         streaming: false,
         isPlaceholder: true,
         blocks: [],
@@ -695,7 +675,6 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
             streamingMessage: {
               ...last,
               content,
-              contentType: chunkType,
               blocks,
               insideThinkingTag: newTagState.insideThinkingTag,
               tagBuffer: newTagState.tagBuffer,
@@ -750,7 +729,6 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
           streamingMessage: {
             ...last,
             content: action.content,
-            contentType: chunkType,
             blocks: newBlocks,
           },
         }
@@ -780,7 +758,6 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         streamingMessage: {
           ...last,
           content,
-          contentType: chunkType,
           blocks,
           insideThinkingTag: false,
           tagBuffer: "",
@@ -797,7 +774,6 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
             id: uuid(),
             role: "assistant",
             content: "",
-            contentType: "markdown",
             streaming: false,
             cancelled: true,
             blocks: [],
