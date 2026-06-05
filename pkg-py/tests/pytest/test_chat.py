@@ -15,7 +15,6 @@ from shiny.module import ResolvedId
 from shiny.session import session_context
 from shinychat import Chat
 from shinychat._chat_normalize import message_content, message_content_chunk
-from shinychat._chat_tokenizer import get_default_tokenizer
 from shinychat._chat_types import (
     ChatMessage,
     ChatMessageDict,
@@ -88,21 +87,27 @@ def test_chat_user_input_no_longer_accepts_transform_argument():
 
 
 def test_chat_message_trimming():
-    # Trimming needs the default tokenizer, which is downloaded from HuggingFace.
-    # Skip (rather than fail) when it can't be fetched, e.g. offline or rate-limited.
-    try:
-        tokenizer = get_default_tokenizer()
-    except Exception as e:
-        pytest.skip(f"Default tokenizer unavailable: {e}")
+    # A deterministic word tokenizer (1 token per whitespace-delimited word) keeps
+    # this test offline and free of HuggingFace download flakiness, while still
+    # exercising the trimming logic.
+    class WordTokenizer:
+        name = "word-stub"
+
+        def encode(
+            self,
+            text: str,
+            *,
+            allowed_special: Any = set(),
+            disallowed_special: Any = "all",
+        ) -> list[int]:
+            return list(range(len(text.split())))
 
     with session_context(test_session):
         chat = Chat(id="chat")
-        chat._tokenizer = tokenizer
+        chat._tokenizer = WordTokenizer()
 
-        # Default tokenizer gives a token count
         def generate_content(token_count: int) -> str:
-            n = int(token_count / 2)
-            return " ".join(["foo" for _ in range(1, n)])
+            return " ".join("foo" for _ in range(token_count))
 
         msgs = (
             stored_message(
