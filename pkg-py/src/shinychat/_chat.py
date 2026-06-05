@@ -71,7 +71,6 @@ from ._chat_types import (
     ChatMessageDict,
     ClearAction,
     ContentSegment,
-    ContentType,
     GreetingOptions,
     MessagePayload,
     Role,
@@ -905,7 +904,6 @@ class Chat:
             msg.content = stream_content
 
         try:
-            transformed = False
             if self._needs_transform(msg):
                 # Transforming may change the meaning of msg.content to be a *replace*
                 # not *append*. So, update msg.content and the operation accordingly.
@@ -915,7 +913,6 @@ class Chat:
                 msg = await self._transform_message(
                     msg, chunk=chunk, chunk_content=chunk_content
                 )
-                transformed = True
                 # Act like nothing happened if transformed to None
                 if msg is None:
                     return
@@ -938,20 +935,12 @@ class Chat:
                     ),
                 )
 
-            # Determine content_type from the current (last) segment.
-            # When transformed, leave as None so _send_append_message infers
-            # the type from the transformed payload itself.
-            send_content_type: ContentType | None = None
-            if not transformed and self._current_stream_segments:
-                send_content_type = self._current_stream_segments[-1].content_type
-
             # Send the message to the client
             await self._send_append_message(
                 message=msg,
                 chunk=chunk,
                 operation=operation,
                 icon=icon,
-                content_type=send_content_type,
             )
         finally:
             if chunk == "end":
@@ -1104,7 +1093,9 @@ class Chat:
         try:
             async for msg in message:
                 await self._append_message_chunk(msg, chunk=True, stream_id=id)
-            return segments_content(self._current_stream_segments)
+            # The string returned to the caller mirrors StoredMessage.content
+            # (thinking wrapped in <thinking> tags), not segments_content's bare join.
+            return "".join(str(s) for s in self._current_stream_segments)
         finally:
             await self._append_message_chunk(empty, chunk="end", stream_id=id)
             await self._flush_pending_messages()
@@ -1130,17 +1121,20 @@ class Chat:
         chunk: ChunkOption = False,
         operation: Literal["append", "replace"] = "append",
         icon: HTML | Tag | TagList | None = None,
-        content_type: ContentType | None = None,
     ):
         message = self._as_stored_message(message)
 
         if message.role == "system":
             return
 
-        # Not StoredMessage.content: that drops thinking, but the wire needs it.
+        # Bare segment content (no <thinking> wrapping): on the wire, thinking
+        # travels as raw text paired with content_type="thinking", and the
+        # client builds the thinking block from that type. StoredMessage.content
+        # is the flat-string form that re-wraps thinking in tags instead.
         content = "".join(s["content"] for s in message.segments)
-        if content_type is None:
-            content_type = message.segments[-1]["content_type"] if message.segments else "markdown"
+        content_type = (
+            message.segments[-1]["content_type"] if message.segments else "markdown"
+        )
 
         msg_payload: MessagePayload = {
             "role": message.role,

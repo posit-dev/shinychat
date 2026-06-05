@@ -847,7 +847,9 @@ def test_thinking_stream_stores_segment_not_tags():
             messages = chat._messages()
         segs = messages[0].segments
         assert [s["content_type"] for s in segs] == ["thinking", "markdown"]
-        assert "<thinking>" not in messages[0].content
+        # Storage keeps raw segment content (no inline tags); only the string
+        # `.content` view re-wraps thinking in <thinking> tags.
+        assert "<thinking>" not in segs[0]["content"]
 
 
 def test_send_message_payload_has_segments_with_thinking():
@@ -907,7 +909,7 @@ def test_bookmark_roundtrip_thinking_segment():
         assert sent[0]["message"]["segments"][0]["content_type"] == "thinking"
 
 
-def test_stored_message_content_excludes_thinking_segments():
+def test_stored_message_content_wraps_thinking_in_tags():
     from shinychat._chat_types import StoredContentSegment, StoredMessage
 
     msg = StoredMessage(
@@ -917,15 +919,42 @@ def test_stored_message_content_excludes_thinking_segments():
             StoredContentSegment(content="the answer", content_type="markdown"),
         ],
     )
-    assert msg.content == "the answer"
+    assert msg.content == "<thinking>\nreasoning\n</thinking>\n\nthe answer"
+
+
+def test_append_message_stream_return_includes_tagged_thinking():
+    # The single-string return value must agree with StoredMessage.content:
+    # thinking is included, wrapped in <thinking> tags.
+    from shinychat._chat_types import ChatMessage
+
+    with session_context(test_session):
+        chat = Chat(id="chat")
+
+        async def _noop_send(*a: object, **k: object) -> None:
+            return None
+
+        chat._send_action = _noop_send  # type: ignore[method-assign]
+
+        async def gen():
+            yield ChatMessage(
+                content="reasoning", role="assistant", content_type="thinking"
+            )
+            yield "the answer"
+
+        result: list[str] = []
+
+        async def _exercise() -> None:
+            result.append(await chat._append_message_stream(gen()))
+
+        run_async(_exercise)
+        assert result[0] == "<thinking>\nreasoning\n</thinking>\n\nthe answer"
 
 
 def test_streaming_thinking_chunk_wire_content_not_empty():
     """Regression: a streamed thinking chunk must carry its text on the wire.
 
-    StoredMessage.content excludes thinking (for history/token counts), but the
-    streaming chunk action's `content` must include it or the client renders an
-    empty thinking panel.
+    The streaming chunk action's `content` must include the thinking text or the
+    client renders an empty thinking panel.
     """
     from shinychat._chat_types import ChatMessage
 
@@ -956,3 +985,47 @@ def test_streaming_thinking_chunk_wire_content_not_empty():
         ]
         assert thinking_chunks, "no thinking chunk action was sent"
         assert thinking_chunks[0]["content"] == "reasoning"
+
+
+def test_streaming_chunk_content_type_follows_segment():
+    """Each streamed chunk action carries the content_type of its own segment.
+
+    Pins the wire content_type derivation across a mixed thinking->markdown
+    stream so it stays correct after _send_append_message infers the type
+    from the message segments rather than an explicitly threaded argument.
+    """
+    from shinychat._chat_types import ChatMessage
+
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        chat._store_message = lambda *a, **k: None  # type: ignore[method-assign]
+
+        async def _exercise() -> None:
+            await chat._append_message_chunk("", chunk="start", stream_id="s1")
+            await chat._append_message_chunk(
+                ChatMessage(content="reasoning", role="assistant", content_type="thinking"),
+                chunk=True,
+                stream_id="s1",
+            )
+            await chat._append_message_chunk(
+                ChatMessage(content="answer", role="assistant", content_type="markdown"),
+                chunk=True,
+                stream_id="s1",
+            )
+            await chat._append_message_chunk("", chunk="end", stream_id="s1")
+
+        run_async(_exercise)
+
+        chunk_types = [
+            (a["content"], a["content_type"])
+            for a in sent
+            if a.get("type") == "chunk"
+        ]
+        assert ("reasoning", "thinking") in chunk_types
+        assert ("answer", "markdown") in chunk_types

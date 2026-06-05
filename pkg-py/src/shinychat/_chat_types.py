@@ -275,6 +275,15 @@ class ContentSegment:
     content_type: ContentType
     html_deps: list[HTMLDependency] | None = None
 
+    def __str__(self) -> str:
+        return self.stringify(self.content, self.content_type)
+
+    @staticmethod
+    def stringify(content: str, content_type: ContentType) -> str:
+        if content_type == "thinking":
+            return f"<thinking>\n{content}\n</thinking>\n\n"
+        return content
+
 
 class StoredContentSegment(TypedDict):
     content: str
@@ -295,7 +304,8 @@ class StoredMessage:
     @property
     def content(self) -> str:
         return "".join(
-            s["content"] for s in self.segments if s["content_type"] != "thinking"
+            ContentSegment.stringify(s["content"], s["content_type"])
+            for s in self.segments
         )
 
     @property
