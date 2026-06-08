@@ -40,6 +40,9 @@ class _MockSession:
     def _increment_busy_count(self) -> None:
         pass
 
+    async def send_custom_message(self, type: str, message: Any) -> None:
+        pass
+
 
 test_session = cast(Session, _MockSession())
 
@@ -603,6 +606,61 @@ def test_slash_command_fn_none_with_explicit_echo_true():
 
         assert chat._slash_commands["clientecho"].definition["echo"] is True
         assert chat._slash_commands["clientecho"].handler is None
+
+
+def test_bookmark_round_trips_echoed_slash_command():
+    # An echoed slash command stores the `/cmd args` text as a normal user
+    # message (mirroring `_on_slash_command`), so it rides the generic
+    # stored-message bookmark mechanism: saved, then restored as a static entry.
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        chat._store_message(
+            chat._as_stored_message(ChatMessage(content="/greet world", role="user"))
+        )
+        chat._store_message(ChatMessage(content="Hello! You said: world", role="assistant"))
+        saved = chat._messages_for_bookmark()
+
+    assert saved == [
+        {"role": "user", "segments": [{"content": "/greet world", "content_type": "markdown"}]},
+        {"role": "assistant", "segments": [{"content": "Hello! You said: world", "content_type": "markdown"}]},
+    ]
+
+    async def restore() -> list[tuple[Role, str]]:
+        from shiny import reactive
+
+        with session_context(test_session):
+            restored = Chat(id="chat_restored")
+            for message_dict in saved:
+                await restored._restore_bookmark_message(message_dict)
+            with reactive.isolate():
+                return [(m.role, m.content) for m in restored._messages()]
+
+    result: list[tuple[Role, str]] = []
+
+    async def run() -> None:
+        result.extend(await restore())
+
+    run_async(run)
+
+    assert result == [
+        ("user", "/greet world"),
+        ("assistant", "Hello! You said: world"),
+    ]
+
+
+def test_bookmark_omits_side_effect_only_slash_command():
+    # A side-effect-only command (echo=False) stores nothing, so it never
+    # contributes to the bookmark even though its handler runs.
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        chat.slash_command("note", "Side-effect only", echo=False)
+        # The echo=False command stored nothing; only an explicit message lands.
+        chat._store_message(ChatMessage(content="real message", role="user"))
+        saved = chat._messages_for_bookmark()
+
+    assert saved == [
+        {"role": "user", "segments": [{"content": "real message", "content_type": "markdown"}]},
+    ]
 
 
 class MyObject:
