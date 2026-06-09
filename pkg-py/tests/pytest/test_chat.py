@@ -19,8 +19,8 @@ from shinychat._chat_types import (
     ChatMessage,
     ChatMessageDict,
     Role,
-    StoredContentSegment,
     StoredMessage,
+    StoredSegment,
 )
 from shinychat._utils_types import MISSING
 
@@ -733,13 +733,13 @@ def test_as_ollama_message():
 
 
 def test_stored_message_content_joins_segments():
-    from shinychat._chat_types import StoredContentSegment, StoredMessage
+    from shinychat._chat_types import StoredMessage, StoredSegment
 
     msg = StoredMessage(
         role="assistant",
         segments=[
-            StoredContentSegment(content="a ", content_type="markdown"),
-            StoredContentSegment(content="<b>b</b>", content_type="html"),
+            StoredSegment(content="a ", content_type="markdown"),
+            StoredSegment(content="<b>b</b>", content_type="html"),
         ],
     )
     assert msg.content == "a <b>b</b>"
@@ -750,8 +750,8 @@ def test_stored_message_from_chat_message_makes_one_segment():
 
     sm = StoredMessage.from_chat_message(ChatMessage(content="hi", role="assistant"))
     assert len(sm.segments) == 1
-    assert sm.segments[0]["content"] == "hi"
-    assert sm.segments[0]["content_type"] == "markdown"
+    assert sm.segments[0].content == "hi"
+    assert sm.segments[0].content_type == "markdown"
 
 
 def test_stored_message_from_chat_message_preserves_content_type():
@@ -760,11 +760,11 @@ def test_stored_message_from_chat_message_preserves_content_type():
 
     html_msg = ChatMessage(content=HTML("<b>bold</b>"), role="assistant")
     sm_html = StoredMessage.from_chat_message(html_msg)
-    assert sm_html.segments[0]["content_type"] == "html"
+    assert sm_html.segments[0].content_type == "html"
 
     thinking_msg = ChatMessage(content="reasoning", role="assistant", content_type="thinking")
     sm_thinking = StoredMessage.from_chat_message(thinking_msg)
-    assert sm_thinking.segments[0]["content_type"] == "thinking"
+    assert sm_thinking.segments[0].content_type == "thinking"
 
 
 class MyObject:
@@ -824,9 +824,9 @@ def test_stream_thinking_creates_thinking_segment():
 
         run_async(_exercise)
         segs = captured[0].segments
-        assert [s["content_type"] for s in segs] == ["thinking", "markdown"]
-        assert segs[0]["content"] == "reasoning"
-        assert segs[1]["content"] == "answer"
+        assert [s.content_type for s in segs] == ["thinking", "markdown"]
+        assert segs[0].content == "reasoning"
+        assert segs[1].content == "answer"
 
 
 def test_thinking_stream_stores_segment_not_tags():
@@ -851,10 +851,10 @@ def test_thinking_stream_stores_segment_not_tags():
         with reactive.isolate():
             messages = chat._messages()
         segs = messages[0].segments
-        assert [s["content_type"] for s in segs] == ["thinking", "markdown"]
+        assert [s.content_type for s in segs] == ["thinking", "markdown"]
         # Storage keeps raw segment content (no inline tags); only the string
         # `.content` view re-wraps thinking in <thinking> tags.
-        assert "<thinking>" not in segs[0]["content"]
+        assert "<thinking>" not in segs[0].content
 
 
 def test_send_message_payload_has_segments_with_thinking():
@@ -869,8 +869,8 @@ def test_send_message_payload_has_segments_with_thinking():
         stored = StoredMessage(
             role="assistant",
             segments=[
-                StoredContentSegment(content="reasoning", content_type="thinking"),
-                StoredContentSegment(content="answer", content_type="markdown"),
+                StoredSegment(content="reasoning", content_type="thinking"),
+                StoredSegment(content="answer", content_type="markdown"),
             ],
         )
 
@@ -898,8 +898,8 @@ def test_bookmark_roundtrip_thinking_segment():
             StoredMessage(
                 role="assistant",
                 segments=[
-                    StoredContentSegment(content="reasoning", content_type="thinking"),
-                    StoredContentSegment(content="answer", content_type="markdown"),
+                    StoredSegment(content="reasoning", content_type="thinking"),
+                    StoredSegment(content="answer", content_type="markdown"),
                 ],
             )
         )
@@ -915,13 +915,13 @@ def test_bookmark_roundtrip_thinking_segment():
 
 
 def test_stored_message_content_wraps_thinking_in_tags():
-    from shinychat._chat_types import StoredContentSegment, StoredMessage
+    from shinychat._chat_types import StoredMessage, StoredSegment
 
     msg = StoredMessage(
         role="assistant",
         segments=[
-            StoredContentSegment(content="reasoning", content_type="thinking"),
-            StoredContentSegment(content="the answer", content_type="markdown"),
+            StoredSegment(content="reasoning", content_type="thinking"),
+            StoredSegment(content="the answer", content_type="markdown"),
         ],
     )
     assert msg.content == "<thinking>\nreasoning\n</thinking>\n\nthe answer"
@@ -1034,3 +1034,4 @@ def test_streaming_chunk_content_type_follows_segment():
         ]
         assert ("reasoning", "thinking") in chunk_types
         assert ("answer", "markdown") in chunk_types
+

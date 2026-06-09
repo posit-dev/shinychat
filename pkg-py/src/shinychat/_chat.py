@@ -29,6 +29,7 @@ from htmltools import (
     TagList,
     css,
 )
+from pydantic import ValidationError
 
 from . import _utils
 from ._chat_bookmark import (
@@ -64,7 +65,6 @@ from ._chat_tokenizer import (
     get_default_tokenizer,
 )
 from ._chat_types import (
-    BookmarkMessageDict,
     ChatAction,
     ChatGreeting,
     ChatMessage,
@@ -73,8 +73,7 @@ from ._chat_types import (
     ContentSegment,
     GreetingOptions,
     MessagePayload,
-    Role,
-    StoredContentSegment,
+    SerializedDep,
     StoredMessage,
     chat_greeting,
 )
@@ -935,7 +934,7 @@ class Chat:
                     # _transform_message returns a single-segment StoredMessage, so all stream
                     # deps belong on segments[0].
                     if serialized_deps and msg.segments:
-                        msg.segments[0]["html_deps"] = serialized_deps
+                        msg.segments[0].html_deps = serialized_deps
                     self._store_message(msg)
             elif chunk == "end":
                 # When `operation="append"`, msg.content is just a chunk, but we must
@@ -1144,17 +1143,14 @@ class Chat:
         # travels as raw text paired with content_type="thinking", and the
         # client builds the thinking block from that type. StoredMessage.content
         # is the flat-string form that re-wraps thinking in tags instead.
-        content = "".join(s["content"] for s in message.segments)
+        content = "".join(s.content for s in message.segments)
         content_type = (
-            message.segments[-1]["content_type"] if message.segments else "markdown"
+            message.segments[-1].content_type if message.segments else "markdown"
         )
 
         msg_payload: MessagePayload = {
             "role": message.role,
-            "segments": [
-                {"content": s["content"], "content_type": s["content_type"]}
-                for s in message.segments
-            ],
+            "segments": message.wire_segments(),
         }
         if icon is not None:
             msg_payload["icon"] = str(icon)
@@ -1184,28 +1180,22 @@ class Chat:
             action = {"type": "message", "message": msg_payload}
             await self._send_action(action, message.html_deps)
 
-    def _messages_for_bookmark(self) -> list[BookmarkMessageDict]:
+    def _messages_for_bookmark(self) -> list[dict[str, Any]]:
         from shiny import reactive
 
         with reactive.isolate():
             messages = self._messages()
 
-        return [
-            BookmarkMessageDict(role=m.role, segments=m.segments)
-            for m in messages
-        ]
+        return [m.model_dump(exclude_none=True) for m in messages]
 
     async def _restore_bookmark_message(self, message_dict: Any) -> None:
-        # Typed Any: bookmark state is deserialized JSON, so `segments` may be
-        # absent in bookmarks written by an incompatible/older shinychat version.
-        if "segments" not in message_dict:
+        try:
+            stored = StoredMessage.model_validate(message_dict)
+        except ValidationError as e:
             raise ValueError(
-                "Cannot restore bookmark message: missing 'segments' key "
+                "Cannot restore bookmark message: invalid or missing fields "
                 "(bookmark likely written by an incompatible shinychat version)."
-            )
-        segments: list[StoredContentSegment] = message_dict["segments"]
-        role: Role = message_dict.get("role", "assistant")
-        stored = StoredMessage(role=role, segments=segments)
+            ) from e
         self._store_message(stored)
         await self._send_append_message(stored)
 
@@ -1348,13 +1338,13 @@ class Chat:
 
     def _serialize_html_deps(
         self, deps: list[HTMLDependency] | None
-    ) -> list[dict[str, object]] | None:
+    ) -> list[SerializedDep] | None:
         if not deps:
             return None
         if self._session is None:
             return None
         processed = self._session._process_ui(TagList(*deps))
-        return cast(list[dict[str, object]], processed["deps"])
+        return cast(list[SerializedDep], processed["deps"])
 
     def _as_stored_message(
         self,
@@ -1762,7 +1752,7 @@ class Chat:
     async def _send_action(
         self,
         action: ChatAction,
-        html_deps: list[dict[str, object]] | None = None,
+        html_deps: list[SerializedDep] | None = None,
     ):
         envelope: dict[str, object] = {
             "id": self.id,

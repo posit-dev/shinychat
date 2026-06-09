@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import AsyncIterable, Literal, Union
 
 from htmltools import HTML, HTMLDependency, Tag, TagChild, TagList
+from pydantic import BaseModel
 
 from ._html_islands import split_html_islands
 from ._typing_extensions import NotRequired, TypedDict
 
 Role = Literal["assistant", "user", "system"]
+
+SerializedDep = dict[str, object]
 
 # ---------------------------------------------------------------------------
 # Wire-format types (mirrors js/src/transport/types.ts)
@@ -131,7 +133,7 @@ ChatAction = Union[
 class ShinyChatEnvelope(TypedDict):
     id: str
     action: ChatAction
-    html_deps: NotRequired[list[dict[str, object]]]
+    html_deps: NotRequired[list[SerializedDep]]
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +146,7 @@ class ShinyChatEnvelope(TypedDict):
 class ChatMessageDict(TypedDict):
     content: str
     role: Role
-    html_deps: NotRequired[list[dict[str, object]]]
+    html_deps: NotRequired[list[SerializedDep]]
 
 
 class ChatMessage:
@@ -269,11 +271,9 @@ def chat_greeting(
     )
 
 
-@dataclass
-class ContentSegment:
+class _SegmentBase(BaseModel):
     content: str
     content_type: ContentType
-    html_deps: list[HTMLDependency] | None = None
 
     def __str__(self) -> str:
         return self.stringify(self.content, self.content_type)
@@ -285,41 +285,54 @@ class ContentSegment:
         return content
 
 
-class StoredContentSegment(TypedDict):
-    content: str
-    content_type: ContentType
-    html_deps: NotRequired[list[dict[str, object]]]
+class ContentSegment(_SegmentBase):
+    model_config = {"arbitrary_types_allowed": True}
+
+    html_deps: list[HTMLDependency] | None = None
 
 
-class BookmarkMessageDict(TypedDict):
+class StoredSegment(_SegmentBase):
+    html_deps: list[SerializedDep] | None = None
+
+
+class StoredMessage(BaseModel):
     role: Role
-    segments: list[StoredContentSegment]
-
-
-@dataclass
-class StoredMessage:
-    role: Role
-    segments: list[StoredContentSegment]
+    segments: list[StoredSegment]
 
     @property
     def content(self) -> str:
         return "".join(
-            ContentSegment.stringify(s["content"], s["content_type"])
+            StoredSegment.stringify(s.content, s.content_type)
             for s in self.segments
         )
 
     @property
-    def html_deps(self) -> list[dict[str, object]] | None:
-        deps = [d for s in self.segments for d in (s.get("html_deps") or [])]
+    def html_deps(self) -> list[SerializedDep] | None:
+        deps: list[SerializedDep] = []
+        for s in self.segments:
+            if s.html_deps:
+                deps.extend(s.html_deps)
         return deps or None
+
+    def wire_segments(self) -> list[MessagePayloadSegment]:
+        return [
+            {"content": s.content, "content_type": s.content_type}
+            for s in self.segments
+        ]
 
     @classmethod
     def from_chat_message(
         cls,
         message: ChatMessage,
-        html_deps: list[dict[str, object]] | None = None,
-    ) -> "StoredMessage":
-        seg = StoredContentSegment(content=str(message.content), content_type=message.content_type)
-        if html_deps:
-            seg["html_deps"] = html_deps
-        return StoredMessage(role=message.role, segments=[seg])
+        html_deps: list[SerializedDep] | None = None,
+    ) -> StoredMessage:
+        return cls(
+            role=message.role,
+            segments=[
+                StoredSegment(
+                    content=str(message.content),
+                    content_type=message.content_type,
+                    html_deps=html_deps,
+                )
+            ],
+        )
