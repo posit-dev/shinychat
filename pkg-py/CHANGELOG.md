@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking changes
+
+* Removed the deprecated `format` and `token_limits` parameters from `.messages()`, the `tokenizer` parameter from `Chat()`, and the `.transform_user_input()` decorator. These features over-reached into LLM provider responsibilities; use your provider (e.g., chatlas, LangChain) to manage conversation formatting, token limits, and input transformation instead. Calling any of these now raises a `TypeError` with migration guidance. (#245)
+
 ### New features
 
 * `Chat()` now accepts an optional `client=` parameter. When provided, streaming, cancellation, bookmarking, and greeting handling are wired up automatically — no manual plumbing required. The `chat.client` property exposes a `ChatClient` wrapper with `.value` (the raw chatlas client), `.set()` for swapping models mid-session, and `.clear()` for resetting the conversation with flexible history management.
