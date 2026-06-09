@@ -1216,7 +1216,6 @@ class Chat:
     def _store_message(
         self,
         message: StoredMessage | ChatMessage,
-        index: int | None = None,
     ) -> None:
         from shiny import reactive
 
@@ -1225,17 +1224,9 @@ class Chat:
         with reactive.isolate():
             messages = self._messages()
 
-        if index is None:
-            index = len(messages)
-
-        messages = list(messages)
-        messages.insert(index, message)
-
-        self._messages.set(tuple(messages))
+        self._messages.set((*messages, message))
         if message.role == "user":
             self._latest_user_input.set(message)
-
-        return None
 
     def user_input(self) -> str | None:
         """
