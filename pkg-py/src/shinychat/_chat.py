@@ -246,6 +246,9 @@ class Chat:
         * `"actual"`: Display the actual error message to the user.
         * `"sanitize"`: Sanitize the error message before displaying it to the user.
         * `"unhandled"`: Do not display any error message to the user.
+    tokenizer
+        Removed. Raises ``TypeError`` if provided. Use your LLM provider
+        (e.g., chatlas, LangChain) to manage token limits instead.
     """
 
     def __init__(
@@ -533,6 +536,15 @@ class Chat:
         Reactively read chat messages
 
         Obtain chat messages within a reactive context.
+
+        Parameters
+        ----------
+        format
+            Removed. Raises ``TypeError`` if provided. Use your LLM provider
+            (e.g., chatlas, LangChain) to manage message formatting instead.
+        token_limits
+            Removed. Raises ``TypeError`` if provided. Use your LLM provider
+            (e.g., chatlas, LangChain) to manage token limits instead.
 
         Note
         ----
