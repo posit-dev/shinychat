@@ -60,7 +60,6 @@ from ._chat_types import (
     ContentSegment,
     GreetingOptions,
     MessagePayload,
-    Role,
     SerializedDep,
     SlashCommandDef,
     StoredMessage,
