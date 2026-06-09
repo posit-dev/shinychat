@@ -4,7 +4,12 @@ from typing import Callable
 
 from htmltools import HTMLDependency
 
-from ._chat_types import ContentSegment, ContentType, StoredContentSegment
+from ._chat_types import (
+    ContentSegment,
+    ContentType,
+    SerializedDep,
+    StoredSegment,
+)
 
 
 def segments_content(segments: list[ContentSegment]) -> str:
@@ -21,7 +26,11 @@ def segments_deps(segments: list[ContentSegment]) -> list[HTMLDependency]:
 
 def copy_segments(segments: list[ContentSegment]) -> list[ContentSegment]:
     return [
-        ContentSegment(s.content, s.content_type, list(s.html_deps) if s.html_deps else None)
+        ContentSegment(
+            content=s.content,
+            content_type=s.content_type,
+            html_deps=list(s.html_deps) if s.html_deps else None,
+        )
         for s in segments
     ]
 
@@ -48,22 +57,24 @@ def append_to_segments(
                 segments[-1].html_deps = []
             segments[-1].html_deps.extend(deps)
     else:
-        deps_copy = list(deps) if deps else None
-        segments.append(ContentSegment(content, content_type, deps_copy))
+        segments.append(
+            ContentSegment(
+                content=content,
+                content_type=content_type,
+                html_deps=list(deps) if deps else None,
+            )
+        )
 
 
 def serialize_segments(
     segments: list[ContentSegment],
-    serialize_deps: Callable[[list[HTMLDependency] | None], list[dict[str, object]] | None],
-) -> list[StoredContentSegment]:
-    result: list[StoredContentSegment] = []
-    for seg in segments:
-        stored_seg = StoredContentSegment(
+    serialize_deps: Callable[[list[HTMLDependency] | None], list[SerializedDep] | None],
+) -> list[StoredSegment]:
+    return [
+        StoredSegment(
             content=seg.content,
             content_type=seg.content_type,
+            html_deps=serialize_deps(seg.html_deps or None),
         )
-        serialized_deps = serialize_deps(seg.html_deps)
-        if serialized_deps:
-            stored_seg["html_deps"] = serialized_deps
-        result.append(stored_seg)
-    return result
+        for seg in segments
+    ]
