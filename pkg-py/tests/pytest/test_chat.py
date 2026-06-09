@@ -4,9 +4,8 @@ import asyncio
 import inspect
 import sys
 import threading
-import types
 from datetime import datetime
-from typing import Any, Union, cast, get_args, get_origin
+from typing import Any, cast
 
 import pytest
 from htmltools import HTMLDependency, TagList, tags
@@ -17,12 +16,10 @@ from shinychat import Chat
 from shinychat._chat_normalize import message_content, message_content_chunk
 from shinychat._chat_types import (
     ChatMessage,
-    ChatMessageDict,
     Role,
     StoredMessage,
     StoredSegment,
 )
-from shinychat._utils_types import MISSING
 
 # ----------------------------------------------------------------------
 # Helpers
@@ -45,15 +42,6 @@ class _MockSession:
 
 
 test_session = cast(Session, _MockSession())
-
-
-# Check if a type is part of a Union
-def is_type_in_union(type: object, union: object) -> bool:
-    origin = get_origin(union)
-    # Handle both typing.Union and types.UnionType (from | operator in Python 3.10+)
-    if origin is Union or origin is types.UnionType:
-        return type in get_args(union)
-    return False
 
 
 def run_async(coro_fn: Any) -> None:
@@ -86,135 +74,34 @@ def test_chat_user_input_no_longer_accepts_transform_argument():
             cast(Any, chat.user_input)(transform=True)
 
 
-def test_chat_message_trimming():
-    # A deterministic word tokenizer (1 token per whitespace-delimited word) keeps
-    # this test offline and free of HuggingFace download flakiness, while still
-    # exercising the trimming logic.
-    class WordTokenizer:
-        name = "word-stub"
-
-        def encode(
-            self,
-            text: str,
-            *,
-            allowed_special: Any = set(),
-            disallowed_special: Any = "all",
-        ) -> list[int]:
-            return list(range(len(text.split())))
-
+def test_messages_format_raises():
     with session_context(test_session):
         chat = Chat(id="chat")
-        chat._tokenizer = WordTokenizer()
 
-        def generate_content(token_count: int) -> str:
-            return " ".join("foo" for _ in range(token_count))
+        with pytest.raises(TypeError, match="format.*removed"):
+            chat.messages(format="openai")  # type: ignore[arg-type]
 
-        msgs = (
-            stored_message(
-                content=generate_content(102),
-                role="system",
-            ),
-        )
 
-        # Throws since system message is too long
-        with pytest.raises(ValueError):
-            chat._trim_messages(msgs, token_limits=(100, 0), format=MISSING)
+def test_messages_token_limits_raises():
+    with session_context(test_session):
+        chat = Chat(id="chat")
 
-        msgs = (
-            stored_message(content=generate_content(100), role="system"),
-            stored_message(content=generate_content(2), role="user"),
-        )
+        with pytest.raises(TypeError, match="token_limits.*removed"):
+            chat.messages(token_limits=(100, 0))  # type: ignore[arg-type]
 
-        # Throws since only the system message fits
-        with pytest.raises(ValueError):
-            chat._trim_messages(msgs, token_limits=(100, 0), format=MISSING)
 
-        # Raising the limit should allow both messages to fit
-        trimmed = chat._trim_messages(
-            msgs, token_limits=(103, 0), format=MISSING
-        )
-        assert len(trimmed) == 2
+def test_tokenizer_raises():
+    with session_context(test_session):
+        with pytest.raises(TypeError, match="tokenizer.*removed"):
+            Chat(id="chat", tokenizer=object())  # type: ignore[arg-type]
 
-        content1 = generate_content(100)
-        content2 = generate_content(10)
-        content3 = generate_content(2)
 
-        msgs = (
-            stored_message(
-                content=content1,
-                role="system",
-            ),
-            stored_message(
-                content=content2,
-                role="user",
-            ),
-            stored_message(
-                content=content3,
-                role="user",
-            ),
-        )
+def test_transform_user_input_raises():
+    with session_context(test_session):
+        chat = Chat(id="chat")
 
-        # Should discard the 1st user message
-        trimmed = chat._trim_messages(
-            msgs, token_limits=(103, 0), format=MISSING
-        )
-        assert len(trimmed) == 2
-        contents = [str(msg.content) for msg in trimmed]
-        assert contents == [content1, content3]
-
-        content1 = generate_content(50)
-        content2 = generate_content(10)
-        content3 = generate_content(50)
-        content4 = generate_content(2)
-
-        msgs = (
-            stored_message(
-                content=content1,
-                role="system",
-            ),
-            stored_message(
-                content=content2,
-                role="user",
-            ),
-            stored_message(
-                content=content3,
-                role="system",
-            ),
-            stored_message(
-                content=content4,
-                role="user",
-            ),
-        )
-
-        # Should discard the 1st user message
-        trimmed = chat._trim_messages(
-            msgs, token_limits=(103, 0), format=MISSING
-        )
-        assert len(trimmed) == 3
-        contents = [str(msg.content) for msg in trimmed]
-        assert contents == [content1, content3, content4]
-
-        content1 = generate_content(50)
-        content2 = generate_content(10)
-
-        msgs = (
-            stored_message(
-                content=content1,
-                role="assistant",
-            ),
-            stored_message(
-                content=content2,
-                role="user",
-            ),
-        )
-
-        # Anthropic requires 1st message to be a user message
-        trimmed = chat._trim_messages(
-            msgs, token_limits=(30, 0), format="anthropic"
-        )
-        assert len(trimmed) == 1
-        contents = [str(msg.content) for msg in trimmed]
-        assert contents == [content2]
+        with pytest.raises(TypeError, match="transform_user_input.*removed"):
+            chat.transform_user_input(lambda x: x)
 
 
 def test_stream_replace_discards_stale_html_dependencies():
@@ -591,145 +478,6 @@ def test_ollama_normalization():
 # wrong (i.e., updating the test may be sufficient), but we'll still want to be aware
 # and double-check our code.
 # ------------------------------------------------------------------------------------
-
-
-def test_as_anthropic_message():
-    if sys.version_info < (3, 11):
-        pytest.skip("Anthropic is only available for Python 3.11+")
-
-    from anthropic.resources.messages import (  # pyright: ignore[reportMissingImports]
-        AsyncMessages,
-        Messages,
-    )
-    from anthropic.types import (  # pyright: ignore[reportMissingImports]
-        MessageParam,
-    )
-    from shinychat._chat_provider_types import as_anthropic_message
-
-    # Make sure return type of llm.messages.create() hasn't changed
-    assert (
-        AsyncMessages.create.__annotations__["messages"]
-        == "Iterable[MessageParam]"
-    )
-    assert (
-        Messages.create.__annotations__["messages"] == "Iterable[MessageParam]"
-    )
-
-    msg = ChatMessageDict(content="I have a question", role="user")
-    assert as_anthropic_message(msg) == MessageParam(
-        content="I have a question", role="user"
-    )
-
-
-def test_as_google_message():
-    from shinychat._chat_provider_types import as_google_message
-
-    # Not available for Python 3.9
-    if sys.version_info < (3, 10):
-        return
-
-    from google.genai import types
-    from google.genai.models import Models
-
-    contents_annotation = (
-        inspect.signature(Models.generate_content)
-        .parameters["contents"]
-        .annotation
-    )
-    assert is_type_in_union(types.Content, contents_annotation)
-
-    msg = ChatMessageDict(content="I have a question", role="user")
-    assert as_google_message(msg) == types.Content(
-        parts=[types.Part(text="I have a question")], role="user"
-    )
-
-
-def test_as_langchain_message():
-    from langchain_core.language_models.base import LanguageModelInput
-    from langchain_core.language_models.base import (
-        Sequence as LangchainSequence,  # pyright: ignore[reportPrivateImportUsage]
-    )
-    from langchain_core.language_models.chat_models import BaseChatModel
-    from langchain_core.messages import (
-        AIMessage,
-        BaseMessage,
-        HumanMessage,
-        MessageLikeRepresentation,
-        SystemMessage,
-    )
-    from shinychat._chat_provider_types import as_langchain_message
-
-    assert BaseChatModel.invoke.__annotations__["input"] == "LanguageModelInput"
-    assert BaseChatModel.stream.__annotations__["input"] == "LanguageModelInput"
-
-    assert is_type_in_union(
-        # Use `LangchainSequence` instead of `Sequence` to avoid incorrect comparison
-        # between `typing.Sequence` and `collections.abc.Sequence`
-        LangchainSequence[MessageLikeRepresentation],
-        LanguageModelInput,
-    )
-    assert is_type_in_union(BaseMessage, MessageLikeRepresentation)
-
-    assert issubclass(AIMessage, BaseMessage)
-    assert issubclass(HumanMessage, BaseMessage)
-    assert issubclass(SystemMessage, BaseMessage)
-
-    msg = ChatMessageDict(content="I have a question", role="user")
-    assert as_langchain_message(msg) == HumanMessage(
-        content="I have a question"
-    )
-
-
-def test_as_openai_message():
-    from openai.resources.chat.completions import AsyncCompletions, Completions
-    from openai.types.chat import (
-        ChatCompletionAssistantMessageParam,
-        ChatCompletionMessageParam,
-        ChatCompletionSystemMessageParam,
-        ChatCompletionUserMessageParam,
-    )
-    from shinychat._chat_provider_types import as_openai_message
-
-    assert (
-        Completions.create.__annotations__["messages"]
-        == "Iterable[ChatCompletionMessageParam]"
-    )
-
-    assert (
-        AsyncCompletions.create.__annotations__["messages"]
-        == "Iterable[ChatCompletionMessageParam]"
-    )
-
-    assert is_type_in_union(
-        ChatCompletionAssistantMessageParam, ChatCompletionMessageParam
-    )
-    assert is_type_in_union(
-        ChatCompletionSystemMessageParam, ChatCompletionMessageParam
-    )
-    assert is_type_in_union(
-        ChatCompletionUserMessageParam, ChatCompletionMessageParam
-    )
-
-    msg = ChatMessageDict(content="I have a question", role="user")
-    assert as_openai_message(msg) == ChatCompletionUserMessageParam(
-        content="I have a question", role="user"
-    )
-
-
-def test_as_ollama_message():
-    import ollama
-    from ollama import Message as OllamaMessage
-
-    assert "ollama._types.Message" in str(
-        ollama.chat.__annotations__["messages"]
-    )
-
-    from shinychat._chat_provider_types import as_ollama_message
-
-    msg = ChatMessageDict(content="I have a question", role="user")
-    assert as_ollama_message(msg) == OllamaMessage(
-        content="I have a question", role="user"
-    )
 
 
 def test_stored_message_content_joins_segments():
