@@ -26,8 +26,6 @@ shinychat.Chat.set_user_message py:function 1 api/Chat.html#shinychat.Chat.set_u
 shinychat._chat.Chat.set_user_message py:function 1 api/Chat.html#shinychat.Chat.set_user_message shinychat.Chat.set_user_message
 shinychat.Chat.transform_assistant_response py:function 1 api/Chat.html#shinychat.Chat.transform_assistant_response -
 shinychat._chat.Chat.transform_assistant_response py:function 1 api/Chat.html#shinychat.Chat.transform_assistant_response shinychat.Chat.transform_assistant_response
-shinychat.Chat.transform_user_input py:function 1 api/Chat.html#shinychat.Chat.transform_user_input -
-shinychat._chat.Chat.transform_user_input py:function 1 api/Chat.html#shinychat.Chat.transform_user_input shinychat.Chat.transform_user_input
 shinychat.Chat.update_user_input py:function 1 api/Chat.html#shinychat.Chat.update_user_input -
 shinychat._chat.Chat.update_user_input py:function 1 api/Chat.html#shinychat.Chat.update_user_input shinychat.Chat.update_user_input
 shinychat.Chat.user_input py:function 1 api/Chat.html#shinychat.Chat.user_input -
@@ -70,8 +68,6 @@ shinychat.express.Chat.set_user_message py:function 1 api/express.Chat.html#shin
 shinychat._chat.Chat.set_user_message py:function 1 api/express.Chat.html#shinychat.express.Chat.set_user_message shinychat.express.Chat.set_user_message
 shinychat.express.Chat.transform_assistant_response py:function 1 api/express.Chat.html#shinychat.express.Chat.transform_assistant_response -
 shinychat._chat.Chat.transform_assistant_response py:function 1 api/express.Chat.html#shinychat.express.Chat.transform_assistant_response shinychat.express.Chat.transform_assistant_response
-shinychat.express.Chat.transform_user_input py:function 1 api/express.Chat.html#shinychat.express.Chat.transform_user_input -
-shinychat._chat.Chat.transform_user_input py:function 1 api/express.Chat.html#shinychat.express.Chat.transform_user_input shinychat.express.Chat.transform_user_input
 shinychat.express.Chat.ui py:function 1 api/express.Chat.html#shinychat.express.Chat.ui -
 shinychat._chat.ChatExpress.ui py:function 1 api/express.Chat.html#shinychat.express.Chat.ui shinychat.express.Chat.ui
 shinychat.express.Chat.update_user_input py:function 1 api/express.Chat.html#shinychat.express.Chat.update_user_input -
