@@ -111,9 +111,7 @@ def is_content(value: object) -> bool:
 
 
 def is_content_extra(value: object) -> bool:
-    from chatlas.types import ContentImageInline, ContentImageRemote
-
-    from ._chatlas_compat import ContentPDF
+    from chatlas.types import ContentImageInline, ContentImageRemote, ContentPDF
 
     return isinstance(
         value, (ContentImageInline, ContentImageRemote, ContentPDF)
@@ -121,9 +119,7 @@ def is_content_extra(value: object) -> bool:
 
 
 def as_content_extra_item(value: object) -> dict[str, str]:
-    from chatlas.types import ContentImageInline, ContentImageRemote
-
-    from ._chatlas_compat import ContentPDF
+    from chatlas.types import ContentImageInline, ContentImageRemote, ContentPDF
 
     if isinstance(value, ContentImageRemote):
         return {"type": "image", "src": value.url}

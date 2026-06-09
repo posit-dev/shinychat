@@ -158,9 +158,7 @@ try:
     def _(chunk: ContentText):
         return message_content(chunk)
 
-    from chatlas.types import ContentImageInline, ContentImageRemote
-
-    from ._chatlas_compat import ContentPDF
+    from chatlas.types import ContentImageInline, ContentImageRemote, ContentPDF
 
     @message_content.register
     def _(message: ContentImageInline):
