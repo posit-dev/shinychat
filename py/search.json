@@ -35,6 +35,50 @@
     "text": "Learn more\nThe official shiny website offers the best starting point for learning about shinychat:\n\nGet inspired\nChatbots\nStreaming markdown\nTool calling\nStructured data"
   },
   {
+    "objectID": "api/index.html",
+    "href": "api/index.html",
+    "title": "shinychat Reference",
+    "section": "",
+    "text": "Chat\nCreate a chat interface.\n\n\ntypes.ChatClient\nWraps a chatlas client bound to a :class:~shinychat.Chat instance.\n\n\nchat_ui\nUI container for a chat component (Shiny Core).\n\n\nchat_greeting\nCreate a greeting for a chat UI.\n\n\n\n\n\n\n\n\n\nexpress.Chat\n\n\n\n\n\n\n\n\n\n\nplaywright.ChatController\nController for :func:shiny.ui.chat.",
+    "crumbs": [
+      "API Reference",
+      "shinychat Reference"
+    ]
+  },
+  {
+    "objectID": "api/index.html#shiny-core",
+    "href": "api/index.html#shiny-core",
+    "title": "shinychat Reference",
+    "section": "",
+    "text": "Chat\nCreate a chat interface.\n\n\ntypes.ChatClient\nWraps a chatlas client bound to a :class:~shinychat.Chat instance.\n\n\nchat_ui\nUI container for a chat component (Shiny Core).\n\n\nchat_greeting\nCreate a greeting for a chat UI.",
+    "crumbs": [
+      "API Reference",
+      "shinychat Reference"
+    ]
+  },
+  {
+    "objectID": "api/index.html#shiny-express",
+    "href": "api/index.html#shiny-express",
+    "title": "shinychat Reference",
+    "section": "",
+    "text": "express.Chat",
+    "crumbs": [
+      "API Reference",
+      "shinychat Reference"
+    ]
+  },
+  {
+    "objectID": "api/index.html#testing",
+    "href": "api/index.html#testing",
+    "title": "shinychat Reference",
+    "section": "",
+    "text": "playwright.ChatController\nController for :func:shiny.ui.chat.",
+    "crumbs": [
+      "API Reference",
+      "shinychat Reference"
+    ]
+  },
+  {
     "objectID": "api/express.Chat.html",
     "href": "api/express.Chat.html",
     "title": "express.Chat",
@@ -92,6 +136,90 @@
       "API Reference",
       "Shiny Core",
       "chat_ui"
+    ]
+  },
+  {
+    "objectID": "api/playwright.ChatController.html",
+    "href": "api/playwright.ChatController.html",
+    "title": "playwright.ChatController",
+    "section": "",
+    "text": "playwright.ChatController(page, id)\nController for :func:shiny.ui.chat.\n\n\n\n\n\nName\nDescription\n\n\n\n\nloc\nPlaywright Locator for the chat.\n\n\nloc_input\nPlaywright Locator for the chat’s \n\n\nloc_input_button\nPlaywright Locator for the chat’s  input.\n\n\nloc_input_container\nPlaywright Locator for the chat input container.\n\n\nloc_latest_message\nPlaywright Locator for the last message in the chat.\n\n\nloc_messages\nPlaywright Locator for the chat messages content container.\n\n\nloc_scroll_container\nPlaywright Locator for the scrollable messages container.\n\n\n\n\n\n\n\n\n\nName\nDescription\n\n\n\n\nexpect_latest_message\nExpects the last message in the chat.\n\n\nexpect_messages\nExpects the chat messages.\n\n\nexpect_user_input\nExpects the user message in the chat.\n\n\nsend_user_input\nSends the user message in the chat.\n\n\nset_user_input\nSets the user message in the chat.\n\n\n\n\n\nplaywright.ChatController.expect_latest_message(value, *, timeout=None)\nExpects the last message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nPatternOrStr\nThe expected last message.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the expectation to pass. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.expect_messages(value, *, timeout=None)\nExpects the chat messages.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nPatternOrStr\nThe expected messages.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the expectation to pass. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.expect_user_input(value, *, timeout=None)\nExpects the user message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nPatternOrStr\nThe expected user message.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the expectation to pass. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.send_user_input(method='enter', timeout=None)\nSends the user message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nmethod\nLiteral['enter', 'click']\nThe method to send the user message. Defaults to \"enter\".\n'enter'\n\n\ntimeout\nTimeout\nThe maximum time to wait for the chat input to be visible and interactable. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.set_user_input(value, *, timeout=None)\nSets the user message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nstr\nThe message to send.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the chat input to be visible and interactable. Defaults to None.\nNone",
+    "crumbs": [
+      "API Reference",
+      "Testing",
+      "playwright.ChatController"
+    ]
+  },
+  {
+    "objectID": "api/playwright.ChatController.html#attributes",
+    "href": "api/playwright.ChatController.html#attributes",
+    "title": "playwright.ChatController",
+    "section": "",
+    "text": "Name\nDescription\n\n\n\n\nloc\nPlaywright Locator for the chat.\n\n\nloc_input\nPlaywright Locator for the chat’s \n\n\nloc_input_button\nPlaywright Locator for the chat’s  input.\n\n\nloc_input_container\nPlaywright Locator for the chat input container.\n\n\nloc_latest_message\nPlaywright Locator for the last message in the chat.\n\n\nloc_messages\nPlaywright Locator for the chat messages content container.\n\n\nloc_scroll_container\nPlaywright Locator for the scrollable messages container.",
+    "crumbs": [
+      "API Reference",
+      "Testing",
+      "playwright.ChatController"
+    ]
+  },
+  {
+    "objectID": "api/playwright.ChatController.html#methods",
+    "href": "api/playwright.ChatController.html#methods",
+    "title": "playwright.ChatController",
+    "section": "",
+    "text": "Name\nDescription\n\n\n\n\nexpect_latest_message\nExpects the last message in the chat.\n\n\nexpect_messages\nExpects the chat messages.\n\n\nexpect_user_input\nExpects the user message in the chat.\n\n\nsend_user_input\nSends the user message in the chat.\n\n\nset_user_input\nSets the user message in the chat.\n\n\n\n\n\nplaywright.ChatController.expect_latest_message(value, *, timeout=None)\nExpects the last message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nPatternOrStr\nThe expected last message.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the expectation to pass. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.expect_messages(value, *, timeout=None)\nExpects the chat messages.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nPatternOrStr\nThe expected messages.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the expectation to pass. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.expect_user_input(value, *, timeout=None)\nExpects the user message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nPatternOrStr\nThe expected user message.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the expectation to pass. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.send_user_input(method='enter', timeout=None)\nSends the user message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nmethod\nLiteral['enter', 'click']\nThe method to send the user message. Defaults to \"enter\".\n'enter'\n\n\ntimeout\nTimeout\nThe maximum time to wait for the chat input to be visible and interactable. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.set_user_input(value, *, timeout=None)\nSets the user message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nstr\nThe message to send.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the chat input to be visible and interactable. Defaults to None.\nNone",
+    "crumbs": [
+      "API Reference",
+      "Testing",
+      "playwright.ChatController"
+    ]
+  },
+  {
+    "objectID": "api/chat_greeting.html",
+    "href": "api/chat_greeting.html",
+    "title": "chat_greeting",
+    "section": "",
+    "text": "chat_greeting(content, *, dismissible=True)\nCreate a greeting for a chat UI.\nA greeting is a welcome message displayed at the top of the chat before any conversation messages. It can be static (set via :func:~shinychat.chat_ui) or dynamic (set via :meth:~shinychat.Chat.set_greeting).\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\ncontent\nUnion[str, HTML, Tag, TagList, 'AsyncIterable[str]']\nThe greeting content. Can be a markdown string, :class:~htmltools.HTML, :class:~htmltools.Tag, :class:~htmltools.TagList, or an :class:~typing.AsyncIterable of strings (streaming, only valid via :meth:~shinychat.Chat.set_greeting).\nrequired\n\n\ndismissible\nbool\nWhether the greeting can be dismissed when the user sends a message. When True (the default), the greeting is hidden once the user sends their first message. Set to False to keep the greeting visible throughout the conversation, which is useful for persistent instructions or navigation.\nTrue\n\n\n\n\n\n\nBasic greeting:\nfrom shinychat import chat_greeting\n\nchat_greeting(\"## Welcome!\\n\\nHow can I help you today?\")\nNon-dismissible greeting that stays visible:\nchat_greeting(\"Please select a topic to get started.\", dismissible=False)\nGreeting with suggestion cards (uses &lt;span class=\"suggestion\"&gt;):\nchat_greeting(\n    \"## Welcome!\\n\\n\"\n    '&lt;span class=\"suggestion\"&gt;Summarize this dataset&lt;/span&gt;\\n'\n    '&lt;span class=\"suggestion\"&gt;Show me recent trends&lt;/span&gt;'\n)\n\n\n\n : Set a static greeting in the UI definition.  : Set or stream a greeting from the server.",
+    "crumbs": [
+      "API Reference",
+      "Shiny Core",
+      "chat_greeting"
+    ]
+  },
+  {
+    "objectID": "api/chat_greeting.html#parameters",
+    "href": "api/chat_greeting.html#parameters",
+    "title": "chat_greeting",
+    "section": "",
+    "text": "Name\nType\nDescription\nDefault\n\n\n\n\ncontent\nUnion[str, HTML, Tag, TagList, 'AsyncIterable[str]']\nThe greeting content. Can be a markdown string, :class:~htmltools.HTML, :class:~htmltools.Tag, :class:~htmltools.TagList, or an :class:~typing.AsyncIterable of strings (streaming, only valid via :meth:~shinychat.Chat.set_greeting).\nrequired\n\n\ndismissible\nbool\nWhether the greeting can be dismissed when the user sends a message. When True (the default), the greeting is hidden once the user sends their first message. Set to False to keep the greeting visible throughout the conversation, which is useful for persistent instructions or navigation.\nTrue",
+    "crumbs": [
+      "API Reference",
+      "Shiny Core",
+      "chat_greeting"
+    ]
+  },
+  {
+    "objectID": "api/chat_greeting.html#examples",
+    "href": "api/chat_greeting.html#examples",
+    "title": "chat_greeting",
+    "section": "",
+    "text": "Basic greeting:\nfrom shinychat import chat_greeting\n\nchat_greeting(\"## Welcome!\\n\\nHow can I help you today?\")\nNon-dismissible greeting that stays visible:\nchat_greeting(\"Please select a topic to get started.\", dismissible=False)\nGreeting with suggestion cards (uses &lt;span class=\"suggestion\"&gt;):\nchat_greeting(\n    \"## Welcome!\\n\\n\"\n    '&lt;span class=\"suggestion\"&gt;Summarize this dataset&lt;/span&gt;\\n'\n    '&lt;span class=\"suggestion\"&gt;Show me recent trends&lt;/span&gt;'\n)",
+    "crumbs": [
+      "API Reference",
+      "Shiny Core",
+      "chat_greeting"
+    ]
+  },
+  {
+    "objectID": "api/chat_greeting.html#see-also",
+    "href": "api/chat_greeting.html#see-also",
+    "title": "chat_greeting",
+    "section": "",
+    "text": ": Set a static greeting in the UI definition.  : Set or stream a greeting from the server.",
+    "crumbs": [
+      "API Reference",
+      "Shiny Core",
+      "chat_greeting"
     ]
   },
   {
@@ -188,134 +316,6 @@
       "API Reference",
       "Shiny Core",
       "Chat"
-    ]
-  },
-  {
-    "objectID": "api/playwright.ChatController.html",
-    "href": "api/playwright.ChatController.html",
-    "title": "playwright.ChatController",
-    "section": "",
-    "text": "playwright.ChatController(page, id)\nController for :func:shiny.ui.chat.\n\n\n\n\n\nName\nDescription\n\n\n\n\nloc\nPlaywright Locator for the chat.\n\n\nloc_input\nPlaywright Locator for the chat’s \n\n\nloc_input_button\nPlaywright Locator for the chat’s  input.\n\n\nloc_input_container\nPlaywright Locator for the chat input container.\n\n\nloc_latest_message\nPlaywright Locator for the last message in the chat.\n\n\nloc_messages\nPlaywright Locator for the chat messages content container.\n\n\nloc_scroll_container\nPlaywright Locator for the scrollable messages container.\n\n\n\n\n\n\n\n\n\nName\nDescription\n\n\n\n\nexpect_latest_message\nExpects the last message in the chat.\n\n\nexpect_messages\nExpects the chat messages.\n\n\nexpect_user_input\nExpects the user message in the chat.\n\n\nsend_user_input\nSends the user message in the chat.\n\n\nset_user_input\nSets the user message in the chat.\n\n\n\n\n\nplaywright.ChatController.expect_latest_message(value, *, timeout=None)\nExpects the last message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nPatternOrStr\nThe expected last message.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the expectation to pass. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.expect_messages(value, *, timeout=None)\nExpects the chat messages.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nPatternOrStr\nThe expected messages.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the expectation to pass. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.expect_user_input(value, *, timeout=None)\nExpects the user message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nPatternOrStr\nThe expected user message.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the expectation to pass. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.send_user_input(method='enter', timeout=None)\nSends the user message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nmethod\nLiteral['enter', 'click']\nThe method to send the user message. Defaults to \"enter\".\n'enter'\n\n\ntimeout\nTimeout\nThe maximum time to wait for the chat input to be visible and interactable. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.set_user_input(value, *, timeout=None)\nSets the user message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nstr\nThe message to send.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the chat input to be visible and interactable. Defaults to None.\nNone",
-    "crumbs": [
-      "API Reference",
-      "Testing",
-      "playwright.ChatController"
-    ]
-  },
-  {
-    "objectID": "api/playwright.ChatController.html#attributes",
-    "href": "api/playwright.ChatController.html#attributes",
-    "title": "playwright.ChatController",
-    "section": "",
-    "text": "Name\nDescription\n\n\n\n\nloc\nPlaywright Locator for the chat.\n\n\nloc_input\nPlaywright Locator for the chat’s \n\n\nloc_input_button\nPlaywright Locator for the chat’s  input.\n\n\nloc_input_container\nPlaywright Locator for the chat input container.\n\n\nloc_latest_message\nPlaywright Locator for the last message in the chat.\n\n\nloc_messages\nPlaywright Locator for the chat messages content container.\n\n\nloc_scroll_container\nPlaywright Locator for the scrollable messages container.",
-    "crumbs": [
-      "API Reference",
-      "Testing",
-      "playwright.ChatController"
-    ]
-  },
-  {
-    "objectID": "api/playwright.ChatController.html#methods",
-    "href": "api/playwright.ChatController.html#methods",
-    "title": "playwright.ChatController",
-    "section": "",
-    "text": "Name\nDescription\n\n\n\n\nexpect_latest_message\nExpects the last message in the chat.\n\n\nexpect_messages\nExpects the chat messages.\n\n\nexpect_user_input\nExpects the user message in the chat.\n\n\nsend_user_input\nSends the user message in the chat.\n\n\nset_user_input\nSets the user message in the chat.\n\n\n\n\n\nplaywright.ChatController.expect_latest_message(value, *, timeout=None)\nExpects the last message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nPatternOrStr\nThe expected last message.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the expectation to pass. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.expect_messages(value, *, timeout=None)\nExpects the chat messages.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nPatternOrStr\nThe expected messages.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the expectation to pass. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.expect_user_input(value, *, timeout=None)\nExpects the user message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nPatternOrStr\nThe expected user message.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the expectation to pass. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.send_user_input(method='enter', timeout=None)\nSends the user message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nmethod\nLiteral['enter', 'click']\nThe method to send the user message. Defaults to \"enter\".\n'enter'\n\n\ntimeout\nTimeout\nThe maximum time to wait for the chat input to be visible and interactable. Defaults to None.\nNone\n\n\n\n\n\n\n\nplaywright.ChatController.set_user_input(value, *, timeout=None)\nSets the user message in the chat.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nvalue\nstr\nThe message to send.\nrequired\n\n\ntimeout\nTimeout\nThe maximum time to wait for the chat input to be visible and interactable. Defaults to None.\nNone",
-    "crumbs": [
-      "API Reference",
-      "Testing",
-      "playwright.ChatController"
-    ]
-  },
-  {
-    "objectID": "api/chat_greeting.html",
-    "href": "api/chat_greeting.html",
-    "title": "chat_greeting",
-    "section": "",
-    "text": "chat_greeting(content, *, dismissible=True)\nCreate a greeting for a chat UI.\nA greeting is a welcome message displayed at the top of the chat before any conversation messages. It can be static (set via :func:~shinychat.chat_ui) or dynamic (set via :meth:~shinychat.Chat.set_greeting).\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\ncontent\nUnion[str, HTML, Tag, TagList, 'AsyncIterable[str]']\nThe greeting content. Can be a markdown string, :class:~htmltools.HTML, :class:~htmltools.Tag, :class:~htmltools.TagList, or an :class:~typing.AsyncIterable of strings (streaming, only valid via :meth:~shinychat.Chat.set_greeting).\nrequired\n\n\ndismissible\nbool\nWhether the greeting can be dismissed when the user sends a message. When True (the default), the greeting is hidden once the user sends their first message. Set to False to keep the greeting visible throughout the conversation, which is useful for persistent instructions or navigation.\nTrue\n\n\n\n\n\n\nBasic greeting:\nfrom shinychat import chat_greeting\n\nchat_greeting(\"## Welcome!\\n\\nHow can I help you today?\")\nNon-dismissible greeting that stays visible:\nchat_greeting(\"Please select a topic to get started.\", dismissible=False)\nGreeting with suggestion cards (uses &lt;span class=\"suggestion\"&gt;):\nchat_greeting(\n    \"## Welcome!\\n\\n\"\n    '&lt;span class=\"suggestion\"&gt;Summarize this dataset&lt;/span&gt;\\n'\n    '&lt;span class=\"suggestion\"&gt;Show me recent trends&lt;/span&gt;'\n)\n\n\n\n : Set a static greeting in the UI definition.  : Set or stream a greeting from the server.",
-    "crumbs": [
-      "API Reference",
-      "Shiny Core",
-      "chat_greeting"
-    ]
-  },
-  {
-    "objectID": "api/chat_greeting.html#parameters",
-    "href": "api/chat_greeting.html#parameters",
-    "title": "chat_greeting",
-    "section": "",
-    "text": "Name\nType\nDescription\nDefault\n\n\n\n\ncontent\nUnion[str, HTML, Tag, TagList, 'AsyncIterable[str]']\nThe greeting content. Can be a markdown string, :class:~htmltools.HTML, :class:~htmltools.Tag, :class:~htmltools.TagList, or an :class:~typing.AsyncIterable of strings (streaming, only valid via :meth:~shinychat.Chat.set_greeting).\nrequired\n\n\ndismissible\nbool\nWhether the greeting can be dismissed when the user sends a message. When True (the default), the greeting is hidden once the user sends their first message. Set to False to keep the greeting visible throughout the conversation, which is useful for persistent instructions or navigation.\nTrue",
-    "crumbs": [
-      "API Reference",
-      "Shiny Core",
-      "chat_greeting"
-    ]
-  },
-  {
-    "objectID": "api/chat_greeting.html#examples",
-    "href": "api/chat_greeting.html#examples",
-    "title": "chat_greeting",
-    "section": "",
-    "text": "Basic greeting:\nfrom shinychat import chat_greeting\n\nchat_greeting(\"## Welcome!\\n\\nHow can I help you today?\")\nNon-dismissible greeting that stays visible:\nchat_greeting(\"Please select a topic to get started.\", dismissible=False)\nGreeting with suggestion cards (uses &lt;span class=\"suggestion\"&gt;):\nchat_greeting(\n    \"## Welcome!\\n\\n\"\n    '&lt;span class=\"suggestion\"&gt;Summarize this dataset&lt;/span&gt;\\n'\n    '&lt;span class=\"suggestion\"&gt;Show me recent trends&lt;/span&gt;'\n)",
-    "crumbs": [
-      "API Reference",
-      "Shiny Core",
-      "chat_greeting"
-    ]
-  },
-  {
-    "objectID": "api/chat_greeting.html#see-also",
-    "href": "api/chat_greeting.html#see-also",
-    "title": "chat_greeting",
-    "section": "",
-    "text": ": Set a static greeting in the UI definition.  : Set or stream a greeting from the server.",
-    "crumbs": [
-      "API Reference",
-      "Shiny Core",
-      "chat_greeting"
-    ]
-  },
-  {
-    "objectID": "api/index.html",
-    "href": "api/index.html",
-    "title": "shinychat Reference",
-    "section": "",
-    "text": "Chat\nCreate a chat interface.\n\n\ntypes.ChatClient\nWraps a chatlas client bound to a :class:~shinychat.Chat instance.\n\n\nchat_ui\nUI container for a chat component (Shiny Core).\n\n\nchat_greeting\nCreate a greeting for a chat UI.\n\n\n\n\n\n\n\n\n\nexpress.Chat\n\n\n\n\n\n\n\n\n\n\nplaywright.ChatController\nController for :func:shiny.ui.chat.",
-    "crumbs": [
-      "API Reference",
-      "shinychat Reference"
-    ]
-  },
-  {
-    "objectID": "api/index.html#shiny-core",
-    "href": "api/index.html#shiny-core",
-    "title": "shinychat Reference",
-    "section": "",
-    "text": "Chat\nCreate a chat interface.\n\n\ntypes.ChatClient\nWraps a chatlas client bound to a :class:~shinychat.Chat instance.\n\n\nchat_ui\nUI container for a chat component (Shiny Core).\n\n\nchat_greeting\nCreate a greeting for a chat UI.",
-    "crumbs": [
-      "API Reference",
-      "shinychat Reference"
-    ]
-  },
-  {
-    "objectID": "api/index.html#shiny-express",
-    "href": "api/index.html#shiny-express",
-    "title": "shinychat Reference",
-    "section": "",
-    "text": "express.Chat",
-    "crumbs": [
-      "API Reference",
-      "shinychat Reference"
-    ]
-  },
-  {
-    "objectID": "api/index.html#testing",
-    "href": "api/index.html#testing",
-    "title": "shinychat Reference",
-    "section": "",
-    "text": "playwright.ChatController\nController for :func:shiny.ui.chat.",
-    "crumbs": [
-      "API Reference",
-      "shinychat Reference"
     ]
   }
 ]
