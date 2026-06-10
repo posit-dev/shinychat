@@ -415,16 +415,16 @@ chat_mod_server <- function(
           tryCatch(
             {
               if (isTRUE(reg$takes_args)) {
-                args <- data$args %||% ""
+                user_text <- data$userText %||% ""
                 content <- ContentSlashCommand(
                   command = data$command,
-                  args = args,
+                  user_text = user_text,
                   text = paste0(
                     sprintf(
                       "The user entered the /%s slash command",
                       data$command
                     ),
-                    if (nzchar(args)) paste0(" with arguments: ", args) else "."
+                    if (nzchar(user_text)) paste0(" with arguments: ", user_text) else "."
                   )
                 )
                 reg$handler(content)

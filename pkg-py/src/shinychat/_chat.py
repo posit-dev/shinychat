@@ -394,10 +394,10 @@ class Chat:
             async def _on_slash_command():
                 data = self._slash_command_input()
                 command = data.get("command", "")
-                args = data.get("args", "")
+                user_text = data.get("userText", "")
                 echo = bool(data.get("echo", True))
                 if echo:
-                    full_text = f"/{command} {args}".rstrip()
+                    full_text = f"/{command} {user_text}".rstrip()
                     msg = ChatMessage(content=full_text, role="user")
                     self._store_message(self._as_stored_message(msg))
                 cmds = self._slash_commands()
@@ -407,7 +407,7 @@ class Chat:
                         if reg.takes_args:
                             await _utils.wrap_async(
                                 cast(UserSubmitFunction1, reg.handler)
-                            )(args)
+                            )(user_text)
                         else:
                             await _utils.wrap_async(
                                 cast(UserSubmitFunction0, reg.handler)
@@ -629,7 +629,7 @@ class Chat:
             with no server handler.
         echo
             Whether invoking the command participates in the conversation: adds
-            the ``/cmd args`` user message, shows a loading state, and stores the
+            the ``/cmd user_input`` user message, shows a loading state, and stores the
             invocation in history. Defaults to ``True`` when a handler is provided
             and ``False`` otherwise. Set ``echo=False`` for a server handler that
             runs purely for its side effects (e.g. opening a modal).

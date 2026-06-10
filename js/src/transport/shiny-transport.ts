@@ -78,13 +78,13 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
   sendSlashCommand(
     id: string,
     command: string,
-    args: string,
+    userText: string,
     echo: boolean,
   ): void {
     if (!window.Shiny?.setInputValue) return
     window.Shiny.setInputValue(
       id,
-      { command, args, echo },
+      { command, userText, echo },
       { priority: "event" },
     )
   }

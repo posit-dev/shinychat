@@ -16,8 +16,8 @@ async def _():
 
 
 @chat.slash_command("greet", "Send a greeting")
-async def _(args: str):
-    await chat.append_message(f"Hello! You said: {args}")
+async def _(user_input: str):
+    await chat.append_message(f"Hello! You said: {user_input}")
 
 
 @chat.slash_command("clear", "Clear the chat")

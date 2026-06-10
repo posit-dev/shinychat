@@ -53,12 +53,13 @@ def _record(role: str, content: str) -> None:
     client.turns.append({"role": role, "content": content})
 
 
-# Echoed command: the `/greet args` user message is stored *and* the handler
-# appends an assistant reply, so the whole exchange is bookmarked and restored.
+# Echoed command: the `/greet user_input` user message is stored *and* the
+# handler appends an assistant reply, so the whole exchange is bookmarked and
+# restored.
 @chat.slash_command("greet", "Send a greeting")
-async def _(args: str):
-    _record("user", f"/greet {args}".rstrip())
-    reply = f"Hello! You said: {args}"
+async def _(user_input: str):
+    _record("user", f"/greet {user_input}".rstrip())
+    reply = f"Hello! You said: {user_input}"
     _record("assistant", reply)
     await chat.append_message(reply)
 

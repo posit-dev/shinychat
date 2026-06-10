@@ -45,17 +45,17 @@ export interface ChatInputHandle {
 function parseSlashCommand(
   value: string,
   commands: SlashCommandDef[],
-): { command: string; args: string; echo: boolean } | null {
+): { command: string; userText: string; echo: boolean } | null {
   if (!value.startsWith("/")) return null
   const withoutSlash = value.slice(1)
   const spaceIndex = withoutSlash.indexOf(" ")
   const commandName =
     spaceIndex === -1 ? withoutSlash : withoutSlash.slice(0, spaceIndex)
-  const args =
+  const userText =
     spaceIndex === -1 ? "" : withoutSlash.slice(spaceIndex + 1).trim()
   const matched = commands.find((cmd) => cmd.name === commandName)
   if (!matched) return null
-  return { command: commandName, args, echo: matched.echo }
+  return { command: commandName, userText, echo: matched.echo }
 }
 
 function getSlashFilter(value: string): string {
@@ -140,7 +140,7 @@ export const ChatInput = memo(
           const detail: SlashCommandEventDetail = {
             id: containerEl?.id ?? "",
             command: slashMatch.command,
-            args: slashMatch.args,
+            userText: slashMatch.userText,
             echo: slashMatch.echo,
           }
           const ev = new CustomEvent("shiny:chat-slash-command", {
@@ -166,7 +166,7 @@ export const ChatInput = memo(
             transport.sendSlashCommand(
               slashCommandId,
               slashMatch.command,
-              slashMatch.args,
+              slashMatch.userText,
               echo,
             )
           }

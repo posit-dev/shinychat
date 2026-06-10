@@ -3,7 +3,7 @@
 #' @description
 #' An [ellmer::ContentText] subclass that preserves the original slash command
 #' entered by the user. When the chat UI is restored from a bookmark (or
-#' pre-existing turns), the original `/command args` is shown in the UI
+#' pre-existing turns), the original `/command user_text` is shown in the UI
 #' instead of the (possibly transformed) `text` that was sent to the LLM.
 #'
 #' @details
@@ -14,7 +14,7 @@
 #' three properties:
 #'
 #' * `command`: the command name (e.g., `"greet"`).
-#' * `args`: the text the user typed after the command (e.g., `"world"`).
+#' * `user_text`: the text the user typed after the command (e.g., `"world"`).
 #' * `text`: the text that will be sent to the LLM. This starts as a
 #'   descriptive string like
 #'   `"The user entered the /greet slash command with arguments: world"`.
@@ -24,7 +24,7 @@
 #' anywhere a `ContentText` does -- including `client$stream()`,
 #' `client$chat()`, etc. LLM providers read the `text` property
 #' (inherited behavior), while `contents_shinychat()` reconstructs the
-#' original `/command args` for display in the chat UI.
+#' original `/command user_text` for display in the chat UI.
 #'
 #' Bookmark serialization via [ellmer::contents_record()] /
 #' [ellmer::contents_replay()] is automatic.
@@ -33,7 +33,7 @@
 #'
 #' ```r
 #' chat$slash_command("greet", "Greet someone", function(content) {
-#'   content@text <- paste("Say hello to", content@args)
+#'   content@text <- paste("Say hello to", content@user_text)
 #'   stream <- client$stream(content)
 #'   chat_append("chat", stream)
 #' })
@@ -43,8 +43,8 @@
 #' `/greet world`.
 #'
 #' @param command The slash command name (without the leading `/`).
-#' @param args The arguments string provided by the user (the text after the
-#'   command name). Defaults to `""`.
+#' @param user_text The text the user typed after the command name. Defaults
+#'   to `""`.
 #' @param text The text sent to the LLM. When constructed by the chat module,
 #'   this defaults to a descriptive string like
 #'   `"The user entered the /greet slash command with arguments: world"`.
@@ -68,7 +68,7 @@ ContentSlashCommand <- S7::new_class(
         }
       }
     ),
-    args = new_property(
+    user_text = new_property(
       class_character,
       default = "",
       validator = function(value) {
