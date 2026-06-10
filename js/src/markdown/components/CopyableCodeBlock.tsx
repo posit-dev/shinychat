@@ -18,11 +18,19 @@ export function CopyableCodeBlock({
     const text = codeEl?.textContent ?? ""
     try {
       await navigator.clipboard.writeText(text)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
     } catch {
-      // Clipboard API unavailable (non-HTTPS or permission denied)
+      // Fallback for iframes without clipboard-write permission
+      const ta = document.createElement("textarea")
+      ta.value = text
+      ta.style.position = "fixed"
+      ta.style.opacity = "0"
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand("copy")
+      document.body.removeChild(ta)
     }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
 
   return (
