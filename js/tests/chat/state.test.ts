@@ -40,6 +40,43 @@ function makeAssistantMsg(
 
 describe("chatReducer", () => {
   describe("INPUT_SENT", () => {
+    it("INPUT_SENT stores attached image data URLs on the user message", () => {
+      const next = chatReducer(initialState, {
+        type: "INPUT_SENT",
+        content: "look at this",
+        role: "user",
+        attachments: [
+          {
+            mime: "image/png",
+            data_url: "data:image/png;base64,AAA",
+            name: "",
+            size: 0,
+          },
+          {
+            mime: "image/jpeg",
+            data_url: "data:image/jpeg;base64,BBB",
+            name: "",
+            size: 0,
+          },
+        ],
+      })
+      const userMsg = next.messages.find((m) => m.role === "user")
+      expect(userMsg?.attachments?.map((a) => a.data_url)).toEqual([
+        "data:image/png;base64,AAA",
+        "data:image/jpeg;base64,BBB",
+      ])
+    })
+
+    it("INPUT_SENT without images leaves attachments undefined", () => {
+      const next = chatReducer(initialState, {
+        type: "INPUT_SENT",
+        content: "no images",
+        role: "user",
+      })
+      const userMsg = next.messages.find((m) => m.role === "user")
+      expect(userMsg?.attachments).toBeUndefined()
+    })
+
     it("adds user message and loading placeholder, disables input", () => {
       const state = makeState()
       const next = chatReducer(state, {
@@ -137,6 +174,40 @@ describe("chatReducer", () => {
     })
   })
 
+  describe("update_upload", () => {
+    it("enables upload when not explicit", () => {
+      const state = makeState({ enableUpload: false })
+      const next = chatReducer(state, {
+        type: "update_upload",
+        enable_upload: true,
+      })
+      expect(next.enableUpload).toBe(true)
+    })
+
+    it("is ignored when enableUploadExplicit is true", () => {
+      const state = makeState({
+        enableUpload: false,
+        enableUploadExplicit: true,
+      })
+      const next = chatReducer(state, {
+        type: "update_upload",
+        enable_upload: true,
+      })
+      expect(next.enableUpload).toBe(false)
+      expect(next).toBe(state)
+    })
+
+    it("preserves enableUpload + explicit flag across clear", () => {
+      const state = makeState({
+        enableUpload: true,
+        enableUploadExplicit: true,
+      })
+      const next = chatReducer(state, { type: "clear" })
+      expect(next.enableUpload).toBe(true)
+      expect(next.enableUploadExplicit).toBe(true)
+    })
+  })
+
   describe("message", () => {
     it("removes loading placeholder and appends message", () => {
       const placeholder: ChatMessageData = {
@@ -159,6 +230,53 @@ describe("chatReducer", () => {
       expect(next.messages[0]!.content).toBe("Reply")
       expect(next.messages[0]!.isPlaceholder).toBeUndefined()
       expect(next.inputDisabled).toBe(false)
+    })
+
+    it("maps payload attachments onto ChatMessageData.attachments", () => {
+      const state = makeState({ messages: [] })
+      const next = chatReducer(state, {
+        type: "message",
+        message: {
+          role: "user",
+          segments: [{ content: "look at this", content_type: "markdown" }],
+          attachments: [
+            {
+              data_url: "data:image/png;base64,AAAA",
+              name: "c.png",
+              mime: "image/png",
+              size: 3,
+            },
+          ],
+        },
+      })
+      const msg = next.messages[0]!
+      expect(msg.content).toBe("look at this")
+      expect(msg.blocks).toHaveLength(1)
+      expect(msg.blocks[0]).toEqual({
+        type: "content",
+        content: "look at this",
+        contentType: "markdown",
+      })
+      expect(msg.attachments).toEqual([
+        {
+          mime: "image/png",
+          data_url: "data:image/png;base64,AAAA",
+          name: "c.png",
+          size: 3,
+        },
+      ])
+    })
+
+    it("leaves attachments undefined when payload has no attachments field", () => {
+      const state = makeState({ messages: [] })
+      const next = chatReducer(state, {
+        type: "message",
+        message: {
+          role: "assistant",
+          segments: [{ content: "Hi", content_type: "markdown" }],
+        },
+      })
+      expect(next.messages[0]!.attachments).toBeUndefined()
     })
 
     it("appends correctly when no placeholder exists", () => {
@@ -1462,5 +1580,36 @@ describe("chatReducer", () => {
         "The response.",
       )
     })
+  })
+})
+
+describe("INPUT_SENT attachments", () => {
+  it("stores attachments on the user message", () => {
+    const next = chatReducer(initialState, {
+      type: "INPUT_SENT",
+      content: "hi",
+      role: "user",
+      attachments: [
+        {
+          mime: "application/pdf",
+          data_url: "data:application/pdf;base64,AAA",
+          name: "report.pdf",
+          size: 0,
+        },
+      ],
+    })
+    const userMsg = next.messages.find((m) => m.role === "user")!
+    expect(userMsg.attachments).toHaveLength(1)
+    expect(userMsg.attachments![0]!.mime).toBe("application/pdf")
+  })
+
+  it("omits attachments when none are provided", () => {
+    const next = chatReducer(initialState, {
+      type: "INPUT_SENT",
+      content: "hi",
+      role: "user",
+    })
+    const userMsg = next.messages.find((m) => m.role === "user")!
+    expect(userMsg.attachments).toBeUndefined()
   })
 })

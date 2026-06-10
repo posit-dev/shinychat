@@ -1,4 +1,5 @@
 import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
+import type { AttachmentPayload } from "../chat/attachments"
 
 export type ContentType = "markdown" | "html" | "text" | "thinking"
 
@@ -43,6 +44,7 @@ export type MessagePayload = {
   role: "user" | "assistant"
   icon?: string
   segments: MessagePayloadSegment[]
+  attachments?: AttachmentPayload[]
 }
 
 export type ChatAction =
@@ -62,9 +64,12 @@ export type ChatAction =
       placeholder?: string
       submit?: boolean
       focus?: boolean
+      attachments?: AttachmentPayload[]
+      attachment_mode?: "append" | "set"
     }
   | { type: "remove_loading" }
   | { type: "update_cancel"; enable_cancel: boolean }
+  | { type: "update_upload"; enable_upload: boolean }
   | { type: "hide_tool_request"; requestId: string }
   | {
       type: "greeting"
@@ -111,9 +116,22 @@ export type ShinyClientMessage = {
   status?: "error" | "info" | "warning"
 }
 
+/** The user's submission: text plus any attachments, sent as one input value. */
+export type UserInputValue = {
+  text: string
+  attachments: AttachmentPayload[]
+}
+
 /** Core transport: message passing between client and server. */
 export interface ChatTransport {
-  sendInput(id: string, value: string): void
+  /**
+   * Send the user's submission as the type-tagged `shinychat.userInput` value
+   * for the given input id (read server-side as `input$<id>`). The shape
+   * signals the upload mode: a bare `string` when the attachment affordance is
+   * disabled (back-compatible with the historical string-valued input), or a
+   * `{text, attachments}` composite when it is enabled.
+   */
+  sendInput(id: string, value: string | UserInputValue): void
   sendCancel(id: string): void
   sendSlashCommand(
     id: string,

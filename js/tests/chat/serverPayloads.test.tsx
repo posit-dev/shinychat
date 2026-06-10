@@ -22,6 +22,14 @@ describe("server-shaped chat payloads", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
       />,
     )
 
@@ -59,6 +67,14 @@ describe("server-shaped chat payloads", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
       />,
     )
 

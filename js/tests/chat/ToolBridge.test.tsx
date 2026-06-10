@@ -22,6 +22,14 @@ describe("Tool component bridge rendering", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
       />,
     )
 
@@ -59,6 +67,14 @@ describe("Tool component bridge rendering", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
       />,
     )
 
@@ -120,6 +136,14 @@ describe("Tool component bridge rendering", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
       />,
     )
 
@@ -171,6 +195,14 @@ describe("Tool component bridge rendering", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
       />,
     )
 
@@ -229,6 +261,14 @@ describe("Tool component bridge rendering", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
       />,
     )
 
@@ -273,6 +313,14 @@ describe("Tool component bridge rendering", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
         initialMessages={[
           {
             id: "msg-request",
@@ -324,6 +372,14 @@ describe("Tool component bridge rendering", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
       />,
     )
 
@@ -357,6 +413,14 @@ describe("Tool component bridge rendering", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
       />,
     )
 
@@ -392,6 +456,14 @@ describe("Tool component bridge rendering", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
       />,
     )
 

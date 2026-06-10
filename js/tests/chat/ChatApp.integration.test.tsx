@@ -25,6 +25,14 @@ describe("ChatApp integration: full message flow", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
         placeholder="Type..."
       />,
     )
@@ -36,6 +44,7 @@ describe("ChatApp integration: full message flow", () => {
       fireEvent.keyDown(editorEl, { code: "Enter", key: "Enter" })
     })
 
+    // Upload is not enabled here, so the wire shape is a bare string.
     expect(transport.sendInput).toHaveBeenCalledWith(
       "test-input",
       "Hello from user",
@@ -52,6 +61,14 @@ describe("ChatApp integration: full message flow", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
         placeholder="Type..."
       />,
     )
@@ -91,6 +108,14 @@ describe("ChatApp integration: full message flow", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
         placeholder="Type..."
       />,
     )
@@ -132,6 +157,14 @@ describe("ChatApp integration: full message flow", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
         placeholder="Type..."
       />,
     )
@@ -159,6 +192,14 @@ describe("ChatApp integration: full message flow", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
         placeholder="Type..."
       />,
     )

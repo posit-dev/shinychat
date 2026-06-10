@@ -32,10 +32,13 @@ interface ChatAppProps {
   iconAssistant?: string
   inputId: string
   cancelId?: string
+  uploadAccept: string[]
+  maxUploadSize: number | null
   placeholder?: string
   initialMessages?: ChatMessageData[]
   initialGreeting?: InitialGreeting
   enableCancel?: boolean
+  enableUpload?: boolean
   footerEl?: Element
   slashCommandId?: string
   submitKey?: SubmitKey
@@ -71,10 +74,13 @@ export function ChatApp({
   iconAssistant,
   inputId,
   cancelId,
+  uploadAccept,
+  maxUploadSize,
   placeholder,
   initialMessages,
   initialGreeting,
   enableCancel,
+  enableUpload,
   footerEl,
   slashCommandId = "",
   submitKey,
@@ -89,6 +95,8 @@ export function ChatApp({
       : null,
     enableCancel: enableCancel ?? initialState.enableCancel,
     enableCancelExplicit: enableCancel !== undefined,
+    enableUpload: enableUpload ?? initialState.enableUpload,
+    enableUploadExplicit: enableUpload !== undefined,
   })
 
   const containerRef = useRef<ChatContainerHandle>(null)
@@ -106,10 +114,12 @@ export function ChatApp({
 
         // Value and focus are always imperative — the textarea is
         // fully uncontrolled, so the reducer never touches its value.
-        if (action.value !== undefined) {
+        if (action.value !== undefined || action.attachments !== undefined) {
           containerRef.current?.setInputValue(action.value, {
             submit: action.submit,
             focus: action.focus,
+            attachments: action.attachments,
+            attachmentMode: action.attachment_mode,
           })
         } else if (action.focus) {
           containerRef.current?.focus()
@@ -183,9 +193,12 @@ export function ChatApp({
             inputPlaceholder={state.inputPlaceholder}
             iconAssistant={iconAssistant}
             inputId={inputId}
+            uploadAccept={uploadAccept}
+            maxUploadSize={maxUploadSize}
             greeting={state.greeting}
             cancelId={cancelId}
             enableCancel={state.enableCancel}
+            enableUpload={state.enableUpload}
             cancelRequested={state.cancelRequested}
             footerEl={footerEl}
             slashCommands={state.slashCommands}

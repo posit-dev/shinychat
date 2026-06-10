@@ -32,6 +32,14 @@ async function renderWithSuggestions(placeholder = "Type...") {
       shinyLifecycle={shinyLifecycle}
       elementId="test-chat"
       inputId="test-input"
+      uploadAccept={[
+        "image/png",
+        "image/jpeg",
+        "image/gif",
+        "image/webp",
+        "application/pdf",
+      ]}
+      maxUploadSize={30000000}
       placeholder={placeholder}
     />,
   )
@@ -165,6 +173,14 @@ describe("SuggestionCards: aria-label matches visible text (#5 / test-d)", () =>
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat-ol"
         inputId="test-input-ol"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
         placeholder="Type..."
       />,
     )

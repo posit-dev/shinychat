@@ -5,6 +5,7 @@ import type {
   GreetingOptions,
   SlashCommandDef,
 } from "../transport/types"
+import type { AttachmentPayload } from "./attachments"
 import { uuid } from "../utils/uuid"
 
 export interface ContentBlock {
@@ -33,6 +34,8 @@ export interface ChatMessageData {
   /** True for the empty placeholder message shown while waiting for the assistant to respond. */
   isPlaceholder?: boolean
   icon?: string
+  /** Attachments the user sent (user messages only). */
+  attachments?: AttachmentPayload[]
   blocks: MessageBlock[]
   /** Tracks whether streaming content is inside an unclosed <thinking> tag */
   insideThinkingTag?: boolean
@@ -78,6 +81,14 @@ export interface ChatState extends ChatInputState, ChatToolState {
    */
   enableCancelExplicit: boolean
   slashCommands: SlashCommandDef[]
+  /** Whether the attachment affordance is enabled. */
+  enableUpload: boolean
+  /**
+   * Whether `enableUpload` was set explicitly via the `allow-attachments`
+   * attribute. When true, server `update_upload` messages are ignored so an
+   * explicit user choice always wins over the `client=` auto-default.
+   */
+  enableUploadExplicit: boolean
 }
 
 // Actions that originate from the UI (not from the server)
@@ -88,6 +99,7 @@ export type UIAction =
       role: "user"
       /** When false, append the user message only — no loading placeholder, no input disable. Defaults to true. */
       awaitResponse?: boolean
+      attachments?: AttachmentPayload[]
     }
   | { type: "greeting_dismissed" }
   | { type: "CANCEL_REQUESTED" }
@@ -103,6 +115,8 @@ export const initialState: ChatState = {
   cancelRequested: false,
   enableCancel: false,
   enableCancelExplicit: false,
+  enableUpload: false,
+  enableUploadExplicit: false,
   hiddenToolRequests: new Set(),
   slashCommands: [],
 }
@@ -112,6 +126,7 @@ function messagePayloadToData(msg: MessagePayload): ChatMessageData {
   for (const seg of msg.segments) {
     blocks.push(...splitThinkingBlocks(seg.content, seg.content_type))
   }
+  const attachments: AttachmentPayload[] = msg.attachments ?? []
   const contentOnly = blocks
     .filter((b): b is ContentBlock => b.type === "content")
     .map((b) => b.content)
@@ -123,6 +138,7 @@ function messagePayloadToData(msg: MessagePayload): ChatMessageData {
     content: contentOnly,
     streaming: false,
     icon: msg.icon,
+    ...(attachments.length > 0 ? { attachments } : {}),
     blocks,
   }
 }
@@ -473,6 +489,9 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         role: "user",
         content: action.content,
         streaming: false,
+        ...(action.attachments && action.attachments.length > 0
+          ? { attachments: action.attachments }
+          : {}),
         blocks: [
           { type: "content", content: action.content, contentType: "markdown" },
         ],
@@ -826,6 +845,11 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       return { ...state, enableCancel: action.enable_cancel }
     }
 
+    case "update_upload": {
+      if (state.enableUploadExplicit) return state
+      return { ...state, enableUpload: action.enable_upload }
+    }
+
     case "clear": {
       // action.greeting=true means "also clear the greeting"; otherwise restore it as visible
       const greetingAfterClear = action.greeting
@@ -843,6 +867,8 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         enableCancel: state.enableCancel,
         enableCancelExplicit: state.enableCancelExplicit,
         slashCommands: state.slashCommands,
+        enableUpload: state.enableUpload,
+        enableUploadExplicit: state.enableUploadExplicit,
       }
     }
 

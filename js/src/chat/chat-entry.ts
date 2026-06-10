@@ -6,6 +6,7 @@ import { getShinyTransport } from "../transport/shiny-transport"
 import type { ChatMessageData } from "./state"
 import type { ContentType, GreetingOptions } from "../transport/types"
 import { uuid } from "../utils/uuid"
+import { DEFAULT_UPLOAD_ACCEPT } from "./attachments"
 
 // Single shared transport instance for all chat instances on the page
 const transport = getShinyTransport()
@@ -87,12 +88,31 @@ class ChatContainerElement extends HTMLElement {
     const enableCancel =
       enableCancelAttr === null ? undefined : enableCancelAttr !== "false"
 
+    // `allow-attachments`: absent (null) defers to the server (`client=`) via
+    // `update_upload`; "true"/"false" is an explicit choice.
+    const enableUploadAttr = this.getAttribute("allow-attachments")
+    const enableUpload =
+      enableUploadAttr === null ? undefined : enableUploadAttr !== "false"
+
     const inputEl = this.querySelector(CHAT_INPUT_TAG)
     const placeholder = inputEl?.getAttribute("placeholder") ?? undefined
 
     // Falls back to "<elementId>_user_input" (the R package's convention)
     const inputId = inputEl?.getAttribute("id") ?? `${elementId}_user_input`
     const cancelId = `${elementId}_cancel`
+
+    const uploadAcceptAttr = this.getAttribute("attachment-accept")
+    const uploadAccept = uploadAcceptAttr
+      ? uploadAcceptAttr.split(",").map((s) => s.trim())
+      : DEFAULT_UPLOAD_ACCEPT
+
+    // The server always sets max-attachment-size on this element; null means
+    // the attribute is absent (e.g. standalone use) and no cap is enforced.
+    const maxUploadSizeAttr = this.getAttribute("max-attachment-size")
+    const parsedMax = maxUploadSizeAttr ? parseInt(maxUploadSizeAttr, 10) : NaN
+    const maxUploadSize: number | null = Number.isFinite(parsedMax)
+      ? parsedMax
+      : null
 
     const initialMessages = parseInitialMessages(this)
 
@@ -126,10 +146,13 @@ class ChatContainerElement extends HTMLElement {
         iconAssistant,
         inputId,
         cancelId,
+        uploadAccept,
+        maxUploadSize,
         placeholder,
         initialMessages,
         initialGreeting,
         enableCancel,
+        enableUpload,
         footerEl: this.footerEl ?? undefined,
         slashCommandId,
         submitKey,
