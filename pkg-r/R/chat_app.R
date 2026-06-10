@@ -420,7 +420,10 @@ chat_mod_server <- function(
                   command = data$command,
                   args = args,
                   text = paste0(
-                    sprintf("The user entered the /%s slash command", data$command),
+                    sprintf(
+                      "The user entered the /%s slash command",
+                      data$command
+                    ),
                     if (nzchar(args)) paste0(" with arguments: ", args) else "."
                   )
                 )
