@@ -532,7 +532,9 @@ def test_slash_command_allows_overwrite_with_force():
         chat.slash_command("greet", "Say hello", fn=lambda: None)
         chat.slash_command("greet", "Say hi", fn=lambda: None, force=True)
         with reactive.isolate():
-            assert chat._slash_commands()["greet"].definition["description"] == "Say hi"
+            cmds = chat._slash_commands()
+            assert cmds is not None
+            assert cmds["greet"].definition["description"] == "Say hi"
 
 
 def test_slash_command_remove():
@@ -540,16 +542,20 @@ def test_slash_command_remove():
         chat = Chat(id="chat")
         remove = chat.slash_command("greet", "Say hello", fn=lambda: None)
         with reactive.isolate():
-            assert "greet" in chat._slash_commands()
+            cmds = chat._slash_commands()
+            assert cmds is not None
+            assert "greet" in cmds
 
         remove()
         with reactive.isolate():
-            assert "greet" not in chat._slash_commands()
+            assert "greet" not in (chat._slash_commands() or {})
 
         # After removal, re-registering without force should succeed
         chat.slash_command("greet", "Say hello again", fn=lambda: None)
         with reactive.isolate():
-            assert chat._slash_commands()["greet"].definition["description"] == "Say hello again"
+            cmds = chat._slash_commands()
+            assert cmds is not None
+            assert cmds["greet"].definition["description"] == "Say hello again"
 
 
 def test_slash_command_remove_by_name():
@@ -557,11 +563,13 @@ def test_slash_command_remove_by_name():
         chat = Chat(id="chat")
         chat.slash_command("greet", "Say hello", fn=lambda: None)
         with reactive.isolate():
-            assert "greet" in chat._slash_commands()
+            cmds = chat._slash_commands()
+            assert cmds is not None
+            assert "greet" in cmds
 
         chat.remove_slash_command("greet")
         with reactive.isolate():
-            assert "greet" not in chat._slash_commands()
+            assert "greet" not in (chat._slash_commands() or {})
 
         # Removing a non-existent command is a no-op
         chat.remove_slash_command("greet")
@@ -578,9 +586,11 @@ def test_slash_command_echo_defaults_to_handler_presence():
         chat.slash_command("nohandler", "No handler", fn=None)
 
         with reactive.isolate():
-            assert chat._slash_commands()["withhandler"].definition["echo"] is True
-            assert chat._slash_commands()["nohandler"].definition["echo"] is False
-            assert chat._slash_commands()["nohandler"].handler is None
+            cmds = chat._slash_commands()
+            assert cmds is not None
+            assert cmds["withhandler"].definition["echo"] is True
+            assert cmds["nohandler"].definition["echo"] is False
+            assert cmds["nohandler"].handler is None
 
 
 def test_slash_command_echo_explicit_override():
@@ -592,8 +602,10 @@ def test_slash_command_echo_explicit_override():
             ...
 
         with reactive.isolate():
-            assert chat._slash_commands()["sideeffect"].definition["echo"] is False
-            assert chat._slash_commands()["sideeffect"].handler is not None
+            cmds = chat._slash_commands()
+            assert cmds is not None
+            assert cmds["sideeffect"].definition["echo"] is False
+            assert cmds["sideeffect"].handler is not None
 
 
 def test_slash_command_fn_none_returns_remover():
@@ -602,10 +614,12 @@ def test_slash_command_fn_none_returns_remover():
 
         remove = chat.slash_command("temp", "Temp", fn=None)
         with reactive.isolate():
-            assert "temp" in chat._slash_commands()
+            cmds = chat._slash_commands()
+            assert cmds is not None
+            assert "temp" in cmds
         remove()
         with reactive.isolate():
-            assert "temp" not in chat._slash_commands()
+            assert "temp" not in (chat._slash_commands() or {})
 
 
 def test_slash_command_fn_none_with_explicit_echo_true():
@@ -615,8 +629,10 @@ def test_slash_command_fn_none_with_explicit_echo_true():
         chat.slash_command("clientecho", "Client-side but echoed", fn=None, echo=True)
 
         with reactive.isolate():
-            assert chat._slash_commands()["clientecho"].definition["echo"] is True
-            assert chat._slash_commands()["clientecho"].handler is None
+            cmds = chat._slash_commands()
+            assert cmds is not None
+            assert cmds["clientecho"].definition["echo"] is True
+            assert cmds["clientecho"].handler is None
 
 
 def test_bookmark_round_trips_echoed_slash_command():
