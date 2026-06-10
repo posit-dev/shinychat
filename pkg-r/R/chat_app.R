@@ -398,27 +398,19 @@ chat_mod_server <- function(
       set_greeting_mod(greeting)
     }
 
-    # Internal state for registered slash commands
-    # Each entry: list(handler, takes_args, definition = list(name, description, echo))
-    slash_commands <- list()
-    # Reactive mirror of the command definitions sent to the client. Updating
-    # this (rather than sending directly) lets multiple registrations during
-    # app startup coalesce into a single sync on the next flush, mirroring the
-    # Python implementation. It starts as `NULL` until the first registration,
-    # which lets us skip the redundant initial sync (the client already
-    # initializes to `[]`). An empty list, by contrast, is sent so that removing
-    # the last command clears the client's palette.
-    slash_commands_defs <- shiny::reactiveVal(
-      NULL,
-      label = "slash_commands_defs"
-    )
+    # Registered slash commands. Each entry: list(handler, takes_args, definition).
+    # Using a reactiveVal lets multiple registrations during app startup coalesce
+    # into a single client sync on the next flush. Starts as NULL so the sync
+    # observer skips the redundant initial send (the client already initializes
+    # to []); an empty list is sent when the last command is removed.
+    slash_commands <- shiny::reactiveVal(NULL, label = "slash_commands")
 
     shiny::observeEvent(
       input$chat_slash_command,
       label = "on_chat_slash_command",
       {
         data <- input$chat_slash_command
-        reg <- slash_commands[[data$command]]
+        reg <- isolate(slash_commands())[[data$command]]
         if (!is.null(reg) && is.function(reg$handler)) {
           tryCatch(
             {
@@ -459,13 +451,14 @@ chat_mod_server <- function(
     )
 
     shiny::observe(label = "sync_slash_commands", {
-      defs <- slash_commands_defs()
-      if (!is.null(defs)) {
-        action <- list(
-          type = "update_slash_commands",
-          commands = unname(defs)
+      cmds <- slash_commands()
+      if (!is.null(cmds)) {
+        defs <- lapply(cmds, `[[`, "definition")
+        send_chat_action(
+          "chat",
+          list(type = "update_slash_commands", commands = unname(defs)),
+          session = session
         )
-        send_chat_action("chat", action, session = session)
       }
     })
 
@@ -503,7 +496,9 @@ chat_mod_server <- function(
         takes_args <- length(handler_args) > 0
       }
 
-      if (!force && name %in% names(slash_commands)) {
+      cmds <- isolate(slash_commands()) %||% list()
+
+      if (!force && name %in% names(cmds)) {
         cli::cli_abort(
           "Slash command {.val {name}} is already registered. Use {.code force = TRUE} to overwrite it."
         )
@@ -511,7 +506,7 @@ chat_mod_server <- function(
 
       resolved_echo <- if (is.null(echo)) !is.null(handler) else isTRUE(echo)
 
-      slash_commands[[name]] <<- list(
+      cmds[[name]] <- list(
         handler = handler,
         takes_args = takes_args,
         definition = list(
@@ -520,12 +515,12 @@ chat_mod_server <- function(
           echo = resolved_echo
         )
       )
-
-      slash_commands_defs(lapply(slash_commands, `[[`, "definition"))
+      slash_commands(cmds)
 
       function() {
-        slash_commands[[name]] <<- NULL
-        slash_commands_defs(lapply(slash_commands, `[[`, "definition"))
+        cmds <- isolate(slash_commands())
+        cmds[[name]] <- NULL
+        slash_commands(cmds)
       }
     }
 

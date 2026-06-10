@@ -197,7 +197,7 @@ test_that("chat_mod_server slash_command echo defaults to handler presence", {
       cmds <- get(
         "slash_commands",
         envir = environment(session$returned$slash_command)
-      )
+      )()
       expect_true(cmds[["withhandler"]]$definition$echo)
       expect_false(cmds[["nohandler"]]$definition$echo)
       expect_null(cmds[["nohandler"]]$handler)
@@ -228,7 +228,7 @@ test_that("chat_mod_server slash_command echo can be set explicitly", {
       cmds <- get(
         "slash_commands",
         envir = environment(session$returned$slash_command)
-      )
+      )()
       expect_false(cmds[["sideeffect"]]$definition$echo)
     }
   )
@@ -284,7 +284,7 @@ test_that("chat_mod_server slash_command with NULL handler does not run server-s
       slash_commands <- get(
         "slash_commands",
         envir = environment(session$returned$slash_command)
-      )
+      )()
       expect_null(slash_commands[["clientside"]]$handler)
 
       # Invoking the NULL-handler command must not error (the observer guard

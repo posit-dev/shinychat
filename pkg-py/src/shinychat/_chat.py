@@ -296,7 +296,6 @@ class Chat:
         self.id = resolve_id(id)
         self.user_input_id = ResolvedId(f"{self.id}_user_input")
         self._slash_command_id = ResolvedId(f"{self.id}_slash_command")
-        self._slash_commands: dict[str, SlashCommandRegistration] = {}
         self._transform_user: TransformUserInputAsync | None = None
         self._transform_assistant: (
             TransformAssistantResponseChunkAsync | None
@@ -339,10 +338,10 @@ class Chat:
 
             # `None` until the first registration, which lets us skip the
             # redundant initial sync (the client already initializes to `[]`).
-            # An empty list, by contrast, is sent so that removing the last
+            # An empty dict, by contrast, is sent so that removing the last
             # command clears the client's palette.
-            self._slash_commands_rv: reactive.Value[
-                list[SlashCommandDef] | None
+            self._slash_commands: reactive.Value[
+                dict[str, SlashCommandRegistration] | None
             ] = reactive.Value(None)
 
             self._latest_user_input: reactive.Value[
@@ -380,13 +379,13 @@ class Chat:
 
             @reactive.effect
             async def _sync_slash_commands():
-                commands = self._slash_commands_rv()
-                if commands is None:
+                cmds = self._slash_commands()
+                if cmds is None:
                     return
                 await self._send_action(
                     {
                         "type": "update_slash_commands",
-                        "commands": commands,
+                        "commands": [reg.definition for reg in cmds.values()],
                     }
                 )
 
@@ -401,7 +400,8 @@ class Chat:
                     full_text = f"/{command} {args}".rstrip()
                     msg = ChatMessage(content=full_text, role="user")
                     self._store_message(self._as_stored_message(msg))
-                reg = self._slash_commands.get(command)
+                cmds = self._slash_commands()
+                reg = cmds.get(command) if cmds else None
                 try:
                     if reg is not None and reg.handler is not None:
                         if reg.takes_args:
@@ -643,12 +643,16 @@ class Chat:
             the command.
         """
 
+        from shiny import reactive
+
         def _register(handler: UserSubmitFunction | None) -> None:
             if not re.fullmatch(r"[a-zA-Z0-9_-]+", name):
                 raise ValueError(
                     f"Slash command name must contain only alphanumeric characters, underscores, or hyphens, got {name!r}"
                 )
-            if not force and name in self._slash_commands:
+            with reactive.isolate():
+                cmds = dict(self._slash_commands() or {})
+            if not force and name in cmds:
                 raise ValueError(
                     f"Slash command {name!r} is already registered. "
                     f"Use `force=True` to overwrite it."
@@ -657,7 +661,7 @@ class Chat:
             cmd_def = SlashCommandDef(
                 name=name, description=description, echo=resolved_echo
             )
-            self._slash_commands[name] = SlashCommandRegistration(
+            cmds[name] = SlashCommandRegistration(
                 handler=handler,
                 takes_args=(
                     handler is not None
@@ -665,9 +669,7 @@ class Chat:
                 ),
                 definition=cmd_def,
             )
-            self._slash_commands_rv.set(
-                [reg.definition for reg in self._slash_commands.values()]
-            )
+            self._slash_commands.set(cmds)
 
         if isinstance(fn, MISSING_TYPE):
 
@@ -689,10 +691,12 @@ class Chat:
         name
             The name of the command to remove (without the leading ``/``).
         """
-        self._slash_commands.pop(name, None)
-        self._slash_commands_rv.set(
-            [reg.definition for reg in self._slash_commands.values()]
-        )
+        from shiny import reactive
+
+        with reactive.isolate():
+            cmds = dict(self._slash_commands() or {})
+        cmds.pop(name, None)
+        self._slash_commands.set(cmds)
 
     def _remove_slash_command_fn(self, name: str) -> Callable[[], None]:
         def remove() -> None:
