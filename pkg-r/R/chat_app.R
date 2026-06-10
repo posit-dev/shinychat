@@ -419,7 +419,13 @@ chat_mod_server <- function(
           tryCatch(
             {
               if (isTRUE(reg$takes_args)) {
-                reg$handler(data$args %||% "")
+                args <- data$args %||% ""
+                content <- ContentSlashCommand(
+                  command = data$command,
+                  args = args,
+                  text = args
+                )
+                reg$handler(content)
               } else {
                 reg$handler()
               }
