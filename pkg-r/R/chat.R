@@ -1217,6 +1217,7 @@ chat_clear <- function(
 #' }
 #'
 #' shinyApp(ui, server)
+
 update_chat_user_input <- function(
   id,
   ...,
