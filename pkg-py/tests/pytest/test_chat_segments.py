@@ -11,6 +11,7 @@ def test_append_merges_same_content_type():
     append_to_segments(segs, "a", "markdown")
     append_to_segments(segs, "b", "markdown")
     assert len(segs) == 1
+    assert isinstance(segs[0], ContentSegment)
     assert segs[0].content == "ab"
 
 
@@ -19,6 +20,7 @@ def test_append_splits_on_content_type_change():
     append_to_segments(segs, "a", "markdown")
     append_to_segments(segs, "t", "thinking")
     append_to_segments(segs, "b", "markdown")
+    assert all(isinstance(s, ContentSegment) for s in segs)
     assert [s.content_type for s in segs] == ["markdown", "thinking", "markdown"]
 
 

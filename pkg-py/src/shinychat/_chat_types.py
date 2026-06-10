@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import AsyncIterable, Literal, Union
+from typing import Any, AsyncIterable, Literal, Union
 
 from htmltools import HTML, HTMLDependency, Tag, TagChild, TagList
 from pydantic import BaseModel
 
+from ._attachments import Attachment
 from ._html_islands import split_html_islands
 from ._typing_extensions import NotRequired, TypedDict
 
@@ -27,6 +28,7 @@ class MessagePayloadSegment(TypedDict):
 class MessagePayload(TypedDict):
     role: Literal["user", "assistant"]
     segments: list[MessagePayloadSegment]
+    attachments: NotRequired[list[Attachment]]
     id: NotRequired[str]
     icon: NotRequired[str]
 
@@ -63,6 +65,8 @@ class UpdateInputAction(TypedDict):
     placeholder: NotRequired[str]
     submit: NotRequired[bool]
     focus: NotRequired[bool]
+    attachments: NotRequired[list[dict[str, Any]]]
+    attachment_mode: NotRequired[Literal["append", "set"]]
 
 
 class RemoveLoadingAction(TypedDict):
@@ -72,6 +76,11 @@ class RemoveLoadingAction(TypedDict):
 class UpdateCancelAction(TypedDict):
     type: Literal["update_cancel"]
     enable_cancel: bool
+
+
+class UpdateUploadAction(TypedDict):
+    type: Literal["update_upload"]
+    enable_upload: bool
 
 
 class HideToolRequestAction(TypedDict):
@@ -132,6 +141,7 @@ ChatAction = Union[
     UpdateInputAction,
     RemoveLoadingAction,
     UpdateCancelAction,
+    UpdateUploadAction,
     HideToolRequestAction,
     GreetingAction,
     GreetingStartAction,
@@ -159,6 +169,7 @@ class ChatMessageDict(TypedDict):
     content: str
     role: Role
     html_deps: NotRequired[list[SerializedDep]]
+    attachments: NotRequired[list[Attachment]]
 
 
 class ChatMessage:
@@ -167,8 +178,13 @@ class ChatMessage:
         content: TagChild,
         role: Role = "assistant",
         content_type: "ContentType | None" = None,
+        attachments: "list[Attachment] | None" = None,
     ):
         self.role: Role = role
+        self.attachments: list[Attachment] = [
+            Attachment.model_validate(a) if isinstance(a, dict) else a
+            for a in (attachments or [])
+        ]
         self.content_type: ContentType = (
             content_type if content_type is not None else "markdown"
         )
@@ -310,6 +326,7 @@ class StoredSegment(_SegmentBase):
 class StoredMessage(BaseModel):
     role: Role
     segments: list[StoredSegment]
+    attachments: list[Attachment] = []
 
     @property
     def content(self) -> str:
@@ -347,4 +364,5 @@ class StoredMessage(BaseModel):
                     html_deps=html_deps,
                 )
             ],
+            attachments=message.attachments,
         )

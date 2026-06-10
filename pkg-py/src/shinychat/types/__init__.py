@@ -1,3 +1,4 @@
+from .._attachments import Attachment
 from .._chat import ChatMessage, ChatMessageDict
 from .._chat_client import ChatClient
 from .._chat_types import ChatGreeting
@@ -18,6 +19,7 @@ except ImportError:
 
 
 __all__ = [
+    "Attachment",
     "ChatClient",
     "ChatGreeting",
     "ChatMessage",

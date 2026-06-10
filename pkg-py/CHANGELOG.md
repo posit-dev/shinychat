@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * `Chat()` now accepts an optional `client=` parameter. When provided, streaming, cancellation, bookmarking, and greeting handling are wired up automatically — no manual plumbing required. The `chat.client` property exposes a `ChatClient` wrapper with `.value` (the raw chatlas client), `.set()` for swapping models mid-session, and `.clear()` for resetting the conversation with flexible history management.
 
+* File attachment support: users can upload images, PDFs, and text files alongside chat messages via a file picker button, drag-and-drop, or clipboard paste. Enable with `chat_ui(allow_attachments=True)` or pass a list of MIME types to restrict accepted file types. When using `client=`, attachments are enabled automatically and converted to the appropriate chatlas content types. For manual wiring, declare a second `list[Attachment]` parameter on your `@chat.on_user_submit` handler and use `attachment_to_content()` to convert each attachment. The maximum combined attachment size defaults to 30 MB and can be configured via the `SHINYCHAT_MAX_ATTACHMENT_SIZE` environment variable.
+
 ### Improvements
 
 * Bookmarking now correctly restores assistant messages that mix content types within a single message — for example a reply that combines markdown, a raw-HTML widget, and reasoning. Previously, restoring such a message could lose formatting or interactive components.
