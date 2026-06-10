@@ -187,6 +187,7 @@ chat_mod_ui <- function(
     shiny::NS(id, "chat"),
     messages = messages,
     enable_cancel = TRUE,
+    `effective-id` = id,
     ...
   )
 }

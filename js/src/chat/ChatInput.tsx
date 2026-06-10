@@ -138,7 +138,10 @@ export const ChatInput = memo(
             textareaRef.current?.closest<HTMLElement>("shiny-chat-container") ??
             null
           const detail: SlashCommandEventDetail = {
-            id: containerEl?.id ?? "",
+            id:
+              containerEl?.getAttribute("effective-id") ??
+              containerEl?.id ??
+              "",
             command: slashMatch.command,
             userText: slashMatch.userText,
             echo: slashMatch.echo,

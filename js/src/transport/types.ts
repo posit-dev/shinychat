@@ -24,7 +24,7 @@ export interface SlashCommandDef {
 
 /** Detail payload of the cancelable `shiny:chat-slash-command` DOM event. */
 export interface SlashCommandEventDetail {
-  /** The chat container element id (use to target a specific chat instance). */
+  /** The chat id (use to target a specific chat instance). */
   readonly id: string
   /** The parsed command name (read-only). */
   readonly command: string
