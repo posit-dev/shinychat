@@ -1,5 +1,18 @@
 # shinychat (development version)
 
+## Breaking changes
+
+* `input$<id>_user_input` is unchanged for text-only messages (still the typed
+  string). When the user attaches files, it is now a list of ellmer `Content`
+  objects (the typed text, if any, followed by one object per attachment), and
+  the separate `input$<id>_user_attachments` input has been removed. Forward
+  either form to a chat method by splicing with `!!!`, e.g.
+  `chat$stream_async(!!!input$<id>_user_input)`.
+
+* The `last_input` reactive returned by `chat_mod_server()` now mirrors the
+  shape of `input$<id>_user_input`: a string when attachments are disabled, a
+  list of ellmer `Content` objects when enabled.
+
 ## New features and improvements
 
 * Added slash commands: a typeahead command palette that lets users trigger named shortcuts directly from the chat input. Type `/` to open the palette, filter by typing, and pick a command with arrow keys or click. Commands can expand into LLM prompts, trigger server-side side effects (clear chat, open a modal, export transcript), or be handled entirely client-side via the cancelable `shiny:chat-slash-command` DOM event. Register commands with `chat$slash_command()`, which accepts 0- or 1-argument handlers; 1-argument handlers receive a `ContentSlashCommand` object (a `ContentText` subclass with `command` and `user_text` slots) so handlers can mutate `content@text` before passing it to `client$stream()`. The `echo` parameter controls whether an invocation is recorded as a user message and triggers a loading state. Echoed commands are faithfully restored on bookmark/restore. (#239)

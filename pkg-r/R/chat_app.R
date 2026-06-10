@@ -76,7 +76,9 @@
 #'   * `chat_mod_server()` includes the shinychat module server logic, and
 #'     returns an environment containing:
 #'
-#'     * `last_input`: A reactive value containing the last user input.
+#'     * `last_input`: A reactive value containing the last user input (a string
+#'       when attachments are disabled, a list of ellmer `Content` objects when
+#'       enabled).
 #'     * `last_turn`: A reactive value containing the last assistant turn.
 #'     * `update_user_input()`: A function to update the chat input or submit a
 #'       new user input. Takes the same arguments as [update_chat_user_input()],
@@ -130,13 +132,23 @@
 #' @describeIn chat_app A simple Shiny app for live chatting. Note that this
 #'   app is suitable for interactive use by a single user; do not use
 #'   `chat_app()` in a multi-user Shiny app context.
+#' @inheritParams chat_ui
 #' @export
-chat_app <- function(client, ..., bookmark_store = "url") {
+chat_app <- function(
+  client,
+  ...,
+  bookmark_store = "url",
+  allow_attachments = TRUE
+) {
   check_ellmer_chat(client)
 
   ui <- function(req) {
     bslib::page_fillable(
-      chat_mod_ui("chat", height = "100%"),
+      chat_mod_ui(
+        "chat",
+        height = "100%",
+        allow_attachments = allow_attachments
+      ),
       shiny::actionButton(
         "close_btn",
         label = "",
@@ -168,12 +180,14 @@ check_ellmer_chat <- function(client) {
 #' @param messages Initial messages shown in the chat, used only when `client`
 #'   (in `chat_mod_ui()`) doesn't already contain turns. Passed to `messages`
 #'   in [chat_ui()].
+#' @inheritParams chat_ui
 #' @export
 chat_mod_ui <- function(
   id,
   ...,
   client = deprecated(),
-  messages = NULL
+  messages = NULL,
+  allow_attachments = TRUE
 ) {
   if (lifecycle::is_present(client)) {
     lifecycle::deprecate_warn(
@@ -188,6 +202,7 @@ chat_mod_ui <- function(
     messages = messages,
     enable_cancel = TRUE,
     `effective-id` = id,
+    allow_attachments = allow_attachments,
     ...
   )
 }
@@ -254,7 +269,7 @@ chat_mod_server <- function(
   append_stream_task <- shiny::ExtendedTask$new(
     function(client, ui_id, user_input, controller = NULL) {
       stream <- client$stream_async(
-        user_input,
+        !!!user_input,
         stream = "content",
         controller = controller
       )
@@ -354,7 +369,9 @@ chat_mod_server <- function(
       ...,
       placeholder = NULL,
       submit = FALSE,
-      focus = FALSE
+      focus = FALSE,
+      attachments = NULL,
+      attachment_mode = c("append", "set")
     ) {
       update_chat_user_input(
         "chat",
@@ -362,6 +379,8 @@ chat_mod_server <- function(
         placeholder = placeholder,
         submit = submit,
         focus = focus,
+        attachments = attachments,
+        attachment_mode = attachment_mode,
         ...,
         session = session
       )

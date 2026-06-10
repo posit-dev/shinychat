@@ -11,6 +11,8 @@ update_chat_user_input(
   placeholder = NULL,
   submit = FALSE,
   focus = FALSE,
+  attachments = NULL,
+  attachment_mode = c("append", "set"),
   session = getDefaultReactiveDomain()
 )
 }
@@ -25,7 +27,18 @@ update_chat_user_input(
 
 \item{submit}{Whether to automatically submit the text for the user. Requires \code{value}.}
 
-\item{focus}{Whether to move focus to the input element. Requires \code{value}.}
+\item{focus}{Whether to move focus to the input element. Requires \code{value}
+or non-empty \code{attachments}.}
+
+\item{attachments}{A list of attachment objects created by
+\code{\link[=chat_attachment]{chat_attachment()}}. When \code{NULL} (default), any existing staged
+attachments are left unchanged. Pass an empty list (\code{list()}) to clear
+staged attachments.}
+
+\item{attachment_mode}{How to combine \code{attachments} with any already-staged
+attachments. \code{"append"} (default) adds to the existing set; \code{"set"}
+replaces it. Use \code{attachment_mode = "set"} with \code{attachments = list()} to
+clear all staged attachments.}
 
 \item{session}{The Shiny session object}
 }

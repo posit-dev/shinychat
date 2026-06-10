@@ -175,6 +175,27 @@ chat_greeting <- function(
 #'   `"enter"` (the default): Enter submits, Shift+Enter adds a newline.
 #'   `"enter+modifier"`: Ctrl+Enter (Cmd+Enter on Mac) submits, plain Enter
 #'   adds a newline.
+#' @param allow_attachments Controls the file-attachment affordance (an attach
+#'   button, plus clipboard paste and drag-and-drop) in the chat input. Pass
+#'   `TRUE` to accept all supported types (PNG, JPEG, GIF, WebP, PDF, and common
+#'   text/code files such as Markdown, plain text, CSV, JSON, and source files),
+#'   `FALSE` to disable, or a character vector of MIME types to
+#'   restrict what is accepted (each must be one of the supported types).
+#'
+#'   The shape of `input$<id>_user_input` is determined by this argument, so it
+#'   is predictable for a given app. When attachments are disabled (the
+#'   default), it is the typed text as a character string, exactly as before.
+#'   When attachments are enabled, it is always a list of ellmer
+#'   [ellmer::Content] objects (the typed text, if any, followed by one content
+#'   object per attachment) - a list even when no files were attached. Splice
+#'   the list into a chat method's `...` with `!!!`, e.g.
+#'   `client$stream_async(!!!input$<id>_user_input)`. (No [rlang::inject()] is
+#'   needed: ellmer's chat methods collect `...` with dynamic dots.)
+#'
+#'   The maximum combined size of all attachments in a single message is
+#'   controlled globally by the `SHINYCHAT_MAX_ATTACHMENT_SIZE` environment
+#'   variable (a raw byte count; defaults to 30,000,000). Files that would push
+#'   the total over this cap are rejected in the browser with a notice.
 #' @param footer Optional HTML content to display below the chat input.
 #'   This can be any HTML content (tags, tag lists, or character strings).
 #'   Useful for adding disclaimers, attribution, or other information.
@@ -261,6 +282,7 @@ chat_ui <- function(
   icon_assistant = NULL,
   enable_cancel = FALSE,
   submit_key = c("enter", "enter+modifier"),
+  allow_attachments = FALSE,
   footer = NULL
 ) {
   submit_key <- rlang::arg_match(submit_key)
@@ -360,6 +382,13 @@ chat_ui <- function(
     greeting_attr <- jsonlite::toJSON(greeting_payload, auto_unbox = TRUE)
   }
 
+  attachment_attrs <- resolve_attachment_attrs(allow_attachments)
+  # Always emitted (mirrors Python). Harmless when attachments are disabled:
+  # the client only reads it when the attachment affordance is enabled.
+  max_attachment_size <- trimws(
+    format(resolve_max_attachment_size(), scientific = FALSE)
+  )
+
   # Build UI ---------------------------------------------------------------
   res <- tag(
     "shiny-chat-container",
@@ -373,6 +402,9 @@ chat_ui <- function(
       fill = if (isTRUE(fill)) NA else NULL,
       `enable-cancel` = if (isTRUE(enable_cancel)) NA else NULL,
       `submit-key` = if (submit_key != "enter") submit_key,
+      `allow-attachments` = attachment_attrs$allow,
+      `attachment-accept` = attachment_attrs$accept,
+      `max-attachment-size` = max_attachment_size,
       # Also include icon on the parent so that when messages are dynamically added,
       # we know the default icon has changed
       `icon-assistant` = if (!is.null(icon_assistant)) {
@@ -1191,7 +1223,16 @@ chat_clear <- function(
 #' @param value The value to set the user input to. If `NULL`, the input will not be updated.
 #' @param placeholder The placeholder text for the user input
 #' @param submit Whether to automatically submit the text for the user. Requires `value`.
-#' @param focus Whether to move focus to the input element. Requires `value`.
+#' @param focus Whether to move focus to the input element. Requires `value`
+#'   or non-empty `attachments`.
+#' @param attachments A list of attachment objects created by
+#'   [chat_attachment()]. When `NULL` (default), any existing staged
+#'   attachments are left unchanged. Pass an empty list (`list()`) to clear
+#'   staged attachments.
+#' @param attachment_mode How to combine `attachments` with any already-staged
+#'   attachments. `"append"` (default) adds to the existing set; `"set"`
+#'   replaces it. Use `attachment_mode = "set"` with `attachments = list()` to
+#'   clear all staged attachments.
 #' @param session The Shiny session object
 #'
 #' @export
@@ -1233,23 +1274,33 @@ update_chat_user_input <- function(
   placeholder = NULL,
   submit = FALSE,
   focus = FALSE,
+  attachments = NULL,
+  attachment_mode = c("append", "set"),
   session = getDefaultReactiveDomain()
 ) {
   rlang::check_dots_empty()
-  check_active_session(session)
 
-  if (is.null(value) && (submit || focus)) {
+  attachment_mode <- rlang::arg_match(attachment_mode)
+
+  if (isTRUE(submit) && is.null(value)) {
+    rlang::abort("An input `value` must be provided when `submit = TRUE`.")
+  }
+  if (isTRUE(focus) && is.null(value) && length(attachments) == 0) {
     rlang::abort(
-      "An input `value` must be provided when `submit` or `focus` are `TRUE`."
+      "An input `value` or `attachments` must be provided when `focus = TRUE`."
     )
   }
+
+  check_active_session(session)
 
   vals <- drop_nulls(
     list(
       value = value,
       placeholder = placeholder,
-      submit = submit,
-      focus = focus
+      submit = if (submit) TRUE else NULL,
+      focus = if (focus) TRUE else NULL,
+      attachments = attachments,
+      attachment_mode = if (!is.null(attachments) && attachment_mode != "append") attachment_mode else NULL
     )
   )
 
