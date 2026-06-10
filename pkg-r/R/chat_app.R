@@ -424,7 +424,11 @@ chat_mod_server <- function(
                       "The user entered the /%s slash command",
                       data$command
                     ),
-                    if (nzchar(user_text)) paste0(" with arguments: ", user_text) else "."
+                    if (nzchar(user_text)) {
+                      paste0(" with arguments: ", user_text)
+                    } else {
+                      "."
+                    }
                   )
                 )
                 reg$handler(content)
