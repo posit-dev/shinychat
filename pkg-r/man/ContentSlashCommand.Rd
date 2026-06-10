@@ -7,12 +7,15 @@
 ContentSlashCommand(text = stop("Required"), command = character(0), args = "")
 }
 \arguments{
-\item{text}{The text to send to the LLM. Defaults to \code{args}; set to a
-transformed value in the handler if the LLM should see different text.}
+\item{text}{The text sent to the LLM. When constructed by the chat module,
+this defaults to a descriptive string like
+\code{"The user entered the /greet slash command with arguments: world"}.
+Set it in the handler to control what the LLM actually sees.}
 
 \item{command}{The slash command name (without the leading \code{/}).}
 
-\item{args}{The arguments string provided by the user.}
+\item{args}{The arguments string provided by the user (the text after the
+command name). Defaults to \code{""}.}
 }
 \value{
 A \code{ContentSlashCommand} object.
@@ -20,14 +23,33 @@ A \code{ContentSlashCommand} object.
 \description{
 An \link[ellmer:ContentText]{ellmer::ContentText} subclass that preserves the original slash command
 entered by the user. When the chat UI is restored from a bookmark (or
-pre-existing turns), the original \verb{/command args} is shown instead of the
-\code{text} that was sent to the LLM.
+pre-existing turns), the original \verb{/command args} is shown in the UI
+instead of the (possibly transformed) \code{text} that was sent to the LLM.
 }
-\details{
-Slash command handlers registered via \code{chat$slash_command()} receive a
-\code{ContentSlashCommand} object as their argument. The \code{text} property starts
-equal to \code{args}; transform it before passing to \code{client$stream()}:
+\section{How it works}{
+Slash command handlers that accept an argument receive a
+\code{ContentSlashCommand} object rather than a plain string. The object has
+three properties:
+\itemize{
+\item \code{command}: the command name (e.g., \code{"greet"}).
+\item \code{args}: the text the user typed after the command (e.g., \code{"world"}).
+\item \code{text}: the text that will be sent to the LLM. This starts as a
+descriptive string like
+\code{"The user entered the /greet slash command with arguments: world"}.
+Set it to whatever text the LLM should actually see.
+}
 
+Because \code{ContentSlashCommand} extends \link[ellmer:ContentText]{ellmer::ContentText}, it works
+anywhere a \code{ContentText} does -- including \code{client$stream()},
+\code{client$chat()}, etc. LLM providers read the \code{text} property
+(inherited behavior), while \code{contents_shinychat()} reconstructs the
+original \verb{/command args} for display in the chat UI.
+
+Bookmark serialization via \code{\link[ellmer:contents_record]{ellmer::contents_record()}} /
+\code{\link[ellmer:contents_replay]{ellmer::contents_replay()}} is automatic.
+}
+
+\section{Example}{
 \if{html}{\out{<div class="sourceCode r">}}\preformatted{chat$slash_command("greet", "Greet someone", function(content) \{
   content@text <- paste("Say hello to", content@args)
   stream <- client$stream(content)
@@ -35,7 +57,11 @@ equal to \code{args}; transform it before passing to \code{client$stream()}:
 \})
 }\if{html}{\out{</div>}}
 
-The LLM sees the \code{text} value; the chat UI shows \verb{/greet <args>} on
-restore. Bookmark serialization is handled automatically by
-\code{\link[ellmer:contents_record]{ellmer::contents_record()}} / \code{\link[ellmer:contents_replay]{ellmer::contents_replay()}}.
+The LLM sees \code{"Say hello to world"}, but on restore the chat UI shows
+\verb{/greet world}.
+}
+
+\seealso{
+\code{\link[=chat_mod_server]{chat_mod_server()}} for registering slash commands via the
+\code{slash_command()} method on the returned module object.
 }

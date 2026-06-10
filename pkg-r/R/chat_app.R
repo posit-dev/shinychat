@@ -116,12 +116,16 @@
 #'     * `slash_command(name, description, handler, ..., echo, force)`: Register
 #'       a slash command. `handler` is required: pass a function (taking 0 or 1
 #'       argument), or `NULL` for a client-side command handled in JavaScript via
-#'       the `shiny:chat-slash-command` DOM event. `echo` controls whether
-#'       invoking the command is echoed as a user message and awaits a response;
-#'       it defaults to `TRUE` when a handler is given and `FALSE` otherwise (set
-#'       `echo = FALSE` for a handler that only performs side effects). Returns a
-#'       function that removes the command. Errors if a command with the same
-#'       name is already registered unless `force = TRUE`.
+#'       the `shiny:chat-slash-command` DOM event. A handler that takes one
+#'       argument receives a [ContentSlashCommand] object (not a plain string).
+#'       See [ContentSlashCommand] for details on how to use this object to
+#'       preserve the original command text across bookmarks. `echo` controls
+#'       whether invoking the command is echoed as a user message and awaits a
+#'       response; it defaults to `TRUE` when a handler is given and `FALSE`
+#'       otherwise (set `echo = FALSE` for a handler that only performs side
+#'       effects). Returns a function that removes the command. Errors if a
+#'       command with the same name is already registered unless
+#'       `force = TRUE`.
 #'
 #' @describeIn chat_app A simple Shiny app for live chatting. Note that this
 #'   app is suitable for interactive use by a single user; do not use
@@ -423,7 +427,10 @@ chat_mod_server <- function(
                 content <- ContentSlashCommand(
                   command = data$command,
                   args = args,
-                  text = args
+                  text = paste0(
+                    sprintf("The user entered the /%s slash command", data$command),
+                    if (nzchar(args)) paste0(" with arguments: ", args) else "."
+                  )
                 )
                 reg$handler(content)
               } else {

@@ -344,7 +344,11 @@ knitr::include_graphics("images/chat-card.png")
 
 Slash commands give users discoverable shortcuts -- like `/clear`, `/help`, or `/save` -- that run a handler you define on the server. They're a good fit for "meta" actions that aren't really a message to the model: resetting the conversation, opening a help dialog, exporting a transcript, and so on.
 
-Register commands on the object returned by `chat_mod_server()`, using its `slash_command()` method. When a user runs a command, its handler fires instead of the text being sent to the model. A handler can take no arguments, or a single argument that receives the text typed after the command name (for `/search shiny modules`, that's `"shiny modules"`).
+Register commands on the object returned by `chat_mod_server()`, using its `slash_command()` method. When a user runs a command, its handler fires instead of the text being sent to the model.
+
+### Zero-argument handlers
+
+A handler that takes no arguments is called when the command is invoked. This is useful for actions that don't need any user input:
 
 ```r
 library(shiny)
@@ -361,20 +365,37 @@ server <- function(input, output, session) {
   chat$slash_command("clear", "Clear the conversation", function() {
     chat$clear()
   })
-
-  chat$slash_command("search", "Search the docs", function(args) {
-    chat$append(paste("Searching for:", args))
-  })
 }
 
 shinyApp(ui, server)
 ```
 
-Key points:
+### Handlers that accept input
+
+A handler that takes one argument receives a `ContentSlashCommand` object -- not a plain string. This object carries the command name, the text typed after it, and a `text` property that controls what the LLM sees. For example, when a user types `/search shiny modules`:
+
+- `content@command` is `"search"`
+- `content@args` is `"shiny modules"`
+- `content@text` is a descriptive default (e.g., `"The user entered the /search slash command with arguments: shiny modules"`)
+
+Set `content@text` to whatever the LLM should actually see, then pass the object to `client$stream()` or `client$chat()`:
+
+```r
+chat$slash_command("search", "Search the docs", function(content) {
+  content@text <- paste(
+    "Search the documentation for the following topic:", content@args
+  )
+  stream <- client$stream(content)
+  chat_append("chat", stream)
+})
+```
+
+Because `ContentSlashCommand` extends `ellmer::ContentText`, it works anywhere a `ContentText` does. LLM providers read the `text` property, while the chat UI shows the original `/search shiny modules` on restore. This means that when the chat is restored from a bookmark (or pre-existing turns), the user sees the original slash command they typed rather than the transformed text that was sent to the LLM.
+
+### Key points
 
 - Users type `/` to open a palette of registered commands; arrow keys move the selection, Enter or Tab selects, and Escape dismisses it.
 - A command's handler runs instead of sending the text to the model. A `/` message that doesn't match any registered command is sent as an ordinary message.
-- Handlers take 0 or 1 argument (the text after the command name). They're just app code, so they can show modals, trigger downloads, update reactive values, append messages, or do nothing visible at all.
 - `slash_command()` returns a function that removes the command when called. Re-registering an existing name raises an error unless you pass `force = TRUE`.
 - The `echo` argument controls whether invoking a command is shown as a user message and awaits a response. It defaults to `TRUE` when a handler is given. Pass `echo = FALSE` for a handler that only performs side effects (e.g. opening a modal) and shouldn't appear in the conversation.
 
@@ -406,13 +427,6 @@ Inside a module, the chat container id is namespaced: `chat_mod_ui("chat")`
 produces a container with id `chat-chat`, which is the value passed as
 `e.detail.id`. Use that namespaced id (or read `e.detail.id` directly) when
 targeting a specific chat instance.
-
-<div class="callout">
-  <div class="title">Bookmarking</div>
-  <div class="body">
-  Unlike the Python package, the R chat module restores its conversation from the underlying ellmer client's turns rather than from a separate record of what was displayed. Because a slash command's visible message can differ from what (if anything) was sent to the model, slash command messages are **not** restored when a bookmarked app is reopened.
-  </div>
-</div>
 
 ## Stream cancellation
 
