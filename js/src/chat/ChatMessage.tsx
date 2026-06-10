@@ -1,9 +1,26 @@
-import { memo } from "react"
+import React, { memo } from "react"
 import type { ChatMessageData } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { ThinkingDisplay } from "./ThinkingDisplay"
 import { robot, dots_fade } from "../utils/icons"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
+import { useSlashCommands } from "./context"
+import { CommandChip } from "./CommandChip"
+import type { SlashCommandDef } from "../transport/types"
+
+function parseLeadingCommand(
+  content: string,
+  commands: SlashCommandDef[],
+): { commandName: string; remainingText: string } | null {
+  if (!content.startsWith("/")) return null
+  const withoutSlash = content.slice(1)
+  const spaceIndex = withoutSlash.indexOf(" ")
+  const commandName = spaceIndex === -1 ? withoutSlash : withoutSlash.slice(0, spaceIndex)
+  const remainingText = spaceIndex === -1 ? "" : withoutSlash.slice(spaceIndex + 1).trim()
+  const matched = commands.find((cmd) => cmd.name === commandName)
+  if (!matched) return null
+  return { commandName, remainingText }
+}
 
 interface ChatMessageProps {
   message: ChatMessageData
@@ -14,6 +31,7 @@ export const ChatMessage = memo(function ChatMessage({
   message,
   iconAssistant,
 }: ChatMessageProps) {
+  const slashCommands = useSlashCommands()
   const isUser = message.role === "user"
   const hasContent =
     message.content.trim() !== "" ||
@@ -27,6 +45,7 @@ export const ChatMessage = memo(function ChatMessage({
     iconHtml = hasContent ? (message.icon ?? iconAssistant ?? robot) : dots_fade
   }
 
+  const leadingCommand = isUser ? parseLeadingCommand(message.content, slashCommands) : null
   const roleClass = isUser ? "shiny-chat-user-message" : "shiny-chat-message"
 
   return (
@@ -49,6 +68,35 @@ export const ChatMessage = memo(function ChatMessage({
             )
           }
           const isLast = i === message.blocks.length - 1
+
+          if (leadingCommand && i === 0) {
+            const el = leadingCommand.remainingText ? (
+              <MarkdownContent
+                key={i}
+                content={leadingCommand.remainingText}
+                contentType={block.contentType}
+                role={message.role}
+                streaming={message.streaming && isLast}
+                tagToComponentMap={chatTagToComponentMap}
+              />
+            ) : null
+
+            if (block.contentType === "text") {
+              return (
+                <div key={i} className="content-type-text">
+                  <CommandChip name={leadingCommand.commandName} />
+                  {el && <> {el}</>}
+                </div>
+              )
+            }
+            return (
+              <React.Fragment key={i}>
+                <CommandChip name={leadingCommand.commandName} />
+                {el && <> {el}</>}
+              </React.Fragment>
+            )
+          }
+
           const el = (
             <MarkdownContent
               key={i}
