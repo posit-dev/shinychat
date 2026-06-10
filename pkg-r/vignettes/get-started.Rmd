@@ -406,14 +406,14 @@ chat$slash_command("clear", "Clear the input", NULL)
 
 tags$script(HTML("
   document.addEventListener('shiny:chat-slash-command', function(e) {
-    if (e.detail.id !== 'chat-chat' || e.detail.command !== 'clear') return;
+    if (e.detail.id !== 'chat' || e.detail.command !== 'clear') return;
     e.preventDefault();
     document.querySelector('#chat-chat textarea').value = '';
   });
 "))
 ```
 
-The event is cancelable and bubbles. Use `e.detail.id` to target a specific chat. `preventDefault()` skips the server round-trip; set `e.detail.echo` to control whether the command appears as a user message. Inside a module, the chat container id is namespaced (`chat_mod_ui("chat")` produces `chat-chat`).
+The event is cancelable and bubbles. Use `e.detail.id` to target a specific chat. `preventDefault()` skips the server round-trip; set `e.detail.echo` to control whether the command appears as a user message.
 
 ### Key points
 
