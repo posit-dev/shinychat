@@ -342,13 +342,19 @@ knitr::include_graphics("images/chat-card.png")
 
 ## Slash commands
 
-Slash commands give users discoverable shortcuts -- like `/clear`, `/help`, or `/save` -- that run a handler you define on the server. They're a good fit for "meta" actions that aren't really a message to the model: resetting the conversation, opening a help dialog, exporting a transcript, and so on.
+Slash commands give users discoverable shortcuts — like `/search`, `/clear`, or `/help` — that run a handler you define on the server. Register commands on the object returned by `chat_mod_server()`, using its `slash_command()` method. When a user runs a command, its handler fires instead of the text being sent to the model, and what happens next is entirely up to the handler.
 
-Register commands on the object returned by `chat_mod_server()`, using its `slash_command()` method. When a user runs a command, its handler fires instead of the text being sent to the model.
+The two most common patterns are **prompt expansion** — where the command transforms the user's input before sending it to the LLM — and **side effects** — where the command performs an action without involving the LLM at all.
 
-### Zero-argument handlers
+### Prompt expansion
 
-A handler that takes no arguments is called when the command is invoked. This is useful for actions that don't need any user input:
+The most common use of slash commands is giving users a shortcut that sends a prompt to the model on their behalf. A handler that takes one argument receives a `ContentSlashCommand` object — not a plain string. This object carries the command name, the text typed after it, and a `text` property that controls what the LLM sees. For `/search shiny modules`:
+
+- `content@command` is `"search"`
+- `content@user_text` is `"shiny modules"`
+- `content@text` starts as a descriptive default — set it to your expanded prompt
+
+For example, a `/search` command could enrich the user's query with retrieved context before streaming the model's answer. In a real app the retrieval step would query a vector store or search index (i.e., a RAG workflow), but the core pattern is the same:
 
 ```r
 library(shiny)
@@ -356,59 +362,47 @@ library(bslib)
 library(shinychat)
 
 ui <- page_fillable(
-  chat_mod_ui("chat", messages = list("Type `/` to see available commands."))
+  chat_mod_ui("chat", placeholder = "Type / for commands, or chat away...")
 )
 
 server <- function(input, output, session) {
-  chat <- chat_mod_server("chat", ellmer::chat_openai())
+  client <- ellmer::chat_openai(system_prompt = "You are a helpful assistant.")
+  chat <- chat_mod_server("chat", client = client)
 
-  chat$slash_command("clear", "Clear the conversation", function() {
-    chat$clear()
+  chat$slash_command("search", "Search the docs", function(content) {
+    # In practice, retrieve relevant documents here (e.g., via a vector DB)
+    content@text <- paste(
+      "Search the documentation for the following topic and provide a concise summary:",
+      content@user_text
+    )
+    stream <- client$stream(content)
+    chat_append("chat", stream)
   })
 }
 
 shinyApp(ui, server)
 ```
 
-### Handlers that accept input
+When the user types `/search shiny modules`, the handler sets the expanded prompt as `content@text` and streams the model's response. The user sees `/search shiny modules` as their message; the LLM receives the expanded prompt. Because `ContentSlashCommand` extends `ellmer::ContentText`, it works anywhere a `ContentText` does — the LLM reads the `text` property, while the chat UI preserves the original command for bookmark restore.
 
-A handler that takes one argument receives a `ContentSlashCommand` object -- not a plain string. This object carries the command name, the text typed after it, and a `text` property that controls what the LLM sees. For example, when a user types `/search shiny modules`:
+### Side effects
 
-- `content@command` is `"search"`
-- `content@args` is `"shiny modules"`
-- `content@text` is a descriptive default (e.g., `"The user entered the /search slash command with arguments: shiny modules"`)
-
-Set `content@text` to whatever the LLM should actually see, then pass the object to `client$stream()` or `client$chat()`:
+Some commands perform an action without involving the LLM — clearing the conversation, opening a help modal, exporting a transcript. Pass `echo = FALSE` so the command doesn't appear as a user message:
 
 ```r
-chat$slash_command("search", "Search the docs", function(content) {
-  content@text <- paste(
-    "Search the documentation for the following topic:", content@args
-  )
-  stream <- client$stream(content)
-  chat_append("chat", stream)
-})
+chat$slash_command("clear", "Clear the conversation", function() {
+  chat$clear()
+}, echo = FALSE)
 ```
 
-Because `ContentSlashCommand` extends `ellmer::ContentText`, it works anywhere a `ContentText` does. LLM providers read the `text` property, while the chat UI shows the original `/search shiny modules` on restore. This means that when the chat is restored from a bookmark (or pre-existing turns), the user sees the original slash command they typed rather than the transformed text that was sent to the LLM.
-
-### Key points
-
-- Users type `/` to open a palette of registered commands; arrow keys move the selection, Enter or Tab selects, and Escape dismisses it.
-- A command's handler runs instead of sending the text to the model. A `/` message that doesn't match any registered command is sent as an ordinary message.
-- `slash_command()` returns a function that removes the command when called. Re-registering an existing name raises an error unless you pass `force = TRUE`.
-- The `echo` argument controls whether invoking a command is shown as a user message and awaits a response. It defaults to `TRUE` when a handler is given. Pass `echo = FALSE` for a handler that only performs side effects (e.g. opening a modal) and shouldn't appear in the conversation.
-
-Slash commands are currently available only through the chat module (`chat_mod_server()`), not when building a custom UI with `chat_ui()` directly.
-
-### Client-side slash command handlers
+### Client-side handlers
 
 Pass `NULL` as the handler to register a command that appears in the palette
 but is handled entirely in the browser. Listen for the `shiny:chat-slash-command`
-event and call `preventDefault()` to skip the server round-trip:
+event and call `preventDefault()`:
 
 ```r
-chat$slash_command("clear", "Clear the input", NULL)  # no server handler
+chat$slash_command("clear", "Clear the input", NULL)
 
 tags$script(HTML("
   document.addEventListener('shiny:chat-slash-command', function(e) {
@@ -419,14 +413,19 @@ tags$script(HTML("
 "))
 ```
 
-The event is cancelable and bubbles, so you can listen on `document`. Use
-`e.detail.id` to target a specific chat. `preventDefault()` skips the server;
-set `e.detail.echo` to control whether the command appears as a user message.
+The event is cancelable and bubbles. Use `e.detail.id` to target a specific chat. `preventDefault()` skips the server round-trip; set `e.detail.echo` to control whether the command appears as a user message. Inside a module, the chat container id is namespaced (`chat_mod_ui("chat")` produces `chat-chat`).
 
-Inside a module, the chat container id is namespaced: `chat_mod_ui("chat")`
-produces a container with id `chat-chat`, which is the value passed as
-`e.detail.id`. Use that namespaced id (or read `e.detail.id` directly) when
-targeting a specific chat instance.
+### Key points
+
+- Users type `/` to open a palette of registered commands; arrow keys navigate, Enter or Tab selects, Escape dismisses.
+- A slash command's handler fires instead of sending the text to the model. What happens next — including whether anything reaches the LLM — is entirely up to your handler.
+- A `/` message that doesn't match any registered command is sent as an ordinary message.
+- Handlers take 0 or 1 argument. A 1-argument handler receives a `ContentSlashCommand` object (an `ellmer::ContentText` subclass) whose `user_text` and `text` properties let you control what the LLM sees while preserving the original command for display on bookmark restore.
+- The `echo` argument controls whether invoking the command appears as a user message. Defaults to `TRUE` with a handler. Pass `echo = FALSE` for side-effect-only handlers.
+- `slash_command()` returns a function that removes the command when called. Re-registering an existing name raises an error unless you pass `force = TRUE`.
+- Slash command messages are restored faithfully when a bookmarked app is reopened.
+
+Slash commands are currently available only through the chat module (`chat_mod_server()`), not when building a custom UI with `chat_ui()` directly.
 
 ## Stream cancellation
 
