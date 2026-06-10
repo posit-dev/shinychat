@@ -57,15 +57,17 @@ describe("chat-entry custom element boot", () => {
     })
 
     await waitFor(() => {
-      expect(host.querySelector("textarea")).not.toBeNull()
+      expect(host.querySelector('[role="textbox"]')).not.toBeNull()
     })
 
-    const textarea = host.querySelector(
-      "textarea",
-    ) as HTMLTextAreaElement | null
-    expect(textarea).toBeTruthy()
-    expect(textarea?.id).toBe("server-input-id")
-    expect(textarea?.placeholder).toBe("Server placeholder")
+    const editorWrapper = host.querySelector(
+      "#server-input-id",
+    ) as HTMLElement | null
+    expect(editorWrapper).toBeTruthy()
+    expect(editorWrapper?.id).toBe("server-input-id")
+    expect(editorWrapper?.getAttribute("placeholder")).toBe(
+      "Server placeholder",
+    )
 
     expect(host.textContent).toContain("Hello from the server")
     expect(host.textContent).toContain("User reply")
@@ -92,15 +94,17 @@ describe("chat-entry custom element boot", () => {
     })
 
     await waitFor(() => {
-      expect(host.querySelector("textarea")).not.toBeNull()
+      expect(host.querySelector('[role="textbox"]')).not.toBeNull()
     })
 
-    const textarea = host.querySelector(
-      "textarea",
-    ) as HTMLTextAreaElement | null
-    expect(textarea).toBeTruthy()
-    expect(textarea?.id).toBe("fallback-chat_user_input")
-    expect(textarea?.placeholder).toBe("Fallback placeholder")
+    const editorWrapper = host.querySelector(
+      "#fallback-chat_user_input",
+    ) as HTMLElement | null
+    expect(editorWrapper).toBeTruthy()
+    expect(editorWrapper?.id).toBe("fallback-chat_user_input")
+    expect(editorWrapper?.getAttribute("placeholder")).toBe(
+      "Fallback placeholder",
+    )
   })
 
   it("unmounts cleanly when disconnected", async () => {
@@ -116,7 +120,7 @@ describe("chat-entry custom element boot", () => {
     })
 
     await waitFor(() => {
-      expect(host.querySelector("textarea")).not.toBeNull()
+      expect(host.querySelector('[role="textbox"]')).not.toBeNull()
     })
 
     await act(async () => {
@@ -139,7 +143,7 @@ describe("chat-entry custom element boot", () => {
     })
 
     await waitFor(() => {
-      expect(host.querySelector("textarea")).not.toBeNull()
+      expect(host.querySelector('[role="textbox"]')).not.toBeNull()
     })
 
     const unbindAll = window.Shiny!.unbindAll as ReturnType<typeof vi.fn>
@@ -194,7 +198,7 @@ describe("chat-entry custom element boot", () => {
     })
 
     await waitFor(() => {
-      expect(host.querySelector("textarea")).not.toBeNull()
+      expect(host.querySelector('[role="textbox"]')).not.toBeNull()
     })
 
     expect(host.textContent).toContain("Hello from the server")
