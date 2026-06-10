@@ -29,7 +29,7 @@ test_that("chat_mod_server slash_command supports zero-argument handlers", {
       )
 
       session$setInputs(
-        chat_slash_command = list(command = "clear", args = "ignored")
+        chat_slash_command = list(command = "clear", userText = "ignored")
       )
 
       expect_equal(calls, 1)
@@ -110,14 +110,14 @@ test_that("chat_mod_server slash_command removal unregisters the command", {
 
       # Command works before removal
       session$setInputs(
-        chat_slash_command = list(command = "greet", args = "")
+        chat_slash_command = list(command = "greet", userText = "")
       )
       expect_equal(calls, 1)
 
       # Remove and verify it no longer fires
       remove()
       session$setInputs(
-        chat_slash_command = list(command = "greet", args = "")
+        chat_slash_command = list(command = "greet", userText = "")
       )
       expect_equal(calls, 1)
 
@@ -128,7 +128,7 @@ test_that("chat_mod_server slash_command removal unregisters the command", {
         function() calls <<- calls + 1
       )
       session$setInputs(
-        chat_slash_command = list(command = "greet", args = "")
+        chat_slash_command = list(command = "greet", userText = "")
       )
       expect_equal(calls, 2)
     }
@@ -164,7 +164,7 @@ test_that("chat_mod_server slash_command allows overwrite with force = TRUE", {
       )
 
       session$setInputs(
-        chat_slash_command = list(command = "greet", args = "")
+        chat_slash_command = list(command = "greet", userText = "")
       )
 
       expect_equal(calls, "v2")
@@ -293,7 +293,7 @@ test_that("chat_mod_server slash_command with NULL handler does not run server-s
         session$setInputs(
           chat_slash_command = list(
             command = "clientside",
-            args = "",
+            userText = "",
             echo = FALSE
           )
         )
@@ -302,7 +302,7 @@ test_that("chat_mod_server slash_command with NULL handler does not run server-s
 
       # Sanity: the real handler still fires when its command is invoked.
       session$setInputs(
-        chat_slash_command = list(command = "real", args = "")
+        chat_slash_command = list(command = "real", userText = "")
       )
       expect_equal(calls, 1)
     }

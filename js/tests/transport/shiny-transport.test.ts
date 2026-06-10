@@ -252,12 +252,12 @@ describe("ShinyTransport", () => {
   })
 
   describe("sendSlashCommand", () => {
-    it("calls setInputValue with id and { command, args, echo } payload", () => {
+    it("calls setInputValue with id and { command, userText, echo } payload", () => {
       const transport = new ShinyTransport()
       transport.sendSlashCommand("chat1", "help", "some args", true)
       expect(window.Shiny?.setInputValue).toHaveBeenCalledWith(
         "chat1",
-        { command: "help", args: "some args", echo: true },
+        { command: "help", userText: "some args", echo: true },
         { priority: "event" },
       )
     })
@@ -277,7 +277,7 @@ describe("ShinyTransport", () => {
       transport.sendSlashCommand("chat1", "clear", "", false)
       expect(window.Shiny?.setInputValue).toHaveBeenCalledWith(
         "chat1",
-        { command: "clear", args: "", echo: false },
+        { command: "clear", userText: "", echo: false },
         { priority: "event" },
       )
     })

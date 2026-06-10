@@ -755,7 +755,7 @@ describe("ChatInput", () => {
       expect(events).toHaveLength(1)
       expect(events[0]!.detail).toMatchObject({
         command: "do",
-        args: "stuff here",
+        userText: "stuff here",
         echo: true,
       })
     })

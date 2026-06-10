@@ -28,12 +28,12 @@ export interface SlashCommandEventDetail {
   readonly id: string
   /** The parsed command name (read-only). */
   readonly command: string
-  /** The parsed argument text after the command name (read-only). */
-  readonly args: string
+  /** The parsed user text after the command name (read-only). */
+  readonly userText: string
   /**
    * Effective echo for this invocation. This is the one field a listener may
    * mutate (e.g. `e.detail.echo = true`) to change whether the command is shown
-   * as a user message; `command`/`args` are informational and not honored if mutated.
+   * as a user message; `command`/`userText` are informational and not honored if mutated.
    */
   echo: boolean
 }
@@ -118,7 +118,7 @@ export interface ChatTransport {
   sendSlashCommand(
     id: string,
     command: string,
-    args: string,
+    userText: string,
     echo: boolean,
   ): void
   onMessage(id: string, callback: (action: ChatAction) => void): () => void
