@@ -1300,7 +1300,13 @@ update_chat_user_input <- function(
       submit = if (submit) TRUE else NULL,
       focus = if (focus) TRUE else NULL,
       attachments = attachments,
-      attachment_mode = if (!is.null(attachments) && attachment_mode != "append") attachment_mode else NULL
+      attachment_mode = if (
+        !is.null(attachments) && attachment_mode != "append"
+      ) {
+        attachment_mode
+      } else {
+        NULL
+      }
     )
   )
 

@@ -290,7 +290,11 @@ test_that("update_chat_user_input: focus=TRUE requires value or attachments", {
 
 test_that("update_chat_user_input: attachment_mode validates", {
   expect_error(
-    update_chat_user_input("chat", attachments = list(), attachment_mode = "bad"),
+    update_chat_user_input(
+      "chat",
+      attachments = list(),
+      attachment_mode = "bad"
+    ),
     "attachment_mode"
   )
 })

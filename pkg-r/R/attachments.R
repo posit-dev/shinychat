@@ -15,8 +15,11 @@ attachment_types <- local({
       text <- unique(unname(text_exts))
       supported <- c(types[["image_types"]], types[["pdf_type"]], text)
       image_exts <- c(
-        png = "image/png", jpg = "image/jpeg", jpeg = "image/jpeg",
-        gif = "image/gif", webp = "image/webp"
+        png = "image/png",
+        jpg = "image/jpeg",
+        jpeg = "image/jpeg",
+        gif = "image/gif",
+        webp = "image/webp"
       )
       ext_map <- c(
         image_exts,
