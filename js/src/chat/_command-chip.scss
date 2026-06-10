@@ -1,0 +1,17 @@
+.command-mention-chip,
+.command-chip {
+  display: inline;
+  font-family: var(--bs-font-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+  font-size: 0.9em;
+  background: RGBA(var(--bs-primary-rgb, 0, 123, 194), 0.1);
+  border: 1px solid RGBA(var(--bs-primary-rgb, 0, 123, 194), 0.2);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.command-mention-chip .command-chip-sigil,
+.command-chip .command-chip-sigil {
+  opacity: 0.5;
+}

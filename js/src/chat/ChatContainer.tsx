@@ -17,7 +17,7 @@ import { ChatInput, type ChatInputHandle } from "./ChatInput"
 import { ScrollToBottomButton } from "./ScrollToBottomButton"
 import { ExternalLinkDialogComponent } from "./ExternalLinkDialog"
 import { RawDOM } from "./RawDOM"
-import { ChatScrollContext, useChatDispatch } from "./context"
+import { ChatScrollContext, SlashCommandsContext, useChatDispatch } from "./context"
 import type { ChatMessageData, GreetingData } from "./state"
 import type { ChatTransport, SlashCommandDef } from "../transport/types"
 
@@ -353,7 +353,7 @@ export const ChatContainer = forwardRef<
   }, [scrollToBottom])
 
   return (
-    <>
+    <SlashCommandsContext.Provider value={slashCommands}>
       <div className="shiny-chat-messages-wrapper">
         <div
           className="shiny-chat-messages"
@@ -433,6 +433,6 @@ export const ChatContainer = forwardRef<
           />,
           document.body,
         )}
-    </>
+    </SlashCommandsContext.Provider>
   )
 })
