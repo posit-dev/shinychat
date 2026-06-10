@@ -130,7 +130,15 @@ export const ChatInput = memo(
         onSend?.()
         return true
       },
-      [disabled, dispatch, transport, inputId, onSend, slashCommands, slashCommandId],
+      [
+        disabled,
+        dispatch,
+        transport,
+        inputId,
+        onSend,
+        slashCommands,
+        slashCommandId,
+      ],
     )
 
     useImperativeHandle(

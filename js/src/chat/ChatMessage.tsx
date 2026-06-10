@@ -15,8 +15,10 @@ function parseLeadingCommand(
   if (!content.startsWith("/")) return null
   const withoutSlash = content.slice(1)
   const spaceIndex = withoutSlash.indexOf(" ")
-  const commandName = spaceIndex === -1 ? withoutSlash : withoutSlash.slice(0, spaceIndex)
-  const remainingText = spaceIndex === -1 ? "" : withoutSlash.slice(spaceIndex + 1).trim()
+  const commandName =
+    spaceIndex === -1 ? withoutSlash : withoutSlash.slice(0, spaceIndex)
+  const remainingText =
+    spaceIndex === -1 ? "" : withoutSlash.slice(spaceIndex + 1).trim()
   const matched = commands.find((cmd) => cmd.name === commandName)
   if (!matched) return null
   return { commandName, remainingText }
@@ -45,7 +47,9 @@ export const ChatMessage = memo(function ChatMessage({
     iconHtml = hasContent ? (message.icon ?? iconAssistant ?? robot) : dots_fade
   }
 
-  const leadingCommand = isUser ? parseLeadingCommand(message.content, slashCommands) : null
+  const leadingCommand = isUser
+    ? parseLeadingCommand(message.content, slashCommands)
+    : null
   const roleClass = isUser ? "shiny-chat-user-message" : "shiny-chat-message"
 
   return (

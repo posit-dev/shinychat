@@ -1,6 +1,9 @@
 import React from "react"
 import { createRoot, type Root } from "react-dom/client"
-import { SlashCommandPalette, filterSlashCommands } from "../SlashCommandPalette"
+import {
+  SlashCommandPalette,
+  filterSlashCommands,
+} from "../SlashCommandPalette"
 import type { SlashCommandDef } from "../../transport/types"
 
 interface SuggestionRenderProps {
@@ -15,14 +18,19 @@ interface SuggestionCallbackProps {
   decorationNode?: Element | null
 }
 
-export function createSuggestionRender({ paletteId, commands }: SuggestionRenderProps) {
+export function createSuggestionRender({
+  paletteId,
+  commands,
+}: SuggestionRenderProps) {
   let popup: HTMLDivElement | null = null
   let root: Root | null = null
   let highlightedIndex = 0
   let filteredCommands: SlashCommandDef[] = []
   let currentCommand: ((props: { name: string }) => void) | null = null
 
-  function updatePosition(clientRect: (() => DOMRect | null) | null | undefined) {
+  function updatePosition(
+    clientRect: (() => DOMRect | null) | null | undefined,
+  ) {
     if (!popup || !clientRect) return
     const rect = clientRect()
     if (!rect) return
@@ -49,7 +57,11 @@ export function createSuggestionRender({ paletteId, commands }: SuggestionRender
       <SlashCommandPalette
         id={paletteId}
         commands={filteredCommands}
-        effectiveIndex={highlightedIndex >= 0 ? Math.min(highlightedIndex, filteredCommands.length - 1) : -1}
+        effectiveIndex={
+          highlightedIndex >= 0
+            ? Math.min(highlightedIndex, filteredCommands.length - 1)
+            : -1
+        }
         onSelect={(cmd) => {
           currentCommand?.({ name: cmd.name })
         }}
@@ -57,7 +69,7 @@ export function createSuggestionRender({ paletteId, commands }: SuggestionRender
           highlightedIndex = index
           renderPalette()
         }}
-      />
+      />,
     )
   }
 
@@ -125,22 +137,28 @@ export function createSuggestionRender({ paletteId, commands }: SuggestionRender
 
     onKeyDown({ event }: { event: KeyboardEvent }): boolean {
       if (event.key === "ArrowDown") {
-        highlightedIndex = filteredCommands.length === 0
-          ? 0
-          : (highlightedIndex + 1) % filteredCommands.length
+        highlightedIndex =
+          filteredCommands.length === 0
+            ? 0
+            : (highlightedIndex + 1) % filteredCommands.length
         renderPalette()
         return true
       }
       if (event.key === "ArrowUp") {
-        highlightedIndex = filteredCommands.length === 0
-          ? 0
-          : (highlightedIndex - 1 + filteredCommands.length) % filteredCommands.length
+        highlightedIndex =
+          filteredCommands.length === 0
+            ? 0
+            : (highlightedIndex - 1 + filteredCommands.length) %
+              filteredCommands.length
         renderPalette()
         return true
       }
       if (event.key === "Enter" || event.key === "Tab") {
         if (filteredCommands.length > 0 && highlightedIndex >= 0) {
-          const selected = filteredCommands[Math.min(highlightedIndex, filteredCommands.length - 1)]
+          const selected =
+            filteredCommands[
+              Math.min(highlightedIndex, filteredCommands.length - 1)
+            ]
           if (selected) {
             currentCommand?.({ name: selected.name })
           }

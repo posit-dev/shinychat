@@ -1,4 +1,4 @@
-import { Node, mergeAttributes } from "@tiptap/core"
+import { Node, mergeAttributes, type Editor, type Range } from "@tiptap/core"
 import { Suggestion, type SuggestionOptions } from "@tiptap/suggestion"
 import {
   NodeSelection,
@@ -25,20 +25,19 @@ export const CommandMention = Node.create({
       suggestion: {
         char: "/",
         allowSpaces: false,
-        allow({ state, range }: { state: any; range: { from: number } }) {
+        allow({ range }: { range: { from: number } }) {
           return range.from === 1
         },
         command: ({
-          editor,
+          editor: ed,
           range,
           props,
         }: {
-          editor: any
-          range: any
+          editor: Editor
+          range: Range
           props: { name: string }
         }) => {
-          editor
-            .chain()
+          ed.chain()
             .focus()
             .deleteRange(range)
             .insertContent([
@@ -141,9 +140,10 @@ export const CommandMention = Node.create({
             const withoutSlash = text.slice(1)
             const spaceIndex = withoutSlash.indexOf(" ")
             const commandName =
-              spaceIndex === -1 ? withoutSlash : withoutSlash.slice(0, spaceIndex)
-            const rest =
-              spaceIndex === -1 ? "" : withoutSlash.slice(spaceIndex)
+              spaceIndex === -1
+                ? withoutSlash
+                : withoutSlash.slice(0, spaceIndex)
+            const rest = spaceIndex === -1 ? "" : withoutSlash.slice(spaceIndex)
 
             const commands: SlashCommandDef[] = extensionOptions.commands
             const matched = commands.find((cmd) => cmd.name === commandName)

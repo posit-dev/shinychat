@@ -1,11 +1,7 @@
-import {
-  forwardRef,
-  useImperativeHandle,
-  useRef,
-} from "react"
+import { forwardRef, useImperativeHandle, useRef } from "react"
 import { useEditor, EditorContent } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
-import { Editor } from "@tiptap/core"
+import { Editor, type JSONContent, type Range } from "@tiptap/core"
 import { CommandMention } from "./tiptap/commandMention"
 import { createSuggestionRender } from "./tiptap/suggestionRender"
 import { filterSlashCommands } from "./SlashCommandPalette"
@@ -13,7 +9,10 @@ import { useInputHistory } from "./useInputHistory"
 import type { SlashCommandDef } from "../transport/types"
 
 export interface TiptapInputHandle {
-  setInputValue(value: string, options?: { submit?: boolean; focus?: boolean }): void
+  setInputValue(
+    value: string,
+    options?: { submit?: boolean; focus?: boolean },
+  ): void
   focus(): void
   serializeEditor(): string
 }
@@ -55,7 +54,7 @@ function serializeEditor(editor: Editor): string {
   return parts.join("")
 }
 
-function parseToDoc(text: string, commands: SlashCommandDef[]): any {
+function parseToDoc(text: string, commands: SlashCommandDef[]): JSONContent {
   if (!text) {
     return { type: "doc", content: [{ type: "paragraph" }] }
   }
@@ -63,11 +62,14 @@ function parseToDoc(text: string, commands: SlashCommandDef[]): any {
   if (text.startsWith("/")) {
     const withoutSlash = text.slice(1)
     const spaceIndex = withoutSlash.indexOf(" ")
-    const commandName = spaceIndex === -1 ? withoutSlash : withoutSlash.slice(0, spaceIndex)
+    const commandName =
+      spaceIndex === -1 ? withoutSlash : withoutSlash.slice(0, spaceIndex)
     const rest = spaceIndex === -1 ? "" : withoutSlash.slice(spaceIndex + 1)
     const matched = commands.find((cmd) => cmd.name === commandName)
     if (matched) {
-      const content: any[] = [{ type: "commandMention", attrs: { name: commandName } }]
+      const content: JSONContent[] = [
+        { type: "commandMention", attrs: { name: commandName } },
+      ]
       if (rest) {
         content.push({ type: "text", text: " " + rest })
       }
@@ -132,9 +134,16 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
                 paletteId: `${inputId}-slash-palette`,
                 commands: slashCommandsRef.current,
               }),
-            command: ({ editor, range, props }: { editor: any; range: any; props: any }) => {
-              editor
-                .chain()
+            command: ({
+              editor: ed,
+              range,
+              props,
+            }: {
+              editor: Editor
+              range: Range
+              props: { name: string }
+            }) => {
+              ed.chain()
                 .focus()
                 .deleteRange(range)
                 .insertContent([
@@ -158,7 +167,7 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
         handleKeyDown: (view, event) => {
           if (event.isComposing) return false
 
-          const ed = (view as any).editor as Editor | undefined
+          const ed = (view as unknown as { editor?: Editor }).editor
 
           if (event.key === "ArrowUp" || event.key === "ArrowDown") {
             if (!ed) return false
@@ -168,10 +177,15 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
             const canRecall = isActive() ? atEnd : serialized.length === 0
 
             if (canRecall) {
-              const value = recall(event.key === "ArrowUp" ? "up" : "down", serialized)
+              const value = recall(
+                event.key === "ArrowUp" ? "up" : "down",
+                serialized,
+              )
               if (value !== undefined) {
                 event.preventDefault()
-                ed.commands.setContent(parseToDoc(value, slashCommandsRef.current))
+                ed.commands.setContent(
+                  parseToDoc(value, slashCommandsRef.current),
+                )
                 onHasTextChange(value.trim().length > 0)
                 ed.commands.focus("end")
                 return true
@@ -209,17 +223,24 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
       () => ({
         setInputValue(
           value: string,
-          { submit = false, focus: shouldFocus = false }: { submit?: boolean; focus?: boolean } = {},
+          {
+            submit = false,
+            focus: shouldFocus = false,
+          }: { submit?: boolean; focus?: boolean } = {},
         ) {
           if (!editor) return
           const oldContent = serializeEditor(editor)
-          editor.commands.setContent(parseToDoc(value, slashCommandsRef.current))
+          editor.commands.setContent(
+            parseToDoc(value, slashCommandsRef.current),
+          )
           onHasTextChange(value.trim().length > 0)
 
           if (submit) {
             const serialized = serializeEditor(editor)
             onSubmit(serialized)
-            editor.commands.setContent(parseToDoc(oldContent, slashCommandsRef.current))
+            editor.commands.setContent(
+              parseToDoc(oldContent, slashCommandsRef.current),
+            )
             onHasTextChange(oldContent.trim().length > 0)
           }
           if (shouldFocus) {
