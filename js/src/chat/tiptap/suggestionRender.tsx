@@ -36,7 +36,10 @@ export function createSuggestionRender({ paletteId }: SuggestionRenderProps) {
 
     popup.style.left = `${rect.left}px`
 
-    if (spaceBelow >= popupHeight + gap || spaceBelow >= spaceAbove) {
+    if (
+      (popupHeight > 0 && spaceBelow >= popupHeight + gap) ||
+      spaceBelow >= spaceAbove
+    ) {
       popup.style.top = `${rect.bottom + gap}px`
       popup.style.bottom = ""
     } else {
@@ -107,7 +110,9 @@ export function createSuggestionRender({ paletteId }: SuggestionRenderProps) {
       root = createRoot(popup)
       renderPalette()
 
-      requestAnimationFrame(() => updatePosition(props.clientRect))
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => updatePosition(props.clientRect)),
+      )
 
       onResizeScroll = () => updatePosition(props.clientRect)
       window.addEventListener("resize", onResizeScroll)
