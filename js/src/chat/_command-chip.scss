@@ -1,10 +1,31 @@
-.command-mention-chip,
 .command-chip {
+  --_chip-color: var(--shiny-chat-command-chip-color, var(--bs-primary, #007bc2));
+
   display: inline;
   font-family: var(--bs-font-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
   font-size: 0.9em;
-  background: RGBA(var(--bs-primary-rgb, 0, 123, 194), 0.1);
-  border: 1px solid RGBA(var(--bs-primary-rgb, 0, 123, 194), 0.2);
+  color: light-dark(
+    color-mix(in srgb, var(--_chip-color) 75%, black),
+    color-mix(in srgb, var(--_chip-color) 75%, white)
+  );
+  background: var(
+    --shiny-chat-command-chip-bg,
+    light-dark(
+      color-mix(in srgb, var(--_chip-color) 10%, white),
+      color-mix(in srgb, var(--_chip-color) 15%, black)
+    )
+  );
+  border: var(
+    --shiny-chat-command-chip-border,
+    1px solid
+      var(
+        --shiny-chat-command-chip-border-color,
+        light-dark(
+          color-mix(in srgb, var(--_chip-color) 20%, white),
+          color-mix(in srgb, var(--_chip-color) 25%, black)
+        )
+      )
+  );
   border-radius: 4px;
   padding: 0.1em 0.35em;
   white-space: nowrap;

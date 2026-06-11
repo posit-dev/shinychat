@@ -74,7 +74,7 @@ export const CommandMention = Node.create({
       "span",
       mergeAttributes(HTMLAttributes, {
         "data-command-mention": node.attrs.name,
-        class: "command-mention-chip",
+        class: "command-chip",
       }),
       `/${node.attrs.name}`,
     ]
