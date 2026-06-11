@@ -791,7 +791,10 @@ class Chat:
         Returns
         -------
         tuple[ChatMessageDict, ...]
-            A tuple of chat messages.
+            A tuple of chat messages. The ``attachments`` field, when present,
+            contains :class:`~shinychat.Attachment` objects. These are Pydantic
+            models, so call ``.model_dump()`` on each one before passing them to
+            ``json.dumps()`` or any other JSON serializer.
         """
         if not isinstance(format, DEPRECATED_TYPE):
             raise TypeError(
