@@ -1,4 +1,4 @@
-import React, { memo } from "react"
+import { memo } from "react"
 import type { ChatMessageData } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { ThinkingDisplay } from "./ThinkingDisplay"
@@ -74,30 +74,30 @@ export const ChatMessage = memo(function ChatMessage({
           const isLast = i === message.blocks.length - 1
 
           if (leadingCommand && i === 0) {
-            const el = leadingCommand.remainingText ? (
-              <MarkdownContent
-                key={i}
-                content={leadingCommand.remainingText}
-                contentType={block.contentType}
-                role={message.role}
-                streaming={message.streaming && isLast}
-                tagToComponentMap={chatTagToComponentMap}
-              />
-            ) : null
+            const chip = <CommandChip name={leadingCommand.commandName} />
+            const content = leadingCommand.remainingText || ""
 
             if (block.contentType === "text") {
               return (
                 <div key={i} className="content-type-text">
-                  <CommandChip name={leadingCommand.commandName} />
-                  {el && <> {el}</>}
+                  {chip}
+                  {content && ` ${content}`}
                 </div>
               )
             }
+            if (!content) {
+              return <p key={i}>{chip}</p>
+            }
             return (
-              <React.Fragment key={i}>
-                <CommandChip name={leadingCommand.commandName} />
-                {el && <> {el}</>}
-              </React.Fragment>
+              <MarkdownContent
+                key={i}
+                content={content}
+                contentType={block.contentType}
+                role={message.role}
+                streaming={message.streaming && isLast}
+                tagToComponentMap={chatTagToComponentMap}
+                prefix={chip}
+              />
             )
           }
 

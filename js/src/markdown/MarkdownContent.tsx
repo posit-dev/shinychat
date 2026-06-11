@@ -1,4 +1,9 @@
-import { useMemo, type ReactElement, type ComponentType } from "react"
+import React, {
+  useMemo,
+  type ReactElement,
+  type ReactNode,
+  type ComponentType,
+} from "react"
 import { toHtml } from "hast-util-to-html"
 import type { Element } from "hast"
 import type { ContentType } from "../transport/types"
@@ -30,6 +35,7 @@ export interface MarkdownContentProps {
   role?: "user" | "assistant"
   streaming?: boolean
   tagToComponentMap?: Record<string, ComponentType<unknown>>
+  prefix?: ReactNode
 }
 
 /** Renders content as React elements. Shiny binding is handled per-island by RawHTML. */
@@ -39,6 +45,7 @@ export function MarkdownContent({
   role,
   streaming = false,
   tagToComponentMap,
+  prefix,
 }: MarkdownContentProps): ReactElement {
   const isUser = role === "user"
   const isText = contentType === "text"
@@ -79,6 +86,51 @@ export function MarkdownContent({
     [hast, streaming, resolvedTagToComponentMap],
   )
 
-  if (isText) return <>{content}</>
+  if (isText) {
+    return (
+      <>
+        {prefix}
+        {prefix && " "}
+        {content}
+      </>
+    )
+  }
+  if (prefix && elements) {
+    return <>{injectPrefix(elements, prefix)}</>
+  }
   return <>{elements}</>
+}
+
+// Injects a React node (e.g. a CommandChip) into the first <p> of the rendered
+// markdown output so it flows inline with the paragraph text. We do this via
+// React tree manipulation because the remark pipeline doesn't support inline
+// span syntax like `[text]{.class}`, and adding a plugin + sanitize whitelist
+// isn't worth it for a single use case. If we later need chips or other inline
+// elements at arbitrary positions in user messages, consider adding
+// remark-bracketed-spans (or remark-directive) and reworking this.
+function injectPrefix(elements: ReactElement, prefix: ReactNode): ReactNode {
+  const children = React.Children.toArray(
+    (elements.props as { children?: ReactNode }).children,
+  )
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]
+    if (React.isValidElement(child) && child.type === "p") {
+      const pChildren = React.Children.toArray(
+        (child.props as { children?: ReactNode }).children,
+      )
+      children[i] = React.cloneElement(
+        child as ReactElement,
+        { key: child.key },
+        prefix,
+        " ",
+        ...pChildren,
+      )
+      return <>{children}</>
+    }
+  }
+  return (
+    <>
+      {prefix} {elements}
+    </>
+  )
 }
