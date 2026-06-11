@@ -280,7 +280,11 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
             onHasTextChange(oldContent.trim().length > 0)
           }
           if (shouldFocus) {
-            editor.commands.focus("end")
+            // editor.commands.focus("end") defers via requestAnimationFrame, which
+            // races with subsequent focus() calls on other elements. Use synchronous
+            // DOM focus + cursor positioning instead.
+            editor.view.dom.focus()
+            editor.commands.setTextSelection(editor.state.doc.content.size)
           }
         },
         focus() {
