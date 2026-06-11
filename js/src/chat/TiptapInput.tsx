@@ -163,7 +163,6 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
             render: () =>
               createSuggestionRender({
                 paletteId: `${inputId}-slash-palette`,
-                commands: slashCommandsRef.current,
               }),
             command: ({
               editor: ed,

@@ -1,27 +1,21 @@
 import React from "react"
 import { createRoot, type Root } from "react-dom/client"
-import {
-  SlashCommandPalette,
-  filterSlashCommands,
-} from "../SlashCommandPalette"
+import { SlashCommandPalette } from "../SlashCommandPalette"
 import type { SlashCommandDef } from "../../transport/types"
 
 interface SuggestionRenderProps {
   paletteId: string
-  commands: SlashCommandDef[]
 }
 
 interface SuggestionCallbackProps {
   query: string
+  items?: SlashCommandDef[]
   clientRect?: (() => DOMRect | null) | null
   command: (props: { name: string }) => void
   decorationNode?: Element | null
 }
 
-export function createSuggestionRender({
-  paletteId,
-  commands,
-}: SuggestionRenderProps) {
+export function createSuggestionRender({ paletteId }: SuggestionRenderProps) {
   let popup: HTMLDivElement | null = null
   let root: Root | null = null
   let highlightedIndex = 0
@@ -99,7 +93,7 @@ export function createSuggestionRender({
 
   return {
     onStart(props: SuggestionCallbackProps) {
-      filteredCommands = filterSlashCommands(commands, props.query)
+      filteredCommands = props.items ?? []
       highlightedIndex = 0
       currentCommand = props.command
 
@@ -128,7 +122,7 @@ export function createSuggestionRender({
     },
 
     onUpdate(props: SuggestionCallbackProps) {
-      filteredCommands = filterSlashCommands(commands, props.query)
+      filteredCommands = props.items ?? []
       highlightedIndex = 0
       currentCommand = props.command
       renderPalette()
