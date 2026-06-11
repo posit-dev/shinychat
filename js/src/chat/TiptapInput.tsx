@@ -173,7 +173,15 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
               return true
             }
             const key = submitKey === "enter+modifier" ? "Mod-Enter" : "Enter"
-            return { [key]: submit }
+            const shortcuts: Record<string, () => boolean> = { [key]: submit }
+            if (submitKey === "enter+modifier") {
+              shortcuts["Enter"] = () =>
+                this.editor.commands.first(({ commands }) => [
+                  () => commands.newlineInCode(),
+                  () => commands.setHardBreak(),
+                ])
+            }
+            return shortcuts
           },
         }),
         CommandMention.configure({
