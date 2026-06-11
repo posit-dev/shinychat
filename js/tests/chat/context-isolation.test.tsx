@@ -26,9 +26,9 @@ describe("ChatInputState / ChatToolState isolation", () => {
       />,
     )
 
-    const textarea = screen.getByPlaceholderText(
-      "Type...",
-    ) as HTMLTextAreaElement
+    const editor = screen.getByRole("textbox", {
+      name: "Chat message",
+    }) as HTMLDivElement
 
     // Send a message containing a tool request
     await act(async () => {
@@ -47,16 +47,22 @@ describe("ChatInputState / ChatToolState isolation", () => {
       })
     })
 
-    // Simulate user typing
-    textarea.value = "user is typing"
+    // Set editor content via transport (TipTap manages its own state)
+    await act(async () => {
+      transport.fire("test", {
+        type: "update_input",
+        value: "user is typing",
+      })
+    })
+    expect(editor.textContent).toBe("user is typing")
 
     // Hide the tool request
     await act(async () => {
       transport.fire("test", { type: "hide_tool_request", requestId: "r1" })
     })
 
-    // Textarea value must not be disturbed
-    expect(textarea.value).toBe("user is typing")
+    // Editor content must not be disturbed
+    expect(editor.textContent).toBe("user is typing")
   })
 
   it("input state changes do not hide a visible tool request", async () => {

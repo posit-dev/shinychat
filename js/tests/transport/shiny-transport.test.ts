@@ -251,6 +251,38 @@ describe("ShinyTransport", () => {
     })
   })
 
+  describe("sendSlashCommand", () => {
+    it("calls setInputValue with id and { command, userText, echo } payload", () => {
+      const transport = new ShinyTransport()
+      transport.sendSlashCommand("chat1", "help", "some args", true)
+      expect(window.Shiny?.setInputValue).toHaveBeenCalledWith(
+        "chat1",
+        { command: "help", userText: "some args", echo: true },
+        { priority: "event" },
+      )
+    })
+
+    it("does not throw when Shiny is unavailable", () => {
+      const origShiny = window.Shiny
+      delete (window as unknown as Record<string, unknown>).Shiny
+      const transport = new ShinyTransport()
+      expect(() =>
+        transport.sendSlashCommand("chat1", "help", "", true),
+      ).not.toThrow()
+      ;(window as unknown as Record<string, unknown>).Shiny = origShiny
+    })
+
+    it("includes echo=false in the payload", () => {
+      const transport = new ShinyTransport()
+      transport.sendSlashCommand("chat1", "clear", "", false)
+      expect(window.Shiny?.setInputValue).toHaveBeenCalledWith(
+        "chat1",
+        { command: "clear", userText: "", echo: false },
+        { priority: "event" },
+      )
+    })
+  })
+
   describe("custom message handler contracts", () => {
     it("renders html dependencies before delivering a message action", async () => {
       const transport = new ShinyTransport()

@@ -132,6 +132,10 @@ S7::method(contents_shinychat, ellmer::Content) <- function(content) {
   }
 }
 
+S7::method(contents_shinychat, ContentSlashCommand) <- function(content) {
+  trimws(paste0("/", content@command, " ", content@user_text))
+}
+
 S7::method(contents_shinychat, ellmer::ContentText) <- function(content) {
   content@text
 }

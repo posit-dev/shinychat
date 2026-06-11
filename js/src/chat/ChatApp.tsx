@@ -17,6 +17,7 @@ import type {
   ShinyLifecycle,
   GreetingOptions,
 } from "../transport/types"
+import type { SubmitKey } from "./tiptap/submitShortcut"
 
 export interface InitialGreeting {
   content: string
@@ -36,6 +37,8 @@ interface ChatAppProps {
   initialGreeting?: InitialGreeting
   enableCancel?: boolean
   footerEl?: Element
+  slashCommandId?: string
+  submitKey?: SubmitKey
 }
 
 function makeInitialGreeting(
@@ -73,6 +76,8 @@ export function ChatApp({
   initialGreeting,
   enableCancel,
   footerEl,
+  slashCommandId = "",
+  submitKey,
 }: ChatAppProps) {
   const messages = initialMessages ?? []
   const [state, dispatch] = useReducer(chatReducer, {
@@ -183,6 +188,9 @@ export function ChatApp({
             enableCancel={state.enableCancel}
             cancelRequested={state.cancelRequested}
             footerEl={footerEl}
+            slashCommands={state.slashCommands}
+            slashCommandId={slashCommandId}
+            submitKey={submitKey}
           />
         </ChatDispatchContext.Provider>
       </ChatToolContext.Provider>

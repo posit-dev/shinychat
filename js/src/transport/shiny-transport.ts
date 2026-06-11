@@ -75,6 +75,20 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
     window.Shiny.setInputValue(id, Date.now(), { priority: "event" })
   }
 
+  sendSlashCommand(
+    id: string,
+    command: string,
+    userText: string,
+    echo: boolean,
+  ): void {
+    if (!window.Shiny?.setInputValue) return
+    window.Shiny.setInputValue(
+      id,
+      { command, userText, echo },
+      { priority: "event" },
+    )
+  }
+
   onMessage(id: string, callback: (action: ChatAction) => void): () => void {
     if (!this.listeners.has(id)) {
       this.listeners.set(id, new Set())

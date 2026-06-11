@@ -72,7 +72,7 @@ class Chat(UiBase):
     """
     loc_input: Locator
     """
-    Playwright `Locator` for the chat's <textarea> input.
+    Playwright `Locator` for the chat's text input.
     """
     loc_input_button: Locator
     """
@@ -99,7 +99,7 @@ class Chat(UiBase):
         self.loc_scroll_container = self.loc.locator(".shiny-chat-messages")
         self.loc_latest_message = self.loc_messages.locator("> :last-child")
         self.loc_input_container = self.loc.locator("> .shiny-chat-input")
-        self.loc_input = self.loc_input_container.locator("textarea")
+        self.loc_input = self.loc_input_container.locator('[role="textbox"]')
         self.loc_input_button = self.loc_input_container.locator(
             ".shiny-chat-btn-send"
         )
@@ -197,4 +197,4 @@ class Chat(UiBase):
         timeout
             The maximum time to wait for the expectation to pass. Defaults to `None`.
         """
-        playwright_expect(self.loc_input).to_have_value(value, timeout=timeout)
+        playwright_expect(self.loc_input).to_have_text(value, timeout=timeout)

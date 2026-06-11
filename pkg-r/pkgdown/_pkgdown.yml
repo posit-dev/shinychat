@@ -69,6 +69,10 @@ reference:
   contents:
   - chat_restore
 
+- title: Slash commands
+  contents:
+  - ContentSlashCommand
+
 - title: Integration with ellmer
   contents:
   - contents_shinychat

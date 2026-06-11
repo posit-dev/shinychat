@@ -93,6 +93,19 @@ client so the conversation continues seamlessly. Set \code{sync = FALSE} to
 use the new client as-is. If a response is currently streaming, the
 swap is deferred until the stream completes. If called multiple times
 while streaming, only the most recent new client is used.
+\item \code{slash_command(name, description, handler, ..., echo, force)}: Register
+a slash command. \code{handler} is required: pass a function (taking 0 or 1
+argument), or \code{NULL} for a client-side command handled in JavaScript via
+the \code{shiny:chat-slash-command} DOM event. A handler that takes one
+argument receives a \link{ContentSlashCommand} object (not a plain string).
+See \link{ContentSlashCommand} for details on how to use this object to
+preserve the original command text across bookmarks. \code{echo} controls
+whether invoking the command is echoed as a user message and awaits a
+response; it defaults to \code{TRUE} when a handler is given and \code{FALSE}
+otherwise (set \code{echo = FALSE} for a handler that only performs side
+effects). Returns a function that removes the command. Errors if a
+command with the same name is already registered unless
+\code{force = TRUE}.
 }
 }
 }

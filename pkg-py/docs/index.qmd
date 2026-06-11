@@ -68,6 +68,86 @@ app = App(app_ui, server, bookmark_store="url")
 
 The `chat.client` property provides a `.set()` method for swapping models mid-session and `.clear()` for resetting the conversation. For lower-level chat methods such as appending messages, updating the input, or inspecting stream state, call them directly on `chat`. See the [API reference](api/index.qmd) for the full interface.
 
+## Slash commands
+
+Slash commands give users discoverable shortcuts — like `/search`, `/clear`, or `/help` — that run a server-side handler you define. Register a command with `@chat.slash_command(name, description)`. When a user runs it, the matching handler fires *instead* of `@chat.on_user_submit`, and what happens next is entirely up to the handler.
+
+The two most common patterns are **prompt expansion** — where the command transforms the user's input before sending it to the LLM — and **side effects** — where the command performs an action without involving the LLM at all.
+
+### Prompt expansion
+
+The most common use of slash commands is giving users a shortcut that sends a prompt to the model on their behalf. A handler taking one argument receives the text typed after the command name — for `/search shiny modules`, that's `"shiny modules"`.
+
+For example, a `/search` command could enrich the user's query with retrieved context before streaming the model's answer. In a real app the retrieval step would query a vector store or search index (i.e., a RAG workflow), but the core pattern is the same:
+
+```{.python file="app.py"}
+from chatlas import ChatAnthropic
+from shiny.express import app_opts, ui
+from shinychat.express import Chat
+
+client = ChatAnthropic(system_prompt="You are a helpful assistant.")
+chat = Chat(id="chat", client=client)
+chat.ui(placeholder="Type / for commands, or chat away...")
+
+@chat.slash_command("search", "Search the docs")
+async def _(user_input: str):
+    # In practice, retrieve relevant documents here (e.g., via a vector DB)
+    prompt = f"Search the documentation for the following topic and provide a concise summary: {user_input}"
+    response = await chat.client.value.stream_async(prompt, content="all")
+    await chat.append_message_stream(response)
+
+ui.page_opts(fillable=True)
+app_opts(bookmark_store="url")
+```
+
+When the user types `/search shiny modules`, the handler expands the input into a richer prompt and streams the model's response. The user sees `/search shiny modules` as their message; the LLM receives the expanded prompt. In Shiny Core, register commands inside your server function in exactly the same way (`slash_command` is a method on `Chat`).
+
+### Side effects
+
+Some commands perform an action without involving the LLM — clearing the conversation, opening a help modal, exporting a transcript. Pass `echo=False` so the command doesn't appear as a user message:
+
+```python
+@chat.slash_command("clear", "Clear the conversation", echo=False)
+async def _():
+    await chat.clear_messages()
+```
+
+### Client-side handlers
+
+Register a command with `fn=None` so it appears in the palette without a server handler, then handle it in the browser via the `shiny:chat-slash-command` DOM event:
+
+```{.python file="app.py"}
+from shiny.express import ui
+from shinychat.express import Chat
+
+chat = Chat("chat")
+chat.ui()
+
+chat.slash_command("clear", "Clear the input", fn=None)
+
+ui.tags.script(
+    """
+    document.addEventListener('shiny:chat-slash-command', (e) => {
+      if (e.detail.id !== 'chat' || e.detail.command !== 'clear') return;
+      e.preventDefault();
+      document.querySelector('#chat textarea').value = '';
+    });
+    """
+)
+```
+
+The event is cancelable and bubbles. Use `e.detail.id` to target a specific chat. `preventDefault()` skips the server round-trip; set `e.detail.echo` to control whether the command appears as a user message.
+
+### Key points
+
+- Users type `/` to open a palette of registered commands; arrow keys navigate, Enter or Tab selects, Escape dismisses.
+- A slash command's handler fires instead of `@chat.on_user_submit`. What happens next — including whether anything reaches the LLM — is entirely up to your handler.
+- A `/` message that doesn't match any registered command is sent as an ordinary message.
+- Handlers take 0 or 1 argument (the text after the command name). They're just app code — they can stream LLM responses, show modals, trigger downloads, or do nothing visible at all.
+- The `echo` argument controls whether invoking the command appears as a user message. Defaults to `True` with a handler. Pass `echo=False` for side-effect-only handlers.
+- Registering returns a function that removes the command when called; you can also call `chat.remove_slash_command(name)`. Re-registering an existing name raises an error unless you pass `force=True`.
+- Slash command messages are restored faithfully when a bookmarked app is reopened.
+
 ## Lower-level interface
 
 When you need full control over the server-side logic — or you're using an LLM framework other than chatlas — omit the `client=` argument and wire things up manually. This means handling streaming, cancellation, and bookmarking yourself, but gives you complete flexibility over how messages are generated and displayed.

@@ -15,6 +15,7 @@ chat_ui(
   fill = TRUE,
   icon_assistant = NULL,
   enable_cancel = FALSE,
+  submit_key = c("enter", "enter+modifier"),
   footer = NULL
 )
 }
@@ -68,6 +69,11 @@ allows the user to cancel the in-progress response. When using
 usage with \code{chat_ui()}, observe \verb{input$<id>_cancel} to handle cancellation
 (e.g., by calling \code{ctrl$cancel()} on an ellmer \code{stream_controller()}).
 Defaults to \code{FALSE}.}
+
+\item{submit_key}{Controls which key combination submits the chat message.
+\code{"enter"} (the default): Enter submits, Shift+Enter adds a newline.
+\code{"enter+modifier"}: Ctrl+Enter (Cmd+Enter on Mac) submits, plain Enter
+adds a newline.}
 
 \item{footer}{Optional HTML content to display below the chat input.
 This can be any HTML content (tags, tag lists, or character strings).

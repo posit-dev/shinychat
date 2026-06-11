@@ -9,7 +9,7 @@ from typing import Any, cast
 
 import pytest
 from htmltools import HTMLDependency, TagList, tags
-from shiny import Session
+from shiny import Session, reactive
 from shiny.module import ResolvedId
 from shiny.session import session_context
 from shinychat import Chat
@@ -38,6 +38,9 @@ class _MockSession:
         pass
 
     def _increment_busy_count(self) -> None:
+        pass
+
+    async def send_custom_message(self, type: str, message: Any) -> None:
         pass
 
 
@@ -513,6 +516,178 @@ def test_stored_message_from_chat_message_preserves_content_type():
     thinking_msg = ChatMessage(content="reasoning", role="assistant", content_type="thinking")
     sm_thinking = StoredMessage.from_chat_message(thinking_msg)
     assert sm_thinking.segments[0].content_type == "thinking"
+
+
+def test_slash_command_errors_on_duplicate_name():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        chat.slash_command("greet", "Say hello", fn=lambda: None)
+        with pytest.raises(ValueError, match="already registered"):
+            chat.slash_command("greet", "Say hi", fn=lambda: None)
+
+
+def test_slash_command_allows_overwrite_with_force():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        chat.slash_command("greet", "Say hello", fn=lambda: None)
+        chat.slash_command("greet", "Say hi", fn=lambda: None, force=True)
+        with reactive.isolate():
+            cmds = chat._slash_commands()
+            assert cmds is not None
+            assert cmds["greet"].definition["description"] == "Say hi"
+
+
+def test_slash_command_remove():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        remove = chat.slash_command("greet", "Say hello", fn=lambda: None)
+        with reactive.isolate():
+            cmds = chat._slash_commands()
+            assert cmds is not None
+            assert "greet" in cmds
+
+        remove()
+        with reactive.isolate():
+            assert "greet" not in (chat._slash_commands() or {})
+
+        # After removal, re-registering without force should succeed
+        chat.slash_command("greet", "Say hello again", fn=lambda: None)
+        with reactive.isolate():
+            cmds = chat._slash_commands()
+            assert cmds is not None
+            assert cmds["greet"].definition["description"] == "Say hello again"
+
+
+def test_slash_command_remove_by_name():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        chat.slash_command("greet", "Say hello", fn=lambda: None)
+        with reactive.isolate():
+            cmds = chat._slash_commands()
+            assert cmds is not None
+            assert "greet" in cmds
+
+        chat.remove_slash_command("greet")
+        with reactive.isolate():
+            assert "greet" not in (chat._slash_commands() or {})
+
+        # Removing a non-existent command is a no-op
+        chat.remove_slash_command("greet")
+
+
+def test_slash_command_echo_defaults_to_handler_presence():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+
+        @chat.slash_command("withhandler", "Has a handler")
+        async def _():
+            ...
+
+        chat.slash_command("nohandler", "No handler", fn=None)
+
+        with reactive.isolate():
+            cmds = chat._slash_commands()
+            assert cmds is not None
+            assert cmds["withhandler"].definition["echo"] is True
+            assert cmds["nohandler"].definition["echo"] is False
+            assert cmds["nohandler"].handler is None
+
+
+def test_slash_command_echo_explicit_override():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+
+        @chat.slash_command("sideeffect", "Side effect only", echo=False)
+        async def _():
+            ...
+
+        with reactive.isolate():
+            cmds = chat._slash_commands()
+            assert cmds is not None
+            assert cmds["sideeffect"].definition["echo"] is False
+            assert cmds["sideeffect"].handler is not None
+
+
+def test_slash_command_fn_none_returns_remover():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+
+        remove = chat.slash_command("temp", "Temp", fn=None)
+        with reactive.isolate():
+            cmds = chat._slash_commands()
+            assert cmds is not None
+            assert "temp" in cmds
+        remove()
+        with reactive.isolate():
+            assert "temp" not in (chat._slash_commands() or {})
+
+
+def test_slash_command_fn_none_with_explicit_echo_true():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+
+        chat.slash_command("clientecho", "Client-side but echoed", fn=None, echo=True)
+
+        with reactive.isolate():
+            cmds = chat._slash_commands()
+            assert cmds is not None
+            assert cmds["clientecho"].definition["echo"] is True
+            assert cmds["clientecho"].handler is None
+
+
+def test_bookmark_round_trips_echoed_slash_command():
+    # An echoed slash command stores the `/cmd args` text as a normal user
+    # message (mirroring `_on_slash_command`), so it rides the generic
+    # stored-message bookmark mechanism: saved, then restored as a static entry.
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        chat._store_message(
+            chat._as_stored_message(ChatMessage(content="/greet world", role="user"))
+        )
+        chat._store_message(ChatMessage(content="Hello! You said: world", role="assistant"))
+        saved = chat._messages_for_bookmark()
+
+    assert saved == [
+        {"role": "user", "segments": [{"content": "/greet world", "content_type": "markdown"}]},
+        {"role": "assistant", "segments": [{"content": "Hello! You said: world", "content_type": "markdown"}]},
+    ]
+
+    async def restore() -> list[tuple[Role, str]]:
+        from shiny import reactive
+
+        with session_context(test_session):
+            restored = Chat(id="chat_restored")
+            for message_dict in saved:
+                await restored._restore_bookmark_message(message_dict)
+            with reactive.isolate():
+                return [(m.role, m.content) for m in restored._messages()]
+
+    result: list[tuple[Role, str]] = []
+
+    async def run() -> None:
+        result.extend(await restore())
+
+    run_async(run)
+
+    assert result == [
+        ("user", "/greet world"),
+        ("assistant", "Hello! You said: world"),
+    ]
+
+
+def test_bookmark_omits_side_effect_only_slash_command():
+    # A side-effect-only command (echo=False) stores nothing, so it never
+    # contributes to the bookmark even though its handler runs.
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        chat.slash_command("note", "Side-effect only", echo=False)
+        # The echo=False command stored nothing; only an explicit message lands.
+        chat._store_message(ChatMessage(content="real message", role="user"))
+        saved = chat._messages_for_bookmark()
+
+    assert saved == [
+        {"role": "user", "segments": [{"content": "real message", "content_type": "markdown"}]},
+    ]
 
 
 class MyObject:

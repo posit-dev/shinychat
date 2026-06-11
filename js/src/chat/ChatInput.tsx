@@ -7,9 +7,14 @@ import {
   memo,
 } from "react"
 import { useChatDispatch } from "./context"
-import { useInputHistory } from "./useInputHistory"
-import type { ChatTransport } from "../transport/types"
+import type {
+  ChatTransport,
+  SlashCommandDef,
+  SlashCommandEventDetail,
+} from "../transport/types"
 import { arrowUpCircleFill, spinnerArc, stopCircleFill } from "../utils/icons"
+import { TiptapInput, type TiptapInputHandle } from "./TiptapInput"
+import type { SubmitKey } from "./tiptap/submitShortcut"
 
 export interface ChatInputProps {
   transport: ChatTransport
@@ -23,6 +28,9 @@ export interface ChatInputProps {
   cancelRequested?: boolean
   isStreaming?: boolean
   onCancel?: () => void
+  slashCommands?: SlashCommandDef[]
+  slashCommandId?: string
+  submitKey?: SubmitKey
 }
 
 export interface ChatInputHandle {
@@ -31,6 +39,22 @@ export interface ChatInputHandle {
     options?: { submit?: boolean; focus?: boolean },
   ): void
   focus(): void
+}
+
+function parseSlashCommand(
+  value: string,
+  commands: SlashCommandDef[],
+): { command: string; userText: string; echo: boolean } | null {
+  if (!value.startsWith("/")) return null
+  const withoutSlash = value.slice(1)
+  const spaceIndex = withoutSlash.indexOf(" ")
+  const commandName =
+    spaceIndex === -1 ? withoutSlash : withoutSlash.slice(0, spaceIndex)
+  const userText =
+    spaceIndex === -1 ? "" : withoutSlash.slice(spaceIndex + 1).trim()
+  const matched = commands.find((cmd) => cmd.name === commandName)
+  if (!matched) return null
+  return { command: commandName, userText, echo: matched.echo }
 }
 
 export const ChatInput = memo(
@@ -47,141 +71,90 @@ export const ChatInput = memo(
       cancelRequested,
       isStreaming,
       onCancel,
+      slashCommands = [],
+      slashCommandId = "",
+      submitKey = "enter",
     },
     ref,
   ) {
     const dispatch = useChatDispatch()
-
-    const textareaRef = useRef<HTMLTextAreaElement>(null)
-    const isComposingRef = useRef(false)
+    const tiptapRef = useRef<TiptapInputHandle>(null)
     const [hasText, setHasText] = useState(false)
-    const { recall, reset, isActive } = useInputHistory(userMessages)
 
-    function updateHeight(el: HTMLTextAreaElement): void {
-      if (el.scrollHeight === 0) return
-      el.style.height = "auto"
-      el.style.height = `${el.scrollHeight}px`
-    }
+    const submitValue = useCallback(
+      (content: string): boolean => {
+        if (content.trim().length === 0) return false
+        if (disabled) return false
 
-    const sendInput = useCallback(
-      (focusAfter = true): void => {
-        const el = textareaRef.current
-        if (!el) return
-        const content = el.value
-        if (content.trim().length === 0) return
-        if (disabled) return
-
-        dispatch({ type: "INPUT_SENT", content, role: "user" })
-        transport.sendInput(inputId, content)
-        onSend?.()
-
-        // Clear the DOM element directly (textarea is fully uncontrolled)
-        el.value = ""
-        setHasText(false)
-        updateHeight(el)
-        reset()
-
-        if (focusAfter) el.focus()
-      },
-      [disabled, dispatch, transport, inputId, onSend, reset],
-    )
-
-    const onKeyDown = useCallback(
-      (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
-        const isEnter = e.code === "Enter" && !e.shiftKey
-        const el = textareaRef.current
-        if (!el) return
-
-        const isUp = e.code === "ArrowUp"
-        const isDown = e.code === "ArrowDown"
-
-        const atEnd = el.selectionStart === el.value.length
-        const canRecall = isActive() ? atEnd : el.value.length === 0
-
-        if ((isUp || isDown) && canRecall && !isComposingRef.current) {
-          const value = recall(isUp ? "up" : "down", el.value)
-          if (value !== undefined) {
-            e.preventDefault()
-            el.value = value
-            updateHeight(el)
-            setHasText(value.trim().length > 0)
-            el.setSelectionRange(value.length, value.length)
+        const slashMatch = parseSlashCommand(content, slashCommands)
+        if (slashMatch) {
+          const inputEl = document.getElementById(inputId)
+          const containerEl =
+            inputEl?.closest<HTMLElement>("shiny-chat-container") ?? null
+          const detail: SlashCommandEventDetail = {
+            id:
+              containerEl?.getAttribute("effective-id") ??
+              containerEl?.id ??
+              "",
+            command: slashMatch.command,
+            userText: slashMatch.userText,
+            echo: slashMatch.echo,
           }
-          return
-        }
+          const ev = new CustomEvent("shiny:chat-slash-command", {
+            detail,
+            cancelable: true,
+            bubbles: true,
+          })
+          ;(containerEl ?? inputEl)?.dispatchEvent(ev)
 
-        if (isEnter && !isComposingRef.current && el.value.trim().length > 0) {
-          e.preventDefault()
-          sendInput()
+          const echo = detail.echo
+          const prevented = ev.defaultPrevented
+
+          if (echo) {
+            dispatch({
+              type: "INPUT_SENT",
+              content,
+              role: "user",
+              awaitResponse: !prevented,
+            })
+          }
+          if (!prevented) {
+            transport.sendSlashCommand(
+              slashCommandId,
+              slashMatch.command,
+              slashMatch.userText,
+              echo,
+            )
+          }
+        } else {
+          dispatch({ type: "INPUT_SENT", content, role: "user" })
+          transport.sendInput(inputId, content)
         }
+        onSend?.()
+        return true
       },
-      [sendInput, recall, isActive],
+      [
+        disabled,
+        dispatch,
+        transport,
+        inputId,
+        onSend,
+        slashCommands,
+        slashCommandId,
+      ],
     )
-
-    const onInput = useCallback((): void => {
-      const el = textareaRef.current
-      if (!el) return
-      updateHeight(el)
-      setHasText(el.value.trim().length > 0)
-    }, [])
-
-    const onCompositionStart = useCallback((): void => {
-      isComposingRef.current = true
-    }, [])
-
-    const onCompositionEnd = useCallback((): void => {
-      isComposingRef.current = false
-    }, [])
 
     useImperativeHandle(
       ref,
       () => ({
-        setInputValue(
-          newValue: string,
-          {
-            submit = false,
-            focus = false,
-          }: { submit?: boolean; focus?: boolean } = {},
-        ): void {
-          const el = textareaRef.current
-          if (!el) return
-
-          const oldValue = el.value
-          el.value = newValue
-          setHasText(newValue.trim().length > 0)
-          updateHeight(el)
-
-          if (submit) {
-            // Server-triggered submit still respects the disabled guard
-            // (we only skip sendInput() to avoid its focus/clear side-effects).
-            if (!disabled) {
-              const submitContent = el.value
-              if (submitContent.trim().length > 0) {
-                dispatch({
-                  type: "INPUT_SENT",
-                  content: submitContent,
-                  role: "user",
-                })
-                transport.sendInput(inputId, submitContent)
-                onSend?.()
-                reset()
-              }
-            }
-            // Always restore old value (the submitted value was temporary)
-            el.value = oldValue
-            setHasText(oldValue.trim().length > 0)
-            updateHeight(el)
-          }
-
-          if (focus) {
-            el.focus()
-          }
+        setInputValue(value, options) {
+          tiptapRef.current?.setInputValue(value, options)
         },
-        focus(): void {
-          textareaRef.current?.focus()
+        focus() {
+          tiptapRef.current?.focus()
         },
       }),
-      [disabled, dispatch, transport, inputId, onSend, reset],
+      [],
     )
 
     const sendButtonDisabled = disabled || !hasText
@@ -191,19 +164,16 @@ export const ChatInput = memo(
 
     return (
       <>
-        <textarea
-          ref={textareaRef}
-          id={inputId}
-          className={hasTopShadow ? "form-control shadow" : "form-control"}
-          rows={1}
+        <TiptapInput
+          ref={tiptapRef}
+          inputId={inputId}
           placeholder={placeholder}
-          aria-disabled={disabled || undefined}
-          onKeyDown={onKeyDown}
-          onInput={onInput}
-          onCompositionStart={onCompositionStart}
-          onCompositionEnd={onCompositionEnd}
-          aria-label="Chat message"
-          data-shiny-no-bind-input
+          hasTopShadow={hasTopShadow}
+          slashCommands={slashCommands}
+          onHasTextChange={setHasText}
+          onSubmit={submitValue}
+          userMessages={userMessages}
+          submitKey={submitKey}
         />
         {showCancelButton ? (
           <button
@@ -228,7 +198,13 @@ export const ChatInput = memo(
             title="Send message"
             aria-label="Send message"
             disabled={sendButtonDisabled}
-            onClick={() => sendInput()}
+            onClick={() => {
+              const content = tiptapRef.current?.serializeEditor() ?? ""
+              if (submitValue(content)) {
+                tiptapRef.current?.setInputValue("")
+                tiptapRef.current?.focus()
+              }
+            }}
             dangerouslySetInnerHTML={{ __html: arrowUpCircleFill }}
           />
         )}

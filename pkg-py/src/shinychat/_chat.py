@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import inspect
 import json
+import re
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -59,6 +61,7 @@ from ._chat_types import (
     GreetingOptions,
     MessagePayload,
     SerializedDep,
+    SlashCommandDef,
     StoredMessage,
     chat_greeting,
 )
@@ -94,6 +97,8 @@ __all__ = (
 
 # TODO: UserInput might need to be a list of dicts if we want to support multiple
 # user input content types
+TransformUserInput = Callable[[str], Union[str, None]]
+TransformUserInputAsync = Callable[[str], Awaitable[Union[str, None]]]
 TransformAssistantResponse = Callable[[str], Union[str, HTML, None]]
 TransformAssistantResponseAsync = Callable[
     [str], Awaitable[Union[str, HTML, None]]
@@ -122,6 +127,14 @@ UserSubmitFunction = Union[
     UserSubmitFunction0,
     UserSubmitFunction1,
 ]
+
+
+@dataclass(frozen=True)
+class SlashCommandRegistration:
+    handler: UserSubmitFunction | None
+    takes_args: bool
+    definition: SlashCommandDef
+
 
 ChunkOption = Literal["start", "end", True, False]
 
@@ -282,6 +295,8 @@ class Chat:
 
         self.id = resolve_id(id)
         self.user_input_id = ResolvedId(f"{self.id}_user_input")
+        self._slash_command_id = ResolvedId(f"{self.id}_slash_command")
+        self._transform_user: TransformUserInputAsync | None = None
         self._transform_assistant: (
             TransformAssistantResponseChunkAsync | None
         ) = None
@@ -321,6 +336,14 @@ class Chat:
                 reactive.Value(())
             )
 
+            # `None` until the first registration, which lets us skip the
+            # redundant initial sync (the client already initializes to `[]`).
+            # An empty dict, by contrast, is sent so that removing the last
+            # command clears the client's palette.
+            self._slash_commands: reactive.Value[
+                dict[str, SlashCommandRegistration] | None
+            ] = reactive.Value(None)
+
             self._latest_user_input: reactive.Value[
                 StoredMessage | None
             ] = reactive.Value(None)
@@ -354,8 +377,50 @@ class Chat:
                 msg = ChatMessage(content=self._user_input(), role="user")
                 self._store_message(msg)
 
+            @reactive.effect
+            async def _sync_slash_commands():
+                cmds = self._slash_commands()
+                if cmds is None:
+                    return
+                await self._send_action(
+                    {
+                        "type": "update_slash_commands",
+                        "commands": [reg.definition for reg in cmds.values()],
+                    }
+                )
+
+            @reactive.effect
+            @reactive.event(self._slash_command_input)
+            async def _on_slash_command():
+                data = self._slash_command_input()
+                command = data.get("command", "")
+                user_text = data.get("userText", "")
+                echo = bool(data.get("echo", True))
+                if echo:
+                    full_text = f"/{command} {user_text}".rstrip()
+                    msg = ChatMessage(content=full_text, role="user")
+                    self._store_message(msg)
+                cmds = self._slash_commands()
+                reg = cmds.get(command) if cmds else None
+                try:
+                    if reg is not None and reg.handler is not None:
+                        if reg.takes_args:
+                            await _utils.wrap_async(
+                                cast(UserSubmitFunction1, reg.handler)
+                            )(user_text)
+                        else:
+                            await _utils.wrap_async(
+                                cast(UserSubmitFunction0, reg.handler)
+                            )()
+                except Exception as e:
+                    await self._raise_exception(e)
+                finally:
+                    await self._remove_loading_message()
+
             self._effects.append(_init_chat)
             self._effects.append(_on_user_input)
+            self._effects.append(_sync_slash_commands)
+            self._effects.append(_on_slash_command)
 
         # Prevent repeated calls to Chat() with the same id from accumulating effects
         instance_id = self.id + "_session" + self._session.id
@@ -511,6 +576,139 @@ class Chat:
             return create_effect
         else:
             return create_effect(fn)
+
+    @overload
+    def slash_command(
+        self,
+        name: str,
+        description: str,
+        *,
+        echo: bool | None = None,
+        force: bool = False,
+    ) -> Callable[[UserSubmitFunction], UserSubmitFunction]: ...
+
+    @overload
+    def slash_command(
+        self,
+        name: str,
+        description: str,
+        fn: UserSubmitFunction | None,
+        *,
+        echo: bool | None = None,
+        force: bool = False,
+    ) -> Callable[[], None]: ...
+
+    def slash_command(
+        self,
+        name: str,
+        description: str,
+        fn: UserSubmitFunction | None | MISSING_TYPE = MISSING,
+        *,
+        echo: bool | None = None,
+        force: bool = False,
+    ) -> Callable[[UserSubmitFunction], UserSubmitFunction] | Callable[[], None]:
+        """
+        Register a slash command and its handler.
+
+        Can be used as a decorator (handler supplied by decoration) or called
+        directly with ``fn=``. Pass ``fn=None`` to register a *client-side*
+        command — one with no server handler, handled in JavaScript via the
+        ``shiny:chat-slash-command`` DOM event (see the docs).
+
+        Parameters
+        ----------
+        name
+            The slash command name (without the leading ``/``). Must contain only
+            alphanumeric characters, underscores, or hyphens.
+        description
+            A short description shown in the command palette.
+        fn
+            The handler function (0 or 1 argument; one argument receives the text
+            after the command name). Omit it to use ``slash_command`` as a
+            decorator. Pass ``None`` explicitly to register a client-side command
+            with no server handler.
+        echo
+            Whether invoking the command participates in the conversation: adds
+            the ``/cmd user_input`` user message, shows a loading state, and stores the
+            invocation in history. Defaults to ``True`` when a handler is provided
+            and ``False`` otherwise. Set ``echo=False`` for a server handler that
+            runs purely for its side effects (e.g. opening a modal).
+        force
+            Whether to overwrite an existing command with the same name.
+
+        Returns
+        -------
+        :
+            A decorator when ``fn`` is omitted; otherwise a callable that removes
+            the command.
+        """
+
+        from shiny import reactive
+
+        def _register(handler: UserSubmitFunction | None) -> None:
+            if not re.fullmatch(r"[a-zA-Z0-9_-]+", name):
+                raise ValueError(
+                    f"Slash command name must contain only alphanumeric characters, underscores, or hyphens, got {name!r}"
+                )
+            with reactive.isolate():
+                cmds = dict(self._slash_commands() or {})
+            if not force and name in cmds:
+                raise ValueError(
+                    f"Slash command {name!r} is already registered. "
+                    f"Use `force=True` to overwrite it."
+                )
+            resolved_echo = (handler is not None) if echo is None else echo
+            cmd_def = SlashCommandDef(
+                name=name, description=description, echo=resolved_echo
+            )
+            takes_args = False
+            if handler is not None:
+                n_params = len(inspect.signature(handler).parameters)
+                if n_params > 1:
+                    raise ValueError(
+                        f"Slash command handler for {name!r} must accept 0 or 1 "
+                        f"argument, got {n_params}"
+                    )
+                takes_args = n_params >= 1
+            cmds[name] = SlashCommandRegistration(
+                handler=handler,
+                takes_args=takes_args,
+                definition=cmd_def,
+            )
+            self._slash_commands.set(cmds)
+
+        if isinstance(fn, MISSING_TYPE):
+
+            def decorator(handler: UserSubmitFunction) -> UserSubmitFunction:
+                _register(handler)
+                return handler
+
+            return decorator
+        else:
+            _register(fn)
+            return self._remove_slash_command_fn(name)
+
+    def remove_slash_command(self, name: str) -> None:
+        """
+        Remove a previously registered slash command by name.
+
+        Parameters
+        ----------
+        name
+            The name of the command to remove (without the leading ``/``).
+        """
+        from shiny import reactive
+
+        with reactive.isolate():
+            cmds = dict(self._slash_commands() or {})
+        cmds.pop(name, None)
+        self._slash_commands.set(cmds)
+
+    def _remove_slash_command_fn(self, name: str) -> Callable[[], None]:
+        def remove() -> None:
+            self.remove_slash_command(name)
+
+        return remove
 
     async def _raise_exception(
         self,
@@ -1267,6 +1465,9 @@ class Chat:
         id = self.user_input_id
         return cast(str, self._session.input[id]())
 
+    def _slash_command_input(self) -> dict[str, Any]:
+        return self._session.input[self._slash_command_id]()
+
     def update_user_input(
         self,
         *,
@@ -1726,6 +1927,7 @@ class ChatExpress(Chat):
         fill: bool = True,
         icon_assistant: HTML | Tag | TagList | None = None,
         enable_cancel: "bool | MISSING_TYPE" = MISSING,
+        submit_key: 'Literal["enter", "enter+modifier"]' = "enter",
         footer: Optional[TagChild] = None,
         **kwargs: TagAttrValue,
     ) -> Tag:
@@ -1764,6 +1966,12 @@ class ChatExpress(Chat):
             chatlas ``StreamController`` to actually stop the stream. Defaults to
             ``True`` when a ``client=`` was provided to :class:`~shinychat.Chat`,
             ``False`` otherwise.
+        submit_key
+            Controls which key combination submits the chat message:
+
+            - ``"enter"`` (default): Enter submits, Shift+Enter adds a newline.
+            - ``"enter+modifier"``: Ctrl+Enter (Cmd+Enter on Mac) submits,
+              plain Enter adds a newline.
         footer
             Optional HTML content to display below the chat input.
             This can be any HTML content (tags, tag lists, or strings).
@@ -1788,6 +1996,7 @@ class ChatExpress(Chat):
             fill=fill,
             icon_assistant=icon_assistant,
             enable_cancel=enable_cancel,
+            submit_key=submit_key,
             footer=footer,
             **kwargs,
         )
@@ -1858,6 +2067,7 @@ def chat_ui(
     fill: bool = True,
     icon_assistant: Optional[HTML | Tag | TagList] = None,
     enable_cancel: "bool | MISSING_TYPE" = MISSING,
+    submit_key: 'Literal["enter", "enter+modifier"]' = "enter",
     footer: Optional[TagChild] = None,
     **kwargs: TagAttrValue,
 ) -> Tag:
@@ -1921,6 +2131,12 @@ def chat_ui(
         unset (the default), a chat driven by a ``client=`` enables the stop
         button automatically; otherwise it stays hidden. Passing an explicit
         ``True``/``False`` always wins over that automatic behavior.
+    submit_key
+        Controls which key combination submits the chat message:
+
+        - ``"enter"`` (default): Enter submits, Shift+Enter adds a newline.
+        - ``"enter+modifier"``: Ctrl+Enter (Cmd+Enter on Mac) submits,
+          plain Enter adds a newline.
     footer
         Optional HTML content to display below the chat input.
         This can be any HTML content (tags, tag lists, or strings).
@@ -2019,6 +2235,7 @@ def chat_ui(
         # Also include icon on the parent so that when messages are dynamically added,
         # we know the default icon has changed
         icon_assistant=icon_attr,
+        submit_key=submit_key if submit_key != "enter" else None,
         **kwargs,
     )
 

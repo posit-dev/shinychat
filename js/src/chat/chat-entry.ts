@@ -105,6 +105,12 @@ class ChatContainerElement extends HTMLElement {
 
     const initialGreeting = parseInitialGreeting(this)
 
+    const submitKeyAttr = this.getAttribute("submit-key")
+    const submitKey =
+      submitKeyAttr === "enter+modifier" ? "enter+modifier" : "enter"
+
+    const slashCommandId = `${elementId}_slash_command`
+
     // Unbind any Shiny inputs/outputs in the server-rendered content before
     // React replaces the DOM. Without this, Shiny's internal binding registry
     // retains stale references, preventing re-binding of the new React-rendered
@@ -125,6 +131,8 @@ class ChatContainerElement extends HTMLElement {
         initialGreeting,
         enableCancel,
         footerEl: this.footerEl ?? undefined,
+        slashCommandId,
+        submitKey,
       }),
     )
   }

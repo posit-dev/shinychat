@@ -1,6 +1,8 @@
 @use "chat-tools.scss";
 @use "suggestion-cards.scss";
 @use "greeting";
+@use "slash-commands.scss";
+@use "command-chip.scss";
 
 shiny-chat-container {
   --shiny-chat-border: var(--bs-border-width, 1px) solid var(--bs-border-color, #e9ecef);
@@ -205,6 +207,19 @@ shiny-chat-container {
     max-height: 175px;
     &::placeholder {
       color: var(--bs-gray-600, #707782) !important;
+    }
+  }
+  .tiptap {
+    --bs-border-radius: 26px;
+    padding-right: 36px !important;
+    max-height: 175px;
+    overflow-y: auto;
+    &.is-empty::before {
+      content: attr(data-placeholder);
+      color: var(--bs-gray-600, #707782);
+      float: left;
+      height: 0;
+      pointer-events: none;
     }
   }
   .shiny-chat-btn-send {

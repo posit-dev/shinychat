@@ -1,5 +1,11 @@
 # shinychat (development version)
 
+## New features and improvements
+
+* Added slash commands: a typeahead command palette that lets users trigger named shortcuts directly from the chat input. Type `/` to open the palette, filter by typing, and pick a command with arrow keys or click. Commands can expand into LLM prompts, trigger server-side side effects (clear chat, open a modal, export transcript), or be handled entirely client-side via the cancelable `shiny:chat-slash-command` DOM event. Register commands with `chat$slash_command()`, which accepts 0- or 1-argument handlers; 1-argument handlers receive a `ContentSlashCommand` object (a `ContentText` subclass with `command` and `user_text` slots) so handlers can mutate `content@text` before passing it to `client$stream()`. The `echo` parameter controls whether an invocation is recorded as a user message and triggers a loading state. Echoed commands are faithfully restored on bookmark/restore. (#239)
+
+* Added `submit_key` parameter to `chat_ui()` and `chat_mod_ui()`: `"enter"` (default, Enter submits) or `"enter+modifier"` (Ctrl/Cmd+Enter submits, plain Enter inserts a line break). The input remains editable while a response is streaming — only submission is blocked, not typing. (#251)
+
 ## Bug fixes
 
 * Fixed the copy button on code blocks not working in some embedded contexts. (@thisisnic, #247)

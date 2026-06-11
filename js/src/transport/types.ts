@@ -11,6 +11,33 @@ export type MessagePayloadSegment = {
   content_type: ContentType
 }
 
+export interface SlashCommandDef {
+  name: string
+  description: string
+  /**
+   * Whether invoking the command participates in the conversation: adds the
+   * `/cmd args` user message and shows a pending/loading state. False means a
+   * pure side effect (nothing added to the transcript, no loading).
+   */
+  echo: boolean
+}
+
+/** Detail payload of the cancelable `shiny:chat-slash-command` DOM event. */
+export interface SlashCommandEventDetail {
+  /** The chat id (use to target a specific chat instance). */
+  readonly id: string
+  /** The parsed command name (read-only). */
+  readonly command: string
+  /** The parsed user text after the command name (read-only). */
+  readonly userText: string
+  /**
+   * Effective echo for this invocation. This is the one field a listener may
+   * mutate (e.g. `e.detail.echo = true`) to change whether the command is shown
+   * as a user message; `command`/`userText` are informational and not honored if mutated.
+   */
+  echo: boolean
+}
+
 export type MessagePayload = {
   id?: string
   role: "user" | "assistant"
@@ -59,6 +86,7 @@ export type ChatAction =
     }
   | { type: "greeting_end" }
   | { type: "greeting_clear" }
+  | { type: "update_slash_commands"; commands: SlashCommandDef[] }
 
 export type ShinyChatEnvelope = {
   id: string
@@ -87,6 +115,12 @@ export type ShinyClientMessage = {
 export interface ChatTransport {
   sendInput(id: string, value: string): void
   sendCancel(id: string): void
+  sendSlashCommand(
+    id: string,
+    command: string,
+    userText: string,
+    echo: boolean,
+  ): void
   onMessage(id: string, callback: (action: ChatAction) => void): () => void
 }
 
