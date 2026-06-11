@@ -10,11 +10,10 @@ import base64
 import json
 import mimetypes
 import os
-
-from htmltools import html_escape
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+from htmltools import html_escape
 from pydantic import BaseModel
 from typing_extensions import TypedDict
 
@@ -77,7 +76,9 @@ class Attachment(BaseModel):
         p = Path(path)
         raw = p.read_bytes()
         resolved_mime = (
-            mime or mimetypes.guess_type(p.name)[0] or "application/octet-stream"
+            mime
+            or mimetypes.guess_type(p.name)[0]
+            or "application/octet-stream"
         )
         return cls(
             mime=resolved_mime,

@@ -73,6 +73,10 @@ reference:
   contents:
   - ContentSlashCommand
 
+- title: File attachments
+  contents:
+  - chat_attachment
+
 - title: Integration with ellmer
   contents:
   - contents_shinychat
