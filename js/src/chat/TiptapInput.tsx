@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useRef } from "react"
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react"
 import { useEditor, EditorContent } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import { Extension } from "@tiptap/core"
@@ -109,6 +109,7 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
     placeholderRef.current = placeholder
 
     const editor = useEditor({
+      editable: !disabled,
       extensions: [
         StarterKit.configure({
           blockquote: false,
@@ -247,6 +248,12 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
         onHasTextChange(!editor.isEmpty)
       },
     })
+
+    useEffect(() => {
+      if (editor && editor.isEditable === disabled) {
+        editor.setEditable(!disabled)
+      }
+    }, [editor, disabled])
 
     useImperativeHandle(
       ref,
