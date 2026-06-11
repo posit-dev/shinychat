@@ -7,11 +7,12 @@ def test_slash_command_palette_opens(page: Page, local_app: ShinyAppProc):
     page.goto(local_app.url)
     ctrl = ChatController(page, "chat")
     expect(ctrl.loc).to_be_visible(timeout=30_000)
+    expect(ctrl.loc_input).to_have_attribute("aria-haspopup", "listbox")
 
     ctrl.loc_input.click()
     ctrl.loc_input.type("/")
 
-    palette = ctrl.loc.locator(".shiny-chat-slash-palette")
+    palette = page.locator(".shiny-chat-slash-palette")
     expect(palette).to_be_visible()
     expect(palette.locator(".shiny-chat-slash-palette-item")).to_have_count(4)
 
@@ -21,14 +22,14 @@ def test_slash_command_fires_handler(page: Page, local_app: ShinyAppProc):
     ctrl = ChatController(page, "chat")
     expect(ctrl.loc).to_be_visible(timeout=30_000)
     # Wait for the server-registered commands to reach the client before
-    # selecting one (the textarea advertises the listbox once they arrive).
+    # selecting one (the editor advertises the listbox once they arrive).
     expect(ctrl.loc_input).to_have_attribute("aria-haspopup", "listbox")
 
     # Type /greet and select it, then add args and submit
     ctrl.loc_input.click()
     ctrl.loc_input.type("/greet")
     page.keyboard.press("Enter")  # select the command from palette
-    ctrl.loc_input.type("world")
+    page.keyboard.type("world")
     page.keyboard.press("Enter")  # submit
 
     ctrl.expect_latest_message("Hello! You said: world", timeout=10_000)
@@ -39,13 +40,13 @@ def test_slash_command_does_not_fire_on_user_submit(page: Page, local_app: Shiny
     ctrl = ChatController(page, "chat")
     expect(ctrl.loc).to_be_visible(timeout=30_000)
     # Wait for the server-registered commands to reach the client before
-    # selecting one (the textarea advertises the listbox once they arrive).
+    # selecting one (the editor advertises the listbox once they arrive).
     expect(ctrl.loc_input).to_have_attribute("aria-haspopup", "listbox")
 
     ctrl.loc_input.click()
     ctrl.loc_input.type("/greet")
     page.keyboard.press("Enter")  # select command
-    ctrl.loc_input.type("test")
+    page.keyboard.type("test")
     page.keyboard.press("Enter")  # submit
 
     ctrl.expect_latest_message("Hello! You said: test", timeout=10_000)
@@ -69,11 +70,12 @@ def test_slash_palette_keyboard_navigation(page: Page, local_app: ShinyAppProc):
     page.goto(local_app.url)
     ctrl = ChatController(page, "chat")
     expect(ctrl.loc).to_be_visible(timeout=30_000)
+    expect(ctrl.loc_input).to_have_attribute("aria-haspopup", "listbox")
 
     ctrl.loc_input.click()
     ctrl.loc_input.type("/")
 
-    palette = ctrl.loc.locator(".shiny-chat-slash-palette")
+    palette = page.locator(".shiny-chat-slash-palette")
     expect(palette).to_be_visible()
 
     first_item = palette.locator(".shiny-chat-slash-palette-item").first
@@ -103,11 +105,12 @@ def test_slash_palette_filter(page: Page, local_app: ShinyAppProc):
     page.goto(local_app.url)
     ctrl = ChatController(page, "chat")
     expect(ctrl.loc).to_be_visible(timeout=30_000)
+    expect(ctrl.loc_input).to_have_attribute("aria-haspopup", "listbox")
 
     ctrl.loc_input.click()
     ctrl.loc_input.type("/gr")
 
-    palette = ctrl.loc.locator(".shiny-chat-slash-palette")
+    palette = page.locator(".shiny-chat-slash-palette")
     expect(palette).to_be_visible()
     expect(palette.locator(".shiny-chat-slash-palette-item")).to_have_count(1)
     expect(palette.locator(".shiny-chat-slash-palette-name")).to_have_text("/greet")

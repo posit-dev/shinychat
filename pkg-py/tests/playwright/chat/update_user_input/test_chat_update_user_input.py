@@ -48,7 +48,7 @@ def test_validate_chat_update_user_input(
 
     # Input remains cleared if previously clear (have to clear the input first)
     chat.loc_input.focus()
-    while chat.loc_input.input_value():
+    while chat.loc_input.text_content():
         chat.loc_input.press("Backspace")
 
     chat.expect_user_input("")

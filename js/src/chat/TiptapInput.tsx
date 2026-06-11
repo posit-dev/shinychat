@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useRef } from "react"
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react"
 import { useEditor, EditorContent } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import { Extension } from "@tiptap/core"
@@ -7,6 +7,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view"
 import { Editor, type JSONContent, type Range } from "@tiptap/core"
 import { CommandMention } from "./tiptap/commandMention"
 import { createSuggestionRender } from "./tiptap/suggestionRender"
+import { SuggestionPluginKey } from "@tiptap/suggestion"
 import type { SubmitKey } from "./tiptap/submitShortcut"
 import { filterSlashCommands } from "./SlashCommandPalette"
 import { useInputHistory } from "./useInputHistory"
@@ -162,6 +163,10 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
           priority: 200,
           addKeyboardShortcuts() {
             const submit = () => {
+              const suggestionState = SuggestionPluginKey.getState(
+                this.editor.view.state,
+              )
+              if (suggestionState?.active) return false
               if (this.editor.isEmpty) return false
               const content = serializeEditor(this.editor)
               if (content.trim().length === 0) return false
@@ -269,6 +274,16 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
         onHasTextChange(!editor.isEmpty)
       },
     })
+
+    useEffect(() => {
+      const el = editor?.view?.dom
+      if (!el) return
+      if (slashCommands.length > 0) {
+        el.setAttribute("aria-haspopup", "listbox")
+      } else {
+        el.removeAttribute("aria-haspopup")
+      }
+    }, [editor, slashCommands])
 
     useImperativeHandle(
       ref,

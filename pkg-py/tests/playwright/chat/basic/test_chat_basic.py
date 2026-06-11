@@ -42,8 +42,8 @@ def test_validate_chat_basic(page: Page, local_app: ShinyAppProc) -> None:
     message_state = controller.OutputCode(page, "message_state")
     message_state_expected = tuple(
         [
-            {"content": f"\n{user_message}", "role": "user"},
-            {"content": f"You said: \n{user_message}", "role": "assistant"},
+            {"content": f"{user_message}", "role": "user"},
+            {"content": f"You said: {user_message}", "role": "assistant"},
             {"content": f"{user_message2}", "role": "user"},
             {"content": f"You said: {user_message2}", "role": "assistant"},
         ]

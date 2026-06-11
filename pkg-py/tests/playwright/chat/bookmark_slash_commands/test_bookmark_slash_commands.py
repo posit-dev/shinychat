@@ -35,7 +35,7 @@ def test_bookmark_restores_echoed_slash_command_but_not_side_effects(
     chat.loc_input.click()
     chat.loc_input.type("/greet")
     page.keyboard.press("Enter")  # select from palette
-    chat.loc_input.type("world")
+    page.keyboard.type("world")
     page.keyboard.press("Enter")  # submit
     chat.expect_latest_message("Hello! You said: world", timeout=10_000)
 
