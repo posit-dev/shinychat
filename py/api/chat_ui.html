@@ -74,7 +74,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-dbde6ece91fc58bf30abbd8587d2285d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-2b2ffe08712cd43ea6840227738f521a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-1e813ab646befc76a49ec748d55fbc6b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -292,9 +292,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    fill<span class="op">=</span><span class="va">True</span>,</span>
 <span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    icon_assistant<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    enable_cancel<span class="op">=</span>MISSING,</span>
-<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    footer<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs,</span>
-<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    submit_key<span class="op">=</span><span class="st">'enter'</span>,</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    footer<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs,</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>UI container for a chat component (Shiny Core).</p>
 <p>This function is for locating a :class:<code>~shiny.ui.Chat</code> instance in a Shiny Core app. If you are using Shiny Express, use the :method:<code>~shiny.ui.Chat.ui</code> method instead.</p>
 <section id="parameters" class="level2 doc-section doc-section-parameters">
@@ -364,12 +365,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td><code>MISSING</code></td>
 </tr>
 <tr class="even">
+<td>submit_key</td>
+<td>'Literal["enter", "enter+modifier"]'</td>
+<td>Controls which key combination submits the chat message: - <code>"enter"</code> (default): Enter submits, Shift+Enter adds a newline. - <code>"enter+modifier"</code>: Ctrl+Enter (Cmd+Enter on Mac) submits, plain Enter adds a newline.</td>
+<td><code>'enter'</code></td>
+</tr>
+<tr class="odd">
 <td>footer</td>
 <td><a href="`typing.Optional`">Optional</a>[<a href="`htmltools.TagChild`">TagChild</a>]</td>
 <td>Optional HTML content to display below the chat input. This can be any HTML content (tags, tag lists, or strings). Useful for adding disclaimers, attribution, or other information. The footer text is styled slightly smaller and lighter than body text by default. Customize with CSS properties <code>--shiny-chat-footer-font-size</code> and <code>--shiny-chat-footer-color</code> on the chat container or footer element.</td>
 <td><code>None</code></td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>kwargs</td>
 <td><a href="`htmltools.TagAttrValue`">TagAttrValue</a></td>
 <td>Additional attributes for the chat container element.</td>

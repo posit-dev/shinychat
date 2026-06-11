@@ -74,7 +74,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="site_libs/quarto-html/quarto-syntax-highlighting-dbde6ece91fc58bf30abbd8587d2285d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap-2b2ffe08712cd43ea6840227738f521a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-1e813ab646befc76a49ec748d55fbc6b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -180,6 +180,13 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <ul>
   <li><a href="#installation" id="toc-installation" class="nav-link active" data-scroll-target="#installation">Installation</a></li>
   <li><a href="#quick-start" id="toc-quick-start" class="nav-link" data-scroll-target="#quick-start">Quick start</a></li>
+  <li><a href="#slash-commands" id="toc-slash-commands" class="nav-link" data-scroll-target="#slash-commands">Slash commands</a>
+  <ul class="collapse">
+  <li><a href="#prompt-expansion" id="toc-prompt-expansion" class="nav-link" data-scroll-target="#prompt-expansion">Prompt expansion</a></li>
+  <li><a href="#side-effects" id="toc-side-effects" class="nav-link" data-scroll-target="#side-effects">Side effects</a></li>
+  <li><a href="#client-side-handlers" id="toc-client-side-handlers" class="nav-link" data-scroll-target="#client-side-handlers">Client-side handlers</a></li>
+  <li><a href="#key-points" id="toc-key-points" class="nav-link" data-scroll-target="#key-points">Key points</a></li>
+  </ul></li>
   <li><a href="#lower-level-interface" id="toc-lower-level-interface" class="nav-link" data-scroll-target="#lower-level-interface">Lower-level interface</a></li>
   <li><a href="#learn-more" id="toc-learn-more" class="nav-link" data-scroll-target="#learn-more">Learn more</a></li>
   </ul>
@@ -234,55 +241,124 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>app <span class="op">=</span> App(app_ui, server, bookmark_store<span class="op">=</span><span class="st">"url"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>The <code>chat.client</code> property provides a <code>.set()</code> method for swapping models mid-session and <code>.clear()</code> for resetting the conversation. For lower-level chat methods such as appending messages, updating the input, or inspecting stream state, call them directly on <code>chat</code>. See the <a href="./api/index.html">API reference</a> for the full interface.</p>
 </section>
+<section id="slash-commands" class="level2">
+<h2 class="anchored" data-anchor-id="slash-commands">Slash commands</h2>
+<p>Slash commands give users discoverable shortcuts — like <code>/search</code>, <code>/clear</code>, or <code>/help</code> — that run a server-side handler you define. Register a command with <code>@chat.slash_command(name, description)</code>. When a user runs it, the matching handler fires <em>instead</em> of <code>@chat.on_user_submit</code>, and what happens next is entirely up to the handler.</p>
+<p>The two most common patterns are <strong>prompt expansion</strong> — where the command transforms the user’s input before sending it to the LLM — and <strong>side effects</strong> — where the command performs an action without involving the LLM at all.</p>
+<section id="prompt-expansion" class="level3">
+<h3 class="anchored" data-anchor-id="prompt-expansion">Prompt expansion</h3>
+<p>The most common use of slash commands is giving users a shortcut that sends a prompt to the model on their behalf. A handler taking one argument receives the text typed after the command name — for <code>/search shiny modules</code>, that’s <code>"shiny modules"</code>.</p>
+<p>For example, a <code>/search</code> command could enrich the user’s query with retrieved context before streaming the model’s answer. In a real app the retrieval step would query a vector store or search index (i.e., a RAG workflow), but the core pattern is the same:</p>
+<div class="sourceCode" id="cb6" data-file="app.py"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> chatlas <span class="im">import</span> ChatAnthropic</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shiny.express <span class="im">import</span> app_opts, ui</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shinychat.express <span class="im">import</span> Chat</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>client <span class="op">=</span> ChatAnthropic(system_prompt<span class="op">=</span><span class="st">"You are a helpful assistant."</span>)</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>chat <span class="op">=</span> Chat(<span class="bu">id</span><span class="op">=</span><span class="st">"chat"</span>, client<span class="op">=</span>client)</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>chat.ui(placeholder<span class="op">=</span><span class="st">"Type / for commands, or chat away..."</span>)</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="at">@chat.slash_command</span>(<span class="st">"search"</span>, <span class="st">"Search the docs"</span>)</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> _(user_input: <span class="bu">str</span>):</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>    <span class="co"># In practice, retrieve relevant documents here (e.g., via a vector DB)</span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>    prompt <span class="op">=</span> <span class="ss">f"Search the documentation for the following topic and provide a concise summary: </span><span class="sc">{</span>user_input<span class="sc">}</span><span class="ss">"</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>    response <span class="op">=</span> <span class="cf">await</span> chat.client.value.stream_async(prompt, content<span class="op">=</span><span class="st">"all"</span>)</span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.append_message_stream(response)</span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>ui.page_opts(fillable<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>app_opts(bookmark_store<span class="op">=</span><span class="st">"url"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>When the user types <code>/search shiny modules</code>, the handler expands the input into a richer prompt and streams the model’s response. The user sees <code>/search shiny modules</code> as their message; the LLM receives the expanded prompt. In Shiny Core, register commands inside your server function in exactly the same way (<code>slash_command</code> is a method on <code>Chat</code>).</p>
+</section>
+<section id="side-effects" class="level3">
+<h3 class="anchored" data-anchor-id="side-effects">Side effects</h3>
+<p>Some commands perform an action without involving the LLM — clearing the conversation, opening a help modal, exporting a transcript. Pass <code>echo=False</code> so the command doesn’t appear as a user message:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="at">@chat.slash_command</span>(<span class="st">"clear"</span>, <span class="st">"Clear the conversation"</span>, echo<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> _():</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.clear_messages()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="client-side-handlers" class="level3">
+<h3 class="anchored" data-anchor-id="client-side-handlers">Client-side handlers</h3>
+<p>Register a command with <code>fn=None</code> so it appears in the palette without a server handler, then handle it in the browser via the <code>shiny:chat-slash-command</code> DOM event:</p>
+<div class="sourceCode" id="cb8" data-file="app.py"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shiny.express <span class="im">import</span> ui</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shinychat.express <span class="im">import</span> Chat</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>chat <span class="op">=</span> Chat(<span class="st">"chat"</span>)</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>chat.ui()</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>chat.slash_command(<span class="st">"clear"</span>, <span class="st">"Clear the input"</span>, fn<span class="op">=</span><span class="va">None</span>)</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>ui.tags.script(</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"""</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a><span class="st">    document.addEventListener('shiny:chat-slash-command', (e) =&gt; {</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a><span class="st">      if (e.detail.id !== 'chat' || e.detail.command !== 'clear') return;</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a><span class="st">      e.preventDefault();</span></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a><span class="st">      document.querySelector('#chat textarea').value = '';</span></span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a><span class="st">    });</span></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a><span class="st">    """</span></span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The event is cancelable and bubbles. Use <code>e.detail.id</code> to target a specific chat. <code>preventDefault()</code> skips the server round-trip; set <code>e.detail.echo</code> to control whether the command appears as a user message.</p>
+</section>
+<section id="key-points" class="level3">
+<h3 class="anchored" data-anchor-id="key-points">Key points</h3>
+<ul>
+<li>Users type <code>/</code> to open a palette of registered commands; arrow keys navigate, Enter or Tab selects, Escape dismisses.</li>
+<li>A slash command’s handler fires instead of <code>@chat.on_user_submit</code>. What happens next — including whether anything reaches the LLM — is entirely up to your handler.</li>
+<li>A <code>/</code> message that doesn’t match any registered command is sent as an ordinary message.</li>
+<li>Handlers take 0 or 1 argument (the text after the command name). They’re just app code — they can stream LLM responses, show modals, trigger downloads, or do nothing visible at all.</li>
+<li>The <code>echo</code> argument controls whether invoking the command appears as a user message. Defaults to <code>True</code> with a handler. Pass <code>echo=False</code> for side-effect-only handlers.</li>
+<li>Registering returns a function that removes the command when called; you can also call <code>chat.remove_slash_command(name)</code>. Re-registering an existing name raises an error unless you pass <code>force=True</code>.</li>
+<li>Slash command messages are restored faithfully when a bookmarked app is reopened.</li>
+</ul>
+</section>
+</section>
 <section id="lower-level-interface" class="level2">
 <h2 class="anchored" data-anchor-id="lower-level-interface">Lower-level interface</h2>
 <p>When you need full control over the server-side logic — or you’re using an LLM framework other than chatlas — omit the <code>client=</code> argument and wire things up manually. This means handling streaming, cancellation, and bookmarking yourself, but gives you complete flexibility over how messages are generated and displayed.</p>
 <p><strong>Shiny Express</strong></p>
-<div class="sourceCode" id="cb6" data-file="app.py"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shiny <span class="im">import</span> reactive</span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shiny.express <span class="im">import</span> <span class="bu">input</span></span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> chatlas <span class="im">import</span> ChatAnthropic, StreamController</span>
-<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shinychat.express <span class="im">import</span> Chat</span>
-<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>chat <span class="op">=</span> Chat(<span class="bu">id</span><span class="op">=</span><span class="st">"chat"</span>)</span>
-<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>chat.ui(enable_cancel<span class="op">=</span><span class="va">True</span>)</span>
-<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>client <span class="op">=</span> ChatAnthropic(system_prompt<span class="op">=</span><span class="st">"You are a helpful assistant."</span>)</span>
-<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>ctrl <span class="op">=</span> StreamController()</span>
-<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a><span class="at">@chat.on_user_submit</span></span>
-<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> handle_user_input(user_input: <span class="bu">str</span>):</span>
-<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>    response <span class="op">=</span> <span class="cf">await</span> client.stream_async(user_input, controller<span class="op">=</span>ctrl)</span>
-<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.append_message_stream(response)</span>
-<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.effect</span></span>
-<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.event</span>(<span class="bu">input</span>.chat_cancel)</span>
-<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> handle_cancel():</span>
-<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a>    ctrl.cancel()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb9" data-file="app.py"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shiny <span class="im">import</span> reactive</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shiny.express <span class="im">import</span> <span class="bu">input</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> chatlas <span class="im">import</span> ChatAnthropic, StreamController</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shinychat.express <span class="im">import</span> Chat</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>chat <span class="op">=</span> Chat(<span class="bu">id</span><span class="op">=</span><span class="st">"chat"</span>)</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>chat.ui(enable_cancel<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>client <span class="op">=</span> ChatAnthropic(system_prompt<span class="op">=</span><span class="st">"You are a helpful assistant."</span>)</span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>ctrl <span class="op">=</span> StreamController()</span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a><span class="at">@chat.on_user_submit</span></span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> handle_user_input(user_input: <span class="bu">str</span>):</span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a>    response <span class="op">=</span> <span class="cf">await</span> client.stream_async(user_input, controller<span class="op">=</span>ctrl)</span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.append_message_stream(response)</span>
+<span id="cb9-16"><a href="#cb9-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-17"><a href="#cb9-17" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.effect</span></span>
+<span id="cb9-18"><a href="#cb9-18" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.event</span>(<span class="bu">input</span>.chat_cancel)</span>
+<span id="cb9-19"><a href="#cb9-19" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> handle_cancel():</span>
+<span id="cb9-20"><a href="#cb9-20" aria-hidden="true" tabindex="-1"></a>    ctrl.cancel()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p><strong>Shiny Core</strong></p>
-<div class="sourceCode" id="cb7" data-file="app.py"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shiny <span class="im">import</span> App, reactive, ui</span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> chatlas <span class="im">import</span> ChatAnthropic, StreamController</span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shinychat <span class="im">import</span> Chat, chat_ui</span>
-<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>app_ui <span class="op">=</span> ui.page_fillable(</span>
-<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    chat_ui(<span class="st">"chat"</span>, enable_cancel<span class="op">=</span><span class="va">True</span>),</span>
-<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> server(<span class="bu">input</span>, output, session):</span>
-<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>    client <span class="op">=</span> ChatAnthropic(system_prompt<span class="op">=</span><span class="st">"You are a helpful assistant."</span>)</span>
-<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>    chat <span class="op">=</span> Chat(<span class="st">"chat"</span>)</span>
-<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>    ctrl <span class="op">=</span> StreamController()</span>
-<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">@chat.on_user_submit</span></span>
-<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">async</span> <span class="kw">def</span> handle_user_input(user_input: <span class="bu">str</span>):</span>
-<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a>        response <span class="op">=</span> <span class="cf">await</span> client.stream_async(user_input, controller<span class="op">=</span>ctrl)</span>
-<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a>        <span class="cf">await</span> chat.append_message_stream(response)</span>
-<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-19"><a href="#cb7-19" aria-hidden="true" tabindex="-1"></a>    <span class="at">@reactive.effect</span></span>
-<span id="cb7-20"><a href="#cb7-20" aria-hidden="true" tabindex="-1"></a>    <span class="at">@reactive.event</span>(<span class="bu">input</span>.chat_cancel)</span>
-<span id="cb7-21"><a href="#cb7-21" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> handle_cancel():</span>
-<span id="cb7-22"><a href="#cb7-22" aria-hidden="true" tabindex="-1"></a>        ctrl.cancel()</span>
-<span id="cb7-23"><a href="#cb7-23" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-24"><a href="#cb7-24" aria-hidden="true" tabindex="-1"></a>app <span class="op">=</span> App(app_ui, server)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb10" data-file="app.py"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shiny <span class="im">import</span> App, reactive, ui</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> chatlas <span class="im">import</span> ChatAnthropic, StreamController</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shinychat <span class="im">import</span> Chat, chat_ui</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>app_ui <span class="op">=</span> ui.page_fillable(</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>    chat_ui(<span class="st">"chat"</span>, enable_cancel<span class="op">=</span><span class="va">True</span>),</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> server(<span class="bu">input</span>, output, session):</span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>    client <span class="op">=</span> ChatAnthropic(system_prompt<span class="op">=</span><span class="st">"You are a helpful assistant."</span>)</span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>    chat <span class="op">=</span> Chat(<span class="st">"chat"</span>)</span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a>    ctrl <span class="op">=</span> StreamController()</span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">@chat.on_user_submit</span></span>
+<span id="cb10-15"><a href="#cb10-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">async</span> <span class="kw">def</span> handle_user_input(user_input: <span class="bu">str</span>):</span>
+<span id="cb10-16"><a href="#cb10-16" aria-hidden="true" tabindex="-1"></a>        response <span class="op">=</span> <span class="cf">await</span> client.stream_async(user_input, controller<span class="op">=</span>ctrl)</span>
+<span id="cb10-17"><a href="#cb10-17" aria-hidden="true" tabindex="-1"></a>        <span class="cf">await</span> chat.append_message_stream(response)</span>
+<span id="cb10-18"><a href="#cb10-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-19"><a href="#cb10-19" aria-hidden="true" tabindex="-1"></a>    <span class="at">@reactive.effect</span></span>
+<span id="cb10-20"><a href="#cb10-20" aria-hidden="true" tabindex="-1"></a>    <span class="at">@reactive.event</span>(<span class="bu">input</span>.chat_cancel)</span>
+<span id="cb10-21"><a href="#cb10-21" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> handle_cancel():</span>
+<span id="cb10-22"><a href="#cb10-22" aria-hidden="true" tabindex="-1"></a>        ctrl.cancel()</span>
+<span id="cb10-23"><a href="#cb10-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-24"><a href="#cb10-24" aria-hidden="true" tabindex="-1"></a>app <span class="op">=</span> App(app_ui, server)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Key points:</p>
 <ul>
 <li><code>enable_cancel=True</code> shows the stop button while a response is streaming.</li>
