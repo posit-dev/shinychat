@@ -504,8 +504,7 @@ export const ChatInput = memo(
                 key={a.id}
                 attachment={a}
                 index={i}
-                onRemove={() => removeAttachment(a.id)}
-                onKeyboardRemove={() => removeAttachmentByKeyboard(i)}
+                onRemove={() => removeAttachmentByKeyboard(i)}
                 registerRef={(el) => {
                   attachmentRefs.current[i] = el
                 }}
@@ -604,13 +603,11 @@ const AttachmentPreview = memo(function AttachmentPreview({
   attachment,
   index,
   onRemove,
-  onKeyboardRemove,
   registerRef,
 }: {
   attachment: AttachedFile
   index: number
   onRemove: () => void
-  onKeyboardRemove: () => void
   registerRef: (el: HTMLDivElement | null) => void
 }) {
   // Shared focus/keyboard behavior applied to whichever root each variant
@@ -625,7 +622,7 @@ const AttachmentPreview = memo(function AttachmentPreview({
     onKeyDown: (e) => {
       if (e.code === "Delete" || e.code === "Backspace") {
         e.preventDefault()
-        onKeyboardRemove()
+        onRemove()
       }
     },
   }
