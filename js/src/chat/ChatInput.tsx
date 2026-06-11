@@ -648,7 +648,7 @@ const AttachmentPreview = memo(function AttachmentPreview({
         />
         <button
           type="button"
-          tabIndex={-1}
+          tabIndex={0}
           aria-label={
             attachment.name ? `Remove ${attachment.name}` : "Remove image"
           }
@@ -691,7 +691,7 @@ const AttachmentPreview = memo(function AttachmentPreview({
       </span>
       <button
         type="button"
-        tabIndex={-1}
+        tabIndex={0}
         aria-label={
           attachment.name ? `Remove ${attachment.name}` : "Remove attachment"
         }

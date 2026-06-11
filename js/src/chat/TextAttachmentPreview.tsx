@@ -59,7 +59,7 @@ export const TextAttachmentPreview = memo(function TextAttachmentPreview({
       {onRemove && (
         <button
           type="button"
-          tabIndex={-1}
+          tabIndex={0}
           aria-label={name ? `Remove ${name}` : "Remove attachment"}
           onClick={onRemove}
         >

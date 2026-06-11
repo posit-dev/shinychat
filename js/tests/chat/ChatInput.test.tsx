@@ -1308,13 +1308,13 @@ describe("ChatInput", () => {
       ) as HTMLElement[]
     }
 
-    it("a staged attachment is focusable and its remove button is not in the tab order", async () => {
+    it("a staged attachment and its remove button are both in the tab order", async () => {
       const { container } = renderChatInput()
       await stagePdfs(container, ["a.pdf"])
       const chip = chips(container)[0]!
       expect(chip.tabIndex).toBe(0)
       const removeBtn = chip.querySelector("button") as HTMLButtonElement
-      expect(removeBtn.tabIndex).toBe(-1)
+      expect(removeBtn.tabIndex).toBe(0)
     })
 
     it("clicking a staged attachment focuses its container", async () => {
