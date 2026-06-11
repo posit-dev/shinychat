@@ -75,6 +75,7 @@ Defaults to \code{FALSE}.}
 \code{"enter"} (the default): Enter submits, Shift+Enter adds a newline.
 \code{"enter+modifier"}: Ctrl+Enter (Cmd+Enter on Mac) submits, plain Enter
 adds a newline.}
+
 \item{allow_attachments}{Controls the file-attachment affordance (an attach
 button, plus clipboard paste and drag-and-drop) in the chat input. Pass
 \code{TRUE} to accept all supported types (PNG, JPEG, GIF, WebP, PDF, and common
