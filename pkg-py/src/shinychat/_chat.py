@@ -1927,6 +1927,7 @@ class ChatExpress(Chat):
         fill: bool = True,
         icon_assistant: HTML | Tag | TagList | None = None,
         enable_cancel: "bool | MISSING_TYPE" = MISSING,
+        submit_key: 'Literal["enter", "enter+modifier"]' = "enter",
         footer: Optional[TagChild] = None,
         **kwargs: TagAttrValue,
     ) -> Tag:
@@ -1965,6 +1966,12 @@ class ChatExpress(Chat):
             chatlas ``StreamController`` to actually stop the stream. Defaults to
             ``True`` when a ``client=`` was provided to :class:`~shinychat.Chat`,
             ``False`` otherwise.
+        submit_key
+            Controls which key combination submits the chat message:
+
+            - ``"enter"`` (default): Enter submits, Shift+Enter adds a newline.
+            - ``"enter+modifier"``: Ctrl+Enter (Cmd+Enter on Mac) submits,
+              plain Enter adds a newline.
         footer
             Optional HTML content to display below the chat input.
             This can be any HTML content (tags, tag lists, or strings).
@@ -1989,6 +1996,7 @@ class ChatExpress(Chat):
             fill=fill,
             icon_assistant=icon_assistant,
             enable_cancel=enable_cancel,
+            submit_key=submit_key,
             footer=footer,
             **kwargs,
         )
@@ -2059,6 +2067,7 @@ def chat_ui(
     fill: bool = True,
     icon_assistant: Optional[HTML | Tag | TagList] = None,
     enable_cancel: "bool | MISSING_TYPE" = MISSING,
+    submit_key: 'Literal["enter", "enter+modifier"]' = "enter",
     footer: Optional[TagChild] = None,
     **kwargs: TagAttrValue,
 ) -> Tag:
@@ -2122,6 +2131,12 @@ def chat_ui(
         unset (the default), a chat driven by a ``client=`` enables the stop
         button automatically; otherwise it stays hidden. Passing an explicit
         ``True``/``False`` always wins over that automatic behavior.
+    submit_key
+        Controls which key combination submits the chat message:
+
+        - ``"enter"`` (default): Enter submits, Shift+Enter adds a newline.
+        - ``"enter+modifier"``: Ctrl+Enter (Cmd+Enter on Mac) submits,
+          plain Enter adds a newline.
     footer
         Optional HTML content to display below the chat input.
         This can be any HTML content (tags, tag lists, or strings).
@@ -2220,6 +2235,7 @@ def chat_ui(
         # Also include icon on the parent so that when messages are dynamically added,
         # we know the default icon has changed
         icon_assistant=icon_attr,
+        submit_key=submit_key if submit_key != "enter" else None,
         **kwargs,
     )
 

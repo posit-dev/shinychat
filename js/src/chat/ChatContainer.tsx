@@ -24,6 +24,7 @@ import {
 } from "./context"
 import type { ChatMessageData, GreetingData } from "./state"
 import type { ChatTransport, SlashCommandDef } from "../transport/types"
+import type { SubmitKey } from "./tiptap/submitShortcut"
 
 declare global {
   interface Window {
@@ -50,6 +51,7 @@ export interface ChatContainerProps {
   footerEl?: Element
   slashCommands: SlashCommandDef[]
   slashCommandId: string
+  submitKey?: SubmitKey
 }
 
 export type ChatContainerHandle = ChatInputHandle
@@ -73,6 +75,7 @@ export const ChatContainer = forwardRef<
     footerEl,
     slashCommands,
     slashCommandId,
+    submitKey,
   },
   ref,
 ) {
@@ -422,6 +425,7 @@ export const ChatContainer = forwardRef<
           onCancel={cancelStream}
           slashCommands={slashCommands}
           slashCommandId={slashCommandId}
+          submitKey={submitKey}
         />
       </div>
 

@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react"
+import { forwardRef, useImperativeHandle, useRef } from "react"
 import { useEditor, EditorContent } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import { Extension } from "@tiptap/core"
@@ -7,6 +7,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view"
 import { Editor, type JSONContent, type Range } from "@tiptap/core"
 import { CommandMention } from "./tiptap/commandMention"
 import { createSuggestionRender } from "./tiptap/suggestionRender"
+import type { SubmitKey } from "./tiptap/submitShortcut"
 import { filterSlashCommands } from "./SlashCommandPalette"
 import { useInputHistory } from "./useInputHistory"
 import type { SlashCommandDef } from "../transport/types"
@@ -22,16 +23,16 @@ export interface TiptapInputHandle {
 
 export interface TiptapInputProps {
   inputId: string
-  disabled: boolean
   placeholder: string
   hasTopShadow?: boolean
   slashCommands: SlashCommandDef[]
   onHasTextChange: (hasText: boolean) => void
   onSubmit: (content: string) => boolean
   userMessages: string[]
+  submitKey: SubmitKey
 }
 
-function serializeEditor(editor: Editor): string {
+export function serializeEditor(editor: Editor): string {
   const doc = editor.state.doc
   const parts: string[] = []
 
@@ -92,13 +93,13 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
   function TiptapInput(
     {
       inputId,
-      disabled,
       placeholder,
       hasTopShadow = false,
       slashCommands,
       onHasTextChange,
       onSubmit,
       userMessages,
+      submitKey,
     },
     ref,
   ) {
@@ -107,9 +108,15 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
     slashCommandsRef.current = slashCommands
     const placeholderRef = useRef(placeholder)
     placeholderRef.current = placeholder
+    const onSubmitRef = useRef(onSubmit)
+    onSubmitRef.current = onSubmit
+    const onHasTextChangeRef = useRef(onHasTextChange)
+    onHasTextChangeRef.current = onHasTextChange
+    const resetRef = useRef(reset)
+    resetRef.current = reset
+    const editorInstanceRef = useRef<Editor | null>(null)
 
     const editor = useEditor({
-      editable: !disabled,
       extensions: [
         StarterKit.configure({
           blockquote: false,
@@ -148,6 +155,25 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
                 },
               }),
             ]
+          },
+        }),
+        Extension.create({
+          name: "submitShortcut",
+          priority: 200,
+          addKeyboardShortcuts() {
+            const submit = () => {
+              if (this.editor.isEmpty) return false
+              const content = serializeEditor(this.editor)
+              if (content.trim().length === 0) return false
+              if (onSubmitRef.current(content)) {
+                this.editor.commands.clearContent(true)
+                onHasTextChangeRef.current(false)
+                resetRef.current()
+              }
+              return true
+            }
+            const key = submitKey === "enter+modifier" ? "Mod-Enter" : "Enter"
+            return { [key]: submit }
           },
         }),
         CommandMention.configure({
@@ -198,9 +224,8 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
         handleKeyDown: (view, event) => {
           if (event.isComposing) return false
 
-          const ed = (view as unknown as { editor?: Editor }).editor
-
           if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+            const ed = editorInstanceRef.current
             if (!ed) return false
             const serialized = serializeEditor(ed)
             const { $from } = view.state.selection
@@ -225,35 +250,17 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
             return false
           }
 
-          if (event.key === "Enter" && !event.shiftKey) {
-            if (!ed || ed.isEmpty) return false
-            const content = serializeEditor(ed)
-            if (content.trim().length === 0) return false
-            event.preventDefault()
-            if (onSubmit(content)) {
-              ed.commands.clearContent(true)
-              onHasTextChange(false)
-              reset()
-            }
-            return true
-          }
-
           return false
         },
       },
-      onCreate: ({ editor }) => {
-        onHasTextChange(!editor.isEmpty)
+      onCreate: ({ editor: ed }) => {
+        editorInstanceRef.current = ed
+        onHasTextChange(!ed.isEmpty)
       },
       onUpdate: ({ editor }) => {
         onHasTextChange(!editor.isEmpty)
       },
     })
-
-    useEffect(() => {
-      if (editor && editor.isEditable === disabled) {
-        editor.setEditable(!disabled)
-      }
-    }, [editor, disabled])
 
     useImperativeHandle(
       ref,
@@ -294,12 +301,6 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
       [editor, onSubmit, onHasTextChange],
     )
 
-    return (
-      <EditorContent
-        editor={editor}
-        id={inputId}
-        aria-disabled={disabled || undefined}
-      />
-    )
+    return <EditorContent editor={editor} id={inputId} />
   },
 )

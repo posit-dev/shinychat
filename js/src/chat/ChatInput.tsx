@@ -14,6 +14,7 @@ import type {
 } from "../transport/types"
 import { arrowUpCircleFill, spinnerArc, stopCircleFill } from "../utils/icons"
 import { TiptapInput, type TiptapInputHandle } from "./TiptapInput"
+import type { SubmitKey } from "./tiptap/submitShortcut"
 
 export interface ChatInputProps {
   transport: ChatTransport
@@ -29,6 +30,7 @@ export interface ChatInputProps {
   onCancel?: () => void
   slashCommands?: SlashCommandDef[]
   slashCommandId?: string
+  submitKey?: SubmitKey
 }
 
 export interface ChatInputHandle {
@@ -71,6 +73,7 @@ export const ChatInput = memo(
       onCancel,
       slashCommands = [],
       slashCommandId = "",
+      submitKey = "enter",
     },
     ref,
   ) {
@@ -164,13 +167,13 @@ export const ChatInput = memo(
         <TiptapInput
           ref={tiptapRef}
           inputId={inputId}
-          disabled={disabled}
           placeholder={placeholder}
           hasTopShadow={hasTopShadow}
           slashCommands={slashCommands}
           onHasTextChange={setHasText}
           onSubmit={submitValue}
           userMessages={userMessages}
+          submitKey={submitKey}
         />
         {showCancelButton ? (
           <button
@@ -199,6 +202,7 @@ export const ChatInput = memo(
               const content = tiptapRef.current?.serializeEditor() ?? ""
               if (submitValue(content)) {
                 tiptapRef.current?.setInputValue("")
+                tiptapRef.current?.focus()
               }
             }}
             dangerouslySetInnerHTML={{ __html: arrowUpCircleFill }}

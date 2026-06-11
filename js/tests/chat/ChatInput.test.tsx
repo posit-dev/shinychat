@@ -126,18 +126,6 @@ describe("ChatInput", () => {
     expect(dispatch).not.toHaveBeenCalled()
   })
 
-  it("editor has aria-disabled when input is disabled", () => {
-    const { editorEl } = renderChatInput({ disabled: true })
-    const wrapper = editorEl.closest("#test-input") as HTMLElement
-    expect(wrapper.getAttribute("aria-disabled")).toBe("true")
-  })
-
-  it("editor does not have aria-disabled when input is enabled", () => {
-    const { editorEl } = renderChatInput({ disabled: false })
-    const wrapper = editorEl.closest("#test-input") as HTMLElement
-    expect(wrapper.hasAttribute("aria-disabled")).toBe(false)
-  })
-
   it("does not send empty input", () => {
     const { dispatch, ref } = renderChatInput()
 
