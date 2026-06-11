@@ -931,6 +931,45 @@ def test_bookmark_roundtrip_thinking_segment():
         assert sent[0]["message"]["segments"][0]["content_type"] == "thinking"
 
 
+def test_send_append_message_serializes_attachments():
+    """Attachments in the outgoing payload must be plain dicts, not Attachment objects.
+
+    json.dumps (used by Shiny's send_custom_message) cannot serialize Pydantic
+    models, so _send_append_message must call model_dump() before building the
+    wire payload.
+    """
+    import json
+
+    from shinychat._attachments import Attachment
+
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        att = Attachment.from_data(b"hello", mime="text/plain", name="hello.txt")
+        stored = StoredMessage(
+            role="assistant",
+            segments=[StoredSegment(content="here you go", content_type="markdown")],
+            attachments=[att],
+        )
+
+        run_async(lambda: chat._send_append_message(stored))
+
+        payload = sent[0]["message"]
+        # Must not raise — the payload must be JSON-serializable.
+        json.dumps(payload)
+
+        # Attachments must arrive as plain dicts with the expected keys.
+        assert payload["attachments"] == [
+            {"mime": "text/plain", "name": "hello.txt", "size": 5, "data_url": att.data_url}
+        ]
+
+
 def test_stored_message_content_wraps_thinking_in_tags():
     from shinychat._chat_types import StoredMessage, StoredSegment
 

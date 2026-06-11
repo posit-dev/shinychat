@@ -28,7 +28,7 @@ class MessagePayloadSegment(TypedDict):
 class MessagePayload(TypedDict):
     role: Literal["user", "assistant"]
     segments: list[MessagePayloadSegment]
-    attachments: NotRequired[list[Attachment]]
+    attachments: NotRequired[list[dict[str, Any]]]
     id: NotRequired[str]
     icon: NotRequired[str]
 

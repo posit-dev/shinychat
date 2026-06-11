@@ -1290,7 +1290,7 @@ class Chat:
             "segments": message.wire_segments(),
         }
         if message.attachments:
-            msg_payload["attachments"] = message.attachments
+            msg_payload["attachments"] = [a.model_dump() for a in message.attachments]
         if icon is not None:
             msg_payload["icon"] = str(icon)
 
