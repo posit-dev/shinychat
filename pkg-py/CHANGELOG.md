@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### New features
 
+* Added slash commands: a typeahead command palette that lets users trigger named shortcuts directly from the chat input. Type `/` to open the palette, filter by typing, and pick a command with arrow keys or click. Commands can expand into LLM prompts, trigger server-side side effects (clear chat, open a modal, export transcript), or be handled entirely client-side via the cancelable `shiny:chat-slash-command` DOM event. Register commands with `chat.slash_command()`, which accepts 0- or 1-argument async handlers; 1-argument handlers receive the text typed after the command name as `user_input`. The `echo` parameter controls whether an invocation is recorded as a user message and triggers a loading state. Echoed commands are faithfully restored on bookmark/restore. (#239)
+
+* The chat input has been replaced with a [TipTap](https://tiptap.dev/) (ProseMirror) rich-text editor. The wire format is unchanged, but slash commands now render as styled inline chips in both the input and the message history. Selecting a command from the palette inserts an atomic chip; Backspace restores it to `/name` text. Pasting or restoring text that starts with a recognized command auto-converts to a chip. Chip color is customizable via `--shiny-chat-command-chip-color` (default `--bs-purple`), with derived bg/border properties for automatic dark mode support. (#239, #251)
+
+* Added `submit_key` parameter to `chat_ui()` and `Chat.ui()`: `"enter"` (default, Enter submits) or `"enter+modifier"` (Ctrl/Cmd+Enter submits, plain Enter inserts a line break). The input remains editable while a response is streaming — only submission is blocked, not typing. (#251)
+
 * `Chat()` now accepts an optional `client=` parameter. When provided, streaming, cancellation, bookmarking, and greeting handling are wired up automatically — no manual plumbing required. The `chat.client` property exposes a `ChatClient` wrapper with `.value` (the raw chatlas client), `.set()` for swapping models mid-session, and `.clear()` for resetting the conversation with flexible history management.
 
 ### Improvements
