@@ -209,6 +209,19 @@ shiny-chat-container {
       color: var(--bs-gray-600, #707782) !important;
     }
   }
+  .tiptap {
+    --bs-border-radius: 26px;
+    padding-right: 36px !important;
+    max-height: 175px;
+    overflow-y: auto;
+    p.is-empty:first-child::before {
+      content: attr(data-placeholder);
+      color: var(--bs-gray-600, #707782);
+      float: left;
+      height: 0;
+      pointer-events: none;
+    }
+  }
   .shiny-chat-btn-send {
     position: absolute;
     bottom: calc(6px + var(--_input-padding-bottom));

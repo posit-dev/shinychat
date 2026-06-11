@@ -81,9 +81,10 @@ describe("ChatInput", () => {
     Element.prototype.scrollIntoView = vi.fn()
   })
 
-  it.skip("renders with placeholder", () => {
-    // TipTap placeholder extension is not installed; the placeholder attribute
-    // is on the EditorContent wrapper, not the contenteditable element.
+  it("renders with placeholder", () => {
+    const { editorEl } = renderChatInput({ placeholder: "Ask me anything..." })
+    const emptyP = editorEl.querySelector("p.is-empty[data-placeholder]")
+    expect(emptyP?.getAttribute("data-placeholder")).toBe("Ask me anything...")
   })
 
   it("starts with empty value", () => {
@@ -127,13 +128,13 @@ describe("ChatInput", () => {
 
   it("editor has aria-disabled when input is disabled", () => {
     const { editorEl } = renderChatInput({ disabled: true })
-    const wrapper = editorEl.closest("[placeholder]") as HTMLElement
+    const wrapper = editorEl.closest("#test-input") as HTMLElement
     expect(wrapper.getAttribute("aria-disabled")).toBe("true")
   })
 
   it("editor does not have aria-disabled when input is enabled", () => {
     const { editorEl } = renderChatInput({ disabled: false })
-    const wrapper = editorEl.closest("[placeholder]") as HTMLElement
+    const wrapper = editorEl.closest("#test-input") as HTMLElement
     expect(wrapper.hasAttribute("aria-disabled")).toBe(false)
   })
 

@@ -1,6 +1,9 @@
 import { forwardRef, useImperativeHandle, useRef } from "react"
 import { useEditor, EditorContent } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
+import { Extension } from "@tiptap/core"
+import { Plugin, PluginKey } from "@tiptap/pm/state"
+import { Decoration, DecorationSet } from "@tiptap/pm/view"
 import { Editor, type JSONContent, type Range } from "@tiptap/core"
 import { CommandMention } from "./tiptap/commandMention"
 import { createSuggestionRender } from "./tiptap/suggestionRender"
@@ -117,6 +120,33 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
           italic: false,
           code: false,
           strike: false,
+        }),
+        Extension.create({
+          name: "placeholder",
+          addProseMirrorPlugins() {
+            const placeholderText = placeholder
+            return [
+              new Plugin({
+                key: new PluginKey("placeholder"),
+                props: {
+                  decorations(state) {
+                    const doc = state.doc
+                    const isEmpty =
+                      doc.childCount === 1 &&
+                      doc.firstChild?.isTextblock &&
+                      doc.firstChild.content.size === 0
+                    if (!isEmpty) return DecorationSet.empty
+                    return DecorationSet.create(doc, [
+                      Decoration.node(0, doc.firstChild!.nodeSize, {
+                        class: "is-empty",
+                        "data-placeholder": placeholderText,
+                      }),
+                    ])
+                  },
+                },
+              }),
+            ]
+          },
         }),
         CommandMention.configure({
           commands: slashCommands,
@@ -262,7 +292,6 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
         editor={editor}
         id={inputId}
         aria-disabled={disabled || undefined}
-        placeholder={placeholder}
       />
     )
   },

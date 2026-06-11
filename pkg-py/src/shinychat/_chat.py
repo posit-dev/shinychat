@@ -661,12 +661,18 @@ class Chat:
             cmd_def = SlashCommandDef(
                 name=name, description=description, echo=resolved_echo
             )
+            takes_args = False
+            if handler is not None:
+                n_params = len(inspect.signature(handler).parameters)
+                if n_params > 1:
+                    raise ValueError(
+                        f"Slash command handler for {name!r} must accept 0 or 1 "
+                        f"argument, got {n_params}"
+                    )
+                takes_args = n_params >= 1
             cmds[name] = SlashCommandRegistration(
                 handler=handler,
-                takes_args=(
-                    handler is not None
-                    and len(inspect.signature(handler).parameters) >= 1
-                ),
+                takes_args=takes_args,
                 definition=cmd_def,
             )
             self._slash_commands.set(cmds)

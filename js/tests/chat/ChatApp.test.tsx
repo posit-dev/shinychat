@@ -180,12 +180,17 @@ describe("Issue #4: single transport subscription", () => {
       />,
     )
 
-    const textarea = screen.getByPlaceholderText(
-      "Type...",
-    ) as HTMLTextAreaElement
+    const editor = screen.getByRole("textbox", {
+      name: "Chat message",
+    }) as HTMLDivElement
 
-    // Put some text in the textarea first
-    textarea.value = "existing text"
+    // Set some text in the editor first via update_input (no submit)
+    act(() => {
+      transport.fire("test-chat", {
+        type: "update_input",
+        value: "existing text",
+      })
+    })
 
     act(() => {
       transport.fire("test-chat", {
@@ -202,7 +207,7 @@ describe("Issue #4: single transport subscription", () => {
     )
 
     // After submit, the old value should be restored
-    expect(textarea.value).toBe("existing text")
+    expect(editor.textContent).toBe("existing text")
   })
 
   it.skip("update_input with focus=true forwards to container handle", () => {

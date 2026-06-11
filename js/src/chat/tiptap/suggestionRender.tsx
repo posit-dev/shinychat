@@ -40,14 +40,14 @@ export function createSuggestionRender({
     const spaceBelow = window.innerHeight - rect.bottom
     const gap = 4
 
-    popup.style.left = `${rect.left + window.scrollX}px`
+    popup.style.left = `${rect.left}px`
 
     if (spaceBelow >= popupHeight + gap || spaceBelow >= spaceAbove) {
-      popup.style.top = `${rect.bottom + window.scrollY + gap}px`
+      popup.style.top = `${rect.bottom + gap}px`
       popup.style.bottom = ""
     } else {
       popup.style.top = ""
-      popup.style.bottom = `${window.innerHeight - rect.top - window.scrollY + gap}px`
+      popup.style.bottom = `${window.innerHeight - rect.top + gap}px`
     }
   }
 
