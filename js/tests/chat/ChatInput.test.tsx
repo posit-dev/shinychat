@@ -83,8 +83,7 @@ describe("ChatInput", () => {
 
   it("renders with placeholder", () => {
     const { editorEl } = renderChatInput({ placeholder: "Ask me anything..." })
-    const emptyP = editorEl.querySelector("p.is-empty[data-placeholder]")
-    expect(emptyP?.getAttribute("data-placeholder")).toBe("Ask me anything...")
+    expect(editorEl.getAttribute("data-placeholder")).toBe("Ask me anything...")
   })
 
   it("starts with empty value", () => {

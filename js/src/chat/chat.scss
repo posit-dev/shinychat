@@ -214,7 +214,7 @@ shiny-chat-container {
     padding-right: 36px !important;
     max-height: 175px;
     overflow-y: auto;
-    p.is-empty:first-child::before {
+    .is-empty::before {
       content: attr(data-placeholder);
       color: var(--bs-gray-600, #707782);
       float: left;

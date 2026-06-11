@@ -65,7 +65,7 @@ describe("chat-entry custom element boot", () => {
     ) as HTMLElement | null
     expect(editorWrapper).toBeTruthy()
     expect(editorWrapper?.id).toBe("server-input-id")
-    const emptyParagraph = host.querySelector("p.is-empty[data-placeholder]")
+    const emptyParagraph = host.querySelector('[role="textbox"]')
     expect(emptyParagraph?.getAttribute("data-placeholder")).toBe(
       "Server placeholder",
     )
@@ -103,7 +103,7 @@ describe("chat-entry custom element boot", () => {
     ) as HTMLElement | null
     expect(editorWrapper).toBeTruthy()
     expect(editorWrapper?.id).toBe("fallback-chat_user_input")
-    const emptyParagraph = host.querySelector("p.is-empty[data-placeholder]")
+    const emptyParagraph = host.querySelector('[role="textbox"]')
     expect(emptyParagraph?.getAttribute("data-placeholder")).toBe(
       "Fallback placeholder",
     )

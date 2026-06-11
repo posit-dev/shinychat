@@ -24,9 +24,12 @@
   },
   "dependencies": {
     "@tiptap/core": "^3.26.0",
+    "@tiptap/extension-document": "^3.26.0",
+    "@tiptap/extension-hard-break": "^3.26.0",
+    "@tiptap/extension-text": "^3.26.0",
+    "@tiptap/extensions": "^3.26.0",
     "@tiptap/pm": "^3.26.0",
     "@tiptap/react": "^3.26.0",
-    "@tiptap/starter-kit": "^3.26.0",
     "@tiptap/suggestion": "^3.26.0",
     "hast-util-to-html": "^9.0.5",
     "hast-util-to-jsx-runtime": "^2.3.6",

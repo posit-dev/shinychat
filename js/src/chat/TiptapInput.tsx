@@ -1,10 +1,10 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react"
 import { useEditor, EditorContent } from "@tiptap/react"
-import StarterKit from "@tiptap/starter-kit"
-import { Extension } from "@tiptap/core"
-import { Plugin, PluginKey } from "@tiptap/pm/state"
-import { Decoration, DecorationSet } from "@tiptap/pm/view"
-import { Editor, type JSONContent, type Range } from "@tiptap/core"
+import Document from "@tiptap/extension-document"
+import Text from "@tiptap/extension-text"
+import HardBreak from "@tiptap/extension-hard-break"
+import { UndoRedo } from "@tiptap/extensions/undo-redo"
+import { Extension, Editor, type JSONContent, type Range } from "@tiptap/core"
 import { CommandMention } from "./tiptap/commandMention"
 import { createSuggestionRender } from "./tiptap/suggestionRender"
 import { SuggestionPluginKey } from "@tiptap/suggestion"
@@ -50,9 +50,6 @@ export function serializeEditor(editor: Editor): string {
       parts.push("\n")
       return false
     }
-    if (node.type.name === "paragraph" && parts.length > 0) {
-      parts.push("\n")
-    }
     return true
   })
 
@@ -61,7 +58,7 @@ export function serializeEditor(editor: Editor): string {
 
 function parseToDoc(text: string, commands: SlashCommandDef[]): JSONContent {
   if (!text) {
-    return { type: "doc", content: [{ type: "paragraph" }] }
+    return { type: "doc", content: [] }
   }
 
   if (text.startsWith("/")) {
@@ -78,14 +75,15 @@ function parseToDoc(text: string, commands: SlashCommandDef[]): JSONContent {
       if (rest) {
         content.push({ type: "text", text: " " + rest })
       }
-      return { type: "doc", content: [{ type: "paragraph", content }] }
+      return { type: "doc", content }
     }
   }
 
   const lines = text.split("\n")
-  const content = lines.map((line) => {
-    if (line === "") return { type: "paragraph" }
-    return { type: "paragraph", content: [{ type: "text", text: line }] }
+  const content: JSONContent[] = []
+  lines.forEach((line, i) => {
+    if (i > 0) content.push({ type: "hardBreak" })
+    if (line) content.push({ type: "text", text: line })
   })
   return { type: "doc", content }
 }
@@ -119,45 +117,10 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
 
     const editor = useEditor({
       extensions: [
-        StarterKit.configure({
-          blockquote: false,
-          bulletList: false,
-          codeBlock: false,
-          heading: false,
-          horizontalRule: false,
-          listItem: false,
-          orderedList: false,
-          bold: false,
-          italic: false,
-          code: false,
-          strike: false,
-        }),
-        Extension.create({
-          name: "placeholder",
-          addProseMirrorPlugins() {
-            return [
-              new Plugin({
-                key: new PluginKey("placeholder"),
-                props: {
-                  decorations(state) {
-                    const doc = state.doc
-                    const isEmpty =
-                      doc.childCount === 1 &&
-                      doc.firstChild?.isTextblock &&
-                      doc.firstChild.content.size === 0
-                    if (!isEmpty) return DecorationSet.empty
-                    return DecorationSet.create(doc, [
-                      Decoration.node(0, doc.firstChild!.nodeSize, {
-                        class: "is-empty",
-                        "data-placeholder": placeholderRef.current,
-                      }),
-                    ])
-                  },
-                },
-              }),
-            ]
-          },
-        }),
+        Document.extend({ content: "inline*" }),
+        Text,
+        HardBreak,
+        UndoRedo,
         Extension.create({
           name: "submitShortcut",
           priority: 200,
@@ -226,13 +189,19 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
         }),
       ],
       editorProps: {
-        attributes: {
-          "aria-label": "Chat message",
-          "data-shiny-no-bind-input": "",
-          role: "textbox",
-          "aria-multiline": "true",
-          ...(slashCommands.length > 0 ? { "aria-haspopup": "listbox" } : {}),
-          class: `form-control${hasTopShadow ? " shadow" : ""}`,
+        attributes: (state) => {
+          const isEmpty = state.doc.content.size === 0
+          return {
+            "aria-label": "Chat message",
+            "data-shiny-no-bind-input": "",
+            role: "textbox",
+            "aria-multiline": "true",
+            ...(slashCommandsRef.current.length > 0
+              ? { "aria-haspopup": "listbox" }
+              : {}),
+            class: `form-control${hasTopShadow ? " shadow" : ""}${isEmpty ? " is-empty" : ""}`,
+            ...(isEmpty ? { "data-placeholder": placeholderRef.current } : {}),
+          }
         },
         handleKeyDown: (view, event) => {
           if (event.isComposing) return false
