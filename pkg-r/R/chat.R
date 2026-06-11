@@ -263,7 +263,6 @@ chat_ui <- function(
   submit_key = c("enter", "enter+modifier"),
   footer = NULL
 ) {
-
   submit_key <- rlang::arg_match(submit_key)
 
   attrs <- rlang::list2(...)
