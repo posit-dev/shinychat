@@ -240,6 +240,50 @@ describe("ChatMessage attachments", () => {
     expect(icon!.querySelector(".spinner_S1WN")).not.toBeNull()
   })
 
+  it("traps focus inside the lightbox", () => {
+    render(
+      <ChatMessage
+        message={userMessage({
+          attachments: [imageAttachment("data:image/png;base64,AAA")],
+        })}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: /view pic/i }))
+    const dialog = screen.getByRole("dialog")
+
+    // The lightbox has two focusable elements: the close button and the image.
+    // Focus should be inside the dialog after opening.
+    const closeBtn = screen.getByRole("button", { name: /close preview/i })
+    expect(dialog.contains(document.activeElement)).toBe(true)
+
+    // Tab from the last focusable element should wrap to the first.
+    closeBtn.focus()
+    fireEvent.keyDown(dialog, { key: "Tab" })
+    expect(dialog.contains(document.activeElement)).toBe(true)
+
+    // Shift+Tab from the first focusable element should wrap to the last.
+    const focusable = dialog.querySelectorAll<HTMLElement>(
+      'button, [tabindex="0"], a[href], input, select, textarea',
+    )
+    const first = focusable[0]!
+    first.focus()
+    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true })
+    expect(dialog.contains(document.activeElement)).toBe(true)
+  })
+
+  it("moves focus into the lightbox on open", () => {
+    render(
+      <ChatMessage
+        message={userMessage({
+          attachments: [imageAttachment("data:image/png;base64,AAA")],
+        })}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: /view pic/i }))
+    const dialog = screen.getByRole("dialog")
+    expect(dialog.contains(document.activeElement)).toBe(true)
+  })
+
   it("opens a lightbox with the full text when a text card is clicked", () => {
     const body = "# Title\n" + "line\n".repeat(400) // longer than the snippet
     const dataUrl = `data:text/markdown;base64,${btoa(body)}`

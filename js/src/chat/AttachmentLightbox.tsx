@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState } from "react"
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useCallback,
+  useState,
+} from "react"
 import { createPortal } from "react-dom"
 import {
   attachmentFamily,
@@ -6,14 +13,9 @@ import {
   decodeTextDataUrl,
 } from "./attachments"
 
-/**
- * Full-screen overlay showing a single attachment at full size: an <img> for
- * images, the browser's built-in PDF viewer (an <iframe>) for PDFs, or a
- * scrollable monospace <pre> for text files. The file name is shown beneath the
- * preview. Rendered into document.body (via a portal) so it escapes the chat
- * container's overflow and stacking context. Closes on backdrop click, the
- * close button, or Escape.
- */
+const FOCUSABLE_SELECTOR =
+  'button, [tabindex="0"], a[href], input, select, textarea, iframe'
+
 export function AttachmentLightbox({
   src,
   name,
@@ -29,18 +31,39 @@ export function AttachmentLightbox({
   const isImage = family === "image"
   const isText = family === "text"
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
   const text = useMemo(
     () => (isText ? decodeTextDataUrl(src) : ""),
     [isText, src],
   )
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose()
-    }
-    document.addEventListener("keydown", onKey)
-    return () => document.removeEventListener("keydown", onKey)
-  }, [onClose])
+  useLayoutEffect(() => {
+    dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)?.focus()
+  }, [])
+
+  const onKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key === "Escape") {
+        onClose()
+        return
+      }
+      if (e.key !== "Tab") return
+      const dialog = dialogRef.current
+      if (!dialog) return
+      const focusable = dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
+      if (focusable.length === 0) return
+      const first = focusable[0]!
+      const last = focusable[focusable.length - 1]!
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    },
+    [onClose],
+  )
 
   // A Blob URL is more robust than a multi-MB base64 data URL as an iframe src.
   useEffect(() => {
@@ -52,11 +75,13 @@ export function AttachmentLightbox({
 
   return createPortal(
     <div
+      ref={dialogRef}
       className="shiny-chat-lightbox"
       role="dialog"
       aria-modal="true"
       aria-label={name || "Attachment preview"}
       onClick={onClose}
+      onKeyDown={onKeyDown}
     >
       <div
         className="shiny-chat-lightbox-content"

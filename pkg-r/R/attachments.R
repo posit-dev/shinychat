@@ -75,7 +75,7 @@ resolve_attachment_attrs <- function(allow_attachments) {
 }
 
 # Convert the `attachments` array from the composite `input$<id>_user_input`
-# value (a list of lists, each with `type`, `dataUrl`, `name`) into a list of
+# value (a list of lists, each with `mime`, `data_url`, `name`) into a list of
 # ellmer Content objects. Used by the `shinychat.userInput` input handler.
 contents_from_attachments <- function(attachments) {
   if (is.null(attachments) || length(attachments) == 0) {
@@ -85,8 +85,8 @@ contents_from_attachments <- function(attachments) {
 }
 
 content_from_attachment <- function(att) {
-  mime <- att[["type"]]
-  data_url <- att[["dataUrl"]]
+  mime <- att[["mime"]]
+  data_url <- att[["data_url"]]
   name <- att[["name"]] %||% ""
 
   if (startsWith(mime, "image/")) {
@@ -167,6 +167,11 @@ chat_attachment <- function(path, mime = NULL, name = NULL) {
         "i" = "Specify the {.arg mime} argument explicitly."
       ))
     }
+  } else if (!mime %in% attachment_types()$supported) {
+    cli::cli_abort(c(
+      "Unsupported MIME type: {.val {mime}}.",
+      "i" = "Supported types: {.val {attachment_types()$supported}}"
+    ))
   }
 
   raw <- readBin(path, "raw", n = file.size(path))

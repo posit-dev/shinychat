@@ -212,6 +212,13 @@ def test_attachment_from_data():
     )
 
 
+def test_attachment_from_url_empty_mime_fallback():
+    data = base64.b64encode(b"hello").decode()
+    a = Attachment.from_url(f"data:;base64,{data}")
+    assert a.mime == "application/octet-stream"
+    assert a.size == 5
+
+
 def test_attachment_from_path(tmp_path):
     p = tmp_path / "note.md"
     p.write_text("# hi")

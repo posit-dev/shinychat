@@ -121,9 +121,8 @@ class Attachment(BaseModel):
             semi = url.find(";", 5)
             comma = url.find(",", 5)
             boundary = semi if semi != -1 else comma
-            resolved_mime = mime or (
-                url[5:boundary] if boundary != -1 else "application/octet-stream"
-            )
+            parsed_mime = url[5:boundary] if boundary != -1 else ""
+            resolved_mime = mime or parsed_mime or "application/octet-stream"
             return cls(
                 mime=resolved_mime,
                 name=name or "",
@@ -219,11 +218,13 @@ def attachment_to_content(att: Attachment) -> "Content":
     if att.mime.startswith("image/"):
         return content_image_url(att.data_url)
     if att.mime == "application/pdf":
+        _require_data_url(att)
         data = decode_data_url(att.data_url)
         return ContentPDF(data=data, filename=att.name or "document.pdf")
     if is_text_type(att.mime):
         from chatlas.types import ContentText
 
+        _require_data_url(att)
         text = decode_data_url(att.data_url).decode("utf-8", errors="replace")
         name = att.name or "file"
         return ContentText(
@@ -233,6 +234,15 @@ def attachment_to_content(att: Attachment) -> "Content":
             )
         )
     raise ValueError(f"Unsupported attachment type: {att.mime}")
+
+
+def _require_data_url(att: Attachment) -> None:
+    if not att.data_url.startswith("data:"):
+        raise ValueError(
+            f"attachment_to_content() requires a base64 data URL for "
+            f"{att.mime} attachments, but got a remote URL. "
+            f"Use Attachment.from_path() or Attachment.from_data() instead."
+        )
 
 
 def decode_data_url(data_url: str) -> bytes:

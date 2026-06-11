@@ -48,8 +48,8 @@ test_that("contents_from_attachments wraps text in a file-attachment tag", {
   res <- contents_from_attachments(
     list(
       list(
-        type = "text/markdown",
-        dataUrl = paste0("data:text/markdown;base64,", b64),
+        mime = "text/markdown",
+        data_url = paste0("data:text/markdown;base64,", b64),
         name = "notes.md"
       )
     )
@@ -66,8 +66,8 @@ test_that("contents_from_attachments escapes name/type attributes", {
   res <- contents_from_attachments(
     list(
       list(
-        type = "text/plain",
-        dataUrl = paste0("data:text/plain;base64,", b64),
+        mime = "text/plain",
+        data_url = paste0("data:text/plain;base64,", b64),
         name = "a\"&<b.txt"
       )
     )
@@ -84,8 +84,8 @@ test_that("contents_from_attachments replaces invalid UTF-8 bytes", {
   res <- contents_from_attachments(
     list(
       list(
-        type = "text/plain",
-        dataUrl = paste0("data:text/plain;base64,", b64),
+        mime = "text/plain",
+        data_url = paste0("data:text/plain;base64,", b64),
         name = "weird.txt"
       )
     )
@@ -98,8 +98,8 @@ test_that("contents_from_attachments drops NUL bytes in text", {
   res <- contents_from_attachments(
     list(
       list(
-        type = "text/plain",
-        dataUrl = paste0("data:text/plain;base64,", b64),
+        mime = "text/plain",
+        data_url = paste0("data:text/plain;base64,", b64),
         name = "n.txt"
       )
     )
@@ -112,8 +112,8 @@ test_that("contents_from_attachments falls back to 'file' for empty name", {
   res <- contents_from_attachments(
     list(
       list(
-        type = "text/plain",
-        dataUrl = paste0("data:text/plain;base64,", b64),
+        mime = "text/plain",
+        data_url = paste0("data:text/plain;base64,", b64),
         name = ""
       )
     )
@@ -125,8 +125,8 @@ test_that("contents_from_attachments builds ellmer image/pdf content", {
   img <- contents_from_attachments(
     list(
       list(
-        type = "image/png",
-        dataUrl = "data:image/png;base64,AAAA",
+        mime = "image/png",
+        data_url = "data:image/png;base64,AAAA",
         name = "p.png"
       )
     )
@@ -137,8 +137,8 @@ test_that("contents_from_attachments builds ellmer image/pdf content", {
   pdf <- contents_from_attachments(
     list(
       list(
-        type = "application/pdf",
-        dataUrl = paste0("data:application/pdf;base64,", pdf_b64),
+        mime = "application/pdf",
+        data_url = paste0("data:application/pdf;base64,", pdf_b64),
         name = "r.pdf"
       )
     )
@@ -151,8 +151,8 @@ test_that("contents_from_attachments errors on unsupported type", {
     contents_from_attachments(
       list(
         list(
-          type = "application/octet-stream",
-          dataUrl = "data:application/octet-stream;base64,AAAA",
+          mime = "application/octet-stream",
+          data_url = "data:application/octet-stream;base64,AAAA",
           name = "blob.bin"
         )
       )
@@ -168,7 +168,7 @@ test_that("user_input_contents builds a splat-ready, text-first content list", {
   )
   value <- list(
     text = "hello",
-    attachments = list(list(type = "image/png", dataUrl = png, name = "a.png"))
+    attachments = list(list(mime = "image/png", data_url = png, name = "a.png"))
   )
   out <- user_input_contents(value)
   expect_length(out, 2)
@@ -183,7 +183,7 @@ test_that("user_input_contents drops empty text (attachment-only message)", {
   )
   value <- list(
     text = "",
-    attachments = list(list(type = "image/png", dataUrl = png, name = "a.png"))
+    attachments = list(list(mime = "image/png", data_url = png, name = "a.png"))
   )
   out <- user_input_contents(value)
   expect_length(out, 1)
@@ -235,6 +235,15 @@ test_that("chat_attachment errors on unrecognised extension without mime", {
   path <- withr::local_tempfile(fileext = ".xyz")
   writeBin(charToRaw("data"), path)
   expect_error(chat_attachment(path), "MIME type")
+})
+
+test_that("chat_attachment errors on unsupported explicit mime", {
+  path <- withr::local_tempfile(fileext = ".bin")
+  writeBin(charToRaw("data"), path)
+  expect_error(
+    chat_attachment(path, mime = "application/zip"),
+    "Unsupported MIME type"
+  )
 })
 
 test_that("chat_attachment errors when file does not exist", {
