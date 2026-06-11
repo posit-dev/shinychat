@@ -105,6 +105,8 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
     const { recall, reset, isActive } = useInputHistory(userMessages)
     const slashCommandsRef = useRef(slashCommands)
     slashCommandsRef.current = slashCommands
+    const placeholderRef = useRef(placeholder)
+    placeholderRef.current = placeholder
 
     const editor = useEditor({
       extensions: [
@@ -124,7 +126,6 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
         Extension.create({
           name: "placeholder",
           addProseMirrorPlugins() {
-            const placeholderText = placeholder
             return [
               new Plugin({
                 key: new PluginKey("placeholder"),
@@ -139,7 +140,7 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
                     return DecorationSet.create(doc, [
                       Decoration.node(0, doc.firstChild!.nodeSize, {
                         class: "is-empty",
-                        "data-placeholder": placeholderText,
+                        "data-placeholder": placeholderRef.current,
                       }),
                     ])
                   },
