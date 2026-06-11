@@ -26,7 +26,7 @@ export const CommandMention = Node.create({
         char: "/",
         allowSpaces: false,
         allow({ range }: { range: { from: number } }) {
-          return range.from === 1
+          return range.from === 0
         },
         command: ({
           editor: ed,

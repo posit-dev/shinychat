@@ -158,7 +158,7 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
             char: "/",
             allowSpaces: false,
             allow({ range }: { range: { from: number } }) {
-              return range.from === 1
+              return range.from === 0
             },
             items: ({ query }: { query: string }) => {
               return filterSlashCommands(slashCommandsRef.current, query)
