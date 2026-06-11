@@ -18,9 +18,24 @@ if (!Element.prototype.scrollTo) {
 
 // jsdom doesn't implement getClientRects on Range (needed by prosemirror-view
 // when focusing the editor, which calls scrollToSelection → coordsAtPos)
-const emptyRect = { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) }
+const emptyRect = {
+  top: 0,
+  bottom: 0,
+  left: 0,
+  right: 0,
+  width: 0,
+  height: 0,
+  x: 0,
+  y: 0,
+  toJSON: () => ({}),
+}
 if (!Range.prototype.getClientRects) {
-  Range.prototype.getClientRects = () => ({ length: 0, item: () => null, [Symbol.iterator]: [][Symbol.iterator] }) as DOMRectList
+  Range.prototype.getClientRects = () =>
+    ({
+      length: 0,
+      item: () => null,
+      [Symbol.iterator]: [][Symbol.iterator],
+    }) as DOMRectList
 }
 if (!Range.prototype.getBoundingClientRect) {
   Range.prototype.getBoundingClientRect = () => emptyRect as DOMRect
