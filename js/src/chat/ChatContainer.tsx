@@ -17,9 +17,14 @@ import { ChatInput, type ChatInputHandle } from "./ChatInput"
 import { ScrollToBottomButton } from "./ScrollToBottomButton"
 import { ExternalLinkDialogComponent } from "./ExternalLinkDialog"
 import { RawDOM } from "./RawDOM"
-import { ChatScrollContext, useChatDispatch } from "./context"
+import {
+  ChatScrollContext,
+  SlashCommandsContext,
+  useChatDispatch,
+} from "./context"
 import type { ChatMessageData, GreetingData } from "./state"
 import type { ChatTransport, SlashCommandDef } from "../transport/types"
+import type { SubmitKey } from "./tiptap/submitShortcut"
 
 declare global {
   interface Window {
@@ -46,6 +51,7 @@ export interface ChatContainerProps {
   footerEl?: Element
   slashCommands: SlashCommandDef[]
   slashCommandId: string
+  submitKey?: SubmitKey
 }
 
 export type ChatContainerHandle = ChatInputHandle
@@ -69,6 +75,7 @@ export const ChatContainer = forwardRef<
     footerEl,
     slashCommands,
     slashCommandId,
+    submitKey,
   },
   ref,
 ) {
@@ -353,7 +360,7 @@ export const ChatContainer = forwardRef<
   }, [scrollToBottom])
 
   return (
-    <>
+    <SlashCommandsContext.Provider value={slashCommands}>
       <div className="shiny-chat-messages-wrapper">
         <div
           className="shiny-chat-messages"
@@ -418,6 +425,7 @@ export const ChatContainer = forwardRef<
           onCancel={cancelStream}
           slashCommands={slashCommands}
           slashCommandId={slashCommandId}
+          submitKey={submitKey}
         />
       </div>
 
@@ -433,6 +441,6 @@ export const ChatContainer = forwardRef<
           />,
           document.body,
         )}
-    </>
+    </SlashCommandsContext.Provider>
   )
 })

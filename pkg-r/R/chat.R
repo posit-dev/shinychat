@@ -171,6 +171,10 @@ chat_greeting <- function(
 #'   usage with `chat_ui()`, observe `input$<id>_cancel` to handle cancellation
 #'   (e.g., by calling `ctrl$cancel()` on an ellmer `stream_controller()`).
 #'   Defaults to `FALSE`.
+#' @param submit_key Controls which key combination submits the chat message.
+#'   `"enter"` (the default): Enter submits, Shift+Enter adds a newline.
+#'   `"enter+modifier"`: Ctrl+Enter (Cmd+Enter on Mac) submits, plain Enter
+#'   adds a newline.
 #' @param footer Optional HTML content to display below the chat input.
 #'   This can be any HTML content (tags, tag lists, or character strings).
 #'   Useful for adding disclaimers, attribution, or other information.
@@ -256,8 +260,11 @@ chat_ui <- function(
   fill = TRUE,
   icon_assistant = NULL,
   enable_cancel = FALSE,
+  submit_key = c("enter", "enter+modifier"),
   footer = NULL
 ) {
+  submit_key <- rlang::arg_match(submit_key)
+
   attrs <- rlang::list2(...)
   if (!all(nzchar(rlang::names2(attrs)))) {
     rlang::abort("All arguments in ... must be named.")
@@ -365,6 +372,7 @@ chat_ui <- function(
       placeholder = placeholder,
       fill = if (isTRUE(fill)) NA else NULL,
       `enable-cancel` = if (isTRUE(enable_cancel)) NA else NULL,
+      `submit-key` = if (submit_key != "enter") submit_key,
       # Also include icon on the parent so that when messages are dynamically added,
       # we know the default icon has changed
       `icon-assistant` = if (!is.null(icon_assistant)) {
