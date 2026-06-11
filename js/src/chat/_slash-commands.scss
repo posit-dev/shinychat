@@ -1,8 +1,4 @@
 .shiny-chat-slash-palette {
-  position: absolute;
-  bottom: 100%;
-  left: 0;
-  right: 0;
   margin: 0;
   padding: 0.25rem 0;
   list-style: none;
@@ -12,7 +8,7 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   max-height: 15rem;
   overflow-y: auto;
-  z-index: 10;
+  min-width: 200px;
 }
 
 .shiny-chat-slash-palette-item {
