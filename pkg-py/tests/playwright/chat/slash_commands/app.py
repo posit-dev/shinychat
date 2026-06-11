@@ -27,7 +27,8 @@ async def _():
 
 @chat.on_user_submit
 async def _():
-    await chat.append_message(f"Echo: {chat.user_input()}")
+    text, _ = chat.user_input()
+    await chat.append_message(f"Echo: {text}")
 
 
 ui.tags.script(

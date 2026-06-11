@@ -73,7 +73,7 @@ async def _():
 
 @chat.on_user_submit
 async def _():
-    user_input = chat.user_input() or ""
+    user_input, _ = chat.user_input()
     _record("user", user_input)
     reply = f"Echo: {user_input}"
     _record("assistant", reply)

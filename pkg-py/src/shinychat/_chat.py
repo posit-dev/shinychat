@@ -1328,7 +1328,13 @@ class Chat:
         with reactive.isolate():
             messages = self._messages()
 
-        return [m.model_dump(exclude_none=True) for m in messages]
+        dumps: list[dict[str, Any]] = []
+        for m in messages:
+            d = m.model_dump(exclude_none=True)
+            if not d.get("attachments"):
+                d.pop("attachments", None)
+            dumps.append(d)
+        return dumps
 
     async def _restore_bookmark_message(self, message_dict: Any) -> None:
         try:

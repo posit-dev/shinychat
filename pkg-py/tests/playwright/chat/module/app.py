@@ -14,7 +14,7 @@ def chat_mod_server(input: Inputs, output: Outputs, session: Session):
 
     @chat.on_user_submit
     async def _():
-        user = chat.user_input()
+        user, _ = chat.user_input()
         await chat.append_message(f"You said: {user}")
 
 

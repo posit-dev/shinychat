@@ -10,7 +10,7 @@ test_that("resolve_max_attachment_size honors env var and default", {
   Sys.setenv(SHINYCHAT_MAX_ATTACHMENT_SIZE = "2000000")
   expect_equal(resolve_max_attachment_size(), 2000000)
   Sys.unsetenv("SHINYCHAT_MAX_ATTACHMENT_SIZE")
-  expect_equal(resolve_max_attachment_size(), 30000000)
+  expect_equal(resolve_max_attachment_size(), 30L * 1024L * 1024L)
 })
 
 test_that("resolve_attachment_attrs handles bool, subset, and errors", {
