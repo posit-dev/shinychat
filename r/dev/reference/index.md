@@ -33,6 +33,11 @@
 - [`chat_restore()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_restore.md)
   : Add Shiny bookmarking for shinychat
 
+## Slash commands
+
+- [`ContentSlashCommand()`](https://posit-dev.github.io/shinychat/r/dev/reference/ContentSlashCommand.md)
+  : Slash command content
+
 ## Integration with ellmer
 
 - [`contents_shinychat()`](https://posit-dev.github.io/shinychat/r/dev/reference/contents_shinychat.md)

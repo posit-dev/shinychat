@@ -22,7 +22,7 @@ client for each user session."><meta property="og:image" content="https://posit-
 
     <a class="navbar-brand me-2" href="../index.html">shinychat</a>
 
-    <small class="nav-text text-danger me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="In-development version">0.3.0.9000</small>
+    <small class="nav-text text-danger me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="In-development version">0.4.0.9000</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -182,6 +182,19 @@ client so the conversation continues seamlessly. Set <code>sync = FALSE</code> t
 use the new client as-is. If a response is currently streaming, the
 swap is deferred until the stream completes. If called multiple times
 while streaming, only the most recent new client is used.</p></li>
+<li><p><code>slash_command(name, description, handler, ..., echo, force)</code>: Register
+a slash command. <code>handler</code> is required: pass a function (taking 0 or 1
+argument), or <code>NULL</code> for a client-side command handled in JavaScript via
+the <code>shiny:chat-slash-command</code> DOM event. A handler that takes one
+argument receives a <a href="ContentSlashCommand.html">ContentSlashCommand</a> object (not a plain string).
+See <a href="ContentSlashCommand.html">ContentSlashCommand</a> for details on how to use this object to
+preserve the original command text across bookmarks. <code>echo</code> controls
+whether invoking the command is echoed as a user message and awaits a
+response; it defaults to <code>TRUE</code> when a handler is given and <code>FALSE</code>
+otherwise (set <code>echo = FALSE</code> for a handler that only performs side
+effects). Returns a function that removes the command. Errors if a
+command with the same name is already registered unless
+<code>force = TRUE</code>.</p></li>
 </ul></li>
 </ul></div>
     <div class="section level2">

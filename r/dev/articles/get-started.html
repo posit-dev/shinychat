@@ -32,7 +32,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">shinychat</a>
 
-    <small class="nav-text text-danger me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="In-development version">0.3.0.9000</small>
+    <small class="nav-text text-danger me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="In-development version">0.4.0.9000</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -478,6 +478,144 @@ Screenshot of a chatbot embedded in a card with a header and tooltip.
 </div>
 </div>
 <div class="section level2">
+<h2 id="slash-commands">Slash commands<a class="anchor" aria-label="anchor" href="#slash-commands"></a>
+</h2>
+<p>Slash commands give users discoverable shortcuts — like
+<code>/search</code>, <code>/clear</code>, or <code>/help</code> — that
+run a handler you define on the server. Register commands on the object
+returned by <code><a href="../reference/chat_app.html">chat_mod_server()</a></code>, using its
+<code>slash_command()</code> method. When a user runs a command, its
+handler fires instead of the text being sent to the model, and what
+happens next is entirely up to the handler.</p>
+<p>The two most common patterns are <strong>prompt expansion</strong> —
+where the command transforms the user’s input before sending it to the
+LLM — and <strong>side effects</strong> — where the command performs an
+action without involving the LLM at all.</p>
+<div class="section level3">
+<h3 id="prompt-expansion">Prompt expansion<a class="anchor" aria-label="anchor" href="#prompt-expansion"></a>
+</h3>
+<p>The most common use of slash commands is giving users a shortcut that
+sends a prompt to the model on their behalf. A handler that takes one
+argument receives a <code>ContentSlashCommand</code> object — not a
+plain string. This object carries the command name, the text typed after
+it, and a <code>text</code> property that controls what the LLM sees.
+For <code>/search shiny modules</code>:</p>
+<ul>
+<li>
+<code>content@command</code> is <code>"search"</code>
+</li>
+<li>
+<code>content@user_text</code> is <code>"shiny modules"</code>
+</li>
+<li>
+<code>content@text</code> starts as a descriptive default — set it
+to your expanded prompt</li>
+</ul>
+<p>For example, a <code>/search</code> command could enrich the user’s
+query with retrieved context before streaming the model’s answer. In a
+real app the retrieval step would query a vector store or search index
+(i.e., a RAG workflow), but the core pattern is the same:</p>
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://shiny.posit.co/" class="external-link">shiny</a></span><span class="op">)</span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://rstudio.github.io/bslib/" class="external-link">bslib</a></span><span class="op">)</span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://posit-dev.github.io/shinychat/r/">shinychat</a></span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">ui</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rstudio.github.io/bslib/reference/page_fillable.html" class="external-link">page_fillable</a></span><span class="op">(</span></span>
+<span>  <span class="fu"><a href="../reference/chat_app.html">chat_mod_ui</a></span><span class="op">(</span><span class="st">"chat"</span>, placeholder <span class="op">=</span> <span class="st">"Type / for commands, or chat away..."</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">server</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">input</span>, <span class="va">output</span>, <span class="va">session</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="va">client</span> <span class="op">&lt;-</span> <span class="fu">ellmer</span><span class="fu">::</span><span class="fu"><a href="https://ellmer.tidyverse.org/reference/chat_openai.html" class="external-link">chat_openai</a></span><span class="op">(</span>system_prompt <span class="op">=</span> <span class="st">"You are a helpful assistant."</span><span class="op">)</span></span>
+<span>  <span class="va">chat</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/chat_app.html">chat_mod_server</a></span><span class="op">(</span><span class="st">"chat"</span>, client <span class="op">=</span> <span class="va">client</span><span class="op">)</span></span>
+<span></span>
+<span>  <span class="va">chat</span><span class="op">$</span><span class="fu">slash_command</span><span class="op">(</span><span class="st">"search"</span>, <span class="st">"Search the docs"</span>, <span class="kw">function</span><span class="op">(</span><span class="va">content</span><span class="op">)</span> <span class="op">{</span></span>
+<span>    <span class="co"># In practice, retrieve relevant documents here (e.g., via a vector DB)</span></span>
+<span>    <span class="va">content</span><span class="op">@</span><span class="va">text</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste</a></span><span class="op">(</span></span>
+<span>      <span class="st">"Search the documentation for the following topic and provide a concise summary:"</span>,</span>
+<span>      <span class="va">content</span><span class="op">@</span><span class="va">user_text</span></span>
+<span>    <span class="op">)</span></span>
+<span>    <span class="va">stream</span> <span class="op">&lt;-</span> <span class="va">client</span><span class="op">$</span><span class="fu">stream</span><span class="op">(</span><span class="va">content</span><span class="op">)</span></span>
+<span>    <span class="fu"><a href="../reference/chat_append.html">chat_append</a></span><span class="op">(</span><span class="st">"chat"</span>, <span class="va">stream</span><span class="op">)</span></span>
+<span>  <span class="op">}</span><span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/shinyApp.html" class="external-link">shinyApp</a></span><span class="op">(</span><span class="va">ui</span>, <span class="va">server</span><span class="op">)</span></span></code></pre></div>
+<p>When the user types <code>/search shiny modules</code>, the handler
+sets the expanded prompt as <code>content@text</code> and streams the
+model’s response. The user sees <code>/search shiny modules</code> as
+their message; the LLM receives the expanded prompt. Because
+<code>ContentSlashCommand</code> extends
+<code><a href="https://ellmer.tidyverse.org/reference/Content.html" class="external-link">ellmer::ContentText</a></code>, it works anywhere a
+<code>ContentText</code> does — the LLM reads the <code>text</code>
+property, while the chat UI preserves the original command for bookmark
+restore.</p>
+</div>
+<div class="section level3">
+<h3 id="side-effects">Side effects<a class="anchor" aria-label="anchor" href="#side-effects"></a>
+</h3>
+<p>Some commands perform an action without involving the LLM — clearing
+the conversation, opening a help modal, exporting a transcript. Pass
+<code>echo = FALSE</code> so the command doesn’t appear as a user
+message:</p>
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">chat</span><span class="op">$</span><span class="fu">slash_command</span><span class="op">(</span><span class="st">"clear"</span>, <span class="st">"Clear the conversation"</span>, <span class="kw">function</span><span class="op">(</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="va">chat</span><span class="op">$</span><span class="fu">clear</span><span class="op">(</span><span class="op">)</span></span>
+<span><span class="op">}</span>, echo <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div>
+</div>
+<div class="section level3">
+<h3 id="client-side-handlers">Client-side handlers<a class="anchor" aria-label="anchor" href="#client-side-handlers"></a>
+</h3>
+<p>Pass <code>NULL</code> as the handler to register a command that
+appears in the palette but is handled entirely in the browser. Listen
+for the <code>shiny:chat-slash-command</code> event and call
+<code>preventDefault()</code>:</p>
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">chat</span><span class="op">$</span><span class="fu">slash_command</span><span class="op">(</span><span class="st">"clear"</span>, <span class="st">"Clear the input"</span>, <span class="cn">NULL</span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">tags</span><span class="op">$</span><span class="fu">script</span><span class="op">(</span><span class="fu"><a href="https://rstudio.github.io/htmltools/reference/HTML.html" class="external-link">HTML</a></span><span class="op">(</span><span class="st">"</span></span>
+<span><span class="st">  document.addEventListener('shiny:chat-slash-command', function(e) {</span></span>
+<span><span class="st">    if (e.detail.id !== 'chat' || e.detail.command !== 'clear') return;</span></span>
+<span><span class="st">    e.preventDefault();</span></span>
+<span><span class="st">    document.querySelector('#chat-chat textarea').value = '';</span></span>
+<span><span class="st">  });</span></span>
+<span><span class="st">"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
+<p>The event is cancelable and bubbles. Use <code>e.detail.id</code> to
+target a specific chat. <code>preventDefault()</code> skips the server
+round-trip; set <code>e.detail.echo</code> to control whether the
+command appears as a user message.</p>
+</div>
+<div class="section level3">
+<h3 id="key-points">Key points<a class="anchor" aria-label="anchor" href="#key-points"></a>
+</h3>
+<ul>
+<li>Users type <code>/</code> to open a palette of registered commands;
+arrow keys navigate, Enter or Tab selects, Escape dismisses.</li>
+<li>A slash command’s handler fires instead of sending the text to the
+model. What happens next — including whether anything reaches the LLM —
+is entirely up to your handler.</li>
+<li>A <code>/</code> message that doesn’t match any registered command
+is sent as an ordinary message.</li>
+<li>Handlers take 0 or 1 argument. A 1-argument handler receives a
+<code>ContentSlashCommand</code> object (an
+<code><a href="https://ellmer.tidyverse.org/reference/Content.html" class="external-link">ellmer::ContentText</a></code> subclass) whose <code>user_text</code>
+and <code>text</code> properties let you control what the LLM sees while
+preserving the original command for display on bookmark restore.</li>
+<li>The <code>echo</code> argument controls whether invoking the command
+appears as a user message. Defaults to <code>TRUE</code> with a handler.
+Pass <code>echo = FALSE</code> for side-effect-only handlers.</li>
+<li>
+<code>slash_command()</code> returns a function that removes the
+command when called. Re-registering an existing name raises an error
+unless you pass <code>force = TRUE</code>.</li>
+<li>Slash command messages are restored faithfully when a bookmarked app
+is reopened.</li>
+</ul>
+<p>Slash commands are currently available only through the chat module
+(<code><a href="../reference/chat_app.html">chat_mod_server()</a></code>), not when building a custom UI with
+<code><a href="../reference/chat_ui.html">chat_ui()</a></code> directly.</p>
+</div>
+</div>
+<div class="section level2">
 <h2 id="stream-cancellation">Stream cancellation<a class="anchor" aria-label="anchor" href="#stream-cancellation"></a>
 </h2>
 <p>shinychat supports cancelling an in-progress AI response. When
@@ -493,7 +631,7 @@ preserved in the chat history.</p>
 The module handles everything automatically — the stop button is shown
 during streaming and wired up internally, with no extra code
 required.</p>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://shiny.posit.co/" class="external-link">shiny</a></span><span class="op">)</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://rstudio.github.io/bslib/" class="external-link">bslib</a></span><span class="op">)</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://posit-dev.github.io/shinychat/r/">shinychat</a></span><span class="op">)</span></span>
@@ -529,7 +667,7 @@ only need to create it once.</li>
 <code>&lt;id&gt;</code> is your chat element’s ID) and call
 <code>ctrl$cancel()</code> when it fires.</li>
 </ol>
-<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ui</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rstudio.github.io/bslib/reference/page_fillable.html" class="external-link">page_fillable</a></span><span class="op">(</span></span>
 <span>  <span class="fu"><a href="../reference/chat_ui.html">chat_ui</a></span><span class="op">(</span><span class="st">"chat"</span>, enable_cancel <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>

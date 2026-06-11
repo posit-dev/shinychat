@@ -148,6 +148,22 @@ chat_mod_server(
     completes. If called multiple times while streaming, only the most
     recent new client is used.
 
+  - `slash_command(name, description, handler, ..., echo, force)`:
+    Register a slash command. `handler` is required: pass a function
+    (taking 0 or 1 argument), or `NULL` for a client-side command
+    handled in JavaScript via the `shiny:chat-slash-command` DOM event.
+    A handler that takes one argument receives a
+    [ContentSlashCommand](https://posit-dev.github.io/shinychat/r/dev/reference/ContentSlashCommand.md)
+    object (not a plain string). See
+    [ContentSlashCommand](https://posit-dev.github.io/shinychat/r/dev/reference/ContentSlashCommand.md)
+    for details on how to use this object to preserve the original
+    command text across bookmarks. `echo` controls whether invoking the
+    command is echoed as a user message and awaits a response; it
+    defaults to `TRUE` when a handler is given and `FALSE` otherwise
+    (set `echo = FALSE` for a handler that only performs side effects).
+    Returns a function that removes the command. Errors if a command
+    with the same name is already registered unless `force = TRUE`.
+
 ## Functions
 
 - `chat_app()`: A simple Shiny app for live chatting. Note that this app

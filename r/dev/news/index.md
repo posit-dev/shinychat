@@ -2,6 +2,43 @@
 
 ## shinychat (development version)
 
+### New features and improvements
+
+- Added slash commands: a typeahead command palette that lets users
+  trigger named shortcuts directly from the chat input. Type `/` to open
+  the palette, filter by typing, and pick a command with arrow keys or
+  click. Commands can expand into LLM prompts, trigger server-side side
+  effects (clear chat, open a modal, export transcript), or be handled
+  entirely client-side via the cancelable `shiny:chat-slash-command` DOM
+  event. Register commands with `chat$slash_command()`, which accepts 0-
+  or 1-argument handlers; 1-argument handlers receive a
+  `ContentSlashCommand` object (a `ContentText` subclass with `command`
+  and `user_text` slots) so handlers can mutate `content@text` before
+  passing it to `client$stream()`. The `echo` parameter controls whether
+  an invocation is recorded as a user message and triggers a loading
+  state. Echoed commands are faithfully restored on bookmark/restore.
+  ([\#239](https://github.com/posit-dev/shinychat/issues/239))
+
+- Added `submit_key` parameter to
+  [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
+  and
+  [`chat_mod_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md):
+  `"enter"` (default, Enter submits) or `"enter+modifier"`
+  (Ctrl/Cmd+Enter submits, plain Enter inserts a line break). The input
+  remains editable while a response is streaming — only submission is
+  blocked, not typing.
+  ([\#251](https://github.com/posit-dev/shinychat/issues/251))
+
+### Bug fixes
+
+- Fixed the copy button on code blocks not working in some embedded
+  contexts. ([@thisisnic](https://github.com/thisisnic),
+  [\#247](https://github.com/posit-dev/shinychat/issues/247))
+
+## shinychat 0.4.0
+
+CRAN release: 2026-06-01
+
 ### Experimental internal changes
 
 - The chat UI’s rendering layer has been migrated from Lit to React.
@@ -15,35 +52,34 @@
 
 ### New features and improvements
 
-- [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
-  now returns a `set_client(new_client, sync = TRUE)` function for
-  swapping the chat client used by the module at runtime. When
-  `sync = TRUE` (the default), the new client inherits the current
-  conversation’s turns, system prompt, and tools so the conversation
-  continues seamlessly. If a response is currently streaming, the swap
-  is deferred until the stream completes.
-  ([\#227](https://github.com/posit-dev/shinychat/issues/227))
+- The chat UI now displays model reasoning/thinking content as
+  collapsible panels above assistant responses. Thinking content streams
+  in real-time with animated topic labels. This works with providers
+  that support structured thinking (e.g., Claude’s extended thinking via
+  `ellmer`) and with local models that wrap reasoning in `<thinking>`
+  tags. ([\#208](https://github.com/posit-dev/shinychat/issues/208))
 
-- [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
-  now returns a `status` reactive that reports the current interaction
-  state: `"idle"` when no response is in progress, or `"streaming"`
-  while a response is actively being received.
-  ([\#227](https://github.com/posit-dev/shinychat/issues/227))
-
-- [`chat_restore()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_restore.md)
-  now invisibly returns a cancel function that tears down all bookmark
-  registrations made by that call. This is useful when swapping the chat
-  client via `set_client()`, which handles the re-registration
-  automatically.
-  ([\#227](https://github.com/posit-dev/shinychat/issues/227))
-
-- Added `footer` parameter to
+- Added `enable_cancel` parameter to
   [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
-  for displaying arbitrary HTML content below the chat input. Useful for
-  disclaimers, attribution, or interactive toolbars. Styled with
-  sensible defaults and customizable via `--shiny-chat-footer-font-size`
-  and `--shiny-chat-footer-color` CSS custom properties.
-  ([\#224](https://github.com/posit-dev/shinychat/issues/224))
+  to show a stop button that lets users cancel an in-progress AI
+  response. Press the stop button or hit Escape to cancel.
+  [`chat_mod_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  enables cancellation by default, and
+  [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  handles the cancellation wiring automatically, using the stream
+  cancellation features introduced in ellmer v0.4.1.
+  ([\#221](https://github.com/posit-dev/shinychat/issues/221))
+
+- Markdown lists where every item is a `<span class="suggestion">` are
+  now rendered as a grid of clickable suggestion cards. Each
+  suggestion’s text content becomes both the card label and the value
+  sent on click. To add a short heading above the body text, set the
+  `title` attribute on the span —
+  e.g. `<span class="suggestion" title="Heading">Body text shown on the card.</span>`.
+  Only the body text (not the title) is submitted when the card is
+  clicked. Cards stream in with staggered animations and support
+  keyboard navigation (arrow keys, Home/End) with roving tabindex.
+  ([\#219](https://github.com/posit-dev/shinychat/issues/219))
 
 - Added
   [`chat_greeting()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_greeting.md)
@@ -70,38 +106,13 @@
   rendered with items interleaved in order.
   ([\#225](https://github.com/posit-dev/shinychat/issues/225))
 
-- Added `enable_cancel` parameter to
+- Added `footer` parameter to
   [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
-  to show a stop button that lets users cancel an in-progress AI
-  response. Press the stop button or hit Escape to cancel.
-  [`chat_mod_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
-  enables cancellation by default, and
-  [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
-  handles the cancellation wiring automatically, using the stream
-  cancellation features introduced in ellmer v0.4.1.
-  ([\#221](https://github.com/posit-dev/shinychat/issues/221))
-
-- Markdown lists where every item is a `<span class="suggestion">` are
-  now rendered as a grid of clickable suggestion cards. Each
-  suggestion’s text content becomes both the card label and the value
-  sent on click. To add a short heading above the body text, set the
-  `title` attribute on the span —
-  e.g. `<span class="suggestion" title="Heading">Body text shown on the card.</span>`.
-  Only the body text (not the title) is submitted when the card is
-  clicked. Cards stream in with staggered animations and support
-  keyboard navigation (arrow keys, Home/End) with roving tabindex.
-  ([\#219](https://github.com/posit-dev/shinychat/issues/219))
-
-- The chat UI now displays model reasoning/thinking content as
-  collapsible panels above assistant responses. Thinking content streams
-  in real-time with animated topic labels. This works with providers
-  that support structured thinking (e.g., Claude’s extended thinking via
-  `ellmer`) and with local models that wrap reasoning in `<thinking>`
-  tags. ([\#208](https://github.com/posit-dev/shinychat/issues/208))
-
-- Added `footer` field to `ToolResultDisplay` for displaying custom HTML
-  content below the tool result card body.
-  ([\#178](https://github.com/posit-dev/shinychat/issues/178))
+  for displaying arbitrary HTML content below the chat input. Useful for
+  disclaimers, attribution, or interactive toolbars. Styled with
+  sensible defaults and customizable via `--shiny-chat-footer-font-size`
+  and `--shiny-chat-footer-color` CSS custom properties.
+  ([\#224](https://github.com/posit-dev/shinychat/issues/224))
 
 - Tool result cards now support a fullscreen toggle. Set
   `full_screen = TRUE` in the `display` list (or set
@@ -110,6 +121,51 @@
   method) to add a button that expands the card to fill the viewport.
   Press `Escape`, click the backdrop, or use the close button to exit
   fullscreen.
+
+- Added `footer` field to `ToolResultDisplay` for displaying custom HTML
+  content below the tool result card body.
+  ([\#178](https://github.com/posit-dev/shinychat/issues/178))
+
+- [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  now returns a `set_client(new_client, sync = TRUE)` function for
+  swapping the chat client used by the module at runtime. When
+  `sync = TRUE` (the default), the new client inherits the current
+  conversation’s turns, system prompt, and tools so the conversation
+  continues seamlessly. If a response is currently streaming, the swap
+  is deferred until the stream completes.
+  ([\#227](https://github.com/posit-dev/shinychat/issues/227))
+
+- [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  now returns a `status` reactive that reports the current interaction
+  state: `"idle"` when no response is in progress, or `"streaming"`
+  while a response is actively being received.
+  ([\#227](https://github.com/posit-dev/shinychat/issues/227))
+
+- [`chat_restore()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_restore.md)
+  now invisibly returns a cancel function that tears down all bookmark
+  registrations made by that call. This is useful when swapping the chat
+  client via `set_client()`, which handles the re-registration
+  automatically.
+  ([\#227](https://github.com/posit-dev/shinychat/issues/227))
+
+### Improvements
+
+- All navigating links in assistant messages now open in a new tab to
+  preserve the app’s session state. Cross-origin links still show the
+  confirmation dialog; same-origin links open directly.
+  ([\#238](https://github.com/posit-dev/shinychat/issues/238))
+
+### Bug fixes
+
+- Fixed the external link confirmation dialog not rendering in Safari.
+  The backdrop overlay appeared but the dialog content was invisible due
+  to a Bootstrap/`<dialog>` CSS interaction.
+  ([\#201](https://github.com/posit-dev/shinychat/issues/201),
+  [\#238](https://github.com/posit-dev/shinychat/issues/238))
+
+- Fixed pressing Escape to dismiss the external link dialog leaving it
+  in a broken state where subsequent link clicks no longer worked.
+  ([\#238](https://github.com/posit-dev/shinychat/issues/238))
 
 - Fixed an issue where user chat messages would display the default
   assistant icon.

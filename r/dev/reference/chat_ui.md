@@ -24,6 +24,7 @@ chat_ui(
   fill = TRUE,
   icon_assistant = NULL,
   enable_cancel = FALSE,
+  submit_key = c("enter", "enter+modifier"),
   footer = NULL
 )
 ```
@@ -106,6 +107,13 @@ chat_ui(
   `chat_ui()`, observe `input$<id>_cancel` to handle cancellation (e.g.,
   by calling `ctrl$cancel()` on an ellmer `stream_controller()`).
   Defaults to `FALSE`.
+
+- submit_key:
+
+  Controls which key combination submits the chat message. `"enter"`
+  (the default): Enter submits, Shift+Enter adds a newline.
+  `"enter+modifier"`: Ctrl+Enter (Cmd+Enter on Mac) submits, plain Enter
+  adds a newline.
 
 - footer:
 
