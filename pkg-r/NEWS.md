@@ -1,5 +1,9 @@
 # shinychat (development version)
 
+## Bug fixes
+
+* Fixed the copy button on code blocks not working in some embedded contexts. (@thisisnic, #247)
+
 # shinychat 0.4.0
 
 ## Experimental internal changes
