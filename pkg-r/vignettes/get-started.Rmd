@@ -547,4 +547,4 @@ Key points:
 
 - Pass `allow_attachments = TRUE` to `chat_ui()` to show the file picker button. You can also pass a character vector of MIME types (e.g. `c("image/png", "image/jpeg")`) to restrict accepted file types.
 - When `allow_attachments` is enabled, `input$<id>_user_input` is always a list of ellmer `Content` objects (text first, then one content object per attachment), even when no files are attached. Use `!!!` to splice the list into `stream_async()`.
-- The maximum combined attachment size defaults to 30 MB and can be configured via the `SHINYCHAT_MAX_ATTACHMENT_SIZE` environment variable.
+- The maximum combined attachment size defaults to approximately 30 MB and can be configured via the `SHINYCHAT_MAX_ATTACHMENT_SIZE` environment variable.

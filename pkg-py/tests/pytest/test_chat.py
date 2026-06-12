@@ -702,6 +702,7 @@ def test_bookmark_omits_side_effect_only_slash_command():
 
 def test_user_input_reads_latest_stored():
     from shiny import reactive
+    from shinychat._chat import UserInput
 
     session = cast(Session, _MockSession())
 
@@ -709,7 +710,7 @@ def test_user_input_reads_latest_stored():
         chat = Chat(id="chat")
 
         with reactive.isolate():
-            assert chat.user_input() == ("", [])
+            assert chat.user_input() is None
 
             from shinychat._attachments import Attachment
             from shinychat._chat_types import ChatMessage, StoredMessage
@@ -725,7 +726,10 @@ def test_user_input_reads_latest_stored():
                 ChatMessage(content="hi", role="user", attachments=attachments)
             )
             chat._latest_user_input.set(stored)
-            text, atts = chat.user_input()
+            result = chat.user_input()
+            assert result == UserInput(text="hi", attachments=attachments)
+            assert result is not None
+            text, atts = result
             assert text == "hi"
             assert atts == attachments
 

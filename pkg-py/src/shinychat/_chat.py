@@ -12,6 +12,7 @@ from typing import (
     Awaitable,
     Callable,
     Iterable,
+    NamedTuple,
     Literal,
     Optional,
     Sequence,
@@ -99,6 +100,7 @@ __all__ = (
     "chat_greeting",
     "chat_ui",
     "ChatMessageDict",
+    "UserInput",
 )
 
 
@@ -146,6 +148,11 @@ class SlashCommandRegistration:
     handler: UserSubmitFunction | None
     takes_args: bool
     definition: SlashCommandDef
+
+
+class UserInput(NamedTuple):
+    text: str
+    attachments: list[Attachment]
 
 
 ChunkOption = Literal["start", "end", True, False]
@@ -595,9 +602,13 @@ class Chat:
                         )
                     elif len(fn_params) == 2:
                         afunc = _utils.wrap_async(cast(UserSubmitFunction2, fn))
-                        await afunc(*self.user_input())
+                        user_input = self.user_input()
+                        assert user_input is not None
+                        await afunc(*user_input)
                     elif len(fn_params) == 1:
-                        text, _ = self.user_input()
+                        user_input = self.user_input()
+                        assert user_input is not None
+                        text, _ = user_input
                         afunc = _utils.wrap_async(cast(UserSubmitFunction1, fn))
                         await afunc(text)
                     else:
@@ -1492,18 +1503,22 @@ class Chat:
         if message.role == "user":
             self._latest_user_input.set(message)
 
-    def user_input(self) -> "tuple[str, list[Attachment]]":
+    def user_input(self) -> "UserInput | None":
         """
-        Reactively read the user's latest submission as a ``(text, attachments)`` tuple.
+        Reactively read the user's latest submission.
 
         Returns
         -------
-        tuple[str, list[Attachment]]
-            A tuple of the submitted text and any attached files. The
-            ``attachments`` list is empty unless ``allow_attachments`` was
-            enabled in :func:`~shinychat.chat_ui`. Supports destructuring::
+        UserInput | None
+            ``None`` before the first user submission; otherwise a named tuple
+            of the submitted text and any attached files. The ``attachments``
+            list is empty unless ``allow_attachments`` was enabled in
+            :func:`~shinychat.chat_ui`. Supports destructuring after a
+            ``None`` check::
 
-                text, attachments = chat.user_input()
+                result = chat.user_input()
+                if result is not None:
+                    text, attachments = result
 
         Note
         ----
@@ -1516,8 +1531,8 @@ class Chat:
         """
         msg = self._latest_user_input()
         if msg is None:
-            return "", []
-        return str(msg.content), msg.attachments
+            return None
+        return UserInput(text=str(msg.content), attachments=msg.attachments)
 
     def _user_input(self) -> "tuple[str, list[Attachment]]":
         val = cast("UserInputValue", self._session.input[self.user_input_id]())

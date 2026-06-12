@@ -186,6 +186,16 @@ def test_attachment_to_content_text_non_utf8_does_not_raise():
     assert "�" in content.text
 
 
+def test_attachment_to_content_pdf_malformed_base64_raises_clean_error():
+    att = Attachment(
+        mime="application/pdf",
+        data_url="data:application/pdf;base64,%%%not-base64%%%",
+        name="broken.pdf",
+    )
+    with pytest.raises(ValueError, match="Malformed base64 payload in data URL"):
+        attachment_to_content(att)
+
+
 def test_is_text_type():
     assert is_text_type("text/markdown") is True
     assert is_text_type("application/x-ipynb+json") is True

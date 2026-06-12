@@ -250,4 +250,7 @@ def decode_data_url(data_url: str) -> bytes:
     comma = data_url.find(",")
     if comma == -1:
         raise ValueError("Malformed data URL")
-    return base64.b64decode(data_url[comma + 1 :])
+    try:
+        return base64.b64decode(data_url[comma + 1 :])
+    except Exception as e:
+        raise ValueError("Malformed base64 payload in data URL") from e

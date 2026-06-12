@@ -41,6 +41,11 @@ resolve_max_attachment_size <- function(default = 30L * 1024L * 1024L) {
       "{.envvar SHINYCHAT_MAX_ATTACHMENT_SIZE} must be a number of bytes, got {.val {env}}."
     )
   }
+  if (size < 0) {
+    cli::cli_abort(
+      "{.envvar SHINYCHAT_MAX_ATTACHMENT_SIZE} must be non-negative, got {.val {size}}."
+    )
+  }
   size
 }
 
@@ -156,6 +161,7 @@ user_input_contents <- function(value) {
 #'
 #' @export
 chat_attachment <- function(path, mime = NULL, name = NULL) {
+  rlang::check_string(path)
   path <- normalizePath(as.character(path), mustWork = TRUE)
 
   if (is.null(mime)) {

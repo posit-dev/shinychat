@@ -59,8 +59,8 @@ needed: ellmer's chat methods collect \code{...} with dynamic dots.)
 
 The maximum combined size of all attachments in a single message is
 controlled globally by the \code{SHINYCHAT_MAX_ATTACHMENT_SIZE} environment
-variable (a raw byte count; defaults to 30,000,000). Files that would push
-the total over this cap are rejected in the browser with a notice.}
+variable (a raw byte count; defaults to approximately 30 MB). Files that
+would push the total over this cap are rejected in the browser with a notice.}
 
 \item{id}{The chat module ID.}
 

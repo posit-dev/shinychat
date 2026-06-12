@@ -274,7 +274,7 @@ Key points:
 - Pass `allow_attachments=True` to `chat_ui()` to show the file picker button. You can also pass a list of MIME types (e.g. `["image/png", "image/jpeg"]`) to restrict accepted file types.
 - Declare two parameters on your `@chat.on_user_submit` handler to receive both the text and attachments. With one parameter, you only receive the text.
 - Use `attachment_to_content()` to convert each `Attachment` into a chatlas content object (image, PDF, or text).
-- The maximum combined attachment size defaults to 30 MB and can be configured via the `SHINYCHAT_MAX_ATTACHMENT_SIZE` environment variable.
+- The maximum combined attachment size defaults to approximately 30 MB and can be configured via the `SHINYCHAT_MAX_ATTACHMENT_SIZE` environment variable.
 
 ## Learn more
 

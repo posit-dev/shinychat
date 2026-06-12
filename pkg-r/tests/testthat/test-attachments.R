@@ -13,6 +13,19 @@ test_that("resolve_max_attachment_size honors env var and default", {
   expect_equal(resolve_max_attachment_size(), 30L * 1024L * 1024L)
 })
 
+test_that("resolve_max_attachment_size rejects negative values", {
+  old <- Sys.getenv("SHINYCHAT_MAX_ATTACHMENT_SIZE", unset = NA)
+  on.exit({
+    if (is.na(old)) {
+      Sys.unsetenv("SHINYCHAT_MAX_ATTACHMENT_SIZE")
+    } else {
+      Sys.setenv(SHINYCHAT_MAX_ATTACHMENT_SIZE = old)
+    }
+  })
+  Sys.setenv(SHINYCHAT_MAX_ATTACHMENT_SIZE = "-1")
+  expect_error(resolve_max_attachment_size(), "non-negative")
+})
+
 test_that("resolve_attachment_attrs handles bool, subset, and errors", {
   expect_equal(resolve_attachment_attrs(TRUE), list(allow = NA, accept = NULL))
   expect_equal(
@@ -248,6 +261,14 @@ test_that("chat_attachment errors on unsupported explicit mime", {
 
 test_that("chat_attachment errors when file does not exist", {
   expect_error(chat_attachment("/nonexistent/file.png"))
+})
+
+test_that("chat_attachment rejects vector paths", {
+  path1 <- withr::local_tempfile(fileext = ".txt")
+  path2 <- withr::local_tempfile(fileext = ".txt")
+  writeBin(charToRaw("one"), path1)
+  writeBin(charToRaw("two"), path2)
+  expect_error(chat_attachment(c(path1, path2)), "must be a single string")
 })
 
 test_that("chat_ui emits attachment attributes", {
