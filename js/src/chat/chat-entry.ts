@@ -153,6 +153,7 @@ class ChatContainerElement extends HTMLElement {
     //   • page-load case: promise is pending → callback fires once Shiny inits
     //   • dynamic-insertion case: promise is already resolved → callback fires
     //     on the next microtask
+    // Inputs use the DOM id (namespaced in modules), matching the server's resolved self.id — unlike slash-command DOM events, which use effective-id.
     window.Shiny?.initializedPromise.then(() => {
       window.Shiny?.setInputValue?.(
         `${elementId}_history_browser_token`,

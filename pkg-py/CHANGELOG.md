@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * Added `submit_key` parameter to `chat_ui()` and `Chat.ui()`: `"enter"` (default, Enter submits) or `"enter+modifier"` (Ctrl/Cmd+Enter submits, plain Enter inserts a line break). The input remains editable while a response is streaming — only submission is blocked, not typing. (#251)
 
+* `Chat.enable_history()` adds multi-conversation history to your app: a sidebar drawer for starting new chats and returning to previous conversations (LLM-generated titles, search, rename, and delete). Conversations are persisted per-user via a pluggable `ConversationStore` — the built-in `FileConversationStore` is redeploy-safe on Posit Connect. App state wired through existing bookmark hooks is saved and restored per conversation automatically. Five new public classes (`ConversationStore`, `FileConversationStore`, `ConversationRecord`, `ConversationMeta`, `ConversationNode`) are exported for custom store implementations.
+
 * `Chat()` now accepts an optional `client=` parameter. When provided, streaming, cancellation, bookmarking, and greeting handling are wired up automatically — no manual plumbing required. The `chat.client` property exposes a `ChatClient` wrapper with `.value` (the raw chatlas client), `.set()` for swapping models mid-session, and `.clear()` for resetting the conversation with flexible history management.
 
 ### Improvements

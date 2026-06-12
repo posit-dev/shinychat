@@ -1979,7 +1979,10 @@ class Chat:
         session = get_current_session()
         if session is None or session.is_stub_session():
             return BookmarkCancelCallback(lambda: None)
+
+        token_input_id = f"{self.id}_history_browser_token"
         root_session = session.root_scope()
+        root_session.bookmark.exclude.append(token_input_id)
 
         adapter = as_turns_adapter(client)
         resolved_store = store if store is not None else FileConversationStore()
@@ -1995,8 +1998,6 @@ class Chat:
             controller.bridge = BookmarkBridge(
                 session, exclude_keys={str(self.id), str(self.id) + "--msgs"}
             )
-
-        token_input_id = f"{self.id}_history_browser_token"
 
         @reactive.calc
         def scope() -> str:
@@ -2031,8 +2032,22 @@ class Chat:
 
             # Private shiny API: same access pattern as in _history_bridge.py.
             # Tracked upstream for a public replacement.
+            #
+            # `restore_ctx.active` is True even for a bare page load when
+            # `bookmark_store="server"` is set (Shiny sets active=True in the
+            # else-branch of from_query_string regardless of whether the URL
+            # has actual state).  A real bookmark restore has at least one of
+            # restore_ctx.values or restore_ctx.input non-empty; a bare page
+            # load under bookmark_store="server" has active=True with both
+            # empty.  Guard on either to avoid skipping baseline capture on
+            # fresh sessions while still catching bookmarks that only persisted
+            # Shiny inputs (no on_bookmark values).
             restore_ctx = root_session.bookmark._restore_context
-            bookmark_restored = restore_ctx is not None and restore_ctx.active
+            bookmark_restored = (
+                restore_ctx is not None
+                and restore_ctx.active
+                and (bool(restore_ctx.values) or bool(restore_ctx.input.as_dict()))
+            )
             if controller.bridge is not None and not bookmark_restored:
                 controller.baseline_values = await controller.bridge.capture()
 
