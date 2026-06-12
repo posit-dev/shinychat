@@ -2,6 +2,14 @@ import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 
 export type ContentType = "markdown" | "html" | "text" | "thinking"
 
+export interface ConversationMeta {
+  id: string
+  title: string
+  // ISO 8601 strings — matches Python model serialization
+  created_at: string
+  updated_at: string
+}
+
 export interface GreetingOptions {
   dismissible?: boolean
 }
@@ -87,6 +95,12 @@ export type ChatAction =
   | { type: "greeting_end" }
   | { type: "greeting_clear" }
   | { type: "update_slash_commands"; commands: SlashCommandDef[] }
+  | {
+      type: "history_update"
+      enabled: boolean
+      conversations: ConversationMeta[]
+      active_id: string | null
+    }
 
 export type ShinyChatEnvelope = {
   id: string
@@ -122,6 +136,10 @@ export interface ChatTransport {
     echo: boolean,
   ): void
   onMessage(id: string, callback: (action: ChatAction) => void): () => void
+  sendHistorySelect(id: string, convId: string): void
+  sendHistoryNew(id: string): void
+  sendHistoryRename(id: string, convId: string, title: string): void
+  sendHistoryDelete(id: string, convId: string): void
 }
 
 /** Shiny-specific lifecycle: DOM binding, dependency rendering, error display. */

@@ -183,6 +183,7 @@ export function ChatApp({
             inputPlaceholder={state.inputPlaceholder}
             iconAssistant={iconAssistant}
             inputId={inputId}
+            elementId={elementId}
             greeting={state.greeting}
             cancelId={cancelId}
             enableCancel={state.enableCancel}
@@ -191,6 +192,9 @@ export function ChatApp({
             slashCommands={state.slashCommands}
             slashCommandId={slashCommandId}
             submitKey={submitKey}
+            historyEnabled={state.history.enabled}
+            historyConversations={state.history.conversations}
+            historyActiveId={state.history.activeId}
           />
         </ChatDispatchContext.Provider>
       </ChatToolContext.Provider>

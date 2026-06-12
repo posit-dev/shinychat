@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import AsyncIterable, Literal, Union
+from typing import Any, AsyncIterable, Literal, Union
 
 from htmltools import HTML, HTMLDependency, Tag, TagChild, TagList
 from pydantic import BaseModel
@@ -123,6 +123,13 @@ class UpdateSlashCommandsAction(TypedDict):
     commands: list[SlashCommandDef]
 
 
+class HistoryUpdateAction(TypedDict):
+    type: Literal["history_update"]
+    enabled: bool
+    conversations: list[dict[str, Any]]  # ConversationMeta dumps
+    active_id: str | None
+
+
 ChatAction = Union[
     MessageAction,
     ChunkStartAction,
@@ -139,6 +146,7 @@ ChatAction = Union[
     GreetingEndAction,
     GreetingClearAction,
     UpdateSlashCommandsAction,
+    HistoryUpdateAction,
 ]
 
 

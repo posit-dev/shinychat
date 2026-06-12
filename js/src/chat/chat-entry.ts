@@ -10,6 +10,29 @@ import { uuid } from "../utils/uuid"
 // Single shared transport instance for all chat instances on the page
 const transport = getShinyTransport()
 
+const BROWSER_TOKEN_KEY = "shinychat-browser-token"
+
+// Cached fallback token for private-browsing mode (localStorage unavailable).
+// All chat elements on the page share the same per-session token.
+let fallbackBrowserToken: string | null = null
+
+function getBrowserToken(): string {
+  try {
+    let token = window.localStorage.getItem(BROWSER_TOKEN_KEY)
+    if (!token) {
+      token = crypto.randomUUID()
+      window.localStorage.setItem(BROWSER_TOKEN_KEY, token)
+    }
+    return token
+  } catch {
+    // localStorage unavailable (private mode, sandboxed iframe, etc.)
+    if (!fallbackBrowserToken) {
+      fallbackBrowserToken = crypto.randomUUID()
+    }
+    return fallbackBrowserToken
+  }
+}
+
 const CHAT_INPUT_TAG = "shiny-chat-input"
 const CHAT_MESSAGE_TAG = "shiny-chat-message"
 const CHAT_FOOTER_TAG = "shiny-chat-footer"
@@ -116,6 +139,26 @@ class ChatContainerElement extends HTMLElement {
     // retains stale references, preventing re-binding of the new React-rendered
     // elements (Shiny thinks the inputs are already bound by ID).
     transport.unbindAll(this)
+
+    // Send the browser token once per element so the server can correlate this
+    // client across sessions. No event priority — the server reads it with
+    // req() as a persistent value. A genuine remove + re-attach re-sends the
+    // token, which is harmless because the value is identical and Shiny
+    // overwrites in place.
+    //
+    // shinychat.js loads as a <script type="module"> (deferred), so
+    // connectedCallback fires after HTML parsing but potentially before Shiny's
+    // own jQuery ready handler has run. Deferring via initializedPromise.then()
+    // handles both orderings:
+    //   • page-load case: promise is pending → callback fires once Shiny inits
+    //   • dynamic-insertion case: promise is already resolved → callback fires
+    //     on the next microtask
+    window.Shiny?.initializedPromise.then(() => {
+      window.Shiny?.setInputValue?.(
+        `${elementId}_history_browser_token`,
+        getBrowserToken(),
+      )
+    })
 
     this.reactRoot = createRoot(this)
     this.reactRoot.render(

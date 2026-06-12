@@ -1,6 +1,7 @@
 import type {
   ContentType,
   ChatAction,
+  ConversationMeta,
   MessagePayload,
   GreetingOptions,
   SlashCommandDef,
@@ -64,6 +65,12 @@ export interface ChatToolState {
   hiddenToolRequests: Set<string>
 }
 
+export interface ChatHistoryState {
+  enabled: boolean
+  conversations: ConversationMeta[]
+  activeId: string | null
+}
+
 export interface ChatState extends ChatInputState, ChatToolState {
   messages: ChatMessageData[]
   streamingMessage: ChatMessageData | null
@@ -78,6 +85,7 @@ export interface ChatState extends ChatInputState, ChatToolState {
    */
   enableCancelExplicit: boolean
   slashCommands: SlashCommandDef[]
+  history: ChatHistoryState
 }
 
 // Actions that originate from the UI (not from the server)
@@ -105,6 +113,7 @@ export const initialState: ChatState = {
   enableCancelExplicit: false,
   hiddenToolRequests: new Set(),
   slashCommands: [],
+  history: { enabled: false, conversations: [], activeId: null },
 }
 
 function messagePayloadToData(msg: MessagePayload): ChatMessageData {
@@ -843,6 +852,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         enableCancel: state.enableCancel,
         enableCancelExplicit: state.enableCancelExplicit,
         slashCommands: state.slashCommands,
+        history: state.history,
       }
     }
 
@@ -993,6 +1003,17 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
 
     case "update_slash_commands":
       return { ...state, slashCommands: action.commands }
+
+    case "history_update": {
+      return {
+        ...state,
+        history: {
+          enabled: action.enabled,
+          conversations: action.conversations,
+          activeId: action.active_id,
+        },
+      }
+    }
 
     default: {
       const _exhaustive: never = action

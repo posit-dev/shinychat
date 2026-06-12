@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 import re
@@ -59,12 +60,16 @@ from ._chat_types import (
     ClearAction,
     ContentSegment,
     GreetingOptions,
+    HistoryUpdateAction,
     MessagePayload,
     SerializedDep,
     SlashCommandDef,
     StoredMessage,
     chat_greeting,
 )
+from ._history_client import as_turns_adapter
+from ._history_store import ConversationStore, FileConversationStore
+from ._history_title import TitleFn
 from ._html_deps_py_shiny import shinychat_dependency
 from ._typing_extensions import TypeGuard
 from ._utils_types import DEPRECATED, DEPRECATED_TYPE, MISSING, MISSING_TYPE
@@ -75,6 +80,7 @@ if TYPE_CHECKING:
     from shiny.bookmark._types import BookmarkStore
     from shiny.reactive import ExtendedTask
     from shiny.reactive._reactives import Effect_
+    from shiny.session import Session
     from shiny.types import Jsonifiable
     from shiny.ui.css import CssUnit
 
@@ -1911,6 +1917,238 @@ class Chat:
         self._cancel_bookmarking_callbacks = _cancel_bookmarking
 
         return BookmarkCancelCallback(_cancel_bookmarking)
+
+    def enable_history(
+        self,
+        client: Any,
+        /,
+        *,
+        store: "ConversationStore | None" = None,
+        user_id: "str | Callable[[Session], str] | None" = None,
+        title: "TitleFn | Literal[False] | None" = None,
+        resume: Literal["new", "last"] = "new",
+        bridge_bookmark_state: bool = True,
+    ) -> CancelCallback:
+        """
+        Enable multi-conversation history for this chat.
+
+        Adds a history trigger button + overlay drawer to the chat UI (new
+        chat, searchable conversation list, rename/delete), persists each
+        conversation to `store`, and restores conversations in-session
+        (client turns + rendered messages + app state captured through the
+        session's bookmark hooks).
+
+        Parameters
+        ----------
+        client
+            A chatlas.Chat, or any object with JSON-able
+            ``get_turns()``/``set_turns()``.
+        store
+            Conversation storage. Defaults to ``FileConversationStore()``
+            (Connect-aware directory resolution).
+        user_id
+            Partition key for stored conversations: a string, a function of
+            the session, or ``None`` (default) for ``session.user``, falling
+            back to a stable per-browser token.
+        title
+            ``None`` (default): LLM-generated titles via a one-shot call on a
+            copy of ``client``. A callable ``(turns) -> str`` to customize.
+            ``False``: keep fallback titles (truncated first user message).
+        resume
+            ``"new"`` (default): each session starts a fresh unsaved draft.
+            ``"last"``: reopen the most recent conversation on session start.
+        bridge_bookmark_state
+            Capture/restore app state through the session's registered
+            ``on_bookmark``/``on_restore`` callbacks when saving/switching
+            conversations.
+
+        Returns
+        -------
+        :
+            A callback that disables history (removes effects/handlers).
+        """
+        from shiny import reactive, req
+        from shiny.session import get_current_session, session_context
+
+        # Runtime imports to avoid circular import:
+        # ._history and ._history_bridge depend on shiny, which depends on
+        # shiny.ui._chat, which imports shinychat — a true import cycle.
+        from ._history import HistoryController
+        from ._history_bridge import BookmarkBridge
+
+        session = get_current_session()
+        if session is None or session.is_stub_session():
+            return BookmarkCancelCallback(lambda: None)
+        root_session = session.root_scope()
+
+        adapter = as_turns_adapter(client)
+        resolved_store = store if store is not None else FileConversationStore()
+        controller = HistoryController(
+            chat=self,
+            adapter=adapter,
+            store=resolved_store,
+            title_fn=title if callable(title) else None,
+            title_enabled=title is not False,
+            raw_client=client,
+        )
+        if bridge_bookmark_state:
+            controller.bridge = BookmarkBridge(
+                session, exclude_keys={str(self.id), str(self.id) + "--msgs"}
+            )
+
+        token_input_id = f"{self.id}_history_browser_token"
+
+        @reactive.calc
+        def scope() -> str:
+            if isinstance(user_id, str):
+                return user_id
+            if callable(user_id):
+                return user_id(self._session)
+            if self._session.user is not None:
+                return str(self._session.user)
+            token = self._session.input[token_input_id]()
+            return str(req(token))
+
+        async def notify_error(prefix: str, e: Exception) -> None:
+            from shiny import ui as shiny_ui
+
+            with session_context(session):
+                shiny_ui.notification_show(f"{prefix}: {e}", type="error")
+
+        def stream_busy() -> bool:
+            with reactive.isolate():
+                return self.latest_message_stream.status() == "running"
+
+        initialized = False
+
+        @reactive.effect
+        async def _init_history():
+            nonlocal initialized
+            if initialized:
+                return
+            controller.scope = scope()  # req() retries until token arrives
+            initialized = True
+
+            # Private shiny API: same access pattern as in _history_bridge.py.
+            # Tracked upstream for a public replacement.
+            restore_ctx = root_session.bookmark._restore_context
+            bookmark_restored = restore_ctx is not None and restore_ctx.active
+            if controller.bridge is not None and not bookmark_restored:
+                controller.baseline_values = await controller.bridge.capture()
+
+            if resume == "last" and not bookmark_restored:
+                metas = await controller.store.list(controller.scope)
+                if metas:
+                    target = await controller.store.get(
+                        controller.scope, metas[0].id
+                    )
+                    if target is not None:
+                        adapter.set_turns_json(target.path_turns())
+                        await controller.replay_ui(target)
+                        if controller.bridge is not None:
+                            await controller.bridge.restore(target.values)
+                        controller.record = target
+            await controller.send_history_update()
+
+        @reactive.effect
+        @reactive.event(self.messages, ignore_init=True)
+        async def _save_on_response():
+            if controller.scope is None:
+                return
+            messages = self.messages()
+            if messages and messages[-1].get("role") == "assistant":
+                try:
+                    await controller.on_response()
+                except Exception as e:
+                    await notify_error("Could not save conversation", e)
+
+        @reactive.effect
+        @reactive.event(self._session.input[f"{self.id}_history_select"])
+        async def _on_select():
+            if controller.scope is None:
+                return
+            if stream_busy():
+                return
+            payload = self._session.input[f"{self.id}_history_select"]()
+            try:
+                await controller.switch_to(str(payload["id"]))
+            except Exception as e:
+                await notify_error("Could not open conversation", e)
+
+        @reactive.effect
+        @reactive.event(self._session.input[f"{self.id}_history_new"])
+        async def _on_new():
+            if controller.scope is None:
+                return
+            if stream_busy():
+                return
+            try:
+                await controller.new_chat()
+            except Exception as e:
+                await notify_error("Could not start a new chat", e)
+
+        @reactive.effect
+        @reactive.event(self._session.input[f"{self.id}_history_rename"])
+        async def _on_rename():
+            if controller.scope is None:
+                return
+            payload = self._session.input[f"{self.id}_history_rename"]()
+            try:
+                await controller.rename(
+                    str(payload["id"]), str(payload["title"])
+                )
+            except Exception as e:
+                await notify_error("Could not rename conversation", e)
+
+        @reactive.effect
+        @reactive.event(self._session.input[f"{self.id}_history_delete"])
+        async def _on_delete():
+            if controller.scope is None:
+                return
+            if stream_busy():
+                return
+            payload = self._session.input[f"{self.id}_history_delete"]()
+            try:
+                await controller.delete(str(payload["id"]))
+            except Exception as e:
+                await notify_error("Could not delete conversation", e)
+
+        effects = [
+            _init_history,
+            _save_on_response,
+            _on_select,
+            _on_new,
+            _on_rename,
+            _on_delete,
+        ]
+
+        def _cancel() -> None:
+            controller.cancel_pending()
+            for effect in effects:
+                effect.destroy()
+            # Notify the client that history is disabled. _send_action is async
+            # so we schedule a fire-and-forget task. If the session is already
+            # closing, the send may silently fail — that is acceptable because
+            # the client will be gone by then.
+            disabled_action: HistoryUpdateAction = {
+                "type": "history_update",
+                "enabled": False,
+                "conversations": [],
+                "active_id": None,
+            }
+
+            async def _send_disabled() -> None:
+                try:
+                    await self._send_action(disabled_action)
+                except Exception:
+                    pass  # session may already be closed
+
+            try:
+                asyncio.create_task(_send_disabled())
+            except RuntimeError:
+                pass  # no running loop (e.g. teardown); skip the send
+
+        return BookmarkCancelCallback(_cancel)
 
 
 class ChatExpress(Chat):

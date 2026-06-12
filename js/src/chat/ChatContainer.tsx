@@ -22,8 +22,13 @@ import {
   SlashCommandsContext,
   useChatDispatch,
 } from "./context"
+import { ChatHistoryDrawer } from "./ChatHistoryDrawer"
 import type { ChatMessageData, GreetingData } from "./state"
-import type { ChatTransport, SlashCommandDef } from "../transport/types"
+import type {
+  ChatTransport,
+  ConversationMeta,
+  SlashCommandDef,
+} from "../transport/types"
 import type { SubmitKey } from "./tiptap/submitShortcut"
 
 declare global {
@@ -44,6 +49,7 @@ export interface ChatContainerProps {
   inputPlaceholder: string
   iconAssistant?: string
   inputId: string
+  elementId: string
   greeting?: GreetingData | null
   cancelId?: string
   enableCancel?: boolean
@@ -52,6 +58,9 @@ export interface ChatContainerProps {
   slashCommands: SlashCommandDef[]
   slashCommandId: string
   submitKey?: SubmitKey
+  historyEnabled?: boolean
+  historyConversations?: ConversationMeta[]
+  historyActiveId?: string | null
 }
 
 export type ChatContainerHandle = ChatInputHandle
@@ -68,6 +77,7 @@ export const ChatContainer = forwardRef<
     inputPlaceholder,
     iconAssistant,
     inputId,
+    elementId,
     greeting,
     cancelId,
     enableCancel,
@@ -76,6 +86,9 @@ export const ChatContainer = forwardRef<
     slashCommands,
     slashCommandId,
     submitKey,
+    historyEnabled,
+    historyConversations,
+    historyActiveId,
   },
   ref,
 ) {
@@ -402,6 +415,23 @@ export const ChatContainer = forwardRef<
           scrollToBottom={scrollToBottom}
           streaming={!!streamingMessage || !!greeting?.streaming}
         />
+        {historyEnabled && (
+          <ChatHistoryDrawer
+            conversations={historyConversations ?? []}
+            activeId={historyActiveId ?? null}
+            busy={isStreaming}
+            onSelect={(convId) =>
+              transport.sendHistorySelect(elementId, convId)
+            }
+            onNew={() => transport.sendHistoryNew(elementId)}
+            onRename={(convId, title) =>
+              transport.sendHistoryRename(elementId, convId, title)
+            }
+            onDelete={(convId) =>
+              transport.sendHistoryDelete(elementId, convId)
+            }
+          />
+        )}
       </div>
 
       <div

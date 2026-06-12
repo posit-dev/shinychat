@@ -557,6 +557,30 @@ describe("chatReducer", () => {
       expect(next.messages).toEqual([])
       expect(next.slashCommands).toEqual(commands)
     })
+
+    it("preserves history state across clear", () => {
+      const conversations = [
+        {
+          id: "conv-1",
+          title: "First chat",
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        },
+      ]
+      let state = makeState({ messages: [makeAssistantMsg()] })
+      state = chatReducer(state, {
+        type: "history_update",
+        enabled: true,
+        conversations,
+        active_id: "conv-1",
+      })
+      const next = chatReducer(state, { type: "clear" })
+      expect(next.history).toEqual({
+        enabled: true,
+        conversations,
+        activeId: "conv-1",
+      })
+    })
   })
 
   describe("update_input", () => {
