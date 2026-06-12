@@ -1015,6 +1015,11 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       }
     }
 
+    case "history_navigate": {
+      // Side effect handled imperatively in ChatApp; no state change.
+      return state
+    }
+
     default: {
       const _exhaustive: never = action
       void _exhaustive

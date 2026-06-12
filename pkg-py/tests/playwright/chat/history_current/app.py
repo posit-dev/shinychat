@@ -47,7 +47,6 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
         store=FileConversationStore(dir=store_dir),
         user_id="test-user",
         title=False,
-        resume="current",
     )
 
 

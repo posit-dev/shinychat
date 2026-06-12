@@ -1926,17 +1926,15 @@ class Chat:
         store: "ConversationStore | None" = None,
         user_id: "str | Callable[[Session], str] | None" = None,
         title: "TitleFn | Literal[False] | None" = None,
-        resume: Literal["new", "last", "current"] = "new",
-        bridge_bookmark_state: bool = True,
+        restore_mode: Literal["browser", "url", "none"] = "browser",
     ) -> CancelCallback:
         """
         Enable multi-conversation history for this chat.
 
         Adds a history trigger button + overlay drawer to the chat UI (new
         chat, searchable conversation list, rename/delete), persists each
-        conversation to `store`, and restores conversations in-session
-        (client turns + rendered messages + app state captured through the
-        session's bookmark hooks).
+        conversation to `store`, and restores conversations when the user
+        returns to them.
 
         Parameters
         ----------
@@ -1954,16 +1952,25 @@ class Chat:
             ``None`` (default): LLM-generated titles via a one-shot call on a
             copy of ``client``. A callable ``(turns) -> str`` to customize.
             ``False``: keep fallback titles (truncated first user message).
-        resume
-            ``"new"`` (default): each session starts a fresh unsaved draft.
-            ``"last"``: reopen the most recently modified conversation.
-            ``"current"``: reopen the conversation that was active when the
-            user last left the app (tracked per browser, per chat element).
-            Falls back to a blank draft if no prior conversation is recorded.
-        bridge_bookmark_state
-            Capture/restore app state through the session's registered
-            ``on_bookmark``/``on_restore`` callbacks when saving/switching
-            conversations.
+        restore_mode
+            How conversations are restored when the user returns:
+
+            - ``"browser"`` (default): the browser remembers the current
+              conversation (localStorage); a page load resumes it in-session,
+              restoring the transcript, the client's turns, and app state
+              captured through the session's ``on_bookmark``/``on_restore``
+              callbacks. Switching conversations happens in-session.
+            - ``"url"``: the URL tracks the current conversation as a real
+              server bookmark. Page loads and conversation switches go
+              through a full page load, restoring the entire app — including
+              Shiny input controls. Requires ``bookmark_store="server"``
+              (which also requires the app UI to be a function of the
+              request). Note that every non-excluded input is then serialized
+              on every assistant response.
+            - ``"none"``: nothing is restored across page loads — every
+              session starts a fresh draft and no app state is captured into
+              conversation records. Conversations are still saved and the
+              drawer still works within a session.
 
         Returns
         -------
@@ -1973,21 +1980,33 @@ class Chat:
         from shiny import reactive, req
         from shiny.session import get_current_session, session_context
 
-        # Runtime imports to avoid circular import:
-        # ._history and ._history_bridge depend on shiny, which depends on
-        # shiny.ui._chat, which imports shinychat — a true import cycle.
         from ._history import HistoryController
-        from ._history_bridge import BookmarkBridge
+        from ._history_bridge import BookmarkBridge, BookmarkMinter
 
         session = get_current_session()
         if session is None or session.is_stub_session():
             return BookmarkCancelCallback(lambda: None)
 
+        root_session = session.root_scope()
+        if restore_mode == "url" and root_session.bookmark.store != "server":
+            raise ValueError(
+                'enable_history(restore_mode="url") requires server '
+                "bookmarking: set `shiny.App(bookmark_store=\"server\")` "
+                "(or `app_opts(bookmark_store=\"server\")` in Express)."
+            )
+
         token_input_id = f"{self.id}_history_browser_token"
         current_id_input_id = f"{self.id}_history_current_id"
-        root_session = session.root_scope()
-        root_session.bookmark.exclude.append(token_input_id)
-        root_session.bookmark.exclude.append(current_id_input_id)
+        root_session.bookmark.exclude.extend(
+            [
+                token_input_id,
+                current_id_input_id,
+                f"{self.id}_history_select",
+                f"{self.id}_history_new",
+                f"{self.id}_history_rename",
+                f"{self.id}_history_delete",
+            ]
+        )
 
         adapter = as_turns_adapter(client)
         resolved_store = store if store is not None else FileConversationStore()
@@ -1999,10 +2018,29 @@ class Chat:
             title_enabled=title is not False,
             raw_client=client,
         )
-        if bridge_bookmark_state:
+
+        stamp_key = f"{self.id}_history_conversation_id"
+        excluded_state_keys = {
+            str(self.id),
+            str(self.id) + "--msgs",
+            stamp_key,
+        }
+        if restore_mode != "none":
             controller.bridge = BookmarkBridge(
-                session, exclude_keys={str(self.id), str(self.id) + "--msgs"}
+                session, exclude_keys=excluded_state_keys
             )
+
+        stamp_cancel: Callable[[], None] | None = None
+        if restore_mode == "url":
+            controller.minter = BookmarkMinter(
+                session, exclude_keys=excluded_state_keys
+            )
+
+            def stamp_conversation(state: Any) -> None:
+                if controller.record is not None:
+                    state.values[stamp_key] = controller.record.id
+
+            stamp_cancel = root_session.bookmark.on_bookmark(stamp_conversation)
 
         @reactive.calc
         def scope() -> str:
@@ -2033,12 +2071,8 @@ class Chat:
             if initialized:
                 return
 
-            # For "current" resume, read the input before locking initialized.
-            # Reading establishes a reactive dependency even when the value
-            # isn't available yet, so the effect re-runs when the browser
-            # sends the input on connect.
             current_id: str | None = None
-            if resume == "current":
+            if restore_mode != "none":
                 try:
                     raw = self._session.input[current_id_input_id]()
                     current_id = str(raw) if raw else None
@@ -2048,50 +2082,38 @@ class Chat:
             controller.scope = scope()  # req() retries until token arrives
             initialized = True
 
-            # Private shiny API: same access pattern as in _history_bridge.py.
-            # Tracked upstream for a public replacement.
-            #
-            # `restore_ctx.active` is True even for a bare page load when
-            # `bookmark_store="server"` is set (Shiny sets active=True in the
-            # else-branch of from_query_string regardless of whether the URL
-            # has actual state).  A real bookmark restore has at least one of
-            # restore_ctx.values or restore_ctx.input non-empty; a bare page
-            # load under bookmark_store="server" has active=True with both
-            # empty.  Guard on either to avoid skipping baseline capture on
-            # fresh sessions while still catching bookmarks that only persisted
-            # Shiny inputs (no on_bookmark values).
             restore_ctx = root_session.bookmark._restore_context
-            bookmark_restored = (
-                restore_ctx is not None
-                and restore_ctx.active
-                and (bool(restore_ctx.values) or bool(restore_ctx.input.as_dict()))
-            )
-            if controller.bridge is not None and not bookmark_restored:
-                controller.baseline_values = await controller.bridge.capture()
+            bookmark_restored = False
+            restored_conv_id: str | None = None
+            if restore_ctx is not None and restore_ctx.active:
+                bookmark_restored = bool(restore_ctx.values) or bool(
+                    restore_ctx.input.as_dict()
+                )
+                raw_id = restore_ctx.values.get(stamp_key)
+                restored_conv_id = str(raw_id) if raw_id else None
 
-            if resume == "last" and not bookmark_restored:
-                metas = await controller.store.list(controller.scope)
-                if metas:
-                    target = await controller.store.get(
-                        controller.scope, metas[0].id
-                    )
-                    if target is not None:
-                        adapter.set_turns_json(target.path_turns())
-                        await controller.replay_ui(target)
-                        if controller.bridge is not None:
-                            await controller.bridge.restore(target.values)
-                        controller.record = target
-            elif resume == "current" and not bookmark_restored:
+            target = None
+            if restored_conv_id is not None:
+                target = await controller.store.get(
+                    controller.scope, restored_conv_id
+                )
+            if target is not None:
+                adapter.set_turns_json(target.path_turns())
+                await controller.replay_ui(target)
+                controller.record = target
+            elif restore_mode != "none":
+                if controller.bridge is not None and not bookmark_restored:
+                    controller.baseline_values = await controller.bridge.capture()
                 if current_id:
-                    target = await controller.store.get(
+                    pointed = await controller.store.get(
                         controller.scope, current_id
                     )
-                    if target is not None:
-                        adapter.set_turns_json(target.path_turns())
-                        await controller.replay_ui(target)
+                    if pointed is not None:
+                        adapter.set_turns_json(pointed.path_turns())
+                        await controller.replay_ui(pointed)
                         if controller.bridge is not None:
-                            await controller.bridge.restore(target.values)
-                        controller.record = target
+                            await controller.bridge.restore(pointed.values)
+                        controller.record = pointed
             await controller.send_history_update()
 
         @reactive.effect
@@ -2167,6 +2189,8 @@ class Chat:
         ]
 
         def _cancel() -> None:
+            if stamp_cancel is not None:
+                stamp_cancel()
             controller.cancel_pending()
             for effect in effects:
                 effect.destroy()

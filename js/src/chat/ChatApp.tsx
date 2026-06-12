@@ -5,6 +5,7 @@ import {
   ChatDispatchContext,
 } from "./context"
 import { setCurrentConversationId } from "./currentConversation"
+import { navigateTo } from "../utils/navigate"
 import {
   chatReducer,
   initialState,
@@ -98,6 +99,11 @@ export function ChatApp({
   // the imperative handle rather than the reducer.
   useEffect(() => {
     const unsubscribe = transport.onMessage(elementId, (action) => {
+      if (action.type === "history_navigate") {
+        setCurrentConversationId(elementId, action.active_id)
+        navigateTo(action.url)
+        return
+      }
       if (action.type === "update_input") {
         // Placeholder updates go through the reducer (it's the only
         // remaining field the reducer tracks for update_input).

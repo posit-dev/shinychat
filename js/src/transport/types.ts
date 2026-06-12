@@ -101,6 +101,12 @@ export type ChatAction =
       conversations: ConversationMeta[]
       active_id: string | null
     }
+  | {
+      type: "history_navigate"
+      url: string
+      /** Conversation to record as current before navigating (null on New chat). */
+      active_id: string | null
+    }
 
 export type ShinyChatEnvelope = {
   id: string

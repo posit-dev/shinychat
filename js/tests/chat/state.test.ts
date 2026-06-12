@@ -1487,4 +1487,19 @@ describe("chatReducer", () => {
       )
     })
   })
+
+  it("history_navigate is a state no-op (handled imperatively in ChatApp)", () => {
+    const state = chatReducer(initialState, {
+      type: "history_update",
+      enabled: true,
+      conversations: [],
+      active_id: "c1",
+    })
+    const next = chatReducer(state, {
+      type: "history_navigate",
+      url: "http://x/?_state_id_=abc",
+      active_id: "c1",
+    })
+    expect(next).toBe(state)
+  })
 })
