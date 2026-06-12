@@ -26,7 +26,8 @@ Changelog = "https://github.com/posit-dev/shinychat/blob/main/pkg-py/CHANGELOG.m
 [project.optional-dependencies]
 providers = [
     "anthropic;python_version>='3.11'",
-    "chatlas[mcp]>=0.18.1",
+    "chatlas[mcp] @ git+https://github.com/posit-dev/chatlas.git@feat/citation-content-model",
+    "pydantic",
     "google-genai",
     "langchain-core>=1.0.0",
     "ollama>=0.4.0",
@@ -59,6 +60,9 @@ dev = [
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build]
 skip-excluded-dirs = true
