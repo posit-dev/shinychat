@@ -113,6 +113,21 @@ test_that("contents_from_attachments replaces invalid UTF-8 bytes", {
   expect_match(res[[1]], "\uFFFD", fixed = TRUE)
 })
 
+test_that("contents_from_attachments errors clearly on malformed base64", {
+  expect_error(
+    contents_from_attachments(
+      list(
+        list(
+          mime = "text/plain",
+          data_url = "data:text/plain;base64,abc",
+          name = "bad.txt"
+        )
+      )
+    ),
+    "Malformed base64 payload in data URL"
+  )
+})
+
 test_that("contents_from_attachments drops NUL bytes in text", {
   b64 <- jsonlite::base64_enc(as.raw(c(0x41, 0x00, 0x42)))
   res <- contents_from_attachments(

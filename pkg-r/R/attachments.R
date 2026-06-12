@@ -246,7 +246,12 @@ decode_data_url_text <- function(data_url) {
     cli::cli_abort("Malformed data URL")
   }
   b64 <- substring(data_url, comma + 1L)
-  bytes <- jsonlite::base64_dec(b64)
+  bytes <- tryCatch(
+    jsonlite::base64_dec(b64),
+    error = function(cnd) {
+      cli::cli_abort("Malformed base64 payload in data URL", parent = cnd)
+    }
+  )
   bytes <- bytes[bytes != as.raw(0L)]
   iconv(rawToChar(bytes), from = "UTF-8", to = "UTF-8", sub = "\uFFFD")
 }

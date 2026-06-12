@@ -122,6 +122,39 @@ test_that("chat_append_stream() handles errors in the stream", {
   })
 })
 
+test_that("chat_mod_server handles string user_input values", {
+  local_mocked_bindings(
+    chat_restore = function(...) function() invisible(NULL),
+    chat_append = function(...) invisible(NULL),
+    send_chat_action = function(...) invisible(NULL)
+  )
+
+  args_seen <- NULL
+  client <- structure(
+    list(
+      stream_async = function(...) {
+        args_seen <<- rlang::list2(...)
+        NULL
+      },
+      last_turn = function() NULL
+    ),
+    class = "Chat"
+  )
+
+  shiny::testServer(
+    chat_mod_server,
+    args = list(
+      client = client,
+      bookmark_on_input = FALSE,
+      bookmark_on_response = FALSE
+    ),
+    {
+      expect_no_warning(session$setInputs(chat_user_input = "hello"))
+      expect_identical(args_seen[[1]], "hello")
+    }
+  )
+})
+
 test_that("chat_append_message() emits segment payloads incl. thinking", {
   captured <- list()
   local_mocked_bindings(

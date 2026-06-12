@@ -2,16 +2,17 @@
 
 ## Breaking changes
 
-* `input$<id>_user_input` is unchanged for text-only messages (still the typed
-  string). When the user attaches files, it is now a list of ellmer `Content`
-  objects (the typed text, if any, followed by one object per attachment), and
-  the separate `input$<id>_user_attachments` input has been removed. Forward
-  either form to a chat method by splicing with `!!!`, e.g.
+* `input$<id>_user_input` now depends on `allow_attachments`. With
+  `allow_attachments = FALSE`, it remains the historical typed string. With
+  attachments enabled (`TRUE` or a MIME allow-list), it is always a list of
+  ellmer `Content` objects (typed text, if present, followed by one object per
+  attachment), and the separate `input$<id>_user_attachments` input has been
+  removed. Forward either form to a chat method by splicing with `!!!`, e.g.
   `chat$stream_async(!!!input$<id>_user_input)`.
 
 * The `last_input` reactive returned by `chat_mod_server()` now mirrors the
-  shape of `input$<id>_user_input`: a string when attachments are disabled, a
-  list of ellmer `Content` objects when enabled.
+  shape of `input$<id>_user_input`: a string when attachments are disabled, and
+  a list of ellmer `Content` objects when enabled.
 
 ## New features and improvements
 

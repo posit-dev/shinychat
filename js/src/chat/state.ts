@@ -34,7 +34,7 @@ export interface ChatMessageData {
   /** True for the empty placeholder message shown while waiting for the assistant to respond. */
   isPlaceholder?: boolean
   icon?: string
-  /** Attachments the user sent (user messages only). */
+  /** Attachments sent with this message. */
   attachments?: AttachmentPayload[]
   blocks: MessageBlock[]
   /** Tracks whether streaming content is inside an unclosed <thinking> tag */
