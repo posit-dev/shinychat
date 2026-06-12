@@ -220,6 +220,7 @@ export const ChatInput = memo(
     )
 
     useLayoutEffect(() => {
+      attachmentRefs.current.length = attachments.length
       const target = pendingFocusRef.current
       if (target === null) return
       pendingFocusRef.current = null

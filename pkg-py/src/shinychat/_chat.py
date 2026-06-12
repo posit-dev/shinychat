@@ -2071,8 +2071,8 @@ class ChatExpress(Chat):
 
             The maximum combined size of all attachments in a single message is
             controlled globally by the ``SHINYCHAT_MAX_ATTACHMENT_SIZE`` environment
-            variable (a raw byte count; defaults to 30,000,000). Files that would
-            push the total over this cap are rejected in the browser with a notice.
+            variable (a raw byte count; defaults to approximately 30 MB). Files that
+            would push the total over this cap are rejected in the browser with a notice.
 
             When bookmarking is enabled, prefer ``bookmark_store="server"``:
             attachment data is saved in the bookmark and can exceed URL length
@@ -2260,8 +2260,8 @@ def chat_ui(
 
         The maximum combined size of all attachments in a single message is
         controlled globally by the ``SHINYCHAT_MAX_ATTACHMENT_SIZE`` environment
-        variable (a raw byte count; defaults to 30,000,000). Files that would
-        push the total over this cap are rejected in the browser with a notice.
+        variable (a raw byte count; defaults to approximately 30 MB). Files that
+        would push the total over this cap are rejected in the browser with a notice.
 
         When bookmarking is enabled, prefer ``bookmark_store="server"``:
         attachment data is saved in the bookmark and can exceed URL length

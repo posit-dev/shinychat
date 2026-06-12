@@ -194,8 +194,8 @@ chat_greeting <- function(
 #'
 #'   The maximum combined size of all attachments in a single message is
 #'   controlled globally by the `SHINYCHAT_MAX_ATTACHMENT_SIZE` environment
-#'   variable (a raw byte count; defaults to 30,000,000). Files that would push
-#'   the total over this cap are rejected in the browser with a notice.
+#'   variable (a raw byte count; defaults to approximately 30 MB). Files that
+#'   would push the total over this cap are rejected in the browser with a notice.
 #' @param footer Optional HTML content to display below the chat input.
 #'   This can be any HTML content (tags, tag lists, or character strings).
 #'   Useful for adding disclaimers, attribution, or other information.
