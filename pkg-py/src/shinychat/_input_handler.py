@@ -14,7 +14,10 @@ from typing import TYPE_CHECKING, Any
 
 from shiny.input_handler import input_handlers
 
-from ._attachments import Attachment
+from ._attachments import (
+    Attachment,
+    validate_attachments,
+)
 from ._typing_extensions import TypedDict
 
 if TYPE_CHECKING:
@@ -36,4 +39,5 @@ def _(value: Any, _name: "ResolvedId", _session: "Session") -> UserInputValue:
     attachments = [
         Attachment.model_validate(a) for a in (value.get("attachments") or [])
     ]
+    validate_attachments(attachments)
     return UserInputValue(text=str(value.get("text", "")), attachments=attachments)

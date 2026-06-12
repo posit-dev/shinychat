@@ -232,6 +232,32 @@ test_that("user_input_contents returns NULL for NULL value", {
   expect_null(user_input_contents(NULL))
 })
 
+test_that("user_input_contents rejects oversized attachment payloads", {
+  old <- Sys.getenv("SHINYCHAT_MAX_ATTACHMENT_SIZE", unset = NA)
+  on.exit({
+    if (is.na(old)) {
+      Sys.unsetenv("SHINYCHAT_MAX_ATTACHMENT_SIZE")
+    } else {
+      Sys.setenv(SHINYCHAT_MAX_ATTACHMENT_SIZE = old)
+    }
+  })
+  Sys.setenv(SHINYCHAT_MAX_ATTACHMENT_SIZE = "3")
+
+  value <- list(
+    text = "hello",
+    attachments = list(
+      list(
+        mime = "text/plain",
+        data_url = "data:text/plain;base64,AQIDBA==",
+        name = "x.txt",
+        size = 1
+      )
+    )
+  )
+
+  expect_error(user_input_contents(value), "maximum attachment size")
+})
+
 test_that("chat_attachment creates correct structure from a PNG path", {
   path <- withr::local_tempfile(fileext = ".png")
   writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), path)

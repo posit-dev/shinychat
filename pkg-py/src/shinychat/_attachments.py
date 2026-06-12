@@ -171,6 +171,61 @@ def resolve_max_attachment_size() -> int:
     return DEFAULT_MAX_ATTACHMENT_SIZE
 
 
+def data_url_payload_size(data_url: str) -> int:
+    """Return the decoded payload size (bytes) of a base64 data URL."""
+    comma = data_url.find(",")
+    if comma == -1:
+        raise ValueError("Malformed data URL")
+    payload = data_url[comma + 1 :]
+    payload_len = len(payload)
+    if payload_len == 0:
+        return 0
+    if payload_len % 4 != 0:
+        raise ValueError("Malformed base64 payload in data URL")
+    padding = 0
+    if payload.endswith("=="):
+        padding = 2
+    elif payload.endswith("="):
+        padding = 1
+    return (payload_len // 4) * 3 - padding
+
+
+def attachment_payload_size(att: Attachment) -> int:
+    """Return attachment payload size (bytes), preferring data URL payload size."""
+    if att.data_url.startswith("data:"):
+        return data_url_payload_size(att.data_url)
+    return max(att.size, 0)
+
+
+def validate_attachment_payload_size(attachments: list[Attachment]) -> None:
+    """Validate combined attachment payload size against the configured limit."""
+    limit = resolve_max_attachment_size()
+    total = sum(attachment_payload_size(att) for att in attachments)
+    if total > limit:
+        raise ValueError(
+            f"Total attachment payload size ({total} bytes) exceeds the maximum "
+            f"attachment size ({limit} bytes)."
+        )
+
+
+def validate_attachment_types(attachments: list[Attachment]) -> None:
+    """Validate attachment MIME types against the supported server allowlist."""
+    invalid = sorted(
+        {att.mime for att in attachments if att.mime not in SUPPORTED_ATTACHMENT_TYPES}
+    )
+    if invalid:
+        raise ValueError(
+            f"Attachments contain unsupported MIME type(s): {invalid}. "
+            f"Supported types: {list(SUPPORTED_ATTACHMENT_TYPES)}"
+        )
+
+
+def validate_attachments(attachments: list[Attachment]) -> None:
+    """Validate incoming attachments accepted from the user input payload."""
+    validate_attachment_types(attachments)
+    validate_attachment_payload_size(attachments)
+
+
 def resolve_attachment_attrs(
     allow_attachments: "bool | list[str] | MISSING_TYPE",
 ) -> tuple[Optional[str], Optional[str]]:

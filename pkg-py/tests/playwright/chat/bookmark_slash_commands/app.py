@@ -73,7 +73,9 @@ async def _():
 
 @chat.on_user_submit
 async def _():
-    user_input, _ = chat.user_input()
+    input_value = chat.user_input()
+    assert input_value is not None
+    user_input, _ = input_value
     _record("user", user_input)
     reply = f"Echo: {user_input}"
     _record("assistant", reply)

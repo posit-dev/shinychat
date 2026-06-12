@@ -1,5 +1,6 @@
 from typing import Any, Callable, cast
 
+import pytest
 import shinychat  # noqa: F401  (import side effect registers the handler)
 from shiny.input_handler import input_handlers
 
@@ -43,3 +44,41 @@ def test_user_input_handler_produces_attachment_objects():
     assert att.data_url == "data:image/png;base64,AA=="
     assert att.name == "x.png"
     assert att.size == 42
+
+
+def test_user_input_handler_rejects_oversized_attachment_payload(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    handler = _get_handler()
+    monkeypatch.setenv("SHINYCHAT_MAX_ATTACHMENT_SIZE", "3")
+    value = {
+        "text": "hello",
+        "attachments": [
+            {
+                "mime": "text/plain",
+                "data_url": "data:text/plain;base64,AQIDBA==",
+                "name": "x.txt",
+                # Spoofed smaller size should not bypass server-side enforcement.
+                "size": 1,
+            }
+        ],
+    }
+    with pytest.raises(ValueError, match="maximum attachment size"):
+        handler(value, "chat_user_input", None)
+
+
+def test_user_input_handler_rejects_unsupported_attachment_mime():
+    handler = _get_handler()
+    value = {
+        "text": "hello",
+        "attachments": [
+            {
+                "mime": "application/octet-stream",
+                "data_url": "data:application/octet-stream;base64,AA==",
+                "name": "x.bin",
+                "size": 1,
+            }
+        ],
+    }
+    with pytest.raises(ValueError, match="unsupported MIME type"):
+        handler(value, "chat_user_input", None)

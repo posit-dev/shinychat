@@ -49,6 +49,53 @@ resolve_max_attachment_size <- function(default = 30L * 1024L * 1024L) {
   size
 }
 
+data_url_payload_size <- function(data_url) {
+  comma <- regexpr(",", data_url, fixed = TRUE)
+  if (comma == -1L) {
+    cli::cli_abort("Malformed data URL")
+  }
+  payload <- substring(data_url, comma + 1L)
+  payload_len <- nchar(payload, type = "bytes")
+  if (payload_len == 0L) {
+    return(0)
+  }
+  if (payload_len %% 4L != 0L) {
+    cli::cli_abort("Malformed base64 payload in data URL")
+  }
+  padding <- if (endsWith(payload, "==")) {
+    2
+  } else if (endsWith(payload, "=")) {
+    1
+  } else {
+    0
+  }
+  (payload_len %/% 4L) * 3L - padding
+}
+
+attachment_payload_size <- function(att) {
+  data_url <- att[["data_url"]] %||% ""
+  if (startsWith(data_url, "data:")) {
+    return(data_url_payload_size(data_url))
+  }
+  max(0, as.numeric(att[["size"]] %||% 0))
+}
+
+validate_attachment_payload_size <- function(
+  attachments,
+  max_bytes = resolve_max_attachment_size()
+) {
+  if (is.null(attachments) || length(attachments) == 0) {
+    return(invisible(NULL))
+  }
+  total <- sum(vapply(attachments, attachment_payload_size, numeric(1)))
+  if (total > max_bytes) {
+    cli::cli_abort(
+      "Total attachment payload size ({total} bytes) exceeds the maximum attachment size ({max_bytes} bytes)."
+    )
+  }
+  invisible(total)
+}
+
 # Resolve `allow_attachments` into the allow/accept attribute pair.
 # `allow` is NA (bare attribute) or NULL (omit); `accept` is a CSV or NULL.
 resolve_attachment_attrs <- function(allow_attachments) {
@@ -133,7 +180,9 @@ user_input_contents <- function(value) {
     return(value)
   }
   text <- value[["text"]] %||% ""
-  contents <- contents_from_attachments(value[["attachments"]])
+  attachments <- value[["attachments"]]
+  validate_attachment_payload_size(attachments)
+  contents <- contents_from_attachments(attachments)
   if (nzchar(text)) {
     contents <- c(list(text), contents)
   }
