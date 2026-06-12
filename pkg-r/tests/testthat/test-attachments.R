@@ -13,6 +13,13 @@ test_that("resolve_max_attachment_size honors env var and default", {
   expect_equal(resolve_max_attachment_size(), 30L * 1024L * 1024L)
 })
 
+test_that("attachment_types loads the shipped JSON manifest", {
+  types <- attachment_types()
+  expect_true("application/pdf" %in% types$supported)
+  expect_equal(types$ext_map[["pdf"]], "application/pdf")
+  expect_true("text/plain" %in% types$text)
+})
+
 test_that("resolve_max_attachment_size rejects negative values", {
   old <- Sys.getenv("SHINYCHAT_MAX_ATTACHMENT_SIZE", unset = NA)
   on.exit({

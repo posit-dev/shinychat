@@ -32,13 +32,27 @@ export function AttachmentLightbox({
   const isText = family === "text"
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
+  const openerRef = useRef<HTMLElement | null>(null)
   const text = useMemo(
     () => (isText ? decodeTextDataUrl(src) : ""),
     [isText, src],
   )
 
   useLayoutEffect(() => {
+    openerRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null
     dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)?.focus()
+  }, [])
+
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.body.style.overflow = originalOverflow
+      openerRef.current?.focus()
+    }
   }, [])
 
   const onKeyDown = useCallback(

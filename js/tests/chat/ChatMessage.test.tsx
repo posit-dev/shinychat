@@ -284,6 +284,40 @@ describe("ChatMessage attachments", () => {
     expect(dialog.contains(document.activeElement)).toBe(true)
   })
 
+  it("restores focus to the opener when the lightbox closes", () => {
+    render(
+      <ChatMessage
+        message={userMessage({
+          attachments: [imageAttachment("data:image/png;base64,AAA")],
+        })}
+      />,
+    )
+    const opener = screen.getByRole("button", { name: /view pic/i })
+    opener.focus()
+
+    fireEvent.click(opener)
+    fireEvent.click(screen.getByRole("button", { name: /close preview/i }))
+
+    expect(document.activeElement).toBe(opener)
+  })
+
+  it("locks body scrolling while the lightbox is open and restores it on close", () => {
+    render(
+      <ChatMessage
+        message={userMessage({
+          attachments: [imageAttachment("data:image/png;base64,AAA")],
+        })}
+      />,
+    )
+    const originalOverflow = document.body.style.overflow
+
+    fireEvent.click(screen.getByRole("button", { name: /view pic/i }))
+    expect(document.body.style.overflow).toBe("hidden")
+
+    fireEvent.click(screen.getByRole("button", { name: /close preview/i }))
+    expect(document.body.style.overflow).toBe(originalOverflow)
+  })
+
   it("opens a lightbox with the full text when a text card is clicked", () => {
     const body = "# Title\n" + "line\n".repeat(400) // longer than the snippet
     const dataUrl = `data:text/markdown;base64,${btoa(body)}`
