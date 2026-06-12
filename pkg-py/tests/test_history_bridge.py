@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 
-from shinychat._history_bridge import BookmarkBridge
+from shinychat._history_bridge import BookmarkBridge, BookmarkMinter
 
 
 class FakeCallbacks:
@@ -95,3 +96,110 @@ def test_restore_on_restored_only_is_invoked():
     bridge = BookmarkBridge(session, exclude_keys=set())
     asyncio.run(bridge.restore({"k": "v"}))
     assert restored_seen == {"k": "v"}
+
+
+# ---------------------------------------------------------------------------
+# BookmarkMinter tests
+# ---------------------------------------------------------------------------
+
+
+class FakeInput:
+    async def _serialize(self, *, exclude: list[str], state_dir: Any) -> dict[str, Any]:
+        return {"some_input": 1}
+
+
+class FakeClientdata:
+    def url_protocol(self) -> str:
+        return "http:"
+
+    def url_hostname(self) -> str:
+        return "localhost"
+
+    def url_port(self) -> int:
+        return 8000
+
+    def url_pathname(self) -> str:
+        return "/app/"
+
+
+class FakeApp:
+    def __init__(self, tmp: Path):
+        self._tmp = tmp
+
+        async def save_dir(id: str) -> Path:
+            d = tmp / id
+            d.mkdir(parents=True, exist_ok=True)
+            return d
+
+        async def restore_dir(id: str) -> Path:
+            return tmp / id
+
+        self._bookmark_save_dir_fn = save_dir
+        self._bookmark_restore_dir_fn = restore_dir
+
+
+class FakeMinterBookmark(FakeBookmark):
+    def __init__(self):
+        super().__init__()
+        self.query_string_updates: list[str] = []
+
+    def _get_bookmark_exclude(self) -> list[str]:
+        return []
+
+    async def update_query_string(self, query_string: str, mode: str = "replace") -> None:
+        self.query_string_updates.append(query_string)
+
+
+class FakeMinterSession(FakeSession):
+    def __init__(self, tmp: Path):
+        super().__init__()
+        self.bookmark = FakeMinterBookmark()
+        self.app = FakeApp(tmp)
+        self.input = FakeInput()
+        self.clientdata = FakeClientdata()
+
+
+def test_mint_saves_state_and_returns_id_and_filtered_values(tmp_path: Path):
+    session = FakeMinterSession(tmp_path)
+
+    def on_bookmark(state: Any):
+        state.values["app_filter"] = "penguins"
+        state.values["chat--msgs"] = []
+
+    session.bookmark._on_bookmark_callbacks.register(on_bookmark)
+    minter = BookmarkMinter(session, exclude_keys={"chat", "chat--msgs"})
+
+    state_id, values = asyncio.run(minter.mint())
+
+    assert values == {"app_filter": "penguins"}
+    state_dir = tmp_path / state_id
+    assert (state_dir / "input.json").is_file()
+    assert (state_dir / "values.json").is_file()
+
+
+def test_delete_state_removes_dir_and_tolerates_missing(tmp_path: Path):
+    session = FakeMinterSession(tmp_path)
+    minter = BookmarkMinter(session, exclude_keys=set())
+
+    state_id, _ = asyncio.run(minter.mint())
+    assert (tmp_path / state_id).is_dir()
+    asyncio.run(minter.delete_state(state_id))
+    assert not (tmp_path / state_id).exists()
+
+    asyncio.run(minter.delete_state("never-existed"))  # must not raise
+
+
+def test_url_assembly(tmp_path: Path):
+    minter = BookmarkMinter(FakeMinterSession(tmp_path), exclude_keys=set())
+    assert minter.base_url() == "http://localhost:8000/app/"
+    assert (
+        minter.url_with_state("abc")
+        == "http://localhost:8000/app/?_state_id_=abc"
+    )
+
+
+def test_update_query_string_sends_query_form(tmp_path: Path):
+    session = FakeMinterSession(tmp_path)
+    minter = BookmarkMinter(session, exclude_keys=set())
+    asyncio.run(minter.update_query_string("abc"))
+    assert session.bookmark.query_string_updates == ["?_state_id_=abc"]

@@ -87,3 +87,22 @@ def test_append_linear_collision_safe():
     assert new_id == "n_0006"
     # The pre-inserted node is still intact
     assert rec.nodes["n_0005"].turn["content"] == "pre-inserted"
+
+
+def test_bookmark_state_id_round_trip():
+    rec = new_conversation_record(title="t")
+    assert rec.bookmark_state_id is None  # default
+
+    rec.bookmark_state_id = "abc123"
+    raw = rec.model_dump_json()
+    loaded = ConversationRecord.model_validate_json(raw)
+    assert loaded.bookmark_state_id == "abc123"
+
+
+def test_bookmark_state_id_absent_in_old_records():
+    # Records written before the field existed must still load.
+    rec = new_conversation_record(title="t")
+    raw = rec.model_dump(mode="json")
+    del raw["bookmark_state_id"]
+    loaded = ConversationRecord.model_validate(raw)
+    assert loaded.bookmark_state_id is None

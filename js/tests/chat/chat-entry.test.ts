@@ -209,6 +209,64 @@ describe("chat-entry custom element boot", () => {
   })
 })
 
+describe("current conversation id delivery", () => {
+  it("sends stored current conversation id alongside browser token", async () => {
+    localStorage.setItem("shinychat-current:current-id-chat", "conv-xyz")
+
+    const host = document.createElement("shiny-chat-container")
+    host.setAttribute("id", "current-id-chat")
+    host.innerHTML = `
+      <shiny-chat-messages></shiny-chat-messages>
+      <shiny-chat-input></shiny-chat-input>
+    `
+
+    await act(async () => {
+      document.body.appendChild(host)
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const setInputValue = window.Shiny!.setInputValue as ReturnType<
+      typeof vi.fn
+    >
+    const currentIdCall = setInputValue.mock.calls.find((args) =>
+      String(args[0]).endsWith("_history_current_id"),
+    )
+    expect(currentIdCall).toBeDefined()
+    expect(currentIdCall![1]).toBe("conv-xyz")
+  })
+
+  it("sends empty string when no current conversation id is stored", async () => {
+    localStorage.removeItem("shinychat-current:no-current-chat")
+
+    const host = document.createElement("shiny-chat-container")
+    host.setAttribute("id", "no-current-chat")
+    host.innerHTML = `
+      <shiny-chat-messages></shiny-chat-messages>
+      <shiny-chat-input></shiny-chat-input>
+    `
+
+    await act(async () => {
+      document.body.appendChild(host)
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const setInputValue = window.Shiny!.setInputValue as ReturnType<
+      typeof vi.fn
+    >
+    const currentIdCall = setInputValue.mock.calls.find((args) =>
+      String(args[0]).endsWith("_history_current_id"),
+    )
+    expect(currentIdCall).toBeDefined()
+    expect(currentIdCall![1]).toBe("")
+  })
+})
+
 describe("browser token delivery", () => {
   it("sends browser token immediately when Shiny is already initialized", async () => {
     // Default stub has initializedPromise pre-resolved.

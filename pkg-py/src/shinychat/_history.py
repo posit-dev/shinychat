@@ -4,8 +4,8 @@ import asyncio
 import warnings
 from typing import TYPE_CHECKING, Any
 
-from ._chat_types import HistoryUpdateAction
-from ._history_bridge import BookmarkBridge
+from ._chat_types import HistoryNavigateAction, HistoryUpdateAction
+from ._history_bridge import BookmarkBridge, BookmarkMinter
 from ._history_client import TurnsAdapter, turn_fallback_markdown
 from ._history_store import ConversationStore
 from ._history_title import (
@@ -79,6 +79,7 @@ class HistoryController:
         self.baseline_values: dict[str, Any] = {}
         self.ui_offset = 0  # messages already attached to nodes
         self.bridge: BookmarkBridge | None = None
+        self.minter: BookmarkMinter | None = None  # set in restore_mode="url"
         self._title_task: asyncio.Task[None] | None = None
         # replay_ui pulses chat.messages, which fires the reactive save effect
         # once redundantly (the UI was just restored, nothing new to persist).
@@ -106,8 +107,7 @@ class HistoryController:
         assert record is not None
         extend_record_linear(record, turns, messages, ui_offset=self.ui_offset)
         self.ui_offset = len(messages)
-        if self.bridge is not None:
-            record.values = await self.bridge.capture()
+        await self._capture_app_state(record)
         await self.store.put(self.scope, record)
         await self.send_history_update()
 
@@ -147,9 +147,24 @@ class HistoryController:
             self.record, turns, messages, ui_offset=self.ui_offset
         )
         self.ui_offset = len(messages)
-        if self.bridge is not None:
-            self.record.values = await self.bridge.capture()
+        await self._capture_app_state(self.record)
         await self.store.put(self.scope, self.record)
+
+    async def _capture_app_state(self, record: ConversationRecord) -> None:
+        if self.minter is not None:
+            previous = record.bookmark_state_id
+            try:
+                state_id, values = await self.minter.mint()
+            except Exception as e:
+                warnings.warn(f"Bookmark mint failed: {e}", stacklevel=2)
+                return
+            record.values = values
+            record.bookmark_state_id = state_id
+            if previous is not None:
+                await self.minter.delete_state(previous)
+            await self.minter.update_query_string(state_id)
+        elif self.bridge is not None:
+            record.values = await self.bridge.capture()
 
     # -- switch / new ----------------------------------------------------
 
@@ -164,6 +179,11 @@ class HistoryController:
             raise RuntimeError(f"Conversation {conv_id!r} no longer exists.")
 
         await self.save_current()
+        if self.minter is not None and target.bookmark_state_id is not None:
+            await self.send_navigate(
+                self.minter.url_with_state(target.bookmark_state_id), target.id
+            )
+            return
         self.adapter.set_turns_json(target.path_turns())
         await self.replay_ui(target)
         if self.bridge is not None:
@@ -173,6 +193,9 @@ class HistoryController:
 
     async def new_chat(self) -> None:
         await self.save_current()
+        if self.minter is not None:
+            await self.send_navigate(self.minter.base_url(), None)
+            return
         self.adapter.set_turns_json([])
         await self.chat.clear_messages()
         self.ui_offset = 0
@@ -224,9 +247,10 @@ class HistoryController:
         assert self.scope is not None
         await self.store.delete(self.scope, conv_id)
         if self.record is not None and self.record.id == conv_id:
-            # Deleting the active conversation acts like "New chat"
-            # (without re-saving the deleted record).
             self.record = None
+            if self.minter is not None:
+                await self.send_navigate(self.minter.base_url(), None)
+                return
             self.adapter.set_turns_json([])
             await self.chat.clear_messages()
             self.ui_offset = 0
@@ -235,6 +259,14 @@ class HistoryController:
         await self.send_history_update()
 
     # -- protocol ----------------------------------------------------------
+
+    async def send_navigate(self, url: str, active_id: str | None) -> None:
+        action: HistoryNavigateAction = {
+            "type": "history_navigate",
+            "url": url,
+            "active_id": active_id,
+        }
+        await self.chat._send_action(action)
 
     async def send_history_update(self) -> None:
         assert self.scope is not None

@@ -130,6 +130,12 @@ class HistoryUpdateAction(TypedDict):
     active_id: str | None
 
 
+class HistoryNavigateAction(TypedDict):
+    type: Literal["history_navigate"]
+    url: str
+    active_id: str | None
+
+
 ChatAction = Union[
     MessageAction,
     ChunkStartAction,
@@ -147,6 +153,7 @@ ChatAction = Union[
     GreetingClearAction,
     UpdateSlashCommandsAction,
     HistoryUpdateAction,
+    HistoryNavigateAction,
 ]
 
 

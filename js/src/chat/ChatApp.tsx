@@ -4,6 +4,7 @@ import {
   ChatToolContext,
   ChatDispatchContext,
 } from "./context"
+import { setCurrentConversationId } from "./currentConversation"
 import {
   chatReducer,
   initialState,
@@ -162,6 +163,11 @@ export function ChatApp({
       priority: "event",
     })
   }, [shouldRequestGreeting, elementId])
+
+  useEffect(() => {
+    if (!state.history.enabled) return
+    setCurrentConversationId(elementId, state.history.activeId)
+  }, [elementId, state.history.enabled, state.history.activeId])
 
   const toolState: ChatToolState = useMemo(
     () => ({

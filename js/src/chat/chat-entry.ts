@@ -6,6 +6,7 @@ import { getShinyTransport } from "../transport/shiny-transport"
 import type { ChatMessageData } from "./state"
 import type { ContentType, GreetingOptions } from "../transport/types"
 import { uuid } from "../utils/uuid"
+import { getCurrentConversationId } from "./currentConversation"
 
 // Single shared transport instance for all chat instances on the page
 const transport = getShinyTransport()
@@ -158,6 +159,10 @@ class ChatContainerElement extends HTMLElement {
       window.Shiny?.setInputValue?.(
         `${elementId}_history_browser_token`,
         getBrowserToken(),
+      )
+      window.Shiny?.setInputValue?.(
+        `${elementId}_history_current_id`,
+        getCurrentConversationId(elementId) ?? "",
       )
     })
 

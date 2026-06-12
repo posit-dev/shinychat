@@ -1926,7 +1926,7 @@ class Chat:
         store: "ConversationStore | None" = None,
         user_id: "str | Callable[[Session], str] | None" = None,
         title: "TitleFn | Literal[False] | None" = None,
-        resume: Literal["new", "last"] = "new",
+        resume: Literal["new", "last", "current"] = "new",
         bridge_bookmark_state: bool = True,
     ) -> CancelCallback:
         """
@@ -1956,7 +1956,10 @@ class Chat:
             ``False``: keep fallback titles (truncated first user message).
         resume
             ``"new"`` (default): each session starts a fresh unsaved draft.
-            ``"last"``: reopen the most recent conversation on session start.
+            ``"last"``: reopen the most recently modified conversation.
+            ``"current"``: reopen the conversation that was active when the
+            user last left the app (tracked per browser, per chat element).
+            Falls back to a blank draft if no prior conversation is recorded.
         bridge_bookmark_state
             Capture/restore app state through the session's registered
             ``on_bookmark``/``on_restore`` callbacks when saving/switching
@@ -1981,8 +1984,10 @@ class Chat:
             return BookmarkCancelCallback(lambda: None)
 
         token_input_id = f"{self.id}_history_browser_token"
+        current_id_input_id = f"{self.id}_history_current_id"
         root_session = session.root_scope()
         root_session.bookmark.exclude.append(token_input_id)
+        root_session.bookmark.exclude.append(current_id_input_id)
 
         adapter = as_turns_adapter(client)
         resolved_store = store if store is not None else FileConversationStore()
@@ -2027,6 +2032,19 @@ class Chat:
             nonlocal initialized
             if initialized:
                 return
+
+            # For "current" resume, read the input before locking initialized.
+            # Reading establishes a reactive dependency even when the value
+            # isn't available yet, so the effect re-runs when the browser
+            # sends the input on connect.
+            current_id: str | None = None
+            if resume == "current":
+                try:
+                    raw = self._session.input[current_id_input_id]()
+                    current_id = str(raw) if raw else None
+                except Exception:
+                    return  # not yet available; re-run when input arrives
+
             controller.scope = scope()  # req() retries until token arrives
             initialized = True
 
@@ -2056,6 +2074,17 @@ class Chat:
                 if metas:
                     target = await controller.store.get(
                         controller.scope, metas[0].id
+                    )
+                    if target is not None:
+                        adapter.set_turns_json(target.path_turns())
+                        await controller.replay_ui(target)
+                        if controller.bridge is not None:
+                            await controller.bridge.restore(target.values)
+                        controller.record = target
+            elif resume == "current" and not bookmark_restored:
+                if current_id:
+                    target = await controller.store.get(
+                        controller.scope, current_id
                     )
                     if target is not None:
                         adapter.set_turns_json(target.path_turns())

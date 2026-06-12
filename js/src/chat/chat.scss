@@ -73,6 +73,13 @@ shiny-chat-container {
   position: relative;
   min-height: 0; // Allow grid child to shrink
   overflow: clip; // Clip the absolutely-positioned button without creating a scroll container
+
+  // History trigger is absolutely positioned inside this wrapper. Ensure the
+  // wrapper is always tall enough to show the button even when the chat is
+  // empty (top: 0.5rem + ~2rem button height = 2.5rem minimum).
+  &:has(.shiny-chat-history-trigger) {
+    min-height: 3rem;
+  }
 }
 
 // Scroll container — useStickToBottom attaches scrollRef here
