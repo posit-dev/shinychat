@@ -25,6 +25,7 @@ chat_ui(
   icon_assistant = NULL,
   enable_cancel = FALSE,
   submit_key = c("enter", "enter+modifier"),
+  allow_attachments = FALSE,
   footer = NULL
 )
 ```
@@ -114,6 +115,33 @@ chat_ui(
   (the default): Enter submits, Shift+Enter adds a newline.
   `"enter+modifier"`: Ctrl+Enter (Cmd+Enter on Mac) submits, plain Enter
   adds a newline.
+
+- allow_attachments:
+
+  Controls the file-attachment affordance (an attach button, plus
+  clipboard paste and drag-and-drop) in the chat input. Pass `TRUE` to
+  accept all supported types (PNG, JPEG, GIF, WebP, PDF, and common
+  text/code files such as Markdown, plain text, CSV, JSON, and source
+  files), `FALSE` to disable, or a character vector of MIME types to
+  restrict what is accepted (each must be one of the supported types).
+
+  The shape of `input$<id>_user_input` is determined by this argument,
+  so it is predictable for a given app. When attachments are disabled
+  (the default), it is the typed text as a character string, exactly as
+  before. When attachments are enabled, it is always a list of ellmer
+  [ellmer::Content](https://ellmer.tidyverse.org/reference/Content.html)
+  objects (the typed text, if any, followed by one content object per
+  attachment) - a list even when no files were attached. Splice the list
+  into a chat method's `...` with `!!!`, e.g.
+  `client$stream_async(!!!input$<id>_user_input)`. (No
+  [`rlang::inject()`](https://rlang.r-lib.org/reference/inject.html) is
+  needed: ellmer's chat methods collect `...` with dynamic dots.)
+
+  The maximum combined size of all attachments in a single message is
+  controlled globally by the `SHINYCHAT_MAX_ATTACHMENT_SIZE` environment
+  variable (a raw byte count; defaults to approximately 30 MB). Files
+  that would push the total over this cap are rejected in the browser
+  with a notice.
 
 - footer:
 

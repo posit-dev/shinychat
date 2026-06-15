@@ -13,9 +13,15 @@ create a new chat client for each user session.
 ## Usage
 
 ``` r
-chat_app(client, ..., bookmark_store = "url")
+chat_app(client, ..., bookmark_store = "url", allow_attachments = TRUE)
 
-chat_mod_ui(id, ..., client = deprecated(), messages = NULL)
+chat_mod_ui(
+  id,
+  ...,
+  client = deprecated(),
+  messages = NULL,
+  allow_attachments = TRUE
+)
 
 chat_mod_server(
   id,
@@ -51,6 +57,33 @@ chat_mod_server(
   URL-based bookmarking is limited in size; use `"server"` to store the
   state on the server side without size limitations; or disable
   bookmarking by setting this to `"disable"`.
+
+- allow_attachments:
+
+  Controls the file-attachment affordance (an attach button, plus
+  clipboard paste and drag-and-drop) in the chat input. Pass `TRUE` to
+  accept all supported types (PNG, JPEG, GIF, WebP, PDF, and common
+  text/code files such as Markdown, plain text, CSV, JSON, and source
+  files), `FALSE` to disable, or a character vector of MIME types to
+  restrict what is accepted (each must be one of the supported types).
+
+  The shape of `input$<id>_user_input` is determined by this argument,
+  so it is predictable for a given app. When attachments are disabled
+  (the default), it is the typed text as a character string, exactly as
+  before. When attachments are enabled, it is always a list of ellmer
+  [ellmer::Content](https://ellmer.tidyverse.org/reference/Content.html)
+  objects (the typed text, if any, followed by one content object per
+  attachment) - a list even when no files were attached. Splice the list
+  into a chat method's `...` with `!!!`, e.g.
+  `client$stream_async(!!!input$<id>_user_input)`. (No
+  [`rlang::inject()`](https://rlang.r-lib.org/reference/inject.html) is
+  needed: ellmer's chat methods collect `...` with dynamic dots.)
+
+  The maximum combined size of all attachments in a single message is
+  controlled globally by the `SHINYCHAT_MAX_ATTACHMENT_SIZE` environment
+  variable (a raw byte count; defaults to approximately 30 MB). Files
+  that would push the total over this cap are rejected in the browser
+  with a notice.
 
 - id:
 
@@ -95,7 +128,9 @@ chat_mod_server(
 - `chat_mod_server()` includes the shinychat module server logic, and
   returns an environment containing:
 
-  - `last_input`: A reactive value containing the last user input.
+  - `last_input`: A reactive value containing the last user input (a
+    string when attachments are disabled, a list of ellmer `Content`
+    objects when enabled).
 
   - `last_turn`: A reactive value containing the last assistant turn.
 

@@ -76,9 +76,15 @@ client for each user session.</p>
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">chat_app</span><span class="op">(</span><span class="va">client</span>, <span class="va">...</span>, bookmark_store <span class="op">=</span> <span class="st">"url"</span><span class="op">)</span></span>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">chat_app</span><span class="op">(</span><span class="va">client</span>, <span class="va">...</span>, bookmark_store <span class="op">=</span> <span class="st">"url"</span>, allow_attachments <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu">chat_mod_ui</span><span class="op">(</span><span class="va">id</span>, <span class="va">...</span>, client <span class="op">=</span> <span class="fu">deprecated</span><span class="op">(</span><span class="op">)</span>, messages <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span>
+<span><span class="fu">chat_mod_ui</span><span class="op">(</span></span>
+<span>  <span class="va">id</span>,</span>
+<span>  <span class="va">...</span>,</span>
+<span>  client <span class="op">=</span> <span class="fu">deprecated</span><span class="op">(</span><span class="op">)</span>,</span>
+<span>  messages <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  allow_attachments <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">chat_mod_server</span><span class="op">(</span></span>
 <span>  <span class="va">id</span>,</span>
@@ -114,6 +120,28 @@ size; use <code>"server"</code> to store the state on the server side without si
 limitations; or disable bookmarking by setting this to <code>"disable"</code>.</p></dd>
 
 
+<dt id="arg-allow-attachments">allow_attachments<a class="anchor" aria-label="anchor" href="#arg-allow-attachments"></a></dt>
+<dd><p>Controls the file-attachment affordance (an attach
+button, plus clipboard paste and drag-and-drop) in the chat input. Pass
+<code>TRUE</code> to accept all supported types (PNG, JPEG, GIF, WebP, PDF, and common
+text/code files such as Markdown, plain text, CSV, JSON, and source files),
+<code>FALSE</code> to disable, or a character vector of MIME types to
+restrict what is accepted (each must be one of the supported types).</p>
+<p>The shape of <code>input$&lt;id&gt;_user_input</code> is determined by this argument, so it
+is predictable for a given app. When attachments are disabled (the
+default), it is the typed text as a character string, exactly as before.
+When attachments are enabled, it is always a list of ellmer
+<a href="https://ellmer.tidyverse.org/reference/Content.html" class="external-link">ellmer::Content</a> objects (the typed text, if any, followed by one content
+object per attachment) - a list even when no files were attached. Splice
+the list into a chat method's <code>...</code> with <code>!!!</code>, e.g.
+<code>client$stream_async(!!!input$&lt;id&gt;_user_input)</code>. (No <code><a href="https://rlang.r-lib.org/reference/inject.html" class="external-link">rlang::inject()</a></code> is
+needed: ellmer's chat methods collect <code>...</code> with dynamic dots.)</p>
+<p>The maximum combined size of all attachments in a single message is
+controlled globally by the <code>SHINYCHAT_MAX_ATTACHMENT_SIZE</code> environment
+variable (a raw byte count; defaults to approximately 30 MB). Files that
+would push the total over this cap are rejected in the browser with a notice.</p></dd>
+
+
 <dt id="arg-id">id<a class="anchor" aria-label="anchor" href="#arg-id"></a></dt>
 <dd><p>The chat module ID.</p></dd>
 
@@ -145,7 +173,9 @@ dynamically. See the <strong>Greeting</strong> section below for details.</p></d
 <ul><li><p><code>chat_app()</code> returns a <code><a href="https://rdrr.io/pkg/shiny/man/shinyApp.html" class="external-link">shiny::shinyApp()</a></code> object.</p></li>
 <li><p><code>chat_mod_ui()</code> returns the UI for a shinychat module.</p></li>
 <li><p><code>chat_mod_server()</code> includes the shinychat module server logic, and
-returns an environment containing:</p><ul><li><p><code>last_input</code>: A reactive value containing the last user input.</p></li>
+returns an environment containing:</p><ul><li><p><code>last_input</code>: A reactive value containing the last user input (a string
+when attachments are disabled, a list of ellmer <code>Content</code> objects when
+enabled).</p></li>
 <li><p><code>last_turn</code>: A reactive value containing the last assistant turn.</p></li>
 <li><p><code>update_user_input()</code>: A function to update the chat input or submit a
 new user input. Takes the same arguments as <code><a href="update_chat_user_input.html">update_chat_user_input()</a></code>,

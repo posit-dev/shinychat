@@ -109,6 +109,11 @@ to learn more.
 - [`ContentSlashCommand()`](https://posit-dev.github.io/shinychat/r/dev/reference/ContentSlashCommand.md)
   : Slash command content
 
+## File attachments
+
+- [`chat_attachment()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_attachment.md)
+  : Create an attachment from a local file path
+
 ## Integration with ellmer
 
 - [`contents_shinychat()`](https://posit-dev.github.io/shinychat/r/dev/reference/contents_shinychat.md)

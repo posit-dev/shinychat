@@ -12,6 +12,8 @@ update_chat_user_input(
   placeholder = NULL,
   submit = FALSE,
   focus = FALSE,
+  attachments = NULL,
+  attachment_mode = c("append", "set"),
   session = getDefaultReactiveDomain()
 )
 ```
@@ -42,7 +44,24 @@ update_chat_user_input(
 
 - focus:
 
-  Whether to move focus to the input element. Requires `value`.
+  Whether to move focus to the input element. Requires `value` or
+  non-empty `attachments`.
+
+- attachments:
+
+  A list of attachment objects created by
+  [`chat_attachment()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_attachment.md).
+  When `NULL` (default), any existing staged attachments are left
+  unchanged. Pass an empty list
+  ([`list()`](https://rdrr.io/r/base/list.html)) to clear staged
+  attachments.
+
+- attachment_mode:
+
+  How to combine `attachments` with any already-staged attachments.
+  `"append"` (default) adds to the existing set; `"set"` replaces it.
+  Use `attachment_mode = "set"` with `attachments = list()` to clear all
+  staged attachments.
 
 - session:
 

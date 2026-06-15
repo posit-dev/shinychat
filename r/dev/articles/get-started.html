@@ -700,6 +700,79 @@ only need to create it once.</li>
 <span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/shinyApp.html" class="external-link">shinyApp</a></span><span class="op">(</span><span class="va">ui</span>, <span class="va">server</span><span class="op">)</span></span></code></pre></div>
 </div>
 </div>
+<div class="section level2">
+<h2 id="file-attachments">File attachments<a class="anchor" aria-label="anchor" href="#file-attachments"></a>
+</h2>
+<p>shinychat supports file attachments, allowing users to upload images,
+PDFs, and text files alongside their messages. When attachments are
+enabled, the chat input shows a file picker button and also accepts
+drag-and-drop or clipboard paste.</p>
+<div class="section level3">
+<h3 id="using-the-chat-module-recommended-1">Using the chat module (recommended)<a class="anchor" aria-label="anchor" href="#using-the-chat-module-recommended-1"></a>
+</h3>
+<p>The <code><a href="../reference/chat_app.html">chat_mod_ui()</a></code> and <code><a href="../reference/chat_app.html">chat_mod_server()</a></code>
+functions enable file attachments by default. Uploaded files are
+automatically converted to ellmer content objects and sent to the model
+— no extra code needed.</p>
+<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://shiny.posit.co/" class="external-link">shiny</a></span><span class="op">)</span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://rstudio.github.io/bslib/" class="external-link">bslib</a></span><span class="op">)</span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://posit-dev.github.io/shinychat/r/">shinychat</a></span><span class="op">)</span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://ellmer.tidyverse.org" class="external-link">ellmer</a></span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">ui</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rstudio.github.io/bslib/reference/page_fillable.html" class="external-link">page_fillable</a></span><span class="op">(</span></span>
+<span>  <span class="fu"><a href="../reference/chat_app.html">chat_mod_ui</a></span><span class="op">(</span><span class="st">"chat"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">server</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">input</span>, <span class="va">output</span>, <span class="va">session</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="va">chat</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://ellmer.tidyverse.org/reference/chat_anthropic.html" class="external-link">chat_anthropic</a></span><span class="op">(</span>system_prompt <span class="op">=</span> <span class="st">"You are a helpful assistant."</span><span class="op">)</span></span>
+<span>  <span class="fu"><a href="../reference/chat_app.html">chat_mod_server</a></span><span class="op">(</span><span class="st">"chat"</span>, client <span class="op">=</span> <span class="va">chat</span><span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/shinyApp.html" class="external-link">shinyApp</a></span><span class="op">(</span><span class="va">ui</span>, <span class="va">server</span><span class="op">)</span></span></code></pre></div>
+</div>
+<div class="section level3">
+<h3 id="manual-approach-1">Manual approach<a class="anchor" aria-label="anchor" href="#manual-approach-1"></a>
+</h3>
+<p>If you are building a custom chat UI with <code><a href="../reference/chat_ui.html">chat_ui()</a></code>
+directly, enable attachments by setting
+<code>allow_attachments = TRUE</code>. This changes the shape of
+<code>input$&lt;id&gt;_user_input</code> from a plain character string
+to a list of ellmer <code>Content</code> objects. Use the splice
+operator (<code>!!!</code>) to pass these content objects to the chat
+client.</p>
+<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">ui</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rstudio.github.io/bslib/reference/page_fillable.html" class="external-link">page_fillable</a></span><span class="op">(</span></span>
+<span>  <span class="fu"><a href="../reference/chat_ui.html">chat_ui</a></span><span class="op">(</span><span class="st">"chat"</span>, allow_attachments <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">server</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">input</span>, <span class="va">output</span>, <span class="va">session</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="va">chat</span> <span class="op">&lt;-</span> <span class="fu">ellmer</span><span class="fu">::</span><span class="fu"><a href="https://ellmer.tidyverse.org/reference/chat_openai.html" class="external-link">chat_openai</a></span><span class="op">(</span>system_prompt <span class="op">=</span> <span class="st">"You are a helpful assistant."</span><span class="op">)</span></span>
+<span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/pkg/shiny/man/observeEvent.html" class="external-link">observeEvent</a></span><span class="op">(</span><span class="va">input</span><span class="op">$</span><span class="va">chat_user_input</span>, <span class="op">{</span></span>
+<span>    <span class="va">stream</span> <span class="op">&lt;-</span> <span class="va">chat</span><span class="op">$</span><span class="fu">stream_async</span><span class="op">(</span><span class="op">!</span><span class="op">!</span><span class="op">!</span><span class="va">input</span><span class="op">$</span><span class="va">chat_user_input</span><span class="op">)</span></span>
+<span>    <span class="fu"><a href="../reference/chat_append.html">chat_append</a></span><span class="op">(</span><span class="st">"chat"</span>, <span class="va">stream</span><span class="op">)</span></span>
+<span>  <span class="op">}</span><span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/shinyApp.html" class="external-link">shinyApp</a></span><span class="op">(</span><span class="va">ui</span>, <span class="va">server</span><span class="op">)</span></span></code></pre></div>
+<p>Key points:</p>
+<ul>
+<li>Pass <code>allow_attachments = TRUE</code> to <code><a href="../reference/chat_ui.html">chat_ui()</a></code>
+to show the file picker button. You can also pass a character vector of
+MIME types (e.g. <code>c("image/png", "image/jpeg")</code>) to restrict
+accepted file types.</li>
+<li>When <code>allow_attachments</code> is enabled,
+<code>input$&lt;id&gt;_user_input</code> is always a list of ellmer
+<code>Content</code> objects (text first, then one content object per
+attachment), even when no files are attached. Use <code>!!!</code> to
+splice the list into <code>stream_async()</code>.</li>
+<li>The maximum combined attachment size defaults to approximately 30 MB
+and can be configured via the <code>SHINYCHAT_MAX_ATTACHMENT_SIZE</code>
+environment variable.</li>
+</ul>
+</div>
+</div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside>
 </div>

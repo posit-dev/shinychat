@@ -4,6 +4,19 @@
 
 ### New features and improvements
 
+- Added file attachment support: users can upload images, PDFs, and text
+  files alongside chat messages via a file picker button, drag-and-drop,
+  or clipboard paste.
+  [`chat_mod_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)/[`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  enable attachments by default and automatically convert uploads into
+  ellmer `Content` objects for the model. For
+  [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md),
+  enable with `allow_attachments = TRUE` (or a MIME allow-list) and
+  splice `input$<id>_user_input` into chat methods with `!!!`. The
+  maximum combined attachment size defaults to approximately 30 MB and
+  can be configured via the `SHINYCHAT_MAX_ATTACHMENT_SIZE` environment
+  variable.
+
 - Added slash commands: a typeahead command palette that lets users
   trigger named shortcuts directly from the chat input. Type `/` to open
   the palette, filter by typing, and pick a command with arrow keys or
@@ -28,6 +41,23 @@
   remains editable while a response is streaming — only submission is
   blocked, not typing.
   ([\#251](https://github.com/posit-dev/shinychat/issues/251))
+
+### Breaking changes
+
+- `input$<id>_user_input` now depends on `allow_attachments`. With
+  `allow_attachments = FALSE`, it remains the historical typed string.
+  With attachments enabled (`TRUE` or a MIME allow-list), it is always a
+  list of ellmer `Content` objects (typed text, if present, followed by
+  one object per attachment), and the separate
+  `input$<id>_user_attachments` input has been removed. Forward either
+  form to a chat method by splicing with `!!!`,
+  e.g. `chat$stream_async(!!!input$<id>_user_input)`.
+
+- The `last_input` reactive returned by
+  [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  now mirrors the shape of `input$<id>_user_input`: a string when
+  attachments are disabled, and a list of ellmer `Content` objects when
+  enabled.
 
 ### Bug fixes
 

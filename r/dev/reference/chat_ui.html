@@ -85,6 +85,7 @@ enter new messages.</p>
 <span>  icon_assistant <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  enable_cancel <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  submit_key <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"enter"</span>, <span class="st">"enter+modifier"</span><span class="op">)</span>,</span>
+<span>  allow_attachments <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  footer <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -162,6 +163,28 @@ Defaults to <code>FALSE</code>.</p></dd>
 <code>"enter"</code> (the default): Enter submits, Shift+Enter adds a newline.
 <code>"enter+modifier"</code>: Ctrl+Enter (Cmd+Enter on Mac) submits, plain Enter
 adds a newline.</p></dd>
+
+
+<dt id="arg-allow-attachments">allow_attachments<a class="anchor" aria-label="anchor" href="#arg-allow-attachments"></a></dt>
+<dd><p>Controls the file-attachment affordance (an attach
+button, plus clipboard paste and drag-and-drop) in the chat input. Pass
+<code>TRUE</code> to accept all supported types (PNG, JPEG, GIF, WebP, PDF, and common
+text/code files such as Markdown, plain text, CSV, JSON, and source files),
+<code>FALSE</code> to disable, or a character vector of MIME types to
+restrict what is accepted (each must be one of the supported types).</p>
+<p>The shape of <code>input$&lt;id&gt;_user_input</code> is determined by this argument, so it
+is predictable for a given app. When attachments are disabled (the
+default), it is the typed text as a character string, exactly as before.
+When attachments are enabled, it is always a list of ellmer
+<a href="https://ellmer.tidyverse.org/reference/Content.html" class="external-link">ellmer::Content</a> objects (the typed text, if any, followed by one content
+object per attachment) - a list even when no files were attached. Splice
+the list into a chat method's <code>...</code> with <code>!!!</code>, e.g.
+<code>client$stream_async(!!!input$&lt;id&gt;_user_input)</code>. (No <code><a href="https://rlang.r-lib.org/reference/inject.html" class="external-link">rlang::inject()</a></code> is
+needed: ellmer's chat methods collect <code>...</code> with dynamic dots.)</p>
+<p>The maximum combined size of all attachments in a single message is
+controlled globally by the <code>SHINYCHAT_MAX_ATTACHMENT_SIZE</code> environment
+variable (a raw byte count; defaults to approximately 30 MB). Files that
+would push the total over this cap are rejected in the browser with a notice.</p></dd>
 
 
 <dt id="arg-footer">footer<a class="anchor" aria-label="anchor" href="#arg-footer"></a></dt>
