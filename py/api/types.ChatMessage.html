@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>chat_ui – shinychat</title>
+<title>types.chatmessage – shinychat</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -111,10 +111,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 
 <meta property="og:title" content="shinychat">
-<meta property="og:description" content="Chat UI Component for Shiny">
 <meta property="og:site_name" content="shinychat">
 <meta name="twitter:title" content="shinychat">
-<meta name="twitter:description" content="Chat UI Component for Shiny">
 <meta name="twitter:card" content="summary">
 </head>
 
@@ -169,7 +167,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../api/Chat.html">Shiny Core</a></li><li class="breadcrumb-item"><a href="../api/chat_ui.html">chat_ui</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../api/Chat.html">Shiny Core</a></li><li class="breadcrumb-item"><a href="../api/types.ChatMessage.html">types.ChatMessage</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
     </div>
@@ -210,7 +208,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../api/types.ChatMessage.html" class="sidebar-item-text sidebar-link">
+  <a href="../api/types.ChatMessage.html" class="sidebar-item-text sidebar-link active">
  <span class="menu-text">types.ChatMessage</span></a>
   </div>
 </li>
@@ -222,7 +220,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../api/chat_ui.html" class="sidebar-item-text sidebar-link active">
+  <a href="../api/chat_ui.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">chat_ui</span></a>
   </div>
 </li>
@@ -278,134 +276,26 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#shinychat.chat_ui" id="toc-shinychat.chat_ui" class="nav-link active" data-scroll-target="#shinychat.chat_ui">chat_ui</a>
-  <ul class="collapse">
-  <li><a href="#parameters" id="toc-parameters" class="nav-link" data-scroll-target="#parameters">Parameters</a></li>
-  </ul></li>
+  <li><a href="#shinychat.types.ChatMessage" id="toc-shinychat.types.ChatMessage" class="nav-link active" data-scroll-target="#shinychat.types.ChatMessage">types.ChatMessage</a></li>
   </ul>
-<div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/shinychat/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li><li><a href="https://github.com/posit-dev/shinychat/edit/main/pkg-py/docs/api/chat_ui.qmd" class="toc-action"><i class="bi empty"></i>Edit this page</a></li></ul></div></nav>
+<div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/shinychat/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li><li><a href="https://github.com/posit-dev/shinychat/edit/main/pkg-py/docs/api/types.ChatMessage.qmd" class="toc-action"><i class="bi empty"></i>Edit this page</a></li></ul></div></nav>
     </div>
 <!-- main -->
-<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../api/Chat.html">Shiny Core</a></li><li class="breadcrumb-item"><a href="../api/chat_ui.html">chat_ui</a></li></ol></nav></header>
+<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../api/Chat.html">Shiny Core</a></li><li class="breadcrumb-item"><a href="../api/types.ChatMessage.html">types.ChatMessage</a></li></ol></nav></header>
 
 
 
 
-<section id="shinychat.chat_ui" class="level1">
-<h1>chat_ui</h1>
-<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>chat_ui(</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="bu">id</span>,</span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    messages<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    greeting<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    placeholder<span class="op">=</span><span class="st">'Enter a message...'</span>,</span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    width<span class="op">=</span><span class="st">'min(680px, 100%)'</span>,</span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    height<span class="op">=</span><span class="st">'auto'</span>,</span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    fill<span class="op">=</span><span class="va">True</span>,</span>
-<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    icon_assistant<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    enable_cancel<span class="op">=</span>MISSING,</span>
-<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    submit_key<span class="op">=</span><span class="st">'enter'</span>,</span>
-<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    allow_attachments<span class="op">=</span>MISSING,</span>
-<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    footer<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs,</span>
-<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>UI container for a chat component (Shiny Core).</p>
-<p>This function is for locating a :class:<code>~shiny.ui.Chat</code> instance in a Shiny Core app. If you are using Shiny Express, use the :method:<code>~shiny.ui.Chat.ui</code> method instead.</p>
-<section id="parameters" class="level2 doc-section doc-section-parameters">
-<h2 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h2>
-<table class="caption-top table">
-<thead>
-<tr class="header">
-<th>Name</th>
-<th>Type</th>
-<th>Description</th>
-<th>Default</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>id</td>
-<td><a href="`str`">str</a></td>
-<td>A unique identifier for the chat UI.</td>
-<td><em>required</em></td>
-</tr>
-<tr class="even">
-<td>messages</td>
-<td><a href="`typing.Optional`">Optional</a>[<a href="`typing.Iterable`">Iterable</a>[<a href="`str`">str</a> | <a href="`htmltools.TagChild`">TagChild</a> | <a href="`shinychat._chat_types.ChatMessageDict`">ChatMessageDict</a> | <a href="`shinychat._chat_types.ChatMessage`">ChatMessage</a> | <a href="`typing.Any`">Any</a>]]</td>
-<td>A sequence of messages to display in the chat. A given message can be one of the following: * A string, which is interpreted as markdown and rendered to HTML on the client. * To prevent interpreting as markdown, mark the string as :class:<code>~shiny.ui.HTML</code>. * A UI element (specifically, a :class:<code>~shiny.ui.TagChild</code>). * This includes :class:<code>~shiny.ui.TagList</code>, which take UI elements (including strings) as children. In this case, strings are still interpreted as markdown as long as they’re not inside HTML. * A dictionary with <code>content</code> and <code>role</code> keys. The <code>content</code> key can contain a content as described above, and the <code>role</code> key can be “assistant” or “user”. * More generally, any type registered with :func:<code>shinychat.message_content</code>. <strong>NOTE:</strong> content may include specially formatted <strong>input suggestion</strong> links (see :method:<code>~shiny.ui.Chat.append_message</code> for more info).</td>
-<td><code>None</code></td>
-</tr>
-<tr class="odd">
-<td>greeting</td>
-<td><a href="`typing.Optional`">Optional</a>[<a href="`typing.Union`">Union</a>[<a href="`str`">str</a>, <a href="`htmltools.HTML`">HTML</a>, <a href="`htmltools.Tag`">Tag</a>, <a href="`htmltools.TagList`">TagList</a>, <a href="`shinychat._chat_types.ChatGreeting`">ChatGreeting</a>]]</td>
-<td>An optional greeting to display at the top of the chat before any conversation messages. Can be a markdown string or a :func:<code>~shinychat.chat_greeting</code> object. For a dynamic or streaming greeting, use :meth:<code>~shinychat.Chat.set_greeting</code> from the server instead. When no greeting is set and the chat is visible with no messages, an input named <code>{id}_greeting_requested</code> fires. Use this input with <code>@reactive.event(input.{id}_greeting_requested)</code> to generate a greeting on demand from the server. It fires again after :meth:<code>~shinychat.Chat.clear_messages</code> is called with <code>greeting=True</code>.</td>
-<td><code>None</code></td>
-</tr>
-<tr class="even">
-<td>placeholder</td>
-<td><a href="`str`">str</a></td>
-<td>Placeholder text for the chat input.</td>
-<td><code>'Enter a message...'</code></td>
-</tr>
-<tr class="odd">
-<td>width</td>
-<td>'CssUnit'</td>
-<td>The width of the chat container.</td>
-<td><code>'min(680px, 100%)'</code></td>
-</tr>
-<tr class="even">
-<td>height</td>
-<td>'CssUnit'</td>
-<td>The height of the chat container.</td>
-<td><code>'auto'</code></td>
-</tr>
-<tr class="odd">
-<td>fill</td>
-<td><a href="`bool`">bool</a></td>
-<td>Whether the chat should vertically take available space inside a fillable container.</td>
-<td><code>True</code></td>
-</tr>
-<tr class="even">
-<td>icon_assistant</td>
-<td><a href="`typing.Optional`">Optional</a>[<a href="`htmltools.HTML`">HTML</a> | <a href="`htmltools.Tag`">Tag</a> | <a href="`htmltools.TagList`">TagList</a>]</td>
-<td>The icon to use for the assistant chat messages. Can be a HTML or a tag in the form of :class:<code>~htmltools.HTML</code> or :class:<code>~htmltools.Tag</code>. If <code>None</code>, a default robot icon is used.</td>
-<td><code>None</code></td>
-</tr>
-<tr class="odd">
-<td>enable_cancel</td>
-<td>'bool | MISSING_TYPE'</td>
-<td>Whether to show a stop button during streaming that allows the user to cancel the in-progress response. When <code>True</code>, the chat UI shows a stop button in place of the send button while streaming. You must observe <code>input.&lt;id&gt;_cancel</code> on the server and call <code>ctrl.cancel()</code> on a chatlas <code>StreamController</code> to actually stop the stream. When left unset (the default), a chat driven by a <code>client=</code> enables the stop button automatically; otherwise it stays hidden. Passing an explicit <code>True</code>/<code>False</code> always wins over that automatic behavior.</td>
-<td><code>MISSING</code></td>
-</tr>
-<tr class="even">
-<td>submit_key</td>
-<td>'Literal["enter", "enter+modifier"]'</td>
-<td>Controls which key combination submits the chat message: - <code>"enter"</code> (default): Enter submits, Shift+Enter adds a newline. - <code>"enter+modifier"</code>: Ctrl+Enter (Cmd+Enter on Mac) submits, plain Enter adds a newline.</td>
-<td><code>'enter'</code></td>
-</tr>
-<tr class="odd">
-<td>allow_attachments</td>
-<td>'bool | list[str] | MISSING_TYPE'</td>
-<td>Controls the file-attachment affordance (an attach button, plus clipboard paste and drag-and-drop) in the chat input. Pass <code>True</code> to accept all supported types (PNG, JPEG, GIF, WebP, PDF, and common text/code files such as Markdown, plain text, CSV, JSON, and source files), <code>False</code> to disable, or a list of MIME types to restrict what is accepted (each must be one of the supported types). Attachments are delivered to your <code>.on_user_submit()</code> handler’s second argument as a <code>list[Attachment]</code>, where each item exposes <code>mime</code>, <code>name</code>, <code>size</code>, and <code>data_url</code> attributes (and forwarded to a <code>client=</code> automatically). When left unset (the default), a chat driven by a <code>client=</code> enables attachments automatically; otherwise it stays hidden. The maximum combined size of all attachments in a single message is controlled globally by the <code>SHINYCHAT_MAX_ATTACHMENT_SIZE</code> environment variable (a raw byte count; defaults to approximately 30 MB). Files that would push the total over this cap are rejected in the browser with a notice. When bookmarking is enabled, prefer <code>bookmark_store="server"</code>: attachment data is saved in the bookmark and can exceed URL length limits with <code>bookmark_store="url"</code>.</td>
-<td><code>MISSING</code></td>
-</tr>
-<tr class="even">
-<td>footer</td>
-<td><a href="`typing.Optional`">Optional</a>[<a href="`htmltools.TagChild`">TagChild</a>]</td>
-<td>Optional HTML content to display below the chat input. This can be any HTML content (tags, tag lists, or strings). Useful for adding disclaimers, attribution, or other information. The footer text is styled slightly smaller and lighter than body text by default. Customize with CSS properties <code>--shiny-chat-footer-font-size</code> and <code>--shiny-chat-footer-color</code> on the chat container or footer element.</td>
-<td><code>None</code></td>
-</tr>
-<tr class="odd">
-<td>kwargs</td>
-<td><a href="`htmltools.TagAttrValue`">TagAttrValue</a></td>
-<td>Additional attributes for the chat container element.</td>
-<td><code>{}</code></td>
-</tr>
-</tbody>
-</table>
+<section id="shinychat.types.ChatMessage" class="level1">
+<h1>types.ChatMessage</h1>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>types.ChatMessage(</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    content,</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    role<span class="op">=</span><span class="st">'assistant'</span>,</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    content_type<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    attachments<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 
 
-</section>
 </section>
 
 </main> <!-- /main -->
@@ -816,7 +706,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>   
     <div class="nav-footer-center">
       &nbsp;
-    <div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/posit-dev/shinychat/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li><li><a href="https://github.com/posit-dev/shinychat/edit/main/pkg-py/docs/api/chat_ui.qmd" class="toc-action"><i class="bi empty"></i>Edit this page</a></li></ul></div></div>
+    <div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/posit-dev/shinychat/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li><li><a href="https://github.com/posit-dev/shinychat/edit/main/pkg-py/docs/api/types.ChatMessage.qmd" class="toc-action"><i class="bi empty"></i>Edit this page</a></li></ul></div></div>
     <div class="nav-footer-right">
       &nbsp;
     </div>

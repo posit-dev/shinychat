@@ -44,6 +44,16 @@ shinychat.types.ChatClient.value py:attribute 1 api/types.ChatClient.html#shinyc
 shinychat._chat_client.ChatClient.value py:attribute 1 api/types.ChatClient.html#shinychat.types.ChatClient.value shinychat.types.ChatClient.value
 shinychat.types.ChatClient py:class 1 api/types.ChatClient.html#shinychat.types.ChatClient -
 shinychat._chat_client.ChatClient py:class 1 api/types.ChatClient.html#shinychat.types.ChatClient shinychat.types.ChatClient
+shinychat.types.ChatMessage py:class 1 api/types.ChatMessage.html#shinychat.types.ChatMessage -
+shinychat._chat_types.ChatMessage py:class 1 api/types.ChatMessage.html#shinychat.types.ChatMessage shinychat.types.ChatMessage
+shinychat.types.Attachment.from_data py:function 1 api/types.Attachment.html#shinychat.types.Attachment.from_data -
+shinychat._attachments.Attachment.from_data py:function 1 api/types.Attachment.html#shinychat.types.Attachment.from_data shinychat.types.Attachment.from_data
+shinychat.types.Attachment.from_path py:function 1 api/types.Attachment.html#shinychat.types.Attachment.from_path -
+shinychat._attachments.Attachment.from_path py:function 1 api/types.Attachment.html#shinychat.types.Attachment.from_path shinychat.types.Attachment.from_path
+shinychat.types.Attachment.from_url py:function 1 api/types.Attachment.html#shinychat.types.Attachment.from_url -
+shinychat._attachments.Attachment.from_url py:function 1 api/types.Attachment.html#shinychat.types.Attachment.from_url shinychat.types.Attachment.from_url
+shinychat.types.Attachment py:class 1 api/types.Attachment.html#shinychat.types.Attachment -
+shinychat._attachments.Attachment py:class 1 api/types.Attachment.html#shinychat.types.Attachment shinychat.types.Attachment
 shinychat.chat_ui py:function 1 api/chat_ui.html#shinychat.chat_ui -
 shinychat._chat.chat_ui py:function 1 api/chat_ui.html#shinychat.chat_ui shinychat.chat_ui
 shinychat.chat_greeting py:function 1 api/chat_greeting.html#shinychat.chat_greeting -

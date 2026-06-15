@@ -2,34 +2,42 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/index.html</loc>
-    <lastmod>2026-06-15T20:56:54.492Z</lastmod>
+    <lastmod>2026-06-15T21:55:57.323Z</lastmod>
   </url>
   <url>
-    <loc>https://posit-dev.github.io/shinychat/py/api/express.Chat.html</loc>
-    <lastmod>2026-06-15T20:59:42.872Z</lastmod>
-  </url>
-  <url>
-    <loc>https://posit-dev.github.io/shinychat/py/api/chat_ui.html</loc>
-    <lastmod>2026-06-15T20:59:42.830Z</lastmod>
-  </url>
-  <url>
-    <loc>https://posit-dev.github.io/shinychat/py/api/types.ChatClient.html</loc>
-    <lastmod>2026-06-15T20:59:42.824Z</lastmod>
-  </url>
-  <url>
-    <loc>https://posit-dev.github.io/shinychat/py/api/Chat.html</loc>
-    <lastmod>2026-06-15T20:59:42.816Z</lastmod>
-  </url>
-  <url>
-    <loc>https://posit-dev.github.io/shinychat/py/api/playwright.ChatController.html</loc>
-    <lastmod>2026-06-15T20:59:42.886Z</lastmod>
+    <loc>https://posit-dev.github.io/shinychat/py/api/types.ChatMessage.html</loc>
+    <lastmod>2026-06-15T21:56:32.521Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/chat_greeting.html</loc>
-    <lastmod>2026-06-15T20:59:42.833Z</lastmod>
+    <lastmod>2026-06-15T21:56:32.537Z</lastmod>
+  </url>
+  <url>
+    <loc>https://posit-dev.github.io/shinychat/py/api/playwright.ChatController.html</loc>
+    <lastmod>2026-06-15T21:56:32.597Z</lastmod>
+  </url>
+  <url>
+    <loc>https://posit-dev.github.io/shinychat/py/api/types.ChatClient.html</loc>
+    <lastmod>2026-06-15T21:56:32.520Z</lastmod>
+  </url>
+  <url>
+    <loc>https://posit-dev.github.io/shinychat/py/api/Chat.html</loc>
+    <lastmod>2026-06-15T21:56:32.512Z</lastmod>
+  </url>
+  <url>
+    <loc>https://posit-dev.github.io/shinychat/py/api/types.Attachment.html</loc>
+    <lastmod>2026-06-15T21:56:32.527Z</lastmod>
+  </url>
+  <url>
+    <loc>https://posit-dev.github.io/shinychat/py/api/chat_ui.html</loc>
+    <lastmod>2026-06-15T21:56:32.534Z</lastmod>
+  </url>
+  <url>
+    <loc>https://posit-dev.github.io/shinychat/py/api/express.Chat.html</loc>
+    <lastmod>2026-06-15T21:56:32.582Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/index.html</loc>
-    <lastmod>2026-06-15T20:59:42.767Z</lastmod>
+    <lastmod>2026-06-15T21:56:32.456Z</lastmod>
   </url>
 </urlset>

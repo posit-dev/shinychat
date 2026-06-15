@@ -210,6 +210,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../api/types.ChatMessage.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">types.ChatMessage</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../api/types.Attachment.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">types.Attachment</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../api/chat_ui.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">chat_ui</span></a>
   </div>
@@ -480,7 +492,7 @@ to indicate what you're currently reasoning about. For example:
 </tr>
 <tr class="odd">
 <td><a href="#shinychat.Chat.user_input">user_input</a></td>
-<td>Reactively read the user’s message.</td>
+<td>Reactively read the user’s latest submission.</td>
 </tr>
 </tbody>
 </table>
@@ -857,7 +869,7 @@ specified in model's completion method.</code></pre>
 <tr class="odd">
 <td></td>
 <td><a href="`tuple`">tuple</a>[<a href="`shinychat._chat_types.ChatMessageDict`">ChatMessageDict</a>, …]</td>
-<td>A tuple of chat messages.</td>
+<td>A tuple of chat messages. The <code>attachments</code> field, when present, contains :class:<code>~shinychat.Attachment</code> objects. These are Pydantic models, so call <code>.model_dump()</code> on each one before passing them to <code>json.dumps()</code> or any other JSON serializer.</td>
 </tr>
 </tbody>
 </table>
@@ -867,7 +879,7 @@ specified in model's completion method.</code></pre>
 <h3 class="anchored" data-anchor-id="shinychat.Chat.on_user_submit">on_user_submit</h3>
 <div class="sourceCode" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>Chat.on_user_submit(fn<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Define a function to invoke when user input is submitted.</p>
-<p>Apply this method as a decorator to a function (<code>fn</code>) that should be invoked when the user submits a message. This function can take an optional argument, which will be the user input message.</p>
+<p>Apply this method as a decorator to a function (<code>fn</code>) that should be invoked when the user submits a message. This function can take up to two optional arguments: the user input message (a <code>str</code>) and any attached files (a <code>list[Attachment]</code>, where each item exposes <code>mime</code> (MIME type), <code>data_url</code> (a <code>data:&lt;mime&gt;;base64,...</code> URL), and <code>name</code> (the original filename) attributes).</p>
 <p>In many cases, the implementation of <code>fn</code> should also do the following:</p>
 <ol type="1">
 <li>Generate a response based on the user input.</li>
@@ -1099,7 +1111,14 @@ specified in model's completion method.</code></pre>
 </section>
 <section id="shinychat.Chat.update_user_input" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.Chat.update_user_input">update_user_input</h3>
-<div class="sourceCode" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>Chat.update_user_input(value<span class="op">=</span><span class="va">None</span>, placeholder<span class="op">=</span><span class="va">None</span>, submit<span class="op">=</span><span class="va">False</span>, focus<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>Chat.update_user_input(</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>    value<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>    placeholder<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>    submit<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a>    focus<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a>    attachments<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a>    attachment_mode<span class="op">=</span><span class="st">'append'</span>,</span>
+<span id="cb30-8"><a href="#cb30-8" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Update the user input.</p>
 <section id="parameters-10" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-10">Parameters</h4>
@@ -1134,8 +1153,20 @@ specified in model's completion method.</code></pre>
 <tr class="even">
 <td>focus</td>
 <td><a href="`bool`">bool</a></td>
-<td>Whether to move focus to the input element. Requires <code>value</code>.</td>
+<td>Whether to move focus to the input element. Requires <code>value</code> or <code>attachments</code>.</td>
 <td><code>False</code></td>
+</tr>
+<tr class="odd">
+<td>attachments</td>
+<td>'list[Attachment] | None'</td>
+<td>Attachments to stage in the input. Pass an empty list to clear any currently staged attachments. When <code>submit=True</code> the attachments are sent alongside <code>value</code> and then cleared from the input.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="even">
+<td>attachment_mode</td>
+<td>"Literal['append', 'set']"</td>
+<td>How to combine <code>attachments</code> with any already-staged attachments. <code>"append"</code> (default) adds to the existing set; <code>"set"</code> replaces it. Pass <code>attachment_mode="set"</code> with <code>attachments=[]</code> to clear all staged attachments.</td>
+<td><code>'append'</code></td>
 </tr>
 </tbody>
 </table>
@@ -1144,7 +1175,7 @@ specified in model's completion method.</code></pre>
 <section id="shinychat.Chat.user_input" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.Chat.user_input">user_input</h3>
 <div class="sourceCode" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>Chat.user_input()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Reactively read the user’s message.</p>
+<p>Reactively read the user’s latest submission.</p>
 <section id="returns-4" class="level4 doc-section doc-section-returns">
 <h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-4">Returns</h4>
 <table class="caption-top table">
@@ -1158,8 +1189,8 @@ specified in model's completion method.</code></pre>
 <tbody>
 <tr class="odd">
 <td></td>
-<td><a href="`str`">str</a> | None</td>
-<td>The user input message.</td>
+<td><a href="`shinychat._chat.UserInput`">UserInput</a> | None</td>
+<td><code>None</code> before the first user submission; otherwise a named tuple of the submitted text and any attached files. The <code>attachments</code> list is empty unless <code>allow_attachments</code> was enabled in :func:<code>~shinychat.chat_ui</code>. Supports destructuring after a <code>None</code> check:: result = chat.user_input() if result is not None: text, attachments = result</td>
 </tr>
 </tbody>
 </table>

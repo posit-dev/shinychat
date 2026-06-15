@@ -188,6 +188,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#key-points" id="toc-key-points" class="nav-link" data-scroll-target="#key-points">Key points</a></li>
   </ul></li>
   <li><a href="#lower-level-interface" id="toc-lower-level-interface" class="nav-link" data-scroll-target="#lower-level-interface">Lower-level interface</a></li>
+  <li><a href="#file-attachments" id="toc-file-attachments" class="nav-link" data-scroll-target="#file-attachments">File attachments</a>
+  <ul class="collapse">
+  <li><a href="#using-client-recommended" id="toc-using-client-recommended" class="nav-link" data-scroll-target="#using-client-recommended">Using <code>client=</code> (recommended)</a></li>
+  <li><a href="#manual-approach" id="toc-manual-approach" class="nav-link" data-scroll-target="#manual-approach">Manual approach</a></li>
+  </ul></li>
   <li><a href="#learn-more" id="toc-learn-more" class="nav-link" data-scroll-target="#learn-more">Learn more</a></li>
   </ul>
 <div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/shinychat/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li><li><a href="https://github.com/posit-dev/shinychat/edit/main/pkg-py/docs/index.qmd" class="toc-action"><i class="bi empty"></i>Edit this page</a></li></ul></div></nav>
@@ -213,7 +218,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="quick-start" class="level2">
 <h2 class="anchored" data-anchor-id="quick-start">Quick start</h2>
-<p>The fastest way to build a chatbot with shinychat is to pass a <a href="https://posit-dev.github.io/chatlas/">chatlas</a> client to <code>Chat(client=)</code>. This gives you streaming, cancellation, bookmarking, and more out of the box — no manual wiring required.</p>
+<p>The fastest way to build a chatbot with shinychat is to pass a <a href="https://posit-dev.github.io/chatlas/">chatlas</a> client to <code>Chat(client=)</code>. This gives you streaming, file attachments, bookmarking, cancellation, and more out of the box — no manual wiring required.</p>
 <p><strong>Shiny Express</strong></p>
 <div class="sourceCode" id="cb4" data-file="app.py"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> chatlas <span class="im">import</span> ChatAnthropic</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shiny.express <span class="im">import</span> app_opts, ui</span>
@@ -312,7 +317,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="lower-level-interface" class="level2">
 <h2 class="anchored" data-anchor-id="lower-level-interface">Lower-level interface</h2>
-<p>When you need full control over the server-side logic — or you’re using an LLM framework other than chatlas — omit the <code>client=</code> argument and wire things up manually. This means handling streaming, cancellation, and bookmarking yourself, but gives you complete flexibility over how messages are generated and displayed.</p>
+<p>When you need full control over the server-side logic — or you’re using an LLM framework other than chatlas — omit the <code>client=</code> argument and wire things up manually. This means handling streaming, file attachments, bookmarking, and cancellation yourself, but gives you complete flexibility over how messages are generated and displayed.</p>
 <p><strong>Shiny Express</strong></p>
 <div class="sourceCode" id="cb9" data-file="app.py"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shiny <span class="im">import</span> reactive</span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shiny.express <span class="im">import</span> <span class="bu">input</span></span>
@@ -367,6 +372,60 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li>The cancel input fires as <code>input.&lt;id&gt;_cancel</code> (e.g.&nbsp;<code>input.chat_cancel</code>). Observe it with <code>@reactive.event</code> to call <code>ctrl.cancel()</code>. This is needed in both Express and Core apps.</li>
 <li>Partial responses are automatically preserved in chat history by chatlas when a stream is cancelled.</li>
 </ul>
+</section>
+<section id="file-attachments" class="level2">
+<h2 class="anchored" data-anchor-id="file-attachments">File attachments</h2>
+<p>shinychat supports file attachments, allowing users to upload images, PDFs, and text files alongside their messages. When attachments are enabled, the chat input shows a file picker button and also accepts drag-and-drop or clipboard paste.</p>
+<section id="using-client-recommended" class="level3">
+<h3 class="anchored" data-anchor-id="using-client-recommended">Using <code>client=</code> (recommended)</h3>
+<p>When you pass a chatlas client to <code>Chat(client=)</code>, file attachments are enabled automatically. The attachment button appears in the chat input, and uploaded files are converted to the appropriate chatlas content types and sent to the model — no extra code needed.</p>
+</section>
+<section id="manual-approach" class="level3">
+<h3 class="anchored" data-anchor-id="manual-approach">Manual approach</h3>
+<p>If you’re wiring things up manually, enable attachments in the UI and accept them in your submit handler.</p>
+<p><strong>Shiny Express</strong></p>
+<div class="sourceCode" id="cb11" data-file="app.py"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> chatlas <span class="im">import</span> ChatAnthropic</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shinychat.express <span class="im">import</span> Chat</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shinychat <span class="im">import</span> Attachment, attachment_to_content</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>chat <span class="op">=</span> Chat(<span class="bu">id</span><span class="op">=</span><span class="st">"chat"</span>)</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>chat.ui(allow_attachments<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>client <span class="op">=</span> ChatAnthropic(system_prompt<span class="op">=</span><span class="st">"You are a helpful assistant."</span>)</span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a><span class="at">@chat.on_user_submit</span></span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> handle_user_input(user_input: <span class="bu">str</span>, attachments: <span class="bu">list</span>[Attachment]):</span>
+<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a>    contents <span class="op">=</span> [attachment_to_content(a) <span class="cf">for</span> a <span class="kw">in</span> attachments]</span>
+<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a>    response <span class="op">=</span> <span class="cf">await</span> client.stream_async(user_input, <span class="op">*</span>contents)</span>
+<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.append_message_stream(response)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><strong>Shiny Core</strong></p>
+<div class="sourceCode" id="cb12" data-file="app.py"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shiny <span class="im">import</span> App, ui</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> chatlas <span class="im">import</span> ChatAnthropic</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shinychat <span class="im">import</span> Chat, chat_ui, Attachment, attachment_to_content</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>app_ui <span class="op">=</span> ui.page_fillable(</span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>    chat_ui(<span class="st">"chat"</span>, allow_attachments<span class="op">=</span><span class="va">True</span>),</span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> server(<span class="bu">input</span>, output, session):</span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>    client <span class="op">=</span> ChatAnthropic(system_prompt<span class="op">=</span><span class="st">"You are a helpful assistant."</span>)</span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a>    chat <span class="op">=</span> Chat(<span class="st">"chat"</span>)</span>
+<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">@chat.on_user_submit</span></span>
+<span id="cb12-14"><a href="#cb12-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">async</span> <span class="kw">def</span> handle_user_input(user_input: <span class="bu">str</span>, attachments: <span class="bu">list</span>[Attachment]):</span>
+<span id="cb12-15"><a href="#cb12-15" aria-hidden="true" tabindex="-1"></a>        contents <span class="op">=</span> [attachment_to_content(a) <span class="cf">for</span> a <span class="kw">in</span> attachments]</span>
+<span id="cb12-16"><a href="#cb12-16" aria-hidden="true" tabindex="-1"></a>        response <span class="op">=</span> <span class="cf">await</span> client.stream_async(user_input, <span class="op">*</span>contents)</span>
+<span id="cb12-17"><a href="#cb12-17" aria-hidden="true" tabindex="-1"></a>        <span class="cf">await</span> chat.append_message_stream(response)</span>
+<span id="cb12-18"><a href="#cb12-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-19"><a href="#cb12-19" aria-hidden="true" tabindex="-1"></a>app <span class="op">=</span> App(app_ui, server)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Key points:</p>
+<ul>
+<li>Pass <code>allow_attachments=True</code> to <code>chat_ui()</code> to show the file picker button. You can also pass a list of MIME types (e.g.&nbsp;<code>["image/png", "image/jpeg"]</code>) to restrict accepted file types.</li>
+<li>Declare two parameters on your <code>@chat.on_user_submit</code> handler to receive both the text and attachments. With one parameter, you only receive the text.</li>
+<li>Use <code>attachment_to_content()</code> to convert each <code>Attachment</code> into a chatlas content object (image, PDF, or text).</li>
+<li>The maximum combined attachment size defaults to approximately 30 MB and can be configured via the <code>SHINYCHAT_MAX_ATTACHMENT_SIZE</code> environment variable.</li>
+</ul>
+</section>
 </section>
 <section id="learn-more" class="level2">
 <h2 class="anchored" data-anchor-id="learn-more">Learn more</h2>
