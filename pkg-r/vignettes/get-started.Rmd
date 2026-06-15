@@ -495,3 +495,56 @@ server <- function(input, output, session) {
 
 shinyApp(ui, server)
 ```
+
+## File attachments
+
+shinychat supports file attachments, allowing users to upload images, PDFs, and text files alongside their messages. When attachments are enabled, the chat input shows a file picker button and also accepts drag-and-drop or clipboard paste.
+
+### Using the chat module (recommended)
+
+The `chat_mod_ui()` and `chat_mod_server()` functions enable file attachments by default. Uploaded files are automatically converted to ellmer content objects and sent to the model — no extra code needed.
+
+```r
+library(shiny)
+library(bslib)
+library(shinychat)
+library(ellmer)
+
+ui <- page_fillable(
+  chat_mod_ui("chat")
+)
+
+server <- function(input, output, session) {
+  chat <- chat_anthropic(system_prompt = "You are a helpful assistant.")
+  chat_mod_server("chat", client = chat)
+}
+
+shinyApp(ui, server)
+```
+
+### Manual approach
+
+If you are building a custom chat UI with `chat_ui()` directly, enable attachments by setting `allow_attachments = TRUE`. This changes the shape of `input$<id>_user_input` from a plain character string to a list of ellmer `Content` objects. Use the splice operator (`!!!`) to pass these content objects to the chat client.
+
+```r
+ui <- page_fillable(
+  chat_ui("chat", allow_attachments = TRUE)
+)
+
+server <- function(input, output, session) {
+  chat <- ellmer::chat_openai(system_prompt = "You are a helpful assistant.")
+
+  observeEvent(input$chat_user_input, {
+    stream <- chat$stream_async(!!!input$chat_user_input)
+    chat_append("chat", stream)
+  })
+}
+
+shinyApp(ui, server)
+```
+
+Key points:
+
+- Pass `allow_attachments = TRUE` to `chat_ui()` to show the file picker button. You can also pass a character vector of MIME types (e.g. `c("image/png", "image/jpeg")`) to restrict accepted file types.
+- When `allow_attachments` is enabled, `input$<id>_user_input` is always a list of ellmer `Content` objects (text first, then one content object per attachment), even when no files are attached. Use `!!!` to splice the list into `stream_async()`.
+- The maximum combined attachment size defaults to approximately 30 MB and can be configured via the `SHINYCHAT_MAX_ATTACHMENT_SIZE` environment variable.

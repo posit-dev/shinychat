@@ -162,6 +162,33 @@ describe("chat-entry custom element boot", () => {
     expect(callsForHost()).toBeGreaterThan(before)
   })
 
+  it("parses attachment-accept and max-attachment-size attributes", async () => {
+    const host = document.createElement("shiny-chat-container")
+    host.setAttribute("id", "upload-attr-chat")
+    host.setAttribute("allow-attachments", "true")
+    host.setAttribute("attachment-accept", "application/pdf")
+    host.setAttribute("max-attachment-size", "1234")
+    host.innerHTML = `
+      <shiny-chat-messages></shiny-chat-messages>
+      <shiny-chat-input></shiny-chat-input>
+    `
+
+    await act(async () => {
+      document.body.appendChild(host)
+    })
+
+    await waitFor(() => {
+      expect(host.querySelector('[role="textbox"]')).not.toBeNull()
+    })
+
+    // The parsed attachment-accept attribute feeds the file input's accept attr.
+    const fileInput = host.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement | null
+    expect(fileInput).not.toBeNull()
+    expect(fileInput?.accept).toBe("application/pdf")
+  })
+
   it("preserves the rendered conversation when moved to another container", async () => {
     const left = document.createElement("div")
     const right = document.createElement("div")

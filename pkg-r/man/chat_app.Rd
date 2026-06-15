@@ -6,9 +6,15 @@
 \alias{chat_mod_server}
 \title{Open a live chat application in the browser}
 \usage{
-chat_app(client, ..., bookmark_store = "url")
+chat_app(client, ..., bookmark_store = "url", allow_attachments = TRUE)
 
-chat_mod_ui(id, ..., client = deprecated(), messages = NULL)
+chat_mod_ui(
+  id,
+  ...,
+  client = deprecated(),
+  messages = NULL,
+  allow_attachments = TRUE
+)
 
 chat_mod_server(
   id,
@@ -34,6 +40,28 @@ uses the URL to store the chat state. URL-based bookmarking is limited in
 size; use \code{"server"} to store the state on the server side without size
 limitations; or disable bookmarking by setting this to \code{"disable"}.}
 
+\item{allow_attachments}{Controls the file-attachment affordance (an attach
+button, plus clipboard paste and drag-and-drop) in the chat input. Pass
+\code{TRUE} to accept all supported types (PNG, JPEG, GIF, WebP, PDF, and common
+text/code files such as Markdown, plain text, CSV, JSON, and source files),
+\code{FALSE} to disable, or a character vector of MIME types to
+restrict what is accepted (each must be one of the supported types).
+
+The shape of \verb{input$<id>_user_input} is determined by this argument, so it
+is predictable for a given app. When attachments are disabled (the
+default), it is the typed text as a character string, exactly as before.
+When attachments are enabled, it is always a list of ellmer
+\link[ellmer:Content]{ellmer::Content} objects (the typed text, if any, followed by one content
+object per attachment) - a list even when no files were attached. Splice
+the list into a chat method's \code{...} with \verb{!!!}, e.g.
+\verb{client$stream_async(!!!input$<id>_user_input)}. (No \code{\link[rlang:inject]{rlang::inject()}} is
+needed: ellmer's chat methods collect \code{...} with dynamic dots.)
+
+The maximum combined size of all attachments in a single message is
+controlled globally by the \code{SHINYCHAT_MAX_ATTACHMENT_SIZE} environment
+variable (a raw byte count; defaults to approximately 30 MB). Files that
+would push the total over this cap are rejected in the browser with a notice.}
+
 \item{id}{The chat module ID.}
 
 \item{messages}{Initial messages shown in the chat, used only when \code{client}
@@ -56,7 +84,9 @@ dynamically. See the \strong{Greeting} section below for details.}
 \item \code{chat_mod_server()} includes the shinychat module server logic, and
 returns an environment containing:
 \itemize{
-\item \code{last_input}: A reactive value containing the last user input.
+\item \code{last_input}: A reactive value containing the last user input (a string
+when attachments are disabled, a list of ellmer \code{Content} objects when
+enabled).
 \item \code{last_turn}: A reactive value containing the last assistant turn.
 \item \code{update_user_input()}: A function to update the chat input or submit a
 new user input. Takes the same arguments as \code{\link[=update_chat_user_input]{update_chat_user_input()}},

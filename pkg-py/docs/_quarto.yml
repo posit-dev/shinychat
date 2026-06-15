@@ -70,6 +70,8 @@ quartodoc:
       contents:
         - Chat
         - types.ChatClient
+        - types.ChatMessage
+        - types.Attachment
         - chat_ui
         - chat_greeting
     - title: Shiny Express

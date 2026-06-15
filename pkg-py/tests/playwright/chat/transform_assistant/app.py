@@ -24,7 +24,9 @@ def transform(content: str) -> Union[str, ui.HTML]:
 
 @chat.on_user_submit
 async def _():
-    user = chat.user_input()
+    user_input = chat.user_input()
+    assert user_input is not None
+    user, _ = user_input
     await chat.append_message(user)
 
 

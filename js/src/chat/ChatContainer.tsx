@@ -44,9 +44,12 @@ export interface ChatContainerProps {
   inputPlaceholder: string
   iconAssistant?: string
   inputId: string
+  uploadAccept: string[]
+  maxUploadSize: number | null
   greeting?: GreetingData | null
   cancelId?: string
   enableCancel?: boolean
+  enableUpload?: boolean
   cancelRequested?: boolean
   footerEl?: Element
   slashCommands: SlashCommandDef[]
@@ -68,9 +71,12 @@ export const ChatContainer = forwardRef<
     inputPlaceholder,
     iconAssistant,
     inputId,
+    uploadAccept,
+    maxUploadSize,
     greeting,
     cancelId,
     enableCancel,
+    enableUpload,
     cancelRequested,
     footerEl,
     slashCommands,
@@ -414,12 +420,15 @@ export const ChatContainer = forwardRef<
           ref={chatInputRef}
           transport={transport}
           inputId={inputId}
+          uploadAccept={uploadAccept}
+          maxUploadSize={maxUploadSize}
           disabled={inputDisabled}
           hasTopShadow={!isAtBottom}
           placeholder={inputPlaceholder}
           onSend={onSend}
           userMessages={userMessages}
           enableCancel={enableCancel}
+          enableUpload={enableUpload}
           cancelRequested={cancelRequested}
           isStreaming={isStreaming}
           onCancel={cancelStream}

@@ -16,10 +16,12 @@ from shinychat import Chat
 from shinychat._chat_normalize import message_content, message_content_chunk
 from shinychat._chat_types import (
     ChatMessage,
+    ChatMessageDict,
     Role,
     StoredMessage,
     StoredSegment,
 )
+from shinychat._utils_types import MISSING
 
 # ----------------------------------------------------------------------
 # Helpers
@@ -499,10 +501,14 @@ def test_stored_message_content_joins_segments():
 def test_stored_message_from_chat_message_makes_one_segment():
     from shinychat._chat_types import ChatMessage, StoredMessage
 
-    sm = StoredMessage.from_chat_message(ChatMessage(content="hi", role="assistant"))
+    sm = StoredMessage.from_chat_message(
+        ChatMessage(content="hi", role="assistant")
+    )
     assert len(sm.segments) == 1
-    assert sm.segments[0].content == "hi"
-    assert sm.segments[0].content_type == "markdown"
+    seg0 = sm.segments[0]
+    assert isinstance(seg0, StoredSegment)
+    assert seg0.content == "hi"
+    assert seg0.content_type == "markdown"
 
 
 def test_stored_message_from_chat_message_preserves_content_type():
@@ -511,10 +517,14 @@ def test_stored_message_from_chat_message_preserves_content_type():
 
     html_msg = ChatMessage(content=HTML("<b>bold</b>"), role="assistant")
     sm_html = StoredMessage.from_chat_message(html_msg)
+    assert isinstance(sm_html.segments[0], StoredSegment)
     assert sm_html.segments[0].content_type == "html"
 
-    thinking_msg = ChatMessage(content="reasoning", role="assistant", content_type="thinking")
+    thinking_msg = ChatMessage(
+        content="reasoning", role="assistant", content_type="thinking"
+    )
     sm_thinking = StoredMessage.from_chat_message(thinking_msg)
+    assert isinstance(sm_thinking.segments[0], StoredSegment)
     assert sm_thinking.segments[0].content_type == "thinking"
 
 
@@ -690,6 +700,76 @@ def test_bookmark_omits_side_effect_only_slash_command():
     ]
 
 
+def test_user_input_reads_latest_stored():
+    from shiny import reactive
+    from shinychat._chat import UserInput
+
+    session = cast(Session, _MockSession())
+
+    with session_context(session):
+        chat = Chat(id="chat")
+
+        with reactive.isolate():
+            assert chat.user_input() is None
+
+            from shinychat._attachments import Attachment
+            from shinychat._chat_types import ChatMessage, StoredMessage
+
+            attachments = [
+                Attachment(
+                    mime="image/png",
+                    data_url="data:image/png;base64,AAA",
+                    name="a.png",
+                )
+            ]
+            stored = StoredMessage.from_chat_message(
+                ChatMessage(content="hi", role="user", attachments=attachments)
+            )
+            chat._latest_user_input.set(stored)
+            result = chat.user_input()
+            assert result == UserInput(text="hi", attachments=attachments)
+            assert result is not None
+            text, atts = result
+            assert text == "hi"
+            assert atts == attachments
+
+
+def test_chat_ui_allow_attachments_attribute():
+    from shinychat import chat_ui
+
+    def attachment_attr(ui_tag: object) -> object:
+        return ui_tag.attrs.get("allow-attachments")  # type: ignore[attr-defined]
+
+    assert attachment_attr(chat_ui("c", allow_attachments=MISSING)) is None
+    assert attachment_attr(chat_ui("c", allow_attachments=True)) == "true"
+    assert attachment_attr(chat_ui("c", allow_attachments=False)) == "false"
+
+
+def test_chat_ui_accept_list_and_max_attachment_size(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from shinychat import chat_ui
+
+    monkeypatch.setenv("SHINYCHAT_MAX_ATTACHMENT_SIZE", "5000000")
+    tag = chat_ui("c", allow_attachments=["application/pdf"])
+    assert tag.attrs.get("allow-attachments") == "true"
+    assert tag.attrs.get("attachment-accept") == "application/pdf"
+    assert tag.attrs.get("max-attachment-size") == "5000000"
+
+    with pytest.raises(ValueError):
+        chat_ui("c", allow_attachments=["application/msword"])
+
+
+def test_user_submit_function_union_includes_two_arg_form():
+    from typing import get_args
+
+    from shinychat._chat import UserSubmitFunction, UserSubmitFunction2
+
+    two_arg_forms = get_args(UserSubmitFunction2)
+    top_level_forms = get_args(UserSubmitFunction)
+    assert all(form in top_level_forms for form in two_arg_forms)
+
+
 class MyObject:
     content = "Hello world!"
 
@@ -728,7 +808,9 @@ def test_stream_thinking_creates_thinking_segment():
         async def _noop_send(*a: object, **k: object) -> None:
             return None
 
-        def _capture_store(message: StoredMessage | ChatMessage, index: int | None = None) -> None:
+        def _capture_store(
+            message: StoredMessage | ChatMessage, index: int | None = None
+        ) -> None:
             del index
             captured.append(chat._as_stored_message(message))
 
@@ -738,18 +820,28 @@ def test_stream_thinking_creates_thinking_segment():
         async def _exercise() -> None:
             await chat._append_message_chunk("", chunk="start", stream_id="s1")
             await chat._append_message_chunk(
-                ChatMessage(content="reasoning", role="assistant", content_type="thinking"),
+                ChatMessage(
+                    content="reasoning",
+                    role="assistant",
+                    content_type="thinking",
+                ),
                 chunk=True,
                 stream_id="s1",
             )
-            await chat._append_message_chunk("answer", chunk=True, stream_id="s1")
+            await chat._append_message_chunk(
+                "answer", chunk=True, stream_id="s1"
+            )
             await chat._append_message_chunk("", chunk="end", stream_id="s1")
 
         run_async(_exercise)
         segs = captured[0].segments
-        assert [s.content_type for s in segs] == ["thinking", "markdown"]
-        assert segs[0].content == "reasoning"
-        assert segs[1].content == "answer"
+        assert all(isinstance(s, StoredSegment) for s in segs)
+        assert [cast(StoredSegment, s).content_type for s in segs] == [
+            "thinking",
+            "markdown",
+        ]
+        assert cast(StoredSegment, segs[0]).content == "reasoning"
+        assert cast(StoredSegment, segs[1]).content == "answer"
 
 
 def test_thinking_stream_stores_segment_not_tags():
@@ -764,7 +856,11 @@ def test_thinking_stream_stores_segment_not_tags():
         chat._send_action = _noop_send  # type: ignore[method-assign]
 
         async def gen():
-            yield ChatMessage(content="thinking hard", role="assistant", content_type="thinking")
+            yield ChatMessage(
+                content="thinking hard",
+                role="assistant",
+                content_type="thinking",
+            )
             yield "the answer"
 
         async def _exercise() -> None:
@@ -774,10 +870,12 @@ def test_thinking_stream_stores_segment_not_tags():
         with reactive.isolate():
             messages = chat._messages()
         segs = messages[0].segments
-        assert [s.content_type for s in segs] == ["thinking", "markdown"]
-        # Storage keeps raw segment content (no inline tags); only the string
-        # `.content` view re-wraps thinking in <thinking> tags.
-        assert "<thinking>" not in segs[0].content
+        assert all(isinstance(s, StoredSegment) for s in segs)
+        assert [cast(StoredSegment, s).content_type for s in segs] == [
+            "thinking",
+            "markdown",
+        ]
+        assert "<thinking>" not in cast(StoredSegment, segs[0]).content
 
 
 def test_send_message_payload_has_segments_with_thinking():
@@ -835,6 +933,45 @@ def test_bookmark_roundtrip_thinking_segment():
         run_async(_exercise)
         assert sent[0]["type"] == "message"
         assert sent[0]["message"]["segments"][0]["content_type"] == "thinking"
+
+
+def test_send_append_message_serializes_attachments():
+    """Attachments in the outgoing payload must be plain dicts, not Attachment objects.
+
+    json.dumps (used by Shiny's send_custom_message) cannot serialize Pydantic
+    models, so _send_append_message must call model_dump() before building the
+    wire payload.
+    """
+    import json
+
+    from shinychat._attachments import Attachment
+
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        att = Attachment.from_data(b"hello", mime="text/plain", name="hello.txt")
+        stored = StoredMessage(
+            role="assistant",
+            segments=[StoredSegment(content="here you go", content_type="markdown")],
+            attachments=[att],
+        )
+
+        run_async(lambda: chat._send_append_message(stored))
+
+        payload = sent[0]["message"]
+        # Must not raise — the payload must be JSON-serializable.
+        json.dumps(payload)
+
+        # Attachments must arrive as plain dicts with the expected keys.
+        assert payload["attachments"] == [
+            {"mime": "text/plain", "name": "hello.txt", "size": 5, "data_url": att.data_url}
+        ]
 
 
 def test_stored_message_content_wraps_thinking_in_tags():
@@ -899,7 +1036,11 @@ def test_streaming_thinking_chunk_wire_content_not_empty():
         async def _exercise() -> None:
             await chat._append_message_chunk("", chunk="start", stream_id="s1")
             await chat._append_message_chunk(
-                ChatMessage(content="reasoning", role="assistant", content_type="thinking"),
+                ChatMessage(
+                    content="reasoning",
+                    role="assistant",
+                    content_type="thinking",
+                ),
                 chunk=True,
                 stream_id="s1",
             )
@@ -908,7 +1049,8 @@ def test_streaming_thinking_chunk_wire_content_not_empty():
         run_async(_exercise)
 
         thinking_chunks = [
-            a for a in sent
+            a
+            for a in sent
             if a.get("type") == "chunk" and a.get("content_type") == "thinking"
         ]
         assert thinking_chunks, "no thinking chunk action was sent"
@@ -937,12 +1079,18 @@ def test_streaming_chunk_content_type_follows_segment():
         async def _exercise() -> None:
             await chat._append_message_chunk("", chunk="start", stream_id="s1")
             await chat._append_message_chunk(
-                ChatMessage(content="reasoning", role="assistant", content_type="thinking"),
+                ChatMessage(
+                    content="reasoning",
+                    role="assistant",
+                    content_type="thinking",
+                ),
                 chunk=True,
                 stream_id="s1",
             )
             await chat._append_message_chunk(
-                ChatMessage(content="answer", role="assistant", content_type="markdown"),
+                ChatMessage(
+                    content="answer", role="assistant", content_type="markdown"
+                ),
                 chunk=True,
                 stream_id="s1",
             )
@@ -958,3 +1106,147 @@ def test_streaming_chunk_content_type_follows_segment():
         assert ("reasoning", "thinking") in chunk_types
         assert ("answer", "markdown") in chunk_types
 
+
+def test_stored_message_attachments_stored_separately():
+    from shinychat._attachments import Attachment
+    from shinychat._chat_types import StoredMessage, StoredSegment
+
+    msg = StoredMessage(
+        role="user",
+        segments=[StoredSegment(content="see this", content_type="markdown")],
+        attachments=[
+            Attachment(
+                data_url="data:image/png;base64,AAAA",
+                name="chart.png",
+                mime="image/png",
+                size=3,
+            )
+        ],
+    )
+    assert msg.content == "see this"
+    assert len(msg.attachments) == 1
+    assert msg.attachments[0].name == "chart.png"
+
+
+def test_chat_message_attachments_become_stored_attachments():
+    from shinychat._attachments import Attachment
+    from shinychat._chat_types import ChatMessage, StoredMessage
+
+    sm = StoredMessage.from_chat_message(
+        ChatMessage(
+            content="here",
+            role="assistant",
+            attachments=[Attachment.from_data(b"x", mime="image/png", name="c.png")],
+        )
+    )
+    assert len(sm.segments) == 1
+    assert len(sm.attachments) == 1
+    assert sm.attachments[0].name == "c.png"
+
+
+def test_user_message_with_attachments_stores_correctly():
+    from shinychat._attachments import Attachment
+    from shinychat._chat_types import ChatMessage, StoredMessage
+
+    sm = StoredMessage.from_chat_message(
+        ChatMessage(
+            content="look",
+            role="user",
+            attachments=[Attachment.from_data(b"x", mime="image/png", name="c.png")],
+        )
+    )
+    assert len(sm.segments) == 1
+    assert len(sm.attachments) == 1
+    assert sm.content == "look"
+
+
+def test_bookmark_roundtrip_preserves_attachments():
+    from shinychat._attachments import Attachment
+    from shinychat._chat_types import StoredMessage, StoredSegment
+
+    stored = StoredMessage(
+        role="user",
+        segments=[StoredSegment(content="look", content_type="markdown")],
+        attachments=[
+            Attachment(
+                data_url="data:image/png;base64,AAAA",
+                name="c.png",
+                mime="image/png",
+                size=3,
+            )
+        ],
+    )
+    dumped = stored.model_dump(exclude_none=True)
+    restored = StoredMessage.model_validate(dumped)
+    assert len(restored.attachments) == 1
+    assert restored.attachments[0].name == "c.png"
+    assert restored.content == "look"
+
+
+def test_wire_segments_excludes_attachments():
+    from shinychat._attachments import Attachment
+    from shinychat._chat_types import StoredMessage, StoredSegment
+
+    stored = StoredMessage(
+        role="assistant",
+        segments=[StoredSegment(content="hi", content_type="markdown")],
+        attachments=[
+            Attachment(
+                data_url="data:,x",
+                name="c.png",
+                mime="image/png",
+                size=1,
+            )
+        ],
+    )
+    segs = stored.wire_segments()
+    assert len(segs) == 1
+    assert segs[0] == {"content": "hi", "content_type": "markdown"}
+    assert len(stored.attachments) == 1
+    assert stored.attachments[0].name == "c.png"
+
+
+def test_messages_surfaces_attachments():
+    from shiny import reactive
+    from shinychat._attachments import Attachment
+    from shinychat._chat_types import ChatMessage
+
+    with session_context(test_session):
+        chat = Chat(id="chat")
+
+        async def _noop_send(*a: object, **k: object) -> None:
+            return None
+
+        chat._send_action = _noop_send  # type: ignore[method-assign]
+
+        async def _exercise() -> None:
+            await chat.append_message(
+                ChatMessage(
+                    "see attached",
+                    role="assistant",
+                    attachments=[
+                        Attachment.from_data(
+                            b"\x89PNG\r\n", mime="image/png", name="a.png"
+                        ),
+                    ],
+                )
+            )
+            await chat.append_message("plain text")
+
+        run_async(_exercise)
+
+        with reactive.isolate():
+            msgs = chat.messages()
+
+        # First message: assistant with attachment. No `format=` was passed, so
+        # messages() returns ChatMessageDict entries.
+        att_msg = cast(ChatMessageDict, msgs[0])
+        assert "attachments" in att_msg
+        atts = att_msg["attachments"]
+        assert len(atts) == 1
+        assert atts[0].mime == "image/png"
+        assert atts[0].name == "a.png"
+        assert atts[0].data_url.startswith("data:image/png;base64,")
+
+        # Second message: plain text — no attachments key
+        assert "attachments" not in msgs[1]

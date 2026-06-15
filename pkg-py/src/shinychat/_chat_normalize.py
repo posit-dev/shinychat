@@ -51,6 +51,7 @@ def message_content(message):
         return ChatMessage(
             content=message["content"],
             role=message.get("role", "assistant"),
+            attachments=message.get("attachments"),
         )
     raise ValueError(
         f"Don't know how to extract content for message type {type(message)}: {message}. "
@@ -99,6 +100,7 @@ def message_content_chunk(chunk):
         return ChatMessage(
             content=chunk["content"],
             role=chunk.get("role", "assistant"),
+            attachments=chunk.get("attachments"),
         )
     raise ValueError(
         f"Don't know how to extract content for message chunk type {type(chunk)}: {chunk}. "

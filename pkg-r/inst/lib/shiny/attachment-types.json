@@ -1,0 +1,37 @@
+{
+  "image_types": [
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp"
+  ],
+  "pdf_type": "application/pdf",
+  "text_extensions": {
+    "md": "text/markdown",
+    "markdown": "text/markdown",
+    "txt": "text/plain",
+    "csv": "text/csv",
+    "json": "application/json",
+    "py": "text/x-python",
+    "js": "text/javascript",
+    "ts": "text/typescript",
+    "r": "text/x-r",
+    "yaml": "text/yaml",
+    "yml": "text/yaml",
+    "toml": "text/x-toml",
+    "qmd": "text/markdown",
+    "rmd": "text/markdown",
+    "ipynb": "application/x-ipynb+json",
+    "rst": "text/x-rst",
+    "tex": "text/x-tex",
+    "sql": "text/x-sql",
+    "sh": "text/x-sh",
+    "html": "text/html",
+    "htm": "text/html",
+    "css": "text/css",
+    "xml": "application/xml",
+    "ini": "text/x-ini",
+    "cfg": "text/x-ini",
+    "log": "text/plain"
+  }
+}

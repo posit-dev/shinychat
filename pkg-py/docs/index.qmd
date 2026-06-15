@@ -31,7 +31,7 @@ uv pip install git+https://github.com/posit-dev/shinychat.git
 
 ## Quick start
 
-The fastest way to build a chatbot with shinychat is to pass a [chatlas](https://posit-dev.github.io/chatlas/) client to `Chat(client=)`. This gives you streaming, cancellation, bookmarking, and more out of the box — no manual wiring required.
+The fastest way to build a chatbot with shinychat is to pass a [chatlas](https://posit-dev.github.io/chatlas/) client to `Chat(client=)`. This gives you streaming, file attachments, bookmarking, cancellation, and more out of the box — no manual wiring required.
 
 **Shiny Express**
 
@@ -150,7 +150,7 @@ The event is cancelable and bubbles. Use `e.detail.id` to target a specific chat
 
 ## Lower-level interface
 
-When you need full control over the server-side logic — or you're using an LLM framework other than chatlas — omit the `client=` argument and wire things up manually. This means handling streaming, cancellation, and bookmarking yourself, but gives you complete flexibility over how messages are generated and displayed.
+When you need full control over the server-side logic — or you're using an LLM framework other than chatlas — omit the `client=` argument and wire things up manually. This means handling streaming, file attachments, bookmarking, and cancellation yourself, but gives you complete flexibility over how messages are generated and displayed.
 
 **Shiny Express**
 
@@ -213,6 +213,68 @@ Key points:
 - Pass the controller to `stream_async(controller=ctrl)` so chatlas can honour the cancellation signal.
 - The cancel input fires as `input.<id>_cancel` (e.g. `input.chat_cancel`). Observe it with `@reactive.event` to call `ctrl.cancel()`. This is needed in both Express and Core apps.
 - Partial responses are automatically preserved in chat history by chatlas when a stream is cancelled.
+
+## File attachments
+
+shinychat supports file attachments, allowing users to upload images, PDFs, and text files alongside their messages. When attachments are enabled, the chat input shows a file picker button and also accepts drag-and-drop or clipboard paste.
+
+### Using `client=` (recommended)
+
+When you pass a chatlas client to `Chat(client=)`, file attachments are enabled automatically. The attachment button appears in the chat input, and uploaded files are converted to the appropriate chatlas content types and sent to the model — no extra code needed.
+
+### Manual approach
+
+If you're wiring things up manually, enable attachments in the UI and accept them in your submit handler.
+
+**Shiny Express**
+
+```{.python file="app.py"}
+from chatlas import ChatAnthropic
+from shinychat.express import Chat
+from shinychat import Attachment, attachment_to_content
+
+chat = Chat(id="chat")
+chat.ui(allow_attachments=True)
+
+client = ChatAnthropic(system_prompt="You are a helpful assistant.")
+
+@chat.on_user_submit
+async def handle_user_input(user_input: str, attachments: list[Attachment]):
+    contents = [attachment_to_content(a) for a in attachments]
+    response = await client.stream_async(user_input, *contents)
+    await chat.append_message_stream(response)
+```
+
+**Shiny Core**
+
+```{.python file="app.py"}
+from shiny import App, ui
+from chatlas import ChatAnthropic
+from shinychat import Chat, chat_ui, Attachment, attachment_to_content
+
+app_ui = ui.page_fillable(
+    chat_ui("chat", allow_attachments=True),
+)
+
+def server(input, output, session):
+    client = ChatAnthropic(system_prompt="You are a helpful assistant.")
+    chat = Chat("chat")
+
+    @chat.on_user_submit
+    async def handle_user_input(user_input: str, attachments: list[Attachment]):
+        contents = [attachment_to_content(a) for a in attachments]
+        response = await client.stream_async(user_input, *contents)
+        await chat.append_message_stream(response)
+
+app = App(app_ui, server)
+```
+
+Key points:
+
+- Pass `allow_attachments=True` to `chat_ui()` to show the file picker button. You can also pass a list of MIME types (e.g. `["image/png", "image/jpeg"]`) to restrict accepted file types.
+- Declare two parameters on your `@chat.on_user_submit` handler to receive both the text and attachments. With one parameter, you only receive the text.
+- Use `attachment_to_content()` to convert each `Attachment` into a chatlas content object (image, PDF, or text).
+- The maximum combined attachment size defaults to approximately 30 MB and can be configured via the `SHINYCHAT_MAX_ATTACHMENT_SIZE` environment variable.
 
 ## Learn more
 

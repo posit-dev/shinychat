@@ -283,6 +283,47 @@ describe("ShinyTransport", () => {
     })
   })
 
+  describe("sendInput", () => {
+    it("sends a type-tagged composite to the user-input id", () => {
+      const setInputValue = vi.fn()
+      ;(window as unknown as Record<string, unknown>).Shiny = {
+        setInputValue,
+        addCustomMessageHandler: vi.fn(),
+      }
+      const transport = new ShinyTransport()
+
+      transport.sendInput("chat_user_input", {
+        text: "hello",
+        attachments: [
+          {
+            mime: "image/png",
+            data_url: "data:image/png;base64,AAA",
+            name: "a.png",
+            size: 0,
+          },
+        ],
+      })
+
+      // The composite passes through unchanged — size included, since the
+      // server-side Attachment model carries it too.
+      expect(setInputValue).toHaveBeenCalledWith(
+        "chat_user_input:shinychat.userInput",
+        {
+          text: "hello",
+          attachments: [
+            {
+              mime: "image/png",
+              data_url: "data:image/png;base64,AAA",
+              name: "a.png",
+              size: 0,
+            },
+          ],
+        },
+        { priority: "event" },
+      )
+    })
+  })
+
   describe("custom message handler contracts", () => {
     it("renders html dependencies before delivering a message action", async () => {
       const transport = new ShinyTransport()

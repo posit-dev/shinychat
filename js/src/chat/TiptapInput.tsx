@@ -31,6 +31,11 @@ export interface TiptapInputProps {
   onSubmit: (content: string) => boolean
   userMessages: string[]
   submitKey: SubmitKey
+  /**
+   * When provided and returning true, Enter submits even though the editor is
+   * empty (e.g. the wrapping ChatInput has staged attachments to send).
+   */
+  canSubmitEmpty?: () => boolean
 }
 
 export function serializeEditor(editor: Editor): string {
@@ -99,6 +104,7 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
       onSubmit,
       userMessages,
       submitKey,
+      canSubmitEmpty,
     },
     ref,
   ) {
@@ -111,6 +117,8 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
     onSubmitRef.current = onSubmit
     const onHasTextChangeRef = useRef(onHasTextChange)
     onHasTextChangeRef.current = onHasTextChange
+    const canSubmitEmptyRef = useRef(canSubmitEmpty)
+    canSubmitEmptyRef.current = canSubmitEmpty
     const resetRef = useRef(reset)
     resetRef.current = reset
     const editorInstanceRef = useRef<Editor | null>(null)
@@ -130,9 +138,9 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
                 this.editor.view.state,
               )
               if (suggestionState?.active) return false
-              if (this.editor.isEmpty) return false
               const content = serializeEditor(this.editor)
-              if (content.trim().length === 0) return false
+              const isBlank = this.editor.isEmpty || content.trim().length === 0
+              if (isBlank && !canSubmitEmptyRef.current?.()) return false
               if (onSubmitRef.current(content)) {
                 this.editor.commands.clearContent(true)
                 onHasTextChangeRef.current(false)

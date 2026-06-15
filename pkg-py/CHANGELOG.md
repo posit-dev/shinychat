@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [UNRELEASED]
+
+* File attachment support: users can upload images, PDFs, and text files alongside chat messages via a file picker button, drag-and-drop, or clipboard paste. Enable with `chat_ui(allow_attachments=True)` or pass a list of MIME types to restrict accepted file types. When using `client=`, attachments are enabled automatically and converted to the appropriate chatlas content types. For manual wiring, declare a second `list[Attachment]` parameter on your `@chat.on_user_submit` handler and use `attachment_to_content()` to convert each attachment. The maximum combined attachment size defaults to approximately 30 MB and can be configured via the `SHINYCHAT_MAX_ATTACHMENT_SIZE` environment variable.
+
 ## [0.5.1] - 2026-06-15
 
 ### Bug fixes
@@ -29,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * All navigating links in assistant messages now open in a new tab to preserve the app's session state. Cross-origin links still show the confirmation dialog; same-origin links open directly. (#238)
 
 ### Breaking changes
+
+* `Chat.user_input()` now returns a `UserInput` named tuple (`text`, `attachments`) instead of just the submitted text string. Existing code that treats `chat.user_input()` as a string should be updated to read `result.text` (or destructure `text, attachments`) after the `None` check.
 
 * Removed the deprecated `format` and `token_limits` parameters from `.messages()`, the `tokenizer` parameter from `Chat()`, and the `.transform_user_input()` decorator. These features overreached into LLM provider responsibilities; use your provider (e.g., chatlas, LangChain) to manage conversation formatting, token limits, and input transformation instead. Calling any of these now raises a `TypeError` with migration guidance. (#245)
 

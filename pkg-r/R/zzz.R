@@ -1,6 +1,11 @@
 .onLoad <- function(libname, pkgname) {
   rlang::run_on_load()
   S7::methods_register()
+  shiny::registerInputHandler(
+    "shinychat.userInput",
+    function(value, session, name) user_input_contents(value),
+    force = TRUE
+  )
 }
 
 as_generator <- function(x) {

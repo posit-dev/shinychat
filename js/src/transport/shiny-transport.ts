@@ -4,6 +4,7 @@ import {
   type ShinyLifecycle,
   type ChatAction,
   type ShinyClientMessage,
+  type UserInputValue,
 } from "./types"
 import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 
@@ -65,9 +66,11 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
     )
   }
 
-  sendInput(id: string, value: string): void {
+  sendInput(id: string, value: string | UserInputValue): void {
     if (!window.Shiny?.setInputValue) return
-    window.Shiny.setInputValue(id, value, { priority: "event" })
+    window.Shiny.setInputValue(`${id}:shinychat.userInput`, value, {
+      priority: "event",
+    })
   }
 
   sendCancel(id: string): void {

@@ -39,6 +39,14 @@ describe("Issue #3: suggestion handlers work after re-renders", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
       />,
     )
 
@@ -79,6 +87,14 @@ describe("Issue #3: suggestion handlers work after re-renders", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
         placeholder="Type here..."
       />,
     )
@@ -133,6 +149,14 @@ describe("Issue #4: single transport subscription", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
       />,
     )
 
@@ -150,6 +174,14 @@ describe("Issue #4: single transport subscription", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
         placeholder="Type..."
       />,
     )
@@ -176,6 +208,14 @@ describe("Issue #4: single transport subscription", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
         placeholder="Type..."
       />,
     )
@@ -200,7 +240,8 @@ describe("Issue #4: single transport subscription", () => {
       })
     })
 
-    // transport.sendInput should have been called via the container ref
+    // transport.sendInput should have been called via the container ref.
+    // Upload is not enabled here, so the wire shape is a bare string.
     expect(transport.sendInput).toHaveBeenCalledWith(
       "test-input",
       "submitted text",
@@ -222,6 +263,14 @@ describe("Issue #4: single transport subscription", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
         placeholder="Type..."
       />,
     )
@@ -249,6 +298,14 @@ describe("Issue #4: single transport subscription", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
       />,
     )
 
@@ -278,6 +335,14 @@ describe("External link dialog", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
       />,
     )
 
@@ -415,6 +480,14 @@ describe("External link dialog", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
       />,
     )
 
@@ -494,6 +567,14 @@ describe("server-controlled cancel", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
         cancelId="test-chat_cancel"
       />,
     )
@@ -513,6 +594,14 @@ describe("server-controlled cancel", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
         cancelId="test-chat_cancel"
       />,
     )

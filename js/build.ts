@@ -163,6 +163,11 @@ const entries: EntryConfig[] = [
 
   await Promise.all(entries.map(bundleEntry))
 
+  await fs.copyFile(
+    "src/chat/attachment-types.json",
+    `${outDir}/attachment-types.json`,
+  )
+
   if (metafile && allEsbuildMetadata.length > 0) {
     const mergedMetadata = mergeMetadatas(allEsbuildMetadata)
     await fs.writeFile("esbuild-metadata.json", JSON.stringify(mergedMetadata))

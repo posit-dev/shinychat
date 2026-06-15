@@ -22,6 +22,14 @@ describe("ChatInputState / ChatToolState isolation", () => {
         shinyLifecycle={shiny}
         elementId="test"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
         placeholder="Type..."
       />,
     )
@@ -75,6 +83,14 @@ describe("ChatInputState / ChatToolState isolation", () => {
         shinyLifecycle={shiny}
         elementId="test"
         inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
         placeholder="Type..."
       />,
     )

@@ -13,6 +13,7 @@ from typing import (
     Callable,
     Iterable,
     Literal,
+    NamedTuple,
     Optional,
     Sequence,
     Tuple,
@@ -34,6 +35,12 @@ from htmltools import (
 from pydantic import ValidationError
 
 from . import _utils
+from ._attachments import (
+    Attachment,
+    attachment_to_content,
+    resolve_attachment_attrs,
+    resolve_max_attachment_size,
+)
 from ._chat_bookmark import (
     BookmarkCancelCallback,
     CancelCallback,
@@ -79,6 +86,7 @@ if TYPE_CHECKING:
     from shiny.ui.css import CssUnit
 
     from ._chat_client import ChatClient
+    from ._input_handler import UserInputValue
 
 
 else:
@@ -92,6 +100,7 @@ __all__ = (
     "chat_greeting",
     "chat_ui",
     "ChatMessageDict",
+    "UserInput",
 )
 
 
@@ -123,9 +132,14 @@ UserSubmitFunction1 = Union[
     Callable[[str], None],
     Callable[[str], Awaitable[None]],
 ]
+UserSubmitFunction2 = Union[
+    Callable[[str, list["Attachment"]], None],
+    Callable[[str, list["Attachment"]], Awaitable[None]],
+]
 UserSubmitFunction = Union[
     UserSubmitFunction0,
     UserSubmitFunction1,
+    UserSubmitFunction2,
 ]
 
 
@@ -134,6 +148,11 @@ class SlashCommandRegistration:
     handler: UserSubmitFunction | None
     takes_args: bool
     definition: SlashCommandDef
+
+
+class UserInput(NamedTuple):
+    text: str
+    attachments: list[Attachment]
 
 
 ChunkOption = Literal["start", "end", True, False]
@@ -374,8 +393,16 @@ class Chat:
             @reactive.effect(priority=9999)
             @reactive.event(self._user_input)
             async def _on_user_input():
-                msg = ChatMessage(content=self._user_input(), role="user")
-                self._store_message(msg)
+                try:
+                    text, attachments = self._user_input()
+                    msg = ChatMessage(
+                        content=text,
+                        role="user",
+                        attachments=attachments,
+                    )
+                    self._store_message(msg)
+                except Exception as e:
+                    await self._raise_exception(e)
 
             @reactive.effect
             async def _sync_slash_commands():
@@ -463,9 +490,11 @@ class Chat:
         with session_context(self._session):
 
             @self.on_user_submit
-            async def _on_user_submit(user_input: str) -> None:
+            async def _on_user_submit(user_input: str, attachments: list[Attachment]) -> None:
+                contents = [attachment_to_content(a) for a in attachments]
                 response = await chat_client.value.stream_async(
                     user_input,
+                    *contents,
                     content="all",
                     controller=controller,
                 )
@@ -479,6 +508,15 @@ class Chat:
             async def _enable_cancel_ui() -> None:
                 await self._send_action(
                     {"type": "update_cancel", "enable_cancel": True}
+                )
+
+            # A `client=` (chatlas) accepts image content, so enable the
+            # attachment affordance without requiring `allow_attachments=True`
+            # in `chat_ui()`.
+            @reactive.effect
+            async def _enable_upload_ui() -> None:
+                await self._send_action(
+                    {"type": "update_upload", "enable_upload": True}
                 )
 
             @reactive.effect
@@ -500,6 +538,7 @@ class Chat:
                 chat_client._swap_client(new_client, sync=sync)
 
             self._effects.append(_enable_cancel_ui)
+            self._effects.append(_enable_upload_ui)
             self._effects.append(_on_cancel)
             self._effects.append(_on_stream_complete)
 
@@ -521,8 +560,11 @@ class Chat:
         Define a function to invoke when user input is submitted.
 
         Apply this method as a decorator to a function (`fn`) that should be invoked
-        when the user submits a message. This function can take an optional argument,
-        which will be the user input message.
+        when the user submits a message. This function can take up to two optional
+        arguments: the user input message (a `str`) and any attached files (a
+        `list[Attachment]`, where each item exposes ``mime`` (MIME type),
+        ``data_url`` (a ``data:<mime>;base64,...`` URL), and ``name``
+        (the original filename) attributes).
 
         In many cases, the implementation of `fn` should also do the following:
 
@@ -554,14 +596,21 @@ class Chat:
             @reactive.event(self._user_input)
             async def handle_user_input():
                 try:
-                    if len(fn_params) > 1:
+                    if len(fn_params) > 2:
                         raise ValueError(
-                            "A on_user_submit function should not take more than 1 argument"
+                            "An on_user_submit function should not take more than 2 arguments"
                         )
+                    elif len(fn_params) == 2:
+                        afunc = _utils.wrap_async(cast(UserSubmitFunction2, fn))
+                        user_input = self.user_input()
+                        assert user_input is not None
+                        await afunc(*user_input)
                     elif len(fn_params) == 1:
-                        input = self.user_input() or ""
+                        user_input = self.user_input()
+                        assert user_input is not None
+                        text, _ = user_input
                         afunc = _utils.wrap_async(cast(UserSubmitFunction1, fn))
-                        await afunc(input)
+                        await afunc(text)
                     else:
                         afunc = _utils.wrap_async(cast(UserSubmitFunction0, fn))
                         await afunc()
@@ -753,7 +802,10 @@ class Chat:
         Returns
         -------
         tuple[ChatMessageDict, ...]
-            A tuple of chat messages.
+            A tuple of chat messages. The ``attachments`` field, when present,
+            contains :class:`~shinychat.Attachment` objects. These are Pydantic
+            models, so call ``.model_dump()`` on each one before passing them to
+            ``json.dumps()`` or any other JSON serializer.
         """
         if not isinstance(format, DEPRECATED_TYPE):
             raise TypeError(
@@ -776,6 +828,8 @@ class Chat:
             chat_msg = ChatMessageDict(content=str(m.content), role=m.role)
             if m.html_deps:
                 chat_msg["html_deps"] = m.html_deps
+            if m.attachments:
+                chat_msg["attachments"] = m.attachments
             res.append(chat_msg)
 
         return tuple(res)
@@ -1037,12 +1091,11 @@ class Chat:
             elif chunk == "end":
                 # When `operation="append"`, msg.content is just a chunk, but we must
                 # store the full message
-                segs = serialize_segments(self._current_stream_segments, self._serialize_html_deps)
+                text_segs = serialize_segments(
+                    self._current_stream_segments, self._serialize_html_deps
+                )
                 self._store_message(
-                    StoredMessage(
-                        role=msg.role,
-                        segments=segs,
-                    ),
+                    StoredMessage(role=msg.role, segments=text_segs),
                 )
 
             # Send the message to the client
@@ -1250,6 +1303,8 @@ class Chat:
             "role": message.role,
             "segments": message.wire_segments(),
         }
+        if message.attachments:
+            msg_payload["attachments"] = [a.model_dump() for a in message.attachments]
         if icon is not None:
             msg_payload["icon"] = str(icon)
 
@@ -1284,7 +1339,13 @@ class Chat:
         with reactive.isolate():
             messages = self._messages()
 
-        return [m.model_dump(exclude_none=True) for m in messages]
+        dumps: list[dict[str, Any]] = []
+        for m in messages:
+            d = m.model_dump(exclude_none=True)
+            if not d.get("attachments"):
+                d.pop("attachments", None)
+            dumps.append(d)
+        return dumps
 
     async def _restore_bookmark_message(self, message_dict: Any) -> None:
         try:
@@ -1393,7 +1454,11 @@ class Chat:
             return None
 
         return StoredMessage.from_chat_message(
-            ChatMessage(content=content, role=res.role),
+            ChatMessage(
+                content=content,
+                role=res.role,
+                attachments=message.attachments,
+            ),
             html_deps=res.html_deps,
         )
 
@@ -1438,14 +1503,22 @@ class Chat:
         if message.role == "user":
             self._latest_user_input.set(message)
 
-    def user_input(self) -> str | None:
+    def user_input(self) -> "UserInput | None":
         """
-        Reactively read the user's message.
+        Reactively read the user's latest submission.
 
         Returns
         -------
-        str | None
-            The user input message.
+        UserInput | None
+            ``None`` before the first user submission; otherwise a named tuple
+            of the submitted text and any attached files. The ``attachments``
+            list is empty unless ``allow_attachments`` was enabled in
+            :func:`~shinychat.chat_ui`. Supports destructuring after a
+            ``None`` check::
+
+                result = chat.user_input()
+                if result is not None:
+                    text, attachments = result
 
         Note
         ----
@@ -1459,11 +1532,12 @@ class Chat:
         msg = self._latest_user_input()
         if msg is None:
             return None
-        return str(msg.content)
+        return UserInput(text=str(msg.content), attachments=msg.attachments)
 
-    def _user_input(self) -> str:
-        id = self.user_input_id
-        return cast(str, self._session.input[id]())
+    def _user_input(self) -> "tuple[str, list[Attachment]]":
+        val = cast("UserInputValue", self._session.input[self.user_input_id]())
+        return val["text"], val["attachments"]
+
 
     def _slash_command_input(self) -> dict[str, Any]:
         return self._session.input[self._slash_command_id]()
@@ -1475,6 +1549,8 @@ class Chat:
         placeholder: str | None = None,
         submit: bool = False,
         focus: bool = False,
+        attachments: "list[Attachment] | None" = None,
+        attachment_mode: "Literal['append', 'set']" = "append",
     ):
         """
         Update the user input.
@@ -1486,14 +1562,28 @@ class Chat:
         placeholder
             The placeholder text for the user input.
         submit
-            Whether to automatically submit the text for the user. Requires `value`.
+            Whether to automatically submit the text for the user. Requires ``value``.
         focus
-            Whether to move focus to the input element. Requires `value`.
+            Whether to move focus to the input element. Requires ``value`` or
+            ``attachments``.
+        attachments
+            Attachments to stage in the input. Pass an empty list to clear any
+            currently staged attachments. When ``submit=True`` the attachments are
+            sent alongside ``value`` and then cleared from the input.
+        attachment_mode
+            How to combine ``attachments`` with any already-staged attachments.
+            ``"append"`` (default) adds to the existing set; ``"set"`` replaces it.
+            Pass ``attachment_mode="set"`` with ``attachments=[]`` to clear all staged
+            attachments.
         """
 
-        if value is None and (submit or focus):
+        if submit and value is None:
             raise ValueError(
-                "An input `value` must be provided when `submit` or `focus` are `True`."
+                "An input `value` must be provided when `submit=True`."
+            )
+        if focus and value is None and not attachments:
+            raise ValueError(
+                "An input `value` or `attachments` must be provided when `focus=True`."
             )
 
         action: ChatAction = {"type": "update_input"}
@@ -1505,6 +1595,13 @@ class Chat:
             action["submit"] = submit
         if focus:
             action["focus"] = focus
+        if attachments is not None:
+            action["attachments"] = [
+                {"mime": a.mime, "data_url": a.data_url, "name": a.name, "size": a.size}
+                for a in attachments
+            ]
+            if attachment_mode != "append":
+                action["attachment_mode"] = attachment_mode
 
         msg: dict[str, object] = {"id": self.id, "action": action}
         self._session._send_message_sync({"custom": {"shinyChatMessage": msg}})
@@ -1928,6 +2025,7 @@ class ChatExpress(Chat):
         icon_assistant: HTML | Tag | TagList | None = None,
         enable_cancel: "bool | MISSING_TYPE" = MISSING,
         submit_key: 'Literal["enter", "enter+modifier"]' = "enter",
+        allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
         footer: Optional[TagChild] = None,
         **kwargs: TagAttrValue,
     ) -> Tag:
@@ -1972,6 +2070,28 @@ class ChatExpress(Chat):
             - ``"enter"`` (default): Enter submits, Shift+Enter adds a newline.
             - ``"enter+modifier"``: Ctrl+Enter (Cmd+Enter on Mac) submits,
               plain Enter adds a newline.
+        allow_attachments
+            Controls the file-attachment affordance (an attach button, plus clipboard
+            paste and drag-and-drop) in the chat input. Pass ``True`` to accept all
+            supported types (PNG, JPEG, GIF, WebP, PDF, and common text/code files
+            such as Markdown, plain text, CSV, JSON, and source files), ``False`` to
+            disable, or a list of MIME types to restrict what is accepted (each must
+            be one of the supported types). Attachments are delivered to your
+            ``.on_user_submit()`` handler's second argument as a
+            ``list[Attachment]``, where each item exposes ``mime``, ``name``,
+            ``size``, and ``data_url`` attributes (and forwarded to a ``client=``
+            automatically). When left unset (the default), a chat driven by a
+            ``client=`` enables attachments automatically; otherwise it stays
+            hidden.
+
+            The maximum combined size of all attachments in a single message is
+            controlled globally by the ``SHINYCHAT_MAX_ATTACHMENT_SIZE`` environment
+            variable (a raw byte count; defaults to approximately 30 MB). Files that
+            would push the total over this cap are rejected in the browser with a notice.
+
+            When bookmarking is enabled, prefer ``bookmark_store="server"``:
+            attachment data is saved in the bookmark and can exceed URL length
+            limits with ``bookmark_store="url"``.
         footer
             Optional HTML content to display below the chat input.
             This can be any HTML content (tags, tag lists, or strings).
@@ -1997,6 +2117,7 @@ class ChatExpress(Chat):
             icon_assistant=icon_assistant,
             enable_cancel=enable_cancel,
             submit_key=submit_key,
+            allow_attachments=allow_attachments,
             footer=footer,
             **kwargs,
         )
@@ -2068,6 +2189,7 @@ def chat_ui(
     icon_assistant: Optional[HTML | Tag | TagList] = None,
     enable_cancel: "bool | MISSING_TYPE" = MISSING,
     submit_key: 'Literal["enter", "enter+modifier"]' = "enter",
+    allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
     footer: Optional[TagChild] = None,
     **kwargs: TagAttrValue,
 ) -> Tag:
@@ -2137,6 +2259,28 @@ def chat_ui(
         - ``"enter"`` (default): Enter submits, Shift+Enter adds a newline.
         - ``"enter+modifier"``: Ctrl+Enter (Cmd+Enter on Mac) submits,
           plain Enter adds a newline.
+    allow_attachments
+        Controls the file-attachment affordance (an attach button, plus clipboard
+        paste and drag-and-drop) in the chat input. Pass ``True`` to accept all
+        supported types (PNG, JPEG, GIF, WebP, PDF, and common text/code files
+        such as Markdown, plain text, CSV, JSON, and source files), ``False`` to
+        disable, or a list of MIME types to restrict what is accepted (each must
+        be one of the supported types). Attachments are delivered to your
+        ``.on_user_submit()`` handler's second argument as a
+        ``list[Attachment]``, where each item exposes ``mime``, ``name``,
+        ``size``, and ``data_url`` attributes (and forwarded to a ``client=``
+        automatically). When left unset (the default), a chat driven by a
+        ``client=`` enables attachments automatically; otherwise it stays
+        hidden.
+
+        The maximum combined size of all attachments in a single message is
+        controlled globally by the ``SHINYCHAT_MAX_ATTACHMENT_SIZE`` environment
+        variable (a raw byte count; defaults to approximately 30 MB). Files that
+        would push the total over this cap are rejected in the browser with a notice.
+
+        When bookmarking is enabled, prefer ``bookmark_store="server"``:
+        attachment data is saved in the bookmark and can exceed URL length
+        limits with ``bookmark_store="url"``.
     footer
         Optional HTML content to display below the chat input.
         This can be any HTML content (tags, tag lists, or strings).
@@ -2189,6 +2333,14 @@ def chat_ui(
         else ("true" if enable_cancel else "false")
     )
 
+    # allow_attachments resolves to two attributes: the tri-state
+    # `allow-attachments` gate (omitted defers to `client=` via `update_upload`)
+    # and an optional `attachment-accept` CSV restricting accepted MIME types.
+    allow_attachments_attr, attachment_accept_attr = resolve_attachment_attrs(
+        allow_attachments
+    )
+    max_attachment_size_attr = str(resolve_max_attachment_size())
+
     greeting_attr: Optional[str] = None
     greeting_deps: list[HTMLDependency] = []
     if greeting is not None:
@@ -2232,6 +2384,9 @@ def chat_ui(
         fill=fill,
         greeting=greeting_attr,
         enable_cancel=enable_cancel_attr,
+        allow_attachments=allow_attachments_attr,
+        attachment_accept=attachment_accept_attr,
+        max_attachment_size=max_attachment_size_attr,
         # Also include icon on the parent so that when messages are dynamically added,
         # we know the default icon has changed
         icon_assistant=icon_attr,
