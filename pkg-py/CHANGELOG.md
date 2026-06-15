@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+* `Chat.user_input()` now returns a `UserInput` named tuple (`text`, `attachments`) instead of just the submitted text string. Existing code that treats `chat.user_input()` as a string should be updated to read `result.text` (or destructure `text, attachments`) after the `None` check.
+
 * Removed the deprecated `format` and `token_limits` parameters from `.messages()`, the `tokenizer` parameter from `Chat()`, and the `.transform_user_input()` decorator. These features overreached into LLM provider responsibilities; use your provider (e.g., chatlas, LangChain) to manage conversation formatting, token limits, and input transformation instead. Calling any of these now raises a `TypeError` with migration guidance. (#245)
 
 ### Bug fixes
