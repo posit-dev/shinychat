@@ -136,8 +136,9 @@ chat_greeting <- function(
 #' fresh one.
 #'
 #' **`greeting_dismissed` input.** When the user dismisses the greeting,
-#' `input$<id>_greeting_dismissed` fires with a `Date.now()` timestamp, and
-#' resets to `NULL` when the greeting is cleared. If you use [chat_mod_server()],
+#' `input$<id>_greeting_dismissed` fires with a `Date.now()` timestamp. If the
+#' greeting is later cleared after being dismissed, the input resets to `NULL`.
+#' If you use [chat_mod_server()],
 #' you can access the `greeting_dismissed` reactive from the returned module
 #' value instead of the raw namespaced input string.
 #'
@@ -1034,7 +1035,7 @@ chat_set_greeting <- function(
       set_session_greeting_state(
         session,
         id,
-        value = list(content = streamed_content, dismissed = FALSE)
+        value = list(content = streamed_content)
       )
     })
     result <- promises::catch(result, function(reason) {
@@ -1099,7 +1100,7 @@ chat_set_greeting <- function(
   set_session_greeting_state(
     session,
     id,
-    value = list(content = greeting_content, dismissed = FALSE)
+    value = list(content = greeting_content)
   )
   invisible(NULL)
 }
@@ -1233,6 +1234,7 @@ chat_clear <- function(
   action <- list(type = "clear")
   if (isTRUE(greeting)) {
     action$greeting <- TRUE
+    set_session_greeting_state(session, id, value = NULL)
   }
   send_chat_action(id, action = action, session = session)
 }

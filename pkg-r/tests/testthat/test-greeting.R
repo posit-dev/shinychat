@@ -451,6 +451,19 @@ test_that("chat_restore() excludes {id}_greeting_requested from bookmarking", {
   expect_true("chat_greeting_requested" %in% sess$getBookmarkExclude())
 })
 
+test_that("chat_clear() with greeting=TRUE clears session greeting state", {
+  sess <- shiny::MockShinySession$new()
+
+  set_session_greeting_state(sess, "chat", list(content = "Hello"))
+  expect_equal(get_session_greeting_state(sess, "chat")$content, "Hello")
+
+  shiny::withReactiveDomain(sess, {
+    chat_clear("chat", greeting = TRUE, session = sess)
+  })
+
+  expect_null(get_session_greeting_state(sess, "chat"))
+})
+
 test_that("chat_restore() excludes {id}_greeting_dismissed from bookmarking", {
   sess <- mock_session_with_bookmark_spy()
   suppress_restore_warnings(

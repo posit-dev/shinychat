@@ -1636,6 +1636,7 @@ class Chat:
         self._messages.set(())
         action: ClearAction = {"type": "clear"}
         if greeting:
+            self._greeting_content = None
             action["greeting"] = True
         await self._send_action(action)
 
@@ -1679,7 +1680,8 @@ class Chat:
         on demand. This input fires on first load and again after
         :meth:`~shinychat.Chat.clear_messages` is called with ``greeting=True``.
         When the user dismisses the greeting, ``{id}_greeting_dismissed`` fires with
-        a ``Date.now()`` timestamp and resets to ``None`` when the greeting is cleared.
+        a ``Date.now()`` timestamp. If the greeting is later cleared after being dismissed,
+        the input resets to ``None``.
 
         Examples
         --------

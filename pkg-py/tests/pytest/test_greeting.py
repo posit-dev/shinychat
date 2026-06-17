@@ -313,6 +313,17 @@ def test_greeting_content_cleared_after_set_greeting_none():
     assert chat._greeting_content is None
 
 
+def test_greeting_content_cleared_after_clear_messages_with_greeting():
+    chat, _ = _make_spy_chat()
+
+    async def _run():
+        await chat.set_greeting("Hello world")
+        await chat.clear_messages(greeting=True)
+
+    _run_async(_run)
+    assert chat._greeting_content is None
+
+
 # ---------------------------------------------------------------------------
 # enable_bookmarking() excludes greeting inputs
 # ---------------------------------------------------------------------------
