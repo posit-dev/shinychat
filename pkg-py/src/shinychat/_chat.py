@@ -1640,6 +1640,18 @@ class Chat:
             action["greeting"] = True
         await self._send_action(action)
 
+    def get_greeting(self) -> str | None:
+        """
+        Get the current greeting content.
+
+        Returns
+        -------
+        str or None
+            The current greeting content, or ``None`` if no greeting is set or
+            has been cleared.
+        """
+        return self._greeting_content
+
     async def set_greeting(
         self,
         greeting: "str | HTML | Tag | TagList | ChatGreeting | None",

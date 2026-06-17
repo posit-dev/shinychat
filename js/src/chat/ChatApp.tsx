@@ -174,6 +174,10 @@ export function ChatApp({
   }, [shouldRequestGreeting, elementId])
 
   const greetingIsDismissed = state.greeting?.status === "dismissed"
+  // Note: greetingDismissedSentRef resets on remount. If the greeting reaches
+  // "dismissed" again after a remount, the effect re-fires setInputValue. In
+  // practice, the server replays the greeting as "visible" on reconnect, so
+  // dismissed state is only reached via real user interaction.
   const greetingDismissedSentRef = useRef(false)
 
   useEffect(() => {

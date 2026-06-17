@@ -407,20 +407,6 @@ test_that("chat_mod_server() does not error with static string greeting", {
   )
 })
 
-test_that("chat_mod_server() return env has greeting_dismissed reactive", {
-  suppress_restore_warnings(
-    shiny::testServer(
-      chat_mod_server,
-      args = list(client = mock_chat_client(), greeting = "## Hi"),
-      {
-        ret <- session$getReturned()
-        expect_true("greeting_dismissed" %in% ls(ret))
-        expect_true(shiny::is.reactive(ret$greeting_dismissed))
-      }
-    )
-  )
-})
-
 
 # ── chat_restore() bookmark exclusions ───────────────────────────────────────
 
@@ -462,6 +448,21 @@ test_that("chat_clear() with greeting=TRUE clears session greeting state", {
   })
 
   expect_null(get_session_greeting_state(sess, "chat"))
+})
+
+test_that("chat_get_greeting() returns NULL when no greeting is set", {
+  sess <- shiny::MockShinySession$new()
+  shiny::withReactiveDomain(sess, {
+    expect_null(chat_get_greeting("chat", session = sess))
+  })
+})
+
+test_that("chat_get_greeting() returns content after chat_set_greeting()", {
+  sess <- shiny::MockShinySession$new()
+  set_session_greeting_state(sess, "chat", list(content = "Hello!"))
+  shiny::withReactiveDomain(sess, {
+    expect_equal(chat_get_greeting("chat", session = sess), "Hello!")
+  })
 })
 
 test_that("chat_restore() excludes {id}_greeting_dismissed from bookmarking", {

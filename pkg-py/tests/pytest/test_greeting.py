@@ -324,6 +324,27 @@ def test_greeting_content_cleared_after_clear_messages_with_greeting():
     assert chat._greeting_content is None
 
 
+def test_get_greeting_returns_content_after_set():
+    chat, _ = _make_spy_chat()
+
+    async def _run():
+        await chat.set_greeting("Hello world")
+
+    _run_async(_run)
+    assert chat.get_greeting() == "Hello world"
+
+
+def test_get_greeting_returns_none_after_clear():
+    chat, _ = _make_spy_chat()
+
+    async def _run():
+        await chat.set_greeting("Hello world")
+        await chat.set_greeting(None)
+
+    _run_async(_run)
+    assert chat.get_greeting() is None
+
+
 # ---------------------------------------------------------------------------
 # enable_bookmarking() excludes greeting inputs
 # ---------------------------------------------------------------------------

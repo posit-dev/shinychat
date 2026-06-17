@@ -869,6 +869,23 @@ rlang::on_load(
   })
 )
 
+#' Get the current greeting content
+#'
+#' @param id The ID of the chat element
+#' @param session The Shiny session object
+#'
+#' @return A character string with the current greeting content, or `NULL` if
+#'   no greeting is set or has been cleared.
+#'
+#' @export
+chat_get_greeting <- function(
+  id,
+  session = getDefaultReactiveDomain()
+) {
+  g <- get_session_greeting_state(session, id)
+  g$content
+}
+
 #' Set the greeting for a chat UI
 #'
 #' @description
