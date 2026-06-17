@@ -365,12 +365,12 @@ class _MockBookmarkSession:
 
 
 class _MockClient:
-    """Minimal client with get_state/set_state for enable_bookmarking()."""
+    """Minimal client with async get_state/set_state for enable_bookmarking()."""
 
-    def get_state(self) -> dict:
+    async def get_state(self) -> dict:
         return {}
 
-    def set_state(self, value: object) -> None:
+    async def set_state(self, state: object) -> None:
         pass
 
 

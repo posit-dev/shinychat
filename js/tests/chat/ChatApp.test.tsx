@@ -601,21 +601,19 @@ describe("greeting_dismissed Shiny input", () => {
       ).Shiny.setInputValue,
     )
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fireAny = (action: any) => transport.fire("test-chat", action)
+
     // INPUT_SENT: visible → dismissing
     act(() => {
-      transport.fire("test-chat", {
-        type: "INPUT_SENT",
-        content: "hi",
-        role: "user",
-      })
+      fireAny({ type: "INPUT_SENT", content: "hi", role: "user" })
     })
 
     // greeting_dismissed reducer action: dismissing → dismissed
-    // (This is the action the ChatGreeting animation callback dispatches when
-    // the dismiss animation completes. In jsdom there is no animation, so we
-    // fire the action directly to reach the "dismissed" state.)
+    // (Dispatched by ChatGreeting on animationend; fire directly in jsdom
+    // since CSS animations don't run.)
     act(() => {
-      transport.fire("test-chat", { type: "greeting_dismissed" })
+      fireAny({ type: "greeting_dismissed" })
     })
 
     return setInputValue
@@ -628,7 +626,7 @@ describe("greeting_dismissed Shiny input", () => {
 
     const calls = setInputValue.mock.calls
     const dismissedCall = calls.find(
-      ([name]: [string]) => name === "test-chat_greeting_dismissed",
+      (call) => call[0] === "test-chat_greeting_dismissed",
     )
     expect(dismissedCall).toBeDefined()
     expect(dismissedCall![0]).toBe("test-chat_greeting_dismissed")
@@ -648,8 +646,7 @@ describe("greeting_dismissed Shiny input", () => {
 
     const calls = setInputValue.mock.calls
     const nullCall = calls.find(
-      ([name, value]: [string, unknown]) =>
-        name === "test-chat_greeting_dismissed" && value === null,
+      (call) => call[0] === "test-chat_greeting_dismissed" && call[1] === null,
     )
     expect(nullCall).toBeDefined()
   })
