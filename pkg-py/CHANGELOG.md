@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * File attachment support: users can upload images, PDFs, and text files alongside chat messages via a file picker button, drag-and-drop, or clipboard paste. Enable with `chat_ui(allow_attachments=True)` or pass a list of MIME types to restrict accepted file types. When using `client=`, attachments are enabled automatically and converted to the appropriate chatlas content types. For manual wiring, declare a second `list[Attachment]` parameter on your `@chat.on_user_submit` handler and use `attachment_to_content()` to convert each attachment. The maximum combined attachment size defaults to approximately 30 MB and can be configured via the `SHINYCHAT_MAX_ATTACHMENT_SIZE` environment variable.
 
+### Bug fixes
+
+* Fixed suggestion cards and the greeting overflowing the chat container in narrow spaces such as sidebars. (#255)
+
 ## [0.5.1] - 2026-06-15
 
 ### Bug fixes
