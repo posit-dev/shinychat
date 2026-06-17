@@ -95,7 +95,10 @@ chat_restore <- function(
   id_user_input <- paste0(id, "_user_input")
   id_greeting_requested <- paste0(id, "_greeting_requested")
   id_greeting_dismissed <- paste0(id, "_greeting_dismissed")
-  to_exclude <- setdiff(c(id_user_input, id_greeting_requested, id_greeting_dismissed), excluded_names)
+  to_exclude <- setdiff(
+    c(id_user_input, id_greeting_requested, id_greeting_dismissed),
+    excluded_names
+  )
   if (length(to_exclude) > 0) {
     session$setBookmarkExclude(c(excluded_names, to_exclude))
   }
@@ -205,8 +208,12 @@ chat_restore <- function(
     if (!is.null(cancel_on_restore_client)) {
       cancel_on_restore_client()
     }
-    if (!is.null(cancel_on_bookmark_greeting)) cancel_on_bookmark_greeting()
-    if (!is.null(cancel_on_restore_greeting)) cancel_on_restore_greeting()
+    if (!is.null(cancel_on_bookmark_greeting)) {
+      cancel_on_bookmark_greeting()
+    }
+    if (!is.null(cancel_on_restore_greeting)) {
+      cancel_on_restore_greeting()
+    }
     if (!is.null(cancel_update_bookmark)) {
       cancel_update_bookmark()
     }
@@ -265,7 +272,11 @@ get_session_greeting_state <- function(session, id) {
 }
 
 set_session_greeting_state <- function(session, id, value) {
-  set_session_chat_bookmark_info(session, paste0(id, GREETING_STATE_KEY), value = value)
+  set_session_chat_bookmark_info(
+    session,
+    paste0(id, GREETING_STATE_KEY),
+    value = value
+  )
 }
 
 has_session_chat_bookmark_info <- function(session, id) {

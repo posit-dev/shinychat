@@ -878,10 +878,7 @@ rlang::on_load(
 #'   no greeting is set or has been cleared.
 #'
 #' @export
-chat_get_greeting <- function(
-  id,
-  session = getDefaultReactiveDomain()
-) {
+chat_get_greeting <- function(id, session = getDefaultReactiveDomain()) {
   g <- get_session_greeting_state(session, id)
   g$content
 }
