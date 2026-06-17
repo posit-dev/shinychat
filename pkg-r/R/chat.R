@@ -135,6 +135,12 @@ chat_greeting <- function(
 #' regenerate pattern where clearing the greeting automatically triggers a
 #' fresh one.
 #'
+#' **`greeting_dismissed` input.** When the user dismisses the greeting,
+#' `input$<id>_greeting_dismissed` fires with a `Date.now()` timestamp, and
+#' resets to `NULL` when the greeting is cleared. If you use [chat_mod_server()],
+#' you can access the `greeting_dismissed` reactive from the returned module
+#' value instead of the raw namespaced input string.
+#'
 #' @param id The ID of the chat element
 #' @param ... Extra HTML attributes to include on the chat element
 #' @param messages A list of messages to prepopulate the chat with. Each

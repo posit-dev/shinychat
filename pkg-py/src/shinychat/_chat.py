@@ -1678,6 +1678,8 @@ class Chat:
         Use ``@reactive.event(input.{id}_greeting_requested)`` to generate a greeting
         on demand. This input fires on first load and again after
         :meth:`~shinychat.Chat.clear_messages` is called with ``greeting=True``.
+        When the user dismisses the greeting, ``{id}_greeting_dismissed`` fires with
+        a ``Date.now()`` timestamp and resets to ``None`` when the greeting is cleared.
 
         Examples
         --------
@@ -1848,7 +1850,9 @@ class Chat:
 
         This method registers `on_bookmark` and `on_restore` hooks on `session.bookmark`
         (:class:`shiny.bookmark.Bookmark`) to save/restore chat state on both the `Chat`
-        and `client=` instances. In order for this method to actually work correctly, a
+        and `client=` instances, including the current greeting content. This means
+        dynamic greetings survive bookmark round-trips without any extra app-level
+        plumbing. In order for this method to actually work correctly, a
         `bookmark_store=` must be specified in `shiny.App()`.
 
         Parameters

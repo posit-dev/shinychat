@@ -544,6 +544,117 @@ describe("External link dialog", () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// greeting_dismissed Shiny input
+// ---------------------------------------------------------------------------
+describe("greeting_dismissed Shiny input", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn().mockReturnValue({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }),
+    )
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function renderWithGreeting(elementId = "test-chat") {
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    const result = render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId={elementId}
+        inputId={`${elementId}_input`}
+        uploadAccept={[]}
+        maxUploadSize={30000000}
+      />,
+    )
+
+    // Send a visible greeting
+    act(() => {
+      transport.fire(elementId, {
+        type: "greeting",
+        content: "Hello!",
+        content_type: "markdown",
+        options: { dismissible: true },
+      })
+    })
+
+    return { ...result, transport }
+  }
+
+  /** Drive the greeting through visible → dismissing → dismissed and return mocked setInputValue. */
+  function dismissGreeting(transport: ReturnType<typeof createMockTransport>) {
+    const setInputValue = vi.mocked(
+      (
+        window as unknown as {
+          Shiny: { setInputValue: ReturnType<typeof vi.fn> }
+        }
+      ).Shiny.setInputValue,
+    )
+
+    // INPUT_SENT: visible → dismissing
+    act(() => {
+      transport.fire("test-chat", {
+        type: "INPUT_SENT",
+        content: "hi",
+        role: "user",
+      })
+    })
+
+    // greeting_dismissed reducer action: dismissing → dismissed
+    // (This is the action the ChatGreeting animation callback dispatches when
+    // the dismiss animation completes. In jsdom there is no animation, so we
+    // fire the action directly to reach the "dismissed" state.)
+    act(() => {
+      transport.fire("test-chat", { type: "greeting_dismissed" })
+    })
+
+    return setInputValue
+  }
+
+  it("calls setInputValue with {elementId}_greeting_dismissed when greeting transitions to dismissed", () => {
+    const { transport } = renderWithGreeting()
+
+    const setInputValue = dismissGreeting(transport)
+
+    const calls = setInputValue.mock.calls
+    const dismissedCall = calls.find(
+      ([name]: [string]) => name === "test-chat_greeting_dismissed",
+    )
+    expect(dismissedCall).toBeDefined()
+    expect(dismissedCall![0]).toBe("test-chat_greeting_dismissed")
+    expect(typeof dismissedCall![1]).toBe("number")
+  })
+
+  it("calls setInputValue with null when greeting is cleared after being dismissed", () => {
+    const { transport } = renderWithGreeting()
+
+    const setInputValue = dismissGreeting(transport)
+    setInputValue.mockClear()
+
+    // Clear the greeting entirely — transitions greetingIsDismissed back to false
+    act(() => {
+      transport.fire("test-chat", { type: "greeting_clear" })
+    })
+
+    const calls = setInputValue.mock.calls
+    const nullCall = calls.find(
+      ([name, value]: [string, unknown]) =>
+        name === "test-chat_greeting_dismissed" && value === null,
+    )
+    expect(nullCall).toBeDefined()
+  })
+})
+
 describe("server-controlled cancel", () => {
   function startStreaming(transport: ReturnType<typeof createMockTransport>) {
     act(() => {

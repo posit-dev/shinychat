@@ -406,3 +406,63 @@ test_that("chat_mod_server() does not error with static string greeting", {
     )
   )
 })
+
+test_that("chat_mod_server() return env has greeting_dismissed reactive", {
+  suppress_restore_warnings(
+    shiny::testServer(
+      chat_mod_server,
+      args = list(client = mock_chat_client(), greeting = "## Hi"),
+      {
+        ret <- session$getReturned()
+        expect_true("greeting_dismissed" %in% ls(ret))
+        expect_true(shiny::is.reactive(ret$greeting_dismissed))
+      }
+    )
+  )
+})
+
+
+# ── chat_restore() bookmark exclusions ───────────────────────────────────────
+
+# Helper: mock session that records setBookmarkExclude calls.
+mock_session_with_bookmark_spy <- function() {
+  sess <- shiny::MockShinySession$new()
+  excluded <- character(0)
+  sess$setBookmarkExclude <- function(names) {
+    excluded <<- names
+  }
+  sess$getBookmarkExclude <- function() excluded
+  sess
+}
+
+test_that("chat_restore() excludes {id}_greeting_requested from bookmarking", {
+  sess <- mock_session_with_bookmark_spy()
+  suppress_restore_warnings(
+    shiny::withReactiveDomain(sess, {
+      chat_restore(
+        "chat",
+        mock_chat_client(),
+        bookmark_on_input = FALSE,
+        bookmark_on_response = FALSE,
+        session = sess
+      )
+    })
+  )
+  expect_true("chat_greeting_requested" %in% sess$getBookmarkExclude())
+})
+
+test_that("chat_restore() excludes {id}_greeting_dismissed from bookmarking", {
+  sess <- mock_session_with_bookmark_spy()
+  suppress_restore_warnings(
+    shiny::withReactiveDomain(sess, {
+      chat_restore(
+        "chat",
+        mock_chat_client(),
+        bookmark_on_input = FALSE,
+        bookmark_on_response = FALSE,
+        session = sess
+      )
+    })
+  )
+  expect_true("chat_greeting_dismissed" %in% sess$getBookmarkExclude())
+})
