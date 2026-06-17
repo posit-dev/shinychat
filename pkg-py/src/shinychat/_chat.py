@@ -1979,6 +1979,13 @@ class Chat:
                 # and the `ui.Chat(messages=)` values will need to be reset
                 state.values[resolved_bookmark_id_msgs_str] = self._messages_for_bookmark()
 
+        resolved_greeting_key = resolved_bookmark_id_str + "--greeting"
+
+        @root_session.bookmark.on_bookmark
+        def _on_bookmark_greeting(state: BookmarkState):
+            if self._greeting_content is not None:
+                state.values[resolved_greeting_key] = {"content": self._greeting_content}
+
         # Attempt to stop the initialization of the `ui.Chat(messages=)` messages
         self._init_chat.destroy()
 
@@ -2006,11 +2013,21 @@ class Chat:
             for message_dict in msgs:
                 await self._restore_bookmark_message(message_dict)
 
+        @root_session.bookmark.on_restore
+        async def _on_restore_greeting(state: RestoreState):
+            if resolved_greeting_key not in state.values:
+                return
+            g = state.values[resolved_greeting_key]
+            if isinstance(g, dict) and isinstance(g.get("content"), str):
+                await self.set_greeting(g["content"])
+
         def _cancel_bookmarking():
             _on_bookmark_client()
             _on_bookmark_ui()
+            _on_bookmark_greeting()
             _on_restore_client()
             _on_restore_ui()
+            _on_restore_greeting()
 
         # Store the callbacks to be able to destroy them later
         self._cancel_bookmarking_callbacks = _cancel_bookmarking

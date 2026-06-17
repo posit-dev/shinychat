@@ -93,7 +93,8 @@ chat_restore <- function(
   excluded_names <- session$getBookmarkExclude()
   id_user_input <- paste0(id, "_user_input")
   id_greeting_requested <- paste0(id, "_greeting_requested")
-  to_exclude <- setdiff(c(id_user_input, id_greeting_requested), excluded_names)
+  id_greeting_dismissed <- paste0(id, "_greeting_dismissed")
+  to_exclude <- setdiff(c(id_user_input, id_greeting_requested, id_greeting_dismissed), excluded_names)
   if (length(to_exclude) > 0) {
     session$setBookmarkExclude(c(excluded_names, to_exclude))
   }
@@ -114,6 +115,14 @@ chat_restore <- function(
       client_state <- client_get_state(client)
 
       state$values[[id]] <- client_state
+    })
+
+  cancel_on_bookmark_greeting <-
+    session$onBookmark(function(state) {
+      g <- get_session_greeting_state(session, id)
+      if (!is.null(g) && is.character(g$content) && nzchar(g$content)) {
+        state$values[[paste0(id, "_greeting")]] <- g
+      }
     })
 
   cancel_set_ui <- NULL
@@ -141,6 +150,16 @@ chat_restore <- function(
       shiny::withReactiveDomain(session, {
         client_set_ui(client, id = id)
       })
+    })
+
+  cancel_on_restore_greeting <-
+    session$onRestore(function(state) {
+      g <- state$values[[paste0(id, "_greeting")]]
+      if (!is.null(g) && is.character(g$content)) {
+        shiny::withReactiveDomain(session, {
+          chat_set_greeting(id, g$content, session = session)
+        })
+      }
     })
 
   # Update URL
@@ -185,6 +204,8 @@ chat_restore <- function(
     if (!is.null(cancel_on_restore_client)) {
       cancel_on_restore_client()
     }
+    if (!is.null(cancel_on_bookmark_greeting)) cancel_on_bookmark_greeting()
+    if (!is.null(cancel_on_restore_greeting)) cancel_on_restore_greeting()
     if (!is.null(cancel_update_bookmark)) {
       cancel_update_bookmark()
     }
