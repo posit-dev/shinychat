@@ -608,6 +608,7 @@ chat_mod_server <- function(
     ret$set_greeting <- set_greeting_mod
     ret$set_client <- set_client
     ret$slash_command <- slash_command_method
+    ret$greeting_dismissed <- shiny::reactive(input$chat_greeting_dismissed)
     lockEnvironment(ret)
     ret
   })

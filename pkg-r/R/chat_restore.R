@@ -236,6 +236,16 @@ set_session_bookmark_on_response <- function(session, id, enable) {
   )
 }
 
+GREETING_STATE_KEY <- ".greeting-state"
+
+get_session_greeting_state <- function(session, id) {
+  get_session_chat_bookmark_info(session, paste0(id, GREETING_STATE_KEY))
+}
+
+set_session_greeting_state <- function(session, id, value) {
+  set_session_chat_bookmark_info(session, paste0(id, GREETING_STATE_KEY), value = value)
+}
+
 has_session_chat_bookmark_info <- function(session, id) {
   return(!is.null(get_session_chat_bookmark_info(session, id)))
 }

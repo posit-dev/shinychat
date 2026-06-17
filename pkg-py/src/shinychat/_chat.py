@@ -344,6 +344,7 @@ class Chat:
         # Keep track of effects so we can destroy them when the chat is destroyed
         self._effects: list["Effect_"] = []
         self._cancel_bookmarking_callbacks: CancelCallback | None = None
+        self._greeting_content: str | None = None
 
         # Initialize chat state and user input effect
         from shiny import reactive
@@ -1751,6 +1752,7 @@ class Chat:
         ```
         """
         if greeting is None:
+            self._greeting_content = None
             await self._send_action({"type": "greeting_clear"})
             return
 
@@ -1769,14 +1771,17 @@ class Chat:
                 "options": options,
             }
             await self._send_action(start_action)
+            chunks: list[str] = []
             try:
                 async for chunk in content:
+                    chunks.append(chunk)
                     chunk_action: ChatAction = {
                         "type": "greeting_chunk",
                         "content": chunk,
                         "operation": "append",
                     }
                     await self._send_action(chunk_action)
+                self._greeting_content = "".join(chunks)
             finally:
                 await self._send_action({"type": "greeting_end"})
         else:
@@ -1786,6 +1791,7 @@ class Chat:
                 "content_type": greeting.content_type,
                 "options": options,
             }
+            self._greeting_content = str(content)
             await self._send_action(action, html_deps)
 
     def destroy(self):
@@ -1907,6 +1913,7 @@ class Chat:
         root_session = session.root_scope()
         root_session.bookmark.exclude.append(self.id + "_user_input")
         root_session.bookmark.exclude.append(self.id + "_greeting_requested")
+        root_session.bookmark.exclude.append(self.id + "_greeting_dismissed")
 
         # ###########
         # Bookmarking
