@@ -1906,6 +1906,7 @@ class Chat:
         # Using a proxy session would double-encode the proxy-prefix
         root_session = session.root_scope()
         root_session.bookmark.exclude.append(self.id + "_user_input")
+        root_session.bookmark.exclude.append(self.id + "_greeting_requested")
 
         # ###########
         # Bookmarking

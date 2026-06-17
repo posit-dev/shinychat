@@ -173,6 +173,24 @@ export function ChatApp({
     })
   }, [shouldRequestGreeting, elementId])
 
+  const greetingIsDismissed = state.greeting?.status === "dismissed"
+  const greetingDismissedSentRef = useRef(false)
+
+  useEffect(() => {
+    if (!window.Shiny?.setInputValue) return
+    if (greetingIsDismissed && !greetingDismissedSentRef.current) {
+      greetingDismissedSentRef.current = true
+      window.Shiny.setInputValue(
+        `${elementId}_greeting_dismissed`,
+        Date.now(),
+        { priority: "event" },
+      )
+    } else if (!greetingIsDismissed && greetingDismissedSentRef.current) {
+      greetingDismissedSentRef.current = false
+      window.Shiny.setInputValue(`${elementId}_greeting_dismissed`, null)
+    }
+  }, [greetingIsDismissed, elementId])
+
   const toolState: ChatToolState = useMemo(
     () => ({
       hiddenToolRequests: state.hiddenToolRequests,
