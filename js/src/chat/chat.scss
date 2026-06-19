@@ -207,7 +207,6 @@ shiny-chat-container {
     --bs-border-radius: 26px;
     resize: none;
     padding-right: 36px !important;
-    padding-left: 36px !important;
     max-height: 175px;
     &::placeholder {
       color: var(--bs-gray-600, #707782) !important;
@@ -216,7 +215,6 @@ shiny-chat-container {
   .tiptap {
     --bs-border-radius: 26px;
     padding-right: 36px !important;
-    padding-left: 36px !important;
     max-height: 175px;
     overflow-y: auto;
     &.is-empty::before {
@@ -225,6 +223,13 @@ shiny-chat-container {
       float: left;
       height: 0;
       pointer-events: none;
+    }
+  }
+  // Only reserve left space when the attach button is actually rendered
+  &:has(.shiny-chat-btn-attach) {
+    textarea,
+    .tiptap {
+      padding-left: 36px !important;
     }
   }
   // When images are attached, group the thumbnail tray and the text field into
