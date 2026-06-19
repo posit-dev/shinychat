@@ -203,15 +203,6 @@ shiny-chat-container {
   bottom: calc(-1 * var(--_input-padding-bottom));
   padding-block: var(--_input-padding-top) var(--_input-padding-bottom);
 
-  textarea {
-    --bs-border-radius: 26px;
-    resize: none;
-    padding-right: 36px !important;
-    max-height: 175px;
-    &::placeholder {
-      color: var(--bs-gray-600, #707782) !important;
-    }
-  }
   .tiptap {
     --bs-border-radius: 26px;
     padding-right: 36px !important;
@@ -227,7 +218,6 @@ shiny-chat-container {
   }
   // Only reserve left space when the attach button is actually rendered
   &:has(.shiny-chat-btn-attach) {
-    textarea,
     .tiptap {
       padding-left: 36px !important;
     }
@@ -238,7 +228,6 @@ shiny-chat-container {
     border: 1px solid var(--bs-border-color, #ced4da);
     border-radius: 20px;
 
-    textarea,
     .tiptap {
       border-color: transparent !important;
       background: transparent !important;
