@@ -16,6 +16,8 @@
 
 ## Bug fixes
 
+* Fixed suggestion cards and the greeting overflowing the chat container in narrow spaces such as sidebars. (#255)
+
 * Fixed the copy button on code blocks not working in some embedded contexts. (@thisisnic, #247)
 
 # shinychat 0.4.0

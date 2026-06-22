@@ -74,6 +74,7 @@ shiny-chat-container {
 .shiny-chat-messages-wrapper {
   position: relative;
   min-height: 0; // Allow grid child to shrink
+  min-width: 0; // Allow grid child to shrink below content size (e.g. suggestion cards in a narrow sidebar)
   overflow: clip; // Clip the absolutely-positioned button without creating a scroll container
 }
 
