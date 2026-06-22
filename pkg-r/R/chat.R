@@ -135,6 +135,13 @@ chat_greeting <- function(
 #' regenerate pattern where clearing the greeting automatically triggers a
 #' fresh one.
 #'
+#' **`greeting_dismissed` input.** When the user dismisses the greeting,
+#' `input$<id>_greeting_dismissed` fires with a `Date.now()` timestamp. If the
+#' greeting is later cleared after being dismissed, the input resets to `NULL`.
+#' If you use [chat_mod_server()], you can access the `greeting_dismissed`
+#' reactive from the returned module value instead of the raw namespaced input
+#' string.
+#'
 #' @param id The ID of the chat element
 #' @param ... Extra HTML attributes to include on the chat element
 #' @param messages A list of messages to prepopulate the chat with. Each
@@ -862,6 +869,20 @@ rlang::on_load(
   })
 )
 
+#' Get the current greeting content
+#'
+#' @param id The ID of the chat element
+#' @param session The Shiny session object
+#'
+#' @return A character string with the current greeting content, or `NULL` if
+#'   no greeting is set or has been cleared.
+#'
+#' @export
+chat_get_greeting <- function(id, session = getDefaultReactiveDomain()) {
+  g <- get_session_greeting_state(session, id)
+  g$content
+}
+
 #' Set the greeting for a chat UI
 #'
 #' @description
@@ -1007,6 +1028,7 @@ chat_set_greeting <- function(
       action = list(type = "greeting_clear"),
       session = session
     )
+    set_session_greeting_state(session, id, value = NULL)
     return(invisible(NULL))
   }
 
@@ -1023,6 +1045,13 @@ chat_set_greeting <- function(
   ) {
     stream <- as_generator(content)
     result <- chat_set_greeting_stream(id, stream, options, session)
+    result <- promises::then(result, function(streamed_content) {
+      set_session_greeting_state(
+        session,
+        id,
+        value = list(content = streamed_content)
+      )
+    })
     result <- promises::catch(result, function(reason) {
       class(reason) <- c("shiny.silent.error", class(reason))
       cnd_signal(reason)
@@ -1082,6 +1111,11 @@ chat_set_greeting <- function(
     html_deps = html_deps,
     session = session
   )
+  set_session_greeting_state(
+    session,
+    id,
+    value = list(content = greeting_content)
+  )
   invisible(NULL)
 }
 
@@ -1104,6 +1138,7 @@ rlang::on_load(
       options = options
     ))
 
+    chunks <- character(0)
     for (msg in stream) {
       if (promises::is.promising(msg)) {
         msg <- await(msg)
@@ -1120,6 +1155,7 @@ rlang::on_load(
         chunk_content_type <- "html"
       }
 
+      chunks <- c(chunks, ui[["html"]])
       send_chat_action(
         id,
         action = list(
@@ -1134,7 +1170,7 @@ rlang::on_load(
     }
 
     send_greeting_action(list(type = "greeting_end"))
-    invisible(NULL)
+    paste(chunks, collapse = "")
   })
 )
 
@@ -1212,6 +1248,7 @@ chat_clear <- function(
   action <- list(type = "clear")
   if (isTRUE(greeting)) {
     action$greeting <- TRUE
+    set_session_greeting_state(session, id, value = NULL)
   }
   send_chat_action(id, action = action, session = session)
 }

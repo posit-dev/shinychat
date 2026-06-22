@@ -150,6 +150,13 @@ This input fires when the chat component is first viewed on the page and
 empty, and again after \code{\link[=chat_clear]{chat_clear()}} \code{(greeting = TRUE)}, enabling a
 regenerate pattern where clearing the greeting automatically triggers a
 fresh one.
+
+\strong{\code{greeting_dismissed} input.} When the user dismisses the greeting,
+\verb{input$<id>_greeting_dismissed} fires with a \code{Date.now()} timestamp. If the
+greeting is later cleared after being dismissed, the input resets to \code{NULL}.
+If you use \code{\link[=chat_mod_server]{chat_mod_server()}}, you can access the \code{greeting_dismissed}
+reactive from the returned module value instead of the raw namespaced input
+string.
 }
 
 \section{Thinking display}{

@@ -78,6 +78,10 @@ class Chat(UiBase):
     """
     Playwright `Locator` for the chat's <button> input.
     """
+    loc_greeting: Locator
+    """
+    Playwright `Locator` for the chat greeting.
+    """
 
     def __init__(self, page: Page, id: str) -> None:
         """
@@ -103,6 +107,7 @@ class Chat(UiBase):
         self.loc_input_button = self.loc_input_container.locator(
             ".shiny-chat-btn-send"
         )
+        self.loc_greeting = self.loc.locator(".shiny-chat-greeting")
 
     def expect_latest_message(
         self,
@@ -122,6 +127,26 @@ class Chat(UiBase):
         """
         # playwright_expect(self.loc_latest_message).to_have_text(value, timeout=timeout)
         playwright_expect(self.loc_latest_message).to_have_text(
+            value, use_inner_text=True, timeout=timeout
+        )
+
+    def expect_greeting(
+        self,
+        value: PatternOrStr,
+        *,
+        timeout: Timeout = None,
+    ) -> None:
+        """
+        Expects the chat greeting to contain text.
+
+        Parameters
+        ----------
+        value
+            The expected greeting text.
+        timeout
+            The maximum time to wait for the expectation to pass. Defaults to `None`.
+        """
+        playwright_expect(self.loc_greeting).to_contain_text(
             value, use_inner_text=True, timeout=timeout
         )
 

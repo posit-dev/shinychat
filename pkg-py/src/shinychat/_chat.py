@@ -344,6 +344,7 @@ class Chat:
         # Keep track of effects so we can destroy them when the chat is destroyed
         self._effects: list["Effect_"] = []
         self._cancel_bookmarking_callbacks: CancelCallback | None = None
+        self._greeting_content: str | None = None
 
         # Initialize chat state and user input effect
         from shiny import reactive
@@ -1635,8 +1636,21 @@ class Chat:
         self._messages.set(())
         action: ClearAction = {"type": "clear"}
         if greeting:
+            self._greeting_content = None
             action["greeting"] = True
         await self._send_action(action)
+
+    def get_greeting(self) -> str | None:
+        """
+        Get the current greeting content.
+
+        Returns
+        -------
+        str or None
+            The current greeting content, or ``None`` if no greeting is set or
+            has been cleared.
+        """
+        return self._greeting_content
 
     async def set_greeting(
         self,
@@ -1677,6 +1691,9 @@ class Chat:
         Use ``@reactive.event(input.{id}_greeting_requested)`` to generate a greeting
         on demand. This input fires on first load and again after
         :meth:`~shinychat.Chat.clear_messages` is called with ``greeting=True``.
+        When the user dismisses the greeting, ``{id}_greeting_dismissed`` fires with
+        a ``Date.now()`` timestamp. If the greeting is later cleared after being dismissed,
+        the input resets to ``None``.
 
         Examples
         --------
@@ -1751,6 +1768,7 @@ class Chat:
         ```
         """
         if greeting is None:
+            self._greeting_content = None
             await self._send_action({"type": "greeting_clear"})
             return
 
@@ -1769,14 +1787,17 @@ class Chat:
                 "options": options,
             }
             await self._send_action(start_action)
+            chunks: list[str] = []
             try:
                 async for chunk in content:
+                    chunks.append(chunk)
                     chunk_action: ChatAction = {
                         "type": "greeting_chunk",
                         "content": chunk,
                         "operation": "append",
                     }
                     await self._send_action(chunk_action)
+                self._greeting_content = "".join(chunks)
             finally:
                 await self._send_action({"type": "greeting_end"})
         else:
@@ -1786,6 +1807,7 @@ class Chat:
                 "content_type": greeting.content_type,
                 "options": options,
             }
+            self._greeting_content = str(content)
             await self._send_action(action, html_deps)
 
     def destroy(self):
@@ -1842,7 +1864,9 @@ class Chat:
 
         This method registers `on_bookmark` and `on_restore` hooks on `session.bookmark`
         (:class:`shiny.bookmark.Bookmark`) to save/restore chat state on both the `Chat`
-        and `client=` instances. In order for this method to actually work correctly, a
+        and `client=` instances, including the current greeting content. This means
+        dynamic greetings survive bookmark round-trips without any extra app-level
+        plumbing. In order for this method to actually work correctly, a
         `bookmark_store=` must be specified in `shiny.App()`.
 
         Parameters
@@ -1905,7 +1929,7 @@ class Chat:
         # Must use `root_session` as the id is already resolved. :-/
         # Using a proxy session would double-encode the proxy-prefix
         root_session = session.root_scope()
-        for suffix in ("_user_input", "_cancel", "_slash_command", "_greeting_requested"):
+        for suffix in ("_user_input", "_cancel", "_slash_command", "_greeting_requested", "_greeting_dismissed"):
             root_session.bookmark.exclude.append(self.id + suffix)
 
         # ###########
@@ -1972,6 +1996,13 @@ class Chat:
                 # and the `ui.Chat(messages=)` values will need to be reset
                 state.values[resolved_bookmark_id_msgs_str] = self._messages_for_bookmark()
 
+        resolved_greeting_key = resolved_bookmark_id_str + "--greeting"
+
+        @root_session.bookmark.on_bookmark
+        def _on_bookmark_greeting(state: BookmarkState):
+            if self._greeting_content is not None:
+                state.values[resolved_greeting_key] = {"content": self._greeting_content}
+
         # Attempt to stop the initialization of the `ui.Chat(messages=)` messages
         self._init_chat.destroy()
 
@@ -1999,11 +2030,21 @@ class Chat:
             for message_dict in msgs:
                 await self._restore_bookmark_message(message_dict)
 
+        @root_session.bookmark.on_restore
+        async def _on_restore_greeting(state: RestoreState):
+            if resolved_greeting_key not in state.values:
+                return
+            g = state.values[resolved_greeting_key]
+            if isinstance(g, dict) and isinstance(g.get("content"), str):
+                await self.set_greeting(g["content"])
+
         def _cancel_bookmarking():
             _on_bookmark_client()
             _on_bookmark_ui()
+            _on_bookmark_greeting()
             _on_restore_client()
             _on_restore_ui()
+            _on_restore_greeting()
 
         # Store the callbacks to be able to destroy them later
         self._cancel_bookmarking_callbacks = _cancel_bookmarking

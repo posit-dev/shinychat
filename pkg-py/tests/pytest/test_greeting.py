@@ -287,3 +287,147 @@ def test_set_greeting_non_dismissible():
     assert actions[0]["options"]["dismissible"] is False
 
 
+# ---------------------------------------------------------------------------
+# Chat._greeting_content tracking
+# ---------------------------------------------------------------------------
+
+
+def test_greeting_content_set_after_set_greeting_string():
+    chat, _ = _make_spy_chat()
+
+    async def _run():
+        await chat.set_greeting("Hello world")
+
+    _run_async(_run)
+    assert chat._greeting_content == "Hello world"
+
+
+def test_greeting_content_cleared_after_set_greeting_none():
+    chat, _ = _make_spy_chat()
+
+    async def _run():
+        await chat.set_greeting("Hello world")
+        await chat.set_greeting(None)
+
+    _run_async(_run)
+    assert chat._greeting_content is None
+
+
+def test_greeting_content_cleared_after_clear_messages_with_greeting():
+    chat, _ = _make_spy_chat()
+
+    async def _run():
+        await chat.set_greeting("Hello world")
+        await chat.clear_messages(greeting=True)
+
+    _run_async(_run)
+    assert chat._greeting_content is None
+
+
+def test_get_greeting_returns_content_after_set():
+    chat, _ = _make_spy_chat()
+
+    async def _run():
+        await chat.set_greeting("Hello world")
+
+    _run_async(_run)
+    assert chat.get_greeting() == "Hello world"
+
+
+def test_get_greeting_returns_none_after_clear():
+    chat, _ = _make_spy_chat()
+
+    async def _run():
+        await chat.set_greeting("Hello world")
+        await chat.set_greeting(None)
+
+    _run_async(_run)
+    assert chat.get_greeting() is None
+
+
+# ---------------------------------------------------------------------------
+# enable_bookmarking() excludes greeting inputs
+# ---------------------------------------------------------------------------
+
+
+class _MockBookmark:
+    """Minimal bookmark stub that records exclude appends and callback registrations."""
+
+    def __init__(self):
+        self.exclude: list[str] = []
+
+    def on_bookmark(self, fn: object) -> object:
+        return fn
+
+    def on_restore(self, fn: object) -> object:
+        return fn
+
+    def on_bookmarked(self, fn: object) -> object:
+        return fn
+
+
+class _MockBookmarkSession:
+    """Minimal session stub for enable_bookmarking() unit tests."""
+
+    def __init__(self):
+        from shiny.module import ResolvedId
+
+        self.ns = ResolvedId("")
+        self.app = None
+        self.id = "bm-session"
+        self.bookmark = _MockBookmark()
+
+    def is_stub_session(self) -> bool:
+        return False
+
+    def root_scope(self) -> "_MockBookmarkSession":
+        return self
+
+    def on_ended(self, callback: object) -> None:
+        pass
+
+    def on_destroy(self, callback: object) -> None:
+        pass
+
+    def _increment_busy_count(self) -> None:
+        pass
+
+    async def send_custom_message(self, type: str, message: dict) -> None:
+        pass
+
+
+class _MockClient:
+    """Minimal client with async get_state/set_state for enable_bookmarking()."""
+
+    async def get_state(self) -> dict:
+        return {}
+
+    async def set_state(self, state: object) -> None:
+        pass
+
+
+def _make_bookmark_chat(chat_id: str):
+    """Create a Chat with a session that has bookmark support."""
+    from shiny.session import session_context
+
+    bm_sess = _MockBookmarkSession()
+    with session_context(cast(Any, bm_sess)):
+        chat = Chat(id=chat_id)
+    chat._session = cast(Any, bm_sess)
+    return chat, bm_sess
+
+
+def test_enable_bookmarking_excludes_greeting_requested():
+    chat, bm_sess = _make_bookmark_chat("bm_chat_req")
+    with session_context(cast(Any, bm_sess)):
+        chat.enable_bookmarking(_MockClient())
+    assert "bm_chat_req_greeting_requested" in bm_sess.bookmark.exclude
+
+
+def test_enable_bookmarking_excludes_greeting_dismissed():
+    chat, bm_sess = _make_bookmark_chat("bm_chat_dis")
+    with session_context(cast(Any, bm_sess)):
+        chat.enable_bookmarking(_MockClient())
+    assert "bm_chat_dis_greeting_dismissed" in bm_sess.bookmark.exclude
+
+

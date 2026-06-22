@@ -8,11 +8,12 @@
 #' App's bookmark will be automatically updated without showing a modal to the
 #' user.
 #'
-#' Note: Only the `client`'s chat state is saved/restored in the bookmark. If
-#' the `client`'s state doesn't properly capture the chat's UI (i.e., a
-#' transformation is applied in-between receiving and displaying the message),
-#' then you may need to implement your own `session$onRestore()` (and possibly
-#' `session$onBookmark`) handler to restore any additional state.
+#' Note: The `client`'s chat state and the greeting content are both
+#' saved/restored automatically. If the `client`'s state doesn't properly
+#' capture the chat's UI (i.e., a transformation is applied in-between
+#' receiving and displaying the message), you may need to implement your own
+#' `session$onRestore()` (and possibly `session$onBookmark`) handler to restore
+#' any additional state.
 #'
 #' To avoid restoring chat history from the `client`, you can ensure that the
 #' history is empty by calling `client$set_turns(list())` before passing the
@@ -95,7 +96,13 @@ chat_restore <- function(
   to_exclude <- setdiff(
     paste0(
       id,
-      c("_user_input", "_cancel", "_slash_command", "_greeting_requested")
+      c(
+        "_user_input",
+        "_cancel",
+        "_slash_command",
+        "_greeting_requested",
+        "_greeting_dismissed"
+      )
     ),
     excluded_names
   )
@@ -119,6 +126,14 @@ chat_restore <- function(
       client_state <- client_get_state(client)
 
       state$values[[id]] <- client_state
+    })
+
+  cancel_on_bookmark_greeting <-
+    session$onBookmark(function(state) {
+      g <- get_session_greeting_state(session, id)
+      if (!is.null(g) && is.character(g$content) && nzchar(g$content)) {
+        state$values[[paste0(id, "_greeting")]] <- g
+      }
     })
 
   cancel_set_ui <- NULL
@@ -146,6 +161,16 @@ chat_restore <- function(
       shiny::withReactiveDomain(session, {
         client_set_ui(client, id = id)
       })
+    })
+
+  cancel_on_restore_greeting <-
+    session$onRestore(function(state) {
+      g <- state$values[[paste0(id, "_greeting")]]
+      if (!is.null(g) && is.character(g$content)) {
+        shiny::withReactiveDomain(session, {
+          chat_set_greeting(id, g$content, session = session)
+        })
+      }
     })
 
   # Update URL
@@ -189,6 +214,12 @@ chat_restore <- function(
     }
     if (!is.null(cancel_on_restore_client)) {
       cancel_on_restore_client()
+    }
+    if (!is.null(cancel_on_bookmark_greeting)) {
+      cancel_on_bookmark_greeting()
+    }
+    if (!is.null(cancel_on_restore_greeting)) {
+      cancel_on_restore_greeting()
     }
     if (!is.null(cancel_update_bookmark)) {
       cancel_update_bookmark()
@@ -238,6 +269,20 @@ set_session_bookmark_on_response <- function(session, id, enable) {
     session,
     paste0(id, ON_RESPONSE_KEY),
     value = if (enable) TRUE else NULL
+  )
+}
+
+GREETING_STATE_KEY <- ".greeting-state"
+
+get_session_greeting_state <- function(session, id) {
+  get_session_chat_bookmark_info(session, paste0(id, GREETING_STATE_KEY))
+}
+
+set_session_greeting_state <- function(session, id, value) {
+  set_session_chat_bookmark_info(
+    session,
+    paste0(id, GREETING_STATE_KEY),
+    value = value
   )
 }
 

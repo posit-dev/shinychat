@@ -406,3 +406,70 @@ test_that("chat_mod_server() does not error with static string greeting", {
     )
   )
 })
+
+
+# ── chat_restore() bookmark exclusions ───────────────────────────────────────
+
+mock_session_with_bookmark_spy <- function() {
+  shiny::MockShinySession$new()
+}
+
+test_that("chat_restore() excludes {id}_greeting_requested from bookmarking", {
+  sess <- mock_session_with_bookmark_spy()
+  suppress_restore_warnings(
+    shiny::withReactiveDomain(sess, {
+      chat_restore(
+        "chat",
+        mock_chat_client(),
+        bookmark_on_input = FALSE,
+        bookmark_on_response = FALSE,
+        session = sess
+      )
+    })
+  )
+  expect_true("chat_greeting_requested" %in% sess$getBookmarkExclude())
+})
+
+test_that("chat_clear() with greeting=TRUE clears session greeting state", {
+  sess <- shiny::MockShinySession$new()
+
+  set_session_greeting_state(sess, "chat", list(content = "Hello"))
+  expect_equal(get_session_greeting_state(sess, "chat")$content, "Hello")
+
+  shiny::withReactiveDomain(sess, {
+    chat_clear("chat", greeting = TRUE, session = sess)
+  })
+
+  expect_null(get_session_greeting_state(sess, "chat"))
+})
+
+test_that("chat_get_greeting() returns NULL when no greeting is set", {
+  sess <- shiny::MockShinySession$new()
+  shiny::withReactiveDomain(sess, {
+    expect_null(chat_get_greeting("chat", session = sess))
+  })
+})
+
+test_that("chat_get_greeting() returns content after chat_set_greeting()", {
+  sess <- shiny::MockShinySession$new()
+  set_session_greeting_state(sess, "chat", list(content = "Hello!"))
+  shiny::withReactiveDomain(sess, {
+    expect_equal(chat_get_greeting("chat", session = sess), "Hello!")
+  })
+})
+
+test_that("chat_restore() excludes {id}_greeting_dismissed from bookmarking", {
+  sess <- mock_session_with_bookmark_spy()
+  suppress_restore_warnings(
+    shiny::withReactiveDomain(sess, {
+      chat_restore(
+        "chat",
+        mock_chat_client(),
+        bookmark_on_input = FALSE,
+        bookmark_on_response = FALSE,
+        session = sess
+      )
+    })
+  )
+  expect_true("chat_greeting_dismissed" %in% sess$getBookmarkExclude())
+})

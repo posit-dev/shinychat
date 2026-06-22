@@ -173,6 +173,28 @@ export function ChatApp({
     })
   }, [shouldRequestGreeting, elementId])
 
+  const greetingIsDismissed = state.greeting?.status === "dismissed"
+  // Note: greetingDismissedSentRef resets on remount. If the greeting reaches
+  // "dismissed" again after a remount, the effect re-fires setInputValue. In
+  // practice, the server replays the greeting as "visible" on reconnect, so
+  // dismissed state is only reached via real user interaction.
+  const greetingDismissedSentRef = useRef(false)
+
+  useEffect(() => {
+    if (!window.Shiny?.setInputValue) return
+    if (greetingIsDismissed && !greetingDismissedSentRef.current) {
+      greetingDismissedSentRef.current = true
+      window.Shiny.setInputValue(
+        `${elementId}_greeting_dismissed`,
+        Date.now(),
+        { priority: "event" },
+      )
+    } else if (!greetingIsDismissed && greetingDismissedSentRef.current) {
+      greetingDismissedSentRef.current = false
+      window.Shiny.setInputValue(`${elementId}_greeting_dismissed`, null)
+    }
+  }, [greetingIsDismissed, elementId])
+
   const toolState: ChatToolState = useMemo(
     () => ({
       hiddenToolRequests: state.hiddenToolRequests,
