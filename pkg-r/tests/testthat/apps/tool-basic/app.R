@@ -4,7 +4,7 @@ library(shinychat)
 
 rlang::check_installed("ellmer", version = "0.3.0")
 
-PROVIDER_MODEL = Sys.getenv("TEST_PROVIDER_MODEL", "openai/gpt-4.1-nano")
+PROVIDER_MODEL <- Sys.getenv("TEST_PROVIDER_MODEL", "openai/gpt-4.1-nano")
 
 TOOL_OPTS <- list(
   async = as.logical(Sys.getenv("TEST_TOOL_ASYNC", "TRUE")),
