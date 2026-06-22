@@ -159,6 +159,7 @@ chat_app <- function(
   }
 
   server <- function(input, output, session) {
+    shiny::setBookmarkExclude("close_btn")
     chat_mod_server("chat", client)
 
     shiny::observeEvent(input$close_btn, label = "on_close_btn", {

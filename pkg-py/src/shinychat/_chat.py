@@ -1905,7 +1905,8 @@ class Chat:
         # Must use `root_session` as the id is already resolved. :-/
         # Using a proxy session would double-encode the proxy-prefix
         root_session = session.root_scope()
-        root_session.bookmark.exclude.append(self.id + "_user_input")
+        for suffix in ("_user_input", "_cancel", "_slash_command", "_greeting_requested"):
+            root_session.bookmark.exclude.append(self.id + suffix)
 
         # ###########
         # Bookmarking
