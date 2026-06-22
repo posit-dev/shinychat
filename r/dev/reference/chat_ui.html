@@ -227,6 +227,12 @@ no messages, and has no greeting set, Shiny fires
 empty, and again after <code><a href="chat_clear.html">chat_clear()</a></code> <code>(greeting = TRUE)</code>, enabling a
 regenerate pattern where clearing the greeting automatically triggers a
 fresh one.</p>
+<p><strong><code>greeting_dismissed</code> input.</strong> When the user dismisses the greeting,
+<code>input$&lt;id&gt;_greeting_dismissed</code> fires with a <code>Date.now()</code> timestamp. If the
+greeting is later cleared after being dismissed, the input resets to <code>NULL</code>.
+If you use <code><a href="chat_app.html">chat_mod_server()</a></code>, you can access the <code>greeting_dismissed</code>
+reactive from the returned module value instead of the raw namespaced input
+string.</p>
     </div>
     <div class="section level2">
     <h2 id="thinking-display">Thinking display<a class="anchor" aria-label="anchor" href="#thinking-display"></a></h2>

@@ -7,12 +7,12 @@ If either `bookmark_on_input` or `bookmark_on_response` is `TRUE`, the
 Shiny App's bookmark will be automatically updated without showing a
 modal to the user.
 
-Note: Only the `client`'s chat state is saved/restored in the bookmark.
-If the `client`'s state doesn't properly capture the chat's UI (i.e., a
-transformation is applied in-between receiving and displaying the
-message), then you may need to implement your own `session$onRestore()`
-(and possibly `session$onBookmark`) handler to restore any additional
-state.
+Note: The `client`'s chat state and the greeting content are both
+saved/restored automatically. If the `client`'s state doesn't properly
+capture the chat's UI (i.e., a transformation is applied in-between
+receiving and displaying the message), you may need to implement your
+own `session$onRestore()` (and possibly `session$onBookmark`) handler to
+restore any additional state.
 
 To avoid restoring chat history from the `client`, you can ensure that
 the history is empty by calling `client$set_turns(list())` before

@@ -4,11 +4,12 @@ client. Also restores chat messages from the history in the client.
 If either bookmark_on_input or bookmark_on_response is TRUE, the Shiny
 App's bookmark will be automatically updated without showing a modal to the
 user.
-Note: Only the client's chat state is saved/restored in the bookmark. If
-the client's state doesn't properly capture the chat's UI (i.e., a
-transformation is applied in-between receiving and displaying the message),
-then you may need to implement your own session$onRestore() (and possibly
-session$onBookmark) handler to restore any additional state.
+Note: The client's chat state and the greeting content are both
+saved/restored automatically. If the client's state doesn't properly
+capture the chat's UI (i.e., a transformation is applied in-between
+receiving and displaying the message), you may need to implement your own
+session$onRestore() (and possibly session$onBookmark) handler to restore
+any additional state.
 To avoid restoring chat history from the client, you can ensure that the
 history is empty by calling client$set_turns(list()) before passing the
 client to chat_restore()."><meta property="og:description" content="Adds Shiny bookmarking hooks to save and restore the ellmer chat
@@ -16,11 +17,12 @@ client. Also restores chat messages from the history in the client.
 If either bookmark_on_input or bookmark_on_response is TRUE, the Shiny
 App's bookmark will be automatically updated without showing a modal to the
 user.
-Note: Only the client's chat state is saved/restored in the bookmark. If
-the client's state doesn't properly capture the chat's UI (i.e., a
-transformation is applied in-between receiving and displaying the message),
-then you may need to implement your own session$onRestore() (and possibly
-session$onBookmark) handler to restore any additional state.
+Note: The client's chat state and the greeting content are both
+saved/restored automatically. If the client's state doesn't properly
+capture the chat's UI (i.e., a transformation is applied in-between
+receiving and displaying the message), you may need to implement your own
+session$onRestore() (and possibly session$onBookmark) handler to restore
+any additional state.
 To avoid restoring chat history from the client, you can ensure that the
 history is empty by calling client$set_turns(list()) before passing the
 client to chat_restore()."><meta property="og:image" content="https://posit-dev.github.io/shinychat/r/logo.svg"><meta name="robots" content="noindex"><!-- Privacy-friendly analytics by Plausible --><script async src="https://plausible.io/js/pa-wYY8PsN7VIq_v1gETXZt9.js"></script><script>
@@ -82,11 +84,12 @@ client to chat_restore()."><meta property="og:image" content="https://posit-dev.
 <p>If either <code>bookmark_on_input</code> or <code>bookmark_on_response</code> is <code>TRUE</code>, the Shiny
 App's bookmark will be automatically updated without showing a modal to the
 user.</p>
-<p>Note: Only the <code>client</code>'s chat state is saved/restored in the bookmark. If
-the <code>client</code>'s state doesn't properly capture the chat's UI (i.e., a
-transformation is applied in-between receiving and displaying the message),
-then you may need to implement your own <code>session$onRestore()</code> (and possibly
-<code>session$onBookmark</code>) handler to restore any additional state.</p>
+<p>Note: The <code>client</code>'s chat state and the greeting content are both
+saved/restored automatically. If the <code>client</code>'s state doesn't properly
+capture the chat's UI (i.e., a transformation is applied in-between
+receiving and displaying the message), you may need to implement your own
+<code>session$onRestore()</code> (and possibly <code>session$onBookmark</code>) handler to restore
+any additional state.</p>
 <p>To avoid restoring chat history from the <code>client</code>, you can ensure that the
 history is empty by calling <code>client$set_turns(list())</code> before passing the
 client to <code>chat_restore()</code>.</p>

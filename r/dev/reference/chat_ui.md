@@ -191,6 +191,14 @@ empty, and again after
 `(greeting = TRUE)`, enabling a regenerate pattern where clearing the
 greeting automatically triggers a fresh one.
 
+**`greeting_dismissed` input.** When the user dismisses the greeting,
+`input$<id>_greeting_dismissed` fires with a `Date.now()` timestamp. If
+the greeting is later cleared after being dismissed, the input resets to
+`NULL`. If you use
+[`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md),
+you can access the `greeting_dismissed` reactive from the returned
+module value instead of the raw namespaced input string.
+
 ## Thinking display
 
 When a model produces reasoning or "thinking" tokens, shinychat renders

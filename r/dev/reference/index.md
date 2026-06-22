@@ -18,6 +18,8 @@
   : Create a greeting for a chat UI
 - [`chat_set_greeting()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_set_greeting.md)
   : Set the greeting for a chat UI
+- [`chat_get_greeting()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_get_greeting.md)
+  : Get the current greeting content
 - [`update_chat_user_input()`](https://posit-dev.github.io/shinychat/r/dev/reference/update_chat_user_input.md)
   : Update the user input of a chat control
 

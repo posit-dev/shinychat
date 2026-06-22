@@ -61,6 +61,10 @@
 
 ### Bug fixes
 
+- Fixed suggestion cards and the greeting overflowing the chat container
+  in narrow spaces such as sidebars.
+  ([\#255](https://github.com/posit-dev/shinychat/issues/255))
+
 - Fixed the copy button on code blocks not working in some embedded
   contexts. ([@thisisnic](https://github.com/thisisnic),
   [\#247](https://github.com/posit-dev/shinychat/issues/247))
