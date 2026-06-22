@@ -410,15 +410,8 @@ test_that("chat_mod_server() does not error with static string greeting", {
 
 # ── chat_restore() bookmark exclusions ───────────────────────────────────────
 
-# Helper: mock session that records setBookmarkExclude calls.
 mock_session_with_bookmark_spy <- function() {
-  sess <- shiny::MockShinySession$new()
-  excluded <- character(0)
-  sess$setBookmarkExclude <- function(names) {
-    excluded <<- names
-  }
-  sess$getBookmarkExclude <- function() excluded
-  sess
+  shiny::MockShinySession$new()
 }
 
 test_that("chat_restore() excludes {id}_greeting_requested from bookmarking", {
