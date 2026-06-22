@@ -283,6 +283,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#attributes" id="toc-attributes" class="nav-link" data-scroll-target="#attributes">Attributes</a></li>
   <li><a href="#methods" id="toc-methods" class="nav-link" data-scroll-target="#methods">Methods</a>
   <ul class="collapse">
+  <li><a href="#shinychat.playwright.ChatController.expect_greeting" id="toc-shinychat.playwright.ChatController.expect_greeting" class="nav-link" data-scroll-target="#shinychat.playwright.ChatController.expect_greeting">expect_greeting</a></li>
   <li><a href="#shinychat.playwright.ChatController.expect_latest_message" id="toc-shinychat.playwright.ChatController.expect_latest_message" class="nav-link" data-scroll-target="#shinychat.playwright.ChatController.expect_latest_message">expect_latest_message</a></li>
   <li><a href="#shinychat.playwright.ChatController.expect_messages" id="toc-shinychat.playwright.ChatController.expect_messages" class="nav-link" data-scroll-target="#shinychat.playwright.ChatController.expect_messages">expect_messages</a></li>
   <li><a href="#shinychat.playwright.ChatController.expect_user_input" id="toc-shinychat.playwright.ChatController.expect_user_input" class="nav-link" data-scroll-target="#shinychat.playwright.ChatController.expect_user_input">expect_user_input</a></li>
@@ -318,26 +319,30 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>Playwright <code>Locator</code> for the chat.</td>
 </tr>
 <tr class="even">
+<td><a href="#shinychat.playwright.ChatController.loc_greeting">loc_greeting</a></td>
+<td>Playwright <code>Locator</code> for the chat greeting.</td>
+</tr>
+<tr class="odd">
 <td><a href="#shinychat.playwright.ChatController.loc_input">loc_input</a></td>
 <td>Playwright <code>Locator</code> for the chat’s text input.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><a href="#shinychat.playwright.ChatController.loc_input_button">loc_input_button</a></td>
 <td>Playwright <code>Locator</code> for the chat’s <button> input.</button></td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><a href="#shinychat.playwright.ChatController.loc_input_container">loc_input_container</a></td>
 <td>Playwright <code>Locator</code> for the chat input container.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><a href="#shinychat.playwright.ChatController.loc_latest_message">loc_latest_message</a></td>
 <td>Playwright <code>Locator</code> for the last message in the chat.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><a href="#shinychat.playwright.ChatController.loc_messages">loc_messages</a></td>
 <td>Playwright <code>Locator</code> for the chat messages content container.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><a href="#shinychat.playwright.ChatController.loc_scroll_container">loc_scroll_container</a></td>
 <td>Playwright <code>Locator</code> for the scrollable messages container.</td>
 </tr>
@@ -355,33 +360,69 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </thead>
 <tbody>
 <tr class="odd">
+<td><a href="#shinychat.playwright.ChatController.expect_greeting">expect_greeting</a></td>
+<td>Expects the chat greeting to contain text.</td>
+</tr>
+<tr class="even">
 <td><a href="#shinychat.playwright.ChatController.expect_latest_message">expect_latest_message</a></td>
 <td>Expects the last message in the chat.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><a href="#shinychat.playwright.ChatController.expect_messages">expect_messages</a></td>
 <td>Expects the chat messages.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><a href="#shinychat.playwright.ChatController.expect_user_input">expect_user_input</a></td>
 <td>Expects the user message in the chat.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><a href="#shinychat.playwright.ChatController.send_user_input">send_user_input</a></td>
 <td>Sends the user message in the chat.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><a href="#shinychat.playwright.ChatController.set_user_input">set_user_input</a></td>
 <td>Sets the user message in the chat.</td>
 </tr>
 </tbody>
 </table>
-<section id="shinychat.playwright.ChatController.expect_latest_message" class="level3">
-<h3 class="anchored" data-anchor-id="shinychat.playwright.ChatController.expect_latest_message">expect_latest_message</h3>
-<div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>playwright.ChatController.expect_latest_message(value, <span class="op">*</span>, timeout<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Expects the last message in the chat.</p>
+<section id="shinychat.playwright.ChatController.expect_greeting" class="level3">
+<h3 class="anchored" data-anchor-id="shinychat.playwright.ChatController.expect_greeting">expect_greeting</h3>
+<div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>playwright.ChatController.expect_greeting(value, <span class="op">*</span>, timeout<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Expects the chat greeting to contain text.</p>
 <section id="parameters" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>value</td>
+<td><a href="`shinychat.playwright._chat.PatternOrStr`">PatternOrStr</a></td>
+<td>The expected greeting text.</td>
+<td><em>required</em></td>
+</tr>
+<tr class="even">
+<td>timeout</td>
+<td><a href="`shinychat.playwright._chat.Timeout`">Timeout</a></td>
+<td>The maximum time to wait for the expectation to pass. Defaults to <code>None</code>.</td>
+<td><code>None</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="shinychat.playwright.ChatController.expect_latest_message" class="level3">
+<h3 class="anchored" data-anchor-id="shinychat.playwright.ChatController.expect_latest_message">expect_latest_message</h3>
+<div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>playwright.ChatController.expect_latest_message(value, <span class="op">*</span>, timeout<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Expects the last message in the chat.</p>
+<section id="parameters-1" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-1">Parameters</h4>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -410,10 +451,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="shinychat.playwright.ChatController.expect_messages" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.playwright.ChatController.expect_messages">expect_messages</h3>
-<div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>playwright.ChatController.expect_messages(value, <span class="op">*</span>, timeout<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>playwright.ChatController.expect_messages(value, <span class="op">*</span>, timeout<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Expects the chat messages.</p>
-<section id="parameters-1" class="level4 doc-section doc-section-parameters">
-<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-1">Parameters</h4>
+<section id="parameters-2" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-2">Parameters</h4>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -442,10 +483,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="shinychat.playwright.ChatController.expect_user_input" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.playwright.ChatController.expect_user_input">expect_user_input</h3>
-<div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>playwright.ChatController.expect_user_input(value, <span class="op">*</span>, timeout<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>playwright.ChatController.expect_user_input(value, <span class="op">*</span>, timeout<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Expects the user message in the chat.</p>
-<section id="parameters-2" class="level4 doc-section doc-section-parameters">
-<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-2">Parameters</h4>
+<section id="parameters-3" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-3">Parameters</h4>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -474,10 +515,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="shinychat.playwright.ChatController.send_user_input" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.playwright.ChatController.send_user_input">send_user_input</h3>
-<div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>playwright.ChatController.send_user_input(method<span class="op">=</span><span class="st">'enter'</span>, timeout<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>playwright.ChatController.send_user_input(method<span class="op">=</span><span class="st">'enter'</span>, timeout<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Sends the user message in the chat.</p>
-<section id="parameters-3" class="level4 doc-section doc-section-parameters">
-<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-3">Parameters</h4>
+<section id="parameters-4" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-4">Parameters</h4>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -506,10 +547,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="shinychat.playwright.ChatController.set_user_input" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.playwright.ChatController.set_user_input">set_user_input</h3>
-<div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>playwright.ChatController.set_user_input(value, <span class="op">*</span>, timeout<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>playwright.ChatController.set_user_input(value, <span class="op">*</span>, timeout<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Sets the user message in the chat.</p>
-<section id="parameters-4" class="level4 doc-section doc-section-parameters">
-<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-4">Parameters</h4>
+<section id="parameters-5" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-5">Parameters</h4>
 <table class="caption-top table">
 <thead>
 <tr class="header">

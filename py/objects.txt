@@ -12,6 +12,8 @@ shinychat.Chat.destroy py:function 1 api/Chat.html#shinychat.Chat.destroy -
 shinychat._chat.Chat.destroy py:function 1 api/Chat.html#shinychat.Chat.destroy shinychat.Chat.destroy
 shinychat.Chat.enable_bookmarking py:function 1 api/Chat.html#shinychat.Chat.enable_bookmarking -
 shinychat._chat.Chat.enable_bookmarking py:function 1 api/Chat.html#shinychat.Chat.enable_bookmarking shinychat.Chat.enable_bookmarking
+shinychat.Chat.get_greeting py:function 1 api/Chat.html#shinychat.Chat.get_greeting -
+shinychat._chat.Chat.get_greeting py:function 1 api/Chat.html#shinychat.Chat.get_greeting shinychat.Chat.get_greeting
 shinychat.Chat.latest_message_stream py:attribute 1 api/Chat.html#shinychat.Chat.latest_message_stream -
 shinychat._chat.Chat.latest_message_stream py:attribute 1 api/Chat.html#shinychat.Chat.latest_message_stream shinychat.Chat.latest_message_stream
 shinychat.Chat.message_stream_context py:function 1 api/Chat.html#shinychat.Chat.message_stream_context -
@@ -68,6 +70,8 @@ shinychat.express.Chat.destroy py:function 1 api/express.Chat.html#shinychat.exp
 shinychat._chat.Chat.destroy py:function 1 api/express.Chat.html#shinychat.express.Chat.destroy shinychat.express.Chat.destroy
 shinychat.express.Chat.enable_bookmarking py:function 1 api/express.Chat.html#shinychat.express.Chat.enable_bookmarking -
 shinychat._chat.ChatExpress.enable_bookmarking py:function 1 api/express.Chat.html#shinychat.express.Chat.enable_bookmarking shinychat.express.Chat.enable_bookmarking
+shinychat.express.Chat.get_greeting py:function 1 api/express.Chat.html#shinychat.express.Chat.get_greeting -
+shinychat._chat.Chat.get_greeting py:function 1 api/express.Chat.html#shinychat.express.Chat.get_greeting shinychat.express.Chat.get_greeting
 shinychat.express.Chat.latest_message_stream py:attribute 1 api/express.Chat.html#shinychat.express.Chat.latest_message_stream -
 shinychat._chat.Chat.latest_message_stream py:attribute 1 api/express.Chat.html#shinychat.express.Chat.latest_message_stream shinychat.express.Chat.latest_message_stream
 shinychat.express.Chat.message_stream_context py:function 1 api/express.Chat.html#shinychat.express.Chat.message_stream_context -
@@ -94,6 +98,8 @@ shinychat.express.Chat.user_input py:function 1 api/express.Chat.html#shinychat.
 shinychat._chat.Chat.user_input py:function 1 api/express.Chat.html#shinychat.express.Chat.user_input shinychat.express.Chat.user_input
 shinychat.express.Chat py:class 1 api/express.Chat.html#shinychat.express.Chat -
 shinychat._chat.ChatExpress py:class 1 api/express.Chat.html#shinychat.express.Chat shinychat.express.Chat
+shinychat.playwright.ChatController.expect_greeting py:function 1 api/playwright.ChatController.html#shinychat.playwright.ChatController.expect_greeting -
+shinychat.playwright._chat.Chat.expect_greeting py:function 1 api/playwright.ChatController.html#shinychat.playwright.ChatController.expect_greeting shinychat.playwright.ChatController.expect_greeting
 shinychat.playwright.ChatController.expect_latest_message py:function 1 api/playwright.ChatController.html#shinychat.playwright.ChatController.expect_latest_message -
 shinychat.playwright._chat.Chat.expect_latest_message py:function 1 api/playwright.ChatController.html#shinychat.playwright.ChatController.expect_latest_message shinychat.playwright.ChatController.expect_latest_message
 shinychat.playwright.ChatController.expect_messages py:function 1 api/playwright.ChatController.html#shinychat.playwright.ChatController.expect_messages -
@@ -102,6 +108,8 @@ shinychat.playwright.ChatController.expect_user_input py:function 1 api/playwrig
 shinychat.playwright._chat.Chat.expect_user_input py:function 1 api/playwright.ChatController.html#shinychat.playwright.ChatController.expect_user_input shinychat.playwright.ChatController.expect_user_input
 shinychat.playwright.ChatController.loc py:attribute 1 api/playwright.ChatController.html#shinychat.playwright.ChatController.loc -
 shinychat.playwright._chat.Chat.loc py:attribute 1 api/playwright.ChatController.html#shinychat.playwright.ChatController.loc shinychat.playwright.ChatController.loc
+shinychat.playwright.ChatController.loc_greeting py:attribute 1 api/playwright.ChatController.html#shinychat.playwright.ChatController.loc_greeting -
+shinychat.playwright._chat.Chat.loc_greeting py:attribute 1 api/playwright.ChatController.html#shinychat.playwright.ChatController.loc_greeting shinychat.playwright.ChatController.loc_greeting
 shinychat.playwright.ChatController.loc_input py:attribute 1 api/playwright.ChatController.html#shinychat.playwright.ChatController.loc_input -
 shinychat.playwright._chat.Chat.loc_input py:attribute 1 api/playwright.ChatController.html#shinychat.playwright.ChatController.loc_input shinychat.playwright.ChatController.loc_input
 shinychat.playwright.ChatController.loc_input_button py:attribute 1 api/playwright.ChatController.html#shinychat.playwright.ChatController.loc_input_button -
