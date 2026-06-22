@@ -96,7 +96,13 @@ chat_restore <- function(
   to_exclude <- setdiff(
     paste0(
       id,
-      c("_user_input", "_cancel", "_slash_command", "_greeting_requested", "_greeting_dismissed")
+      c(
+        "_user_input",
+        "_cancel",
+        "_slash_command",
+        "_greeting_requested",
+        "_greeting_dismissed"
+      )
     ),
     excluded_names
   )
