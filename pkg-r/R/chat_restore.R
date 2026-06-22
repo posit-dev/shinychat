@@ -93,7 +93,10 @@ chat_restore <- function(
   excluded_names <- session$getBookmarkExclude()
   id_user_input <- paste0(id, "_user_input")
   to_exclude <- setdiff(
-    paste0(id, c("_user_input", "_cancel", "_slash_command", "_greeting_requested")),
+    paste0(
+      id,
+      c("_user_input", "_cancel", "_slash_command", "_greeting_requested")
+    ),
     excluded_names
   )
   if (length(to_exclude) > 0) {
