@@ -17,17 +17,18 @@
 #'   * An htmltools tag or [htmltools::tagList()], including Shiny
 #'     inputs/outputs.
 #'   * A generator or promise (only valid when used with `chat_set_greeting()`).
-#' @param dismissible Whether the greeting is automatically dismissed when the
-#'   user sends a message. Defaults to `TRUE`.
+#' @param persistent Whether the greeting persists after the user sends a
+#'   message. Defaults to `FALSE`, meaning the greeting is dismissed when the
+#'   user sends their first message.
 #'
 #' @returns An S3 object of class `"chat_greeting"`.
 #'
 #' @section Patterns:
 #'
-#' **Non-dismissible greeting** (stays visible after the user sends a message):
+#' **Persistent greeting** (stays visible after the user sends a message):
 #'
 #' ```r
-#' chat_greeting("Please read our [terms of service](https://example.com).", dismissible = FALSE)
+#' chat_greeting("Please read our [terms of service](https://example.com).", persistent = TRUE)
 #' ```
 #'
 #' **Greeting with suggestion cards** (clickable chips that fill the input):
@@ -75,15 +76,28 @@
 #' @export
 chat_greeting <- function(
   content,
-  dismissible = TRUE
+  persistent = FALSE,
+  ...
 ) {
+  dots <- list(...)
+  if ("dismissible" %in% names(dots)) {
+    lifecycle::deprecate_warn(
+      "0.3.0",
+      "chat_greeting(dismissible)",
+      "chat_greeting(persistent)",
+      details = "Note: the value is inverted — `dismissible = FALSE` becomes `persistent = TRUE`."
+    )
+    persistent <- !dots[["dismissible"]]
+    dots[["dismissible"]] <- NULL
+  }
+
   if (is.character(content) && length(content) > 1) {
     content <- paste(content, collapse = "\n")
   }
   structure(
     list(
       content = content,
-      dismissible = dismissible
+      persistent = persistent
     ),
     class = "chat_greeting"
   )
@@ -104,7 +118,7 @@ chat_greeting <- function(
 #'
 #' A greeting is an optional welcome message shown before any conversation
 #' messages. It is automatically dismissed when the user sends their first
-#' message (unless created with `dismissible = FALSE`).
+#' message (unless created with `persistent = TRUE`).
 #'
 #' **Static greeting.** Pass a string or [chat_greeting()] to the `greeting`
 #' parameter:
@@ -383,7 +397,7 @@ chat_ui <- function(
       content = greeting_content,
       content_type = greeting_content_type,
       options = list(
-        dismissible = isTRUE(greeting$dismissible)
+        persistent = isTRUE(greeting$persistent)
       )
     )
     greeting_attr <- jsonlite::toJSON(greeting_payload, auto_unbox = TRUE)
@@ -1037,7 +1051,7 @@ chat_set_greeting <- function(
   }
 
   content <- greeting$content
-  options <- list(dismissible = isTRUE(greeting$dismissible))
+  options <- list(persistent = isTRUE(greeting$persistent))
 
   if (
     inherits(content, "coro_generator_instance") ||

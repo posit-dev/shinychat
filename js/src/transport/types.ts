@@ -4,7 +4,7 @@ import type { AttachmentPayload } from "../chat/attachments"
 export type ContentType = "markdown" | "html" | "text" | "thinking"
 
 export interface GreetingOptions {
-  dismissible?: boolean
+  persistent?: boolean
 }
 
 export type MessagePayloadSegment = {

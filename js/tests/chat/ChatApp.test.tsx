@@ -584,7 +584,7 @@ describe("greeting_dismissed Shiny input", () => {
         type: "greeting",
         content: "Hello!",
         content_type: "markdown",
-        options: { dismissible: true },
+        options: {},
       })
     })
 
