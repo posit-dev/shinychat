@@ -80,8 +80,8 @@
 #' @export
 chat_greeting <- function(
   content,
-  persistent = FALSE,
   ...,
+  persistent = FALSE,
   dismissible = lifecycle::deprecated()
 ) {
   rlang::check_dots_empty()

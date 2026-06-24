@@ -6,8 +6,8 @@
 \usage{
 chat_greeting(
   content,
-  persistent = FALSE,
   ...,
+  persistent = FALSE,
   dismissible = lifecycle::deprecated()
 )
 }
@@ -21,11 +21,11 @@ inputs/outputs.
 \item A generator or promise (only valid when used with \code{chat_set_greeting()}).
 }}
 
+\item{...}{These dots are for future extensions and must be empty.}
+
 \item{persistent}{Whether the greeting persists after the user sends a
 message. Defaults to \code{FALSE}, meaning the greeting is dismissed when the
 user sends their first message.}
-
-\item{...}{These dots are for future extensions and must be empty.}
 
 \item{dismissible}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Renamed to
 \code{persistent} with an inverted value. \code{dismissible = FALSE} is equivalent
