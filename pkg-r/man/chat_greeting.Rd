@@ -4,7 +4,12 @@
 \alias{chat_greeting}
 \title{Create a greeting for a chat UI}
 \usage{
-chat_greeting(content, persistent = FALSE, ...)
+chat_greeting(
+  content,
+  persistent = FALSE,
+  ...,
+  dismissible = lifecycle::deprecated()
+)
 }
 \arguments{
 \item{content}{The greeting content. Can be:
@@ -20,9 +25,11 @@ inputs/outputs.
 message. Defaults to \code{FALSE}, meaning the greeting is dismissed when the
 user sends their first message.}
 
-\item{...}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} The \code{dismissible} argument
-has been renamed to \code{persistent} with an inverted value.
-\code{dismissible = FALSE} is equivalent to \code{persistent = TRUE}.}
+\item{...}{These dots are for future extensions and must be empty.}
+
+\item{dismissible}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Renamed to
+\code{persistent} with an inverted value. \code{dismissible = FALSE} is equivalent
+to \code{persistent = TRUE}.}
 }
 \value{
 An S3 object of class \code{"chat_greeting"}.
