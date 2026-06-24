@@ -793,6 +793,7 @@ chat_append_stream <- function(
 ) {
   result <- chat_append_stream_impl(id, stream, role, icon, session)
   result <- chat_update_bookmark(id, result, session = session)
+  result <- chat_history_on_response(id, result, session = session)
   # Handle erroneous result...
   result <- promises::catch(result, function(reason) {
     # ...but rethrow the error as a silent error, so the caller can also handle

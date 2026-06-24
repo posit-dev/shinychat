@@ -227,6 +227,9 @@ chat_mod_ui <- function(
 
 #' @describeIn chat_app Wire up batteries-included chat server logic in a Shiny session.
 #' @inheritParams chat_restore
+#' @param history Conversation history configuration. `TRUE` (default) enables
+#'   history with default settings; `FALSE` disables it; pass a [history_options()]
+#'   object to customise storage, identity, titling, or hooks.
 #' @param session The Shiny session. Defaults to the current reactive domain.
 #' @param greeting Optional greeting to set when the module initializes.
 #'   Accepts a static value (string, [htmltools::HTML()], [htmltools::tagList()],
@@ -280,11 +283,32 @@ chat_server <- function(
   id,
   client,
   greeting = NULL,
-  bookmark_on_input = TRUE,
-  bookmark_on_response = TRUE,
+  history = TRUE,
+  bookmark_on_input = lifecycle::deprecated(),
+  bookmark_on_response = lifecycle::deprecated(),
   session = shiny::getDefaultReactiveDomain()
 ) {
   check_ellmer_chat(client)
+
+  # Handle deprecation of bookmark params
+  bm_on_input <- FALSE
+  bm_on_response <- FALSE
+  if (lifecycle::is_present(bookmark_on_input)) {
+    lifecycle::deprecate_warn(
+      "0.5.0",
+      "chat_server(bookmark_on_input = )",
+      details = "Chat history now handles persistence. Use `history = TRUE` (the default)."
+    )
+    bm_on_input <- isTRUE(bookmark_on_input)
+  }
+  if (lifecycle::is_present(bookmark_on_response)) {
+    lifecycle::deprecate_warn(
+      "0.5.0",
+      "chat_server(bookmark_on_response = )",
+      details = "Chat history now handles persistence. Use `history = TRUE` (the default)."
+    )
+    bm_on_response <- isTRUE(bookmark_on_response)
+  }
 
   append_stream_task <- shiny::ExtendedTask$new(
     function(client, ui_id, user_input, controller = NULL) {
@@ -312,13 +336,24 @@ chat_server <- function(
     }
   )
 
-  cancel_bookmarks <- chat_restore(
-    id,
-    client,
-    session = session,
-    bookmark_on_input = bookmark_on_input,
-    bookmark_on_response = bookmark_on_response
-  )
+  saved_on_save_fns <- list()
+  saved_on_restore_fns <- list()
+
+  # Set up history or legacy bookmarking
+  cancel_history <- if (!isFALSE(history)) {
+    config <- if (isTRUE(history)) history_options() else history
+    chat_enable_history(id, client, options = config, session = session)
+  } else if (bm_on_input || bm_on_response) {
+    chat_restore(
+      id,
+      client,
+      bookmark_on_input = bm_on_input,
+      bookmark_on_response = bm_on_response,
+      session = session
+    )
+  } else {
+    NULL
+  }
 
   last_turn <- shiny::reactiveVal(NULL, label = "last_turn")
   last_input <- shiny::reactiveVal(NULL, label = "last_input")
@@ -332,15 +367,30 @@ chat_server <- function(
       new_client$set_tools(client$get_tools())
     }
     client <<- new_client
-    cancel_bookmarks()
-    cancel_bookmarks <<- chat_restore(
-      id,
-      client,
-      session = session,
-      bookmark_on_input = bookmark_on_input,
-      bookmark_on_response = bookmark_on_response,
-      restore_ui = FALSE
-    )
+
+    if (!is.null(cancel_history)) cancel_history()
+
+    cancel_history <<- if (!isFALSE(history)) {
+      config <- if (isTRUE(history)) history_options() else history
+      chat_enable_history(id, client, options = config, session = session)
+    } else if (bm_on_input || bm_on_response) {
+      chat_restore(
+        id,
+        client,
+        bookmark_on_input = bm_on_input,
+        bookmark_on_response = bm_on_response,
+        restore_ui = FALSE,
+        session = session
+      )
+    } else {
+      NULL
+    }
+
+    new_ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
+    if (!is.null(new_ctrl)) {
+      for (fn in saved_on_save_fns) new_ctrl$add_save_callback(fn)
+      for (fn in saved_on_restore_fns) new_ctrl$add_restore_callback(fn)
+    }
     invisible()
   }
 
@@ -647,6 +697,26 @@ chat_server <- function(
   ret$set_greeting <- set_greeting_mod
   ret$set_client <- set_client
   ret$slash_command <- slash_command_method
+
+  hist_env <- new.env(parent = emptyenv())
+
+  hist_env$on_save <- function(fn) {
+    saved_on_save_fns <<- c(saved_on_save_fns, list(fn))
+    ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
+    if (!is.null(ctrl)) ctrl$add_save_callback(fn)
+    invisible(fn)
+  }
+
+  hist_env$on_restore <- function(fn) {
+    saved_on_restore_fns <<- c(saved_on_restore_fns, list(fn))
+    ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
+    if (!is.null(ctrl)) ctrl$add_restore_callback(fn)
+    invisible(fn)
+  }
+
+  lockEnvironment(hist_env)
+  ret$history <- hist_env
+
   lockEnvironment(ret)
   ret
 }
@@ -657,8 +727,9 @@ chat_mod_server <- function(
   id,
   client,
   greeting = NULL,
-  bookmark_on_input = TRUE,
-  bookmark_on_response = TRUE
+  history = TRUE,
+  bookmark_on_input = lifecycle::deprecated(),
+  bookmark_on_response = lifecycle::deprecated()
 ) {
   lifecycle::deprecate_soft("0.5.0", "chat_mod_server()", "chat_server()")
   check_ellmer_chat(client)
@@ -667,6 +738,7 @@ chat_mod_server <- function(
       "chat",
       client,
       greeting = greeting,
+      history = history,
       bookmark_on_input = bookmark_on_input,
       bookmark_on_response = bookmark_on_response,
       session = session

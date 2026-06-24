@@ -261,72 +261,7 @@ def test_ui_offset_unchanged_when_save_current_store_put_raises():
     )
 
 
-# --- minter integration (controller mint-on-save) ---------------------------
-
-
-class _FakeMinter:
-    def __init__(self) -> None:
-        self.mint_count = 0
-        self.deleted: list[str] = []
-
-    async def mint_if_needed(self, record: Any) -> None:
-        if record.bookmark_state_id is not None:
-            return
-        self.mint_count += 1
-        record.bookmark_state_id = f"sid{self.mint_count}"
-
-    async def delete_state(self, state_id: str) -> None:
-        self.deleted.append(state_id)
-
-    def base_url(self) -> str:
-        return "http://x/app/"
-
-    def url_with_state(self, state_id: str) -> str:
-        return f"http://x/app/?_state_id_={state_id}"
-
-
-def test_on_response_with_minter_sets_state_id():
-    controller, store = _make_controller()
-    controller.minter = _FakeMinter()  # type: ignore[assignment]
-
-    asyncio.run(controller.on_response())
-
-    assert controller.record is not None
-    assert controller.record.bookmark_state_id == "sid1"
-    assert len(store.put_calls) == 1
-
-
-def test_second_save_does_not_remint():
-    controller, _store = _make_controller()
-    minter = _FakeMinter()
-    controller.minter = minter  # type: ignore[assignment]
-
-    asyncio.run(controller.on_response())
-    asyncio.run(controller.on_response())
-
-    assert controller.record is not None
-    assert controller.record.bookmark_state_id == "sid1"
-    assert minter.mint_count == 1
-
-
-def test_mint_failure_keeps_record_save():
-    controller, store = _make_controller()
-
-    class _FailingMinter(_FakeMinter):
-        async def mint_if_needed(self, record: Any) -> None:
-            raise RuntimeError("disk full")
-
-    controller.minter = _FailingMinter()  # type: ignore[assignment]
-
-    with pytest.warns(UserWarning, match="Bookmark mint failed"):
-        asyncio.run(controller.on_response())
-
-    assert len(store.put_calls) == 1, "save must proceed despite mint failure"
-    assert controller.record is not None
-    assert controller.record.bookmark_state_id is None
-
-
-# --- navigation on switch / new chat / delete --------------------------------
+# --- on_url_change (URL-mode navigation) ------------------------------------
 
 
 class _NavFakeChat(_FakeChat):
@@ -366,12 +301,11 @@ class _NavStore(_RecordingStore):
         self.records.pop(conv_id, None)
 
 
-def _make_nav_controller() -> tuple[
-    HistoryController, _NavStore, _NavFakeChat, _FakeMinter
-]:
+def _make_nav_controller(
+    *, with_url_mode: bool = False
+) -> tuple[HistoryController, _NavStore, _NavFakeChat]:
     store = _NavStore()
     chat = _NavFakeChat()
-    minter = _FakeMinter()
     controller = HistoryController(
         chat=chat,  # type: ignore[arg-type]
         adapter=_NavFakeAdapter(),  # type: ignore[arg-type]
@@ -381,37 +315,23 @@ def _make_nav_controller() -> tuple[
         client=None,
     )
     controller.scope = "test-scope"
-    controller.minter = minter  # type: ignore[assignment]
-    return controller, store, chat, minter
+    if with_url_mode:
+
+        async def _update_url(conv_id: str | None) -> None:
+            url = f"?conv={conv_id}" if conv_id is not None else None
+            await controller.send_navigate(url, conv_id)
+
+        controller.on_active_id_change = _update_url
+    return controller, store, chat
 
 
 def _nav_actions(chat: _NavFakeChat) -> list[dict[str, Any]]:
     return [a for a in chat.actions if a["type"] == "history_navigate"]
 
 
-def test_switch_to_bookmarked_target_navigates_instead_of_replaying():
-    controller, store, chat, _minter = _make_nav_controller()
+def test_switch_to_swaps_in_session():
+    controller, store, chat = _make_nav_controller()
     target = new_conversation_record(title="other")
-    target.bookmark_state_id = "sidT"
-    store.records[target.id] = target
-
-    asyncio.run(controller.switch_to(target.id))
-
-    navs = _nav_actions(chat)
-    assert navs == [
-        {
-            "type": "history_navigate",
-            "url": "http://x/app/?_state_id_=sidT",
-            "active_id": target.id,
-        }
-    ]
-    assert chat.cleared == 0, "must not replay in-session before navigating"
-    assert controller.record is None, "binding happens in the next session"
-
-
-def test_switch_to_bookmarkless_target_swaps_in_session():
-    controller, store, chat, _minter = _make_nav_controller()
-    target = new_conversation_record(title="legacy")
     store.records[target.id] = target
 
     asyncio.run(controller.switch_to(target.id))
@@ -421,19 +341,42 @@ def test_switch_to_bookmarkless_target_swaps_in_session():
     assert controller.record is target
 
 
-def test_new_chat_with_minter_navigates_to_base_url():
-    controller, _store, chat, _minter = _make_nav_controller()
+def test_switch_to_url_mode_sends_navigate():
+    controller, store, chat = _make_nav_controller(with_url_mode=True)
+    target = new_conversation_record(title="other")
+    store.records[target.id] = target
+
+    asyncio.run(controller.switch_to(target.id))
+
+    navs = _nav_actions(chat)
+    assert len(navs) == 1
+    assert navs[0]["url"] == f"?conv={target.id}"
+    assert navs[0]["active_id"] == target.id
+    assert chat.cleared == 1
+    assert controller.record is target
+
+
+def test_new_chat_url_mode_sends_navigate_null():
+    controller, _store, chat = _make_nav_controller(with_url_mode=True)
 
     asyncio.run(controller.new_chat())
 
-    assert _nav_actions(chat) == [
-        {"type": "history_navigate", "url": "http://x/app/", "active_id": None}
-    ]
-    assert chat.cleared == 0
+    navs = _nav_actions(chat)
+    assert navs == [{"type": "history_navigate", "url": None, "active_id": None}]
+    assert chat.cleared == 1
 
 
-def test_delete_active_with_minter_navigates_to_base_url():
-    controller, store, chat, _minter = _make_nav_controller()
+def test_new_chat_browser_mode_no_navigate():
+    controller, _store, chat = _make_nav_controller()
+
+    asyncio.run(controller.new_chat())
+
+    assert _nav_actions(chat) == []
+    assert chat.cleared == 1
+
+
+def test_delete_active_url_mode_sends_navigate_null():
+    controller, store, chat = _make_nav_controller(with_url_mode=True)
     active = new_conversation_record(title="doomed")
     store.records[active.id] = active
     controller.record = active
@@ -441,13 +384,12 @@ def test_delete_active_with_minter_navigates_to_base_url():
     asyncio.run(controller.delete(active.id))
 
     assert store.deleted == [active.id]
-    assert _nav_actions(chat) == [
-        {"type": "history_navigate", "url": "http://x/app/", "active_id": None}
-    ]
+    navs = _nav_actions(chat)
+    assert navs == [{"type": "history_navigate", "url": None, "active_id": None}]
 
 
-def test_delete_inactive_with_minter_does_not_navigate():
-    controller, store, chat, _minter = _make_nav_controller()
+def test_delete_inactive_does_not_navigate():
+    controller, store, chat = _make_nav_controller(with_url_mode=True)
     other = new_conversation_record(title="other")
     store.records[other.id] = other
 
@@ -455,6 +397,17 @@ def test_delete_inactive_with_minter_does_not_navigate():
 
     assert store.deleted == [other.id]
     assert _nav_actions(chat) == []
+
+
+def test_on_response_first_save_url_mode_sends_navigate():
+    controller, _store, chat = _make_nav_controller(with_url_mode=True)
+
+    asyncio.run(controller.on_response())
+
+    assert controller.record is not None
+    navs = _nav_actions(chat)
+    assert len(navs) == 1
+    assert navs[0]["url"] == f"?conv={controller.record.id}"
 
 
 # --- retitle ------------------------------------------------------------------
@@ -734,14 +687,12 @@ def test_evict_if_needed_removes_oldest_preserves_active():
     asyncio.run(_run())
 
 
-def test_evict_one_cleans_up_bookmark_state():
+def test_evict_one_deletes_from_store():
     async def _run() -> None:
         store = InMemoryConversationStore()
-        rec = new_conversation_record(title="bookmarked")
-        rec.bookmark_state_id = "sid-old"
+        rec = new_conversation_record(title="old")
         await store.put("alice", rec)
 
-        minter = _FakeMinter()
         controller = HistoryController(
             chat=_FakeChat(),  # type: ignore[arg-type]
             adapter=_FakeAdapter(),  # type: ignore[arg-type]
@@ -752,11 +703,9 @@ def test_evict_one_cleans_up_bookmark_state():
             max_store_bytes=None,
         )
         controller.scope = "alice"
-        controller.minter = minter  # type: ignore[assignment]
 
         await controller._evict_one(rec.id)
 
-        assert "sid-old" in minter.deleted
         assert await store.get("alice", rec.id) is None
 
     asyncio.run(_run())

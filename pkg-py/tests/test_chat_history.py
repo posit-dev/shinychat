@@ -56,10 +56,6 @@ def test_history_attr_always_present():
     assert isinstance(chat.history, ChatHistory)
 
 
-def test_history_disabled_by_default_without_client():
-    chat = _make_chat()
-    assert chat.history.enabled is False
-
 
 def test_history_config_applied_from_constructor():
     chat = _make_chat(history=HistoryOptions(store="memory", restore_mode="none"))
@@ -114,7 +110,6 @@ def test_callbacks_available_before_enabled():
     def _restore_cb(data: dict[str, Any]) -> None:
         pass
 
-    assert not chat.history.enabled
     assert _save_cb in chat.history._save_callbacks
     assert _restore_cb in chat.history._restore_callbacks
 
@@ -158,12 +153,6 @@ def test_history_client_stored_from_constructor():
     chat, _ = _make_chat_with_client(fake_client)
     assert chat.client is not None
     assert chat.client.value is fake_client
-
-
-def test_no_history_without_client():
-    chat = _make_chat()
-    assert len(chat.history._save_callbacks) == 0
-    assert chat.history.enabled is False
 
 
 def test_enable_without_client_raises():

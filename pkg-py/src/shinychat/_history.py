@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import warnings
-from typing import TYPE_CHECKING, Any, Callable, Literal
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal
 
 from ._chat_types import HistoryNavigateAction, HistoryUpdateAction
-from ._history_bookmark import BookmarkMinter
 from ._history_client import (
     TurnsAdapter,
     as_turns_adapter,
@@ -35,14 +34,26 @@ class HistoryOptions:
     restore_mode
         How a previous conversation is reloaded when the page opens.
         ``"browser"`` (the default) stores the active conversation ID in
-        localStorage so it survives page reloads. ``"url"`` encodes the ID
-        in a server bookmark URL (requires ``bookmark_store="server"``).
+        localStorage so it survives page reloads without changing the URL.
+        ``"url"`` keeps the active conversation ID as a plain
+        ``?shinychat_conversation_id=<id>`` query parameter so users can
+        bookmark or share a link to a specific conversation; no Shiny server
+        bookmarking is required.
         ``"none"`` disables automatic restore entirely.
 
-        Note: on an in-session conversation switch only the ``values`` dict
-        written by ``@chat.history.on_save`` callbacks is restored. Raw
-        Shiny input values (sliders, text boxes, etc.) are **not** restored
-        the way a full URL bookmark reload would restore them.
+        Note: only the ``values`` dict captured by ``@chat.history.on_save``
+        callbacks is restored on in-session conversation switches — raw Shiny
+        input values (sliders, text boxes, etc.) are **not** synced
+        automatically. For ``"browser"`` and ``"url"`` modes, use
+        ``@chat.history.on_restore`` to update them on both page-load and
+        in-session switches.
+
+        For ``"bookmark"`` mode, ``@chat.history.on_restore`` does **not**
+        fire — Shiny's native bookmark restore handles app state. Use
+        ``session.bookmark.on_restore`` directly if you need to restore
+        auxiliary UI state alongside the conversation. Values captured by
+        ``@chat.history.on_save`` are persisted in the conversation record in
+        this mode, but are never passed to ``on_restore``.
     store
         Where conversations are persisted. ``"auto"`` (the default) picks
         ``FileConversationStore`` in most environments and defers to the
@@ -60,10 +71,11 @@ class HistoryOptions:
         for example ``session.groups[0]`` to scope by group, or a
         constant like ``"global"`` to share across all users.
     title
-        Controls how a new conversation is named. Pass a ``TitleFn``
-        callable to generate a title from the first exchange, ``"fallback"``
-        to use a generic timestamp-based name, or ``None`` to let the LLM
-        decide.
+        Controls how a new conversation is named. ``"auto"`` (the default)
+        generates a title from the first exchange using the LLM. Pass a
+        ``TitleFn`` callable to use custom logic instead. Pass ``None`` to
+        skip LLM titling entirely — the conversation keeps its initial
+        timestamp-based name.
     """
 
     def __init__(
@@ -71,13 +83,13 @@ class HistoryOptions:
         restore_mode: "Literal['browser', 'url', 'none']" = "browser",
         store: "ConversationStore | Literal['auto', 'memory', 'file']" = "auto",
         scope: "str | Callable[..., str] | None" = None,
-        title: "TitleFn | Literal['fallback'] | None" = None,
+        title: "TitleFn | Literal['auto'] | None" = "auto",
         max_store_mb: float = 100.0,
     ) -> None:
         self.restore_mode: "Literal['browser', 'url', 'none']" = restore_mode
         self.store: "ConversationStore | Literal['auto', 'memory', 'file']" = store
         self.scope: "str | Callable[..., str] | None" = scope
-        self.title: "TitleFn | Literal['fallback'] | None" = title
+        self.title: "TitleFn | Literal['auto'] | None" = title
         self.max_store_mb: float = max_store_mb
 
 
@@ -151,7 +163,12 @@ class HistoryController:
         self.record: ConversationRecord | None = None  # None => unsaved draft
         self.baseline_values: dict[str, Any] = {}
         self.ui_offset = 0  # messages already attached to nodes
-        self.minter: BookmarkMinter | None = None  # set in restore_mode="url"
+        # Set by enable() when restore_mode="url"; called with the new
+        # conversation id (or None) after any switch that changes the active
+        # conversation.
+        self.on_active_id_change: (
+            Callable[[str | None], Awaitable[None]] | None
+        ) = None
         self.max_store_bytes: int | None = max_store_bytes
         self._title_task: asyncio.Task[None] | None = None
         # replay_ui contains multiple await points (one per message), so
@@ -192,6 +209,9 @@ class HistoryController:
         self.ui_offset = len(messages)
         await self.send_history_update()
 
+        if first_save and self.on_active_id_change is not None:
+            await self.on_active_id_change(record.id)
+
         if first_save and self.title_enabled:
             self._title_task = asyncio.create_task(self.retitle(turns))
             self._title_task.add_done_callback(title_task_done)
@@ -221,13 +241,6 @@ class HistoryController:
 
     async def _evict_one(self, conv_id: str) -> None:
         assert self.scope is not None
-        if self.minter is not None:
-            record = await self.store.get(self.scope, conv_id)
-            if record is not None and record.bookmark_state_id is not None:
-                try:
-                    await self.minter.delete_state(record.bookmark_state_id)
-                except Exception:
-                    pass
         await self.store.delete(self.scope, conv_id)
 
     async def _evict_if_needed(self) -> None:
@@ -263,11 +276,6 @@ class HistoryController:
         for cb in self._save_callbacks:
             cb(values)
         record.values = values
-        if self.minter is not None:
-            try:
-                await self.minter.mint_if_needed(record)
-            except Exception as e:
-                warnings.warn(f"Bookmark mint failed: {e}", stacklevel=2)
 
     async def _restore_app_state(self, values: dict[str, Any]) -> None:
         for cb in self._restore_callbacks:
@@ -287,27 +295,23 @@ class HistoryController:
             raise RuntimeError(f"Conversation {conv_id!r} no longer exists.")
 
         await self.save_current()
-        if self.minter is not None and target.bookmark_state_id is not None:
-            await self.send_navigate(
-                self.minter.url_with_state(target.bookmark_state_id), target.id
-            )
-            return
         self.adapter.set_turns_json(target.path_turns())
         await self.replay_ui(target)
         await self._restore_app_state(target.values or {})
         self.record = target
+        if self.on_active_id_change is not None:
+            await self.on_active_id_change(target.id)
         await self.send_history_update()
 
     async def new_chat(self) -> None:
         await self.save_current()
-        if self.minter is not None:
-            await self.send_navigate(self.minter.base_url(), None)
-            return
         self.adapter.set_turns_json([])
         await self.chat.clear_messages()
         self.ui_offset = 0
         await self._restore_app_state(self.baseline_values)
         self.record = None
+        if self.on_active_id_change is not None:
+            await self.on_active_id_change(None)
         await self.send_history_update()
 
     async def replay_ui(self, record: ConversationRecord) -> None:
@@ -357,29 +361,20 @@ class HistoryController:
     async def delete(self, conv_id: str) -> None:
         if self.scope is None:
             raise RuntimeError("HistoryController not initialized")
-        if self.minter is not None:
-            target = (
-                self.record
-                if self.record is not None and self.record.id == conv_id
-                else await self.store.get(self.scope, conv_id)
-            )
-            if target is not None and target.bookmark_state_id is not None:
-                await self.minter.delete_state(target.bookmark_state_id)
         await self.store.delete(self.scope, conv_id)
         if self.record is not None and self.record.id == conv_id:
             self.record = None
-            if self.minter is not None:
-                await self.send_navigate(self.minter.base_url(), None)
-                return
             self.adapter.set_turns_json([])
             await self.chat.clear_messages()
             self.ui_offset = 0
             await self._restore_app_state(self.baseline_values)
+            if self.on_active_id_change is not None:
+                await self.on_active_id_change(None)
         await self.send_history_update()
 
     # -- protocol ----------------------------------------------------------
 
-    async def send_navigate(self, url: str, active_id: str | None) -> None:
+    async def send_navigate(self, url: str | None, active_id: str | None) -> None:
         action: HistoryNavigateAction = {
             "type": "history_navigate",
             "url": url,
@@ -419,8 +414,8 @@ class ChatHistory:
         cfg = config if config is not None else HistoryOptions()
         self._store: "ConversationStore | Literal['auto', 'memory', 'file']" = cfg.store
         self._scope: "str | Callable[..., str] | None" = cfg.scope
-        self._title: "TitleFn | Literal['fallback'] | None" = cfg.title
-        self._restore_mode: "Literal['browser', 'url', 'none']" = cfg.restore_mode
+        self._title: "TitleFn | Literal['auto'] | None" = cfg.title
+        self._restore_mode: "Literal['browser', 'url', 'none', 'bookmark']" = cfg.restore_mode
         self._max_store_mb: float = cfg.max_store_mb
 
     def enable(self) -> None:
@@ -432,10 +427,11 @@ class ChatHistory:
         self, fn: "Callable[[dict[str, Any]], None]"
     ) -> "Callable[[dict[str, Any]], None]":
         """
-        Decorator. Register a callback fired when a conversation is saved.
+        Decorator. Register a callback fired whenever the active conversation is saved.
 
         The callback receives a mutable ``values`` dict; write any per-conversation
-        app state you want to persist into it::
+        app state you want to persist into it. Fires on each LLM response (to
+        capture fresh state) and when the user switches to a different conversation::
 
             @chat.history.on_save
             def _(values):
@@ -453,6 +449,13 @@ class ChatHistory:
         """
         Decorator. Register a callback fired when a conversation is loaded.
 
+        Fires on both page-load restore (when ``restore_mode`` is ``"browser"``
+        or ``"url"`` and a prior conversation is found) and on in-session
+        conversation switches. Use it to sync auxiliary UI state — active tabs,
+        model selectors, etc. — to match the restored conversation. Raw Shiny
+        input values are not synced automatically; call the appropriate
+        ``ui.update_*()`` functions here.
+
         The callback receives the ``values`` dict that was captured by the
         corresponding ``on_save`` callback::
 
@@ -462,6 +465,11 @@ class ChatHistory:
 
         Multiple callbacks can be registered and run in registration order.
         Safe to call before ``enabled = True``.
+
+        .. note::
+           This callback does **not** fire when ``restore_mode="bookmark"``.
+           In that mode Shiny's own bookmark restore cycle handles app state;
+           use ``session.bookmark.on_restore`` instead.
         """
         self._restore_callbacks.append(fn)
         return fn
@@ -475,7 +483,7 @@ class ChatHistory:
             )
 
         from shiny import reactive, req
-        from shiny.session import get_current_session, session_context
+        from shiny.session import get_current_session
 
         session = get_current_session()
         if session is None or session.is_stub_session():
@@ -483,19 +491,15 @@ class ChatHistory:
 
         root_session = session.root_scope()
         restore_mode = self._restore_mode
-        if restore_mode == "url" and root_session.bookmark.store != "server":
-            raise ValueError(
-                'history restore_mode="url" requires server '
-                "bookmarking: set `shiny.App(bookmark_store=\"server\")` "
-                "(or `app_opts(bookmark_store=\"server\")` in Express)."
-            )
 
         token_input_id = f"{chat.id}_history_browser_token"
         current_id_input_id = f"{chat.id}_history_current_id"
+        url_id_input_id = f"{chat.id}_history_url_id"
         root_session.bookmark.exclude.extend(
             [
                 token_input_id,
                 current_id_input_id,
+                url_id_input_id,
                 f"{chat.id}_history_select",
                 f"{chat.id}_history_new",
                 f"{chat.id}_history_rename",
@@ -513,18 +517,28 @@ class ChatHistory:
             adapter=adapter,
             store=resolved_store,
             title_fn=title if callable(title) else None,
-            title_enabled=title != "fallback",
+            title_enabled=title is not None,
             client=chat_client,
             save_callbacks=self._save_callbacks,
             restore_callbacks=self._restore_callbacks,
             max_store_bytes=max_store_bytes,
         )
 
+        # Wire up URL updates for restore_mode="url".
+        if restore_mode == "url":
+            async def _update_url(conv_id: str | None) -> None:
+                url = f"?shinychat_conversation_id={conv_id}" if conv_id is not None else None
+                await controller.send_navigate(url, conv_id)
+
+            controller.on_active_id_change = _update_url
+
+        # Stamp the active conversation ID into any Shiny server bookmark so
+        # that reloading from a bookmark URL reopens the right conversation.
+        # This runs regardless of restore_mode whenever server bookmarks are
+        # configured — the history system participates automatically.
         stamp_key = f"{chat.id}_history_conversation_id"
         stamp_cancel: Callable[[], None] | None = None
-        if restore_mode == "url":
-            controller.minter = BookmarkMinter(session)
-
+        if root_session.bookmark.store == "server":
             def stamp_conversation(state: Any) -> None:
                 if controller.record is not None:
                     state.values[stamp_key] = controller.record.id
@@ -543,8 +557,11 @@ class ChatHistory:
             return str(req(token))
 
         async def notify_error(prefix: str, e: Exception) -> None:
+            import warnings
+
             from shiny import ui as shiny_ui
 
+            warnings.warn(f"{prefix}: {e}", stacklevel=1)
             with session_context(session):
                 shiny_ui.notification_show(f"{prefix}: {e}", type="error")
 
@@ -556,39 +573,47 @@ class ChatHistory:
             if initialized:
                 return
 
-            current_id: str | None = None
-            if restore_mode != "none":
-                raw = chat._session.input[current_id_input_id]()
-                current_id = str(raw) if raw else None
-
             controller.scope = scope()  # req() retries until token arrives
             initialized = True
 
+            # Priority 1: restore from a Shiny bookmark context (any mode).
             restore_ctx = root_session.bookmark._restore_context
             restored_conv_id: str | None = None
             if restore_ctx is not None and restore_ctx.active:
                 raw_id = restore_ctx.values.get(stamp_key)
                 restored_conv_id = str(raw_id) if raw_id else None
 
-            target = None
             if restored_conv_id is not None:
                 target = await controller.store.get(
                     controller.scope, restored_conv_id
                 )
-            if target is not None:
-                adapter.set_turns_json(target.path_turns())
-                await controller.replay_ui(target)
-                controller.record = target
-            elif restore_mode != "none":
-                if current_id:
-                    pointed = await controller.store.get(
-                        controller.scope, current_id
-                    )
-                    if pointed is not None:
-                        adapter.set_turns_json(pointed.path_turns())
-                        await controller.replay_ui(pointed)
-                        await controller._restore_app_state(pointed.values or {})
-                        controller.record = pointed
+                if target is not None:
+                    adapter.set_turns_json(target.path_turns())
+                    await controller.replay_ui(target)
+                    await controller._restore_app_state(target.values or {})
+                    controller.record = target
+                    await controller.send_history_update()
+                    return
+
+            # Priority 2: restore from the mode-specific ID source.
+            if restore_mode == "url":
+                raw = chat._session.input[url_id_input_id]()
+                current_id: str | None = str(raw) if raw else None
+            elif restore_mode == "browser":
+                raw = chat._session.input[current_id_input_id]()
+                current_id = str(raw) if raw else None
+            else:
+                current_id = None
+
+            if current_id:
+                pointed = await controller.store.get(
+                    controller.scope, current_id
+                )
+                if pointed is not None:
+                    adapter.set_turns_json(pointed.path_turns())
+                    await controller.replay_ui(pointed)
+                    await controller._restore_app_state(pointed.values or {})
+                    controller.record = pointed
             await controller.send_history_update()
 
         @reactive.effect
@@ -601,7 +626,7 @@ class ChatHistory:
                 try:
                     await controller.on_response()
                 except Exception as e:
-                    await notify_error("Could not save conversation", e)
+                    notify_error("Could not save conversation", e)
 
         @reactive.effect
         @reactive.event(chat._session.input[f"{chat.id}_history_select"])
@@ -612,7 +637,7 @@ class ChatHistory:
             try:
                 await controller.switch_to(str(payload["id"]))
             except Exception as e:
-                await notify_error("Could not open conversation", e)
+                notify_error("Could not open conversation", e)
 
         @reactive.effect
         @reactive.event(chat._session.input[f"{chat.id}_history_new"])
@@ -622,7 +647,7 @@ class ChatHistory:
             try:
                 await controller.new_chat()
             except Exception as e:
-                await notify_error("Could not start a new chat", e)
+                notify_error("Could not start a new chat", e)
 
         @reactive.effect
         @reactive.event(chat._session.input[f"{chat.id}_history_rename"])
@@ -635,7 +660,7 @@ class ChatHistory:
                     str(payload["id"]), str(payload["title"])
                 )
             except Exception as e:
-                await notify_error("Could not rename conversation", e)
+                notify_error("Could not rename conversation", e)
 
         @reactive.effect
         @reactive.event(chat._session.input[f"{chat.id}_history_delete"])
@@ -646,7 +671,7 @@ class ChatHistory:
             try:
                 await controller.delete(str(payload["id"]))
             except Exception as e:
-                await notify_error("Could not delete conversation", e)
+                notify_error("Could not delete conversation", e)
 
         def _on_session_end() -> None:
             if stamp_cancel is not None:

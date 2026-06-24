@@ -108,8 +108,9 @@ export type ChatAction =
     }
   | {
       type: "history_navigate"
-      url: string
-      /** Conversation to record as current before navigating (null on New chat). */
+      /** Query string to push via history.replaceState, e.g. "?conv=<id>". Null clears the query. */
+      url: string | null
+      /** Conversation to record as current in localStorage (null on New chat). */
       active_id: string | null
     }
 

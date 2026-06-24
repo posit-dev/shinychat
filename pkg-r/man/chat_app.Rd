@@ -11,8 +11,9 @@ chat_server(
   id,
   client,
   greeting = NULL,
-  bookmark_on_input = TRUE,
-  bookmark_on_response = TRUE,
+  history = TRUE,
+  bookmark_on_input = lifecycle::deprecated(),
+  bookmark_on_response = lifecycle::deprecated(),
   session = shiny::getDefaultReactiveDomain()
 )
 }
@@ -58,6 +59,10 @@ would push the total over this cap are rejected in the browser with a notice.}
 Accepts a static value (string, \code{\link[htmltools:HTML]{htmltools::HTML()}}, \code{\link[htmltools:tagList]{htmltools::tagList()}},
 or \code{\link[=chat_greeting]{chat_greeting()}}) or a \strong{function} that generates the greeting
 dynamically. See the \strong{Greeting} section below for details.}
+
+\item{history}{Conversation history configuration. \code{TRUE} (default) enables
+history with default settings; \code{FALSE} disables it; pass a \code{\link[=history_options]{history_options()}}
+object to customise storage, identity, titling, or hooks.}
 
 \item{bookmark_on_input}{A logical value determines if the bookmark should be updated when the user submits a message. Default is \code{TRUE}.}
 

@@ -4,6 +4,7 @@
 .Ruserdata
 .Renviron
 .venv
+.superpowers
 docs/r
 docs/py
 _dev

@@ -11,6 +11,15 @@ sanitized_error_message <- function(err) {
   }
 }
 
+notify_error <- function(prefix, err) {
+  shiny::showNotification(
+    paste0(prefix, ": ", sanitized_error_message(err)),
+    type = "error",
+    duration = NULL
+  )
+  rlang::warn(prefix, parent = err)
+}
+
 sanitized_chat_error <- function(err) {
   if (needs_sanitized(err)) {
     sprintf("\n\n**%s**", sanitized_error_message(err))
