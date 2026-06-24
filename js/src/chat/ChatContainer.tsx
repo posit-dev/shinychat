@@ -22,8 +22,13 @@ import {
   SlashCommandsContext,
   useChatDispatch,
 } from "./context"
+import { ChatHistoryDrawer, HistoryIcon } from "./ChatHistoryDrawer"
 import type { ChatMessageData, GreetingData } from "./state"
-import type { ChatTransport, SlashCommandDef } from "../transport/types"
+import type {
+  ChatTransport,
+  ConversationMeta,
+  SlashCommandDef,
+} from "../transport/types"
 import type { SubmitKey } from "./tiptap/submitShortcut"
 
 declare global {
@@ -46,6 +51,7 @@ export interface ChatContainerProps {
   inputId: string
   uploadAccept: string[]
   maxUploadSize: number | null
+  elementId: string
   greeting?: GreetingData | null
   cancelId?: string
   enableCancel?: boolean
@@ -55,6 +61,9 @@ export interface ChatContainerProps {
   slashCommands: SlashCommandDef[]
   slashCommandId: string
   submitKey?: SubmitKey
+  historyEnabled?: boolean
+  historyConversations?: ConversationMeta[]
+  historyActiveId?: string | null
 }
 
 export type ChatContainerHandle = ChatInputHandle
@@ -73,6 +82,7 @@ export const ChatContainer = forwardRef<
     inputId,
     uploadAccept,
     maxUploadSize,
+    elementId,
     greeting,
     cancelId,
     enableCancel,
@@ -82,6 +92,9 @@ export const ChatContainer = forwardRef<
     slashCommands,
     slashCommandId,
     submitKey,
+    historyEnabled,
+    historyConversations,
+    historyActiveId,
   },
   ref,
 ) {
@@ -91,6 +104,9 @@ export const ChatContainer = forwardRef<
   )
 
   const chatInputRef = useRef<ChatInputHandle>(null)
+
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const historyTriggerRef = useRef<HTMLButtonElement>(null)
 
   const [pendingUrl, setPendingUrl] = useState<string | null>(null)
   const pendingUrlRef = useRef<string | null>(null)
@@ -368,6 +384,18 @@ export const ChatContainer = forwardRef<
   return (
     <SlashCommandsContext.Provider value={slashCommands}>
       <div className="shiny-chat-messages-wrapper">
+        {historyEnabled && (
+          <button
+            type="button"
+            ref={historyTriggerRef}
+            className="shiny-chat-history-trigger"
+            aria-label="Conversation history"
+            aria-expanded={historyOpen}
+            onClick={() => setHistoryOpen((v) => !v)}
+          >
+            <HistoryIcon />
+          </button>
+        )}
         <div
           className="shiny-chat-messages"
           ref={scrollRef}
@@ -408,6 +436,26 @@ export const ChatContainer = forwardRef<
           scrollToBottom={scrollToBottom}
           streaming={!!streamingMessage || !!greeting?.streaming}
         />
+        {historyEnabled && (
+          <ChatHistoryDrawer
+            isOpen={historyOpen}
+            onClose={() => setHistoryOpen(false)}
+            triggerRef={historyTriggerRef}
+            conversations={historyConversations ?? []}
+            activeId={historyActiveId ?? null}
+            busy={isStreaming}
+            onSelect={(convId) =>
+              transport.sendHistorySelect(elementId, convId)
+            }
+            onNew={() => transport.sendHistoryNew(elementId)}
+            onRename={(convId, title) =>
+              transport.sendHistoryRename(elementId, convId, title)
+            }
+            onDelete={(convId) =>
+              transport.sendHistoryDelete(elementId, convId)
+            }
+          />
+        )}
       </div>
 
       <div

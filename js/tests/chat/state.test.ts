@@ -675,6 +675,30 @@ describe("chatReducer", () => {
       expect(next.messages).toEqual([])
       expect(next.slashCommands).toEqual(commands)
     })
+
+    it("preserves history state across clear", () => {
+      const conversations = [
+        {
+          id: "conv-1",
+          title: "First chat",
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        },
+      ]
+      let state = makeState({ messages: [makeAssistantMsg()] })
+      state = chatReducer(state, {
+        type: "history_update",
+        enabled: true,
+        conversations,
+        active_id: "conv-1",
+      })
+      const next = chatReducer(state, { type: "clear" })
+      expect(next.history).toEqual({
+        enabled: true,
+        conversations,
+        activeId: "conv-1",
+      })
+    })
   })
 
   describe("update_input", () => {
@@ -1580,6 +1604,91 @@ describe("chatReducer", () => {
         "The response.",
       )
     })
+  })
+
+  describe("history_update", () => {
+    it("sets enabled, conversations, and activeId", () => {
+      const conversations = [
+        {
+          id: "c1",
+          title: "First",
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        },
+        {
+          id: "c2",
+          title: "Second",
+          created_at: "2024-01-02T00:00:00Z",
+          updated_at: "2024-01-02T00:00:00Z",
+        },
+      ]
+      const next = chatReducer(initialState, {
+        type: "history_update",
+        enabled: true,
+        conversations,
+        active_id: "c1",
+      })
+      expect(next.history).toEqual({
+        enabled: true,
+        conversations,
+        activeId: "c1",
+      })
+    })
+
+    it("replaces previous history state entirely", () => {
+      const state = makeState({
+        history: {
+          enabled: true,
+          conversations: [
+            {
+              id: "old",
+              title: "Old",
+              created_at: "2024-01-01T00:00:00Z",
+              updated_at: "2024-01-01T00:00:00Z",
+            },
+          ],
+          activeId: "old",
+        },
+      })
+      const next = chatReducer(state, {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+      })
+      expect(next.history).toEqual({
+        enabled: true,
+        conversations: [],
+        activeId: null,
+      })
+    })
+
+    it("does not affect other state fields", () => {
+      const state = makeState({ inputDisabled: true })
+      const next = chatReducer(state, {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+      })
+      expect(next.inputDisabled).toBe(true)
+      expect(next.messages).toBe(state.messages)
+    })
+  })
+
+  it("history_navigate is a state no-op (handled imperatively in ChatApp)", () => {
+    const state = chatReducer(initialState, {
+      type: "history_update",
+      enabled: true,
+      conversations: [],
+      active_id: "c1",
+    })
+    const next = chatReducer(state, {
+      type: "history_navigate",
+      url: "http://x/?_state_id_=abc",
+      active_id: "c1",
+    })
+    expect(next).toBe(state)
   })
 })
 

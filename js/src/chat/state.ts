@@ -1,6 +1,7 @@
 import type {
   ContentType,
   ChatAction,
+  ConversationMeta,
   MessagePayload,
   GreetingOptions,
   SlashCommandDef,
@@ -67,6 +68,12 @@ export interface ChatToolState {
   hiddenToolRequests: Set<string>
 }
 
+export interface ChatHistoryState {
+  enabled: boolean
+  conversations: ConversationMeta[]
+  activeId: string | null
+}
+
 export interface ChatState extends ChatInputState, ChatToolState {
   messages: ChatMessageData[]
   streamingMessage: ChatMessageData | null
@@ -89,6 +96,7 @@ export interface ChatState extends ChatInputState, ChatToolState {
    * explicit user choice always wins over the `client=` auto-default.
    */
   enableUploadExplicit: boolean
+  history: ChatHistoryState
 }
 
 // Actions that originate from the UI (not from the server)
@@ -119,6 +127,7 @@ export const initialState: ChatState = {
   enableUploadExplicit: false,
   hiddenToolRequests: new Set(),
   slashCommands: [],
+  history: { enabled: false, conversations: [], activeId: null },
 }
 
 function messagePayloadToData(msg: MessagePayload): ChatMessageData {
@@ -866,6 +875,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         slashCommands: state.slashCommands,
         enableUpload: state.enableUpload,
         enableUploadExplicit: state.enableUploadExplicit,
+        history: state.history,
       }
     }
 
@@ -1016,6 +1026,22 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
 
     case "update_slash_commands":
       return { ...state, slashCommands: action.commands }
+
+    case "history_update": {
+      return {
+        ...state,
+        history: {
+          enabled: action.enabled,
+          conversations: action.conversations,
+          activeId: action.active_id,
+        },
+      }
+    }
+
+    case "history_navigate": {
+      // Side effect handled imperatively in ChatApp; no state change.
+      return state
+    }
 
     default: {
       const _exhaustive: never = action

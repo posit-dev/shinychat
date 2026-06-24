@@ -3,6 +3,7 @@
 @use "greeting";
 @use "slash-commands.scss";
 @use "command-chip.scss";
+@use "history";
 
 shiny-chat-container {
   --shiny-chat-border: var(--bs-border-width, 1px) solid var(--bs-border-color, #e9ecef);
@@ -70,17 +71,44 @@ shiny-chat-container {
   }
 }
 
-// Wrapper positions the scroll-to-bottom button over the messages area
+// Wrapper stacks the history trigger and scroll container vertically.
+// overflow: clip (not hidden) is intentional — it clips without creating a scroll
+// container, so position:sticky on the trigger propagates past the wrapper to
+// whatever ancestor is actually scrolling (page, sidebar, etc.).
 .shiny-chat-messages-wrapper {
   position: relative;
   min-height: 0; // Allow grid child to shrink
   min-width: 0; // Allow grid child to shrink below content size (e.g. suggestion cards in a narrow sidebar)
-  overflow: clip; // Clip the absolutely-positioned button without creating a scroll container
+  overflow: clip;
+  display: flex;
+  flex-direction: column;
 }
 
-// Scroll container — useStickToBottom attaches scrollRef here
+// In non-filling mode the page scrolls, not .shiny-chat-messages.
+shiny-chat-container:not([fill]) {
+  // Ensure there's enough room for the history drawer to be usable even when
+  // the conversation is empty or short.
+  .shiny-chat-messages-wrapper {
+    min-height: 15rem;
+  }
+
+  // In filling mode, position: absolute; inset: 0 on .shiny-chat-history fills
+  // the wrapper (which IS the viewport). In non-filling mode the wrapper is
+  // taller than the viewport and may be scrolled off-screen, so use
+  // position: fixed instead so the overlay always covers the viewport.
+  .shiny-chat-history {
+    position: fixed;
+  }
+}
+
+// Scroll container — useStickToBottom attaches scrollRef here.
+// flex: 1 1 auto fills remaining wrapper height in filling mode (flex-shrink
+// brings it down to the available space) and sizes to content in non-filling
+// mode (flex-basis: auto = content size, no constraint to shrink against).
+// min-height: 0 lets it shrink below its content size in filling mode.
 .shiny-chat-messages {
-  height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
   // Flex column so a stand-alone greeting can margin-block:auto into the
   // vertical center of the scroll area when no messages exist yet.
