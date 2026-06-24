@@ -32,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * Added `submit_key` parameter to `chat_ui()` and `Chat.ui()`: `"enter"` (default, Enter submits) or `"enter+modifier"` (Ctrl/Cmd+Enter submits, plain Enter inserts a line break). The input remains editable while a response is streaming — only submission is blocked, not typing. (#251)
 
+* `Chat.enable_history()` adds multi-conversation history to your app: a sidebar drawer for starting new chats and returning to previous conversations (LLM-generated titles, search, rename, and delete). Conversations are persisted per-user via a pluggable `ConversationStore` — the built-in `FileConversationStore` is redeploy-safe on Posit Connect. App state wired through existing bookmark hooks is saved and restored per conversation automatically. Five new public classes (`ConversationStore`, `FileConversationStore`, `ConversationRecord`, `ConversationMeta`, `ConversationNode`) are exported for custom store implementations.
+
+* `Chat.enable_history()` gains `restore_mode=`: `"browser"` (default) resumes the current conversation via browser storage; `"url"` tracks it in the URL as a real server bookmark, restoring full app state *including input controls* on switch/reload (requires `bookmark_store="server"`); `"none"` disables cross-session restore. The `resume=` and `bridge_bookmark_state=` parameters are removed.
 ### Improvements
 
 * Bookmarking now correctly restores assistant messages that mix content types within a single message — for example a reply that combines markdown, a raw-HTML widget, and reasoning. Previously, restoring such a message could lose formatting or interactive components.
