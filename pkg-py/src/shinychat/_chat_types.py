@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from ._attachments import Attachment
 from ._html_islands import split_html_islands
 from ._typing_extensions import NotRequired, TypedDict
+from ._utils_types import DEPRECATED, DEPRECATED_TYPE
 
 Role = Literal["assistant", "user", "system"]
 
@@ -214,9 +215,9 @@ class ChatGreeting:
         content: Union[str, HTML, Tag, TagList, "AsyncIterable[str]"],
         *,
         persistent: bool = False,
-        **kwargs: Any,
+        dismissible: DEPRECATED_TYPE = DEPRECATED,
     ):
-        if "dismissible" in kwargs:
+        if not isinstance(dismissible, DEPRECATED_TYPE):
             warnings.warn(
                 "The `dismissible` parameter is deprecated. "
                 "Use `persistent` (with inverted value) instead. "
@@ -224,9 +225,7 @@ class ChatGreeting:
                 DeprecationWarning,
                 stacklevel=2,
             )
-            persistent = not kwargs.pop("dismissible")
-        if kwargs:
-            raise TypeError(f"Unexpected keyword arguments: {list(kwargs)}")
+            persistent = not dismissible
         self.persistent = persistent
 
         if isinstance(content, AsyncIterable):
@@ -254,7 +253,7 @@ def chat_greeting(
     content: Union[str, HTML, Tag, TagList, "AsyncIterable[str]"],
     *,
     persistent: bool = False,
-    **kwargs: Any,
+    dismissible: DEPRECATED_TYPE = DEPRECATED,
 ) -> ChatGreeting:
     """
     Create a greeting for a chat UI.
@@ -307,7 +306,7 @@ def chat_greeting(
     :func:`~shinychat.chat_ui` : Set a static greeting in the UI definition.
     :meth:`~shinychat.Chat.set_greeting` : Set or stream a greeting from the server.
     """
-    if "dismissible" in kwargs:
+    if not isinstance(dismissible, DEPRECATED_TYPE):
         warnings.warn(
             "The `dismissible` parameter is deprecated. "
             "Use `persistent` (with inverted value) instead. "
@@ -315,9 +314,7 @@ def chat_greeting(
             DeprecationWarning,
             stacklevel=2,
         )
-        persistent = not kwargs.pop("dismissible")
-    if kwargs:
-        raise TypeError(f"Unexpected keyword arguments: {list(kwargs)}")
+        persistent = not dismissible
     return ChatGreeting(
         content,
         persistent=persistent,
