@@ -90,7 +90,7 @@ chat_greeting <- function(
       "0.4.1",
       "chat_greeting(dismissible)",
       "chat_greeting(persistent)",
-      details = "Note: the value is inverted — `dismissible = FALSE` becomes `persistent = TRUE`."
+      details = "Note: the value is inverted \u2014 `dismissible = FALSE` becomes `persistent = TRUE`."
     )
     persistent <- !dismissible
   }
@@ -384,11 +384,11 @@ chat_ui <- function(
       inherits(content, "html") &&
         !inherits(content, c("shiny.tag", "shiny.tag.list"))
     ) {
-      # htmltools::HTML() — raw HTML string
+      # htmltools::HTML() - raw HTML string
       greeting_content <- as.character(content)
       greeting_content_type <- "html"
     } else {
-      # htmltools tag or tagList — render to HTML and collect deps
+      # htmltools tag or tagList - render to HTML and collect deps
       rendered <- with_current_theme({
         htmltools::renderTags(pre_process_ui(content))
       })
