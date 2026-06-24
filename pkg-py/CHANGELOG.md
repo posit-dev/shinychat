@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* The `dismissible` parameter of `chat_greeting()` has been renamed to `persistent` with an inverted value. `dismissible=False` (greeting stays visible) is now `persistent=True`. The old `dismissible` argument still works but warns. (#260)
+
 * Fixed suggestion cards and the greeting overflowing the chat container in narrow spaces such as sidebars. (#255)
 
 ## [0.5.1] - 2026-06-15
