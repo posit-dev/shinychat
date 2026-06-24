@@ -1,4 +1,13 @@
 const KEY_PREFIX = "shinychat-current"
+const URL_CONV_PARAM = "shinychat_conversation_id"
+
+export function getConversationIdFromUrl(): string | null {
+  try {
+    return new URLSearchParams(window.location.search).get(URL_CONV_PARAM)
+  } catch {
+    return null
+  }
+}
 
 export function getCurrentConversationId(elementId: string): string | null {
   try {

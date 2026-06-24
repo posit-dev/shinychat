@@ -47,7 +47,6 @@ class ConversationRecord(BaseModel):
     nodes: dict[str, ConversationNode] = Field(default_factory=dict)
     current_leaf: str | None = None
     values: dict[str, Any] = Field(default_factory=dict)
-    bookmark_state_id: str | None = None
 
     @property
     def meta(self) -> ConversationMeta:

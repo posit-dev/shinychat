@@ -18,7 +18,6 @@ mock_session_with_spy <- function() {
 # Return the custom messages recorded by a spy session.
 spy_messages <- function(spy) spy$spy_env$messages
 
-
 # ── chat_greeting() ────────────────────────────────────────────────────────────
 
 test_that("chat_greeting() returns class 'chat_greeting' with all fields", {
@@ -46,7 +45,6 @@ test_that("chat_greeting() accepts htmltools tag content", {
   expect_s3_class(g, "chat_greeting")
   expect_s3_class(g$content, "shiny.tag")
 })
-
 
 # ── chat_ui(greeting = ...) ───────────────────────────────────────────────────
 
@@ -115,7 +113,6 @@ test_that("chat_ui() snapshot for chat_greeting with persistent=TRUE", {
     greeting = chat_greeting("## Hi", persistent = TRUE)
   ))
 })
-
 
 # ── chat_set_greeting() ───────────────────────────────────────────────────────
 
@@ -201,7 +198,6 @@ test_that("chat_set_greeting() generator sends greeting_start, greeting_chunk(s)
   expect_true(all(operations == "append"))
 })
 
-
 test_that("chat_set_greeting() errors when given a function", {
   spy <- mock_session_with_spy()
   shiny::withReactiveDomain(spy$session, {
@@ -211,7 +207,6 @@ test_that("chat_set_greeting() errors when given a function", {
     )
   })
 })
-
 
 # ── chat_clear() greeting parameter ─────────────────────────────────────────
 
@@ -283,9 +278,27 @@ suppress_restore_warnings <- function(expr) {
 }
 
 test_that("named-arg detection: 'client' in formals identifies one-arg greeting", {
-  expect_true("client" %in% names(formals(function(client) {})))
-  expect_false("client" %in% names(formals(function() {})))
-  expect_false("client" %in% names(formals(function(x) {})))
+  expect_true(
+    "client" %in%
+      names(
+        formals(function(client) {
+        })
+      )
+  )
+  expect_false(
+    "client" %in%
+      names(
+        formals(function() {
+        })
+      )
+  )
+  expect_false(
+    "client" %in%
+      names(
+        formals(function(x) {
+        })
+      )
+  )
 })
 
 test_that("chat_server() calls zero-arg greeting on chat_greeting_requested", {
@@ -352,10 +365,14 @@ test_that("chat_server() calls one-arg greeting with a cloned client on chat_gre
 test_that("chat_server() one-arg greeting receives a client with empty turns", {
   received_turns <- NULL
   client_with_turns <- mock_chat_client()
-  client_with_turns$set_turns(list(list(
-    role = "user",
-    content = "prior message"
-  )))
+  client_with_turns$set_turns(
+    list(
+      list(
+        role = "user",
+        content = "prior message"
+      )
+    )
+  )
   greeting <- function(client) {
     received_turns <<- client$get_turns()
     "## Hello"
@@ -380,10 +397,14 @@ test_that("chat_server() one-arg greeting receives a client with empty turns", {
 
 test_that("chat_server() one-arg greeting does not clear original client turns", {
   client_with_turns <- mock_chat_client()
-  client_with_turns$set_turns(list(list(
-    role = "user",
-    content = "prior message"
-  )))
+  client_with_turns$set_turns(
+    list(
+      list(
+        role = "user",
+        content = "prior message"
+      )
+    )
+  )
   suppress_restore_warnings(
     shiny::testServer(
       function(input, output, session) {
@@ -415,7 +436,6 @@ test_that("chat_server() does not error with static string greeting", {
     )
   )
 })
-
 
 # ── chat_restore() bookmark exclusions ───────────────────────────────────────
 

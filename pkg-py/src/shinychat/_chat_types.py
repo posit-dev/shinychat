@@ -143,7 +143,7 @@ class HistoryUpdateAction(TypedDict):
 
 class HistoryNavigateAction(TypedDict):
     type: Literal["history_navigate"]
-    url: str
+    url: str | None
     active_id: str | None
 
 

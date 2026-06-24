@@ -45,7 +45,7 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
         history=HistoryOptions(
             store=FileConversationStore(dir=store_dir),
             scope="test-user",
-            title="fallback",
+            title=None,
         ),
     )
 
