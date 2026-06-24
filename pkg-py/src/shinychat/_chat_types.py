@@ -134,6 +134,19 @@ class UpdateSlashCommandsAction(TypedDict):
     commands: list[SlashCommandDef]
 
 
+class HistoryUpdateAction(TypedDict):
+    type: Literal["history_update"]
+    enabled: bool
+    conversations: list[dict[str, Any]]  # ConversationMeta dumps
+    active_id: str | None
+
+
+class HistoryNavigateAction(TypedDict):
+    type: Literal["history_navigate"]
+    url: str
+    active_id: str | None
+
+
 ChatAction = Union[
     MessageAction,
     ChunkStartAction,
@@ -151,6 +164,8 @@ ChatAction = Union[
     GreetingEndAction,
     GreetingClearAction,
     UpdateSlashCommandsAction,
+    HistoryUpdateAction,
+    HistoryNavigateAction,
 ]
 
 

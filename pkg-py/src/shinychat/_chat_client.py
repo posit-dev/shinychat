@@ -90,16 +90,6 @@ class ChatClient:
 
         self._client = new_client
 
-        # Cancel old bookmarking and re-register with the new client
-        if self._cancel_bookmarking is not None:
-            self._cancel_bookmarking()
-            self._cancel_bookmarking = None
-
-        cancel = self._chat.enable_bookmarking(
-            new_client, bookmark_on="response"
-        )
-        self._cancel_bookmarking = cancel
-
     async def clear(
         self,
         *,
