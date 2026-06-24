@@ -20,6 +20,9 @@
 #' @param persistent Whether the greeting persists after the user sends a
 #'   message. Defaults to `FALSE`, meaning the greeting is dismissed when the
 #'   user sends their first message.
+#' @param ... `r lifecycle::badge("deprecated")` The `dismissible` argument
+#'   has been renamed to `persistent` with an inverted value.
+#'   `dismissible = FALSE` is equivalent to `persistent = TRUE`.
 #'
 #' @returns An S3 object of class `"chat_greeting"`.
 #'
@@ -82,7 +85,7 @@ chat_greeting <- function(
   dots <- list(...)
   if ("dismissible" %in% names(dots)) {
     lifecycle::deprecate_warn(
-      "0.3.0",
+      "0.4.1",
       "chat_greeting(dismissible)",
       "chat_greeting(persistent)",
       details = "Note: the value is inverted — `dismissible = FALSE` becomes `persistent = TRUE`."
@@ -90,6 +93,7 @@ chat_greeting <- function(
     persistent <- !dots[["dismissible"]]
     dots[["dismissible"]] <- NULL
   }
+  rlang::check_dots_empty(call = rlang::caller_env())
 
   if (is.character(content) && length(content) > 1) {
     content <- paste(content, collapse = "\n")

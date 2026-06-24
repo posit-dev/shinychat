@@ -19,6 +19,10 @@ inputs/outputs.
 \item{persistent}{Whether the greeting persists after the user sends a
 message. Defaults to \code{FALSE}, meaning the greeting is dismissed when the
 user sends their first message.}
+
+\item{...}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} The \code{dismissible} argument
+has been renamed to \code{persistent} with an inverted value.
+\code{dismissible = FALSE} is equivalent to \code{persistent = TRUE}.}
 }
 \value{
 An S3 object of class \code{"chat_greeting"}.
