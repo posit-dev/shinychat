@@ -40,3 +40,25 @@ if (!Range.prototype.getClientRects) {
 if (!Range.prototype.getBoundingClientRect) {
   Range.prototype.getBoundingClientRect = () => emptyRect as DOMRect
 }
+
+// Node 25 ships a native localStorage that lacks removeItem/clear and shadows
+// jsdom's Storage. Replace with a full in-memory implementation so all tests
+// that read/write localStorage get consistent, resettable behaviour.
+const _localStore: Record<string, string> = {}
+const _localStorageMock: Storage = {
+  getItem: (key) => _localStore[key] ?? null,
+  setItem: (key, val) => {
+    _localStore[key] = val
+  },
+  removeItem: (key) => {
+    delete _localStore[key]
+  },
+  clear: () => {
+    for (const k of Object.keys(_localStore)) delete _localStore[k]
+  },
+  key: (i) => Object.keys(_localStore)[i] ?? null,
+  get length() {
+    return Object.keys(_localStore).length
+  },
+}
+vi.stubGlobal("localStorage", _localStorageMock)

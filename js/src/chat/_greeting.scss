@@ -3,6 +3,10 @@ shiny-chat-container {
   --shiny-chat-greeting-color: var(--bs-secondary-color, #6c757d);
 }
 
+.shiny-chat-messages-wrapper:has(.shiny-chat-history-trigger) .shiny-chat-greeting {
+  padding-inline-start: 2.5rem; // 1.5rem base + 1rem to clear the trigger
+}
+
 .shiny-chat-greeting {
   margin-inline: auto;
   width: 100%;
