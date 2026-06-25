@@ -25,12 +25,12 @@ test_that("chat_greeting() returns class 'chat_greeting' with all fields", {
   g <- chat_greeting("Hello")
   expect_s3_class(g, "chat_greeting")
   expect_equal(g$content, "Hello")
-  expect_true(g$dismissible)
+  expect_false(g$persistent)
 })
 
 test_that("chat_greeting() stores non-default option values", {
-  g <- chat_greeting("Hi", dismissible = FALSE)
-  expect_false(g$dismissible)
+  g <- chat_greeting("Hi", persistent = TRUE)
+  expect_true(g$persistent)
 })
 
 test_that("chat_greeting() accepts HTML() content", {
@@ -50,23 +50,23 @@ test_that("chat_greeting() accepts htmltools tag content", {
 
 # ── chat_ui(greeting = ...) ───────────────────────────────────────────────────
 
-test_that("chat_ui() plain string greeting produces markdown content_type and dismissible", {
+test_that("chat_ui() plain string greeting produces markdown content_type and persistent=FALSE", {
   ui <- chat_ui("chat", greeting = "## Hello")
   attr_raw <- ui$attribs$greeting
   expect_false(is.null(attr_raw))
   payload <- jsonlite::fromJSON(attr_raw)
   expect_equal(payload$content, "## Hello")
   expect_equal(payload$content_type, "markdown")
-  expect_true(payload$options$dismissible)
+  expect_false(payload$options$persistent)
 })
 
-test_that("chat_ui() chat_greeting with dismissible=FALSE serializes correctly", {
-  g <- chat_greeting("## Hi", dismissible = FALSE)
+test_that("chat_ui() chat_greeting with persistent=TRUE serializes correctly", {
+  g <- chat_greeting("## Hi", persistent = TRUE)
   ui <- chat_ui("chat", greeting = g)
   payload <- jsonlite::fromJSON(ui$attribs$greeting)
   expect_equal(payload$content, "## Hi")
   expect_equal(payload$content_type, "markdown")
-  expect_false(payload$options$dismissible)
+  expect_true(payload$options$persistent)
 })
 
 test_that("chat_ui() HTML() greeting produces html content_type", {
@@ -109,10 +109,10 @@ test_that("chat_ui() snapshot for plain string greeting", {
   expect_snapshot(chat_ui("chat", greeting = "## Welcome!"))
 })
 
-test_that("chat_ui() snapshot for chat_greeting with dismissible=FALSE", {
+test_that("chat_ui() snapshot for chat_greeting with persistent=TRUE", {
   expect_snapshot(chat_ui(
     "chat",
-    greeting = chat_greeting("## Hi", dismissible = FALSE)
+    greeting = chat_greeting("## Hi", persistent = TRUE)
   ))
 })
 
@@ -140,7 +140,7 @@ test_that("chat_set_greeting() plain string sends greeting action with markdown 
   action <- msgs[[1]]$message$action
   expect_equal(action$type, "greeting")
   expect_equal(action$content_type, "markdown")
-  expect_true(action$options$dismissible)
+  expect_false(action$options$persistent)
 })
 
 test_that("chat_set_greeting() HTML() content sends html content_type", {

@@ -1679,7 +1679,7 @@ class Chat:
             * A markdown string, :class:`~htmltools.HTML`, :class:`~htmltools.Tag`, or
               :class:`~htmltools.TagList`: displayed as a stand-alone greeting.
             * A :func:`~shinychat.chat_greeting` object with options such as
-              ``dismissible``.
+              ``persistent``.
             * A :func:`~shinychat.chat_greeting` wrapping an
               :class:`~typing.AsyncIterable` of strings: streams the greeting content
               chunk-by-chunk.
@@ -1697,7 +1697,7 @@ class Chat:
 
         Examples
         --------
-        Static greeting (stand-alone, dismissible by default):
+        Static greeting (stand-alone, dismissed on first message by default):
 
         ```python
         @reactive.effect
@@ -1714,7 +1714,7 @@ class Chat:
         async def _():
             greeting = chat_greeting(
                 "## Welcome!",
-                dismissible=True,
+                persistent=True,
             )
             await chat.set_greeting(greeting)
         ```
@@ -1775,7 +1775,7 @@ class Chat:
         if not isinstance(greeting, ChatGreeting):
             greeting = chat_greeting(greeting)
 
-        options: GreetingOptions = {"dismissible": greeting.dismissible}
+        options: GreetingOptions = {"persistent": greeting.persistent}
         html_deps = self._serialize_html_deps(greeting.html_deps) if greeting.html_deps else None
 
         content = greeting.content
@@ -2398,7 +2398,7 @@ def chat_ui(
         greeting_payload: dict[str, object] = {
             "content": greeting.content,
             "content_type": greeting.content_type,
-            "options": {"dismissible": greeting.dismissible},
+            "options": {"persistent": greeting.persistent},
         }
         greeting_attr = json.dumps(greeting_payload)
         greeting_deps = greeting.html_deps

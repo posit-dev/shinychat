@@ -105,7 +105,7 @@ describe("chatReducer", () => {
         contentType: "markdown",
         streaming: false,
         status: "visible",
-        options: { dismissible: true },
+        options: {},
         blocks: [
           { type: "content", content: "Hello!", contentType: "markdown" },
         ],

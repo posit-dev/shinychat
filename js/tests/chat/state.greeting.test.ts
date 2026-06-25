@@ -44,7 +44,7 @@ describe("chatReducer — greeting actions", () => {
       ])
     })
 
-    it("auto-dismisses when dismissible:true and messages exist", () => {
+    it("auto-dismisses when persistent:false (default) and messages exist", () => {
       const state = makeState({
         messages: [
           {
@@ -60,12 +60,12 @@ describe("chatReducer — greeting actions", () => {
         type: "greeting",
         content: "Hi there",
         content_type: "markdown",
-        options: { dismissible: true },
+        options: {},
       })
       expect(next.greeting).toMatchObject({ status: "dismissed" })
     })
 
-    it("auto-dismisses when options.dismissible is omitted (defaults to dismissible) and messages exist", () => {
+    it("auto-dismisses when options.persistent is omitted (defaults to non-persistent) and messages exist", () => {
       const state = makeState({
         messages: [
           {
@@ -86,7 +86,7 @@ describe("chatReducer — greeting actions", () => {
       expect(next.greeting).toMatchObject({ status: "dismissed" })
     })
 
-    it("does not auto-dismiss when dismissible:false even if messages exist", () => {
+    it("does not auto-dismiss when persistent:true even if messages exist", () => {
       const state = makeState({
         messages: [
           {
@@ -102,7 +102,7 @@ describe("chatReducer — greeting actions", () => {
         type: "greeting",
         content: "Sticky greeting",
         content_type: "markdown",
-        options: { dismissible: false },
+        options: { persistent: true },
       })
       expect(next.greeting).toMatchObject({ status: "visible" })
     })
@@ -147,7 +147,7 @@ describe("chatReducer — greeting actions", () => {
       })
     })
 
-    it("auto-dismisses when dismissible and messages exist", () => {
+    it("auto-dismisses when non-persistent and messages exist", () => {
       const state = makeState({
         messages: [
           {
@@ -418,15 +418,15 @@ describe("chatReducer — greeting actions", () => {
     })
   })
 
-  describe("INPUT_SENT dismisses greeting", () => {
-    it("dismisses a dismissible visible greeting on user input", () => {
+  describe("INPUT_SENT dismisses non-persistent greeting", () => {
+    it("dismisses a non-persistent visible greeting on user input", () => {
       const state = makeState({
         greeting: {
           content: "Hello",
           contentType: "markdown",
           streaming: false,
           status: "visible",
-          options: { dismissible: true },
+          options: {},
           blocks: [],
         },
       })
@@ -438,14 +438,14 @@ describe("chatReducer — greeting actions", () => {
       expect(next.greeting).toMatchObject({ status: "dismissing" })
     })
 
-    it("does not dismiss a non-dismissible greeting on user input", () => {
+    it("does not dismiss a persistent greeting on user input", () => {
       const state = makeState({
         greeting: {
           content: "Hello",
           contentType: "markdown",
           streaming: false,
           status: "visible",
-          options: { dismissible: false },
+          options: { persistent: true },
           blocks: [],
         },
       })
@@ -459,7 +459,7 @@ describe("chatReducer — greeting actions", () => {
   })
 
   describe("message dismisses greeting", () => {
-    it("dismisses a dismissible visible greeting when a message arrives", () => {
+    it("dismisses a non-persistent visible greeting when a message arrives", () => {
       const state = makeState({
         greeting: {
           content: "Hello",
@@ -480,14 +480,14 @@ describe("chatReducer — greeting actions", () => {
       expect(next.greeting).toMatchObject({ status: "dismissing" })
     })
 
-    it("does not dismiss a non-dismissible greeting when a message arrives", () => {
+    it("does not dismiss a persistent greeting when a message arrives", () => {
       const state = makeState({
         greeting: {
           content: "Hello",
           contentType: "markdown",
           streaming: false,
           status: "visible",
-          options: { dismissible: false },
+          options: { persistent: true },
           blocks: [],
         },
       })
@@ -503,7 +503,7 @@ describe("chatReducer — greeting actions", () => {
   })
 
   describe("chunk_start dismisses greeting", () => {
-    it("dismisses a dismissible visible greeting when streaming starts", () => {
+    it("dismisses a non-persistent visible greeting when streaming starts", () => {
       const state = makeState({
         greeting: {
           content: "Hello",
@@ -524,14 +524,14 @@ describe("chatReducer — greeting actions", () => {
       expect(next.greeting).toMatchObject({ status: "dismissing" })
     })
 
-    it("does not dismiss a non-dismissible greeting when streaming starts", () => {
+    it("does not dismiss a persistent greeting when streaming starts", () => {
       const state = makeState({
         greeting: {
           content: "Hello",
           contentType: "markdown",
           streaming: false,
           status: "visible",
-          options: { dismissible: false },
+          options: { persistent: true },
           blocks: [],
         },
       })

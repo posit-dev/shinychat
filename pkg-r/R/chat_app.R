@@ -257,6 +257,7 @@ chat_mod_ui <- function(
 #' The returned `set_greeting()` helper is available for cases where you need
 #' to set a greeting outside the greeting lifecycle.
 #'
+#' @importFrom shiny isolate
 #' @export
 chat_mod_server <- function(
   id,

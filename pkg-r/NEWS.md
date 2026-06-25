@@ -16,6 +16,8 @@
 
 ## Bug fixes
 
+* The `dismissible` parameter of `chat_greeting()` has been renamed to `persistent` with an inverted value. `dismissible = FALSE` (greeting stays visible) is now `persistent = TRUE`. The old `dismissible` argument still works but warns. (#260)
+
 * Fixed suggestion cards and the greeting overflowing the chat container in narrow spaces such as sidebars. (#255)
 
 * Fixed the copy button on code blocks not working in some embedded contexts. (@thisisnic, #247)

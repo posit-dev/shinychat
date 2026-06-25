@@ -48,9 +48,9 @@ function makeInitialGreeting(
   greeting: InitialGreeting,
   messagesLength: number,
 ): GreetingData {
-  const dismissible = greeting.options.dismissible !== false
+  const persistent = greeting.options.persistent === true
   const status: GreetingData["status"] =
-    dismissible && messagesLength > 0 ? "dismissed" : "visible"
+    !persistent && messagesLength > 0 ? "dismissed" : "visible"
   return {
     content: greeting.content,
     contentType: greeting.contentType,

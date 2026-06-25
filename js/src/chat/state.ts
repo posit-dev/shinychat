@@ -148,10 +148,7 @@ function removeLoadingMessage(messages: ChatMessageData[]): ChatMessageData[] {
 }
 
 function dismissGreeting(greeting: GreetingData | null): GreetingData | null {
-  if (
-    greeting?.options.dismissible !== false &&
-    greeting?.status === "visible"
-  ) {
+  if (greeting?.options.persistent !== true && greeting?.status === "visible") {
     return { ...greeting, status: "dismissing" }
   }
   return greeting
@@ -159,11 +156,11 @@ function dismissGreeting(greeting: GreetingData | null): GreetingData | null {
 
 function computeGreetingVisibility(
   prior: GreetingData | null,
-  dismissible: boolean,
+  persistent: boolean,
   hasMessages: boolean,
 ): "visible" | "dismissing" | "dismissed" {
   if (prior?.status === "dismissed") return "dismissed"
-  if (dismissible && hasMessages) return "dismissed"
+  if (!persistent && hasMessages) return "dismissed"
   return "visible"
 }
 
@@ -904,13 +901,13 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     }
 
     case "greeting": {
-      const dismissible = action.options.dismissible !== false
+      const persistent = action.options.persistent === true
       // If a greeting was already dismissed, accept the new content silently so
       // it surfaces the next time the message list is cleared. Otherwise apply
       // the standard auto-dismiss rule when initial messages exist.
       const status = computeGreetingVisibility(
         state.greeting,
-        dismissible,
+        persistent,
         state.messages.length > 0,
       )
       return {
@@ -933,10 +930,10 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     }
 
     case "greeting_start": {
-      const dismissible = action.options.dismissible !== false
+      const persistent = action.options.persistent === true
       const status = computeGreetingVisibility(
         state.greeting,
-        dismissible,
+        persistent,
         state.messages.length > 0,
       )
       return {

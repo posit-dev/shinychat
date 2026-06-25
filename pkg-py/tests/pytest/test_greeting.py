@@ -21,16 +21,16 @@ def test_chat_greeting_defaults():
     assert isinstance(g, ChatGreeting)
     assert g.content == "## Hello"
     assert g.content_type == "markdown"
-    assert g.dismissible is True
+    assert g.persistent is False
     assert g.html_deps == []
 
 
 def test_chat_greeting_all_options():
     g = chat_greeting(
         "hi",
-        dismissible=False,
+        persistent=True,
     )
-    assert g.dismissible is False
+    assert g.persistent is True
 
 
 def test_chat_greeting_str_content_type():
@@ -112,16 +112,16 @@ def test_chat_ui_plain_string_greeting():
     payload = _greeting_payload(tag)
     assert payload["content"] == "## Hi"
     assert payload["content_type"] == "markdown"
-    assert payload["options"]["dismissible"] is True
+    assert payload["options"]["persistent"] is False
 
 
 def test_chat_ui_chat_greeting_object():
-    g = chat_greeting("## Hi", dismissible=False)
+    g = chat_greeting("## Hi", persistent=True)
     tag = chat_ui("chat", greeting=g)
     payload = _greeting_payload(tag)
     assert payload["content"] == "## Hi"
     assert payload["content_type"] == "markdown"
-    assert payload["options"]["dismissible"] is False
+    assert payload["options"]["persistent"] is True
 
 
 def test_chat_ui_tag_greeting_has_html_content_type():
@@ -239,7 +239,7 @@ def test_set_greeting_string_sends_greeting_action():
     assert actions[0]["type"] == "greeting"
     assert actions[0]["content"] == "Hello"
     assert actions[0]["content_type"] == "markdown"
-    assert actions[0]["options"]["dismissible"] is True
+    assert actions[0]["options"]["persistent"] is False
 
 
 def test_set_greeting_html_sends_html_content_type():
@@ -276,15 +276,15 @@ def test_set_greeting_stream_sends_start_chunks_end():
     assert all(a["operation"] == "append" for a in chunk_actions)
 
 
-def test_set_greeting_non_dismissible():
+def test_set_greeting_persistent():
     chat, spy = _make_spy_chat()
 
     async def _run():
-        await chat.set_greeting(chat_greeting("Hi", dismissible=False))
+        await chat.set_greeting(chat_greeting("Hi", persistent=True))
 
     _run_async(_run)
     actions = _spy_actions(spy)
-    assert actions[0]["options"]["dismissible"] is False
+    assert actions[0]["options"]["persistent"] is True
 
 
 # ---------------------------------------------------------------------------

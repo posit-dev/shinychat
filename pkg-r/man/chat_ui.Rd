@@ -122,7 +122,7 @@ To respond to user input, listen for \code{input$ID_user_input} (for example, if
 
 A greeting is an optional welcome message shown before any conversation
 messages. It is automatically dismissed when the user sends their first
-message (unless created with \code{dismissible = FALSE}).
+message (unless created with \code{persistent = TRUE}).
 
 \strong{Static greeting.} Pass a string or \code{\link[=chat_greeting]{chat_greeting()}} to the \code{greeting}
 parameter:
