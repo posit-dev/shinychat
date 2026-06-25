@@ -30,6 +30,7 @@ import type {
   SlashCommandDef,
 } from "../transport/types"
 import type { SubmitKey } from "./tiptap/submitShortcut"
+import { setCurrentConversationId } from "./currentConversation"
 
 declare global {
   interface Window {
@@ -444,10 +445,14 @@ export const ChatContainer = forwardRef<
             conversations={historyConversations ?? []}
             activeId={historyActiveId ?? null}
             busy={isStreaming}
-            onSelect={(convId) =>
+            onSelect={(convId) => {
+              setCurrentConversationId(elementId, convId)
               transport.sendHistorySelect(elementId, convId)
-            }
-            onNew={() => transport.sendHistoryNew(elementId)}
+            }}
+            onNew={() => {
+              setCurrentConversationId(elementId, null)
+              transport.sendHistoryNew(elementId)
+            }}
             onRename={(convId, title) =>
               transport.sendHistoryRename(elementId, convId, title)
             }
