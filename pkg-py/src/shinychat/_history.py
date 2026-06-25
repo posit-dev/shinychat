@@ -169,7 +169,6 @@ class HistoryController:
 
         self.scope: str | None = None
         self.record: ConversationRecord | None = None  # None => unsaved draft
-        self.baseline_values: dict[str, Any] = {}
         self.ui_offset = 0  # messages already attached to nodes
         # Set by enable() when restore_mode="url"; called with the new
         # conversation id (or None) after any switch that changes the active
@@ -335,7 +334,6 @@ class HistoryController:
         self.adapter.set_turns_json([])
         await self.chat.clear_messages()
         self.ui_offset = 0
-        await self._restore_app_state(self.baseline_values)
         self.record = None
         if self.on_active_id_change is not None:
             await self.on_active_id_change(None)
@@ -396,7 +394,6 @@ class HistoryController:
             self.adapter.set_turns_json([])
             await self.chat.clear_messages()
             self.ui_offset = 0
-            await self._restore_app_state(self.baseline_values)
             if self.on_active_id_change is not None:
                 await self.on_active_id_change(None)
         await self.send_history_update()
@@ -678,7 +675,6 @@ class ChatHistory:
                 return
 
             controller.scope = scope()  # req() retries until token arrives
-            initialized = True
 
             # Priority 1: restore from a Shiny bookmark context (any mode).
             restore_ctx = root_session.bookmark._restore_context
@@ -698,9 +694,16 @@ class ChatHistory:
                         await controller._restore_app_state(target.values or {})
                     controller.record = target
                     await controller.send_history_update()
+                    initialized = True
                     return
 
             # Priority 2: restore from the mode-specific ID source.
+            # Reading these inputs may raise SilentException if the browser
+            # hasn't sent them yet (they're delivered after Shiny's
+            # initializedPromise resolves, which is after the first flush).
+            # Keep initialized=False until after send_history_update() so
+            # the effect retries correctly on the next flush rather than
+            # exiting early via the guard above.
             if restore_mode == "url":
                 raw = chat._session.input[url_id_input_id]()
                 current_id: str | None = str(raw) if raw else None
@@ -720,6 +723,7 @@ class ChatHistory:
                     await controller._restore_app_state(pointed.values or {})
                     controller.record = pointed
             await controller.send_history_update()
+            initialized = True
 
         @reactive.effect
         @reactive.event(chat.messages, ignore_init=True)
