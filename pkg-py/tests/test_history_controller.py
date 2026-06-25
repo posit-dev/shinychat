@@ -6,7 +6,11 @@ from datetime import timedelta
 from typing import Any
 
 import pytest
-from shinychat._history import HistoryController, extend_record_linear
+from shinychat._history import (
+    HistoryController,
+    do_bookmark_with_cleanup,
+    extend_record_linear,
+)
 from shinychat._history_store import InMemoryConversationStore
 from shinychat._history_types import new_conversation_record
 
@@ -486,6 +490,57 @@ async def test_retitle_noop_when_record_is_none():
     await controller.retitle([])
 
     assert store.put_calls == []
+
+
+# --- bookmark callback cleanup ------------------------------------------------
+
+
+class _BookmarkStub:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.cancel_calls = 0
+        self.on_bookmarked_calls = 0
+
+    def on_bookmarked(
+        self, fn: Any
+    ) -> Any:
+        self.on_bookmarked_calls += 1
+
+        def cancel() -> None:
+            self.cancel_calls += 1
+
+        return cancel
+
+    async def do_bookmark(self) -> None:
+        if self.fail:
+            raise RuntimeError("bookmark failed")
+
+
+@pytest.mark.anyio
+async def test_do_bookmark_with_cleanup_cancels_on_success():
+    bookmark = _BookmarkStub()
+
+    async def _on_bookmarked(url: str) -> None:
+        pass
+
+    await do_bookmark_with_cleanup(bookmark, _on_bookmarked)
+
+    assert bookmark.on_bookmarked_calls == 1
+    assert bookmark.cancel_calls == 1
+
+
+@pytest.mark.anyio
+async def test_do_bookmark_with_cleanup_cancels_on_failure():
+    bookmark = _BookmarkStub(fail=True)
+
+    async def _on_bookmarked(url: str) -> None:
+        pass
+
+    with pytest.raises(RuntimeError, match="bookmark failed"):
+        await do_bookmark_with_cleanup(bookmark, _on_bookmarked)
+
+    assert bookmark.on_bookmarked_calls == 1
+    assert bookmark.cancel_calls == 1
 
 
 @pytest.mark.anyio
