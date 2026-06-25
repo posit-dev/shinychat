@@ -23,9 +23,7 @@ specific conversations; no server bookmarking configuration is required.
 response a fresh server bookmark is minted and the address bar updates to
 \verb{?_state_id_=...}. Requires \code{bookmarkStore = "server"} in the Shiny app
 options. On in-session conversation switches, navigates to the target
-conversation's bookmark URL if one exists. Note that \code{on_save} values are
-captured and stored in the conversation record in this mode, but \code{on_restore}
-never fires — use \code{session$onRestore()} to read them back if needed.
+conversation's bookmark URL if one exists.
 \code{"none"} disables automatic restore entirely.}
 
 \item{store}{Storage backend: \code{"auto"} (default: memory in dev, file in
