@@ -213,10 +213,9 @@ chat_mod_ui <- function(
   )
 }
 
-#' @describeIn chat_app Wire up chat server logic inside an existing [shiny::moduleServer()].
+#' @describeIn chat_app Wire up batteries-included chat server logic in a Shiny session.
 #' @inheritParams chat_restore
-#' @param session The Shiny session. Pass the `session` argument from your
-#'   enclosing [shiny::moduleServer()] call.
+#' @param session The Shiny session. Defaults to the current reactive domain.
 #' @param greeting Optional greeting to set when the module initializes.
 #'   Accepts a static value (string, [htmltools::HTML()], [htmltools::tagList()],
 #'   or [chat_greeting()]) or a **function** that generates the greeting
@@ -238,7 +237,7 @@ chat_mod_ui <- function(
 #' configuring a separate client:
 #'
 #' ```r
-#' chat_server("chat", client, session = session, greeting = function(client) {
+#' chat_server("chat", client, greeting = function(client) {
 #'   stream <- client$stream_async("Generate a short welcome message.")
 #'   chat_greeting(stream)
 #' })
@@ -247,7 +246,7 @@ chat_mod_ui <- function(
 #' **`function()`** (zero arguments). You create and manage your own client:
 #'
 #' ```r
-#' chat_server("chat", client, session = session, greeting = function() {
+#' chat_server("chat", client, greeting = function() {
 #'   greeter <- ellmer::chat_openai(model = "gpt-4o")
 #'   stream <- greeter$stream_async("Generate a short welcome message.")
 #'   chat_greeting(stream)
@@ -257,8 +256,7 @@ chat_mod_ui <- function(
 #' **Static value.** Set once; does not regenerate after `clear()`:
 #'
 #' ```r
-#' chat_server("chat", client, session = session,
-#'             greeting = "## Welcome!\n\nHow can I help?")
+#' chat_server("chat", client, greeting = "## Welcome!\n\nHow can I help?")
 #' ```
 #'
 #' The returned `set_greeting()` helper is available for cases where you need
@@ -505,7 +503,8 @@ chat_server <- function(
     }
   })
 
-  # TODO: Support a non-module version (e.g., standalone register_slash_command())
+  # TODO: Support a standalone register_slash_command() that works outside the
+  # returned environment (e.g., so callers don't have to thread the return value)
   slash_command_method <- function(
     name,
     description,

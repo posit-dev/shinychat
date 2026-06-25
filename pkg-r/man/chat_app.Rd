@@ -87,8 +87,7 @@ dynamically. See the \strong{Greeting} section below for details.}
 
 \item{bookmark_on_response}{A logical value determines if the bookmark should be updated when the response stream completes. Default is \code{TRUE}.}
 
-\item{session}{The Shiny session. Pass the \code{session} argument from your
-enclosing \code{\link[shiny:moduleServer]{shiny::moduleServer()}} call.}
+\item{session}{The Shiny session. Defaults to the current reactive domain.}
 }
 \value{
 \itemize{
@@ -169,7 +168,7 @@ app is suitable for interactive use by a single user; do not use
 
 \item \code{chat_mod_ui()}: A simple chat app module UI.
 
-\item \code{chat_server()}: Wire up chat server logic inside an existing \code{\link[shiny:moduleServer]{shiny::moduleServer()}}.
+\item \code{chat_server()}: Wire up batteries-included chat server logic in a Shiny session.
 
 \item \code{chat_mod_server()}: A Shiny module server for chat (deprecated).
 
@@ -190,7 +189,7 @@ recognized argument is \code{client}.
 history wiped is passed as \code{client}. This avoids manually creating and
 configuring a separate client:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_server("chat", client, session = session, greeting = function(client) \{
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_server("chat", client, greeting = function(client) \{
   stream <- client$stream_async("Generate a short welcome message.")
   chat_greeting(stream)
 \})
@@ -198,7 +197,7 @@ configuring a separate client:
 
 \strong{\verb{function()}} (zero arguments). You create and manage your own client:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_server("chat", client, session = session, greeting = function() \{
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_server("chat", client, greeting = function() \{
   greeter <- ellmer::chat_openai(model = "gpt-4o")
   stream <- greeter$stream_async("Generate a short welcome message.")
   chat_greeting(stream)
@@ -207,8 +206,7 @@ configuring a separate client:
 
 \strong{Static value.} Set once; does not regenerate after \code{clear()}:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_server("chat", client, session = session,
-            greeting = "## Welcome!\\n\\nHow can I help?")
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_server("chat", client, greeting = "## Welcome!\\n\\nHow can I help?")
 }\if{html}{\out{</div>}}
 
 The returned \code{set_greeting()} helper is available for cases where you need
