@@ -149,22 +149,25 @@ chat_app <- function(
         height = "100%",
         allow_attachments = allow_attachments
       ),
-      shiny::actionButton(
-        "close_btn",
-        label = "",
-        class = "btn-close",
-        style = "position: fixed; top: 6px; right: 6px;"
-      )
+      if (rlang::is_interactive()) {
+        shiny::actionButton(
+          "close_btn",
+          label = "",
+          class = "btn-close",
+          style = "position: fixed; top: 6px; right: 6px;"
+        )
+      }
     )
   }
 
   server <- function(input, output, session) {
-    shiny::setBookmarkExclude("close_btn")
+    if (rlang::is_interactive()) {
+      shiny::setBookmarkExclude("close_btn")
+      shiny::observeEvent(input$close_btn, label = "on_close_btn", {
+        shiny::stopApp()
+      })
+    }
     chat_mod_server("chat", client)
-
-    shiny::observeEvent(input$close_btn, label = "on_close_btn", {
-      shiny::stopApp()
-    })
   }
 
   shiny::shinyApp(ui, server, ..., enableBookmarking = bookmark_store)
