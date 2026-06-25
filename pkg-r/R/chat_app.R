@@ -72,7 +72,7 @@
 #' @returns
 #'   * `chat_app()` returns a [shiny::shinyApp()] object.
 #'   * `chat_mod_ui()` returns the UI for a shinychat module.
-#'   * `chat_server()` includes the shinychat module server logic, and
+#'   * `chat_server()` includes the shinychat server logic, and
 #'     returns an environment containing:
 #'
 #'     * `last_input`: A reactive value containing the last user input (a string

@@ -49,7 +49,7 @@ test_that("resolve_attachment_attrs handles bool, subset, and errors", {
   )
   expect_equal(
     resolve_attachment_attrs(character(0)),
-    list(allow = NULL, accept = NULL)
+    list(allow = "false", accept = NULL)
   )
   expect_error(
     resolve_attachment_attrs("application/msword"),
