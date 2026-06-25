@@ -10,9 +10,13 @@ mock_chat_client <- function(turns = list()) {
     clone = function() mock_chat_client(stored_turns),
     set_system_prompt = function(prompt) invisible(NULL),
     set_tools = function(tools) invisible(NULL),
-    last_turn = function()
-      if (length(stored_turns) > 0) stored_turns[[length(stored_turns)]] else
+    last_turn = function() {
+      if (length(stored_turns) > 0) {
+        stored_turns[[length(stored_turns)]]
+      } else {
         NULL
+      }
+    }
   )
   class(obj) <- c("Chat", "R6")
   obj

@@ -26,7 +26,9 @@ get_client_info <- function(client) {
 
 turn_fallback_markdown <- function(recorded_turn) {
   contents <- recorded_turn$props$contents
-  if (!is.list(contents)) return("")
+  if (!is.list(contents)) {
+    return("")
+  }
 
   texts <- vapply(
     contents,

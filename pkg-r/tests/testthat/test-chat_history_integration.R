@@ -134,7 +134,7 @@ test_that("HistoryController does not evict when no limit set", {
 
   controller$on_response(list())
 
-  expect_length(store$list("user1"), 2L)  # old + new
+  expect_length(store$list("user1"), 2L) # old + new
 })
 
 test_that("HistoryController evict_one removes the record from the store", {

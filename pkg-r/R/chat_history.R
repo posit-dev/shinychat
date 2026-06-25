@@ -1,12 +1,22 @@
 extract_state_id <- function(url) {
-  m <- regmatches(url, regexpr("[?&]_state_id_=([A-Za-z0-9_-]+)", url, perl = TRUE))
-  if (length(m) == 0 || !nzchar(m)) return(NULL)
+  m <- regmatches(
+    url,
+    regexpr("[?&]_state_id_=([A-Za-z0-9_-]+)", url, perl = TRUE)
+  )
+  if (length(m) == 0 || !nzchar(m)) {
+    return(NULL)
+  }
   sub("^[^=]+=", "", m)
 }
 
 delete_bookmark_state <- function(state_id) {
-  if (!grepl("^[A-Za-z0-9_-]+$", state_id)) return(invisible())
-  save_dir <- shiny::getShinyOption("bookmarkSaveDir", default = "shiny_bookmarks")
+  if (!grepl("^[A-Za-z0-9_-]+$", state_id)) {
+    return(invisible())
+  }
+  save_dir <- shiny::getShinyOption(
+    "bookmarkSaveDir",
+    default = "shiny_bookmarks"
+  )
   state_path <- file.path(save_dir, state_id)
   if (dir.exists(state_path)) {
     unlink(state_path, recursive = TRUE)
@@ -48,7 +58,9 @@ HistoryController <- R6::R6Class(
     },
 
     on_response = function(recorded_turns) {
-      if (self$is_replaying) return(invisible())
+      if (self$is_replaying) {
+        return(invisible())
+      }
       if (self$suppress_next_save) {
         self$suppress_next_save <- FALSE
         return(invisible())
@@ -71,10 +83,14 @@ HistoryController <- R6::R6Class(
       private$store$put(self$scope, self$record)
       private$evict_if_needed()
 
-      if (!is.null(self$on_response_saved)) self$on_response_saved(self$record)
+      if (!is.null(self$on_response_saved)) {
+        self$on_response_saved(self$record)
+      }
 
       if (first_save) {
-        if (!is.null(self$on_active_id_change)) self$on_active_id_change(self$record$id)
+        if (!is.null(self$on_active_id_change)) {
+          self$on_active_id_change(self$record$id)
+        }
       }
 
       self$send_history_update()
@@ -105,7 +121,9 @@ HistoryController <- R6::R6Class(
       self$replay_ui(target)
       self$restore_app_state(target$values %||% list())
       self$record <- target
-      if (!is.null(self$on_active_id_change)) self$on_active_id_change(target$id)
+      if (!is.null(self$on_active_id_change)) {
+        self$on_active_id_change(target$id)
+      }
       self$send_history_update()
     },
 
@@ -115,14 +133,18 @@ HistoryController <- R6::R6Class(
       chat_clear(private$chat_id, session = private$session)
       self$restore_app_state(self$baseline_values)
       self$record <- NULL
-      if (!is.null(self$on_active_id_change)) self$on_active_id_change(NULL)
+      if (!is.null(self$on_active_id_change)) {
+        self$on_active_id_change(NULL)
+      }
       self$send_history_update()
     },
 
     rename = function(conv_id, title) {
       title <- paste(strsplit(trimws(title), "\\s+")[[1L]], collapse = " ")
       title <- substr(title, 1L, MAX_TITLE_LEN)
-      if (!nzchar(title)) return(invisible())
+      if (!nzchar(title)) {
+        return(invisible())
+      }
 
       if (!is.null(self$record) && identical(conv_id, self$record$id)) {
         self$record$title <- title
@@ -140,12 +162,16 @@ HistoryController <- R6::R6Class(
     },
 
     delete = function(conv_id) {
-      if (!is.null(self$on_evict)) self$on_evict(conv_id)
+      if (!is.null(self$on_evict)) {
+        self$on_evict(conv_id)
+      }
       private$store$delete(self$scope, conv_id)
 
       if (!is.null(self$record) && identical(conv_id, self$record$id)) {
         self$record <- NULL
-        if (!is.null(self$on_active_id_change)) self$on_active_id_change(NULL)
+        if (!is.null(self$on_active_id_change)) {
+          self$on_active_id_change(NULL)
+        }
         private$client$set_turns(list())
         chat_clear(private$chat_id, session = private$session)
         self$restore_app_state(self$baseline_values)
@@ -176,7 +202,9 @@ HistoryController <- R6::R6Class(
     },
 
     save_current = function() {
-      if (is.null(self$record) || is.null(self$scope)) return(invisible())
+      if (is.null(self$record) || is.null(self$scope)) {
+        return(invisible())
+      }
 
       recorded_turns <- get_turns_recorded(private$client)
       self$record <- extend_record_linear(self$record, recorded_turns)
@@ -194,21 +222,27 @@ HistoryController <- R6::R6Class(
 
     add_save_callback = function(fn) {
       old <- private$on_save
-      private$on_save <- if (is.null(old)) fn else
+      private$on_save <- if (is.null(old)) {
+        fn
+      } else {
         function(values) {
           values <- call_on_save(old, values)
           call_on_save(fn, values)
         }
+      }
       invisible(self)
     },
 
     add_restore_callback = function(fn) {
       old <- private$on_restore
-      private$on_restore <- if (is.null(old)) fn else
+      private$on_restore <- if (is.null(old)) {
+        fn
+      } else {
         function(values) {
           old(values)
           fn(values)
         }
+      }
       invisible(self)
     },
 
@@ -265,18 +299,26 @@ HistoryController <- R6::R6Class(
     },
 
     evict_one = function(conv_id) {
-      if (!is.null(self$on_evict)) self$on_evict(conv_id)
+      if (!is.null(self$on_evict)) {
+        self$on_evict(conv_id)
+      }
       private$store$delete(self$scope, conv_id)
     },
 
     evict_if_needed = function() {
       max_bytes <- private$max_store_bytes
-      if (is.null(max_bytes) || is.null(self$scope)) return(invisible())
+      if (is.null(max_bytes) || is.null(self$scope)) {
+        return(invisible())
+      }
       total <- private$store$total_size(self$scope)
-      if (total <= max_bytes) return(invisible())
+      if (total <= max_bytes) {
+        return(invisible())
+      }
       metas <- private$store$list(self$scope)
       for (meta in rev(metas)) {
-        if (!is.null(self$record) && identical(meta$id, self$record$id)) next
+        if (!is.null(self$record) && identical(meta$id, self$record$id)) {
+          next
+        }
         private$evict_one(meta$id)
         total <- private$store$total_size(self$scope)
         if (total <= max_bytes) break
@@ -292,10 +334,15 @@ HistoryController <- R6::R6Class(
         recorded_turns
       )
       promises::then(title_promise, function(title) {
-        if (is.null(title)) return()
-        if (is.null(self$record) || !identical(self$record$id, target_id))
+        if (is.null(title)) {
           return()
-        if (identical(self$record$title_source, "user")) return()
+        }
+        if (is.null(self$record) || !identical(self$record$id, target_id)) {
+          return()
+        }
+        if (identical(self$record$title_source, "user")) {
+          return()
+        }
 
         self$record$title <- title
         self$record$title_source <- "llm"
@@ -410,8 +457,12 @@ chat_enable_history <- function(
     session = session
   )
 
-  if (!is.null(on_save)) controller$add_save_callback(on_save)
-  if (!is.null(on_restore)) controller$add_restore_callback(on_restore)
+  if (!is.null(on_save)) {
+    controller$add_save_callback(on_save)
+  }
+  if (!is.null(on_restore)) {
+    controller$add_restore_callback(on_restore)
+  }
 
   # Store controller in session for access by stream completion hooks
   set_session_chat_bookmark_info(
@@ -445,10 +496,16 @@ chat_enable_history <- function(
   url_id_input <- paste0(id, "_history_url_id")
 
   scope_val <- shiny::reactive(label = "history_scope", {
-    if (is.character(scope_opt)) return(scope_opt)
-    if (is.function(scope_opt)) return(scope_opt(session))
+    if (is.character(scope_opt)) {
+      return(scope_opt)
+    }
+    if (is.function(scope_opt)) {
+      return(scope_opt(session))
+    }
     su <- session$user
-    if (!is.null(su)) return(as.character(su))
+    if (!is.null(su)) {
+      return(as.character(su))
+    }
     token <- session$input[[token_input]]
     shiny::req(token)
     token
@@ -457,29 +514,50 @@ chat_enable_history <- function(
   # --- URL-mode: update address bar on conversation change ---
   if (identical(restore_mode, "url")) {
     controller$on_active_id_change <- function(conv_id) {
-      url <- if (!is.null(conv_id)) paste0("?shinychat_conversation_id=", conv_id) else NULL
+      url <- if (!is.null(conv_id)) {
+        paste0("?shinychat_conversation_id=", conv_id)
+      } else {
+        NULL
+      }
       controller$send_navigate(url, conv_id)
     }
   }
 
   # --- Bookmark mode: mint a Shiny server bookmark on every response ---
   if (identical(restore_mode, "bookmark")) {
-    bm_store_check <- shiny::getShinyOption("bookmarkStore", default = "disable")
+    bm_store_check <- shiny::getShinyOption(
+      "bookmarkStore",
+      default = "disable"
+    )
     if (!identical(bm_store_check, "server")) {
-      rlang::abort("restore_mode = 'bookmark' requires bookmarkStore = 'server' in the Shiny app options.")
+      rlang::abort(
+        "restore_mode = 'bookmark' requires bookmarkStore = 'server' in the Shiny app options."
+      )
     }
 
     controller$on_response_saved <- function(record) {
       captured_id <- record$id
       cancel_bm <- session$onBookmarked(function(url) {
         new_state_id <- extract_state_id(url)
-        if (is.null(new_state_id)) return()
-        if (is.null(controller$record) || !identical(controller$record$id, captured_id)) return()
+        if (is.null(new_state_id)) {
+          return()
+        }
+        if (
+          is.null(controller$record) ||
+            !identical(controller$record$id, captured_id)
+        ) {
+          return()
+        }
         old_state_id <- controller$record$bookmark_state_id
         controller$record$bookmark_state_id <- new_state_id
-        if (!is.null(old_state_id)) delete_bookmark_state(old_state_id)
+        if (!is.null(old_state_id)) {
+          delete_bookmark_state(old_state_id)
+        }
         controller$save_current()
-        controller$send_navigate(paste0("?_state_id_=", new_state_id), captured_id)
+        controller$send_navigate(
+          paste0("?_state_id_=", new_state_id),
+          captured_id
+        )
       })
       session$doBookmark()
       cancel_bm()
@@ -487,14 +565,19 @@ chat_enable_history <- function(
 
     controller$on_pre_switch <- function(target) {
       if (!is.null(target$bookmark_state_id)) {
-        controller$send_navigate(paste0("?_state_id_=", target$bookmark_state_id), target$id)
+        controller$send_navigate(
+          paste0("?_state_id_=", target$bookmark_state_id),
+          target$id
+        )
         return(TRUE)
       }
       FALSE
     }
 
     controller$on_evict <- function(conv_id) {
-      if (!is.null(controller$record) && identical(controller$record$id, conv_id)) {
+      if (
+        !is.null(controller$record) && identical(controller$record$id, conv_id)
+      ) {
         state_id <- controller$record$bookmark_state_id
       } else {
         rec <- controller$get_record(controller$scope, conv_id)
@@ -523,7 +606,9 @@ chat_enable_history <- function(
   # --- Initialization effect (runs once) ---
   initialized <- FALSE
   init_effect <- shiny::observe(label = "history_init", {
-    if (initialized) return()
+    if (initialized) {
+      return()
+    }
 
     scope <- scope_val()
     shiny::req(scope)
@@ -586,11 +671,15 @@ chat_enable_history <- function(
     session$input[[paste0(id, "_history_select")]],
     label = "history_select",
     {
-      if (is.null(controller$scope)) return()
+      if (is.null(controller$scope)) {
+        return()
+      }
       payload <- session$input[[paste0(id, "_history_select")]]
       tryCatch(
         controller$switch_to(payload$id),
-        error = function(e) history_notify_error("Could not open conversation", e)
+        error = function(e) {
+          history_notify_error("Could not open conversation", e)
+        }
       )
     }
   )
@@ -599,10 +688,14 @@ chat_enable_history <- function(
     session$input[[paste0(id, "_history_new")]],
     label = "history_new",
     {
-      if (is.null(controller$scope)) return()
+      if (is.null(controller$scope)) {
+        return()
+      }
       tryCatch(
         controller$new_chat(),
-        error = function(e) history_notify_error("Could not start a new chat", e)
+        error = function(e) {
+          history_notify_error("Could not start a new chat", e)
+        }
       )
     }
   )
@@ -611,11 +704,15 @@ chat_enable_history <- function(
     session$input[[paste0(id, "_history_rename")]],
     label = "history_rename",
     {
-      if (is.null(controller$scope)) return()
+      if (is.null(controller$scope)) {
+        return()
+      }
       payload <- session$input[[paste0(id, "_history_rename")]]
       tryCatch(
         controller$rename(payload$id, payload$title),
-        error = function(e) history_notify_error("Could not rename conversation", e)
+        error = function(e) {
+          history_notify_error("Could not rename conversation", e)
+        }
       )
     }
   )
@@ -624,11 +721,15 @@ chat_enable_history <- function(
     session$input[[paste0(id, "_history_delete")]],
     label = "history_delete",
     {
-      if (is.null(controller$scope)) return()
+      if (is.null(controller$scope)) {
+        return()
+      }
       payload <- session$input[[paste0(id, "_history_delete")]]
       tryCatch(
         controller$delete(payload$id),
-        error = function(e) history_notify_error("Could not delete conversation", e)
+        error = function(e) {
+          history_notify_error("Could not delete conversation", e)
+        }
       )
     }
   )
@@ -640,7 +741,9 @@ chat_enable_history <- function(
     new_effect$destroy()
     rename_effect$destroy()
     delete_effect$destroy()
-    if (!is.null(stamp_cancel)) stamp_cancel()
+    if (!is.null(stamp_cancel)) {
+      stamp_cancel()
+    }
     set_session_chat_bookmark_info(
       session,
       paste0(id, ".history-controller"),
@@ -671,7 +774,9 @@ chat_history_on_response <- function(
     session,
     paste0(id, ".history-controller")
   )
-  if (is.null(controller)) return(stream_promise)
+  if (is.null(controller)) {
+    return(stream_promise)
+  }
 
   result <- promises::then(stream_promise, function(value) {
     if (!controller$is_replaying) {
