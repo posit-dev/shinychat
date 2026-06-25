@@ -2,7 +2,6 @@
 # is covered by Playwright e2e tests (Task 13). This file tests the pure
 # helpers that HistoryController delegates to.
 
-import asyncio
 from datetime import timedelta
 from typing import Any
 
@@ -143,11 +142,12 @@ def _make_controller() -> tuple[HistoryController, _RecordingStore]:
     return controller, store
 
 
-def test_suppress_next_save_skips_first_on_response_and_clears():
+@pytest.mark.anyio
+async def test_suppress_next_save_skips_first_on_response_and_clears():
     controller, store = _make_controller()
     controller._suppress_next_save = True
 
-    asyncio.run(controller.on_response())
+    await controller.on_response()
 
     assert store.put_calls == [], "store.put must not be called when suppressed"
     assert controller._suppress_next_save is False, (
@@ -155,36 +155,59 @@ def test_suppress_next_save_skips_first_on_response_and_clears():
     )
 
 
-def test_suppress_next_save_false_allows_on_response():
+@pytest.mark.anyio
+async def test_suppress_next_save_false_allows_on_response():
     controller, store = _make_controller()
     assert controller._suppress_next_save is False
 
     # on_response with no turns/messages should still call store.put
-    asyncio.run(controller.on_response())
+    await controller.on_response()
 
     assert len(store.put_calls) == 1, (
         "store.put should be called when not suppressed"
     )
 
 
-def test_second_on_response_after_suppress_proceeds():
+@pytest.mark.anyio
+async def test_second_on_response_after_suppress_proceeds():
     controller, store = _make_controller()
     controller._suppress_next_save = True
 
-    asyncio.run(controller.on_response())  # skipped, flag cleared
-    asyncio.run(controller.on_response())  # must proceed
+    await controller.on_response()  # skipped, flag cleared
+    await controller.on_response()  # must proceed
 
     assert len(store.put_calls) == 1, "second call must reach store.put"
 
 
-def test_is_replaying_suppresses_on_response_without_consuming_suppress_flag():
+@pytest.mark.anyio
+async def test_on_response_no_new_data_does_not_overwrite_saved_values():
+    controller, store = _make_controller()
+    accent = "info"
+
+    controller._save_callbacks.append(
+        lambda values: values.update({"accent": accent})
+    )
+
+    await controller.on_response()
+    assert controller.record is not None
+    assert controller.record.values["accent"] == "info"
+
+    accent = "danger"
+    await controller.on_response()
+
+    assert len(store.put_calls) == 1, "no-op flush should not persist again"
+    assert controller.record.values["accent"] == "info"
+
+
+@pytest.mark.anyio
+async def test_is_replaying_suppresses_on_response_without_consuming_suppress_flag():
     # Fires during replay must not consume _suppress_next_save so the
     # post-replay flush is still handled correctly.
     controller, store = _make_controller()
     controller._is_replaying = True
     controller._suppress_next_save = True
 
-    asyncio.run(controller.on_response())  # in-flight during replay — skipped
+    await controller.on_response()  # in-flight during replay — skipped
 
     assert store.put_calls == [], "store.put must not be called while replaying"
     assert controller._suppress_next_save is True, (
@@ -192,7 +215,8 @@ def test_is_replaying_suppresses_on_response_without_consuming_suppress_flag():
     )
 
 
-def test_full_replay_sequence_suppresses_then_resumes():
+@pytest.mark.anyio
+async def test_full_replay_sequence_suppresses_then_resumes():
     # Simulates M in-flight fires during replay, one post-replay flush,
     # then a real response — only the real response must be saved.
     controller, store = _make_controller()
@@ -201,7 +225,7 @@ def test_full_replay_sequence_suppresses_then_resumes():
 
     # In-flight fires during replay (any number)
     for _ in range(3):
-        asyncio.run(controller.on_response())
+        await controller.on_response()
 
     assert store.put_calls == [], "no saves during replay"
     assert controller._suppress_next_save is True
@@ -210,12 +234,12 @@ def test_full_replay_sequence_suppresses_then_resumes():
     controller._is_replaying = False
 
     # Post-replay flush — consumed by _suppress_next_save
-    asyncio.run(controller.on_response())
+    await controller.on_response()
     assert store.put_calls == [], "post-replay flush must still be suppressed"
     assert controller._suppress_next_save is False
 
     # Real response after user interaction
-    asyncio.run(controller.on_response())
+    await controller.on_response()
     assert len(store.put_calls) == 1, "real response must be saved"
 
 
@@ -236,25 +260,27 @@ def _make_failing_controller() -> HistoryController:
     return controller
 
 
-def test_ui_offset_unchanged_when_on_response_store_put_raises():
+@pytest.mark.anyio
+async def test_ui_offset_unchanged_when_on_response_store_put_raises():
     controller = _make_failing_controller()
     initial_offset = controller.ui_offset
 
     with pytest.raises(OSError):
-        asyncio.run(controller.on_response())
+        await controller.on_response()
 
     assert controller.ui_offset == initial_offset, (
         "ui_offset must not advance when store.put() raises"
     )
 
 
-def test_ui_offset_unchanged_when_save_current_store_put_raises():
+@pytest.mark.anyio
+async def test_ui_offset_unchanged_when_save_current_store_put_raises():
     controller = _make_failing_controller()
     controller.record = new_conversation_record(title="t")
     initial_offset = controller.ui_offset
 
     with pytest.raises(OSError):
-        asyncio.run(controller.save_current())
+        await controller.save_current()
 
     assert controller.ui_offset == initial_offset, (
         "ui_offset must not advance when store.put() raises"
@@ -329,24 +355,26 @@ def _nav_actions(chat: _NavFakeChat) -> list[dict[str, Any]]:
     return [a for a in chat.actions if a["type"] == "history_navigate"]
 
 
-def test_switch_to_swaps_in_session():
+@pytest.mark.anyio
+async def test_switch_to_swaps_in_session():
     controller, store, chat = _make_nav_controller()
     target = new_conversation_record(title="other")
     store.records[target.id] = target
 
-    asyncio.run(controller.switch_to(target.id))
+    await controller.switch_to(target.id)
 
     assert _nav_actions(chat) == []
     assert chat.cleared == 1
     assert controller.record is target
 
 
-def test_switch_to_url_mode_sends_navigate():
+@pytest.mark.anyio
+async def test_switch_to_url_mode_sends_navigate():
     controller, store, chat = _make_nav_controller(with_url_mode=True)
     target = new_conversation_record(title="other")
     store.records[target.id] = target
 
-    asyncio.run(controller.switch_to(target.id))
+    await controller.switch_to(target.id)
 
     navs = _nav_actions(chat)
     assert len(navs) == 1
@@ -356,53 +384,58 @@ def test_switch_to_url_mode_sends_navigate():
     assert controller.record is target
 
 
-def test_new_chat_url_mode_sends_navigate_null():
+@pytest.mark.anyio
+async def test_new_chat_url_mode_sends_navigate_null():
     controller, _store, chat = _make_nav_controller(with_url_mode=True)
 
-    asyncio.run(controller.new_chat())
+    await controller.new_chat()
 
     navs = _nav_actions(chat)
     assert navs == [{"type": "history_navigate", "url": None, "active_id": None}]
     assert chat.cleared == 1
 
 
-def test_new_chat_browser_mode_no_navigate():
+@pytest.mark.anyio
+async def test_new_chat_browser_mode_no_navigate():
     controller, _store, chat = _make_nav_controller()
 
-    asyncio.run(controller.new_chat())
+    await controller.new_chat()
 
     assert _nav_actions(chat) == []
     assert chat.cleared == 1
 
 
-def test_delete_active_url_mode_sends_navigate_null():
+@pytest.mark.anyio
+async def test_delete_active_url_mode_sends_navigate_null():
     controller, store, chat = _make_nav_controller(with_url_mode=True)
     active = new_conversation_record(title="doomed")
     store.records[active.id] = active
     controller.record = active
 
-    asyncio.run(controller.delete(active.id))
+    await controller.delete(active.id)
 
     assert store.deleted == [active.id]
     navs = _nav_actions(chat)
     assert navs == [{"type": "history_navigate", "url": None, "active_id": None}]
 
 
-def test_delete_inactive_does_not_navigate():
+@pytest.mark.anyio
+async def test_delete_inactive_does_not_navigate():
     controller, store, chat = _make_nav_controller(with_url_mode=True)
     other = new_conversation_record(title="other")
     store.records[other.id] = other
 
-    asyncio.run(controller.delete(other.id))
+    await controller.delete(other.id)
 
     assert store.deleted == [other.id]
     assert _nav_actions(chat) == []
 
 
-def test_on_response_first_save_url_mode_sends_navigate():
+@pytest.mark.anyio
+async def test_on_response_first_save_url_mode_sends_navigate():
     controller, _store, chat = _make_nav_controller(with_url_mode=True)
 
-    asyncio.run(controller.on_response())
+    await controller.on_response()
 
     assert controller.record is not None
     navs = _nav_actions(chat)
@@ -430,56 +463,61 @@ def _make_retitle_controller(
     return controller, store
 
 
-def test_retitle_updates_title_and_persists():
+@pytest.mark.anyio
+async def test_retitle_updates_title_and_persists():
     controller, store = _make_retitle_controller(
         title_fn=lambda turns: "Generated Title",
     )
     controller.record = new_conversation_record(title="fallback")
 
-    asyncio.run(controller.retitle([{"role": "user", "content": "hi"}]))
+    await controller.retitle([{"role": "user", "content": "hi"}])
 
     assert controller.record.title == "Generated Title"
     assert controller.record.title_source == "llm"
     assert len(store.put_calls) == 1
 
 
-def test_retitle_noop_when_record_is_none():
+@pytest.mark.anyio
+async def test_retitle_noop_when_record_is_none():
     controller, store = _make_retitle_controller(
         title_fn=lambda turns: "should not be used",
     )
 
-    asyncio.run(controller.retitle([]))
+    await controller.retitle([])
 
     assert store.put_calls == []
 
 
-def test_retitle_noop_when_user_already_renamed():
+@pytest.mark.anyio
+async def test_retitle_noop_when_user_already_renamed():
     controller, store = _make_retitle_controller(
         title_fn=lambda turns: "should not be used",
     )
     controller.record = new_conversation_record(title="My Title")
     controller.record.title_source = "user"
 
-    asyncio.run(controller.retitle([]))
+    await controller.retitle([])
 
     assert controller.record.title == "My Title"
     assert store.put_calls == []
 
 
-def test_retitle_noop_when_generate_returns_none():
+@pytest.mark.anyio
+async def test_retitle_noop_when_generate_returns_none():
     controller, store = _make_retitle_controller(
         title_fn=lambda turns: None,
     )
     controller.record = new_conversation_record(title="fallback")
 
-    asyncio.run(controller.retitle([]))
+    await controller.retitle([])
 
     assert controller.record.title == "fallback"
     assert controller.record.title_source == "fallback"
     assert store.put_calls == []
 
 
-def test_retitle_noop_when_conversation_switched_during_generation():
+@pytest.mark.anyio
+async def test_retitle_noop_when_conversation_switched_during_generation():
     original = new_conversation_record(title="original")
     replacement = new_conversation_record(title="replacement")
 
@@ -493,14 +531,15 @@ def test_retitle_noop_when_conversation_switched_during_generation():
     controller.title_fn = slow_title
     controller.record = original
 
-    asyncio.run(controller.retitle([]))
+    await controller.retitle([])
 
     assert original.title == "original", "must not update the old record"
     assert controller.record is replacement
     assert store.put_calls == []
 
 
-def test_retitle_noop_when_user_renames_during_generation():
+@pytest.mark.anyio
+async def test_retitle_noop_when_user_renames_during_generation():
     record = new_conversation_record(title="fallback")
 
     controller, store = _make_retitle_controller()
@@ -514,7 +553,7 @@ def test_retitle_noop_when_user_renames_during_generation():
     controller.title_fn = slow_title
     controller.record = record
 
-    asyncio.run(controller.retitle([]))
+    await controller.retitle([])
 
     assert record.title == "User's Title"
     assert record.title_source == "user"
@@ -528,7 +567,8 @@ def _make_fake_chat() -> _FakeChat:
     return _FakeChat()
 
 
-def test_save_callback_fires_and_values_stored(tmp_path: Any) -> None:
+@pytest.mark.anyio
+async def test_save_callback_fires_and_values_stored(tmp_path: Any) -> None:
     """on_save callback populates record.values."""
     from shinychat._history_store import FileConversationStore
 
@@ -555,7 +595,7 @@ def test_save_callback_fires_and_values_stored(tmp_path: Any) -> None:
     )
     controller.scope = "alice"
 
-    asyncio.run(controller.on_response())
+    await controller.on_response()
 
     assert len(save_calls) == 1
     assert save_calls[0]["x"] == 42
@@ -563,7 +603,8 @@ def test_save_callback_fires_and_values_stored(tmp_path: Any) -> None:
     assert controller.record.values.get("x") == 42
 
 
-def test_restore_callback_fires_on_switch(tmp_path: Any) -> None:
+@pytest.mark.anyio
+async def test_restore_callback_fires_on_switch(tmp_path: Any) -> None:
     """on_restore callback receives stored values on switch_to."""
     from shinychat._history_store import FileConversationStore
     from shinychat._history_types import new_conversation_record
@@ -590,14 +631,14 @@ def test_restore_callback_fires_on_switch(tmp_path: Any) -> None:
     # which would immediately re-capture and overwrite our values).
     target = new_conversation_record(title="old")
     target.values = {"x": 99}
-    asyncio.run(store.put("alice", target))
+    await store.put("alice", target)
 
     # Simulate having a different current conversation
     other = new_conversation_record(title="current")
-    asyncio.run(store.put("alice", other))
+    await store.put("alice", other)
     controller.record = other
 
-    asyncio.run(controller.switch_to(target.id))
+    await controller.switch_to(target.id)
 
     assert any(r.get("x") == 99 for r in restored)
 
@@ -607,108 +648,100 @@ def test_restore_callback_fires_on_switch(tmp_path: Any) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_evict_if_needed_noop_when_no_limit():
-    async def _run() -> None:
-        store = InMemoryConversationStore()
-        rec = new_conversation_record(title="t")
+@pytest.mark.anyio
+async def test_evict_if_needed_noop_when_no_limit():
+    store = InMemoryConversationStore()
+    rec = new_conversation_record(title="t")
+    await store.put("alice", rec)
+
+    controller = HistoryController(
+        chat=_FakeChat(),  # type: ignore[arg-type]
+        adapter=_FakeAdapter(),  # type: ignore[arg-type]
+        store=store,
+        title_fn=None,
+        title_enabled=False,
+        client=None,
+        max_store_bytes=None,
+    )
+    controller.scope = "alice"
+
+    await controller._evict_if_needed()
+    assert len(await store.list("alice")) == 1
+
+
+@pytest.mark.anyio
+async def test_evict_if_needed_noop_when_under_limit():
+    store = InMemoryConversationStore()
+    rec = new_conversation_record(title="t")
+    await store.put("alice", rec)
+
+    controller = HistoryController(
+        chat=_FakeChat(),  # type: ignore[arg-type]
+        adapter=_FakeAdapter(),  # type: ignore[arg-type]
+        store=store,
+        title_fn=None,
+        title_enabled=False,
+        client=None,
+        max_store_bytes=100 * 1024 * 1024,  # 100 MB — well above any test record
+    )
+    controller.scope = "alice"
+
+    await controller._evict_if_needed()
+    assert len(await store.list("alice")) == 1
+
+
+@pytest.mark.anyio
+async def test_evict_if_needed_removes_oldest_preserves_active():
+    store = InMemoryConversationStore()
+
+    rec1 = new_conversation_record(title="oldest")
+    rec2 = new_conversation_record(title="middle")
+    rec3 = new_conversation_record(title="newest")
+    rec2.updated_at = rec2.updated_at + timedelta(seconds=1)
+    rec3.updated_at = rec3.updated_at + timedelta(seconds=2)
+    for rec in [rec1, rec2, rec3]:
         await store.put("alice", rec)
 
-        controller = HistoryController(
-            chat=_FakeChat(),  # type: ignore[arg-type]
-            adapter=_FakeAdapter(),  # type: ignore[arg-type]
-            store=store,
-            title_fn=None,
-            title_enabled=False,
-            client=None,
-            max_store_bytes=None,
-        )
-        controller.scope = "alice"
+    controller = HistoryController(
+        chat=_FakeChat(),  # type: ignore[arg-type]
+        adapter=_FakeAdapter(),  # type: ignore[arg-type]
+        store=store,
+        title_fn=None,
+        title_enabled=False,
+        client=None,
+        max_store_bytes=1,  # 1 byte: ensures all non-active records are evicted
+    )
+    controller.scope = "alice"
+    controller.record = rec3  # newest is active
 
-        await controller._evict_if_needed()
-        assert len(await store.list("alice")) == 1
+    await controller._evict_if_needed()
 
-    asyncio.run(_run())
-
-
-def test_evict_if_needed_noop_when_under_limit():
-    async def _run() -> None:
-        store = InMemoryConversationStore()
-        rec = new_conversation_record(title="t")
-        await store.put("alice", rec)
-
-        controller = HistoryController(
-            chat=_FakeChat(),  # type: ignore[arg-type]
-            adapter=_FakeAdapter(),  # type: ignore[arg-type]
-            store=store,
-            title_fn=None,
-            title_enabled=False,
-            client=None,
-            max_store_bytes=100 * 1024 * 1024,  # 100 MB — well above any test record
-        )
-        controller.scope = "alice"
-
-        await controller._evict_if_needed()
-        assert len(await store.list("alice")) == 1
-
-    asyncio.run(_run())
+    remaining = {m.id for m in await store.list("alice")}
+    assert rec1.id not in remaining
+    assert rec2.id not in remaining
+    assert rec3.id in remaining
 
 
-def test_evict_if_needed_removes_oldest_preserves_active():
-    async def _run() -> None:
-        store = InMemoryConversationStore()
+@pytest.mark.anyio
+async def test_evict_one_deletes_from_store():
+    store = InMemoryConversationStore()
+    rec = new_conversation_record(title="old")
+    await store.put("alice", rec)
 
-        rec1 = new_conversation_record(title="oldest")
-        rec2 = new_conversation_record(title="middle")
-        rec3 = new_conversation_record(title="newest")
-        rec2.updated_at = rec2.updated_at + timedelta(seconds=1)
-        rec3.updated_at = rec3.updated_at + timedelta(seconds=2)
-        for rec in [rec1, rec2, rec3]:
-            await store.put("alice", rec)
+    controller = HistoryController(
+        chat=_FakeChat(),  # type: ignore[arg-type]
+        adapter=_FakeAdapter(),  # type: ignore[arg-type]
+        store=store,
+        title_fn=None,
+        title_enabled=False,
+        client=None,
+        max_store_bytes=None,
+    )
+    controller.scope = "alice"
 
-        controller = HistoryController(
-            chat=_FakeChat(),  # type: ignore[arg-type]
-            adapter=_FakeAdapter(),  # type: ignore[arg-type]
-            store=store,
-            title_fn=None,
-            title_enabled=False,
-            client=None,
-            max_store_bytes=1,  # 1 byte: ensures all non-active records are evicted
-        )
-        controller.scope = "alice"
-        controller.record = rec3  # newest is active
+    await controller._evict_one(rec.id)
 
-        await controller._evict_if_needed()
-
-        remaining = {m.id for m in await store.list("alice")}
-        assert rec1.id not in remaining
-        assert rec2.id not in remaining
-        assert rec3.id in remaining
-
-    asyncio.run(_run())
-
-
-def test_evict_one_deletes_from_store():
-    async def _run() -> None:
-        store = InMemoryConversationStore()
-        rec = new_conversation_record(title="old")
-        await store.put("alice", rec)
-
-        controller = HistoryController(
-            chat=_FakeChat(),  # type: ignore[arg-type]
-            adapter=_FakeAdapter(),  # type: ignore[arg-type]
-            store=store,
-            title_fn=None,
-            title_enabled=False,
-            client=None,
-            max_store_bytes=None,
-        )
-        controller.scope = "alice"
-
-        await controller._evict_one(rec.id)
-
-        assert await store.get("alice", rec.id) is None
-
-    asyncio.run(_run())
+    assert await store.get("alice", rec.id) is None
 
 
 # ---------------------------------------------------------------------------
@@ -716,23 +749,40 @@ def test_evict_one_deletes_from_store():
 # ---------------------------------------------------------------------------
 
 
-def test_on_response_saved_fires_after_every_response():
+@pytest.mark.anyio
+async def test_on_response_saved_fires_when_new_data_is_saved():
     controller, store = _make_controller()
     fired: list[str] = []
+    turns = [
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": "hi there"},
+    ]
+
+    class _GrowingAdapter(_FakeAdapter):
+        def get_turns_json(self) -> list[Any]:
+            return turns
 
     async def hook(record: Any) -> None:
         fired.append(record.id)
 
+    controller.adapter = _GrowingAdapter()  # type: ignore[assignment]
     controller.on_response_saved = hook
 
-    asyncio.run(controller.on_response())
-    asyncio.run(controller.on_response())
+    await controller.on_response()
+    turns.extend(
+        [
+            {"role": "user", "content": "more"},
+            {"role": "assistant", "content": "sure"},
+        ]
+    )
+    await controller.on_response()
 
     assert len(fired) == 2
     assert fired[0] == fired[1]  # same conversation id both times
 
 
-def test_on_response_saved_not_fired_when_suppressed():
+@pytest.mark.anyio
+async def test_on_response_saved_not_fired_when_suppressed():
     controller, store = _make_controller()
     fired: list[str] = []
 
@@ -742,12 +792,13 @@ def test_on_response_saved_not_fired_when_suppressed():
     controller.on_response_saved = hook
     controller._suppress_next_save = True
 
-    asyncio.run(controller.on_response())  # suppressed
+    await controller.on_response()  # suppressed
 
     assert fired == []
 
 
-def test_on_pre_switch_true_skips_in_session_swap():
+@pytest.mark.anyio
+async def test_on_pre_switch_true_skips_in_session_swap():
     controller, store, chat = _make_nav_controller()
     target = new_conversation_record(title="other")
     store.records[target.id] = target
@@ -759,7 +810,7 @@ def test_on_pre_switch_true_skips_in_session_swap():
 
     controller.on_pre_switch = hook
 
-    asyncio.run(controller.switch_to(target.id))
+    await controller.switch_to(target.id)
 
     assert pre_switch_calls == [target.id]
     # In-session swap was skipped: client turns NOT updated, UI NOT cleared
@@ -768,7 +819,8 @@ def test_on_pre_switch_true_skips_in_session_swap():
     assert controller.record is None
 
 
-def test_on_pre_switch_false_allows_in_session_swap():
+@pytest.mark.anyio
+async def test_on_pre_switch_false_allows_in_session_swap():
     controller, store, chat = _make_nav_controller()
     target = new_conversation_record(title="other")
     store.records[target.id] = target
@@ -780,7 +832,7 @@ def test_on_pre_switch_false_allows_in_session_swap():
 
     controller.on_pre_switch = hook
 
-    asyncio.run(controller.switch_to(target.id))
+    await controller.switch_to(target.id)
 
     assert pre_switch_calls == [target.id]
     assert chat.cleared == 1
@@ -790,68 +842,62 @@ def test_on_pre_switch_false_allows_in_session_swap():
 # --- on_evict hook -----------------------------------------------------------
 
 
-def test_on_evict_fires_before_store_delete_in_evict_one():
-    async def _run() -> None:
-        store = InMemoryConversationStore()
-        rec = new_conversation_record(title="old")
-        await store.put("alice", rec)
+@pytest.mark.anyio
+async def test_on_evict_fires_before_store_delete_in_evict_one():
+    store = InMemoryConversationStore()
+    rec = new_conversation_record(title="old")
+    await store.put("alice", rec)
 
-        order: list[str] = []
+    order: list[str] = []
 
-        controller = HistoryController(
-            chat=_FakeChat(),  # type: ignore[arg-type]
-            adapter=_FakeAdapter(),  # type: ignore[arg-type]
-            store=store,
-            title_fn=None,
-            title_enabled=False,
-            client=None,
-        )
-        controller.scope = "alice"
+    controller = HistoryController(
+        chat=_FakeChat(),  # type: ignore[arg-type]
+        adapter=_FakeAdapter(),  # type: ignore[arg-type]
+        store=store,
+        title_fn=None,
+        title_enabled=False,
+        client=None,
+    )
+    controller.scope = "alice"
 
-        async def hook(conv_id: str) -> None:
-            # Record must still exist in store when the hook fires
-            still_there = await store.get("alice", conv_id)
-            order.append("hook_before" if still_there is not None else "hook_after")
+    async def hook(conv_id: str) -> None:
+        # Record must still exist in store when the hook fires
+        still_there = await store.get("alice", conv_id)
+        order.append("hook_before" if still_there is not None else "hook_after")
 
-        controller.on_evict = hook
+    controller.on_evict = hook
 
-        await controller._evict_one(rec.id)
+    await controller._evict_one(rec.id)
 
-        assert order == ["hook_before"]
-        assert await store.get("alice", rec.id) is None
-
-    asyncio.run(_run())
+    assert order == ["hook_before"]
+    assert await store.get("alice", rec.id) is None
 
 
-def test_on_evict_fires_before_store_delete_in_delete():
-    async def _run() -> None:
-        store = InMemoryConversationStore()
-        rec = new_conversation_record(title="old")
-        await store.put("alice", rec)
+@pytest.mark.anyio
+async def test_on_evict_fires_before_store_delete_in_delete():
+    store = InMemoryConversationStore()
+    rec = new_conversation_record(title="old")
+    await store.put("alice", rec)
 
-        order: list[str] = []
+    order: list[str] = []
 
-        controller = HistoryController(
-            chat=_NavFakeChat(),  # type: ignore[arg-type]
-            adapter=_NavFakeAdapter(),  # type: ignore[arg-type]
-            store=store,
-            title_fn=None,
-            title_enabled=False,
-            client=None,
-        )
-        controller.scope = "alice"
+    controller = HistoryController(
+        chat=_NavFakeChat(),  # type: ignore[arg-type]
+        adapter=_NavFakeAdapter(),  # type: ignore[arg-type]
+        store=store,
+        title_fn=None,
+        title_enabled=False,
+        client=None,
+    )
+    controller.scope = "alice"
 
-        async def hook(conv_id: str) -> None:
-            still_there = await store.get("alice", conv_id)
-            order.append("hook_before" if still_there is not None else "hook_after")
+    async def hook(conv_id: str) -> None:
+        still_there = await store.get("alice", conv_id)
+        order.append("hook_before" if still_there is not None else "hook_after")
 
-        controller.on_evict = hook
+    controller.on_evict = hook
 
-        await controller.delete(rec.id)
+    await controller.delete(rec.id)
 
-        assert order == ["hook_before"]
-        assert await store.get("alice", rec.id) is None
-
-    asyncio.run(_run())
-
-
+    assert order == ["hook_before"]
+    assert await store.get("alice", rec.id) is None
