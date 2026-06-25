@@ -457,10 +457,13 @@ test_that("bookmark mode pre-switch emits reload navigation", {
   expect_true(ctrl$on_pre_switch(target))
 
   messages <- history_spy_messages(spy)
-  nav <- Filter(function(m) {
-    identical(m$type, "shinyChatMessage") &&
-      identical(m$message$action$type, "history_navigate")
-  }, messages)
+  nav <- Filter(
+    function(m) {
+      identical(m$type, "shinyChatMessage") &&
+        identical(m$message$action$type, "history_navigate")
+    },
+    messages
+  )
 
   expect_length(nav, 1)
   expect_equal(nav[[1]]$message$action$url, "?_state_id_=state123")
