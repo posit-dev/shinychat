@@ -85,12 +85,7 @@ chat_greeting <- function(
   dismissible = lifecycle::deprecated()
 ) {
   rlang::check_dots_empty()
-  if (lifecycle::is_present(dismissible)) {
-    if (!is_missing(persistent)) {
-      abort(
-        "Cannot use both `persistent` and the deprecated `dismissible`. Use `persistent` only."
-      )
-    }
+  if (lifecycle::is_present(dismissible) && is_missing(persistent)) {
     lifecycle::deprecate_warn(
       "0.4.1",
       "chat_greeting(dismissible)",

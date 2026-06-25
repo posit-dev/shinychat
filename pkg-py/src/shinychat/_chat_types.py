@@ -217,20 +217,20 @@ class ChatGreeting:
         persistent: "bool | MISSING_TYPE" = MISSING,
         dismissible: DEPRECATED_TYPE = DEPRECATED,
     ):
-        if not isinstance(dismissible, DEPRECATED_TYPE):
-            if not isinstance(persistent, MISSING_TYPE):
-                raise ValueError(
-                    "Cannot use both `persistent` and the deprecated `dismissible`. Use `persistent` only."
+        if isinstance(persistent, MISSING_TYPE):
+            if not isinstance(dismissible, DEPRECATED_TYPE):
+                warnings.warn(
+                    "The `dismissible` parameter is deprecated. "
+                    "Use `persistent` (with inverted value) instead. "
+                    "`dismissible=False` is equivalent to `persistent=True`.",
+                    DeprecationWarning,
+                    stacklevel=2,
                 )
-            warnings.warn(
-                "The `dismissible` parameter is deprecated. "
-                "Use `persistent` (with inverted value) instead. "
-                "`dismissible=False` is equivalent to `persistent=True`.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            persistent = not dismissible
-        self.persistent = persistent if not isinstance(persistent, MISSING_TYPE) else False
+                persistent = not dismissible
+            else:
+                persistent = False
+
+        self.persistent = persistent
 
         if isinstance(content, AsyncIterable):
             self.content: Union[str, AsyncIterable[str]] = content
@@ -310,19 +310,19 @@ def chat_greeting(
     :func:`~shinychat.chat_ui` : Set a static greeting in the UI definition.
     :meth:`~shinychat.Chat.set_greeting` : Set or stream a greeting from the server.
     """
-    if not isinstance(dismissible, DEPRECATED_TYPE):
-        if not isinstance(persistent, MISSING_TYPE):
-            raise ValueError(
-                "Cannot use both `persistent` and the deprecated `dismissible`. Use `persistent` only."
+    if isinstance(persistent, MISSING_TYPE):
+        if not isinstance(dismissible, DEPRECATED_TYPE):
+            warnings.warn(
+                "The `dismissible` parameter is deprecated. "
+                "Use `persistent` (with inverted value) instead. "
+                "`dismissible=False` is equivalent to `persistent=True`.",
+                DeprecationWarning,
+                stacklevel=2,
             )
-        warnings.warn(
-            "The `dismissible` parameter is deprecated. "
-            "Use `persistent` (with inverted value) instead. "
-            "`dismissible=False` is equivalent to `persistent=True`.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        persistent = not dismissible
+            persistent = not dismissible
+        else:
+            persistent = False
+
     return ChatGreeting(
         content,
         persistent=persistent,
