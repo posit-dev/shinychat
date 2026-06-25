@@ -318,22 +318,26 @@ make_turns <- function(user_text = "Hi", asst_text = "Hello") {
       class = "ellmer::UserTurn",
       version = 1,
       props = list(
-        contents = list(list(
-          class = "ellmer::ContentText",
-          version = 1,
-          props = list(text = user_text)
-        ))
+        contents = list(
+          list(
+            class = "ellmer::ContentText",
+            version = 1,
+            props = list(text = user_text)
+          )
+        )
       )
     ),
     list(
       class = "ellmer::AssistantTurn",
       version = 1,
       props = list(
-        contents = list(list(
-          class = "ellmer::ContentText",
-          version = 1,
-          props = list(text = asst_text)
-        ))
+        contents = list(
+          list(
+            class = "ellmer::ContentText",
+            version = 1,
+            props = list(text = asst_text)
+          )
+        )
       )
     )
   )
@@ -469,6 +473,25 @@ test_that("bookmark mode pre-switch emits reload navigation", {
   expect_equal(nav[[1]]$message$action$url, "?_state_id_=state123")
   expect_equal(nav[[1]]$message$action$active_id, target$id)
   expect_true(nav[[1]]$message$action$reload)
+})
+
+test_that("delete_bookmark_state removes Shiny appDir server bookmark state", {
+  old_app_dir <- shiny::getShinyOption("appDir", NULL)
+  old_bookmark_save_dir <- shiny::getShinyOption("bookmarkSaveDir", NULL)
+  withr::defer(shiny::shinyOptions(appDir = old_app_dir))
+  withr::defer(shiny::shinyOptions(bookmarkSaveDir = old_bookmark_save_dir))
+
+  app_dir <- withr::local_tempdir()
+  state_dir <- file.path(app_dir, "shiny_bookmarks", "state123")
+  dir.create(state_dir, recursive = TRUE)
+  writeLines("saved", file.path(state_dir, "input.rds"))
+
+  shiny::shinyOptions(appDir = app_dir)
+  shiny::shinyOptions(bookmarkSaveDir = NULL)
+
+  delete_bookmark_state("state123")
+
+  expect_false(dir.exists(state_dir))
 })
 
 test_that("on_evict fires before store$delete in evict_one and delete", {

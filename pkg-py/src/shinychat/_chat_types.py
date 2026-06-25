@@ -145,6 +145,7 @@ class HistoryNavigateAction(TypedDict):
     type: Literal["history_navigate"]
     url: str | None
     active_id: str | None
+    reload: NotRequired[bool]
 
 
 ChatAction = Union[

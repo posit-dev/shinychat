@@ -17,7 +17,9 @@ async def delete_bookmark_state(state_id: str) -> None:
     if not re.fullmatch(r"[A-Za-z0-9_-]+", state_id):
         return
     try:
-        from shiny.bookmark._global import get_bookmark_restore_dir_fn  # type: ignore[attr-defined]
+        from shiny.bookmark._global import (
+            get_bookmark_restore_dir_fn,  # type: ignore[attr-defined]
+        )
         from shiny.types import MISSING  # type: ignore[attr-defined]
 
         restore_dir_fn = get_bookmark_restore_dir_fn(MISSING)

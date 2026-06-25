@@ -395,8 +395,27 @@ async def test_new_chat_url_mode_sends_navigate_null():
     await controller.new_chat()
 
     navs = _nav_actions(chat)
-    assert navs == [{"type": "history_navigate", "url": None, "active_id": None}]
+    assert navs == [
+        {"type": "history_navigate", "url": None, "active_id": None}
+    ]
     assert chat.cleared == 1
+
+
+@pytest.mark.anyio
+async def test_send_navigate_can_request_hard_reload():
+    controller, _store, chat = _make_nav_controller()
+
+    await controller.send_navigate("?_state_id_=abc123", "c123", reload=True)
+
+    navs = _nav_actions(chat)
+    assert navs == [
+        {
+            "type": "history_navigate",
+            "url": "?_state_id_=abc123",
+            "active_id": "c123",
+            "reload": True,
+        }
+    ]
 
 
 @pytest.mark.anyio
@@ -420,7 +439,9 @@ async def test_delete_active_url_mode_sends_navigate_null():
 
     assert store.deleted == [active.id]
     navs = _nav_actions(chat)
-    assert navs == [{"type": "history_navigate", "url": None, "active_id": None}]
+    assert navs == [
+        {"type": "history_navigate", "url": None, "active_id": None}
+    ]
 
 
 @pytest.mark.anyio
@@ -501,9 +522,7 @@ class _BookmarkStub:
         self.cancel_calls = 0
         self.on_bookmarked_calls = 0
 
-    def on_bookmarked(
-        self, fn: Any
-    ) -> Any:
+    def on_bookmarked(self, fn: Any) -> Any:
         self.on_bookmarked_calls += 1
 
         def cancel() -> None:
@@ -737,7 +756,9 @@ async def test_evict_if_needed_noop_when_under_limit():
         title_fn=None,
         title_enabled=False,
         client=None,
-        max_store_bytes=100 * 1024 * 1024,  # 100 MB — well above any test record
+        max_store_bytes=100
+        * 1024
+        * 1024,  # 100 MB — well above any test record
     )
     controller.scope = "alice"
 

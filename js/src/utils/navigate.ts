@@ -1,8 +1,9 @@
 /** Thin wrapper so tests can mock navigation (jsdom can't implement it). */
 export function navigateTo(url: string | null, reload = false): void {
-  if (reload && url !== null) {
-    window.location.assign(url)
+  const target = url ?? window.location.pathname
+  if (reload) {
+    window.location.assign(target)
     return
   }
-  history.replaceState(null, "", url ?? window.location.pathname)
+  history.replaceState(null, "", target)
 }

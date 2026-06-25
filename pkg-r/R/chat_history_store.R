@@ -71,13 +71,15 @@ InMemoryConversationStore <- R6::R6Class(
       if (is.null(scope_data) || length(scope_data) == 0L) {
         return(0L)
       }
-      sum(vapply(
-        scope_data,
-        function(r) {
-          nchar(jsonlite::toJSON(r, auto_unbox = TRUE), type = "bytes")
-        },
-        integer(1L)
-      ))
+      sum(
+        vapply(
+          scope_data,
+          function(r) {
+            nchar(jsonlite::toJSON(r, auto_unbox = TRUE), type = "bytes")
+          },
+          integer(1L)
+        )
+      )
     }
   )
 )
@@ -195,7 +197,10 @@ FileConversationStore <- R6::R6Class(
       tmp <- tempfile(tmpdir = sdir, fileext = ".json.tmp")
       on.exit(unlink(tmp), add = TRUE)
       writeLines(json, tmp)
-      file.rename(tmp, path)
+      ok <- suppressWarnings(file.rename(tmp, path))
+      if (!isTRUE(ok)) {
+        rlang::abort(paste0("Failed to write conversation: ", path))
+      }
 
       # Update cache
       cache <- private$meta_cache[[scope]]
