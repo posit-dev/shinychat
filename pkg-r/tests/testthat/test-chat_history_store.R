@@ -84,6 +84,21 @@ test_that("FileConversationStore: files are written to disk", {
   expect_length(json_files, 1)
 })
 
+test_that("FileConversationStore: put errors when atomic rename fails", {
+  dir <- withr::local_tempdir()
+  store <- FileConversationStore$new(dir = dir)
+  rec <- new_conversation_record("Persisted")
+
+  scope_dir <- file.path(dir, sanitize_scope("user1"))
+  dir.create(scope_dir, recursive = TRUE)
+  dir.create(file.path(scope_dir, paste0(rec$id, ".json")))
+
+  expect_error(
+    store$put("user1", rec),
+    "Failed to write conversation"
+  )
+})
+
 test_that("FileConversationStore: list returns newest first", {
   dir <- withr::local_tempdir()
   store <- FileConversationStore$new(dir = dir)

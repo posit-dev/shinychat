@@ -9,8 +9,7 @@ from chatlas import Turn
 from chatlas._turn import AssistantTurn
 from shiny import App, Inputs, Outputs, Session, reactive, render, ui
 from shinychat import Chat, chat_ui
-from shinychat.types import FileConversationStore
-from shinychat.types import HistoryOptions
+from shinychat.types import FileConversationStore, HistoryOptions
 
 
 class EchoChatClient(chatlas.Chat):
@@ -20,12 +19,16 @@ class EchoChatClient(chatlas.Chat):
         provider.model = "echo"
         super().__init__(provider)
 
-    async def stream_async(self, *args: Any, **kwargs: Any) -> AsyncGenerator[str, None]:  # type: ignore[override]
+    async def stream_async(
+        self, *args: Any, **kwargs: Any
+    ) -> AsyncGenerator[str, None]:  # type: ignore[override]
         user_input = str(args[0]) if args else ""
-        self._turns.extend([
-            Turn(role="user", contents=user_input),
-            AssistantTurn(contents=f"echo: {user_input}"),
-        ])
+        self._turns.extend(
+            [
+                Turn(role="user", contents=user_input),
+                AssistantTurn(contents=f"echo: {user_input}"),
+            ]
+        )
 
         async def _gen() -> AsyncGenerator[str, None]:
             yield f"echo: {user_input}"
@@ -72,7 +75,6 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     @chat.history.on_restore
     def _(values: dict[str, object]) -> None:
         filter_value.set(str(values.get("app_filter", "none")))
-
 
 
 app = App(app_ui, server, bookmark_store="server")

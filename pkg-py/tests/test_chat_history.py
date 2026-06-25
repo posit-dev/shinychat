@@ -56,9 +56,10 @@ def test_history_attr_always_present():
     assert isinstance(chat.history, ChatHistory)
 
 
-
 def test_history_config_applied_from_constructor():
-    chat = _make_chat(history=HistoryOptions(store="memory", restore_mode="none"))
+    chat = _make_chat(
+        history=HistoryOptions(store="memory", restore_mode="none")
+    )
     assert chat.history._store == "memory"
     assert chat.history._restore_mode == "none"
 
@@ -126,7 +127,7 @@ def _make_chat_with_client(
 
     def _fake_start(self: ChatHistory) -> None:
         start_calls.append(1)
-        self._enabled = True
+        self._started = True
 
     session = cast(Any, _MockSession())
     with (

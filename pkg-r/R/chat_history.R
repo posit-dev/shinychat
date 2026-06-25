@@ -13,15 +13,24 @@ delete_bookmark_state <- function(state_id) {
   if (!grepl("^[A-Za-z0-9_-]+$", state_id)) {
     return(invisible())
   }
-  save_dir <- shiny::getShinyOption(
-    "bookmarkSaveDir",
-    default = "shiny_bookmarks"
-  )
-  state_path <- file.path(save_dir, state_id)
-  if (dir.exists(state_path)) {
-    unlink(state_path, recursive = TRUE)
+  for (state_path in bookmark_state_paths(state_id)) {
+    if (dir.exists(state_path)) {
+      unlink(state_path, recursive = TRUE)
+    }
   }
   invisible()
+}
+
+bookmark_state_paths <- function(state_id) {
+  app_dir <- shiny::getShinyOption("appDir", default = getwd())
+  paths <- file.path(app_dir, "shiny_bookmarks", state_id)
+
+  legacy_dir <- shiny::getShinyOption("bookmarkSaveDir", default = NULL)
+  if (!is.null(legacy_dir)) {
+    paths <- c(paths, file.path(legacy_dir, state_id))
+  }
+
+  unique(paths)
 }
 
 HistoryController <- R6::R6Class(
@@ -626,7 +635,9 @@ chat_enable_history <- function(
     }
 
     controller$on_active_id_change <- function(conv_id) {
-      if (is.null(conv_id)) controller$send_navigate(NULL, NULL)
+      if (is.null(conv_id)) {
+        controller$send_navigate(NULL, NULL, reload = TRUE)
+      }
     }
   }
 

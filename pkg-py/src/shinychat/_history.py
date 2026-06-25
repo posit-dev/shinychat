@@ -94,8 +94,12 @@ class HistoryOptions:
         title: "TitleFn | Literal['auto'] | None" = "auto",
         max_store_mb: float | None = 100.0,
     ) -> None:
-        self.restore_mode: "Literal['browser', 'url', 'none', 'bookmark']" = restore_mode
-        self.store: "ConversationStore | Literal['auto', 'memory', 'file']" = store
+        self.restore_mode: "Literal['browser', 'url', 'none', 'bookmark']" = (
+            restore_mode
+        )
+        self.store: "ConversationStore | Literal['auto', 'memory', 'file']" = (
+            store
+        )
         self.scope: "str | Callable[..., str] | None" = scope
         self.title: "TitleFn | Literal['auto'] | None" = title
         self.max_store_mb: float | None = max_store_mb
@@ -413,12 +417,20 @@ class HistoryController:
 
     # -- protocol ----------------------------------------------------------
 
-    async def send_navigate(self, url: str | None, active_id: str | None) -> None:
+    async def send_navigate(
+        self,
+        url: str | None,
+        active_id: str | None,
+        *,
+        reload: bool = False,
+    ) -> None:
         action: HistoryNavigateAction = {
             "type": "history_navigate",
             "url": url,
             "active_id": active_id,
         }
+        if reload:
+            action["reload"] = True
         await self.chat._send_action(action)
 
     async def send_history_update(self) -> None:
@@ -455,16 +467,22 @@ async def do_bookmark_with_cleanup(
 class ChatHistory:
     """Namespace for chat history configuration and lifecycle on a `Chat` instance."""
 
-    def __init__(self, chat: "Chat", config: HistoryOptions | None = None) -> None:
+    def __init__(
+        self, chat: "Chat", config: HistoryOptions | None = None
+    ) -> None:
         self._chat = chat
         self._started: bool = False
         self._save_callbacks: "list[Callable[[dict[str, Any]], None]]" = []
         self._restore_callbacks: "list[Callable[[dict[str, Any]], None]]" = []
         cfg = config if config is not None else HistoryOptions()
-        self._store: "ConversationStore | Literal['auto', 'memory', 'file']" = cfg.store
+        self._store: "ConversationStore | Literal['auto', 'memory', 'file']" = (
+            cfg.store
+        )
         self._scope: "str | Callable[..., str] | None" = cfg.scope
         self._title: "TitleFn | Literal['auto'] | None" = cfg.title
-        self._restore_mode: "Literal['browser', 'url', 'none', 'bookmark']" = cfg.restore_mode
+        self._restore_mode: "Literal['browser', 'url', 'none', 'bookmark']" = (
+            cfg.restore_mode
+        )
         self._max_store_mb: float | None = cfg.max_store_mb
 
     def enable(self) -> None:
@@ -561,7 +579,9 @@ class ChatHistory:
         title = self._title
         scope_key = self._scope
         max_store_bytes = (
-            int(self._max_store_mb * 1024 * 1024) if self._max_store_mb is not None else None
+            int(self._max_store_mb * 1024 * 1024)
+            if self._max_store_mb is not None
+            else None
         )
         controller = HistoryController(
             chat=chat,
@@ -577,8 +597,13 @@ class ChatHistory:
 
         # Wire up URL updates for restore_mode="url".
         if restore_mode == "url":
+
             async def _update_url(conv_id: str | None) -> None:
-                url = f"?shinychat_conversation_id={conv_id}" if conv_id is not None else None
+                url = (
+                    f"?shinychat_conversation_id={conv_id}"
+                    if conv_id is not None
+                    else None
+                )
                 await controller.send_navigate(url, conv_id)
 
             controller.on_active_id_change = _update_url
@@ -596,7 +621,10 @@ class ChatHistory:
                     new_state_id = extract_state_id(url)
                     if new_state_id is None:
                         return
-                    if controller.record is None or controller.record.id != captured_id:
+                    if (
+                        controller.record is None
+                        or controller.record.id != captured_id
+                    ):
                         return  # switched away
                     old_state_id = record.bookmark_state_id
                     record.bookmark_state_id = new_state_id
@@ -604,7 +632,9 @@ class ChatHistory:
                         await delete_bookmark_state(old_state_id)
                     if controller.scope is not None:
                         await controller.store.put(controller.scope, record)
-                    await controller.send_navigate(f"?_state_id_={new_state_id}", captured_id)
+                    await controller.send_navigate(
+                        f"?_state_id_={new_state_id}", captured_id
+                    )
 
                 await do_bookmark_with_cleanup(
                     root_session.bookmark, _on_bookmarked
@@ -615,7 +645,9 @@ class ChatHistory:
             async def _on_pre_switch(target: ConversationRecord) -> bool:
                 if target.bookmark_state_id is not None:
                     await controller.send_navigate(
-                        f"?_state_id_={target.bookmark_state_id}", target.id
+                        f"?_state_id_={target.bookmark_state_id}",
+                        target.id,
+                        reload=True,
                     )
                     return True
                 return False
@@ -623,11 +655,18 @@ class ChatHistory:
             controller.on_pre_switch = _on_pre_switch
 
             async def _on_evict(conv_id: str) -> None:
-                if controller.record is not None and controller.record.id == conv_id:
+                if (
+                    controller.record is not None
+                    and controller.record.id == conv_id
+                ):
                     state_id = controller.record.bookmark_state_id
                 else:
-                    rec = await controller.store.get(controller.scope or "", conv_id)
-                    state_id = rec.bookmark_state_id if rec is not None else None
+                    rec = await controller.store.get(
+                        controller.scope or "", conv_id
+                    )
+                    state_id = (
+                        rec.bookmark_state_id if rec is not None else None
+                    )
                 if state_id is not None:
                     await delete_bookmark_state(state_id)
 
@@ -635,7 +674,7 @@ class ChatHistory:
 
             async def _update_url_bookmark(conv_id: str | None) -> None:
                 if conv_id is None:
-                    await controller.send_navigate(None, None)
+                    await controller.send_navigate(None, None, reload=True)
 
             controller.on_active_id_change = _update_url_bookmark
 
@@ -646,6 +685,7 @@ class ChatHistory:
         stamp_key = f"{chat.id}_history_conversation_id"
         stamp_cancel: Callable[[], None] | None = None
         if root_session.bookmark.store == "server":
+
             def stamp_conversation(state: Any) -> None:
                 if controller.record is not None:
                     state.values[stamp_key] = controller.record.id
