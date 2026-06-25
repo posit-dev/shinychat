@@ -4,7 +4,12 @@
 \alias{chat_greeting}
 \title{Create a greeting for a chat UI}
 \usage{
-chat_greeting(content, dismissible = TRUE)
+chat_greeting(
+  content,
+  ...,
+  persistent = FALSE,
+  dismissible = lifecycle::deprecated()
+)
 }
 \arguments{
 \item{content}{The greeting content. Can be:
@@ -16,8 +21,15 @@ inputs/outputs.
 \item A generator or promise (only valid when used with \code{chat_set_greeting()}).
 }}
 
-\item{dismissible}{Whether the greeting is automatically dismissed when the
-user sends a message. Defaults to \code{TRUE}.}
+\item{...}{These dots are for future extensions and must be empty.}
+
+\item{persistent}{Whether the greeting persists after the user sends a
+message. Defaults to \code{FALSE}, meaning the greeting is dismissed when the
+user sends their first message.}
+
+\item{dismissible}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Renamed to
+\code{persistent} with an inverted value. \code{dismissible = FALSE} is equivalent
+to \code{persistent = TRUE}.}
 }
 \value{
 An S3 object of class \code{"chat_greeting"}.
@@ -30,9 +42,9 @@ user sends their first message.
 \section{Patterns}{
 
 
-\strong{Non-dismissible greeting} (stays visible after the user sends a message):
+\strong{Persistent greeting} (stays visible after the user sends a message):
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_greeting("Please read our [terms of service](https://example.com).", dismissible = FALSE)
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_greeting("Please read our [terms of service](https://example.com).", persistent = TRUE)
 }\if{html}{\out{</div>}}
 
 \strong{Greeting with suggestion cards} (clickable chips that fill the input):

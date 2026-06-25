@@ -149,22 +149,25 @@ chat_app <- function(
         enable_cancel = TRUE,
         allow_attachments = allow_attachments
       ),
-      shiny::actionButton(
-        "close_btn",
-        label = "",
-        class = "btn-close",
-        style = "position: fixed; top: 6px; right: 6px;"
-      )
+      if (rlang::is_interactive()) {
+        shiny::actionButton(
+          "close_btn",
+          label = "",
+          class = "btn-close",
+          style = "position: fixed; top: 6px; right: 6px;"
+        )
+      }
     )
   }
 
   server <- function(input, output, session) {
-    shiny::setBookmarkExclude("close_btn")
+    if (rlang::is_interactive()) {
+      shiny::setBookmarkExclude("close_btn")
+      shiny::observeEvent(input$close_btn, label = "on_close_btn", {
+        shiny::stopApp()
+      })
+    }
     chat_server("chat", client)
-
-    shiny::observeEvent(input$close_btn, label = "on_close_btn", {
-      shiny::stopApp()
-    })
   }
 
   shiny::shinyApp(ui, server, ..., enableBookmarking = bookmark_store)
@@ -263,6 +266,7 @@ chat_mod_ui <- function(
 #' The returned `set_greeting()` helper is available for cases where you need
 #' to set a greeting outside the greeting lifecycle.
 #'
+#' @importFrom shiny isolate
 #' @export
 chat_server <- function(
   id,

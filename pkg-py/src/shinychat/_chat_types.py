@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from typing import Any, AsyncIterable, Literal, Union
 
 from htmltools import HTML, HTMLDependency, Tag, TagChild, TagList
@@ -8,6 +9,7 @@ from pydantic import BaseModel
 from ._attachments import Attachment
 from ._html_islands import split_html_islands
 from ._typing_extensions import NotRequired, TypedDict
+from ._utils_types import DEPRECATED, DEPRECATED_TYPE, MISSING, MISSING_TYPE
 
 Role = Literal["assistant", "user", "system"]
 
@@ -89,7 +91,7 @@ class HideToolRequestAction(TypedDict):
 
 
 class GreetingOptions(TypedDict):
-    dismissible: NotRequired[bool]
+    persistent: NotRequired[bool]
 
 
 class GreetingAction(TypedDict):
@@ -212,9 +214,23 @@ class ChatGreeting:
         self,
         content: Union[str, HTML, Tag, TagList, "AsyncIterable[str]"],
         *,
-        dismissible: bool = True,
+        persistent: "bool | MISSING_TYPE" = MISSING,
+        dismissible: DEPRECATED_TYPE = DEPRECATED,
     ):
-        self.dismissible = dismissible
+        if isinstance(persistent, MISSING_TYPE):
+            if not isinstance(dismissible, DEPRECATED_TYPE):
+                warnings.warn(
+                    "The `dismissible` parameter is deprecated. "
+                    "Use `persistent` (with inverted value) instead. "
+                    "`dismissible=False` is equivalent to `persistent=True`.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                persistent = not dismissible
+            else:
+                persistent = False
+
+        self.persistent = persistent
 
         if isinstance(content, AsyncIterable):
             self.content: Union[str, AsyncIterable[str]] = content
@@ -240,7 +256,8 @@ class ChatGreeting:
 def chat_greeting(
     content: Union[str, HTML, Tag, TagList, "AsyncIterable[str]"],
     *,
-    dismissible: bool = True,
+    persistent: "bool | MISSING_TYPE" = MISSING,
+    dismissible: DEPRECATED_TYPE = DEPRECATED,
 ) -> ChatGreeting:
     """
     Create a greeting for a chat UI.
@@ -256,10 +273,10 @@ def chat_greeting(
         :class:`~htmltools.Tag`, :class:`~htmltools.TagList`, or an
         :class:`~typing.AsyncIterable` of strings (streaming, only valid via
         :meth:`~shinychat.Chat.set_greeting`).
-    dismissible
-        Whether the greeting can be dismissed when the user sends a message. When
-        ``True`` (the default), the greeting is hidden once the user sends their first
-        message. Set to ``False`` to keep the greeting visible throughout the
+    persistent
+        Whether the greeting stays visible after the user sends a message. When
+        ``False`` (the default), the greeting is hidden once the user sends their first
+        message. Set to ``True`` to keep the greeting visible throughout the
         conversation, which is useful for persistent instructions or navigation.
 
     Examples
@@ -272,10 +289,10 @@ def chat_greeting(
     chat_greeting("## Welcome!\\n\\nHow can I help you today?")
     ```
 
-    Non-dismissible greeting that stays visible:
+    Persistent greeting that stays visible:
 
     ```python
-    chat_greeting("Please select a topic to get started.", dismissible=False)
+    chat_greeting("Please select a topic to get started.", persistent=True)
     ```
 
     Greeting with suggestion cards (uses ``<span class="suggestion">``):
@@ -293,9 +310,22 @@ def chat_greeting(
     :func:`~shinychat.chat_ui` : Set a static greeting in the UI definition.
     :meth:`~shinychat.Chat.set_greeting` : Set or stream a greeting from the server.
     """
+    if isinstance(persistent, MISSING_TYPE):
+        if not isinstance(dismissible, DEPRECATED_TYPE):
+            warnings.warn(
+                "The `dismissible` parameter is deprecated. "
+                "Use `persistent` (with inverted value) instead. "
+                "`dismissible=False` is equivalent to `persistent=True`.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            persistent = not dismissible
+        else:
+            persistent = False
+
     return ChatGreeting(
         content,
-        dismissible=dismissible,
+        persistent=persistent,
     )
 
 
