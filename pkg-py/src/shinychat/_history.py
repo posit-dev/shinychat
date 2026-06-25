@@ -92,13 +92,13 @@ class HistoryOptions:
         store: "ConversationStore | Literal['auto', 'memory', 'file']" = "auto",
         scope: "str | Callable[..., str] | None" = None,
         title: "TitleFn | Literal['auto'] | None" = "auto",
-        max_store_mb: float = 100.0,
+        max_store_mb: float | None = 100.0,
     ) -> None:
         self.restore_mode: "Literal['browser', 'url', 'none', 'bookmark']" = restore_mode
         self.store: "ConversationStore | Literal['auto', 'memory', 'file']" = store
         self.scope: "str | Callable[..., str] | None" = scope
         self.title: "TitleFn | Literal['auto'] | None" = title
-        self.max_store_mb: float = max_store_mb
+        self.max_store_mb: float | None = max_store_mb
 
 
 def extend_record_linear(
@@ -445,7 +445,7 @@ class ChatHistory:
         self._scope: "str | Callable[..., str] | None" = cfg.scope
         self._title: "TitleFn | Literal['fallback'] | None" = cfg.title
         self._restore_mode: "Literal['browser', 'url', 'none', 'bookmark']" = cfg.restore_mode
-        self._max_store_mb: float = cfg.max_store_mb
+        self._max_store_mb: float | None = cfg.max_store_mb
 
     def enable(self) -> None:
         """Enable chat history for the current session. No-op if already started."""
@@ -540,7 +540,9 @@ class ChatHistory:
         resolved_store = resolve_store(self._store)
         title = self._title
         scope_key = self._scope
-        max_store_bytes = int(self._max_store_mb * 1024 * 1024)
+        max_store_bytes = (
+            int(self._max_store_mb * 1024 * 1024) if self._max_store_mb is not None else None
+        )
         controller = HistoryController(
             chat=chat,
             adapter=adapter,
