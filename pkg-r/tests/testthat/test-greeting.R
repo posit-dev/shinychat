@@ -363,7 +363,12 @@ test_that("chat_server() one-arg greeting receives a client with empty turns", {
   suppress_restore_warnings(
     shiny::testServer(
       function(input, output, session) {
-        chat_server("chat", client_with_turns, greeting = greeting, session = session)
+        chat_server(
+          "chat",
+          client_with_turns,
+          greeting = greeting,
+          session = session
+        )
       },
       {
         session$setInputs(chat_greeting_requested = 1L)

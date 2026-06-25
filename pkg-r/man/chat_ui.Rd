@@ -14,9 +14,9 @@ chat_ui(
   height = "auto",
   fill = TRUE,
   icon_assistant = NULL,
-  enable_cancel = FALSE,
+  enable_cancel = NULL,
   submit_key = c("enter", "enter+modifier"),
-  allow_attachments = FALSE,
+  allow_attachments = NULL,
   footer = NULL
 )
 }
@@ -64,12 +64,13 @@ container, if the container is
 Can be HTML or a tag in the form of \code{\link[htmltools:HTML]{htmltools::HTML()}} or
 \code{\link[htmltools:tags]{htmltools::tags()}}. If \code{None}, a default robot icon is used.}
 
-\item{enable_cancel}{If \code{TRUE}, show a stop button during streaming that
+\item{enable_cancel}{Whether to show a stop button during streaming that
 allows the user to cancel the in-progress response. When using
-\code{\link[=chat_server]{chat_server()}}, cancellation is wired up automatically. For manual
-usage with \code{chat_ui()}, observe \verb{input$<id>_cancel} to handle cancellation
-(e.g., by calling \code{ctrl$cancel()} on an ellmer \code{stream_controller()}).
-Defaults to \code{FALSE}.}
+\code{\link[=chat_server]{chat_server()}}, cancellation is wired up automatically and this defaults
+to \code{NULL} (let the server decide). For manual usage without
+\code{\link[=chat_server]{chat_server()}}, set \code{TRUE} or \code{FALSE} explicitly and observe
+\verb{input$<id>_cancel} to handle cancellation (e.g., by calling
+\code{ctrl$cancel()} on an ellmer \code{stream_controller()}).}
 
 \item{submit_key}{Controls which key combination submits the chat message.
 \code{"enter"} (the default): Enter submits, Shift+Enter adds a newline.
@@ -77,11 +78,13 @@ Defaults to \code{FALSE}.}
 adds a newline.}
 
 \item{allow_attachments}{Controls the file-attachment affordance (an attach
-button, plus clipboard paste and drag-and-drop) in the chat input. Pass
-\code{TRUE} to accept all supported types (PNG, JPEG, GIF, WebP, PDF, and common
-text/code files such as Markdown, plain text, CSV, JSON, and source files),
-\code{FALSE} to disable, or a character vector of MIME types to
-restrict what is accepted (each must be one of the supported types).
+button, plus clipboard paste and drag-and-drop) in the chat input.
+\code{NULL} (default) defers to \code{\link[=chat_server]{chat_server()}}, which enables attachments
+automatically. Pass \code{TRUE} to accept all supported types (PNG, JPEG, GIF,
+WebP, PDF, and common text/code files such as Markdown, plain text, CSV,
+JSON, and source files), \code{FALSE} to disable, or a character vector of MIME
+types to restrict what is accepted (each must be one of the supported
+types).
 
 The shape of \verb{input$<id>_user_input} is determined by this argument, so it
 is predictable for a given app. When attachments are disabled (the

@@ -437,8 +437,16 @@ chat_server <- function(
     set_greeting_mod(greeting)
   }
 
-  send_chat_action(id, list(type = "update_cancel", enable_cancel = TRUE), session = session)
-  send_chat_action(id, list(type = "update_upload", enable_upload = TRUE), session = session)
+  send_chat_action(
+    id,
+    list(type = "update_cancel", enable_cancel = TRUE),
+    session = session
+  )
+  send_chat_action(
+    id,
+    list(type = "update_upload", enable_upload = TRUE),
+    session = session
+  )
 
   # Registered slash commands. Each entry: list(handler, takes_args, definition).
   # Using a reactiveVal lets multiple registrations during app startup coalesce

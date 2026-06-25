@@ -51,11 +51,13 @@ size; use \code{"server"} to store the state on the server side without size
 limitations; or disable bookmarking by setting this to \code{"disable"}.}
 
 \item{allow_attachments}{Controls the file-attachment affordance (an attach
-button, plus clipboard paste and drag-and-drop) in the chat input. Pass
-\code{TRUE} to accept all supported types (PNG, JPEG, GIF, WebP, PDF, and common
-text/code files such as Markdown, plain text, CSV, JSON, and source files),
-\code{FALSE} to disable, or a character vector of MIME types to
-restrict what is accepted (each must be one of the supported types).
+button, plus clipboard paste and drag-and-drop) in the chat input.
+\code{NULL} (default) defers to \code{\link[=chat_server]{chat_server()}}, which enables attachments
+automatically. Pass \code{TRUE} to accept all supported types (PNG, JPEG, GIF,
+WebP, PDF, and common text/code files such as Markdown, plain text, CSV,
+JSON, and source files), \code{FALSE} to disable, or a character vector of MIME
+types to restrict what is accepted (each must be one of the supported
+types).
 
 The shape of \verb{input$<id>_user_input} is determined by this argument, so it
 is predictable for a given app. When attachments are disabled (the

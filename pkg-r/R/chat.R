@@ -428,7 +428,13 @@ chat_ui <- function(
       ),
       placeholder = placeholder,
       fill = if (isTRUE(fill)) NA else NULL,
-      `enable-cancel` = if (isTRUE(enable_cancel)) NA else if (isFALSE(enable_cancel)) "false" else NULL,
+      `enable-cancel` = if (isTRUE(enable_cancel)) {
+        NA
+      } else if (isFALSE(enable_cancel)) {
+        "false"
+      } else {
+        NULL
+      },
       `submit-key` = if (submit_key != "enter") submit_key,
       `allow-attachments` = attachment_attrs$allow,
       `attachment-accept` = attachment_attrs$accept,
