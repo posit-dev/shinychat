@@ -3,6 +3,7 @@
 \name{chat_app}
 \alias{chat_app}
 \alias{chat_mod_ui}
+\alias{chat_server}
 \alias{chat_mod_server}
 \title{Open a live chat application in the browser}
 \usage{
@@ -14,6 +15,15 @@ chat_mod_ui(
   client = deprecated(),
   messages = NULL,
   allow_attachments = TRUE
+)
+
+chat_server(
+  id,
+  client,
+  greeting = NULL,
+  bookmark_on_input = TRUE,
+  bookmark_on_response = TRUE,
+  session = shiny::getDefaultReactiveDomain()
 )
 
 chat_mod_server(
@@ -76,12 +86,15 @@ dynamically. See the \strong{Greeting} section below for details.}
 \item{bookmark_on_input}{A logical value determines if the bookmark should be updated when the user submits a message. Default is \code{TRUE}.}
 
 \item{bookmark_on_response}{A logical value determines if the bookmark should be updated when the response stream completes. Default is \code{TRUE}.}
+
+\item{session}{The Shiny session. Pass the \code{session} argument from your
+enclosing \code{\link[shiny:moduleServer]{shiny::moduleServer()}} call.}
 }
 \value{
 \itemize{
 \item \code{chat_app()} returns a \code{\link[shiny:shinyApp]{shiny::shinyApp()}} object.
 \item \code{chat_mod_ui()} returns the UI for a shinychat module.
-\item \code{chat_mod_server()} includes the shinychat module server logic, and
+\item \code{chat_server()} includes the shinychat module server logic, and
 returns an environment containing:
 \itemize{
 \item \code{last_input}: A reactive value containing the last user input (a string
@@ -145,9 +158,8 @@ Note that these functions will mutate the input \code{client} object as
 you chat because your turns will be appended to the history.
 
 The app created by \code{chat_app()} is suitable for interactive use by a single
-user. For multi-user Shiny apps, use the Shiny module chat functions --
-\code{chat_mod_ui()} and \code{chat_mod_server()} -- and be sure to create a new chat
-client for each user session.
+user. For multi-user Shiny apps, use \code{\link[=chat_ui]{chat_ui()}} and \code{chat_server()} and be
+sure to create a new chat client for each user session.
 }
 \section{Functions}{
 \itemize{
@@ -157,27 +169,28 @@ app is suitable for interactive use by a single user; do not use
 
 \item \code{chat_mod_ui()}: A simple chat app module UI.
 
-\item \code{chat_mod_server()}: A simple chat app module server.
+\item \code{chat_server()}: Wire up chat server logic inside an existing \code{\link[shiny:moduleServer]{shiny::moduleServer()}}.
+
+\item \code{chat_mod_server()}: A Shiny module server for chat (deprecated).
 
 }}
 \section{Greeting}{
 
 
-When \code{greeting} is a \strong{function}, the module calls it each time the
+When \code{greeting} is a \strong{function}, it is called each time the
 \code{greeting_requested} event fires — on first view when the chat is empty,
 and again after \code{clear(greeting = TRUE)}. The function should return a
 \code{\link[=chat_greeting]{chat_greeting()}} (typically wrapping a stream). Static values (strings,
 \code{\link[=chat_greeting]{chat_greeting()}} objects) are set once at init and do not regenerate.
 
-The module detects \strong{named arguments} in the greeting function to decide
-what to pass. Currently the only recognized argument is \code{client}.
+The function signature determines what is passed. Currently the only
+recognized argument is \code{client}.
 
-\strong{\verb{function(client)}} (recommended). The module clones the \code{client}
-passed to \code{chat_mod_server()}, wipes its turn history, and passes the
-fresh clone as \code{client}. This avoids manually creating and configuring
-a separate client:
+\strong{\verb{function(client)}} (recommended). A clone of the \code{client} with its turn
+history wiped is passed as \code{client}. This avoids manually creating and
+configuring a separate client:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_mod_server("chat", client, greeting = function(client) \{
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_server("chat", client, session = session, greeting = function(client) \{
   stream <- client$stream_async("Generate a short welcome message.")
   chat_greeting(stream)
 \})
@@ -185,7 +198,7 @@ a separate client:
 
 \strong{\verb{function()}} (zero arguments). You create and manage your own client:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_mod_server("chat", client, greeting = function() \{
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_server("chat", client, session = session, greeting = function() \{
   greeter <- ellmer::chat_openai(model = "gpt-4o")
   stream <- greeter$stream_async("Generate a short welcome message.")
   chat_greeting(stream)
@@ -194,7 +207,8 @@ a separate client:
 
 \strong{Static value.} Set once; does not regenerate after \code{clear()}:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_mod_server("chat", client, greeting = "## Welcome!\\n\\nHow can I help?")
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_server("chat", client, session = session,
+            greeting = "## Welcome!\\n\\nHow can I help?")
 }\if{html}{\out{</div>}}
 
 The returned \code{set_greeting()} helper is available for cases where you need
