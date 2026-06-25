@@ -634,6 +634,23 @@ class ChatHistory:
 
         @reactive.calc
         def scope() -> str:
+            # When restore_mode needs localStorage inputs ("browser" or "url"),
+            # the active conversation ID is sent from the client inside
+            # initializedPromise.then() — AFTER Shiny's first reactive flush.
+            # If the scope resolves immediately (from session.user or a
+            # caller-supplied scope_key), the init effect fires in that first
+            # flush and reads current_id / url_id as None, permanently missing
+            # the active conversation.
+            #
+            # The browser token is dispatched in the same microtask as
+            # current_id and url_id. Requiring it here delays scope resolution
+            # until the second flush, ensuring all three inputs have arrived
+            # before the init observer runs.
+            if restore_mode in ("browser", "url") and (
+                scope_key is not None or chat._session.user is not None
+            ):
+                token = chat._session.input[token_input_id]()
+                req(token)
             if isinstance(scope_key, str):
                 return scope_key
             if callable(scope_key):
