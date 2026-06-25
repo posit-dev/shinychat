@@ -118,6 +118,51 @@ test_that("HistoryController evicts oldest when over max_store_bytes", {
   expect_true(controller$record$id %in% ids)
 })
 
+test_that("init waits for browser token when session$user is set (browser restore)", {
+  # Regression: on Connect (or any authenticated Shiny deployment), session$user
+  # is available immediately, so scope_val used to resolve in the first reactive
+  # flush — before the browser sends _history_browser_token and _history_current_id
+  # (which arrive only after Shiny's initializedPromise resolves). The init
+  # observer would fire with current_id = NULL, set initialized = TRUE, and the
+  # active conversation would never be restored. The fix requires the browser
+  # token before scope resolves in browser/url restore modes.
+  skip_if_not_installed("ellmer")
+
+  store <- InMemoryConversationStore$new()
+  rec <- new_conversation_record("Prior conversation")
+  store$put("testuser", rec)
+
+  client <- mock_chat_client()
+  session <- shiny::MockShinySession$new()
+  session$user <- "testuser"
+
+  server <- function(input, output, session) {
+    chat_enable_history(
+      "chat",
+      client,
+      options = history_options(store = store, title = NULL)
+    )
+  }
+
+  shiny::testServer(server, session = session, {
+    ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
+
+    # First flush: browser token not yet sent. The init observer must NOT have
+    # fired yet despite session$user being available.
+    expect_null(ctrl$record)
+
+    # Simulate the client sending token + current_id in the same microtask
+    # (initializedPromise.then() dispatches both atomically).
+    session$setInputs(
+      chat_history_browser_token = "tok-abc",
+      chat_history_current_id = rec$id
+    )
+
+    # Init should now have fired and restored the saved conversation.
+    expect_equal(ctrl$record$id, rec$id)
+  })
+})
+
 test_that("HistoryController does not evict when no limit set", {
   store <- InMemoryConversationStore$new()
   old <- new_conversation_record("old")
