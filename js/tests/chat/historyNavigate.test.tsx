@@ -1,5 +1,5 @@
 import { describe, expect, test, vi, beforeEach } from "vitest"
-import { render } from "@testing-library/react"
+import { act, fireEvent, render, screen } from "@testing-library/react"
 import { ChatApp } from "../../src/chat/ChatApp"
 import { getCurrentConversationId } from "../../src/chat/currentConversation"
 import { createMockTransport, createMockShinyLifecycle } from "../helpers/mocks"
@@ -57,5 +57,48 @@ describe("history_navigate handling", () => {
 
     expect(getCurrentConversationId("chat")).toBeNull()
     expect(navigateTo).toHaveBeenCalledWith("http://x/app/")
+  })
+
+  test("conversation selection updates local pointer before server acknowledgement", () => {
+    const transport = createMockTransport()
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={createMockShinyLifecycle()}
+        elementId="chat"
+        inputId="chat_user_input"
+      />,
+    )
+
+    act(() => {
+      transport.fire("chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [
+          {
+            id: "c1",
+            title: "First",
+            created_at: "2026-01-01T00:00:00.000Z",
+            updated_at: "2026-01-01T00:00:00.000Z",
+          },
+          {
+            id: "c2",
+            title: "Second",
+            created_at: "2026-01-02T00:00:00.000Z",
+            updated_at: "2026-01-02T00:00:00.000Z",
+          },
+        ],
+        active_id: "c1",
+      })
+    })
+    expect(getCurrentConversationId("chat")).toBe("c1")
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /conversation history/i }),
+    )
+    fireEvent.click(screen.getByText("Second"))
+
+    expect(getCurrentConversationId("chat")).toBe("c2")
+    expect(transport.sendHistorySelect).toHaveBeenCalledWith("chat", "c2")
   })
 })
