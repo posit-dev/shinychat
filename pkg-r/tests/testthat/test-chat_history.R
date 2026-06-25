@@ -14,12 +14,12 @@ test_that("HistoryController$on_response() creates record on first save", {
   # Simulate a user turn + assistant turn
   user_turn <- list(
     class = "ellmer::UserTurn",
-    version = 1L,
+    version = 1,
     props = list(
       contents = list(
         list(
           class = "ellmer::ContentText",
-          version = 1L,
+          version = 1,
           props = list(text = "Hello")
         )
       )
@@ -27,12 +27,12 @@ test_that("HistoryController$on_response() creates record on first save", {
   )
   asst_turn <- list(
     class = "ellmer::AssistantTurn",
-    version = 1L,
+    version = 1,
     props = list(
       contents = list(
         list(
           class = "ellmer::ContentText",
-          version = 1L,
+          version = 1,
           props = list(text = "Hi there")
         )
       )
@@ -62,12 +62,12 @@ test_that("HistoryController$on_response() extends existing record", {
 
   turn1 <- list(
     class = "ellmer::UserTurn",
-    version = 1L,
+    version = 1,
     props = list(
       contents = list(
         list(
           class = "ellmer::ContentText",
-          version = 1L,
+          version = 1,
           props = list(text = "Hi")
         )
       )
@@ -75,12 +75,12 @@ test_that("HistoryController$on_response() extends existing record", {
   )
   turn2 <- list(
     class = "ellmer::AssistantTurn",
-    version = 1L,
+    version = 1,
     props = list(
       contents = list(
         list(
           class = "ellmer::ContentText",
-          version = 1L,
+          version = 1,
           props = list(text = "Hello")
         )
       )
@@ -92,12 +92,12 @@ test_that("HistoryController$on_response() extends existing record", {
 
   turn3 <- list(
     class = "ellmer::UserTurn",
-    version = 1L,
+    version = 1,
     props = list(
       contents = list(
         list(
           class = "ellmer::ContentText",
-          version = 1L,
+          version = 1,
           props = list(text = "More")
         )
       )
@@ -105,12 +105,12 @@ test_that("HistoryController$on_response() extends existing record", {
   )
   turn4 <- list(
     class = "ellmer::AssistantTurn",
-    version = 1L,
+    version = 1,
     props = list(
       contents = list(
         list(
           class = "ellmer::ContentText",
-          version = 1L,
+          version = 1,
           props = list(text = "Sure")
         )
       )
@@ -136,12 +136,12 @@ test_that("HistoryController$new_chat() resets state", {
 
   turn1 <- list(
     class = "ellmer::UserTurn",
-    version = 1L,
+    version = 1,
     props = list(
       contents = list(
         list(
           class = "ellmer::ContentText",
-          version = 1L,
+          version = 1,
           props = list(text = "Hi")
         )
       )
@@ -149,12 +149,12 @@ test_that("HistoryController$new_chat() resets state", {
   )
   turn2 <- list(
     class = "ellmer::AssistantTurn",
-    version = 1L,
+    version = 1,
     props = list(
       contents = list(
         list(
           class = "ellmer::ContentText",
-          version = 1L,
+          version = 1,
           props = list(text = "Hello")
         )
       )
@@ -185,12 +185,12 @@ test_that("HistoryController$rename() updates title", {
 
   turn1 <- list(
     class = "ellmer::UserTurn",
-    version = 1L,
+    version = 1,
     props = list(
       contents = list(
         list(
           class = "ellmer::ContentText",
-          version = 1L,
+          version = 1,
           props = list(text = "Hi")
         )
       )
@@ -198,12 +198,12 @@ test_that("HistoryController$rename() updates title", {
   )
   turn2 <- list(
     class = "ellmer::AssistantTurn",
-    version = 1L,
+    version = 1,
     props = list(
       contents = list(
         list(
           class = "ellmer::ContentText",
-          version = 1L,
+          version = 1,
           props = list(text = "Hello")
         )
       )
@@ -232,12 +232,12 @@ test_that("HistoryController$delete() removes conversation", {
 
   turn1 <- list(
     class = "ellmer::UserTurn",
-    version = 1L,
+    version = 1,
     props = list(
       contents = list(
         list(
           class = "ellmer::ContentText",
-          version = 1L,
+          version = 1,
           props = list(text = "Hi")
         )
       )
@@ -245,12 +245,12 @@ test_that("HistoryController$delete() removes conversation", {
   )
   turn2 <- list(
     class = "ellmer::AssistantTurn",
-    version = 1L,
+    version = 1,
     props = list(
       contents = list(
         list(
           class = "ellmer::ContentText",
-          version = 1L,
+          version = 1,
           props = list(text = "Hello")
         )
       )
@@ -280,12 +280,12 @@ test_that("HistoryController suppresses saves during replay", {
 
   turn1 <- list(
     class = "ellmer::UserTurn",
-    version = 1L,
+    version = 1,
     props = list(
       contents = list(
         list(
           class = "ellmer::ContentText",
-          version = 1L,
+          version = 1,
           props = list(text = "Hi")
         )
       )
@@ -326,7 +326,7 @@ test_that("on_response_saved fires on every response", {
   ctrl <- HistoryController$new(
     chat_id = "chat",
     client = client,
-    options = history_options(store = store, title = NULL),
+    options = history_options(store = store, title = "fallback"),
     session = session
   )
   ctrl$scope <- "test-user"
@@ -353,7 +353,7 @@ test_that("on_pre_switch returning TRUE skips the in-session swap", {
   ctrl <- HistoryController$new(
     chat_id = "chat",
     client = client,
-    options = history_options(store = store, title = NULL),
+    options = history_options(store = store, title = "fallback"),
     session = session
   )
   ctrl$scope <- "test-user"
@@ -389,7 +389,7 @@ test_that("on_pre_switch returning FALSE allows the in-session swap", {
   ctrl <- HistoryController$new(
     chat_id = "chat",
     client = client,
-    options = history_options(store = store, title = NULL),
+    options = history_options(store = store, title = "fallback"),
     session = session
   )
   ctrl$scope <- "test-user"
@@ -416,7 +416,7 @@ test_that("on_evict fires before store$delete in evict_one and delete", {
   ctrl <- HistoryController$new(
     chat_id = "chat",
     client = client,
-    options = history_options(store = store, title = NULL),
+    options = history_options(store = store, title = "fallback"),
     session = session
   )
   ctrl$scope <- "test-user"

@@ -56,7 +56,8 @@ new_conversation_record <- function(title, client_info = list()) {
     client_info = client_info,
     nodes = list(),
     current_leaf = NULL,
-    values = list()
+    values = list(),
+    bookmark_state_id = NULL
   )
 }
 

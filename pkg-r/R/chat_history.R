@@ -1,3 +1,19 @@
+extract_state_id <- function(url) {
+  m <- regmatches(url, regexpr("[?&]_state_id_=([A-Za-z0-9_-]+)", url, perl = TRUE))
+  if (length(m) == 0 || !nzchar(m)) return(NULL)
+  sub("^[^=]+=", "", m)
+}
+
+delete_bookmark_state <- function(state_id) {
+  if (!grepl("^[A-Za-z0-9_-]+$", state_id)) return(invisible())
+  save_dir <- shiny::getShinyOption("bookmarkSaveDir", default = "shiny_bookmarks")
+  state_path <- file.path(save_dir, state_id)
+  if (dir.exists(state_path)) {
+    unlink(state_path, recursive = TRUE)
+  }
+  invisible()
+}
+
 HistoryController <- R6::R6Class(
   "HistoryController",
   public = list(
@@ -7,6 +23,9 @@ HistoryController <- R6::R6Class(
     is_replaying = FALSE,
     suppress_next_save = FALSE,
     on_active_id_change = NULL,
+    on_response_saved = NULL,
+    on_pre_switch = NULL,
+    on_evict = NULL,
 
     initialize = function(
       chat_id,
@@ -52,6 +71,8 @@ HistoryController <- R6::R6Class(
       private$store$put(self$scope, self$record)
       private$evict_if_needed()
 
+      if (!is.null(self$on_response_saved)) self$on_response_saved(self$record)
+
       if (first_save) {
         if (!is.null(self$on_active_id_change)) self$on_active_id_change(self$record$id)
       }
@@ -74,6 +95,11 @@ HistoryController <- R6::R6Class(
       }
 
       self$save_current()
+
+      if (!is.null(self$on_pre_switch)) {
+        skip <- self$on_pre_switch(target)
+        if (isTRUE(skip)) return(invisible())
+      }
 
       set_turns_recorded(private$client, record_path_turns(target))
       self$replay_ui(target)
@@ -114,6 +140,7 @@ HistoryController <- R6::R6Class(
     },
 
     delete = function(conv_id) {
+      if (!is.null(self$on_evict)) self$on_evict(conv_id)
       private$store$delete(self$scope, conv_id)
 
       if (!is.null(self$record) && identical(conv_id, self$record$id)) {
@@ -238,6 +265,7 @@ HistoryController <- R6::R6Class(
     },
 
     evict_one = function(conv_id) {
+      if (!is.null(self$on_evict)) self$on_evict(conv_id)
       private$store$delete(self$scope, conv_id)
     },
 
@@ -290,9 +318,7 @@ HistoryController <- R6::R6Class(
 #'   response a fresh server bookmark is minted and the address bar updates to
 #'   `?_state_id_=...`. Requires `bookmarkStore = "server"` in the Shiny app
 #'   options. On in-session conversation switches, navigates to the target
-#'   conversation's bookmark URL if one exists. Note that `on_save` values are
-#'   captured and stored in the conversation record in this mode, but `on_restore`
-#'   never fires — use `session$onRestore()` to read them back if needed.
+#'   conversation's bookmark URL if one exists.
 #'   `"none"` disables automatic restore entirely.
 #' @param store Storage backend: `"auto"` (default: memory in dev, file in
 #'   production), `"memory"`, `"file"`, or a [ConversationStore] R6 instance.
@@ -310,7 +336,7 @@ HistoryController <- R6::R6Class(
 #' @returns A configuration object for use with [chat_enable_history()].
 #' @export
 history_options <- function(
-  restore_mode = c("browser", "url", "none"),
+  restore_mode = c("browser", "url", "none", "bookmark"),
   store = "auto",
   scope = NULL,
   title = "auto",
@@ -436,6 +462,52 @@ chat_enable_history <- function(
     }
   }
 
+  # --- Bookmark mode: mint a Shiny server bookmark on every response ---
+  if (identical(restore_mode, "bookmark")) {
+    bm_store_check <- shiny::getShinyOption("bookmarkStore", default = "disable")
+    if (!identical(bm_store_check, "server")) {
+      rlang::abort("restore_mode = 'bookmark' requires bookmarkStore = 'server' in the Shiny app options.")
+    }
+
+    controller$on_response_saved <- function(record) {
+      captured_id <- record$id
+      cancel_bm <- session$onBookmarked(function(url) {
+        new_state_id <- extract_state_id(url)
+        if (is.null(new_state_id)) return()
+        if (is.null(controller$record) || !identical(controller$record$id, captured_id)) return()
+        old_state_id <- controller$record$bookmark_state_id
+        controller$record$bookmark_state_id <- new_state_id
+        if (!is.null(old_state_id)) delete_bookmark_state(old_state_id)
+        controller$save_current()
+        controller$send_navigate(paste0("?_state_id_=", new_state_id), captured_id)
+      })
+      session$doBookmark()
+      cancel_bm()
+    }
+
+    controller$on_pre_switch <- function(target) {
+      if (!is.null(target$bookmark_state_id)) {
+        controller$send_navigate(paste0("?_state_id_=", target$bookmark_state_id), target$id)
+        return(TRUE)
+      }
+      FALSE
+    }
+
+    controller$on_evict <- function(conv_id) {
+      if (!is.null(controller$record) && identical(controller$record$id, conv_id)) {
+        state_id <- controller$record$bookmark_state_id
+      } else {
+        rec <- controller$get_record(controller$scope, conv_id)
+        state_id <- if (!is.null(rec)) rec$bookmark_state_id else NULL
+      }
+      if (!is.null(state_id)) delete_bookmark_state(state_id)
+    }
+
+    controller$on_active_id_change <- function(conv_id) {
+      if (is.null(conv_id)) controller$send_navigate(NULL, NULL)
+    }
+  }
+
   # --- Bookmark stamp: record active conversation ID in any Shiny bookmark ---
   stamp_key <- paste0(id, "_history_conversation_id")
   stamp_cancel <- NULL
@@ -466,7 +538,9 @@ chat_enable_history <- function(
         if (!is.null(target)) {
           set_turns_recorded(client, record_path_turns(target))
           controller$replay_ui(target)
-          controller$restore_app_state(target$values %||% list())
+          if (!identical(restore_mode, "bookmark")) {
+            controller$restore_app_state(target$values %||% list())
+          }
           controller$record <- target
           controller$send_history_update()
           initialized <<- TRUE
