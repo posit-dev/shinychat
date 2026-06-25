@@ -496,6 +496,22 @@ chat_enable_history <- function(
   url_id_input <- paste0(id, "_history_url_id")
 
   scope_val <- shiny::reactive(label = "history_scope", {
+    # When restore_mode needs localStorage inputs ("browser" or "url"), the
+    # active conversation ID is sent from the client inside
+    # initializedPromise.then() — AFTER Shiny's first reactive flush. If the
+    # scope resolves immediately (from session$user or a caller-supplied
+    # scope_opt), the init observer fires in that first flush and reads
+    # current_id / url_id as NULL, permanently missing the active conversation.
+    #
+    # The browser token is dispatched in the same microtask as current_id and
+    # url_id. Requiring it here delays scope resolution until that second flush,
+    # ensuring all three inputs have arrived before the init observer runs.
+    if (
+      restore_mode %in% c("browser", "url") &&
+        (!is.null(scope_opt) || !is.null(session$user))
+    ) {
+      shiny::req(session$input[[token_input]])
+    }
     if (is.character(scope_opt)) {
       return(scope_opt)
     }
