@@ -302,18 +302,24 @@ make_turns <- function(user_text = "Hi", asst_text = "Hello") {
     list(
       class = "ellmer::UserTurn",
       version = 1,
-      props = list(contents = list(list(
-        class = "ellmer::ContentText", version = 1,
-        props = list(text = user_text)
-      )))
+      props = list(
+        contents = list(list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = user_text)
+        ))
+      )
     ),
     list(
       class = "ellmer::AssistantTurn",
       version = 1,
-      props = list(contents = list(list(
-        class = "ellmer::ContentText", version = 1,
-        props = list(text = asst_text)
-      )))
+      props = list(
+        contents = list(list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = asst_text)
+        ))
+      )
     )
   )
 }
@@ -369,7 +375,7 @@ test_that("on_pre_switch returning TRUE skips the in-session swap", {
   pre_switch_targets <- list()
   ctrl$on_pre_switch <- function(target) {
     pre_switch_targets[[length(pre_switch_targets) + 1]] <<- target
-    TRUE  # signal to skip the swap
+    TRUE # signal to skip the swap
   }
 
   ctrl$switch_to(first_id)

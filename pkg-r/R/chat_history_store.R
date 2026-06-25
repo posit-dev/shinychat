@@ -24,7 +24,9 @@ ConversationStore <- R6::R6Class(
       )
     },
     total_size = function(scope) {
-      rlang::abort("ConversationStore$total_size() must be implemented by subclass")
+      rlang::abort(
+        "ConversationStore$total_size() must be implemented by subclass"
+      )
     }
   )
 )
@@ -66,10 +68,14 @@ InMemoryConversationStore <- R6::R6Class(
     },
     total_size = function(scope) {
       scope_data <- private$data[[scope]]
-      if (is.null(scope_data) || length(scope_data) == 0L) return(0L)
+      if (is.null(scope_data) || length(scope_data) == 0L) {
+        return(0L)
+      }
       sum(vapply(
         scope_data,
-        function(r) nchar(jsonlite::toJSON(r, auto_unbox = TRUE), type = "bytes"),
+        function(r) {
+          nchar(jsonlite::toJSON(r, auto_unbox = TRUE), type = "bytes")
+        },
         integer(1L)
       ))
     }
@@ -136,7 +142,9 @@ FileConversationStore <- R6::R6Class(
 
     list = function(scope) {
       cached <- private$meta_cache[[scope]]
-      if (!is.null(cached)) return(cached)
+      if (!is.null(cached)) {
+        return(cached)
+      }
 
       sdir <- private$scope_dir(scope)
       if (!dir.exists(sdir)) {
@@ -172,7 +180,9 @@ FileConversationStore <- R6::R6Class(
 
     get = function(scope, id) {
       path <- safe_conv_path(private$scope_dir(scope), id)
-      if (!file.exists(path)) return(NULL)
+      if (!file.exists(path)) {
+        return(NULL)
+      }
       jsonlite::fromJSON(path, simplifyVector = FALSE)
     },
 
@@ -212,9 +222,13 @@ FileConversationStore <- R6::R6Class(
     },
     total_size = function(scope) {
       sdir <- private$scope_dir(scope)
-      if (!dir.exists(sdir)) return(0L)
+      if (!dir.exists(sdir)) {
+        return(0L)
+      }
       files <- list.files(sdir, pattern = "\\.json$", full.names = TRUE)
-      if (length(files) == 0L) return(0L)
+      if (length(files) == 0L) {
+        return(0L)
+      }
       as.integer(sum(file.size(files)))
     }
   )

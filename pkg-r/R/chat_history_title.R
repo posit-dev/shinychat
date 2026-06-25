@@ -8,13 +8,19 @@ MAX_FALLBACK_LEN <- 50L
 
 fallback_title <- function(recorded_turns) {
   for (turn in recorded_turns) {
-    if (!grepl("UserTurn$", turn$class %||% "")) next
+    if (!grepl("UserTurn$", turn$class %||% "")) {
+      next
+    }
 
     text <- turn_fallback_markdown(turn)
     text <- trimws(text)
-    if (!nzchar(text)) next
+    if (!nzchar(text)) {
+      next
+    }
 
-    if (nchar(text) <= MAX_FALLBACK_LEN) return(text)
+    if (nchar(text) <= MAX_FALLBACK_LEN) {
+      return(text)
+    }
     return(paste0(substr(text, 1, MAX_FALLBACK_LEN - 3L), "..."))
   }
   "New chat"
@@ -72,7 +78,9 @@ generate_title <- function(title_fn, client, recorded_turns) {
 }
 
 normalize_title <- function(title) {
-  if (is.null(title) || !nzchar(trimws(as.character(title)))) return(NULL)
+  if (is.null(title) || !nzchar(trimws(as.character(title)))) {
+    return(NULL)
+  }
   title <- paste(
     strsplit(trimws(as.character(title)), "\\s+")[[1]],
     collapse = " "
