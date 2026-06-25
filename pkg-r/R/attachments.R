@@ -99,11 +99,14 @@ validate_attachment_payload_size <- function(
 # Resolve `allow_attachments` into the allow/accept attribute pair.
 # `allow` is NA (bare attribute) or NULL (omit); `accept` is a CSV or NULL.
 resolve_attachment_attrs <- function(allow_attachments) {
+  if (is.null(allow_attachments)) {
+    return(list(allow = NULL, accept = NULL))
+  }
   if (isTRUE(allow_attachments)) {
     return(list(allow = NA, accept = NULL))
   }
   if (isFALSE(allow_attachments)) {
-    return(list(allow = NULL, accept = NULL))
+    return(list(allow = "false", accept = NULL))
   }
   if (is.character(allow_attachments)) {
     invalid <- setdiff(allow_attachments, attachment_types()$supported)

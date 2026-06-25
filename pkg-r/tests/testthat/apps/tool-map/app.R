@@ -53,7 +53,7 @@ Use this tool whenever you're talking about a location with the user.
 
 ui <- function(req) {
   page_fillable(
-    chat_mod_ui("chat")
+    chat_ui("chat")
   )
 }
 
@@ -66,7 +66,7 @@ You're a helpful guide who can tell users about places and show them maps.
 Anytime you mention a location, use the `tool_show_map` tool to show a map with a marker at the location. Don't make the user ask to see the map, just show it automatically when it'd be relevant to have a visual.)"
   )
   client$register_tool(tool_show_map)
-  chat_mod_server("chat", client)
+  chat_server("chat", client)
 }
 
 shinyApp(ui, server, enableBookmarking = "url")

@@ -38,7 +38,7 @@ chat_mod_server(
 \item{client}{A chat object created by \pkg{ellmer}, e.g.
 \code{\link[ellmer:chat_openai]{ellmer::chat_openai()}} and friends. This argument is deprecated in
 \code{chat_mod_ui()} because the client state is now managed by
-\code{chat_mod_server()}.}
+\code{chat_server()}.}
 
 \item{...}{In \code{chat_app()}, additional arguments are passed to
 \code{\link[shiny:shinyApp]{shiny::shinyApp()}}. In \code{chat_mod_ui()}, additional arguments are passed to
@@ -230,7 +230,7 @@ ui <- page_fillable(
   layout_columns(
     card(
       card_header("Chat with Claude"),
-      chat_mod_ui(
+      chat_ui(
         "claude",
         messages = list(
           "Hi! Use this chat interface to chat with Anthropic's `claude-3-5-sonnet`."
@@ -239,7 +239,7 @@ ui <- page_fillable(
     ),
     card(
       card_header("Chat with ChatGPT"),
-      chat_mod_ui(
+      chat_ui(
         "openai",
         messages = list(
           "Hi! Use this chat interface to chat with OpenAI's `gpt-4o`."
@@ -253,8 +253,8 @@ server <- function(input, output, session) {
   claude <- ellmer::chat_anthropic(model = "claude-3-5-sonnet-latest") # Requires ANTHROPIC_API_KEY
   openai <- ellmer::chat_openai(model = "gpt-4o") # Requires OPENAI_API_KEY
 
-  chat_mod_server("claude", claude)
-  chat_mod_server("openai", openai)
+  chat_server("claude", claude)
+  chat_server("openai", openai)
 }
 
 shinyApp(ui, server)

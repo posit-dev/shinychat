@@ -66,7 +66,7 @@ Can be HTML or a tag in the form of \code{\link[htmltools:HTML]{htmltools::HTML(
 
 \item{enable_cancel}{If \code{TRUE}, show a stop button during streaming that
 allows the user to cancel the in-progress response. When using
-\code{\link[=chat_mod_server]{chat_mod_server()}}, cancellation is wired up automatically. For manual
+\code{\link[=chat_server]{chat_server()}}, cancellation is wired up automatically. For manual
 usage with \code{chat_ui()}, observe \verb{input$<id>_cancel} to handle cancellation
 (e.g., by calling \code{ctrl$cancel()} on an ellmer \code{stream_controller()}).
 Defaults to \code{FALSE}.}
@@ -154,8 +154,8 @@ fresh one.
 \strong{\code{greeting_dismissed} input.} When the user dismisses the greeting,
 \verb{input$<id>_greeting_dismissed} fires with a \code{Date.now()} timestamp. If the
 greeting is later cleared after being dismissed, the input resets to \code{NULL}.
-If you use \code{\link[=chat_mod_server]{chat_mod_server()}}, you can access the \code{greeting_dismissed}
-reactive from the returned module value instead of the raw namespaced input
+If you use \code{\link[=chat_server]{chat_server()}}, you can access the \code{greeting_dismissed}
+reactive from the returned value instead of the raw namespaced input
 string.
 }
 

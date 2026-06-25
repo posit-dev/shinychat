@@ -26,7 +26,7 @@
 #'   layout_columns(
 #'     card(
 #'       card_header("Chat with Claude"),
-#'       chat_mod_ui(
+#'       chat_ui(
 #'         "claude",
 #'         messages = list(
 #'           "Hi! Use this chat interface to chat with Anthropic's `claude-3-5-sonnet`."
@@ -35,7 +35,7 @@
 #'     ),
 #'     card(
 #'       card_header("Chat with ChatGPT"),
-#'       chat_mod_ui(
+#'       chat_ui(
 #'         "openai",
 #'         messages = list(
 #'           "Hi! Use this chat interface to chat with OpenAI's `gpt-4o`."
@@ -49,8 +49,8 @@
 #'   claude <- ellmer::chat_anthropic(model = "claude-3-5-sonnet-latest") # Requires ANTHROPIC_API_KEY
 #'   openai <- ellmer::chat_openai(model = "gpt-4o") # Requires OPENAI_API_KEY
 #'
-#'   chat_mod_server("claude", claude)
-#'   chat_mod_server("openai", openai)
+#'   chat_server("claude", claude)
+#'   chat_server("openai", openai)
 #' }
 #'
 #' shinyApp(ui, server)
@@ -59,7 +59,7 @@
 #' @param client A chat object created by \pkg{ellmer}, e.g.
 #'   [ellmer::chat_openai()] and friends. This argument is deprecated in
 #'   `chat_mod_ui()` because the client state is now managed by
-#'   `chat_mod_server()`.
+#'   `chat_server()`.
 #' @param ... In `chat_app()`, additional arguments are passed to
 #'   [shiny::shinyApp()]. In `chat_mod_ui()`, additional arguments are passed to
 #'   [chat_ui()].
@@ -143,9 +143,10 @@ chat_app <- function(
 
   ui <- function(req) {
     bslib::page_fillable(
-      chat_mod_ui(
+      chat_ui(
         "chat",
         height = "100%",
+        enable_cancel = TRUE,
         allow_attachments = allow_attachments
       ),
       shiny::actionButton(
@@ -159,7 +160,7 @@ chat_app <- function(
 
   server <- function(input, output, session) {
     shiny::setBookmarkExclude("close_btn")
-    chat_mod_server("chat", client)
+    chat_server("chat", client)
 
     shiny::observeEvent(input$close_btn, label = "on_close_btn", {
       shiny::stopApp()
@@ -199,7 +200,7 @@ chat_mod_ui <- function(
     lifecycle::deprecate_warn(
       "0.3.0",
       "chat_mod_ui(client = )",
-      "chat_mod_server(client = )"
+      "chat_server(client = )"
     )
   }
 
@@ -431,6 +432,9 @@ chat_server <- function(
   } else if (!is.null(greeting)) {
     set_greeting_mod(greeting)
   }
+
+  send_chat_action(id, list(type = "update_cancel", enable_cancel = TRUE), session = session)
+  send_chat_action(id, list(type = "update_upload", enable_upload = TRUE), session = session)
 
   # Registered slash commands. Each entry: list(handler, takes_args, definition).
   # Using a reactiveVal lets multiple registrations during app startup coalesce

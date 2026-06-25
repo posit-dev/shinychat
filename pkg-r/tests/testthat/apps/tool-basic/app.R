@@ -14,7 +14,7 @@ TOOL_OPTS <- list(
 )
 
 ui <- bslib::page_fillable(
-  shinychat::chat_mod_ui(
+  shinychat::chat_ui(
     "chat",
     messages = list(
       list(
@@ -101,7 +101,7 @@ server <- function(input, output, session) {
   client <- chat(PROVIDER_MODEL)
   client$register_tool(packaged_list_files_tool)
 
-  chat_mod_server("chat", client)
+  chat_server("chat", client)
 
   observeEvent(input$click, {
     updateActionButton(

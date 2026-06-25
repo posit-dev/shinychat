@@ -1,10 +1,18 @@
+# chat_server isn't a module function, so session$returned requires a module
+# wrapper to work with shiny::testServer.
+chat_server_module <- function(id, client, ...) {
+  shiny::moduleServer(id, function(input, output, session) {
+    chat_server("chat", client, ..., session = session)
+  })
+}
+
 test_that("chat_ui does not emit data-slash-commands attribute by default", {
   ui <- chat_ui("chat")
   html <- as.character(ui)
   expect_false(grepl("data-slash-commands", html))
 })
 
-test_that("chat_mod_server slash_command supports zero-argument handlers", {
+test_that("chat_server slash_command supports zero-argument handlers", {
   local_mocked_bindings(
     chat_restore = function(...) invisible(NULL),
     send_chat_action = function(...) invisible(NULL)
@@ -13,7 +21,7 @@ test_that("chat_mod_server slash_command supports zero-argument handlers", {
   calls <- 0
 
   shiny::testServer(
-    chat_mod_server,
+    chat_server_module,
     args = list(
       client = structure(list(), class = "Chat"),
       bookmark_on_input = FALSE,
@@ -37,14 +45,14 @@ test_that("chat_mod_server slash_command supports zero-argument handlers", {
   )
 })
 
-test_that("chat_mod_server slash_command rejects handlers with more than one parameter", {
+test_that("chat_server slash_command rejects handlers with more than one parameter", {
   local_mocked_bindings(
     chat_restore = function(...) invisible(NULL),
     send_chat_action = function(...) invisible(NULL)
   )
 
   shiny::testServer(
-    chat_mod_server,
+    chat_server_module,
     args = list(
       client = structure(list(), class = "Chat"),
       bookmark_on_input = FALSE,
@@ -63,14 +71,14 @@ test_that("chat_mod_server slash_command rejects handlers with more than one par
   )
 })
 
-test_that("chat_mod_server slash_command errors on duplicate name by default", {
+test_that("chat_server slash_command errors on duplicate name by default", {
   local_mocked_bindings(
     chat_restore = function(...) invisible(NULL),
     send_chat_action = function(...) invisible(NULL)
   )
 
   shiny::testServer(
-    chat_mod_server,
+    chat_server_module,
     args = list(
       client = structure(list(), class = "Chat"),
       bookmark_on_input = FALSE,
@@ -86,7 +94,7 @@ test_that("chat_mod_server slash_command errors on duplicate name by default", {
   )
 })
 
-test_that("chat_mod_server slash_command removal unregisters the command", {
+test_that("chat_server slash_command removal unregisters the command", {
   local_mocked_bindings(
     chat_restore = function(...) invisible(NULL),
     send_chat_action = function(...) invisible(NULL)
@@ -95,7 +103,7 @@ test_that("chat_mod_server slash_command removal unregisters the command", {
   calls <- 0
 
   shiny::testServer(
-    chat_mod_server,
+    chat_server_module,
     args = list(
       client = structure(list(), class = "Chat"),
       bookmark_on_input = FALSE,
@@ -135,7 +143,7 @@ test_that("chat_mod_server slash_command removal unregisters the command", {
   )
 })
 
-test_that("chat_mod_server slash_command allows overwrite with force = TRUE", {
+test_that("chat_server slash_command allows overwrite with force = TRUE", {
   local_mocked_bindings(
     chat_restore = function(...) invisible(NULL),
     send_chat_action = function(...) invisible(NULL)
@@ -144,7 +152,7 @@ test_that("chat_mod_server slash_command allows overwrite with force = TRUE", {
   calls <- character()
 
   shiny::testServer(
-    chat_mod_server,
+    chat_server_module,
     args = list(
       client = structure(list(), class = "Chat"),
       bookmark_on_input = FALSE,
@@ -172,14 +180,14 @@ test_that("chat_mod_server slash_command allows overwrite with force = TRUE", {
   )
 })
 
-test_that("chat_mod_server slash_command echo defaults to handler presence", {
+test_that("chat_server slash_command echo defaults to handler presence", {
   local_mocked_bindings(
     chat_restore = function(...) invisible(NULL),
     send_chat_action = function(...) invisible(NULL)
   )
 
   shiny::testServer(
-    chat_mod_server,
+    chat_server_module,
     args = list(
       client = structure(list(), class = "Chat"),
       bookmark_on_input = FALSE,
@@ -205,14 +213,14 @@ test_that("chat_mod_server slash_command echo defaults to handler presence", {
   )
 })
 
-test_that("chat_mod_server slash_command echo can be set explicitly", {
+test_that("chat_server slash_command echo can be set explicitly", {
   local_mocked_bindings(
     chat_restore = function(...) invisible(NULL),
     send_chat_action = function(...) invisible(NULL)
   )
 
   shiny::testServer(
-    chat_mod_server,
+    chat_server_module,
     args = list(
       client = structure(list(), class = "Chat"),
       bookmark_on_input = FALSE,
@@ -234,14 +242,14 @@ test_that("chat_mod_server slash_command echo can be set explicitly", {
   )
 })
 
-test_that("chat_mod_server slash_command rejects a non-function, non-NULL handler", {
+test_that("chat_server slash_command rejects a non-function, non-NULL handler", {
   local_mocked_bindings(
     chat_restore = function(...) invisible(NULL),
     send_chat_action = function(...) invisible(NULL)
   )
 
   shiny::testServer(
-    chat_mod_server,
+    chat_server_module,
     args = list(
       client = structure(list(), class = "Chat"),
       bookmark_on_input = FALSE,
@@ -256,7 +264,7 @@ test_that("chat_mod_server slash_command rejects a non-function, non-NULL handle
   )
 })
 
-test_that("chat_mod_server slash_command with NULL handler does not run server-side", {
+test_that("chat_server slash_command with NULL handler does not run server-side", {
   local_mocked_bindings(
     chat_restore = function(...) invisible(NULL),
     send_chat_action = function(...) invisible(NULL)
@@ -265,7 +273,7 @@ test_that("chat_mod_server slash_command with NULL handler does not run server-s
   calls <- 0
 
   shiny::testServer(
-    chat_mod_server,
+    chat_server_module,
     args = list(
       client = structure(list(), class = "Chat"),
       bookmark_on_input = FALSE,

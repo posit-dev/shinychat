@@ -52,8 +52,8 @@
 #'
 #' @return A `ContentSlashCommand` object.
 #'
-#' @seealso [chat_mod_server()] for registering slash commands via the
-#'   `slash_command()` method on the returned module object.
+#' @seealso [chat_server()] for registering slash commands via the
+#'   `slash_command()` method on the returned object.
 #'
 #' @export
 ContentSlashCommand <- S7::new_class(

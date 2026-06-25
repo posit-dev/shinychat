@@ -122,7 +122,7 @@ test_that("chat_append_stream() handles errors in the stream", {
   })
 })
 
-test_that("chat_mod_server handles string user_input values", {
+test_that("chat_server handles string user_input values", {
   local_mocked_bindings(
     chat_restore = function(...) function() invisible(NULL),
     chat_append = function(...) invisible(NULL),
@@ -142,12 +142,15 @@ test_that("chat_mod_server handles string user_input values", {
   )
 
   shiny::testServer(
-    chat_mod_server,
-    args = list(
-      client = client,
-      bookmark_on_input = FALSE,
-      bookmark_on_response = FALSE
-    ),
+    function(input, output, session) {
+      chat_server(
+        "chat",
+        client,
+        bookmark_on_input = FALSE,
+        bookmark_on_response = FALSE,
+        session = session
+      )
+    },
     {
       expect_no_warning(session$setInputs(chat_user_input = "hello"))
       expect_identical(args_seen[[1]], "hello")

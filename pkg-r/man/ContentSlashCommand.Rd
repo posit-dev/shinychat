@@ -66,6 +66,6 @@ The LLM sees \code{"Say hello to world"}, but on restore the chat UI shows
 }
 
 \seealso{
-\code{\link[=chat_mod_server]{chat_mod_server()}} for registering slash commands via the
-\code{slash_command()} method on the returned module object.
+\code{\link[=chat_server]{chat_server()}} for registering slash commands via the
+\code{slash_command()} method on the returned object.
 }
