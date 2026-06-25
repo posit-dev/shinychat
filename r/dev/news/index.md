@@ -61,6 +61,13 @@
 
 ### Bug fixes
 
+- The `dismissible` parameter of
+  [`chat_greeting()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_greeting.md)
+  has been renamed to `persistent` with an inverted value.
+  `dismissible = FALSE` (greeting stays visible) is now
+  `persistent = TRUE`. The old `dismissible` argument still works but
+  warns. ([\#260](https://github.com/posit-dev/shinychat/issues/260))
+
 - Fixed suggestion cards and the greeting overflowing the chat container
   in narrow spaces such as sidebars.
   ([\#255](https://github.com/posit-dev/shinychat/issues/255))

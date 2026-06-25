@@ -10,7 +10,12 @@ the user sends their first message.
 ## Usage
 
 ``` r
-chat_greeting(content, dismissible = TRUE)
+chat_greeting(
+  content,
+  ...,
+  persistent = FALSE,
+  dismissible = lifecycle::deprecated()
+)
 ```
 
 ## Arguments
@@ -32,10 +37,20 @@ chat_greeting(content, dismissible = TRUE)
   - A generator or promise (only valid when used with
     [`chat_set_greeting()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_set_greeting.md)).
 
+- ...:
+
+  These dots are for future extensions and must be empty.
+
+- persistent:
+
+  Whether the greeting persists after the user sends a message. Defaults
+  to `FALSE`, meaning the greeting is dismissed when the user sends
+  their first message.
+
 - dismissible:
 
-  Whether the greeting is automatically dismissed when the user sends a
-  message. Defaults to `TRUE`.
+  **\[deprecated\]** Renamed to `persistent` with an inverted value.
+  `dismissible = FALSE` is equivalent to `persistent = TRUE`.
 
 ## Value
 
@@ -43,10 +58,9 @@ An S3 object of class `"chat_greeting"`.
 
 ## Patterns
 
-**Non-dismissible greeting** (stays visible after the user sends a
-message):
+**Persistent greeting** (stays visible after the user sends a message):
 
-    chat_greeting("Please read our [terms of service](https://example.com).", dismissible = FALSE)
+    chat_greeting("Please read our [terms of service](https://example.com).", persistent = TRUE)
 
 **Greeting with suggestion cards** (clickable chips that fill the
 input):

@@ -66,7 +66,8 @@
 </ul></div>
 <div class="section level3">
 <h3 id="bug-fixes-development-version">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-development-version"></a></h3>
-<ul><li><p>Fixed suggestion cards and the greeting overflowing the chat container in narrow spaces such as sidebars. (<a href="https://github.com/posit-dev/shinychat/issues/255" class="external-link">#255</a>)</p></li>
+<ul><li><p>The <code>dismissible</code> parameter of <code><a href="../reference/chat_greeting.html">chat_greeting()</a></code> has been renamed to <code>persistent</code> with an inverted value. <code>dismissible = FALSE</code> (greeting stays visible) is now <code>persistent = TRUE</code>. The old <code>dismissible</code> argument still works but warns. (<a href="https://github.com/posit-dev/shinychat/issues/260" class="external-link">#260</a>)</p></li>
+<li><p>Fixed suggestion cards and the greeting overflowing the chat container in narrow spaces such as sidebars. (<a href="https://github.com/posit-dev/shinychat/issues/255" class="external-link">#255</a>)</p></li>
 <li><p>Fixed the copy button on code blocks not working in some embedded contexts. (<a href="https://github.com/thisisnic" class="external-link">@thisisnic</a>, <a href="https://github.com/posit-dev/shinychat/issues/247" class="external-link">#247</a>)</p></li>
 </ul></div>
 </div>

@@ -160,7 +160,7 @@ A Shiny tag object, suitable for inclusion in a Shiny UI
 
 A greeting is an optional welcome message shown before any conversation
 messages. It is automatically dismissed when the user sends their first
-message (unless created with `dismissible = FALSE`).
+message (unless created with `persistent = TRUE`).
 
 **Static greeting.** Pass a string or
 [`chat_greeting()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_greeting.md)
