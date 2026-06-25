@@ -69,6 +69,13 @@ HistoryController <- R6::R6Class(
       }
 
       first_save <- is.null(self$record)
+      if (!first_save) {
+        existing_count <- length(record_path_node_ids(self$record))
+        if (length(recorded_turns) <= existing_count) {
+          return(invisible())
+        }
+      }
+
       if (first_save) {
         self$record <- new_conversation_record(
           title = fallback_title(recorded_turns),
@@ -179,7 +186,12 @@ HistoryController <- R6::R6Class(
     replay_ui = function(record) {
       self$is_replaying <- TRUE
       self$suppress_next_save <- TRUE
-      on.exit(self$is_replaying <- FALSE)
+      clear_replay_on_exit <- TRUE
+      on.exit({
+        if (clear_replay_on_exit) {
+          self$is_replaying <- FALSE
+        }
+      }, add = TRUE)
 
       chat_clear(private$chat_id, session = private$session)
 
@@ -192,6 +204,11 @@ HistoryController <- R6::R6Class(
           client_set_ui(private$client, id = private$chat_id)
         })
       }
+
+      private$session$onFlushed(function() {
+        self$is_replaying <- FALSE
+      }, once = TRUE)
+      clear_replay_on_exit <- FALSE
     },
 
     get_record = function(scope, id) {
@@ -619,6 +636,11 @@ chat_enable_history <- function(
 
   # --- Initialization effect (runs once) ---
   initialized <- FALSE
+  restore_after_first_flush <- function(values) {
+    session$onFlushed(function() {
+      controller$restore_app_state(values %||% list())
+    }, once = TRUE)
+  }
   init_effect <- shiny::observe(label = "history_init", {
     if (initialized) {
       return()
@@ -638,7 +660,7 @@ chat_enable_history <- function(
           set_turns_recorded(client, record_path_turns(target))
           controller$replay_ui(target)
           if (!identical(restore_mode, "bookmark")) {
-            controller$restore_app_state(target$values %||% list())
+            restore_after_first_flush(target$values)
           }
           controller$record <- target
           controller$send_history_update()
@@ -662,7 +684,7 @@ chat_enable_history <- function(
       if (!is.null(target)) {
         set_turns_recorded(client, record_path_turns(target))
         controller$replay_ui(target)
-        controller$restore_app_state(target$values %||% list())
+        restore_after_first_flush(target$values)
         controller$record <- target
       }
     }

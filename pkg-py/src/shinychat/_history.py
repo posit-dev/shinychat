@@ -213,6 +213,19 @@ class HistoryController:
         messages = self.chat._messages_for_bookmark()
 
         first_save = self.record is None
+        if not first_save:
+            record = self.record
+            if record is None:
+                raise RuntimeError("HistoryController not initialized")
+            # Ignore reactive flushes that don't introduce new turn/UI data.
+            # Without this guard, a post-switch no-op fire can re-capture app
+            # state from the wrong conversation and overwrite persisted values.
+            if (
+                len(turns) <= len(record.path_node_ids())
+                and len(messages) <= self.ui_offset
+            ):
+                return
+
         if first_save:
             self.record = new_conversation_record(title=fallback_title(turns))
             self.record.client_info = self.adapter.client_info()
