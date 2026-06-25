@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from ._attachments import Attachment
 from ._html_islands import split_html_islands
 from ._typing_extensions import NotRequired, TypedDict
-from ._utils_types import DEPRECATED, DEPRECATED_TYPE
+from ._utils_types import DEPRECATED, DEPRECATED_TYPE, MISSING, MISSING_TYPE
 
 Role = Literal["assistant", "user", "system"]
 
@@ -214,10 +214,14 @@ class ChatGreeting:
         self,
         content: Union[str, HTML, Tag, TagList, "AsyncIterable[str]"],
         *,
-        persistent: bool = False,
+        persistent: "bool | MISSING_TYPE" = MISSING,
         dismissible: DEPRECATED_TYPE = DEPRECATED,
     ):
         if not isinstance(dismissible, DEPRECATED_TYPE):
+            if not isinstance(persistent, MISSING_TYPE):
+                raise ValueError(
+                    "Cannot use both `persistent` and the deprecated `dismissible`. Use `persistent` only."
+                )
             warnings.warn(
                 "The `dismissible` parameter is deprecated. "
                 "Use `persistent` (with inverted value) instead. "
@@ -226,7 +230,7 @@ class ChatGreeting:
                 stacklevel=2,
             )
             persistent = not dismissible
-        self.persistent = persistent
+        self.persistent = persistent if not isinstance(persistent, MISSING_TYPE) else False
 
         if isinstance(content, AsyncIterable):
             self.content: Union[str, AsyncIterable[str]] = content
@@ -252,7 +256,7 @@ class ChatGreeting:
 def chat_greeting(
     content: Union[str, HTML, Tag, TagList, "AsyncIterable[str]"],
     *,
-    persistent: bool = False,
+    persistent: "bool | MISSING_TYPE" = MISSING,
     dismissible: DEPRECATED_TYPE = DEPRECATED,
 ) -> ChatGreeting:
     """
@@ -307,6 +311,10 @@ def chat_greeting(
     :meth:`~shinychat.Chat.set_greeting` : Set or stream a greeting from the server.
     """
     if not isinstance(dismissible, DEPRECATED_TYPE):
+        if not isinstance(persistent, MISSING_TYPE):
+            raise ValueError(
+                "Cannot use both `persistent` and the deprecated `dismissible`. Use `persistent` only."
+            )
         warnings.warn(
             "The `dismissible` parameter is deprecated. "
             "Use `persistent` (with inverted value) instead. "
