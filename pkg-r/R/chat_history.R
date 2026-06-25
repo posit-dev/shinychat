@@ -29,7 +29,6 @@ HistoryController <- R6::R6Class(
   public = list(
     scope = NULL,
     record = NULL,
-    baseline_values = list(),
     is_replaying = FALSE,
     suppress_next_save = FALSE,
     on_active_id_change = NULL,
@@ -131,7 +130,6 @@ HistoryController <- R6::R6Class(
       self$save_current()
       private$client$set_turns(list())
       chat_clear(private$chat_id, session = private$session)
-      self$restore_app_state(self$baseline_values)
       self$record <- NULL
       if (!is.null(self$on_active_id_change)) {
         self$on_active_id_change(NULL)
@@ -174,7 +172,6 @@ HistoryController <- R6::R6Class(
         }
         private$client$set_turns(list())
         chat_clear(private$chat_id, session = private$session)
-        self$restore_app_state(self$baseline_values)
       }
       self$send_history_update()
     },
