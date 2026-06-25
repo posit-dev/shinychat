@@ -66,8 +66,13 @@ reference:
   - markdown_stream
   - output_markdown_stream
 
-- title: Bookmark chat history
+- title: Chat history
   contents:
+  - chat_enable_history
+  - history_options
+  - ConversationStore
+  - InMemoryConversationStore
+  - FileConversationStore
   - chat_restore
 
 - title: Slash commands
