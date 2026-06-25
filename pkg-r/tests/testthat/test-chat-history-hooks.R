@@ -141,7 +141,10 @@ test_that("on_response with no new turns does not overwrite saved values", {
   client <- .make_test_client()
   accent <- "info"
 
-  ctrl <- .make_test_controller(client, history_options(store = store, title = NULL))
+  ctrl <- .make_test_controller(
+    client,
+    history_options(store = store, title = NULL)
+  )
   ctrl$add_save_callback(function(values) {
     values$accent <- accent
     values

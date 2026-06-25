@@ -187,11 +187,14 @@ HistoryController <- R6::R6Class(
       self$is_replaying <- TRUE
       self$suppress_next_save <- TRUE
       clear_replay_on_exit <- TRUE
-      on.exit({
-        if (clear_replay_on_exit) {
-          self$is_replaying <- FALSE
-        }
-      }, add = TRUE)
+      on.exit(
+        {
+          if (clear_replay_on_exit) {
+            self$is_replaying <- FALSE
+          }
+        },
+        add = TRUE
+      )
 
       chat_clear(private$chat_id, session = private$session)
 
@@ -205,9 +208,12 @@ HistoryController <- R6::R6Class(
         })
       }
 
-      private$session$onFlushed(function() {
-        self$is_replaying <- FALSE
-      }, once = TRUE)
+      private$session$onFlushed(
+        function() {
+          self$is_replaying <- FALSE
+        },
+        once = TRUE
+      )
       clear_replay_on_exit <- FALSE
     },
 
@@ -637,9 +643,12 @@ chat_enable_history <- function(
   # --- Initialization effect (runs once) ---
   initialized <- FALSE
   restore_after_first_flush <- function(values) {
-    session$onFlushed(function() {
-      controller$restore_app_state(values %||% list())
-    }, once = TRUE)
+    session$onFlushed(
+      function() {
+        controller$restore_app_state(values %||% list())
+      },
+      once = TRUE
+    )
   }
   init_effect <- shiny::observe(label = "history_init", {
     if (initialized) {
