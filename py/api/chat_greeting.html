@@ -295,7 +295,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <section id="shinychat.chat_greeting" class="level1">
 <h1>chat_greeting</h1>
-<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>chat_greeting(content, <span class="op">*</span>, dismissible<span class="op">=</span><span class="va">True</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>chat_greeting(content, <span class="op">*</span>, persistent<span class="op">=</span>MISSING, dismissible<span class="op">=</span>DEPRECATED)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Create a greeting for a chat UI.</p>
 <p>A greeting is a welcome message displayed at the top of the chat before any conversation messages. It can be static (set via :func:<code>~shinychat.chat_ui</code>) or dynamic (set via :meth:<code>~shinychat.Chat.set_greeting</code>).</p>
 <section id="parameters" class="level2 doc-section doc-section-parameters">
@@ -317,10 +317,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td><em>required</em></td>
 </tr>
 <tr class="even">
-<td>dismissible</td>
-<td><a href="`bool`">bool</a></td>
-<td>Whether the greeting can be dismissed when the user sends a message. When <code>True</code> (the default), the greeting is hidden once the user sends their first message. Set to <code>False</code> to keep the greeting visible throughout the conversation, which is useful for persistent instructions or navigation.</td>
-<td><code>True</code></td>
+<td>persistent</td>
+<td>'bool | MISSING_TYPE'</td>
+<td>Whether the greeting stays visible after the user sends a message. When <code>False</code> (the default), the greeting is hidden once the user sends their first message. Set to <code>True</code> to keep the greeting visible throughout the conversation, which is useful for persistent instructions or navigation.</td>
+<td><code>MISSING</code></td>
 </tr>
 </tbody>
 </table>
@@ -331,8 +331,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shinychat <span class="im">import</span> chat_greeting</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>chat_greeting(<span class="st">"## Welcome!</span><span class="ch">\n\n</span><span class="st">How can I help you today?"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Non-dismissible greeting that stays visible:</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>chat_greeting(<span class="st">"Please select a topic to get started."</span>, dismissible<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Persistent greeting that stays visible:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>chat_greeting(<span class="st">"Please select a topic to get started."</span>, persistent<span class="op">=</span><span class="va">True</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Greeting with suggestion cards (uses <code>&lt;span class="suggestion"&gt;</code>):</p>
 <div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>chat_greeting(</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"## Welcome!</span><span class="ch">\n\n</span><span class="st">"</span></span>

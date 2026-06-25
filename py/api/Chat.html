@@ -998,7 +998,7 @@ specified in model's completion method.</code></pre>
 <tr class="odd">
 <td>greeting</td>
 <td>'str | HTML | Tag | TagList | ChatGreeting | None'</td>
-<td>The greeting content. Can be: * <code>None</code>: clears the current greeting entirely (distinct from dismissal). Use this before setting a new greeting when implementing a regenerate pattern. * A markdown string, :class:<code>~htmltools.HTML</code>, :class:<code>~htmltools.Tag</code>, or :class:<code>~htmltools.TagList</code>: displayed as a stand-alone greeting. * A :func:<code>~shinychat.chat_greeting</code> object with options such as <code>dismissible</code>. * A :func:<code>~shinychat.chat_greeting</code> wrapping an :class:<code>~typing.AsyncIterable</code> of strings: streams the greeting content chunk-by-chunk.</td>
+<td>The greeting content. Can be: * <code>None</code>: clears the current greeting entirely (distinct from dismissal). Use this before setting a new greeting when implementing a regenerate pattern. * A markdown string, :class:<code>~htmltools.HTML</code>, :class:<code>~htmltools.Tag</code>, or :class:<code>~htmltools.TagList</code>: displayed as a stand-alone greeting. * A :func:<code>~shinychat.chat_greeting</code> object with options such as <code>persistent</code>. * A :func:<code>~shinychat.chat_greeting</code> wrapping an :class:<code>~typing.AsyncIterable</code> of strings: streams the greeting content chunk-by-chunk.</td>
 <td><em>required</em></td>
 </tr>
 </tbody>
@@ -1010,7 +1010,7 @@ specified in model's completion method.</code></pre>
 </section>
 <section id="examples" class="level4 doc-section doc-section-examples">
 <h4 class="doc-section doc-section-examples anchored" data-anchor-id="examples">Examples</h4>
-<p>Static greeting (stand-alone, dismissible by default):</p>
+<p>Static greeting (stand-alone, dismissed on first message by default):</p>
 <div class="sourceCode" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.effect</span></span>
 <span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> _():</span>
 <span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.set_greeting(<span class="st">"## Welcome!</span><span class="ch">\n\n</span><span class="st">How can I help you today?"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
@@ -1021,7 +1021,7 @@ specified in model's completion method.</code></pre>
 <span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> _():</span>
 <span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>    greeting <span class="op">=</span> chat_greeting(</span>
 <span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>        <span class="st">"## Welcome!"</span>,</span>
-<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>        dismissible<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>        persistent<span class="op">=</span><span class="va">True</span>,</span>
 <span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a>    )</span>
 <span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.set_greeting(greeting)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Streaming greeting from an async iterator:</p>
