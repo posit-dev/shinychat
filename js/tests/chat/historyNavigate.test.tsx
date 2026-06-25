@@ -34,7 +34,29 @@ describe("history_navigate handling", () => {
     })
 
     expect(getCurrentConversationId("chat")).toBe("c42")
-    expect(navigateTo).toHaveBeenCalledWith("http://x/?_state_id_=abc")
+    expect(navigateTo).toHaveBeenCalledWith("http://x/?_state_id_=abc", false)
+  })
+
+  test("history_navigate with reload=true triggers hard navigation", () => {
+    const transport = createMockTransport()
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={createMockShinyLifecycle()}
+        elementId="chat"
+        inputId="chat_user_input"
+      />,
+    )
+
+    transport.fire("chat", {
+      type: "history_navigate",
+      url: "http://x/?_state_id_=hard",
+      active_id: "c99",
+      reload: true,
+    })
+
+    expect(getCurrentConversationId("chat")).toBe("c99")
+    expect(navigateTo).toHaveBeenCalledWith("http://x/?_state_id_=hard", true)
   })
 
   test("active_id null clears the pointer (New chat)", () => {
@@ -56,7 +78,7 @@ describe("history_navigate handling", () => {
     })
 
     expect(getCurrentConversationId("chat")).toBeNull()
-    expect(navigateTo).toHaveBeenCalledWith("http://x/app/")
+    expect(navigateTo).toHaveBeenCalledWith("http://x/app/", false)
   })
 
   test("conversation selection keeps pointer unchanged until server acknowledgement", () => {

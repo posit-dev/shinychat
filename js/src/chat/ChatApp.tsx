@@ -109,7 +109,7 @@ export function ChatApp({
     const unsubscribe = transport.onMessage(elementId, (action) => {
       if (action.type === "history_navigate") {
         setCurrentConversationId(elementId, action.active_id)
-        navigateTo(action.url)
+        navigateTo(action.url, action.reload === true)
         return
       }
       if (action.type === "update_input") {
