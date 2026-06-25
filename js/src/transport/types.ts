@@ -112,6 +112,8 @@ export type ChatAction =
       url: string | null
       /** Conversation to record as current in localStorage (null on New chat). */
       active_id: string | null
+      /** Force a hard navigation (full reload), used by bookmark-mode switches. */
+      reload?: boolean
     }
 
 export type ShinyChatEnvelope = {

@@ -1,3 +1,18 @@
+history_mock_session_with_spy <- function() {
+  sess <- shiny::MockShinySession$new()
+  spy_env <- new.env(parent = emptyenv())
+  spy_env$messages <- list()
+  sess$sendCustomMessage <- function(type, msg) {
+    spy_env$messages[[length(spy_env$messages) + 1L]] <- list(
+      type = type,
+      message = msg
+    )
+  }
+  list(session = sess, spy_env = spy_env)
+}
+
+history_spy_messages <- function(spy) spy$spy_env$messages
+
 test_that("HistoryController$on_response() creates record on first save", {
   store <- InMemoryConversationStore$new()
   client <- mock_chat_client()
@@ -412,6 +427,45 @@ test_that("on_pre_switch returning FALSE allows the in-session swap", {
   ctrl$switch_to(first_id)
 
   expect_equal(ctrl$record$id, first_id)
+})
+
+test_that("bookmark mode pre-switch emits reload navigation", {
+  spy <- history_mock_session_with_spy()
+  client <- mock_chat_client()
+  store <- InMemoryConversationStore$new()
+
+  old_bookmark_store <- shiny::getShinyOption("bookmarkStore", NULL)
+  shiny::shinyOptions(bookmarkStore = "server")
+  withr::defer(shiny::shinyOptions(bookmarkStore = old_bookmark_store))
+
+  chat_enable_history(
+    "chat",
+    client,
+    options = history_options(
+      store = store,
+      scope = "test-user",
+      restore_mode = "bookmark",
+      title = NULL
+    ),
+    session = spy$session
+  )
+
+  ctrl <- get_session_chat_bookmark_info(spy$session, "chat.history-controller")
+  target <- new_conversation_record("target")
+  target$bookmark_state_id <- "state123"
+
+  expect_true(ctrl$on_pre_switch(target))
+
+  messages <- history_spy_messages(spy)
+  nav <- Filter(function(m) {
+    identical(m$type, "shinyChatMessage") &&
+      identical(m$message$action$type, "history_navigate")
+  }, messages)
+
+  expect_length(nav, 1)
+  expect_equal(nav[[1]]$message$action$url, "?_state_id_=state123")
+  expect_equal(nav[[1]]$message$action$active_id, target$id)
+  expect_true(nav[[1]]$message$action$reload)
 })
 
 test_that("on_evict fires before store$delete in evict_one and delete", {

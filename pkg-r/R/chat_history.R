@@ -266,13 +266,14 @@ HistoryController <- R6::R6Class(
       invisible(self)
     },
 
-    send_navigate = function(url, active_id) {
+    send_navigate = function(url, active_id, reload = FALSE) {
       send_chat_action(
         private$chat_id,
         list(
           type = "history_navigate",
           url = url,
-          active_id = active_id
+          active_id = active_id,
+          reload = isTRUE(reload)
         ),
         session = private$session
       )
@@ -604,7 +605,8 @@ chat_enable_history <- function(
       if (!is.null(target$bookmark_state_id)) {
         controller$send_navigate(
           paste0("?_state_id_=", target$bookmark_state_id),
-          target$id
+          target$id,
+          reload = TRUE
         )
         return(TRUE)
       }
