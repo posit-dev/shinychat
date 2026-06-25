@@ -711,3 +711,147 @@ def test_evict_one_deletes_from_store():
     asyncio.run(_run())
 
 
+# ---------------------------------------------------------------------------
+# Controller lifecycle hooks: on_response_saved, on_pre_switch, on_evict
+# ---------------------------------------------------------------------------
+
+
+def test_on_response_saved_fires_after_every_response():
+    controller, store = _make_controller()
+    fired: list[str] = []
+
+    async def hook(record: Any) -> None:
+        fired.append(record.id)
+
+    controller.on_response_saved = hook
+
+    asyncio.run(controller.on_response())
+    asyncio.run(controller.on_response())
+
+    assert len(fired) == 2
+    assert fired[0] == fired[1]  # same conversation id both times
+
+
+def test_on_response_saved_not_fired_when_suppressed():
+    controller, store = _make_controller()
+    fired: list[str] = []
+
+    async def hook(record: Any) -> None:
+        fired.append(record.id)
+
+    controller.on_response_saved = hook
+    controller._suppress_next_save = True
+
+    asyncio.run(controller.on_response())  # suppressed
+
+    assert fired == []
+
+
+def test_on_pre_switch_true_skips_in_session_swap():
+    controller, store, chat = _make_nav_controller()
+    target = new_conversation_record(title="other")
+    store.records[target.id] = target
+    pre_switch_calls: list[str] = []
+
+    async def hook(rec: Any) -> bool:
+        pre_switch_calls.append(rec.id)
+        return True  # signal: skip in-session swap
+
+    controller.on_pre_switch = hook
+
+    asyncio.run(controller.switch_to(target.id))
+
+    assert pre_switch_calls == [target.id]
+    # In-session swap was skipped: client turns NOT updated, UI NOT cleared
+    assert chat.cleared == 0
+    # record not changed because we returned True (navigation handled by hook)
+    assert controller.record is None
+
+
+def test_on_pre_switch_false_allows_in_session_swap():
+    controller, store, chat = _make_nav_controller()
+    target = new_conversation_record(title="other")
+    store.records[target.id] = target
+    pre_switch_calls: list[str] = []
+
+    async def hook(rec: Any) -> bool:
+        pre_switch_calls.append(rec.id)
+        return False  # allow normal in-session swap
+
+    controller.on_pre_switch = hook
+
+    asyncio.run(controller.switch_to(target.id))
+
+    assert pre_switch_calls == [target.id]
+    assert chat.cleared == 1
+    assert controller.record is target
+
+
+# --- on_evict hook -----------------------------------------------------------
+
+
+def test_on_evict_fires_before_store_delete_in_evict_one():
+    async def _run() -> None:
+        store = InMemoryConversationStore()
+        rec = new_conversation_record(title="old")
+        await store.put("alice", rec)
+
+        order: list[str] = []
+
+        controller = HistoryController(
+            chat=_FakeChat(),  # type: ignore[arg-type]
+            adapter=_FakeAdapter(),  # type: ignore[arg-type]
+            store=store,
+            title_fn=None,
+            title_enabled=False,
+            client=None,
+        )
+        controller.scope = "alice"
+
+        async def hook(conv_id: str) -> None:
+            # Record must still exist in store when the hook fires
+            still_there = await store.get("alice", conv_id)
+            order.append("hook_before" if still_there is not None else "hook_after")
+
+        controller.on_evict = hook
+
+        await controller._evict_one(rec.id)
+
+        assert order == ["hook_before"]
+        assert await store.get("alice", rec.id) is None
+
+    asyncio.run(_run())
+
+
+def test_on_evict_fires_before_store_delete_in_delete():
+    async def _run() -> None:
+        store = InMemoryConversationStore()
+        rec = new_conversation_record(title="old")
+        await store.put("alice", rec)
+
+        order: list[str] = []
+
+        controller = HistoryController(
+            chat=_NavFakeChat(),  # type: ignore[arg-type]
+            adapter=_NavFakeAdapter(),  # type: ignore[arg-type]
+            store=store,
+            title_fn=None,
+            title_enabled=False,
+            client=None,
+        )
+        controller.scope = "alice"
+
+        async def hook(conv_id: str) -> None:
+            still_there = await store.get("alice", conv_id)
+            order.append("hook_before" if still_there is not None else "hook_after")
+
+        controller.on_evict = hook
+
+        await controller.delete(rec.id)
+
+        assert order == ["hook_before"]
+        assert await store.get("alice", rec.id) is None
+
+    asyncio.run(_run())
+
+

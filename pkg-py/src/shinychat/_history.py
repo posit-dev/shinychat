@@ -5,6 +5,7 @@ import warnings
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal
 
 from ._chat_types import HistoryNavigateAction, HistoryUpdateAction
+from ._history_bookmark import delete_bookmark_state, extract_state_id
 from ._history_client import (
     TurnsAdapter,
     as_turns_adapter,
@@ -40,6 +41,13 @@ class HistoryOptions:
         bookmark or share a link to a specific conversation; no Shiny server
         bookmarking is required.
         ``"none"`` disables automatic restore entirely.
+        ``"bookmark"`` participates in Shiny server bookmarking: after every
+        LLM response a fresh server bookmark is minted and the address bar
+        updates to ``?_state_id_=...``. Requires ``bookmark_store="server"``
+        in the Shiny app. On in-session conversation switches, navigates to
+        the target conversation's bookmark URL if one exists. Use this mode
+        when the app uses Shiny bookmarks to capture full input state
+        alongside the chat.
 
         Note: only the ``values`` dict captured by ``@chat.history.on_save``
         callbacks is restored on in-session conversation switches — raw Shiny
@@ -80,13 +88,13 @@ class HistoryOptions:
 
     def __init__(
         self,
-        restore_mode: "Literal['browser', 'url', 'none']" = "browser",
+        restore_mode: "Literal['browser', 'url', 'none', 'bookmark']" = "browser",
         store: "ConversationStore | Literal['auto', 'memory', 'file']" = "auto",
         scope: "str | Callable[..., str] | None" = None,
         title: "TitleFn | Literal['auto'] | None" = "auto",
         max_store_mb: float = 100.0,
     ) -> None:
-        self.restore_mode: "Literal['browser', 'url', 'none']" = restore_mode
+        self.restore_mode: "Literal['browser', 'url', 'none', 'bookmark']" = restore_mode
         self.store: "ConversationStore | Literal['auto', 'memory', 'file']" = store
         self.scope: "str | Callable[..., str] | None" = scope
         self.title: "TitleFn | Literal['auto'] | None" = title
@@ -169,6 +177,17 @@ class HistoryController:
         self.on_active_id_change: (
             Callable[[str | None], Awaitable[None]] | None
         ) = None
+        # Internal hook: fired after every save. bookmark mode uses it to mint.
+        self.on_response_saved: (
+            Callable[[ConversationRecord], Awaitable[None]] | None
+        ) = None
+        # Internal hook: fired in switch_to before the in-session swap.
+        # Return True to skip the swap (caller has already navigated).
+        self.on_pre_switch: (
+            Callable[[ConversationRecord], Awaitable[bool]] | None
+        ) = None
+        # Internal hook: fired before a conversation is removed from the store.
+        self.on_evict: Callable[[str], Awaitable[None]] | None = None
         self.max_store_bytes: int | None = max_store_bytes
         self._title_task: asyncio.Task[None] | None = None
         # replay_ui contains multiple await points (one per message), so
@@ -206,6 +225,8 @@ class HistoryController:
         await self._capture_app_state(record)
         await self.store.put(self.scope, record)
         await self._evict_if_needed()
+        if self.on_response_saved is not None:
+            await self.on_response_saved(record)
         self.ui_offset = len(messages)
         await self.send_history_update()
 
@@ -241,6 +262,8 @@ class HistoryController:
 
     async def _evict_one(self, conv_id: str) -> None:
         assert self.scope is not None
+        if self.on_evict is not None:
+            await self.on_evict(conv_id)
         await self.store.delete(self.scope, conv_id)
 
     async def _evict_if_needed(self) -> None:
@@ -295,6 +318,10 @@ class HistoryController:
             raise RuntimeError(f"Conversation {conv_id!r} no longer exists.")
 
         await self.save_current()
+        if self.on_pre_switch is not None:
+            skip = await self.on_pre_switch(target)
+            if skip:
+                return
         self.adapter.set_turns_json(target.path_turns())
         await self.replay_ui(target)
         await self._restore_app_state(target.values or {})
@@ -361,6 +388,8 @@ class HistoryController:
     async def delete(self, conv_id: str) -> None:
         if self.scope is None:
             raise RuntimeError("HistoryController not initialized")
+        if self.on_evict is not None:
+            await self.on_evict(conv_id)
         await self.store.delete(self.scope, conv_id)
         if self.record is not None and self.record.id == conv_id:
             self.record = None
@@ -414,7 +443,7 @@ class ChatHistory:
         cfg = config if config is not None else HistoryOptions()
         self._store: "ConversationStore | Literal['auto', 'memory', 'file']" = cfg.store
         self._scope: "str | Callable[..., str] | None" = cfg.scope
-        self._title: "TitleFn | Literal['auto'] | None" = cfg.title
+        self._title: "TitleFn | Literal['fallback'] | None" = cfg.title
         self._restore_mode: "Literal['browser', 'url', 'none', 'bookmark']" = cfg.restore_mode
         self._max_store_mb: float = cfg.max_store_mb
 
@@ -532,6 +561,62 @@ class ChatHistory:
 
             controller.on_active_id_change = _update_url
 
+        if restore_mode == "bookmark":
+            if root_session.bookmark.store != "server":
+                raise ValueError(
+                    "restore_mode='bookmark' requires bookmark_store='server' in the Shiny app."
+                )
+
+            async def _on_response_saved(record: ConversationRecord) -> None:
+                captured_id = record.id
+
+                async def _on_bookmarked(url: str) -> None:
+                    new_state_id = extract_state_id(url)
+                    if new_state_id is None:
+                        return
+                    if controller.record is None or controller.record.id != captured_id:
+                        return  # switched away
+                    old_state_id = record.bookmark_state_id
+                    record.bookmark_state_id = new_state_id
+                    if old_state_id is not None:
+                        await delete_bookmark_state(old_state_id)
+                    if controller.scope is not None:
+                        await controller.store.put(controller.scope, record)
+                    await controller.send_navigate(f"?_state_id_={new_state_id}", captured_id)
+
+                cancel = root_session.bookmark.on_bookmarked(_on_bookmarked)
+                await root_session.bookmark.do_bookmark()
+                cancel()
+
+            controller.on_response_saved = _on_response_saved
+
+            async def _on_pre_switch(target: ConversationRecord) -> bool:
+                if target.bookmark_state_id is not None:
+                    await controller.send_navigate(
+                        f"?_state_id_={target.bookmark_state_id}", target.id
+                    )
+                    return True
+                return False
+
+            controller.on_pre_switch = _on_pre_switch
+
+            async def _on_evict(conv_id: str) -> None:
+                if controller.record is not None and controller.record.id == conv_id:
+                    state_id = controller.record.bookmark_state_id
+                else:
+                    rec = await controller.store.get(controller.scope or "", conv_id)
+                    state_id = rec.bookmark_state_id if rec is not None else None
+                if state_id is not None:
+                    await delete_bookmark_state(state_id)
+
+            controller.on_evict = _on_evict
+
+            async def _update_url_bookmark(conv_id: str | None) -> None:
+                if conv_id is None:
+                    await controller.send_navigate(None, None)
+
+            controller.on_active_id_change = _update_url_bookmark
+
         # Stamp the active conversation ID into any Shiny server bookmark so
         # that reloading from a bookmark URL reopens the right conversation.
         # This runs regardless of restore_mode whenever server bookmarks are
@@ -590,7 +675,8 @@ class ChatHistory:
                 if target is not None:
                     adapter.set_turns_json(target.path_turns())
                     await controller.replay_ui(target)
-                    await controller._restore_app_state(target.values or {})
+                    if restore_mode != "bookmark":
+                        await controller._restore_app_state(target.values or {})
                     controller.record = target
                     await controller.send_history_update()
                     return
