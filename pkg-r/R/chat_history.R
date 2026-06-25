@@ -507,7 +507,8 @@ chat_enable_history <- function(
     # url_id. Requiring it here delays scope resolution until that second flush,
     # ensuring all three inputs have arrived before the init observer runs.
     if (
-      restore_mode %in% c("browser", "url") &&
+      restore_mode %in%
+        c("browser", "url") &&
         (!is.null(scope_opt) || !is.null(session$user))
     ) {
       shiny::req(session$input[[token_input]])
