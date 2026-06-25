@@ -59,7 +59,7 @@ describe("history_navigate handling", () => {
     expect(navigateTo).toHaveBeenCalledWith("http://x/app/")
   })
 
-  test("conversation selection updates local pointer before server acknowledgement", () => {
+  test("conversation selection keeps pointer unchanged until server acknowledgement", () => {
     const transport = createMockTransport()
     render(
       <ChatApp
@@ -98,7 +98,31 @@ describe("history_navigate handling", () => {
     )
     fireEvent.click(screen.getByText("Second"))
 
-    expect(getCurrentConversationId("chat")).toBe("c2")
+    expect(getCurrentConversationId("chat")).toBe("c1")
     expect(transport.sendHistorySelect).toHaveBeenCalledWith("chat", "c2")
+
+    act(() => {
+      transport.fire("chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [
+          {
+            id: "c1",
+            title: "First",
+            created_at: "2026-01-01T00:00:00.000Z",
+            updated_at: "2026-01-01T00:00:00.000Z",
+          },
+          {
+            id: "c2",
+            title: "Second",
+            created_at: "2026-01-02T00:00:00.000Z",
+            updated_at: "2026-01-02T00:00:00.000Z",
+          },
+        ],
+        active_id: "c2",
+      })
+    })
+
+    expect(getCurrentConversationId("chat")).toBe("c2")
   })
 })

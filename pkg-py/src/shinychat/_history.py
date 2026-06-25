@@ -442,6 +442,16 @@ def title_task_done(task: asyncio.Task[None]) -> None:
         warnings.warn(f"Background retitle failed: {exc}", stacklevel=1)
 
 
+async def do_bookmark_with_cleanup(
+    bookmark: Any, on_bookmarked: Callable[[str], Awaitable[None]]
+) -> None:
+    cancel = bookmark.on_bookmarked(on_bookmarked)
+    try:
+        await bookmark.do_bookmark()
+    finally:
+        cancel()
+
+
 class ChatHistory:
     """Namespace for chat history configuration and lifecycle on a `Chat` instance."""
 
@@ -453,7 +463,7 @@ class ChatHistory:
         cfg = config if config is not None else HistoryOptions()
         self._store: "ConversationStore | Literal['auto', 'memory', 'file']" = cfg.store
         self._scope: "str | Callable[..., str] | None" = cfg.scope
-        self._title: "TitleFn | Literal['fallback'] | None" = cfg.title
+        self._title: "TitleFn | Literal['auto'] | None" = cfg.title
         self._restore_mode: "Literal['browser', 'url', 'none', 'bookmark']" = cfg.restore_mode
         self._max_store_mb: float | None = cfg.max_store_mb
 
@@ -522,7 +532,7 @@ class ChatHistory:
             )
 
         from shiny import reactive, req
-        from shiny.session import get_current_session
+        from shiny.session import get_current_session, session_context
 
         session = get_current_session()
         if session is None or session.is_stub_session():
@@ -596,9 +606,9 @@ class ChatHistory:
                         await controller.store.put(controller.scope, record)
                     await controller.send_navigate(f"?_state_id_={new_state_id}", captured_id)
 
-                cancel = root_session.bookmark.on_bookmarked(_on_bookmarked)
-                await root_session.bookmark.do_bookmark()
-                cancel()
+                await do_bookmark_with_cleanup(
+                    root_session.bookmark, _on_bookmarked
+                )
 
             controller.on_response_saved = _on_response_saved
 
@@ -748,7 +758,7 @@ class ChatHistory:
                 try:
                     await controller.on_response()
                 except Exception as e:
-                    notify_error("Could not save conversation", e)
+                    await notify_error("Could not save conversation", e)
 
         @reactive.effect
         @reactive.event(chat._session.input[f"{chat.id}_history_select"])
@@ -759,7 +769,7 @@ class ChatHistory:
             try:
                 await controller.switch_to(str(payload["id"]))
             except Exception as e:
-                notify_error("Could not open conversation", e)
+                await notify_error("Could not open conversation", e)
 
         @reactive.effect
         @reactive.event(chat._session.input[f"{chat.id}_history_new"])
@@ -769,7 +779,7 @@ class ChatHistory:
             try:
                 await controller.new_chat()
             except Exception as e:
-                notify_error("Could not start a new chat", e)
+                await notify_error("Could not start a new chat", e)
 
         @reactive.effect
         @reactive.event(chat._session.input[f"{chat.id}_history_rename"])
@@ -782,7 +792,7 @@ class ChatHistory:
                     str(payload["id"]), str(payload["title"])
                 )
             except Exception as e:
-                notify_error("Could not rename conversation", e)
+                await notify_error("Could not rename conversation", e)
 
         @reactive.effect
         @reactive.event(chat._session.input[f"{chat.id}_history_delete"])
@@ -793,7 +803,7 @@ class ChatHistory:
             try:
                 await controller.delete(str(payload["id"]))
             except Exception as e:
-                notify_error("Could not delete conversation", e)
+                await notify_error("Could not delete conversation", e)
 
         def _on_session_end() -> None:
             if stamp_cancel is not None:
