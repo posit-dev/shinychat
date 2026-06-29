@@ -21,7 +21,9 @@ test_that("chat_server() accepts history = TRUE", {
     function(input, output, session) {
       chat_server("chat", client, history = TRUE, session = session)
     },
-    { expect_true(TRUE) }
+    {
+      expect_true(TRUE)
+    }
   )
 })
 
@@ -34,7 +36,9 @@ test_that("chat_server() accepts history = FALSE", {
     function(input, output, session) {
       chat_server("chat", client, history = FALSE, session = session)
     },
-    { expect_true(TRUE) }
+    {
+      expect_true(TRUE)
+    }
   )
 })
 
@@ -48,7 +52,9 @@ test_that("chat_server() accepts history = history_options() config", {
     function(input, output, session) {
       chat_server("chat", client, history = config, session = session)
     },
-    { expect_true(TRUE) }
+    {
+      expect_true(TRUE)
+    }
   )
 })
 
@@ -61,7 +67,9 @@ test_that("deprecated bookmark_on_input warns", {
       function(input, output, session) {
         chat_server("chat", client, bookmark_on_input = TRUE, session = session)
       },
-      { NULL }
+      {
+        NULL
+      }
     ),
     "deprecated"
   )
@@ -74,9 +82,16 @@ test_that("deprecated bookmark_on_response warns", {
   expect_warning(
     shiny::testServer(
       function(input, output, session) {
-        chat_server("chat", client, bookmark_on_response = TRUE, session = session)
+        chat_server(
+          "chat",
+          client,
+          bookmark_on_response = TRUE,
+          session = session
+        )
       },
-      { NULL }
+      {
+        NULL
+      }
     ),
     "deprecated"
   )
