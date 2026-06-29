@@ -43,12 +43,9 @@ def test_history_full_flow(page: Page, local_app: ShinyAppProc) -> None:
     expect(items).to_have_count(1, timeout=10_000)
     expect(items.first).to_contain_text("first question")
 
-    # New chat: resets transcript and bridged app state to baseline.
+    # New chat: clears transcript but does NOT touch bridged app state.
     page.locator(".shiny-chat-history-new").click()
     expect(page.locator(".shiny-chat-history-drawer")).not_to_be_visible()
-    controller.OutputText(page, "filter_state").expect_value(
-        "filter: none", timeout=10_000
-    )
 
     # Send a message in the second conversation.
     chat.set_user_input("second question")
