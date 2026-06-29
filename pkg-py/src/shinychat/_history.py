@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import warnings
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal
 
@@ -21,7 +22,39 @@ from ._history_title import (
 from ._history_types import ConversationRecord, new_conversation_record
 
 if TYPE_CHECKING:
+    from shiny.module import ResolvedId
+
     from ._chat import Chat
+
+
+@dataclasses.dataclass(frozen=True)
+class HistoryInputIds:
+    """All Shiny input IDs owned by the history feature for a given chat."""
+
+    browser_token: ResolvedId
+    current_id: ResolvedId
+    url_id: ResolvedId
+    select: ResolvedId
+    new: ResolvedId
+    rename: ResolvedId
+    delete: ResolvedId
+
+    @classmethod
+    def for_chat(cls, chat_id: ResolvedId) -> HistoryInputIds:
+        from shiny.module import ResolvedId as RID
+
+        return cls(
+            browser_token=RID(f"{chat_id}_history_browser_token"),
+            current_id=RID(f"{chat_id}_history_current_id"),
+            url_id=RID(f"{chat_id}_history_url_id"),
+            select=RID(f"{chat_id}_history_select"),
+            new=RID(f"{chat_id}_history_new"),
+            rename=RID(f"{chat_id}_history_rename"),
+            delete=RID(f"{chat_id}_history_delete"),
+        )
+
+    def all_ids(self) -> list[ResolvedId]:
+        return [getattr(self, f.name) for f in dataclasses.fields(self)]
 
 
 class HistoryOptions:
@@ -559,20 +592,8 @@ class ChatHistory:
         root_session = session.root_scope()
         restore_mode = self._restore_mode
 
-        token_input_id = f"{chat.id}_history_browser_token"
-        current_id_input_id = f"{chat.id}_history_current_id"
-        url_id_input_id = f"{chat.id}_history_url_id"
-        root_session.bookmark.exclude.extend(
-            [
-                token_input_id,
-                current_id_input_id,
-                url_id_input_id,
-                f"{chat.id}_history_select",
-                f"{chat.id}_history_new",
-                f"{chat.id}_history_rename",
-                f"{chat.id}_history_delete",
-            ]
-        )
+        ids = HistoryInputIds.for_chat(chat.id)
+        root_session.bookmark.exclude.extend(ids.all_ids())
 
         adapter = as_turns_adapter(chat_client)
         resolved_store = resolve_store(self._store)
@@ -712,7 +733,7 @@ class ChatHistory:
             if restore_mode in ("browser", "url") and (
                 scope_key is not None or user is not None
             ):
-                token = chat._session.input[token_input_id]()
+                token = chat._session.input[ids.browser_token]()
                 req(token)
             if isinstance(scope_key, str):
                 return scope_key
@@ -720,7 +741,7 @@ class ChatHistory:
                 return scope_key(chat._session)
             if user is not None:
                 return str(user)
-            token = chat._session.input[token_input_id]()
+            token = chat._session.input[ids.browser_token]()
             return str(req(token))
 
         async def notify_error(prefix: str, e: Exception) -> None:
@@ -771,10 +792,10 @@ class ChatHistory:
             # the effect retries correctly on the next flush rather than
             # exiting early via the guard above.
             if restore_mode == "url":
-                raw = chat._session.input[url_id_input_id]()
+                raw = chat._session.input[ids.url_id]()
                 current_id: str | None = str(raw) if raw else None
             elif restore_mode == "browser":
-                raw = chat._session.input[current_id_input_id]()
+                raw = chat._session.input[ids.current_id]()
                 current_id = str(raw) if raw else None
             else:
                 current_id = None
@@ -804,18 +825,18 @@ class ChatHistory:
                     await notify_error("Could not save conversation", e)
 
         @reactive.effect
-        @reactive.event(chat._session.input[f"{chat.id}_history_select"])
+        @reactive.event(chat._session.input[ids.select])
         async def _on_select():
             if controller.scope is None:
                 return
-            payload = chat._session.input[f"{chat.id}_history_select"]()
+            payload = chat._session.input[ids.select]()
             try:
                 await controller.switch_to(str(payload["id"]))
             except Exception as e:
                 await notify_error("Could not open conversation", e)
 
         @reactive.effect
-        @reactive.event(chat._session.input[f"{chat.id}_history_new"])
+        @reactive.event(chat._session.input[ids.new])
         async def _on_new():
             if controller.scope is None:
                 return
@@ -825,11 +846,11 @@ class ChatHistory:
                 await notify_error("Could not start a new chat", e)
 
         @reactive.effect
-        @reactive.event(chat._session.input[f"{chat.id}_history_rename"])
+        @reactive.event(chat._session.input[ids.rename])
         async def _on_rename():
             if controller.scope is None:
                 return
-            payload = chat._session.input[f"{chat.id}_history_rename"]()
+            payload = chat._session.input[ids.rename]()
             try:
                 await controller.rename(
                     str(payload["id"]), str(payload["title"])
@@ -838,11 +859,11 @@ class ChatHistory:
                 await notify_error("Could not rename conversation", e)
 
         @reactive.effect
-        @reactive.event(chat._session.input[f"{chat.id}_history_delete"])
+        @reactive.event(chat._session.input[ids.delete])
         async def _on_delete():
             if controller.scope is None:
                 return
-            payload = chat._session.input[f"{chat.id}_history_delete"]()
+            payload = chat._session.input[ids.delete]()
             try:
                 await controller.delete(str(payload["id"]))
             except Exception as e:

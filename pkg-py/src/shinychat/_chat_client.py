@@ -197,14 +197,16 @@ def setup_greeting(
 
     from htmltools import HTML, Tag, TagList
     from shiny import reactive
+    from shiny.module import ResolvedId
     from shiny.session import session_context
 
     from ._chat_types import ChatGreeting
 
     with session_context(session):
+        greeting_requested_id = ResolvedId(f"{chat.id}_greeting_requested")
 
         @reactive.effect
-        @reactive.event(session.input[f"{chat.id}_greeting_requested"])
+        @reactive.event(session.input[greeting_requested_id])
         async def _on_greeting_requested() -> None:
             if isinstance(greeting, (str, HTML, Tag, TagList, ChatGreeting)):
                 return await chat.set_greeting(greeting)
