@@ -62,6 +62,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build]
 skip-excluded-dirs = true
+# Source maps are kept in the source tree (and editable installs) for local
+# debugging, but excluded from built distributions to keep package size down.
+exclude = ["*.map"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["pkg-py/src/shinychat"]
