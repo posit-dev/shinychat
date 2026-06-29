@@ -2,23 +2,25 @@
 
 ## New features and improvements
 
-* Added file attachment support: users can upload images, PDFs, and text files alongside chat messages via a file picker button, drag-and-drop, or clipboard paste. `chat_mod_ui()`/`chat_mod_server()` enable attachments by default and automatically convert uploads into ellmer `Content` objects for the model. For `chat_ui()`, enable with `allow_attachments = TRUE` (or a MIME allow-list) and splice `input$<id>_user_input` into chat methods with `!!!`. The maximum combined attachment size defaults to approximately 30 MB and can be configured via the `SHINYCHAT_MAX_ATTACHMENT_SIZE` environment variable.
+* Added `chat_server()` as the new primary way to wire up server-side chat logic. It does the same job as `chat_mod_server()` but runs directly in the caller's session scope rather than creating its own module scope. If you're already inside a `moduleServer()`, pass that session in — no extra nesting, no doubled namespaces. `chat_mod_server()` and `chat_mod_ui()` are now soft-deprecated in favor of `chat_server()` and `chat_ui()`. (#264)
+
+* Added file attachment support: users can upload images, PDFs, and text files alongside chat messages via a file picker button, drag-and-drop, or clipboard paste. `chat_server()` enables attachments by default and automatically convert uploads into ellmer `Content` objects for the model. For non-`chat_server()` usage, enable with `allow_attachments = TRUE` (or a MIME allow-list) and splice `input$<id>_user_input` into chat methods with `!!!`. The maximum combined attachment size defaults to approximately 30 MB and can be configured via the `SHINYCHAT_MAX_ATTACHMENT_SIZE` environment variable.
 
 * Added slash commands: a typeahead command palette that lets users trigger named shortcuts directly from the chat input. Type `/` to open the palette, filter by typing, and pick a command with arrow keys or click. Commands can expand into LLM prompts, trigger server-side side effects (clear chat, open a modal, export transcript), or be handled entirely client-side via the cancelable `shiny:chat-slash-command` DOM event. Register commands with `chat$slash_command()`, which accepts 0- or 1-argument handlers; 1-argument handlers receive a `ContentSlashCommand` object (a `ContentText` subclass with `command` and `user_text` slots) so handlers can mutate `content@text` before passing it to `client$stream()`. The `echo` parameter controls whether an invocation is recorded as a user message and triggers a loading state. Echoed commands are faithfully restored on bookmark/restore. (#239)
 
-* Added `submit_key` parameter to `chat_ui()` and `chat_mod_ui()`: `"enter"` (default, Enter submits) or `"enter+modifier"` (Ctrl/Cmd+Enter submits, plain Enter inserts a line break). The input remains editable while a response is streaming — only submission is blocked, not typing. (#251)
+* Added `submit_key` parameter to `chat_ui()`: `"enter"` (default, Enter submits) or `"enter+modifier"` (Ctrl/Cmd+Enter submits, plain Enter inserts a line break). The input remains editable while a response is streaming — only submission is blocked, not typing. (#251)
 
 ## Breaking changes
 
 * `input$<id>_user_input` now depends on `allow_attachments`. With `allow_attachments = FALSE`, it remains the historical typed string. With attachments enabled (`TRUE` or a MIME allow-list), it is always a list of ellmer `Content` objects (typed text, if present, followed by one object per attachment), and the separate `input$<id>_user_attachments` input has been removed. Forward either form to a chat method by splicing with `!!!`, e.g. `chat$stream_async(!!!input$<id>_user_input)`.
 
-* The `last_input` reactive returned by `chat_mod_server()` now mirrors the shape of `input$<id>_user_input`: a string when attachments are disabled, and a list of ellmer `Content` objects when enabled.
+* The `last_input` reactive returned by `chat_server()` now mirrors the shape of `input$<id>_user_input`: a string when attachments are disabled, and a list of ellmer `Content` objects when enabled.
 
 ## Bug fixes
 
 * `chat_app()` no longer renders a close button or registers a `stopApp()` observer when deployed to a server. Both are now gated on `rlang::is_interactive()`, preventing session crashes in multi-user deployments. (#265)
 
-* The `dismissible` parameter of `chat_greeting()` has been renamed to `persistent` with an inverted value. `dismissible = FALSE` (greeting stays visible) is now `persistent = TRUE`. The old `dismissible` argument still works but warns. (#260)
+* The `dismissible` parameter of `chat_greeting()` has been renamed to `persistent` with an inverted value. `dismissible = FALSE` (greeting stays visible) is now `persistent = TRUE`. The old `dismissible` argument still works but warns. When both `persistent` and `dismissible` are provided, `persistent` now takes precedence silently rather than erroring. (#260)
 
 * Fixed suggestion cards and the greeting overflowing the chat container in narrow spaces such as sidebars. (#255)
 
