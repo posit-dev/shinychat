@@ -193,6 +193,7 @@ check_ellmer_chat <- function(client) {
 #' @returns
 #'   * `chat_mod_ui()` returns the UI for a shinychat module.
 #'   * `chat_mod_server()` returns the value of [chat_server()].
+#' @keywords internal
 #' @export
 chat_mod_ui <- function(
   id,

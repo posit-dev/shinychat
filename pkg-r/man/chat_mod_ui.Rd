@@ -78,3 +78,4 @@ Use \code{\link[=chat_ui]{chat_ui()}} with \code{NS(id, "chat")} and \code{\link
 \item \code{chat_mod_server()}: A Shiny module server for chat (deprecated). Use \code{\link[=chat_server]{chat_server()}} instead.
 
 }}
+\keyword{internal}
