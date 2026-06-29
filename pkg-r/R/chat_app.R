@@ -368,7 +368,9 @@ chat_server <- function(
     }
     client <<- new_client
 
-    if (!is.null(cancel_history)) cancel_history()
+    if (!is.null(cancel_history)) {
+      cancel_history()
+    }
 
     cancel_history <<- if (!isFALSE(history)) {
       config <- if (isTRUE(history)) history_options() else history
@@ -386,10 +388,17 @@ chat_server <- function(
       NULL
     }
 
-    new_ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
+    new_ctrl <- get_session_chat_bookmark_info(
+      session,
+      "chat.history-controller"
+    )
     if (!is.null(new_ctrl)) {
-      for (fn in saved_on_save_fns) new_ctrl$add_save_callback(fn)
-      for (fn in saved_on_restore_fns) new_ctrl$add_restore_callback(fn)
+      for (fn in saved_on_save_fns) {
+        new_ctrl$add_save_callback(fn)
+      }
+      for (fn in saved_on_restore_fns) {
+        new_ctrl$add_restore_callback(fn)
+      }
     }
     invisible()
   }
@@ -703,14 +712,18 @@ chat_server <- function(
   hist_env$on_save <- function(fn) {
     saved_on_save_fns <<- c(saved_on_save_fns, list(fn))
     ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
-    if (!is.null(ctrl)) ctrl$add_save_callback(fn)
+    if (!is.null(ctrl)) {
+      ctrl$add_save_callback(fn)
+    }
     invisible(fn)
   }
 
   hist_env$on_restore <- function(fn) {
     saved_on_restore_fns <<- c(saved_on_restore_fns, list(fn))
     ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
-    if (!is.null(ctrl)) ctrl$add_restore_callback(fn)
+    if (!is.null(ctrl)) {
+      ctrl$add_restore_callback(fn)
+    }
     invisible(fn)
   }
 
