@@ -706,8 +706,11 @@ class ChatHistory:
             # current_id and url_id. Requiring it here delays scope resolution
             # until the second flush, ensuring all three inputs have arrived
             # before the init observer runs.
+            # Temporary: some session types raise AttributeError on .user;
+            # remove this getattr once the pending py-shiny PR lands.
+            user = getattr(chat._session, "user", None)
             if restore_mode in ("browser", "url") and (
-                scope_key is not None or chat._session.user is not None
+                scope_key is not None or user is not None
             ):
                 token = chat._session.input[token_input_id]()
                 req(token)
@@ -715,8 +718,8 @@ class ChatHistory:
                 return scope_key
             if callable(scope_key):
                 return scope_key(chat._session)
-            if chat._session.user is not None:
-                return str(chat._session.user)
+            if user is not None:
+                return str(user)
             token = chat._session.input[token_input_id]()
             return str(req(token))
 
