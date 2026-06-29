@@ -12,47 +12,43 @@ test_that("history_options() defaults include max_store_mb = 100", {
   expect_equal(config$max_store_mb, 100)
 })
 
-test_that("chat_mod_server() accepts history = TRUE", {
-  skip_if_not_installed("ellmer")
-
-  client <- mock_chat_client()
-
-  # This tests that the module server doesn't error on setup
-  shiny::testServer(
-    chat_mod_server,
-    args = list(client = client, history = TRUE),
-    {
-      expect_true(TRUE)
-    }
-  )
-})
-
-test_that("chat_mod_server() accepts history = FALSE", {
+test_that("chat_server() accepts history = TRUE", {
   skip_if_not_installed("ellmer")
 
   client <- mock_chat_client()
 
   shiny::testServer(
-    chat_mod_server,
-    args = list(client = client, history = FALSE),
-    {
-      expect_true(TRUE)
-    }
+    function(input, output, session) {
+      chat_server("chat", client, history = TRUE, session = session)
+    },
+    { expect_true(TRUE) }
   )
 })
 
-test_that("chat_mod_server() accepts history = history_options() config", {
+test_that("chat_server() accepts history = FALSE", {
+  skip_if_not_installed("ellmer")
+
+  client <- mock_chat_client()
+
+  shiny::testServer(
+    function(input, output, session) {
+      chat_server("chat", client, history = FALSE, session = session)
+    },
+    { expect_true(TRUE) }
+  )
+})
+
+test_that("chat_server() accepts history = history_options() config", {
   skip_if_not_installed("ellmer")
 
   client <- mock_chat_client()
   config <- history_options(store = "memory", max_store_mb = 10)
 
   shiny::testServer(
-    chat_mod_server,
-    args = list(client = client, history = config),
-    {
-      expect_true(TRUE)
-    }
+    function(input, output, session) {
+      chat_server("chat", client, history = config, session = session)
+    },
+    { expect_true(TRUE) }
   )
 })
 
@@ -62,11 +58,10 @@ test_that("deprecated bookmark_on_input warns", {
 
   expect_warning(
     shiny::testServer(
-      chat_mod_server,
-      args = list(client = client, bookmark_on_input = TRUE),
-      {
-        NULL
-      }
+      function(input, output, session) {
+        chat_server("chat", client, bookmark_on_input = TRUE, session = session)
+      },
+      { NULL }
     ),
     "deprecated"
   )
@@ -78,11 +73,10 @@ test_that("deprecated bookmark_on_response warns", {
 
   expect_warning(
     shiny::testServer(
-      chat_mod_server,
-      args = list(client = client, bookmark_on_response = TRUE),
-      {
-        NULL
-      }
+      function(input, output, session) {
+        chat_server("chat", client, bookmark_on_response = TRUE, session = session)
+      },
+      { NULL }
     ),
     "deprecated"
   )
