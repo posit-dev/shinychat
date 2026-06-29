@@ -1,7 +1,7 @@
 import asyncio
 
 import chatlas
-from shiny import App, Inputs, Outputs, Session, reactive, render, ui
+from shiny import App, Inputs, Outputs, Session, module, reactive, render, ui
 from shinychat import Chat, chat_ui
 
 
@@ -62,10 +62,23 @@ class SlowChatClient:
         self._turns = state.get("turns", [])
 
 
+@module.ui
+def chat_mod_ui():
+    return chat_ui(id="chat")
+
+
+@module.server
+def chat_mod_server(input: Inputs, output: Outputs, session: Session) -> None:
+    del input, output, session
+    Chat("chat", client=SlowChatClient())  # type: ignore[arg-type]
+
+
 # Note: `enable_cancel=True` is intentionally omitted here. Passing a
 # `client=` to `Chat` should auto-enable the stop button via a server message.
+# The chat lives inside a module ("mod") to exercise ResolvedId handling in
+# _setup_client — the bug this test guards against only manifests in modules.
 app_ui = ui.page_fillable(
-    chat_ui("chat"),
+    chat_mod_ui("mod"),
     ui.output_code("cancel_requested"),
 )
 
@@ -74,9 +87,8 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     del input, output, session
     cancel_requested_value = reactive.Value(False)
     ObservableStreamController.cancel_requested = cancel_requested_value
-    client = SlowChatClient()
 
-    Chat("chat", client=client)  # type: ignore[arg-type]
+    chat_mod_server("mod")
 
     @render.code
     def cancel_requested() -> str:
