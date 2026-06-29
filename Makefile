@@ -148,7 +148,8 @@ py-check-tests:  ## [py] Run python tests
 	@echo ""
 	@echo "🧪 Running tests with pytest"
 	uv run playwright install
-	uv run pytest
+	uv run pytest pkg-py/tests/playwright/
+	uv run pytest --ignore=pkg-py/tests/playwright/
 
 .PHONY: py-check-types
 py-check-types:  ## [py] Run python type checks
