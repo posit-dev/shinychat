@@ -2,20 +2,10 @@
 % Please edit documentation in R/chat_app.R
 \name{chat_app}
 \alias{chat_app}
-\alias{chat_mod_ui}
 \alias{chat_server}
-\alias{chat_mod_server}
 \title{Open a live chat application in the browser}
 \usage{
 chat_app(client, ..., bookmark_store = "url", allow_attachments = TRUE)
-
-chat_mod_ui(
-  id,
-  ...,
-  client = deprecated(),
-  messages = NULL,
-  allow_attachments = TRUE
-)
 
 chat_server(
   id,
@@ -25,24 +15,12 @@ chat_server(
   bookmark_on_response = TRUE,
   session = shiny::getDefaultReactiveDomain()
 )
-
-chat_mod_server(
-  id,
-  client,
-  greeting = NULL,
-  bookmark_on_input = TRUE,
-  bookmark_on_response = TRUE
-)
 }
 \arguments{
 \item{client}{A chat object created by \pkg{ellmer}, e.g.
-\code{\link[ellmer:chat_openai]{ellmer::chat_openai()}} and friends. This argument is deprecated in
-\code{chat_mod_ui()} because the client state is now managed by
-\code{chat_server()}.}
+\code{\link[ellmer:chat_openai]{ellmer::chat_openai()}} and friends.}
 
-\item{...}{In \code{chat_app()}, additional arguments are passed to
-\code{\link[shiny:shinyApp]{shiny::shinyApp()}}. In \code{chat_mod_ui()}, additional arguments are passed to
-\code{\link[=chat_ui]{chat_ui()}}.}
+\item{...}{Additional arguments passed to \code{\link[shiny:shinyApp]{shiny::shinyApp()}}.}
 
 \item{bookmark_store}{The bookmarking store to use for the app. Passed to
 \code{enable_bookmarking} in \code{\link[shiny:shinyApp]{shiny::shinyApp()}}. Defaults to \code{"url"}, which
@@ -74,11 +52,7 @@ controlled globally by the \code{SHINYCHAT_MAX_ATTACHMENT_SIZE} environment
 variable (a raw byte count; defaults to approximately 30 MB). Files that
 would push the total over this cap are rejected in the browser with a notice.}
 
-\item{id}{The chat module ID.}
-
-\item{messages}{Initial messages shown in the chat, used only when \code{client}
-(in \code{chat_mod_ui()}) doesn't already contain turns. Passed to \code{messages}
-in \code{\link[=chat_ui]{chat_ui()}}.}
+\item{id}{The ID of the chat element}
 
 \item{greeting}{Optional greeting to set when the module initializes.
 Accepts a static value (string, \code{\link[htmltools:HTML]{htmltools::HTML()}}, \code{\link[htmltools:tagList]{htmltools::tagList()}},
@@ -94,7 +68,6 @@ dynamically. See the \strong{Greeting} section below for details.}
 \value{
 \itemize{
 \item \code{chat_app()} returns a \code{\link[shiny:shinyApp]{shiny::shinyApp()}} object.
-\item \code{chat_mod_ui()} returns the UI for a shinychat module.
 \item \code{chat_server()} includes the shinychat server logic, and
 returns an environment containing:
 \itemize{
@@ -168,11 +141,7 @@ sure to create a new chat client for each user session.
 app is suitable for interactive use by a single user; do not use
 \code{chat_app()} in a multi-user Shiny app context.
 
-\item \code{chat_mod_ui()}: A simple chat app module UI.
-
 \item \code{chat_server()}: Wire up batteries-included chat server logic in a Shiny session.
-
-\item \code{chat_mod_server()}: A Shiny module server for chat (deprecated).
 
 }}
 \section{Greeting}{

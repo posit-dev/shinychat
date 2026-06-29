@@ -57,12 +57,8 @@
 #' }
 #'
 #' @param client A chat object created by \pkg{ellmer}, e.g.
-#'   [ellmer::chat_openai()] and friends. This argument is deprecated in
-#'   `chat_mod_ui()` because the client state is now managed by
-#'   `chat_server()`.
-#' @param ... In `chat_app()`, additional arguments are passed to
-#'   [shiny::shinyApp()]. In `chat_mod_ui()`, additional arguments are passed to
-#'   [chat_ui()].
+#'   [ellmer::chat_openai()] and friends.
+#' @param ... Additional arguments passed to [shiny::shinyApp()].
 #' @param bookmark_store The bookmarking store to use for the app. Passed to
 #'   `enable_bookmarking` in [shiny::shinyApp()]. Defaults to `"url"`, which
 #'   uses the URL to store the chat state. URL-based bookmarking is limited in
@@ -71,7 +67,6 @@
 #'
 #' @returns
 #'   * `chat_app()` returns a [shiny::shinyApp()] object.
-#'   * `chat_mod_ui()` returns the UI for a shinychat module.
 #'   * `chat_server()` includes the shinychat server logic, and
 #'     returns an environment containing:
 #'
@@ -179,12 +174,25 @@ check_ellmer_chat <- function(client) {
   }
 }
 
-#' @describeIn chat_app A simple chat app module UI.
+#' Deprecated chat module functions
+#'
+#' @description
+#' `r lifecycle::badge("deprecated")`
+#'
+#' These functions are deprecated as of shinychat 0.5.0.
+#' Use [chat_ui()] with `NS(id, "chat")` and [chat_server()] instead.
+#'
 #' @param id The chat module ID.
+#' @param client Deprecated. The client state is now managed by [chat_server()].
 #' @param messages Initial messages shown in the chat, used only when `client`
-#'   (in `chat_mod_ui()`) doesn't already contain turns. Passed to `messages`
-#'   in [chat_ui()].
+#'   doesn't already contain turns. Passed to `messages` in [chat_ui()].
+#' @param greeting See [chat_server()].
+#' @param bookmark_on_input See [chat_server()].
+#' @param bookmark_on_response See [chat_server()].
 #' @inheritParams chat_ui
+#' @returns
+#'   * `chat_mod_ui()` returns the UI for a shinychat module.
+#'   * `chat_mod_server()` returns the value of [chat_server()].
 #' @export
 chat_mod_ui <- function(
   id,
@@ -643,7 +651,7 @@ chat_server <- function(
   ret
 }
 
-#' @describeIn chat_app A Shiny module server for chat (deprecated).
+#' @describeIn chat_mod_ui A Shiny module server for chat (deprecated). Use [chat_server()] instead.
 #' @export
 chat_mod_server <- function(
   id,
