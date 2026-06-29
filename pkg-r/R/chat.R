@@ -156,8 +156,8 @@ chat_greeting <- function(
 #' **`greeting_dismissed` input.** When the user dismisses the greeting,
 #' `input$<id>_greeting_dismissed` fires with a `Date.now()` timestamp. If the
 #' greeting is later cleared after being dismissed, the input resets to `NULL`.
-#' If you use [chat_mod_server()], you can access the `greeting_dismissed`
-#' reactive from the returned module value instead of the raw namespaced input
+#' If you use [chat_server()], you can access the `greeting_dismissed`
+#' reactive from the returned value instead of the raw namespaced input
 #' string.
 #'
 #' @param id The ID of the chat element
@@ -190,22 +190,25 @@ chat_greeting <- function(
 #' @param icon_assistant The icon to use for the assistant chat messages.
 #'   Can be HTML or a tag in the form of [htmltools::HTML()] or
 #'   [htmltools::tags()]. If `None`, a default robot icon is used.
-#' @param enable_cancel If `TRUE`, show a stop button during streaming that
+#' @param enable_cancel Whether to show a stop button during streaming that
 #'   allows the user to cancel the in-progress response. When using
-#'   [chat_mod_server()], cancellation is wired up automatically. For manual
-#'   usage with `chat_ui()`, observe `input$<id>_cancel` to handle cancellation
-#'   (e.g., by calling `ctrl$cancel()` on an ellmer `stream_controller()`).
-#'   Defaults to `FALSE`.
+#'   [chat_server()], cancellation is wired up automatically and this defaults
+#'   to `NULL` (let the server decide). For manual usage without
+#'   [chat_server()], set `TRUE` or `FALSE` explicitly and observe
+#'   `input$<id>_cancel` to handle cancellation (e.g., by calling
+#'   `ctrl$cancel()` on an ellmer `stream_controller()`).
 #' @param submit_key Controls which key combination submits the chat message.
 #'   `"enter"` (the default): Enter submits, Shift+Enter adds a newline.
 #'   `"enter+modifier"`: Ctrl+Enter (Cmd+Enter on Mac) submits, plain Enter
 #'   adds a newline.
 #' @param allow_attachments Controls the file-attachment affordance (an attach
-#'   button, plus clipboard paste and drag-and-drop) in the chat input. Pass
-#'   `TRUE` to accept all supported types (PNG, JPEG, GIF, WebP, PDF, and common
-#'   text/code files such as Markdown, plain text, CSV, JSON, and source files),
-#'   `FALSE` to disable, or a character vector of MIME types to
-#'   restrict what is accepted (each must be one of the supported types).
+#'   button, plus clipboard paste and drag-and-drop) in the chat input.
+#'   `NULL` (default) defers to [chat_server()], which enables attachments
+#'   automatically. Pass `TRUE` to accept all supported types (PNG, JPEG, GIF,
+#'   WebP, PDF, and common text/code files such as Markdown, plain text, CSV,
+#'   JSON, and source files), `FALSE` to disable, or a character vector of MIME
+#'   types to restrict what is accepted (each must be one of the supported
+#'   types).
 #'
 #'   The shape of `input$<id>_user_input` is determined by this argument, so it
 #'   is predictable for a given app. When attachments are disabled (the
@@ -305,9 +308,9 @@ chat_ui <- function(
   height = "auto",
   fill = TRUE,
   icon_assistant = NULL,
-  enable_cancel = FALSE,
+  enable_cancel = NULL,
   submit_key = c("enter", "enter+modifier"),
-  allow_attachments = FALSE,
+  allow_attachments = NULL,
   footer = NULL
 ) {
   submit_key <- rlang::arg_match(submit_key)
@@ -425,7 +428,13 @@ chat_ui <- function(
       ),
       placeholder = placeholder,
       fill = if (isTRUE(fill)) NA else NULL,
-      `enable-cancel` = if (isTRUE(enable_cancel)) NA else NULL,
+      `enable-cancel` = if (isTRUE(enable_cancel)) {
+        NA
+      } else if (isFALSE(enable_cancel)) {
+        "false"
+      } else {
+        NULL
+      },
       `submit-key` = if (submit_key != "enter") submit_key,
       `allow-attachments` = attachment_attrs$allow,
       `attachment-accept` = attachment_attrs$accept,
@@ -1095,7 +1104,7 @@ chat_set_greeting <- function(
     cli::cli_abort(c(
       "{.fn chat_set_greeting} does not accept a function as greeting content.",
       "i" = "Pass the {.emph result} of calling your function, not the function itself.",
-      "i" = "To use a greeting function with automatic lifecycle management, pass it to the {.arg greeting} argument of {.fn chat_mod_server}."
+      "i" = "To use a greeting function with automatic lifecycle management, pass it to the {.arg greeting} argument of {.fn chat_server}."
     ))
   }
 

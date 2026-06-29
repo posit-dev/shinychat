@@ -2,37 +2,25 @@
 % Please edit documentation in R/chat_app.R
 \name{chat_app}
 \alias{chat_app}
-\alias{chat_mod_ui}
-\alias{chat_mod_server}
+\alias{chat_server}
 \title{Open a live chat application in the browser}
 \usage{
 chat_app(client, ..., bookmark_store = "url", allow_attachments = TRUE)
 
-chat_mod_ui(
-  id,
-  ...,
-  client = deprecated(),
-  messages = NULL,
-  allow_attachments = TRUE
-)
-
-chat_mod_server(
+chat_server(
   id,
   client,
   greeting = NULL,
   bookmark_on_input = TRUE,
-  bookmark_on_response = TRUE
+  bookmark_on_response = TRUE,
+  session = shiny::getDefaultReactiveDomain()
 )
 }
 \arguments{
 \item{client}{A chat object created by \pkg{ellmer}, e.g.
-\code{\link[ellmer:chat_openai]{ellmer::chat_openai()}} and friends. This argument is deprecated in
-\code{chat_mod_ui()} because the client state is now managed by
-\code{chat_mod_server()}.}
+\code{\link[ellmer:chat_openai]{ellmer::chat_openai()}} and friends.}
 
-\item{...}{In \code{chat_app()}, additional arguments are passed to
-\code{\link[shiny:shinyApp]{shiny::shinyApp()}}. In \code{chat_mod_ui()}, additional arguments are passed to
-\code{\link[=chat_ui]{chat_ui()}}.}
+\item{...}{Additional arguments passed to \code{\link[shiny:shinyApp]{shiny::shinyApp()}}.}
 
 \item{bookmark_store}{The bookmarking store to use for the app. Passed to
 \code{enable_bookmarking} in \code{\link[shiny:shinyApp]{shiny::shinyApp()}}. Defaults to \code{"url"}, which
@@ -41,11 +29,13 @@ size; use \code{"server"} to store the state on the server side without size
 limitations; or disable bookmarking by setting this to \code{"disable"}.}
 
 \item{allow_attachments}{Controls the file-attachment affordance (an attach
-button, plus clipboard paste and drag-and-drop) in the chat input. Pass
-\code{TRUE} to accept all supported types (PNG, JPEG, GIF, WebP, PDF, and common
-text/code files such as Markdown, plain text, CSV, JSON, and source files),
-\code{FALSE} to disable, or a character vector of MIME types to
-restrict what is accepted (each must be one of the supported types).
+button, plus clipboard paste and drag-and-drop) in the chat input.
+\code{NULL} (default) defers to \code{\link[=chat_server]{chat_server()}}, which enables attachments
+automatically. Pass \code{TRUE} to accept all supported types (PNG, JPEG, GIF,
+WebP, PDF, and common text/code files such as Markdown, plain text, CSV,
+JSON, and source files), \code{FALSE} to disable, or a character vector of MIME
+types to restrict what is accepted (each must be one of the supported
+types).
 
 The shape of \verb{input$<id>_user_input} is determined by this argument, so it
 is predictable for a given app. When attachments are disabled (the
@@ -62,11 +52,7 @@ controlled globally by the \code{SHINYCHAT_MAX_ATTACHMENT_SIZE} environment
 variable (a raw byte count; defaults to approximately 30 MB). Files that
 would push the total over this cap are rejected in the browser with a notice.}
 
-\item{id}{The chat module ID.}
-
-\item{messages}{Initial messages shown in the chat, used only when \code{client}
-(in \code{chat_mod_ui()}) doesn't already contain turns. Passed to \code{messages}
-in \code{\link[=chat_ui]{chat_ui()}}.}
+\item{id}{The ID of the chat element}
 
 \item{greeting}{Optional greeting to set when the module initializes.
 Accepts a static value (string, \code{\link[htmltools:HTML]{htmltools::HTML()}}, \code{\link[htmltools:tagList]{htmltools::tagList()}},
@@ -76,12 +62,13 @@ dynamically. See the \strong{Greeting} section below for details.}
 \item{bookmark_on_input}{A logical value determines if the bookmark should be updated when the user submits a message. Default is \code{TRUE}.}
 
 \item{bookmark_on_response}{A logical value determines if the bookmark should be updated when the response stream completes. Default is \code{TRUE}.}
+
+\item{session}{The Shiny session. Defaults to the current reactive domain.}
 }
 \value{
 \itemize{
 \item \code{chat_app()} returns a \code{\link[shiny:shinyApp]{shiny::shinyApp()}} object.
-\item \code{chat_mod_ui()} returns the UI for a shinychat module.
-\item \code{chat_mod_server()} includes the shinychat module server logic, and
+\item \code{chat_server()} includes the shinychat server logic, and
 returns an environment containing:
 \itemize{
 \item \code{last_input}: A reactive value containing the last user input (a string
@@ -145,9 +132,8 @@ Note that these functions will mutate the input \code{client} object as
 you chat because your turns will be appended to the history.
 
 The app created by \code{chat_app()} is suitable for interactive use by a single
-user. For multi-user Shiny apps, use the Shiny module chat functions --
-\code{chat_mod_ui()} and \code{chat_mod_server()} -- and be sure to create a new chat
-client for each user session.
+user. For multi-user Shiny apps, use \code{\link[=chat_ui]{chat_ui()}} and \code{chat_server()} and be
+sure to create a new chat client for each user session.
 }
 \section{Functions}{
 \itemize{
@@ -155,29 +141,26 @@ client for each user session.
 app is suitable for interactive use by a single user; do not use
 \code{chat_app()} in a multi-user Shiny app context.
 
-\item \code{chat_mod_ui()}: A simple chat app module UI.
-
-\item \code{chat_mod_server()}: A simple chat app module server.
+\item \code{chat_server()}: Wire up batteries-included chat server logic in a Shiny session.
 
 }}
 \section{Greeting}{
 
 
-When \code{greeting} is a \strong{function}, the module calls it each time the
+When \code{greeting} is a \strong{function}, it is called each time the
 \code{greeting_requested} event fires — on first view when the chat is empty,
 and again after \code{clear(greeting = TRUE)}. The function should return a
 \code{\link[=chat_greeting]{chat_greeting()}} (typically wrapping a stream). Static values (strings,
 \code{\link[=chat_greeting]{chat_greeting()}} objects) are set once at init and do not regenerate.
 
-The module detects \strong{named arguments} in the greeting function to decide
-what to pass. Currently the only recognized argument is \code{client}.
+The function signature determines what is passed. Currently the only
+recognized argument is \code{client}.
 
-\strong{\verb{function(client)}} (recommended). The module clones the \code{client}
-passed to \code{chat_mod_server()}, wipes its turn history, and passes the
-fresh clone as \code{client}. This avoids manually creating and configuring
-a separate client:
+\strong{\verb{function(client)}} (recommended). A clone of the \code{client} with its turn
+history wiped is passed as \code{client}. This avoids manually creating and
+configuring a separate client:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_mod_server("chat", client, greeting = function(client) \{
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_server("chat", client, greeting = function(client) \{
   stream <- client$stream_async("Generate a short welcome message.")
   chat_greeting(stream)
 \})
@@ -185,7 +168,7 @@ a separate client:
 
 \strong{\verb{function()}} (zero arguments). You create and manage your own client:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_mod_server("chat", client, greeting = function() \{
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_server("chat", client, greeting = function() \{
   greeter <- ellmer::chat_openai(model = "gpt-4o")
   stream <- greeter$stream_async("Generate a short welcome message.")
   chat_greeting(stream)
@@ -194,7 +177,7 @@ a separate client:
 
 \strong{Static value.} Set once; does not regenerate after \code{clear()}:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_mod_server("chat", client, greeting = "## Welcome!\\n\\nHow can I help?")
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_server("chat", client, greeting = "## Welcome!\\n\\nHow can I help?")
 }\if{html}{\out{</div>}}
 
 The returned \code{set_greeting()} helper is available for cases where you need
@@ -218,7 +201,7 @@ ui <- page_fillable(
   layout_columns(
     card(
       card_header("Chat with Claude"),
-      chat_mod_ui(
+      chat_ui(
         "claude",
         messages = list(
           "Hi! Use this chat interface to chat with Anthropic's `claude-3-5-sonnet`."
@@ -227,7 +210,7 @@ ui <- page_fillable(
     ),
     card(
       card_header("Chat with ChatGPT"),
-      chat_mod_ui(
+      chat_ui(
         "openai",
         messages = list(
           "Hi! Use this chat interface to chat with OpenAI's `gpt-4o`."
@@ -241,8 +224,8 @@ server <- function(input, output, session) {
   claude <- ellmer::chat_anthropic(model = "claude-3-5-sonnet-latest") # Requires ANTHROPIC_API_KEY
   openai <- ellmer::chat_openai(model = "gpt-4o") # Requires OPENAI_API_KEY
 
-  chat_mod_server("claude", claude)
-  chat_mod_server("openai", openai)
+  chat_server("claude", claude)
+  chat_server("openai", openai)
 }
 
 shinyApp(ui, server)

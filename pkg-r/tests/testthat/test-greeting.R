@@ -240,7 +240,7 @@ test_that("chat_clear(greeting = TRUE) includes greeting in action", {
 })
 
 
-# ── chat_mod_server() greeting function ──────────────────────────────────────
+# ── chat_server() greeting function ──────────────────────────────────────────
 
 # Helper: minimal R6 mock that satisfies check_ellmer_chat() and chat_restore().
 # Requires get_tools() so that the chat_restore set_ui observer does not crash
@@ -288,18 +288,18 @@ test_that("named-arg detection: 'client' in formals identifies one-arg greeting"
   expect_false("client" %in% names(formals(function(x) {})))
 })
 
-test_that("chat_mod_server() calls zero-arg greeting on chat_greeting_requested", {
+test_that("chat_server() calls zero-arg greeting on chat_greeting_requested", {
   called <- FALSE
+  client <- mock_chat_client()
+  greeting <- function() {
+    called <<- TRUE
+    "## Hello"
+  }
   suppress_restore_warnings(
     shiny::testServer(
-      chat_mod_server,
-      args = list(
-        client = mock_chat_client(),
-        greeting = function() {
-          called <<- TRUE
-          "## Hello"
-        }
-      ),
+      function(input, output, session) {
+        chat_server("chat", client, greeting = greeting, session = session)
+      },
       {
         expect_false(called)
         session$setInputs(chat_greeting_requested = 1L)
@@ -309,18 +309,18 @@ test_that("chat_mod_server() calls zero-arg greeting on chat_greeting_requested"
   )
 })
 
-test_that("chat_mod_server() zero-arg greeting is not called without input trigger", {
+test_that("chat_server() zero-arg greeting is not called without input trigger", {
   called <- FALSE
+  client <- mock_chat_client()
+  greeting <- function() {
+    called <<- TRUE
+    "## Hello"
+  }
   suppress_restore_warnings(
     shiny::testServer(
-      chat_mod_server,
-      args = list(
-        client = mock_chat_client(),
-        greeting = function() {
-          called <<- TRUE
-          "## Hello"
-        }
-      ),
+      function(input, output, session) {
+        chat_server("chat", client, greeting = greeting, session = session)
+      },
       {
         # No setInputs — observer must not fire
         expect_false(called)
@@ -329,18 +329,18 @@ test_that("chat_mod_server() zero-arg greeting is not called without input trigg
   )
 })
 
-test_that("chat_mod_server() calls one-arg greeting with a cloned client on chat_greeting_requested", {
+test_that("chat_server() calls one-arg greeting with a cloned client on chat_greeting_requested", {
   received_greeter <- NULL
+  client <- mock_chat_client()
+  greeting <- function(client) {
+    received_greeter <<- client
+    "## Hello"
+  }
   suppress_restore_warnings(
     shiny::testServer(
-      chat_mod_server,
-      args = list(
-        client = mock_chat_client(),
-        greeting = function(client) {
-          received_greeter <<- client
-          "## Hello"
-        }
-      ),
+      function(input, output, session) {
+        chat_server("chat", client, greeting = greeting, session = session)
+      },
       {
         session$setInputs(chat_greeting_requested = 1L)
         expect_true(inherits(received_greeter, "Chat"))
@@ -349,23 +349,27 @@ test_that("chat_mod_server() calls one-arg greeting with a cloned client on chat
   )
 })
 
-test_that("chat_mod_server() one-arg greeting receives a client with empty turns", {
+test_that("chat_server() one-arg greeting receives a client with empty turns", {
   received_turns <- NULL
   client_with_turns <- mock_chat_client()
   client_with_turns$set_turns(list(list(
     role = "user",
     content = "prior message"
   )))
+  greeting <- function(client) {
+    received_turns <<- client$get_turns()
+    "## Hello"
+  }
   suppress_restore_warnings(
     shiny::testServer(
-      chat_mod_server,
-      args = list(
-        client = client_with_turns,
-        greeting = function(client) {
-          received_turns <<- client$get_turns()
-          "## Hello"
-        }
-      ),
+      function(input, output, session) {
+        chat_server(
+          "chat",
+          client_with_turns,
+          greeting = greeting,
+          session = session
+        )
+      },
       {
         session$setInputs(chat_greeting_requested = 1L)
         expect_equal(length(received_turns), 0L)
@@ -374,7 +378,7 @@ test_that("chat_mod_server() one-arg greeting receives a client with empty turns
   )
 })
 
-test_that("chat_mod_server() one-arg greeting does not clear original client turns", {
+test_that("chat_server() one-arg greeting does not clear original client turns", {
   client_with_turns <- mock_chat_client()
   client_with_turns$set_turns(list(list(
     role = "user",
@@ -382,11 +386,14 @@ test_that("chat_mod_server() one-arg greeting does not clear original client tur
   )))
   suppress_restore_warnings(
     shiny::testServer(
-      chat_mod_server,
-      args = list(
-        client = client_with_turns,
-        greeting = function(client) "## Hello"
-      ),
+      function(input, output, session) {
+        chat_server(
+          "chat",
+          client_with_turns,
+          greeting = function(client) "## Hello",
+          session = session
+        )
+      },
       {
         session$setInputs(chat_greeting_requested = 1L)
         expect_equal(length(client_with_turns$get_turns()), 1L)
@@ -395,12 +402,14 @@ test_that("chat_mod_server() one-arg greeting does not clear original client tur
   )
 })
 
-test_that("chat_mod_server() does not error with static string greeting", {
+test_that("chat_server() does not error with static string greeting", {
+  client <- mock_chat_client()
   expect_no_error(
     suppress_restore_warnings(
       shiny::testServer(
-        chat_mod_server,
-        args = list(client = mock_chat_client(), greeting = "## Static"),
+        function(input, output, session) {
+          chat_server("chat", client, greeting = "## Static", session = session)
+        },
         {}
       )
     )

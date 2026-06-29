@@ -149,7 +149,7 @@ error_result <- ContentToolResult(
 contents_shinychat(error_result)
 ```
 
-When you use `chat_app()` or the chat UI module via `chat_mod_ui()` and `chat_mod_server()`, shinychat automatically handles tool requests and results, displaying them in the chat interface.
+When you use `chat_app()` or `chat_server()`, shinychat automatically handles tool requests and results, displaying them in the chat interface.
 
 On the other hand, if you're using `chat_ui()` and calling `chat_append()` to stream the chat output, you'll need to make sure that ellmer streams tool requests and results to shinychat by setting `stream = "content"` in the `$stream_async()` call.
 

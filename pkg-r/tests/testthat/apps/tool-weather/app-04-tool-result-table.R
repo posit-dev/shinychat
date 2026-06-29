@@ -37,7 +37,7 @@ get_weather_forecast <- tool(
 
 ui <- function(req) {
   page_fillable(
-    chat_mod_ui("chat")
+    chat_ui("chat")
   )
 }
 
@@ -45,7 +45,7 @@ server <- function(input, output, session) {
   client <- ellmer::chat("openai/gpt-4.1-nano")
   # client <- ellmer::chat_ollama(model = "mistral-nemo")
   client$register_tool(get_weather_forecast)
-  chat_mod_server("chat", client)
+  chat_server("chat", client)
 }
 
 shinyApp(ui, server, enableBookmarking = "url")

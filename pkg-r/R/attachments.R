@@ -97,13 +97,16 @@ validate_attachment_payload_size <- function(
 }
 
 # Resolve `allow_attachments` into the allow/accept attribute pair.
-# `allow` is NA (bare attribute) or NULL (omit); `accept` is a CSV or NULL.
+# `allow` is NA (bare), "false" (explicit disable), or NULL (omit/defer); `accept` is a CSV or NULL.
 resolve_attachment_attrs <- function(allow_attachments) {
+  if (is.null(allow_attachments)) {
+    return(list(allow = NULL, accept = NULL))
+  }
   if (isTRUE(allow_attachments)) {
     return(list(allow = NA, accept = NULL))
   }
   if (isFALSE(allow_attachments)) {
-    return(list(allow = NULL, accept = NULL))
+    return(list(allow = "false", accept = NULL))
   }
   if (is.character(allow_attachments)) {
     invalid <- setdiff(allow_attachments, attachment_types()$supported)
@@ -115,9 +118,10 @@ resolve_attachment_attrs <- function(allow_attachments) {
         )
       )
     }
-    # An empty vector means "no types accepted" -> treat as disabled.
+    # An empty vector means "no types accepted" -> explicitly disabled so the
+    # server's update_upload doesn't re-enable it.
     if (length(allow_attachments) == 0) {
-      return(list(allow = NULL, accept = NULL))
+      return(list(allow = "false", accept = NULL))
     }
     return(list(allow = NA, accept = paste(allow_attachments, collapse = ",")))
   }

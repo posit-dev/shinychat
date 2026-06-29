@@ -37,7 +37,7 @@ test_that("resolve_attachment_attrs handles bool, subset, and errors", {
   expect_equal(resolve_attachment_attrs(TRUE), list(allow = NA, accept = NULL))
   expect_equal(
     resolve_attachment_attrs(FALSE),
-    list(allow = NULL, accept = NULL)
+    list(allow = "false", accept = NULL)
   )
   expect_equal(
     resolve_attachment_attrs("application/pdf"),
@@ -49,7 +49,7 @@ test_that("resolve_attachment_attrs handles bool, subset, and errors", {
   )
   expect_equal(
     resolve_attachment_attrs(character(0)),
-    list(allow = NULL, accept = NULL)
+    list(allow = "false", accept = NULL)
   )
   expect_error(
     resolve_attachment_attrs("application/msword"),
@@ -334,7 +334,7 @@ test_that("chat_ui emits attachment attributes", {
   )
 
   html_off <- as.character(chat_ui("chat", allow_attachments = FALSE))
-  expect_false(grepl("allow-attachments", html_off))
+  expect_match(html_off, "allow-attachments=\"false\"", fixed = TRUE)
   # max-attachment-size is emitted unconditionally (mirrors Python).
   expect_match(html_off, "max-attachment-size")
 })
