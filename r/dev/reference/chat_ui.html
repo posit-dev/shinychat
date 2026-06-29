@@ -83,9 +83,9 @@ enter new messages.</p>
 <span>  height <span class="op">=</span> <span class="st">"auto"</span>,</span>
 <span>  fill <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  icon_assistant <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  enable_cancel <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  enable_cancel <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  submit_key <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"enter"</span>, <span class="st">"enter+modifier"</span><span class="op">)</span>,</span>
-<span>  allow_attachments <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  allow_attachments <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  footer <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -150,12 +150,13 @@ Can be HTML or a tag in the form of <code><a href="https://rstudio.github.io/htm
 
 
 <dt id="arg-enable-cancel">enable_cancel<a class="anchor" aria-label="anchor" href="#arg-enable-cancel"></a></dt>
-<dd><p>If <code>TRUE</code>, show a stop button during streaming that
+<dd><p>Whether to show a stop button during streaming that
 allows the user to cancel the in-progress response. When using
-<code><a href="chat_app.html">chat_mod_server()</a></code>, cancellation is wired up automatically. For manual
-usage with <code>chat_ui()</code>, observe <code>input$&lt;id&gt;_cancel</code> to handle cancellation
-(e.g., by calling <code>ctrl$cancel()</code> on an ellmer <code>stream_controller()</code>).
-Defaults to <code>FALSE</code>.</p></dd>
+<code><a href="chat_app.html">chat_server()</a></code>, cancellation is wired up automatically and this defaults
+to <code>NULL</code> (let the server decide). For manual usage without
+<code><a href="chat_app.html">chat_server()</a></code>, set <code>TRUE</code> or <code>FALSE</code> explicitly and observe
+<code>input$&lt;id&gt;_cancel</code> to handle cancellation (e.g., by calling
+<code>ctrl$cancel()</code> on an ellmer <code>stream_controller()</code>).</p></dd>
 
 
 <dt id="arg-submit-key">submit_key<a class="anchor" aria-label="anchor" href="#arg-submit-key"></a></dt>
@@ -167,11 +168,13 @@ adds a newline.</p></dd>
 
 <dt id="arg-allow-attachments">allow_attachments<a class="anchor" aria-label="anchor" href="#arg-allow-attachments"></a></dt>
 <dd><p>Controls the file-attachment affordance (an attach
-button, plus clipboard paste and drag-and-drop) in the chat input. Pass
-<code>TRUE</code> to accept all supported types (PNG, JPEG, GIF, WebP, PDF, and common
-text/code files such as Markdown, plain text, CSV, JSON, and source files),
-<code>FALSE</code> to disable, or a character vector of MIME types to
-restrict what is accepted (each must be one of the supported types).</p>
+button, plus clipboard paste and drag-and-drop) in the chat input.
+<code>NULL</code> (default) defers to <code><a href="chat_app.html">chat_server()</a></code>, which enables attachments
+automatically. Pass <code>TRUE</code> to accept all supported types (PNG, JPEG, GIF,
+WebP, PDF, and common text/code files such as Markdown, plain text, CSV,
+JSON, and source files), <code>FALSE</code> to disable, or a character vector of MIME
+types to restrict what is accepted (each must be one of the supported
+types).</p>
 <p>The shape of <code>input$&lt;id&gt;_user_input</code> is determined by this argument, so it
 is predictable for a given app. When attachments are disabled (the
 default), it is the typed text as a character string, exactly as before.
@@ -230,8 +233,8 @@ fresh one.</p>
 <p><strong><code>greeting_dismissed</code> input.</strong> When the user dismisses the greeting,
 <code>input$&lt;id&gt;_greeting_dismissed</code> fires with a <code>Date.now()</code> timestamp. If the
 greeting is later cleared after being dismissed, the input resets to <code>NULL</code>.
-If you use <code><a href="chat_app.html">chat_mod_server()</a></code>, you can access the <code>greeting_dismissed</code>
-reactive from the returned module value instead of the raw namespaced input
+If you use <code><a href="chat_app.html">chat_server()</a></code>, you can access the <code>greeting_dismissed</code>
+reactive from the returned value instead of the raw namespaced input
 string.</p>
     </div>
     <div class="section level2">

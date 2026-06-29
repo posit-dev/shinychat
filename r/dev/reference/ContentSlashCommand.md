@@ -82,6 +82,6 @@ The LLM sees `"Say hello to world"`, but on restore the chat UI shows
 
 ## See also
 
-[`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+[`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
 for registering slash commands via the `slash_command()` method on the
-returned module object.
+returned object.

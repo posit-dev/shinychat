@@ -386,7 +386,7 @@ Screenshot of a chatbot embedded in a card with a header and tooltip.
 Slash commands give users discoverable shortcuts — like `/search`,
 `/clear`, or `/help` — that run a handler you define on the server.
 Register commands on the object returned by
-[`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md),
+[`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md),
 using its `slash_command()` method. When a user runs a command, its
 handler fires instead of the text being sent to the model, and what
 happens next is entirely up to the handler.
@@ -422,12 +422,12 @@ library(bslib)
 library(shinychat)
 
 ui <- page_fillable(
-  chat_mod_ui("chat", placeholder = "Type / for commands, or chat away...")
+  chat_ui("chat", placeholder = "Type / for commands, or chat away...")
 )
 
 server <- function(input, output, session) {
   client <- ellmer::chat_openai(system_prompt = "You are a helpful assistant.")
-  chat <- chat_mod_server("chat", client = client)
+  chat <- chat_server("chat", client = client)
 
   chat$slash_command("search", "Search the docs", function(content) {
     # In practice, retrieve relevant documents here (e.g., via a vector DB)
@@ -513,10 +513,12 @@ message.
 - Slash command messages are restored faithfully when a bookmarked app
   is reopened.
 
-Slash commands are currently available only through the chat module
-([`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)),
-not when building a custom UI with
+Slash commands are currently available only through
+[`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md),
+not when building a fully custom chat loop with
 [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
+and
+[`chat_append()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_append.md)
 directly.
 
 ## Stream cancellation
@@ -527,15 +529,14 @@ during streaming. Users can also press Escape while the chat has focus
 to cancel the current response. Any partial response already received is
 preserved in the chat history.
 
-### Using the chat module (recommended)
+### Using `chat_server()` (recommended)
 
-The easiest way to add cancellation support is to use the
-[`chat_mod_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+Pass `enable_cancel = TRUE` to
+[`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
 and
-[`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
-functions. The module handles everything automatically — the stop button
-is shown during streaming and wired up internally, with no extra code
-required.
+[`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+handles everything automatically — the stop button is shown during
+streaming and the cancel input is wired up internally.
 
 ``` r
 
@@ -545,12 +546,12 @@ library(shinychat)
 library(ellmer)
 
 ui <- page_fillable(
-  chat_mod_ui("chat")
+  chat_ui("chat", enable_cancel = TRUE)
 )
 
 server <- function(input, output, session) {
   chat <- chat_anthropic(system_prompt = "You are a helpful assistant.")
-  chat_mod_server("chat", client = chat)
+  chat_server("chat", client = chat)
 }
 
 shinyApp(ui, server)
@@ -558,10 +559,11 @@ shinyApp(ui, server)
 
 ### Manual approach
 
-If you are building a custom chat UI with
+If you are building a fully custom chat loop with
 [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
-directly, you can enable cancellation by setting `enable_cancel = TRUE`
-and wiring up the cancel input in your server function.
+and
+[`chat_append()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_append.md)
+directly, you can wire up cancellation yourself.
 
 The key steps are:
 
@@ -617,15 +619,14 @@ PDFs, and text files alongside their messages. When attachments are
 enabled, the chat input shows a file picker button and also accepts
 drag-and-drop or clipboard paste.
 
-### Using the chat module (recommended)
+### Using `chat_server()` (recommended)
 
-The
-[`chat_mod_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+Pass `allow_attachments = TRUE` to
+[`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
 and
-[`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
-functions enable file attachments by default. Uploaded files are
-automatically converted to ellmer content objects and sent to the model
-— no extra code needed.
+[`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+handles the rest — uploaded files are automatically converted to ellmer
+content objects and sent to the model.
 
 ``` r
 
@@ -635,12 +636,12 @@ library(shinychat)
 library(ellmer)
 
 ui <- page_fillable(
-  chat_mod_ui("chat")
+  chat_ui("chat", allow_attachments = TRUE)
 )
 
 server <- function(input, output, session) {
   chat <- chat_anthropic(system_prompt = "You are a helpful assistant.")
-  chat_mod_server("chat", client = chat)
+  chat_server("chat", client = chat)
 }
 
 shinyApp(ui, server)

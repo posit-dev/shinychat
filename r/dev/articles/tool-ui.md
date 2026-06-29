@@ -79,10 +79,8 @@ message:
 
 When you use
 [`chat_app()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
-or the chat UI module via
-[`chat_mod_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
-and
-[`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md),
+or
+[`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md),
 shinychat automatically handles tool requests and results, displaying
 them in the chat interface.
 

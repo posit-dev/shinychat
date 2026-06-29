@@ -23,9 +23,9 @@ chat_ui(
   height = "auto",
   fill = TRUE,
   icon_assistant = NULL,
-  enable_cancel = FALSE,
+  enable_cancel = NULL,
   submit_key = c("enter", "enter+modifier"),
-  allow_attachments = FALSE,
+  allow_attachments = NULL,
   footer = NULL
 )
 ```
@@ -101,13 +101,15 @@ chat_ui(
 
 - enable_cancel:
 
-  If `TRUE`, show a stop button during streaming that allows the user to
+  Whether to show a stop button during streaming that allows the user to
   cancel the in-progress response. When using
-  [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md),
-  cancellation is wired up automatically. For manual usage with
-  `chat_ui()`, observe `input$<id>_cancel` to handle cancellation (e.g.,
-  by calling `ctrl$cancel()` on an ellmer `stream_controller()`).
-  Defaults to `FALSE`.
+  [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md),
+  cancellation is wired up automatically and this defaults to `NULL`
+  (let the server decide). For manual usage without
+  [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md),
+  set `TRUE` or `FALSE` explicitly and observe `input$<id>_cancel` to
+  handle cancellation (e.g., by calling `ctrl$cancel()` on an ellmer
+  `stream_controller()`).
 
 - submit_key:
 
@@ -119,11 +121,14 @@ chat_ui(
 - allow_attachments:
 
   Controls the file-attachment affordance (an attach button, plus
-  clipboard paste and drag-and-drop) in the chat input. Pass `TRUE` to
-  accept all supported types (PNG, JPEG, GIF, WebP, PDF, and common
-  text/code files such as Markdown, plain text, CSV, JSON, and source
-  files), `FALSE` to disable, or a character vector of MIME types to
-  restrict what is accepted (each must be one of the supported types).
+  clipboard paste and drag-and-drop) in the chat input. `NULL` (default)
+  defers to
+  [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md),
+  which enables attachments automatically. Pass `TRUE` to accept all
+  supported types (PNG, JPEG, GIF, WebP, PDF, and common text/code files
+  such as Markdown, plain text, CSV, JSON, and source files), `FALSE` to
+  disable, or a character vector of MIME types to restrict what is
+  accepted (each must be one of the supported types).
 
   The shape of `input$<id>_user_input` is determined by this argument,
   so it is predictable for a given app. When attachments are disabled
@@ -195,9 +200,9 @@ greeting automatically triggers a fresh one.
 `input$<id>_greeting_dismissed` fires with a `Date.now()` timestamp. If
 the greeting is later cleared after being dismissed, the input resets to
 `NULL`. If you use
-[`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md),
-you can access the `greeting_dismissed` reactive from the returned
-module value instead of the raw namespaced input string.
+[`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md),
+you can access the `greeting_dismissed` reactive from the returned value
+instead of the raw namespaced input string.
 
 ## Thinking display
 

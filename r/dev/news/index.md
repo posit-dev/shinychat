@@ -4,15 +4,33 @@
 
 ### New features and improvements
 
+- Added
+  [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  as the new primary way to wire up server-side chat logic. It does the
+  same job as
+  [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_mod_ui.md)
+  but runs directly in the caller’s session scope rather than creating
+  its own module scope. If you’re already inside a
+  [`moduleServer()`](https://rdrr.io/pkg/shiny/man/moduleServer.html),
+  pass that session in — no extra nesting, no doubled namespaces.
+  [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_mod_ui.md)
+  and
+  [`chat_mod_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_mod_ui.md)
+  are now soft-deprecated in favor of
+  [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  and
+  [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md).
+  ([\#264](https://github.com/posit-dev/shinychat/issues/264))
+
 - Added file attachment support: users can upload images, PDFs, and text
   files alongside chat messages via a file picker button, drag-and-drop,
   or clipboard paste.
-  [`chat_mod_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)/[`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
-  enable attachments by default and automatically convert uploads into
+  [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  enables attachments by default and automatically convert uploads into
   ellmer `Content` objects for the model. For
-  [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md),
-  enable with `allow_attachments = TRUE` (or a MIME allow-list) and
-  splice `input$<id>_user_input` into chat methods with `!!!`. The
+  non-[`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  usage, enable with `allow_attachments = TRUE` (or a MIME allow-list)
+  and splice `input$<id>_user_input` into chat methods with `!!!`. The
   maximum combined attachment size defaults to approximately 30 MB and
   can be configured via the `SHINYCHAT_MAX_ATTACHMENT_SIZE` environment
   variable.
@@ -33,9 +51,7 @@
   ([\#239](https://github.com/posit-dev/shinychat/issues/239))
 
 - Added `submit_key` parameter to
-  [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
-  and
-  [`chat_mod_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md):
+  [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md):
   `"enter"` (default, Enter submits) or `"enter+modifier"`
   (Ctrl/Cmd+Enter submits, plain Enter inserts a line break). The input
   remains editable while a response is streaming — only submission is
@@ -54,19 +70,29 @@
   e.g. `chat$stream_async(!!!input$<id>_user_input)`.
 
 - The `last_input` reactive returned by
-  [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
   now mirrors the shape of `input$<id>_user_input`: a string when
   attachments are disabled, and a list of ellmer `Content` objects when
   enabled.
 
 ### Bug fixes
 
+- [`chat_app()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  no longer renders a close button or registers a
+  [`stopApp()`](https://rdrr.io/pkg/shiny/man/stopApp.html) observer
+  when deployed to a server. Both are now gated on
+  [`rlang::is_interactive()`](https://rlang.r-lib.org/reference/is_interactive.html),
+  preventing session crashes in multi-user deployments.
+  ([\#265](https://github.com/posit-dev/shinychat/issues/265))
+
 - The `dismissible` parameter of
   [`chat_greeting()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_greeting.md)
   has been renamed to `persistent` with an inverted value.
   `dismissible = FALSE` (greeting stays visible) is now
   `persistent = TRUE`. The old `dismissible` argument still works but
-  warns. ([\#260](https://github.com/posit-dev/shinychat/issues/260))
+  warns. When both `persistent` and `dismissible` are provided,
+  `persistent` now takes precedence silently rather than erroring.
+  ([\#260](https://github.com/posit-dev/shinychat/issues/260))
 
 - Fixed suggestion cards and the greeting overflowing the chat container
   in narrow spaces such as sidebars.
@@ -104,9 +130,9 @@ CRAN release: 2026-06-01
   [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
   to show a stop button that lets users cancel an in-progress AI
   response. Press the stop button or hit Escape to cancel.
-  [`chat_mod_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  [`chat_mod_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_mod_ui.md)
   enables cancellation by default, and
-  [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_mod_ui.md)
   handles the cancellation wiring automatically, using the stream
   cancellation features introduced in ellmer v0.4.1.
   ([\#221](https://github.com/posit-dev/shinychat/issues/221))
@@ -167,7 +193,7 @@ CRAN release: 2026-06-01
   content below the tool result card body.
   ([\#178](https://github.com/posit-dev/shinychat/issues/178))
 
-- [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+- [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_mod_ui.md)
   now returns a `set_client(new_client, sync = TRUE)` function for
   swapping the chat client used by the module at runtime. When
   `sync = TRUE` (the default), the new client inherits the current
@@ -176,7 +202,7 @@ CRAN release: 2026-06-01
   is deferred until the stream completes.
   ([\#227](https://github.com/posit-dev/shinychat/issues/227))
 
-- [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+- [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_mod_ui.md)
   now returns a `status` reactive that reports the current interaction
   state: `"idle"` when no response is in progress, or `"streaming"`
   while a response is actively being received.
@@ -218,7 +244,7 @@ CRAN release: 2025-11-20
 
 ### Breaking changes
 
-- [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+- [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_mod_ui.md)
   now returns a list of reactives for `last_input` and `last_turn`, as
   well functions to `update_user_input()`,
   [`append()`](https://rdrr.io/r/base/append.html) and `clear()` the
@@ -244,7 +270,7 @@ CRAN release: 2025-11-20
   feature is enabled by default in
   [`chat_app()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
   and the chat module
-  ([`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)).
+  ([`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_mod_ui.md)).
   When using
   [`chat_append()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_append.md)
   with
@@ -327,15 +353,15 @@ CRAN release: 2025-05-16
 
 - Added
   [`chat_app()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md),
-  [`chat_mod_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  [`chat_mod_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_mod_ui.md)
   and
-  [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md).
+  [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_mod_ui.md).
   [`chat_app()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
   takes an [ellmer](https://ellmer.tidyverse.org) chat client and
   launches a simple Shiny app interface with the chat.
-  [`chat_mod_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  [`chat_mod_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_mod_ui.md)
   and
-  [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_mod_ui.md)
   replicate the interface as a Shiny module, for easily adding a simple
   chat interface connected to a specific
   [ellmer](https://ellmer.tidyverse.org) chat client.

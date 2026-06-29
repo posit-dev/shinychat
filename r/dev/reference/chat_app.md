@@ -6,29 +6,23 @@ Note that these functions will mutate the input `client` object as you
 chat because your turns will be appended to the history.
 
 The app created by `chat_app()` is suitable for interactive use by a
-single user. For multi-user Shiny apps, use the Shiny module chat
-functions – `chat_mod_ui()` and `chat_mod_server()` – and be sure to
-create a new chat client for each user session.
+single user. For multi-user Shiny apps, use
+[`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
+and `chat_server()` and be sure to create a new chat client for each
+user session.
 
 ## Usage
 
 ``` r
 chat_app(client, ..., bookmark_store = "url", allow_attachments = TRUE)
 
-chat_mod_ui(
-  id,
-  ...,
-  client = deprecated(),
-  messages = NULL,
-  allow_attachments = TRUE
-)
-
-chat_mod_server(
+chat_server(
   id,
   client,
   greeting = NULL,
   bookmark_on_input = TRUE,
-  bookmark_on_response = TRUE
+  bookmark_on_response = TRUE,
+  session = shiny::getDefaultReactiveDomain()
 )
 ```
 
@@ -38,15 +32,12 @@ chat_mod_server(
 
   A chat object created by ellmer, e.g.
   [`ellmer::chat_openai()`](https://ellmer.tidyverse.org/reference/chat_openai.html)
-  and friends. This argument is deprecated in `chat_mod_ui()` because
-  the client state is now managed by `chat_mod_server()`.
+  and friends.
 
 - ...:
 
-  In `chat_app()`, additional arguments are passed to
-  [`shiny::shinyApp()`](https://rdrr.io/pkg/shiny/man/shinyApp.html). In
-  `chat_mod_ui()`, additional arguments are passed to
-  [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md).
+  Additional arguments passed to
+  [`shiny::shinyApp()`](https://rdrr.io/pkg/shiny/man/shinyApp.html).
 
 - bookmark_store:
 
@@ -61,11 +52,13 @@ chat_mod_server(
 - allow_attachments:
 
   Controls the file-attachment affordance (an attach button, plus
-  clipboard paste and drag-and-drop) in the chat input. Pass `TRUE` to
-  accept all supported types (PNG, JPEG, GIF, WebP, PDF, and common
-  text/code files such as Markdown, plain text, CSV, JSON, and source
-  files), `FALSE` to disable, or a character vector of MIME types to
-  restrict what is accepted (each must be one of the supported types).
+  clipboard paste and drag-and-drop) in the chat input. `NULL` (default)
+  defers to `chat_server()`, which enables attachments automatically.
+  Pass `TRUE` to accept all supported types (PNG, JPEG, GIF, WebP, PDF,
+  and common text/code files such as Markdown, plain text, CSV, JSON,
+  and source files), `FALSE` to disable, or a character vector of MIME
+  types to restrict what is accepted (each must be one of the supported
+  types).
 
   The shape of `input$<id>_user_input` is determined by this argument,
   so it is predictable for a given app. When attachments are disabled
@@ -87,14 +80,7 @@ chat_mod_server(
 
 - id:
 
-  The chat module ID.
-
-- messages:
-
-  Initial messages shown in the chat, used only when `client` (in
-  `chat_mod_ui()`) doesn't already contain turns. Passed to `messages`
-  in
-  [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md).
+  The ID of the chat element
 
 - greeting:
 
@@ -117,16 +103,18 @@ chat_mod_server(
   A logical value determines if the bookmark should be updated when the
   response stream completes. Default is `TRUE`.
 
+- session:
+
+  The Shiny session. Defaults to the current reactive domain.
+
 ## Value
 
 - `chat_app()` returns a
   [`shiny::shinyApp()`](https://rdrr.io/pkg/shiny/man/shinyApp.html)
   object.
 
-- `chat_mod_ui()` returns the UI for a shinychat module.
-
-- `chat_mod_server()` includes the shinychat module server logic, and
-  returns an environment containing:
+- `chat_server()` includes the shinychat server logic, and returns an
+  environment containing:
 
   - `last_input`: A reactive value containing the last user input (a
     string when attachments are disabled, a list of ellmer `Content`
@@ -205,13 +193,12 @@ chat_mod_server(
   is suitable for interactive use by a single user; do not use
   `chat_app()` in a multi-user Shiny app context.
 
-- `chat_mod_ui()`: A simple chat app module UI.
-
-- `chat_mod_server()`: A simple chat app module server.
+- `chat_server()`: Wire up batteries-included chat server logic in a
+  Shiny session.
 
 ## Greeting
 
-When `greeting` is a **function**, the module calls it each time the
+When `greeting` is a **function**, it is called each time the
 `greeting_requested` event fires — on first view when the chat is empty,
 and again after `clear(greeting = TRUE)`. The function should return a
 [`chat_greeting()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_greeting.md)
@@ -219,15 +206,14 @@ and again after `clear(greeting = TRUE)`. The function should return a
 [`chat_greeting()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_greeting.md)
 objects) are set once at init and do not regenerate.
 
-The module detects **named arguments** in the greeting function to
-decide what to pass. Currently the only recognized argument is `client`.
+The function signature determines what is passed. Currently the only
+recognized argument is `client`.
 
-**`function(client)`** (recommended). The module clones the `client`
-passed to `chat_mod_server()`, wipes its turn history, and passes the
-fresh clone as `client`. This avoids manually creating and configuring a
-separate client:
+**`function(client)`** (recommended). A clone of the `client` with its
+turn history wiped is passed as `client`. This avoids manually creating
+and configuring a separate client:
 
-    chat_mod_server("chat", client, greeting = function(client) {
+    chat_server("chat", client, greeting = function(client) {
       stream <- client$stream_async("Generate a short welcome message.")
       chat_greeting(stream)
     })
@@ -235,7 +221,7 @@ separate client:
 **`function()`** (zero arguments). You create and manage your own
 client:
 
-    chat_mod_server("chat", client, greeting = function() {
+    chat_server("chat", client, greeting = function() {
       greeter <- ellmer::chat_openai(model = "gpt-4o")
       stream <- greeter$stream_async("Generate a short welcome message.")
       chat_greeting(stream)
@@ -243,7 +229,7 @@ client:
 
 **Static value.** Set once; does not regenerate after `clear()`:
 
-    chat_mod_server("chat", client, greeting = "## Welcome!\n\nHow can I help?")
+    chat_server("chat", client, greeting = "## Welcome!\n\nHow can I help?")
 
 The returned `set_greeting()` helper is available for cases where you
 need to set a greeting outside the greeting lifecycle.
@@ -267,7 +253,7 @@ ui <- page_fillable(
   layout_columns(
     card(
       card_header("Chat with Claude"),
-      chat_mod_ui(
+      chat_ui(
         "claude",
         messages = list(
           "Hi! Use this chat interface to chat with Anthropic's `claude-3-5-sonnet`."
@@ -276,7 +262,7 @@ ui <- page_fillable(
     ),
     card(
       card_header("Chat with ChatGPT"),
-      chat_mod_ui(
+      chat_ui(
         "openai",
         messages = list(
           "Hi! Use this chat interface to chat with OpenAI's `gpt-4o`."
@@ -290,8 +276,8 @@ server <- function(input, output, session) {
   claude <- ellmer::chat_anthropic(model = "claude-3-5-sonnet-latest") # Requires ANTHROPIC_API_KEY
   openai <- ellmer::chat_openai(model = "gpt-4o") # Requires OPENAI_API_KEY
 
-  chat_mod_server("claude", claude)
-  chat_mod_server("openai", openai)
+  chat_server("claude", claude)
+  chat_server("openai", openai)
 }
 
 shinyApp(ui, server)
