@@ -483,6 +483,7 @@ class Chat:
     ) -> None:
         from chatlas import StreamController
         from shiny import reactive
+        from shiny.module import ResolvedId
         from shiny.session import session_context
 
         from ._chat_client import ChatClient
@@ -494,7 +495,7 @@ class Chat:
         self.client = chat_client
 
         controller = StreamController()
-        cancel_input_id = f"{self.id}_cancel"
+        cancel_input_id = ResolvedId(f"{self.id}_cancel")
 
         # Match the rest of `__init__`: create these effects under the chat's
         # own session so they attach correctly even when `Chat(...)` is
