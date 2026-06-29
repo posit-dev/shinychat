@@ -9,7 +9,7 @@ def test_auto_chat_cancel_uses_stream_controller(
 ) -> None:
     page.goto(local_app.url)
 
-    chat = ChatController(page, "chat")
+    chat = ChatController(page, "mod-chat")
     cancel_requested = controller.OutputCode(page, "cancel_requested")
 
     expect(chat.loc).to_be_visible(timeout=30_000)
