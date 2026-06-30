@@ -69,20 +69,22 @@ InMemoryConversationStore <- R6::R6Class(
     total_size = function(scope) {
       scope_data <- private$data[[scope]]
       if (is.null(scope_data) || length(scope_data) == 0L) {
-        return(0L)
+        return(0)
       }
       sum(
         vapply(
           scope_data,
-          function(r) {
-            nchar(jsonlite::toJSON(r, auto_unbox = TRUE), type = "bytes")
-          },
-          integer(1L)
+          function(r) record_json_size(r),
+          double(1L)
         )
       )
     }
   )
 )
+
+record_json_size <- function(record) {
+  as.double(nchar(jsonlite::toJSON(record, auto_unbox = TRUE), type = "bytes"))
+}
 
 CONV_ID_RE <- "^[A-Za-z0-9_-]{1,80}$"
 
@@ -228,13 +230,15 @@ FileConversationStore <- R6::R6Class(
     total_size = function(scope) {
       sdir <- private$scope_dir(scope)
       if (!dir.exists(sdir)) {
-        return(0L)
+        return(0)
       }
       files <- list.files(sdir, pattern = "\\.json$", full.names = TRUE)
       if (length(files) == 0L) {
-        return(0L)
+        return(0)
       }
-      as.integer(sum(file.size(files)))
+      # file.size() already returns double; do not narrow to integer, which
+      # overflows R's 32-bit integer range (caps total size at ~2GB).
+      sum(file.size(files))
     }
   )
 )

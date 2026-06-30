@@ -59,7 +59,9 @@ HistoryController <- R6::R6Class(
       private$title_enabled <- !is.null(title)
       private$session <- session
       private$max_store_bytes <- if (!is.null(options$max_store_mb)) {
-        as.integer(options$max_store_mb * 1024 * 1024)
+        # Bytes must stay a double: as.integer() overflows R's 32-bit integer
+        # range at max_store_mb >= 2048, yielding NA.
+        as.double(options$max_store_mb * 1024 * 1024)
       } else {
         NULL
       }
@@ -352,6 +354,20 @@ HistoryController <- R6::R6Class(
         private$evict_one(meta$id)
         total <- private$store$total_size(self$scope)
         if (total <= max_bytes) break
+      }
+      if (total > max_bytes) {
+        cli::cli_warn(
+          paste0(
+            "Chat history for this conversation exceeds {.arg max_store_mb} ",
+            "on its own; all other conversations in this scope were evicted ",
+            "but the store remains over budget."
+          ),
+          .frequency = "once",
+          .frequency_id = paste0(
+            "shinychat_history_over_budget_",
+            private$chat_id
+          )
+        )
       }
       invisible()
     },

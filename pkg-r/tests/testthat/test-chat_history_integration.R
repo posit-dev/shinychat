@@ -141,8 +141,10 @@ test_that("HistoryController evicts oldest when over max_store_bytes", {
   )
   controller$scope <- "user1"
 
-  # Trigger on_response with empty turns (saves a new record, then evicts old ones)
-  controller$on_response(list())
+  # Trigger on_response with empty turns (saves a new record, then evicts old
+  # ones). The active record alone still exceeds the (tiny) budget, so a
+  # once-per-chat_id warning fires too.
+  expect_warning(controller$on_response(list()), "exceeds")
 
   metas <- store$list("user1")
   ids <- vapply(metas, `[[`, character(1L), "id")
@@ -151,6 +153,81 @@ test_that("HistoryController evicts oldest when over max_store_bytes", {
   expect_false(old1$id %in% ids)
   expect_false(old2$id %in% ids)
   expect_true(controller$record$id %in% ids)
+})
+
+test_that("evict_if_needed warns once (not on every response) when the active conversation alone exceeds the quota", {
+  store <- InMemoryConversationStore$new()
+  rec <- new_conversation_record("active")
+  store$put("user1", rec)
+
+  client <- mock_chat_client()
+  controller <- HistoryController$new(
+    chat_id = "warn-once-test",
+    client = client,
+    options = history_options(store = store, max_store_mb = 1e-6, title = NULL),
+    session = shiny::MockShinySession$new()
+  )
+  controller$scope <- "user1"
+  controller$record <- rec
+
+  evict_if_needed <- controller$.__enclos_env__$private$evict_if_needed
+  expect_warning(evict_if_needed(), "exceeds")
+  # Same chat_id, still over budget: no second warning (cli's .frequency = "once").
+  expect_no_warning(evict_if_needed())
+})
+
+test_that("HistoryController does not warn when total fits after eviction", {
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+  controller <- HistoryController$new(
+    chat_id = "test-no-warn",
+    client = client,
+    options = history_options(store = store, max_store_mb = 10, title = NULL),
+    session = shiny::MockShinySession$new()
+  )
+  controller$scope <- "user1"
+
+  expect_no_warning(controller$on_response(list()))
+})
+
+test_that("max_store_mb large enough to overflow a 32-bit integer does not produce NA (regression)", {
+  # as.integer(2048 * 1024 * 1024) overflows .Machine$integer.max and yields
+  # NA, which previously broke the `total <= max_bytes` comparison.
+  client <- mock_chat_client()
+  controller <- HistoryController$new(
+    chat_id = "test",
+    client = client,
+    options = history_options(
+      store = InMemoryConversationStore$new(),
+      max_store_mb = 2048,
+      title = NULL
+    ),
+    session = shiny::MockShinySession$new()
+  )
+
+  max_bytes <- controller$.__enclos_env__$private$max_store_bytes
+  expect_false(is.na(max_bytes))
+  expect_equal(max_bytes, 2048 * 1024 * 1024)
+
+  controller$scope <- "user1"
+  expect_no_warning(expect_no_error(controller$on_response(list())))
+})
+
+test_that("FileConversationStore$total_size() does not overflow a 32-bit integer (regression)", {
+  store <- FileConversationStore$new(dir = withr::local_tempdir())
+  rec <- new_conversation_record("big")
+  store$put("user1", rec)
+
+  # as.integer(sum(file.size(files))) overflows past ~2GB and returns NA.
+  # Stub file.size() to simulate a scope whose files exceed that threshold.
+  testthat::local_mocked_bindings(
+    file.size = function(...) 3e9,
+    .package = "base"
+  )
+
+  total <- store$total_size("user1")
+  expect_false(is.na(total))
+  expect_equal(total, 3e9)
 })
 
 test_that("init waits for browser token when session$user is set (browser restore)", {
