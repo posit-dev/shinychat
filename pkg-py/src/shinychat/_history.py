@@ -243,7 +243,15 @@ class HistoryController:
     # -- save -----------------------------------------------------------
 
     async def on_response(self) -> None:
-        """Save trigger: a completed assistant response."""
+        """Save trigger: a completed assistant response.
+
+        Reads ``self.ui_offset`` near the top and writes it near the bottom,
+        with awaits (``store.put``, eviction, bookmark mint) in between. This
+        is safe without an explicit lock because Shiny serializes reactive
+        flushes behind a single process-wide ``reactive.lock()`` for the
+        full duration of effect execution, so two invocations of this effect
+        can never overlap.
+        """
         if self._is_replaying:
             return
         if self._suppress_next_save:
