@@ -18,10 +18,7 @@ async def test_connect_data_dir_wins(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     monkeypatch.setenv("CONNECT_CONTENT_DATA_DIR", str(tmp_path))
-    assert (
-        await resolve_history_dir()
-        == tmp_path / "shinychat-conversations"
-    )
+    assert await resolve_history_dir() == tmp_path / "shinychat-conversations"
 
 
 @pytest.mark.anyio
@@ -56,7 +53,4 @@ async def test_env_var_beats_bookmark_machinery(
 
 @pytest.mark.anyio
 async def test_local_fallback():
-    assert (
-        await resolve_history_dir()
-        == Path(".shinychat") / "conversations"
-    )
+    assert await resolve_history_dir() == Path(".shinychat") / "conversations"

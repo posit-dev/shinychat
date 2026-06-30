@@ -140,27 +140,31 @@ class HistoryOptions:
 
 def extend_record_linear(
     record: ConversationRecord,
-    turns: list[dict[str, Any]],
+    turn_groups: list[list[dict[str, Any]]],
     ui_messages: list[dict[str, Any]],
     *,
     ui_offset: int,
 ) -> None:
     """
-    Append turns beyond the record's current path as new linear nodes, and
-    attach the not-yet-saved UI messages (everything past `ui_offset`) to the
-    new nodes: each user message goes to the next new user-turn node; all
+    Append turn groups beyond the record's current path as new linear nodes,
+    and attach the not-yet-saved UI messages (everything past `ui_offset`) to
+    the new nodes: each user message goes to the next new user-turn node; all
     other messages go to the last appended node.
+
+    Each group is one or more turns that form a single exchange unit — e.g. a
+    tool-call round (assistant-request, user-result, assistant-text) is one
+    group, matching the single combined UI message produced by streaming.
     """
     existing = len(record.path_node_ids())
-    new_turns = turns[existing:]
-    if not new_turns:
+    new_groups = turn_groups[existing:]
+    if not new_groups:
         return
 
-    new_node_ids = [record.append_linear(t) for t in new_turns]
+    new_node_ids = [record.append_linear(g) for g in new_groups]
     user_nodes = [
         nid
         for nid in new_node_ids
-        if record.nodes[nid].turn.get("role") == "user"
+        if record.nodes[nid].turns[0].get("role") == "user"
     ]
 
     for message in ui_messages[ui_offset:]:
@@ -246,7 +250,7 @@ class HistoryController:
             return
         if self.scope is None:
             raise RuntimeError("HistoryController not initialized")
-        turns = self.adapter.get_turns_json()
+        turn_groups = self.adapter.get_turns_grouped()
         messages = self.chat._messages_for_bookmark()
 
         first_save = self.record is None
@@ -258,19 +262,24 @@ class HistoryController:
             # Without this guard, a post-switch no-op fire can re-capture app
             # state from the wrong conversation and overwrite persisted values.
             if (
-                len(turns) <= len(record.path_node_ids())
+                len(turn_groups) <= len(record.path_node_ids())
                 and len(messages) <= self.ui_offset
             ):
                 return
 
         if first_save:
-            self.record = new_conversation_record(title=fallback_title(turns))
+            turns_flat = self.adapter.get_turns_json()
+            self.record = new_conversation_record(
+                title=fallback_title(turns_flat)
+            )
             self.record.client_info = self.adapter.client_info()
 
         record = self.record
         if record is None:
             raise RuntimeError("HistoryController not initialized")
-        extend_record_linear(record, turns, messages, ui_offset=self.ui_offset)
+        extend_record_linear(
+            record, turn_groups, messages, ui_offset=self.ui_offset
+        )
         await self._capture_app_state(record)
         await self.store.put(self.scope, record)
         await self._evict_if_needed()
@@ -283,7 +292,8 @@ class HistoryController:
             await self.on_active_id_change(record.id)
 
         if first_save and self.title_enabled:
-            self._title_task = asyncio.create_task(self.retitle(turns))
+            turns_flat = self.adapter.get_turns_json()
+            self._title_task = asyncio.create_task(self.retitle(turns_flat))
             self._title_task.add_done_callback(title_task_done)
 
     async def retitle(self, turns: list[dict[str, Any]]) -> None:
@@ -334,10 +344,10 @@ class HistoryController:
         """Persist the active conversation if it has ever been saved."""
         if self.record is None or self.scope is None:
             return
-        turns = self.adapter.get_turns_json()
+        turn_groups = self.adapter.get_turns_grouped()
         messages = self.chat._messages_for_bookmark()
         extend_record_linear(
-            self.record, turns, messages, ui_offset=self.ui_offset
+            self.record, turn_groups, messages, ui_offset=self.ui_offset
         )
         await self._capture_app_state(self.record)
         await self.store.put(self.scope, self.record)
@@ -398,10 +408,12 @@ class HistoryController:
                 node = record.nodes[node_id]
                 stored = node.ui or [
                     {
-                        "role": node.turn.get("role", "assistant"),
+                        "role": node.turns[-1].get("role", "assistant"),
                         "segments": [
                             {
-                                "content": turn_fallback_markdown(node.turn),
+                                "content": turn_fallback_markdown(
+                                    node.turns[-1]
+                                ),
                                 "content_type": "markdown",
                             }
                         ],

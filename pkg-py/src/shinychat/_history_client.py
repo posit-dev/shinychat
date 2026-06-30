@@ -39,6 +39,12 @@ class TurnsAdapter:
             return [t.model_dump(mode="json") for t in turns]
         return list(turns)
 
+    def get_turns_grouped(self) -> list[list[dict[str, Any]]]:
+        turns = self.get_turns_json()
+        if not is_chatlas_chat_client(self._turns_client()):
+            return [[t] for t in turns]
+        return _group_chatlas_turns(turns)
+
     def set_turns_json(self, turns: list[dict[str, Any]]) -> None:
         raw = self._turns_client()
         if is_chatlas_chat_client(raw):
@@ -54,6 +60,49 @@ class TurnsAdapter:
             return {}
         provider = raw.provider
         return {"provider": provider.name, "model": provider.model}
+
+
+def _is_tool_result_turn(turn: dict[str, Any]) -> bool:
+    contents = turn.get("contents")
+    return (
+        turn.get("role") == "user"
+        and isinstance(contents, list)
+        and bool(contents)
+        and all(
+            isinstance(c, dict) and c.get("content_type") == "tool_result"
+            for c in contents
+        )
+    )
+
+
+def _group_chatlas_turns(
+    turns: list[dict[str, Any]],
+) -> list[list[dict[str, Any]]]:
+    groups: list[list[dict[str, Any]]] = []
+    i = 0
+    while i < len(turns):
+        t = turns[i]
+        if _is_tool_result_turn(t):
+            if groups:
+                groups[-1].append(t)
+            else:
+                groups.append([t])
+            i += 1
+        elif t.get("role") == "user":
+            groups.append([t])
+            i += 1
+        else:
+            group: list[dict[str, Any]] = [t]
+            i += 1
+            while i < len(turns):
+                nt = turns[i]
+                if _is_tool_result_turn(nt) or nt.get("role") == "assistant":
+                    group.append(nt)
+                    i += 1
+                else:
+                    break
+            groups.append(group)
+    return groups
 
 
 def as_turns_adapter(client: Any) -> TurnsAdapter:

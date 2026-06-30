@@ -24,7 +24,7 @@ def store(tmp_path: Path) -> FileConversationStore:
 @pytest.mark.anyio
 async def test_put_get_round_trip(store: FileConversationStore):
     rec = new_conversation_record(title="penguins")
-    rec.append_linear({"role": "user", "content": "hi"})
+    rec.append_linear([{"role": "user", "content": "hi"}])
     await store.put("alice", rec)
     got = await store.get("alice", rec.id)
     assert got == rec
@@ -92,9 +92,7 @@ async def test_put_is_atomic_no_partial_files(
     rec = new_conversation_record(title="t")
     await store.put("alice", rec)
     files = list((tmp_path / sanitize_scope("alice")).iterdir())
-    assert {f.name for f in files} == {
-        f"{rec.id}.json"
-    }  # no .tmp leftovers
+    assert {f.name for f in files} == {f"{rec.id}.json"}  # no .tmp leftovers
 
 
 def test_safe_conv_path_rejects_traversal(tmp_path: Path):
@@ -210,7 +208,7 @@ def mem_store() -> InMemoryConversationStore:
 @pytest.mark.anyio
 async def test_memory_put_get_round_trip(mem_store: InMemoryConversationStore):
     rec = new_conversation_record(title="penguins")
-    rec.append_linear({"role": "user", "content": "hi"})
+    rec.append_linear([{"role": "user", "content": "hi"}])
     await mem_store.put("alice", rec)
     got = await mem_store.get("alice", rec.id)
     assert got == rec
@@ -309,7 +307,7 @@ async def test_file_store_total_size_zero_for_missing_scope(tmp_path: Path):
 async def test_file_store_total_size_grows_with_put(tmp_path: Path):
     store = FileConversationStore(dir=tmp_path)
     rec = new_conversation_record(title="t")
-    rec.append_linear({"role": "user", "content": "hello world"})
+    rec.append_linear([{"role": "user", "content": "hello world"}])
     await store.put("alice", rec)
     size1 = await store.total_size("alice")
     assert size1 > 0
@@ -343,7 +341,7 @@ async def test_memory_total_size_grows_with_put(
     mem_store: InMemoryConversationStore,
 ):
     rec = new_conversation_record(title="t")
-    rec.append_linear({"role": "user", "content": "hello world"})
+    rec.append_linear([{"role": "user", "content": "hello world"}])
     await mem_store.put("alice", rec)
     size1 = await mem_store.total_size("alice")
     assert size1 > 0

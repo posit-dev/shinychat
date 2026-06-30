@@ -7,8 +7,8 @@ from shinychat._history_types import (
 )
 
 
-def turn(role: str, content: str) -> dict[str, object]:
-    return {"role": role, "content": content}
+def turn(role: str, content: str) -> list[dict[str, object]]:
+    return [{"role": role, "content": content}]
 
 
 def test_new_record_is_empty_draft():
@@ -37,12 +37,10 @@ def test_append_linear_builds_chain():
 
 
 def test_path_follows_current_leaf_not_all_nodes():
-    # Branch-ready: a sibling node off the path must not appear in path_turns()
     rec = new_conversation_record(title="t")
     n1 = rec.append_linear(turn("user", "hi"))
     rec.append_linear(turn("assistant", "v1"))
-    # simulate a future edit: add sibling under n1 and move the leaf
-    sibling = ConversationNode(parent=n1, turn=turn("assistant", "v2"))
+    sibling = ConversationNode(parent=n1, turns=turn("assistant", "v2"))
     rec.nodes["n_sib"] = sibling
     rec.current_leaf = "n_sib"
     assert [t["content"] for t in rec.path_turns()] == ["hi", "v2"]
@@ -66,10 +64,9 @@ def test_meta_property():
 
 def test_path_node_ids_raises_on_cycle():
     rec = new_conversation_record(title="cycle test")
-    # Manually construct two nodes whose parents form a cycle: a -> b -> a
-    rec.nodes["n_a"] = ConversationNode(parent="n_b", turn=turn("user", "a"))
+    rec.nodes["n_a"] = ConversationNode(parent="n_b", turns=turn("user", "a"))
     rec.nodes["n_b"] = ConversationNode(
-        parent="n_a", turn=turn("assistant", "b")
+        parent="n_a", turns=turn("assistant", "b")
     )
     rec.current_leaf = "n_b"
     with pytest.raises(ValueError, match="Cycle"):
@@ -78,15 +75,13 @@ def test_path_node_ids_raises_on_cycle():
 
 def test_append_linear_collision_safe():
     rec = new_conversation_record(title="collision test")
-    # Pre-insert a node with id "n_0005" to skip over
     rec.nodes["n_0005"] = ConversationNode(
-        parent=None, turn=turn("user", "pre-inserted")
+        parent=None, turns=turn("user", "pre-inserted")
     )
     rec.current_leaf = "n_0005"
     new_id = rec.append_linear(turn("assistant", "reply"))
     assert new_id == "n_0006"
-    # The pre-inserted node is still intact
-    assert rec.nodes["n_0005"].turn["content"] == "pre-inserted"
+    assert rec.nodes["n_0005"].turns[0]["content"] == "pre-inserted"
 
 
 def test_bookmark_state_id_round_trips():

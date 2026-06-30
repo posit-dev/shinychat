@@ -29,10 +29,12 @@ class ConversationMeta(BaseModel):
 
 class ConversationNode(BaseModel):
     parent: str | None = None
-    # Serialized turn (client-specific JSON, e.g. chatlas Turn.model_dump(mode="json"))
-    turn: dict[str, Any]
-    # Render cache: serialized StoredMessage dicts produced during this turn.
-    # None => re-render from `turn` on restore (lossy but never broken).
+    # One or more serialized turns forming a single exchange unit. A tool-call
+    # exchange (assistant-request, user-result, ..., assistant-text) is stored
+    # as one node so it maps 1:1 with the combined UI message from streaming.
+    turns: list[dict[str, Any]]
+    # Render cache: StoredMessage dicts produced during this exchange.
+    # None => re-render from turns on restore (lossy but never broken).
     ui: list[dict[str, Any]] | None = None
 
 
@@ -74,11 +76,15 @@ class ConversationRecord(BaseModel):
         return ids
 
     def path_turns(self) -> list[dict[str, Any]]:
-        return [self.nodes[node_id].turn for node_id in self.path_node_ids()]
+        return [
+            turn
+            for node_id in self.path_node_ids()
+            for turn in self.nodes[node_id].turns
+        ]
 
     def append_linear(
         self,
-        turn: dict[str, Any],
+        turns: list[dict[str, Any]],
         ui: list[dict[str, Any]] | None = None,
     ) -> str:
         existing = [
@@ -89,7 +95,7 @@ class ConversationRecord(BaseModel):
         seq = max(existing, default=0) + 1
         node_id = f"n_{seq:04d}"
         self.nodes[node_id] = ConversationNode(
-            parent=self.current_leaf, turn=turn, ui=ui
+            parent=self.current_leaf, turns=turns, ui=ui
         )
         self.current_leaf = node_id
         self.updated_at = utcnow()

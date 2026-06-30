@@ -22,65 +22,114 @@ def msg(role: str) -> dict[str, object]:
     }
 
 
-def test_extend_appends_only_new_turns_with_ui_by_role():
+def test_extend_appends_only_new_groups_with_ui_by_role():
     rec = new_conversation_record(title="t")
-    turns = [
-        {"role": "user", "content": "q1"},
-        {"role": "assistant", "content": "a1"},
+    groups = [
+        [{"role": "user", "content": "q1"}],
+        [{"role": "assistant", "content": "a1"}],
     ]
     extend_record_linear(
-        rec, turns, [msg("user"), msg("assistant")], ui_offset=0
+        rec, groups, [msg("user"), msg("assistant")], ui_offset=0
     )
     assert len(rec.nodes) == 2
     path = rec.path_node_ids()
+    assert rec.nodes[path[0]].turns == [{"role": "user", "content": "q1"}]
     assert rec.nodes[path[0]].ui == [msg("user")]
     assert rec.nodes[path[1]].ui == [msg("assistant")]
 
-    turns += [
-        {"role": "user", "content": "q2"},
-        {"role": "assistant", "content": "a2"},
+    groups += [
+        [{"role": "user", "content": "q2"}],
+        [{"role": "assistant", "content": "a2"}],
     ]
     all_msgs = [msg("user"), msg("assistant"), msg("user"), msg("assistant")]
-    extend_record_linear(rec, turns, all_msgs, ui_offset=2)
+    extend_record_linear(rec, groups, all_msgs, ui_offset=2)
     assert len(rec.nodes) == 4
     assert rec.nodes[rec.path_node_ids()[2]].ui == [msg("user")]
 
 
-def test_extend_attaches_extra_assistant_msgs_to_last_assistant_node():
+def test_extend_groups_tool_exchange_into_single_node():
+    user_turn = {
+        "role": "user",
+        "contents": [{"content_type": "text", "text": "weather?"}],
+    }
+    asst_req = {
+        "role": "assistant",
+        "contents": [
+            {
+                "content_type": "tool_request",
+                "id": "x",
+                "name": "get_weather",
+                "arguments": {},
+            }
+        ],
+    }
+    user_res = {
+        "role": "user",
+        "contents": [
+            {"content_type": "tool_result", "id": "x", "value": "Sunny"}
+        ],
+    }
+    asst_final = {
+        "role": "assistant",
+        "contents": [{"content_type": "text", "text": "It's sunny."}],
+    }
+
+    groups = [
+        [user_turn],
+        [asst_req, user_res, asst_final],
+    ]
+    msgs = [msg("user"), msg("assistant")]
     rec = new_conversation_record(title="t")
-    turns = [
-        {"role": "user", "content": "q"},
-        {"role": "assistant", "content": "a"},
+    extend_record_linear(rec, groups, msgs, ui_offset=0)
+
+    assert len(rec.nodes) == 2
+    path = rec.path_node_ids()
+
+    user_node = rec.nodes[path[0]]
+    asst_node = rec.nodes[path[1]]
+
+    assert len(user_node.turns) == 1
+    assert len(asst_node.turns) == 3
+    assert user_node.ui == [msg("user")]
+    assert asst_node.ui == [msg("assistant")]
+
+    # path_turns() must flatten back to all 4 original turns
+    assert rec.path_turns() == [user_turn, asst_req, user_res, asst_final]
+
+
+def test_extend_attaches_extra_assistant_msgs_to_last_node():
+    rec = new_conversation_record(title="t")
+    groups = [
+        [{"role": "user", "content": "q"}],
+        [{"role": "assistant", "content": "a"}],
     ]
     msgs = [
         msg("user"),
         msg("assistant"),
         msg("assistant"),
-    ]  # e.g. tool display
-    extend_record_linear(rec, turns, msgs, ui_offset=0)
+    ]
+    extend_record_linear(rec, groups, msgs, ui_offset=0)
     path = rec.path_node_ids()
     assert rec.nodes[path[1]].ui == [msg("assistant"), msg("assistant")]
 
 
-def test_extend_noop_when_no_new_turns():
+def test_extend_noop_when_no_new_groups():
     rec = new_conversation_record(title="t")
-    turns = [{"role": "user", "content": "q"}]
-    extend_record_linear(rec, turns, [msg("user")], ui_offset=0)
+    groups = [[{"role": "user", "content": "q"}]]
+    extend_record_linear(rec, groups, [msg("user")], ui_offset=0)
     before = rec.model_dump()
-    extend_record_linear(rec, turns, [msg("user")], ui_offset=1)
+    extend_record_linear(rec, groups, [msg("user")], ui_offset=1)
     assert rec.model_dump() == before
 
 
 def test_extend_with_no_new_ui_messages_leaves_ui_none():
     rec = new_conversation_record(title="t")
-    turns = [
-        {"role": "user", "content": "q"},
-        {"role": "assistant", "content": "a"},
+    groups = [
+        [{"role": "user", "content": "q"}],
+        [{"role": "assistant", "content": "a"}],
     ]
     msgs = [msg("user"), msg("assistant")]
-    extend_record_linear(
-        rec, turns, msgs, ui_offset=2
-    )  # all ui already attached elsewhere
+    extend_record_linear(rec, groups, msgs, ui_offset=2)
     assert len(rec.nodes) == 2
     assert all(node.ui is None for node in rec.nodes.values())
 
@@ -108,6 +157,9 @@ class _FakeAdapter:
             {"role": "user", "content": "hello"},
             {"role": "assistant", "content": "hi there"},
         ]
+
+    def get_turns_grouped(self) -> list[list[Any]]:
+        return [[t] for t in self.get_turns_json()]
 
     def set_turns_json(self, turns: list[Any]) -> None:
         pass
