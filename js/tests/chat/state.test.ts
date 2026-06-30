@@ -1676,6 +1676,38 @@ describe("chatReducer", () => {
     })
   })
 
+  describe("update_siblings", () => {
+    it("sets siblings on the targeted message and leaves others untouched", () => {
+      const msg0 = makeAssistantMsg({ id: "m0", role: "user", content: "q1" })
+      const msg1 = makeAssistantMsg({ id: "m1", content: "a1" })
+      const state = makeState({ messages: [msg0, msg1] })
+      const next = chatReducer(state, {
+        type: "update_siblings",
+        data: { 0: { index: 1, total: 2 } },
+      })
+      expect(next.messages[0]!.siblings).toEqual({ index: 1, total: 2 })
+      expect(next.messages[1]!.siblings).toBeUndefined()
+      expect(next.messages[1]).toBe(state.messages[1])
+    })
+
+    it("clears siblings from a message no longer present in a sparse data map", () => {
+      const msg0 = makeAssistantMsg({
+        id: "m0",
+        role: "user",
+        content: "q1",
+        siblings: { index: 1, total: 2 },
+      })
+      const msg1 = makeAssistantMsg({ id: "m1", content: "a1" })
+      const state = makeState({ messages: [msg0, msg1] })
+      const next = chatReducer(state, {
+        type: "update_siblings",
+        data: {},
+      })
+      expect(next.messages[0]!.siblings).toBeUndefined()
+      expect(next.messages[1]!.siblings).toBeUndefined()
+    })
+  })
+
   it("history_navigate is a state no-op (handled imperatively in ChatApp)", () => {
     const state = chatReducer(initialState, {
       type: "history_update",

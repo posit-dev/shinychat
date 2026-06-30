@@ -56,6 +56,8 @@ function createMockTransport(): ChatTransport {
     sendHistoryNew: vi.fn(),
     sendHistoryRename: vi.fn(),
     sendHistoryDelete: vi.fn(),
+    sendMessageEdit: vi.fn(),
+    sendMessageNavigate: vi.fn(),
     onMessage: vi.fn(() => () => {}),
   }
 }

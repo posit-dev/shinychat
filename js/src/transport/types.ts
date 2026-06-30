@@ -53,6 +53,7 @@ export type MessagePayload = {
   icon?: string
   segments: MessagePayloadSegment[]
   attachments?: AttachmentPayload[]
+  siblings?: { index: number; total: number }
 }
 
 export type ChatAction =
@@ -115,6 +116,10 @@ export type ChatAction =
       /** Used by bookmark-mode switches, where a soft URL update isn't sufficient. */
       reload?: boolean
     }
+  | {
+      type: "update_siblings"
+      data: Record<number, { index: number; total: number }>
+    }
 
 export type ShinyChatEnvelope = {
   id: string
@@ -167,6 +172,12 @@ export interface ChatTransport {
   sendHistoryNew(id: string): void
   sendHistoryRename(id: string, convId: string, title: string): void
   sendHistoryDelete(id: string, convId: string): void
+  sendMessageEdit(id: string, index: number, content: string): void
+  sendMessageNavigate(
+    id: string,
+    index: number,
+    direction: "prev" | "next",
+  ): void
 }
 
 /** Shiny-specific lifecycle: DOM binding, dependency rendering, error display. */

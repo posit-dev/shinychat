@@ -5,7 +5,12 @@ import dataclasses
 import warnings
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal
 
-from ._chat_types import HistoryNavigateAction, HistoryUpdateAction
+from ._chat_types import (
+    HistoryNavigateAction,
+    HistoryUpdateAction,
+    UpdateInputAction,
+    UpdateSiblingsAction,
+)
 from ._history_bookmark import delete_bookmark_state, extract_state_id
 from ._history_client import (
     TurnsAdapter,
@@ -42,6 +47,8 @@ class HistoryInputIds:
     new: ResolvedId
     rename: ResolvedId
     delete: ResolvedId
+    message_edit: ResolvedId
+    message_navigate: ResolvedId
 
     @classmethod
     def for_chat(cls, chat_id: ResolvedId) -> HistoryInputIds:
@@ -55,6 +62,8 @@ class HistoryInputIds:
             new=RID(f"{chat_id}_history_new"),
             rename=RID(f"{chat_id}_history_rename"),
             delete=RID(f"{chat_id}_history_delete"),
+            message_edit=RID(f"{chat_id}_message_edit"),
+            message_navigate=RID(f"{chat_id}_message_navigate"),
         )
 
     def all_ids(self) -> list[ResolvedId]:
@@ -299,6 +308,7 @@ class HistoryController:
             await self.on_response_saved(record)
         self.ui_offset = len(messages)
         await self.send_history_update()
+        await self._send_sibling_metadata()
 
         if first_save and self.on_active_id_change is not None:
             await self.on_active_id_change(record.id)
@@ -415,6 +425,7 @@ class HistoryController:
         await self.replay_ui(target)
         self._restore_app_state(target.values or {})
         self.record = target
+        await self._send_sibling_metadata()
         if self.on_active_id_change is not None:
             await self.on_active_id_change(target.id)
         await self.send_history_update()
@@ -489,6 +500,81 @@ class HistoryController:
             if self.on_active_id_change is not None:
                 await self.on_active_id_change(None)
         await self.send_history_update()
+
+    # -- branch navigation --------------------------------------------------
+
+    async def _send_sibling_metadata(self) -> None:
+        if self.record is None:
+            return
+        sibling_meta = self.record.path_sibling_metadata()
+        if not sibling_meta:
+            return
+        data: dict[int, dict[str, int]] = {}
+        msg_idx = 0
+        for nid in self.record.path_node_ids():
+            n_ui = len(self.record.nodes[nid].ui or [])
+            if nid in sibling_meta:
+                idx, total = sibling_meta[nid]
+                data[msg_idx] = {"index": idx, "total": total}
+            msg_idx += n_ui
+        if data:
+            action: UpdateSiblingsAction = {
+                "type": "update_siblings",
+                "data": data,
+            }
+            await self.chat._send_action(action)
+
+    async def handle_navigate(self, message_index: int, direction: str) -> None:
+        if direction not in ("prev", "next"):
+            return
+        if self.record is None:
+            return
+        node_id, _ = self.record.node_id_for_message_index(message_index)
+        siblings = self.record.siblings_of(node_id)
+        current_pos = siblings.index(node_id)
+
+        if direction == "prev":
+            if current_pos == 0:
+                return
+            target = siblings[current_pos - 1]
+        else:
+            if current_pos == len(siblings) - 1:
+                return
+            target = siblings[current_pos + 1]
+
+        leaf = self.record.subtree_leaf(target)
+        self.record.current_leaf = leaf
+        self.adapter.set_turns_json(self.record.path_turns())
+        await self.replay_ui(self.record)
+        self._suppress_next_save = False
+        await self._send_sibling_metadata()
+        if self.partition is None:
+            raise RuntimeError("HistoryController not initialized")
+        await self.store.put(self.partition, self.record)
+        await self.send_history_update()
+
+    async def handle_edit(self, message_index: int, content: str) -> None:
+        if self.record is None:
+            return
+
+        node_id, _ = self.record.node_id_for_message_index(message_index)
+        fork_parent = self.record.nodes[node_id].parent
+
+        # Branching happens implicitly: truncating current_leaf here means the next
+        # append_linear (from the resubmit's on_response) creates a sibling under
+        # fork_parent, not a child of the old leaf. We don't call branch_from here
+        # because there's no new turn content yet — that arrives via on_response.
+        self.record.current_leaf = fork_parent
+        self.adapter.set_turns_json(self.record.path_turns())
+        await self.replay_ui(self.record)
+        self._suppress_next_save = False
+        await self._send_sibling_metadata()
+        action: UpdateInputAction = {
+            "type": "update_input",
+            "value": content,
+            "submit": True,
+        }
+        await self.chat._send_action(action)
 
     # -- protocol ----------------------------------------------------------
 
@@ -827,6 +913,7 @@ class ChatHistory:
                     if restore_mode != "bookmark":
                         controller._restore_app_state(target.values or {})
                     controller.record = target
+                    await controller._send_sibling_metadata()
                     await controller.send_history_update()
                     initialized = True
                     return
@@ -856,6 +943,7 @@ class ChatHistory:
                     await controller.replay_ui(pointed)
                     controller._restore_app_state(pointed.values or {})
                     controller.record = pointed
+                    await controller._send_sibling_metadata()
             await controller.send_history_update()
             initialized = True
 
@@ -915,6 +1003,32 @@ class ChatHistory:
                 await controller.delete(str(payload["id"]))
             except Exception as e:
                 await notify_error("Could not delete conversation", e)
+
+        @reactive.effect
+        @reactive.event(chat._session.input[ids.message_edit])
+        async def _on_edit():
+            if controller.partition is None:
+                return
+            payload = chat._session.input[ids.message_edit]()
+            try:
+                await controller.handle_edit(
+                    int(payload["index"]), str(payload["content"])
+                )
+            except Exception as e:
+                await notify_error("Could not edit message", e)
+
+        @reactive.effect
+        @reactive.event(chat._session.input[ids.message_navigate])
+        async def _on_navigate():
+            if controller.partition is None:
+                return
+            payload = chat._session.input[ids.message_navigate]()
+            try:
+                await controller.handle_navigate(
+                    int(payload["index"]), str(payload["direction"])
+                )
+            except Exception as e:
+                await notify_error("Could not navigate messages", e)
 
         def _on_session_end() -> None:
             if stamp_cancel is not None:
