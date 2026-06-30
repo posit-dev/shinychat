@@ -29,6 +29,7 @@ class ConversationMeta(BaseModel):
 
 class ConversationNode(BaseModel):
     parent: str | None = None
+    children: list[str] = Field(default_factory=list)
     # One or more serialized turns forming a single exchange unit. A tool-call
     # exchange (assistant-request, user-result, ..., assistant-text) is stored
     # as one node so it maps 1:1 with the combined UI message from streaming.
@@ -47,6 +48,7 @@ class ConversationRecord(BaseModel):
     updated_at: datetime
     client_info: dict[str, str] = Field(default_factory=dict)
     nodes: dict[str, ConversationNode] = Field(default_factory=dict)
+    next_node_seq: int = 1
     current_leaf: str | None = None
     values: dict[str, Any] = Field(default_factory=dict)
     bookmark_state_id: str | None = None
@@ -87,16 +89,12 @@ class ConversationRecord(BaseModel):
         turns: list[dict[str, Any]],
         ui: list[dict[str, Any]] | None = None,
     ) -> str:
-        existing = [
-            int(k[2:])
-            for k in self.nodes
-            if k.startswith("n_") and k[2:].isdigit()
-        ]
-        seq = max(existing, default=0) + 1
-        node_id = f"n_{seq:04d}"
-        self.nodes[node_id] = ConversationNode(
-            parent=self.current_leaf, turns=turns, ui=ui
-        )
+        node_id = f"n_{self.next_node_seq:04d}"
+        self.next_node_seq += 1
+        node = ConversationNode(parent=self.current_leaf, turns=turns, ui=ui)
+        self.nodes[node_id] = node
+        if self.current_leaf is not None:
+            self.nodes[self.current_leaf].children.append(node_id)
         self.current_leaf = node_id
         self.updated_at = utcnow()
         return node_id

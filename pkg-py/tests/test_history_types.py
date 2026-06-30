@@ -79,9 +79,11 @@ def test_append_linear_collision_safe():
         parent=None, turns=turn("user", "pre-inserted")
     )
     rec.current_leaf = "n_0005"
+    rec.next_node_seq = 6  # skip past the manually-inserted node
     new_id = rec.append_linear(turn("assistant", "reply"))
     assert new_id == "n_0006"
     assert rec.nodes["n_0005"].turns[0]["content"] == "pre-inserted"
+    assert rec.nodes["n_0005"].children == ["n_0006"]
 
 
 def test_bookmark_state_id_round_trips():
@@ -90,3 +92,46 @@ def test_bookmark_state_id_round_trips():
     raw = rec.model_dump(mode="json")
     loaded = ConversationRecord.model_validate(raw)
     assert loaded.bookmark_state_id == "abc123"
+
+
+def test_append_linear_populates_children():
+    rec = new_conversation_record(title="t")
+    n1 = rec.append_linear(turn("user", "hi"))
+    n2 = rec.append_linear(turn("assistant", "hello"))
+    n3 = rec.append_linear(turn("user", "follow-up"))
+    assert rec.nodes[n1].children == [n2]
+    assert rec.nodes[n2].children == [n3]
+    assert rec.nodes[n3].children == []
+
+
+def test_next_node_seq_increments():
+    rec = new_conversation_record(title="t")
+    assert rec.next_node_seq == 1
+    rec.append_linear(turn("user", "hi"))
+    assert rec.next_node_seq == 2
+    rec.append_linear(turn("assistant", "hello"))
+    assert rec.next_node_seq == 3
+
+
+def test_next_node_seq_never_reuses_ids():
+    rec = new_conversation_record(title="t")
+    n1 = rec.append_linear(turn("user", "hi"))
+    n2 = rec.append_linear(turn("assistant", "hello"))
+    # Simulate deleting a node (future branch pruning)
+    del rec.nodes[n2]
+    rec.current_leaf = n1
+    rec.nodes[n1].children.clear()
+    # next_node_seq should still be 3, not reuse n_0002
+    n3 = rec.append_linear(turn("assistant", "v2"))
+    assert n3 == "n_0003"
+    assert rec.next_node_seq == 4
+
+
+def test_children_round_trip_json():
+    rec = new_conversation_record(title="t")
+    rec.append_linear(turn("user", "hi"))
+    rec.append_linear(turn("assistant", "hello"))
+    rec2 = ConversationRecord.model_validate_json(rec.model_dump_json())
+    for nid in rec.nodes:
+        assert rec2.nodes[nid].children == rec.nodes[nid].children
+    assert rec2.next_node_seq == rec.next_node_seq

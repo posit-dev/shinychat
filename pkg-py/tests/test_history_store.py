@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import glob
-import os
+import json
+import shutil
 from datetime import timedelta
 from pathlib import Path
 
@@ -25,9 +25,149 @@ def store(tmp_path: Path) -> FileConversationStore:
 async def test_put_get_round_trip(store: FileConversationStore):
     rec = new_conversation_record(title="penguins")
     rec.append_linear([{"role": "user", "content": "hi"}])
+    rec.append_linear(
+        [{"role": "assistant", "content": "hello"}],
+        ui=[{"role": "assistant", "segments": [{"content": "hello", "content_type": "markdown"}]}],
+    )
     await store.put("alice", rec)
     got = await store.get("alice", rec.id)
-    assert got == rec
+    assert got is not None
+    assert got.id == rec.id
+    assert got.title == rec.title
+    assert got.next_node_seq == rec.next_node_seq
+    assert got.current_leaf == rec.current_leaf
+    for nid in rec.nodes:
+        assert got.nodes[nid].turns == rec.nodes[nid].turns
+        assert got.nodes[nid].children == rec.nodes[nid].children
+        assert got.nodes[nid].parent == rec.nodes[nid].parent
+        assert got.nodes[nid].ui == rec.nodes[nid].ui
+
+
+@pytest.mark.anyio
+async def test_put_creates_directory_with_three_files(
+    store: FileConversationStore, tmp_path: Path,
+):
+    rec = new_conversation_record(title="t")
+    rec.append_linear([{"role": "user", "content": "hi"}])
+    await store.put("alice", rec)
+    scope_dir = tmp_path / sanitize_scope("alice")
+    conv_dir = scope_dir / rec.id
+    assert conv_dir.is_dir()
+    assert (conv_dir / "record.json").is_file()
+    assert (conv_dir / "turns.jsonl").is_file()
+    assert (conv_dir / "ui.jsonl").is_file()
+
+
+@pytest.mark.anyio
+async def test_turns_jsonl_is_append_only(
+    store: FileConversationStore, tmp_path: Path,
+):
+    rec = new_conversation_record(title="t")
+    rec.append_linear([{"role": "user", "content": "q1"}])
+    rec.append_linear([{"role": "assistant", "content": "a1"}])
+    await store.put("alice", rec)
+
+    scope_dir = tmp_path / sanitize_scope("alice")
+    turns_file = scope_dir / rec.id / "turns.jsonl"
+    lines_after_first = turns_file.read_text().strip().splitlines()
+    assert len(lines_after_first) == 2
+
+    rec.append_linear([{"role": "user", "content": "q2"}])
+    rec.append_linear([{"role": "assistant", "content": "a2"}])
+    await store.put("alice", rec)
+
+    lines_after_second = turns_file.read_text().strip().splitlines()
+    assert len(lines_after_second) == 4
+    # First two lines must be identical (append-only)
+    assert lines_after_second[:2] == lines_after_first
+
+
+@pytest.mark.anyio
+async def test_ui_jsonl_is_append_only(
+    store: FileConversationStore, tmp_path: Path,
+):
+    rec = new_conversation_record(title="t")
+    rec.append_linear(
+        [{"role": "user", "content": "q1"}],
+        ui=[{"role": "user", "segments": []}],
+    )
+    await store.put("alice", rec)
+
+    scope_dir = tmp_path / sanitize_scope("alice")
+    ui_file = scope_dir / rec.id / "ui.jsonl"
+    lines_after_first = ui_file.read_text().strip().splitlines()
+    assert len(lines_after_first) == 1
+
+    rec.append_linear(
+        [{"role": "assistant", "content": "a1"}],
+        ui=[{"role": "assistant", "segments": []}],
+    )
+    await store.put("alice", rec)
+
+    lines_after_second = ui_file.read_text().strip().splitlines()
+    assert len(lines_after_second) == 2
+    assert lines_after_second[0] == lines_after_first[0]
+
+
+@pytest.mark.anyio
+async def test_cold_start_recovery(
+    tmp_path: Path,
+):
+    store1 = FileConversationStore(dir=tmp_path)
+    rec = new_conversation_record(title="t")
+    rec.append_linear([{"role": "user", "content": "q1"}])
+    rec.append_linear([{"role": "assistant", "content": "a1"}])
+    await store1.put("alice", rec)
+
+    # Fresh store instance (cold start) reads existing files
+    store2 = FileConversationStore(dir=tmp_path)
+    rec.append_linear([{"role": "user", "content": "q2"}])
+    rec.append_linear([{"role": "assistant", "content": "a2"}])
+    await store2.put("alice", rec)
+
+    # Verify only new turns were appended
+    scope_dir = tmp_path / sanitize_scope("alice")
+    turns_file = scope_dir / rec.id / "turns.jsonl"
+    lines = turns_file.read_text().strip().splitlines()
+    assert len(lines) == 4
+    seqs = [json.loads(line)["seq"] for line in lines]
+    assert seqs == [0, 1, 2, 3]
+
+
+@pytest.mark.anyio
+async def test_missing_ui_jsonl_returns_nodes_with_none_ui(
+    tmp_path: Path,
+):
+    store = FileConversationStore(dir=tmp_path)
+    rec = new_conversation_record(title="t")
+    rec.append_linear(
+        [{"role": "user", "content": "hi"}],
+        ui=[{"role": "user", "segments": []}],
+    )
+    await store.put("alice", rec)
+
+    # Delete ui.jsonl
+    scope_dir = tmp_path / sanitize_scope("alice")
+    (scope_dir / rec.id / "ui.jsonl").unlink()
+
+    got = await store.get("alice", rec.id)
+    assert got is not None
+    for node in got.nodes.values():
+        assert node.ui is None
+
+
+@pytest.mark.anyio
+async def test_node_with_no_ui_has_no_entry_in_ui_jsonl(
+    store: FileConversationStore, tmp_path: Path,
+):
+    rec = new_conversation_record(title="t")
+    rec.append_linear([{"role": "user", "content": "q1"}])  # no ui
+    await store.put("alice", rec)
+
+    scope_dir = tmp_path / sanitize_scope("alice")
+    ui_file = scope_dir / rec.id / "ui.jsonl"
+    content = ui_file.read_text().strip()
+    assert content == ""
 
 
 @pytest.mark.anyio
@@ -91,8 +231,11 @@ async def test_put_is_atomic_no_partial_files(
 ):
     rec = new_conversation_record(title="t")
     await store.put("alice", rec)
-    files = list((tmp_path / sanitize_scope("alice")).iterdir())
-    assert {f.name for f in files} == {f"{rec.id}.json"}  # no .tmp leftovers
+    scope_dir = tmp_path / sanitize_scope("alice")
+    conv_dir = scope_dir / rec.id
+    assert conv_dir.is_dir()
+    files = {f.name for f in conv_dir.iterdir()}
+    assert files == {"record.json", "turns.jsonl", "ui.jsonl"}
 
 
 def test_safe_conv_path_rejects_traversal(tmp_path: Path):
@@ -107,7 +250,7 @@ def test_safe_conv_path_rejects_slash(tmp_path: Path):
 
 def test_safe_conv_path_accepts_valid_id(tmp_path: Path):
     result = safe_conv_path(tmp_path, "c_abc123-XYZ_456")
-    assert result == tmp_path / "c_abc123-XYZ_456.json"
+    assert result == tmp_path / "c_abc123-XYZ_456"
 
 
 @pytest.mark.anyio
@@ -145,9 +288,11 @@ async def test_list_returns_from_cache_without_disk_read(
     await store.put("alice", rec)
     await store.list("alice")  # warms cache
 
-    # Delete the file underneath — cache should still serve the meta
-    for f in glob.glob(str(tmp_path / "**" / "*.json"), recursive=True):
-        os.remove(f)
+    # Delete the conversation directory underneath — cache should still serve
+    scope_dir = tmp_path / sanitize_scope("alice")
+    for d in scope_dir.iterdir():
+        if d.is_dir():
+            shutil.rmtree(d)
 
     metas = await store.list("alice")
     assert len(metas) == 1

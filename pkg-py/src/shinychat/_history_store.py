@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+import dataclasses
 import hashlib
+import json
 import logging
 import os
 import re
+import shutil
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-from ._history_types import ConversationMeta, ConversationRecord
+from ._history_types import (
+    ConversationMeta,
+    ConversationNode,
+    ConversationRecord,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,26 +55,65 @@ class ConversationStore(ABC):
         return [m for m in await self.list(scope) if q in m.title.casefold()]
 
 
+@dataclasses.dataclass
+class _WriteState:
+    turn_seq_map: dict[str, list[int]] = dataclasses.field(default_factory=dict)
+    ui_node_set: set[str] = dataclasses.field(default_factory=set)
+    next_turn_seq: int = 0
+
+
 class FileConversationStore(ConversationStore):
     """
-    Default store: one JSON file per conversation at `<dir>/<scope>/<id>.json`.
+    Default store: each conversation is a directory at
+    ``<dir>/<scope>/<id>/`` containing ``record.json``, ``turns.jsonl``,
+    and ``ui.jsonl``.
 
-    When `dir` is None, the directory is resolved lazily on first use via
-    `resolve_history_dir()` (Connect-aware; see that function).
+    ``record.json`` holds tree structure and metadata (small, rewritten
+    atomically on every save). ``turns.jsonl`` and ``ui.jsonl`` are
+    append-only — new turns and UI entries are appended, never rewritten.
 
-    An in-memory metadata cache is kept per scope so that repeated `list()`
-    calls (which fire on every assistant response) avoid re-reading every file.
-    The cache is populated on the first `list()` per scope and kept in sync by
-    `put()` and `delete()`. It is per-process: in multi-worker deployments with
-    sticky sessions (the normal Shiny model) each session's worker owns its
-    cache and they never diverge. Without sticky sessions, a worker may briefly
-    serve a stale list — it self-corrects on the next `put()` or `delete()`.
-
+    On ``get()``, the three files are read and merged into a full
+    ``ConversationRecord`` with inline turns and UI on each node. Callers
+    never see the split.
     """
 
     def __init__(self, dir: str | Path | None = None):
         self._dir: Path | None = Path(dir) if dir is not None else None
         self._meta_cache: dict[str, list[ConversationMeta]] = {}
+        self._write_state: dict[str, _WriteState] = {}
+
+    def _ws_key(self, scope: str, conv_id: str) -> str:
+        return f"{scope}:{conv_id}"
+
+    def _get_or_init_write_state(
+        self, scope: str, conv_id: str, conv_dir: Path
+    ) -> _WriteState:
+        key = self._ws_key(scope, conv_id)
+        if key in self._write_state:
+            return self._write_state[key]
+        ws = _WriteState()
+        turns_file = conv_dir / "turns.jsonl"
+        if turns_file.is_file():
+            lines = turns_file.read_text(encoding="utf-8").strip().splitlines()
+            ws.next_turn_seq = len(lines)
+
+        record_file = conv_dir / "record.json"
+        if record_file.is_file():
+            raw = json.loads(record_file.read_text(encoding="utf-8"))
+            for nid, node_data in raw.get("nodes", {}).items():
+                turn_ids = node_data.get("turn_ids", [])
+                if turn_ids:
+                    ws.turn_seq_map[nid] = turn_ids
+        ui_file = conv_dir / "ui.jsonl"
+        if ui_file.is_file():
+            for line in ui_file.read_text(encoding="utf-8").strip().splitlines():
+                try:
+                    entry = json.loads(line)
+                    ws.ui_node_set.add(entry["node_id"])
+                except (json.JSONDecodeError, KeyError):
+                    continue
+        self._write_state[key] = ws
+        return ws
 
     async def list(self, scope: str) -> list[ConversationMeta]:
         if scope in self._meta_cache:
@@ -75,34 +121,177 @@ class FileConversationStore(ConversationStore):
         scope_dir = await self._scope_dir(scope)
         metas: list[ConversationMeta] = []
         if scope_dir.is_dir():
-            for f in scope_dir.glob("*.json"):
-                try:
-                    rec = ConversationRecord.model_validate_json(
-                        f.read_text(encoding="utf-8")
-                    )
-                except Exception as e:
-                    logger.warning("Unreadable conversation %s: %s", f.name, e)
+            for d in scope_dir.iterdir():
+                record_file = d / "record.json"
+                if not d.is_dir() or not record_file.is_file():
                     continue
-                metas.append(rec.meta)
+                try:
+                    raw = json.loads(record_file.read_text(encoding="utf-8"))
+                    nodes_raw = raw.get("nodes", {})
+                    nodes = {}
+                    for nid, nd in nodes_raw.items():
+                        nodes[nid] = ConversationNode(
+                            parent=nd.get("parent"),
+                            children=nd.get("children", []),
+                            turns=[],
+                        )
+                    rec = ConversationRecord(
+                        schema_version=raw.get("schema_version", 1),
+                        id=raw["id"],
+                        title=raw["title"],
+                        title_source=raw.get("title_source", "fallback"),
+                        created_at=raw["created_at"],
+                        updated_at=raw["updated_at"],
+                        client_info=raw.get("client_info", {}),
+                        nodes=nodes,
+                        next_node_seq=raw.get("next_node_seq", 1),
+                        current_leaf=raw.get("current_leaf"),
+                        values=raw.get("values", {}),
+                        bookmark_state_id=raw.get("bookmark_state_id"),
+                    )
+                    metas.append(rec.meta)
+                except Exception as e:
+                    logger.warning("Unreadable conversation %s: %s", d.name, e)
+                    continue
             metas.sort(key=lambda m: m.updated_at, reverse=True)
         self._meta_cache[scope] = metas
         return list(metas)
 
     async def get(self, scope: str, conv_id: str) -> ConversationRecord | None:
-        f = safe_conv_path(await self._scope_dir(scope), conv_id)
-        if not f.is_file():
+        conv_dir = safe_conv_path(await self._scope_dir(scope), conv_id)
+        record_file = conv_dir / "record.json"
+        if not record_file.is_file():
             return None
-        return ConversationRecord.model_validate_json(
-            f.read_text(encoding="utf-8")
+
+        raw = json.loads(record_file.read_text(encoding="utf-8"))
+
+        # Read turns
+        turns_map: dict[int, dict[str, Any]] = {}
+        turns_file = conv_dir / "turns.jsonl"
+        if turns_file.is_file():
+            for line in turns_file.read_text(encoding="utf-8").strip().splitlines():
+                try:
+                    entry = json.loads(line)
+                    turns_map[entry["seq"]] = entry["data"]
+                except (json.JSONDecodeError, KeyError):
+                    continue
+
+        # Read UI
+        ui_map: dict[str, list[dict[str, Any]]] = {}
+        ui_file = conv_dir / "ui.jsonl"
+        if ui_file.is_file():
+            for line in ui_file.read_text(encoding="utf-8").strip().splitlines():
+                try:
+                    entry = json.loads(line)
+                    ui_map[entry["node_id"]] = entry["data"]
+                except (json.JSONDecodeError, KeyError):
+                    continue
+
+        # Reconstruct nodes with inline turns and UI
+        nodes: dict[str, ConversationNode] = {}
+        for nid, node_data in raw.get("nodes", {}).items():
+            turn_ids = node_data.get("turn_ids", [])
+            turns = [turns_map[tid] for tid in turn_ids if tid in turns_map]
+            nodes[nid] = ConversationNode(
+                parent=node_data.get("parent"),
+                children=node_data.get("children", []),
+                turns=turns,
+                ui=ui_map.get(nid),
+            )
+
+        return ConversationRecord(
+            schema_version=raw.get("schema_version", 1),
+            id=raw["id"],
+            title=raw["title"],
+            title_source=raw.get("title_source", "fallback"),
+            created_at=raw["created_at"],
+            updated_at=raw["updated_at"],
+            client_info=raw.get("client_info", {}),
+            nodes=nodes,
+            next_node_seq=raw.get("next_node_seq", 1),
+            current_leaf=raw.get("current_leaf"),
+            values=raw.get("values", {}),
+            bookmark_state_id=raw.get("bookmark_state_id"),
         )
 
     async def put(self, scope: str, record: ConversationRecord) -> None:
         scope_dir = await self._scope_dir(scope)
-        scope_dir.mkdir(parents=True, exist_ok=True)
-        dest = safe_conv_path(scope_dir, record.id)
-        tmp = scope_dir / f".{record.id}.json.tmp"
-        tmp.write_text(record.model_dump_json(), encoding="utf-8")
-        os.replace(tmp, dest)  # atomic on POSIX and Windows
+        conv_dir = safe_conv_path(scope_dir, record.id)
+        conv_dir.mkdir(parents=True, exist_ok=True)
+
+        ws = self._get_or_init_write_state(scope, record.id, conv_dir)
+
+        # Append new turns and UI
+        new_turns_lines: list[str] = []
+        new_ui_lines: list[str] = []
+        record_nodes: dict[str, dict[str, Any]] = {}
+
+        for nid, node in record.nodes.items():
+            if nid not in ws.turn_seq_map:
+                turn_ids: list[int] = []
+                for turn_data in node.turns:
+                    seq = ws.next_turn_seq
+                    ws.next_turn_seq += 1
+                    turn_ids.append(seq)
+                    new_turns_lines.append(
+                        json.dumps(
+                            {"seq": seq, "data": turn_data},
+                            ensure_ascii=False,
+                        )
+                    )
+                ws.turn_seq_map[nid] = turn_ids
+            if node.ui is not None and nid not in ws.ui_node_set:
+                new_ui_lines.append(
+                    json.dumps(
+                        {"node_id": nid, "data": node.ui},
+                        ensure_ascii=False,
+                    )
+                )
+                ws.ui_node_set.add(nid)
+            record_nodes[nid] = {
+                "parent": node.parent,
+                "children": node.children,
+                "turn_ids": ws.turn_seq_map.get(nid, []),
+            }
+
+        # Append to JSONL files
+        turns_file = conv_dir / "turns.jsonl"
+        if new_turns_lines:
+            with open(turns_file, "a", encoding="utf-8") as f:
+                f.write("\n".join(new_turns_lines) + "\n")
+        elif not turns_file.exists():
+            turns_file.touch()
+
+        ui_file = conv_dir / "ui.jsonl"
+        if new_ui_lines:
+            with open(ui_file, "a", encoding="utf-8") as f:
+                f.write("\n".join(new_ui_lines) + "\n")
+        elif not ui_file.exists():
+            ui_file.touch()
+
+        # Write record.json atomically
+        record_data = {
+            "schema_version": record.schema_version,
+            "id": record.id,
+            "title": record.title,
+            "title_source": record.title_source,
+            "created_at": record.created_at.isoformat(),
+            "updated_at": record.updated_at.isoformat(),
+            "client_info": record.client_info,
+            "next_node_seq": record.next_node_seq,
+            "current_leaf": record.current_leaf,
+            "nodes": record_nodes,
+            "values": record.values,
+            "bookmark_state_id": record.bookmark_state_id,
+        }
+        tmp = conv_dir / ".record.json.tmp"
+        tmp.write_text(
+            json.dumps(record_data, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        os.replace(tmp, conv_dir / "record.json")
+
+        # Update meta cache
         if scope in self._meta_cache:
             updated = [m for m in self._meta_cache[scope] if m.id != record.id]
             updated.append(record.meta)
@@ -110,8 +299,11 @@ class FileConversationStore(ConversationStore):
             self._meta_cache[scope] = updated
 
     async def delete(self, scope: str, conv_id: str) -> None:
-        f = safe_conv_path(await self._scope_dir(scope), conv_id)
-        f.unlink(missing_ok=True)
+        conv_dir = safe_conv_path(await self._scope_dir(scope), conv_id)
+        if conv_dir.is_dir():
+            shutil.rmtree(conv_dir)
+        key = self._ws_key(scope, conv_id)
+        self._write_state.pop(key, None)
         if scope in self._meta_cache:
             self._meta_cache[scope] = [
                 m for m in self._meta_cache[scope] if m.id != conv_id
@@ -121,7 +313,13 @@ class FileConversationStore(ConversationStore):
         scope_dir = await self._scope_dir(scope)
         if not scope_dir.is_dir():
             return 0
-        return sum(f.stat().st_size for f in scope_dir.glob("*.json"))
+        total = 0
+        for d in scope_dir.iterdir():
+            if d.is_dir():
+                for f in d.iterdir():
+                    if f.is_file():
+                        total += f.stat().st_size
+        return total
 
     async def _scope_dir(self, scope: str) -> Path:
         if self._dir is None:
@@ -201,7 +399,7 @@ def sanitize_scope(scope: str) -> str:
 def safe_conv_path(scope_dir: Path, conv_id: str) -> Path:
     if not CONV_ID_RE.fullmatch(conv_id):
         raise ValueError(f"Invalid conversation id: {conv_id!r}")
-    return scope_dir / f"{conv_id}.json"
+    return scope_dir / conv_id
 
 
 async def resolve_history_dir() -> Path:
