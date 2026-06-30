@@ -375,7 +375,13 @@ chat_server <- function(
 
     cancel_history <<- if (!isFALSE(history)) {
       config <- if (isTRUE(history)) history_options() else history
-      chat_enable_history(id, client, options = config, session = session)
+      chat_enable_history(
+        id,
+        client,
+        options = config,
+        restore_ui = FALSE,
+        session = session
+      )
     } else if (bm_on_input || bm_on_response) {
       chat_restore(
         id,

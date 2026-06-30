@@ -275,6 +275,58 @@ test_that("init waits for browser token when session$user is set (browser restor
   })
 })
 
+test_that("set_client() does not re-render the UI or double-fire on_restore (regression)", {
+  # Regression: chat_enable_history() was re-run from scratch on every
+  # set_client() swap, spinning up a fresh controller/init effect with no
+  # equivalent of chat_restore()'s restore_ui = FALSE. The new init effect
+  # read the unchanged browser-localStorage current_id, found the
+  # already-active conversation, and called replay_ui() (clearing +
+  # re-rendering the chat) plus restore_after_first_flush() (re-firing
+  # on_restore) a second time -- on every swap, not just an edge case.
+  skip_if_not_installed("ellmer")
+
+  store <- InMemoryConversationStore$new()
+  rec <- new_conversation_record("Prior conversation")
+  store$put("testuser", rec)
+
+  client <- mock_chat_client()
+  session <- shiny::MockShinySession$new()
+  session$user <- "testuser"
+
+  restore_count <- 0
+  mod_ref <- NULL
+
+  server <- function(input, output, session) {
+    mod <- chat_server(
+      "chat",
+      client,
+      history = history_options(store = store, title = NULL),
+      session = session
+    )
+    mod$history$on_restore(function(values) {
+      restore_count <<- restore_count + 1
+      values
+    })
+    mod_ref <<- mod
+    mod
+  }
+
+  shiny::testServer(server, session = session, {
+    session$setInputs(
+      chat_history_browser_token = "tok-abc",
+      chat_history_current_id = rec$id
+    )
+    expect_equal(restore_count, 1)
+
+    mod_ref$set_client(mock_chat_client())
+
+    # Trigger the next flush, where a re-registered restore_after_first_flush()
+    # would fire if the swap re-ran the restore path.
+    session$setInputs(chat_history_browser_token = "tok-abc")
+    expect_equal(restore_count, 1)
+  })
+})
+
 test_that("HistoryController does not evict when no limit set", {
   store <- InMemoryConversationStore$new()
   old <- new_conversation_record("old")

@@ -11,6 +11,7 @@ chat_enable_history(
   on_save = NULL,
   on_restore = NULL,
   options = history_options(),
+  restore_ui = TRUE,
   session = shiny::getDefaultReactiveDomain()
 )
 }
@@ -40,6 +41,11 @@ use \code{session$onRestore()} directly if needed.}
 
 \item{options}{A \code{\link[=history_options]{history_options()}} object controlling storage, identity,
 titling, and restore behaviour.}
+
+\item{restore_ui}{Whether to render the active conversation into the chat
+UI and fire \code{on_restore} on registration. Default is \code{TRUE}. Set to
+\code{FALSE} when re-registering history after a client swap (where the UI
+already reflects the conversation).}
 
 \item{session}{The Shiny session.}
 }

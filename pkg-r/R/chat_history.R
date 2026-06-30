@@ -470,6 +470,10 @@ history_options <- function(
 #'   use `session$onRestore()` directly if needed.
 #' @param options A [history_options()] object controlling storage, identity,
 #'   titling, and restore behaviour.
+#' @param restore_ui Whether to render the active conversation into the chat
+#'   UI and fire `on_restore` on registration. Default is `TRUE`. Set to
+#'   `FALSE` when re-registering history after a client swap (where the UI
+#'   already reflects the conversation).
 #' @param session The Shiny session.
 #' @returns Invisibly, a function that cancels all history registrations.
 #' @export
@@ -480,6 +484,7 @@ chat_enable_history <- function(
   on_save = NULL,
   on_restore = NULL,
   options = history_options(),
+  restore_ui = TRUE,
   session = shiny::getDefaultReactiveDomain()
 ) {
   rlang::check_dots_empty()
@@ -696,9 +701,11 @@ chat_enable_history <- function(
         target <- controller$get_record(scope, restored_id)
         if (!is.null(target)) {
           set_turns_recorded(client, record_path_turns(target))
-          controller$replay_ui(target)
-          if (!identical(restore_mode, "bookmark")) {
-            restore_after_first_flush(target$values)
+          if (restore_ui) {
+            controller$replay_ui(target)
+            if (!identical(restore_mode, "bookmark")) {
+              restore_after_first_flush(target$values)
+            }
           }
           controller$record <- target
           controller$send_history_update()
@@ -721,8 +728,10 @@ chat_enable_history <- function(
       target <- controller$get_record(scope, current_id)
       if (!is.null(target)) {
         set_turns_recorded(client, record_path_turns(target))
-        controller$replay_ui(target)
-        restore_after_first_flush(target$values)
+        if (restore_ui) {
+          controller$replay_ui(target)
+          restore_after_first_flush(target$values)
+        }
         controller$record <- target
       }
     }
