@@ -212,8 +212,8 @@ HistoryController <- R6::R6Class(
       turns <- record_path_turns(record)
       if (length(turns) > 0) {
         set_turns_recorded(private$client, turns)
-        # Lossy: re-renders from turn data; content not round-trippable through
-        # ellmer's format (e.g. thinking blocks) won't be faithfully restored.
+        # Turn content round-trips losslessly via ellmer's contents_record()/
+        # contents_replay(); the UI below is then re-rendered from those turns.
         shiny::withReactiveDomain(private$session, {
           client_set_ui(private$client, id = private$chat_id)
         })
