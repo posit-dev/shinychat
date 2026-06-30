@@ -71,9 +71,12 @@ class ConversationRecord(BaseModel):
                 raise ValueError(
                     f"Cycle detected in conversation nodes at {cursor!r}"
                 )
+            node = self.nodes.get(cursor)
+            if node is None:
+                raise ValueError(f"Dangling parent reference at {cursor!r}")
             visited.add(cursor)
             ids.append(cursor)
-            cursor = self.nodes[cursor].parent
+            cursor = node.parent
         ids.reverse()
         return ids
 

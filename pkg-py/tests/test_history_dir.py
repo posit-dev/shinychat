@@ -54,3 +54,11 @@ async def test_env_var_beats_bookmark_machinery(
 @pytest.mark.anyio
 async def test_local_fallback():
     assert await resolve_history_dir() == Path(".shinychat") / "conversations"
+
+
+@pytest.mark.anyio
+async def test_falls_back_when_private_api_missing(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.delattr(bookmark_global, "get_bookmark_save_dir_fn")
+    assert await resolve_history_dir() == Path(".shinychat") / "conversations"

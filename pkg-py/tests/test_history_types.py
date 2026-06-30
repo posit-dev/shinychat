@@ -73,6 +73,16 @@ def test_path_node_ids_raises_on_cycle():
         rec.path_node_ids()
 
 
+def test_path_node_ids_raises_on_dangling_parent():
+    rec = new_conversation_record(title="dangling test")
+    rec.nodes["n_a"] = ConversationNode(
+        parent="n_missing", turns=turn("user", "a")
+    )
+    rec.current_leaf = "n_a"
+    with pytest.raises(ValueError, match="Dangling parent"):
+        rec.path_node_ids()
+
+
 def test_append_linear_collision_safe():
     rec = new_conversation_record(title="collision test")
     rec.nodes["n_0005"] = ConversationNode(

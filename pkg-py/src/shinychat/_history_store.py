@@ -161,6 +161,9 @@ class FileConversationStore(ConversationStore):
         conv_dir = safe_conv_path(await self._scope_dir(scope), conv_id)
         record_file = conv_dir / "record.json"
         if not record_file.is_file():
+            # Cache may be stale (e.g. another worker deleted this
+            # conversation) — drop it so the next list() re-reads disk.
+            self._meta_cache.pop(scope, None)
             return None
 
         raw = json.loads(record_file.read_text(encoding="utf-8"))
@@ -420,10 +423,14 @@ async def resolve_history_dir() -> Path:
         return Path(env) / HISTORY_BOOKMARK_ID
 
     # Private shiny API; coordinate upstream for a public accessor.
-    from shiny.bookmark._global import get_bookmark_save_dir_fn
-    from shiny.types import MISSING
+    try:
+        from shiny.bookmark._global import get_bookmark_save_dir_fn
+        from shiny.types import MISSING
 
-    save_dir_fn = get_bookmark_save_dir_fn(MISSING)
+        save_dir_fn = get_bookmark_save_dir_fn(MISSING)
+    except ImportError:
+        save_dir_fn = None
+
     if save_dir_fn is not None:
         # set_global_save_dir_fn already wraps with wrap_async, so fn is async.
         # Registrants may return str despite the Path annotation; coerce defensively.

@@ -2,6 +2,7 @@
 # is covered by Playwright e2e tests (Task 13). This file tests the pure
 # helpers that HistoryController delegates to.
 
+import warnings
 from datetime import timedelta
 from typing import Any
 
@@ -848,6 +849,33 @@ async def test_evict_if_needed_removes_oldest_preserves_active():
     assert rec1.id not in remaining
     assert rec2.id not in remaining
     assert rec3.id in remaining
+
+
+@pytest.mark.anyio
+async def test_evict_if_needed_warns_once_when_active_alone_exceeds_budget():
+    store = InMemoryConversationStore()
+    rec = new_conversation_record(title="big")
+    rec.append_linear([{"role": "user", "content": "x" * 1000}])
+    await store.put("alice", rec)
+
+    controller = HistoryController(
+        chat=_FakeChat(),  # type: ignore[arg-type]
+        adapter=_FakeAdapter(),  # type: ignore[arg-type]
+        store=store,
+        title_fn=None,
+        title_enabled=False,
+        client=None,
+        max_store_bytes=1,
+    )
+    controller.scope = "alice"
+    controller.record = rec  # active; nothing else to evict
+
+    with pytest.warns(UserWarning, match="remains over"):
+        await controller._evict_if_needed()
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        await controller._evict_if_needed()  # must not warn a second time
 
 
 @pytest.mark.anyio

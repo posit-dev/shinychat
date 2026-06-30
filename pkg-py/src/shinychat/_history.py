@@ -238,6 +238,7 @@ class HistoryController:
         # that fires after _is_replaying is already False; it is consumed once.
         self._is_replaying: bool = False
         self._suppress_next_save: bool = False
+        self._over_budget_warned: bool = False
 
     # -- save -----------------------------------------------------------
 
@@ -339,6 +340,15 @@ class HistoryController:
             total = await self.store.total_size(self.scope)
             if total <= self.max_store_bytes:
                 break
+        if total > self.max_store_bytes and not self._over_budget_warned:
+            self._over_budget_warned = True
+            warnings.warn(
+                f"Chat history for scope {self.scope!r} remains over the "
+                f"{self.max_store_bytes}-byte limit after evicting all "
+                "evictable conversations — the active conversation alone "
+                "exceeds the limit.",
+                stacklevel=1,
+            )
 
     async def save_current(self) -> None:
         """Persist the active conversation if it has ever been saved."""

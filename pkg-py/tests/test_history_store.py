@@ -300,6 +300,29 @@ async def test_list_returns_from_cache_without_disk_read(
 
 
 @pytest.mark.anyio
+async def test_get_missing_after_cached_list_invalidates_cache(
+    store: FileConversationStore, tmp_path: Path
+):
+    rec = new_conversation_record(title="t")
+    await store.put("alice", rec)
+    await store.list("alice")  # warms cache
+    assert "alice" in store._meta_cache
+
+    # Simulate another worker deleting the conversation directly on disk
+    scope_dir = tmp_path / sanitize_scope("alice")
+    for d in scope_dir.iterdir():
+        if d.is_dir():
+            shutil.rmtree(d)
+
+    got = await store.get("alice", rec.id)
+    assert got is None
+    assert "alice" not in store._meta_cache
+
+    metas = await store.list("alice")
+    assert metas == []
+
+
+@pytest.mark.anyio
 async def test_put_updates_warm_cache(store: FileConversationStore):
     a = new_conversation_record(title="first")
     await store.put("alice", a)
