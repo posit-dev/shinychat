@@ -190,6 +190,7 @@ export function ChatHistoryDrawer({
             className="shiny-chat-history-new"
             disabled={busy}
             title={busy ? "Wait for the response to finish" : undefined}
+            aria-label="New conversation"
             onClick={handleNew}
           >
             ＋ New
@@ -328,7 +329,7 @@ function ConversationItem({
       className={`shiny-chat-history-item${active ? " active" : ""}`}
       onClick={onSelect}
       role="button"
-      tabIndex={0}
+      tabIndex={busy ? -1 : 0}
       aria-disabled={busy ? true : undefined}
       title={busy ? "Wait for the response to finish" : undefined}
       onKeyDown={(e) => {
