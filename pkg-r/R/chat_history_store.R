@@ -31,8 +31,6 @@ ConversationStore <- R6::R6Class(
   )
 )
 
-#' In-memory conversation storage backend
-#' @export
 InMemoryConversationStore <- R6::R6Class(
   "InMemoryConversationStore",
   inherit = ConversationStore,

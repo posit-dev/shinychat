@@ -71,7 +71,6 @@ reference:
   - chat_enable_history
   - history_options
   - ConversationStore
-  - InMemoryConversationStore
   - FileConversationStore
   - chat_restore
 
