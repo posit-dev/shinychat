@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 import shutil
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 _STATE_ID_RE = re.compile(r"[?&]_state_id_=([A-Za-z0-9_-]+)")
 
@@ -26,10 +29,15 @@ async def delete_bookmark_state(state_id: str) -> None:
         if restore_dir_fn is None:
             return
         restore_dir = await restore_dir_fn(state_id)
+    except (ImportError, AttributeError):
+        return
     except Exception:
+        logger.warning(
+            "Failed to resolve bookmark restore dir for cleanup", exc_info=True
+        )
         return
     p = Path(restore_dir)
     if p.is_dir():
-        await asyncio.get_event_loop().run_in_executor(
+        await asyncio.get_running_loop().run_in_executor(
             None, lambda: shutil.rmtree(p, ignore_errors=True)
         )
