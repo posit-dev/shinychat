@@ -26,21 +26,34 @@ utcnow_iso <- function() {
   format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
 }
 
-new_conversation_meta <- function(id, title, created_at, updated_at) {
+# size_bytes must stay double, never integer -- narrowing overflows R's
+# 32-bit integer range at ~2GB (see chat_history.R max_store_mb handling).
+new_conversation_meta <- function(
+  id,
+  title,
+  created_at,
+  updated_at,
+  size_bytes
+) {
   list(
     id = id,
     title = title,
     created_at = created_at,
-    updated_at = updated_at
+    updated_at = updated_at,
+    size_bytes = size_bytes
   )
 }
 
-record_meta <- function(record) {
+# `size_bytes` is the caller's storage footprint for this record (e.g.
+# on-disk bytes, in-memory JSON size) -- required because it depends on the
+# backend's storage format, not derivable from the record itself.
+record_meta <- function(record, size_bytes) {
   new_conversation_meta(
     id = record$id,
     title = record$title,
     created_at = record$created_at,
-    updated_at = record$updated_at
+    updated_at = record$updated_at,
+    size_bytes = size_bytes
   )
 }
 

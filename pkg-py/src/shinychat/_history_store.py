@@ -46,13 +46,17 @@ class ConversationStore(ABC):
     async def delete(self, scope: str, conv_id: str) -> None:
         """Remove a conversation. Missing ids are a no-op."""
 
-    @abstractmethod
-    async def total_size(self, scope: str) -> int:
-        """Total bytes used by all conversations in scope."""
-
     async def search(self, scope: str, query: str) -> list[ConversationMeta]:
         q = query.casefold()
         return [m for m in await self.list(scope) if q in m.title.casefold()]
+
+    async def total_size(self, scope: str) -> int:
+        """Total bytes used by all conversations in scope.
+
+        Derived from `list()`'s per-record `size_bytes` — backends don't
+        need to override this unless they have a cheaper way to compute it.
+        """
+        return sum(m.size_bytes for m in await self.list(scope))
 
 
 @dataclasses.dataclass
@@ -149,7 +153,10 @@ class FileConversationStore(ConversationStore):
                         values=raw.get("values", {}),
                         bookmark_state_id=raw.get("bookmark_state_id"),
                     )
-                    metas.append(rec.meta)
+                    size_bytes = sum(
+                        f.stat().st_size for f in d.iterdir() if f.is_file()
+                    )
+                    metas.append(rec.meta(size_bytes=size_bytes))
                 except Exception as e:
                     logger.warning("Unreadable conversation %s: %s", d.name, e)
                     continue
@@ -296,8 +303,11 @@ class FileConversationStore(ConversationStore):
 
         # Update meta cache
         if scope in self._meta_cache:
+            size_bytes = sum(
+                f.stat().st_size for f in conv_dir.iterdir() if f.is_file()
+            )
             updated = [m for m in self._meta_cache[scope] if m.id != record.id]
-            updated.append(record.meta)
+            updated.append(record.meta(size_bytes=size_bytes))
             updated.sort(key=lambda m: m.updated_at, reverse=True)
             self._meta_cache[scope] = updated
 
@@ -311,18 +321,6 @@ class FileConversationStore(ConversationStore):
             self._meta_cache[scope] = [
                 m for m in self._meta_cache[scope] if m.id != conv_id
             ]
-
-    async def total_size(self, scope: str) -> int:
-        scope_dir = await self._scope_dir(scope)
-        if not scope_dir.is_dir():
-            return 0
-        total = 0
-        for d in scope_dir.iterdir():
-            if d.is_dir():
-                for f in d.iterdir():
-                    if f.is_file():
-                        total += f.stat().st_size
-        return total
 
     async def _scope_dir(self, scope: str) -> Path:
         if self._dir is None:
@@ -342,7 +340,10 @@ class InMemoryConversationStore(ConversationStore):
         self._data: dict[str, dict[str, ConversationRecord]] = {}
 
     async def list(self, scope: str) -> list[ConversationMeta]:
-        metas = [r.meta for r in self._data.get(scope, {}).values()]
+        metas = [
+            r.meta(size_bytes=len(r.model_dump_json().encode("utf-8")))
+            for r in self._data.get(scope, {}).values()
+        ]
         metas.sort(key=lambda m: m.updated_at, reverse=True)
         return metas
 
@@ -356,12 +357,6 @@ class InMemoryConversationStore(ConversationStore):
 
     async def delete(self, scope: str, conv_id: str) -> None:
         self._data.get(scope, {}).pop(conv_id, None)
-
-    async def total_size(self, scope: str) -> int:
-        return sum(
-            len(r.model_dump_json().encode("utf-8"))
-            for r in self._data.get(scope, {}).values()
-        )
 
 
 def resolve_store(

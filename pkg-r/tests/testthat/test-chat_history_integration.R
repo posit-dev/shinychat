@@ -155,6 +155,51 @@ test_that("HistoryController evicts oldest when over max_store_bytes", {
   expect_true(controller$record$id %in% ids)
 })
 
+test_that("evict_if_needed calls list() once and never calls total_size (regression)", {
+  # Regression: total_size() used to be re-called (a full-scope sweep) on
+  # every eviction iteration. The running total should now come entirely
+  # from a single list() call's per-record size_bytes.
+  list_calls <- 0
+  total_size_calls <- 0
+  SpyStore <- R6::R6Class(
+    "SpyStore",
+    inherit = InMemoryConversationStore,
+    public = list(
+      list = function(scope) {
+        list_calls <<- list_calls + 1
+        super$list(scope)
+      },
+      total_size = function(scope) {
+        total_size_calls <<- total_size_calls + 1
+        super$total_size(scope)
+      }
+    )
+  )
+  store <- SpyStore$new()
+
+  rec1 <- new_conversation_record("oldest")
+  rec2 <- new_conversation_record("middle")
+  rec3 <- new_conversation_record("newest")
+  store$put("alice", rec1)
+  store$put("alice", rec2)
+  store$put("alice", rec3)
+
+  controller <- HistoryController$new(
+    chat_id = "test",
+    client = mock_chat_client(),
+    options = history_options(store = store, max_store_mb = 1e-6, title = NULL),
+    session = shiny::MockShinySession$new()
+  )
+  controller$scope <- "alice"
+  controller$record <- rec3
+
+  evict_if_needed <- controller$.__enclos_env__$private$evict_if_needed
+  evict_if_needed()
+
+  expect_equal(list_calls, 1)
+  expect_equal(total_size_calls, 0)
+})
+
 test_that("evict_if_needed warns once (not on every response) when the active conversation alone exceeds the quota", {
   store <- InMemoryConversationStore$new()
   rec <- new_conversation_record("active")

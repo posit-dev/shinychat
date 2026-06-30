@@ -23,10 +23,10 @@ ConversationStore <- R6::R6Class(
         all
       )
     },
+    # Derived from list()'s per-record size_bytes -- backends don't need to
+    # override this unless they have a cheaper way to compute it.
     total_size = function(scope) {
-      rlang::abort(
-        "ConversationStore$total_size() must be implemented by subclass"
-      )
+      sum(vapply(self$list(scope), function(m) m$size_bytes, double(1L)))
     }
   )
 )
@@ -46,7 +46,9 @@ InMemoryConversationStore <- R6::R6Class(
       if (is.null(scope_data) || length(scope_data) == 0) {
         return(list())
       }
-      metas <- lapply(scope_data, record_meta)
+      metas <- lapply(scope_data, function(r) {
+        record_meta(r, size_bytes = record_json_size(r))
+      })
       timestamps <- vapply(metas, function(m) m$updated_at, character(1))
       metas[order(timestamps, decreasing = TRUE)]
     },
@@ -63,19 +65,6 @@ InMemoryConversationStore <- R6::R6Class(
     delete = function(scope, id) {
       private$data[[scope]][[id]] <- NULL
       invisible(NULL)
-    },
-    total_size = function(scope) {
-      scope_data <- private$data[[scope]]
-      if (is.null(scope_data) || length(scope_data) == 0L) {
-        return(0)
-      }
-      sum(
-        vapply(
-          scope_data,
-          function(r) record_json_size(r),
-          double(1L)
-        )
-      )
     }
   )
 )
@@ -159,7 +148,10 @@ FileConversationStore <- R6::R6Class(
         Negate(is.null),
         lapply(files, function(f) {
           tryCatch(
-            record_meta(jsonlite::fromJSON(f, simplifyVector = FALSE)),
+            record_meta(
+              jsonlite::fromJSON(f, simplifyVector = FALSE),
+              size_bytes = as.double(file.size(f))
+            ),
             error = function(e) {
               rlang::warn(
                 paste0(
@@ -206,7 +198,10 @@ FileConversationStore <- R6::R6Class(
       cache <- private$meta_cache[[scope]]
       if (!is.null(cache)) {
         cache <- Filter(function(m) m$id != record$id, cache)
-        cache <- c(list(record_meta(record)), cache)
+        cache <- c(
+          list(record_meta(record, size_bytes = as.double(file.size(path)))),
+          cache
+        )
         timestamps <- vapply(cache, function(m) m$updated_at, character(1))
         cache <- cache[order(timestamps, decreasing = TRUE)]
         private$meta_cache[[scope]] <- cache
@@ -224,19 +219,6 @@ FileConversationStore <- R6::R6Class(
         private$meta_cache[[scope]] <- Filter(function(m) m$id != id, cache)
       }
       invisible(NULL)
-    },
-    total_size = function(scope) {
-      sdir <- private$scope_dir(scope)
-      if (!dir.exists(sdir)) {
-        return(0)
-      }
-      files <- list.files(sdir, pattern = "\\.json$", full.names = TRUE)
-      if (length(files) == 0L) {
-        return(0)
-      }
-      # file.size() already returns double; do not narrow to integer, which
-      # overflows R's 32-bit integer range (caps total size at ~2GB).
-      sum(file.size(files))
     }
   )
 )

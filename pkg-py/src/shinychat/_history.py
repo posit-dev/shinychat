@@ -337,15 +337,15 @@ class HistoryController:
     async def _evict_if_needed(self) -> None:
         if self.max_store_bytes is None or self.scope is None:
             return
-        total = await self.store.total_size(self.scope)
+        metas = await self.store.list(self.scope)
+        total = sum(m.size_bytes for m in metas)
         if total <= self.max_store_bytes:
             return
-        metas = await self.store.list(self.scope)
         for meta in reversed(metas):  # oldest first
             if self.record is not None and meta.id == self.record.id:
                 continue
+            total -= meta.size_bytes
             await self._evict_one(meta.id)
-            total = await self.store.total_size(self.scope)
             if total <= self.max_store_bytes:
                 break
         if total > self.max_store_bytes and not self._over_budget_warned:

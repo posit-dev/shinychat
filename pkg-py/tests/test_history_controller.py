@@ -5,6 +5,7 @@
 import warnings
 from datetime import timedelta
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 from shinychat._history import (
@@ -849,6 +850,43 @@ async def test_evict_if_needed_removes_oldest_preserves_active():
     assert rec1.id not in remaining
     assert rec2.id not in remaining
     assert rec3.id in remaining
+
+
+@pytest.mark.anyio
+async def test_evict_if_needed_calls_list_once_and_never_total_size():
+    # Regression: total_size() used to be re-called (a full-scope sweep) on
+    # every eviction iteration. The running total should now come entirely
+    # from a single list() call's per-record size_bytes.
+    store = InMemoryConversationStore()
+    rec1 = new_conversation_record(title="oldest")
+    rec2 = new_conversation_record(title="middle")
+    rec3 = new_conversation_record(title="newest")
+    rec2.updated_at = rec2.updated_at + timedelta(seconds=1)
+    rec3.updated_at = rec3.updated_at + timedelta(seconds=2)
+    for rec in [rec1, rec2, rec3]:
+        await store.put("alice", rec)
+
+    controller = HistoryController(
+        chat=_FakeChat(),  # type: ignore[arg-type]
+        adapter=_FakeAdapter(),  # type: ignore[arg-type]
+        store=store,
+        title_fn=None,
+        title_enabled=False,
+        client=None,
+        max_store_bytes=1,
+    )
+    controller.scope = "alice"
+    controller.record = rec3
+
+    list_spy = AsyncMock(wraps=store.list)
+    total_size_spy = AsyncMock(wraps=store.total_size)
+    store.list = list_spy  # type: ignore[method-assign]
+    store.total_size = total_size_spy  # type: ignore[method-assign]
+
+    await controller._evict_if_needed()
+
+    assert list_spy.call_count == 1
+    assert total_size_spy.call_count == 0
 
 
 @pytest.mark.anyio

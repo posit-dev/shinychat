@@ -25,6 +25,10 @@ class ConversationMeta(BaseModel):
     title: str
     created_at: datetime
     updated_at: datetime
+    # Backend-defined storage footprint (e.g. on-disk bytes, in-memory JSON
+    # dump size) — required so ConversationStore.total_size() can be derived
+    # by summing list() results instead of a separate per-backend sweep.
+    size_bytes: int
 
 
 class ConversationNode(BaseModel):
@@ -53,13 +57,19 @@ class ConversationRecord(BaseModel):
     values: dict[str, Any] = Field(default_factory=dict)
     bookmark_state_id: str | None = None
 
-    @property
-    def meta(self) -> ConversationMeta:
+    def meta(self, *, size_bytes: int) -> ConversationMeta:
+        """Lightweight summary for `ConversationStore.list()`.
+
+        `size_bytes` is the caller's storage footprint for this record (e.g.
+        on-disk bytes, in-memory JSON dump size) — not derivable from the
+        record itself, since that depends on the backend's storage format.
+        """
         return ConversationMeta(
             id=self.id,
             title=self.title,
             created_at=self.created_at,
             updated_at=self.updated_at,
+            size_bytes=size_bytes,
         )
 
     def path_node_ids(self) -> list[str]:

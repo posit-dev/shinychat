@@ -17,13 +17,13 @@ File-based conversation storage backend
     \item \href{#method-FileConversationStore-get}{\code{FileConversationStore$get()}}
     \item \href{#method-FileConversationStore-put}{\code{FileConversationStore$put()}}
     \item \href{#method-FileConversationStore-delete}{\code{FileConversationStore$delete()}}
-    \item \href{#method-FileConversationStore-total_size}{\code{FileConversationStore$total_size()}}
     \item \href{#method-FileConversationStore-clone}{\code{FileConversationStore$clone()}}
   }
 }
 \if{html}{\out{<details open><summary>Inherited methods</summary>
 <ul>
   <li><span class="pkg-link" data-pkg="shinychat" data-topic="ConversationStore" data-id="search"><a href='../../shinychat/html/ConversationStore.html#method-ConversationStore-search'><code>ConversationStore$search()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="shinychat" data-topic="ConversationStore" data-id="total_size"><a href='../../shinychat/html/ConversationStore.html#method-ConversationStore-total_size'><code>ConversationStore$total_size()</code></a></span></li>
 </ul>
 </details>}}
 \if{html}{\out{<hr>}}
@@ -77,17 +77,6 @@ File-based conversation storage backend
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{FileConversationStore$delete(scope, id)}
-    \if{html}{\out{</div>}}
-  }
-}
-
-\if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-FileConversationStore-total_size"></a>}}
-\if{latex}{\out{\hypertarget{method-FileConversationStore-total_size}{}}}
-\subsection{\code{FileConversationStore$total_size()}}{
-  \subsection{Usage}{
-    \if{html}{\out{<div class="r">}}
-    \preformatted{FileConversationStore$total_size(scope)}
     \if{html}{\out{</div>}}
   }
 }

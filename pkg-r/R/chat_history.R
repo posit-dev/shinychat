@@ -342,17 +342,17 @@ HistoryController <- R6::R6Class(
       if (is.null(max_bytes) || is.null(self$scope)) {
         return(invisible())
       }
-      total <- private$store$total_size(self$scope)
+      metas <- private$store$list(self$scope)
+      total <- sum(vapply(metas, function(m) m$size_bytes, double(1L)))
       if (total <= max_bytes) {
         return(invisible())
       }
-      metas <- private$store$list(self$scope)
       for (meta in rev(metas)) {
         if (!is.null(self$record) && identical(meta$id, self$record$id)) {
           next
         }
+        total <- total - meta$size_bytes
         private$evict_one(meta$id)
-        total <- private$store$total_size(self$scope)
         if (total <= max_bytes) break
       }
       if (total > max_bytes) {

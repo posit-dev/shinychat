@@ -53,13 +53,14 @@ def test_json_round_trip():
     assert rec2 == rec
 
 
-def test_meta_property():
+def test_meta_method():
     rec = new_conversation_record(title="t")
-    meta = rec.meta
+    meta = rec.meta(size_bytes=123)
     assert isinstance(meta, ConversationMeta)
     assert (meta.id, meta.title) == (rec.id, rec.title)
     assert meta.created_at == rec.created_at
     assert meta.updated_at == rec.updated_at
+    assert meta.size_bytes == 123
 
 
 def test_path_node_ids_raises_on_cycle():
