@@ -391,7 +391,7 @@ chat_server <- function(
 
     new_ctrl <- get_session_chat_bookmark_info(
       session,
-      "chat.history-controller"
+      paste0(id, ".history-controller")
     )
     if (!is.null(new_ctrl)) {
       for (fn in saved_on_save_fns) {
@@ -712,7 +712,10 @@ chat_server <- function(
 
   hist_env$on_save <- function(fn) {
     saved_on_save_fns <<- c(saved_on_save_fns, list(fn))
-    ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
+    ctrl <- get_session_chat_bookmark_info(
+      session,
+      paste0(id, ".history-controller")
+    )
     if (!is.null(ctrl)) {
       ctrl$add_save_callback(fn)
     }
@@ -721,7 +724,10 @@ chat_server <- function(
 
   hist_env$on_restore <- function(fn) {
     saved_on_restore_fns <<- c(saved_on_restore_fns, list(fn))
-    ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
+    ctrl <- get_session_chat_bookmark_info(
+      session,
+      paste0(id, ".history-controller")
+    )
     if (!is.null(ctrl)) {
       ctrl$add_restore_callback(fn)
     }

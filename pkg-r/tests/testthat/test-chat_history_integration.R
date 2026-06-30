@@ -58,6 +58,32 @@ test_that("chat_server() accepts history = history_options() config", {
   )
 })
 
+test_that("chat_server() with a non-default module id wires on_save/on_restore to the live controller", {
+  # Regression: chat_app.R used to look up the controller under the hardcoded
+  # key "chat.history-controller" instead of paste0(id, ".history-controller"),
+  # so on_save()/on_restore() silently no-oped for any id != "chat".
+  skip_if_not_installed("ellmer")
+
+  client <- mock_chat_client()
+
+  shiny::testServer(
+    function(input, output, session) {
+      mod <- chat_server("mychat", client, history = TRUE, session = session)
+      mod$history$on_save(function(values) values)
+      mod$history$on_restore(function(values) values)
+    },
+    {
+      ctrl <- get_session_chat_bookmark_info(
+        session,
+        "mychat.history-controller"
+      )
+      expect_false(is.null(ctrl))
+      expect_false(is.null(ctrl$.__enclos_env__$private$on_save))
+      expect_false(is.null(ctrl$.__enclos_env__$private$on_restore))
+    }
+  )
+})
+
 test_that("deprecated bookmark_on_input warns", {
   skip_if_not_installed("ellmer")
   client <- mock_chat_client()
