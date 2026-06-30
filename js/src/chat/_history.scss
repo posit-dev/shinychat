@@ -129,19 +129,47 @@
     gap: 0.375rem;
     padding: 0.375rem 0.5rem;
     border-radius: 0.375rem;
-    cursor: pointer;
 
     &:hover {
       background: rgb(0 0 0 / 5%);
     }
 
-    &:focus-visible {
+    // The focus ring lives at the row level (not on -item-select) so it
+    // still outlines the whole row, matching the pre-restructure look.
+    // Scoped to -item-select specifically (not :focus-within) so the ⋯
+    // menu button keeps showing only its own, separate ring.
+    &:has(> .shiny-chat-history-item-select:focus-visible) {
       outline: 2px solid var(--bs-primary, #007bc2);
       outline-offset: -2px;
     }
 
     &.active {
       background: var(--bs-primary-bg-subtle, rgb(0 0 0 / 8%));
+    }
+  }
+
+  // The row's real interactive control — title/timestamp only. The ⋯ menu
+  // and delete confirm sit as siblings, never nested inside this button.
+  &-item-select {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    color: inherit;
+    text-align: start;
+    cursor: pointer;
+
+    &:focus-visible {
+      outline: none;
+    }
+
+    &:disabled {
+      cursor: not-allowed;
     }
   }
 

@@ -325,32 +325,23 @@ function ConversationItem({
   }
 
   return (
-    <div
-      className={`shiny-chat-history-item${active ? " active" : ""}`}
-      onClick={onSelect}
-      role="button"
-      tabIndex={busy ? -1 : 0}
-      aria-disabled={busy ? true : undefined}
-      title={busy ? "Wait for the response to finish" : undefined}
-      onKeyDown={(e) => {
-        if (e.target !== e.currentTarget) return
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault()
-          onSelect()
-        }
-      }}
-    >
-      <span className="shiny-chat-history-item-title">
-        {meta.title}
-        <span className="shiny-chat-history-item-time">
-          {relativeTime(meta.updated_at)}
+    <div className={`shiny-chat-history-item${active ? " active" : ""}`}>
+      <button
+        type="button"
+        className="shiny-chat-history-item-select"
+        disabled={busy}
+        title={busy ? "Wait for the response to finish" : undefined}
+        onClick={onSelect}
+      >
+        <span className="shiny-chat-history-item-title">
+          {meta.title}
+          <span className="shiny-chat-history-item-time">
+            {relativeTime(meta.updated_at)}
+          </span>
         </span>
-      </span>
+      </button>
       {confirmingDelete ? (
-        <span
-          className="shiny-chat-history-confirm"
-          onClick={(e) => e.stopPropagation()}
-        >
+        <span className="shiny-chat-history-confirm">
           Delete?
           <button type="button" onClick={onDelete} aria-label="Confirm delete">
             ✓
@@ -364,11 +355,7 @@ function ConversationItem({
           </button>
         </span>
       ) : (
-        <span
-          className="shiny-chat-history-itemmenu"
-          data-menu-id={meta.id}
-          onClick={(e) => e.stopPropagation()}
-        >
+        <span className="shiny-chat-history-itemmenu" data-menu-id={meta.id}>
           <button
             type="button"
             aria-label="Conversation actions"

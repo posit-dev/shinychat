@@ -328,41 +328,30 @@ describe("select conversation", () => {
   it("calls onSelect with the conversation id when a row is clicked", () => {
     const { onSelect } = renderDrawer()
     openDrawer()
-    const row = screen
+    const selectBtn = screen
       .getByText("Today's chat")
-      .closest("[role=button], .shiny-chat-history-item") as HTMLElement
-    fireEvent.click(row!)
+      .closest(".shiny-chat-history-item-select") as HTMLElement
+    fireEvent.click(selectBtn!)
     expect(onSelect).toHaveBeenCalledWith("a")
   })
 
   it("closes the drawer after selecting a conversation", () => {
     renderDrawer()
     openDrawer()
-    const row = screen
+    const selectBtn = screen
       .getByText("Today's chat")
-      .closest("[role=button], .shiny-chat-history-item") as HTMLElement
-    fireEvent.click(row!)
+      .closest(".shiny-chat-history-item-select") as HTMLElement
+    fireEvent.click(selectBtn!)
     expect(screen.queryByRole("dialog")).toBeNull()
   })
 
-  it("activates row on Enter key", () => {
-    const { onSelect } = renderDrawer()
+  it("the row's select control is a real <button>, so Enter/Space activation is native", () => {
+    renderDrawer()
     openDrawer()
-    const row = screen
+    const selectBtn = screen
       .getByText("Today's chat")
-      .closest("[role=button], .shiny-chat-history-item") as HTMLElement
-    fireEvent.keyDown(row!, { key: "Enter" })
-    expect(onSelect).toHaveBeenCalledWith("a")
-  })
-
-  it("activates row on Space key", () => {
-    const { onSelect } = renderDrawer()
-    openDrawer()
-    const row = screen
-      .getByText("Today's chat")
-      .closest("[role=button], .shiny-chat-history-item") as HTMLElement
-    fireEvent.keyDown(row!, { key: " " })
-    expect(onSelect).toHaveBeenCalledWith("a")
+      .closest(".shiny-chat-history-item-select") as HTMLElement
+    expect(selectBtn.tagName).toBe("BUTTON")
   })
 })
 
@@ -541,10 +530,10 @@ describe("busy state", () => {
   it("does not call onSelect when busy and row is clicked", () => {
     const { onSelect } = renderDrawer({ busy: true })
     openDrawer()
-    const row = screen
+    const selectBtn = screen
       .getByText("Today's chat")
-      .closest("[role=button], .shiny-chat-history-item") as HTMLElement
-    fireEvent.click(row!)
+      .closest(".shiny-chat-history-item-select") as HTMLElement
+    fireEvent.click(selectBtn!)
     expect(onSelect).not.toHaveBeenCalled()
   })
 
@@ -580,24 +569,24 @@ describe("busy state", () => {
     expect((renameBtn as HTMLButtonElement).disabled).toBe(false)
   })
 
-  it("conversation rows have aria-disabled and title while busy", () => {
+  it("conversation rows' select control is disabled with a title while busy", () => {
     renderDrawer({ busy: true })
     openDrawer()
-    const row = screen
+    const selectBtn = screen
       .getByText("Today's chat")
-      .closest("[role=button]") as HTMLElement
-    expect(row.getAttribute("aria-disabled")).toBe("true")
-    expect(row.getAttribute("title")).toBeTruthy()
+      .closest(".shiny-chat-history-item-select") as HTMLButtonElement
+    expect(selectBtn.disabled).toBe(true)
+    expect(selectBtn.getAttribute("title")).toBeTruthy()
   })
 
-  it("conversation rows do not have aria-disabled or title when not busy", () => {
+  it("conversation rows' select control is not disabled or titled when not busy", () => {
     renderDrawer({ busy: false })
     openDrawer()
-    const row = screen
+    const selectBtn = screen
       .getByText("Today's chat")
-      .closest("[role=button]") as HTMLElement
-    expect(row.getAttribute("aria-disabled")).toBeNull()
-    expect(row.getAttribute("title")).toBeNull()
+      .closest(".shiny-chat-history-item-select") as HTMLButtonElement
+    expect(selectBtn.disabled).toBe(false)
+    expect(selectBtn.getAttribute("title")).toBeNull()
   })
 })
 
@@ -627,10 +616,10 @@ describe("closing behavior", () => {
   it("closes when a conversation is selected", () => {
     renderDrawer()
     openDrawer()
-    const row = screen
+    const selectBtn = screen
       .getByText("Today's chat")
-      .closest("[role=button], .shiny-chat-history-item") as HTMLElement
-    fireEvent.click(row!)
+      .closest(".shiny-chat-history-item-select") as HTMLElement
+    fireEvent.click(selectBtn!)
     expect(screen.queryByRole("dialog")).toBeNull()
   })
 })
