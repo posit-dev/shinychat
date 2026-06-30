@@ -10,10 +10,22 @@ vi.mock("../../src/utils/navigate", () => ({
 
 import { navigateTo } from "../../src/utils/navigate"
 
+function mockMatchMedia(reducedMotion: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockReturnValue({
+      matches: reducedMotion,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }),
+  )
+}
+
 describe("history_navigate handling", () => {
   beforeEach(() => {
     localStorage.clear()
     vi.mocked(navigateTo).mockClear()
+    mockMatchMedia(false)
   })
 
   test("updates the conversation pointer synchronously, then navigates", () => {

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { render, screen, fireEvent, act, within } from "@testing-library/react"
 import React from "react"
 import type { ConversationMeta } from "../../src/transport/types"
@@ -7,6 +7,24 @@ import {
   type ChatHistoryDrawerProps,
   HistoryIcon,
 } from "../../src/chat/ChatHistoryDrawer"
+
+function mockMatchMedia(reducedMotion: boolean) {
+  const mql = {
+    matches: reducedMotion,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }
+  vi.stubGlobal("matchMedia", vi.fn().mockReturnValue(mql))
+  return mql
+}
+
+beforeEach(() => {
+  mockMatchMedia(false)
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -403,7 +421,7 @@ describe("rename flow", () => {
     expect(onRename).toHaveBeenCalledWith("a", "New Name")
   })
 
-  it("cancels rename on Escape", () => {
+  it("cancels rename on Escape without closing the whole drawer", () => {
     const { onRename } = renderDrawer()
     openDrawer()
     const menuWrapper = openMenuFor("Today's chat")
@@ -413,6 +431,20 @@ describe("rename flow", () => {
     fireEvent.keyDown(input, { key: "Escape" })
     expect(onRename).not.toHaveBeenCalled()
     expect(screen.queryByDisplayValue("Changed")).toBeNull()
+    expect(screen.getByRole("dialog")).toBeTruthy()
+  })
+
+  it("does not commit rename on Enter when draft is empty or whitespace", () => {
+    const { onRename } = renderDrawer()
+    openDrawer()
+    const menuWrapper = openMenuFor("Today's chat")
+    fireEvent.click(within(menuWrapper).getByText("Rename"))
+    const input = screen.getByDisplayValue("Today's chat")
+    fireEvent.change(input, { target: { value: "   " } })
+    fireEvent.keyDown(input, { key: "Enter" })
+    expect(onRename).not.toHaveBeenCalled()
+    // Stays in rename mode rather than committing an empty/whitespace title.
+    expect((input as HTMLInputElement).value).toBe("   ")
   })
 
   it("cancels rename on blur", () => {
@@ -625,5 +657,161 @@ describe("empty conversations list", () => {
     renderDrawer({ conversations: [] })
     openDrawer()
     expect(screen.getByText(/no conversations yet/i)).toBeTruthy()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Close animation lifecycle — uses a wrapper that keeps the drawer mounted
+// across open/close (matching production usage in ChatContainer, where the
+// drawer's `isOpen` prop is toggled rather than the component being
+// conditionally rendered). The other describe blocks above use a wrapper
+// that unmounts on close, which bypasses this state machine entirely.
+// ---------------------------------------------------------------------------
+
+function PersistentWrapper(props: WrapperProps) {
+  const { startOpen = false, ...rest } = props
+  const [isOpen, setIsOpen] = React.useState(startOpen)
+  const triggerRef = React.useRef<HTMLButtonElement>(null)
+  return (
+    <>
+      <button
+        type="button"
+        ref={triggerRef}
+        aria-label="Conversation history"
+        aria-expanded={isOpen}
+        onClick={() => setIsOpen((v) => !v)}
+      >
+        <HistoryIcon />
+      </button>
+      <ChatHistoryDrawer
+        {...rest}
+        isOpen={isOpen}
+        onClose={() => setIsOpen(false)}
+        triggerRef={triggerRef}
+      />
+    </>
+  )
+}
+
+function renderPersistentDrawer(props: Partial<WrapperProps> = {}) {
+  const onSelect = vi.fn()
+  const onNew = vi.fn()
+  const onRename = vi.fn()
+  const onDelete = vi.fn()
+
+  const result = render(
+    <PersistentWrapper
+      conversations={props.conversations ?? DEFAULT_CONVOS}
+      activeId={props.activeId ?? null}
+      busy={props.busy ?? false}
+      startOpen={props.startOpen}
+      onSelect={props.onSelect ?? onSelect}
+      onNew={props.onNew ?? onNew}
+      onRename={props.onRename ?? onRename}
+      onDelete={props.onDelete ?? onDelete}
+    />,
+  )
+
+  return { ...result, onSelect, onNew, onRename, onDelete }
+}
+
+function closeDrawerByTrigger() {
+  const trigger = screen.getByRole("button", { name: /conversation history/i })
+  fireEvent.click(trigger)
+}
+
+describe("close animation lifecycle (persistent mount)", () => {
+  it("stays mounted with data-closing during the close animation", () => {
+    renderPersistentDrawer()
+    openDrawer()
+    closeDrawerByTrigger()
+    const dialog = screen.getByRole("dialog")
+    expect(dialog.getAttribute("data-closing")).not.toBeNull()
+  })
+
+  it("unmounts once the drawer's own animationend fires", () => {
+    renderPersistentDrawer()
+    openDrawer()
+    closeDrawerByTrigger()
+    const drawerEl = document.querySelector(".shiny-chat-history-drawer")!
+    fireEvent.animationEnd(drawerEl)
+    expect(screen.queryByRole("dialog")).toBeNull()
+  })
+
+  it("ignores animationend bubbled up from a descendant", () => {
+    renderPersistentDrawer()
+    openDrawer()
+    closeDrawerByTrigger()
+    const child = document.querySelector(".shiny-chat-history-toprow")!
+    fireEvent.animationEnd(child)
+    // Bubbled event from a child must not finish the close.
+    expect(screen.getByRole("dialog")).toBeTruthy()
+  })
+
+  it("closes via a fallback timer if animationend never fires", () => {
+    vi.useFakeTimers()
+    try {
+      renderPersistentDrawer()
+      openDrawer()
+      closeDrawerByTrigger()
+      expect(screen.getByRole("dialog")).toBeTruthy()
+      act(() => {
+        vi.advanceTimersByTime(300)
+      })
+      expect(screen.queryByRole("dialog")).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("closes immediately when prefers-reduced-motion is set, without animationend", () => {
+    mockMatchMedia(true)
+    renderPersistentDrawer()
+    openDrawer()
+    closeDrawerByTrigger()
+    expect(screen.queryByRole("dialog")).toBeNull()
+  })
+
+  it("does not reopen with stale search query after Escape-closing and reopening", () => {
+    renderPersistentDrawer()
+    openDrawer()
+    const input = screen.getByPlaceholderText(/search/i)
+    fireEvent.change(input, { target: { value: "today" } })
+
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
+    })
+    const drawerEl = document.querySelector(".shiny-chat-history-drawer")!
+    fireEvent.animationEnd(drawerEl)
+    expect(screen.queryByRole("dialog")).toBeNull()
+
+    openDrawer()
+    const reopened = screen.getByPlaceholderText(/search/i) as HTMLInputElement
+    expect(reopened.value).toBe("")
+  })
+
+  it("Escape cancels an open actions menu instead of closing the drawer", () => {
+    renderPersistentDrawer()
+    openDrawer()
+    openMenuFor("Today's chat")
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
+    })
+    expect(screen.getByRole("dialog")).toBeTruthy()
+    expect(screen.queryByText("Rename")).toBeNull()
+  })
+
+  it("Escape cancels an inline delete confirmation instead of closing the drawer", () => {
+    renderPersistentDrawer()
+    openDrawer()
+    const menuWrapper = openMenuFor("Today's chat")
+    fireEvent.click(within(menuWrapper).getByText("Delete…"))
+    expect(screen.getByRole("button", { name: /confirm delete/i })).toBeTruthy()
+
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
+    })
+    expect(screen.getByRole("dialog")).toBeTruthy()
+    expect(screen.queryByRole("button", { name: /confirm delete/i })).toBeNull()
   })
 })

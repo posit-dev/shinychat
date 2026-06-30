@@ -1,5 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ConversationMeta } from "../transport/types"
+import { usePrefersReducedMotion } from "./usePrefersReducedMotion"
+
+// Matches the 0.2s CSS animation in _history.scss, plus a margin of safety.
+const DRAWER_CLOSE_FALLBACK_MS = 300
 
 export interface ChatHistoryDrawerProps {
   isOpen: boolean
@@ -33,12 +37,27 @@ export function ChatHistoryDrawer({
   // Ref mirrors visible so the isOpen effect can read it without being in deps.
   const visibleRef = useRef(isOpen)
   visibleRef.current = visible
+  const reducedMotion = usePrefersReducedMotion()
   const [query, setQuery] = useState("")
   const [menuFor, setMenuFor] = useState<string | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
   const drawerRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+
+  const handleClose = useCallback(() => {
+    setQuery("")
+    setMenuFor(null)
+    setRenaming(null)
+    setConfirmingDelete(null)
+    onClose()
+  }, [onClose])
+
+  const finishClosing = useCallback(() => {
+    setVisible(false)
+    setClosing(false)
+    triggerRef.current?.focus({ preventScroll: true })
+  }, [triggerRef])
 
   useEffect(() => {
     if (isOpen) {
@@ -49,6 +68,21 @@ export function ChatHistoryDrawer({
     }
   }, [isOpen])
 
+  // Close is normally driven by the drawer's slide-out CSS animation
+  // finishing (see handleDrawerAnimationEnd), but `animationend` never fires
+  // when prefers-reduced-motion (or some other mechanism) disables the
+  // animation — so don't rely on it alone. Finish immediately for reduced
+  // motion, and fall back to a timer otherwise as a safety net.
+  useEffect(() => {
+    if (!closing) return
+    if (reducedMotion) {
+      finishClosing()
+      return
+    }
+    const timer = setTimeout(finishClosing, DRAWER_CLOSE_FALLBACK_MS)
+    return () => clearTimeout(timer)
+  }, [closing, reducedMotion, finishClosing])
+
   useEffect(() => {
     if (!visible || closing) return
     const drawer = drawerRef.current
@@ -56,7 +90,17 @@ export function ChatHistoryDrawer({
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        onClose()
+        // Scope Escape to whatever sub-state is active before closing the
+        // whole drawer, so a stray Escape can't skip handleClose()'s reset.
+        if (confirmingDelete) {
+          setConfirmingDelete(null)
+          return
+        }
+        if (menuFor) {
+          setMenuFor(null)
+          return
+        }
+        handleClose()
         return
       }
       if (e.key === "Tab") {
@@ -77,7 +121,7 @@ export function ChatHistoryDrawer({
     }
     document.addEventListener("keydown", onKey)
     return () => document.removeEventListener("keydown", onKey)
-  }, [visible, closing, onClose])
+  }, [visible, closing, confirmingDelete, menuFor, handleClose])
 
   useEffect(() => {
     if (visible && !closing) searchRef.current?.focus({ preventScroll: true })
@@ -104,19 +148,12 @@ export function ChatHistoryDrawer({
 
   const groups = useMemo(() => groupByRecency(filtered), [filtered])
 
-  function handleClose() {
-    setQuery("")
-    setMenuFor(null)
-    setRenaming(null)
-    setConfirmingDelete(null)
-    onClose()
-  }
-
-  function handleDrawerAnimationEnd() {
+  function handleDrawerAnimationEnd(e: React.AnimationEvent<HTMLDivElement>) {
+    // onAnimationEnd bubbles from descendants; only react to the drawer's
+    // own close animation, not a child's.
+    if (e.target !== e.currentTarget) return
     if (!closing) return
-    setVisible(false)
-    setClosing(false)
-    triggerRef.current?.focus({ preventScroll: true })
+    finishClosing()
   }
 
   function handleSelect(id: string) {
@@ -267,8 +304,17 @@ function ConversationItem({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") onRename(draft)
-            if (e.key === "Escape") onCancelEdit()
+            if (e.key === "Enter") {
+              if (!draft.trim()) return
+              onRename(draft)
+              return
+            }
+            if (e.key === "Escape") {
+              // Cancel the rename in place; don't let this bubble to the
+              // drawer's document-level Escape handler and close the drawer.
+              e.stopPropagation()
+              onCancelEdit()
+            }
           }}
           onBlur={onCancelEdit}
           aria-label="Rename conversation"
