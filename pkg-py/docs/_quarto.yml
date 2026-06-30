@@ -93,6 +93,7 @@ quartodoc:
         include_classes: true
         include_functions: true
       contents:
+        - HistoryOptions
         - ConversationStore
         - FileConversationStore
         - ConversationRecord

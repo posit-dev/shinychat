@@ -762,6 +762,9 @@ class ChatHistory:
             if callable(scope_key):
                 return scope_key(chat._session)
             if user is not None:
+                # session.user is expected to be a stable, per-identity
+                # string by Shiny convention; two users whose str(user)
+                # values collide would share a history scope.
                 return str(user)
             token = chat._session.input[ids.browser_token]()
             return str(req(token))

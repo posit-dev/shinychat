@@ -107,6 +107,8 @@ def new_conversation_id() -> str:
     # Time-prefixed for rough sortability; token for uniqueness.
     # (Avoids a ULID dependency. Ordering in the UI always comes from
     # updated_at, never from the id.)
+    # Same-millisecond collisions are astronomically unlikely (40 bits of
+    # token entropy) but not impossible; a collision would be last-writer-wins.
     return f"c_{int(time.time() * 1000):013x}{secrets.token_hex(5)}"
 
 
