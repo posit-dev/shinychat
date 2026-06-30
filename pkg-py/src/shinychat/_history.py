@@ -281,7 +281,7 @@ class HistoryController:
         extend_record_linear(
             record, turn_groups, messages, ui_offset=self.ui_offset
         )
-        await self._capture_app_state(record)
+        self._capture_app_state(record)
         await self.store.put(self.scope, record)
         await self._evict_if_needed()
         if self.on_response_saved is not None:
@@ -359,17 +359,17 @@ class HistoryController:
         extend_record_linear(
             self.record, turn_groups, messages, ui_offset=self.ui_offset
         )
-        await self._capture_app_state(self.record)
+        self._capture_app_state(self.record)
         await self.store.put(self.scope, self.record)
         self.ui_offset = len(messages)
 
-    async def _capture_app_state(self, record: ConversationRecord) -> None:
+    def _capture_app_state(self, record: ConversationRecord) -> None:
         values: dict[str, Any] = {}
         for cb in self._save_callbacks:
             cb(values)
         record.values = values
 
-    async def _restore_app_state(self, values: dict[str, Any]) -> None:
+    def _restore_app_state(self, values: dict[str, Any]) -> None:
         for cb in self._restore_callbacks:
             cb(values)
 
@@ -393,7 +393,7 @@ class HistoryController:
                 return
         self.adapter.set_turns_json(target.path_turns())
         await self.replay_ui(target)
-        await self._restore_app_state(target.values or {})
+        self._restore_app_state(target.values or {})
         self.record = target
         if self.on_active_id_change is not None:
             await self.on_active_id_change(target.id)
@@ -800,7 +800,7 @@ class ChatHistory:
                     adapter.set_turns_json(target.path_turns())
                     await controller.replay_ui(target)
                     if restore_mode != "bookmark":
-                        await controller._restore_app_state(target.values or {})
+                        controller._restore_app_state(target.values or {})
                     controller.record = target
                     await controller.send_history_update()
                     initialized = True
@@ -829,7 +829,7 @@ class ChatHistory:
                 if pointed is not None:
                     adapter.set_turns_json(pointed.path_turns())
                     await controller.replay_ui(pointed)
-                    await controller._restore_app_state(pointed.values or {})
+                    controller._restore_app_state(pointed.values or {})
                     controller.record = pointed
             await controller.send_history_update()
             initialized = True
