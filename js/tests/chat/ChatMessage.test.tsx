@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import { render, screen, fireEvent } from "@testing-library/react"
 import { ChatMessage } from "../../src/chat/ChatMessage"
 import type { ChatMessageData } from "../../src/chat/state"
@@ -27,6 +27,7 @@ describe("ChatMessage attachments", () => {
   it("renders an <img> for each attached image", () => {
     render(
       <ChatMessage
+        index={0}
         message={userMessage({
           attachments: [
             imageAttachment("data:image/png;base64,AAA"),
@@ -43,6 +44,7 @@ describe("ChatMessage attachments", () => {
   it("opens a lightbox with the full image when a thumbnail is clicked", () => {
     render(
       <ChatMessage
+        index={0}
         message={userMessage({
           attachments: [imageAttachment("data:image/png;base64,AAA")],
         })}
@@ -78,6 +80,7 @@ describe("ChatMessage attachments", () => {
     try {
       render(
         <ChatMessage
+          index={0}
           message={userMessage({
             attachments: [
               {
@@ -109,6 +112,7 @@ describe("ChatMessage attachments", () => {
 
     const { container: userC } = render(
       <ChatMessage
+        index={0}
         message={userMessage({ content: "see this", attachments: atts })}
       />,
     )
@@ -122,6 +126,7 @@ describe("ChatMessage attachments", () => {
 
     const { container: botC } = render(
       <ChatMessage
+        index={0}
         message={{
           ...userMessage({ content: "here it is", attachments: atts }),
           role: "assistant",
@@ -139,7 +144,7 @@ describe("ChatMessage attachments", () => {
   })
 
   it("renders no attachments when none present", () => {
-    render(<ChatMessage message={userMessage()} />)
+    render(<ChatMessage index={0} message={userMessage()} />)
     expect(screen.queryByRole("img")).toBeNull()
     expect(
       document.querySelector(".shiny-chat-message-attachment-chip"),
@@ -151,6 +156,7 @@ describe("ChatMessage attachments", () => {
     // generated image via append_message(role="assistant", attachments=[...]).
     render(
       <ChatMessage
+        index={0}
         message={{
           ...userMessage({
             attachments: [imageAttachment("data:image/png;base64,AAA")],
@@ -165,6 +171,7 @@ describe("ChatMessage attachments", () => {
   it("renders a PDF attachment as a chip with its filename", () => {
     const { container } = render(
       <ChatMessage
+        index={0}
         message={userMessage({
           attachments: [
             {
@@ -188,6 +195,7 @@ describe("ChatMessage attachments", () => {
     const dataUrl = `data:text/markdown;base64,${btoa(body)}`
     const { container } = render(
       <ChatMessage
+        index={0}
         message={userMessage({
           attachments: [
             {
@@ -210,6 +218,7 @@ describe("ChatMessage attachments", () => {
   it("shows the assistant icon (not the loading dots) for an attachment-only response", () => {
     const { container } = render(
       <ChatMessage
+        index={0}
         message={{
           ...userMessage({
             content: "",
@@ -230,6 +239,7 @@ describe("ChatMessage attachments", () => {
   it("still shows the loading dots for an empty assistant placeholder", () => {
     const { container } = render(
       <ChatMessage
+        index={0}
         message={{
           ...userMessage({ content: "", blocks: [] }),
           role: "assistant",
@@ -243,6 +253,7 @@ describe("ChatMessage attachments", () => {
   it("traps focus inside the lightbox", () => {
     render(
       <ChatMessage
+        index={0}
         message={userMessage({
           attachments: [imageAttachment("data:image/png;base64,AAA")],
         })}
@@ -274,6 +285,7 @@ describe("ChatMessage attachments", () => {
   it("moves focus into the lightbox on open", () => {
     render(
       <ChatMessage
+        index={0}
         message={userMessage({
           attachments: [imageAttachment("data:image/png;base64,AAA")],
         })}
@@ -287,6 +299,7 @@ describe("ChatMessage attachments", () => {
   it("restores focus to the opener when the lightbox closes", () => {
     render(
       <ChatMessage
+        index={0}
         message={userMessage({
           attachments: [imageAttachment("data:image/png;base64,AAA")],
         })}
@@ -304,6 +317,7 @@ describe("ChatMessage attachments", () => {
   it("locks body scrolling while the lightbox is open and restores it on close", () => {
     render(
       <ChatMessage
+        index={0}
         message={userMessage({
           attachments: [imageAttachment("data:image/png;base64,AAA")],
         })}
@@ -323,6 +337,7 @@ describe("ChatMessage attachments", () => {
     const dataUrl = `data:text/markdown;base64,${btoa(body)}`
     render(
       <ChatMessage
+        index={0}
         message={userMessage({
           attachments: [
             {
@@ -352,5 +367,142 @@ describe("ChatMessage attachments", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /close preview/i }))
     expect(screen.queryByRole("dialog")).toBeNull()
+  })
+})
+
+describe("ChatMessage editing", () => {
+  it("shows the textarea pre-filled with the message content when the edit button is clicked", () => {
+    render(
+      <ChatMessage
+        index={0}
+        message={userMessage({ content: "hello world" })}
+        onEdit={() => {}}
+      />,
+    )
+    expect(screen.queryByRole("textbox")).toBeNull()
+
+    fireEvent.click(screen.getByRole("button", { name: /edit message/i }))
+
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement
+    expect(textarea.value).toBe("hello world")
+  })
+
+  it("cancels editing on Escape without calling onEdit", () => {
+    const onEdit = vi.fn()
+    render(
+      <ChatMessage
+        index={0}
+        message={userMessage({ content: "hello world" })}
+        onEdit={onEdit}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: /edit message/i }))
+    const textarea = screen.getByRole("textbox")
+
+    fireEvent.keyDown(textarea, { key: "Escape" })
+
+    expect(screen.queryByRole("textbox")).toBeNull()
+    expect(onEdit).not.toHaveBeenCalled()
+  })
+
+  it("submits via Cmd+Enter with the current textarea content", () => {
+    const onEdit = vi.fn()
+    render(
+      <ChatMessage
+        index={2}
+        message={userMessage({ content: "hello world" })}
+        onEdit={onEdit}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: /edit message/i }))
+    const textarea = screen.getByRole("textbox")
+    fireEvent.change(textarea, { target: { value: "edited content" } })
+
+    fireEvent.keyDown(textarea, { key: "Enter", metaKey: true })
+
+    expect(onEdit).toHaveBeenCalledWith(2, "edited content")
+    expect(screen.queryByRole("textbox")).toBeNull()
+  })
+
+  it("submits via Ctrl+Enter with the current textarea content", () => {
+    const onEdit = vi.fn()
+    render(
+      <ChatMessage
+        index={1}
+        message={userMessage({ content: "hello world" })}
+        onEdit={onEdit}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: /edit message/i }))
+    const textarea = screen.getByRole("textbox")
+    fireEvent.change(textarea, { target: { value: "ctrl edited" } })
+
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true })
+
+    expect(onEdit).toHaveBeenCalledWith(1, "ctrl edited")
+    expect(screen.queryByRole("textbox")).toBeNull()
+  })
+})
+
+describe("ChatMessage sibling navigation", () => {
+  it("calls onNavigate with the index and direction when nav buttons are clicked", () => {
+    const onNavigate = vi.fn()
+    render(
+      <ChatMessage
+        index={3}
+        message={userMessage({ siblings: { index: 0, total: 2 } })}
+        onNavigate={onNavigate}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: /next version/i }))
+    expect(onNavigate).toHaveBeenCalledWith(3, "next")
+  })
+
+  it("disables the previous button at the first sibling", () => {
+    render(
+      <ChatMessage
+        index={0}
+        message={userMessage({ siblings: { index: 0, total: 2 } })}
+        onNavigate={() => {}}
+      />,
+    )
+    expect(
+      (
+        screen.getByRole("button", {
+          name: /previous version/i,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true)
+    expect(
+      (
+        screen.getByRole("button", {
+          name: /next version/i,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false)
+  })
+
+  it("disables the next button at the last sibling", () => {
+    render(
+      <ChatMessage
+        index={0}
+        message={userMessage({ siblings: { index: 1, total: 2 } })}
+        onNavigate={() => {}}
+      />,
+    )
+    expect(
+      (
+        screen.getByRole("button", {
+          name: /next version/i,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true)
+    expect(
+      (
+        screen.getByRole("button", {
+          name: /previous version/i,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false)
   })
 })

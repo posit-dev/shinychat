@@ -274,6 +274,20 @@ export function ChatApp({
     setCurrentConversationId(elementId, state.history.activeId)
   }, [elementId, state.history.enabled, state.history.activeId])
 
+  const handleEdit = useCallback(
+    (index: number, content: string) => {
+      transport.sendMessageEdit(elementId, index, content)
+    },
+    [transport, elementId],
+  )
+
+  const handleNavigate = useCallback(
+    (index: number, direction: "prev" | "next") => {
+      transport.sendMessageNavigate(elementId, index, direction)
+    },
+    [transport, elementId],
+  )
+
   const toolState: ChatToolState = useMemo(
     () => ({
       hiddenToolRequests: state.hiddenToolRequests,
@@ -310,6 +324,8 @@ export function ChatApp({
               historyEnabled={state.history.enabled}
               historyConversations={state.history.conversations}
               historyActiveId={state.history.activeId}
+              onEdit={handleEdit}
+              onNavigate={handleNavigate}
             />
           </ChatSubmitContext.Provider>
         </ChatDispatchContext.Provider>
