@@ -108,6 +108,11 @@ export function ChatApp({
   useEffect(() => {
     const unsubscribe = transport.onMessage(elementId, (action) => {
       if (action.type === "history_navigate") {
+        // localStorage is also written below from state.history.activeId
+        // (set by the "history_update" reducer case). The server always
+        // sends these two messages with the same id, in order, on a single
+        // connection, so the two writers never disagree in practice — but
+        // that's a server-side invariant, not something enforced here.
         setCurrentConversationId(elementId, action.active_id)
         navigateTo(action.url, action.reload === true)
         return
