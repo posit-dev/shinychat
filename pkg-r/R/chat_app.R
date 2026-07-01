@@ -340,7 +340,11 @@ chat_server <- function(
   saved_on_save_fns <- list()
   saved_on_restore_fns <- list()
 
-  # Set up history or legacy bookmarking
+  # `history` (chat_enable_history()) and `chat_restore()` are mutually
+  # exclusive: history_options(restore_mode = "bookmark") is the modern,
+  # per-conversation replacement for chat_restore()'s whole-session Shiny
+  # bookmark. chat_restore() is kept only for apps built before history
+  # existed, or that don't need multi-conversation history at all.
   cancel_history <- if (!isFALSE(history)) {
     config <- if (isTRUE(history)) history_options() else history
     chat_enable_history(id, client, options = config, session = session)

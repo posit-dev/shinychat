@@ -56,6 +56,14 @@ any additional state.
 To avoid restoring chat history from the \code{client}, you can ensure that the
 history is empty by calling \code{client$set_turns(list())} before passing the
 client to \code{chat_restore()}.
+
+\code{chat_restore()} bookmarks the whole session and doesn't know about
+multiple conversations. If you need per-conversation history (the chat
+history drawer, switching between saved conversations), use
+\code{\link[=chat_enable_history]{chat_enable_history()}} with \code{history_options(restore_mode = "bookmark")}
+instead — it replaces \code{chat_restore()}'s job for history-aware apps. The
+two are mutually exclusive; \code{chat_app()} picks one or the other based on
+whether \code{history} is set.
 }
 \examples{
 \dontshow{if (interactive()) withAutoprint(\{ # examplesIf}

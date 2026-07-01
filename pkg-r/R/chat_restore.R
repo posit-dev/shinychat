@@ -19,6 +19,14 @@
 #' history is empty by calling `client$set_turns(list())` before passing the
 #' client to `chat_restore()`.
 #'
+#' `chat_restore()` bookmarks the whole session and doesn't know about
+#' multiple conversations. If you need per-conversation history (the chat
+#' history drawer, switching between saved conversations), use
+#' [chat_enable_history()] with `history_options(restore_mode = "bookmark")`
+#' instead — it replaces `chat_restore()`'s job for history-aware apps. The
+#' two are mutually exclusive; `chat_app()` picks one or the other based on
+#' whether `history` is set.
+#'
 #' @param id The ID of the chat element
 #' @param client The \pkg{ellmer} LLM chat client.
 #' @param ... Used for future parameter expansion.
