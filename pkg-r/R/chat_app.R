@@ -291,7 +291,6 @@ chat_server <- function(
 ) {
   check_ellmer_chat(client)
 
-  # Handle deprecation of bookmark params
   bm_on_input <- FALSE
   bm_on_response <- FALSE
   if (lifecycle::is_present(bookmark_on_input)) {

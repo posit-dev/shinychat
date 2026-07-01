@@ -525,14 +525,14 @@ chat_enable_history <- function(
     controller$add_restore_callback(on_restore)
   }
 
-  # Store controller in session for access by stream completion hooks
+  # Read back via session by chat_history_on_response() and the
+  # on_save/on_restore hooks in chat_app().
   set_session_chat_bookmark_info(
     session,
     paste0(id, ".history-controller"),
     controller
   )
 
-  # --- Exclude history inputs from bookmarking ---
   history_inputs <- paste0(
     id,
     c(
@@ -551,7 +551,6 @@ chat_enable_history <- function(
     session$setBookmarkExclude(c(excluded, to_add))
   }
 
-  # --- Identity chain ---
   token_input <- paste0(id, "_history_browser_token")
   current_id_input <- paste0(id, "_history_current_id")
   url_id_input <- paste0(id, "_history_url_id")
@@ -589,7 +588,6 @@ chat_enable_history <- function(
     token
   })
 
-  # --- URL-mode: update address bar on conversation change ---
   if (identical(restore_mode, "url")) {
     controller$on_active_id_change <- function(conv_id) {
       url <- if (!is.null(conv_id)) {
@@ -601,7 +599,7 @@ chat_enable_history <- function(
     }
   }
 
-  # --- Bookmark mode: mint a Shiny server bookmark on every response ---
+  # --- Bookmark mode ---
   if (identical(restore_mode, "bookmark")) {
     bm_store_check <- shiny::getShinyOption(
       "bookmarkStore",
@@ -672,7 +670,7 @@ chat_enable_history <- function(
     }
   }
 
-  # --- Bookmark stamp: record active conversation ID in any Shiny bookmark ---
+  # --- Bookmark stamp ---
   stamp_key <- paste0(id, "_history_conversation_id")
   stamp_cancel <- NULL
   bm_store <- shiny::getShinyOption("bookmarkStore", default = "disable")
@@ -684,7 +682,6 @@ chat_enable_history <- function(
     })
   }
 
-  # --- Initialization effect (runs once) ---
   initialized <- FALSE
   restore_after_first_flush <- function(values) {
     session$onFlushed(
@@ -759,7 +756,6 @@ chat_enable_history <- function(
     rlang::warn(prefix, parent = e)
   }
 
-  # --- Input handlers ---
   select_effect <- shiny::observeEvent(
     session$input[[paste0(id, "_history_select")]],
     label = "history_select",
@@ -830,7 +826,6 @@ chat_enable_history <- function(
     }
   )
 
-  # --- Cancel callback ---
   cancel <- function() {
     init_effect$destroy()
     select_effect$destroy()
@@ -845,7 +840,6 @@ chat_enable_history <- function(
       paste0(id, ".history-controller"),
       NULL
     )
-    # Notify client that history is disabled
     send_chat_action(
       id,
       list(

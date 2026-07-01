@@ -176,7 +176,6 @@ class FileConversationStore(ConversationStore):
 
         raw = json.loads(record_file.read_text(encoding="utf-8"))
 
-        # Read turns
         turns_map: dict[int, dict[str, Any]] = {}
         turns_file = conv_dir / "turns.jsonl"
         if turns_file.is_file():
@@ -187,7 +186,6 @@ class FileConversationStore(ConversationStore):
                 except (json.JSONDecodeError, KeyError):
                     continue
 
-        # Read UI
         ui_map: dict[str, list[dict[str, Any]]] = {}
         ui_file = conv_dir / "ui.jsonl"
         if ui_file.is_file():
@@ -198,7 +196,6 @@ class FileConversationStore(ConversationStore):
                 except (json.JSONDecodeError, KeyError):
                     continue
 
-        # Reconstruct nodes with inline turns and UI
         nodes: dict[str, ConversationNode] = {}
         for nid, node_data in raw.get("nodes", {}).items():
             turn_ids = node_data.get("turn_ids", [])
@@ -233,7 +230,6 @@ class FileConversationStore(ConversationStore):
 
         ws = self._get_or_init_write_state(scope, record.id, conv_dir)
 
-        # Append new turns and UI
         new_turns_lines: list[str] = []
         new_ui_lines: list[str] = []
         record_nodes: dict[str, dict[str, Any]] = {}
@@ -266,7 +262,6 @@ class FileConversationStore(ConversationStore):
                 "turn_ids": ws.turn_seq_map.get(nid, []),
             }
 
-        # Append to JSONL files
         turns_file = conv_dir / "turns.jsonl"
         if new_turns_lines:
             with open(turns_file, "a", encoding="utf-8") as f:
@@ -281,7 +276,6 @@ class FileConversationStore(ConversationStore):
         elif not ui_file.exists():
             ui_file.touch()
 
-        # Write record.json atomically
         record_data = {
             "schema_version": record.schema_version,
             "id": record.id,
@@ -304,7 +298,6 @@ class FileConversationStore(ConversationStore):
         )
         os.replace(tmp, conv_dir / "record.json")
 
-        # Update meta cache
         if scope in self._meta_cache:
             size_bytes = sum(
                 f.stat().st_size for f in conv_dir.iterdir() if f.is_file()

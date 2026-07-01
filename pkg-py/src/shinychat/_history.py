@@ -230,12 +230,10 @@ class HistoryController:
         self.on_evict: Callable[[str], Awaitable[None]] | None = None
         self.max_store_bytes: int | None = max_store_bytes
         self._title_task: asyncio.Task[None] | None = None
-        # replay_ui contains multiple await points (one per message), so
-        # _save_on_response can fire at each yield — before replay finishes.
-        # _is_replaying suppresses all of those in-flight fires; it is set
-        # before the first await and cleared in a finally block.
-        # _suppress_next_save handles the single post-replay reactive flush
-        # that fires after _is_replaying is already False; it is consumed once.
+        # replay_ui awaits per message, so on_response can fire mid-replay;
+        # _is_replaying suppresses those. One more flush fires after
+        # replay_ui returns (once _is_replaying is already False) —
+        # _suppress_next_save catches that single case and self-clears.
         self._is_replaying: bool = False
         self._suppress_next_save: bool = False
         self._over_budget_warned: bool = False
@@ -656,7 +654,6 @@ class ChatHistory:
             max_store_bytes=max_store_bytes,
         )
 
-        # Wire up URL updates for restore_mode="url".
         if restore_mode == "url":
 
             async def _update_url(conv_id: str | None) -> None:
@@ -755,18 +752,15 @@ class ChatHistory:
 
         @reactive.calc
         def scope() -> str:
-            # When restore_mode needs localStorage inputs ("browser" or "url"),
-            # the active conversation ID is sent from the client inside
-            # initializedPromise.then() — AFTER Shiny's first reactive flush.
-            # If the scope resolves immediately (from session.user or a
-            # caller-supplied scope_key), the init effect fires in that first
-            # flush and reads current_id / url_id as None, permanently missing
-            # the active conversation.
-            #
-            # The browser token is dispatched in the same microtask as
-            # current_id and url_id. Requiring it here delays scope resolution
-            # until the second flush, ensuring all three inputs have arrived
-            # before the init observer runs.
+            # For restore_mode "browser"/"url", the active conversation id
+            # arrives from the client only after Shiny's first reactive flush
+            # (dispatched inside initializedPromise.then(), same microtask as
+            # browser_token). If scope resolved immediately (session.user or
+            # a caller scope_key), the init effect would run on that first
+            # flush and read current_id/url_id as None permanently.
+            # Requiring browser_token here — even when unused for the
+            # returned value — forces scope() to wait for the second flush,
+            # by which point all three inputs have arrived.
             # Temporary: some session types raise AttributeError on .user;
             # remove this getattr once the pending py-shiny PR lands.
             user = getattr(chat._session, "user", None)

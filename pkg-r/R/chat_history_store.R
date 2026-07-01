@@ -125,7 +125,7 @@ resolve_history_dir <- function() {
     return(file.path(connect_dir, "shinychat-conversations"))
   }
 
-  # Try Shiny's bookmark save dir (Connect-aware)
+  # server.bookmark.dir is how Posit Connect supplies a persistent dir
   bookmark_fn <- shiny::getShinyOption("server.bookmark.dir", NULL)
   if (is.function(bookmark_fn)) {
     dir <- tryCatch(
@@ -135,7 +135,6 @@ resolve_history_dir <- function() {
     if (!is.null(dir)) return(dir)
   }
 
-  # Local fallback
   file.path(".shinychat", "conversations")
 }
 
@@ -224,7 +223,6 @@ FileConversationStore <- R6::R6Class(
         rlang::abort(paste0("Failed to write conversation: ", path))
       }
 
-      # Update cache
       cache <- private$meta_cache[[scope]]
       if (!is.null(cache)) {
         cache <- Filter(function(m) m$id != record$id, cache)

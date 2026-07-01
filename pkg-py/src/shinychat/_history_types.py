@@ -68,9 +68,7 @@ class ConversationRecord(BaseModel):
     def meta(self, *, size_bytes: int) -> ConversationMeta:
         """Lightweight summary for `ConversationStore.list()`.
 
-        `size_bytes` is the caller's storage footprint for this record (e.g.
-        on-disk bytes, in-memory JSON dump size) — not derivable from the
-        record itself, since that depends on the backend's storage format.
+        See `ConversationMeta.size_bytes` for why the caller must supply it.
         """
         return ConversationMeta(
             id=self.id,

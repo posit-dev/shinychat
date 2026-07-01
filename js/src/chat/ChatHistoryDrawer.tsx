@@ -31,7 +31,7 @@ export function ChatHistoryDrawer({
   onRename,
   onDelete,
 }: ChatHistoryDrawerProps) {
-  // Track whether the drawer is currently visible (open or mid-close animation)
+  // visible stays true through the close animation, unlike isOpen
   const [visible, setVisible] = useState(isOpen)
   const [closing, setClosing] = useState(false)
   // Ref mirrors visible so the isOpen effect can read it without being in deps.
@@ -289,7 +289,7 @@ function ConversationItem({
 }: ConversationItemProps) {
   const [draft, setDraft] = useState(meta.title)
 
-  // Keep draft in sync if title changes externally while not editing
+  // Resync if meta.title changes from outside this component (e.g. rename from another tab)
   useEffect(() => {
     if (!renaming) {
       setDraft(meta.title)

@@ -112,7 +112,7 @@ export type ChatAction =
       url: string | null
       /** Conversation to record as current in localStorage (null on New chat). */
       active_id: string | null
-      /** Force a hard navigation (full reload), used by bookmark-mode switches. */
+      /** Used by bookmark-mode switches, where a soft URL update isn't sufficient. */
       reload?: boolean
     }
 
