@@ -339,14 +339,18 @@ class InMemoryConversationStore(ConversationStore):
 
     def __init__(self) -> None:
         self._data: dict[str, dict[str, ConversationRecord]] = {}
+        self._meta_cache: dict[str, list[ConversationMeta]] = {}
 
     async def list(self, scope: str) -> list[ConversationMeta]:
+        if scope in self._meta_cache:
+            return list(self._meta_cache[scope])
         metas = [
             r.meta(size_bytes=len(r.model_dump_json().encode("utf-8")))
             for r in self._data.get(scope, {}).values()
         ]
         metas.sort(key=lambda m: m.updated_at, reverse=True)
-        return metas
+        self._meta_cache[scope] = metas
+        return list(metas)
 
     async def get(self, scope: str, conv_id: str) -> ConversationRecord | None:
         return self._data.get(scope, {}).get(conv_id)
@@ -356,8 +360,22 @@ class InMemoryConversationStore(ConversationStore):
             self._data[scope] = {}
         self._data[scope][record.id] = record
 
+        # Only touched-record work — mirrors FileConversationStore.put(), so
+        # a warm cache stays warm without resumming/reserializing everything
+        # in scope (the cost _evict_if_needed would otherwise pay every turn).
+        if scope in self._meta_cache:
+            size_bytes = len(record.model_dump_json().encode("utf-8"))
+            updated = [m for m in self._meta_cache[scope] if m.id != record.id]
+            updated.append(record.meta(size_bytes=size_bytes))
+            updated.sort(key=lambda m: m.updated_at, reverse=True)
+            self._meta_cache[scope] = updated
+
     async def delete(self, scope: str, conv_id: str) -> None:
         self._data.get(scope, {}).pop(conv_id, None)
+        if scope in self._meta_cache:
+            self._meta_cache[scope] = [
+                m for m in self._meta_cache[scope] if m.id != conv_id
+            ]
 
 
 def resolve_store(

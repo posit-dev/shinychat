@@ -4,6 +4,7 @@ import json
 import shutil
 from datetime import timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 from shinychat._history_store import (
@@ -13,7 +14,7 @@ from shinychat._history_store import (
     safe_conv_path,
     sanitize_scope,
 )
-from shinychat._history_types import new_conversation_record
+from shinychat._history_types import ConversationRecord, new_conversation_record
 
 
 @pytest.fixture
@@ -425,6 +426,64 @@ async def test_memory_search(mem_store: InMemoryConversationStore):
     await mem_store.put("alice", b)
     hits = await mem_store.search("alice", "CHURN")
     assert [m.id for m in hits] == [a.id]
+
+
+@pytest.mark.anyio
+async def test_memory_list_does_not_reserialize_on_repeat_calls(
+    mem_store: InMemoryConversationStore, monkeypatch: pytest.MonkeyPatch
+):
+    rec = new_conversation_record(title="t")
+    await mem_store.put("alice", rec)
+    await mem_store.list("alice")  # warm cache
+
+    call_count = 0
+    original = ConversationRecord.model_dump_json
+
+    def counting(self: ConversationRecord, *args: Any, **kwargs: Any) -> str:
+        nonlocal call_count
+        call_count += 1
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(ConversationRecord, "model_dump_json", counting)
+    await mem_store.list("alice")
+    await mem_store.list("alice")
+    assert call_count == 0
+
+
+@pytest.mark.anyio
+async def test_memory_put_updates_warm_cache(
+    mem_store: InMemoryConversationStore,
+):
+    a = new_conversation_record(title="first")
+    await mem_store.put("alice", a)
+    await mem_store.list("alice")  # warm
+
+    b = new_conversation_record(title="second")
+    await mem_store.put("alice", b)
+
+    cached = mem_store._meta_cache["alice"]
+    assert {m.id for m in cached} == {a.id, b.id}
+
+
+@pytest.mark.anyio
+async def test_memory_put_does_not_create_cache_for_cold_scope(
+    mem_store: InMemoryConversationStore,
+):
+    rec = new_conversation_record(title="cold")
+    await mem_store.put("alice", rec)
+    assert "alice" not in mem_store._meta_cache
+
+
+@pytest.mark.anyio
+async def test_memory_delete_updates_warm_cache(
+    mem_store: InMemoryConversationStore,
+):
+    rec = new_conversation_record(title="t")
+    await mem_store.put("alice", rec)
+    await mem_store.list("alice")  # warm
+    await mem_store.delete("alice", rec.id)
+
+    assert mem_store._meta_cache["alice"] == []
 
 
 # ---------------------------------------------------------------------------

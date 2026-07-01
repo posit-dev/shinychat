@@ -35,22 +35,32 @@ InMemoryConversationStore <- R6::R6Class(
   "InMemoryConversationStore",
   inherit = ConversationStore,
   private = list(
-    data = NULL
+    data = NULL,
+    meta_cache = NULL
   ),
   public = list(
     initialize = function() {
       private$data <- list()
+      private$meta_cache <- list()
     },
     list = function(scope) {
+      cached <- private$meta_cache[[scope]]
+      if (!is.null(cached)) {
+        return(cached)
+      }
+
       scope_data <- private$data[[scope]]
       if (is.null(scope_data) || length(scope_data) == 0) {
+        private$meta_cache[[scope]] <- list()
         return(list())
       }
       metas <- lapply(scope_data, function(r) {
         record_meta(r, size_bytes = record_json_size(r))
       })
       timestamps <- vapply(metas, function(m) m$updated_at, character(1))
-      metas[order(timestamps, decreasing = TRUE)]
+      metas <- metas[order(timestamps, decreasing = TRUE)]
+      private$meta_cache[[scope]] <- metas
+      metas
     },
     get = function(scope, id) {
       private$data[[scope]][[id]]
@@ -60,10 +70,30 @@ InMemoryConversationStore <- R6::R6Class(
         private$data[[scope]] <- list()
       }
       private$data[[scope]][[record$id]] <- record
+
+      # Only touched-record work -- mirrors FileConversationStore.put(), so
+      # a warm cache stays warm without resumming/reserializing everything
+      # in scope (the cost evict_if_needed would otherwise pay every turn).
+      cache <- private$meta_cache[[scope]]
+      if (!is.null(cache)) {
+        cache <- Filter(function(m) m$id != record$id, cache)
+        cache <- c(
+          list(record_meta(record, size_bytes = record_json_size(record))),
+          cache
+        )
+        timestamps <- vapply(cache, function(m) m$updated_at, character(1))
+        cache <- cache[order(timestamps, decreasing = TRUE)]
+        private$meta_cache[[scope]] <- cache
+      }
       invisible(NULL)
     },
     delete = function(scope, id) {
       private$data[[scope]][[id]] <- NULL
+
+      cache <- private$meta_cache[[scope]]
+      if (!is.null(cache)) {
+        private$meta_cache[[scope]] <- Filter(function(m) m$id != id, cache)
+      }
       invisible(NULL)
     }
   )

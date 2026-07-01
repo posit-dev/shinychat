@@ -60,6 +60,56 @@ test_that("ConversationStore: search filters by title", {
   expect_equal(results[[1]]$title, "Penguin analysis")
 })
 
+test_that("InMemoryConversationStore: list does not reserialize on repeat calls", {
+  store <- InMemoryConversationStore$new()
+  rec <- new_conversation_record("t")
+  store$put("user1", rec)
+  store$list("user1") # warm cache
+
+  call_count <- 0
+  testthat::local_mocked_bindings(
+    record_json_size = function(record) {
+      call_count <<- call_count + 1
+      as.double(
+        nchar(jsonlite::toJSON(record, auto_unbox = TRUE), type = "bytes")
+      )
+    }
+  )
+  store$list("user1")
+  store$list("user1")
+  expect_equal(call_count, 0)
+})
+
+test_that("InMemoryConversationStore: put updates warm cache", {
+  store <- InMemoryConversationStore$new()
+  a <- new_conversation_record("first")
+  store$put("user1", a)
+  store$list("user1") # warm
+
+  b <- new_conversation_record("second")
+  store$put("user1", b)
+
+  cache <- store$.__enclos_env__$private$meta_cache[["user1"]]
+  expect_setequal(vapply(cache, function(m) m$id, character(1)), c(a$id, b$id))
+})
+
+test_that("InMemoryConversationStore: put does not create cache for cold scope", {
+  store <- InMemoryConversationStore$new()
+  rec <- new_conversation_record("cold")
+  store$put("user1", rec)
+  expect_null(store$.__enclos_env__$private$meta_cache[["user1"]])
+})
+
+test_that("InMemoryConversationStore: delete updates warm cache", {
+  store <- InMemoryConversationStore$new()
+  rec <- new_conversation_record("t")
+  store$put("user1", rec)
+  store$list("user1") # warm
+  store$delete("user1", rec$id)
+
+  expect_length(store$.__enclos_env__$private$meta_cache[["user1"]], 0)
+})
+
 test_that("FileConversationStore: put and get round-trip via JSON", {
   dir <- withr::local_tempdir()
   store <- FileConversationStore$new(dir = dir)
