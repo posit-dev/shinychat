@@ -343,6 +343,148 @@ make_turns <- function(user_text = "Hi", asst_text = "Hello") {
   )
 }
 
+flush_promises <- function(timeout = 2) {
+  deadline <- Sys.time() + timeout
+  while (Sys.time() < deadline) {
+    later::run_now(0.05)
+  }
+}
+
+test_that("title stays fallback after first response", {
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+  session <- shiny::MockShinySession$new()
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(
+      store = store,
+      title = function(recorded_turns) "Generated Title"
+    ),
+    session = session
+  )
+  ctrl$scope <- "test-user"
+
+  ctrl$on_response(make_turns("Hi", "Hello"))
+
+  expect_equal(ctrl$record$response_count, 1L)
+  expect_null(ctrl$record$title_source)
+})
+
+test_that("titling fires after the second response, exactly once", {
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+  session <- shiny::MockShinySession$new()
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(
+      store = store,
+      title = function(recorded_turns) "Generated Title"
+    ),
+    session = session
+  )
+  ctrl$scope <- "test-user"
+
+  ctrl$on_response(make_turns("Hi", "Hello"))
+  turns <- c(make_turns("Hi", "Hello"), make_turns("More", "Sure"))
+  ctrl$on_response(turns)
+
+  expect_equal(ctrl$record$response_count, 2L)
+  flush_promises()
+  expect_equal(ctrl$record$title, "Generated Title")
+  expect_equal(ctrl$record$title_source, "llm")
+})
+
+test_that("rename between the first and second response blocks auto-titling", {
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+  session <- shiny::MockShinySession$new()
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(
+      store = store,
+      title = function(recorded_turns) "Generated Title"
+    ),
+    session = session
+  )
+  ctrl$scope <- "test-user"
+
+  ctrl$on_response(make_turns("Hi", "Hello"))
+  ctrl$rename(ctrl$record$id, "My Title")
+
+  turns <- c(make_turns("Hi", "Hello"), make_turns("More", "Sure"))
+  ctrl$on_response(turns)
+  flush_promises()
+
+  expect_equal(ctrl$record$title, "My Title")
+  expect_equal(ctrl$record$title_source, "user")
+})
+
+test_that("titling fires on the second response across sessions", {
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+
+  ctrl1 <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(
+      store = store,
+      title = function(recorded_turns) "Generated Title"
+    ),
+    session = shiny::MockShinySession$new()
+  )
+  ctrl1$scope <- "test-user"
+  ctrl1$on_response(make_turns("Hi", "Hello"))
+  conv_id <- ctrl1$record$id
+
+  # Simulate a brand-new session: fresh controller, same backing store,
+  # loads the persisted (1-response) conversation before continuing it.
+  ctrl2 <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(
+      store = store,
+      title = function(recorded_turns) "Generated Title"
+    ),
+    session = shiny::MockShinySession$new()
+  )
+  ctrl2$scope <- "test-user"
+  ctrl2$record <- store$get("test-user", conv_id)
+
+  turns <- c(make_turns("Hi", "Hello"), make_turns("More", "Sure"))
+  ctrl2$on_response(turns)
+  flush_promises()
+
+  expect_equal(ctrl2$record$title, "Generated Title")
+  expect_equal(ctrl2$record$title_source, "llm")
+})
+
+test_that("on_response defaults a missing response_count to 0 before incrementing", {
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+  session <- shiny::MockShinySession$new()
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = session
+  )
+  ctrl$scope <- "test-user"
+  ctrl$on_response(make_turns("Hi", "Hello"))
+  ctrl$record$response_count <- NULL # simulate a pre-existing record on disk
+
+  turns <- c(make_turns("Hi", "Hello"), make_turns("More", "Sure"))
+  ctrl$on_response(turns)
+
+  expect_equal(ctrl$record$response_count, 1L)
+})
+
 test_that("on_response_saved fires on every response", {
   store <- InMemoryConversationStore$new()
   client <- mock_chat_client()

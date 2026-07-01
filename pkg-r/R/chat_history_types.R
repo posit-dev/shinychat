@@ -67,6 +67,11 @@ new_conversation_record <- function(title, client_info = list()) {
     # titling hasn't finished (or was never enabled) or nothing has renamed
     # it. Distinct from "llm"/"user", which are always explicit and final.
     title_source = NULL,
+    # Completed-response count for this conversation, incremented once per
+    # genuinely-new on_response() call. Drives the "title after the second
+    # response" trigger in HistoryController$on_response -- not derived from
+    # turn/node counts, since those vary by client and tool-call structure.
+    response_count = 0L,
     created_at = now,
     updated_at = now,
     client_info = client_info,

@@ -20,6 +20,7 @@ def test_new_record_is_empty_draft():
     assert rec.path_turns() == []
     assert rec.title == "hello world"
     assert rec.title_source is None
+    assert rec.response_count == 0
 
 
 def test_append_linear_builds_chain():

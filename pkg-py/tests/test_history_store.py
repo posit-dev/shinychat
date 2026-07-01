@@ -45,6 +45,35 @@ async def test_put_get_round_trip(store: FileConversationStore):
 
 
 @pytest.mark.anyio
+async def test_put_get_round_trip_preserves_response_count(
+    store: FileConversationStore,
+):
+    rec = new_conversation_record(title="t")
+    rec.response_count = 2
+    await store.put("alice", rec)
+    got = await store.get("alice", rec.id)
+    assert got is not None
+    assert got.response_count == 2
+
+
+@pytest.mark.anyio
+async def test_get_defaults_response_count_when_missing_from_disk(
+    store: FileConversationStore, tmp_path: Path,
+):
+    rec = new_conversation_record(title="t")
+    await store.put("alice", rec)
+    scope_dir = tmp_path / sanitize_scope("alice")
+    record_file = scope_dir / rec.id / "record.json"
+    data = json.loads(record_file.read_text())
+    del data["response_count"]
+    record_file.write_text(json.dumps(data))
+
+    got = await store.get("alice", rec.id)
+    assert got is not None
+    assert got.response_count == 0
+
+
+@pytest.mark.anyio
 async def test_put_creates_directory_with_three_files(
     store: FileConversationStore, tmp_path: Path,
 ):

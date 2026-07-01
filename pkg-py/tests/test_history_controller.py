@@ -688,6 +688,168 @@ async def test_retitle_noop_when_user_renames_during_generation():
     assert store.put_calls == []
 
 
+# --- deferred titling trigger --------------------------------------------------
+
+
+class _GrowingFakeAdapter:
+    """Like _FakeAdapter, but turns grow across calls to simulate multiple
+    real responses (_FakeAdapter always returns the same fixed 2 turns)."""
+
+    def __init__(self) -> None:
+        self.turns: list[dict[str, Any]] = []
+
+    def get_turns_json(self) -> list[Any]:
+        return list(self.turns)
+
+    def get_turns_grouped(self) -> list[list[Any]]:
+        return [[t] for t in self.turns]
+
+    def set_turns_json(self, turns: list[Any]) -> None:
+        self.turns = list(turns)
+
+    def client_info(self) -> dict[str, Any]:
+        return {}
+
+
+def _make_deferred_title_controller(
+    title_fn: Any = None,
+) -> tuple[HistoryController, _RecordingStore, _GrowingFakeAdapter]:
+    store = _RecordingStore()
+    adapter = _GrowingFakeAdapter()
+    controller = HistoryController(
+        chat=_FakeChat(),  # type: ignore[arg-type]
+        adapter=adapter,  # type: ignore[arg-type]
+        store=store,  # type: ignore[arg-type]
+        title_fn=title_fn,
+        title_enabled=True,
+        client=None,
+    )
+    controller.scope = "test-scope"
+    return controller, store, adapter
+
+
+@pytest.mark.anyio
+async def test_title_stays_fallback_after_first_response():
+    controller, _store, adapter = _make_deferred_title_controller(
+        title_fn=lambda turns: "Generated Title",
+    )
+    adapter.turns = [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "hello"},
+    ]
+
+    await controller.on_response()
+
+    assert controller.record is not None
+    assert controller.record.response_count == 1
+    assert controller.record.title_source is None
+    assert controller._title_task is None
+
+
+@pytest.mark.anyio
+async def test_titling_fires_after_second_response_exactly_once():
+    controller, _store, adapter = _make_deferred_title_controller(
+        title_fn=lambda turns: "Generated Title",
+    )
+    adapter.turns = [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "hello"},
+    ]
+    await controller.on_response()
+    task_after_first_response = controller._title_task
+    assert task_after_first_response is None
+
+    adapter.turns += [
+        {"role": "user", "content": "more"},
+        {"role": "assistant", "content": "sure"},
+    ]
+    await controller.on_response()
+
+    assert controller.record is not None
+    assert controller.record.response_count == 2
+    title_task = controller._title_task
+    assert title_task is not None
+    await title_task
+    assert controller.record.title == "Generated Title"
+    assert controller.record.title_source == "llm"
+
+
+@pytest.mark.anyio
+async def test_rename_between_first_and_second_response_blocks_auto_titling():
+    controller, _store, adapter = _make_deferred_title_controller(
+        title_fn=lambda turns: "Generated Title",
+    )
+    adapter.turns = [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "hello"},
+    ]
+    await controller.on_response()
+    assert controller.record is not None
+    await controller.rename(controller.record.id, "My Title")
+
+    adapter.turns += [
+        {"role": "user", "content": "more"},
+        {"role": "assistant", "content": "sure"},
+    ]
+    await controller.on_response()
+
+    assert controller.record is not None
+    assert controller._title_task is None
+    assert controller.record.title == "My Title"
+    assert controller.record.title_source == "user"
+
+
+@pytest.mark.anyio
+async def test_titling_fires_on_second_response_across_sessions():
+    store = InMemoryConversationStore()
+    adapter1 = _GrowingFakeAdapter()
+    controller1 = HistoryController(
+        chat=_FakeChat(),  # type: ignore[arg-type]
+        adapter=adapter1,  # type: ignore[arg-type]
+        store=store,
+        title_fn=lambda turns: "Generated Title",
+        title_enabled=True,
+        client=None,
+    )
+    controller1.scope = "test-scope"
+    adapter1.turns = [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "hello"},
+    ]
+    await controller1.on_response()
+    assert controller1.record is not None
+    conv_id = controller1.record.id
+    assert controller1._title_task is None
+
+    # Simulate a brand-new session: fresh controller, same backing store,
+    # loads the persisted (1-response) conversation before continuing it.
+    adapter2 = _GrowingFakeAdapter()
+    adapter2.turns = list(adapter1.turns)
+    controller2 = HistoryController(
+        chat=_FakeChat(),  # type: ignore[arg-type]
+        adapter=adapter2,  # type: ignore[arg-type]
+        store=store,
+        title_fn=lambda turns: "Generated Title",
+        title_enabled=True,
+        client=None,
+    )
+    controller2.scope = "test-scope"
+    controller2.record = await store.get("test-scope", conv_id)
+
+    adapter2.turns += [
+        {"role": "user", "content": "more"},
+        {"role": "assistant", "content": "sure"},
+    ]
+    await controller2.on_response()
+
+    title_task = controller2._title_task
+    assert title_task is not None
+    await title_task
+    assert controller2.record is not None
+    assert controller2.record.title == "Generated Title"
+    assert controller2.record.title_source == "llm"
+
+
 # --- save/restore callbacks --------------------------------------------------
 
 

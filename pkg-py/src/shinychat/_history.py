@@ -289,6 +289,7 @@ class HistoryController:
         extend_record_linear(
             record, turn_groups, messages, ui_offset=self.ui_offset
         )
+        record.response_count += 1
         self._capture_app_state(record)
         await self.store.put(self.scope, record)
         await self._evict_if_needed()
@@ -300,7 +301,16 @@ class HistoryController:
         if first_save and self.on_active_id_change is not None:
             await self.on_active_id_change(record.id)
 
-        if first_save and self.title_enabled:
+        # Wait for the second response before titling: gives the LLM/custom
+        # title_fn more context than a single exchange, and avoids spending
+        # a call on conversations abandoned after one message. response_count
+        # (not turn/node counts) drives this, since a single response's
+        # turn-group count isn't fixed across client types.
+        if (
+            self.title_enabled
+            and record.title_source is None
+            and record.response_count == 2
+        ):
             turns_flat = self.adapter.get_turns_json()
             self._title_task = asyncio.create_task(self.retitle(turns_flat))
             self._title_task.add_done_callback(title_task_done)

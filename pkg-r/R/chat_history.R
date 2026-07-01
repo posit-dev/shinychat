@@ -95,6 +95,7 @@ HistoryController <- R6::R6Class(
       }
 
       self$record <- extend_record_linear(self$record, recorded_turns)
+      self$record$response_count <- (self$record$response_count %||% 0L) + 1L
       self$record$values <- private$capture_app_state()
 
       private$store$put(self$scope, self$record)
@@ -112,7 +113,16 @@ HistoryController <- R6::R6Class(
 
       self$send_history_update()
 
-      if (first_save && private$title_enabled) {
+      # Wait for the second response before titling: gives the LLM/custom
+      # title_fn more context than a single exchange, and avoids spending a
+      # call on conversations abandoned after one message. response_count
+      # (not turn/node counts) drives this, since a single response's node
+      # count isn't fixed -- e.g. tool round-trips add extra nodes.
+      if (
+        private$title_enabled &&
+          is.null(self$record$title_source) &&
+          identical(self$record$response_count, 2L)
+      ) {
         private$retitle(recorded_turns)
       }
     },

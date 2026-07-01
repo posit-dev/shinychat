@@ -122,6 +122,17 @@ test_that("FileConversationStore: put and get round-trip via JSON", {
   expect_equal(result$schema_version, 1L)
 })
 
+test_that("FileConversationStore: response_count round-trips via JSON", {
+  dir <- withr::local_tempdir()
+  store <- FileConversationStore$new(dir = dir)
+  rec <- new_conversation_record("Test chat")
+  rec$response_count <- 2L
+  store$put("user1", rec)
+
+  result <- store$get("user1", rec$id)
+  expect_equal(result$response_count, 2L)
+})
+
 test_that("FileConversationStore: files are written to disk", {
   dir <- withr::local_tempdir()
   store <- FileConversationStore$new(dir = dir)

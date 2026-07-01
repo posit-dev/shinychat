@@ -51,6 +51,11 @@ class ConversationRecord(BaseModel):
     # titling hasn't finished (or was never enabled) or nothing has renamed
     # it. Distinct from "llm"/"user", which are always explicit and final.
     title_source: TitleSource | None = None
+    # Completed-response count for this conversation, incremented once per
+    # genuinely-new on_response() call. Drives the "title after the second
+    # response" trigger in HistoryController.on_response — not derived from
+    # turn/node counts, since those vary by client and tool-call structure.
+    response_count: int = 0
     created_at: datetime
     updated_at: datetime
     client_info: dict[str, str] = Field(default_factory=dict)
