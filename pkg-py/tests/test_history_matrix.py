@@ -25,10 +25,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 import pytest
-from test_history_controller import _NavFakeAdapter, _NavFakeChat
-
 from shinychat._history import HistoryController
 from shinychat._history_store import InMemoryConversationStore
+from test_history_controller import _NavFakeAdapter, _NavFakeChat
 
 MATRIX_PATH = (
     Path(__file__).resolve().parents[2]
