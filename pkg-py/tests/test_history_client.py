@@ -134,20 +134,19 @@ def test_grouped_single_tool_call_chatlas():
     )
     from chatlas._turn import AssistantTurn
 
+    request = ContentToolRequest(
+        id="t1", name="get_weather", arguments={"city": "NYC"}
+    )
     client = chatlas.ChatOpenAI(api_key="fake")
     client.set_turns(
         [
             chatlas.Turn(role="user", contents="weather?"),
-            AssistantTurn(
-                contents=[
-                    ContentToolRequest(
-                        id="t1", name="get_weather", arguments={"city": "NYC"}
-                    )
-                ]
-            ),
+            AssistantTurn(contents=[request]),
             chatlas.Turn(
                 role="user",
-                contents=[ContentToolResult(id="t1", value="Sunny, 75F")],
+                contents=[
+                    ContentToolResult(value="Sunny, 75F", request=request)
+                ],
             ),
             AssistantTurn(contents=[ContentText(text="It's sunny and 75F!")]),
         ]
@@ -180,27 +179,21 @@ def test_grouped_multi_tool_call_chatlas():
     )
     from chatlas._turn import AssistantTurn
 
+    request_a = ContentToolRequest(id="a", name="weather", arguments={})
+    request_b = ContentToolRequest(id="b", name="hotels", arguments={})
     client = chatlas.ChatOpenAI(api_key="fake")
     client.set_turns(
         [
             chatlas.Turn(role="user", contents="plan a trip"),
-            AssistantTurn(
-                contents=[
-                    ContentToolRequest(id="a", name="weather", arguments={})
-                ]
-            ),
+            AssistantTurn(contents=[request_a]),
             chatlas.Turn(
                 role="user",
-                contents=[ContentToolResult(id="a", value="sunny")],
+                contents=[ContentToolResult(value="sunny", request=request_a)],
             ),
-            AssistantTurn(
-                contents=[
-                    ContentToolRequest(id="b", name="hotels", arguments={})
-                ]
-            ),
+            AssistantTurn(contents=[request_b]),
             chatlas.Turn(
                 role="user",
-                contents=[ContentToolResult(id="b", value="Hilton")],
+                contents=[ContentToolResult(value="Hilton", request=request_b)],
             ),
             AssistantTurn(
                 contents=[ContentText(text="Here's your trip plan.")],

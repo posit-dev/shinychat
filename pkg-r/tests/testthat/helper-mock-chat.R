@@ -1,3 +1,15 @@
+MockProvider <- S7::new_class(
+  "MockProvider",
+  properties = list(
+    name = S7::class_character,
+    model = S7::class_character
+  )
+)
+
+mock_provider <- function() {
+  MockProvider(name = "Mock", model = "mock-model")
+}
+
 mock_chat_client <- function(turns = list()) {
   stored_turns <- turns
   obj <- list(
@@ -7,6 +19,7 @@ mock_chat_client <- function(turns = list()) {
       invisible(obj)
     },
     get_tools = function() list(),
+    get_provider = function() mock_provider(),
     clone = function() mock_chat_client(stored_turns),
     set_system_prompt = function(prompt) invisible(NULL),
     set_tools = function(tools) invisible(NULL),
@@ -34,6 +47,7 @@ mock_chat_client <- function(turns = list()) {
   client$set_system_prompt <- function(p) invisible(NULL)
   client$get_tools <- function() list()
   client$set_tools <- function(t) invisible(NULL)
+  client$get_provider <- function() mock_provider()
   client
 }
 
