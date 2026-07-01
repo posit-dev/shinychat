@@ -12,16 +12,8 @@ set_turns_recorded <- function(client, recorded_turns) {
 }
 
 get_client_info <- function(client) {
-  tryCatch(
-    {
-      provider <- client$.__enclos_env__$private$provider
-      list(
-        provider = sub("^Provider", "", class(provider)[[1]]),
-        model = provider$model %||% ""
-      )
-    },
-    error = function(e) list()
-  )
+  provider <- client$get_provider()
+  list(provider = provider@name, model = provider@model)
 }
 
 turn_fallback_markdown <- function(recorded_turn) {

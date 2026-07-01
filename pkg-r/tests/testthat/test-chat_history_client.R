@@ -33,6 +33,15 @@ test_that("set_turns_recorded() round-trips through record/replay", {
   expect_equal(turns_set[[1]]@contents[[1]]@text, "hello")
 })
 
+test_that("get_client_info() reads provider name and model via public ellmer API", {
+  skip_if_not_installed("ellmer")
+  withr::local_envvar(OPENAI_API_KEY = NA)
+  client <- ellmer::chat_openai(model = "gpt-4o-mini", echo = "none")
+
+  info <- get_client_info(client)
+  expect_equal(info, list(provider = "OpenAI", model = "gpt-4o-mini"))
+})
+
 test_that("turn_fallback_markdown() extracts text", {
   recorded <- list(
     class = "ellmer::UserTurn",

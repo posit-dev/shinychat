@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Literal
 
+from ._history_bookmark import global_save_dir_fn
 from ._history_types import (
     ConversationMeta,
     ConversationNode,
@@ -417,15 +418,7 @@ async def resolve_history_dir() -> Path:
     if env:
         return Path(env) / HISTORY_BOOKMARK_ID
 
-    # Private shiny API; coordinate upstream for a public accessor.
-    try:
-        from shiny.bookmark._global import get_bookmark_save_dir_fn
-        from shiny.types import MISSING
-
-        save_dir_fn = get_bookmark_save_dir_fn(MISSING)
-    except ImportError:
-        save_dir_fn = None
-
+    save_dir_fn = global_save_dir_fn()
     if save_dir_fn is not None:
         # set_global_save_dir_fn already wraps with wrap_async, so fn is async.
         # Registrants may return str despite the Path annotation; coerce defensively.
