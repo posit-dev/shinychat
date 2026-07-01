@@ -11,7 +11,7 @@ test_that("new_conversation_record() creates valid empty record", {
   expect_equal(rec$schema_version, 1L)
   expect_match(rec$id, "^c_")
   expect_equal(rec$title, "Test chat")
-  expect_equal(rec$title_source, "fallback")
+  expect_null(rec$title_source)
   expect_equal(rec$nodes, list())
   expect_null(rec$current_leaf)
   expect_equal(rec$values, list())

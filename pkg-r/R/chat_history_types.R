@@ -63,7 +63,10 @@ new_conversation_record <- function(title, client_info = list()) {
     schema_version = 1L,
     id = new_conversation_id(),
     title = title,
-    title_source = "fallback",
+    # NULL = timestamp-based title, no explicit source yet -- either LLM
+    # titling hasn't finished (or was never enabled) or nothing has renamed
+    # it. Distinct from "llm"/"user", which are always explicit and final.
+    title_source = NULL,
     created_at = now,
     updated_at = now,
     client_info = client_info,

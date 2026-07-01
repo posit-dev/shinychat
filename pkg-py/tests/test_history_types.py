@@ -19,7 +19,7 @@ def test_new_record_is_empty_draft():
     assert rec.current_leaf is None
     assert rec.path_turns() == []
     assert rec.title == "hello world"
-    assert rec.title_source == "fallback"
+    assert rec.title_source is None
 
 
 def test_append_linear_builds_chain():

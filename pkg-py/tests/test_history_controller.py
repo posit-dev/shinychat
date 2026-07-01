@@ -640,7 +640,7 @@ async def test_retitle_noop_when_generate_returns_none():
     await controller.retitle([])
 
     assert controller.record.title == "fallback"
-    assert controller.record.title_source == "fallback"
+    assert controller.record.title_source is None
     assert store.put_calls == []
 
 

@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-TitleSource = Literal["llm", "user", "fallback"]
+TitleSource = Literal["llm", "user"]
 
 
 def new_conversation_record(*, title: str) -> ConversationRecord:
@@ -47,7 +47,10 @@ class ConversationRecord(BaseModel):
     schema_version: int = 1
     id: str
     title: str
-    title_source: TitleSource = "fallback"
+    # None = timestamp-based title, no explicit source yet — either LLM
+    # titling hasn't finished (or was never enabled) or nothing has renamed
+    # it. Distinct from "llm"/"user", which are always explicit and final.
+    title_source: TitleSource | None = None
     created_at: datetime
     updated_at: datetime
     client_info: dict[str, str] = Field(default_factory=dict)
