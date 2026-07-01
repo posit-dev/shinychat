@@ -193,7 +193,7 @@ export function ChatHistoryDrawer({
             aria-label="New conversation"
             onClick={handleNew}
           >
-            ＋ New
+            + New
           </button>
           <input
             className="shiny-chat-history-search form-control"
