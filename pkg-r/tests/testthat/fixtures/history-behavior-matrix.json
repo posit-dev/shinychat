@@ -1,0 +1,14 @@
+[
+  {
+    "name": "rename_updates_title_and_marks_user_source",
+    "setup": { "turns": 1 },
+    "operation": { "method": "rename", "args": ["$active_id", "  New   Title  "] },
+    "expect": { "title": "New Title", "title_source": "user" }
+  },
+  {
+    "name": "delete_active_conversation_clears_controller_record",
+    "setup": { "turns": 1 },
+    "operation": { "method": "delete", "args": ["$active_id"] },
+    "expect": {}
+  }
+]
