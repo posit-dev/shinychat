@@ -37,6 +37,27 @@ strip_ansi <- function(text) {
   gsub(ansi_pattern, "", text)
 }
 
+# file.rename() fails to overwrite an existing `to` on Windows, unlike POSIX.
+# Try rename first since it's atomic and (same-filesystem) metadata-only, so
+# the common case stays cheap; only fall back to copy + remove -- which reads
+# and rewrites the whole file and briefly leaves `to` in a partial state if
+# interrupted -- when rename can't do it.
+file_move <- function(from, to) {
+  if (suppressWarnings(file.rename(from, to))) {
+    return(invisible(TRUE))
+  }
+  if (dir.exists(to)) {
+    # file.copy() would copy `from` *into* `to` rather than fail
+    return(invisible(FALSE))
+  }
+
+  ok <- file.copy(from, to, overwrite = TRUE)
+  if (ok) {
+    unlink(from)
+  }
+  invisible(ok)
+}
+
 shinychat_deps <- function() {
   htmltools::htmlDependency(
     "shinychat",

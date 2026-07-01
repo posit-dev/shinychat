@@ -218,7 +218,7 @@ FileConversationStore <- R6::R6Class(
       tmp <- tempfile(tmpdir = sdir, fileext = ".json.tmp")
       on.exit(unlink(tmp), add = TRUE)
       writeLines(json, tmp)
-      ok <- suppressWarnings(file.rename(tmp, path))
+      ok <- file_move(tmp, path)
       if (!isTRUE(ok)) {
         rlang::abort(paste0("Failed to write conversation: ", path))
       }
