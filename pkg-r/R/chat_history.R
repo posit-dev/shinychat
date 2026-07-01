@@ -759,7 +759,7 @@ chat_enable_history <- function(
       }
       payload <- session$input[[paste0(id, "_history_select")]]
       tryCatch(
-        controller$switch_to(payload$id),
+        controller$switch_to(as.character(payload$id)[[1L]]),
         error = function(e) {
           history_notify_error("Could not open conversation", e)
         }
@@ -792,7 +792,10 @@ chat_enable_history <- function(
       }
       payload <- session$input[[paste0(id, "_history_rename")]]
       tryCatch(
-        controller$rename(payload$id, payload$title),
+        controller$rename(
+          as.character(payload$id)[[1L]],
+          as.character(payload$title)[[1L]]
+        ),
         error = function(e) {
           history_notify_error("Could not rename conversation", e)
         }
@@ -809,7 +812,7 @@ chat_enable_history <- function(
       }
       payload <- session$input[[paste0(id, "_history_delete")]]
       tryCatch(
-        controller$delete(payload$id),
+        controller$delete(as.character(payload$id)[[1L]]),
         error = function(e) {
           history_notify_error("Could not delete conversation", e)
         }
