@@ -7,6 +7,7 @@ import {
   type UserInputValue,
 } from "./types"
 import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
+import type { SnapshotMessage } from "../chat/state"
 
 // Window-global singleton to ensure only one shinyChatMessage handler is
 // registered even if the script is loaded more than once
@@ -30,6 +31,7 @@ export function getShinyTransport(): ShinyTransport {
 export class ShinyTransport implements ChatTransport, ShinyLifecycle {
   private listeners = new Map<string, Set<(action: ChatAction) => void>>()
   private pendingMessages = new Map<string, ChatAction[]>()
+  private inputSeq = 0
 
   constructor() {
     window.Shiny?.addCustomMessageHandler(
@@ -45,9 +47,18 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
 
         const { id, action, html_deps } = envelope
 
-        // Render HTML deps before dispatching the action
+        // Register deps with Shiny for immediate rendering, AND attach them to
+        // the action so the reducer can retain them on the message (needed for
+        // client-authoritative persistence/restore).
         if (html_deps && Array.isArray(html_deps)) {
           await this.renderDependencies(html_deps)
+          if (
+            action.type === "message" ||
+            action.type === "chunk_start" ||
+            action.type === "chunk"
+          ) {
+            ;(action as { html_deps?: HtmlDep[] }).html_deps = html_deps
+          }
         }
 
         const callbacks = this.listeners.get(id)
@@ -68,8 +79,15 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
 
   sendInput(id: string, value: string | UserInputValue): void {
     if (!window.Shiny?.setInputValue) return
-    window.Shiny.setInputValue(`${id}:shinychat.userInput`, value, {
-      priority: "event",
+    const composite =
+      typeof value === "string" ? { text: value, attachments: [] } : value
+    this.inputSeq += 1
+    // Regular priority so it co-batches with a same-tick messages snapshot.
+    // The seq nonce bypasses client-side no-resend dedup so identical
+    // resubmissions still fire the server-side reactive.
+    window.Shiny.setInputValue(`${id}:shinychat.userInput`, {
+      ...composite,
+      seq: this.inputSeq,
     })
   }
 
@@ -90,6 +108,13 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
       { command, userText, echo },
       { priority: "event" },
     )
+  }
+
+  sendMessagesSnapshot(id: string, snapshot: SnapshotMessage[]): void {
+    if (!window.Shiny?.setInputValue) return
+    // Regular priority (NOT event) so it co-batches in one flush with a
+    // same-tick sendInput. See design doc "Ordering guarantee".
+    window.Shiny.setInputValue(`${id}_messages:shinychat.messages`, snapshot)
   }
 
   sendHistorySelect(id: string, convId: string): void {

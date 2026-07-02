@@ -2,10 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import {
   chatReducer,
   initialState,
+  buildMessagesSnapshot,
   type ChatState,
   type ChatMessageData,
   type GreetingData,
 } from "../../src/chat/state"
+import type { HtmlDep } from "../../src/transport/types"
 import { uuid } from "../../src/utils/uuid"
 
 vi.mock("../../src/utils/uuid")
@@ -1720,5 +1722,84 @@ describe("INPUT_SENT attachments", () => {
     })
     const userMsg = next.messages.find((m) => m.role === "user")!
     expect(userMsg.attachments).toBeUndefined()
+  })
+})
+
+describe("html_deps retention", () => {
+  const dep: HtmlDep = { name: "widget", version: "1.0.0" }
+
+  it("attaches html_deps from a message action to the message", () => {
+    const next = chatReducer(initialState, {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [{ content: "hi", content_type: "markdown" }],
+      },
+      html_deps: [dep],
+    })
+    const last = next.messages[next.messages.length - 1]!
+    expect(last.htmlDeps).toEqual([dep])
+  })
+
+  it("accumulates html_deps across streaming chunks", () => {
+    let s = chatReducer(initialState, {
+      type: "chunk_start",
+      message: { role: "assistant", segments: [] },
+      html_deps: [dep],
+    })
+    s = chatReducer(s, {
+      type: "chunk",
+      content: "x",
+      operation: "append",
+      content_type: "markdown",
+    })
+    s = chatReducer(s, { type: "chunk_end" })
+    const last = s.messages[s.messages.length - 1]!
+    expect(last.htmlDeps).toEqual([dep])
+  })
+})
+
+describe("buildMessagesSnapshot", () => {
+  it("maps settled messages to wire segments and excludes placeholders/streaming", () => {
+    let s = chatReducer(initialState, {
+      type: "message",
+      message: {
+        role: "user",
+        segments: [{ content: "hello", content_type: "markdown" }],
+      },
+    })
+    // a streaming message must NOT appear
+    s = chatReducer(s, {
+      type: "chunk_start",
+      message: { role: "assistant", segments: [] },
+    })
+    const snap = buildMessagesSnapshot(s)
+    expect(snap).toEqual([
+      {
+        role: "user",
+        segments: [{ content: "hello", content_type: "markdown" }],
+      },
+    ])
+  })
+
+  it("emits thinking blocks with content_type 'thinking' and carries htmlDeps", () => {
+    const dep: HtmlDep = { name: "w", version: "1" }
+    const s = chatReducer(initialState, {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          { content: "reasoning", content_type: "thinking" },
+          { content: "answer", content_type: "markdown" },
+        ],
+      },
+      html_deps: [dep],
+    })
+    const snap = buildMessagesSnapshot(s)
+    expect(snap[0]!.segments).toEqual([
+      { content: "reasoning", content_type: "thinking" },
+      { content: "answer", content_type: "markdown" },
+    ])
+    expect(snap[0]!.htmlDeps).toEqual([dep])
   })
 })

@@ -6,6 +6,7 @@ import {
   type ShinyChatEnvelope,
 } from "../../src/transport/types"
 import { installShinyWindowStub } from "../helpers/mocks"
+import type { SnapshotMessage } from "../../src/chat/state"
 
 function makeEnvelope(
   action: ChatAction,
@@ -305,10 +306,11 @@ describe("ShinyTransport", () => {
       })
 
       // The composite passes through unchanged — size included, since the
-      // server-side Attachment model carries it too.
+      // server-side Attachment model carries it too. A seq nonce also rides
+      // along, and there is no third (priority) argument.
       expect(setInputValue).toHaveBeenCalledWith(
         "chat_user_input:shinychat.userInput",
-        {
+        expect.objectContaining({
           text: "hello",
           attachments: [
             {
@@ -318,9 +320,56 @@ describe("ShinyTransport", () => {
               size: 0,
             },
           ],
-        },
-        { priority: "event" },
+          seq: expect.any(Number),
+        }),
       )
+    })
+
+    it("uses regular priority and a changing nonce", () => {
+      const transport = new ShinyTransport()
+
+      transport.sendInput("chat", { text: "hi", attachments: [] })
+      transport.sendInput("chat", { text: "hi", attachments: [] })
+
+      const calls = (
+        window.Shiny!.setInputValue as ReturnType<typeof vi.fn>
+      ).mock.calls.filter((c: unknown[]) => c[0] === "chat:shinychat.userInput")
+
+      expect(calls).toHaveLength(2)
+      const [first, second] = calls as [unknown[], unknown[]]
+      // no event priority
+      expect(first[2]).toBeUndefined()
+      // nonce differs between identical submissions
+      expect((first[1] as { seq: number }).seq).not.toEqual(
+        (second[1] as { seq: number }).seq,
+      )
+    })
+  })
+
+  describe("sendMessagesSnapshot", () => {
+    it("sets the ${id}_messages input with regular priority", () => {
+      const transport = new ShinyTransport()
+      const snap: SnapshotMessage[] = [
+        {
+          role: "user",
+          segments: [{ content: "hi", content_type: "markdown" }],
+        },
+      ]
+
+      transport.sendMessagesSnapshot("chat", snap)
+
+      expect(window.Shiny?.setInputValue).toHaveBeenCalledWith(
+        "chat_messages:shinychat.messages",
+        snap,
+      )
+    })
+
+    it("does not throw when Shiny is unavailable", () => {
+      const origShiny = window.Shiny
+      delete (window as unknown as Record<string, unknown>).Shiny
+      const transport = new ShinyTransport()
+      expect(() => transport.sendMessagesSnapshot("chat", [])).not.toThrow()
+      ;(window as unknown as Record<string, unknown>).Shiny = origShiny
     })
   })
 

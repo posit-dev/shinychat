@@ -1,14 +1,23 @@
-import { useReducer, useEffect, useRef, useMemo, useState } from "react"
+import {
+  useReducer,
+  useEffect,
+  useRef,
+  useMemo,
+  useState,
+  useCallback,
+} from "react"
 import {
   ShinyLifecycleContext,
   ChatToolContext,
   ChatDispatchContext,
+  ChatSubmitContext,
 } from "./context"
 import { setCurrentConversationId } from "./currentConversation"
 import { navigateTo } from "../utils/navigate"
 import {
   chatReducer,
   initialState,
+  buildMessagesSnapshot,
   type ChatMessageData,
   type ChatToolState,
   type GreetingData,
@@ -20,6 +29,7 @@ import type {
   GreetingOptions,
 } from "../transport/types"
 import type { SubmitKey } from "./tiptap/submitShortcut"
+import type { AttachmentPayload } from "./attachments"
 
 export interface InitialGreeting {
   content: string
@@ -100,6 +110,49 @@ export function ChatApp({
     enableUpload: enableUpload ?? initialState.enableUpload,
     enableUploadExplicit: enableUpload !== undefined,
   })
+
+  const stateRef = useRef(state)
+  stateRef.current = state
+
+  const reportSnapshot = useCallback(() => {
+    transport.sendMessagesSnapshot(
+      elementId,
+      buildMessagesSnapshot(stateRef.current),
+    )
+  }, [transport, elementId])
+
+  useEffect(() => {
+    reportSnapshot()
+  }, [state.messages, reportSnapshot])
+
+  const submitUserInput = useCallback(
+    (content: string, attachments: AttachmentPayload[]) => {
+      // Optimistic UI update (adds user message + loading placeholder).
+      dispatch({
+        type: "INPUT_SENT",
+        content,
+        role: "user",
+        ...(attachments.length > 0 ? { attachments } : {}),
+      })
+      // Build the snapshot from CURRENT settled state, then append the just-
+      // submitted user turn. Co-send userInput + snapshot in the SAME tick so
+      // Shiny batches them into one flush (server sees the turn in
+      // on_user_submit).
+      const snapshot = buildMessagesSnapshot(stateRef.current)
+      snapshot.push({
+        role: "user",
+        segments: [{ content, content_type: "markdown" }],
+        ...(attachments.length > 0 ? { attachments } : {}),
+      })
+      const uploadOn = stateRef.current.enableUpload
+      transport.sendInput(
+        inputId,
+        uploadOn ? { text: content, attachments } : content,
+      )
+      transport.sendMessagesSnapshot(elementId, snapshot)
+    },
+    [dispatch, transport, inputId, elementId],
+  )
 
   const containerRef = useRef<ChatContainerHandle>(null)
 
@@ -223,31 +276,33 @@ export function ChatApp({
     <ShinyLifecycleContext.Provider value={shinyLifecycle}>
       <ChatToolContext.Provider value={toolState}>
         <ChatDispatchContext.Provider value={dispatch}>
-          <ChatContainer
-            ref={containerRef}
-            transport={transport}
-            messages={state.messages}
-            streamingMessage={state.streamingMessage}
-            inputDisabled={state.inputDisabled}
-            inputPlaceholder={state.inputPlaceholder}
-            iconAssistant={iconAssistant}
-            inputId={inputId}
-            uploadAccept={uploadAccept}
-            maxUploadSize={maxUploadSize}
-            elementId={elementId}
-            greeting={state.greeting}
-            cancelId={cancelId}
-            enableCancel={state.enableCancel}
-            enableUpload={state.enableUpload}
-            cancelRequested={state.cancelRequested}
-            footerEl={footerEl}
-            slashCommands={state.slashCommands}
-            slashCommandId={slashCommandId}
-            submitKey={submitKey}
-            historyEnabled={state.history.enabled}
-            historyConversations={state.history.conversations}
-            historyActiveId={state.history.activeId}
-          />
+          <ChatSubmitContext.Provider value={submitUserInput}>
+            <ChatContainer
+              ref={containerRef}
+              transport={transport}
+              messages={state.messages}
+              streamingMessage={state.streamingMessage}
+              inputDisabled={state.inputDisabled}
+              inputPlaceholder={state.inputPlaceholder}
+              iconAssistant={iconAssistant}
+              inputId={inputId}
+              uploadAccept={uploadAccept}
+              maxUploadSize={maxUploadSize}
+              elementId={elementId}
+              greeting={state.greeting}
+              cancelId={cancelId}
+              enableCancel={state.enableCancel}
+              enableUpload={state.enableUpload}
+              cancelRequested={state.cancelRequested}
+              footerEl={footerEl}
+              slashCommands={state.slashCommands}
+              slashCommandId={slashCommandId}
+              submitKey={submitKey}
+              historyEnabled={state.history.enabled}
+              historyConversations={state.history.conversations}
+              historyActiveId={state.history.activeId}
+            />
+          </ChatSubmitContext.Provider>
         </ChatDispatchContext.Provider>
       </ChatToolContext.Provider>
     </ShinyLifecycleContext.Provider>
