@@ -27,12 +27,15 @@ shiny-chat-container {
   grid-template-columns: 1fr;
   grid-template-rows: 1fr;
 
-  // When the history trigger is present the drawer needs room to be usable, so
-  // give the container a floor height. Overridable via the --_min-height inline
-  // custom property, mirroring how --_chat-width feeds .shiny-chat-wrapper.
-  &:has(> .shiny-chat-history-trigger) {
-    min-height: var(--_min-height, 400px);
-  }
+  // Floor height for the history drawer. The min-height *property* is set here,
+  // unconditionally and at element-level (low) specificity, from the
+  // --_min-height custom property; the default value is supplied only when the
+  // history trigger is present, by the zero-specificity :where() rule after this
+  // block. Keeping the property on the base element (not inside a :has()
+  // selector) means a developer setting min-height directly — inline or in a
+  // stylesheet — always wins. With no history, --_min-height is unset and this
+  // resolves to the initial `auto`.
+  min-height: var(--_min-height);
 
   p:last-child {
     margin-bottom: 0;
@@ -79,6 +82,15 @@ shiny-chat-container {
     color: var(--bs-link-color, #007bc2);
     border-color: rgba(var(--bs-link-color-rgb), 0.5);
   }
+}
+
+// Supply the default drawer floor by setting --_min-height (the value), not the
+// min-height property, when the history trigger is present. The property lives on
+// the base shiny-chat-container rule above; keeping only the value here — at zero
+// specificity via :where() — means both a direct min-height override and a
+// --_min-height override are trivial for developers.
+:where(shiny-chat-container:has(> .shiny-chat-history-trigger)) {
+  --_min-height: 400px;
 }
 
 // The width-limited, centered content column: messages, input, and footer.
