@@ -7,17 +7,19 @@ from typing import (
     Awaitable,
     Callable,
     Protocol,
+    TypeGuard,
     runtime_checkable,
 )
 
 if TYPE_CHECKING:
+    from chatlas import Chat
     from htmltools import Tagified
     from shiny.types import Jsonifiable
 
 chatlas_is_installed = importlib.util.find_spec("chatlas") is not None
 
 
-def is_chatlas_chat_client(client: Any) -> bool:
+def is_chatlas_chat_client(client: Any) -> TypeGuard["Chat"]:
     if not chatlas_is_installed:
         return False
     import chatlas
@@ -73,7 +75,7 @@ class BookmarkCancelCallback:
 
 # Chatlas specific implementation
 def get_chatlas_state(
-    client: Any,
+    client: "Chat",
 ) -> Callable[[], Awaitable[Jsonifiable]]:
     from chatlas import Chat, Turn
 
@@ -90,7 +92,7 @@ def get_chatlas_state(
 
 
 def set_chatlas_state(
-    client: Any,
+    client: "Chat",
 ) -> Callable[[Jsonifiable], Awaitable[None]]:
     from chatlas import Chat, Turn
 

@@ -109,8 +109,16 @@ r-coverage:  ## [r] Generate R coverage report
 	@echo "📔 Generating R coverage report"
 	cd $(PATH_PKG_R) && Rscript -e "covr::report(covr::package_coverage(), file = 'coverage-report.html', browse = FALSE)"
 
+.PHONY: history-matrix-sync
+history-matrix-sync: ## Sync the shared history-behavior test matrix into pkg-r
+	@echo ""
+	@echo "🔄 Syncing history behavior matrix into pkg-r"
+	mkdir -p $(PATH_PKG_R)/tests/testthat/fixtures
+	cp tests/shared/history-behavior-matrix.json \
+		$(PATH_PKG_R)/tests/testthat/fixtures/history-behavior-matrix.json
+
 .PHONY: r-update-dist
-r-update-dist: ## [r] Update shinychat web assets
+r-update-dist: history-matrix-sync ## [r] Update shinychat web assets
 	@echo ""
 	@echo "🔄 Updating shinychat web assets"
 	if [ -d $(PATH_PKG_R)/inst/lib/shiny ]; then \
@@ -148,7 +156,8 @@ py-check-tests:  ## [py] Run python tests
 	@echo ""
 	@echo "🧪 Running tests with pytest"
 	uv run playwright install
-	uv run pytest
+	uv run pytest pkg-py/tests/playwright/
+	uv run pytest --ignore=pkg-py/tests/playwright/
 
 .PHONY: py-check-types
 py-check-types:  ## [py] Run python type checks

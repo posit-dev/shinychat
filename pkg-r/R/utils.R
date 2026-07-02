@@ -11,6 +11,15 @@ sanitized_error_message <- function(err) {
   }
 }
 
+notify_error <- function(prefix, err) {
+  shiny::showNotification(
+    paste0(prefix, ": ", sanitized_error_message(err)),
+    type = "error",
+    duration = NULL
+  )
+  rlang::warn(prefix, parent = err)
+}
+
 sanitized_chat_error <- function(err) {
   if (needs_sanitized(err)) {
     sprintf("\n\n**%s**", sanitized_error_message(err))
@@ -26,6 +35,27 @@ strip_ansi <- function(text) {
   # Matches codes like "\x1B[31;43m", "\x1B[1;3;4m"
   ansi_pattern <- "(\x1B|\x033)\\[[0-9;?=<>]*[@-~]"
   gsub(ansi_pattern, "", text)
+}
+
+# file.rename() fails to overwrite an existing `to` on Windows, unlike POSIX.
+# Try rename first since it's atomic and (same-filesystem) metadata-only, so
+# the common case stays cheap; only fall back to copy + remove -- which reads
+# and rewrites the whole file and briefly leaves `to` in a partial state if
+# interrupted -- when rename can't do it.
+file_move <- function(from, to) {
+  if (suppressWarnings(file.rename(from, to))) {
+    return(invisible(TRUE))
+  }
+  if (dir.exists(to)) {
+    # file.copy() would copy `from` *into* `to` rather than fail
+    return(invisible(FALSE))
+  }
+
+  ok <- file.copy(from, to, overwrite = TRUE)
+  if (ok) {
+    unlink(from)
+  }
+  invisible(ok)
 }
 
 shinychat_deps <- function() {

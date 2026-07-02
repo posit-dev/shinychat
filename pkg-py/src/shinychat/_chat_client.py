@@ -90,16 +90,6 @@ class ChatClient:
 
         self._client = new_client
 
-        # Cancel old bookmarking and re-register with the new client
-        if self._cancel_bookmarking is not None:
-            self._cancel_bookmarking()
-            self._cancel_bookmarking = None
-
-        cancel = self._chat.enable_bookmarking(
-            new_client, bookmark_on="response"
-        )
-        self._cancel_bookmarking = cancel
-
     async def clear(
         self,
         *,
@@ -207,14 +197,16 @@ def setup_greeting(
 
     from htmltools import HTML, Tag, TagList
     from shiny import reactive
+    from shiny.module import ResolvedId
     from shiny.session import session_context
 
     from ._chat_types import ChatGreeting
 
     with session_context(session):
+        greeting_requested_id = ResolvedId(f"{chat.id}_greeting_requested")
 
         @reactive.effect
-        @reactive.event(session.input[f"{chat.id}_greeting_requested"])
+        @reactive.event(session.input[greeting_requested_id])
         async def _on_greeting_requested() -> None:
             if isinstance(greeting, (str, HTML, Tag, TagList, ChatGreeting)):
                 return await chat.set_greeting(greeting)

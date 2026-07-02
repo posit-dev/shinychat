@@ -146,8 +146,7 @@ test_that("chat_server handles string user_input values", {
       chat_server(
         "chat",
         client,
-        bookmark_on_input = FALSE,
-        bookmark_on_response = FALSE,
+        history = FALSE,
         session = session
       )
     },

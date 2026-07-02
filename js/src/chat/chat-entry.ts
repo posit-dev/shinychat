@@ -7,9 +7,36 @@ import type { ChatMessageData } from "./state"
 import type { ContentType, GreetingOptions } from "../transport/types"
 import { uuid } from "../utils/uuid"
 import { DEFAULT_UPLOAD_ACCEPT } from "./attachments"
+import {
+  getCurrentConversationId,
+  getConversationIdFromUrl,
+} from "./currentConversation"
 
 // Single shared transport instance for all chat instances on the page
 const transport = getShinyTransport()
+
+const BROWSER_TOKEN_KEY = "shinychat-browser-token"
+
+// Cached fallback token for private-browsing mode (localStorage unavailable).
+// All chat elements on the page share the same per-session token.
+let fallbackBrowserToken: string | null = null
+
+function getBrowserToken(): string {
+  try {
+    let token = window.localStorage.getItem(BROWSER_TOKEN_KEY)
+    if (!token) {
+      token = crypto.randomUUID()
+      window.localStorage.setItem(BROWSER_TOKEN_KEY, token)
+    }
+    return token
+  } catch {
+    // localStorage unavailable (private mode, sandboxed iframe, etc.)
+    if (!fallbackBrowserToken) {
+      fallbackBrowserToken = crypto.randomUUID()
+    }
+    return fallbackBrowserToken
+  }
+}
 
 const CHAT_INPUT_TAG = "shiny-chat-input"
 const CHAT_MESSAGE_TAG = "shiny-chat-message"
@@ -136,6 +163,34 @@ class ChatContainerElement extends HTMLElement {
     // retains stale references, preventing re-binding of the new React-rendered
     // elements (Shiny thinks the inputs are already bound by ID).
     transport.unbindAll(this)
+
+    // Send the browser token once per element so the server can correlate
+    // this client across sessions. The server reads it with req() as a
+    // persistent value, so a remove+re-attach resending the same token is
+    // harmless — Shiny just overwrites in place.
+    //
+    // shinychat.js loads as a deferred <script type="module">, so
+    // connectedCallback can fire before Shiny's own init has run.
+    // initializedPromise.then() handles both orderings (pending vs. already
+    // resolved) with the same callback.
+    //
+    // These use the DOM id (namespaced in modules) to match the server's
+    // resolved self.id — unlike slash-command DOM events, which use
+    // effective-id.
+    window.Shiny?.initializedPromise.then(() => {
+      window.Shiny?.setInputValue?.(
+        `${elementId}_history_browser_token`,
+        getBrowserToken(),
+      )
+      window.Shiny?.setInputValue?.(
+        `${elementId}_history_current_id`,
+        getCurrentConversationId(elementId) ?? "",
+      )
+      window.Shiny?.setInputValue?.(
+        `${elementId}_history_url_id`,
+        getConversationIdFromUrl() ?? "",
+      )
+    })
 
     this.reactRoot = createRoot(this)
     this.reactRoot.render(

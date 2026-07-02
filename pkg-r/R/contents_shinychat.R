@@ -416,28 +416,34 @@ tool_default_display <- function(content) {
   value <- content@value
 
   if (tool_errored(content)) {
-    return(list(
-      value = strip_ansi(tool_error_string(content)),
-      value_type = "code"
-    ))
+    return(
+      list(
+        value = strip_ansi(tool_error_string(content)),
+        value_type = "code"
+      )
+    )
   }
 
   if (is_content_extra(value)) {
-    return(list(
-      value = jsonlite::toJSON(
-        list(as_content_extra_item(value)),
-        auto_unbox = TRUE
-      ),
-      value_type = "content_extra"
-    ))
+    return(
+      list(
+        value = jsonlite::toJSON(
+          list(as_content_extra_item(value)),
+          auto_unbox = TRUE
+        ),
+        value_type = "content_extra"
+      )
+    )
   }
 
   if (is.list(value) && some(value, is_content)) {
     items <- map(value, as_content_extra_item_or_text)
-    return(list(
-      value = jsonlite::toJSON(items, auto_unbox = TRUE),
-      value_type = "content_extra"
-    ))
+    return(
+      list(
+        value = jsonlite::toJSON(items, auto_unbox = TRUE),
+        value_type = "content_extra"
+      )
+    )
   }
 
   list(value = tool_string_value(content), value_type = "code")

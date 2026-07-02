@@ -84,6 +84,22 @@ quartodoc:
         include_functions: true
       contents:
         - express.Chat
+    - title: Conversation history
+      options:
+        signature_name: relative
+        include_imports: false
+        include_inherited: false
+        include_attributes: true
+        include_classes: true
+        include_functions: true
+      contents:
+        - HistoryOptions
+        - ConversationPartition
+        - ConversationStore
+        - FileConversationStore
+        - ConversationRecord
+        - ConversationMeta
+        - ConversationNode
     - title: Testing
       options:
         signature_name: relative

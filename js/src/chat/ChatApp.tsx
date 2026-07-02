@@ -4,6 +4,8 @@ import {
   ChatToolContext,
   ChatDispatchContext,
 } from "./context"
+import { setCurrentConversationId } from "./currentConversation"
+import { navigateTo } from "../utils/navigate"
 import {
   chatReducer,
   initialState,
@@ -32,8 +34,8 @@ interface ChatAppProps {
   iconAssistant?: string
   inputId: string
   cancelId?: string
-  uploadAccept: string[]
-  maxUploadSize: number | null
+  uploadAccept?: string[]
+  maxUploadSize?: number | null
   placeholder?: string
   initialMessages?: ChatMessageData[]
   initialGreeting?: InitialGreeting
@@ -74,8 +76,8 @@ export function ChatApp({
   iconAssistant,
   inputId,
   cancelId,
-  uploadAccept,
-  maxUploadSize,
+  uploadAccept = [],
+  maxUploadSize = null,
   placeholder,
   initialMessages,
   initialGreeting,
@@ -105,6 +107,16 @@ export function ChatApp({
   // the imperative handle rather than the reducer.
   useEffect(() => {
     const unsubscribe = transport.onMessage(elementId, (action) => {
+      if (action.type === "history_navigate") {
+        // localStorage is also written below from state.history.activeId
+        // (set by the "history_update" reducer case). The server always
+        // sends these two messages with the same id, in order, on a single
+        // connection, so the two writers never disagree in practice — but
+        // that's a server-side invariant, not something enforced here.
+        setCurrentConversationId(elementId, action.active_id)
+        navigateTo(action.url, action.reload === true)
+        return
+      }
       if (action.type === "update_input") {
         // Placeholder updates go through the reducer (it's the only
         // remaining field the reducer tracks for update_input).
@@ -195,6 +207,11 @@ export function ChatApp({
     }
   }, [greetingIsDismissed, elementId])
 
+  useEffect(() => {
+    if (!state.history.enabled) return
+    setCurrentConversationId(elementId, state.history.activeId)
+  }, [elementId, state.history.enabled, state.history.activeId])
+
   const toolState: ChatToolState = useMemo(
     () => ({
       hiddenToolRequests: state.hiddenToolRequests,
@@ -217,6 +234,7 @@ export function ChatApp({
             inputId={inputId}
             uploadAccept={uploadAccept}
             maxUploadSize={maxUploadSize}
+            elementId={elementId}
             greeting={state.greeting}
             cancelId={cancelId}
             enableCancel={state.enableCancel}
@@ -226,6 +244,9 @@ export function ChatApp({
             slashCommands={state.slashCommands}
             slashCommandId={slashCommandId}
             submitKey={submitKey}
+            historyEnabled={state.history.enabled}
+            historyConversations={state.history.conversations}
+            historyActiveId={state.history.activeId}
           />
         </ChatDispatchContext.Provider>
       </ChatToolContext.Provider>

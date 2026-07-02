@@ -72,6 +72,7 @@ from ._chat_types import (
     StoredMessage,
     chat_greeting,
 )
+from ._history import ChatHistory, HistoryOptions
 from ._html_deps_py_shiny import shinychat_dependency
 from ._typing_extensions import TypeGuard
 from ._utils_types import DEPRECATED, DEPRECATED_TYPE, MISSING, MISSING_TYPE
@@ -248,15 +249,21 @@ class Chat:
         matches a corresponding :func:`~shiny.ui.chat_ui` call in the UI.
     client
         A chatlas client (e.g., ``chatlas.ChatOpenAI()``). When provided,
-        streaming, cancellation, and bookmarking are wired up automatically.
-        This includes registering an :meth:`~shinychat.Chat.on_user_submit`
-        callback that streams the client's response to each user message, so you
-        don't need to write one yourself. Any additional ``@chat.on_user_submit``
-        handlers you register still run, in addition to (not in place of) this
-        one.
+        streaming, cancellation, and conversation history are wired up
+        automatically. This includes registering an
+        :meth:`~shinychat.Chat.on_user_submit` callback that streams the
+        client's response to each user message, so you don't need to write one
+        yourself. Any additional ``@chat.on_user_submit`` handlers you register
+        still run, in addition to (not in place of) this one.
         The resulting :attr:`chat.client` exposes a
         :class:`~shinychat.types.ChatClient` wrapper for swapping models
-        mid-session (``.set()``) and resetting the conversation (``.clear()``).
+        (``.set()``) and resetting the conversation (``.clear()``).
+    history
+        Conversation history configuration. ``True`` (the default) enables
+        history with default settings; ``False`` disables it; pass a
+        :class:`~shinychat.types.HistoryOptions` instance to customise
+        restore behaviour, storage, user identity, or titling. Only takes
+        effect when a ``client=`` is also provided.
     greeting
         Content to display as a welcome message before any conversation. Can be
         a string, :class:`~htmltools.HTML`, :class:`~htmltools.Tag`,
@@ -288,6 +295,7 @@ class Chat:
         id: str,
         *,
         client: "chatlas.Chat[Any, Any] | None" = None,
+        history: "bool | HistoryOptions" = True,
         greeting: "str | HTML | Tag | TagList | ChatGreeting | Callable[..., Any] | None" = None,
         messages: Sequence[Any] = (),
         on_error: Literal["auto", "actual", "sanitize", "unhandled"] = "auto",
@@ -343,6 +351,9 @@ class Chat:
 
         # Keep track of effects so we can destroy them when the chat is destroyed
         self._effects: list["Effect_"] = []
+        history_config = history if isinstance(history, HistoryOptions) else None
+        self._history_enabled: bool = history is not False
+        self.history: ChatHistory = ChatHistory(self, config=history_config)
         self._cancel_bookmarking_callbacks: CancelCallback | None = None
         self._greeting_content: str | None = None
 
@@ -544,8 +555,8 @@ class Chat:
             self._effects.append(_on_cancel)
             self._effects.append(_on_stream_complete)
 
-            cancel_bm = self.enable_bookmarking(client, bookmark_on="response")
-            chat_client._cancel_bookmarking = cancel_bm
+            if self._history_enabled:
+                self.history.enable()
 
     @overload
     def on_user_submit(self, fn: UserSubmitFunction) -> Effect_: ...
@@ -1936,19 +1947,24 @@ class Chat:
         # ###########
         # Bookmarking
 
+        cancel_on_bookmarked: CancelCallback | None = None
         if bookmark_on is not None:
             # When ever the bookmark is requested, update the query string (indep of store type)
-            @root_session.bookmark.on_bookmarked
-            async def _(url: str):
+            async def _update_query_string_on_bookmarked(url: str) -> None:
                 await session.bookmark.update_query_string(url)
 
+            cancel_on_bookmarked = root_session.bookmark.on_bookmarked(
+                _update_query_string_on_bookmarked
+            )
+
+        effect_auto_bookmark = None
         if bookmark_on == "response":
 
             @reactive.effect
             @reactive.event(
                 self.messages, ignore_init=True
             )
-            async def _():
+            async def _auto_bookmark() -> None:
                 messages = self.messages()
 
                 if len(messages) == 0:
@@ -1958,6 +1974,8 @@ class Chat:
 
                 if last_message.get("role") == "assistant":
                     await session.bookmark()
+
+            effect_auto_bookmark = _auto_bookmark
 
         ###############
         # Client Bookmarking
@@ -2040,6 +2058,10 @@ class Chat:
                 await self.set_greeting(g["content"])
 
         def _cancel_bookmarking():
+            if cancel_on_bookmarked is not None:
+                cancel_on_bookmarked()
+            if effect_auto_bookmark is not None:
+                effect_auto_bookmark.destroy()
             _on_bookmark_client()
             _on_bookmark_ui()
             _on_bookmark_greeting()
@@ -2051,6 +2073,7 @@ class Chat:
         self._cancel_bookmarking_callbacks = _cancel_bookmarking
 
         return BookmarkCancelCallback(_cancel_bookmarking)
+
 
 
 class ChatExpress(Chat):

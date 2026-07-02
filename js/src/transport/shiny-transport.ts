@@ -92,6 +92,40 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
     )
   }
 
+  sendHistorySelect(id: string, convId: string): void {
+    if (!window.Shiny?.setInputValue) return
+    window.Shiny.setInputValue(
+      `${id}_history_select`,
+      { id: convId, ts: Date.now() },
+      { priority: "event" },
+    )
+  }
+
+  sendHistoryNew(id: string): void {
+    if (!window.Shiny?.setInputValue) return
+    window.Shiny.setInputValue(`${id}_history_new`, Date.now(), {
+      priority: "event",
+    })
+  }
+
+  sendHistoryRename(id: string, convId: string, title: string): void {
+    if (!window.Shiny?.setInputValue) return
+    window.Shiny.setInputValue(
+      `${id}_history_rename`,
+      { id: convId, title, ts: Date.now() },
+      { priority: "event" },
+    )
+  }
+
+  sendHistoryDelete(id: string, convId: string): void {
+    if (!window.Shiny?.setInputValue) return
+    window.Shiny.setInputValue(
+      `${id}_history_delete`,
+      { id: convId, ts: Date.now() },
+      { priority: "event" },
+    )
+  }
+
   onMessage(id: string, callback: (action: ChatAction) => void): () => void {
     if (!this.listeners.has(id)) {
       this.listeners.set(id, new Set())

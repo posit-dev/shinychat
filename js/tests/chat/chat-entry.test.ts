@@ -235,3 +235,135 @@ describe("chat-entry custom element boot", () => {
     expect(host.querySelector(".shiny-chat-message")).toBe(messageBefore)
   })
 })
+
+describe("current conversation id delivery", () => {
+  it("sends stored current conversation id alongside browser token", async () => {
+    localStorage.setItem("shinychat-current:current-id-chat", "conv-xyz")
+
+    const host = document.createElement("shiny-chat-container")
+    host.setAttribute("id", "current-id-chat")
+    host.innerHTML = `
+      <shiny-chat-messages></shiny-chat-messages>
+      <shiny-chat-input></shiny-chat-input>
+    `
+
+    await act(async () => {
+      document.body.appendChild(host)
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const setInputValue = window.Shiny!.setInputValue as ReturnType<
+      typeof vi.fn
+    >
+    const currentIdCall = setInputValue.mock.calls.find((args) =>
+      String(args[0]).endsWith("_history_current_id"),
+    )
+    expect(currentIdCall).toBeDefined()
+    expect(currentIdCall![1]).toBe("conv-xyz")
+  })
+
+  it("sends empty string when no current conversation id is stored", async () => {
+    localStorage.removeItem("shinychat-current:no-current-chat")
+
+    const host = document.createElement("shiny-chat-container")
+    host.setAttribute("id", "no-current-chat")
+    host.innerHTML = `
+      <shiny-chat-messages></shiny-chat-messages>
+      <shiny-chat-input></shiny-chat-input>
+    `
+
+    await act(async () => {
+      document.body.appendChild(host)
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const setInputValue = window.Shiny!.setInputValue as ReturnType<
+      typeof vi.fn
+    >
+    const currentIdCall = setInputValue.mock.calls.find((args) =>
+      String(args[0]).endsWith("_history_current_id"),
+    )
+    expect(currentIdCall).toBeDefined()
+    expect(currentIdCall![1]).toBe("")
+  })
+})
+
+describe("browser token delivery", () => {
+  it("sends browser token immediately when Shiny is already initialized", async () => {
+    // Default stub has initializedPromise pre-resolved.
+    const host = document.createElement("shiny-chat-container")
+    host.setAttribute("id", "token-ready-chat")
+    host.innerHTML = `
+      <shiny-chat-messages></shiny-chat-messages>
+      <shiny-chat-input></shiny-chat-input>
+    `
+
+    await act(async () => {
+      document.body.appendChild(host)
+    })
+
+    // Flush microtasks so the .then() callback has run.
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const setInputValue = window.Shiny!.setInputValue as ReturnType<
+      typeof vi.fn
+    >
+    const tokenCall = setInputValue.mock.calls.find((args) =>
+      String(args[0]).endsWith("_history_browser_token"),
+    )
+    expect(tokenCall).toBeDefined()
+    expect(typeof tokenCall![1]).toBe("string")
+    expect((tokenCall![1] as string).length).toBeGreaterThan(0)
+  })
+
+  it("defers browser token until Shiny initializes on page load", async () => {
+    // Install a stub whose initializedPromise starts unresolved.
+    const { resolveShinyInit } = installShinyWindowStub({
+      initializedPromiseResolved: false,
+    })
+
+    const host = document.createElement("shiny-chat-container")
+    host.setAttribute("id", "token-deferred-chat")
+    host.innerHTML = `
+      <shiny-chat-messages></shiny-chat-messages>
+      <shiny-chat-input></shiny-chat-input>
+    `
+
+    await act(async () => {
+      document.body.appendChild(host)
+    })
+
+    // Flush microtasks — promise is still pending, so no token yet.
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const setInputValue = window.Shiny!.setInputValue as ReturnType<
+      typeof vi.fn
+    >
+    const tokenCallsBefore = setInputValue.mock.calls.filter((args) =>
+      String(args[0]).endsWith("_history_browser_token"),
+    )
+    expect(tokenCallsBefore).toHaveLength(0)
+
+    // Simulate Shiny finishing initialization.
+    await act(async () => {
+      resolveShinyInit()
+      await Promise.resolve()
+    })
+
+    const tokenCallsAfter = setInputValue.mock.calls.filter((args) =>
+      String(args[0]).endsWith("_history_browser_token"),
+    )
+    expect(tokenCallsAfter).toHaveLength(1)
+    expect(typeof tokenCallsAfter[0]![1]).toBe("string")
+  })
+})

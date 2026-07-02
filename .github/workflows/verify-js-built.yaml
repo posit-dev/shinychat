@@ -5,10 +5,14 @@ on:
     branches: ["main", "rc-*"]
     paths:
       - "js/**/*"
+      - "tests/shared/history-behavior-matrix.json"
+      - "pkg-r/tests/testthat/fixtures/history-behavior-matrix.json"
       - .github/workflows/verify-js-built.yaml
   pull_request:
     paths:
       - "js/**/*"
+      - "tests/shared/history-behavior-matrix.json"
+      - "pkg-r/tests/testthat/fixtures/history-behavior-matrix.json"
       - .github/workflows/verify-js-built.yaml
 
 jobs:
@@ -41,6 +45,9 @@ jobs:
 
       - name: 🏭 Build
         run: make js-build
+
+      - name: 🔄 Sync history matrix fixture
+        run: make history-matrix-sync
 
       - name: 🧐 Check for uncommitted changes
         run: |
