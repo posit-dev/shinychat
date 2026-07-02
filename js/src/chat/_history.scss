@@ -193,10 +193,13 @@
     }
   }
 
-  // Toprow: ghost + New button + search field
+  // Toprow: ghost + New button + search field. Items stretch to a shared
+  // height so the button and the .form-control line up exactly (the input
+  // otherwise renders ~1px shorter than the button at the same box metrics).
   &-toprow {
     flex-shrink: 0;
     display: flex;
+    align-items: stretch;
     gap: 0.375rem;
     padding: 0 0.75rem 0.5rem;
   }
@@ -255,13 +258,15 @@
     min-width: 0;
     position: relative;
     display: flex;
-    align-items: center;
+    align-items: stretch;
   }
 
   &-search-icon {
     position: absolute;
     inset-inline-start: 0.5rem;
+    inset-block: 0;
     display: flex;
+    align-items: center;
     color: var(--_history-muted);
     pointer-events: none;
 
