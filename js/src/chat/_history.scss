@@ -1,9 +1,10 @@
-// Trigger button — sticky icon in the scroll container so it remains visible
-// during both inner-container scroll (filling mode) and page scroll (non-filling mode).
+// Trigger button — anchored to the top-left corner of the whole container.
+// In non-filling mode it switches to position: fixed (see chat.scss) so it
+// stays pinned to the viewport while the page scrolls.
 .shiny-chat-history-trigger {
-  position: sticky;
+  position: absolute;
   top: 0.5rem;
-  align-self: flex-start;
+  inset-inline-start: 0.5rem;
   z-index: 5;
 
   display: flex;
@@ -32,7 +33,7 @@
   }
 }
 
-// Overlay container — stretches to fill the messages wrapper
+// Overlay container — stretches to fill the whole chat container
 .shiny-chat-history {
   position: absolute;
   inset: 0;

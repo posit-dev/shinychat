@@ -13,16 +13,19 @@ shiny-chat-container {
   // message (image thumbnail, PDF chip, text preview), so the row is uniform.
   --shiny-chat-attachment-size: 4.5rem;
 
+  // Full-width and positioned so the history trigger and drawer overlay (direct
+  // children) anchor to the whole element — the scrim covers messages, input,
+  // and footer. The width limit + centering live on .shiny-chat-wrapper instead.
+  position: relative;
+  width: 100%;
+
+  // Single-row grid that stretches .shiny-chat-wrapper to the full container
+  // height (filled via the parent when `fill`). Kept as grid — not flex — so
+  // bslib's `.html-fill-container > :not(.html-fill-item)` flex rule stays inert
+  // and doesn't stop the wrapper (and thus the messages area) from growing.
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: 1fr auto;
-  margin: 0 auto;
-  &:has(.shiny-chat-footer) {
-    grid-template-rows: 1fr auto auto;
-  }
-  gap: 0;
-  padding: var(--_chat-container-padding);
-  padding-bottom: 0; // Bottom padding is on input element
+  grid-template-rows: 1fr;
 
   p:last-child {
     margin-bottom: 0;
@@ -71,10 +74,32 @@ shiny-chat-container {
   }
 }
 
-// Wrapper stacks the history trigger and scroll container vertically.
-// overflow: clip (not hidden) is intentional — it clips without creating a scroll
-// container, so position:sticky on the trigger propagates past the wrapper to
-// whatever ancestor is actually scrolling (page, sidebar, etc.).
+// The width-limited, centered content column: messages, input, and footer.
+// Lives inside the full-width container so the history trigger + drawer scrim
+// (its siblings) span the whole element while this column stays constrained.
+// The `--_width` custom property is set inline on the container from the
+// developer's `width=` argument; the fallback keeps standalone use sensible.
+.shiny-chat-wrapper {
+  min-width: 0; // Allow the column to shrink below its content size
+  min-height: 0; // Allow it to shrink for the messages area's inner scroll
+  width: 100%;
+  max-width: var(--_width, min(680px, 100%));
+  margin-inline: auto;
+
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr auto;
+  &:has(.shiny-chat-footer) {
+    grid-template-rows: 1fr auto auto;
+  }
+  gap: 0;
+  padding: var(--_chat-container-padding);
+  padding-bottom: 0; // Bottom padding is on input element
+}
+
+// Wrapper for the scroll container. overflow: clip (not hidden) is intentional —
+// it clips overflowing content without creating a scroll container, so page/
+// sidebar scrolling propagates past the wrapper to whatever ancestor actually scrolls.
 .shiny-chat-messages-wrapper {
   position: relative;
   min-height: 0; // Allow grid child to shrink
@@ -93,10 +118,16 @@ shiny-chat-container:not([fill]) {
   }
 
   // In filling mode, position: absolute; inset: 0 on .shiny-chat-history fills
-  // the wrapper (which IS the viewport). In non-filling mode the wrapper is
+  // the container (which IS the viewport). In non-filling mode the container is
   // taller than the viewport and may be scrolled off-screen, so use
   // position: fixed instead so the overlay always covers the viewport.
   .shiny-chat-history {
+    position: fixed;
+  }
+
+  // Likewise pin the trigger to the viewport so it stays reachable while the
+  // page scrolls (in filling mode it's absolute to the fixed-height container).
+  .shiny-chat-history-trigger {
     position: fixed;
   }
 }
