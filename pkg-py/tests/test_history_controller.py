@@ -125,6 +125,39 @@ def test_extend_attaches_extra_assistant_msgs_to_last_node():
     assert rec.nodes[path[1]].ui == [msg("assistant"), msg("assistant")]
 
 
+def test_extend_attaches_late_ui_message_when_turn_groups_already_caught_up():
+    # Simulates: append_message() (non-streamed) followed by a streamed
+    # reply, both saved to history. Save #1 creates the user/assistant
+    # nodes from the turn groups. By save #2, chatlas turns have already
+    # caught up (streaming adds no *new* turn group), but a new UI message
+    # (the streamed reply) has arrived and must not be dropped.
+    rec = new_conversation_record(title="t")
+    groups = [
+        [{"role": "user", "content": "q"}],
+        [{"role": "assistant", "content": "a"}],
+    ]
+    user_ui = msg("user")
+    oob_ui = msg("assistant")
+    streamed_ui = msg("assistant")
+
+    # Save #1: two new turn groups, two UI messages.
+    extend_record_linear(rec, groups, [user_ui, oob_ui], ui_offset=0)
+    assert len(rec.nodes) == 2
+
+    # Save #2: same turn groups (streaming added no new turn), but one more
+    # UI message has arrived since the last save.
+    extend_record_linear(
+        rec, groups, [user_ui, oob_ui, streamed_ui], ui_offset=2
+    )
+
+    all_ui = [
+        m
+        for node_id in rec.path_node_ids()
+        for m in (rec.nodes[node_id].ui or [])
+    ]
+    assert all_ui == [user_ui, oob_ui, streamed_ui]
+
+
 def test_extend_noop_when_no_new_groups():
     rec = new_conversation_record(title="t")
     groups = [[{"role": "user", "content": "q"}]]
@@ -146,7 +179,7 @@ def test_extend_with_no_new_ui_messages_leaves_ui_none():
     assert all(node.ui is None for node in rec.nodes.values())
 
 
-# --- _suppress_next_save flag (unit-level, no Shiny session needed) ----------
+# --- content-idempotent save guard (unit-level, no Shiny session needed) ----
 
 
 class _FakeChat:
@@ -302,43 +335,6 @@ async def test_namespaced_chat_ids_are_distinct_partitions():
 
 
 @pytest.mark.anyio
-async def test_suppress_next_save_skips_first_on_response_and_clears():
-    controller, store = _make_controller()
-    controller._suppress_next_save = True
-
-    await controller.on_response()
-
-    assert store.put_calls == [], "store.put must not be called when suppressed"
-    assert controller._suppress_next_save is False, (
-        "flag must be cleared after skip"
-    )
-
-
-@pytest.mark.anyio
-async def test_suppress_next_save_false_allows_on_response():
-    controller, store = _make_controller()
-    assert controller._suppress_next_save is False
-
-    # on_response with no turns/messages should still call store.put
-    await controller.on_response()
-
-    assert len(store.put_calls) == 1, (
-        "store.put should be called when not suppressed"
-    )
-
-
-@pytest.mark.anyio
-async def test_second_on_response_after_suppress_proceeds():
-    controller, store = _make_controller()
-    controller._suppress_next_save = True
-
-    await controller.on_response()  # skipped, flag cleared
-    await controller.on_response()  # must proceed
-
-    assert len(store.put_calls) == 1, "second call must reach store.put"
-
-
-@pytest.mark.anyio
 async def test_on_response_no_new_data_does_not_overwrite_saved_values():
     controller, store = _make_controller()
     accent = "info"
@@ -358,48 +354,59 @@ async def test_on_response_no_new_data_does_not_overwrite_saved_values():
     assert controller.record.values["accent"] == "info"
 
 
+class _ReplayFakeChat(_FakeChat):
+    """Fake chat whose `_messages_for_bookmark()` reflects whatever
+    `replay_ui` last restored, so `on_response` sees the same re-report a
+    real client would send after a restore."""
+
+    def __init__(self) -> None:
+        self.messages: list[Any] = []
+
+    def _messages_for_bookmark(self) -> list[Any]:
+        return self.messages
+
+    async def clear_messages(self) -> None:
+        self.messages = []
+
+    async def _restore_bookmark_message(self, message_dict: Any) -> None:
+        self.messages.append(message_dict)
+
+
 @pytest.mark.anyio
-async def test_is_replaying_suppresses_on_response_without_consuming_suppress_flag():
-    # Fires during replay must not consume _suppress_next_save so the
-    # post-replay flush is still handled correctly.
+async def test_replay_rereport_does_not_resave_or_truncate():
+    # Simulates the real restore sequence: on_response() saves a
+    # conversation with per-node UI, replay_ui() restores it (re-rendering
+    # the stored UI into the fake chat), and the client's post-restore
+    # re-report of that identical snapshot must not trigger another save.
     controller, store = _make_controller()
-    controller._is_replaying = True
-    controller._suppress_next_save = True
+    chat = _ReplayFakeChat()
+    controller.chat = chat  # type: ignore[assignment]
 
-    await controller.on_response()  # in-flight during replay — skipped
+    chat.messages = [msg("user"), msg("assistant")]
+    await controller.on_response()
+    assert len(store.put_calls) == 1
+    record = controller.record
+    assert record is not None
+    saved_node_count = len(record.path_node_ids())
+    saved_ui = [
+        m
+        for nid in record.path_node_ids()
+        for m in (record.nodes[nid].ui or [])
+    ]
 
-    assert store.put_calls == [], "store.put must not be called while replaying"
-    assert controller._suppress_next_save is True, (
-        "_suppress_next_save must not be consumed while _is_replaying is True"
+    await controller.replay_ui(record)
+    assert chat.messages == saved_ui, "replay must reconstruct the full UI"
+
+    # Client re-reports the exact restored snapshot (same length/content).
+    await controller.on_response()
+
+    assert len(store.put_calls) == 1, "re-report must not trigger another save"
+    assert controller.record is record, (
+        "restore re-report must not swap records"
     )
-
-
-@pytest.mark.anyio
-async def test_full_replay_sequence_suppresses_then_resumes():
-    # Simulates M in-flight fires during replay, one post-replay flush,
-    # then a real response — only the real response must be saved.
-    controller, store = _make_controller()
-    controller._is_replaying = True
-    controller._suppress_next_save = True
-
-    # In-flight fires during replay (any number)
-    for _ in range(3):
-        await controller.on_response()
-
-    assert store.put_calls == [], "no saves during replay"
-    assert controller._suppress_next_save is True
-
-    # Replay ends
-    controller._is_replaying = False
-
-    # Post-replay flush — consumed by _suppress_next_save
-    await controller.on_response()
-    assert store.put_calls == [], "post-replay flush must still be suppressed"
-    assert controller._suppress_next_save is False
-
-    # Real response after user interaction
-    await controller.on_response()
-    assert len(store.put_calls) == 1, "real response must be saved"
+    assert len(record.path_node_ids()) == saved_node_count, (
+        "restored conversation must not be truncated"
+    )
 
 
 # --- ui_offset atomicity (not advanced when store.put raises) ----------------
@@ -1246,22 +1253,6 @@ async def test_on_response_saved_fires_when_new_data_is_saved():
 
     assert len(fired) == 2
     assert fired[0] == fired[1]  # same conversation id both times
-
-
-@pytest.mark.anyio
-async def test_on_response_saved_not_fired_when_suppressed():
-    controller, store = _make_controller()
-    fired: list[str] = []
-
-    async def hook(record: Any) -> None:
-        fired.append(record.id)
-
-    controller.on_response_saved = hook
-    controller._suppress_next_save = True
-
-    await controller.on_response()  # suppressed
-
-    assert fired == []
 
 
 @pytest.mark.anyio

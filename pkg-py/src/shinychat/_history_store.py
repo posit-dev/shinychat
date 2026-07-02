@@ -87,7 +87,12 @@ class ConversationStore(ABC):
 @dataclasses.dataclass
 class _WriteState:
     turn_seq_map: dict[str, list[int]] = dataclasses.field(default_factory=dict)
-    ui_node_set: set[str] = dataclasses.field(default_factory=set)
+    # node_id -> count of UI messages last persisted for that node. A node's
+    # `ui` is append-only, so a change in length is a sufficient dirty-check;
+    # on change we re-append the node's full current UI. get() reads
+    # ui.jsonl last-write-wins, so the newest (longest) line for a node id
+    # is always what's returned.
+    ui_node_len: dict[str, int] = dataclasses.field(default_factory=dict)
     next_turn_seq: int = 0
 
 
@@ -146,8 +151,8 @@ class FileConversationStore(ConversationStore):
             ):
                 try:
                     entry = json.loads(line)
-                    ws.ui_node_set.add(entry["node_id"])
-                except (json.JSONDecodeError, KeyError):
+                    ws.ui_node_len[entry["node_id"]] = len(entry["data"])
+                except (json.JSONDecodeError, KeyError, TypeError):
                     continue
         self._write_state[key] = ws
         return ws
@@ -290,14 +295,14 @@ class FileConversationStore(ConversationStore):
                         )
                     )
                 ws.turn_seq_map[nid] = turn_ids
-            if node.ui is not None and nid not in ws.ui_node_set:
+            if node.ui is not None and len(node.ui) != ws.ui_node_len.get(nid):
                 new_ui_lines.append(
                     json.dumps(
                         {"node_id": nid, "data": node.ui},
                         ensure_ascii=False,
                     )
                 )
-                ws.ui_node_set.add(nid)
+                ws.ui_node_len[nid] = len(node.ui)
             record_nodes[nid] = {
                 "parent": node.parent,
                 "children": node.children,

@@ -56,7 +56,6 @@ from ._chat_segments import (
     has_mixed_content_types,
     segments_content,
     segments_deps,
-    serialize_segments,
 )
 from ._chat_types import (
     ChatAction,
@@ -322,6 +321,7 @@ class Chat:
 
         self.id = resolve_id(id)
         self.user_input_id = ResolvedId(f"{self.id}_user_input")
+        self.messages_input_id = ResolvedId(f"{self.id}_messages")
         self._slash_command_id = ResolvedId(f"{self.id}_slash_command")
         self._transform_user: TransformUserInputAsync | None = None
         self._transform_assistant: (
@@ -362,11 +362,6 @@ class Chat:
         from shiny.session import session_context
 
         with session_context(self._session):
-            # Initialize message state
-            self._messages: reactive.Value[tuple[StoredMessage, ...]] = (
-                reactive.Value(())
-            )
-
             # `None` until the first registration, which lets us skip the
             # redundant initial sync (the client already initializes to `[]`).
             # An empty dict, by contrast, is sent so that removing the last
@@ -400,8 +395,10 @@ class Chat:
             self._append_init_messages = _append_init_messages
             self._init_chat = _init_chat
 
-            # When user input is submitted, store it in the chat state
-            # (runs before other effects so `.messages()` includes the latest input)
+            # Record the latest submission into `_latest_user_input`, which
+            # backs the public `user_input()` method. priority=9999 ensures
+            # this runs before `on_user_submit`/other effects so `user_input()`
+            # reflects the latest submission.
             @reactive.effect(priority=9999)
             @reactive.event(self._user_input)
             async def _on_user_input():
@@ -412,7 +409,7 @@ class Chat:
                         role="user",
                         attachments=attachments,
                     )
-                    self._store_message(msg)
+                    self._latest_user_input.set(self._as_stored_message(msg))
                 except Exception as e:
                     await self._raise_exception(e)
 
@@ -438,7 +435,7 @@ class Chat:
                 if echo:
                     full_text = f"/{command} {user_text}".rstrip()
                     msg = ChatMessage(content=full_text, role="user")
-                    self._store_message(msg)
+                    self._latest_user_input.set(self._as_stored_message(msg))
                 cmds = self._slash_commands()
                 reg = cmds.get(command) if cmds else None
                 try:
@@ -834,7 +831,7 @@ class Chat:
                 "Use your LLM provider (e.g., chatlas, LangChain) to manage conversation context instead."
             )
 
-        messages = self._messages()
+        messages = self._reported_messages()
 
         res: list[ChatMessageDict] = []
         for m in messages:
@@ -846,6 +843,18 @@ class Chat:
             res.append(chat_msg)
 
         return tuple(res)
+
+    def _reported_messages(self) -> tuple[StoredMessage, ...]:
+        # Client-authoritative UI state: the React client reports its settled-
+        # message snapshot as the `${id}_messages` input (see _input_handler.py).
+        # Returns () before the client has reported anything.
+        from shiny.types import SilentException
+
+        try:
+            val = self._session.input[self.messages_input_id]()
+        except SilentException:
+            return ()
+        return tuple(val) if val else ()
 
     async def append_message(
         self,
@@ -925,7 +934,6 @@ class Chat:
         msg = await self._transform_message(msg)
         if msg is None:
             return
-        self._store_message(msg)
         await self._send_append_message(
             message=msg,
             chunk=False,
@@ -1100,16 +1108,6 @@ class Chat:
                     # deps belong on segments[0].
                     if serialized_deps and msg.segments:
                         msg.segments[0].html_deps = serialized_deps
-                    self._store_message(msg)
-            elif chunk == "end":
-                # When `operation="append"`, msg.content is just a chunk, but we must
-                # store the full message
-                text_segs = serialize_segments(
-                    self._current_stream_segments, self._serialize_html_deps
-                )
-                self._store_message(
-                    StoredMessage(role=msg.role, segments=text_segs),
-                )
 
             # Send the message to the client
             await self._send_append_message(
@@ -1350,7 +1348,7 @@ class Chat:
         from shiny import reactive
 
         with reactive.isolate():
-            messages = self._messages()
+            messages = self._reported_messages()
 
         dumps: list[dict[str, Any]] = []
         for m in messages:
@@ -1368,7 +1366,6 @@ class Chat:
                 "Cannot restore bookmark message: invalid or missing fields "
                 "(bookmark likely written by an incompatible shinychat version)."
             ) from e
-        self._store_message(stored)
         await self._send_append_message(stored)
 
     def transform_user_input(self, *args: object, **kwargs: object) -> object:
@@ -1501,21 +1498,6 @@ class Chat:
         html_deps = self._serialize_html_deps(message.html_deps)
         return StoredMessage.from_chat_message(message, html_deps=html_deps)
 
-    def _store_message(
-        self,
-        message: StoredMessage | ChatMessage,
-    ) -> None:
-        from shiny import reactive
-
-        message = self._as_stored_message(message)
-
-        with reactive.isolate():
-            messages = self._messages()
-
-        self._messages.set((*messages, message))
-        if message.role == "user":
-            self._latest_user_input.set(message)
-
     def user_input(self) -> "UserInput | None":
         """
         Reactively read the user's latest submission.
@@ -1645,7 +1627,6 @@ class Chat:
             react to the request to generate a new one via
             :meth:`~shinychat.Chat.set_greeting`.
         """
-        self._messages.set(())
         action: ClearAction = {"type": "clear"}
         if greeting:
             self._greeting_content = None
@@ -1941,7 +1922,7 @@ class Chat:
         # Must use `root_session` as the id is already resolved. :-/
         # Using a proxy session would double-encode the proxy-prefix
         root_session = session.root_scope()
-        for suffix in ("_user_input", "_cancel", "_slash_command", "_greeting_requested", "_greeting_dismissed"):
+        for suffix in ("_user_input", "_messages", "_cancel", "_slash_command", "_greeting_requested", "_greeting_dismissed"):
             root_session.bookmark.exclude.append(self.id + suffix)
 
         # ###########

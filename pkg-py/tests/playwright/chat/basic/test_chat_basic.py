@@ -38,10 +38,13 @@ def test_validate_chat_basic(page: Page, local_app: ShinyAppProc) -> None:
     chat.expect_user_input("")
     expect(chat.loc_input_button).to_be_disabled()
 
-    # Verify that the message state is as expected
+    # Verify that the message state is as expected. `.messages()` reads the
+    # client-reported UI snapshot, which includes the initial `ui(messages=...)`
+    # seed alongside the conversation added via user submissions.
     message_state = controller.OutputCode(page, "message_state")
     message_state_expected = tuple(
         [
+            {"content": initial_message, "role": "assistant"},
             {"content": f"{user_message}", "role": "user"},
             {"content": f"You said: {user_message}", "role": "assistant"},
             {"content": f"{user_message2}", "role": "user"},
