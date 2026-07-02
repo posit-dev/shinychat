@@ -2247,7 +2247,7 @@ def _container_style(width: "str | None", height: "str | None") -> "str | None":
     # htmltools `css()` mangles the leading `--` of a custom property.
     parts: list[str] = []
     if width:
-        parts.append(f"--_width:{width}")
+        parts.append(f"--_chat-width:{width}")
     if height:
         parts.append(f"height:{height}")
     return ";".join(parts) if parts else None

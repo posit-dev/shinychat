@@ -29,7 +29,7 @@ shiny-chat-container {
 
   // When the history trigger is present the drawer needs room to be usable, so
   // give the container a floor height. Overridable via the --_min-height inline
-  // custom property, mirroring how --_width feeds .shiny-chat-wrapper.
+  // custom property, mirroring how --_chat-width feeds .shiny-chat-wrapper.
   &:has(> .shiny-chat-history-trigger) {
     min-height: var(--_min-height, 400px);
   }
@@ -84,13 +84,13 @@ shiny-chat-container {
 // The width-limited, centered content column: messages, input, and footer.
 // Lives inside the full-width container so the history trigger + drawer scrim
 // (its siblings) span the whole element while this column stays constrained.
-// The `--_width` custom property is set inline on the container from the
+// The `--_chat-width` custom property is set inline on the container from the
 // developer's `width=` argument; the fallback keeps standalone use sensible.
 .shiny-chat-wrapper {
   min-width: 0; // Allow the column to shrink below its content size
   min-height: 0; // Allow it to shrink for the messages area's inner scroll
   width: 100%;
-  max-width: var(--_width, min(680px, 100%));
+  max-width: var(--_chat-width, min(680px, 100%));
   margin-inline: auto;
 
   display: grid;
