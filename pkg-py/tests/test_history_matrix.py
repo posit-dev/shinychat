@@ -59,21 +59,35 @@ def _make_matrix_controller() -> tuple[
     return controller, store
 
 
-async def _seed(controller: HistoryController, setup: dict[str, Any]) -> str:
-    if setup.get("turns", 0) > 0:
+async def _seed(controller: HistoryController, setup: dict[str, Any]) -> dict[str, str]:
+    n = setup.get("conversations", 1) if setup.get("turns", 0) > 0 else 0
+    ids: list[str] = []
+    for i in range(n):
         await controller.on_response()
+        assert controller.record is not None, "setup must produce an active record"
+        ids.append(controller.record.id)
+        if i < n - 1:
+            await controller.new_chat()
     assert controller.record is not None, "setup must produce an active record"
-    return controller.record.id
+    result = {"active_id": controller.record.id}
+    if len(ids) >= 2:
+        result["first_id"] = ids[0]
+    return result
 
 
-def _resolve_args(args: list[Any], active_id: str) -> list[Any]:
-    return [active_id if a == "$active_id" else a for a in args]
+def _resolve_args(args: list[Any], ids: dict[str, str]) -> list[Any]:
+    subs = {f"${k}": v for k, v in ids.items()}
+    return [subs.get(a, a) for a in args]
 
 
 async def _check_rename(ctx: dict[str, Any]) -> None:
     assert ctx["controller"].record.updated_at == ctx["before_updated_at"], (
         "rename() must not change updated_at"
     )
+    partition = ctx["controller"].partition
+    assert partition is not None
+    stored = await ctx["store"].get(partition, ctx["active_id"])
+    assert stored is not None and stored.title == "New Title"
 
 
 async def _check_delete(ctx: dict[str, Any]) -> None:
@@ -84,9 +98,75 @@ async def _check_delete(ctx: dict[str, Any]) -> None:
     assert ctx["active_id"] not in {m.id for m in remaining}
 
 
+async def _check_rename_empty_title_is_noop(ctx: dict[str, Any]) -> None:
+    assert ctx["controller"].record.title == ctx["before_title"]
+
+
+async def _check_rename_nonexistent_conversation_id_is_noop(
+    ctx: dict[str, Any],
+) -> None:
+    assert ctx["controller"].record.title == ctx["before_title"]
+
+
+async def _check_switch_to_same_active_id_is_noop(ctx: dict[str, Any]) -> None:
+    assert ctx["controller"].record.updated_at == ctx["before_updated_at"]
+
+
+async def _check_new_chat_clears_active_record(ctx: dict[str, Any]) -> None:
+    assert ctx["controller"].record is None
+    partition = ctx["controller"].partition
+    assert partition is not None
+    stored = await ctx["store"].get(partition, ctx["active_id"])
+    assert stored is not None
+
+
+async def _check_switch_to_inactive_conversation_loads_target_record(
+    ctx: dict[str, Any],
+) -> None:
+    assert ctx["controller"].record.id == ctx["first_id"]
+    assert ctx["controller"].record.id != ctx["active_id"]
+
+
+async def _check_rename_inactive_conversation_updates_store_leaves_active_record(
+    ctx: dict[str, Any],
+) -> None:
+    assert ctx["controller"].record.id == ctx["active_id"]
+    partition = ctx["controller"].partition
+    assert partition is not None
+    stored = await ctx["store"].get(partition, ctx["first_id"])
+    assert stored is not None
+    assert stored.title == "Renamed Inactive"
+    assert stored.title_source == "user"
+
+
+async def _check_delete_inactive_conversation_leaves_active_record_and_removes_from_store(
+    ctx: dict[str, Any],
+) -> None:
+    assert ctx["controller"].record.id == ctx["active_id"]
+    partition = ctx["controller"].partition
+    assert partition is not None
+    remaining = await ctx["store"].list(partition)
+    assert ctx["first_id"] not in {m.id for m in remaining}
+
+
 CUSTOM_CHECKS: dict[str, Callable[[dict[str, Any]], Any]] = {
     "rename_updates_title_and_marks_user_source": _check_rename,
     "delete_active_conversation_clears_controller_record": _check_delete,
+    "rename_empty_title_is_noop": _check_rename_empty_title_is_noop,
+    "rename_nonexistent_conversation_id_is_noop": (
+        _check_rename_nonexistent_conversation_id_is_noop
+    ),
+    "switch_to_same_active_id_is_noop": _check_switch_to_same_active_id_is_noop,
+    "new_chat_clears_active_record": _check_new_chat_clears_active_record,
+    "switch_to_inactive_conversation_loads_target_record": (
+        _check_switch_to_inactive_conversation_loads_target_record
+    ),
+    "rename_inactive_conversation_updates_store_leaves_active_record": (
+        _check_rename_inactive_conversation_updates_store_leaves_active_record
+    ),
+    "delete_inactive_conversation_leaves_active_record_and_removes_from_store": (
+        _check_delete_inactive_conversation_leaves_active_record_and_removes_from_store
+    ),
 }
 
 
@@ -94,11 +174,13 @@ CUSTOM_CHECKS: dict[str, Callable[[dict[str, Any]], Any]] = {
 @pytest.mark.parametrize("case", MATRIX, ids=lambda c: c["name"])
 async def test_matrix(case: dict[str, Any]) -> None:
     controller, store = _make_matrix_controller()
-    active_id = await _seed(controller, case["setup"])
+    ids = await _seed(controller, case["setup"])
+    active_id = ids["active_id"]
     before_updated_at = controller.record.updated_at  # type: ignore[union-attr]
+    before_title = controller.record.title  # type: ignore[union-attr]
 
     method = case["operation"]["method"]
-    args = _resolve_args(case["operation"].get("args", []), active_id)
+    args = _resolve_args(case["operation"].get("args", []), ids)
     await getattr(controller, method)(*args)
 
     for field, expected in case.get("expect", {}).items():
@@ -113,6 +195,8 @@ async def test_matrix(case: dict[str, Any]) -> None:
             "controller": controller,
             "store": store,
             "active_id": active_id,
+            "first_id": ids.get("first_id"),
             "before_updated_at": before_updated_at,
+            "before_title": before_title,
         }
         await check(ctx)

@@ -546,6 +546,14 @@ async def test_switch_to_url_mode_sends_navigate():
 
 
 @pytest.mark.anyio
+async def test_switch_to_nonexistent_id_raises():
+    controller, _store, _chat = _make_nav_controller()
+
+    with pytest.raises(RuntimeError, match="no longer exists"):
+        await controller.switch_to("does-not-exist")
+
+
+@pytest.mark.anyio
 async def test_new_chat_url_mode_sends_navigate_null():
     controller, _store, chat = _make_nav_controller(with_url_mode=True)
 

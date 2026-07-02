@@ -28,7 +28,9 @@ matrix <- jsonlite::fromJSON(
 
 matrix_seed <- function(ctrl, setup) {
   turns <- setup$turns %||% 0
-  if (turns > 0) {
+  n <- if (turns > 0) (setup$conversations %||% 1) else 0
+  ids <- character(0)
+  for (i in seq_len(n)) {
     user_turn <- list(
       class = "ellmer::UserTurn",
       version = 1,
@@ -56,17 +58,29 @@ matrix_seed <- function(ctrl, setup) {
       )
     )
     ctrl$on_response(list(user_turn, asst_turn))
+    stopifnot(!is.null(ctrl$record))
+    ids <- c(ids, ctrl$record$id)
+    if (i < n) ctrl$new_chat()
   }
   stopifnot(!is.null(ctrl$record))
-  ctrl$record$id
+  result <- list(active_id = ctrl$record$id)
+  if (length(ids) >= 2) {
+    result$first_id <- ids[[1]]
+  }
+  result
 }
 
-matrix_resolve_args <- function(args, active_id) {
-  lapply(args, function(a) if (identical(a, "$active_id")) active_id else a)
+matrix_resolve_args <- function(args, ids) {
+  subs <- setNames(unname(ids), paste0("$", names(ids)))
+  lapply(args, function(a) {
+    if (is.character(a) && a %in% names(subs)) subs[[a]] else a
+  })
 }
 
 check_rename_updates_title_and_marks_user_source <- function(ctrl, ctx) {
   expect_equal(ctrl$record$updated_at, ctx$before_updated_at)
+  stored <- ctx$store$get(ctrl$partition, ctx$active_id)
+  expect_equal(stored$title, "New Title")
 }
 
 check_delete_active_conversation_clears_controller_record <- function(
@@ -74,16 +88,68 @@ check_delete_active_conversation_clears_controller_record <- function(
   ctx
 ) {
   expect_null(ctrl$record)
-  remaining <- ctx$store$list(
-    conversation_partition("matrix-test", "matrix-scope")
-  )
+  remaining <- ctx$store$list(ctrl$partition)
   remaining_ids <- vapply(remaining, `[[`, character(1L), "id")
   expect_false(ctx$active_id %in% remaining_ids)
 }
 
+check_rename_empty_title_is_noop <- function(ctrl, ctx) {
+  expect_equal(ctrl$record$title, ctx$before_title)
+}
+
+check_rename_nonexistent_conversation_id_is_noop <- function(ctrl, ctx) {
+  expect_equal(ctrl$record$title, ctx$before_title)
+}
+
+check_switch_to_same_active_id_is_noop <- function(ctrl, ctx) {
+  expect_equal(ctrl$record$updated_at, ctx$before_updated_at)
+}
+
+check_new_chat_clears_active_record <- function(ctrl, ctx) {
+  expect_null(ctrl$record)
+  stored <- ctx$store$get(ctrl$partition, ctx$active_id)
+  expect_false(is.null(stored))
+}
+
+check_switch_to_inactive_conversation_loads_target_record <- function(
+  ctrl,
+  ctx
+) {
+  expect_equal(ctrl$record$id, ctx$first_id)
+  expect_false(identical(ctrl$record$id, ctx$active_id))
+}
+
+check_rename_inactive_conversation_updates_store_leaves_active_record <- function(
+  ctrl,
+  ctx
+) {
+  expect_equal(ctrl$record$id, ctx$active_id)
+  stored <- ctx$store$get(ctrl$partition, ctx$first_id)
+  expect_false(is.null(stored))
+  expect_equal(stored$title, "Renamed Inactive")
+  expect_equal(stored$title_source, "user")
+}
+
+check_delete_inactive_conversation_leaves_active_record_and_removes_from_store <- function(
+  ctrl,
+  ctx
+) {
+  expect_equal(ctrl$record$id, ctx$active_id)
+  remaining <- ctx$store$list(ctrl$partition)
+  remaining_ids <- vapply(remaining, `[[`, character(1L), "id")
+  expect_false(ctx$first_id %in% remaining_ids)
+}
+
 matrix_custom_checks <- list(
   rename_updates_title_and_marks_user_source = check_rename_updates_title_and_marks_user_source,
-  delete_active_conversation_clears_controller_record = check_delete_active_conversation_clears_controller_record
+  delete_active_conversation_clears_controller_record = check_delete_active_conversation_clears_controller_record,
+  rename_empty_title_is_noop = check_rename_empty_title_is_noop,
+  rename_nonexistent_conversation_id_is_noop = check_rename_nonexistent_conversation_id_is_noop,
+  switch_to_same_active_id_is_noop = check_switch_to_same_active_id_is_noop,
+  new_chat_clears_active_record = check_new_chat_clears_active_record,
+  switch_to_inactive_conversation_loads_target_record = check_switch_to_inactive_conversation_loads_target_record,
+  rename_inactive_conversation_updates_store_leaves_active_record = check_rename_inactive_conversation_updates_store_leaves_active_record,
+  delete_inactive_conversation_leaves_active_record_and_removes_from_store = check_delete_inactive_conversation_leaves_active_record_and_removes_from_store
 )
 
 for (matrix_case in matrix) {
@@ -99,10 +165,11 @@ for (matrix_case in matrix) {
       )
       ctrl$partition <- conversation_partition("matrix-test", "matrix-scope")
 
-      active_id <- matrix_seed(ctrl, case$setup)
+      ids <- matrix_seed(ctrl, case$setup)
       before_updated_at <- ctrl$record$updated_at
+      before_title <- ctrl$record$title
 
-      args <- matrix_resolve_args(case$operation$args, active_id)
+      args <- matrix_resolve_args(case$operation$args, ids)
       do.call(ctrl[[case$operation$method]], args)
 
       for (field in names(case$expect)) {
@@ -115,8 +182,10 @@ for (matrix_case in matrix) {
           ctrl,
           list(
             store = store,
-            active_id = active_id,
-            before_updated_at = before_updated_at
+            active_id = ids$active_id,
+            first_id = ids$first_id,
+            before_updated_at = before_updated_at,
+            before_title = before_title
           )
         )
       }

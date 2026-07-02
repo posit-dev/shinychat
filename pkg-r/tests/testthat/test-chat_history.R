@@ -136,157 +136,6 @@ test_that("HistoryController$on_response() extends existing record", {
   expect_equal(length(ctrl$record$nodes), 4)
 })
 
-test_that("HistoryController$new_chat() resets state", {
-  store <- InMemoryConversationStore$new()
-  client <- mock_chat_client()
-  session <- shiny::MockShinySession$new()
-
-  ctrl <- HistoryController$new(
-    chat_id = "chat",
-    client = client,
-    options = history_options(store = store, title = NULL),
-    session = session
-  )
-  ctrl$partition <- conversation_partition("chat", "test-user")
-
-  turn1 <- list(
-    class = "ellmer::UserTurn",
-    version = 1,
-    props = list(
-      contents = list(
-        list(
-          class = "ellmer::ContentText",
-          version = 1,
-          props = list(text = "Hi")
-        )
-      )
-    )
-  )
-  turn2 <- list(
-    class = "ellmer::AssistantTurn",
-    version = 1,
-    props = list(
-      contents = list(
-        list(
-          class = "ellmer::ContentText",
-          version = 1,
-          props = list(text = "Hello")
-        )
-      )
-    )
-  )
-  ctrl$on_response(list(turn1, turn2))
-
-  saved_id <- ctrl$record$id
-  ctrl$new_chat()
-
-  expect_null(ctrl$record)
-  # Old conversation still in store
-  expect_false(
-    is.null(store$get(conversation_partition("chat", "test-user"), saved_id))
-  )
-})
-
-test_that("HistoryController$rename() updates title", {
-  store <- InMemoryConversationStore$new()
-  client <- mock_chat_client()
-  session <- shiny::MockShinySession$new()
-
-  ctrl <- HistoryController$new(
-    chat_id = "chat",
-    client = client,
-    options = history_options(store = store, title = NULL),
-    session = session
-  )
-  ctrl$partition <- conversation_partition("chat", "test-user")
-
-  turn1 <- list(
-    class = "ellmer::UserTurn",
-    version = 1,
-    props = list(
-      contents = list(
-        list(
-          class = "ellmer::ContentText",
-          version = 1,
-          props = list(text = "Hi")
-        )
-      )
-    )
-  )
-  turn2 <- list(
-    class = "ellmer::AssistantTurn",
-    version = 1,
-    props = list(
-      contents = list(
-        list(
-          class = "ellmer::ContentText",
-          version = 1,
-          props = list(text = "Hello")
-        )
-      )
-    )
-  )
-  ctrl$on_response(list(turn1, turn2))
-
-  ctrl$rename(ctrl$record$id, "Renamed chat")
-  expect_equal(ctrl$record$title, "Renamed chat")
-  expect_equal(ctrl$record$title_source, "user")
-  expect_equal(
-    store$get(
-      conversation_partition("chat", "test-user"),
-      ctrl$record$id
-    )$title,
-    "Renamed chat"
-  )
-})
-
-test_that("HistoryController$delete() removes conversation", {
-  store <- InMemoryConversationStore$new()
-  client <- mock_chat_client()
-  session <- shiny::MockShinySession$new()
-
-  ctrl <- HistoryController$new(
-    chat_id = "chat",
-    client = client,
-    options = history_options(store = store, title = NULL),
-    session = session
-  )
-  ctrl$partition <- conversation_partition("chat", "test-user")
-
-  turn1 <- list(
-    class = "ellmer::UserTurn",
-    version = 1,
-    props = list(
-      contents = list(
-        list(
-          class = "ellmer::ContentText",
-          version = 1,
-          props = list(text = "Hi")
-        )
-      )
-    )
-  )
-  turn2 <- list(
-    class = "ellmer::AssistantTurn",
-    version = 1,
-    props = list(
-      contents = list(
-        list(
-          class = "ellmer::ContentText",
-          version = 1,
-          props = list(text = "Hello")
-        )
-      )
-    )
-  )
-  ctrl$on_response(list(turn1, turn2))
-  conv_id <- ctrl$record$id
-
-  ctrl$delete(conv_id)
-  expect_null(store$get(conversation_partition("chat", "test-user"), conv_id))
-  expect_null(ctrl$record)
-})
-
 test_that("HistoryController suppresses saves during replay", {
   store <- InMemoryConversationStore$new()
   client <- mock_chat_client()
@@ -584,6 +433,22 @@ test_that("on_pre_switch returning FALSE allows the in-session swap", {
   ctrl$switch_to(first_id)
 
   expect_equal(ctrl$record$id, first_id)
+})
+
+test_that("switch_to() raises on a nonexistent conversation id", {
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+  session <- shiny::MockShinySession$new()
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = "fallback"),
+    session = session
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+
+  expect_error(ctrl$switch_to("does-not-exist"), "Conversation not found")
 })
 
 test_that("bookmark mode pre-switch emits reload navigation", {

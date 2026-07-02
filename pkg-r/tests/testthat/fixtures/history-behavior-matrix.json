@@ -10,5 +10,68 @@
     "setup": { "turns": 1 },
     "operation": { "method": "delete", "args": ["$active_id"] },
     "expect": {}
+  },
+  {
+    "name": "rename_truncates_title_at_max_length",
+    "setup": { "turns": 1 },
+    "operation": {
+      "method": "rename",
+      "args": [
+        "$active_id",
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ]
+    },
+    "expect": {
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "title_source": "user"
+    }
+  },
+  {
+    "name": "rename_empty_title_is_noop",
+    "setup": { "turns": 1 },
+    "operation": { "method": "rename", "args": ["$active_id", "   "] },
+    "expect": { "title_source": null }
+  },
+  {
+    "name": "rename_nonexistent_conversation_id_is_noop",
+    "setup": { "turns": 1 },
+    "operation": { "method": "rename", "args": ["does-not-exist", "New Title"] },
+    "expect": { "response_count": 1, "title_source": null }
+  },
+  {
+    "name": "delete_nonexistent_conversation_id_is_noop",
+    "setup": { "turns": 1 },
+    "operation": { "method": "delete", "args": ["does-not-exist"] },
+    "expect": { "response_count": 1, "title_source": null }
+  },
+  {
+    "name": "switch_to_same_active_id_is_noop",
+    "setup": { "turns": 1 },
+    "operation": { "method": "switch_to", "args": ["$active_id"] },
+    "expect": { "response_count": 1 }
+  },
+  {
+    "name": "new_chat_clears_active_record",
+    "setup": { "turns": 1 },
+    "operation": { "method": "new_chat", "args": [] },
+    "expect": {}
+  },
+  {
+    "name": "switch_to_inactive_conversation_loads_target_record",
+    "setup": { "turns": 1, "conversations": 2 },
+    "operation": { "method": "switch_to", "args": ["$first_id"] },
+    "expect": {}
+  },
+  {
+    "name": "rename_inactive_conversation_updates_store_leaves_active_record",
+    "setup": { "turns": 1, "conversations": 2 },
+    "operation": { "method": "rename", "args": ["$first_id", "Renamed Inactive"] },
+    "expect": { "response_count": 1 }
+  },
+  {
+    "name": "delete_inactive_conversation_leaves_active_record_and_removes_from_store",
+    "setup": { "turns": 1, "conversations": 2 },
+    "operation": { "method": "delete", "args": ["$first_id"] },
+    "expect": { "response_count": 1 }
   }
 ]
