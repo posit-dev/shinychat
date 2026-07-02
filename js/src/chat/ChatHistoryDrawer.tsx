@@ -184,6 +184,17 @@ export function ChatHistoryDrawer({
         className="shiny-chat-history-drawer"
         onAnimationEnd={handleDrawerAnimationEnd}
       >
+        <div className="shiny-chat-history-header">
+          <h2 className="shiny-chat-history-title">History</h2>
+          <button
+            type="button"
+            className="shiny-chat-history-close"
+            aria-label="Close history"
+            onClick={handleClose}
+          >
+            <CloseIcon />
+          </button>
+        </div>
         <div className="shiny-chat-history-toprow">
           <button
             type="button"
@@ -193,16 +204,22 @@ export function ChatHistoryDrawer({
             aria-label="New conversation"
             onClick={handleNew}
           >
-            + New
+            <NewChatIcon />
+            New
           </button>
-          <input
-            className="shiny-chat-history-search form-control"
-            ref={searchRef}
-            placeholder="Search…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label="Search conversations"
-          />
+          <span className="shiny-chat-history-search-wrap">
+            <span className="shiny-chat-history-search-icon">
+              <SearchIcon />
+            </span>
+            <input
+              className="shiny-chat-history-search form-control"
+              ref={searchRef}
+              placeholder="Search…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="Search conversations"
+            />
+          </span>
         </div>
         <div className="shiny-chat-history-list">
           {filtered.length === 0 && (
@@ -333,25 +350,29 @@ function ConversationItem({
         title={busy ? "Wait for the response to finish" : undefined}
         onClick={onSelect}
       >
-        <span className="shiny-chat-history-item-title">
-          {meta.title}
-          <span className="shiny-chat-history-item-time">
-            {relativeTime(meta.updated_at)}
-          </span>
+        <span className="shiny-chat-history-item-title">{meta.title}</span>
+        <span className="shiny-chat-history-item-time">
+          {relativeTime(meta.updated_at)}
         </span>
       </button>
       {confirmingDelete ? (
         <span className="shiny-chat-history-confirm">
           Delete?
-          <button type="button" onClick={onDelete} aria-label="Confirm delete">
-            ✓
+          <button
+            type="button"
+            className="shiny-chat-history-confirm-yes"
+            onClick={onDelete}
+            aria-label="Confirm delete"
+          >
+            <CheckIcon />
           </button>
           <button
             type="button"
+            className="shiny-chat-history-confirm-no"
             onClick={onCancelEdit}
             aria-label="Cancel delete"
           >
-            ✕
+            <CloseIcon />
           </button>
         </span>
       ) : (
@@ -361,20 +382,23 @@ function ConversationItem({
             aria-label="Conversation actions"
             onClick={onToggleMenu}
           >
-            ⋯
+            <MoreIcon />
           </button>
           {menuOpen && (
             <span className="shiny-chat-history-menu">
               <button type="button" onClick={onStartRename}>
+                <PencilIcon />
                 Rename
               </button>
               <button
                 type="button"
+                className="shiny-chat-history-menu-danger"
                 disabled={busy}
                 title={busy ? "Wait for the response to finish" : undefined}
                 onClick={onStartDelete}
               >
-                Delete…
+                <TrashIcon />
+                Delete
               </button>
             </span>
           )}
@@ -432,6 +456,8 @@ function relativeTime(iso: string): string {
   })
 }
 
+// Clock-rewind glyph: reads as "past conversations", unlike the hamburger it
+// replaced (which read as a navigation menu).
 export function HistoryIcon() {
   return (
     <svg
@@ -442,10 +468,174 @@ export function HistoryIcon() {
       aria-hidden="true"
     >
       <path
-        d="M2 4h12M2 8h12M2 12h12"
+        d="M2.5 3v3h3"
         stroke="currentColor"
         strokeWidth="1.5"
         strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M2.75 6A5.5 5.5 0 1 1 3 9.6"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8 5v3.2l2.2 1.3"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+// Compose / new-conversation glyph (pencil in a square).
+function NewChatIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M8 2.5H3.5A1.5 1.5 0 0 0 2 4v8.5A1.5 1.5 0 0 0 3.5 14H12a1.5 1.5 0 0 0 1.5-1.5V8"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M11.7 2.3a1.2 1.2 0 0 1 1.7 1.7L8 9.4l-2.3.6.6-2.3 5.4-5.4z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function SearchIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+    >
+      <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="m10.5 10.5 3 3"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+function CloseIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="m4 4 8 8M12 4l-8 8"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="m3.5 8.5 3 3 6-7"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function MoreIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <circle cx="3.5" cy="8" r="1.35" />
+      <circle cx="8" cy="8" r="1.35" />
+      <circle cx="12.5" cy="8" r="1.35" />
+    </svg>
+  )
+}
+
+function PencilIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M11.7 2.3a1.2 1.2 0 0 1 1.7 1.7l-8 8-2.8.9.9-2.8 8.2-8.2z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="m10.5 3.5 2 2"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+function TrashIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M3 4.5h10M6.5 4.5V3a.8.8 0 0 1 .8-.8h1.4a.8.8 0 0 1 .8.8v1.5M4.5 4.5l.5 8a1 1 0 0 0 1 .95h4a1 1 0 0 0 1-.95l.5-8M6.75 7v3.75M9.25 7v3.75"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   )

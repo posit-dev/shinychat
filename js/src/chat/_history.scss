@@ -1,3 +1,15 @@
+// History drawer — public theming tokens follow the _command-chip.scss idiom:
+// a public --shiny-chat-history-* custom property resolves to a private --_
+// var, which falls back to a --bs-* token. light-dark() + color-mix() derive
+// hover/active tints so the drawer tracks the host app's Bootstrap theme.
+//
+//   --shiny-chat-history-accent           selection / focus / hover accent
+//   --shiny-chat-history-bg               drawer + trigger surface
+//   --shiny-chat-history-border-color     drawer + trigger border
+//   --shiny-chat-history-item-hover-bg    conversation row hover
+//   --shiny-chat-history-item-active-bg   current-conversation row
+//   --shiny-chat-history-scrim            backdrop behind the drawer
+
 // Trigger button — anchored to the top-inline-start corner of the whole
 // container. In non-filling mode it switches to position: fixed (see chat.scss)
 // so it stays pinned to the viewport while the page scrolls.
@@ -7,6 +19,13 @@
 // button); it nudges the trigger inward, toward the chat column. It applies to
 // whichever inline edge is active, so the sign is placement-agnostic.
 .shiny-chat-history-trigger {
+  --_history-accent: var(--shiny-chat-history-accent, var(--bs-primary, #007bc2));
+  --_history-bg: var(--shiny-chat-history-bg, var(--bs-body-bg, #fff));
+  --_history-border-color: var(
+    --shiny-chat-history-border-color,
+    var(--bs-border-color, #dee2e6)
+  );
+
   position: absolute;
   top: 0.5rem;
   inset-inline-start: calc(0.5rem + var(--_history-trigger-shift, 0px));
@@ -15,21 +34,36 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 8px;
-  border: var(--shiny-chat-border);
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: var(--bs-border-width, 1px) solid var(--_history-border-color);
   border-radius: 50%;
-  background-color: var(--bs-body-bg, #fff);
-  color: var(--bs-body-color, #212529);
+  background-color: var(--_history-bg);
+  color: var(--bs-secondary-color, #6c757d);
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
   line-height: 1;
 
-  &:hover {
-    background-color: var(--bs-tertiary-bg, #f8f9fa);
+  &:hover,
+  &[aria-expanded="true"] {
+    color: var(--_history-accent);
+    border-color: color-mix(
+      in srgb,
+      var(--_history-accent) 40%,
+      var(--_history-border-color)
+    );
+    background-color: light-dark(
+      color-mix(in srgb, var(--_history-accent) 6%, var(--_history-bg)),
+      color-mix(in srgb, var(--_history-accent) 14%, var(--_history-bg))
+    );
   }
 
   &:focus-visible {
-    outline: 2px solid var(--bs-primary, #007bc2);
+    outline: 2px solid var(--_history-accent);
     outline-offset: 2px;
   }
 
@@ -40,6 +74,30 @@
 
 // Overlay container — stretches to fill the whole chat container
 .shiny-chat-history {
+  --_history-accent: var(--shiny-chat-history-accent, var(--bs-primary, #007bc2));
+  --_history-bg: var(--shiny-chat-history-bg, var(--bs-body-bg, #fff));
+  --_history-border-color: var(
+    --shiny-chat-history-border-color,
+    var(--bs-border-color, #dee2e6)
+  );
+  --_history-muted: var(--bs-secondary-color, #6c757d);
+  --_history-fg: var(--bs-body-color, #212529);
+  --_history-danger: var(--bs-danger, #dc3545);
+  --_history-item-hover-bg: var(
+    --shiny-chat-history-item-hover-bg,
+    light-dark(
+      color-mix(in srgb, var(--_history-accent) 7%, transparent),
+      color-mix(in srgb, var(--_history-accent) 14%, transparent)
+    )
+  );
+  --_history-item-active-bg: var(
+    --shiny-chat-history-item-active-bg,
+    light-dark(
+      color-mix(in srgb, var(--_history-accent) 13%, transparent),
+      color-mix(in srgb, var(--_history-accent) 24%, transparent)
+    )
+  );
+
   position: absolute;
   inset: 0;
   z-index: 6;
@@ -48,7 +106,7 @@
   &-scrim {
     position: absolute;
     inset: 0;
-    background: rgb(0 0 0 / 25%);
+    background: var(--shiny-chat-history-scrim, rgb(0 0 0 / 25%));
     animation: shiny-chat-history-scrim-in 0.2s ease forwards;
   }
 
@@ -56,7 +114,9 @@
     animation: shiny-chat-history-scrim-out 0.2s ease forwards;
   }
 
-  // Drawer panel sliding in from the left
+  // Drawer panel sliding in from the inline-start edge. A flex column with the
+  // header + toprow pinned and only the list scrolling, so + New and Search stay
+  // reachable no matter how long the history gets.
   &-drawer {
     position: absolute;
     inset-block: 0;
@@ -64,13 +124,12 @@
     width: min(20rem, 85%);
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    padding: 0.75rem;
-    overflow-y: auto;
-    background: var(--bs-body-bg, #fff);
+    overflow: hidden;
+    background: var(--_history-bg);
+    color: var(--_history-fg);
     border-inline-end: var(--bs-border-width, 1px) solid
-      var(--bs-border-color, #dee2e6);
-    box-shadow: 0 0 0.75rem rgb(0 0 0 / 12%);
+      var(--_history-border-color);
+    box-shadow: 0 0 1.25rem rgb(0 0 0 / 12%);
     animation: shiny-chat-history-drawer-in 0.2s ease forwards;
   }
 
@@ -78,66 +137,177 @@
     animation: shiny-chat-history-drawer-out 0.2s ease forwards;
   }
 
-  // Top row: + New button + search input
+  // Header: title + close
+  &-header {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.75rem 0.75rem 0.5rem;
+  }
+
+  &-title {
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    line-height: 1.2;
+    color: var(--_history-fg);
+  }
+
+  &-close {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+    border: none;
+    border-radius: 0.375rem;
+    background: none;
+    color: var(--_history-muted);
+    cursor: pointer;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease;
+
+    &:hover {
+      background: var(--_history-item-hover-bg);
+      color: var(--_history-fg);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--_history-accent);
+      outline-offset: 2px;
+    }
+
+    svg {
+      display: block;
+    }
+  }
+
+  // Toprow: ghost + New button + search field
   &-toprow {
+    flex-shrink: 0;
     display: flex;
     gap: 0.375rem;
+    padding: 0 0.75rem 0.5rem;
   }
 
   &-new {
     flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
     white-space: nowrap;
-    padding: 0.375rem 0.75rem;
-    font-size: 1rem;
-    line-height: 1.5;
+    padding: 0.375rem 0.625rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.2;
     border-radius: 0.375rem;
-    border: 1px solid var(--bs-primary, #0d6efd);
-    background-color: var(--bs-primary, #0d6efd);
-    color: var(--bs-btn-color, #fff);
+    border: var(--bs-border-width, 1px) solid var(--_history-border-color);
+    background: none;
+    color: var(--_history-fg);
     cursor: pointer;
-    transition: filter 0.15s ease;
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease;
+
+    svg {
+      display: block;
+    }
 
     &:hover:not(:disabled) {
-      filter: brightness(0.92);
+      color: var(--_history-accent);
+      border-color: color-mix(
+        in srgb,
+        var(--_history-accent) 40%,
+        var(--_history-border-color)
+      );
+      background: var(--_history-item-hover-bg);
     }
 
     &:focus-visible {
-      outline: 2px solid var(--bs-primary, #0d6efd);
+      outline: 2px solid var(--_history-accent);
       outline-offset: 2px;
     }
 
     &:disabled {
-      opacity: 0.65;
+      opacity: 0.55;
       cursor: not-allowed;
+    }
+  }
+
+  // Search field with a leading magnifier
+  &-search-wrap {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  &-search-icon {
+    position: absolute;
+    inset-inline-start: 0.5rem;
+    display: flex;
+    color: var(--_history-muted);
+    pointer-events: none;
+
+    svg {
+      display: block;
     }
   }
 
   &-search {
     flex: 1;
     min-width: 0;
+    padding-inline-start: 1.75rem;
   }
 
-  // Section header ("Today", "Previous")
+  // Scrollable conversation list
+  &-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    padding: 0 0.5rem 0.5rem;
+  }
+
+  // Section header ("Today", "Previous") — sticks to the top of the scroll
+  // area so the current group stays labelled while you scroll through it.
   &-section {
-    font-size: 0.7em;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    font-size: 0.6875rem;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    opacity: 0.6;
-    margin-block-start: 0.25rem;
-    padding-inline: 0.5rem;
+    letter-spacing: 0.05em;
+    color: var(--_history-muted);
+    background: var(--_history-bg);
+    padding: 0.5rem 0.5rem 0.25rem;
+
+    &:first-child {
+      padding-top: 0.25rem;
+    }
   }
 
   // Individual conversation row
   &-item {
+    position: relative;
     display: flex;
-    justify-content: space-between;
     align-items: center;
     gap: 0.375rem;
-    padding: 0.375rem 0.5rem;
+    padding: 0.3125rem 0.5rem;
     border-radius: 0.375rem;
+    color: var(--_history-fg);
 
     &:hover {
-      background: rgb(0 0 0 / 5%);
+      background: var(--_history-item-hover-bg);
     }
 
     // The focus ring lives at the row level (not on -item-select) so it
@@ -145,22 +315,33 @@
     // Scoped to -item-select specifically (not :focus-within) so the ⋯
     // menu button keeps showing only its own, separate ring.
     &:has(> .shiny-chat-history-item-select:focus-visible) {
-      outline: 2px solid var(--bs-primary, #007bc2);
+      outline: 2px solid var(--_history-accent);
       outline-offset: -2px;
     }
 
     &.active {
-      background: var(--bs-primary-bg-subtle, rgb(0 0 0 / 8%));
+      background: var(--_history-item-active-bg);
+    }
+
+    &.active .shiny-chat-history-item-title {
+      font-weight: 600;
+    }
+
+    // While confirming a delete, tint the whole row so the destructive intent
+    // reads before the eye reaches the confirm buttons.
+    &:has(> .shiny-chat-history-confirm) {
+      background: color-mix(in srgb, var(--_history-danger) 9%, transparent);
     }
   }
 
-  // The row's real interactive control — title/timestamp only. The ⋯ menu
-  // and delete confirm sit as siblings, never nested inside this button.
+  // The row's real interactive control — title + time. The ⋯ menu and delete
+  // confirm sit as siblings, never nested inside this button.
   &-item-select {
     flex: 1;
     min-width: 0;
     display: flex;
-    align-items: center;
+    align-items: baseline;
+    gap: 0.5rem;
     background: none;
     border: none;
     padding: 0;
@@ -186,12 +367,14 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 0.875rem;
+    line-height: 1.3;
   }
 
   &-item-time {
-    display: block;
-    font-size: 0.75em;
-    opacity: 0.6;
+    flex-shrink: 0;
+    font-size: 0.6875rem;
+    color: var(--_history-muted);
+    font-variant-numeric: tabular-nums;
   }
 
   // Rename input (replaces item content during inline edit)
@@ -201,67 +384,110 @@
     font-size: 0.875rem;
   }
 
-  // ⋯ actions menu button + dropdown
+  // ⋯ actions menu button + dropdown. The button is revealed on row hover /
+  // focus / when its menu is open; on touch (no hover) it stays visible.
   &-itemmenu {
     flex-shrink: 0;
     position: relative;
+    opacity: 0;
+    transition: opacity 0.12s ease;
 
     > button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.5rem;
+      height: 1.5rem;
       background: none;
       border: none;
       cursor: pointer;
-      padding: 0.125rem 0.25rem;
-      color: var(--bs-secondary-color, #6c757d);
+      padding: 0;
+      color: var(--_history-muted);
       border-radius: 0.25rem;
       line-height: 1;
 
+      svg {
+        display: block;
+      }
+
       &:hover {
-        background: rgb(0 0 0 / 8%);
-        color: var(--bs-body-color, #212529);
+        background: color-mix(in srgb, var(--_history-accent) 12%, transparent);
+        color: var(--_history-fg);
       }
 
       &:focus-visible {
-        outline: 2px solid var(--bs-primary, #007bc2);
-        outline-offset: 2px;
+        outline: 2px solid var(--_history-accent);
+        outline-offset: 1px;
       }
+    }
+  }
+
+  &-item:hover &-itemmenu,
+  &-item.active &-itemmenu,
+  &-itemmenu:focus-within,
+  &-itemmenu:has(> .shiny-chat-history-menu) {
+    opacity: 1;
+  }
+
+  @media (hover: none) {
+    &-itemmenu {
+      opacity: 1;
     }
   }
 
   &-menu {
     position: absolute;
     inset-inline-end: 0;
-    top: 100%;
+    top: calc(100% + 2px);
     z-index: 10;
     min-width: 8rem;
     display: flex;
     flex-direction: column;
-    padding: 0.25rem 0;
-    background: var(--bs-body-bg, #fff);
-    border: var(--bs-border-width, 1px) solid var(--bs-border-color, #dee2e6);
-    border-radius: 0.375rem;
-    box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
+    padding: 0.25rem;
+    background: var(--_history-bg);
+    border: var(--bs-border-width, 1px) solid var(--_history-border-color);
+    border-radius: 0.5rem;
+    box-shadow: 0 6px 16px rgb(0 0 0 / 14%);
 
     > button {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
       background: none;
       border: none;
       cursor: pointer;
-      padding: 0.375rem 0.75rem;
+      padding: 0.375rem 0.5rem;
+      border-radius: 0.375rem;
       text-align: start;
-      font-size: 0.875rem;
-      color: var(--bs-body-color, #212529);
+      font-size: 0.8125rem;
+      color: var(--_history-fg);
+
+      svg {
+        flex-shrink: 0;
+        display: block;
+      }
 
       &:hover {
-        background: var(--bs-tertiary-bg, #f8f9fa);
+        background: var(--_history-item-hover-bg);
       }
 
       &:focus-visible {
-        outline: 2px solid var(--bs-primary, #007bc2);
+        outline: 2px solid var(--_history-accent);
         outline-offset: -2px;
       }
 
       &:disabled {
         cursor: not-allowed;
         opacity: 0.5;
+      }
+    }
+
+    // Destructive action
+    &-danger {
+      color: var(--_history-danger);
+
+      &:hover {
+        background: color-mix(in srgb, var(--_history-danger) 10%, transparent);
       }
     }
   }
@@ -271,36 +497,56 @@
     display: flex;
     align-items: center;
     gap: 0.25rem;
-    font-size: 0.8125rem;
-    color: var(--bs-danger, #dc3545);
     flex-shrink: 0;
+    font-size: 0.75rem;
+    color: var(--_history-danger);
 
     > button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.5rem;
+      height: 1.5rem;
       background: none;
       border: none;
       cursor: pointer;
-      padding: 0 0.25rem;
-      line-height: 1;
-      color: inherit;
+      padding: 0;
       border-radius: 0.25rem;
+      color: var(--_history-muted);
+      line-height: 1;
 
-      &:first-of-type {
-        color: var(--bs-success, #198754);
+      svg {
+        display: block;
       }
 
       &:focus-visible {
-        outline: 2px solid var(--bs-primary, #007bc2);
-        outline-offset: 2px;
+        outline: 2px solid var(--_history-accent);
+        outline-offset: 1px;
       }
+    }
+
+    &-yes {
+      color: var(--_history-danger);
+
+      &:hover {
+        background: color-mix(in srgb, var(--_history-danger) 12%, transparent);
+      }
+    }
+
+    &-no:hover {
+      background: var(--_history-item-hover-bg);
+      color: var(--_history-fg);
     }
   }
 
-  // Empty search result message
+  // Empty list / no-results message
   &-empty {
     text-align: center;
-    opacity: 0.6;
-    padding-block: 1rem;
-    font-size: 0.875rem;
+    color: var(--_history-muted);
+    padding-block: 1.5rem;
+    padding-inline: 1rem;
+    font-size: 0.8125rem;
+    line-height: 1.4;
   }
 }
 
@@ -363,7 +609,7 @@ shiny-chat-container[data-history-placement="right"] {
     // Border sits on the edge that faces the chat content.
     border-inline-end: none;
     border-inline-start: var(--bs-border-width, 1px) solid
-      var(--bs-border-color, #dee2e6);
+      var(--_history-border-color);
   }
 }
 
