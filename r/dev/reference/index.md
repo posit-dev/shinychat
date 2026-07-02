@@ -29,8 +29,16 @@
 - [`output_markdown_stream()`](https://posit-dev.github.io/shinychat/r/dev/reference/output_markdown_stream.md)
   : Create a UI element for a markdown stream.
 
-## Bookmark chat history
+## Chat history
 
+- [`chat_enable_history()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_enable_history.md)
+  : Enable conversation history for a chat
+- [`history_options()`](https://posit-dev.github.io/shinychat/r/dev/reference/history_options.md)
+  : Configure chat history options
+- [`ConversationStore`](https://posit-dev.github.io/shinychat/r/dev/reference/ConversationStore.md)
+  : Abstract base class for conversation storage backends
+- [`FileConversationStore`](https://posit-dev.github.io/shinychat/r/dev/reference/FileConversationStore.md)
+  : File-based conversation storage backend
 - [`chat_restore()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_restore.md)
   : Add Shiny bookmarking for shinychat
 

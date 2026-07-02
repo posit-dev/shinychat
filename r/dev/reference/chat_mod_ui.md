@@ -23,8 +23,9 @@ chat_mod_server(
   id,
   client,
   greeting = NULL,
-  bookmark_on_input = TRUE,
-  bookmark_on_response = TRUE
+  history = TRUE,
+  bookmark_on_input = lifecycle::deprecated(),
+  bookmark_on_response = lifecycle::deprecated()
 )
 ```
 

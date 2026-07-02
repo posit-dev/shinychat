@@ -79,8 +79,9 @@ sure to create a new chat client for each user session.</p>
 <span>  <span class="va">id</span>,</span>
 <span>  <span class="va">client</span>,</span>
 <span>  greeting <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  bookmark_on_input <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  bookmark_on_response <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  history <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  bookmark_on_input <span class="op">=</span> <span class="fu">lifecycle</span><span class="fu">::</span><span class="fu"><a href="https://lifecycle.r-lib.org/reference/deprecated.html" class="external-link">deprecated</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>  bookmark_on_response <span class="op">=</span> <span class="fu">lifecycle</span><span class="fu">::</span><span class="fu"><a href="https://lifecycle.r-lib.org/reference/deprecated.html" class="external-link">deprecated</a></span><span class="op">(</span><span class="op">)</span>,</span>
 <span>  session <span class="op">=</span> <span class="fu">shiny</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/domains.html" class="external-link">getDefaultReactiveDomain</a></span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -139,6 +140,12 @@ would push the total over this cap are rejected in the browser with a notice.</p
 Accepts a static value (string, <code><a href="https://rstudio.github.io/htmltools/reference/HTML.html" class="external-link">htmltools::HTML()</a></code>, <code><a href="https://rstudio.github.io/htmltools/reference/tagList.html" class="external-link">htmltools::tagList()</a></code>,
 or <code><a href="chat_greeting.html">chat_greeting()</a></code>) or a <strong>function</strong> that generates the greeting
 dynamically. See the <strong>Greeting</strong> section below for details.</p></dd>
+
+
+<dt id="arg-history">history<a class="anchor" aria-label="anchor" href="#arg-history"></a></dt>
+<dd><p>Conversation history configuration. <code>TRUE</code> (default) enables
+history with default settings; <code>FALSE</code> disables it; pass a <code><a href="history_options.html">history_options()</a></code>
+object to customise storage, identity, titling, or hooks.</p></dd>
 
 
 <dt id="arg-bookmark-on-input">bookmark_on_input<a class="anchor" aria-label="anchor" href="#arg-bookmark-on-input"></a></dt>

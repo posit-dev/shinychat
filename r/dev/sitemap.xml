@@ -8,11 +8,14 @@
 <url><loc>https://posit-dev.github.io/shinychat/r/dev/index.html</loc></url>
 <url><loc>https://posit-dev.github.io/shinychat/r/dev/news/index.html</loc></url>
 <url><loc>https://posit-dev.github.io/shinychat/r/dev/reference/ContentSlashCommand.html</loc></url>
+<url><loc>https://posit-dev.github.io/shinychat/r/dev/reference/ConversationStore.html</loc></url>
+<url><loc>https://posit-dev.github.io/shinychat/r/dev/reference/FileConversationStore.html</loc></url>
 <url><loc>https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.html</loc></url>
 <url><loc>https://posit-dev.github.io/shinychat/r/dev/reference/chat_append.html</loc></url>
 <url><loc>https://posit-dev.github.io/shinychat/r/dev/reference/chat_append_message.html</loc></url>
 <url><loc>https://posit-dev.github.io/shinychat/r/dev/reference/chat_attachment.html</loc></url>
 <url><loc>https://posit-dev.github.io/shinychat/r/dev/reference/chat_clear.html</loc></url>
+<url><loc>https://posit-dev.github.io/shinychat/r/dev/reference/chat_enable_history.html</loc></url>
 <url><loc>https://posit-dev.github.io/shinychat/r/dev/reference/chat_get_greeting.html</loc></url>
 <url><loc>https://posit-dev.github.io/shinychat/r/dev/reference/chat_greeting.html</loc></url>
 <url><loc>https://posit-dev.github.io/shinychat/r/dev/reference/chat_mod_ui.html</loc></url>
@@ -20,6 +23,7 @@
 <url><loc>https://posit-dev.github.io/shinychat/r/dev/reference/chat_set_greeting.html</loc></url>
 <url><loc>https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.html</loc></url>
 <url><loc>https://posit-dev.github.io/shinychat/r/dev/reference/contents_shinychat.html</loc></url>
+<url><loc>https://posit-dev.github.io/shinychat/r/dev/reference/history_options.html</loc></url>
 <url><loc>https://posit-dev.github.io/shinychat/r/dev/reference/index.html</loc></url>
 <url><loc>https://posit-dev.github.io/shinychat/r/dev/reference/markdown_stream.html</loc></url>
 <url><loc>https://posit-dev.github.io/shinychat/r/dev/reference/output_markdown_stream.html</loc></url>

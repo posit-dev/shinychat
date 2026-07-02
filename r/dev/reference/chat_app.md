@@ -20,8 +20,9 @@ chat_server(
   id,
   client,
   greeting = NULL,
-  bookmark_on_input = TRUE,
-  bookmark_on_response = TRUE,
+  history = TRUE,
+  bookmark_on_input = lifecycle::deprecated(),
+  bookmark_on_response = lifecycle::deprecated(),
   session = shiny::getDefaultReactiveDomain()
 )
 ```
@@ -92,6 +93,13 @@ chat_server(
   [`chat_greeting()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_greeting.md))
   or a **function** that generates the greeting dynamically. See the
   **Greeting** section below for details.
+
+- history:
+
+  Conversation history configuration. `TRUE` (default) enables history
+  with default settings; `FALSE` disables it; pass a
+  [`history_options()`](https://posit-dev.github.io/shinychat/r/dev/reference/history_options.md)
+  object to customise storage, identity, titling, or hooks.
 
 - bookmark_on_input:
 

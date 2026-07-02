@@ -12,7 +12,14 @@ session$onRestore() (and possibly session$onBookmark) handler to restore
 any additional state.
 To avoid restoring chat history from the client, you can ensure that the
 history is empty by calling client$set_turns(list()) before passing the
-client to chat_restore()."><meta property="og:description" content="Adds Shiny bookmarking hooks to save and restore the ellmer chat
+client to chat_restore().
+chat_restore() bookmarks the whole session and doesn't know about
+multiple conversations. If you need per-conversation history (the chat
+history drawer, switching between saved conversations), use
+chat_enable_history() with history_options(restore_mode = &quot;bookmark&quot;)
+instead — it replaces chat_restore()'s job for history-aware apps. The
+two are mutually exclusive; chat_app() picks one or the other based on
+whether history is set."><meta property="og:description" content="Adds Shiny bookmarking hooks to save and restore the ellmer chat
 client. Also restores chat messages from the history in the client.
 If either bookmark_on_input or bookmark_on_response is TRUE, the Shiny
 App's bookmark will be automatically updated without showing a modal to the
@@ -25,7 +32,14 @@ session$onRestore() (and possibly session$onBookmark) handler to restore
 any additional state.
 To avoid restoring chat history from the client, you can ensure that the
 history is empty by calling client$set_turns(list()) before passing the
-client to chat_restore()."><meta property="og:image" content="https://posit-dev.github.io/shinychat/r/logo.svg"><meta name="robots" content="noindex"><!-- Privacy-friendly analytics by Plausible --><script async src="https://plausible.io/js/pa-wYY8PsN7VIq_v1gETXZt9.js"></script><script>
+client to chat_restore().
+chat_restore() bookmarks the whole session and doesn't know about
+multiple conversations. If you need per-conversation history (the chat
+history drawer, switching between saved conversations), use
+chat_enable_history() with history_options(restore_mode = &quot;bookmark&quot;)
+instead — it replaces chat_restore()'s job for history-aware apps. The
+two are mutually exclusive; chat_app() picks one or the other based on
+whether history is set."><meta property="og:image" content="https://posit-dev.github.io/shinychat/r/logo.svg"><meta name="robots" content="noindex"><!-- Privacy-friendly analytics by Plausible --><script async src="https://plausible.io/js/pa-wYY8PsN7VIq_v1gETXZt9.js"></script><script>
   window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
   plausible.init()
 </script></head><body>
@@ -93,6 +107,13 @@ any additional state.</p>
 <p>To avoid restoring chat history from the <code>client</code>, you can ensure that the
 history is empty by calling <code>client$set_turns(list())</code> before passing the
 client to <code>chat_restore()</code>.</p>
+<p><code>chat_restore()</code> bookmarks the whole session and doesn't know about
+multiple conversations. If you need per-conversation history (the chat
+history drawer, switching between saved conversations), use
+<code><a href="chat_enable_history.html">chat_enable_history()</a></code> with <code>history_options(restore_mode = "bookmark")</code>
+instead — it replaces <code>chat_restore()</code>'s job for history-aware apps. The
+two are mutually exclusive; <code><a href="chat_app.html">chat_app()</a></code> picks one or the other based on
+whether <code>history</code> is set.</p>
     </div>
 
     <div class="section level2">

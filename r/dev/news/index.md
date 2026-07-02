@@ -22,6 +22,31 @@
   [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md).
   ([\#264](https://github.com/posit-dev/shinychat/issues/264))
 
+- [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  gets multi-conversation history automatically: a drawer for starting
+  new chats and returning to previous ones, with LLM-generated titles,
+  search, rename, and delete. Conversations are persisted per-user (or a
+  custom scope) via a pluggable store — the default
+  `FileConversationStore` finds a redeploy-safe location automatically
+  on Posit Connect. Customize with `history = history_options(...)`, or
+  opt out entirely with `history = FALSE`. For apps that can’t use the
+  module pattern, wire it up manually with
+  [`chat_enable_history()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_enable_history.md).
+  ([\#266](https://github.com/posit-dev/shinychat/issues/266))
+
+  - `history_options(restore_mode = )` controls how the active
+    conversation is remembered across page reloads: `"browser"`
+    (default) via `localStorage`, `"url"` via a
+    `?shinychat_conversation_id=` query parameter, `"bookmark"` via full
+    Shiny server bookmarking (requires `bookmarkStore = "server"`, and
+    also restores raw input controls), or `"none"` to disable. Use the
+    `on_save`/`on_restore` arguments of
+    [`chat_enable_history()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_enable_history.md)
+    (or `on_save()`/`on_restore()` on the `history` object returned by
+    [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md))
+    to keep other app state synced to the active conversation.
+    ([\#266](https://github.com/posit-dev/shinychat/issues/266))
+
 - Added file attachment support: users can upload images, PDFs, and text
   files alongside chat messages via a file picker button, drag-and-drop,
   or clipboard paste.
