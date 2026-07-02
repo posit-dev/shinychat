@@ -93,13 +93,12 @@ quartodoc:
         include_classes: true
         include_functions: true
       contents:
-        - HistoryOptions
-        - ConversationPartition
-        - ConversationStore
-        - FileConversationStore
-        - ConversationRecord
-        - ConversationMeta
-        - ConversationNode
+        - types.HistoryOptions
+        - types.ConversationPartition
+        - types.ConversationStore
+        - types.FileConversationStore
+        - types.ConversationRecord
+        - types.ConversationMeta
     - title: Testing
       options:
         signature_name: relative
