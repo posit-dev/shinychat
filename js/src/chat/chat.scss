@@ -150,11 +150,10 @@ shiny-chat-container:not([fill]) {
     position: fixed;
   }
 
-  // Likewise pin the trigger to the viewport so it stays reachable while the
-  // page scrolls (in filling mode it's absolute to the fixed-height container).
-  .shiny-chat-history-trigger {
-    position: fixed;
-  }
+  // The trigger keeps the base position: absolute so it anchors to its own
+  // shiny-chat-container (top-left of this chat) instead of the viewport. A
+  // viewport-fixed trigger would collapse every non-fill chat's trigger onto
+  // the same corner when more than one chat is on the page.
 }
 
 // Scroll container — useStickToBottom attaches scrollRef here.
