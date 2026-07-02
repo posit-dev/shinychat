@@ -23,6 +23,8 @@ import {
   useChatDispatch,
 } from "./context"
 import { ChatHistoryDrawer, HistoryIcon } from "./ChatHistoryDrawer"
+import { useFillPaddingTransfer } from "./useFillPaddingTransfer"
+import { useOverlapNudge } from "./useOverlapNudge"
 import type { ChatMessageData, GreetingData } from "./state"
 import type {
   ChatTransport,
@@ -191,6 +193,28 @@ export const ChatContainer = forwardRef<
     container.addEventListener("keydown", handleKeyDown)
     return () => container.removeEventListener("keydown", handleKeyDown)
   }, [enableCancel, scrollRef])
+
+  useFillPaddingTransfer(scrollRef)
+
+  // Keep the history trigger clear of other visible UI. It anchors to a corner
+  // of the container, where it can collide with e.g. a bslib sidebar reveal
+  // button. `shouldSkip` bails while the drawer is open — the trigger sits under
+  // the scrim (position moot), and an open drawer over a collapsed same-side
+  // sidebar hides the sidebar's collapse-toggle (see _history.scss), so probing
+  // would record a false "no overlap"; the drawer's add/remove (watchMutations)
+  // re-runs the measure once it closes and the toggle is measurable again.
+  useOverlapNudge(historyTriggerRef, {
+    enabled: historyEnabled,
+    boundarySelector: "shiny-chat-container",
+    shiftProperty: "--_history-trigger-shift",
+    side: (container) =>
+      container.getAttribute("data-history-placement") === "right"
+        ? "right"
+        : "left",
+    shouldSkip: (container) =>
+      !!container.querySelector(":scope > .shiny-chat-history"),
+    watchMutations: { childList: true },
+  })
 
   useImperativeHandle(ref, () => ({
     setInputValue(...args) {
@@ -383,110 +407,117 @@ export const ChatContainer = forwardRef<
 
   return (
     <SlashCommandsContext.Provider value={slashCommands}>
-      <div className="shiny-chat-messages-wrapper">
-        {historyEnabled && (
-          <button
-            type="button"
-            ref={historyTriggerRef}
-            className="shiny-chat-history-trigger"
-            aria-label="Conversation history"
-            aria-expanded={historyOpen}
-            onClick={() => setHistoryOpen((v) => !v)}
-          >
-            <HistoryIcon />
-          </button>
-        )}
-        <div
-          className="shiny-chat-messages"
-          ref={scrollRef}
-          onClick={onMessagesClick}
-          onFocus={handleFocusIn}
-          onBlur={handleFocusOut}
-          onKeyDown={onSuggestionKeydown}
+      {historyEnabled && (
+        <button
+          type="button"
+          ref={historyTriggerRef}
+          className="shiny-chat-history-trigger"
+          aria-label="Conversation history"
+          aria-expanded={historyOpen}
+          onClick={() => setHistoryOpen((v) => !v)}
         >
-          <ChatScrollContext.Provider value={stopScroll}>
-            {/* Greeting lives outside contentRef so its growth (e.g. while a
+          <HistoryIcon />
+        </button>
+      )}
+      {/* Width-limited, centered content column. The container itself is
+          full-width so the history trigger + drawer scrim (siblings of this
+          wrapper) can span the whole element. */}
+      <div className="shiny-chat-wrapper">
+        <div className="shiny-chat-messages-wrapper">
+          <div
+            className="shiny-chat-messages"
+            ref={scrollRef}
+            onClick={onMessagesClick}
+            onFocus={handleFocusIn}
+            onBlur={handleFocusOut}
+            onKeyDown={onSuggestionKeydown}
+          >
+            <ChatScrollContext.Provider value={stopScroll}>
+              {/* Greeting lives outside contentRef so its growth (e.g. while a
                 streaming greeting fills in) does not trigger useStickToBottom
                 — only message growth does. Suggestion clicks inside the
                 greeting still reach the messages-level handlers via bubbling. */}
-            {greeting != null && <ChatGreeting greeting={greeting} />}
-            <div
-              className="shiny-chat-messages-content"
-              ref={contentRef}
-              role="log"
-              aria-live="polite"
-              {...(greeting?.status === "dismissing"
-                ? { "data-greeting-dismissing": "" }
-                : {})}
-            >
-              <ChatMessages messages={messages} iconAssistant={iconAssistant} />
-              {streamingMessage && (
-                <MessageErrorBoundary key={streamingMessage.id}>
-                  <ChatMessage
-                    message={streamingMessage}
-                    iconAssistant={iconAssistant}
-                  />
-                </MessageErrorBoundary>
-              )}
-            </div>
-          </ChatScrollContext.Provider>
-        </div>
-        <ScrollToBottomButton
-          isAtBottom={isAtBottom}
-          scrollToBottom={scrollToBottom}
-          streaming={!!streamingMessage || !!greeting?.streaming}
-        />
-        {historyEnabled && (
-          <ChatHistoryDrawer
-            isOpen={historyOpen}
-            onClose={() => setHistoryOpen(false)}
-            triggerRef={historyTriggerRef}
-            conversations={historyConversations ?? []}
-            activeId={historyActiveId ?? null}
-            busy={isStreaming}
-            onSelect={(convId) => {
-              transport.sendHistorySelect(elementId, convId)
-            }}
-            onNew={() => transport.sendHistoryNew(elementId)}
-            onRename={(convId, title) =>
-              transport.sendHistoryRename(elementId, convId, title)
-            }
-            onDelete={(convId) =>
-              transport.sendHistoryDelete(elementId, convId)
-            }
+              {greeting != null && <ChatGreeting greeting={greeting} />}
+              <div
+                className="shiny-chat-messages-content"
+                ref={contentRef}
+                role="log"
+                aria-live="polite"
+                {...(greeting?.status === "dismissing"
+                  ? { "data-greeting-dismissing": "" }
+                  : {})}
+              >
+                <ChatMessages
+                  messages={messages}
+                  iconAssistant={iconAssistant}
+                />
+                {streamingMessage && (
+                  <MessageErrorBoundary key={streamingMessage.id}>
+                    <ChatMessage
+                      message={streamingMessage}
+                      iconAssistant={iconAssistant}
+                    />
+                  </MessageErrorBoundary>
+                )}
+              </div>
+            </ChatScrollContext.Provider>
+          </div>
+          <ScrollToBottomButton
+            isAtBottom={isAtBottom}
+            scrollToBottom={scrollToBottom}
+            streaming={!!streamingMessage || !!greeting?.streaming}
           />
-        )}
+        </div>
+
+        <div
+          className={
+            inputDisabled ? "shiny-chat-input disabled" : "shiny-chat-input"
+          }
+          onClick={onContainerClick}
+        >
+          <ChatInput
+            ref={chatInputRef}
+            transport={transport}
+            inputId={inputId}
+            uploadAccept={uploadAccept}
+            maxUploadSize={maxUploadSize}
+            disabled={inputDisabled}
+            hasTopShadow={!isAtBottom}
+            placeholder={inputPlaceholder}
+            onSend={onSend}
+            userMessages={userMessages}
+            enableCancel={enableCancel}
+            enableUpload={enableUpload}
+            cancelRequested={cancelRequested}
+            isStreaming={isStreaming}
+            onCancel={cancelStream}
+            slashCommands={slashCommands}
+            slashCommandId={slashCommandId}
+            submitKey={submitKey}
+          />
+        </div>
+
+        {footerEl && <RawDOM source={footerEl} className="shiny-chat-footer" />}
       </div>
 
-      <div
-        className={
-          inputDisabled ? "shiny-chat-input disabled" : "shiny-chat-input"
-        }
-        onClick={onContainerClick}
-      >
-        <ChatInput
-          ref={chatInputRef}
-          transport={transport}
-          inputId={inputId}
-          uploadAccept={uploadAccept}
-          maxUploadSize={maxUploadSize}
-          disabled={inputDisabled}
-          hasTopShadow={!isAtBottom}
-          placeholder={inputPlaceholder}
-          onSend={onSend}
-          userMessages={userMessages}
-          enableCancel={enableCancel}
-          enableUpload={enableUpload}
-          cancelRequested={cancelRequested}
-          isStreaming={isStreaming}
-          onCancel={cancelStream}
-          slashCommands={slashCommands}
-          slashCommandId={slashCommandId}
-          submitKey={submitKey}
+      {historyEnabled && (
+        <ChatHistoryDrawer
+          isOpen={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          triggerRef={historyTriggerRef}
+          conversations={historyConversations ?? []}
+          activeId={historyActiveId ?? null}
+          busy={isStreaming}
+          onSelect={(convId) => {
+            transport.sendHistorySelect(elementId, convId)
+          }}
+          onNew={() => transport.sendHistoryNew(elementId)}
+          onRename={(convId, title) =>
+            transport.sendHistoryRename(elementId, convId, title)
+          }
+          onDelete={(convId) => transport.sendHistoryDelete(elementId, convId)}
         />
-      </div>
-
-      {footerEl && <RawDOM source={footerEl} className="shiny-chat-footer" />}
+      )}
 
       {pendingUrl &&
         createPortal(

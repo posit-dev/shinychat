@@ -452,18 +452,18 @@ describe("rename flow", () => {
 // ---------------------------------------------------------------------------
 
 describe("delete flow", () => {
-  it("shows Delete… option in actions menu", () => {
+  it("shows Delete option in actions menu", () => {
     renderDrawer()
     openDrawer()
     const menuWrapper = openMenuFor("Today's chat")
-    expect(within(menuWrapper).getByText("Delete…")).toBeTruthy()
+    expect(within(menuWrapper).getByText("Delete")).toBeTruthy()
   })
 
-  it("shows inline confirm after clicking Delete…", () => {
+  it("shows inline confirm after clicking Delete", () => {
     renderDrawer()
     openDrawer()
     const menuWrapper = openMenuFor("Today's chat")
-    fireEvent.click(within(menuWrapper).getByText("Delete…"))
+    fireEvent.click(within(menuWrapper).getByText("Delete"))
     expect(screen.getByRole("button", { name: /confirm delete/i })).toBeTruthy()
     expect(screen.getByRole("button", { name: /cancel delete/i })).toBeTruthy()
   })
@@ -472,8 +472,8 @@ describe("delete flow", () => {
     const { onDelete } = renderDrawer()
     openDrawer()
     const menuWrapper = openMenuFor("Today's chat")
-    // Clicking Delete… should show confirm, not immediately delete
-    fireEvent.click(within(menuWrapper).getByText("Delete…"))
+    // Clicking Delete should show confirm, not immediately delete
+    fireEvent.click(within(menuWrapper).getByText("Delete"))
     expect(onDelete).not.toHaveBeenCalled()
   })
 
@@ -481,7 +481,7 @@ describe("delete flow", () => {
     const { onDelete } = renderDrawer()
     openDrawer()
     const menuWrapper = openMenuFor("Today's chat")
-    fireEvent.click(within(menuWrapper).getByText("Delete…"))
+    fireEvent.click(within(menuWrapper).getByText("Delete"))
     fireEvent.click(screen.getByRole("button", { name: /confirm delete/i }))
     expect(onDelete).toHaveBeenCalledWith("a")
   })
@@ -490,7 +490,7 @@ describe("delete flow", () => {
     const { onDelete } = renderDrawer()
     openDrawer()
     const menuWrapper = openMenuFor("Today's chat")
-    fireEvent.click(within(menuWrapper).getByText("Delete…"))
+    fireEvent.click(within(menuWrapper).getByText("Delete"))
     fireEvent.click(screen.getByRole("button", { name: /cancel delete/i }))
     expect(onDelete).not.toHaveBeenCalled()
     expect(screen.queryByRole("button", { name: /confirm delete/i })).toBeNull()
@@ -537,7 +537,7 @@ describe("busy state", () => {
     expect(onSelect).not.toHaveBeenCalled()
   })
 
-  it("disables Delete… option in actions menu while busy", () => {
+  it("disables Delete option in actions menu while busy", () => {
     renderDrawer({ busy: true })
     openDrawer()
     const titleEl = screen.getByText("Today's chat")
@@ -549,7 +549,7 @@ describe("busy state", () => {
       name: /conversation actions/i,
     })
     fireEvent.click(menuBtn)
-    const deleteBtn = within(menuWrapper).getByText("Delete…")
+    const deleteBtn = within(menuWrapper).getByText("Delete")
     expect((deleteBtn as HTMLButtonElement).disabled).toBe(true)
   })
 
@@ -794,7 +794,7 @@ describe("close animation lifecycle (persistent mount)", () => {
     renderPersistentDrawer()
     openDrawer()
     const menuWrapper = openMenuFor("Today's chat")
-    fireEvent.click(within(menuWrapper).getByText("Delete…"))
+    fireEvent.click(within(menuWrapper).getByText("Delete"))
     expect(screen.getByRole("button", { name: /confirm delete/i })).toBeTruthy()
 
     act(() => {

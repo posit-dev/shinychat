@@ -30,7 +30,6 @@ from htmltools import (
     TagAttrValue,
     TagChild,
     TagList,
-    css,
 )
 from pydantic import ValidationError
 
@@ -2241,6 +2240,19 @@ class ChatExpress(Chat):
         return super().enable_bookmarking(client, bookmark_on=bookmark_on)
 
 
+def _container_style(width: "str | None", height: "str | None") -> "str | None":
+    # `width` is emitted as a pseudo-private custom property consumed by
+    # `.shiny-chat-wrapper` (as max-width), so the container itself stays
+    # full-width and the drawer scrim can span it. Built by hand because
+    # htmltools `css()` mangles the leading `--` of a custom property.
+    parts: list[str] = []
+    if width:
+        parts.append(f"--_chat-width:{width}")
+    if height:
+        parts.append(f"height:{height}")
+    return ";".join(parts) if parts else None
+
+
 def chat_ui(
     id: str,
     *,
@@ -2439,12 +2451,7 @@ def chat_ui(
         footer_tag,
         shinychat_dependency(),
         icon_deps,
-        {
-            "style": css(
-                width=as_css_unit(width),
-                height=as_css_unit(height),
-            )
-        },
+        {"style": _container_style(as_css_unit(width), as_css_unit(height))},
         id=id,
         placeholder=placeholder,
         fill=fill,

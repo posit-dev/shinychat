@@ -422,8 +422,11 @@ chat_ui <- function(
     "shiny-chat-container",
     rlang::list2(
       id = id,
+      # `width` is emitted as a pseudo-private custom property consumed by
+      # `.shiny-chat-wrapper` (as max-width), so the container itself stays
+      # full-width and the drawer scrim can span it.
       style = css(
-        width = width,
+        `--_chat-width` = width,
         height = height
       ),
       placeholder = placeholder,
