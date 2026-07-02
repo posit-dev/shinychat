@@ -12,7 +12,11 @@ from ._history_client import (
     as_turns_adapter,
     turn_fallback_markdown,
 )
-from ._history_store import ConversationStore, resolve_store
+from ._history_store import (
+    ConversationPartition,
+    ConversationStore,
+    resolve_store,
+)
 from ._history_title import (
     MAX_TITLE_LEN,
     TitleFn,
@@ -208,7 +212,7 @@ class HistoryController:
             restore_callbacks if restore_callbacks is not None else []
         )
 
-        self.scope: str | None = None
+        self.partition: ConversationPartition | None = None
         self.record: ConversationRecord | None = None  # None => unsaved draft
         self.ui_offset = 0  # messages already attached to nodes
         # Set by enable() when restore_mode="url"; called with the new
@@ -255,7 +259,7 @@ class HistoryController:
         if self._suppress_next_save:
             self._suppress_next_save = False
             return
-        if self.scope is None:
+        if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
         turn_groups = self.adapter.get_turns_grouped()
         messages = self.chat._messages_for_bookmark()
@@ -289,7 +293,7 @@ class HistoryController:
         )
         record.response_count += 1
         self._capture_app_state(record)
-        await self.store.put(self.scope, record)
+        await self.store.put(self.partition, record)
         await self._evict_if_needed()
         if self.on_response_saved is not None:
             await self.on_response_saved(record)
@@ -326,9 +330,9 @@ class HistoryController:
             return  # conversation switched away or user renamed mid-call
         target.title = title
         target.title_source = "llm"
-        if self.scope is None:
+        if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
-        await self.store.put(self.scope, target)
+        await self.store.put(self.partition, target)
         await self.send_history_update()
 
     def cancel_pending(self) -> None:
@@ -337,15 +341,15 @@ class HistoryController:
             self._title_task.cancel()
 
     async def _evict_one(self, conv_id: str) -> None:
-        assert self.scope is not None
+        assert self.partition is not None
         if self.on_evict is not None:
             await self.on_evict(conv_id)
-        await self.store.delete(self.scope, conv_id)
+        await self.store.delete(self.partition, conv_id)
 
     async def _evict_if_needed(self) -> None:
-        if self.max_store_bytes is None or self.scope is None:
+        if self.max_store_bytes is None or self.partition is None:
             return
-        metas = await self.store.list(self.scope)
+        metas = await self.store.list(self.partition)
         total = sum(m.size_bytes for m in metas)
         if total <= self.max_store_bytes:
             return
@@ -359,7 +363,7 @@ class HistoryController:
         if total > self.max_store_bytes and not self._over_budget_warned:
             self._over_budget_warned = True
             warnings.warn(
-                f"Chat history for scope {self.scope!r} remains over the "
+                "Chat history for this partition remains over the "
                 f"{self.max_store_bytes}-byte limit after evicting all "
                 "evictable conversations — the active conversation alone "
                 "exceeds the limit.",
@@ -368,7 +372,7 @@ class HistoryController:
 
     async def save_current(self) -> None:
         """Persist the active conversation if it has ever been saved."""
-        if self.record is None or self.scope is None:
+        if self.record is None or self.partition is None:
             return
         turn_groups = self.adapter.get_turns_grouped()
         messages = self.chat._messages_for_bookmark()
@@ -376,7 +380,7 @@ class HistoryController:
             self.record, turn_groups, messages, ui_offset=self.ui_offset
         )
         self._capture_app_state(self.record)
-        await self.store.put(self.scope, self.record)
+        await self.store.put(self.partition, self.record)
         self.ui_offset = len(messages)
 
     def _capture_app_state(self, record: ConversationRecord) -> None:
@@ -392,13 +396,13 @@ class HistoryController:
     # -- switch / new ----------------------------------------------------
 
     async def switch_to(self, conv_id: str) -> None:
-        if self.scope is None:
+        if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
         if self.record is not None and conv_id == self.record.id:
             return
         # Load BEFORE mutating anything: a failed load must leave the
         # current conversation untouched.
-        target = await self.store.get(self.scope, conv_id)
+        target = await self.store.get(self.partition, conv_id)
         if target is None:
             raise RuntimeError(f"Conversation {conv_id!r} no longer exists.")
 
@@ -454,7 +458,7 @@ class HistoryController:
     # -- list mutations ----------------------------------------------------
 
     async def rename(self, conv_id: str, title: str) -> None:
-        if self.scope is None:
+        if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
         title = " ".join(title.split())[:MAX_TITLE_LEN]
         if not title:
@@ -462,21 +466,21 @@ class HistoryController:
         record = (
             self.record
             if self.record is not None and self.record.id == conv_id
-            else await self.store.get(self.scope, conv_id)
+            else await self.store.get(self.partition, conv_id)
         )
         if record is None:
             return
         record.title = title
         record.title_source = "user"
-        await self.store.put(self.scope, record)
+        await self.store.put(self.partition, record)
         await self.send_history_update()
 
     async def delete(self, conv_id: str) -> None:
-        if self.scope is None:
+        if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
         if self.on_evict is not None:
             await self.on_evict(conv_id)
-        await self.store.delete(self.scope, conv_id)
+        await self.store.delete(self.partition, conv_id)
         if self.record is not None and self.record.id == conv_id:
             self.record = None
             self.adapter.set_turns_json([])
@@ -505,9 +509,9 @@ class HistoryController:
         await self.chat._send_action(action)
 
     async def send_history_update(self) -> None:
-        if self.scope is None:
+        if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
-        metas = await self.store.list(self.scope)
+        metas = await self.store.list(self.partition)
         action: HistoryUpdateAction = {
             "type": "history_update",
             "enabled": True,
@@ -688,8 +692,8 @@ class ChatHistory:
                     record.bookmark_state_id = new_state_id
                     if old_state_id is not None:
                         await delete_bookmark_state(old_state_id)
-                    if controller.scope is not None:
-                        await controller.store.put(controller.scope, record)
+                    if controller.partition is not None:
+                        await controller.store.put(controller.partition, record)
                     await controller.send_navigate(
                         f"?_state_id_={new_state_id}", captured_id
                     )
@@ -719,9 +723,12 @@ class ChatHistory:
                 ):
                     state_id = controller.record.bookmark_state_id
                 else:
-                    rec = await controller.store.get(
-                        controller.scope or "", conv_id
-                    )
+                    if controller.partition is None:
+                        rec = None
+                    else:
+                        rec = await controller.store.get(
+                            controller.partition, conv_id
+                        )
                     state_id = (
                         rec.bookmark_state_id if rec is not None else None
                     )
@@ -798,7 +805,10 @@ class ChatHistory:
             if initialized:
                 return
 
-            controller.scope = scope()  # req() retries until token arrives
+            owner_scope = scope()  # req() retries until token arrives
+            controller.partition = ConversationPartition(
+                chat_id=str(chat.id), scope=owner_scope
+            )
 
             # Priority 1: restore from a Shiny bookmark context (any mode).
             restore_ctx = root_session.bookmark._restore_context
@@ -809,7 +819,7 @@ class ChatHistory:
 
             if restored_conv_id is not None:
                 target = await controller.store.get(
-                    controller.scope, restored_conv_id
+                    controller.partition, restored_conv_id
                 )
                 if target is not None:
                     adapter.set_turns_json(target.path_turns())
@@ -839,7 +849,7 @@ class ChatHistory:
 
             if current_id:
                 pointed = await controller.store.get(
-                    controller.scope, current_id
+                    controller.partition, current_id
                 )
                 if pointed is not None:
                     adapter.set_turns_json(pointed.path_turns())
@@ -852,7 +862,7 @@ class ChatHistory:
         @reactive.effect
         @reactive.event(chat.messages, ignore_init=True)
         async def _save_on_response():
-            if controller.scope is None:
+            if controller.partition is None:
                 return
             messages = chat.messages()
             if messages and messages[-1].get("role") == "assistant":
@@ -864,7 +874,7 @@ class ChatHistory:
         @reactive.effect
         @reactive.event(chat._session.input[ids.select])
         async def _on_select():
-            if controller.scope is None:
+            if controller.partition is None:
                 return
             payload = chat._session.input[ids.select]()
             try:
@@ -875,7 +885,7 @@ class ChatHistory:
         @reactive.effect
         @reactive.event(chat._session.input[ids.new])
         async def _on_new():
-            if controller.scope is None:
+            if controller.partition is None:
                 return
             try:
                 await controller.new_chat()
@@ -885,7 +895,7 @@ class ChatHistory:
         @reactive.effect
         @reactive.event(chat._session.input[ids.rename])
         async def _on_rename():
-            if controller.scope is None:
+            if controller.partition is None:
                 return
             payload = chat._session.input[ids.rename]()
             try:
@@ -898,7 +908,7 @@ class ChatHistory:
         @reactive.effect
         @reactive.event(chat._session.input[ids.delete])
         async def _on_delete():
-            if controller.scope is None:
+            if controller.partition is None:
                 return
             payload = chat._session.input[ids.delete]()
             try:

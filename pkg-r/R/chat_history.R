@@ -36,7 +36,7 @@ bookmark_state_paths <- function(state_id) {
 HistoryController <- R6::R6Class(
   "HistoryController",
   public = list(
-    scope = NULL,
+    partition = NULL,
     record = NULL,
     is_replaying = FALSE,
     suppress_next_save = FALSE,
@@ -75,8 +75,8 @@ HistoryController <- R6::R6Class(
         self$suppress_next_save <- FALSE
         return(invisible())
       }
-      if (is.null(self$scope)) {
-        rlang::abort("History controller scope not set")
+      if (is.null(self$partition)) {
+        rlang::abort("History controller partition not set")
       }
 
       first_save <- is.null(self$record)
@@ -98,7 +98,7 @@ HistoryController <- R6::R6Class(
       self$record$response_count <- (self$record$response_count %||% 0L) + 1L
       self$record$values <- private$capture_app_state()
 
-      private$store$put(self$scope, self$record)
+      private$store$put(self$partition, self$record)
       private$evict_if_needed()
 
       if (!is.null(self$on_response_saved)) {
@@ -132,7 +132,7 @@ HistoryController <- R6::R6Class(
         return(invisible())
       }
 
-      target <- private$store$get(self$scope, conv_id)
+      target <- private$store$get(self$partition, conv_id)
       if (is.null(target)) {
         rlang::abort(paste0("Conversation not found: ", conv_id))
       }
@@ -175,13 +175,13 @@ HistoryController <- R6::R6Class(
       if (!is.null(self$record) && identical(conv_id, self$record$id)) {
         self$record$title <- title
         self$record$title_source <- "user"
-        private$store$put(self$scope, self$record)
+        private$store$put(self$partition, self$record)
       } else {
-        target <- private$store$get(self$scope, conv_id)
+        target <- private$store$get(self$partition, conv_id)
         if (!is.null(target)) {
           target$title <- title
           target$title_source <- "user"
-          private$store$put(self$scope, target)
+          private$store$put(self$partition, target)
         }
       }
       self$send_history_update()
@@ -191,7 +191,7 @@ HistoryController <- R6::R6Class(
       if (!is.null(self$on_evict)) {
         self$on_evict(conv_id)
       }
-      private$store$delete(self$scope, conv_id)
+      private$store$delete(self$partition, conv_id)
 
       if (!is.null(self$record) && identical(conv_id, self$record$id)) {
         self$record <- NULL
@@ -238,19 +238,19 @@ HistoryController <- R6::R6Class(
       clear_replay_on_exit <- FALSE
     },
 
-    get_record = function(scope, id) {
-      private$store$get(scope, id)
+    get_record = function(partition, id) {
+      private$store$get(partition, id)
     },
 
     save_current = function() {
-      if (is.null(self$record) || is.null(self$scope)) {
+      if (is.null(self$record) || is.null(self$partition)) {
         return(invisible())
       }
 
       recorded_turns <- get_turns_recorded(private$client)
       self$record <- extend_record_linear(self$record, recorded_turns)
       self$record$values <- private$capture_app_state()
-      private$store$put(self$scope, self$record)
+      private$store$put(self$partition, self$record)
     },
 
     restore_app_state = function(values) {
@@ -301,8 +301,8 @@ HistoryController <- R6::R6Class(
     },
 
     send_history_update = function() {
-      metas <- if (!is.null(self$scope)) {
-        private$store$list(self$scope)
+      metas <- if (!is.null(self$partition)) {
+        private$store$list(self$partition)
       } else {
         list()
       }
@@ -344,15 +344,15 @@ HistoryController <- R6::R6Class(
       if (!is.null(self$on_evict)) {
         self$on_evict(conv_id)
       }
-      private$store$delete(self$scope, conv_id)
+      private$store$delete(self$partition, conv_id)
     },
 
     evict_if_needed = function() {
       max_bytes <- private$max_store_bytes
-      if (is.null(max_bytes) || is.null(self$scope)) {
+      if (is.null(max_bytes) || is.null(self$partition)) {
         return(invisible())
       }
-      metas <- private$store$list(self$scope)
+      metas <- private$store$list(self$partition)
       total <- sum(vapply(metas, function(m) m$size_bytes, double(1L)))
       if (total <= max_bytes) {
         return(invisible())
@@ -369,7 +369,7 @@ HistoryController <- R6::R6Class(
         cli::cli_warn(
           paste0(
             "Chat history for this conversation exceeds {.arg max_store_mb} ",
-            "on its own; all other conversations in this scope were evicted ",
+            "on its own; all other conversations in this history partition were evicted ",
             "but the store remains over budget."
           ),
           .frequency = "once",
@@ -402,7 +402,7 @@ HistoryController <- R6::R6Class(
 
         self$record$title <- title
         self$record$title_source <- "llm"
-        private$store$put(self$scope, self$record)
+        private$store$put(self$partition, self$record)
         self$send_history_update()
       })
     }
@@ -434,8 +434,9 @@ HistoryController <- R6::R6Class(
 #' @param title Title generation strategy. `"auto"` (default) for LLM-generated
 #'   titles, a `function(recorded_turns)` for custom titles, or `NULL` to skip
 #'   LLM titling (the conversation keeps its initial timestamp-based name).
-#' @param max_store_mb Maximum total storage in megabytes per scope. Oldest
-#'   conversations are evicted when the limit is exceeded. Defaults to `100`.
+#' @param max_store_mb Maximum total storage in megabytes per chat history
+#'   partition. Oldest conversations are evicted when the limit is exceeded.
+#'   Defaults to `100`.
 #' @returns A configuration object for use with [chat_enable_history()].
 #' @export
 history_options <- function(
@@ -510,6 +511,7 @@ chat_enable_history <- function(
       "A session is required. Call chat_enable_history() within a server function."
     )
   }
+  resolved_id <- resolve_id(id, session)
 
   controller <- HistoryController$new(
     chat_id = id,
@@ -657,7 +659,12 @@ chat_enable_history <- function(
       ) {
         state_id <- controller$record$bookmark_state_id
       } else {
-        rec <- controller$get_record(controller$scope, conv_id)
+        partition <- controller$partition
+        rec <- if (!is.null(partition)) {
+          controller$get_record(partition, conv_id)
+        } else {
+          NULL
+        }
         state_id <- if (!is.null(rec)) rec$bookmark_state_id else NULL
       }
       if (!is.null(state_id)) delete_bookmark_state(state_id)
@@ -698,14 +705,14 @@ chat_enable_history <- function(
 
     scope <- scope_val()
     shiny::req(scope)
-    controller$scope <- scope
+    controller$partition <- conversation_partition(resolved_id, scope)
 
     # Priority 1: restore from a Shiny bookmark context (any mode).
     rc <- session$restoreContext
     if (!is.null(rc) && isTRUE(rc$active)) {
       restored_id <- rc$values[[stamp_key]]
       if (!is.null(restored_id) && nzchar(restored_id)) {
-        target <- controller$get_record(scope, restored_id)
+        target <- controller$get_record(controller$partition, restored_id)
         if (!is.null(target)) {
           set_turns_recorded(client, record_path_turns(target))
           if (restore_ui) {
@@ -732,7 +739,7 @@ chat_enable_history <- function(
     }
 
     if (!is.null(current_id) && nzchar(current_id)) {
-      target <- controller$get_record(scope, current_id)
+      target <- controller$get_record(controller$partition, current_id)
       if (!is.null(target)) {
         set_turns_recorded(client, record_path_turns(target))
         if (restore_ui) {
@@ -760,7 +767,7 @@ chat_enable_history <- function(
     session$input[[paste0(id, "_history_select")]],
     label = "history_select",
     {
-      if (is.null(controller$scope)) {
+      if (is.null(controller$partition)) {
         return()
       }
       payload <- session$input[[paste0(id, "_history_select")]]
@@ -777,7 +784,7 @@ chat_enable_history <- function(
     session$input[[paste0(id, "_history_new")]],
     label = "history_new",
     {
-      if (is.null(controller$scope)) {
+      if (is.null(controller$partition)) {
         return()
       }
       tryCatch(
@@ -793,7 +800,7 @@ chat_enable_history <- function(
     session$input[[paste0(id, "_history_rename")]],
     label = "history_rename",
     {
-      if (is.null(controller$scope)) {
+      if (is.null(controller$partition)) {
         return()
       }
       payload <- session$input[[paste0(id, "_history_rename")]]
@@ -813,7 +820,7 @@ chat_enable_history <- function(
     session$input[[paste0(id, "_history_delete")]],
     label = "history_delete",
     {
-      if (is.null(controller$scope)) {
+      if (is.null(controller$partition)) {
         return()
       }
       payload <- session$input[[paste0(id, "_history_delete")]]

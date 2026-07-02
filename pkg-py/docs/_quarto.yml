@@ -94,6 +94,7 @@ quartodoc:
         include_functions: true
       contents:
         - HistoryOptions
+        - ConversationPartition
         - ConversationStore
         - FileConversationStore
         - ConversationRecord

@@ -23,41 +23,65 @@ logger = logging.getLogger(__name__)
 HISTORY_BOOKMARK_ID = "shinychat-conversations"
 
 
+@dataclasses.dataclass(frozen=True)
+class ConversationPartition:
+    """Storage partition for a chat history collection.
+
+    `chat_id` is the resolved/namespaced chat id. `scope` is the owner
+    namespace: explicit scope, authenticated user, or browser token.
+    """
+
+    chat_id: str
+    scope: str
+
+
 class ConversationStore(ABC):
     """
     Storage interface for chat conversation history.
 
-    Conversations are partitioned by `scope` (a user-identity key). Implement
-    the four abstract methods to plug any backend into `Chat.enable_history()`.
+    Conversations are partitioned by `ConversationPartition`. Implement the
+    four abstract methods to plug any backend into `Chat.enable_history()`.
     """
 
     @abstractmethod
-    async def list(self, scope: str) -> list[ConversationMeta]:
-        """All conversations in `scope`, newest-first (by updated_at)."""
+    async def list(
+        self, partition: ConversationPartition
+    ) -> list[ConversationMeta]:
+        """All conversations in `partition`, newest-first (by updated_at)."""
 
     @abstractmethod
-    async def get(self, scope: str, conv_id: str) -> ConversationRecord | None:
+    async def get(
+        self, partition: ConversationPartition, conv_id: str
+    ) -> ConversationRecord | None:
         """Full record, or None if missing."""
 
     @abstractmethod
-    async def put(self, scope: str, record: ConversationRecord) -> None:
+    async def put(
+        self, partition: ConversationPartition, record: ConversationRecord
+    ) -> None:
         """Upsert. Rename = mutate record.title and put()."""
 
     @abstractmethod
-    async def delete(self, scope: str, conv_id: str) -> None:
+    async def delete(
+        self, partition: ConversationPartition, conv_id: str
+    ) -> None:
         """Remove a conversation. Missing ids are a no-op."""
 
-    async def search(self, scope: str, query: str) -> list[ConversationMeta]:
+    async def search(
+        self, partition: ConversationPartition, query: str
+    ) -> list[ConversationMeta]:
         q = query.casefold()
-        return [m for m in await self.list(scope) if q in m.title.casefold()]
+        return [
+            m for m in await self.list(partition) if q in m.title.casefold()
+        ]
 
-    async def total_size(self, scope: str) -> int:
-        """Total bytes used by all conversations in scope.
+    async def total_size(self, partition: ConversationPartition) -> int:
+        """Total bytes used by all conversations in partition.
 
         Derived from `list()`'s per-record `size_bytes` — backends don't
         need to override this unless they have a cheaper way to compute it.
         """
-        return sum(m.size_bytes for m in await self.list(scope))
+        return sum(m.size_bytes for m in await self.list(partition))
 
 
 @dataclasses.dataclass
@@ -70,8 +94,8 @@ class _WriteState:
 class FileConversationStore(ConversationStore):
     """
     Default store: each conversation is a directory at
-    ``<dir>/<scope>/<id>/`` containing ``record.json``, ``turns.jsonl``,
-    and ``ui.jsonl``.
+    ``<dir>/<chat_id>/<scope>/<id>/`` containing ``record.json``,
+    ``turns.jsonl``, and ``ui.jsonl``.
 
     ``record.json`` holds tree structure and metadata (small, rewritten
     atomically on every save). ``turns.jsonl`` and ``ui.jsonl`` are
@@ -84,16 +108,22 @@ class FileConversationStore(ConversationStore):
 
     def __init__(self, dir: str | Path | None = None):
         self._dir: Path | None = Path(dir) if dir is not None else None
-        self._meta_cache: dict[str, list[ConversationMeta]] = {}
-        self._write_state: dict[str, _WriteState] = {}
+        self._meta_cache: dict[
+            ConversationPartition, list[ConversationMeta]
+        ] = {}
+        self._write_state: dict[
+            tuple[ConversationPartition, str], _WriteState
+        ] = {}
 
-    def _ws_key(self, scope: str, conv_id: str) -> str:
-        return f"{scope}:{conv_id}"
+    def _ws_key(
+        self, partition: ConversationPartition, conv_id: str
+    ) -> tuple[ConversationPartition, str]:
+        return (partition, conv_id)
 
     def _get_or_init_write_state(
-        self, scope: str, conv_id: str, conv_dir: Path
+        self, partition: ConversationPartition, conv_id: str, conv_dir: Path
     ) -> _WriteState:
-        key = self._ws_key(scope, conv_id)
+        key = self._ws_key(partition, conv_id)
         if key in self._write_state:
             return self._write_state[key]
         ws = _WriteState()
@@ -111,7 +141,9 @@ class FileConversationStore(ConversationStore):
                     ws.turn_seq_map[nid] = turn_ids
         ui_file = conv_dir / "ui.jsonl"
         if ui_file.is_file():
-            for line in ui_file.read_text(encoding="utf-8").strip().splitlines():
+            for line in (
+                ui_file.read_text(encoding="utf-8").strip().splitlines()
+            ):
                 try:
                     entry = json.loads(line)
                     ws.ui_node_set.add(entry["node_id"])
@@ -120,13 +152,15 @@ class FileConversationStore(ConversationStore):
         self._write_state[key] = ws
         return ws
 
-    async def list(self, scope: str) -> list[ConversationMeta]:
-        if scope in self._meta_cache:
-            return list(self._meta_cache[scope])
-        scope_dir = await self._scope_dir(scope)
+    async def list(
+        self, partition: ConversationPartition
+    ) -> list[ConversationMeta]:
+        if partition in self._meta_cache:
+            return list(self._meta_cache[partition])
+        partition_dir = await self._partition_dir(partition)
         metas: list[ConversationMeta] = []
-        if scope_dir.is_dir():
-            for d in scope_dir.iterdir():
+        if partition_dir.is_dir():
+            for d in partition_dir.iterdir():
                 record_file = d / "record.json"
                 if not d.is_dir() or not record_file.is_file():
                     continue
@@ -162,16 +196,18 @@ class FileConversationStore(ConversationStore):
                     logger.warning("Unreadable conversation %s: %s", d.name, e)
                     continue
             metas.sort(key=lambda m: m.updated_at, reverse=True)
-        self._meta_cache[scope] = metas
+        self._meta_cache[partition] = metas
         return list(metas)
 
-    async def get(self, scope: str, conv_id: str) -> ConversationRecord | None:
-        conv_dir = safe_conv_path(await self._scope_dir(scope), conv_id)
+    async def get(
+        self, partition: ConversationPartition, conv_id: str
+    ) -> ConversationRecord | None:
+        conv_dir = safe_conv_path(await self._partition_dir(partition), conv_id)
         record_file = conv_dir / "record.json"
         if not record_file.is_file():
             # Cache may be stale (e.g. another worker deleted this
             # conversation) — drop it so the next list() re-reads disk.
-            self._meta_cache.pop(scope, None)
+            self._meta_cache.pop(partition, None)
             return None
 
         raw = json.loads(record_file.read_text(encoding="utf-8"))
@@ -179,7 +215,9 @@ class FileConversationStore(ConversationStore):
         turns_map: dict[int, dict[str, Any]] = {}
         turns_file = conv_dir / "turns.jsonl"
         if turns_file.is_file():
-            for line in turns_file.read_text(encoding="utf-8").strip().splitlines():
+            for line in (
+                turns_file.read_text(encoding="utf-8").strip().splitlines()
+            ):
                 try:
                     entry = json.loads(line)
                     turns_map[entry["seq"]] = entry["data"]
@@ -189,7 +227,9 @@ class FileConversationStore(ConversationStore):
         ui_map: dict[str, list[dict[str, Any]]] = {}
         ui_file = conv_dir / "ui.jsonl"
         if ui_file.is_file():
-            for line in ui_file.read_text(encoding="utf-8").strip().splitlines():
+            for line in (
+                ui_file.read_text(encoding="utf-8").strip().splitlines()
+            ):
                 try:
                     entry = json.loads(line)
                     ui_map[entry["node_id"]] = entry["data"]
@@ -223,12 +263,14 @@ class FileConversationStore(ConversationStore):
             bookmark_state_id=raw.get("bookmark_state_id"),
         )
 
-    async def put(self, scope: str, record: ConversationRecord) -> None:
-        scope_dir = await self._scope_dir(scope)
-        conv_dir = safe_conv_path(scope_dir, record.id)
+    async def put(
+        self, partition: ConversationPartition, record: ConversationRecord
+    ) -> None:
+        partition_dir = await self._partition_dir(partition)
+        conv_dir = safe_conv_path(partition_dir, record.id)
         conv_dir.mkdir(parents=True, exist_ok=True)
 
-        ws = self._get_or_init_write_state(scope, record.id, conv_dir)
+        ws = self._get_or_init_write_state(partition, record.id, conv_dir)
 
         new_turns_lines: list[str] = []
         new_ui_lines: list[str] = []
@@ -298,30 +340,38 @@ class FileConversationStore(ConversationStore):
         )
         os.replace(tmp, conv_dir / "record.json")
 
-        if scope in self._meta_cache:
+        if partition in self._meta_cache:
             size_bytes = sum(
                 f.stat().st_size for f in conv_dir.iterdir() if f.is_file()
             )
-            updated = [m for m in self._meta_cache[scope] if m.id != record.id]
+            updated = [
+                m for m in self._meta_cache[partition] if m.id != record.id
+            ]
             updated.append(record.meta(size_bytes=size_bytes))
             updated.sort(key=lambda m: m.updated_at, reverse=True)
-            self._meta_cache[scope] = updated
+            self._meta_cache[partition] = updated
 
-    async def delete(self, scope: str, conv_id: str) -> None:
-        conv_dir = safe_conv_path(await self._scope_dir(scope), conv_id)
+    async def delete(
+        self, partition: ConversationPartition, conv_id: str
+    ) -> None:
+        conv_dir = safe_conv_path(await self._partition_dir(partition), conv_id)
         if conv_dir.is_dir():
             shutil.rmtree(conv_dir)
-        key = self._ws_key(scope, conv_id)
+        key = self._ws_key(partition, conv_id)
         self._write_state.pop(key, None)
-        if scope in self._meta_cache:
-            self._meta_cache[scope] = [
-                m for m in self._meta_cache[scope] if m.id != conv_id
+        if partition in self._meta_cache:
+            self._meta_cache[partition] = [
+                m for m in self._meta_cache[partition] if m.id != conv_id
             ]
 
-    async def _scope_dir(self, scope: str) -> Path:
+    async def _partition_dir(self, partition: ConversationPartition) -> Path:
         if self._dir is None:
             self._dir = await resolve_history_dir()
-        return self._dir / sanitize_scope(scope)
+        return (
+            self._dir
+            / sanitize_scope(partition.chat_id)
+            / sanitize_scope(partition.scope)
+        )
 
 
 class InMemoryConversationStore(ConversationStore):
@@ -333,44 +383,69 @@ class InMemoryConversationStore(ConversationStore):
     """
 
     def __init__(self) -> None:
-        self._data: dict[str, dict[str, ConversationRecord]] = {}
-        self._meta_cache: dict[str, list[ConversationMeta]] = {}
+        self._data: dict[
+            ConversationPartition, dict[str, ConversationRecord]
+        ] = {}
+        self._meta_cache: dict[
+            ConversationPartition, list[ConversationMeta]
+        ] = {}
 
-    async def list(self, scope: str) -> list[ConversationMeta]:
-        if scope in self._meta_cache:
-            return list(self._meta_cache[scope])
+    async def list(
+        self, partition: ConversationPartition
+    ) -> list[ConversationMeta]:
+        if partition in self._meta_cache:
+            return list(self._meta_cache[partition])
         metas = [
             r.meta(size_bytes=len(r.model_dump_json().encode("utf-8")))
-            for r in self._data.get(scope, {}).values()
+            for r in self._data.get(partition, {}).values()
         ]
         metas.sort(key=lambda m: m.updated_at, reverse=True)
-        self._meta_cache[scope] = metas
+        self._meta_cache[partition] = metas
         return list(metas)
 
-    async def get(self, scope: str, conv_id: str) -> ConversationRecord | None:
-        return self._data.get(scope, {}).get(conv_id)
+    async def get(
+        self, partition: ConversationPartition, conv_id: str
+    ) -> ConversationRecord | None:
+        return self._data.get(partition, {}).get(conv_id)
 
-    async def put(self, scope: str, record: ConversationRecord) -> None:
-        if scope not in self._data:
-            self._data[scope] = {}
-        self._data[scope][record.id] = record
+    async def put(
+        self, partition: ConversationPartition, record: ConversationRecord
+    ) -> None:
+        if partition not in self._data:
+            self._data[partition] = {}
+        self._data[partition][record.id] = record
 
         # Only touched-record work — mirrors FileConversationStore.put(), so
         # a warm cache stays warm without resumming/reserializing everything
-        # in scope (the cost _evict_if_needed would otherwise pay every turn).
-        if scope in self._meta_cache:
+        # in partition (the cost _evict_if_needed would otherwise pay every turn).
+        if partition in self._meta_cache:
             size_bytes = len(record.model_dump_json().encode("utf-8"))
-            updated = [m for m in self._meta_cache[scope] if m.id != record.id]
+            updated = [
+                m for m in self._meta_cache[partition] if m.id != record.id
+            ]
             updated.append(record.meta(size_bytes=size_bytes))
             updated.sort(key=lambda m: m.updated_at, reverse=True)
-            self._meta_cache[scope] = updated
+            self._meta_cache[partition] = updated
 
-    async def delete(self, scope: str, conv_id: str) -> None:
-        self._data.get(scope, {}).pop(conv_id, None)
-        if scope in self._meta_cache:
-            self._meta_cache[scope] = [
-                m for m in self._meta_cache[scope] if m.id != conv_id
+    async def delete(
+        self, partition: ConversationPartition, conv_id: str
+    ) -> None:
+        self._data.get(partition, {}).pop(conv_id, None)
+        if partition in self._meta_cache:
+            self._meta_cache[partition] = [
+                m for m in self._meta_cache[partition] if m.id != conv_id
             ]
+
+
+AUTO_DEV_MEMORY_STORE: dict[str, InMemoryConversationStore] = {}
+
+
+def auto_dev_memory_store() -> InMemoryConversationStore:
+    store = AUTO_DEV_MEMORY_STORE.get("store")
+    if store is None:
+        store = InMemoryConversationStore()
+        AUTO_DEV_MEMORY_STORE["store"] = store
+    return store
 
 
 def resolve_store(
@@ -389,7 +464,7 @@ def resolve_store(
             "History is lost on restart. To persist across restarts, "
             "pass history=HistoryOptions(store='file') to Chat()."
         )
-        return InMemoryConversationStore()
+        return auto_dev_memory_store()
     logger.info(
         "Chat history: using file-based storage. "
         "To use in-memory storage instead, "

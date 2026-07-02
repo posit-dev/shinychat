@@ -43,7 +43,7 @@ File-based conversation storage backend
 \subsection{\code{FileConversationStore$list()}}{
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
-    \preformatted{FileConversationStore$list(scope)}
+    \preformatted{FileConversationStore$list(partition)}
     \if{html}{\out{</div>}}
   }
 }
@@ -54,7 +54,7 @@ File-based conversation storage backend
 \subsection{\code{FileConversationStore$get()}}{
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
-    \preformatted{FileConversationStore$get(scope, id)}
+    \preformatted{FileConversationStore$get(partition, id)}
     \if{html}{\out{</div>}}
   }
 }
@@ -65,7 +65,7 @@ File-based conversation storage backend
 \subsection{\code{FileConversationStore$put()}}{
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
-    \preformatted{FileConversationStore$put(scope, record)}
+    \preformatted{FileConversationStore$put(partition, record)}
     \if{html}{\out{</div>}}
   }
 }
@@ -76,7 +76,7 @@ File-based conversation storage backend
 \subsection{\code{FileConversationStore$delete()}}{
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
-    \preformatted{FileConversationStore$delete(scope, id)}
+    \preformatted{FileConversationStore$delete(partition, id)}
     \if{html}{\out{</div>}}
   }
 }

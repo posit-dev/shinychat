@@ -13,8 +13,12 @@ from shinychat._history import (
     do_bookmark_with_cleanup,
     extend_record_linear,
 )
-from shinychat._history_store import InMemoryConversationStore
-from shinychat._history_types import new_conversation_record
+from shinychat._history_store import (
+    ConversationPartition,
+    ConversationStore,
+    InMemoryConversationStore,
+)
+from shinychat._history_types import ConversationRecord, new_conversation_record
 
 
 def msg(role: str) -> dict[str, object]:
@@ -22,6 +26,12 @@ def msg(role: str) -> dict[str, object]:
         "role": role,
         "segments": [{"content": role, "content_type": "markdown"}],
     }
+
+
+def part(
+    *, chat_id: str = "chat", scope: str = "test-scope"
+) -> ConversationPartition:
+    return ConversationPartition(chat_id=chat_id, scope=scope)
 
 
 def test_extend_appends_only_new_groups_with_ui_by_role():
@@ -170,34 +180,125 @@ class _FakeAdapter:
         return {}
 
 
-class _RecordingStore:
+class _RecordingStore(ConversationStore):
     def __init__(self) -> None:
-        self.put_calls: list[tuple[str, Any]] = []
+        self.put_calls: list[tuple[ConversationPartition, Any]] = []
 
-    async def put(self, scope: str, record: Any) -> None:
-        self.put_calls.append((scope, record))
+    async def put(self, partition: ConversationPartition, record: Any) -> None:
+        self.put_calls.append((partition, record))
 
-    async def list(self, scope: str) -> list[Any]:
+    async def list(self, partition: ConversationPartition) -> list[Any]:
         return []
+
+    async def get(
+        self, partition: ConversationPartition, conv_id: str
+    ) -> ConversationRecord | None:
+        return None
+
+    async def delete(
+        self, partition: ConversationPartition, conv_id: str
+    ) -> None:
+        pass
 
 
 class _FailingStore(_RecordingStore):
-    async def put(self, scope: str, record: Any) -> None:
+    async def put(self, partition: ConversationPartition, record: Any) -> None:
         raise OSError("disk full")
 
 
-def _make_controller() -> tuple[HistoryController, _RecordingStore]:
-    store = _RecordingStore()
+class _PartitionCaptureStore(ConversationStore):
+    def __init__(self) -> None:
+        self.put_partitions: list[ConversationPartition] = []
+        self.records: dict[str, ConversationRecord] = {}
+
+    async def list(self, partition: ConversationPartition) -> list[Any]:
+        return []
+
+    async def get(
+        self, partition: ConversationPartition, conv_id: str
+    ) -> ConversationRecord | None:
+        return self.records.get(conv_id)
+
+    async def put(
+        self, partition: ConversationPartition, record: ConversationRecord
+    ) -> None:
+        self.put_partitions.append(partition)
+        self.records[record.id] = record
+
+    async def delete(
+        self, partition: ConversationPartition, conv_id: str
+    ) -> None:
+        self.records.pop(conv_id, None)
+
+
+def _make_controller(
+    store: ConversationStore | None = None,
+) -> tuple[HistoryController, Any]:
+    resolved_store = store if store is not None else _RecordingStore()
     controller = HistoryController(
         chat=_FakeChat(),  # type: ignore[arg-type]
         adapter=_FakeAdapter(),  # type: ignore[arg-type]
-        store=store,  # type: ignore[arg-type]
+        store=resolved_store,
         title_fn=None,
         title_enabled=False,
         client=None,
     )
-    controller.scope = "test-scope"
-    return controller, store
+    controller.partition = part()
+    return controller, resolved_store
+
+
+@pytest.mark.anyio
+async def test_controller_passes_partition_to_custom_store():
+    store = _PartitionCaptureStore()
+    controller, _store = _make_controller(store=store)
+    controller.partition = ConversationPartition(
+        chat_id="ns-chat", scope="browser-1"
+    )
+
+    await controller.on_response()
+
+    assert store.put_partitions == [
+        ConversationPartition(chat_id="ns-chat", scope="browser-1")
+    ]
+
+
+@pytest.mark.anyio
+async def test_same_scope_different_chat_ids_are_isolated():
+    store = InMemoryConversationStore()
+
+    controller_a, _store_a = _make_controller(store=store)
+    controller_a.partition = ConversationPartition(
+        chat_id="chat-a", scope="browser-1"
+    )
+    await controller_a.on_response()
+    assert controller_a.record is not None
+
+    controller_b, _store_b = _make_controller(store=store)
+    controller_b.partition = ConversationPartition(
+        chat_id="chat-b", scope="browser-1"
+    )
+
+    assert (
+        await store.get(controller_a.partition, controller_a.record.id)
+        is not None
+    )
+    assert (
+        await store.get(controller_b.partition, controller_a.record.id) is None
+    )
+    assert await store.list(controller_b.partition) == []
+
+
+@pytest.mark.anyio
+async def test_namespaced_chat_ids_are_distinct_partitions():
+    store = InMemoryConversationStore()
+    ns1 = ConversationPartition(chat_id="mod1-chat", scope="browser-1")
+    ns2 = ConversationPartition(chat_id="mod2-chat", scope="browser-1")
+    rec = new_conversation_record(title="module one")
+
+    await store.put(ns1, rec)
+
+    assert await store.get(ns1, rec.id) is rec
+    assert await store.get(ns2, rec.id) is None
 
 
 @pytest.mark.anyio
@@ -314,7 +415,7 @@ def _make_failing_controller() -> HistoryController:
         title_enabled=False,
         client=None,
     )
-    controller.scope = "test-scope"
+    controller.partition = part()
     return controller
 
 
@@ -377,10 +478,12 @@ class _NavStore(_RecordingStore):
         self.records: dict[str, Any] = {}
         self.deleted: list[str] = []
 
-    async def get(self, scope: str, conv_id: str) -> Any:
+    async def get(self, partition: ConversationPartition, conv_id: str) -> Any:
         return self.records.get(conv_id)
 
-    async def delete(self, scope: str, conv_id: str) -> None:
+    async def delete(
+        self, partition: ConversationPartition, conv_id: str
+    ) -> None:
         self.deleted.append(conv_id)
         self.records.pop(conv_id, None)
 
@@ -398,7 +501,7 @@ def _make_nav_controller(
         title_enabled=False,
         client=None,
     )
-    controller.scope = "test-scope"
+    controller.partition = part()
     if with_url_mode:
 
         async def _update_url(conv_id: str | None) -> None:
@@ -538,7 +641,7 @@ def _make_retitle_controller(
         title_enabled=True,
         client=raw_client,
     )
-    controller.scope = "test-scope"
+    controller.partition = part()
     return controller, store
 
 
@@ -724,7 +827,7 @@ def _make_deferred_title_controller(
         title_enabled=True,
         client=None,
     )
-    controller.scope = "test-scope"
+    controller.partition = part()
     return controller, store, adapter
 
 
@@ -811,7 +914,7 @@ async def test_titling_fires_on_second_response_across_sessions():
         title_enabled=True,
         client=None,
     )
-    controller1.scope = "test-scope"
+    controller1.partition = part()
     adapter1.turns = [
         {"role": "user", "content": "hi"},
         {"role": "assistant", "content": "hello"},
@@ -833,8 +936,8 @@ async def test_titling_fires_on_second_response_across_sessions():
         title_enabled=True,
         client=None,
     )
-    controller2.scope = "test-scope"
-    controller2.record = await store.get("test-scope", conv_id)
+    controller2.partition = part()
+    controller2.record = await store.get(part(), conv_id)
 
     adapter2.turns += [
         {"role": "user", "content": "more"},
@@ -883,7 +986,7 @@ async def test_save_callback_fires_and_values_stored(tmp_path: Any) -> None:
         save_callbacks=save_cbs,
         restore_callbacks=[],
     )
-    controller.scope = "alice"
+    controller.partition = part(scope="alice")
 
     await controller.on_response()
 
@@ -915,17 +1018,17 @@ async def test_restore_callback_fires_on_switch(tmp_path: Any) -> None:
         save_callbacks=[],
         restore_callbacks=restore_cbs,
     )
-    controller.scope = "alice"
+    controller.partition = part(scope="alice")
 
     # Create a record with values directly in the store (not via on_response,
     # which would immediately re-capture and overwrite our values).
     target = new_conversation_record(title="old")
     target.values = {"x": 99}
-    await store.put("alice", target)
+    await store.put(part(scope="alice"), target)
 
     # Simulate having a different current conversation
     other = new_conversation_record(title="current")
-    await store.put("alice", other)
+    await store.put(part(scope="alice"), other)
     controller.record = other
 
     await controller.switch_to(target.id)
@@ -942,7 +1045,7 @@ async def test_restore_callback_fires_on_switch(tmp_path: Any) -> None:
 async def test_evict_if_needed_noop_when_no_limit():
     store = InMemoryConversationStore()
     rec = new_conversation_record(title="t")
-    await store.put("alice", rec)
+    await store.put(part(scope="alice"), rec)
 
     controller = HistoryController(
         chat=_FakeChat(),  # type: ignore[arg-type]
@@ -953,17 +1056,17 @@ async def test_evict_if_needed_noop_when_no_limit():
         client=None,
         max_store_bytes=None,
     )
-    controller.scope = "alice"
+    controller.partition = part(scope="alice")
 
     await controller._evict_if_needed()
-    assert len(await store.list("alice")) == 1
+    assert len(await store.list(part(scope="alice"))) == 1
 
 
 @pytest.mark.anyio
 async def test_evict_if_needed_noop_when_under_limit():
     store = InMemoryConversationStore()
     rec = new_conversation_record(title="t")
-    await store.put("alice", rec)
+    await store.put(part(scope="alice"), rec)
 
     controller = HistoryController(
         chat=_FakeChat(),  # type: ignore[arg-type]
@@ -976,10 +1079,10 @@ async def test_evict_if_needed_noop_when_under_limit():
         * 1024
         * 1024,  # 100 MB — well above any test record
     )
-    controller.scope = "alice"
+    controller.partition = part(scope="alice")
 
     await controller._evict_if_needed()
-    assert len(await store.list("alice")) == 1
+    assert len(await store.list(part(scope="alice"))) == 1
 
 
 @pytest.mark.anyio
@@ -992,7 +1095,7 @@ async def test_evict_if_needed_removes_oldest_preserves_active():
     rec2.updated_at = rec2.updated_at + timedelta(seconds=1)
     rec3.updated_at = rec3.updated_at + timedelta(seconds=2)
     for rec in [rec1, rec2, rec3]:
-        await store.put("alice", rec)
+        await store.put(part(scope="alice"), rec)
 
     controller = HistoryController(
         chat=_FakeChat(),  # type: ignore[arg-type]
@@ -1003,12 +1106,12 @@ async def test_evict_if_needed_removes_oldest_preserves_active():
         client=None,
         max_store_bytes=1,  # 1 byte: ensures all non-active records are evicted
     )
-    controller.scope = "alice"
+    controller.partition = part(scope="alice")
     controller.record = rec3  # newest is active
 
     await controller._evict_if_needed()
 
-    remaining = {m.id for m in await store.list("alice")}
+    remaining = {m.id for m in await store.list(part(scope="alice"))}
     assert rec1.id not in remaining
     assert rec2.id not in remaining
     assert rec3.id in remaining
@@ -1026,7 +1129,7 @@ async def test_evict_if_needed_calls_list_once_and_never_total_size():
     rec2.updated_at = rec2.updated_at + timedelta(seconds=1)
     rec3.updated_at = rec3.updated_at + timedelta(seconds=2)
     for rec in [rec1, rec2, rec3]:
-        await store.put("alice", rec)
+        await store.put(part(scope="alice"), rec)
 
     controller = HistoryController(
         chat=_FakeChat(),  # type: ignore[arg-type]
@@ -1037,7 +1140,7 @@ async def test_evict_if_needed_calls_list_once_and_never_total_size():
         client=None,
         max_store_bytes=1,
     )
-    controller.scope = "alice"
+    controller.partition = part(scope="alice")
     controller.record = rec3
 
     list_spy = AsyncMock(wraps=store.list)
@@ -1056,7 +1159,7 @@ async def test_evict_if_needed_warns_once_when_active_alone_exceeds_budget():
     store = InMemoryConversationStore()
     rec = new_conversation_record(title="big")
     rec.append_linear([{"role": "user", "content": "x" * 1000}])
-    await store.put("alice", rec)
+    await store.put(part(scope="alice"), rec)
 
     controller = HistoryController(
         chat=_FakeChat(),  # type: ignore[arg-type]
@@ -1067,7 +1170,7 @@ async def test_evict_if_needed_warns_once_when_active_alone_exceeds_budget():
         client=None,
         max_store_bytes=1,
     )
-    controller.scope = "alice"
+    controller.partition = part(scope="alice")
     controller.record = rec  # active; nothing else to evict
 
     with pytest.warns(UserWarning, match="remains over"):
@@ -1082,7 +1185,7 @@ async def test_evict_if_needed_warns_once_when_active_alone_exceeds_budget():
 async def test_evict_one_deletes_from_store():
     store = InMemoryConversationStore()
     rec = new_conversation_record(title="old")
-    await store.put("alice", rec)
+    await store.put(part(scope="alice"), rec)
 
     controller = HistoryController(
         chat=_FakeChat(),  # type: ignore[arg-type]
@@ -1093,11 +1196,11 @@ async def test_evict_one_deletes_from_store():
         client=None,
         max_store_bytes=None,
     )
-    controller.scope = "alice"
+    controller.partition = part(scope="alice")
 
     await controller._evict_one(rec.id)
 
-    assert await store.get("alice", rec.id) is None
+    assert await store.get(part(scope="alice"), rec.id) is None
 
 
 # ---------------------------------------------------------------------------
@@ -1202,7 +1305,7 @@ async def test_on_pre_switch_false_allows_in_session_swap():
 async def test_on_evict_fires_before_store_delete_in_evict_one():
     store = InMemoryConversationStore()
     rec = new_conversation_record(title="old")
-    await store.put("alice", rec)
+    await store.put(part(scope="alice"), rec)
 
     order: list[str] = []
 
@@ -1214,11 +1317,11 @@ async def test_on_evict_fires_before_store_delete_in_evict_one():
         title_enabled=False,
         client=None,
     )
-    controller.scope = "alice"
+    controller.partition = part(scope="alice")
 
     async def hook(conv_id: str) -> None:
         # Record must still exist in store when the hook fires
-        still_there = await store.get("alice", conv_id)
+        still_there = await store.get(part(scope="alice"), conv_id)
         order.append("hook_before" if still_there is not None else "hook_after")
 
     controller.on_evict = hook
@@ -1226,14 +1329,14 @@ async def test_on_evict_fires_before_store_delete_in_evict_one():
     await controller._evict_one(rec.id)
 
     assert order == ["hook_before"]
-    assert await store.get("alice", rec.id) is None
+    assert await store.get(part(scope="alice"), rec.id) is None
 
 
 @pytest.mark.anyio
 async def test_on_evict_fires_before_store_delete_in_delete():
     store = InMemoryConversationStore()
     rec = new_conversation_record(title="old")
-    await store.put("alice", rec)
+    await store.put(part(scope="alice"), rec)
 
     order: list[str] = []
 
@@ -1245,10 +1348,10 @@ async def test_on_evict_fires_before_store_delete_in_delete():
         title_enabled=False,
         client=None,
     )
-    controller.scope = "alice"
+    controller.partition = part(scope="alice")
 
     async def hook(conv_id: str) -> None:
-        still_there = await store.get("alice", conv_id)
+        still_there = await store.get(part(scope="alice"), conv_id)
         order.append("hook_before" if still_there is not None else "hook_after")
 
     controller.on_evict = hook
@@ -1256,4 +1359,4 @@ async def test_on_evict_fires_before_store_delete_in_delete():
     await controller.delete(rec.id)
 
     assert order == ["hook_before"]
-    assert await store.get("alice", rec.id) is None
+    assert await store.get(part(scope="alice"), rec.id) is None

@@ -24,7 +24,7 @@ Abstract base class for conversation storage backends
 \subsection{\code{ConversationStore$list()}}{
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
-    \preformatted{ConversationStore$list(scope)}
+    \preformatted{ConversationStore$list(partition)}
     \if{html}{\out{</div>}}
   }
 }
@@ -35,7 +35,7 @@ Abstract base class for conversation storage backends
 \subsection{\code{ConversationStore$get()}}{
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
-    \preformatted{ConversationStore$get(scope, id)}
+    \preformatted{ConversationStore$get(partition, id)}
     \if{html}{\out{</div>}}
   }
 }
@@ -46,7 +46,7 @@ Abstract base class for conversation storage backends
 \subsection{\code{ConversationStore$put()}}{
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
-    \preformatted{ConversationStore$put(scope, record)}
+    \preformatted{ConversationStore$put(partition, record)}
     \if{html}{\out{</div>}}
   }
 }
@@ -57,7 +57,7 @@ Abstract base class for conversation storage backends
 \subsection{\code{ConversationStore$delete()}}{
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
-    \preformatted{ConversationStore$delete(scope, id)}
+    \preformatted{ConversationStore$delete(partition, id)}
     \if{html}{\out{</div>}}
   }
 }
@@ -68,7 +68,7 @@ Abstract base class for conversation storage backends
 \subsection{\code{ConversationStore$search()}}{
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
-    \preformatted{ConversationStore$search(scope, query)}
+    \preformatted{ConversationStore$search(partition, query)}
     \if{html}{\out{</div>}}
   }
 }
@@ -79,7 +79,7 @@ Abstract base class for conversation storage backends
 \subsection{\code{ConversationStore$total_size()}}{
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
-    \preformatted{ConversationStore$total_size(scope)}
+    \preformatted{ConversationStore$total_size(partition)}
     \if{html}{\out{</div>}}
   }
 }

@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 from shinychat._history_store import (
+    ConversationPartition,
     FileConversationStore,
     InMemoryConversationStore,
     resolve_store,
@@ -22,16 +23,25 @@ def store(tmp_path: Path) -> FileConversationStore:
     return FileConversationStore(dir=tmp_path)
 
 
+def part(chat_id: str = "chat", scope: str = "alice") -> ConversationPartition:
+    return ConversationPartition(chat_id=chat_id, scope=scope)
+
+
 @pytest.mark.anyio
 async def test_put_get_round_trip(store: FileConversationStore):
     rec = new_conversation_record(title="penguins")
     rec.append_linear([{"role": "user", "content": "hi"}])
     rec.append_linear(
         [{"role": "assistant", "content": "hello"}],
-        ui=[{"role": "assistant", "segments": [{"content": "hello", "content_type": "markdown"}]}],
+        ui=[
+            {
+                "role": "assistant",
+                "segments": [{"content": "hello", "content_type": "markdown"}],
+            }
+        ],
     )
-    await store.put("alice", rec)
-    got = await store.get("alice", rec.id)
+    await store.put(part(scope="alice"), rec)
+    got = await store.get(part(scope="alice"), rec.id)
     assert got is not None
     assert got.id == rec.id
     assert got.title == rec.title
@@ -50,37 +60,39 @@ async def test_put_get_round_trip_preserves_response_count(
 ):
     rec = new_conversation_record(title="t")
     rec.response_count = 2
-    await store.put("alice", rec)
-    got = await store.get("alice", rec.id)
+    await store.put(part(scope="alice"), rec)
+    got = await store.get(part(scope="alice"), rec.id)
     assert got is not None
     assert got.response_count == 2
 
 
 @pytest.mark.anyio
 async def test_get_defaults_response_count_when_missing_from_disk(
-    store: FileConversationStore, tmp_path: Path,
+    store: FileConversationStore,
+    tmp_path: Path,
 ):
     rec = new_conversation_record(title="t")
-    await store.put("alice", rec)
-    scope_dir = tmp_path / sanitize_scope("alice")
+    await store.put(part(scope="alice"), rec)
+    scope_dir = tmp_path / sanitize_scope("chat") / sanitize_scope("alice")
     record_file = scope_dir / rec.id / "record.json"
     data = json.loads(record_file.read_text())
     del data["response_count"]
     record_file.write_text(json.dumps(data))
 
-    got = await store.get("alice", rec.id)
+    got = await store.get(part(scope="alice"), rec.id)
     assert got is not None
     assert got.response_count == 0
 
 
 @pytest.mark.anyio
 async def test_put_creates_directory_with_three_files(
-    store: FileConversationStore, tmp_path: Path,
+    store: FileConversationStore,
+    tmp_path: Path,
 ):
     rec = new_conversation_record(title="t")
     rec.append_linear([{"role": "user", "content": "hi"}])
-    await store.put("alice", rec)
-    scope_dir = tmp_path / sanitize_scope("alice")
+    await store.put(part(scope="alice"), rec)
+    scope_dir = tmp_path / sanitize_scope("chat") / sanitize_scope("alice")
     conv_dir = scope_dir / rec.id
     assert conv_dir.is_dir()
     assert (conv_dir / "record.json").is_file()
@@ -90,21 +102,22 @@ async def test_put_creates_directory_with_three_files(
 
 @pytest.mark.anyio
 async def test_turns_jsonl_is_append_only(
-    store: FileConversationStore, tmp_path: Path,
+    store: FileConversationStore,
+    tmp_path: Path,
 ):
     rec = new_conversation_record(title="t")
     rec.append_linear([{"role": "user", "content": "q1"}])
     rec.append_linear([{"role": "assistant", "content": "a1"}])
-    await store.put("alice", rec)
+    await store.put(part(scope="alice"), rec)
 
-    scope_dir = tmp_path / sanitize_scope("alice")
+    scope_dir = tmp_path / sanitize_scope("chat") / sanitize_scope("alice")
     turns_file = scope_dir / rec.id / "turns.jsonl"
     lines_after_first = turns_file.read_text().strip().splitlines()
     assert len(lines_after_first) == 2
 
     rec.append_linear([{"role": "user", "content": "q2"}])
     rec.append_linear([{"role": "assistant", "content": "a2"}])
-    await store.put("alice", rec)
+    await store.put(part(scope="alice"), rec)
 
     lines_after_second = turns_file.read_text().strip().splitlines()
     assert len(lines_after_second) == 4
@@ -114,16 +127,17 @@ async def test_turns_jsonl_is_append_only(
 
 @pytest.mark.anyio
 async def test_ui_jsonl_is_append_only(
-    store: FileConversationStore, tmp_path: Path,
+    store: FileConversationStore,
+    tmp_path: Path,
 ):
     rec = new_conversation_record(title="t")
     rec.append_linear(
         [{"role": "user", "content": "q1"}],
         ui=[{"role": "user", "segments": []}],
     )
-    await store.put("alice", rec)
+    await store.put(part(scope="alice"), rec)
 
-    scope_dir = tmp_path / sanitize_scope("alice")
+    scope_dir = tmp_path / sanitize_scope("chat") / sanitize_scope("alice")
     ui_file = scope_dir / rec.id / "ui.jsonl"
     lines_after_first = ui_file.read_text().strip().splitlines()
     assert len(lines_after_first) == 1
@@ -132,7 +146,7 @@ async def test_ui_jsonl_is_append_only(
         [{"role": "assistant", "content": "a1"}],
         ui=[{"role": "assistant", "segments": []}],
     )
-    await store.put("alice", rec)
+    await store.put(part(scope="alice"), rec)
 
     lines_after_second = ui_file.read_text().strip().splitlines()
     assert len(lines_after_second) == 2
@@ -147,16 +161,16 @@ async def test_cold_start_recovery(
     rec = new_conversation_record(title="t")
     rec.append_linear([{"role": "user", "content": "q1"}])
     rec.append_linear([{"role": "assistant", "content": "a1"}])
-    await store1.put("alice", rec)
+    await store1.put(part(scope="alice"), rec)
 
     # Fresh store instance (cold start) reads existing files
     store2 = FileConversationStore(dir=tmp_path)
     rec.append_linear([{"role": "user", "content": "q2"}])
     rec.append_linear([{"role": "assistant", "content": "a2"}])
-    await store2.put("alice", rec)
+    await store2.put(part(scope="alice"), rec)
 
     # Verify only new turns were appended
-    scope_dir = tmp_path / sanitize_scope("alice")
+    scope_dir = tmp_path / sanitize_scope("chat") / sanitize_scope("alice")
     turns_file = scope_dir / rec.id / "turns.jsonl"
     lines = turns_file.read_text().strip().splitlines()
     assert len(lines) == 4
@@ -174,13 +188,13 @@ async def test_missing_ui_jsonl_returns_nodes_with_none_ui(
         [{"role": "user", "content": "hi"}],
         ui=[{"role": "user", "segments": []}],
     )
-    await store.put("alice", rec)
+    await store.put(part(scope="alice"), rec)
 
     # Delete ui.jsonl
-    scope_dir = tmp_path / sanitize_scope("alice")
+    scope_dir = tmp_path / sanitize_scope("chat") / sanitize_scope("alice")
     (scope_dir / rec.id / "ui.jsonl").unlink()
 
-    got = await store.get("alice", rec.id)
+    got = await store.get(part(scope="alice"), rec.id)
     assert got is not None
     for node in got.nodes.values():
         assert node.ui is None
@@ -188,13 +202,14 @@ async def test_missing_ui_jsonl_returns_nodes_with_none_ui(
 
 @pytest.mark.anyio
 async def test_node_with_no_ui_has_no_entry_in_ui_jsonl(
-    store: FileConversationStore, tmp_path: Path,
+    store: FileConversationStore,
+    tmp_path: Path,
 ):
     rec = new_conversation_record(title="t")
     rec.append_linear([{"role": "user", "content": "q1"}])  # no ui
-    await store.put("alice", rec)
+    await store.put(part(scope="alice"), rec)
 
-    scope_dir = tmp_path / sanitize_scope("alice")
+    scope_dir = tmp_path / sanitize_scope("chat") / sanitize_scope("alice")
     ui_file = scope_dir / rec.id / "ui.jsonl"
     content = ui_file.read_text().strip()
     assert content == ""
@@ -202,38 +217,81 @@ async def test_node_with_no_ui_has_no_entry_in_ui_jsonl(
 
 @pytest.mark.anyio
 async def test_get_missing_returns_none(store: FileConversationStore):
-    assert await store.get("alice", "c_nope") is None
+    assert await store.get(part(scope="alice"), "c_nope") is None
 
 
 @pytest.mark.anyio
 async def test_list_is_meta_only_newest_first(store: FileConversationStore):
     a = new_conversation_record(title="older")
     b = new_conversation_record(title="newer")
-    await store.put("alice", a)
+    await store.put(part(scope="alice"), a)
     # Force b.updated_at to be strictly after a.updated_at since
     # utcnow() has second resolution and both may share the same timestamp.
     b.updated_at = b.updated_at + timedelta(seconds=1)
-    await store.put("alice", b)
-    metas = await store.list("alice")
+    await store.put(part(scope="alice"), b)
+    metas = await store.list(part(scope="alice"))
     assert [m.title for m in metas] == ["newer", "older"]
 
 
 @pytest.mark.anyio
 async def test_scopes_are_isolated(store: FileConversationStore):
     rec = new_conversation_record(title="private")
-    await store.put("alice", rec)
-    assert await store.list("bob") == []
-    assert await store.get("bob", rec.id) is None
+    await store.put(part(scope="alice"), rec)
+    assert await store.list(part(scope="bob")) == []
+    assert await store.get(part(scope="bob"), rec.id) is None
+
+
+@pytest.mark.anyio
+async def test_file_store_partitions_by_chat_id_on_disk(tmp_path: Path):
+    store = FileConversationStore(dir=tmp_path)
+    chat_a = ConversationPartition(chat_id="chat-a", scope="browser-1")
+    chat_b = ConversationPartition(chat_id="chat-b", scope="browser-1")
+    rec = new_conversation_record(title="private to chat a")
+
+    await store.put(chat_a, rec)
+
+    assert await store.get(chat_a, rec.id) is not None
+    assert await store.get(chat_b, rec.id) is None
+    assert await store.list(chat_b) == []
+    assert len(list(tmp_path.iterdir())) == 1
+
+
+@pytest.mark.anyio
+async def test_file_store_write_state_keys_partition_without_delimiter_collision(
+    tmp_path: Path,
+):
+    store = FileConversationStore(dir=tmp_path)
+    partition_a = ConversationPartition(chat_id="a:b", scope="c")
+    partition_b = ConversationPartition(chat_id="a", scope="b:c")
+    conv_id = "c_collision"
+
+    rec_a = new_conversation_record(title="a")
+    rec_a.id = conv_id
+    rec_a.append_linear([{"role": "user", "content": "from a"}])
+    rec_b = new_conversation_record(title="b")
+    rec_b.id = conv_id
+    rec_b.append_linear([{"role": "user", "content": "from b"}])
+
+    await store.put(partition_a, rec_a)
+    await store.put(partition_b, rec_b)
+
+    got_a = await store.get(partition_a, conv_id)
+    got_b = await store.get(partition_b, conv_id)
+
+    assert got_a is not None
+    assert got_b is not None
+    assert got_a.path_turns() == [{"role": "user", "content": "from a"}]
+    assert got_b.path_turns() == [{"role": "user", "content": "from b"}]
 
 
 @pytest.mark.anyio
 async def test_delete(store: FileConversationStore):
     rec = new_conversation_record(title="t")
-    await store.put("alice", rec)
-    await store.delete("alice", rec.id)
-    assert await store.list("alice") == []
+    await store.put(part(scope="alice"), rec)
+    await store.delete(part(scope="alice"), rec.id)
+    assert await store.list(part(scope="alice")) == []
     # deleting again is a no-op, not an error
-    await store.delete("alice", rec.id)
+    await store.delete(part(scope="alice"), rec.id)
 
 
 @pytest.mark.anyio
@@ -242,9 +300,9 @@ async def test_default_search_is_substring_over_titles(
 ):
     a = new_conversation_record(title="Q1 churn analysis")
     b = new_conversation_record(title="Penguin bills")
-    await store.put("alice", a)
-    await store.put("alice", b)
-    hits = await store.search("alice", "CHURN")
+    await store.put(part(scope="alice"), a)
+    await store.put(part(scope="alice"), b)
+    hits = await store.search(part(scope="alice"), "CHURN")
     assert [m.id for m in hits] == [a.id]
 
 
@@ -260,8 +318,8 @@ async def test_put_is_atomic_no_partial_files(
     store: FileConversationStore, tmp_path: Path
 ):
     rec = new_conversation_record(title="t")
-    await store.put("alice", rec)
-    scope_dir = tmp_path / sanitize_scope("alice")
+    await store.put(part(scope="alice"), rec)
+    scope_dir = tmp_path / sanitize_scope("chat") / sanitize_scope("alice")
     conv_dir = scope_dir / rec.id
     assert conv_dir.is_dir()
     files = {f.name for f in conv_dir.iterdir()}
@@ -286,13 +344,13 @@ def test_safe_conv_path_accepts_valid_id(tmp_path: Path):
 @pytest.mark.anyio
 async def test_get_with_traversal_id_raises(store: FileConversationStore):
     with pytest.raises(ValueError, match="Invalid conversation id"):
-        await store.get("alice", "../escape")
+        await store.get(part(scope="alice"), "../escape")
 
 
 @pytest.mark.anyio
 async def test_delete_with_traversal_id_raises(store: FileConversationStore):
     with pytest.raises(ValueError, match="Invalid conversation id"):
-        await store.delete("alice", "../escape")
+        await store.delete(part(scope="alice"), "../escape")
 
 
 # ---------------------------------------------------------------------------
@@ -303,11 +361,13 @@ async def test_delete_with_traversal_id_raises(store: FileConversationStore):
 @pytest.mark.anyio
 async def test_list_populates_cache(store: FileConversationStore):
     rec = new_conversation_record(title="cached")
-    await store.put("alice", rec)
-    assert "alice" not in store._meta_cache  # put to cold scope: no cache
-    await store.list("alice")
-    assert "alice" in store._meta_cache
-    assert store._meta_cache["alice"][0].id == rec.id
+    await store.put(part(scope="alice"), rec)
+    assert (
+        part(scope="alice") not in store._meta_cache
+    )  # put to cold scope: no cache
+    await store.list(part(scope="alice"))
+    assert part(scope="alice") in store._meta_cache
+    assert store._meta_cache[part(scope="alice")][0].id == rec.id
 
 
 @pytest.mark.anyio
@@ -315,16 +375,16 @@ async def test_list_returns_from_cache_without_disk_read(
     store: FileConversationStore, tmp_path: Path
 ):
     rec = new_conversation_record(title="cached")
-    await store.put("alice", rec)
-    await store.list("alice")  # warms cache
+    await store.put(part(scope="alice"), rec)
+    await store.list(part(scope="alice"))  # warms cache
 
     # Delete the conversation directory underneath — cache should still serve
-    scope_dir = tmp_path / sanitize_scope("alice")
+    scope_dir = tmp_path / sanitize_scope("chat") / sanitize_scope("alice")
     for d in scope_dir.iterdir():
         if d.is_dir():
             shutil.rmtree(d)
 
-    metas = await store.list("alice")
+    metas = await store.list(part(scope="alice"))
     assert len(metas) == 1
     assert metas[0].id == rec.id
 
@@ -334,34 +394,34 @@ async def test_get_missing_after_cached_list_invalidates_cache(
     store: FileConversationStore, tmp_path: Path
 ):
     rec = new_conversation_record(title="t")
-    await store.put("alice", rec)
-    await store.list("alice")  # warms cache
-    assert "alice" in store._meta_cache
+    await store.put(part(scope="alice"), rec)
+    await store.list(part(scope="alice"))  # warms cache
+    assert part(scope="alice") in store._meta_cache
 
     # Simulate another worker deleting the conversation directly on disk
-    scope_dir = tmp_path / sanitize_scope("alice")
+    scope_dir = tmp_path / sanitize_scope("chat") / sanitize_scope("alice")
     for d in scope_dir.iterdir():
         if d.is_dir():
             shutil.rmtree(d)
 
-    got = await store.get("alice", rec.id)
+    got = await store.get(part(scope="alice"), rec.id)
     assert got is None
-    assert "alice" not in store._meta_cache
+    assert part(scope="alice") not in store._meta_cache
 
-    metas = await store.list("alice")
+    metas = await store.list(part(scope="alice"))
     assert metas == []
 
 
 @pytest.mark.anyio
 async def test_put_updates_warm_cache(store: FileConversationStore):
     a = new_conversation_record(title="first")
-    await store.put("alice", a)
-    await store.list("alice")  # warm
+    await store.put(part(scope="alice"), a)
+    await store.list(part(scope="alice"))  # warm
 
     b = new_conversation_record(title="second")
-    await store.put("alice", b)
+    await store.put(part(scope="alice"), b)
 
-    cached = store._meta_cache["alice"]
+    cached = store._meta_cache[part(scope="alice")]
     assert {m.id for m in cached} == {a.id, b.id}
 
 
@@ -370,27 +430,27 @@ async def test_put_does_not_create_cache_for_cold_scope(
     store: FileConversationStore,
 ):
     rec = new_conversation_record(title="cold")
-    await store.put("alice", rec)
-    assert "alice" not in store._meta_cache
+    await store.put(part(scope="alice"), rec)
+    assert part(scope="alice") not in store._meta_cache
 
 
 @pytest.mark.anyio
 async def test_delete_updates_warm_cache(store: FileConversationStore):
     rec = new_conversation_record(title="t")
-    await store.put("alice", rec)
-    await store.list("alice")  # warm
-    await store.delete("alice", rec.id)
+    await store.put(part(scope="alice"), rec)
+    await store.list(part(scope="alice"))  # warm
+    await store.delete(part(scope="alice"), rec.id)
 
-    assert store._meta_cache["alice"] == []
+    assert store._meta_cache[part(scope="alice")] == []
 
 
 @pytest.mark.anyio
 async def test_list_returns_independent_copy(store: FileConversationStore):
     rec = new_conversation_record(title="t")
-    await store.put("alice", rec)
-    result = await store.list("alice")
+    await store.put(part(scope="alice"), rec)
+    result = await store.list(part(scope="alice"))
     result.clear()
-    assert len(store._meta_cache["alice"]) == 1
+    assert len(store._meta_cache[part(scope="alice")]) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -407,8 +467,8 @@ def mem_store() -> InMemoryConversationStore:
 async def test_memory_put_get_round_trip(mem_store: InMemoryConversationStore):
     rec = new_conversation_record(title="penguins")
     rec.append_linear([{"role": "user", "content": "hi"}])
-    await mem_store.put("alice", rec)
-    got = await mem_store.get("alice", rec.id)
+    await mem_store.put(part(scope="alice"), rec)
+    got = await mem_store.get(part(scope="alice"), rec.id)
     assert got == rec
 
 
@@ -416,44 +476,72 @@ async def test_memory_put_get_round_trip(mem_store: InMemoryConversationStore):
 async def test_memory_get_missing_returns_none(
     mem_store: InMemoryConversationStore,
 ):
-    assert await mem_store.get("alice", "c_nope") is None
+    assert await mem_store.get(part(scope="alice"), "c_nope") is None
 
 
 @pytest.mark.anyio
 async def test_memory_list_newest_first(mem_store: InMemoryConversationStore):
     a = new_conversation_record(title="older")
     b = new_conversation_record(title="newer")
-    await mem_store.put("alice", a)
+    await mem_store.put(part(scope="alice"), a)
     b.updated_at = b.updated_at + timedelta(seconds=1)
-    await mem_store.put("alice", b)
-    metas = await mem_store.list("alice")
+    await mem_store.put(part(scope="alice"), b)
+    metas = await mem_store.list(part(scope="alice"))
     assert [m.title for m in metas] == ["newer", "older"]
 
 
 @pytest.mark.anyio
 async def test_memory_scopes_are_isolated(mem_store: InMemoryConversationStore):
     rec = new_conversation_record(title="private")
-    await mem_store.put("alice", rec)
-    assert await mem_store.list("bob") == []
-    assert await mem_store.get("bob", rec.id) is None
+    await mem_store.put(part(scope="alice"), rec)
+    assert await mem_store.list(part(scope="bob")) == []
+    assert await mem_store.get(part(scope="bob"), rec.id) is None
+
+
+@pytest.mark.anyio
+async def test_memory_store_partitions_by_chat_id_with_same_scope():
+    store = InMemoryConversationStore()
+    chat_a = ConversationPartition(chat_id="chat-a", scope="browser-1")
+    chat_b = ConversationPartition(chat_id="chat-b", scope="browser-1")
+    rec = new_conversation_record(title="private to chat a")
+
+    await store.put(chat_a, rec)
+
+    assert await store.get(chat_a, rec.id) is rec
+    assert await store.get(chat_b, rec.id) is None
+    assert await store.list(chat_b) == []
+
+
+@pytest.mark.anyio
+async def test_memory_store_partitions_by_scope_with_same_chat_id():
+    store = InMemoryConversationStore()
+    alice = ConversationPartition(chat_id="chat", scope="alice")
+    bob = ConversationPartition(chat_id="chat", scope="bob")
+    rec = new_conversation_record(title="alice only")
+
+    await store.put(alice, rec)
+
+    assert await store.get(alice, rec.id) is rec
+    assert await store.get(bob, rec.id) is None
+    assert await store.list(bob) == []
 
 
 @pytest.mark.anyio
 async def test_memory_delete(mem_store: InMemoryConversationStore):
     rec = new_conversation_record(title="t")
-    await mem_store.put("alice", rec)
-    await mem_store.delete("alice", rec.id)
-    assert await mem_store.list("alice") == []
-    await mem_store.delete("alice", rec.id)  # no-op
+    await mem_store.put(part(scope="alice"), rec)
+    await mem_store.delete(part(scope="alice"), rec.id)
+    assert await mem_store.list(part(scope="alice")) == []
+    await mem_store.delete(part(scope="alice"), rec.id)  # no-op
 
 
 @pytest.mark.anyio
 async def test_memory_search(mem_store: InMemoryConversationStore):
     a = new_conversation_record(title="Q1 churn analysis")
     b = new_conversation_record(title="Penguin bills")
-    await mem_store.put("alice", a)
-    await mem_store.put("alice", b)
-    hits = await mem_store.search("alice", "CHURN")
+    await mem_store.put(part(scope="alice"), a)
+    await mem_store.put(part(scope="alice"), b)
+    hits = await mem_store.search(part(scope="alice"), "CHURN")
     assert [m.id for m in hits] == [a.id]
 
 
@@ -462,8 +550,8 @@ async def test_memory_list_does_not_reserialize_on_repeat_calls(
     mem_store: InMemoryConversationStore, monkeypatch: pytest.MonkeyPatch
 ):
     rec = new_conversation_record(title="t")
-    await mem_store.put("alice", rec)
-    await mem_store.list("alice")  # warm cache
+    await mem_store.put(part(scope="alice"), rec)
+    await mem_store.list(part(scope="alice"))  # warm cache
 
     call_count = 0
     original = ConversationRecord.model_dump_json
@@ -474,8 +562,8 @@ async def test_memory_list_does_not_reserialize_on_repeat_calls(
         return original(self, *args, **kwargs)
 
     monkeypatch.setattr(ConversationRecord, "model_dump_json", counting)
-    await mem_store.list("alice")
-    await mem_store.list("alice")
+    await mem_store.list(part(scope="alice"))
+    await mem_store.list(part(scope="alice"))
     assert call_count == 0
 
 
@@ -484,13 +572,13 @@ async def test_memory_put_updates_warm_cache(
     mem_store: InMemoryConversationStore,
 ):
     a = new_conversation_record(title="first")
-    await mem_store.put("alice", a)
-    await mem_store.list("alice")  # warm
+    await mem_store.put(part(scope="alice"), a)
+    await mem_store.list(part(scope="alice"))  # warm
 
     b = new_conversation_record(title="second")
-    await mem_store.put("alice", b)
+    await mem_store.put(part(scope="alice"), b)
 
-    cached = mem_store._meta_cache["alice"]
+    cached = mem_store._meta_cache[part(scope="alice")]
     assert {m.id for m in cached} == {a.id, b.id}
 
 
@@ -499,8 +587,8 @@ async def test_memory_put_does_not_create_cache_for_cold_scope(
     mem_store: InMemoryConversationStore,
 ):
     rec = new_conversation_record(title="cold")
-    await mem_store.put("alice", rec)
-    assert "alice" not in mem_store._meta_cache
+    await mem_store.put(part(scope="alice"), rec)
+    assert part(scope="alice") not in mem_store._meta_cache
 
 
 @pytest.mark.anyio
@@ -508,11 +596,11 @@ async def test_memory_delete_updates_warm_cache(
     mem_store: InMemoryConversationStore,
 ):
     rec = new_conversation_record(title="t")
-    await mem_store.put("alice", rec)
-    await mem_store.list("alice")  # warm
-    await mem_store.delete("alice", rec.id)
+    await mem_store.put(part(scope="alice"), rec)
+    await mem_store.list(part(scope="alice"))  # warm
+    await mem_store.delete(part(scope="alice"), rec.id)
 
-    assert mem_store._meta_cache["alice"] == []
+    assert mem_store._meta_cache[part(scope="alice")] == []
 
 
 # ---------------------------------------------------------------------------
@@ -524,6 +612,14 @@ def test_resolve_store_memory_returns_in_memory_store():
     assert isinstance(resolve_store("memory"), InMemoryConversationStore)
 
 
+def test_resolve_store_memory_returns_fresh_store():
+    store1 = resolve_store("memory")
+    store2 = resolve_store("memory")
+    assert isinstance(store1, InMemoryConversationStore)
+    assert isinstance(store2, InMemoryConversationStore)
+    assert store1 is not store2
+
+
 def test_resolve_store_file_returns_file_store():
     assert isinstance(resolve_store("file"), FileConversationStore)
 
@@ -533,6 +629,16 @@ def test_resolve_store_auto_dev_mode_returns_in_memory(
 ):
     monkeypatch.setenv("SHINY_DEV_MODE", "1")
     assert isinstance(resolve_store("auto"), InMemoryConversationStore)
+
+
+def test_resolve_store_auto_dev_mode_reuses_process_memory_store(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("SHINY_DEV_MODE", "1")
+    store1 = resolve_store("auto")
+    store2 = resolve_store("auto")
+    assert isinstance(store1, InMemoryConversationStore)
+    assert store1 is store2
 
 
 def test_resolve_store_auto_no_dev_mode_returns_file(
@@ -556,7 +662,7 @@ def test_resolve_store_passthrough_custom_store(
 @pytest.mark.anyio
 async def test_file_store_total_size_zero_for_missing_scope(tmp_path: Path):
     store = FileConversationStore(dir=tmp_path)
-    assert await store.total_size("alice") == 0
+    assert await store.total_size(part(scope="alice")) == 0
 
 
 @pytest.mark.anyio
@@ -564,13 +670,13 @@ async def test_file_store_total_size_grows_with_put(tmp_path: Path):
     store = FileConversationStore(dir=tmp_path)
     rec = new_conversation_record(title="t")
     rec.append_linear([{"role": "user", "content": "hello world"}])
-    await store.put("alice", rec)
-    size1 = await store.total_size("alice")
+    await store.put(part(scope="alice"), rec)
+    size1 = await store.total_size(part(scope="alice"))
     assert size1 > 0
 
     rec2 = new_conversation_record(title="t2")
-    await store.put("alice", rec2)
-    assert await store.total_size("alice") > size1
+    await store.put(part(scope="alice"), rec2)
+    assert await store.total_size(part(scope="alice")) > size1
 
 
 @pytest.mark.anyio
@@ -578,18 +684,18 @@ async def test_file_store_total_size_shrinks_with_delete(tmp_path: Path):
     store = FileConversationStore(dir=tmp_path)
     rec1 = new_conversation_record(title="a")
     rec2 = new_conversation_record(title="b")
-    await store.put("alice", rec1)
-    await store.put("alice", rec2)
-    total = await store.total_size("alice")
-    await store.delete("alice", rec1.id)
-    assert await store.total_size("alice") < total
+    await store.put(part(scope="alice"), rec1)
+    await store.put(part(scope="alice"), rec2)
+    total = await store.total_size(part(scope="alice"))
+    await store.delete(part(scope="alice"), rec1.id)
+    assert await store.total_size(part(scope="alice")) < total
 
 
 @pytest.mark.anyio
 async def test_memory_total_size_zero_for_missing_scope(
     mem_store: InMemoryConversationStore,
 ):
-    assert await mem_store.total_size("alice") == 0
+    assert await mem_store.total_size(part(scope="alice")) == 0
 
 
 @pytest.mark.anyio
@@ -598,13 +704,13 @@ async def test_memory_total_size_grows_with_put(
 ):
     rec = new_conversation_record(title="t")
     rec.append_linear([{"role": "user", "content": "hello world"}])
-    await mem_store.put("alice", rec)
-    size1 = await mem_store.total_size("alice")
+    await mem_store.put(part(scope="alice"), rec)
+    size1 = await mem_store.total_size(part(scope="alice"))
     assert size1 > 0
 
     rec2 = new_conversation_record(title="t2")
-    await mem_store.put("alice", rec2)
-    assert await mem_store.total_size("alice") > size1
+    await mem_store.put(part(scope="alice"), rec2)
+    assert await mem_store.total_size(part(scope="alice")) > size1
 
 
 @pytest.mark.anyio
@@ -613,8 +719,8 @@ async def test_memory_total_size_shrinks_with_delete(
 ):
     rec1 = new_conversation_record(title="a")
     rec2 = new_conversation_record(title="b")
-    await mem_store.put("alice", rec1)
-    await mem_store.put("alice", rec2)
-    total = await mem_store.total_size("alice")
-    await mem_store.delete("alice", rec1.id)
-    assert await mem_store.total_size("alice") < total
+    await mem_store.put(part(scope="alice"), rec1)
+    await mem_store.put(part(scope="alice"), rec2)
+    total = await mem_store.total_size(part(scope="alice"))
+    await mem_store.delete(part(scope="alice"), rec1.id)
+    assert await mem_store.total_size(part(scope="alice")) < total

@@ -40,8 +40,9 @@ example \code{session$groups[[1]]} to scope by group, or a constant like
 titles, a \verb{function(recorded_turns)} for custom titles, or \code{NULL} to skip
 LLM titling (the conversation keeps its initial timestamp-based name).}
 
-\item{max_store_mb}{Maximum total storage in megabytes per scope. Oldest
-conversations are evicted when the limit is exceeded. Defaults to \code{100}.}
+\item{max_store_mb}{Maximum total storage in megabytes per chat history
+partition. Oldest conversations are evicted when the limit is exceeded.
+Defaults to \code{100}.}
 }
 \value{
 A configuration object for use with \code{\link[=chat_enable_history]{chat_enable_history()}}.

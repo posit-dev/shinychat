@@ -33,22 +33,26 @@ matrix_seed <- function(ctrl, setup) {
       class = "ellmer::UserTurn",
       version = 1,
       props = list(
-        contents = list(list(
-          class = "ellmer::ContentText",
-          version = 1,
-          props = list(text = "Hello")
-        ))
+        contents = list(
+          list(
+            class = "ellmer::ContentText",
+            version = 1,
+            props = list(text = "Hello")
+          )
+        )
       )
     )
     asst_turn <- list(
       class = "ellmer::AssistantTurn",
       version = 1,
       props = list(
-        contents = list(list(
-          class = "ellmer::ContentText",
-          version = 1,
-          props = list(text = "Hi there")
-        ))
+        contents = list(
+          list(
+            class = "ellmer::ContentText",
+            version = 1,
+            props = list(text = "Hi there")
+          )
+        )
       )
     )
     ctrl$on_response(list(user_turn, asst_turn))
@@ -70,7 +74,9 @@ check_delete_active_conversation_clears_controller_record <- function(
   ctx
 ) {
   expect_null(ctrl$record)
-  remaining <- ctx$store$list("matrix-scope")
+  remaining <- ctx$store$list(
+    conversation_partition("matrix-test", "matrix-scope")
+  )
   remaining_ids <- vapply(remaining, `[[`, character(1L), "id")
   expect_false(ctx$active_id %in% remaining_ids)
 }
@@ -91,7 +97,7 @@ for (matrix_case in matrix) {
         options = history_options(store = store, title = NULL),
         session = shiny::MockShinySession$new()
       )
-      ctrl$scope <- "matrix-scope"
+      ctrl$partition <- conversation_partition("matrix-test", "matrix-scope")
 
       active_id <- matrix_seed(ctrl, case$setup)
       before_updated_at <- ctrl$record$updated_at

@@ -24,7 +24,7 @@ test_that("HistoryController$on_response() creates record on first save", {
     options = history_options(store = store, title = NULL),
     session = session
   )
-  ctrl$scope <- "test-user"
+  ctrl$partition <- conversation_partition("chat", "test-user")
 
   # Simulate a user turn + assistant turn
   user_turn <- list(
@@ -59,7 +59,7 @@ test_that("HistoryController$on_response() creates record on first save", {
   expect_false(is.null(ctrl$record))
   expect_equal(ctrl$record$title, "Hello")
   expect_equal(length(ctrl$record$nodes), 2)
-  expect_length(store$list("test-user"), 1)
+  expect_length(store$list(conversation_partition("chat", "test-user")), 1)
 })
 
 test_that("HistoryController$on_response() extends existing record", {
@@ -73,7 +73,7 @@ test_that("HistoryController$on_response() extends existing record", {
     options = history_options(store = store, title = NULL),
     session = session
   )
-  ctrl$scope <- "test-user"
+  ctrl$partition <- conversation_partition("chat", "test-user")
 
   turn1 <- list(
     class = "ellmer::UserTurn",
@@ -147,7 +147,7 @@ test_that("HistoryController$new_chat() resets state", {
     options = history_options(store = store, title = NULL),
     session = session
   )
-  ctrl$scope <- "test-user"
+  ctrl$partition <- conversation_partition("chat", "test-user")
 
   turn1 <- list(
     class = "ellmer::UserTurn",
@@ -182,7 +182,9 @@ test_that("HistoryController$new_chat() resets state", {
 
   expect_null(ctrl$record)
   # Old conversation still in store
-  expect_false(is.null(store$get("test-user", saved_id)))
+  expect_false(
+    is.null(store$get(conversation_partition("chat", "test-user"), saved_id))
+  )
 })
 
 test_that("HistoryController$rename() updates title", {
@@ -196,7 +198,7 @@ test_that("HistoryController$rename() updates title", {
     options = history_options(store = store, title = NULL),
     session = session
   )
-  ctrl$scope <- "test-user"
+  ctrl$partition <- conversation_partition("chat", "test-user")
 
   turn1 <- list(
     class = "ellmer::UserTurn",
@@ -229,7 +231,13 @@ test_that("HistoryController$rename() updates title", {
   ctrl$rename(ctrl$record$id, "Renamed chat")
   expect_equal(ctrl$record$title, "Renamed chat")
   expect_equal(ctrl$record$title_source, "user")
-  expect_equal(store$get("test-user", ctrl$record$id)$title, "Renamed chat")
+  expect_equal(
+    store$get(
+      conversation_partition("chat", "test-user"),
+      ctrl$record$id
+    )$title,
+    "Renamed chat"
+  )
 })
 
 test_that("HistoryController$delete() removes conversation", {
@@ -243,7 +251,7 @@ test_that("HistoryController$delete() removes conversation", {
     options = history_options(store = store, title = NULL),
     session = session
   )
-  ctrl$scope <- "test-user"
+  ctrl$partition <- conversation_partition("chat", "test-user")
 
   turn1 <- list(
     class = "ellmer::UserTurn",
@@ -275,7 +283,7 @@ test_that("HistoryController$delete() removes conversation", {
   conv_id <- ctrl$record$id
 
   ctrl$delete(conv_id)
-  expect_null(store$get("test-user", conv_id))
+  expect_null(store$get(conversation_partition("chat", "test-user"), conv_id))
   expect_null(ctrl$record)
 })
 
@@ -290,7 +298,7 @@ test_that("HistoryController suppresses saves during replay", {
     options = history_options(store = store, title = NULL),
     session = session
   )
-  ctrl$scope <- "test-user"
+  ctrl$partition <- conversation_partition("chat", "test-user")
   ctrl$is_replaying <- TRUE
 
   turn1 <- list(
@@ -309,7 +317,7 @@ test_that("HistoryController suppresses saves during replay", {
   ctrl$on_response(list(turn1))
 
   expect_null(ctrl$record)
-  expect_length(store$list("test-user"), 0)
+  expect_length(store$list(conversation_partition("chat", "test-user")), 0)
 })
 
 make_turns <- function(user_text = "Hi", asst_text = "Hello") {
@@ -364,7 +372,7 @@ test_that("title stays fallback after first response", {
     ),
     session = session
   )
-  ctrl$scope <- "test-user"
+  ctrl$partition <- conversation_partition("chat", "test-user")
 
   ctrl$on_response(make_turns("Hi", "Hello"))
 
@@ -386,7 +394,7 @@ test_that("titling fires after the second response, exactly once", {
     ),
     session = session
   )
-  ctrl$scope <- "test-user"
+  ctrl$partition <- conversation_partition("chat", "test-user")
 
   ctrl$on_response(make_turns("Hi", "Hello"))
   turns <- c(make_turns("Hi", "Hello"), make_turns("More", "Sure"))
@@ -412,7 +420,7 @@ test_that("rename between the first and second response blocks auto-titling", {
     ),
     session = session
   )
-  ctrl$scope <- "test-user"
+  ctrl$partition <- conversation_partition("chat", "test-user")
 
   ctrl$on_response(make_turns("Hi", "Hello"))
   ctrl$rename(ctrl$record$id, "My Title")
@@ -438,7 +446,7 @@ test_that("titling fires on the second response across sessions", {
     ),
     session = shiny::MockShinySession$new()
   )
-  ctrl1$scope <- "test-user"
+  ctrl1$partition <- conversation_partition("chat", "test-user")
   ctrl1$on_response(make_turns("Hi", "Hello"))
   conv_id <- ctrl1$record$id
 
@@ -453,8 +461,11 @@ test_that("titling fires on the second response across sessions", {
     ),
     session = shiny::MockShinySession$new()
   )
-  ctrl2$scope <- "test-user"
-  ctrl2$record <- store$get("test-user", conv_id)
+  ctrl2$partition <- conversation_partition("chat", "test-user")
+  ctrl2$record <- store$get(
+    conversation_partition("chat", "test-user"),
+    conv_id
+  )
 
   turns <- c(make_turns("Hi", "Hello"), make_turns("More", "Sure"))
   ctrl2$on_response(turns)
@@ -475,7 +486,7 @@ test_that("on_response defaults a missing response_count to 0 before incrementin
     options = history_options(store = store, title = NULL),
     session = session
   )
-  ctrl$scope <- "test-user"
+  ctrl$partition <- conversation_partition("chat", "test-user")
   ctrl$on_response(make_turns("Hi", "Hello"))
   ctrl$record$response_count <- NULL # simulate a pre-existing record on disk
 
@@ -496,7 +507,7 @@ test_that("on_response_saved fires on every response", {
     options = history_options(store = store, title = "fallback"),
     session = session
   )
-  ctrl$scope <- "test-user"
+  ctrl$partition <- conversation_partition("chat", "test-user")
 
   fired_ids <- character(0)
   ctrl$on_response_saved <- function(record) {
@@ -523,7 +534,7 @@ test_that("on_pre_switch returning TRUE skips the in-session swap", {
     options = history_options(store = store, title = "fallback"),
     session = session
   )
-  ctrl$scope <- "test-user"
+  ctrl$partition <- conversation_partition("chat", "test-user")
 
   # Create two conversations
   ctrl$on_response(make_turns("A", "B"))
@@ -559,7 +570,7 @@ test_that("on_pre_switch returning FALSE allows the in-session swap", {
     options = history_options(store = store, title = "fallback"),
     session = session
   )
-  ctrl$scope <- "test-user"
+  ctrl$partition <- conversation_partition("chat", "test-user")
 
   ctrl$on_response(make_turns("A", "B"))
   first_id <- ctrl$record$id
@@ -647,18 +658,20 @@ test_that("on_evict fires before store$delete in evict_one and delete", {
     options = history_options(store = store, title = "fallback"),
     session = session
   )
-  ctrl$scope <- "test-user"
+  ctrl$partition <- conversation_partition("chat", "test-user")
 
   ctrl$on_response(make_turns("A", "B"))
   conv_id <- ctrl$record$id
 
   evict_saw_record_in_store <- NULL
   ctrl$on_evict <- function(id) {
-    evict_saw_record_in_store <<- !is.null(store$get("test-user", id))
+    evict_saw_record_in_store <<- !is.null(
+      store$get(conversation_partition("chat", "test-user"), id)
+    )
   }
 
   ctrl$delete(conv_id)
 
   expect_true(evict_saw_record_in_store)
-  expect_null(store$get("test-user", conv_id))
+  expect_null(store$get(conversation_partition("chat", "test-user"), conv_id))
 })

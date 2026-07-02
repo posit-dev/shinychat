@@ -84,6 +84,171 @@ test_that("chat_server() with a non-default module id wires on_save/on_restore t
   )
 })
 
+test_that("HistoryController stores responses in assigned partition", {
+  store <- InMemoryConversationStore$new()
+  ctrl <- HistoryController$new(
+    chat_id = "ns-chat",
+    client = mock_chat_client(),
+    options = history_options(store = store, title = NULL),
+    session = shiny::MockShinySession$new()
+  )
+  ctrl$partition <- conversation_partition("ns-chat", "browser-1")
+
+  turns <- list(
+    list(
+      class = "ellmer::UserTurn",
+      version = 1,
+      props = list(
+        contents = list(
+          list(
+            class = "ellmer::ContentText",
+            version = 1,
+            props = list(text = "Hi")
+          )
+        )
+      )
+    ),
+    list(
+      class = "ellmer::AssistantTurn",
+      version = 1,
+      props = list(
+        contents = list(
+          list(
+            class = "ellmer::ContentText",
+            version = 1,
+            props = list(text = "Hello")
+          )
+        )
+      )
+    )
+  )
+  ctrl$on_response(turns)
+
+  expect_equal(
+    store$list(conversation_partition("ns-chat", "browser-1"))[[1]]$id,
+    ctrl$record$id
+  )
+  expect_length(
+    store$list(conversation_partition("other-chat", "browser-1")),
+    0
+  )
+})
+
+test_that("same scope with different chat ids is isolated", {
+  store <- InMemoryConversationStore$new()
+  rec <- new_conversation_record("chat a")
+  store$put(conversation_partition("chat-a", "browser-1"), rec)
+
+  expect_equal(
+    store$get(conversation_partition("chat-a", "browser-1"), rec$id)$id,
+    rec$id
+  )
+  expect_null(store$get(conversation_partition("chat-b", "browser-1"), rec$id))
+  expect_length(store$list(conversation_partition("chat-b", "browser-1")), 0)
+})
+
+test_that("namespaced chat ids are distinct partitions", {
+  store <- InMemoryConversationStore$new()
+  rec <- new_conversation_record("module one")
+  ns1 <- conversation_partition("mod1-chat", "browser-1")
+  ns2 <- conversation_partition("mod2-chat", "browser-1")
+
+  store$put(ns1, rec)
+
+  expect_equal(store$get(ns1, rec$id)$id, rec$id)
+  expect_null(store$get(ns2, rec$id))
+})
+
+test_that("chat_enable_history uses resolved id for partition chat id", {
+  skip_if_not_installed("ellmer")
+
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+
+  shiny::testServer(
+    function(input, output, session) {
+      chat_enable_history(
+        "mod-chat",
+        client,
+        options = history_options(
+          store = store,
+          scope = "browser-1",
+          title = NULL
+        ),
+        session = session
+      )
+    },
+    {
+      ctrl <- get_session_chat_bookmark_info(
+        session,
+        "mod-chat.history-controller"
+      )
+
+      session$setInputs("mod-chat_history_browser_token" = "tok-abc")
+
+      expect_equal(ctrl$partition$chat_id, session$ns("mod-chat"))
+      expect_equal(ctrl$partition$scope, "browser-1")
+
+      ctrl$on_response(list())
+
+      expect_equal(
+        store$list(
+          conversation_partition(session$ns("mod-chat"), "browser-1")
+        )[[1]]$id,
+        ctrl$record$id
+      )
+      expect_length(
+        store$list(conversation_partition("chat", "browser-1")),
+        0
+      )
+    }
+  )
+})
+
+test_that("chat_enable_history uses module namespace in partition chat id", {
+  skip_if_not_installed("ellmer")
+
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+
+  chat_mod <- function(id) {
+    shiny::moduleServer(id, function(input, output, session) {
+      chat_enable_history(
+        "chat",
+        client,
+        options = history_options(
+          store = store,
+          scope = "browser-1",
+          title = NULL
+        ),
+        session = session
+      )
+    })
+  }
+
+  shiny::testServer(chat_mod, args = list(id = "mod1"), {
+    ctrl <- get_session_chat_bookmark_info(
+      session,
+      "chat.history-controller"
+    )
+
+    session$setInputs(chat_history_browser_token = "tok-abc")
+
+    expect_equal(ctrl$partition$chat_id, session$ns("chat"))
+    expect_equal(ctrl$partition$scope, "browser-1")
+
+    ctrl$on_response(list())
+
+    expect_equal(
+      store$list(conversation_partition(session$ns("chat"), "browser-1"))[[
+        1
+      ]]$id,
+      ctrl$record$id
+    )
+    expect_length(store$list(conversation_partition("chat", "browser-1")), 0)
+  })
+})
+
 test_that("deprecated bookmark_on_input warns", {
   skip_if_not_installed("ellmer")
   client <- mock_chat_client()
@@ -129,8 +294,9 @@ test_that("HistoryController evicts oldest when over max_store_bytes", {
   # Pre-populate store with old conversations
   old1 <- new_conversation_record("old one")
   old2 <- new_conversation_record("old two")
-  store$put("user1", old1)
-  store$put("user1", old2)
+  partition <- conversation_partition("test", "user1")
+  store$put(partition, old1)
+  store$put(partition, old2)
 
   client <- mock_chat_client()
   controller <- HistoryController$new(
@@ -139,14 +305,14 @@ test_that("HistoryController evicts oldest when over max_store_bytes", {
     options = history_options(store = store, max_store_mb = 1e-6, title = NULL),
     session = shiny::MockShinySession$new()
   )
-  controller$scope <- "user1"
+  controller$partition <- partition
 
   # Trigger on_response with empty turns (saves a new record, then evicts old
   # ones). The active record alone still exceeds the (tiny) budget, so a
   # once-per-chat_id warning fires too.
   expect_warning(controller$on_response(list()), "exceeds")
 
-  metas <- store$list("user1")
+  metas <- store$list(partition)
   ids <- vapply(metas, `[[`, character(1L), "id")
 
   # Both pre-existing conversations should be evicted; new active one preserved
@@ -165,13 +331,13 @@ test_that("evict_if_needed calls list() once and never calls total_size (regress
     "SpyStore",
     inherit = InMemoryConversationStore,
     public = list(
-      list = function(scope) {
+      list = function(partition) {
         list_calls <<- list_calls + 1
-        super$list(scope)
+        super$list(partition)
       },
-      total_size = function(scope) {
+      total_size = function(partition) {
         total_size_calls <<- total_size_calls + 1
-        super$total_size(scope)
+        super$total_size(partition)
       }
     )
   )
@@ -180,9 +346,10 @@ test_that("evict_if_needed calls list() once and never calls total_size (regress
   rec1 <- new_conversation_record("oldest")
   rec2 <- new_conversation_record("middle")
   rec3 <- new_conversation_record("newest")
-  store$put("alice", rec1)
-  store$put("alice", rec2)
-  store$put("alice", rec3)
+  partition <- conversation_partition("test", "alice")
+  store$put(partition, rec1)
+  store$put(partition, rec2)
+  store$put(partition, rec3)
 
   controller <- HistoryController$new(
     chat_id = "test",
@@ -190,7 +357,7 @@ test_that("evict_if_needed calls list() once and never calls total_size (regress
     options = history_options(store = store, max_store_mb = 1e-6, title = NULL),
     session = shiny::MockShinySession$new()
   )
-  controller$scope <- "alice"
+  controller$partition <- partition
   controller$record <- rec3
 
   evict_if_needed <- controller$.__enclos_env__$private$evict_if_needed
@@ -203,7 +370,8 @@ test_that("evict_if_needed calls list() once and never calls total_size (regress
 test_that("evict_if_needed warns once (not on every response) when the active conversation alone exceeds the quota", {
   store <- InMemoryConversationStore$new()
   rec <- new_conversation_record("active")
-  store$put("user1", rec)
+  partition <- conversation_partition("warn-once-test", "user1")
+  store$put(partition, rec)
 
   client <- mock_chat_client()
   controller <- HistoryController$new(
@@ -212,7 +380,7 @@ test_that("evict_if_needed warns once (not on every response) when the active co
     options = history_options(store = store, max_store_mb = 1e-6, title = NULL),
     session = shiny::MockShinySession$new()
   )
-  controller$scope <- "user1"
+  controller$partition <- partition
   controller$record <- rec
 
   evict_if_needed <- controller$.__enclos_env__$private$evict_if_needed
@@ -230,7 +398,7 @@ test_that("HistoryController does not warn when total fits after eviction", {
     options = history_options(store = store, max_store_mb = 10, title = NULL),
     session = shiny::MockShinySession$new()
   )
-  controller$scope <- "user1"
+  controller$partition <- conversation_partition("test-no-warn", "user1")
 
   expect_no_warning(controller$on_response(list()))
 })
@@ -254,14 +422,15 @@ test_that("max_store_mb large enough to overflow a 32-bit integer does not produ
   expect_false(is.na(max_bytes))
   expect_equal(max_bytes, 2048 * 1024 * 1024)
 
-  controller$scope <- "user1"
+  controller$partition <- conversation_partition("test", "user1")
   expect_no_warning(expect_no_error(controller$on_response(list())))
 })
 
 test_that("FileConversationStore$total_size() does not overflow a 32-bit integer (regression)", {
   store <- FileConversationStore$new(dir = withr::local_tempdir())
   rec <- new_conversation_record("big")
-  store$put("user1", rec)
+  partition <- conversation_partition("test", "user1")
+  store$put(partition, rec)
 
   # as.integer(sum(file.size(files))) overflows past ~2GB and returns NA.
   # Stub file.size() to simulate a scope whose files exceed that threshold.
@@ -270,7 +439,7 @@ test_that("FileConversationStore$total_size() does not overflow a 32-bit integer
     .package = "base"
   )
 
-  total <- store$total_size("user1")
+  total <- store$total_size(partition)
   expect_false(is.na(total))
   expect_equal(total, 3e9)
 })
@@ -285,13 +454,12 @@ test_that("init waits for browser token when session$user is set (browser restor
   # token before scope resolves in browser/url restore modes.
   skip_if_not_installed("ellmer")
 
-  store <- InMemoryConversationStore$new()
-  rec <- new_conversation_record("Prior conversation")
-  store$put("testuser", rec)
-
   client <- mock_chat_client()
   session <- shiny::MockShinySession$new()
   session$user <- "testuser"
+  store <- InMemoryConversationStore$new()
+  rec <- new_conversation_record("Prior conversation")
+  store$put(conversation_partition(session$ns("chat"), "testuser"), rec)
 
   server <- function(input, output, session) {
     chat_enable_history(
@@ -330,13 +498,12 @@ test_that("set_client() does not re-render the UI or double-fire on_restore (reg
   # on_restore) a second time -- on every swap, not just an edge case.
   skip_if_not_installed("ellmer")
 
-  store <- InMemoryConversationStore$new()
-  rec <- new_conversation_record("Prior conversation")
-  store$put("testuser", rec)
-
   client <- mock_chat_client()
   session <- shiny::MockShinySession$new()
   session$user <- "testuser"
+  store <- InMemoryConversationStore$new()
+  rec <- new_conversation_record("Prior conversation")
+  store$put(conversation_partition(session$ns("chat"), "testuser"), rec)
 
   restore_count <- 0
   mod_ref <- NULL
@@ -375,7 +542,8 @@ test_that("set_client() does not re-render the UI or double-fire on_restore (reg
 test_that("HistoryController does not evict when no limit set", {
   store <- InMemoryConversationStore$new()
   old <- new_conversation_record("old")
-  store$put("user1", old)
+  partition <- conversation_partition("test", "user1")
+  store$put(partition, old)
 
   client <- mock_chat_client()
   controller <- HistoryController$new(
@@ -384,17 +552,18 @@ test_that("HistoryController does not evict when no limit set", {
     options = history_options(store = store, max_store_mb = NULL, title = NULL),
     session = shiny::MockShinySession$new()
   )
-  controller$scope <- "user1"
+  controller$partition <- partition
 
   controller$on_response(list())
 
-  expect_length(store$list("user1"), 2L) # old + new
+  expect_length(store$list(partition), 2L) # old + new
 })
 
 test_that("HistoryController evict_one removes the record from the store", {
   store <- InMemoryConversationStore$new()
   rec <- new_conversation_record("to evict")
-  store$put("user1", rec)
+  partition <- conversation_partition("test", "user1")
+  store$put(partition, rec)
 
   client <- mock_chat_client()
   controller <- HistoryController$new(
@@ -403,9 +572,9 @@ test_that("HistoryController evict_one removes the record from the store", {
     options = history_options(store = store, max_store_mb = NULL, title = NULL),
     session = shiny::MockShinySession$new()
   )
-  controller$scope <- "user1"
+  controller$partition <- partition
 
   controller$.__enclos_env__$private$evict_one(rec$id)
 
-  expect_null(store$get("user1", rec$id))
+  expect_null(store$get(partition, rec$id))
 })

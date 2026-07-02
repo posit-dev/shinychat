@@ -26,7 +26,10 @@ from typing import Any, Callable
 
 import pytest
 from shinychat._history import HistoryController
-from shinychat._history_store import InMemoryConversationStore
+from shinychat._history_store import (
+    ConversationPartition,
+    InMemoryConversationStore,
+)
 from test_history_controller import _NavFakeAdapter, _NavFakeChat
 
 MATRIX_PATH = (
@@ -38,7 +41,9 @@ MATRIX_PATH = (
 MATRIX: list[dict[str, Any]] = json.loads(MATRIX_PATH.read_text())
 
 
-def _make_matrix_controller() -> tuple[HistoryController, InMemoryConversationStore]:
+def _make_matrix_controller() -> tuple[
+    HistoryController, InMemoryConversationStore
+]:
     store = InMemoryConversationStore()
     controller = HistoryController(
         chat=_NavFakeChat(),  # type: ignore[arg-type]
@@ -48,7 +53,9 @@ def _make_matrix_controller() -> tuple[HistoryController, InMemoryConversationSt
         title_enabled=False,
         client=None,
     )
-    controller.scope = "matrix-scope"
+    controller.partition = ConversationPartition(
+        chat_id="matrix-test", scope="matrix-scope"
+    )
     return controller, store
 
 
@@ -71,7 +78,9 @@ async def _check_rename(ctx: dict[str, Any]) -> None:
 
 async def _check_delete(ctx: dict[str, Any]) -> None:
     assert ctx["controller"].record is None
-    remaining = await ctx["store"].list(ctx["controller"].scope)
+    partition = ctx["controller"].partition
+    assert partition is not None
+    remaining = await ctx["store"].list(partition)
     assert ctx["active_id"] not in {m.id for m in remaining}
 
 

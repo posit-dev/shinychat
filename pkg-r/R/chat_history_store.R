@@ -1,22 +1,48 @@
+#' Create a conversation storage partition
+#'
+#' A storage partition combines the resolved/namespaced chat id with the owner
+#' scope used by a `ConversationStore`.
+#'
+#' @param chat_id Resolved chat id, including module namespace when applicable.
+#' @param scope Owner scope: explicit scope, authenticated user, or browser token.
+#' @returns A `shinychat_conversation_partition` object for `ConversationStore`.
+#' @export
+conversation_partition <- function(chat_id, scope) {
+  structure(
+    list(
+      chat_id = as.character(chat_id)[[1L]],
+      scope = as.character(scope)[[1L]]
+    ),
+    class = "shinychat_conversation_partition"
+  )
+}
+
+partition_key <- function(partition) {
+  if (!inherits(partition, "shinychat_conversation_partition")) {
+    rlang::abort("`partition` must be a shinychat conversation partition.")
+  }
+  rlang::hash(list(chat_id = partition$chat_id, scope = partition$scope))
+}
+
 #' Abstract base class for conversation storage backends
 #' @export
 ConversationStore <- R6::R6Class(
   "ConversationStore",
   public = list(
-    list = function(scope) {
+    list = function(partition) {
       rlang::abort("ConversationStore$list() must be implemented by subclass")
     },
-    get = function(scope, id) {
+    get = function(partition, id) {
       rlang::abort("ConversationStore$get() must be implemented by subclass")
     },
-    put = function(scope, record) {
+    put = function(partition, record) {
       rlang::abort("ConversationStore$put() must be implemented by subclass")
     },
-    delete = function(scope, id) {
+    delete = function(partition, id) {
       rlang::abort("ConversationStore$delete() must be implemented by subclass")
     },
-    search = function(scope, query) {
-      all <- self$list(scope)
+    search = function(partition, query) {
+      all <- self$list(partition)
       query_lower <- tolower(query)
       Filter(
         function(m) grepl(query_lower, tolower(m$title), fixed = TRUE),
@@ -25,8 +51,8 @@ ConversationStore <- R6::R6Class(
     },
     # Derived from list()'s per-record size_bytes -- backends don't need to
     # override this unless they have a cheaper way to compute it.
-    total_size = function(scope) {
-      sum(vapply(self$list(scope), function(m) m$size_bytes, double(1L)))
+    total_size = function(partition) {
+      sum(vapply(self$list(partition), function(m) m$size_bytes, double(1L)))
     }
   )
 )
@@ -43,38 +69,41 @@ InMemoryConversationStore <- R6::R6Class(
       private$data <- list()
       private$meta_cache <- list()
     },
-    list = function(scope) {
-      cached <- private$meta_cache[[scope]]
+    list = function(partition) {
+      key <- partition_key(partition)
+      cached <- private$meta_cache[[key]]
       if (!is.null(cached)) {
         return(cached)
       }
 
-      scope_data <- private$data[[scope]]
-      if (is.null(scope_data) || length(scope_data) == 0) {
-        private$meta_cache[[scope]] <- list()
+      partition_data <- private$data[[key]]
+      if (is.null(partition_data) || length(partition_data) == 0) {
+        private$meta_cache[[key]] <- list()
         return(list())
       }
-      metas <- lapply(scope_data, function(r) {
+      metas <- lapply(partition_data, function(r) {
         record_meta(r, size_bytes = record_json_size(r))
       })
       timestamps <- vapply(metas, function(m) m$updated_at, character(1))
       metas <- metas[order(timestamps, decreasing = TRUE)]
-      private$meta_cache[[scope]] <- metas
+      private$meta_cache[[key]] <- metas
       metas
     },
-    get = function(scope, id) {
-      private$data[[scope]][[id]]
+    get = function(partition, id) {
+      key <- partition_key(partition)
+      private$data[[key]][[id]]
     },
-    put = function(scope, record) {
-      if (is.null(private$data[[scope]])) {
-        private$data[[scope]] <- list()
+    put = function(partition, record) {
+      key <- partition_key(partition)
+      if (is.null(private$data[[key]])) {
+        private$data[[key]] <- list()
       }
-      private$data[[scope]][[record$id]] <- record
+      private$data[[key]][[record$id]] <- record
 
       # Only touched-record work -- mirrors FileConversationStore.put(), so
       # a warm cache stays warm without resumming/reserializing everything
-      # in scope (the cost evict_if_needed would otherwise pay every turn).
-      cache <- private$meta_cache[[scope]]
+      # in a partition (the cost evict_if_needed would otherwise pay every turn).
+      cache <- private$meta_cache[[key]]
       if (!is.null(cache)) {
         cache <- Filter(function(m) m$id != record$id, cache)
         cache <- c(
@@ -83,16 +112,17 @@ InMemoryConversationStore <- R6::R6Class(
         )
         timestamps <- vapply(cache, function(m) m$updated_at, character(1))
         cache <- cache[order(timestamps, decreasing = TRUE)]
-        private$meta_cache[[scope]] <- cache
+        private$meta_cache[[key]] <- cache
       }
       invisible(NULL)
     },
-    delete = function(scope, id) {
-      private$data[[scope]][[id]] <- NULL
+    delete = function(partition, id) {
+      key <- partition_key(partition)
+      private$data[[key]][[id]] <- NULL
 
-      cache <- private$meta_cache[[scope]]
+      cache <- private$meta_cache[[key]]
       if (!is.null(cache)) {
-        private$meta_cache[[scope]] <- Filter(function(m) m$id != id, cache)
+        private$meta_cache[[key]] <- Filter(function(m) m$id != id, cache)
       }
       invisible(NULL)
     }
@@ -147,11 +177,15 @@ FileConversationStore <- R6::R6Class(
     dir = NULL,
     meta_cache = NULL,
 
-    scope_dir = function(scope) {
+    partition_dir = function(partition) {
       if (is.null(private$dir)) {
         private$dir <- resolve_history_dir()
       }
-      file.path(private$dir, sanitize_scope(scope))
+      file.path(
+        private$dir,
+        sanitize_scope(partition$chat_id),
+        sanitize_scope(partition$scope)
+      )
     }
   ),
   public = list(
@@ -160,19 +194,20 @@ FileConversationStore <- R6::R6Class(
       private$meta_cache <- list()
     },
 
-    list = function(scope) {
-      cached <- private$meta_cache[[scope]]
+    list = function(partition) {
+      key <- partition_key(partition)
+      cached <- private$meta_cache[[key]]
       if (!is.null(cached)) {
         return(cached)
       }
 
-      sdir <- private$scope_dir(scope)
-      if (!dir.exists(sdir)) {
-        private$meta_cache[[scope]] <- list()
+      pdir <- private$partition_dir(partition)
+      if (!dir.exists(pdir)) {
+        private$meta_cache[[key]] <- list()
         return(list())
       }
 
-      files <- list.files(sdir, pattern = "\\.json$", full.names = TRUE)
+      files <- list.files(pdir, pattern = "\\.json$", full.names = TRUE)
       metas <- Filter(
         Negate(is.null),
         lapply(files, function(f) {
@@ -197,25 +232,26 @@ FileConversationStore <- R6::R6Class(
       )
       timestamps <- vapply(metas, function(m) m$updated_at, character(1))
       metas <- metas[order(timestamps, decreasing = TRUE)]
-      private$meta_cache[[scope]] <- metas
+      private$meta_cache[[key]] <- metas
       metas
     },
 
-    get = function(scope, id) {
-      path <- safe_conv_path(private$scope_dir(scope), id)
+    get = function(partition, id) {
+      path <- safe_conv_path(private$partition_dir(partition), id)
       if (!file.exists(path)) {
         return(NULL)
       }
       jsonlite::fromJSON(path, simplifyVector = FALSE)
     },
 
-    put = function(scope, record) {
-      sdir <- private$scope_dir(scope)
-      dir.create(sdir, recursive = TRUE, showWarnings = FALSE)
+    put = function(partition, record) {
+      key <- partition_key(partition)
+      pdir <- private$partition_dir(partition)
+      dir.create(pdir, recursive = TRUE, showWarnings = FALSE)
 
-      path <- safe_conv_path(sdir, record$id)
+      path <- safe_conv_path(pdir, record$id)
       json <- jsonlite::toJSON(record, auto_unbox = TRUE, null = "null")
-      tmp <- tempfile(tmpdir = sdir, fileext = ".json.tmp")
+      tmp <- tempfile(tmpdir = pdir, fileext = ".json.tmp")
       on.exit(unlink(tmp), add = TRUE)
       writeLines(json, tmp)
       ok <- file_move(tmp, path)
@@ -223,7 +259,7 @@ FileConversationStore <- R6::R6Class(
         rlang::abort(paste0("Failed to write conversation: ", path))
       }
 
-      cache <- private$meta_cache[[scope]]
+      cache <- private$meta_cache[[key]]
       if (!is.null(cache)) {
         cache <- Filter(function(m) m$id != record$id, cache)
         cache <- c(
@@ -232,24 +268,36 @@ FileConversationStore <- R6::R6Class(
         )
         timestamps <- vapply(cache, function(m) m$updated_at, character(1))
         cache <- cache[order(timestamps, decreasing = TRUE)]
-        private$meta_cache[[scope]] <- cache
+        private$meta_cache[[key]] <- cache
       }
 
       invisible(NULL)
     },
 
-    delete = function(scope, id) {
-      path <- safe_conv_path(private$scope_dir(scope), id)
+    delete = function(partition, id) {
+      key <- partition_key(partition)
+      path <- safe_conv_path(private$partition_dir(partition), id)
       unlink(path)
 
-      cache <- private$meta_cache[[scope]]
+      cache <- private$meta_cache[[key]]
       if (!is.null(cache)) {
-        private$meta_cache[[scope]] <- Filter(function(m) m$id != id, cache)
+        private$meta_cache[[key]] <- Filter(function(m) m$id != id, cache)
       }
       invisible(NULL)
     }
   )
 )
+
+auto_dev_memory_store_env <- new.env(parent = emptyenv())
+
+auto_dev_memory_store <- function() {
+  store <- auto_dev_memory_store_env[["store"]]
+  if (is.null(store)) {
+    store <- InMemoryConversationStore$new()
+    auto_dev_memory_store_env[["store"]] <- store
+  }
+  store
+}
 
 resolve_store <- function(store) {
   if (inherits(store, "ConversationStore")) {
@@ -266,7 +314,7 @@ resolve_store <- function(store) {
           .frequency = "once",
           .frequency_id = "shinychat_store_auto_memory"
         )
-        InMemoryConversationStore$new()
+        auto_dev_memory_store()
       } else {
         cli::cli_inform(
           "Chat history: using file-based storage. To use in-memory storage instead, use {.code history_options(store = \"memory\")}.",

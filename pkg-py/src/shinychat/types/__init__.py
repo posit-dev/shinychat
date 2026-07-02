@@ -3,7 +3,11 @@ from .._chat import ChatMessage, ChatMessageDict
 from .._chat_client import ChatClient
 from .._chat_types import ChatGreeting
 from .._history import HistoryOptions
-from .._history_store import ConversationStore, FileConversationStore
+from .._history_store import (
+    ConversationPartition,
+    ConversationStore,
+    FileConversationStore,
+)
 from .._history_types import ConversationMeta, ConversationRecord
 
 try:
@@ -29,6 +33,7 @@ __all__ = [
     "ChatMessage",
     "ChatMessageDict",
     "ConversationMeta",
+    "ConversationPartition",
     "ConversationRecord",
     "ConversationStore",
     "FileConversationStore",
