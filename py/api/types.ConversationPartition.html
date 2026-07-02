@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>index – shinychat</title>
+<title>types.conversationpartition – shinychat</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -19,6 +19,41 @@ ul.task-list li input[type="checkbox"] {
   width: 0.8em;
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
 }
 </style>
 
@@ -76,8 +111,10 @@ ul.task-list li input[type="checkbox"] {
 
 
 <meta property="og:title" content="shinychat">
+<meta property="og:description" content="Chat UI Component for Shiny">
 <meta property="og:site_name" content="shinychat">
 <meta name="twitter:title" content="shinychat">
+<meta name="twitter:description" content="Chat UI Component for Shiny">
 <meta name="twitter:card" content="summary">
 </head>
 
@@ -132,7 +169,7 @@ ul.task-list li input[type="checkbox"] {
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../api/index.html">shinychat Reference</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../api/types.HistoryOptions.html">Conversation history</a></li><li class="breadcrumb-item"><a href="../api/types.ConversationPartition.html">types.ConversationPartition</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
     </div>
@@ -146,7 +183,7 @@ ul.task-list li input[type="checkbox"] {
     <ul class="list-unstyled mt-1">
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../api/index.html" class="sidebar-item-text sidebar-link active">
+  <a href="../api/index.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">shinychat Reference</span></a>
   </div>
 </li>
@@ -231,7 +268,7 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../api/types.ConversationPartition.html" class="sidebar-item-text sidebar-link">
+  <a href="../api/types.ConversationPartition.html" class="sidebar-item-text sidebar-link active">
  <span class="menu-text">types.ConversationPartition</span></a>
   </div>
 </li>
@@ -288,110 +325,23 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#shinychat-reference" id="toc-shinychat-reference" class="nav-link active" data-scroll-target="#shinychat-reference">shinychat Reference</a>
-  <ul class="collapse">
-  <li><a href="#shiny-core" id="toc-shiny-core" class="nav-link" data-scroll-target="#shiny-core">Shiny Core</a></li>
-  <li><a href="#shiny-express" id="toc-shiny-express" class="nav-link" data-scroll-target="#shiny-express">Shiny Express</a></li>
-  <li><a href="#conversation-history" id="toc-conversation-history" class="nav-link" data-scroll-target="#conversation-history">Conversation history</a></li>
-  <li><a href="#testing" id="toc-testing" class="nav-link" data-scroll-target="#testing">Testing</a></li>
-  </ul></li>
+  <li><a href="#shinychat.types.ConversationPartition" id="toc-shinychat.types.ConversationPartition" class="nav-link active" data-scroll-target="#shinychat.types.ConversationPartition">types.ConversationPartition</a></li>
   </ul>
-<div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/shinychat/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li><li><a href="https://github.com/posit-dev/shinychat/edit/main/pkg-py/docs/api/index.qmd" class="toc-action"><i class="bi empty"></i>Edit this page</a></li></ul></div></nav>
+<div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/shinychat/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li><li><a href="https://github.com/posit-dev/shinychat/edit/main/pkg-py/docs/api/types.ConversationPartition.qmd" class="toc-action"><i class="bi empty"></i>Edit this page</a></li></ul></div></nav>
     </div>
 <!-- main -->
-<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"></header>
+<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../api/types.HistoryOptions.html">Conversation history</a></li><li class="breadcrumb-item"><a href="../api/types.ConversationPartition.html">types.ConversationPartition</a></li></ol></nav></header>
 
 
 
 
-<section id="shinychat-reference" class="level1 doc doc-index">
-<h1 class="doc doc-index">shinychat Reference</h1>
-<section id="shiny-core" class="level2">
-<h2 class="anchored" data-anchor-id="shiny-core">Shiny Core</h2>
-<table class="caption-top table">
-<tbody>
-<tr class="odd">
-<td><a href="../api/Chat.html#shinychat.Chat">Chat</a></td>
-<td>Create a chat interface.</td>
-</tr>
-<tr class="even">
-<td><a href="../api/types.ChatClient.html#shinychat.types.ChatClient">types.ChatClient</a></td>
-<td>Wraps a chatlas client bound to a :class:<code>~shinychat.Chat</code> instance.</td>
-</tr>
-<tr class="odd">
-<td><a href="../api/types.ChatMessage.html#shinychat.types.ChatMessage">types.ChatMessage</a></td>
-<td></td>
-</tr>
-<tr class="even">
-<td><a href="../api/types.Attachment.html#shinychat.types.Attachment">types.Attachment</a></td>
-<td>An image, PDF, or text file to attach to a chat message.</td>
-</tr>
-<tr class="odd">
-<td><a href="../api/chat_ui.html#shinychat.chat_ui">chat_ui</a></td>
-<td>UI container for a chat component (Shiny Core).</td>
-</tr>
-<tr class="even">
-<td><a href="../api/chat_greeting.html#shinychat.chat_greeting">chat_greeting</a></td>
-<td>Create a greeting for a chat UI.</td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="shiny-express" class="level2">
-<h2 class="anchored" data-anchor-id="shiny-express">Shiny Express</h2>
-<table class="caption-top table">
-<tbody>
-<tr class="odd">
-<td><a href="../api/express.Chat.html#shinychat.express.Chat">express.Chat</a></td>
-<td></td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="conversation-history" class="level2">
-<h2 class="anchored" data-anchor-id="conversation-history">Conversation history</h2>
-<table class="caption-top table">
-<tbody>
-<tr class="odd">
-<td><a href="../api/types.HistoryOptions.html#shinychat.types.HistoryOptions">types.HistoryOptions</a></td>
-<td>Configuration for :class:<code>~shinychat.Chat</code> conversation history.</td>
-</tr>
-<tr class="even">
-<td><a href="../api/types.ConversationPartition.html#shinychat.types.ConversationPartition">types.ConversationPartition</a></td>
-<td>Storage partition for a chat history collection.</td>
-</tr>
-<tr class="odd">
-<td><a href="../api/types.ConversationStore.html#shinychat.types.ConversationStore">types.ConversationStore</a></td>
-<td>Storage interface for chat conversation history.</td>
-</tr>
-<tr class="even">
-<td><a href="../api/types.FileConversationStore.html#shinychat.types.FileConversationStore">types.FileConversationStore</a></td>
-<td>Default store: each conversation is a directory at</td>
-</tr>
-<tr class="odd">
-<td><a href="../api/types.ConversationRecord.html#shinychat.types.ConversationRecord">types.ConversationRecord</a></td>
-<td></td>
-</tr>
-<tr class="even">
-<td><a href="../api/types.ConversationMeta.html#shinychat.types.ConversationMeta">types.ConversationMeta</a></td>
-<td></td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="testing" class="level2">
-<h2 class="anchored" data-anchor-id="testing">Testing</h2>
-<table class="caption-top table">
-<tbody>
-<tr class="odd">
-<td><a href="../api/playwright.ChatController.html#shinychat.playwright.ChatController">playwright.ChatController</a></td>
-<td>Controller for :func:<code>shiny.ui.chat</code>.</td>
-</tr>
-</tbody>
-</table>
+<section id="shinychat.types.ConversationPartition" class="level1">
+<h1>types.ConversationPartition</h1>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>types.ConversationPartition(chat_id, scope)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Storage partition for a chat history collection.</p>
+<p><code>chat_id</code> is the resolved/namespaced chat id. <code>scope</code> is the owner namespace: explicit scope, authenticated user, or browser token.</p>
 
 
-</section>
 </section>
 
 </main> <!-- /main -->
@@ -802,7 +752,7 @@ ul.task-list li input[type="checkbox"] {
 </div>   
     <div class="nav-footer-center">
       &nbsp;
-    <div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/posit-dev/shinychat/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li><li><a href="https://github.com/posit-dev/shinychat/edit/main/pkg-py/docs/api/index.qmd" class="toc-action"><i class="bi empty"></i>Edit this page</a></li></ul></div></div>
+    <div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/posit-dev/shinychat/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li><li><a href="https://github.com/posit-dev/shinychat/edit/main/pkg-py/docs/api/types.ConversationPartition.qmd" class="toc-action"><i class="bi empty"></i>Edit this page</a></li></ul></div></div>
     <div class="nav-footer-right">
       &nbsp;
     </div>

@@ -254,12 +254,59 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
         <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
             <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true">
- <span class="menu-text">Testing</span></a>
+ <span class="menu-text">Conversation history</span></a>
           <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
           </a> 
       </div>
       <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../api/types.HistoryOptions.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">types.HistoryOptions</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../api/types.ConversationPartition.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">types.ConversationPartition</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../api/types.ConversationStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">types.ConversationStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../api/types.FileConversationStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">types.FileConversationStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../api/types.ConversationRecord.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">types.ConversationRecord</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../api/types.ConversationMeta.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">types.ConversationMeta</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" role="navigation" aria-expanded="true">
+ <span class="menu-text">Testing</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-4" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="../api/playwright.ChatController.html" class="sidebar-item-text sidebar-link">
@@ -318,11 +365,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="bu">id</span>,</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    client<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    greeting<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    messages<span class="op">=</span>(),</span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    on_error<span class="op">=</span><span class="st">'auto'</span>,</span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    tokenizer<span class="op">=</span>DEPRECATED,</span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    history<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    greeting<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    messages<span class="op">=</span>(),</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    on_error<span class="op">=</span><span class="st">'auto'</span>,</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    tokenizer<span class="op">=</span>DEPRECATED,</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Create a chat interface.</p>
 <p>A UI component for building conversational interfaces. With it, end users can submit messages, which will cause a <code>.on_user_submit()</code> callback to run. That callback gets passed the user input message, which can be used to generate a response. The response can then be appended to the chat using <code>.append_message()</code> or <code>.append_message_stream()</code>.</p>
 <p>Here’s a rough outline for how to implement a <code>Chat</code>:</p>
@@ -378,28 +426,34 @@ to indicate what you're currently reasoning about. For example:
 <tr class="even">
 <td>client</td>
 <td>'chatlas.Chat[Any, Any] | None'</td>
-<td>A chatlas client (e.g., <code>chatlas.ChatOpenAI()</code>). When provided, streaming, cancellation, and bookmarking are wired up automatically. This includes registering an :meth:<code>~shinychat.Chat.on_user_submit</code> callback that streams the client’s response to each user message, so you don’t need to write one yourself. Any additional <code>@chat.on_user_submit</code> handlers you register still run, in addition to (not in place of) this one. The resulting :attr:<code>chat.client</code> exposes a :class:<code>~shinychat.types.ChatClient</code> wrapper for swapping models mid-session (<code>.set()</code>) and resetting the conversation (<code>.clear()</code>).</td>
+<td>A chatlas client (e.g., <code>chatlas.ChatOpenAI()</code>). When provided, streaming, cancellation, and conversation history are wired up automatically. This includes registering an :meth:<code>~shinychat.Chat.on_user_submit</code> callback that streams the client’s response to each user message, so you don’t need to write one yourself. Any additional <code>@chat.on_user_submit</code> handlers you register still run, in addition to (not in place of) this one. The resulting :attr:<code>chat.client</code> exposes a :class:<code>~shinychat.types.ChatClient</code> wrapper for swapping models (<code>.set()</code>) and resetting the conversation (<code>.clear()</code>).</td>
 <td><code>None</code></td>
 </tr>
 <tr class="odd">
+<td>history</td>
+<td>'bool | HistoryOptions'</td>
+<td>Conversation history configuration. <code>True</code> (the default) enables history with default settings; <code>False</code> disables it; pass a :class:<code>~shinychat.types.HistoryOptions</code> instance to customise restore behaviour, storage, user identity, or titling. Only takes effect when a <code>client=</code> is also provided.</td>
+<td><code>True</code></td>
+</tr>
+<tr class="even">
 <td>greeting</td>
 <td>'str | HTML | Tag | TagList | ChatGreeting | Callable[…, Any] | None'</td>
 <td>Content to display as a welcome message before any conversation. Can be a string, :class:<code>~htmltools.HTML</code>, :class:<code>~htmltools.Tag</code>, :class:<code>~htmltools.TagList</code>, :class:<code>~shinychat.chat_greeting</code>, or a callable that returns one of those types. A callable greeting is invoked when the chat is visible and empty; if the callable accepts a <code>client</code> parameter (and <code>client=</code> was provided), a deep-copy of the chatlas client with empty turns is passed so the greeting can be LLM-generated without polluting conversation history.</td>
 <td><code>None</code></td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>messages</td>
 <td><a href="`typing.Sequence`">Sequence</a>[<a href="`typing.Any`">Any</a>]</td>
 <td>Deprecated. Use <code>chat.ui(messages=...)</code> instead.</td>
 <td><code>()</code></td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>on_error</td>
 <td><a href="`typing.Literal`">Literal</a>['auto', 'actual', 'sanitize', 'unhandled']</td>
 <td>How to handle errors that occur in response to user input. When <code>"unhandled"</code>, the app will stop running when an error occurs. Otherwise, a notification is displayed to the user and the app continues to run. * <code>"auto"</code>: Sanitize the error message if the app is set to sanitize errors, otherwise display the actual error message. * <code>"actual"</code>: Display the actual error message to the user. * <code>"sanitize"</code>: Sanitize the error message before displaying it to the user. * <code>"unhandled"</code>: Do not display any error message to the user.</td>
 <td><code>'auto'</code></td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>tokenizer</td>
 <td><a href="`shinychat._utils_types.DEPRECATED_TYPE`">DEPRECATED_TYPE</a></td>
 <td>Removed. Raises <code>TypeError</code> if provided. Use your LLM provider (e.g., chatlas, LangChain) to manage token limits instead.</td>
