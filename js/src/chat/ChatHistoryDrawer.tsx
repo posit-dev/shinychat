@@ -110,7 +110,11 @@ export function ChatHistoryDrawer({
         if (focusable.length === 0) return
         const first = focusable[0]!
         const last = focusable[focusable.length - 1]!
-        if (e.shiftKey && document.activeElement === first) {
+        // Initial focus is on the dialog container (tabIndex -1, not in
+        // `focusable`); treat it like "before first" so Shift+Tab wraps to the
+        // end instead of escaping backward to the page.
+        const onContainer = document.activeElement === drawer
+        if (e.shiftKey && (document.activeElement === first || onContainer)) {
           e.preventDefault()
           last.focus()
         } else if (!e.shiftKey && document.activeElement === last) {
