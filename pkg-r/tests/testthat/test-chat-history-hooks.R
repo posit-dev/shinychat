@@ -10,7 +10,7 @@ test_that("on_save callback fires and values are stored", {
     captured <<- values
     values
   })
-  ctrl$scope <- "alice"
+  ctrl$partition <- conversation_partition("test", "alice")
 
   user_turn <- list(
     class = "ellmer::UserTurn",
@@ -54,7 +54,7 @@ test_that("on_restore callback fires on switch", {
   ctrl$add_restore_callback(function(values) {
     restored <<- values
   })
-  ctrl$scope <- "alice"
+  ctrl$partition <- conversation_partition("test", "alice")
 
   user_turn <- list(
     class = "ellmer::UserTurn",
@@ -87,9 +87,10 @@ test_that("on_restore callback fires on switch", {
 
   ctrl$new_chat()
 
-  record <- store$get("alice", record_id)
+  partition <- conversation_partition("test", "alice")
+  record <- store$get(partition, record_id)
   record$values <- list(x = 42)
-  store$put("alice", record)
+  store$put(partition, record)
 
   ctrl$switch_to(record_id)
   expect_equal(restored$x, 42)
@@ -105,7 +106,7 @@ test_that("on_restore does NOT fire on new_chat by default", {
   ctrl$add_restore_callback(function(values) {
     restored <<- values
   })
-  ctrl$scope <- "alice"
+  ctrl$partition <- conversation_partition("test", "alice")
 
   user_turn <- list(
     class = "ellmer::UserTurn",
@@ -149,7 +150,7 @@ test_that("on_response with no new turns does not overwrite saved values", {
     values$accent <- accent
     values
   })
-  ctrl$scope <- "alice"
+  ctrl$partition <- conversation_partition("test", "alice")
 
   user_turn <- list(
     class = "ellmer::UserTurn",
