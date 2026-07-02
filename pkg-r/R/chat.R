@@ -118,6 +118,18 @@ chat_greeting <- function(
 #' `id="my_chat"`, user input will be at `input$my_chat_user_input`), and use
 #' [chat_append()] to append messages to the chat.
 #'
+#' The chat also reports the client's current rendered message transcript as
+#' `input$ID_messages` (for example, `input$my_chat_messages`), tagged
+#' `shinychat.messages`. It updates every time a message finishes rendering
+#' or streaming (a "settle point"), and is a list of message objects:
+#' `list(role =, segments = list(list(content =, content_type =), ...))`,
+#' plus optional `htmlDeps` and `attachments` fields when present.
+#' [chat_enable_history()] reads this internally to persist and restore
+#' exactly what was rendered — including raw HTML and Shiny UI dependencies —
+#' across a conversation switch or reload. It's exposed for advanced,
+#' read-only use (for example, custom logging or export); it is not an input
+#' you write to.
+#'
 #' @section Greeting:
 #'
 #' A greeting is an optional welcome message shown before any conversation
@@ -782,6 +794,25 @@ chat_append_message <- function(
   }
 
   invisible(NULL)
+}
+
+restore_history_message <- function(chat_id, message, session) {
+  message_payload <- list(
+    role = message$role,
+    segments = lapply(message$segments, function(seg) {
+      list(content = seg$content, content_type = seg$content_type)
+    })
+  )
+  if (!is.null(message$attachments) && length(message$attachments) > 0) {
+    message_payload$attachments <- message$attachments
+  }
+  action <- list(type = "message", message = message_payload)
+  send_chat_action(
+    chat_id,
+    action = action,
+    html_deps = message$htmlDeps,
+    session = session
+  )
 }
 
 chat_append_stream <- function(

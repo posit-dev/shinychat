@@ -21,6 +21,11 @@ delete_bookmark_state <- function(state_id) {
   invisible()
 }
 
+get_reported_messages <- function(session, chat_id) {
+  value <- shiny::isolate(session$input[[paste0(chat_id, "_messages")]])
+  if (is.null(value)) list() else value
+}
+
 bookmark_state_paths <- function(state_id) {
   app_dir <- shiny::getShinyOption("appDir", default = getwd())
   paths <- file.path(app_dir, "shiny_bookmarks", state_id)
@@ -38,6 +43,7 @@ HistoryController <- R6::R6Class(
   public = list(
     partition = NULL,
     record = NULL,
+    ui_offset = 0,
     is_replaying = FALSE,
     suppress_next_save = FALSE,
     on_active_id_change = NULL,
@@ -79,10 +85,14 @@ HistoryController <- R6::R6Class(
         rlang::abort("History controller partition not set")
       }
 
+      messages <- get_reported_messages(private$session, private$chat_id)
+
       first_save <- is.null(self$record)
       if (!first_save) {
-        existing_count <- length(record_path_node_ids(self$record))
-        if (length(recorded_turns) <= existing_count) {
+        if (
+          length(recorded_turns) <= record_turn_count(self$record) &&
+            length(messages) <= record_ui_count(self$record)
+        ) {
           return(invisible())
         }
       }
@@ -94,7 +104,14 @@ HistoryController <- R6::R6Class(
         )
       }
 
-      self$record <- extend_record_linear(self$record, recorded_turns)
+      self$record <- extend_record_linear(
+        self$record,
+        recorded_turns,
+        ui_messages = messages,
+        ui_offset = self$ui_offset,
+        tools = private$client$get_tools()
+      )
+      self$ui_offset <- length(messages)
       self$record$response_count <- (self$record$response_count %||% 0L) + 1L
       self$record$values <- private$capture_app_state()
 
@@ -159,6 +176,7 @@ HistoryController <- R6::R6Class(
       private$client$set_turns(list())
       chat_clear(private$chat_id, session = private$session)
       self$record <- NULL
+      self$ui_offset <- 0
       if (!is.null(self$on_active_id_change)) {
         self$on_active_id_change(NULL)
       }
@@ -195,6 +213,7 @@ HistoryController <- R6::R6Class(
 
       if (!is.null(self$record) && identical(conv_id, self$record$id)) {
         self$record <- NULL
+        self$ui_offset <- 0
         if (!is.null(self$on_active_id_change)) {
           self$on_active_id_change(NULL)
         }
@@ -219,15 +238,45 @@ HistoryController <- R6::R6Class(
 
       chat_clear(private$chat_id, session = private$session)
 
-      turns <- record_path_turns(record)
-      if (length(turns) > 0) {
-        set_turns_recorded(private$client, turns)
-        # Turn content round-trips losslessly via ellmer's contents_record()/
-        # contents_replay(); the UI below is then re-rendered from those turns.
-        shiny::withReactiveDomain(private$session, {
-          client_set_ui(private$client, id = private$chat_id)
-        })
-      }
+      restored_count <- 0L
+      shiny::withReactiveDomain(private$session, {
+        for (node_id in record_path_node_ids(record)) {
+          node <- record$nodes[[node_id]]
+          stored <- node$ui
+          if (is.null(stored)) {
+            last_turn <- node$turns[[length(node$turns)]]
+            last_turn_live <- ellmer::contents_replay(
+              last_turn,
+              tools = private$client$get_tools()
+            )
+            stored <- list(
+              list(
+                role = ellmer_turn_effective_role(last_turn_live),
+                segments = list(
+                  list(
+                    content = turn_fallback_markdown(last_turn),
+                    content_type = "markdown"
+                  )
+                )
+              )
+            )
+          }
+          for (message in stored) {
+            restore_history_message(
+              private$chat_id,
+              message,
+              session = private$session
+            )
+            restored_count <- restored_count + 1L
+          }
+        }
+      })
+
+      # ui_offset must reflect the messages the client will report for the
+      # restored conversation. The client's echo of this replay is async and
+      # hasn't arrived yet at this synchronous point, so count what was
+      # actually just sent instead of reading session$input.
+      self$ui_offset <- restored_count
 
       private$session$onFlushed(
         function() {
@@ -248,7 +297,15 @@ HistoryController <- R6::R6Class(
       }
 
       recorded_turns <- get_turns_recorded(private$client)
-      self$record <- extend_record_linear(self$record, recorded_turns)
+      messages <- get_reported_messages(private$session, private$chat_id)
+      self$record <- extend_record_linear(
+        self$record,
+        recorded_turns,
+        ui_messages = messages,
+        ui_offset = self$ui_offset,
+        tools = private$client$get_tools()
+      )
+      self$ui_offset <- length(messages)
       self$record$values <- private$capture_app_state()
       private$store$put(self$partition, self$record)
     },
@@ -544,7 +601,10 @@ chat_enable_history <- function(
       "_history_select",
       "_history_new",
       "_history_rename",
-      "_history_delete"
+      "_history_delete",
+      # Carries StoredMessage-like list objects, which aren't
+      # JSON-serializable for Shiny's bookmark input.json.
+      "_messages"
     )
   )
   excluded <- session$getBookmarkExclude()
@@ -720,6 +780,8 @@ chat_enable_history <- function(
             if (!identical(restore_mode, "bookmark")) {
               restore_after_first_flush(target$values)
             }
+          } else {
+            controller$ui_offset <- record_ui_count(target)
           }
           controller$record <- target
           controller$send_history_update()
@@ -745,6 +807,8 @@ chat_enable_history <- function(
         if (restore_ui) {
           controller$replay_ui(target)
           restore_after_first_flush(target$values)
+        } else {
+          controller$ui_offset <- record_ui_count(target)
         }
         controller$record <- target
       }

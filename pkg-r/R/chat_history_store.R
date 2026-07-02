@@ -191,7 +191,7 @@ safe_conv_path <- function(scope_dir, conv_id) {
   if (!grepl(CONV_ID_RE, conv_id)) {
     rlang::abort(paste0("Invalid conversation ID: ", conv_id))
   }
-  file.path(scope_dir, paste0(conv_id, ".json"))
+  file.path(scope_dir, conv_id)
 }
 
 resolve_history_dir <- function() {
@@ -221,6 +221,7 @@ FileConversationStore <- R6::R6Class(
   private = list(
     dir = NULL,
     meta_cache = NULL,
+    write_state = NULL,
 
     partition_dir = function(partition) {
       if (is.null(private$dir)) {
@@ -231,6 +232,52 @@ FileConversationStore <- R6::R6Class(
         sanitize_scope(partition$chat_id),
         sanitize_scope(partition$scope)
       )
+    },
+
+    ws_key = function(partition, id) paste0(partition_key(partition), ":", id),
+
+    get_or_init_write_state = function(partition, id, cdir) {
+      key <- private$ws_key(partition, id)
+      cached <- private$write_state[[key]]
+      if (!is.null(cached)) {
+        return(cached)
+      }
+
+      ws <- list(turn_seq_map = list(), ui_node_len = list(), next_turn_seq = 0L)
+
+      turns_file <- file.path(cdir, "turns.jsonl")
+      if (file.exists(turns_file)) {
+        lines <- readLines(turns_file, warn = FALSE)
+        ws$next_turn_seq <- length(lines[nzchar(lines)])
+      }
+
+      record_file <- file.path(cdir, "record.json")
+      if (file.exists(record_file)) {
+        raw <- jsonlite::fromJSON(record_file, simplifyVector = FALSE)
+        for (nid in names(raw$nodes)) {
+          turn_ids <- raw$nodes[[nid]]$turn_ids
+          if (length(turn_ids) > 0) {
+            ws$turn_seq_map[[nid]] <- turn_ids
+          }
+        }
+      }
+
+      ui_file <- file.path(cdir, "ui.jsonl")
+      if (file.exists(ui_file)) {
+        for (line in readLines(ui_file, warn = FALSE)) {
+          if (!nzchar(line)) next
+          entry <- tryCatch(
+            jsonlite::fromJSON(line, simplifyVector = FALSE),
+            error = function(e) NULL
+          )
+          if (!is.null(entry)) {
+            ws$ui_node_len[[entry$node_id]] <- length(entry$data)
+          }
+        }
+      }
+
+      private$write_state[[key]] <- ws
+      ws
     }
   ),
   public = list(
@@ -241,6 +288,7 @@ FileConversationStore <- R6::R6Class(
     initialize = function(dir = NULL) {
       private$dir <- dir
       private$meta_cache <- list()
+      private$write_state <- list()
     },
 
     list = function(partition) {
@@ -256,24 +304,31 @@ FileConversationStore <- R6::R6Class(
         return(list())
       }
 
-      files <- list.files(pdir, pattern = "\\.json$", full.names = TRUE)
+      conv_dirs <- list.dirs(pdir, full.names = TRUE, recursive = FALSE)
       metas <- Filter(
         Negate(is.null),
-        lapply(files, function(f) {
+        lapply(conv_dirs, function(d) {
+          record_file <- file.path(d, "record.json")
+          if (!file.exists(record_file)) {
+            return(NULL)
+          }
           tryCatch(
-            record_meta(
-              jsonlite::fromJSON(f, simplifyVector = FALSE),
-              size_bytes = as.double(file.size(f))
-            ),
+            {
+              raw <- jsonlite::fromJSON(record_file, simplifyVector = FALSE)
+              size_bytes <- sum(vapply(
+                list.files(d, full.names = TRUE),
+                function(f) as.double(file.size(f)),
+                double(1)
+              ))
+              record_meta(raw, size_bytes = size_bytes)
+            },
             error = function(e) {
-              rlang::warn(
-                paste0(
-                  "Skipping unreadable conversation file ",
-                  basename(f),
-                  ": ",
-                  conditionMessage(e)
-                )
-              )
+              rlang::warn(paste0(
+                "Skipping unreadable conversation ",
+                basename(d),
+                ": ",
+                conditionMessage(e)
+              ))
               NULL
             }
           )
@@ -286,35 +341,175 @@ FileConversationStore <- R6::R6Class(
     },
 
     get = function(partition, id) {
-      path <- safe_conv_path(private$partition_dir(partition), id)
-      if (!file.exists(path)) {
+      cdir <- safe_conv_path(private$partition_dir(partition), id)
+      record_file <- file.path(cdir, "record.json")
+      if (!file.exists(record_file)) {
         return(NULL)
       }
-      jsonlite::fromJSON(path, simplifyVector = FALSE)
+      raw <- jsonlite::fromJSON(record_file, simplifyVector = FALSE)
+
+      turns_map <- list()
+      turns_file <- file.path(cdir, "turns.jsonl")
+      if (file.exists(turns_file)) {
+        for (line in readLines(turns_file, warn = FALSE)) {
+          if (!nzchar(line)) next
+          entry <- tryCatch(
+            jsonlite::fromJSON(line, simplifyVector = FALSE),
+            error = function(e) NULL
+          )
+          if (!is.null(entry)) {
+            turns_map[[as.character(entry$seq)]] <- entry$data
+          }
+        }
+      }
+
+      ui_map <- list()
+      ui_file <- file.path(cdir, "ui.jsonl")
+      if (file.exists(ui_file)) {
+        for (line in readLines(ui_file, warn = FALSE)) {
+          if (!nzchar(line)) next
+          entry <- tryCatch(
+            jsonlite::fromJSON(line, simplifyVector = FALSE),
+            error = function(e) NULL
+          )
+          if (!is.null(entry)) {
+            ui_map[[entry$node_id]] <- entry$data
+          }
+        }
+      }
+
+      nodes <- list()
+      for (nid in names(raw$nodes)) {
+        node_data <- raw$nodes[[nid]]
+        turn_ids_present <- Filter(
+          function(tid) !is.null(turns_map[[as.character(tid)]]),
+          node_data$turn_ids
+        )
+        turns <- lapply(turn_ids_present, function(tid) turns_map[[as.character(tid)]])
+        nodes[[nid]] <- list(
+          parent = node_data$parent,
+          children = node_data$children,
+          turns = turns,
+          ui = ui_map[[nid]]
+        )
+      }
+
+      list(
+        schema_version = raw$schema_version,
+        id = raw$id,
+        title = raw$title,
+        title_source = raw$title_source,
+        response_count = raw$response_count,
+        created_at = raw$created_at,
+        updated_at = raw$updated_at,
+        client_info = raw$client_info,
+        current_leaf = raw$current_leaf,
+        nodes = nodes,
+        values = raw$values,
+        bookmark_state_id = raw$bookmark_state_id
+      )
     },
 
     put = function(partition, record) {
       key <- partition_key(partition)
-      pdir <- private$partition_dir(partition)
-      dir.create(pdir, recursive = TRUE, showWarnings = FALSE)
+      cdir <- safe_conv_path(private$partition_dir(partition), record$id)
+      dir.create(cdir, recursive = TRUE, showWarnings = FALSE)
 
-      path <- safe_conv_path(pdir, record$id)
-      json <- jsonlite::toJSON(record, auto_unbox = TRUE, null = "null")
-      tmp <- tempfile(tmpdir = pdir, fileext = ".json.tmp")
+      ws <- private$get_or_init_write_state(partition, record$id, cdir)
+
+      new_turns_lines <- character(0)
+      new_ui_lines <- character(0)
+      record_nodes <- list()
+
+      for (nid in names(record$nodes)) {
+        node <- record$nodes[[nid]]
+
+        if (is.null(ws$turn_seq_map[[nid]])) {
+          turn_ids <- list()
+          for (turn_data in node$turns) {
+            seq <- ws$next_turn_seq
+            ws$next_turn_seq <- ws$next_turn_seq + 1L
+            turn_ids <- c(turn_ids, seq)
+            new_turns_lines <- c(
+              new_turns_lines,
+              as.character(jsonlite::toJSON(
+                list(seq = seq, data = turn_data),
+                auto_unbox = TRUE,
+                null = "null"
+              ))
+            )
+          }
+          ws$turn_seq_map[[nid]] <- turn_ids
+        }
+
+        ui_len <- length(node$ui)
+        if (!is.null(node$ui) && !identical(ui_len, ws$ui_node_len[[nid]])) {
+          new_ui_lines <- c(
+            new_ui_lines,
+            as.character(jsonlite::toJSON(
+              list(node_id = nid, data = node$ui),
+              auto_unbox = TRUE,
+              null = "null"
+            ))
+          )
+          ws$ui_node_len[[nid]] <- ui_len
+        }
+
+        record_nodes[[nid]] <- list(
+          parent = node$parent,
+          children = node$children,
+          turn_ids = ws$turn_seq_map[[nid]]
+        )
+      }
+
+      turns_file <- file.path(cdir, "turns.jsonl")
+      if (length(new_turns_lines) > 0) {
+        cat(paste0(new_turns_lines, collapse = "\n"), "\n", file = turns_file, sep = "", append = TRUE)
+      } else if (!file.exists(turns_file)) {
+        file.create(turns_file)
+      }
+
+      ui_file <- file.path(cdir, "ui.jsonl")
+      if (length(new_ui_lines) > 0) {
+        cat(paste0(new_ui_lines, collapse = "\n"), "\n", file = ui_file, sep = "", append = TRUE)
+      } else if (!file.exists(ui_file)) {
+        file.create(ui_file)
+      }
+
+      private$write_state[[private$ws_key(partition, record$id)]] <- ws
+
+      record_data <- list(
+        schema_version = record$schema_version,
+        id = record$id,
+        title = record$title,
+        title_source = record$title_source,
+        response_count = record$response_count,
+        created_at = record$created_at,
+        updated_at = record$updated_at,
+        client_info = record$client_info,
+        current_leaf = record$current_leaf,
+        nodes = record_nodes,
+        values = record$values,
+        bookmark_state_id = record$bookmark_state_id
+      )
+      json <- jsonlite::toJSON(record_data, auto_unbox = TRUE, null = "null")
+      tmp <- tempfile(tmpdir = cdir, fileext = ".json.tmp")
       on.exit(unlink(tmp), add = TRUE)
       writeLines(json, tmp)
-      ok <- file_move(tmp, path)
+      ok <- file_move(tmp, file.path(cdir, "record.json"))
       if (!isTRUE(ok)) {
-        rlang::abort(paste0("Failed to write conversation: ", path))
+        rlang::abort(paste0("Failed to write conversation: ", cdir))
       }
 
       cache <- private$meta_cache[[key]]
       if (!is.null(cache)) {
+        size_bytes <- sum(vapply(
+          list.files(cdir, full.names = TRUE),
+          function(f) as.double(file.size(f)),
+          double(1)
+        ))
         cache <- Filter(function(m) m$id != record$id, cache)
-        cache <- c(
-          list(record_meta(record, size_bytes = as.double(file.size(path)))),
-          cache
-        )
+        cache <- c(list(record_meta(record, size_bytes = size_bytes)), cache)
         timestamps <- vapply(cache, function(m) m$updated_at, character(1))
         cache <- cache[order(timestamps, decreasing = TRUE)]
         private$meta_cache[[key]] <- cache
@@ -325,8 +520,11 @@ FileConversationStore <- R6::R6Class(
 
     delete = function(partition, id) {
       key <- partition_key(partition)
-      path <- safe_conv_path(private$partition_dir(partition), id)
-      unlink(path)
+      cdir <- safe_conv_path(private$partition_dir(partition), id)
+      if (dir.exists(cdir)) {
+        unlink(cdir, recursive = TRUE)
+      }
+      private$write_state[[private$ws_key(partition, id)]] <- NULL
 
       cache <- private$meta_cache[[key]]
       if (!is.null(cache)) {

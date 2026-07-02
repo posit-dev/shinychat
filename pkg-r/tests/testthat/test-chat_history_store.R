@@ -196,8 +196,9 @@ test_that("FileConversationStore: files are written to disk", {
   expect_length(chat_dir, 1)
   scope_dir <- list.dirs(chat_dir, recursive = FALSE)
   expect_length(scope_dir, 1)
-  json_files <- list.files(scope_dir, pattern = "\\.json$")
-  expect_length(json_files, 1)
+  conv_dir <- list.dirs(scope_dir, recursive = FALSE)
+  expect_length(conv_dir, 1)
+  expect_true(file.exists(file.path(conv_dir, "record.json")))
 })
 
 test_that("FileConversationStore partitions by chat id on disk", {
@@ -221,9 +222,19 @@ test_that("FileConversationStore: put errors when atomic rename fails", {
   rec <- new_conversation_record("Persisted")
 
   partition <- part()
-  scope_dir <- file.path(dir, sanitize_scope("chat"), sanitize_scope("user1"))
-  dir.create(scope_dir, recursive = TRUE)
-  dir.create(file.path(scope_dir, paste0(rec$id, ".json")))
+
+  # Warm the store's write-state cache and create a real record.json first,
+  # then swap record.json for a directory so the *next* put()'s
+  # file_move() collides without re-reading (and erroring on) record.json.
+  store$put(partition, rec)
+  cdir <- file.path(
+    dir,
+    sanitize_scope(partition$chat_id),
+    sanitize_scope(partition$scope),
+    rec$id
+  )
+  unlink(file.path(cdir, "record.json"))
+  dir.create(file.path(cdir, "record.json"))
 
   expect_error(
     store$put(partition, rec),
@@ -321,6 +332,107 @@ test_that("InMemoryConversationStore: total_size shrinks with delete", {
 
   store$delete(part(), rec1$id)
   expect_lt(store$total_size(part()), total)
+})
+
+test_that("FileConversationStore persists turns and ui across multiple put()s without rewriting old data", {
+  dir <- withr::local_tempdir()
+  store <- FileConversationStore$new(dir = dir)
+
+  rec <- new_conversation_record("test")
+  rec$nodes <- list(
+    n_0001 = list(
+      parent = NULL,
+      children = list(),
+      turns = list(list(class = "ellmer::UserTurn", version = 1, props = list(contents = list()))),
+      ui = list(list(role = "user", segments = list(list(content = "hi", content_type = "markdown"))))
+    )
+  )
+  rec$current_leaf <- "n_0001"
+  store$put(part(), rec)
+
+  chat_dir <- list.dirs(dir, recursive = FALSE)[1]
+  scope_dir <- list.dirs(chat_dir, recursive = FALSE)[1]
+  conv_dir <- file.path(scope_dir, rec$id)
+  expect_true(dir.exists(conv_dir))
+  expect_true(file.exists(file.path(conv_dir, "turns.jsonl")))
+  expect_true(file.exists(file.path(conv_dir, "ui.jsonl")))
+  turns_lines_after_first_put <- length(readLines(file.path(conv_dir, "turns.jsonl")))
+  expect_equal(turns_lines_after_first_put, 1)
+
+  # Extend with a second node; the first node's turns/ui must not be rewritten.
+  rec$nodes$n_0002 <- list(
+    parent = "n_0001",
+    children = list(),
+    turns = list(list(class = "ellmer::AssistantTurn", version = 1, props = list(contents = list()))),
+    ui = list(list(role = "assistant", segments = list(list(content = "hello", content_type = "markdown"))))
+  )
+  rec$nodes$n_0001$children <- list("n_0002")
+  rec$current_leaf <- "n_0002"
+  store$put(part(), rec)
+
+  turns_lines_after_second_put <- length(readLines(file.path(conv_dir, "turns.jsonl")))
+  expect_equal(turns_lines_after_second_put, 2)
+
+  fetched <- store$get(part(), rec$id)
+  expect_length(fetched$nodes, 2)
+  expect_equal(fetched$nodes$n_0001$ui[[1]]$segments[[1]]$content, "hi")
+  expect_equal(fetched$nodes$n_0002$ui[[1]]$segments[[1]]$content, "hello")
+})
+
+test_that("FileConversationStore re-appends a node's ui when it grows across saves", {
+  dir <- withr::local_tempdir()
+  store <- FileConversationStore$new(dir = dir)
+
+  rec <- new_conversation_record("test")
+  rec$nodes <- list(
+    n_0001 = list(
+      parent = NULL,
+      children = list(),
+      turns = list(list(class = "ellmer::AssistantTurn", version = 1, props = list(contents = list()))),
+      ui = list(list(role = "assistant", segments = list(list(content = "partial", content_type = "markdown"))))
+    )
+  )
+  rec$current_leaf <- "n_0001"
+  store$put(part(), rec)
+
+  # Same node grows its ui (a streamed reply attaching more content).
+  rec$nodes$n_0001$ui <- c(
+    rec$nodes$n_0001$ui,
+    list(list(role = "assistant", segments = list(list(content = "more", content_type = "markdown"))))
+  )
+  store$put(part(), rec)
+
+  fetched <- store$get(part(), rec$id)
+  expect_length(fetched$nodes$n_0001$ui, 2)
+  expect_equal(fetched$nodes$n_0001$ui[[2]]$segments[[1]]$content, "more")
+})
+
+test_that("FileConversationStore preserves schema_version and children on round trip", {
+  dir <- withr::local_tempdir()
+  store <- FileConversationStore$new(dir = dir)
+
+  rec <- new_conversation_record("test")
+  rec$nodes <- list(
+    n_0001 = list(
+      parent = NULL,
+      children = list("n_0002"),
+      turns = list(list(class = "ellmer::UserTurn", version = 1, props = list(contents = list()))),
+      ui = NULL
+    ),
+    n_0002 = list(
+      parent = "n_0001",
+      children = list(),
+      turns = list(list(class = "ellmer::AssistantTurn", version = 1, props = list(contents = list()))),
+      ui = NULL
+    )
+  )
+  rec$current_leaf <- "n_0002"
+  store$put(part(), rec)
+
+  fetched <- store$get(part(), rec$id)
+  expect_equal(fetched$schema_version, 1)
+  expect_equal(fetched$nodes$n_0001$children, list("n_0002"))
+  expect_null(fetched$nodes$n_0001$ui)
 })
 
 test_that("sanitize_scope() is safe for filesystem", {

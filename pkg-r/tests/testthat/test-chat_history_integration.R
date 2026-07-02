@@ -434,6 +434,8 @@ test_that("FileConversationStore$total_size() does not overflow a 32-bit integer
 
   # as.integer(sum(file.size(files))) overflows past ~2GB and returns NA.
   # Stub file.size() to simulate a scope whose files exceed that threshold.
+  # Each conversation directory has 3 files (record.json, turns.jsonl,
+  # ui.jsonl), so the stubbed per-file size is summed 3x.
   testthat::local_mocked_bindings(
     file.size = function(...) 3e9,
     .package = "base"
@@ -441,7 +443,7 @@ test_that("FileConversationStore$total_size() does not overflow a 32-bit integer
 
   total <- store$total_size(partition)
   expect_false(is.na(total))
-  expect_equal(total, 3e9)
+  expect_equal(total, 9e9)
 })
 
 test_that("init waits for browser token when session$user is set (browser restore)", {
@@ -536,6 +538,126 @@ test_that("set_client() does not re-render the UI or double-fire on_restore (reg
     # would fire if the swap re-ran the restore path.
     session$setInputs(chat_history_browser_token = "tok-abc")
     expect_equal(restore_count, 1)
+  })
+})
+
+test_that("set_client() seeds ui_offset from the restored record so a post-swap turn does not duplicate prior UI (regression)", {
+  # Regression: init_effect()'s restore_ui = FALSE branch (used by
+  # set_client() on every LLM-client/model swap) left ui_offset at its
+  # HistoryController$new() default of 0 instead of seeding it from the
+  # record being restored. The browser still holds the full historical
+  # transcript, so on the next real turn after a swap, extend_record_linear()
+  # treated the *entire* transcript as "new" ui and re-attached it onto the
+  # newly created node, duplicating every previously-stored UI message.
+  skip_if_not_installed("ellmer")
+
+  make_turn <- function(role, text) {
+    class_name <- if (role == "user") "ellmer::UserTurn" else
+      "ellmer::AssistantTurn"
+    list(
+      class = class_name,
+      version = 1,
+      props = list(
+        contents = list(
+          list(
+            class = "ellmer::ContentText",
+            version = 1,
+            props = list(text = text)
+          )
+        )
+      )
+    )
+  }
+
+  make_ui_message <- function(role, text) {
+    list(
+      role = role,
+      segments = list(list(content = text, content_type = "markdown"))
+    )
+  }
+
+  client <- mock_chat_client()
+  session <- shiny::MockShinySession$new()
+  session$user <- "testuser"
+
+  store <- InMemoryConversationStore$new()
+  rec <- new_conversation_record("Prior conversation")
+  rec$nodes <- list(
+    n_0001 = list(
+      parent = NULL,
+      children = list(),
+      turns = list(make_turn("user", "hi")),
+      ui = list(make_ui_message("user", "hi"))
+    ),
+    n_0002 = list(
+      parent = "n_0001",
+      children = list(),
+      turns = list(make_turn("assistant", "hello")),
+      ui = list(make_ui_message("assistant", "hello"))
+    )
+  )
+  rec$current_leaf <- "n_0002"
+  store$put(conversation_partition(session$ns("chat"), "testuser"), rec)
+
+  mod_ref <- NULL
+
+  server <- function(input, output, session) {
+    mod <- chat_server(
+      "chat",
+      client,
+      history = history_options(store = store, title = NULL),
+      session = session
+    )
+    mod_ref <<- mod
+    mod
+  }
+
+  shiny::testServer(server, session = session, {
+    session$setInputs(
+      chat_history_browser_token = "tok-abc",
+      chat_history_current_id = rec$id
+    )
+
+    new_client <- mock_chat_client()
+    mod_ref$set_client(new_client)
+
+    # Trigger the next flush so the new controller's init effect (which
+    # depends on the browser token) actually runs.
+    session$setInputs(chat_history_browser_token = "tok-abc")
+
+    ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
+    expect_equal(ctrl$ui_offset, 2)
+
+    # Simulate a new turn arriving after the swap: on_response() receives the
+    # FULL recorded-turns list (as chat_history_on_response() would derive
+    # from the live client), and the browser reports the FULL historical
+    # `chat_messages` transcript (as a real client would) plus the new
+    # message -- not just the new tail.
+    session$setInputs(
+      chat_messages = list(
+        make_ui_message("user", "hi"),
+        make_ui_message("assistant", "hello"),
+        make_ui_message("user", "again")
+      )
+    )
+
+    ctrl$on_response(list(
+      make_turn("user", "hi"),
+      make_turn("assistant", "hello"),
+      make_turn("user", "again")
+    ))
+
+    reloaded <- store$get(conversation_partition(session$ns("chat"), "testuser"), ctrl$record$id)
+    expect_equal(record_ui_count(reloaded), 3)
+
+    ui_texts <- unlist(lapply(record_path_node_ids(reloaded), function(node_id) {
+      vapply(
+        reloaded$nodes[[node_id]]$ui,
+        function(m) m$segments[[1]]$content,
+        character(1)
+      )
+    }))
+    expect_equal(ui_texts, c("hi", "hello", "again"))
   })
 })
 

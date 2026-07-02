@@ -490,3 +490,52 @@ test_that("warns when `display` is not a list", {
     as.tags(contents_shinychat(result))
   )
 })
+
+test_that("ellmer_turn_effective_role() treats a tool-result-only turn as assistant", {
+  plain_user <- ellmer::UserTurn(contents = list(ellmer::ContentText("hi")))
+  plain_assistant <- ellmer::AssistantTurn(contents = list(ellmer::ContentText("hi")))
+  tool_result_turn <- ellmer::UserTurn(contents = list(new_tool_result(value = "ok")))
+
+  expect_equal(ellmer_turn_effective_role(plain_user), "user")
+  expect_equal(ellmer_turn_effective_role(plain_assistant), "assistant")
+  expect_equal(ellmer_turn_effective_role(tool_result_turn), "assistant")
+})
+
+test_that("group_ellmer_turns() keeps a plain user/assistant exchange as two groups", {
+  turns <- list(
+    ellmer::UserTurn(contents = list(ellmer::ContentText("hi"))),
+    ellmer::AssistantTurn(contents = list(ellmer::ContentText("hello")))
+  )
+  groups <- group_ellmer_turns(turns)
+  expect_length(groups, 2)
+  expect_equal(groups[[1]], list(turns[[1]]))
+  expect_equal(groups[[2]], list(turns[[2]]))
+})
+
+test_that("group_ellmer_turns() consolidates a tool-call round into one group", {
+  request <- new_tool_request(id = "t1", name = "get_weather")
+  turns <- list(
+    ellmer::UserTurn(contents = list(ellmer::ContentText("what's the weather?"))),
+    ellmer::AssistantTurn(contents = list(ellmer::ContentText("Let me check."), request)),
+    ellmer::UserTurn(contents = list(new_tool_result(value = "Sunny, 75F", request = request))),
+    ellmer::AssistantTurn(contents = list(ellmer::ContentText("It's sunny and 75F!")))
+  )
+  groups <- group_ellmer_turns(turns)
+  expect_length(groups, 2)
+  expect_equal(groups[[1]], list(turns[[1]]))
+  expect_equal(groups[[2]], turns[2:4])
+})
+
+test_that("group_ellmer_turns() merges adjacent same-role turns with no tool call", {
+  turns <- list(
+    ellmer::AssistantTurn(contents = list(ellmer::ContentText("Hello"))),
+    ellmer::AssistantTurn(contents = list(ellmer::ContentText("World")))
+  )
+  groups <- group_ellmer_turns(turns)
+  expect_length(groups, 1)
+  expect_equal(groups[[1]], turns)
+})
+
+test_that("group_ellmer_turns() returns an empty list for no turns", {
+  expect_equal(group_ellmer_turns(list()), list())
+})

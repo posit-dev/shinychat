@@ -1,3 +1,28 @@
+messages_input_value <- function(value) {
+  if (!is.list(value)) {
+    rlang::abort(paste0(
+      "Expected a list from shinychat.messages, got ",
+      class(value)[1]
+    ))
+  }
+  lapply(value, function(m) {
+    message <- list(
+      role = m$role,
+      segments = lapply(m$segments, function(s) {
+        list(content = s$content, content_type = s$content_type)
+      })
+    )
+    if (!is.null(m$htmlDeps)) {
+      message$htmlDeps <- m$htmlDeps
+    }
+    if (!is.null(m$attachments) && length(m$attachments) > 0) {
+      validate_attachments(m$attachments)
+      message$attachments <- m$attachments
+    }
+    message
+  })
+}
+
 int_to_hex <- function(n, width = 13L) {
   hex_chars <- c(0:9, letters[1:6])
   digits <- character(0)
@@ -103,19 +128,39 @@ record_path_node_ids <- function(record) {
 
 record_path_turns <- function(record) {
   ids <- record_path_node_ids(record)
-  lapply(ids, function(id) {
-    turn <- record$nodes[[id]]$turn
-    # Turns are stored as JSON strings (via serializeJSON) to preserve types
-    # across the jsonlite::toJSON/fromJSON round-trip used by FileConversationStore.
-    if (is.character(turn)) jsonlite::unserializeJSON(turn) else turn
-  })
+  unlist(
+    lapply(ids, function(id) record$nodes[[id]]$turns),
+    recursive = FALSE
+  )
 }
 
-extend_record_linear <- function(record, recorded_turns) {
-  existing_count <- length(record_path_node_ids(record))
-  new_turns <- recorded_turns[seq_along(recorded_turns) > existing_count]
-  if (length(new_turns) == 0) {
-    return(record)
+record_turn_count <- function(record) {
+  ids <- record_path_node_ids(record)
+  sum(vapply(ids, function(id) length(record$nodes[[id]]$turns), integer(1)))
+}
+
+record_ui_count <- function(record) {
+  ids <- record_path_node_ids(record)
+  sum(vapply(
+    ids,
+    function(id) length(record$nodes[[id]]$ui),
+    integer(1)
+  ))
+}
+
+extend_record_linear <- function(record, recorded_turns, ui_messages, ui_offset, tools) {
+  existing_turn_count <- record_turn_count(record)
+  new_turns_recorded <- recorded_turns[seq_along(recorded_turns) > existing_turn_count]
+
+  new_turns_live <- lapply(new_turns_recorded, ellmer::contents_replay, tools = tools)
+  live_groups <- group_ellmer_turns(new_turns_live)
+
+  new_groups <- list()
+  cursor <- 0L
+  for (i in seq_along(live_groups)) {
+    size <- length(live_groups[[i]])
+    new_groups[[i]] <- new_turns_recorded[(cursor + 1L):(cursor + size)]
+    cursor <- cursor + size
   }
 
   existing_nums <- as.integer(
@@ -123,13 +168,50 @@ extend_record_linear <- function(record, recorded_turns) {
   )
   seq_start <- if (length(existing_nums) == 0) 1L else max(existing_nums) + 1L
 
-  for (i in seq_along(new_turns)) {
+  new_node_ids <- character(0)
+  for (i in seq_along(new_groups)) {
     node_id <- sprintf("n_%04d", seq_start + i - 1L)
     record$nodes[[node_id]] <- list(
       parent = record$current_leaf,
-      turn = jsonlite::serializeJSON(new_turns[[i]])
+      children = list(),
+      turns = new_groups[[i]],
+      ui = NULL
     )
+    if (!is.null(record$current_leaf)) {
+      record$nodes[[record$current_leaf]]$children <- c(
+        record$nodes[[record$current_leaf]]$children,
+        node_id
+      )
+    }
     record$current_leaf <- node_id
+    new_node_ids <- c(new_node_ids, node_id)
+  }
+
+  user_node_ids <- new_node_ids[
+    vapply(
+      seq_along(live_groups),
+      function(i) identical(ellmer_turn_effective_role(live_groups[[i]][[1]]), "user"),
+      logical(1)
+    )
+  ]
+
+  fallback <- if (length(new_node_ids) > 0) {
+    new_node_ids[length(new_node_ids)]
+  } else {
+    record$current_leaf
+  }
+
+  if (!is.null(fallback)) {
+    new_messages <- ui_messages[seq_along(ui_messages) > ui_offset]
+    for (message in new_messages) {
+      if (identical(message$role, "user") && length(user_node_ids) > 0) {
+        target <- user_node_ids[[1]]
+        user_node_ids <- user_node_ids[-1]
+      } else {
+        target <- fallback
+      }
+      record$nodes[[target]]$ui <- c(record$nodes[[target]]$ui, list(message))
+    }
   }
 
   record$updated_at <- utcnow_iso()

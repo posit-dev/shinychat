@@ -119,6 +119,18 @@ enter new messages.
 To respond to user input, listen for \code{input$ID_user_input} (for example, if
 \code{id="my_chat"}, user input will be at \code{input$my_chat_user_input}), and use
 \code{\link[=chat_append]{chat_append()}} to append messages to the chat.
+
+The chat also reports the client's current rendered message transcript as
+\code{input$ID_messages} (for example, \code{input$my_chat_messages}), tagged
+\code{shinychat.messages}. It updates every time a message finishes rendering
+or streaming (a "settle point"), and is a list of message objects:
+\code{list(role =, segments = list(list(content =, content_type =), ...))},
+plus optional \code{htmlDeps} and \code{attachments} fields when present.
+\code{\link[=chat_enable_history]{chat_enable_history()}} reads this internally to persist and restore
+exactly what was rendered — including raw HTML and Shiny UI dependencies —
+across a conversation switch or reload. It's exposed for advanced,
+read-only use (for example, custom logging or export); it is not an input
+you write to.
 }
 \section{Greeting}{
 
