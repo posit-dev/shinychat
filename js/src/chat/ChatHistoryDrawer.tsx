@@ -123,8 +123,11 @@ export function ChatHistoryDrawer({
     return () => document.removeEventListener("keydown", onKey)
   }, [visible, closing, confirmingDelete, menuFor, handleClose])
 
+  // Move focus into the drawer on open (so Escape / focus-trap work and screen
+  // readers announce the dialog) without landing on the search field — search
+  // isn't what most people want first. Tab then advances into the controls.
   useEffect(() => {
-    if (visible && !closing) searchRef.current?.focus({ preventScroll: true })
+    if (visible && !closing) drawerRef.current?.focus({ preventScroll: true })
   }, [visible, closing])
 
   useEffect(() => {
@@ -178,6 +181,7 @@ export function ChatHistoryDrawer({
       role="dialog"
       aria-modal="true"
       aria-label="Conversation history"
+      tabIndex={-1}
     >
       <div className="shiny-chat-history-scrim" onClick={handleClose} />
       <div

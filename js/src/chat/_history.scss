@@ -102,6 +102,12 @@
   inset: 0;
   z-index: 6;
 
+  // Focus lands here on open (tabIndex -1); the overlay spans the whole
+  // container, so never paint a focus ring on it.
+  &:focus {
+    outline: none;
+  }
+
   // Scrim: semi-transparent backdrop behind the drawer
   &-scrim {
     position: absolute;
@@ -268,6 +274,12 @@
     flex: 1;
     min-width: 0;
     padding-inline-start: 1.75rem;
+
+    // Drive the search field's border off the same token as the + New button
+    // so the pair matches, whatever the Bootstrap form-control default is.
+    &.form-control {
+      border-color: var(--_history-border-color);
+    }
   }
 
   // Scrollable conversation list
