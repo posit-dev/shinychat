@@ -70,7 +70,6 @@ reference:
   contents:
   - chat_enable_history
   - history_options
-  - conversation_partition
   - ConversationStore
   - FileConversationStore
   - chat_restore

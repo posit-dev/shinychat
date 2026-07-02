@@ -4,7 +4,21 @@
 \alias{ConversationStore}
 \title{Abstract base class for conversation storage backends}
 \description{
-Abstract base class for conversation storage backends
+Subclass this to plug a custom persistence backend into
+\code{\link[=chat_enable_history]{chat_enable_history()}} via \code{history_options(store = )}. All methods
+are partitioned by a \code{conversation_partition()} (chat id + owner scope);
+implementations should not need to know about users, sessions, or Shiny
+beyond that.
+
+A conversation record is a list with fields \code{schema_version}, \code{id},
+\code{title}, \code{title_source} (\code{"llm"}, \code{"user"}, or \code{NULL}), \code{response_count},
+\code{created_at}, \code{updated_at} (ISO 8601 strings), \code{client_info}, \code{nodes} (a
+named list of turn nodes forming the conversation tree), \code{current_leaf}
+(id of the most recent node, or \code{NULL}), \code{values} (the app state dict
+captured by \code{on_save}), and \code{bookmark_state_id}. A conversation meta list
+is the lightweight summary returned by \code{list()}: \code{id}, \code{title},
+\code{created_at}, \code{updated_at}, and \code{size_bytes} (the backend's storage
+footprint for that conversation, e.g. on-disk bytes).
 }
 \section{Methods}{
 \subsection{Public methods}{
@@ -22,10 +36,22 @@ Abstract base class for conversation storage backends
 \if{html}{\out{<a id="method-ConversationStore-list"></a>}}
 \if{latex}{\out{\hypertarget{method-ConversationStore-list}{}}}
 \subsection{\code{ConversationStore$list()}}{
+  Must be implemented by subclasses. All conversations in
+\code{partition}, newest-first by \code{updated_at}.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{ConversationStore$list(partition)}
     \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{partition}}{A \code{conversation_partition()}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A list of conversation meta lists.
   }
 }
 
@@ -33,10 +59,24 @@ Abstract base class for conversation storage backends
 \if{html}{\out{<a id="method-ConversationStore-get"></a>}}
 \if{latex}{\out{\hypertarget{method-ConversationStore-get}{}}}
 \subsection{\code{ConversationStore$get()}}{
+  Must be implemented by subclasses. The full conversation
+record for \code{id} in \code{partition}.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{ConversationStore$get(partition, id)}
     \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{partition}}{A \code{conversation_partition()}.}
+      \item{\code{id}}{A conversation id, as found in the \code{id} field of a
+conversation meta list.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    The conversation record, or \code{NULL} if missing.
   }
 }
 
@@ -44,10 +84,25 @@ Abstract base class for conversation storage backends
 \if{html}{\out{<a id="method-ConversationStore-put"></a>}}
 \if{latex}{\out{\hypertarget{method-ConversationStore-put}{}}}
 \subsection{\code{ConversationStore$put()}}{
+  Must be implemented by subclasses. Upsert \code{record} into
+\code{partition}. A rename is just mutating \code{record$title} and calling
+\code{put()} again.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{ConversationStore$put(partition, record)}
     \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{partition}}{A \code{conversation_partition()}.}
+      \item{\code{record}}{A conversation record, in the same shape returned by
+\code{get()}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    \code{NULL}, invisibly.
   }
 }
 
@@ -55,10 +110,24 @@ Abstract base class for conversation storage backends
 \if{html}{\out{<a id="method-ConversationStore-delete"></a>}}
 \if{latex}{\out{\hypertarget{method-ConversationStore-delete}{}}}
 \subsection{\code{ConversationStore$delete()}}{
+  Must be implemented by subclasses. Remove the
+conversation \code{id} from \code{partition}. Missing ids are a no-op.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{ConversationStore$delete(partition, id)}
     \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{partition}}{A \code{conversation_partition()}.}
+      \item{\code{id}}{A conversation id, as found in the \code{id} field of a
+conversation meta list.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    \code{NULL}, invisibly.
   }
 }
 
@@ -66,10 +135,24 @@ Abstract base class for conversation storage backends
 \if{html}{\out{<a id="method-ConversationStore-search"></a>}}
 \if{latex}{\out{\hypertarget{method-ConversationStore-search}{}}}
 \subsection{\code{ConversationStore$search()}}{
+  Case-insensitive substring match of \code{query} against
+title, over \code{list(partition)}. Backends don't need to override this
+unless they have a more efficient search path.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{ConversationStore$search(partition, query)}
     \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{partition}}{A \code{conversation_partition()}.}
+      \item{\code{query}}{A search string.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A list of conversation meta lists whose title matches \code{query}.
   }
 }
 
@@ -77,10 +160,23 @@ Abstract base class for conversation storage backends
 \if{html}{\out{<a id="method-ConversationStore-total_size"></a>}}
 \if{latex}{\out{\hypertarget{method-ConversationStore-total_size}{}}}
 \subsection{\code{ConversationStore$total_size()}}{
+  Total bytes used by all conversations in \code{partition},
+derived from \code{list()}'s per-record \code{size_bytes}. Backends don't need
+to override this unless they have a cheaper way to compute it.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{ConversationStore$total_size(partition)}
     \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{partition}}{A \code{conversation_partition()}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    The total size in bytes, as a double.
   }
 }
 

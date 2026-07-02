@@ -30,9 +30,19 @@ File-based conversation storage backend
 \if{html}{\out{<a id="method-FileConversationStore-initialize"></a>}}
 \if{latex}{\out{\hypertarget{method-FileConversationStore-initialize}{}}}
 \subsection{\code{FileConversationStore$new()}}{
+  Create a new file-based conversation store.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{FileConversationStore$new(dir = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{dir}}{Directory to store conversations under. Defaults to
+\code{NULL}, which resolves a redeploy-safe location at first use (see
+\code{resolve_history_dir()}).}
+    }
     \if{html}{\out{</div>}}
   }
 }
@@ -46,6 +56,13 @@ File-based conversation storage backend
     \preformatted{FileConversationStore$list(partition)}
     \if{html}{\out{</div>}}
   }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{partition}}{A \code{conversation_partition()}.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
 \if{html}{\out{<hr>}}
@@ -55,6 +72,15 @@ File-based conversation storage backend
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{FileConversationStore$get(partition, id)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{partition}}{A \code{conversation_partition()}.}
+      \item{\code{id}}{A conversation id, as found in the \code{id} field of a
+conversation meta list.}
+    }
     \if{html}{\out{</div>}}
   }
 }
@@ -68,6 +94,15 @@ File-based conversation storage backend
     \preformatted{FileConversationStore$put(partition, record)}
     \if{html}{\out{</div>}}
   }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{partition}}{A \code{conversation_partition()}.}
+      \item{\code{record}}{A conversation record, in the same shape returned by
+\code{get()}.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
 \if{html}{\out{<hr>}}
@@ -77,6 +112,15 @@ File-based conversation storage backend
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{FileConversationStore$delete(partition, id)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{partition}}{A \code{conversation_partition()}.}
+      \item{\code{id}}{A conversation id, as found in the \code{id} field of a
+conversation meta list.}
+    }
     \if{html}{\out{</div>}}
   }
 }

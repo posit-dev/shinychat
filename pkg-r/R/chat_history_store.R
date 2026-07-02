@@ -1,12 +1,9 @@
-#' Create a conversation storage partition
-#'
-#' A storage partition combines the resolved/namespaced chat id with the owner
-#' scope used by a `ConversationStore`.
-#'
-#' @param chat_id Resolved chat id, including module namespace when applicable.
-#' @param scope Owner scope: explicit scope, authenticated user, or browser token.
-#' @returns A `shinychat_conversation_partition` object for `ConversationStore`.
-#' @export
+# A storage partition combines the resolved/namespaced chat id with the owner
+# scope used by a `ConversationStore`. Not exported: custom `ConversationStore`
+# implementations only ever receive a partition from the framework and read
+# its `chat_id`/`scope` fields -- they never need to construct one. The
+# `shinychat_conversation_partition` class is only checked by partition_key(),
+# a private helper used by the built-in stores.
 conversation_partition <- function(chat_id, scope) {
   structure(
     list(
@@ -25,22 +22,67 @@ partition_key <- function(partition) {
 }
 
 #' Abstract base class for conversation storage backends
+#'
+#' Subclass this to plug a custom persistence backend into
+#' [chat_enable_history()] via `history_options(store = )`. All methods
+#' are partitioned by a `conversation_partition()` (chat id + owner scope);
+#' implementations should not need to know about users, sessions, or Shiny
+#' beyond that.
+#'
+#' A conversation record is a list with fields `schema_version`, `id`,
+#' `title`, `title_source` (`"llm"`, `"user"`, or `NULL`), `response_count`,
+#' `created_at`, `updated_at` (ISO 8601 strings), `client_info`, `nodes` (a
+#' named list of turn nodes forming the conversation tree), `current_leaf`
+#' (id of the most recent node, or `NULL`), `values` (the app state dict
+#' captured by `on_save`), and `bookmark_state_id`. A conversation meta list
+#' is the lightweight summary returned by `list()`: `id`, `title`,
+#' `created_at`, `updated_at`, and `size_bytes` (the backend's storage
+#' footprint for that conversation, e.g. on-disk bytes).
 #' @export
 ConversationStore <- R6::R6Class(
   "ConversationStore",
   public = list(
+    #' @description Must be implemented by subclasses. All conversations in
+    #'   `partition`, newest-first by `updated_at`.
+    #' @param partition A `conversation_partition()`.
+    #' @returns A list of conversation meta lists.
     list = function(partition) {
       rlang::abort("ConversationStore$list() must be implemented by subclass")
     },
+    #' @description Must be implemented by subclasses. The full conversation
+    #'   record for `id` in `partition`.
+    #' @param partition A `conversation_partition()`.
+    #' @param id A conversation id, as found in the `id` field of a
+    #'   conversation meta list.
+    #' @returns The conversation record, or `NULL` if missing.
     get = function(partition, id) {
       rlang::abort("ConversationStore$get() must be implemented by subclass")
     },
+    #' @description Must be implemented by subclasses. Upsert `record` into
+    #'   `partition`. A rename is just mutating `record$title` and calling
+    #'   `put()` again.
+    #' @param partition A `conversation_partition()`.
+    #' @param record A conversation record, in the same shape returned by
+    #'   `get()`.
+    #' @returns `NULL`, invisibly.
     put = function(partition, record) {
       rlang::abort("ConversationStore$put() must be implemented by subclass")
     },
+    #' @description Must be implemented by subclasses. Remove the
+    #'   conversation `id` from `partition`. Missing ids are a no-op.
+    #' @param partition A `conversation_partition()`.
+    #' @param id A conversation id, as found in the `id` field of a
+    #'   conversation meta list.
+    #' @returns `NULL`, invisibly.
     delete = function(partition, id) {
       rlang::abort("ConversationStore$delete() must be implemented by subclass")
     },
+    #' @description Case-insensitive substring match of `query` against
+    #'   title, over `list(partition)`. Backends don't need to override this
+    #'   unless they have a more efficient search path.
+    #' @param partition A `conversation_partition()`.
+    #' @param query A search string.
+    #' @returns A list of conversation meta lists whose title matches `query`.
     search = function(partition, query) {
       all <- self$list(partition)
       query_lower <- tolower(query)
@@ -49,8 +91,11 @@ ConversationStore <- R6::R6Class(
         all
       )
     },
-    # Derived from list()'s per-record size_bytes -- backends don't need to
-    # override this unless they have a cheaper way to compute it.
+    #' @description Total bytes used by all conversations in `partition`,
+    #'   derived from `list()`'s per-record `size_bytes`. Backends don't need
+    #'   to override this unless they have a cheaper way to compute it.
+    #' @param partition A `conversation_partition()`.
+    #' @returns The total size in bytes, as a double.
     total_size = function(partition) {
       sum(vapply(self$list(partition), function(m) m$size_bytes, double(1L)))
     }
@@ -189,6 +234,10 @@ FileConversationStore <- R6::R6Class(
     }
   ),
   public = list(
+    #' @description Create a new file-based conversation store.
+    #' @param dir Directory to store conversations under. Defaults to
+    #'   `NULL`, which resolves a redeploy-safe location at first use (see
+    #'   `resolve_history_dir()`).
     initialize = function(dir = NULL) {
       private$dir <- dir
       private$meta_cache <- list()
