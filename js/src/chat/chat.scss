@@ -27,6 +27,13 @@ shiny-chat-container {
   grid-template-columns: 1fr;
   grid-template-rows: 1fr;
 
+  // When the history trigger is present the drawer needs room to be usable, so
+  // give the container a floor height. Overridable via the --_min-height inline
+  // custom property, mirroring how --_width feeds .shiny-chat-wrapper.
+  &:has(> .shiny-chat-history-trigger) {
+    min-height: var(--_min-height, 400px);
+  }
+
   p:last-child {
     margin-bottom: 0;
   }

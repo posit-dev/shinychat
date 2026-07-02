@@ -1,10 +1,15 @@
-// Trigger button — anchored to the top-left corner of the whole container.
-// In non-filling mode it switches to position: fixed (see chat.scss) so it
-// stays pinned to the viewport while the page scrolls.
+// Trigger button — anchored to the top-inline-start corner of the whole
+// container. In non-filling mode it switches to position: fixed (see chat.scss)
+// so it stays pinned to the viewport while the page scrolls.
+//
+// --_history-trigger-shift is set inline by ChatContainer when the trigger's
+// home position overlaps another visible element (e.g. a sidebar reveal
+// button); it nudges the trigger inward, toward the chat column. It applies to
+// whichever inline edge is active, so the sign is placement-agnostic.
 .shiny-chat-history-trigger {
   position: absolute;
   top: 0.5rem;
-  inset-inline-start: 0.5rem;
+  inset-inline-start: calc(0.5rem + var(--_history-trigger-shift, 0px));
   z-index: 5;
 
   display: flex;
@@ -299,9 +304,13 @@
   }
 }
 
+// --_drawer-x is the drawer's off-screen offset: -100% (default, slides in from
+// the inline-start edge) or 100% under [data-history-placement="right"]. The var
+// resolves to a constant before the animation runs, so each keyframe pair still
+// interpolates between two concrete translateX() values.
 @keyframes shiny-chat-history-drawer-in {
   from {
-    transform: translateX(-100%);
+    transform: translateX(var(--_drawer-x, -100%));
   }
   to {
     transform: translateX(0);
@@ -313,7 +322,7 @@
     transform: translateX(0);
   }
   to {
-    transform: translateX(-100%);
+    transform: translateX(var(--_drawer-x, -100%));
   }
 }
 
@@ -332,5 +341,45 @@
   }
   to {
     opacity: 0;
+  }
+}
+
+// Right-side placement — developers opt in with data-history-placement="right"
+// on <shiny-chat-container> (the default is implicitly "left"). Mirrors the
+// trigger and drawer to the inline-end edge and flips the slide direction.
+// Pure CSS; the only JS involvement is the shared, placement-agnostic
+// --_history-trigger-shift var (see the trigger rule above).
+shiny-chat-container[data-history-placement="right"] {
+  .shiny-chat-history-trigger {
+    inset-inline-start: auto;
+    inset-inline-end: calc(0.5rem + var(--_history-trigger-shift, 0px));
+  }
+
+  .shiny-chat-history-drawer {
+    inset-inline-start: auto;
+    inset-inline-end: 0;
+    // Drawer slides in from the inline-end edge instead of inline-start.
+    --_drawer-x: 100%;
+    // Border sits on the edge that faces the chat content.
+    border-inline-end: none;
+    border-inline-start: var(--bs-border-width, 1px) solid
+      var(--bs-border-color, #dee2e6);
+  }
+}
+
+// When the history drawer is open over a collapsed bslib sidebar on the SAME
+// side, the sidebar's collapse-toggle (a corner-anchored direct child of the
+// layout root — a *sibling* of the subtree holding the drawer, not an ancestor)
+// paints on top of the drawer. z-index can't reconcile them across the two
+// subtrees, so hide the toggle for as long as the drawer is open. Restricted to
+// the same-side cases, since an opposite-side toggle never overlaps the drawer:
+//   - left sidebar (default) + left history (default placement)
+//   - right sidebar (.sidebar-right) + right history ([data-history-placement="right"])
+// .shiny-chat-history exists in the DOM only while the drawer is open, so the
+// toggle reappears (and stays usable to re-expand the sidebar) once it closes.
+.bslib-sidebar-layout.sidebar-collapsed:not(.sidebar-right):has(shiny-chat-container:not([data-history-placement="right"]) .shiny-chat-history),
+.bslib-sidebar-layout.sidebar-collapsed.sidebar-right:has(shiny-chat-container[data-history-placement="right"] .shiny-chat-history) {
+  > .collapse-toggle {
+    display: none;
   }
 }

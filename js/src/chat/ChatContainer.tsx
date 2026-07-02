@@ -192,6 +192,104 @@ export const ChatContainer = forwardRef<
     return () => container.removeEventListener("keydown", handleKeyDown)
   }, [enableCancel, scrollRef])
 
+  // Keep the history trigger clear of other visible UI. It anchors to a corner
+  // of the container, where it can collide with e.g. a bslib sidebar reveal
+  // button. When the trigger's home position overlaps another element that
+  // isn't part of the chat, nudge it inward (toward the chat column) via the
+  // --_history-trigger-shift var until it clears, capped so it never travels
+  // too far into the content.
+  useEffect(() => {
+    if (!historyEnabled) return
+    const trigger = historyTriggerRef.current
+    if (!trigger) return
+    const container = trigger.closest(
+      "shiny-chat-container",
+    ) as HTMLElement | null
+    if (!container) return
+
+    const update = (): void => {
+      // While the drawer is open the trigger sits under the scrim, so its
+      // position is moot — and an open drawer over a collapsed same-side sidebar
+      // hides the sidebar's collapse-toggle (see _history.scss), which would make
+      // the probe below record a false "no overlap" (shift 0). Skip so the last
+      // closed-state shift is preserved; the MutationObserver below re-runs this
+      // once the drawer closes and the toggle is measurable again.
+      if (container.querySelector(":scope > .shiny-chat-history")) return
+
+      const placeRight =
+        container.getAttribute("data-history-placement") === "right"
+
+      // Measure from the home position each time so the shift never compounds.
+      trigger.style.setProperty("--_history-trigger-shift", "0px")
+      const rect = trigger.getBoundingClientRect()
+      if (rect.width === 0 || rect.height === 0) return
+
+      // Probe the trigger's leading (outer) edge at three heights. An obstacle
+      // is any hit-tested element that is neither inside the chat container nor
+      // an ancestor of it (which filters out the chat's own content and its
+      // backdrops/layout parents, leaving genuine siblings like a sidebar toggle).
+      const edgeX = placeRight ? rect.right - 1 : rect.left + 1
+      const ys = [rect.top + 2, rect.top + rect.height / 2, rect.bottom - 2]
+
+      let obstacleEdge: number | null = null
+      for (const y of ys) {
+        const obstacle = document
+          .elementsFromPoint(edgeX, y)
+          .find((el) => !container.contains(el) && !el.contains(container))
+        if (!obstacle) continue
+        const obRect = obstacle.getBoundingClientRect()
+        const edge = placeRight ? obRect.left : obRect.right
+        obstacleEdge =
+          obstacleEdge === null
+            ? edge
+            : placeRight
+              ? Math.min(obstacleEdge, edge)
+              : Math.max(obstacleEdge, edge)
+      }
+
+      if (obstacleEdge === null) return
+
+      const gap = 8
+      const shift = placeRight
+        ? rect.right - obstacleEdge + gap
+        : obstacleEdge - rect.left + gap
+      if (shift <= 0) return
+
+      const maxShift = container.clientWidth / 3
+      trigger.style.setProperty(
+        "--_history-trigger-shift",
+        `${Math.min(shift, maxShift)}px`,
+      )
+    }
+
+    update()
+
+    const ro = new ResizeObserver(update)
+    ro.observe(container)
+    window.addEventListener("resize", update)
+
+    // A sidebar collapse/expand shifts the container without resizing it; the
+    // layout toggles a class and animates, so re-measure on both.
+    const layout = container.closest(".bslib-sidebar-layout")
+    layout?.addEventListener("transitionend", update)
+    const mo = layout ? new MutationObserver(update) : null
+    mo?.observe(layout!, { attributes: true, attributeFilter: ["class"] })
+
+    // The drawer opening/closing isn't a resize or a layout-class change, but
+    // update() bails while it's open (see above), so re-run when it's added or
+    // removed — closing it is what makes the toggle measurable again.
+    const drawerMo = new MutationObserver(update)
+    drawerMo.observe(container, { childList: true })
+
+    return () => {
+      ro.disconnect()
+      window.removeEventListener("resize", update)
+      layout?.removeEventListener("transitionend", update)
+      mo?.disconnect()
+      drawerMo.disconnect()
+    }
+  }, [historyEnabled])
+
   useImperativeHandle(ref, () => ({
     setInputValue(...args) {
       chatInputRef.current?.setInputValue(...args)
