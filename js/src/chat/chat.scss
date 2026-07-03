@@ -255,6 +255,7 @@ shiny-chat-container:not([fill]) {
 
 /* Align the user message to the right */
 .shiny-chat-user-message {
+  position: relative;
   align-self: flex-end;
   padding: 0.75rem 1rem;
   border-radius: 10px;
@@ -996,4 +997,162 @@ shiny-chat-container:not([fill]) {
   font-size: 1.25rem;
   line-height: 1;
   cursor: pointer;
+}
+
+/* Footer row below a user message — sibling nav + edit button.
+   Positioned outside the bubble (not overlapping its text) and right-aligned
+   to match the bubble's alignment. */
+.shiny-chat-message-footer {
+  position: absolute;
+  right: 0.25rem;
+  bottom: -1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* Edit button — shown on hover over user messages */
+.shiny-chat-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  color: var(--bs-secondary-color, #6c757d);
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s, color 0.15s, background-color 0.15s;
+
+  &:hover {
+    color: var(--bs-primary, #007bc2);
+    background-color: var(--bs-tertiary-bg, rgba(0, 0, 0, 0.05));
+  }
+
+  svg {
+    display: block;
+  }
+}
+
+.shiny-chat-user-message:hover .shiny-chat-edit-btn {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Inline edit form — replaces the message content in place, styled to read
+   as the bubble's text becoming editable rather than a separate form. */
+.shiny-chat-edit-form {
+  position: relative;
+  width: 100%;
+
+  textarea {
+    display: block;
+    width: 100%;
+    min-height: 2.75rem;
+    max-height: 16rem;
+    padding: 0 1.75rem 0 0;
+    border: none;
+    border-radius: 0;
+    font: inherit;
+    resize: none;
+    background: transparent;
+    color: inherit;
+    box-sizing: border-box;
+
+    &:focus {
+      outline: none;
+    }
+  }
+}
+
+.shiny-chat-edit-actions {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 0;
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.35rem;
+    height: 1.35rem;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: none;
+    cursor: pointer;
+    color: var(--bs-secondary-color, #6c757d);
+    transition: color 0.15s, background-color 0.15s;
+
+    svg {
+      display: block;
+      width: 0.85rem;
+      height: 0.85rem;
+    }
+
+    &:hover {
+      background-color: var(--bs-tertiary-bg, rgba(0, 0, 0, 0.05));
+    }
+  }
+
+  .shiny-chat-edit-cancel:hover {
+    color: var(--bs-danger, #dc3545);
+  }
+
+  .shiny-chat-edit-submit {
+    color: var(--bs-primary, #007bc2);
+
+    &:hover {
+      color: var(--bs-primary-text-emphasis, #0062a3);
+      background-color: transparent;
+    }
+  }
+}
+
+/* Sibling navigation arrows */
+.shiny-chat-sibling-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  font-size: 0.75rem;
+  color: var(--bs-secondary-color, #6c757d);
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: 50%;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    color: inherit;
+    transition: color 0.15s, background-color 0.15s;
+
+    &:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+
+    &:not(:disabled):hover {
+      color: var(--bs-primary, #007bc2);
+      background-color: var(--bs-tertiary-bg, rgba(0, 0, 0, 0.05));
+    }
+  }
+
+  span {
+    min-width: 2.5rem;
+    text-align: center;
+  }
 }

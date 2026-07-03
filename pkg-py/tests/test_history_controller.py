@@ -1368,3 +1368,259 @@ async def test_on_evict_fires_before_store_delete_in_delete():
 
     assert order == ["hook_before"]
     assert await store.get(part(scope="alice"), rec.id) is None
+
+
+# ---------------------------------------------------------------------------
+# handle_navigate / handle_edit
+# ---------------------------------------------------------------------------
+
+
+class _TrackingChat:
+    def __init__(self) -> None:
+        self.messages_: list[dict[str, Any]] = []
+        self.actions: list[dict[str, Any]] = []
+        self.cleared: bool = False
+
+    def _messages_for_bookmark(self) -> list[dict[str, Any]]:
+        return list(self.messages_)
+
+    async def _send_action(self, action: Any) -> None:
+        self.actions.append(action)
+
+    async def clear_messages(self) -> None:
+        self.messages_ = []
+        self.cleared = True
+
+    async def _restore_bookmark_message(self, message_dict: Any) -> None:
+        self.messages_.append(message_dict)
+
+
+class _TrackingAdapter:
+    def __init__(self) -> None:
+        self.turns: list[dict[str, Any]] = []
+
+    def get_turns_json(self) -> list[dict[str, Any]]:
+        return list(self.turns)
+
+    def get_turns_grouped(self) -> list[list[dict[str, Any]]]:
+        return [[t] for t in self.turns]
+
+    def set_turns_json(self, turns: list[dict[str, Any]]) -> None:
+        self.turns = list(turns)
+
+    def client_info(self) -> dict[str, str]:
+        return {}
+
+
+def _make_branched_controller() -> (
+    tuple[HistoryController, _TrackingChat, _TrackingAdapter, _RecordingStore]
+):
+    chat = _TrackingChat()
+    adapter = _TrackingAdapter()
+    store = _RecordingStore()
+    controller = HistoryController(
+        chat=chat,  # type: ignore[arg-type]
+        adapter=adapter,  # type: ignore[arg-type]
+        store=store,  # type: ignore[arg-type]
+        title_fn=None,
+        title_enabled=False,
+        client=None,
+    )
+    controller.partition = part()
+
+    # Build a branched record:
+    # n_0001(user:q1) -> n_0002(asst:a1) -> n_0003(user:q2) -> n_0004(asst:a2)
+    #                                     -> n_0005(user:q2-edited) -> n_0006(asst:a2-new)
+    rec = new_conversation_record(title="t")
+    rec.append_linear([{"role": "user", "content": "q1"}], ui=[msg("user")])
+    rec.append_linear(
+        [{"role": "assistant", "content": "a1"}], ui=[msg("assistant")]
+    )
+    rec.append_linear([{"role": "user", "content": "q2"}], ui=[msg("user")])
+    rec.append_linear(
+        [{"role": "assistant", "content": "a2"}], ui=[msg("assistant")]
+    )
+    # Branch at n_0002: create sibling of n_0003
+    rec.branch_from(
+        "n_0002", [{"role": "user", "content": "q2-edited"}], ui=[msg("user")]
+    )
+    rec.branch_from(
+        "n_0005",
+        [{"role": "assistant", "content": "a2-new"}],
+        ui=[msg("assistant")],
+    )
+    # Active path: [n_0001, n_0002, n_0005, n_0006]
+    controller.record = rec
+    adapter.turns = rec.path_turns()
+    return controller, chat, adapter, store
+
+
+@pytest.mark.anyio
+async def test_handle_navigate_switches_to_prev_sibling():
+    controller, chat, adapter, store = _make_branched_controller()
+
+    # Message index 2 = n_0005 (the edited user message, sibling 2/2)
+    # Navigate "prev" -> switch to n_0003's branch
+    await controller.handle_navigate(2, "prev")
+
+    assert controller.record is not None
+    assert controller.record.current_leaf == "n_0004"
+    assert [t["content"] for t in adapter.turns] == ["q1", "a1", "q2", "a2"]
+    assert chat.cleared
+    assert len(chat.messages_) == 4
+    assert len(store.put_calls) == 1
+
+
+@pytest.mark.anyio
+async def test_handle_navigate_switches_to_next_sibling():
+    controller, chat, adapter, store = _make_branched_controller()
+
+    await controller.handle_navigate(2, "prev")
+    chat.cleared = False
+    store.put_calls.clear()
+
+    # Now message index 2 = n_0003 (sibling 1/2); "next" -> back to n_0005's branch
+    await controller.handle_navigate(2, "next")
+
+    assert controller.record is not None
+    assert controller.record.current_leaf == "n_0006"
+    assert [t["content"] for t in adapter.turns] == [
+        "q1",
+        "a1",
+        "q2-edited",
+        "a2-new",
+    ]
+
+
+@pytest.mark.anyio
+async def test_handle_navigate_noop_at_boundary():
+    controller, chat, adapter, store = _make_branched_controller()
+
+    # n_0005 is already the last sibling; "next" should be a no-op
+    await controller.handle_navigate(2, "next")
+
+    assert not chat.cleared
+    assert store.put_calls == []
+
+
+@pytest.mark.anyio
+async def test_handle_navigate_invalid_direction_is_noop():
+    controller, chat, adapter, store = _make_branched_controller()
+    await controller.handle_navigate(2, "invalid")
+    assert not chat.cleared
+    assert store.put_calls == []
+
+
+@pytest.mark.anyio
+async def test_handle_edit_truncates_and_signals_resubmit():
+    controller, chat, adapter, store = _make_branched_controller()
+    chat.messages_ = [
+        msg("user"),
+        msg("assistant"),
+        msg("user"),
+        msg("assistant"),
+    ]
+
+    # Edit message at index 2 (n_0005) -> truncate to n_0002, signal resubmit
+    await controller.handle_edit(2, "q2-re-edited")
+
+    assert controller.record is not None
+    assert controller.record.current_leaf == "n_0002"
+    assert [t["content"] for t in adapter.turns] == ["q1", "a1"]
+    assert chat.cleared
+    assert len(chat.messages_) == 2
+    update_actions = [a for a in chat.actions if a.get("type") == "update_input"]
+    assert len(update_actions) == 1
+    assert update_actions[0]["value"] == "q2-re-edited"
+    assert update_actions[0]["submit"] is True
+
+
+@pytest.mark.anyio
+async def test_handle_edit_first_message_truncates_to_root():
+    controller, chat, adapter, store = _make_branched_controller()
+    chat.messages_ = [
+        msg("user"),
+        msg("assistant"),
+        msg("user"),
+        msg("assistant"),
+    ]
+
+    await controller.handle_edit(0, "new-greeting")
+
+    assert controller.record is not None
+    assert controller.record.current_leaf is None
+    assert adapter.turns == []
+    assert chat.messages_ == []
+    update_actions = [a for a in chat.actions if a.get("type") == "update_input"]
+    assert update_actions[0]["value"] == "new-greeting"
+
+
+@pytest.mark.anyio
+async def test_handle_edit_suppress_save_is_cleared():
+    controller, chat, adapter, store = _make_branched_controller()
+    chat.messages_ = [
+        msg("user"),
+        msg("assistant"),
+        msg("user"),
+        msg("assistant"),
+    ]
+
+    await controller.handle_edit(2, "edited")
+
+    # _suppress_next_save must be False so the real post-resubmit save proceeds
+    assert controller._suppress_next_save is False
+
+
+@pytest.mark.anyio
+async def test_switch_to_resends_sibling_metadata_for_branched_conversation():
+    chat = _TrackingChat()
+    adapter = _TrackingAdapter()
+    store = InMemoryConversationStore()
+    controller = HistoryController(
+        chat=chat,  # type: ignore[arg-type]
+        adapter=adapter,  # type: ignore[arg-type]
+        store=store,  # type: ignore[arg-type]
+        title_fn=None,
+        title_enabled=False,
+        client=None,
+    )
+    controller.partition = part()
+
+    # Same branched shape as _make_branched_controller:
+    # n_0001(user:q1) -> n_0002(asst:a1) -> n_0003(user:q2) -> n_0004(asst:a2)
+    #                                     -> n_0005(user:q2-edited) -> n_0006(asst:a2-new)
+    rec = new_conversation_record(title="branched")
+    rec.append_linear([{"role": "user", "content": "q1"}], ui=[msg("user")])
+    rec.append_linear(
+        [{"role": "assistant", "content": "a1"}], ui=[msg("assistant")]
+    )
+    rec.append_linear([{"role": "user", "content": "q2"}], ui=[msg("user")])
+    rec.append_linear(
+        [{"role": "assistant", "content": "a2"}], ui=[msg("assistant")]
+    )
+    rec.branch_from(
+        "n_0002", [{"role": "user", "content": "q2-edited"}], ui=[msg("user")]
+    )
+    rec.branch_from(
+        "n_0005",
+        [{"role": "assistant", "content": "a2-new"}],
+        ui=[msg("assistant")],
+    )
+    await store.put(part(), rec)
+
+    other = new_conversation_record(title="other")
+    await store.put(part(), other)
+
+    controller.record = rec
+    adapter.turns = rec.path_turns()
+
+    # Switch to a different conversation, then back -- simulates starting a
+    # new chat and returning to the conversation with edited/branched messages.
+    await controller.switch_to(other.id)
+    chat.actions.clear()
+    await controller.switch_to(rec.id)
+
+    sibling_actions = [a for a in chat.actions if a["type"] == "update_siblings"]
+    assert len(sibling_actions) == 1
+    # n_0005 (message index 2) is the active branch's fork point: 2nd of 2 siblings.
+    assert sibling_actions[0]["data"] == {2: {"index": 1, "total": 2}}

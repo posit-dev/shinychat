@@ -103,6 +103,65 @@ class ConversationRecord(BaseModel):
             for turn in self.nodes[node_id].turns
         ]
 
+    def children_of(self, node_id: str | None) -> list[str]:
+        if node_id is None:
+            children = [
+                nid for nid, node in self.nodes.items() if node.parent is None
+            ]
+            children.sort(key=lambda nid: int(nid.split("_")[1]))
+            return children
+        return list(self.nodes[node_id].children)
+
+    def siblings_of(self, node_id: str) -> list[str]:
+        parent = self.nodes[node_id].parent
+        return self.children_of(parent)
+
+    def subtree_leaf(self, node_id: str) -> str:
+        children = self.children_of(node_id)
+        if not children:
+            return node_id
+        return self.subtree_leaf(children[-1])
+
+    def path_sibling_metadata(self) -> dict[str, tuple[int, int]]:
+        result: dict[str, tuple[int, int]] = {}
+        for nid in self.path_node_ids():
+            siblings = self.siblings_of(nid)
+            if len(siblings) > 1:
+                result[nid] = (siblings.index(nid), len(siblings))
+        return result
+
+    def node_id_for_message_index(self, index: int) -> tuple[str, int]:
+        if index < 0:
+            raise IndexError(f"Message index {index} out of range")
+        path = self.path_node_ids()
+        cumulative = 0
+        for i, nid in enumerate(path):
+            n_ui = len(self.nodes[nid].ui or [])
+            if index < cumulative + n_ui:
+                return nid, i
+            cumulative += n_ui
+        raise IndexError(f"Message index {index} out of range")
+
+    def branch_from(
+        self,
+        fork_parent_id: str | None,
+        turns: list[dict[str, Any]],
+        ui: list[dict[str, Any]] | None = None,
+    ) -> str:
+        """Create a sibling node directly. No production call site — handle_edit
+        achieves branching indirectly via current_leaf truncation; this exists
+        for constructing branched fixtures in tests."""
+        node_id = f"n_{self.next_node_seq:04d}"
+        self.next_node_seq += 1
+        self.nodes[node_id] = ConversationNode(
+            parent=fork_parent_id, turns=turns, ui=ui
+        )
+        if fork_parent_id is not None:
+            self.nodes[fork_parent_id].children.append(node_id)
+        self.current_leaf = node_id
+        self.updated_at = utcnow()
+        return node_id
+
     def append_linear(
         self,
         turns: list[dict[str, Any]],

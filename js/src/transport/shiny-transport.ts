@@ -126,6 +126,26 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
     )
   }
 
+  sendMessageEdit(id: string, index: number, content: string): void {
+    window.Shiny?.setInputValue?.(`${id}_message_edit`, {
+      index,
+      content,
+      ts: Date.now(),
+    })
+  }
+
+  sendMessageNavigate(
+    id: string,
+    index: number,
+    direction: "prev" | "next",
+  ): void {
+    window.Shiny?.setInputValue?.(`${id}_message_navigate`, {
+      index,
+      direction,
+      ts: Date.now(),
+    })
+  }
+
   onMessage(id: string, callback: (action: ChatAction) => void): () => void {
     if (!this.listeners.has(id)) {
       this.listeners.set(id, new Set())

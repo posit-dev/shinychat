@@ -66,6 +66,8 @@ export interface ChatContainerProps {
   historyEnabled?: boolean
   historyConversations?: ConversationMeta[]
   historyActiveId?: string | null
+  onEdit?: (index: number, content: string) => void
+  onNavigate?: (index: number, direction: "prev" | "next") => void
 }
 
 export type ChatContainerHandle = ChatInputHandle
@@ -97,6 +99,8 @@ export const ChatContainer = forwardRef<
     historyEnabled,
     historyConversations,
     historyActiveId,
+    onEdit,
+    onNavigate,
   },
   ref,
 ) {
@@ -450,11 +454,15 @@ export const ChatContainer = forwardRef<
                 <ChatMessages
                   messages={messages}
                   iconAssistant={iconAssistant}
+                  onEdit={onEdit}
+                  onNavigate={onNavigate}
+                  disabled={isStreaming}
                 />
                 {streamingMessage && (
                   <MessageErrorBoundary key={streamingMessage.id}>
                     <ChatMessage
                       message={streamingMessage}
+                      index={messages.length}
                       iconAssistant={iconAssistant}
                     />
                   </MessageErrorBoundary>
