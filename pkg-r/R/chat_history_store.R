@@ -243,7 +243,11 @@ FileConversationStore <- R6::R6Class(
         return(cached)
       }
 
-      ws <- list(turn_seq_map = list(), ui_node_len = list(), next_turn_seq = 0L)
+      ws <- list(
+        turn_seq_map = list(),
+        ui_node_len = list(),
+        next_turn_seq = 0L
+      )
 
       turns_file <- file.path(cdir, "turns.jsonl")
       if (file.exists(turns_file)) {
@@ -265,7 +269,9 @@ FileConversationStore <- R6::R6Class(
       ui_file <- file.path(cdir, "ui.jsonl")
       if (file.exists(ui_file)) {
         for (line in readLines(ui_file, warn = FALSE)) {
-          if (!nzchar(line)) next
+          if (!nzchar(line)) {
+            next
+          }
           entry <- tryCatch(
             jsonlite::fromJSON(line, simplifyVector = FALSE),
             error = function(e) NULL
@@ -352,7 +358,9 @@ FileConversationStore <- R6::R6Class(
       turns_file <- file.path(cdir, "turns.jsonl")
       if (file.exists(turns_file)) {
         for (line in readLines(turns_file, warn = FALSE)) {
-          if (!nzchar(line)) next
+          if (!nzchar(line)) {
+            next
+          }
           entry <- tryCatch(
             jsonlite::fromJSON(line, simplifyVector = FALSE),
             error = function(e) NULL
@@ -367,7 +375,9 @@ FileConversationStore <- R6::R6Class(
       ui_file <- file.path(cdir, "ui.jsonl")
       if (file.exists(ui_file)) {
         for (line in readLines(ui_file, warn = FALSE)) {
-          if (!nzchar(line)) next
+          if (!nzchar(line)) {
+            next
+          }
           entry <- tryCatch(
             jsonlite::fromJSON(line, simplifyVector = FALSE),
             error = function(e) NULL
@@ -385,7 +395,9 @@ FileConversationStore <- R6::R6Class(
           function(tid) !is.null(turns_map[[as.character(tid)]]),
           node_data$turn_ids
         )
-        turns <- lapply(turn_ids_present, function(tid) turns_map[[as.character(tid)]])
+        turns <- lapply(turn_ids_present, function(tid) {
+          turns_map[[as.character(tid)]]
+        })
         nodes[[nid]] <- list(
           parent = node_data$parent,
           children = node_data$children,
@@ -464,14 +476,26 @@ FileConversationStore <- R6::R6Class(
 
       turns_file <- file.path(cdir, "turns.jsonl")
       if (length(new_turns_lines) > 0) {
-        cat(paste0(new_turns_lines, collapse = "\n"), "\n", file = turns_file, sep = "", append = TRUE)
+        cat(
+          paste0(new_turns_lines, collapse = "\n"),
+          "\n",
+          file = turns_file,
+          sep = "",
+          append = TRUE
+        )
       } else if (!file.exists(turns_file)) {
         file.create(turns_file)
       }
 
       ui_file <- file.path(cdir, "ui.jsonl")
       if (length(new_ui_lines) > 0) {
-        cat(paste0(new_ui_lines, collapse = "\n"), "\n", file = ui_file, sep = "", append = TRUE)
+        cat(
+          paste0(new_ui_lines, collapse = "\n"),
+          "\n",
+          file = ui_file,
+          sep = "",
+          append = TRUE
+        )
       } else if (!file.exists(ui_file)) {
         file.create(ui_file)
       }

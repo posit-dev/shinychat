@@ -886,8 +886,11 @@ test_that("switching between two conversations repeatedly never duplicates or mi
   ctrl$partition <- conversation_partition("chat", "test-user")
 
   make_turn <- function(role, text) {
-    class_name <- if (role == "user") "ellmer::UserTurn" else
+    class_name <- if (role == "user") {
+      "ellmer::UserTurn"
+    } else {
       "ellmer::AssistantTurn"
+    }
     list(
       class = class_name,
       version = 1,
@@ -950,13 +953,19 @@ test_that("switching between two conversations repeatedly never duplicates or mi
   for (i in 1:3) {
     report_client_messages(c("A", "B"))
     ctrl$switch_to(conv1$id)
-    reloaded1 <- store$get(conversation_partition("chat", "test-user"), conv1$id)
+    reloaded1 <- store$get(
+      conversation_partition("chat", "test-user"),
+      conv1$id
+    )
     expect_equal(record_ui_count(reloaded1), 2)
     expect_equal(record_ui_texts(reloaded1), c("A", "B"))
 
     report_client_messages(c("C", "D"))
     ctrl$switch_to(conv2$id)
-    reloaded2 <- store$get(conversation_partition("chat", "test-user"), conv2$id)
+    reloaded2 <- store$get(
+      conversation_partition("chat", "test-user"),
+      conv2$id
+    )
     expect_equal(record_ui_count(reloaded2), 2)
     expect_equal(record_ui_texts(reloaded2), c("C", "D"))
   }
@@ -988,12 +997,18 @@ test_that("switching between two conversations repeatedly never duplicates or mi
   report_client_messages(c("A", "B", "E"))
   ctrl$on_response(get_turns_recorded(client))
 
-  reloaded1_grown <- store$get(conversation_partition("chat", "test-user"), conv1$id)
+  reloaded1_grown <- store$get(
+    conversation_partition("chat", "test-user"),
+    conv1$id
+  )
   expect_equal(record_ui_count(reloaded1_grown), 3)
   expect_equal(record_ui_texts(reloaded1_grown), c("A", "B", "E"))
 
   # conv2 must remain untouched by conv1's growth.
-  reloaded2_final <- store$get(conversation_partition("chat", "test-user"), conv2$id)
+  reloaded2_final <- store$get(
+    conversation_partition("chat", "test-user"),
+    conv2$id
+  )
   expect_equal(record_ui_count(reloaded2_final), 2)
   expect_equal(record_ui_texts(reloaded2_final), c("C", "D"))
 })

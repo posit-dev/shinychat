@@ -493,8 +493,12 @@ test_that("warns when `display` is not a list", {
 
 test_that("ellmer_turn_effective_role() treats a tool-result-only turn as assistant", {
   plain_user <- ellmer::UserTurn(contents = list(ellmer::ContentText("hi")))
-  plain_assistant <- ellmer::AssistantTurn(contents = list(ellmer::ContentText("hi")))
-  tool_result_turn <- ellmer::UserTurn(contents = list(new_tool_result(value = "ok")))
+  plain_assistant <- ellmer::AssistantTurn(
+    contents = list(ellmer::ContentText("hi"))
+  )
+  tool_result_turn <- ellmer::UserTurn(
+    contents = list(new_tool_result(value = "ok"))
+  )
 
   expect_equal(ellmer_turn_effective_role(plain_user), "user")
   expect_equal(ellmer_turn_effective_role(plain_assistant), "assistant")
@@ -515,10 +519,18 @@ test_that("group_ellmer_turns() keeps a plain user/assistant exchange as two gro
 test_that("group_ellmer_turns() consolidates a tool-call round into one group", {
   request <- new_tool_request(id = "t1", name = "get_weather")
   turns <- list(
-    ellmer::UserTurn(contents = list(ellmer::ContentText("what's the weather?"))),
-    ellmer::AssistantTurn(contents = list(ellmer::ContentText("Let me check."), request)),
-    ellmer::UserTurn(contents = list(new_tool_result(value = "Sunny, 75F", request = request))),
-    ellmer::AssistantTurn(contents = list(ellmer::ContentText("It's sunny and 75F!")))
+    ellmer::UserTurn(
+      contents = list(ellmer::ContentText("what's the weather?"))
+    ),
+    ellmer::AssistantTurn(
+      contents = list(ellmer::ContentText("Let me check."), request)
+    ),
+    ellmer::UserTurn(
+      contents = list(new_tool_result(value = "Sunny, 75F", request = request))
+    ),
+    ellmer::AssistantTurn(
+      contents = list(ellmer::ContentText("It's sunny and 75F!"))
+    )
   )
   groups <- group_ellmer_turns(turns)
   expect_length(groups, 2)

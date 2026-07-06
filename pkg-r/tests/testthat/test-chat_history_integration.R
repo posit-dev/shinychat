@@ -552,8 +552,11 @@ test_that("set_client() seeds ui_offset from the restored record so a post-swap 
   skip_if_not_installed("ellmer")
 
   make_turn <- function(role, text) {
-    class_name <- if (role == "user") "ellmer::UserTurn" else
+    class_name <- if (role == "user") {
+      "ellmer::UserTurn"
+    } else {
       "ellmer::AssistantTurn"
+    }
     list(
       class = class_name,
       version = 1,
@@ -647,16 +650,22 @@ test_that("set_client() seeds ui_offset from the restored record so a post-swap 
       make_turn("user", "again")
     ))
 
-    reloaded <- store$get(conversation_partition(session$ns("chat"), "testuser"), ctrl$record$id)
+    reloaded <- store$get(
+      conversation_partition(session$ns("chat"), "testuser"),
+      ctrl$record$id
+    )
     expect_equal(record_ui_count(reloaded), 3)
 
-    ui_texts <- unlist(lapply(record_path_node_ids(reloaded), function(node_id) {
-      vapply(
-        reloaded$nodes[[node_id]]$ui,
-        function(m) m$segments[[1]]$content,
-        character(1)
-      )
-    }))
+    ui_texts <- unlist(lapply(
+      record_path_node_ids(reloaded),
+      function(node_id) {
+        vapply(
+          reloaded$nodes[[node_id]]$ui,
+          function(m) m$segments[[1]]$content,
+          character(1)
+        )
+      }
+    ))
     expect_equal(ui_texts, c("hi", "hello", "again"))
   })
 })

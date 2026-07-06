@@ -40,7 +40,10 @@ test_that("messages_input_value() parses a decoded JSON payload into message lis
     ),
     list(
       role = "assistant",
-      segments = list(list(content = "<div>widget</div>", content_type = "html")),
+      segments = list(list(
+        content = "<div>widget</div>",
+        content_type = "html"
+      )),
       htmlDeps = list(list(name = "widgetdep", version = "1.0.0"))
     )
   )
@@ -51,14 +54,20 @@ test_that("messages_input_value() parses a decoded JSON payload into message lis
   expect_equal(parsed[[1]]$role, "user")
   expect_equal(parsed[[1]]$segments[[1]]$content, "hi")
   expect_null(parsed[[1]]$htmlDeps)
-  expect_equal(parsed[[2]]$htmlDeps, list(list(name = "widgetdep", version = "1.0.0")))
+  expect_equal(
+    parsed[[2]]$htmlDeps,
+    list(list(name = "widgetdep", version = "1.0.0"))
+  )
 })
 
 test_that("messages_input_value() carries attachments through when present", {
   value <- list(
     list(
       role = "user",
-      segments = list(list(content = "see attached", content_type = "markdown")),
+      segments = list(list(
+        content = "see attached",
+        content_type = "markdown"
+      )),
       attachments = list(list(
         mime = "image/png",
         name = "a.png",
@@ -72,7 +81,10 @@ test_that("messages_input_value() carries attachments through when present", {
 })
 
 test_that("messages_input_value() omits attachments when empty", {
-  value <- list(list(role = "user", segments = list(list(content = "hi", content_type = "markdown"))))
+  value <- list(list(
+    role = "user",
+    segments = list(list(content = "hi", content_type = "markdown"))
+  ))
   parsed <- messages_input_value(value)
   expect_null(parsed[[1]]$attachments)
 })
@@ -81,7 +93,10 @@ test_that("messages_input_value() rejects unsupported attachment MIME types", {
   value <- list(
     list(
       role = "user",
-      segments = list(list(content = "see attached", content_type = "markdown")),
+      segments = list(list(
+        content = "see attached",
+        content_type = "markdown"
+      )),
       attachments = list(list(
         mime = "application/octet-stream",
         name = "x.bin",
@@ -98,7 +113,10 @@ test_that("messages_input_value() rejects oversized attachment payloads", {
   value <- list(
     list(
       role = "user",
-      segments = list(list(content = "see attached", content_type = "markdown")),
+      segments = list(list(
+        content = "see attached",
+        content_type = "markdown"
+      )),
       attachments = list(list(
         mime = "text/plain",
         name = "x.txt",
@@ -204,9 +222,15 @@ user_turn_fixture <- function(text) {
   list(
     class = "ellmer::UserTurn",
     version = 1,
-    props = list(contents = list(
-      list(class = "ellmer::ContentText", version = 1, props = list(text = text))
-    ))
+    props = list(
+      contents = list(
+        list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = text)
+        )
+      )
+    )
   )
 }
 
@@ -214,13 +238,23 @@ assistant_turn_fixture <- function(text) {
   list(
     class = "ellmer::AssistantTurn",
     version = 1,
-    props = list(contents = list(
-      list(class = "ellmer::ContentText", version = 1, props = list(text = text))
-    ))
+    props = list(
+      contents = list(
+        list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = text)
+        )
+      )
+    )
   )
 }
 
-tool_request_content_fixture <- function(id = "t1", name = "get_weather", arguments = list()) {
+tool_request_content_fixture <- function(
+  id = "t1",
+  name = "get_weather",
+  arguments = list()
+) {
   list(
     class = "ellmer::ContentToolRequest",
     version = 1,
@@ -228,14 +262,23 @@ tool_request_content_fixture <- function(id = "t1", name = "get_weather", argume
   )
 }
 
-tool_result_content_fixture <- function(id = "t1", name = "get_weather", arguments = list(), value = "ok") {
+tool_result_content_fixture <- function(
+  id = "t1",
+  name = "get_weather",
+  arguments = list(),
+  value = "ok"
+) {
   list(
     class = "ellmer::ContentToolResult",
     version = 1,
     props = list(
       value = value,
       extra = list(),
-      request = tool_request_content_fixture(id = id, name = name, arguments = arguments)
+      request = tool_request_content_fixture(
+        id = id,
+        name = name,
+        arguments = arguments
+      )
     )
   )
 }
@@ -244,10 +287,16 @@ tool_request_turn_fixture <- function(text) {
   list(
     class = "ellmer::AssistantTurn",
     version = 1,
-    props = list(contents = list(
-      list(class = "ellmer::ContentText", version = 1, props = list(text = text)),
-      tool_request_content_fixture()
-    ))
+    props = list(
+      contents = list(
+        list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = text)
+        ),
+        tool_request_content_fixture()
+      )
+    )
   )
 }
 
@@ -263,7 +312,13 @@ test_that("extend_record_linear() appends new turn groups as nodes", {
   rec <- new_conversation_record("test")
   turns <- list(user_turn_fixture("hi"), assistant_turn_fixture("hello"))
 
-  rec <- extend_record_linear(rec, turns, ui_messages = list(), ui_offset = 0, tools = list())
+  rec <- extend_record_linear(
+    rec,
+    turns,
+    ui_messages = list(),
+    ui_offset = 0,
+    tools = list()
+  )
 
   expect_equal(names(rec$nodes), c("n_0001", "n_0002"))
   expect_null(rec$nodes$n_0001$parent)
@@ -280,7 +335,13 @@ test_that("extend_record_linear() groups a tool-call round into a single node", 
     assistant_turn_fixture("It's sunny and 75F!")
   )
 
-  rec <- extend_record_linear(rec, turns, ui_messages = list(), ui_offset = 0, tools = list())
+  rec <- extend_record_linear(
+    rec,
+    turns,
+    ui_messages = list(),
+    ui_offset = 0,
+    tools = list()
+  )
 
   expect_equal(names(rec$nodes), c("n_0001", "n_0002"))
   expect_length(rec$nodes$n_0001$turns, 1)
@@ -290,19 +351,43 @@ test_that("extend_record_linear() groups a tool-call round into a single node", 
 test_that("extend_record_linear() is idempotent for the same turns and messages", {
   rec <- new_conversation_record("test")
   turns <- list(user_turn_fixture("hi"))
-  rec <- extend_record_linear(rec, turns, ui_messages = list(), ui_offset = 0, tools = list())
+  rec <- extend_record_linear(
+    rec,
+    turns,
+    ui_messages = list(),
+    ui_offset = 0,
+    tools = list()
+  )
 
-  rec2 <- extend_record_linear(rec, turns, ui_messages = list(), ui_offset = 0, tools = list())
+  rec2 <- extend_record_linear(
+    rec,
+    turns,
+    ui_messages = list(),
+    ui_offset = 0,
+    tools = list()
+  )
   expect_equal(length(rec2$nodes), 1)
 })
 
 test_that("extend_record_linear() appends only new turn groups", {
   rec <- new_conversation_record("test")
   turns1 <- list(user_turn_fixture("hi"))
-  rec <- extend_record_linear(rec, turns1, ui_messages = list(), ui_offset = 0, tools = list())
+  rec <- extend_record_linear(
+    rec,
+    turns1,
+    ui_messages = list(),
+    ui_offset = 0,
+    tools = list()
+  )
 
   turns2 <- list(user_turn_fixture("hi"), assistant_turn_fixture("hello"))
-  rec <- extend_record_linear(rec, turns2, ui_messages = list(), ui_offset = 0, tools = list())
+  rec <- extend_record_linear(
+    rec,
+    turns2,
+    ui_messages = list(),
+    ui_offset = 0,
+    tools = list()
+  )
   expect_equal(length(rec$nodes), 2)
   expect_equal(rec$current_leaf, "n_0002")
 })
@@ -311,11 +396,23 @@ test_that("extend_record_linear() attaches a user message to the matching new us
   rec <- new_conversation_record("test")
   turns <- list(user_turn_fixture("hi"), assistant_turn_fixture("hello"))
   ui_messages <- list(
-    list(role = "user", segments = list(list(content = "hi", content_type = "markdown"))),
-    list(role = "assistant", segments = list(list(content = "hello", content_type = "markdown")))
+    list(
+      role = "user",
+      segments = list(list(content = "hi", content_type = "markdown"))
+    ),
+    list(
+      role = "assistant",
+      segments = list(list(content = "hello", content_type = "markdown"))
+    )
   )
 
-  rec <- extend_record_linear(rec, turns, ui_messages = ui_messages, ui_offset = 0, tools = list())
+  rec <- extend_record_linear(
+    rec,
+    turns,
+    ui_messages = ui_messages,
+    ui_offset = 0,
+    tools = list()
+  )
 
   expect_equal(rec$nodes$n_0001$ui, list(ui_messages[[1]]))
   expect_equal(rec$nodes$n_0002$ui, list(ui_messages[[2]]))
@@ -330,12 +427,27 @@ test_that("extend_record_linear() attaches non-user messages to the last new nod
     assistant_turn_fixture("sunny")
   )
   ui_messages <- list(
-    list(role = "user", segments = list(list(content = "weather?", content_type = "markdown"))),
-    list(role = "assistant", segments = list(list(content = "[tool card]", content_type = "html"))),
-    list(role = "assistant", segments = list(list(content = "sunny", content_type = "markdown")))
+    list(
+      role = "user",
+      segments = list(list(content = "weather?", content_type = "markdown"))
+    ),
+    list(
+      role = "assistant",
+      segments = list(list(content = "[tool card]", content_type = "html"))
+    ),
+    list(
+      role = "assistant",
+      segments = list(list(content = "sunny", content_type = "markdown"))
+    )
   )
 
-  rec <- extend_record_linear(rec, turns, ui_messages = ui_messages, ui_offset = 0, tools = list())
+  rec <- extend_record_linear(
+    rec,
+    turns,
+    ui_messages = ui_messages,
+    ui_offset = 0,
+    tools = list()
+  )
 
   expect_equal(rec$nodes$n_0001$ui, list(ui_messages[[1]]))
   expect_equal(rec$nodes$n_0002$ui, ui_messages[2:3])
@@ -347,19 +459,28 @@ test_that("extend_record_linear() attaches a late-arriving message to the curren
   rec <- extend_record_linear(
     rec,
     turns,
-    ui_messages = list(list(role = "user", segments = list(list(content = "hi", content_type = "markdown")))),
+    ui_messages = list(list(
+      role = "user",
+      segments = list(list(content = "hi", content_type = "markdown"))
+    )),
     ui_offset = 0,
     tools = list()
   )
 
   # Same turns (no new node), but one more ui message arrived (e.g. the
   # client caught up after a streamed reply settled).
-  late_message <- list(role = "assistant", segments = list(list(content = "hello", content_type = "markdown")))
+  late_message <- list(
+    role = "assistant",
+    segments = list(list(content = "hello", content_type = "markdown"))
+  )
   rec <- extend_record_linear(
     rec,
     turns,
     ui_messages = list(
-      list(role = "user", segments = list(list(content = "hi", content_type = "markdown"))),
+      list(
+        role = "user",
+        segments = list(list(content = "hi", content_type = "markdown"))
+      ),
       late_message
     ),
     ui_offset = 1,
@@ -367,16 +488,28 @@ test_that("extend_record_linear() attaches a late-arriving message to the curren
   )
 
   expect_equal(length(rec$nodes), 1)
-  expect_equal(rec$nodes$n_0001$ui, list(
-    list(role = "user", segments = list(list(content = "hi", content_type = "markdown"))),
-    late_message
-  ))
+  expect_equal(
+    rec$nodes$n_0001$ui,
+    list(
+      list(
+        role = "user",
+        segments = list(list(content = "hi", content_type = "markdown"))
+      ),
+      late_message
+    )
+  )
 })
 
 test_that("extend_record_linear() records children pointers", {
   rec <- new_conversation_record("test")
   turns <- list(user_turn_fixture("hi"), assistant_turn_fixture("hello"))
-  rec <- extend_record_linear(rec, turns, ui_messages = list(), ui_offset = 0, tools = list())
+  rec <- extend_record_linear(
+    rec,
+    turns,
+    ui_messages = list(),
+    ui_offset = 0,
+    tools = list()
+  )
 
   expect_equal(rec$nodes$n_0001$children, list("n_0002"))
   expect_equal(rec$nodes$n_0002$children, list())

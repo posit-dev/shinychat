@@ -148,11 +148,23 @@ record_ui_count <- function(record) {
   ))
 }
 
-extend_record_linear <- function(record, recorded_turns, ui_messages, ui_offset, tools) {
+extend_record_linear <- function(
+  record,
+  recorded_turns,
+  ui_messages,
+  ui_offset,
+  tools
+) {
   existing_turn_count <- record_turn_count(record)
-  new_turns_recorded <- recorded_turns[seq_along(recorded_turns) > existing_turn_count]
+  new_turns_recorded <- recorded_turns[
+    seq_along(recorded_turns) > existing_turn_count
+  ]
 
-  new_turns_live <- lapply(new_turns_recorded, ellmer::contents_replay, tools = tools)
+  new_turns_live <- lapply(
+    new_turns_recorded,
+    ellmer::contents_replay,
+    tools = tools
+  )
   live_groups <- group_ellmer_turns(new_turns_live)
 
   new_groups <- list()
@@ -190,7 +202,9 @@ extend_record_linear <- function(record, recorded_turns, ui_messages, ui_offset,
   user_node_ids <- new_node_ids[
     vapply(
       seq_along(live_groups),
-      function(i) identical(ellmer_turn_effective_role(live_groups[[i]][[1]]), "user"),
+      function(i) {
+        identical(ellmer_turn_effective_role(live_groups[[i]][[1]]), "user")
+      },
       logical(1)
     )
   ]
