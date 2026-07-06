@@ -51,7 +51,7 @@ def test_history_rename_delete_search(
     # --- Delete (inline confirm) ---
     page.locator(".shiny-chat-history-itemmenu button").first.click()
     page.locator(".shiny-chat-history-menu").get_by_role(
-        "button", name="Delete…"
+        "button", name="Delete", exact=True
     ).click()
     page.locator(".shiny-chat-history-confirm").get_by_role(
         "button", name="Confirm delete"
