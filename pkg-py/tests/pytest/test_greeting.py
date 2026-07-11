@@ -9,6 +9,7 @@ import pytest
 from htmltools import HTML, HTMLDependency, tags
 from shiny.session import session_context
 from shinychat import Chat, chat_greeting, chat_ui
+from shinychat._chat_client import resolve_greeting
 from shinychat._chat_types import ChatGreeting
 
 # ---------------------------------------------------------------------------
@@ -429,5 +430,55 @@ def test_enable_bookmarking_excludes_greeting_dismissed():
     with session_context(cast(Any, bm_sess)):
         chat.enable_bookmarking(_MockClient())
     assert "bm_chat_dis_greeting_dismissed" in bm_sess.bookmark.exclude
+
+
+# ---------------------------------------------------------------------------
+# resolve_greeting() tests
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_greeting_static_string():
+    chat, spy = _make_spy_chat()
+
+    async def _run():
+        await resolve_greeting(chat, "## Hi")
+
+    _run_async(_run)
+    actions = _spy_actions(spy)
+    assert len(actions) == 1
+    assert actions[0]["type"] == "greeting"
+    assert actions[0]["content"] == "## Hi"
+
+
+def test_resolve_greeting_zero_arg_callable():
+    chat, spy = _make_spy_chat()
+    called = False
+
+    def _greeting():
+        nonlocal called
+        called = True
+        return "## Generated"
+
+    async def _run():
+        await resolve_greeting(chat, _greeting)
+
+    _run_async(_run)
+    assert called
+    actions = _spy_actions(spy)
+    assert actions[0]["content"] == "## Generated"
+
+
+def test_resolve_greeting_awaitable_callable():
+    chat, spy = _make_spy_chat()
+
+    async def _greeting():
+        return "## Async Generated"
+
+    async def _run():
+        await resolve_greeting(chat, _greeting)
+
+    _run_async(_run)
+    actions = _spy_actions(spy)
+    assert actions[0]["content"] == "## Async Generated"
 
 

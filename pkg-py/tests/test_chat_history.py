@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, cast
-from unittest.mock import MagicMock, patch
+from typing import Any, Awaitable, Callable, cast
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from shiny.module import ResolvedId
@@ -170,3 +170,32 @@ def test_history_config_max_store_mb_default():
 def test_history_config_max_store_mb_custom():
     config = HistoryOptions(max_store_mb=50.0)
     assert config.max_store_mb == 50.0
+
+
+def test_controller_starts_none():
+    chat = _make_chat()
+    assert chat.history._controller is None
+
+
+@pytest.mark.anyio
+async def test_setup_greeting_wires_on_settled():
+    chat = _make_chat()
+
+    class _FakeController:
+        on_settled: "Callable[[bool], Awaitable[None]] | None" = None
+
+    fake_controller = _FakeController()
+    chat.history._controller = cast(Any, fake_controller)
+
+    with patch(
+        "shinychat._chat_client.resolve_greeting", new=AsyncMock()
+    ) as mock_resolve:
+        chat.history.setup_greeting("## Hi")
+        assert fake_controller.on_settled is not None
+
+        await fake_controller.on_settled(False)
+        mock_resolve.assert_awaited_once_with(chat, "## Hi")
+
+        mock_resolve.reset_mock()
+        await fake_controller.on_settled(True)
+        mock_resolve.assert_not_awaited()

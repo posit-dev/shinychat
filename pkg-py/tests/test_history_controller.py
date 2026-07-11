@@ -4,7 +4,7 @@
 
 import warnings
 from datetime import timedelta
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -150,6 +150,9 @@ def test_extend_with_no_new_ui_messages_leaves_ui_none():
 
 
 class _FakeChat:
+    def __init__(self) -> None:
+        self.set_greeting_calls: list[Any] = []
+
     def _messages_for_bookmark(self) -> list[Any]:
         return []
 
@@ -161,6 +164,9 @@ class _FakeChat:
 
     async def _restore_bookmark_message(self, message_dict: Any) -> None:
         pass
+
+    async def set_greeting(self, greeting: Any) -> None:
+        self.set_greeting_calls.append(greeting)
 
 
 class _FakeAdapter:
@@ -245,6 +251,53 @@ def _make_controller(
     )
     controller.partition = part()
     return controller, resolved_store
+
+
+@pytest.mark.anyio
+async def test_replay_ui_clears_greeting():
+    controller, _store = _make_controller()
+    record = new_conversation_record(title="t")
+
+    await controller.replay_ui(record)
+
+    fake_chat = cast(Any, controller.chat)
+    assert fake_chat.set_greeting_calls == [None]
+
+
+@pytest.mark.anyio
+async def test_notify_settled_calls_on_settled_hook():
+    controller, _store = _make_controller()
+    calls: list[bool] = []
+
+    async def _on_settled(restored: bool) -> None:
+        calls.append(restored)
+
+    controller.on_settled = _on_settled
+    await controller.notify_settled(True)
+    await controller.notify_settled(False)
+
+    assert calls == [True, False]
+
+
+@pytest.mark.anyio
+async def test_notify_settled_no_op_when_hook_unset():
+    controller, _store = _make_controller()
+    # Must not raise when nothing has registered a hook.
+    await controller.notify_settled(True)
+
+
+@pytest.mark.anyio
+async def test_new_chat_notifies_settled_false():
+    controller, _store = _make_controller()
+    calls: list[bool] = []
+
+    async def _on_settled(restored: bool) -> None:
+        calls.append(restored)
+
+    controller.on_settled = _on_settled
+    await controller.new_chat()
+
+    assert calls == [False]
 
 
 @pytest.mark.anyio
@@ -451,6 +504,7 @@ async def test_ui_offset_unchanged_when_save_current_store_put_raises():
 
 class _NavFakeChat(_FakeChat):
     def __init__(self) -> None:
+        super().__init__()
         self.actions: list[dict[str, Any]] = []
         self.cleared = 0
 
