@@ -138,6 +138,63 @@ def test_edit_button_reachable_via_keyboard_without_hover(
     expect(edit_btn).to_have_css("opacity", "1")
 
 
+def test_edit_button_revealed_via_long_press_on_touch(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    """A ~500ms touch hold on a user message reveals the edit button (no
+    hover, no keyboard focus involved); a quick tap does not reveal it;
+    tapping elsewhere afterward hides it again."""
+    page.goto(local_app.url)
+
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+
+    chat.set_user_input("hello")
+    chat.send_user_input(method="enter")
+    chat.expect_latest_message("Echo: hello", timeout=10_000)
+
+    first_user = page.locator(".shiny-chat-user-message").first
+    edit_btn = first_user.locator(".shiny-chat-edit-btn")
+    box = first_user.bounding_box()
+    assert box is not None
+    x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+    touch_point = {
+        "pointerType": "touch",
+        "clientX": x,
+        "clientY": y,
+        "bubbles": True,
+    }
+
+    # A quick tap, well under the hold threshold, must not reveal the button.
+    first_user.dispatch_event("pointerdown", touch_point)
+    first_user.dispatch_event("pointerup", touch_point)
+    page.wait_for_timeout(600)
+    expect(edit_btn).to_have_css("opacity", "0")
+
+    # A ~500ms hold reveals it.
+    first_user.dispatch_event("pointerdown", touch_point)
+    page.wait_for_timeout(600)
+    expect(edit_btn).to_have_css("opacity", "1")
+    first_user.dispatch_event("pointerup", touch_point)
+
+    # It's clickable while revealed, and opens the normal edit box.
+    edit_btn.click()
+    editor = first_user.get_by_role("textbox", name="Chat message")
+    expect(editor).to_be_visible(timeout=5_000)
+    first_user.locator(".shiny-chat-edit-cancel-outside").click()
+
+    # Long-press again, then tap elsewhere -- the reveal should clear.
+    first_user.dispatch_event("pointerdown", touch_point)
+    page.wait_for_timeout(600)
+    expect(edit_btn).to_have_css("opacity", "1")
+    first_user.dispatch_event("pointerup", touch_point)
+    page.locator("body").dispatch_event(
+        "pointerdown",
+        {"pointerType": "touch", "clientX": 5, "clientY": 5, "bubbles": True},
+    )
+    expect(edit_btn).to_have_css("opacity", "0")
+
+
 def test_only_one_edit_box_open_at_a_time(
     page: Page, local_app: ShinyAppProc
 ) -> None:

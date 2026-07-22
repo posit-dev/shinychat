@@ -20,6 +20,9 @@ import type { SubmitKey } from "./tiptap/submitShortcut"
 import { useAttachmentStaging } from "./useAttachmentStaging"
 import { AttachmentTray } from "./AttachmentTray"
 
+const TOUCH_HOLD_MS = 500
+const TOUCH_MOVE_CANCEL_PX = 10
+
 function parseLeadingCommand(
   content: string,
   commands: SlashCommandDef[],
@@ -82,6 +85,13 @@ export const ChatMessage = memo(function ChatMessage({
   const [hasEditText, setHasEditText] = useState(false)
   const editRef = useRef<TiptapInputHandle>(null)
   const isUser = message.role === "user"
+  const touchHoldEnabled = isUser && !!onEdit && !disabled && !isEditing
+
+  const [touchRevealed, setTouchRevealed] = useState(false)
+  const touchHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const touchHoldStartRef = useRef<{ x: number; y: number } | null>(null)
+  const touchHoldRevealedRef = useRef(false)
+  const rootRef = useRef<HTMLDivElement>(null)
 
   const focusEditor = useCallback(() => editRef.current?.focus(), [])
   const staging = useAttachmentStaging({
@@ -114,6 +124,82 @@ export const ChatMessage = memo(function ChatMessage({
     () => getPayloads().length > 0,
     [getPayloads],
   )
+
+  const clearTouchHoldTimer = useCallback(() => {
+    if (touchHoldTimerRef.current !== null) {
+      clearTimeout(touchHoldTimerRef.current)
+      touchHoldTimerRef.current = null
+    }
+  }, [])
+
+  const handleBubblePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.pointerType !== "touch") return
+      touchHoldStartRef.current = { x: e.clientX, y: e.clientY }
+      touchHoldRevealedRef.current = false
+      clearTouchHoldTimer()
+      touchHoldTimerRef.current = setTimeout(() => {
+        touchHoldTimerRef.current = null
+        touchHoldRevealedRef.current = true
+        setTouchRevealed(true)
+      }, TOUCH_HOLD_MS)
+    },
+    [clearTouchHoldTimer],
+  )
+
+  const handleBubblePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const start = touchHoldStartRef.current
+      if (!start) return
+      const moved = Math.hypot(e.clientX - start.x, e.clientY - start.y)
+      if (moved > TOUCH_MOVE_CANCEL_PX) {
+        touchHoldStartRef.current = null
+        clearTouchHoldTimer()
+      }
+    },
+    [clearTouchHoldTimer],
+  )
+
+  const handleBubblePointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const wasHolding = touchHoldStartRef.current !== null
+      touchHoldStartRef.current = null
+      clearTouchHoldTimer()
+      // The hold just revealed the button; swallow the trailing click so it
+      // doesn't also activate whatever else is under the finger.
+      if (wasHolding && touchHoldRevealedRef.current) {
+        e.preventDefault()
+      }
+    },
+    [clearTouchHoldTimer],
+  )
+
+  const handleBubblePointerCancel = useCallback(() => {
+    touchHoldStartRef.current = null
+    clearTouchHoldTimer()
+  }, [clearTouchHoldTimer])
+
+  const handleBubbleContextMenu = useCallback((e: React.MouseEvent) => {
+    // Suppress the native long-press context menu/selection callout during
+    // (or just after) a touch hold; a deliberate tap-drag or double-tap can
+    // still select text normally.
+    if (touchHoldStartRef.current !== null || touchHoldRevealedRef.current) {
+      e.preventDefault()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!touchRevealed) return
+    const onPointerDownOutside = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) {
+        setTouchRevealed(false)
+      }
+    }
+    document.addEventListener("pointerdown", onPointerDownOutside, true)
+    return () =>
+      document.removeEventListener("pointerdown", onPointerDownOutside, true)
+  }, [touchRevealed])
+
   const hasContent =
     message.content.trim() !== "" ||
     message.blocks.some((b) => b.type === "thinking") ||
@@ -267,7 +353,16 @@ export const ChatMessage = memo(function ChatMessage({
   )
 
   return (
-    <div className={roleClass}>
+    <div
+      ref={rootRef}
+      className={roleClass}
+      data-touch-revealed={touchRevealed || undefined}
+      onPointerDown={touchHoldEnabled ? handleBubblePointerDown : undefined}
+      onPointerMove={touchHoldEnabled ? handleBubblePointerMove : undefined}
+      onPointerUp={touchHoldEnabled ? handleBubblePointerUp : undefined}
+      onPointerCancel={touchHoldEnabled ? handleBubblePointerCancel : undefined}
+      onContextMenu={touchHoldEnabled ? handleBubbleContextMenu : undefined}
+    >
       {iconHtml && (
         <div
           className="message-icon"
@@ -382,7 +477,10 @@ export const ChatMessage = memo(function ChatMessage({
               <button
                 type="button"
                 className="shiny-chat-edit-btn"
-                onClick={() => onStartEdit?.()}
+                onClick={() => {
+                  setTouchRevealed(false)
+                  onStartEdit?.()
+                }}
                 aria-label="Edit message"
                 title="Edit message"
                 dangerouslySetInnerHTML={{ __html: pencil }}

@@ -265,6 +265,9 @@ shiny-chat-container:not([fill]) {
   grid-template-columns: auto;
   // Prevent structural wrapper/button elements from appearing in clipboard copies
   user-select: none;
+  // Let vertical scrolling through a message pass through even while our own
+  // long-press-hold gesture is tracking the pointer (see ChatMessage.tsx).
+  touch-action: pan-y;
 
   .shiny-chat-message-content {
     user-select: text;
@@ -1055,7 +1058,8 @@ shiny-chat-container:not([fill]) {
 }
 
 .shiny-chat-user-message:hover .shiny-chat-edit-btn,
-.shiny-chat-user-message:focus-within .shiny-chat-edit-btn {
+.shiny-chat-user-message:focus-within .shiny-chat-edit-btn,
+.shiny-chat-user-message[data-touch-revealed] .shiny-chat-edit-btn {
   opacity: 1;
 }
 

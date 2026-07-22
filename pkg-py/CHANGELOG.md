@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### New features
 
-* You can now edit a message you already sent, instead of only being able to send a new one. Hover a user message and click the pencil icon to open an inline editor (pre-filled with the original text and attachments); press Enter (or Cmd/Ctrl+Enter, depending on `submit_key`) to save and resend, or Escape to cancel. Editing forks the conversation from that point — the original branch isn't lost, it's kept as a sibling. `‹ 1 / 2 ›`-style controls appear on any message with more than one version, letting you step back and forth between them at any time, including after reloading the page or returning from the history drawer. Requires history to be enabled (the default when using `client=`). (#269)
+* You can now edit a message you already sent, instead of only being able to send a new one. Hover a user message (or press and hold on a touch device) and click the pencil icon to open an inline editor (pre-filled with the original text and attachments); press Enter (or Cmd/Ctrl+Enter, depending on `submit_key`) to save and resend, or Escape to cancel. Editing forks the conversation from that point — the original branch isn't lost, it's kept as a sibling. `‹ 1 / 2 ›`-style controls appear on any message with more than one version, letting you step back and forth between them at any time, including after reloading the page or returning from the history drawer. Requires history to be enabled (the default when using `client=`). (#269)
 
 ### Changes
 

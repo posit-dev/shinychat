@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest"
-import { render, screen, fireEvent } from "@testing-library/react"
+import { render, screen, fireEvent, act } from "@testing-library/react"
 import { ChatMessage } from "../../src/chat/ChatMessage"
 import type { ChatMessageData } from "../../src/chat/state"
 
@@ -756,5 +756,232 @@ describe("ChatMessage sibling navigation", () => {
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(false)
+  })
+})
+
+describe("ChatMessage touch long-press reveal", () => {
+  it("does not reveal the edit button when released before the hold threshold", () => {
+    vi.useFakeTimers()
+    try {
+      const { container } = render(
+        <ChatMessage index={0} message={userMessage()} onEdit={() => {}} />,
+      )
+      const bubble = container.querySelector(".shiny-chat-user-message")!
+      fireEvent.pointerDown(bubble, {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+      })
+      fireEvent.pointerUp(bubble, {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+      })
+      act(() => {
+        vi.advanceTimersByTime(600)
+      })
+      expect(bubble.hasAttribute("data-touch-revealed")).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("reveals the edit button after holding for the threshold duration", () => {
+    vi.useFakeTimers()
+    try {
+      const { container } = render(
+        <ChatMessage index={0} message={userMessage()} onEdit={() => {}} />,
+      )
+      const bubble = container.querySelector(".shiny-chat-user-message")!
+      fireEvent.pointerDown(bubble, {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+      })
+      act(() => {
+        vi.advanceTimersByTime(499)
+      })
+      expect(bubble.hasAttribute("data-touch-revealed")).toBe(false)
+      act(() => {
+        vi.advanceTimersByTime(1)
+      })
+      expect(bubble.hasAttribute("data-touch-revealed")).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("cancels the hold if the pointer moves past the threshold before it fires", () => {
+    vi.useFakeTimers()
+    try {
+      const { container } = render(
+        <ChatMessage index={0} message={userMessage()} onEdit={() => {}} />,
+      )
+      const bubble = container.querySelector(".shiny-chat-user-message")!
+      fireEvent.pointerDown(bubble, {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+      })
+      fireEvent.pointerMove(bubble, {
+        pointerType: "touch",
+        clientX: 40,
+        clientY: 10,
+      })
+      act(() => {
+        vi.advanceTimersByTime(600)
+      })
+      expect(bubble.hasAttribute("data-touch-revealed")).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("ignores non-touch pointers -- only touch triggers the long-press reveal", () => {
+    vi.useFakeTimers()
+    try {
+      const { container } = render(
+        <ChatMessage index={0} message={userMessage()} onEdit={() => {}} />,
+      )
+      const bubble = container.querySelector(".shiny-chat-user-message")!
+      fireEvent.pointerDown(bubble, {
+        pointerType: "mouse",
+        clientX: 10,
+        clientY: 10,
+      })
+      act(() => {
+        vi.advanceTimersByTime(600)
+      })
+      expect(bubble.hasAttribute("data-touch-revealed")).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("hides the revealed button when a pointerdown occurs outside the message", () => {
+    vi.useFakeTimers()
+    try {
+      const { container } = render(
+        <ChatMessage index={0} message={userMessage()} onEdit={() => {}} />,
+      )
+      const bubble = container.querySelector(".shiny-chat-user-message")!
+      fireEvent.pointerDown(bubble, {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+      })
+      act(() => {
+        vi.advanceTimersByTime(500)
+      })
+      expect(bubble.hasAttribute("data-touch-revealed")).toBe(true)
+
+      fireEvent.pointerDown(document.body, { pointerType: "touch" })
+      expect(bubble.hasAttribute("data-touch-revealed")).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("clears the revealed state when the edit button is clicked", () => {
+    vi.useFakeTimers()
+    try {
+      const onStartEdit = vi.fn()
+      const { container } = render(
+        <ChatMessage
+          index={0}
+          message={userMessage()}
+          onEdit={() => {}}
+          onStartEdit={onStartEdit}
+        />,
+      )
+      const bubble = container.querySelector(".shiny-chat-user-message")!
+      fireEvent.pointerDown(bubble, {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+      })
+      act(() => {
+        vi.advanceTimersByTime(500)
+      })
+      expect(bubble.hasAttribute("data-touch-revealed")).toBe(true)
+
+      fireEvent.click(screen.getByRole("button", { name: /edit message/i }))
+
+      expect(onStartEdit).toHaveBeenCalledTimes(1)
+      expect(bubble.hasAttribute("data-touch-revealed")).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("never reveals on an assistant message, even after a full touch hold", () => {
+    vi.useFakeTimers()
+    try {
+      const { container } = render(
+        <ChatMessage
+          index={0}
+          message={{ ...userMessage({ content: "hi" }), role: "assistant" }}
+        />,
+      )
+      const bubble = container.querySelector(".shiny-chat-message")!
+      fireEvent.pointerDown(bubble, {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+      })
+      act(() => {
+        vi.advanceTimersByTime(600)
+      })
+      expect(bubble.hasAttribute("data-touch-revealed")).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("never reveals on a disabled user message, even after a full touch hold", () => {
+    vi.useFakeTimers()
+    try {
+      const { container } = render(
+        <ChatMessage
+          index={0}
+          message={userMessage()}
+          onEdit={() => {}}
+          disabled={true}
+        />,
+      )
+      const bubble = container.querySelector(".shiny-chat-user-message")!
+      fireEvent.pointerDown(bubble, {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+      })
+      act(() => {
+        vi.advanceTimersByTime(600)
+      })
+      expect(bubble.hasAttribute("data-touch-revealed")).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("never reveals on a user message without onEdit, even after a full touch hold", () => {
+    vi.useFakeTimers()
+    try {
+      const { container } = render(
+        <ChatMessage index={0} message={userMessage()} />,
+      )
+      const bubble = container.querySelector(".shiny-chat-user-message")!
+      fireEvent.pointerDown(bubble, {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+      })
+      act(() => {
+        vi.advanceTimersByTime(600)
+      })
+      expect(bubble.hasAttribute("data-touch-revealed")).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
