@@ -5,6 +5,7 @@ import dataclasses
 import warnings
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal
 
+from ._attachments import Attachment, validate_attachments
 from ._chat_types import (
     HistoryNavigateAction,
     HistoryUpdateAction,
@@ -552,7 +553,12 @@ class HistoryController:
         await self.store.put(self.partition, self.record)
         await self.send_history_update()
 
-    async def handle_edit(self, message_index: int, content: str) -> None:
+    async def handle_edit(
+        self,
+        message_index: int,
+        content: str,
+        attachments: "list[dict[str, Any]] | None" = None,
+    ) -> None:
         if self.record is None:
             return
 
@@ -573,6 +579,24 @@ class HistoryController:
             "value": content,
             "submit": True,
         }
+        if attachments is not None:
+            # Same normalize-then-validate pattern as the regular (non-edit)
+            # send path in _input_handler.py and Chat.update_user_input —
+            # never trust client-side attachment validation alone.
+            parsed = [Attachment.model_validate(a) for a in attachments]
+            validate_attachments(parsed)
+            action["attachments"] = [
+                {
+                    "mime": a.mime,
+                    "data_url": a.data_url,
+                    "name": a.name,
+                    "size": a.size,
+                }
+                for a in parsed
+            ]
+            # Edits always replace the attachment set — the client's staged
+            # tray is a single source of truth, never a delta to append.
+            action["attachment_mode"] = "set"
         await self.chat._send_action(action)
 
     # -- protocol ----------------------------------------------------------
@@ -1014,7 +1038,9 @@ class ChatHistory:
             payload = chat._session.input[ids.message_edit]()
             try:
                 await controller.handle_edit(
-                    int(payload["index"]), str(payload["content"])
+                    int(payload["index"]),
+                    str(payload["content"]),
+                    payload.get("attachments"),
                 )
             except Exception as e:
                 await notify_error("Could not edit message", e)

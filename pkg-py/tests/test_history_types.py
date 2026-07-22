@@ -1,4 +1,5 @@
 import pytest
+from _history_test_helpers import branch_from
 from shinychat._history_types import (
     ConversationMeta,
     ConversationNode,
@@ -169,7 +170,7 @@ def test_children_of_with_branch():
     rec = new_conversation_record(title="t")
     n1 = rec.append_linear(turn("user", "hi"))
     n2 = rec.append_linear(turn("assistant", "v1"))
-    n3 = rec.branch_from(n1, turn("assistant", "v2"))
+    n3 = branch_from(rec, n1, turn("assistant", "v2"))
     assert rec.children_of(n1) == [n2, n3]
 
 
@@ -177,7 +178,7 @@ def test_siblings_of():
     rec = new_conversation_record(title="t")
     n1 = rec.append_linear(turn("user", "hi"))
     n2 = rec.append_linear(turn("assistant", "v1"))
-    n3 = rec.branch_from(n1, turn("assistant", "v2"))
+    n3 = branch_from(rec, n1, turn("assistant", "v2"))
     assert rec.siblings_of(n2) == [n2, n3]
     assert rec.siblings_of(n3) == [n2, n3]
     # n1 has no siblings (only child of root)
@@ -199,8 +200,8 @@ def test_subtree_leaf_follows_latest_child():
     # Subtree from n1 follows n2 -> n3 -> n4
     assert rec.subtree_leaf(n1) == n4
     # Add a branch at n2 (sibling of n3)
-    n5 = rec.branch_from(n2, turn("user", "q2-edited"))
-    n6 = rec.branch_from(n5, turn("assistant", "a2-new"))
+    n5 = branch_from(rec, n2, turn("user", "q2-edited"))
+    n6 = branch_from(rec, n5, turn("assistant", "a2-new"))
     # subtree_leaf from n2 follows the LATEST child (n5) -> n6
     assert rec.subtree_leaf(n2) == n6
     # subtree_leaf from n3 still follows n4
@@ -211,7 +212,7 @@ def test_branch_from_creates_sibling():
     rec = new_conversation_record(title="t")
     n1 = rec.append_linear(turn("user", "hi"))
     n2 = rec.append_linear(turn("assistant", "v1"))
-    n3 = rec.branch_from(n1, turn("assistant", "v2"))
+    n3 = branch_from(rec, n1, turn("assistant", "v2"))
     assert rec.nodes[n3].parent == n1
     assert rec.current_leaf == n3
     assert rec.children_of(n1) == [n2, n3]
@@ -222,7 +223,7 @@ def test_branch_from_root():
     rec = new_conversation_record(title="t")
     n1 = rec.append_linear(turn("user", "hi"))
     rec.append_linear(turn("assistant", "v1"))
-    n3 = rec.branch_from(None, turn("user", "bye"))
+    n3 = branch_from(rec, None, turn("user", "bye"))
     assert rec.nodes[n3].parent is None
     assert rec.current_leaf == n3
     assert rec.children_of(None) == [n1, n3]
@@ -235,16 +236,14 @@ def test_branch_from_preserves_old_branch():
     n3 = rec.append_linear(turn("user", "q2"))
     n4 = rec.append_linear(turn("assistant", "a2"))
     # Branch: edit q2 -> creates sibling of n3
-    n5 = rec.branch_from(n2, turn("user", "q2-edited"))
+    n5 = branch_from(rec, n2, turn("user", "q2-edited"))
     # Old branch is intact
     assert rec.nodes[n3].parent == n2
     assert rec.nodes[n4].parent == n3
     # New branch is active
     assert rec.current_leaf == n5
     assert rec.path_turns() == (
-        turn("user", "hi")
-        + turn("assistant", "v1")
-        + turn("user", "q2-edited")
+        turn("user", "hi") + turn("assistant", "v1") + turn("user", "q2-edited")
     )
 
 
@@ -305,7 +304,7 @@ def test_path_sibling_metadata_with_branch():
     rec = new_conversation_record(title="t")
     n1 = rec.append_linear(turn("user", "q"))
     rec.append_linear(turn("assistant", "v1"))
-    n3 = rec.branch_from(n1, turn("assistant", "v2"))
+    n3 = branch_from(rec, n1, turn("assistant", "v2"))
     meta = rec.path_sibling_metadata()
     assert meta == {n3: (1, 2)}  # n3 is index 1 of 2 siblings
 
@@ -317,8 +316,8 @@ def test_path_sibling_metadata_multiple_branches():
     rec.append_linear(turn("user", "q2"))
     rec.append_linear(turn("assistant", "a2"))
     # Branch at n2: create sibling of n3
-    n5 = rec.branch_from(n2, turn("user", "q2-edited"))
-    rec.branch_from(n5, turn("assistant", "a2-new"))
+    n5 = branch_from(rec, n2, turn("user", "q2-edited"))
+    branch_from(rec, n5, turn("assistant", "a2-new"))
     # Active path is [n1, n2, n5, n6]; n5 has siblings [n3, n5] -> (1, 2)
     meta = rec.path_sibling_metadata()
     assert meta == {n5: (1, 2)}

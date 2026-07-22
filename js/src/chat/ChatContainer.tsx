@@ -32,6 +32,7 @@ import type {
   SlashCommandDef,
 } from "../transport/types"
 import type { SubmitKey } from "./tiptap/submitShortcut"
+import type { AttachmentPayload } from "./attachments"
 
 declare global {
   interface Window {
@@ -66,7 +67,11 @@ export interface ChatContainerProps {
   historyEnabled?: boolean
   historyConversations?: ConversationMeta[]
   historyActiveId?: string | null
-  onEdit?: (index: number, content: string) => void
+  onEdit?: (
+    index: number,
+    content: string,
+    attachments: AttachmentPayload[],
+  ) => void
   onNavigate?: (index: number, direction: "prev" | "next") => void
 }
 
@@ -454,9 +459,18 @@ export const ChatContainer = forwardRef<
                 <ChatMessages
                   messages={messages}
                   iconAssistant={iconAssistant}
-                  onEdit={onEdit}
-                  onNavigate={onNavigate}
+                  // Editing/navigating requires the server-side history
+                  // controller, which only registers its input listeners
+                  // when history is enabled -- without this gate the
+                  // buttons would render but silently no-op on click.
+                  onEdit={historyEnabled ? onEdit : undefined}
+                  onNavigate={historyEnabled ? onNavigate : undefined}
                   disabled={isStreaming}
+                  inputId={inputId}
+                  submitKey={submitKey}
+                  uploadAccept={uploadAccept}
+                  maxUploadSize={maxUploadSize}
+                  enableUpload={enableUpload}
                 />
                 {streamingMessage && (
                   <MessageErrorBoundary key={streamingMessage.id}>

@@ -1,8 +1,8 @@
-import { memo, useState, useRef } from "react"
+import { memo, useState, useRef, useCallback, useEffect } from "react"
 import type { ChatMessageData } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { ThinkingDisplay } from "./ThinkingDisplay"
-import { robot, dots_fade, xLg, arrowUpCircleFill } from "../utils/icons"
+import { robot, dots_fade, arrowUpCircleFill, pencil } from "../utils/icons"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
 import { useSlashCommands } from "./context"
 import { CommandChip } from "./CommandChip"
@@ -11,11 +11,14 @@ import {
   attachmentBadgeLabel,
   attachmentFamily,
   dataUrlByteSize,
+  type AttachmentPayload,
 } from "./attachments"
 import { TextAttachmentPreview } from "./TextAttachmentPreview"
 import { AttachmentLightbox } from "./AttachmentLightbox"
-
-const pencilIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/></svg>`
+import { TiptapInput, type TiptapInputHandle } from "./TiptapInput"
+import type { SubmitKey } from "./tiptap/submitShortcut"
+import { useAttachmentStaging } from "./useAttachmentStaging"
+import { AttachmentTray } from "./AttachmentTray"
 
 function parseLeadingCommand(
   content: string,
@@ -37,9 +40,21 @@ interface ChatMessageProps {
   message: ChatMessageData
   index: number
   iconAssistant?: string
-  onEdit?: (index: number, content: string) => void
+  onEdit?: (
+    index: number,
+    content: string,
+    attachments: AttachmentPayload[],
+  ) => void
   onNavigate?: (index: number, direction: "prev" | "next") => void
   disabled?: boolean
+  inputId?: string
+  submitKey?: SubmitKey
+  isEditing?: boolean
+  onStartEdit?: () => void
+  onCancelEdit?: () => void
+  uploadAccept?: string[]
+  maxUploadSize?: number | null
+  enableUpload?: boolean
 }
 
 export const ChatMessage = memo(function ChatMessage({
@@ -49,6 +64,14 @@ export const ChatMessage = memo(function ChatMessage({
   onEdit,
   onNavigate,
   disabled,
+  inputId,
+  submitKey = "enter",
+  isEditing = false,
+  onStartEdit,
+  onCancelEdit,
+  uploadAccept = [],
+  maxUploadSize = null,
+  enableUpload,
 }: ChatMessageProps) {
   const slashCommands = useSlashCommands()
   const [lightbox, setLightbox] = useState<{
@@ -56,10 +79,41 @@ export const ChatMessage = memo(function ChatMessage({
     name: string
     mime: string
   } | null>(null)
-  const [editing, setEditing] = useState(false)
-  const [editText, setEditText] = useState("")
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [hasEditText, setHasEditText] = useState(false)
+  const editRef = useRef<TiptapInputHandle>(null)
   const isUser = message.role === "user"
+
+  const focusEditor = useCallback(() => editRef.current?.focus(), [])
+  const staging = useAttachmentStaging({
+    uploadAccept,
+    maxUploadSize,
+    enableUpload,
+    focusEditor,
+  })
+  const { applyPayloads, getPayloads, onPaste, onDrop } = staging
+
+  useEffect(() => {
+    if (isEditing) {
+      editRef.current?.setInputValue(message.content, { focus: true })
+      applyPayloads(message.attachments ?? [], "set")
+    }
+  }, [isEditing, message.content, message.attachments, applyPayloads])
+
+  const handleSaveEdit = useCallback(
+    (content: string): boolean => {
+      if (disabled) return false
+      onEdit?.(index, content, getPayloads())
+      onCancelEdit?.()
+      return true
+    },
+    [onEdit, onCancelEdit, index, disabled, getPayloads],
+  )
+  // Lets Enter submit an attachments-only edit even though the editor doc is
+  // empty (TiptapInput blocks empty submits otherwise).
+  const canSubmitEmpty = useCallback(
+    () => getPayloads().length > 0,
+    [getPayloads],
+  )
   const hasContent =
     message.content.trim() !== "" ||
     message.blocks.some((b) => b.type === "thinking") ||
@@ -221,46 +275,62 @@ export const ChatMessage = memo(function ChatMessage({
         />
       )}
       <div className="shiny-chat-message-content">
-        {editing ? (
-          <div className="shiny-chat-edit-form">
-            <textarea
-              ref={textareaRef}
-              value={editText}
-              onChange={(e) => setEditText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                  e.preventDefault()
-                  onEdit?.(index, editText)
-                  setEditing(false)
-                } else if (e.key === "Escape") {
-                  e.preventDefault()
-                  setEditing(false)
-                }
-              }}
-              onFocus={() => textareaRef.current?.select()}
-              autoFocus
-            />
-            <div className="shiny-chat-edit-actions">
-              <button
-                type="button"
-                className="shiny-chat-edit-cancel"
-                onClick={() => setEditing(false)}
-                aria-label="Cancel edit"
-                title="Cancel"
-                dangerouslySetInnerHTML={{ __html: xLg }}
+        {isEditing ? (
+          <div
+            className="shiny-chat-edit-wrap"
+            onKeyDownCapture={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault()
+                onCancelEdit?.()
+              }
+            }}
+          >
+            <div
+              className="shiny-chat-edit-box"
+              onDropCapture={onDrop}
+              onDragOver={(e) => e.preventDefault()}
+              onPasteCapture={onPaste}
+            >
+              <AttachmentTray
+                staging={staging}
+                uploadAccept={uploadAccept}
+                maxUploadSize={maxUploadSize}
+                enableUpload={enableUpload}
+                disabled={disabled}
+              />
+              <TiptapInput
+                ref={editRef}
+                inputId={`${inputId}-edit`}
+                placeholder="Edit message"
+                slashCommands={[]}
+                userMessages={[]}
+                submitKey={submitKey}
+                onHasTextChange={setHasEditText}
+                onSubmit={handleSaveEdit}
+                canSubmitEmpty={canSubmitEmpty}
               />
               <button
                 type="button"
-                className="shiny-chat-edit-submit"
+                className="shiny-chat-btn-send"
+                disabled={
+                  disabled || (!hasEditText && staging.attachments.length === 0)
+                }
                 onClick={() => {
-                  onEdit?.(index, editText)
-                  setEditing(false)
+                  const content = editRef.current?.serializeEditor() ?? ""
+                  handleSaveEdit(content)
                 }}
                 aria-label="Save and resend"
                 title="Save and resend"
                 dangerouslySetInnerHTML={{ __html: arrowUpCircleFill }}
               />
             </div>
+            <button
+              type="button"
+              className="shiny-chat-edit-cancel-outside"
+              onClick={() => onCancelEdit?.()}
+            >
+              Cancel
+            </button>
           </div>
         ) : (
           <>
@@ -278,7 +348,7 @@ export const ChatMessage = memo(function ChatMessage({
         )}
       </div>
       {isUser &&
-        !editing &&
+        !isEditing &&
         ((onEdit && !disabled) ||
           (message.siblings && message.siblings.total > 1)) && (
           <div className="shiny-chat-message-footer">
@@ -312,13 +382,10 @@ export const ChatMessage = memo(function ChatMessage({
               <button
                 type="button"
                 className="shiny-chat-edit-btn"
-                onClick={() => {
-                  setEditText(message.content)
-                  setEditing(true)
-                }}
+                onClick={() => onStartEdit?.()}
                 aria-label="Edit message"
                 title="Edit message"
-                dangerouslySetInnerHTML={{ __html: pencilIcon }}
+                dangerouslySetInnerHTML={{ __html: pencil }}
               />
             )}
           </div>

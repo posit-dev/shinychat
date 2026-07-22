@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest"
+import { describe, it, expect, beforeEach, vi } from "vitest"
 import { render, screen, act, fireEvent } from "@testing-library/react"
 import { ChatApp } from "../../src/chat/ChatApp"
 import {
@@ -7,9 +7,30 @@ import {
   installShinyWindowStub,
 } from "../helpers/mocks"
 
+// jsdom's contenteditable div doesn't support fireEvent.change, so the edit
+// box's real ProseMirror editor can't be typed into (see the skipped test
+// below). Swap in the textarea-based fake for tests that simulate editing.
+vi.mock("../../src/chat/TiptapInput", async () => {
+  const { FakeTiptapInput } = await import("../helpers/fakeTiptapInput")
+  return { TiptapInput: FakeTiptapInput }
+})
+
 beforeEach(() => {
   installShinyWindowStub()
 })
+
+// The history drawer (rendered once historyEnabled becomes true) checks
+// prefers-reduced-motion, which jsdom doesn't implement.
+function mockMatchMedia(reducedMotion: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockReturnValue({
+      matches: reducedMotion,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }),
+  )
+}
 
 describe("ChatApp integration: full message flow", () => {
   it.skip("user message triggers transport.sendInput", async () => {
@@ -216,5 +237,114 @@ describe("ChatApp integration: full message flow", () => {
 
     // When at bottom (default), the scroll-to-bottom button should not appear
     expect(document.querySelector(".shiny-chat-scroll-to-bottom")).toBeNull()
+  })
+})
+
+describe("ChatApp integration: editable messages gated by history state", () => {
+  function renderChatApp(transport: ReturnType<typeof createMockTransport>) {
+    return render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={createMockShinyLifecycle()}
+        elementId="test-chat"
+        inputId="test-input"
+        uploadAccept={["image/png"]}
+        maxUploadSize={30000000}
+        placeholder="Type..."
+      />,
+    )
+  }
+
+  it("does not render the edit button on a user message when history was never enabled", async () => {
+    const transport = createMockTransport()
+    renderChatApp(transport)
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "user",
+          segments: [{ content: "hello", content_type: "markdown" }],
+        },
+      })
+    })
+
+    // No history_update action has been fired, so the server never
+    // registered a `_message_edit` listener. The control must not render --
+    // otherwise clicking it silently does nothing (no new response, no
+    // visible feedback).
+    expect(screen.queryByRole("button", { name: /edit message/i })).toBeNull()
+  })
+
+  it("renders the edit button and forwards edits via transport.sendMessageEdit once history is enabled", async () => {
+    mockMatchMedia(false)
+    const transport = createMockTransport()
+    const { container } = renderChatApp(transport)
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+      })
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "user",
+          segments: [{ content: "hello", content_type: "markdown" }],
+        },
+      })
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: /edit message/i }))
+    const textarea = container.querySelector(
+      ".shiny-chat-edit-box textarea",
+    ) as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: "edited hello" } })
+    fireEvent.click(
+      container.querySelector(".shiny-chat-btn-send") as HTMLElement,
+    )
+
+    expect(transport.sendMessageEdit).toHaveBeenCalledWith(
+      "test-chat",
+      0,
+      "edited hello",
+      [],
+    )
+  })
+
+  it("forwards sibling navigation via transport.sendMessageNavigate once history is enabled", async () => {
+    mockMatchMedia(false)
+    const transport = createMockTransport()
+    renderChatApp(transport)
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+      })
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "user",
+          segments: [{ content: "hello", content_type: "markdown" }],
+        },
+      })
+      transport.fire("test-chat", {
+        type: "update_siblings",
+        data: { 0: { index: 0, total: 2 } },
+      })
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: /next version/i }))
+
+    expect(transport.sendMessageNavigate).toHaveBeenCalledWith(
+      "test-chat",
+      0,
+      "next",
+    )
   })
 })

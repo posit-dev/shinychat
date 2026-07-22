@@ -178,7 +178,12 @@ export interface ChatTransport {
   sendHistoryNew(id: string): void
   sendHistoryRename(id: string, convId: string, title: string): void
   sendHistoryDelete(id: string, convId: string): void
-  sendMessageEdit(id: string, index: number, content: string): void
+  sendMessageEdit(
+    id: string,
+    index: number,
+    content: string,
+    attachments?: AttachmentPayload[],
+  ): void
   sendMessageNavigate(
     id: string,
     index: number,

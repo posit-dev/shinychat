@@ -36,7 +36,7 @@ class EchoChatClient(chatlas.Chat):
 
 
 def app_ui(request: object) -> ui.Tag:
-    return ui.page_fillable(chat_ui("chat"))
+    return ui.page_fillable(chat_ui("chat", allow_attachments=True))
 
 
 def server(input: Inputs, output: Outputs, session: Session) -> None:

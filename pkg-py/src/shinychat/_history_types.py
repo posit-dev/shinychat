@@ -142,26 +142,6 @@ class ConversationRecord(BaseModel):
             cumulative += n_ui
         raise IndexError(f"Message index {index} out of range")
 
-    def branch_from(
-        self,
-        fork_parent_id: str | None,
-        turns: list[dict[str, Any]],
-        ui: list[dict[str, Any]] | None = None,
-    ) -> str:
-        """Create a sibling node directly. No production call site — handle_edit
-        achieves branching indirectly via current_leaf truncation; this exists
-        for constructing branched fixtures in tests."""
-        node_id = f"n_{self.next_node_seq:04d}"
-        self.next_node_seq += 1
-        self.nodes[node_id] = ConversationNode(
-            parent=fork_parent_id, turns=turns, ui=ui
-        )
-        if fork_parent_id is not None:
-            self.nodes[fork_parent_id].children.append(node_id)
-        self.current_leaf = node_id
-        self.updated_at = utcnow()
-        return node_id
-
     def append_linear(
         self,
         turns: list[dict[str, Any]],

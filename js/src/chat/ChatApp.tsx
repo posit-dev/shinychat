@@ -275,8 +275,8 @@ export function ChatApp({
   }, [elementId, state.history.enabled, state.history.activeId])
 
   const handleEdit = useCallback(
-    (index: number, content: string) => {
-      transport.sendMessageEdit(elementId, index, content)
+    (index: number, content: string, attachments: AttachmentPayload[]) => {
+      transport.sendMessageEdit(elementId, index, content, attachments)
     },
     [transport, elementId],
   )

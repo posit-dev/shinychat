@@ -8,6 +8,7 @@ import {
 } from "./types"
 import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 import type { SnapshotMessage } from "../chat/state"
+import type { AttachmentPayload } from "../chat/attachments"
 
 // Window-global singleton to ensure only one shinyChatMessage handler is
 // registered even if the script is loaded more than once
@@ -151,10 +152,16 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
     )
   }
 
-  sendMessageEdit(id: string, index: number, content: string): void {
+  sendMessageEdit(
+    id: string,
+    index: number,
+    content: string,
+    attachments: AttachmentPayload[] = [],
+  ): void {
     window.Shiny?.setInputValue?.(`${id}_message_edit`, {
       index,
       content,
+      attachments,
       ts: Date.now(),
     })
   }
