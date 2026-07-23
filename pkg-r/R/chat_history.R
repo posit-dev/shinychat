@@ -1098,6 +1098,40 @@ chat_enable_history <- function(
     }
   )
 
+  # The save trigger: fires once the browser echoes an updated `_messages`
+  # snapshot back to the server. This must be event-driven (not chained
+  # directly onto the streaming response's promise) because the echo is a
+  # separate round trip -- the browser only reports a finished assistant
+  # reply *after* it has rendered it and sent it back over the websocket.
+  # Triggering on stream completion instead would run on_response() one
+  # message ahead of what the client has actually reported, and
+  # extend_record_linear() would misattach the still-unreported assistant
+  # reply to the wrong (next round's) node.
+  message_response_effect <- shiny::observeEvent(
+    session$input[[paste0(id, "_messages")]],
+    label = "history_on_response",
+    ignoreInit = TRUE,
+    {
+      if (is.null(controller$partition)) {
+        return()
+      }
+      messages <- get_reported_messages(session, id)
+      if (length(messages) == 0) {
+        return()
+      }
+      last_role <- messages[[length(messages)]]$role
+      if (!identical(last_role, "assistant")) {
+        return()
+      }
+      tryCatch(
+        controller$on_response(get_turns_recorded(controller$get_client())),
+        error = function(e) {
+          history_notify_error("Could not save conversation", e)
+        }
+      )
+    }
+  )
+
   cancel <- function() {
     init_effect$destroy()
     select_effect$destroy()
@@ -1107,6 +1141,7 @@ chat_enable_history <- function(
     message_response_effect$destroy()
     message_edit_effect$destroy()
     message_navigate_effect$destroy()
+    message_response_effect$destroy()
     if (!is.null(stamp_cancel)) {
       stamp_cancel()
     }
