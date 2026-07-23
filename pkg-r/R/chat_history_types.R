@@ -148,6 +148,64 @@ record_ui_count <- function(record) {
   ))
 }
 
+record_children_of <- function(record, node_id) {
+  if (is.null(node_id)) {
+    roots <- names(record$nodes)[
+      vapply(record$nodes, function(n) is.null(n$parent), logical(1))
+    ]
+    if (length(roots) == 0) {
+      return(character(0))
+    }
+    return(roots[order(as.integer(sub("^n_", "", roots)))])
+  }
+  children <- record$nodes[[node_id]]$children
+  if (length(children) == 0) {
+    return(character(0))
+  }
+  unlist(children, use.names = FALSE)
+}
+
+record_siblings_of <- function(record, node_id) {
+  record_children_of(record, record$nodes[[node_id]]$parent)
+}
+
+record_subtree_leaf <- function(record, node_id) {
+  children <- record_children_of(record, node_id)
+  if (length(children) == 0) {
+    return(node_id)
+  }
+  record_subtree_leaf(record, children[[length(children)]])
+}
+
+record_path_sibling_metadata <- function(record) {
+  result <- list()
+  for (nid in record_path_node_ids(record)) {
+    siblings <- record_siblings_of(record, nid)
+    if (length(siblings) > 1) {
+      result[[nid]] <- list(
+        index = match(nid, siblings) - 1L,
+        total = length(siblings)
+      )
+    }
+  }
+  result
+}
+
+record_node_id_for_message_index <- function(record, index) {
+  if (index < 0) {
+    rlang::abort(paste0("Message index ", index, " out of range"))
+  }
+  cumulative <- 0L
+  for (nid in record_path_node_ids(record)) {
+    n_ui <- length(record$nodes[[nid]]$ui)
+    if (index < cumulative + n_ui) {
+      return(nid)
+    }
+    cumulative <- cumulative + n_ui
+  }
+  rlang::abort(paste0("Message index ", index, " out of range"))
+}
+
 extend_record_linear <- function(
   record,
   recorded_turns,

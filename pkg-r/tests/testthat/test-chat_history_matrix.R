@@ -26,7 +26,7 @@ matrix <- jsonlite::fromJSON(
   simplifyVector = FALSE
 )
 
-matrix_seed <- function(ctrl, setup) {
+matrix_seed <- function(ctrl, session, chat_id, setup) {
   turns <- setup$turns %||% 0
   n <- if (turns > 0) (setup$conversations %||% 1) else 0
   ids <- character(0)
@@ -55,6 +55,22 @@ matrix_seed <- function(ctrl, setup) {
             props = list(text = "Hi there")
           )
         )
+      )
+    )
+    do.call(
+      session$setInputs,
+      setNames(
+        list(list(
+          list(
+            role = "user",
+            segments = list(list(content = "Hello", content_type = "markdown"))
+          ),
+          list(
+            role = "assistant",
+            segments = list(list(content = "Hi there", content_type = "markdown"))
+          )
+        )),
+        paste0(chat_id, "_messages")
       )
     )
     ctrl$on_response(list(user_turn, asst_turn))
@@ -140,6 +156,10 @@ check_delete_inactive_conversation_leaves_active_record_and_removes_from_store <
   expect_false(ctx$first_id %in% remaining_ids)
 }
 
+check_navigate_with_no_siblings_is_noop <- function(ctrl, ctx) {
+  expect_equal(ctrl$record$current_leaf, ctx$before_current_leaf)
+}
+
 matrix_custom_checks <- list(
   rename_updates_title_and_marks_user_source = check_rename_updates_title_and_marks_user_source,
   delete_active_conversation_clears_controller_record = check_delete_active_conversation_clears_controller_record,
@@ -149,7 +169,8 @@ matrix_custom_checks <- list(
   new_chat_clears_active_record = check_new_chat_clears_active_record,
   switch_to_inactive_conversation_loads_target_record = check_switch_to_inactive_conversation_loads_target_record,
   rename_inactive_conversation_updates_store_leaves_active_record = check_rename_inactive_conversation_updates_store_leaves_active_record,
-  delete_inactive_conversation_leaves_active_record_and_removes_from_store = check_delete_inactive_conversation_leaves_active_record_and_removes_from_store
+  delete_inactive_conversation_leaves_active_record_and_removes_from_store = check_delete_inactive_conversation_leaves_active_record_and_removes_from_store,
+  navigate_with_no_siblings_is_noop = check_navigate_with_no_siblings_is_noop
 )
 
 for (matrix_case in matrix) {
@@ -157,17 +178,19 @@ for (matrix_case in matrix) {
     case <- matrix_case
     test_that(paste("history matrix:", case$name), {
       store <- InMemoryConversationStore$new()
+      session <- shiny::MockShinySession$new()
       ctrl <- HistoryController$new(
         chat_id = "matrix-test",
         client = mock_chat_client(),
         options = history_options(store = store, title = NULL),
-        session = shiny::MockShinySession$new()
+        session = session
       )
       ctrl$partition <- conversation_partition("matrix-test", "matrix-scope")
 
-      ids <- matrix_seed(ctrl, case$setup)
+      ids <- matrix_seed(ctrl, session, "matrix-test", case$setup)
       before_updated_at <- ctrl$record$updated_at
       before_title <- ctrl$record$title
+      before_current_leaf <- ctrl$record$current_leaf
 
       args <- matrix_resolve_args(case$operation$args, ids)
       do.call(ctrl[[case$operation$method]], args)
@@ -185,7 +208,8 @@ for (matrix_case in matrix) {
             active_id = ids$active_id,
             first_id = ids$first_id,
             before_updated_at = before_updated_at,
-            before_title = before_title
+            before_title = before_title,
+            before_current_leaf = before_current_leaf
           )
         )
       }
