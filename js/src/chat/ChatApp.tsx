@@ -115,6 +115,10 @@ export function ChatApp({
   stateRef.current = state
 
   const reportSnapshot = useCallback(() => {
+    // Reports the entire settled transcript (all messages plus retained
+    // htmlDeps) on every change, so a session sends ~O(n^2) bytes over its
+    // lifetime. Fine for typical conversations; if very long transcripts
+    // become common, revisit with a delta/append protocol.
     transport.sendMessagesSnapshot(
       elementId,
       buildMessagesSnapshot(stateRef.current),
