@@ -584,7 +584,7 @@ chat_enable_history <- function(
     controller$add_restore_callback(on_restore)
   }
 
-  # Read back via session by chat_history_on_response() and the
+  # Read back via session by the message_response_effect observer and the
   # on_save/on_restore hooks in chat_app().
   set_session_chat_bookmark_info(
     session,
@@ -897,12 +897,47 @@ chat_enable_history <- function(
     }
   )
 
+  # The save trigger: fires once the browser echoes an updated `_messages`
+  # snapshot back to the server. This must be event-driven (not chained
+  # directly onto the streaming response's promise) because the echo is a
+  # separate round trip -- the browser only reports a finished assistant
+  # reply *after* it has rendered it and sent it back over the websocket.
+  # Triggering on stream completion instead would run on_response() one
+  # message ahead of what the client has actually reported, and
+  # extend_record_linear() would attach the still-unreported assistant reply
+  # with no UI (falling back to turn-derived markdown on restore).
+  message_response_effect <- shiny::observeEvent(
+    session$input[[paste0(id, "_messages")]],
+    label = "history_on_response",
+    ignoreInit = TRUE,
+    {
+      if (is.null(controller$partition)) {
+        return()
+      }
+      messages <- get_reported_messages(session, id)
+      if (length(messages) == 0) {
+        return()
+      }
+      last_role <- messages[[length(messages)]]$role
+      if (!identical(last_role, "assistant")) {
+        return()
+      }
+      tryCatch(
+        controller$on_response(get_turns_recorded(controller$get_client())),
+        error = function(e) {
+          history_notify_error("Could not save conversation", e)
+        }
+      )
+    }
+  )
+
   cancel <- function() {
     init_effect$destroy()
     select_effect$destroy()
     new_effect$destroy()
     rename_effect$destroy()
     delete_effect$destroy()
+    message_response_effect$destroy()
     if (!is.null(stamp_cancel)) {
       stamp_cancel()
     }
@@ -924,39 +959,6 @@ chat_enable_history <- function(
   }
 
   invisible(cancel)
-}
-
-chat_history_on_response <- function(
-  id,
-  stream_promise,
-  session = shiny::getDefaultReactiveDomain()
-) {
-  controller <- get_session_chat_bookmark_info(
-    session,
-    paste0(id, ".history-controller")
-  )
-  if (is.null(controller)) {
-    return(stream_promise)
-  }
-
-  result <- promises::then(stream_promise, function(value) {
-    if (!controller$is_replaying) {
-      recorded_turns <- get_turns_recorded(controller$get_client())
-      controller$on_response(recorded_turns)
-    }
-    value
-  })
-
-  promises::catch(result, function(e) {
-    shiny::showNotification(
-      sanitized_error_message(e),
-      type = "error",
-      duration = NULL
-    )
-    rlang::warn("Could not save conversation", parent = e)
-  })
-
-  result
 }
 
 call_on_save <- function(fn, values) {

@@ -827,7 +827,10 @@ chat_append_stream <- function(
 ) {
   result <- chat_append_stream_impl(id, stream, role, icon, session)
   result <- chat_update_bookmark(id, result, session = session)
-  result <- chat_history_on_response(id, result, session = session)
+  # History saves are triggered by the client's `_messages` echo (see the
+  # message_response_effect observer in chat_enable_history()), not chained
+  # here onto stream completion -- the browser only reports the finished
+  # assistant reply after a separate render/report round trip.
   # Handle erroneous result...
   result <- promises::catch(result, function(reason) {
     # ...but rethrow the error as a silent error, so the caller can also handle
@@ -1136,11 +1139,13 @@ chat_set_greeting <- function(
   }
 
   if (is.function(content)) {
-    cli::cli_abort(c(
-      "{.fn chat_set_greeting} does not accept a function as greeting content.",
-      "i" = "Pass the {.emph result} of calling your function, not the function itself.",
-      "i" = "To use a greeting function with automatic lifecycle management, pass it to the {.arg greeting} argument of {.fn chat_server}."
-    ))
+    cli::cli_abort(
+      c(
+        "{.fn chat_set_greeting} does not accept a function as greeting content.",
+        "i" = "Pass the {.emph result} of calling your function, not the function itself.",
+        "i" = "To use a greeting function with automatic lifecycle management, pass it to the {.arg greeting} argument of {.fn chat_server}."
+      )
+    )
   }
 
   if (is.character(content) && !inherits(content, "html")) {
@@ -1193,12 +1198,14 @@ rlang::on_load(
       send_chat_action(id, action = action, session = session)
     }
 
-    send_greeting_action(list(
-      type = "greeting_start",
-      content = "",
-      content_type = "markdown",
-      options = options
-    ))
+    send_greeting_action(
+      list(
+        type = "greeting_start",
+        content = "",
+        content_type = "markdown",
+        options = options
+      )
+    )
 
     chunks <- character(0)
     for (msg in stream) {

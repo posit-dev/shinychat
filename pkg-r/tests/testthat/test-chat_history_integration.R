@@ -644,11 +644,13 @@ test_that("set_client() seeds ui_offset from the restored record so a post-swap 
       )
     )
 
-    ctrl$on_response(list(
-      make_turn("user", "hi"),
-      make_turn("assistant", "hello"),
-      make_turn("user", "again")
-    ))
+    ctrl$on_response(
+      list(
+        make_turn("user", "hi"),
+        make_turn("assistant", "hello"),
+        make_turn("user", "again")
+      )
+    )
 
     reloaded <- store$get(
       conversation_partition(session$ns("chat"), "testuser"),
@@ -656,17 +658,109 @@ test_that("set_client() seeds ui_offset from the restored record so a post-swap 
     )
     expect_equal(record_ui_count(reloaded), 3)
 
-    ui_texts <- unlist(lapply(
-      record_path_node_ids(reloaded),
-      function(node_id) {
-        vapply(
-          reloaded$nodes[[node_id]]$ui,
-          function(m) m$segments[[1]]$content,
-          character(1)
-        )
-      }
-    ))
+    ui_texts <- unlist(
+      lapply(
+        record_path_node_ids(reloaded),
+        function(node_id) {
+          vapply(
+            reloaded$nodes[[node_id]]$ui,
+            function(m) m$segments[[1]]$content,
+            character(1)
+          )
+        }
+      )
+    )
     expect_equal(ui_texts, c("hi", "hello", "again"))
+  })
+})
+
+test_that("the client's `_messages` echo drives the save and preserves the displayed assistant UI", {
+  # Regression for the save-timing bug: the save must be triggered by the
+  # browser echoing its rendered `_messages` snapshot, not by server-side
+  # stream completion. If it fired on completion, the just-finished assistant
+  # message would not yet be in the client's report, so its node would fall
+  # back to turn-derived markdown -- losing any display-only transformation.
+  skip_if_not_installed("ellmer")
+
+  make_turn <- function(role, text) {
+    list(
+      class = if (role == "user") "ellmer::UserTurn" else
+        "ellmer::AssistantTurn",
+      version = 1,
+      props = list(
+        contents = list(
+          list(
+            class = "ellmer::ContentText",
+            version = 1,
+            props = list(text = text)
+          )
+        )
+      )
+    )
+  }
+
+  make_ui_message <- function(role, text) {
+    list(
+      role = role,
+      segments = list(list(content = text, content_type = "markdown"))
+    )
+  }
+
+  client <- mock_chat_client()
+  session <- shiny::MockShinySession$new()
+  store <- InMemoryConversationStore$new()
+
+  server <- function(input, output, session) {
+    chat_server(
+      "chat",
+      client,
+      history = history_options(
+        store = store,
+        scope = "browser-1",
+        title = NULL
+      ),
+      session = session
+    )
+  }
+
+  shiny::testServer(server, session = session, {
+    session$setInputs(chat_history_browser_token = "tok-abc")
+
+    ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
+    expect_false(is.null(ctrl$partition))
+
+    # A response has just completed server-side: the live client holds both
+    # turns, and the assistant reply as recorded is the plain "hello".
+    set_turns_recorded(
+      client,
+      list(make_turn("user", "hi"), make_turn("assistant", "hello"))
+    )
+
+    # The browser has not yet reported the finished assistant message -- its
+    # last reported message is still the user's -- so no save should fire.
+    session$setInputs(chat_messages = list(make_ui_message("user", "hi")))
+    expect_null(ctrl$record)
+
+    # The browser now echoes its rendered transcript, in which the displayed
+    # assistant message was transformed for display (differs from the turn
+    # text). The observer fires and the save records this displayed form.
+    session$setInputs(
+      chat_messages = list(
+        make_ui_message("user", "hi"),
+        make_ui_message("assistant", "hello (displayed)")
+      )
+    )
+
+    expect_false(is.null(ctrl$record))
+
+    saved <- store$get(
+      conversation_partition(session$ns("chat"), "browser-1"),
+      ctrl$record$id
+    )
+    node_ids <- record_path_node_ids(saved)
+    last_ui <- saved$nodes[[node_ids[[length(node_ids)]]]]$ui
+    expect_equal(last_ui[[1]]$role, "assistant")
+    expect_equal(last_ui[[1]]$segments[[1]]$content, "hello (displayed)")
   })
 })
 
