@@ -459,7 +459,7 @@ get_tool_result_display <- function(content) {
 
 # Validate a tool annotation's `grouping` value, ignoring anything unexpected.
 as_grouping <- function(x) {
-  if (is.null(x) || !x %in% c("none", "tool", "all")) {
+  if (!is.character(x) || length(x) != 1 || !x %in% c("none", "tool", "all")) {
     return(NULL)
   }
   x
