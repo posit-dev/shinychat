@@ -103,6 +103,31 @@ method(client_set_ui, S7::new_S3_class(c("Chat", "R6"))) <-
     })
   }
 
+# Serialize the browser-reported message snapshot for storage in a bookmark's
+# state$values. Uses the same stable serializeJSON -> gzip -> base64 pipeline as
+# client_get_state(); jsonlite::toJSON()/fromJSON() are lossy round-trips.
+encode_ui_snapshot <- function(messages) {
+  if (is.null(messages) || length(messages) == 0) {
+    return(NULL)
+  }
+  json <- jsonlite::serializeJSON(messages)
+  base64enc::base64encode(memCompress(json, "gzip"))
+}
+
+decode_ui_snapshot <- function(str) {
+  if (
+    is.null(str) ||
+      !is.character(str) ||
+      length(str) != 1 ||
+      is.na(str) ||
+      !nzchar(str)
+  ) {
+    return(NULL)
+  }
+  json <- memDecompress(base64enc::base64decode(str), asChar = TRUE)
+  jsonlite::unserializeJSON(json)
+}
+
 # Used to avoid R CMD check NOTE about unused imports
 `_ignore` <- function() {
   base64enc::base64encode
