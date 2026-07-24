@@ -163,7 +163,8 @@ describe("Tool component bridge rendering", () => {
       })
     })
 
-    expect(document.querySelector(".shiny-tool-request")).toBeTruthy()
+    // A running request renders with a spinner glyph.
+    expect(document.querySelector(".spinner-border")).toBeTruthy()
 
     act(() => {
       transport.fire("test-chat", {
@@ -181,8 +182,10 @@ describe("Tool component bridge rendering", () => {
       })
     })
 
-    expect(document.querySelector(".shiny-tool-request")).toBeNull()
-    expect(document.querySelector(".shiny-tool-result")).toBeTruthy()
+    // The result supersedes the request: the running (spinner) card is gone,
+    // and the result value is shown.
+    expect(document.querySelector(".spinner-border")).toBeNull()
+    expect(document.body.textContent).toContain("Sunny, 72°F")
   })
 
   it("hides an existing tool request when a matching streamed tool result replaces chunk content", () => {
@@ -222,7 +225,7 @@ describe("Tool component bridge rendering", () => {
       })
     })
 
-    expect(document.querySelector(".shiny-tool-request")).toBeTruthy()
+    expect(document.querySelector(".spinner-border")).toBeTruthy()
 
     act(() => {
       transport.fire("test-chat", {
@@ -247,8 +250,8 @@ describe("Tool component bridge rendering", () => {
       transport.fire("test-chat", { type: "chunk_end" })
     })
 
-    expect(document.querySelector(".shiny-tool-request")).toBeNull()
-    expect(document.querySelector(".shiny-tool-result")).toBeTruthy()
+    expect(document.querySelector(".spinner-border")).toBeNull()
+    expect(document.body.textContent).toContain("Done")
   })
 
   it("hide_tool_request action hides a rendered tool request", () => {
@@ -356,8 +359,9 @@ describe("Tool component bridge rendering", () => {
       />,
     )
 
-    expect(document.querySelector(".shiny-tool-request")).toBeNull()
-    expect(document.querySelector(".shiny-tool-result")).toBeTruthy()
+    // The preloaded result supersedes the preloaded request (no spinner card).
+    expect(document.querySelector(".spinner-border")).toBeNull()
+    expect(document.body.textContent).toContain("Done")
   })
 
   it("renders a user-specified icon on a successful tool result", () => {
@@ -403,7 +407,7 @@ describe("Tool component bridge rendering", () => {
     expect(toolIcon!.innerHTML).toContain("bi-folder2-open")
   })
 
-  it("falls back to wrench icon when no icon is specified on a successful tool result", () => {
+  it("falls back to a bare dot glyph when no icon is specified on a successful tool result", () => {
     const transport = createMockTransport()
     const shinyLifecycle = createMockShinyLifecycle()
 
@@ -442,8 +446,9 @@ describe("Tool component bridge rendering", () => {
 
     const toolIcon = document.querySelector(".tool-icon")
     expect(toolIcon).toBeTruthy()
-    // Should contain the default wrench SVG
-    expect(toolIcon!.innerHTML).toContain("bi-wrench-adjustable")
+    // Should contain the muted identity dot (never a wrench).
+    expect(toolIcon!.innerHTML).toContain("shinychat-tool-glyph-dot")
+    expect(toolIcon!.innerHTML).not.toContain("bi-wrench-adjustable")
   })
 
   it("renders the empty-result placeholder when a tool result value is an empty string", () => {
@@ -483,7 +488,7 @@ describe("Tool component bridge rendering", () => {
       })
     })
 
-    expect(document.querySelector(".shiny-tool-result")).toBeTruthy()
+    expect(document.querySelector(".shiny-tool-card")).toBeTruthy()
     expect(document.body.textContent).toContain("[Empty result]")
   })
 })

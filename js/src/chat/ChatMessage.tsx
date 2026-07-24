@@ -1,10 +1,11 @@
-import { memo, useState } from "react"
-import type { ChatMessageData } from "./state"
+import { memo, useMemo, useState } from "react"
+import { routeToolBlocks, type ChatMessageData } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { ThinkingDisplay } from "./ThinkingDisplay"
+import { ToolGroup } from "./ToolGroup"
 import { robot, dots_fade } from "../utils/icons"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
-import { useSlashCommands } from "./context"
+import { useSlashCommands, useToolGrouping, useChatToolState } from "./context"
 import { CommandChip } from "./CommandChip"
 import type { SlashCommandDef } from "../transport/types"
 import {
@@ -41,17 +42,31 @@ export const ChatMessage = memo(function ChatMessage({
   iconAssistant,
 }: ChatMessageProps) {
   const slashCommands = useSlashCommands()
+  const toolGrouping = useToolGrouping()
+  const { hiddenToolRequests } = useChatToolState()
   const [lightbox, setLightbox] = useState<{
     src: string
     name: string
     mime: string
   } | null>(null)
   const isUser = message.role === "user"
+
+  // Finalized messages already carry routed tool_loop blocks (built in the
+  // reducer). While streaming, tool elements still live in content blocks, so
+  // route them at render time — with the same grouping — so tool calls show
+  // the Tier UI live and don't pop into it on finalize. An incomplete trailing
+  // tool element stays as prose (the router leaves it) until it closes.
+  const blocks = useMemo(
+    () =>
+      message.streaming
+        ? routeToolBlocks(message.blocks, toolGrouping)
+        : message.blocks,
+    [message.streaming, message.blocks, toolGrouping],
+  )
+
   const hasContent =
     message.content.trim() !== "" ||
-    message.blocks.some(
-      (b) => b.type === "thinking" || b.type === "tool_loop",
-    ) ||
+    blocks.some((b) => b.type === "thinking" || b.type === "tool_loop") ||
     (message.attachments?.length ?? 0) > 0 ||
     message.cancelled
 
@@ -144,7 +159,7 @@ export const ChatMessage = memo(function ChatMessage({
         {/* User attachments sit above their text (mirroring the input tray);
             assistant attachments come after the prose that introduces them. */}
         {isUser && attachmentsEl}
-        {message.blocks.map((block, i) => {
+        {blocks.map((block, i) => {
           if (block.type === "thinking") {
             return (
               <ThinkingDisplay
@@ -154,21 +169,32 @@ export const ChatMessage = memo(function ChatMessage({
               />
             )
           }
-          const isLast = i === message.blocks.length - 1
+          const isLast = i === blocks.length - 1
 
           if (block.type === "tool_loop") {
-            // Phase 0 pass-through: replay the loop's raw content exactly as
-            // before so the rendered DOM and bridge behavior are unchanged.
-            // Phase 2 replaces this with the Tier 1–3 grouped UI (block.groups).
+            // Drop running requests whose result has rendered elsewhere (hidden
+            // via hide_tool_request), then any group left empty.
+            const groups = block.groups
+              .map((g) => {
+                const calls = g.calls.filter(
+                  (c) =>
+                    !(
+                      c.status === "running" &&
+                      hiddenToolRequests.has(c.requestId)
+                    ),
+                )
+                return calls.length === g.calls.length
+                  ? g
+                  : { ...g, calls, count: calls.length }
+              })
+              .filter((g) => g.calls.length > 0)
+            if (groups.length === 0) return null
             return (
-              <MarkdownContent
-                key={i}
-                content={block.content}
-                contentType={block.contentType}
-                role={message.role}
-                streaming={message.streaming && isLast}
-                tagToComponentMap={chatTagToComponentMap}
-              />
+              <div key={i} className="shinychat-tool-loop">
+                {groups.map((group) => (
+                  <ToolGroup key={group.key} group={group} />
+                ))}
+              </div>
             )
           }
 

@@ -3,6 +3,7 @@ import {
   ShinyLifecycleContext,
   ChatToolContext,
   ChatDispatchContext,
+  ToolGroupingContext,
 } from "./context"
 import { setCurrentConversationId } from "./currentConversation"
 import { navigateTo } from "../utils/navigate"
@@ -238,33 +239,35 @@ export function ChatApp({
   return (
     <ShinyLifecycleContext.Provider value={shinyLifecycle}>
       <ChatToolContext.Provider value={toolState}>
-        <ChatDispatchContext.Provider value={dispatch}>
-          <ChatContainer
-            ref={containerRef}
-            transport={transport}
-            messages={state.messages}
-            streamingMessage={state.streamingMessage}
-            inputDisabled={state.inputDisabled}
-            inputPlaceholder={state.inputPlaceholder}
-            iconAssistant={iconAssistant}
-            inputId={inputId}
-            uploadAccept={uploadAccept}
-            maxUploadSize={maxUploadSize}
-            elementId={elementId}
-            greeting={state.greeting}
-            cancelId={cancelId}
-            enableCancel={state.enableCancel}
-            enableUpload={state.enableUpload}
-            cancelRequested={state.cancelRequested}
-            footerEl={footerEl}
-            slashCommands={state.slashCommands}
-            slashCommandId={slashCommandId}
-            submitKey={submitKey}
-            historyEnabled={state.history.enabled}
-            historyConversations={state.history.conversations}
-            historyActiveId={state.history.activeId}
-          />
-        </ChatDispatchContext.Provider>
+        <ToolGroupingContext.Provider value={state.toolGrouping}>
+          <ChatDispatchContext.Provider value={dispatch}>
+            <ChatContainer
+              ref={containerRef}
+              transport={transport}
+              messages={state.messages}
+              streamingMessage={state.streamingMessage}
+              inputDisabled={state.inputDisabled}
+              inputPlaceholder={state.inputPlaceholder}
+              iconAssistant={iconAssistant}
+              inputId={inputId}
+              uploadAccept={uploadAccept}
+              maxUploadSize={maxUploadSize}
+              elementId={elementId}
+              greeting={state.greeting}
+              cancelId={cancelId}
+              enableCancel={state.enableCancel}
+              enableUpload={state.enableUpload}
+              cancelRequested={state.cancelRequested}
+              footerEl={footerEl}
+              slashCommands={state.slashCommands}
+              slashCommandId={slashCommandId}
+              submitKey={submitKey}
+              historyEnabled={state.history.enabled}
+              historyConversations={state.history.conversations}
+              historyActiveId={state.history.activeId}
+            />
+          </ChatDispatchContext.Provider>
+        </ToolGroupingContext.Provider>
       </ChatToolContext.Provider>
     </ShinyLifecycleContext.Provider>
   )

@@ -59,6 +59,7 @@ export interface ToolResultProps {
   requestId: string
   toolName: string
   toolTitle?: string
+  label?: string
   intent?: string
   status: string
   value: string
@@ -75,6 +76,7 @@ export const ToolResult = memo(function ToolResult({
   requestId,
   toolName,
   toolTitle,
+  label,
   intent,
   status,
   value,
@@ -92,7 +94,6 @@ export const ToolResult = memo(function ToolResult({
   const isError = status === "error"
   const classStatus = isError ? "text-danger" : ""
   const icon = isError ? exclamationCircleFill : iconProp
-  const titleTemplate = isError ? "{title} failed" : "{title}"
 
   return (
     <>
@@ -100,10 +101,10 @@ export const ToolResult = memo(function ToolResult({
         requestId={requestId}
         toolName={toolName}
         toolTitle={toolTitle}
+        label={label}
         intent={intent}
         icon={icon}
         classStatus={classStatus}
-        titleTemplate={titleTemplate}
         fullScreen={fullScreen}
         initialExpanded={expanded}
         footer={footer}

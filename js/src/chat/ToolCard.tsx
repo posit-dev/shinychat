@@ -1,7 +1,11 @@
 import { useState, useMemo, type ReactNode, type Ref } from "react"
-import { wrenchAdjustable, plus } from "../utils/icons"
+import { bareDot, plus } from "../utils/icons"
 import { fullscreenEnter } from "./useFullscreen"
 import { RawHTML } from "./RawHTML"
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
 
 const plusDSIH = { __html: plus }
 const fullscreenEnterDSIH = { __html: fullscreenEnter }
@@ -10,10 +14,11 @@ export interface ToolCardProps {
   requestId: string
   toolName: string
   toolTitle?: string
+  /** The per-call identifying value, appended as "{title}: {label}". */
+  label?: string
   intent?: string
   icon?: string
   classStatus?: string
-  titleTemplate?: string
   fullScreen?: boolean
   initialExpanded?: boolean
   footer?: string
@@ -26,10 +31,10 @@ export function ToolCard({
   requestId,
   toolName,
   toolTitle,
+  label,
   intent,
   icon,
   classStatus = "",
-  titleTemplate = "{title}",
   fullScreen = false,
   initialExpanded = false,
   footer,
@@ -41,12 +46,12 @@ export function ToolCard({
 
   const headerId = `tool-header-${requestId}`
   const contentId = `tool-content-${requestId}`
-  const iconHtml = icon || wrenchAdjustable
+  const iconHtml = icon || bareDot
   const displayName = toolTitle || `${toolName}()`
-  const formattedTitle = titleTemplate.replace(
-    "{title}",
-    `<span class="tool-title-name">${displayName}</span>`,
-  )
+  const labelPart = label
+    ? `: <span class="tool-title-label">${escapeHtml(label)}</span>`
+    : ""
+  const formattedTitle = `<span class="tool-title-name">${displayName}</span>${labelPart}`
 
   // Memoize dangerouslySetInnerHTML objects so React 19 sees stable
   // references and skips unnecessary innerHTML resets on re-render.

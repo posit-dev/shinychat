@@ -6,6 +6,7 @@ interface ToolResultBridgeProps {
   "request-id"?: string
   "tool-name"?: string
   "tool-title"?: string
+  label?: string
   intent?: string
   status?: string
   value?: string
@@ -28,6 +29,7 @@ export function ToolResultBridge({
   "request-id": requestId,
   "tool-name": toolName,
   "tool-title": toolTitle,
+  label,
   intent,
   status,
   value,
@@ -55,6 +57,7 @@ export function ToolResultBridge({
         requestId={requestId}
         toolName={toolName}
         toolTitle={toolTitle}
+        label={label}
         intent={intent}
         status={status ?? "success"}
         value={value ?? ""}

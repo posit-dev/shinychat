@@ -96,10 +96,11 @@ describe("chat-entry custom element boot", () => {
       document.body.appendChild(host)
     })
 
-    // Preloaded tool HTML still renders (via the Phase 0 pass-through) after
-    // being routed into a tool_loop block.
+    // Preloaded tool HTML is routed into a tool_loop block and rendered as a
+    // condensed tool group (leaf card).
     await waitFor(() => {
-      expect(host.querySelector(".shiny-tool-result")).not.toBeNull()
+      expect(host.querySelector(".shiny-tool-card")).not.toBeNull()
+      expect(host.textContent).toContain("done")
     })
   })
 

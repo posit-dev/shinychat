@@ -1,6 +1,6 @@
 import { createContext, useContext, type Dispatch } from "react"
 import type { ShinyLifecycle, SlashCommandDef } from "../transport/types"
-import type { ChatToolState, AnyAction } from "./state"
+import type { ChatToolState, AnyAction, ToolGrouping } from "./state"
 import { initialState } from "./state"
 import type { StopScroll } from "use-stick-to-bottom"
 
@@ -17,6 +17,14 @@ const initialToolState: ChatToolState = {
 }
 
 export const ChatToolContext = createContext<ChatToolState>(initialToolState)
+
+export const ToolGroupingContext = createContext<ToolGrouping>(
+  initialState.toolGrouping,
+)
+
+export function useToolGrouping(): ToolGrouping {
+  return useContext(ToolGroupingContext)
+}
 
 export const ChatDispatchContext = createContext<Dispatch<AnyAction> | null>(
   null,
