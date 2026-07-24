@@ -45,6 +45,47 @@ describe("SidenoteGroup", () => {
     expect(screen.getByText("+1")).toBeInTheDocument()
   })
 
+  it("shows no overflow count when every grouped sidenote shares one label", () => {
+    renderMarkdown(
+      [
+        'First mention<shiny-sidenote label="eBicycles" url="https://ebicycles.example/a"></shiny-sidenote>.',
+        'Second mention<shiny-sidenote label="eBicycles" url="https://ebicycles.example/b"></shiny-sidenote>.',
+      ].join(" "),
+    )
+    expect(screen.getByText("eBicycles")).toBeInTheDocument()
+    expect(screen.queryByText("+1")).not.toBeInTheDocument()
+    // Accessible name is the bare label — no "(+1 more)" suffix.
+    expect(
+      screen.getByRole("button", { name: "eBicycles" }),
+    ).toBeInTheDocument()
+  })
+
+  it("still pages between same-label entries in the popover", () => {
+    renderMarkdown(
+      [
+        'First<shiny-sidenote label="eBicycles" url="https://ebicycles.example/a">first body</shiny-sidenote>.',
+        'Second<shiny-sidenote label="eBicycles" url="https://ebicycles.example/b">second body</shiny-sidenote>.',
+      ].join(" "),
+    )
+    fireEvent.click(screen.getByRole("button", { name: "eBicycles" }))
+    expect(screen.getByRole("dialog")).toHaveTextContent("1 / 2")
+    expect(screen.getByRole("dialog")).toHaveTextContent("first body")
+    fireEvent.click(screen.getByRole("button", { name: "Next source" }))
+    expect(screen.getByRole("dialog")).toHaveTextContent("second body")
+  })
+
+  it("counts every entry, not distinct labels, for the overflow badge", () => {
+    renderMarkdown(
+      [
+        'First<shiny-sidenote label="eBicycles" url="https://ebicycles.example/a"></shiny-sidenote>.',
+        'Second<shiny-sidenote label="eBicycles" url="https://ebicycles.example/b"></shiny-sidenote>.',
+        'Third<shiny-sidenote label="WIRED" url="https://wired.example"></shiny-sidenote>.',
+      ].join(" "),
+    )
+    // Three entries, mixed labels -> +2 (entries.length - 1), not +1 (distinct labels - 1).
+    expect(screen.getByText("+2")).toBeInTheDocument()
+  })
+
   it("includes the overflow count in the accessible name of a labeled pill", () => {
     renderMarkdown(
       [

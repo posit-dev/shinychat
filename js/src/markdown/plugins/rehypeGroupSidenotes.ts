@@ -42,18 +42,6 @@ function collectAndRemoveSidenotes(container: Element): Element[] {
   return collected
 }
 
-function dedupeByLabel(labeledSidenotes: Element[]): Element[] {
-  const seenLabels = new Set<string>()
-  const kept: Element[] = []
-  for (const sidenote of labeledSidenotes) {
-    const label = sidenote.properties!.label as string
-    if (seenLabels.has(label)) continue
-    seenLabels.add(label)
-    kept.push(sidenote)
-  }
-  return kept
-}
-
 function makeGroup(children: Element[]): Element {
   return {
     type: "element",
@@ -71,8 +59,7 @@ function transform(tree: Root): void {
     if (found.length === 0) return
 
     const labeled = found.filter(isLabeled)
-    const labeledGroup =
-      labeled.length > 0 ? makeGroup(dedupeByLabel(labeled)) : null
+    const labeledGroup = labeled.length > 0 ? makeGroup(labeled) : null
     let labeledGroupPlaced = false
     const groups: Element[] = []
     for (const sidenote of found) {
@@ -94,12 +81,13 @@ function transform(tree: Root): void {
 /**
  * Rehype plugin that processes every <shiny-sidenote> found anywhere within
  * a paragraph or tight list item. Sidenotes carrying a `label` collapse into
- * a single trailing <shiny-sidenote-group>, deduped by label (first
- * occurrence wins) — unchanged from before. Label-less sidenotes never
- * bundle with anything: each becomes its own single-entry
- * <shiny-sidenote-group>, stamped with `index`, a counter that runs across
- * the *entire* tree passed to this plugin (i.e. the whole message, since
- * each message is parsed independently) so pills can show a stable,
- * message-scoped sidenote number instead of a per-container count.
+ * a single trailing <shiny-sidenote-group>, keeping every one in document
+ * order (each stays a distinct popover entry — the pill decides whether to
+ * show an overflow count). Label-less sidenotes never bundle with anything:
+ * each becomes its own single-entry <shiny-sidenote-group>, stamped with
+ * `index`, a counter that runs across the *entire* tree passed to this
+ * plugin (i.e. the whole message, since each message is parsed
+ * independently) so pills can show a stable, message-scoped sidenote number
+ * instead of a per-container count.
  */
 export const rehypeGroupSidenotes: Plugin<[], Root> = () => transform

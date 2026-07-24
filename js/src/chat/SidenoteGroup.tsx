@@ -166,6 +166,10 @@ export const SidenoteGroup = memo(function SidenoteGroup({
   if (node?.properties?.[SIDENOTE_PENDING_ATTR] != null) return null
   if (entries.length === 0) return null
   const overflow = entries.length - 1
+  const allSameLabel =
+    faceIndex !== -1 &&
+    entries.every((e) => e.label === entries[faceIndex]!.label)
+  const showOverflow = overflow > 0 && !allSameLabel
 
   function show() {
     cancelScheduledClose()
@@ -213,7 +217,7 @@ export const SidenoteGroup = memo(function SidenoteGroup({
   const pillLabel =
     faceIndex === -1
       ? `Sidenote ${entries[0]!.index}`
-      : overflow > 0
+      : showOverflow
         ? `${entries[faceIndex]!.label} (+${overflow} more)`
         : entries[faceIndex]!.label
 
@@ -246,7 +250,7 @@ export const SidenoteGroup = memo(function SidenoteGroup({
             <span className="shiny-sidenote-pill__label">
               {entries[faceIndex]!.label}
             </span>
-            {overflow > 0 && (
+            {showOverflow && (
               <span className="shiny-sidenote-pill__overflow">+{overflow}</span>
             )}
           </>

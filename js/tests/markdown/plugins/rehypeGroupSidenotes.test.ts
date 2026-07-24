@@ -44,15 +44,16 @@ describe("rehypeGroupSidenotes", () => {
     )
   })
 
-  it("dedupes sidenotes sharing the same label, keeping the first occurrence", () => {
+  it("keeps every same-label sidenote as a distinct entry in one group", () => {
     const md = [
       'First mention<shiny-sidenote label="eBicycles" url="https://ebicycles.example/a"></shiny-sidenote>.',
       'Second mention, same source<shiny-sidenote label="eBicycles" url="https://ebicycles.example/b"></shiny-sidenote>.',
     ].join(" ")
     const html = process(md)
-    expect(html.match(/<shiny-sidenote(?!-group)\b/g)).toHaveLength(1)
+    expect(html.match(/<shiny-sidenote(?!-group)\b/g)).toHaveLength(2)
+    expect(html.match(/<shiny-sidenote-group\b/g)).toHaveLength(1)
     expect(html).toContain("https://ebicycles.example/a")
-    expect(html).not.toContain("https://ebicycles.example/b")
+    expect(html).toContain("https://ebicycles.example/b")
   })
 
   it("splits every label-less sidenote into its own single-entry group", () => {

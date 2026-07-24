@@ -944,9 +944,10 @@ class Chat:
         plain numbered/count marker. The body is ordinary markdown: inline for a
         one-liner, or — by separating it with blank lines — a rich block body
         (paragraphs, lists, code) shown in the popover. Multiple sidenotes in
-        the same paragraph or list item collapse into a single pill, deduped by
-        `label` (sidenotes sharing a label are the same source; the first
-        occurrence's content is kept).
+        the same paragraph or list item collapse into a single pill, each kept
+        as a separate popover page you can page through. The pill shows a `+N`
+        overflow count only when the grouped sidenotes have differing labels;
+        sidenotes sharing one label collapse to a single face with no count.
 
         The favicon is fetched at render time from a third-party service
         (DuckDuckGo's icon service), which receives the cited site's hostname.
@@ -1250,9 +1251,10 @@ class Chat:
         plain numbered/count marker. The body is ordinary markdown: inline for a
         one-liner, or — by separating it with blank lines — a rich block body
         (paragraphs, lists, code) shown in the popover. Multiple sidenotes in
-        the same paragraph or list item collapse into a single pill, deduped by
-        `label` (sidenotes sharing a label are the same source; the first
-        occurrence's content is kept).
+        the same paragraph or list item collapse into a single pill, each kept
+        as a separate popover page you can page through. The pill shows a `+N`
+        overflow count only when the grouped sidenotes have differing labels;
+        sidenotes sharing one label collapse to a single face with no count.
 
         The favicon is fetched at render time from a third-party service
         (DuckDuckGo's icon service), which receives the cited site's hostname.
