@@ -174,7 +174,31 @@ record_subtree_leaf <- function(record, node_id) {
   if (length(children) == 0) {
     return(node_id)
   }
-  record_subtree_leaf(record, children[[length(children)]])
+  selected <- record$nodes[[node_id]]$selected_child
+  next_id <- if (!is.null(selected) && selected %in% children) {
+    selected
+  } else {
+    children[[length(children)]]
+  }
+  record_subtree_leaf(record, next_id)
+}
+
+# Move the active leaf and record, at every node on the new path, which child
+# leads toward it. record_subtree_leaf() replays those pointers so navigating
+# back into a sibling subtree returns to the last-viewed descendant. Off-path
+# nodes are untouched, so each subtree keeps its own remembered position.
+record_set_current_leaf <- function(record, node_id) {
+  record$current_leaf <- node_id
+  path <- record_path_node_ids(record)
+  n <- length(path)
+  for (i in seq_along(path)) {
+    record$nodes[[path[[i]]]]$selected_child <- if (i < n) {
+      path[[i + 1L]]
+    } else {
+      NULL
+    }
+  }
+  record
 }
 
 record_path_sibling_metadata <- function(record) {
@@ -191,13 +215,21 @@ record_path_sibling_metadata <- function(record) {
   result
 }
 
+# Client-facing message count for a node. Mirrors replay_ui()'s NULL-ui
+# fallback: a missing/empty `ui` still renders one fabricated message, so index
+# math (record_node_id_for_message_index, send_sibling_metadata) stays aligned
+# with what the client reports.
+record_ui_message_count <- function(node) {
+  if (length(node$ui) > 0) length(node$ui) else 1L
+}
+
 record_node_id_for_message_index <- function(record, index) {
   if (index < 0) {
     rlang::abort(paste0("Message index ", index, " out of range"))
   }
   cumulative <- 0L
   for (nid in record_path_node_ids(record)) {
-    n_ui <- length(record$nodes[[nid]]$ui)
+    n_ui <- record_ui_message_count(record$nodes[[nid]])
     if (index < cumulative + n_ui) {
       return(nid)
     }
@@ -253,7 +285,7 @@ extend_record_linear <- function(
         node_id
       )
     }
-    record$current_leaf <- node_id
+    record <- record_set_current_leaf(record, node_id)
     new_node_ids <- c(new_node_ids, node_id)
   }
 

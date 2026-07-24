@@ -191,21 +191,48 @@ def test_subtree_leaf_returns_self_for_leaf_node():
     assert rec.subtree_leaf(n1) == n1
 
 
-def test_subtree_leaf_follows_latest_child():
+def test_subtree_leaf_follows_selected_child_else_newest():
     rec = new_conversation_record(title="t")
     n1 = rec.append_linear(turn("user", "hi"))
     n2 = rec.append_linear(turn("assistant", "v1"))
     n3 = rec.append_linear(turn("user", "q2"))
     n4 = rec.append_linear(turn("assistant", "a2"))
-    # Subtree from n1 follows n2 -> n3 -> n4
+    # append_linear recorded selected_child at each node, so subtree_leaf
+    # replays it back to the current leaf.
     assert rec.subtree_leaf(n1) == n4
-    # Add a branch at n2 (sibling of n3)
+    # Branch a sibling of n3 under n2. branch_from bypasses set_current_leaf,
+    # so n2 still remembers n3 from the linear appends.
     n5 = branch_from(rec, n2, turn("user", "q2-edited"))
     n6 = branch_from(rec, n5, turn("assistant", "a2-new"))
-    # subtree_leaf from n2 follows the LATEST child (n5) -> n6
+    # n2 remembers n3, so it returns to n4 rather than the newer n5 -> n6.
+    assert rec.subtree_leaf(n2) == n4
+    # With the memory cleared, it falls back to the newest child (n5 -> n6).
+    rec.nodes[n2].selected_child = None
     assert rec.subtree_leaf(n2) == n6
-    # subtree_leaf from n3 still follows n4
+    # n3 still leads to n4.
     assert rec.subtree_leaf(n3) == n4
+
+
+def test_subtree_leaf_remembers_descendant_across_sibling_navigation():
+    rec = new_conversation_record(title="t")
+    root = rec.append_linear(turn("user", "start"))
+    # Two sibling branches under root, each with two leaves of its own.
+    b1 = branch_from(rec, root, turn("assistant", "b1"))
+    b1a = branch_from(rec, b1, turn("assistant", "b1a"))
+    branch_from(rec, b1, turn("assistant", "b1b"))
+    b2 = branch_from(rec, root, turn("assistant", "b2"))
+    branch_from(rec, b2, turn("assistant", "b2a"))
+    b2b = branch_from(rec, b2, turn("assistant", "b2b"))
+
+    # Land inside b1 on the OLDER leaf b1a (not the newest, b1b).
+    rec.set_current_leaf(b1a)
+    # Navigate to sibling b2: no memory yet, so its newest leaf (b2b).
+    rec.set_current_leaf(rec.subtree_leaf(b2))
+    assert rec.current_leaf == b2b
+    # Navigate back to b1: returns to b1a, the last-viewed descendant, rather
+    # than the newest leaf b1b.
+    rec.set_current_leaf(rec.subtree_leaf(b1))
+    assert rec.current_leaf == b1a
 
 
 def test_branch_from_creates_sibling():
@@ -255,16 +282,20 @@ def test_node_id_for_message_index_simple():
     assert rec.node_id_for_message_index(1) == (n2, 1)
 
 
-def test_node_id_for_message_index_skips_empty_ui_nodes():
-    # Simulates tool-call turns with no UI
+def test_node_id_for_message_index_counts_empty_ui_nodes_as_one():
+    # A node with ui=None still renders one fabricated message on restore
+    # (replay_ui's `node.ui or [fallback]`), so it occupies one client message
+    # slot here too — the mapping must not skip it, or client indices would
+    # disagree with the server.
     rec = new_conversation_record(title="t")
     n1 = rec.append_linear(turn("user", "q"), ui=[msg("user")])
-    rec.append_linear(turn("assistant", "tool_call"))  # no ui
-    rec.append_linear(turn("user", "tool_result"))  # no ui
+    n2 = rec.append_linear(turn("assistant", "no-ui-1"))  # no ui
+    n3 = rec.append_linear(turn("user", "no-ui-2"))  # no ui
     n4 = rec.append_linear(turn("assistant", "a"), ui=[msg("assistant")])
     assert rec.node_id_for_message_index(0) == (n1, 0)
-    # Message index 1 -> n4 (node index 3, skipping 2 empty-ui nodes)
-    assert rec.node_id_for_message_index(1) == (n4, 3)
+    assert rec.node_id_for_message_index(1) == (n2, 1)
+    assert rec.node_id_for_message_index(2) == (n3, 2)
+    assert rec.node_id_for_message_index(3) == (n4, 3)
 
 
 def test_node_id_for_message_index_out_of_range():

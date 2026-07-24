@@ -396,7 +396,7 @@ HistoryController <- R6::R6Class(
       data <- list()
       msg_idx <- 0L
       for (nid in record_path_node_ids(self$record)) {
-        n_ui <- length(self$record$nodes[[nid]]$ui)
+        n_ui <- record_ui_message_count(self$record$nodes[[nid]])
         if (!is.null(sibling_meta[[nid]])) {
           data[[as.character(msg_idx)]] <- sibling_meta[[nid]]
         }
@@ -436,7 +436,7 @@ HistoryController <- R6::R6Class(
       }
 
       leaf <- record_subtree_leaf(self$record, target)
-      self$record$current_leaf <- leaf
+      self$record <- record_set_current_leaf(self$record, leaf)
       set_turns_recorded(private$client, record_path_turns(self$record))
       self$replay_ui(self$record)
       # Unlike switch_to()'s replay_ui() call (which leaves suppress_next_save
@@ -463,7 +463,7 @@ HistoryController <- R6::R6Class(
       # Branching happens implicitly: truncating current_leaf here means the
       # next extend_record_linear() (from the resubmit's on_response) creates
       # a sibling under fork_parent, not a child of the old leaf.
-      self$record$current_leaf <- fork_parent
+      self$record <- record_set_current_leaf(self$record, fork_parent)
       set_turns_recorded(private$client, record_path_turns(self$record))
       self$replay_ui(self$record)
       # See handle_navigate()'s identical reset for why this is required.

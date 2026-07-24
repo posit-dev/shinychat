@@ -508,11 +508,17 @@ class HistoryController:
             return
         sibling_meta = self.record.path_sibling_metadata()
         if not sibling_meta:
+            # No "clear all badges" payload is needed. A badge only exists at a
+            # fork point (a node with >1 sibling), and forks are permanent:
+            # navigating between siblings keeps that node's sibling count > 1,
+            # and nothing prunes nodes from a record. So a path that currently
+            # has no forks never had one, meaning there is no stale badge to
+            # clear — empty here always means the client already shows none.
             return
         data: dict[int, dict[str, int]] = {}
         msg_idx = 0
         for nid in self.record.path_node_ids():
-            n_ui = len(self.record.nodes[nid].ui or [])
+            n_ui = self.record.nodes[nid].ui_message_count()
             if nid in sibling_meta:
                 idx, total = sibling_meta[nid]
                 data[msg_idx] = {"index": idx, "total": total}
@@ -543,10 +549,9 @@ class HistoryController:
             target = siblings[current_pos + 1]
 
         leaf = self.record.subtree_leaf(target)
-        self.record.current_leaf = leaf
+        self.record.set_current_leaf(leaf)
         self.adapter.set_turns_json(self.record.path_turns())
         await self.replay_ui(self.record)
-        self._suppress_next_save = False
         await self._send_sibling_metadata()
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
@@ -569,10 +574,9 @@ class HistoryController:
         # append_linear (from the resubmit's on_response) creates a sibling under
         # fork_parent, not a child of the old leaf. We don't call branch_from here
         # because there's no new turn content yet — that arrives via on_response.
-        self.record.current_leaf = fork_parent
+        self.record.set_current_leaf(fork_parent)
         self.adapter.set_turns_json(self.record.path_turns())
         await self.replay_ui(self.record)
-        self._suppress_next_save = False
         await self._send_sibling_metadata()
         action: UpdateInputAction = {
             "type": "update_input",

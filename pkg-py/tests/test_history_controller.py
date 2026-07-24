@@ -1664,22 +1664,6 @@ async def test_handle_edit_first_message_truncates_to_root():
 
 
 @pytest.mark.anyio
-async def test_handle_edit_suppress_save_is_cleared():
-    controller, chat, adapter, store = _make_branched_controller()
-    chat.messages_ = [
-        msg("user"),
-        msg("assistant"),
-        msg("user"),
-        msg("assistant"),
-    ]
-
-    await controller.handle_edit(2, "edited")
-
-    # _suppress_next_save must be False so the real post-resubmit save proceeds
-    assert controller._suppress_next_save is False
-
-
-@pytest.mark.anyio
 async def test_handle_edit_forks_from_a_multi_turn_tool_call_node():
     """Edit a message whose parent node is a grouped tool-call exchange
     (assistant-request/user-result/assistant-final stored as one node, one

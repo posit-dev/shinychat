@@ -402,7 +402,8 @@ FileConversationStore <- R6::R6Class(
           parent = node_data$parent,
           children = node_data$children,
           turns = turns,
-          ui = ui_map[[nid]]
+          ui = ui_map[[nid]],
+          selected_child = node_data$selected_child
         )
       }
 
@@ -470,7 +471,8 @@ FileConversationStore <- R6::R6Class(
         record_nodes[[nid]] <- list(
           parent = node$parent,
           children = node$children,
-          turn_ids = ws$turn_seq_map[[nid]]
+          turn_ids = ws$turn_seq_map[[nid]],
+          selected_child = node$selected_child
         )
       }
 

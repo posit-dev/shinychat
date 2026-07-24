@@ -292,6 +292,44 @@ test_that("record_subtree_leaf() walks the last-child chain to a leaf", {
   expect_equal(record_subtree_leaf(rec, "n_0001"), "n_0004")
 })
 
+test_that("record_subtree_leaf() follows selected_child, falling back to newest", {
+  rec <- new_conversation_record("test")
+  rec$nodes <- list(
+    n_0001 = list(parent = NULL, children = list("n_0002")),
+    n_0002 = list(parent = "n_0001", children = list("n_0003", "n_0004")),
+    n_0003 = list(parent = "n_0002", children = list()),
+    n_0004 = list(parent = "n_0002", children = list())
+  )
+  # Remember the older child n_0003 as the selected path.
+  rec <- record_set_current_leaf(rec, "n_0003")
+  expect_equal(rec$nodes[["n_0002"]]$selected_child, "n_0003")
+  expect_equal(record_subtree_leaf(rec, "n_0001"), "n_0003")
+  # Clearing the memory falls back to the newest child (n_0004).
+  rec$nodes[["n_0002"]]$selected_child <- NULL
+  expect_equal(record_subtree_leaf(rec, "n_0002"), "n_0004")
+})
+
+test_that("record_subtree_leaf() remembers descendant across sibling navigation", {
+  rec <- new_conversation_record("test")
+  rec$nodes <- list(
+    n_0001 = list(parent = NULL, children = list("n_0002", "n_0005")),
+    n_0002 = list(parent = "n_0001", children = list("n_0003", "n_0004")),
+    n_0003 = list(parent = "n_0002", children = list()),
+    n_0004 = list(parent = "n_0002", children = list()),
+    n_0005 = list(parent = "n_0001", children = list("n_0006", "n_0007")),
+    n_0006 = list(parent = "n_0005", children = list()),
+    n_0007 = list(parent = "n_0005", children = list())
+  )
+  # Land inside branch n_0002 on the older leaf n_0003 (not the newest).
+  rec <- record_set_current_leaf(rec, "n_0003")
+  # Navigate to sibling n_0005: no memory yet, so its newest leaf n_0007.
+  rec <- record_set_current_leaf(rec, record_subtree_leaf(rec, "n_0005"))
+  expect_equal(rec$current_leaf, "n_0007")
+  # Navigate back to n_0002: returns to n_0003, the last-viewed descendant.
+  rec <- record_set_current_leaf(rec, record_subtree_leaf(rec, "n_0002"))
+  expect_equal(rec$current_leaf, "n_0003")
+})
+
 test_that("record_path_sibling_metadata() is empty when no node on the path has siblings", {
   rec <- new_conversation_record("test")
   rec$nodes <- list(
@@ -353,6 +391,31 @@ test_that("record_node_id_for_message_index() errors when the index is out of ra
 
   expect_error(record_node_id_for_message_index(rec, 1), "out of range")
   expect_error(record_node_id_for_message_index(rec, -1), "out of range")
+})
+
+test_that("record_node_id_for_message_index() counts NULL-ui nodes as one message", {
+  # A node with NULL ui still renders one fabricated message on restore
+  # (replay_ui's fallback), so it occupies one client message slot here too --
+  # the mapping must not skip it, or client indices would disagree.
+  rec <- new_conversation_record("test")
+  rec$nodes <- list(
+    n_0001 = list(
+      parent = NULL,
+      children = list("n_0002"),
+      ui = list(list(role = "user"))
+    ),
+    n_0002 = list(parent = "n_0001", children = list("n_0003"), ui = NULL),
+    n_0003 = list(
+      parent = "n_0002",
+      children = list(),
+      ui = list(list(role = "assistant"))
+    )
+  )
+  rec$current_leaf <- "n_0003"
+
+  expect_equal(record_node_id_for_message_index(rec, 0), "n_0001")
+  expect_equal(record_node_id_for_message_index(rec, 1), "n_0002")
+  expect_equal(record_node_id_for_message_index(rec, 2), "n_0003")
 })
 
 user_turn_fixture <- function(text) {
