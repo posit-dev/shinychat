@@ -25,7 +25,72 @@ export interface ThinkingBlock {
   streaming: boolean
 }
 
-export type MessageBlock = ContentBlock | ThinkingBlock
+/** How a loop's tool calls are aggregated in the condensed view. */
+export type ToolGrouping = "none" | "tool" | "all"
+
+/**
+ * One tool call — a `<shiny-tool-request>` and/or its matching
+ * `<shiny-tool-result>`, parsed out of assistant content by the content router.
+ * Carries both the condensed-view metadata (title/icon/label/valuePreview) and
+ * the payload needed to render the Tier-3 leaf card.
+ */
+export interface ToolCallItem {
+  requestId: string
+  toolName: string
+  status: "running" | "success" | "error"
+  title?: string
+  icon?: string
+  label?: string
+  valuePreview?: string
+  intent?: string
+  /** Per-tool grouping override, parsed from the element's `grouping` attribute. */
+  grouping?: ToolGrouping
+  // Tier-3 leaf payload
+  value?: string
+  valueType?: string
+  requestCall?: string
+  showRequest?: boolean
+  fullScreen?: boolean
+  expanded?: boolean
+  footer?: string
+  /** Raw arguments JSON from the request element. */
+  arguments?: string
+}
+
+/**
+ * Block-model data for an aggregated set of calls (distinct from any React
+ * `ToolGroup` component). `title`/`icon` are the resolved group identity after
+ * applying the monotonic title latch.
+ */
+export interface ToolCallGroup {
+  /** Grouping key (per-call, per-tool, or loop-wide). */
+  key: string
+  toolName: string
+  title?: string
+  /** True once a first result has latched the title to its past-tense form. */
+  titleSettled: boolean
+  icon?: string
+  count: number
+  calls: ToolCallItem[]
+  /** Reserved for the thinking-lift fast-follow; unused in v1 core. */
+  liftedThinking?: ThinkingBlock[]
+}
+
+/**
+ * A run of adjacent tool calls (one agentic loop) grouped for the condensed
+ * view. `content` is the raw HTML slice the loop was parsed from; the Phase-0
+ * renderer replays it verbatim, while `groups` carries the routed data that the
+ * Tier 1–3 UI consumes.
+ */
+export interface ToolLoopBlock {
+  type: "tool_loop"
+  content: string
+  contentType: ContentType
+  grouping: ToolGrouping
+  groups: ToolCallGroup[]
+}
+
+export type MessageBlock = ContentBlock | ThinkingBlock | ToolLoopBlock
 
 export interface ChatMessageData {
   id: string
@@ -130,16 +195,17 @@ export const initialState: ChatState = {
   history: { enabled: false, conversations: [], activeId: null },
 }
 
-function messagePayloadToData(msg: MessagePayload): ChatMessageData {
-  const blocks: MessageBlock[] = []
+function messagePayloadToData(
+  msg: MessagePayload,
+  grouping: ToolGrouping = "tool",
+): ChatMessageData {
+  const rawBlocks: MessageBlock[] = []
   for (const seg of msg.segments) {
-    blocks.push(...splitThinkingBlocks(seg.content, seg.content_type))
+    rawBlocks.push(...splitThinkingBlocks(seg.content, seg.content_type))
   }
+  const blocks = routeToolBlocks(rawBlocks, grouping)
   const attachments: AttachmentPayload[] = msg.attachments ?? []
-  const contentOnly = blocks
-    .filter((b): b is ContentBlock => b.type === "content")
-    .map((b) => b.content)
-    .join("")
+  const contentOnly = contentFromBlocks(blocks)
 
   return {
     id: msg.id ?? uuid(),
@@ -231,6 +297,316 @@ function splitThinkingBlocks(
   }
 
   return blocks
+}
+
+// ---------------------------------------------------------------------------
+// Tool content router (Phase 0)
+//
+// A pure, replayable pass over already-split blocks: it recognizes
+// <shiny-tool-request>/<shiny-tool-result> custom elements in content blocks
+// and re-emits runs of them as ToolLoopBlocks carrying structured, grouped
+// call data. Routing is a pure function of content, so history restore and
+// re-renders reproduce identical grouping. Attributes are parsed straight from
+// the HTML string (option A) — the reducer is the single seam, not the bridges.
+// ---------------------------------------------------------------------------
+
+const TOOL_TAG_RE = /<shiny-tool-(request|result)\b/g
+const TOOL_MARKER = "<shiny-tool-"
+const ATTR_RE =
+  /([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+)))?/g
+
+interface ParsedToolElement {
+  tag: "request" | "result"
+  attrs: Record<string, string>
+  start: number
+  end: number
+}
+
+function decodeEntities(s: string): string {
+  if (!s.includes("&")) return s
+  return s
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+}
+
+// Index of the `>` closing an open tag, skipping quoted attribute values (which
+// may themselves contain `>`, e.g. an inline SVG icon). Returns -1 if unclosed.
+function findOpenTagEnd(s: string, from: number): number {
+  let quote: string | null = null
+  for (let i = from; i < s.length; i++) {
+    const c = s[i]
+    if (quote) {
+      if (c === quote) quote = null
+    } else if (c === '"' || c === "'") {
+      quote = c
+    } else if (c === ">") {
+      return i
+    }
+  }
+  return -1
+}
+
+function parseAttributes(s: string): Record<string, string> {
+  const attrs: Record<string, string> = {}
+  ATTR_RE.lastIndex = 0
+  let m: RegExpExecArray | null
+  while ((m = ATTR_RE.exec(s)) !== null) {
+    if (m[0] === "") {
+      ATTR_RE.lastIndex++
+      continue
+    }
+    if (m[1] === undefined) continue
+    const raw = m[2] ?? m[3] ?? m[4] ?? ""
+    attrs[m[1].toLowerCase()] = decodeEntities(raw)
+  }
+  return attrs
+}
+
+function attrTruthy(attrs: Record<string, string>, name: string): boolean {
+  if (!(name in attrs)) return false
+  const v = attrs[name]
+  return v === "" || v === "true"
+}
+
+// Parse all complete tool custom elements from a content string, in order. A
+// trailing incomplete element (e.g. mid-stream) stops the scan — it is left as
+// prose until its closing tag arrives.
+function parseToolElements(content: string): ParsedToolElement[] {
+  const els: ParsedToolElement[] = []
+  TOOL_TAG_RE.lastIndex = 0
+  let m: RegExpExecArray | null
+  while ((m = TOOL_TAG_RE.exec(content)) !== null) {
+    const tag = m[1] as "request" | "result"
+    const attrsStart = m.index + m[0].length
+    const openEnd = findOpenTagEnd(content, attrsStart)
+    if (openEnd === -1) break
+    const closeTag = `</shiny-tool-${tag}>`
+    const closeIdx = content.indexOf(closeTag, openEnd + 1)
+    if (closeIdx === -1) break
+    const end = closeIdx + closeTag.length
+    els.push({
+      tag,
+      attrs: parseAttributes(content.slice(attrsStart, openEnd)),
+      start: m.index,
+      end,
+    })
+    TOOL_TAG_RE.lastIndex = end
+  }
+  return els
+}
+
+function applyAttrsToItem(item: ToolCallItem, el: ParsedToolElement): void {
+  const a = el.attrs
+  if (a["tool-name"]) item.toolName = a["tool-name"]
+  const grp = a["grouping"]
+  if (grp === "none" || grp === "tool" || grp === "all") item.grouping = grp
+  if (a["intent"] !== undefined) item.intent = a["intent"]
+  if (a["icon"]) item.icon = a["icon"]
+  if (a["tool-title"]) item.title = a["tool-title"]
+
+  if (el.tag === "request") {
+    if (a["arguments"] !== undefined) item.arguments = a["arguments"]
+    return
+  }
+
+  // result — settles status and carries the Tier-3 payload
+  item.status = a["status"] === "error" ? "error" : "success"
+  if (a["label"] !== undefined) item.label = a["label"]
+  if (a["value-preview"] !== undefined) item.valuePreview = a["value-preview"]
+  if (a["value"] !== undefined) item.value = a["value"]
+  if (a["value-type"]) item.valueType = a["value-type"]
+  if (a["request-call"] !== undefined) item.requestCall = a["request-call"]
+  if (a["footer"] !== undefined) item.footer = a["footer"]
+  item.showRequest = attrTruthy(a, "show-request")
+  item.fullScreen = attrTruthy(a, "full-screen")
+  item.expanded = attrTruthy(a, "expanded")
+}
+
+// Group a loop's calls per the chat-level grouping, honoring per-tool overrides.
+// none → one group per call; tool → group by tool name (first-appearance order);
+// all → one group for the loop.
+function groupCalls(
+  calls: ToolCallItem[],
+  chatGrouping: ToolGrouping,
+): ToolCallGroup[] {
+  const override = new Map<string, ToolGrouping>()
+  for (const c of calls) {
+    if (c.grouping && !override.has(c.toolName)) {
+      override.set(c.toolName, c.grouping)
+    }
+  }
+
+  const keyOrder: string[] = []
+  const byKey = new Map<string, ToolCallItem[]>()
+  calls.forEach((c, i) => {
+    const mode = override.get(c.toolName) ?? chatGrouping
+    const key =
+      mode === "none"
+        ? `none:${c.requestId || i}`
+        : mode === "all"
+          ? "all"
+          : `tool:${c.toolName}`
+    let bucket = byKey.get(key)
+    if (!bucket) {
+      bucket = []
+      byKey.set(key, bucket)
+      keyOrder.push(key)
+    }
+    bucket.push(c)
+  })
+
+  return keyOrder.map((key) => {
+    const gcalls = byKey.get(key)!
+    // Monotonic title latch: the first completed call latches the (past-tense)
+    // title; until then the first running call supplies the (present) title.
+    const firstDone = gcalls.find((c) => c.status !== "running")
+    const settled = firstDone !== undefined
+    const title = settled
+      ? firstDone!.title
+      : gcalls.find((c) => c.title !== undefined)?.title
+    return {
+      key,
+      toolName: gcalls[0]!.toolName,
+      title,
+      titleSettled: settled,
+      icon: firstDone?.icon ?? gcalls[0]!.icon,
+      count: gcalls.length,
+      calls: gcalls,
+    }
+  })
+}
+
+function makeToolLoopBlock(
+  els: ParsedToolElement[],
+  content: string,
+  contentType: ContentType,
+  grouping: ToolGrouping,
+): ToolLoopBlock {
+  const order: string[] = []
+  const byId = new Map<string, ToolCallItem>()
+  els.forEach((el, i) => {
+    const requestId = el.attrs["request-id"] ?? ""
+    const id = requestId || `__anon-${i}`
+    let item = byId.get(id)
+    if (!item) {
+      item = {
+        requestId,
+        toolName: el.attrs["tool-name"] ?? "",
+        status: "running",
+      }
+      byId.set(id, item)
+      order.push(id)
+    }
+    applyAttrsToItem(item, el)
+  })
+  const calls = order.map((id) => byId.get(id)!)
+  return {
+    type: "tool_loop",
+    content,
+    contentType,
+    grouping,
+    groups: groupCalls(calls, grouping),
+  }
+}
+
+/**
+ * Pure content router: split content blocks around runs of tool elements,
+ * emitting ToolLoopBlocks. Non-tool messages take the cheap identity path.
+ */
+export function routeToolBlocks(
+  blocks: MessageBlock[],
+  grouping: ToolGrouping,
+): MessageBlock[] {
+  const out: MessageBlock[] = []
+
+  for (const block of blocks) {
+    if (block.type !== "content" || !block.content.includes(TOOL_MARKER)) {
+      out.push(block)
+      continue
+    }
+    const els = parseToolElements(block.content)
+    if (els.length === 0) {
+      out.push(block)
+      continue
+    }
+
+    const contentType = block.contentType
+    let cursor = 0
+    let loopStart = -1
+    let loopEls: ParsedToolElement[] = []
+
+    const flush = () => {
+      if (loopEls.length === 0) return
+      out.push(
+        makeToolLoopBlock(
+          loopEls,
+          block.content.slice(loopStart, cursor),
+          contentType,
+          grouping,
+        ),
+      )
+      loopEls = []
+      loopStart = -1
+    }
+
+    for (const el of els) {
+      const between = block.content.slice(cursor, el.start)
+      // Non-whitespace prose ends the current loop and is preserved as content.
+      if (between.trim() !== "") {
+        flush()
+        out.push({ type: "content", content: between, contentType })
+      }
+      if (loopEls.length === 0) loopStart = el.start
+      loopEls.push(el)
+      cursor = el.end
+    }
+    flush()
+
+    const tail = block.content.slice(cursor)
+    if (tail.trim() !== "") {
+      out.push({ type: "content", content: tail, contentType })
+    }
+  }
+
+  return mergeAdjacentLoops(out, grouping)
+}
+
+// Coalesce tool loops that end up adjacent (no intervening prose/thinking) into
+// a single loop so grouping spans the whole run.
+function mergeAdjacentLoops(
+  blocks: MessageBlock[],
+  grouping: ToolGrouping,
+): MessageBlock[] {
+  const out: MessageBlock[] = []
+  for (const block of blocks) {
+    const prev = out[out.length - 1]
+    if (block.type === "tool_loop" && prev?.type === "tool_loop") {
+      const calls = [...prev.groups.flatMap((g) => g.calls)]
+      const combinedContent = prev.content + block.content
+      const combinedCalls = calls.concat(block.groups.flatMap((g) => g.calls))
+      out[out.length - 1] = {
+        type: "tool_loop",
+        content: combinedContent,
+        contentType: prev.contentType,
+        grouping,
+        groups: groupCalls(combinedCalls, grouping),
+      }
+    } else {
+      out.push(block)
+    }
+  }
+  return out
+}
+
+function contentFromBlocks(blocks: MessageBlock[]): string {
+  return blocks
+    .filter((b): b is ContentBlock => b.type === "content")
+    .map((b) => b.content)
+    .join("")
 }
 
 function extractTopicsComplete(text: string): {
@@ -1051,11 +1427,14 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
   }
 }
 
-function finalizeMessage(msg: ChatMessageData): ChatMessageData {
-  const blocks: MessageBlock[] = []
+function finalizeMessage(
+  msg: ChatMessageData,
+  grouping: ToolGrouping = "tool",
+): ChatMessageData {
+  const rebuilt: MessageBlock[] = []
   for (const block of msg.blocks) {
     if (block.type === "thinking" && block.streaming) {
-      blocks.push({
+      rebuilt.push({
         ...block,
         content: block.content + (block.topicBuffer ?? ""),
         topicBuffer: "",
@@ -1067,16 +1446,14 @@ function finalizeMessage(msg: ChatMessageData): ChatMessageData {
       THINKING_TAG_RE.test(block.content)
     ) {
       THINKING_TAG_RE.lastIndex = 0
-      blocks.push(...splitThinkingBlocks(block.content, block.contentType))
+      rebuilt.push(...splitThinkingBlocks(block.content, block.contentType))
     } else {
-      blocks.push(block)
+      rebuilt.push(block)
     }
   }
 
-  const content = blocks
-    .filter((b): b is ContentBlock => b.type === "content")
-    .map((b) => b.content)
-    .join("")
+  const blocks = routeToolBlocks(rebuilt, grouping)
+  const content = contentFromBlocks(blocks)
 
   return { ...msg, content, streaming: false, blocks }
 }

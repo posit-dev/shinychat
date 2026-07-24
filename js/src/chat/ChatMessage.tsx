@@ -49,7 +49,9 @@ export const ChatMessage = memo(function ChatMessage({
   const isUser = message.role === "user"
   const hasContent =
     message.content.trim() !== "" ||
-    message.blocks.some((b) => b.type === "thinking") ||
+    message.blocks.some(
+      (b) => b.type === "thinking" || b.type === "tool_loop",
+    ) ||
     (message.attachments?.length ?? 0) > 0 ||
     message.cancelled
 
@@ -153,6 +155,22 @@ export const ChatMessage = memo(function ChatMessage({
             )
           }
           const isLast = i === message.blocks.length - 1
+
+          if (block.type === "tool_loop") {
+            // Phase 0 pass-through: replay the loop's raw content exactly as
+            // before so the rendered DOM and bridge behavior are unchanged.
+            // Phase 2 replaces this with the Tier 1–3 grouped UI (block.groups).
+            return (
+              <MarkdownContent
+                key={i}
+                content={block.content}
+                contentType={block.contentType}
+                role={message.role}
+                streaming={message.streaming && isLast}
+                tagToComponentMap={chatTagToComponentMap}
+              />
+            )
+          }
 
           if (leadingCommand && i === 0) {
             const chip = <CommandChip name={leadingCommand.commandName} />
