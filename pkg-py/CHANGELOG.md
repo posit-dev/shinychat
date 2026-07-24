@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * File attachment support: users can upload images, PDFs, and text files alongside chat messages via a file picker button, drag-and-drop, or clipboard paste. Enable with `chat_ui(allow_attachments=True)` or pass a list of MIME types to restrict accepted file types. When using `client=`, attachments are enabled automatically and converted to the appropriate chatlas content types. For manual wiring, declare a second `list[Attachment]` parameter on your `@chat.on_user_submit` handler and use `attachment_to_content()` to convert each attachment. The maximum combined attachment size defaults to approximately 30 MB and can be configured via the `SHINYCHAT_MAX_ATTACHMENT_SIZE` environment variable.
 
 * The record of displayed messages is now sourced from the browser rather than a server-side accumulator. As a consequence, `chat.messages()` is *eventually* consistent: it returns an empty tuple until the client's first report, and a message passed to `chat.append_message()` does not appear there until the browser has rendered it and reported back. Read it reactively rather than expecting a synchronous update immediately after appending. (#272)
+    * The user-submission input (`input[f"{id}_user_input"]`) is now a persistent regular input rather than an event-priority one, so it retains its last value between submissions. This lets it co-batch with the message snapshot in a single reactive flush. It remains excluded from bookmarks. (#272)
 
 ### Bug fixes
 
