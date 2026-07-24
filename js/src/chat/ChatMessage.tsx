@@ -102,11 +102,16 @@ export const ChatMessage = memo(function ChatMessage({
   })
   const { applyPayloads, getPayloads, onPaste, onDrop } = staging
 
+  // Seed the editor only on the transition into editing. Re-seeding when
+  // message.content/attachments change while an edit is open would clobber the
+  // user's in-progress text and steal focus, so guard on the previous state.
+  const wasEditingRef = useRef(false)
   useEffect(() => {
-    if (isEditing) {
+    if (isEditing && !wasEditingRef.current) {
       editRef.current?.setInputValue(message.content, { focus: true })
       applyPayloads(message.attachments ?? [], "set")
     }
+    wasEditingRef.current = isEditing
   }, [isEditing, message.content, message.attachments, applyPayloads])
 
   const handleSaveEdit = useCallback(
