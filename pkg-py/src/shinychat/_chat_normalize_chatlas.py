@@ -348,7 +348,10 @@ def tool_request_contents(x: "ContentToolRequest") -> Tagifiable:
     grouping = None
     if x.tool and x.tool.annotations:
         tool_title = x.tool.annotations.get("title")
-        grouping = as_grouping(x.tool.annotations.get("grouping"))
+        grouping = as_grouping(
+            (x.tool.annotations.get("extra") or {}).get("grouping")
+        )
+        grouping = grouping or as_grouping(x.tool.annotations.get("grouping"))
 
     return ToolRequestComponent(
         request_id=x.id,
@@ -397,9 +400,12 @@ def tool_result_contents(x: "ContentToolResult") -> Tagifiable:
     grouping = None
     if tool and tool.annotations:
         tool_title = tool.annotations.get("title")
-        icon = tool.annotations.get("extra", {}).get("icon")
+        icon = (tool.annotations.get("extra") or {}).get("icon")
         icon = icon or tool.annotations.get("icon")
-        grouping = as_grouping(tool.annotations.get("grouping"))
+        grouping = as_grouping(
+            (tool.annotations.get("extra") or {}).get("grouping")
+        )
+        grouping = grouping or as_grouping(tool.annotations.get("grouping"))
 
     # Icon strings and HTML display never get escaped
     icon = display.icon or icon
