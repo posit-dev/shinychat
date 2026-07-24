@@ -77,6 +77,32 @@ describe("chat-entry custom element boot", () => {
     expect(window.Shiny?.unbindAll).toHaveBeenCalledWith(host)
   })
 
+  it("routes preloaded tool calls through the content router (tool-grouping attr)", async () => {
+    const host = document.createElement("shiny-chat-container")
+    host.setAttribute("id", "preloaded-tools")
+    host.setAttribute("tool-grouping", "all")
+    host.innerHTML = `
+      <shiny-chat-messages>
+        <shiny-chat-message
+          data-role="assistant"
+          content-type="markdown"
+          content='<shiny-tool-result data-shinychat-react request-id="r1" tool-name="foo" status="success" value="done" value-type="text"></shiny-tool-result>'
+        ></shiny-chat-message>
+      </shiny-chat-messages>
+      <shiny-chat-input placeholder="p"></shiny-chat-input>
+    `
+
+    await act(async () => {
+      document.body.appendChild(host)
+    })
+
+    // Preloaded tool HTML still renders (via the Phase 0 pass-through) after
+    // being routed into a tool_loop block.
+    await waitFor(() => {
+      expect(host.querySelector(".shiny-tool-result")).not.toBeNull()
+    })
+  })
+
   it("falls back to the conventional input id when no child input id is provided", async () => {
     const host = document.createElement("shiny-chat-container")
     host.setAttribute("id", "fallback-chat")

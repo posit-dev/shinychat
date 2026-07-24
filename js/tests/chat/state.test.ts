@@ -1917,3 +1917,54 @@ describe("routeToolBlocks (tool content router)", () => {
     expect(tail.type).toBe("content")
   })
 })
+
+describe("toolGrouping state wiring (Phase 1)", () => {
+  function res(id: string, name: string): string {
+    return `<shiny-tool-result data-shinychat-react request-id="${id}" tool-name="${name}" status="success"></shiny-tool-result>`
+  }
+  const twoTools = res("1", "X") + res("2", "Y")
+
+  function loopGroups(msg: ChatMessageData) {
+    const loop = msg.blocks.find((b) => b.type === "tool_loop") as
+      | ToolLoopBlock
+      | undefined
+    return loop?.groups ?? []
+  }
+
+  it('defaults toolGrouping to "tool"', () => {
+    expect(initialState.toolGrouping).toBe("tool")
+  })
+
+  it("routes a dispatched message with the state's toolGrouping (all)", () => {
+    const state = makeState({ toolGrouping: "all" })
+    const next = chatReducer(state, {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [{ content: twoTools, content_type: "markdown" }],
+      },
+    })
+    const groups = loopGroups(next.messages[0]!)
+    expect(groups).toHaveLength(1)
+    expect(groups[0]!.count).toBe(2)
+  })
+
+  it('groups by tool name when toolGrouping is "tool"', () => {
+    const state = makeState({ toolGrouping: "tool" })
+    const next = chatReducer(state, {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [{ content: twoTools, content_type: "markdown" }],
+      },
+    })
+    const groups = loopGroups(next.messages[0]!)
+    expect(groups.map((g) => g.toolName)).toEqual(["X", "Y"])
+  })
+
+  it("preserves toolGrouping across a clear", () => {
+    const state = makeState({ toolGrouping: "all" })
+    const next = chatReducer(state, { type: "clear" })
+    expect(next.toolGrouping).toBe("all")
+  })
+})

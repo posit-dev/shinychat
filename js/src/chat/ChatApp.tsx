@@ -9,9 +9,12 @@ import { navigateTo } from "../utils/navigate"
 import {
   chatReducer,
   initialState,
+  routeToolBlocks,
+  contentFromBlocks,
   type ChatMessageData,
   type ChatToolState,
   type GreetingData,
+  type ToolGrouping,
 } from "./state"
 import { ChatContainer, type ChatContainerHandle } from "./ChatContainer"
 import type {
@@ -41,6 +44,7 @@ interface ChatAppProps {
   initialGreeting?: InitialGreeting
   enableCancel?: boolean
   enableUpload?: boolean
+  toolGrouping?: ToolGrouping
   footerEl?: Element
   slashCommandId?: string
   submitKey?: SubmitKey
@@ -83,11 +87,22 @@ export function ChatApp({
   initialGreeting,
   enableCancel,
   enableUpload,
+  toolGrouping,
   footerEl,
   slashCommandId = "",
   submitKey,
 }: ChatAppProps) {
-  const messages = initialMessages ?? []
+  const resolvedToolGrouping = toolGrouping ?? initialState.toolGrouping
+  // Route preloaded/restored messages through the same content router as live
+  // ones so restored transcripts carry identical tool_loop grouping.
+  const messages = useMemo(
+    () =>
+      (initialMessages ?? []).map((m) => {
+        const blocks = routeToolBlocks(m.blocks, resolvedToolGrouping)
+        return { ...m, blocks, content: contentFromBlocks(blocks) }
+      }),
+    [initialMessages, resolvedToolGrouping],
+  )
   const [state, dispatch] = useReducer(chatReducer, {
     ...initialState,
     inputPlaceholder: placeholder ?? initialState.inputPlaceholder,
@@ -99,6 +114,7 @@ export function ChatApp({
     enableCancelExplicit: enableCancel !== undefined,
     enableUpload: enableUpload ?? initialState.enableUpload,
     enableUploadExplicit: enableUpload !== undefined,
+    toolGrouping: resolvedToolGrouping,
   })
 
   const containerRef = useRef<ChatContainerHandle>(null)

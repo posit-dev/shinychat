@@ -3,7 +3,7 @@ import { createElement } from "react"
 import { ChatApp } from "./ChatApp"
 import type { InitialGreeting } from "./ChatApp"
 import { getShinyTransport } from "../transport/shiny-transport"
-import type { ChatMessageData } from "./state"
+import type { ChatMessageData, ToolGrouping } from "./state"
 import type { ContentType, GreetingOptions } from "../transport/types"
 import { uuid } from "../utils/uuid"
 import { DEFAULT_UPLOAD_ACCEPT } from "./attachments"
@@ -121,6 +121,16 @@ class ChatContainerElement extends HTMLElement {
     const enableUpload =
       enableUploadAttr === null ? undefined : enableUploadAttr !== "false"
 
+    // `tool-grouping`: an enum, not tri-state. A recognized value wins;
+    // anything else/absent defers to the client default in ChatApp.
+    const toolGroupingAttr = this.getAttribute("tool-grouping")
+    const toolGrouping: ToolGrouping | undefined =
+      toolGroupingAttr === "none" ||
+      toolGroupingAttr === "tool" ||
+      toolGroupingAttr === "all"
+        ? toolGroupingAttr
+        : undefined
+
     const inputEl = this.querySelector(CHAT_INPUT_TAG)
     const placeholder = inputEl?.getAttribute("placeholder") ?? undefined
 
@@ -208,6 +218,7 @@ class ChatContainerElement extends HTMLElement {
         initialGreeting,
         enableCancel,
         enableUpload,
+        toolGrouping,
         footerEl: this.footerEl ?? undefined,
         slashCommandId,
         submitKey,

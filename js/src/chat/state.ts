@@ -161,6 +161,8 @@ export interface ChatState extends ChatInputState, ChatToolState {
    * explicit user choice always wins over the `client=` auto-default.
    */
   enableUploadExplicit: boolean
+  /** How tool calls are aggregated in the condensed view. Client-reflected. */
+  toolGrouping: ToolGrouping
   history: ChatHistoryState
 }
 
@@ -190,6 +192,7 @@ export const initialState: ChatState = {
   enableCancelExplicit: false,
   enableUpload: false,
   enableUploadExplicit: false,
+  toolGrouping: "tool",
   hiddenToolRequests: new Set(),
   slashCommands: [],
   history: { enabled: false, conversations: [], activeId: null },
@@ -609,7 +612,7 @@ function mergeAdjacentLoops(
   return out
 }
 
-function contentFromBlocks(blocks: MessageBlock[]): string {
+export function contentFromBlocks(blocks: MessageBlock[]): string {
   return blocks
     .filter((b): b is ContentBlock => b.type === "content")
     .map((b) => b.content)
@@ -914,7 +917,10 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       const messages = removeLoadingMessage(state.messages)
       return {
         ...state,
-        messages: [...messages, messagePayloadToData(action.message)],
+        messages: [
+          ...messages,
+          messagePayloadToData(action.message, state.toolGrouping),
+        ],
         streamingMessage: null,
         inputDisabled: false,
         greeting: dismissGreeting(state.greeting),
@@ -923,7 +929,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
 
     case "chunk_start": {
       const messages = removeLoadingMessage(state.messages)
-      const newMsg = messagePayloadToData(action.message)
+      const newMsg = messagePayloadToData(action.message, state.toolGrouping)
       newMsg.streaming = true
       newMsg.blocks = newMsg.blocks.map((b) =>
         b.type === "thinking" ? { ...b, streaming: true } : b,
@@ -1211,7 +1217,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         return state
       }
 
-      const finalized = finalizeMessage(last)
+      const finalized = finalizeMessage(last, state.toolGrouping)
       const withCancel = state.cancelRequested
         ? { ...finalized, cancelled: true }
         : finalized
@@ -1258,6 +1264,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         slashCommands: state.slashCommands,
         enableUpload: state.enableUpload,
         enableUploadExplicit: state.enableUploadExplicit,
+        toolGrouping: state.toolGrouping,
         history: state.history,
       }
     }
@@ -1271,7 +1278,10 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     case "remove_loading": {
       const messages = removeLoadingMessage(state.messages)
       if (state.streamingMessage) {
-        const finalized = finalizeMessage(state.streamingMessage)
+        const finalized = finalizeMessage(
+          state.streamingMessage,
+          state.toolGrouping,
+        )
         const withCancel = state.cancelRequested
           ? { ...finalized, cancelled: true }
           : finalized
