@@ -153,6 +153,11 @@ export function ChatApp({
         inputId,
         uploadOn ? { text: content, attachments } : content,
       )
+      // The INPUT_SENT dispatch above also mutates state.messages, so the
+      // reportSnapshot effect fires a second, near-identical snapshot on the
+      // next render. That's intentional: this manual send is the one that
+      // co-batches with userInput in the current flush, and the server's
+      // save is idempotent, so the follow-up snapshot is a harmless no-op.
       transport.sendMessagesSnapshot(elementId, snapshot)
     },
     [dispatch, transport, inputId, elementId],
