@@ -454,77 +454,72 @@ S7::method(contents_shinychat, ellmer::Turn) <- function(content) {
   compact(map(content@contents, contents_shinychat))
 }
 
+ellmer_turn_effective_role <- function(turn) {
+  contents <- turn@contents
+  is_tool_result_only <- length(contents) > 0 &&
+    every(contents, S7::S7_inherits, ellmer::ContentToolResult)
+  if (is_tool_result_only) "assistant" else turn@role
+}
+
+group_ellmer_turns <- function(turns) {
+  if (length(turns) == 0) {
+    return(list())
+  }
+  roles <- vapply(turns, ellmer_turn_effective_role, character(1))
+  groups <- list()
+  start <- 1L
+  for (i in seq_along(roles)) {
+    at_boundary <- i == length(roles) || !identical(roles[i], roles[i + 1L])
+    if (at_boundary) {
+      groups[[length(groups) + 1L]] <- turns[start:i]
+      start <- i + 1L
+    }
+  }
+  groups
+}
+
+merge_ellmer_turn_group <- function(group, tools) {
+  role <- ellmer_turn_effective_role(group[[1]])
+
+  contents <- unlist(
+    lapply(group, function(turn) {
+      turn_contents <- map(turn@contents, function(x) {
+        if (!S7::S7_inherits(x, ellmer::ContentToolResult)) {
+          return(x)
+        }
+        if (!is.null(x@request@tool)) {
+          return(x)
+        }
+        if (x@request@name %in% names(tools)) {
+          x@request@tool <- tools[[x@request@name]]
+        }
+        x
+      })
+      is_tool_request <- map_lgl(
+        turn_contents,
+        S7::S7_inherits,
+        ellmer::ContentToolRequest
+      )
+      turn_contents[!is_tool_request]
+    }),
+    recursive = FALSE
+  )
+
+  content <- compact(map(contents, contents_shinychat))
+  if (is.null(content) || identical(content, "")) {
+    return(NULL)
+  }
+  if (every(content, is.character)) {
+    content <- paste(unlist(content), collapse = "\n\n")
+  }
+  list(role = role, content = content)
+}
+
 S7::method(contents_shinychat, S7::new_S3_class(c("Chat", "R6"))) <- function(
   content
 ) {
   tools <- content$get_tools()
-
-  # Process turns with tool request/result consolidation
-  turns <- map(content$get_turns(), function(turn) {
-    turn@contents <- map(turn@contents, function(x) {
-      if (!S7::S7_inherits(x, ellmer::ContentToolResult)) {
-        return(x)
-      }
-      if (!is.null(x@request@tool)) {
-        return(x)
-      }
-      if (x@request@name %in% names(tools)) {
-        x@request@tool <- tools[[x@request@name]]
-      }
-      x
-    })
-
-    # Turns containing only tool results are converted into assistant turns
-    if (every(turn@contents, S7::S7_inherits, ellmer::ContentToolResult)) {
-      if (packageVersion("ellmer") >= "0.3.2.9000") {
-        turn <- ellmer::AssistantTurn(turn@contents)
-      } else {
-        turn@role <- "assistant"
-      }
-      return(turn)
-    }
-
-    # Filter out tool requests as they'll be shown in results
-    is_tool_request <- map_lgl(
-      turn@contents,
-      S7::S7_inherits,
-      ellmer::ContentToolRequest
-    )
-    turn@contents <- turn@contents[!is_tool_request]
-
-    turn
-  })
-
-  # Consolidate adjacent turns with the same role
-  turns <- reduce(
-    turns,
-    .init = list(),
-    function(acc, turn) {
-      if (length(acc) == 0) {
-        return(list(turn))
-      }
-
-      last_turn <- acc[[length(acc)]]
-      if (identical(last_turn@role, turn@role)) {
-        acc[[length(acc)]]@contents <- c(last_turn@contents, turn@contents)
-        return(acc)
-      }
-
-      c(acc, list(turn))
-    }
-  )
-
-  # Convert turns to messages
-  messages <- map(turns, function(turn) {
-    content <- compact(contents_shinychat(turn))
-    if (is.null(content) || identical(content, "")) {
-      return(NULL)
-    }
-    if (every(content, is.character)) {
-      content <- paste(unlist(content), collapse = "\n\n")
-    }
-    list(role = turn@role, content = content)
-  })
-
+  groups <- group_ellmer_turns(content$get_turns())
+  messages <- map(groups, merge_ellmer_turn_group, tools = tools)
   compact(messages)
 }

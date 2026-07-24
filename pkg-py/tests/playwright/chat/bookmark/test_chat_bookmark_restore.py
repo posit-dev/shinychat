@@ -23,14 +23,26 @@ def test_bookmark_restore_preserves_user_messages(
     chat.send_user_input(method="enter")
     chat.expect_latest_message("You said: Hello", timeout=10_000)
 
+    # Wait for the first bookmark URL so we can tell it apart from the second.
+    # (enable_bookmarking with bookmark_on="response" updates the URL after
+    # each response, but that update round-trips through a client -> server
+    # messages snapshot and is NOT synchronous with the reply becoming
+    # visible -- so it can lag behind expect_latest_message above.)
+    page.wait_for_url(re.compile(r"\?_state_id_="), timeout=10_000)
+    first_bookmark_url = page.url
+
     # Send second message and wait for response
     chat.set_user_input("World")
     chat.send_user_input(method="enter")
     chat.expect_latest_message("You said: World", timeout=10_000)
 
-    # Wait for the bookmark URL to appear in the query string
-    # (enable_bookmarking with bookmark_on="response" updates the URL after each response)
-    page.wait_for_url(re.compile(r"\?_state_id_="), timeout=10_000)
+    # Wait for the URL to change to a NEW state id, not just any state id --
+    # otherwise this can race and grab the first bookmark's (stale) URL.
+    page.wait_for_function(
+        "url => window.location.href !== url",
+        arg=first_bookmark_url,
+        timeout=10_000,
+    )
     bookmark_url = page.url
 
     # Navigate to the bookmark URL (simulates a page reload / new session)

@@ -161,8 +161,6 @@ def extend_record_linear(
     """
     existing = len(record.path_node_ids())
     new_groups = turn_groups[existing:]
-    if not new_groups:
-        return
 
     new_node_ids = [record.append_linear(g) for g in new_groups]
     user_nodes = [
@@ -171,11 +169,18 @@ def extend_record_linear(
         if record.nodes[nid].turns[0].get("role") == "user"
     ]
 
+    # When a later save brings UI messages but no new turn groups (e.g. a
+    # streamed reply arriving after a synchronous side-channel append),
+    # attach them to the current leaf instead of dropping them.
+    fallback = new_node_ids[-1] if new_node_ids else record.current_leaf
+    if fallback is None:
+        return  # empty record and no new groups: nothing to attach to
+
     for message in ui_messages[ui_offset:]:
         if message.get("role") == "user" and user_nodes:
             target = user_nodes.pop(0)
         else:
-            target = new_node_ids[-1]
+            target = fallback
         node = record.nodes[target]
         node.ui = [*(node.ui or []), message]
 
@@ -234,12 +239,6 @@ class HistoryController:
         self.on_evict: Callable[[str], Awaitable[None]] | None = None
         self.max_store_bytes: int | None = max_store_bytes
         self._title_task: asyncio.Task[None] | None = None
-        # replay_ui awaits per message, so on_response can fire mid-replay;
-        # _is_replaying suppresses those. One more flush fires after
-        # replay_ui returns (once _is_replaying is already False) —
-        # _suppress_next_save catches that single case and self-clears.
-        self._is_replaying: bool = False
-        self._suppress_next_save: bool = False
         self._over_budget_warned: bool = False
 
     # -- save -----------------------------------------------------------
@@ -254,11 +253,6 @@ class HistoryController:
         full duration of effect execution, so two invocations of this effect
         can never overlap.
         """
-        if self._is_replaying:
-            return
-        if self._suppress_next_save:
-            self._suppress_next_save = False
-            return
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
         turn_groups = self.adapter.get_turns_grouped()
@@ -269,13 +263,19 @@ class HistoryController:
             record = self.record
             if record is None:
                 raise RuntimeError("HistoryController not initialized")
-            # Ignore reactive flushes that don't introduce new turn/UI data.
-            # Without this guard, a post-switch no-op fire can re-capture app
-            # state from the wrong conversation and overwrite persisted values.
-            if (
-                len(turn_groups) <= len(record.path_node_ids())
-                and len(messages) <= self.ui_offset
-            ):
+            stored_ui = [
+                m
+                for nid in record.path_node_ids()
+                for m in (record.nodes[nid].ui or [])
+            ]
+            # Idempotent + truncation guard. A restore re-renders the stored
+            # conversation and makes the client re-report its snapshot; that report
+            # must never overwrite the record. Skip when no new turn groups AND the
+            # reported snapshot is no longer than what's already stored (covers exact
+            # re-reports and shorter partial mid-restore reports).
+            if len(turn_groups) <= len(record.path_node_ids()) and len(
+                messages
+            ) <= len(stored_ui):
                 return
 
         if first_save:
@@ -430,30 +430,29 @@ class HistoryController:
         await self.send_history_update()
 
     async def replay_ui(self, record: ConversationRecord) -> None:
-        self._is_replaying = True
-        self._suppress_next_save = True
-        try:
-            await self.chat.clear_messages()
-            for node_id in record.path_node_ids():
-                node = record.nodes[node_id]
-                stored = node.ui or [
-                    {
-                        "role": node.turns[-1].get("role", "assistant"),
-                        "segments": [
-                            {
-                                "content": turn_fallback_markdown(
-                                    node.turns[-1]
-                                ),
-                                "content_type": "markdown",
-                            }
-                        ],
-                    }
-                ]
-                for message_dict in stored:
-                    await self.chat._restore_bookmark_message(message_dict)
-            self.ui_offset = len(self.chat._messages_for_bookmark())
-        finally:
-            self._is_replaying = False
+        await self.chat.clear_messages()
+        restored_count = 0
+        for node_id in record.path_node_ids():
+            node = record.nodes[node_id]
+            stored = node.ui or [
+                {
+                    "role": node.turns[-1].get("role", "assistant"),
+                    "segments": [
+                        {
+                            "content": turn_fallback_markdown(node.turns[-1]),
+                            "content_type": "markdown",
+                        }
+                    ],
+                }
+            ]
+            for message_dict in stored:
+                await self.chat._restore_bookmark_message(message_dict)
+                restored_count += 1
+        # ui_offset must reflect the messages the client will report for the
+        # restored conversation. `_messages_for_bookmark()` reads the async
+        # client-reported input, which still holds the PREVIOUS conversation's
+        # snapshot at this synchronous point — so count what we actually restored.
+        self.ui_offset = restored_count
 
     # -- list mutations ----------------------------------------------------
 
@@ -636,6 +635,9 @@ class ChatHistory:
 
         ids = HistoryInputIds.for_chat(chat.id)
         root_session.bookmark.exclude.extend(ids.all_ids())
+        # `messages_input_id` carries StoredMessage (Pydantic) objects, which
+        # aren't JSON-serializable for Shiny's bookmark input.json.
+        root_session.bookmark.exclude.append(chat.messages_input_id)
 
         adapter = as_turns_adapter(chat_client)
         resolved_store = resolve_store(self._store)

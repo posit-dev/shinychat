@@ -8,7 +8,7 @@ import {
   useImperativeHandle,
   memo,
 } from "react"
-import { useChatDispatch } from "./context"
+import { useChatDispatch, useChatSubmit } from "./context"
 import type {
   ChatTransport,
   SlashCommandDef,
@@ -125,6 +125,7 @@ export const ChatInput = memo(
     ref,
   ) {
     const dispatch = useChatDispatch()
+    const submitUserInput = useChatSubmit()
     const tiptapRef = useRef<TiptapInputHandle>(null)
     const [hasText, setHasText] = useState(false)
     const [attachments, setAttachments] = useState<AttachedFile[]>([])
@@ -337,19 +338,7 @@ export const ChatInput = memo(
             )
           }
         } else {
-          dispatch({
-            type: "INPUT_SENT",
-            content,
-            role: "user",
-            ...(payloads.length > 0 ? { attachments: payloads } : {}),
-          })
-          // The wire shape signals the upload mode: a bare string when
-          // enableUpload is off (back-compat with the historical string input),
-          // or {text, attachments} when it is on.
-          transport.sendInput(
-            inputId,
-            enableUpload ? { text: content, attachments: payloads } : content,
-          )
+          submitUserInput(content, payloads)
           setAttachments([])
           setDownscaleNotice(false)
           setGifConvertedNotice(false)
@@ -366,7 +355,7 @@ export const ChatInput = memo(
         onSend,
         slashCommands,
         slashCommandId,
-        enableUpload,
+        submitUserInput,
       ],
     )
 
@@ -441,18 +430,7 @@ export const ChatInput = memo(
             // commands submitted programmatically still execute.
             submitValue(submitContent)
           } else if (!disabled && submitAttachments.length > 0) {
-            dispatch({
-              type: "INPUT_SENT",
-              content: submitContent,
-              role: "user",
-              attachments: submitAttachments,
-            })
-            transport.sendInput(
-              inputId,
-              enableUpload
-                ? { text: submitContent, attachments: submitAttachments }
-                : submitContent,
-            )
+            submitUserInput(submitContent, submitAttachments)
             onSend?.()
           }
 
@@ -469,15 +447,7 @@ export const ChatInput = memo(
           tiptapRef.current?.focus()
         },
       }),
-      [
-        disabled,
-        dispatch,
-        transport,
-        inputId,
-        enableUpload,
-        onSend,
-        submitValue,
-      ],
+      [disabled, onSend, submitValue, submitUserInput],
     )
 
     const sendButtonDisabled =

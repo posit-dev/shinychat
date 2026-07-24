@@ -16,6 +16,7 @@ export function createMockTransport(): ChatTransport & {
     sendInput: vi.fn(),
     sendCancel: vi.fn(),
     sendSlashCommand: vi.fn(),
+    sendMessagesSnapshot: vi.fn(),
     sendHistorySelect: vi.fn(),
     sendHistoryNew: vi.fn(),
     sendHistoryRename: vi.fn(),

@@ -273,6 +273,21 @@ test_that("user_input_contents rejects oversized attachment payloads", {
   expect_error(user_input_contents(value), "maximum attachment size")
 })
 
+test_that("user_input_contents rejects unsupported attachment MIME types", {
+  value <- list(
+    text = "hello",
+    attachments = list(
+      list(
+        mime = "application/octet-stream",
+        data_url = "data:application/octet-stream;base64,AA==",
+        name = "x.bin",
+        size = 1
+      )
+    )
+  )
+  expect_error(user_input_contents(value), "unsupported MIME type")
+})
+
 test_that("chat_attachment creates correct structure from a PNG path", {
   path <- withr::local_tempfile(fileext = ".png")
   writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), path)
