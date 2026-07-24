@@ -137,6 +137,7 @@ chat_restore <- function(
       client_state <- client_get_state(client)
 
       state$values[[id]] <- client_state
+      bookmark_save_ui(state, session, id)
     })
 
   cancel_on_bookmark_greeting <-
@@ -168,9 +169,9 @@ chat_restore <- function(
       }
       client_set_state(client, client_state)
 
-      # Set the UI
+      # Set the UI: prefer the browser's displayed snapshot, fall back to turns.
       shiny::withReactiveDomain(session, {
-        client_set_ui(client, id = id)
+        bookmark_restore_ui(state, client, id, session)
       })
     })
 
@@ -240,6 +241,25 @@ chat_restore <- function(
   }
 
   invisible(cancel_all)
+}
+
+# Capture the browser's displayed-message snapshot into the bookmark state so
+# restore can reproduce the exact UI. Server store only: the base64 payload
+# would bloat a URL bookmark, and URL/old bookmarks fall back to turn-derived UI.
+bookmark_save_ui <- function(state, session, id) {
+  if (!is_server_bookmarkstore()) {
+    return(invisible())
+  }
+  state$values[[paste0(id, "_ui")]] <- encode_ui_snapshot(
+    get_reported_messages(session, id)
+  )
+  invisible()
+}
+
+bookmark_restore_ui <- function(state, client, id, session) {
+  ui_snapshot <- decode_ui_snapshot(state$values[[paste0(id, "_ui")]])
+  restore_chat_ui(client, id, ui_snapshot, session)
+  invisible()
 }
 
 # Method currently hooked into `chat_append_stream()` and `markdown_stream()`

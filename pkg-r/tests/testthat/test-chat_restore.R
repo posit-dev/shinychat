@@ -94,3 +94,61 @@ test_that("restore_chat_ui falls back to client turns when no snapshot", {
   expect_equal(replay_calls, 0L)
   expect_equal(fallback_calls, 1L)
 })
+
+test_that("bookmark save/restore round-trips the displayed UI (server store)", {
+  session <- shiny::MockShinySession$new()
+  snapshot_in <- list(
+    list(
+      role = "user",
+      segments = list(list(content = "hi", content_type = "markdown"))
+    ),
+    list(
+      role = "assistant",
+      segments = list(
+        list(content = "hello (displayed)", content_type = "markdown")
+      )
+    )
+  )
+  local_mocked_bindings(
+    is_server_bookmarkstore = function() TRUE,
+    get_reported_messages = function(session, chat_id) snapshot_in
+  )
+
+  state <- rlang::env(values = list())
+  bookmark_save_ui(state, session, "chat")
+  expect_type(state$values[["chat_ui"]], "character")
+
+  captured <- list()
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      captured[[length(captured) + 1]] <<- action
+      invisible()
+    }
+  )
+  bookmark_restore_ui(state, client = NULL, id = "chat", session = session)
+
+  expect_length(captured, 2L)
+  expect_equal(captured[[2]]$message$segments[[1]]$content, "hello (displayed)")
+})
+
+test_that("bookmark save skips UI capture when store is not server", {
+  session <- shiny::MockShinySession$new()
+  local_mocked_bindings(
+    is_server_bookmarkstore = function() FALSE,
+    get_reported_messages = function(session, chat_id) {
+      stop("should not be read when store is not server")
+    }
+  )
+  state <- rlang::env(values = list())
+  bookmark_save_ui(state, session, "chat")
+  expect_null(state$values[["chat_ui"]])
+
+  fallback_calls <- 0L
+  local_mocked_bindings(
+    client_set_ui = function(client, ..., id) {
+      fallback_calls <<- fallback_calls + 1L
+    }
+  )
+  bookmark_restore_ui(state, client = NULL, id = "chat", session = session)
+  expect_equal(fallback_calls, 1L)
+})
