@@ -290,47 +290,6 @@ messages_end_with_assistant <- function(messages) {
   identical(messages[[length(messages)]]$role, "assistant")
 }
 
-# Method currently hooked into `chat_append_stream()` and `markdown_stream()`
-# When the incoming stream ends, possibly update the URL given the `id`
-chat_update_bookmark <- function(
-  id,
-  stream_promise,
-  session = shiny::getDefaultReactiveDomain()
-) {
-  if (!has_session_bookmark_on_response(session, id)) {
-    # No auto bookmark set. Return early!
-    return(stream_promise)
-  }
-
-  # Bookmark has been flagged for `id`.
-  # When the stream ends, update the URL.
-  prom <-
-    promises::then(stream_promise, function(stream) {
-      # Force a bookmark update when the stream ends!
-      shiny::isolate(session$doBookmark())
-    })
-
-  return(prom)
-}
-
-# These methods exist to set flags within the session.
-# These flags will determine if the session should be bookmarked when a response has completed.
-# `chat_update_bookmark()` will check if the flag is set and update the URL if it is.
-ON_RESPONSE_KEY <- ".bookmark-on-response"
-has_session_bookmark_on_response <- function(session, id) {
-  has_session_chat_bookmark_info(
-    session,
-    paste0(id, ON_RESPONSE_KEY)
-  )
-}
-set_session_bookmark_on_response <- function(session, id, enable) {
-  set_session_chat_bookmark_info(
-    session,
-    paste0(id, ON_RESPONSE_KEY),
-    value = if (enable) TRUE else NULL
-  )
-}
-
 GREETING_STATE_KEY <- ".greeting-state"
 
 get_session_greeting_state <- function(session, id) {

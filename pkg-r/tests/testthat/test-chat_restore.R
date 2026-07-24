@@ -37,6 +37,13 @@ test_that("encode returns NULL for empty input; decode guards non-values", {
   expect_null(decode_ui_snapshot(NA_character_))
 })
 
+test_that("decode_ui_snapshot returns NULL (not an error) for corrupted input", {
+  expect_null(decode_ui_snapshot("not valid base64/gzip"))
+  expect_null(
+    decode_ui_snapshot(base64enc::base64encode(charToRaw("not gzip")))
+  )
+})
+
 test_that("restore_chat_ui replays the stored snapshot faithfully", {
   captured <- list()
   local_mocked_bindings(

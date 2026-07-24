@@ -125,12 +125,17 @@ decode_ui_snapshot <- function(str) {
   ) {
     return(NULL)
   }
-  json <- memDecompress(
-    base64enc::base64decode(str),
-    type = "gzip",
-    asChar = TRUE
+  tryCatch(
+    {
+      json <- memDecompress(
+        base64enc::base64decode(str),
+        type = "gzip",
+        asChar = TRUE
+      )
+      jsonlite::unserializeJSON(json)
+    },
+    error = function(e) NULL
   )
-  jsonlite::unserializeJSON(json)
 }
 
 # Render restored chat UI: replay the browser's stored message snapshot when we
