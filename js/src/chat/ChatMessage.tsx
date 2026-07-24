@@ -53,7 +53,7 @@ interface ChatMessageProps {
   inputId?: string
   submitKey?: SubmitKey
   isEditing?: boolean
-  onStartEdit?: () => void
+  onStartEdit?: (id: string) => void
   onCancelEdit?: () => void
   uploadAccept?: string[]
   maxUploadSize?: number | null
@@ -484,7 +484,7 @@ export const ChatMessage = memo(function ChatMessage({
                 className="shiny-chat-edit-btn"
                 onClick={() => {
                   setTouchRevealed(false)
-                  onStartEdit?.()
+                  onStartEdit?.(message.id)
                 }}
                 aria-label="Edit message"
                 title="Edit message"

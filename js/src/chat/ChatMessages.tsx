@@ -1,4 +1,4 @@
-import { memo, useState } from "react"
+import { memo, useCallback, useState } from "react"
 import { ChatMessage } from "./ChatMessage"
 import { MessageErrorBoundary } from "./MessageErrorBoundary"
 import type { ChatMessageData } from "./state"
@@ -35,8 +35,15 @@ export const ChatMessages = memo(function ChatMessages({
   enableUpload,
 }: ChatMessagesProps) {
   // Only one message can be edited at a time: opening edit on any message
-  // overwrites this index, which implicitly closes whichever one was open.
-  const [editingIndex, setEditingIndex] = useState<number | null>(null)
+  // overwrites this id, which implicitly closes whichever one was open. Keyed
+  // by id (not list index) so it stays anchored to the right message if the
+  // list reorders or shrinks while an edit is open.
+  const [editingId, setEditingId] = useState<string | null>(null)
+
+  // Stable across renders so ChatMessage's memo() can skip re-rendering
+  // untouched messages (critical on long threads during streaming).
+  const handleStartEdit = useCallback((id: string) => setEditingId(id), [])
+  const handleCancelEdit = useCallback(() => setEditingId(null), [])
 
   return (
     <>
@@ -54,9 +61,9 @@ export const ChatMessages = memo(function ChatMessages({
             uploadAccept={uploadAccept}
             maxUploadSize={maxUploadSize}
             enableUpload={enableUpload}
-            isEditing={i === editingIndex}
-            onStartEdit={() => setEditingIndex(i)}
-            onCancelEdit={() => setEditingIndex(null)}
+            isEditing={msg.id === editingId}
+            onStartEdit={handleStartEdit}
+            onCancelEdit={handleCancelEdit}
           />
         </MessageErrorBoundary>
       ))}
