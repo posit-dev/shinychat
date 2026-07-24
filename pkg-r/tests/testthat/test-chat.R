@@ -53,6 +53,29 @@ test_that("Chat component markup", {
   # TODO: it'd be nice to mock the shinyChatMessage custom messages
 })
 
+test_that("chat_ui() emits tool-grouping only when non-default", {
+  ui_default <- chat_ui("chat")
+  expect_null(ui_default$attribs[["tool-grouping"]])
+
+  ui_tool <- chat_ui("chat", tool_grouping = "tool")
+  expect_null(ui_tool$attribs[["tool-grouping"]])
+
+  ui_all <- chat_ui("chat", tool_grouping = "all")
+  expect_equal(ui_all$attribs[["tool-grouping"]], "all")
+
+  ui_none <- chat_ui("chat", tool_grouping = "none")
+  expect_equal(ui_none$attribs[["tool-grouping"]], "none")
+
+  expect_snapshot(chat_ui("chat", tool_grouping = "all"))
+})
+
+test_that("chat_ui() errors for an invalid tool_grouping value", {
+  expect_snapshot(
+    error = TRUE,
+    chat_ui("chat", tool_grouping = "invalid")
+  )
+})
+
 test_that("chat_append_stream() returns the stream contents as string if all text", {
   local_mocked_bindings(
     chat_append_message = coro::async(function(...) invisible())

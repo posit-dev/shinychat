@@ -490,3 +490,231 @@ test_that("warns when `display` is not a list", {
     as.tags(contents_shinychat(result))
   )
 })
+
+test_that("tool_result_display() round-trips its fields", {
+  display <- tool_result_display(
+    title = "Title",
+    icon = "icon",
+    html = "<p>html</p>",
+    markdown = "**md**",
+    text = "text",
+    show_request = FALSE,
+    open = TRUE,
+    full_screen = TRUE,
+    footer = "Footer",
+    label = "Label",
+    value_preview = "Preview"
+  )
+
+  expect_s3_class(display, "shinychat_tool_result_display")
+  expect_equal(display$title, "Title")
+  expect_equal(display$icon, "icon")
+  expect_equal(display$html, "<p>html</p>")
+  expect_equal(display$markdown, "**md**")
+  expect_equal(display$text, "text")
+  expect_equal(display$show_request, FALSE)
+  expect_equal(display$open, TRUE)
+  expect_equal(display$full_screen, TRUE)
+  expect_equal(display$footer, "Footer")
+  expect_equal(display$label, "Label")
+  expect_equal(display$value_preview, "Preview")
+})
+
+test_that("tool_result_display() drops NULL fields but keeps defaults", {
+  display <- tool_result_display(title = "Title only")
+
+  expect_s3_class(display, "shinychat_tool_result_display")
+  expect_equal(
+    display,
+    structure(
+      list(
+        title = "Title only",
+        show_request = TRUE,
+        open = FALSE,
+        full_screen = FALSE
+      ),
+      class = "shinychat_tool_result_display"
+    )
+  )
+})
+
+test_that("as_tool_result_display() promotes a bare list", {
+  res <- as_tool_result_display(list(title = "Bare list"))
+  expect_s3_class(res, "shinychat_tool_result_display")
+  expect_equal(res$title, "Bare list")
+})
+
+test_that("as_tool_result_display() passes an existing S3 object through unchanged", {
+  display <- tool_result_display(title = "Already an object")
+  expect_identical(as_tool_result_display(display), display)
+})
+
+test_that("as_tool_result_display() warns and drops unrecognized fields", {
+  expect_warning(
+    res <- as_tool_result_display(list(title = "Known", bogus = "nope")),
+    class = "rlang_warning"
+  )
+  expect_s3_class(res, "shinychat_tool_result_display")
+  expect_equal(res$title, "Known")
+  expect_null(res$bogus)
+})
+
+test_that("as_tool_result_display() warns and returns an empty object for non-list input", {
+  expect_warning(
+    res <- as_tool_result_display("not a list"),
+    class = "rlang_warning"
+  )
+  expect_equal(
+    res,
+    structure(list(), class = "shinychat_tool_result_display")
+  )
+})
+
+test_that("S3 display object and equivalent bare list serialize identically", {
+  local_shinychat_tool_display(opt = "rich")
+
+  display_args <- list(
+    title = "Custom Title",
+    text = "Custom text",
+    label = "call-1",
+    value_preview = "preview text",
+    show_request = FALSE,
+    open = TRUE
+  )
+
+  result_s3 <- new_tool_result(
+    value = "test",
+    extra = list(display = rlang::exec(tool_result_display, !!!display_args))
+  )
+  result_list <- new_tool_result(
+    value = "test",
+    extra = list(display = display_args)
+  )
+
+  res_s3 <- contents_shinychat(result_s3)
+  res_list <- contents_shinychat(result_list)
+
+  # request_id differs only because each `new_tool_result()` call generates a
+  # fresh request; strip it before comparing.
+  res_s3$request_id <- NULL
+  res_list$request_id <- NULL
+  expect_equal(res_s3, res_list)
+
+  tags_s3 <- as.tags(contents_shinychat(result_s3))
+  tags_list <- as.tags(contents_shinychat(result_list))
+  tags_s3$attribs$"request-id" <- NULL
+  tags_list$attribs$"request-id" <- NULL
+  expect_equal(format(tags_s3), format(tags_list))
+})
+
+test_that("tool_result_value() selects markdown when only markdown is provided", {
+  local_shinychat_tool_display(opt = "rich")
+
+  result <- new_tool_result(
+    value = "test",
+    extra = list(display = list(markdown = "**bold**"))
+  )
+  expect_equal(
+    tool_result_value(result),
+    list(value = "**bold**", value_type = "markdown")
+  )
+})
+
+test_that("as_grouping() validates tool annotation values", {
+  expect_equal(as_grouping("none"), "none")
+  expect_equal(as_grouping("tool"), "tool")
+  expect_equal(as_grouping("all"), "all")
+
+  expect_null(as_grouping(NULL))
+  expect_null(as_grouping(c("tool", "all")))
+  expect_null(as_grouping(1))
+  expect_null(as_grouping("invalid"))
+})
+
+test_that("ContentToolRequest emits grouping from tool annotations", {
+  local_shinychat_tool_display(opt = "rich")
+
+  tool <- new_tool(annotations = list(grouping = "all"))
+  request <- new_tool_request(tool = tool)
+  res <- contents_shinychat(request)
+
+  expect_equal(res$grouping, "all")
+
+  res_tags <- as.tags(res)
+  expect_equal(res_tags$attribs$grouping, "all")
+})
+
+test_that("ContentToolResult emits grouping from tool annotations", {
+  local_shinychat_tool_display(opt = "rich")
+
+  tool <- new_tool(annotations = list(grouping = "all"))
+  result <- new_tool_result(
+    value = "test",
+    request = new_tool_request(tool = tool)
+  )
+  res <- contents_shinychat(result)
+
+  expect_equal(res$grouping, "all")
+
+  res_tags <- as.tags(res)
+  expect_equal(res_tags$attribs$grouping, "all")
+})
+
+test_that("invalid tool annotation grouping is dropped (no attribute emitted)", {
+  local_shinychat_tool_display(opt = "rich")
+
+  tool <- new_tool(annotations = list(grouping = "bogus"))
+  result <- new_tool_result(
+    value = "test",
+    request = new_tool_request(tool = tool)
+  )
+  res <- contents_shinychat(result)
+
+  expect_null(res$grouping)
+  res_tags <- as.tags(res)
+  expect_null(res_tags$attribs$grouping)
+})
+
+test_that("basic tool display suppresses custom display metadata but keeps annotations", {
+  tool <- new_tool(annotations = list(grouping = "all", title = "Weather Tool"))
+  request <- new_tool_request(tool = tool)
+  result <- new_tool_result(
+    value = "ok",
+    request = request,
+    extra = list(
+      display = list(
+        text = "ignored in basic mode",
+        label = "ignored label",
+        value_preview = "ignored preview"
+      )
+    )
+  )
+
+  local_shinychat_tool_display(opt = "basic")
+
+  req_res <- contents_shinychat(request)
+  expect_s3_class(req_res, "shinychat_tool_request")
+  expect_equal(req_res$tool_title, "Weather Tool")
+  expect_equal(req_res$grouping, "all")
+
+  tool_res <- contents_shinychat(result)
+  expect_s3_class(tool_res, "shinychat_tool_result")
+  expect_equal(tool_res$tool_title, "Weather Tool")
+  expect_equal(tool_res$grouping, "all")
+  expect_null(tool_res$label)
+  expect_null(tool_res$value_preview)
+  # Falls back to the actual value, not the (suppressed) custom display text
+  expect_equal(tool_res$value, "ok")
+  expect_equal(tool_res$value_type, "code")
+})
+
+test_that("no tool elements are rendered when display is disabled entirely", {
+  tool <- new_tool(annotations = list(grouping = "all", title = "Weather Tool"))
+  request <- new_tool_request(tool = tool)
+  result <- new_tool_result(value = "ok", request = request)
+
+  local_shinychat_tool_display(opt = "none")
+
+  expect_null(contents_shinychat(request))
+  expect_null(contents_shinychat(result))
+})
