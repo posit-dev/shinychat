@@ -128,6 +128,20 @@ decode_ui_snapshot <- function(str) {
   jsonlite::unserializeJSON(json)
 }
 
+# Render restored chat UI: replay the browser's stored message snapshot when we
+# have one (faithful to what the user saw, incl. display-only transforms),
+# otherwise re-derive the UI from the client's turns as before.
+restore_chat_ui <- function(client, id, ui_snapshot, session) {
+  if (!is.null(ui_snapshot) && length(ui_snapshot) > 0) {
+    for (message in ui_snapshot) {
+      restore_history_message(id, message, session = session)
+    }
+    return(invisible())
+  }
+  client_set_ui(client, id = id)
+  invisible()
+}
+
 # Used to avoid R CMD check NOTE about unused imports
 `_ignore` <- function() {
   base64enc::base64encode
