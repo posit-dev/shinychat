@@ -67,7 +67,10 @@ matrix_seed <- function(ctrl, session, chat_id, setup) {
           ),
           list(
             role = "assistant",
-            segments = list(list(content = "Hi there", content_type = "markdown"))
+            segments = list(list(
+              content = "Hi there",
+              content_type = "markdown"
+            ))
           )
         )),
         paste0(chat_id, "_messages")

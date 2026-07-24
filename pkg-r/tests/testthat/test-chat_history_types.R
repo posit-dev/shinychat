@@ -343,7 +343,11 @@ test_that("record_node_id_for_message_index() resolves a flat index to the ownin
 test_that("record_node_id_for_message_index() errors when the index is out of range", {
   rec <- new_conversation_record("test")
   rec$nodes <- list(
-    n_0001 = list(parent = NULL, children = list(), ui = list(list(role = "user")))
+    n_0001 = list(
+      parent = NULL,
+      children = list(),
+      ui = list(list(role = "user"))
+    )
   )
   rec$current_leaf <- "n_0001"
 

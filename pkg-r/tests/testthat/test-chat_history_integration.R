@@ -791,7 +791,10 @@ test_that("editing a message after the first forks at the correct node even when
     }
   }
   make_ui_message <- function(role, text) {
-    list(role = role, segments = list(list(content = text, content_type = "markdown")))
+    list(
+      role = role,
+      segments = list(list(content = text, content_type = "markdown"))
+    )
   }
 
   client <- mock_chat_client()
