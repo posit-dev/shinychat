@@ -2092,6 +2092,7 @@ class ChatExpress(Chat):
         submit_key: 'Literal["enter", "enter+modifier"]' = "enter",
         allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
         footer: Optional[TagChild] = None,
+        tool_grouping: 'Literal["none", "tool", "all"]' = "tool",
         **kwargs: TagAttrValue,
     ) -> Tag:
         """
@@ -2164,6 +2165,16 @@ class ChatExpress(Chat):
             The footer text is styled slightly smaller and lighter than body text
             by default. Customize with CSS properties ``--shiny-chat-footer-font-size``
             and ``--shiny-chat-footer-color`` on the chat container or footer element.
+        tool_grouping
+            Controls how consecutive tool calls are grouped together in the UI:
+
+            - ``"tool"`` (default): consecutive calls to the *same* tool are grouped
+              into a single collapsible card.
+            - ``"all"``: all consecutive tool calls are grouped into a single
+              collapsible card, regardless of tool name.
+            - ``"none"``: each tool call is displayed in its own card.
+
+            Individual tools can override this via a `grouping` tool annotation.
         kwargs
             Additional attributes for the chat container element.
         """
@@ -2184,6 +2195,7 @@ class ChatExpress(Chat):
             submit_key=submit_key,
             allow_attachments=allow_attachments,
             footer=footer,
+            tool_grouping=tool_grouping,
             **kwargs,
         )
 
@@ -2269,6 +2281,7 @@ def chat_ui(
     submit_key: 'Literal["enter", "enter+modifier"]' = "enter",
     allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
     footer: Optional[TagChild] = None,
+    tool_grouping: 'Literal["none", "tool", "all"]' = "tool",
     **kwargs: TagAttrValue,
 ) -> Tag:
     """
@@ -2366,6 +2379,16 @@ def chat_ui(
         The footer text is styled slightly smaller and lighter than body text
         by default. Customize with CSS properties ``--shiny-chat-footer-font-size``
         and ``--shiny-chat-footer-color`` on the chat container or footer element.
+    tool_grouping
+        Controls how consecutive tool calls are grouped together in the UI:
+
+        - ``"tool"`` (default): consecutive calls to the *same* tool are grouped
+          into a single collapsible card.
+        - ``"all"``: all consecutive tool calls are grouped into a single
+          collapsible card, regardless of tool name.
+        - ``"none"``: each tool call is displayed in its own card.
+
+        Individual tools can override this via a `grouping` tool annotation.
     kwargs
         Additional attributes for the chat container element.
     """
@@ -2464,6 +2487,7 @@ def chat_ui(
         # we know the default icon has changed
         icon_assistant=icon_attr,
         submit_key=submit_key if submit_key != "enter" else None,
+        tool_grouping=tool_grouping if tool_grouping != "tool" else None,
         **kwargs,
     )
 

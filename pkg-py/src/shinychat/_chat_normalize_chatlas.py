@@ -59,6 +59,13 @@ class ToolCardComponent(BaseModel):
     expanded: bool = False
     "Controls whether the card content is expanded/visible."
 
+    grouping: Optional[Literal["none", "tool", "all"]] = None
+    """
+    Per-tool override for how consecutive tool calls are grouped in the UI.
+    Read from the tool's `annotations["grouping"]`. If not provided, falls
+    back to the chat-level `tool_grouping` setting.
+    """
+
     model_config = {"arbitrary_types_allowed": True}
 
     @field_serializer("icon")
@@ -97,6 +104,7 @@ class ToolRequestComponent(ToolCardComponent):
             intent=self.intent,
             expanded="" if self.expanded else None,
             arguments=self.arguments,
+            grouping=self.grouping,
             *icon_ui["dependencies"],
         ).tagify()
 
@@ -178,6 +186,12 @@ class ToolResultComponent(ToolCardComponent):
     full_screen: bool = False
     "Controls whether a fullscreen toggle button is displayed on the card."
 
+    label: Optional[str] = None
+    "A short, per-call identifying value shown alongside the tool title."
+
+    value_preview: Optional[str] = None
+    "A terse per-call preview of the tool result, shown in the condensed view."
+
     def tagify(self) -> Tagified:
         icon_ui = TagList(self.icon).render()
 
@@ -207,6 +221,9 @@ class ToolResultComponent(ToolCardComponent):
             expanded="" if self.expanded else None,
             footer=footer_ui["html"] if self.footer else None,
             full_screen="" if self.full_screen else None,
+            grouping=self.grouping,
+            label=self.label,
+            value_preview=self.value_preview,
             *icon_ui["dependencies"],
             *value_ui["dependencies"],
             *footer_ui["dependencies"],
@@ -248,6 +265,13 @@ class ToolResultDisplay(BaseModel):
     ---------
     title
         The title to display in the header of the tool result.
+    label
+        A short, per-call identifying value shown alongside the title
+        (e.g. a filename or query). Distinguishes this call from other calls
+        to the same tool.
+    value_preview
+        A terse, per-call preview of the tool result, shown in the condensed
+        view before the full result is expanded.
     icon
         An icon to display in the header (alongside the title).
     show_request
@@ -267,6 +291,8 @@ class ToolResultDisplay(BaseModel):
     """
 
     title: Optional[str] = None
+    label: Optional[str] = None
+    value_preview: Optional[str] = None
     icon: TagChild = None
     html: TagChild = None
     show_request: bool = True
@@ -295,6 +321,16 @@ class ToolResultDisplay(BaseModel):
             return value
 
 
+GroupingValue = Literal["none", "tool", "all"]
+
+
+def as_grouping(value: object) -> Optional[GroupingValue]:
+    "Validate a tool annotation's `grouping` value, ignoring anything unexpected."
+    if value in ("none", "tool", "all"):
+        return value
+    return None
+
+
 def tool_request_contents(x: "ContentToolRequest") -> Tagifiable:
     if tool_display_override() == "none":
         return TagList()
@@ -309,8 +345,10 @@ def tool_request_contents(x: "ContentToolRequest") -> Tagifiable:
         intent = x.arguments.get("_intent")
 
     tool_title = None
+    grouping = None
     if x.tool and x.tool.annotations:
         tool_title = x.tool.annotations.get("title")
+        grouping = as_grouping(x.tool.annotations.get("grouping"))
 
     return ToolRequestComponent(
         request_id=x.id,
@@ -318,6 +356,7 @@ def tool_request_contents(x: "ContentToolRequest") -> Tagifiable:
         arguments=json.dumps(x.arguments),
         intent=intent,
         tool_title=tool_title,
+        grouping=grouping,
     )
 
 
@@ -355,10 +394,12 @@ def tool_result_contents(x: "ContentToolResult") -> Tagifiable:
     tool = x.request.tool
     tool_title = None
     icon = None
+    grouping = None
     if tool and tool.annotations:
         tool_title = tool.annotations.get("title")
         icon = tool.annotations.get("extra", {}).get("icon")
         icon = icon or tool.annotations.get("icon")
+        grouping = as_grouping(tool.annotations.get("grouping"))
 
     # Icon strings and HTML display never get escaped
     icon = display.icon or icon
@@ -383,6 +424,9 @@ def tool_result_contents(x: "ContentToolResult") -> Tagifiable:
         expanded=display.open,
         footer=display.footer,
         full_screen=display.full_screen,
+        grouping=grouping,
+        label=display.label,
+        value_preview=display.value_preview,
     )
 
 
