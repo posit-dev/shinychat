@@ -67,6 +67,7 @@ method(client_set_state, S7::new_S3_class(c("Chat", "R6"))) <-
 
     state_json <- memDecompress(
       base64enc::base64decode(state_str),
+      type = "gzip",
       asChar = TRUE
     )
     recorded_turns <- jsonlite::unserializeJSON(state_json)
@@ -124,7 +125,11 @@ decode_ui_snapshot <- function(str) {
   ) {
     return(NULL)
   }
-  json <- memDecompress(base64enc::base64decode(str), asChar = TRUE)
+  json <- memDecompress(
+    base64enc::base64decode(str),
+    type = "gzip",
+    asChar = TRUE
+  )
   jsonlite::unserializeJSON(json)
 }
 
