@@ -179,7 +179,7 @@ test_that("ContentToolResult with custom text display", {
   )
 
   expect_equal(
-    tool_result_display(result),
+    tool_result_value(result),
     list(value = "Success!", value_type = "text")
   )
 
@@ -339,7 +339,7 @@ test_that("tool_result_display basic format", {
     extra = list(display = list(text = "ignored in basic mode"))
   )
   expect_equal(
-    tool_result_display(result),
+    tool_result_value(result),
     list(
       value = jsonlite::toJSON(list(x = 1), auto_unbox = TRUE, pretty = 2),
       value_type = "code"
@@ -360,7 +360,7 @@ test_that("tool_result_display rich format", {
     )
   )
   expect_equal(
-    tool_result_display(result),
+    tool_result_value(result),
     list(value = "<p>html</p>", value_type = "html")
   )
 })

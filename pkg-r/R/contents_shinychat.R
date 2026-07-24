@@ -240,7 +240,8 @@ S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
     tool_name = content@name,
     arguments = jsonlite::toJSON(content@arguments, auto_unbox = TRUE),
     intent = content@arguments[["_intent"]],
-    tool_title = if (!is.null(tool)) tool@annotations$title
+    tool_title = if (!is.null(tool)) tool@annotations$title,
+    grouping = if (!is.null(tool)) as_grouping(tool@annotations$grouping)
   )
 }
 
@@ -257,9 +258,11 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
 
   display <- get_tool_result_display(content)
   annotations <- list()
+  grouping <- NULL
 
   if (!is.null(content@request@tool)) {
     annotations <- content@request@tool@annotations
+    grouping <- as_grouping(annotations$grouping)
     request_call <- format(content@request, show = "call")
   } else {
     # formatting the request fails if tool is not present
@@ -288,8 +291,142 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     expanded = if (isTRUE(display$open)) NA,
     full_screen = if (isTRUE(display$full_screen)) NA,
     footer = display$footer,
-    !!!tool_result_display(content, display)
+    grouping = grouping,
+    label = display$label,
+    value_preview = display$value_preview,
+    !!!tool_result_value(content, display)
   )
+}
+
+#' Customize how a tool result is displayed
+#'
+#' `tool_result_display()` creates an object you can assign to the
+#' `display` item of the `extra` argument of an [`ellmer::ContentToolResult`]
+#' to customize how shinychat displays the tool result to the user, while
+#' keeping the underlying `value` sent to the model unchanged.
+#'
+#' @param title The title to display in the header of the tool result.
+#' @param icon An icon to display in the header (alongside the title). Can be
+#'   a character string or HTML content (e.g. from [htmltools::tags]).
+#' @param html Custom HTML content (to use in place of the default result
+#'   display).
+#' @param markdown Custom Markdown string (to use in place of the default
+#'   result display).
+#' @param text Custom plain text string (to use in place of the default
+#'   result display).
+#' @param show_request Whether to show the tool request inside the tool
+#'   result container.
+#' @param open Whether or not the tool result details are expanded by
+#'   default.
+#' @param full_screen Whether or not to display a fullscreen toggle button on
+#'   the card.
+#' @param footer Optional HTML content to display in the card footer (below
+#'   the card body).
+#' @param label A short, per-call identifying value shown alongside the tool
+#'   title (e.g. a filename or query). Distinguishes this call from other
+#'   calls to the same tool.
+#' @param value_preview A terse, per-call preview of the tool result, shown
+#'   in the condensed view before the full result is expanded.
+#'
+#' @return An object of class `shinychat_tool_result_display`, for use as
+#'   `extra = list(display = tool_result_display(...))` when creating an
+#'   [`ellmer::ContentToolResult`].
+#'
+#' @examplesIf rlang::is_installed("ellmer")
+#' library(ellmer)
+#'
+#' get_current_weather <- function() {
+#'   ContentToolResult(
+#'     value = "72 degrees and sunny",
+#'     extra = list(
+#'       display = tool_result_display(
+#'         title = "Current weather",
+#'         markdown = "It's **72°F** and sunny."
+#'       )
+#'     )
+#'   )
+#' }
+#'
+#' @family tool display
+#' @export
+tool_result_display <- function(
+  title = NULL,
+  icon = NULL,
+  html = NULL,
+  markdown = NULL,
+  text = NULL,
+  show_request = TRUE,
+  open = FALSE,
+  full_screen = FALSE,
+  footer = NULL,
+  label = NULL,
+  value_preview = NULL
+) {
+  structure(
+    compact(list(
+      title = title,
+      icon = icon,
+      html = html,
+      markdown = markdown,
+      text = text,
+      show_request = show_request,
+      open = open,
+      full_screen = full_screen,
+      footer = footer,
+      label = label,
+      value_preview = value_preview
+    )),
+    class = "shinychat_tool_result_display"
+  )
+}
+
+# fmt: skip
+tool_result_display_fields <- c(
+  "title",
+  "icon",
+  "html",
+  "markdown",
+  "text",
+  "show_request",
+  "open",
+  "full_screen",
+  "footer",
+  "label",
+  "value_preview"
+)
+
+# Coerce a bare list (or an existing `shinychat_tool_result_display`) into a
+# validated `shinychat_tool_result_display` object. Unknown or invalid fields
+# are dropped with a warning; this never aborts, so a badly-formed `display`
+# degrades to the default rendering rather than breaking the chat turn.
+as_tool_result_display <- function(display, error_context = NULL) {
+  if (inherits(display, "shinychat_tool_result_display")) {
+    return(display)
+  }
+
+  if (!is.list(display)) {
+    cli::cli_warn(
+      c(
+        error_context,
+        "x" = "Expected a list with fields {.or {.var {tool_result_display_fields}}}, not {.obj_type_friendly {display}}."
+      )
+    )
+    return(structure(list(), class = "shinychat_tool_result_display"))
+  }
+
+  unknown <- setdiff(names(display), tool_result_display_fields)
+  if (length(unknown) > 0) {
+    cli::cli_warn(
+      c(
+        error_context,
+        "x" = "Unrecognized field{?s} {.field {unknown}} in {.code display}; ignoring.",
+        "i" = "Expected fields: {.or {.var {tool_result_display_fields}}}."
+      )
+    )
+    display <- display[setdiff(names(display), unknown)]
+  }
+
+  structure(display, class = "shinychat_tool_result_display")
 }
 
 get_tool_result_display <- function(content) {
@@ -297,10 +434,12 @@ get_tool_result_display <- function(content) {
   request <- content@request
 
   if (is.null(display) || opt_shinychat_tool_display() == "basic") {
-    return(list())
+    return(as_tool_result_display(list()))
   }
 
-  invalid_display_fmt <- "Invalid {.code @extra$display} format for {.code ContentToolResult} from {.fn {request@name}} (call id: {request@id})."
+  invalid_display_fmt <- cli::format_inline(
+    "Invalid {.code @extra$display} format for {.code ContentToolResult} from {.fn {request@name}} (call id: {request@id})."
+  )
 
   if (
     inherits(display, c("html", "shiny.tag", "shiny.tag.list", "htmlwidgets"))
@@ -312,36 +451,21 @@ get_tool_result_display <- function(content) {
         "i" = "You can also use {.code markdown} or {.code text} items in {.code display} to show Markdown or plain text, respectively."
       )
     )
-    return(list())
+    return(as_tool_result_display(list()))
   }
 
-  # fmt: skip
-  expected_fields <- c(
-    "html",
-    "markdown",
-    "text",
-    "show_request",
-    "open",
-    "full_screen",
-    "title",
-    "icon",
-    "footer"
-  )
-
-  if (!is.list(display)) {
-    cli::cli_warn(
-      c(
-        invalid_display_fmt,
-        "x" = "Expected a list with fields {.or {.var {expected_fields}}}, not {.obj_type_friendly {display}}."
-      )
-    )
-    return(list())
-  }
-
-  display
+  as_tool_result_display(display, error_context = invalid_display_fmt)
 }
 
-tool_result_display <- function(content, display = NULL) {
+# Validate a tool annotation's `grouping` value, ignoring anything unexpected.
+as_grouping <- function(x) {
+  if (is.null(x) || !x %in% c("none", "tool", "all")) {
+    return(NULL)
+  }
+  x
+}
+
+tool_result_value <- function(content, display = NULL) {
   display <- display %||% content@extra$display
 
   has_display <- !is.null(display) && is.list(display) && length(display) > 0

@@ -17,7 +17,8 @@ chat_ui(
   enable_cancel = NULL,
   submit_key = c("enter", "enter+modifier"),
   allow_attachments = NULL,
-  footer = NULL
+  footer = NULL,
+  tool_grouping = c("tool", "none", "all")
 )
 }
 \arguments{
@@ -107,6 +108,18 @@ Useful for adding disclaimers, attribution, or other information.
 The footer text is styled slightly smaller and lighter than body text
 by default. Customize with CSS properties \code{--shiny-chat-footer-font-size}
 and \code{--shiny-chat-footer-color} on the chat container or footer element.}
+
+\item{tool_grouping}{Controls how consecutive tool calls are grouped
+together in the UI:
+\itemize{
+\item \code{"tool"} (default): consecutive calls to the \emph{same} tool are grouped
+into a single collapsible card.
+\item \code{"all"}: all consecutive tool calls are grouped into a single
+collapsible card, regardless of tool name.
+\item \code{"none"}: each tool call is displayed in its own card.
+}
+
+Individual tools can override this via a \code{grouping} tool annotation.}
 }
 \value{
 A Shiny tag object, suitable for inclusion in a Shiny UI

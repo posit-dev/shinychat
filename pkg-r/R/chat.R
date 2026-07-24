@@ -230,6 +230,15 @@ chat_greeting <- function(
 #'   The footer text is styled slightly smaller and lighter than body text
 #'   by default. Customize with CSS properties `--shiny-chat-footer-font-size`
 #'   and `--shiny-chat-footer-color` on the chat container or footer element.
+#' @param tool_grouping Controls how consecutive tool calls are grouped
+#'   together in the UI:
+#'   * `"tool"` (default): consecutive calls to the *same* tool are grouped
+#'     into a single collapsible card.
+#'   * `"all"`: all consecutive tool calls are grouped into a single
+#'     collapsible card, regardless of tool name.
+#'   * `"none"`: each tool call is displayed in its own card.
+#'
+#'   Individual tools can override this via a `grouping` tool annotation.
 #' @section Thinking display:
 #'
 #' When a model produces reasoning or "thinking" tokens, shinychat renders them
@@ -311,9 +320,11 @@ chat_ui <- function(
   enable_cancel = NULL,
   submit_key = c("enter", "enter+modifier"),
   allow_attachments = NULL,
-  footer = NULL
+  footer = NULL,
+  tool_grouping = c("tool", "none", "all")
 ) {
   submit_key <- rlang::arg_match(submit_key)
+  tool_grouping <- rlang::arg_match(tool_grouping)
 
   attrs <- rlang::list2(...)
   if (!all(nzchar(rlang::names2(attrs)))) {
@@ -439,6 +450,7 @@ chat_ui <- function(
         NULL
       },
       `submit-key` = if (submit_key != "enter") submit_key,
+      `tool-grouping` = if (tool_grouping != "tool") tool_grouping,
       `allow-attachments` = attachment_attrs$allow,
       `attachment-accept` = attachment_attrs$accept,
       `max-attachment-size` = max_attachment_size,
