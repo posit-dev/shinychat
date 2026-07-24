@@ -289,3 +289,158 @@
   max-width: 100%;
   border-radius: var(--bs-border-radius);
 }
+
+.shiny-sidenote-group {
+  display: inline-block;
+  margin-inline-start: 0.3em;
+  // Small empirically-tuned nudge above the default baseline position —
+  // visually centers the pill against surrounding text better than
+  // `middle` (which anchors half an ex-height above baseline, not the
+  // line's visual center) or the unadorned default.
+  vertical-align: 0.1em;
+}
+
+.shiny-sidenote-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  border: none;
+  border-radius: 999px;
+  background: rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.06);
+  color: inherit;
+  font-size: 0.72em;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0.25em 0.6em;
+  cursor: pointer;
+  // An inline-flex box's own baseline (used to align it within
+  // .shiny-sidenote-group's line box) comes from its first
+  // baseline-contributing flex item: an <img> uses its bottom edge, plain
+  // text uses the text baseline — two different anchors. That mismatch,
+  // not a height difference, is why icon and non-icon pills sat at
+  // different heights. Pin the pill's own alignment instead of relying on
+  // flex-baseline default.
+  vertical-align: middle;
+  // Fixed regardless of whether this particular pill has an icon (1.1em
+  // icon + 0.5em vertical padding), so every pill is the same height
+  // rather than varying with each pill's own content.
+  min-height: 1.6em;
+
+  // The icon is a circle whose visual mass sits inward from its box edge, so
+  // full symmetric padding looks like too much space before it. Trim the
+  // start padding only when an icon is actually present; text-only pills keep
+  // the symmetric padding above.
+  &:has(img) {
+    padding-inline-start: 0.35em;
+  }
+
+  &.shiny-sidenote-pill--count {
+    padding-inline: 0.5em;
+    min-width: 1.4em;
+    justify-content: center;
+  }
+
+  img {
+    width: 1.1em;
+    height: 1.1em;
+    border-radius: 50%;
+  }
+
+  .shiny-sidenote-pill__overflow {
+    opacity: 0.65;
+  }
+
+  &:hover,
+  &[aria-expanded="true"] {
+    background: rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.12);
+  }
+}
+
+.shiny-sidenote-popover {
+  // position/top/left come from @floating-ui/react's floatingStyles
+  // (SidenoteGroup.tsx): rendered through a FloatingPortal to document.body
+  // so it can escape the message list's `overflow: auto` (needed for
+  // scrolling, so it can't just be set to visible), and repositioned
+  // (flip/shift) when there isn't room where it'd normally go.
+  //
+  // Above regular content and the sticky input, but below true modals
+  // (.shiny-chat-lightbox at 1080, fullscreen tool card at 1050) — now
+  // that this lives at the body level rather than inline with the message.
+  z-index: 1040;
+  min-width: 14em;
+  max-width: 22em;
+  background: var(--bs-body-bg, #fff);
+  border: 1px solid rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.12);
+  border-radius: 0.6em;
+  box-shadow: 0 0.4em 1.2em rgba(0, 0, 0, 0.12);
+  padding: 0.7em 0.8em;
+  font-size: 0.8em;
+  font-weight: 400;
+  text-align: start;
+  white-space: normal;
+
+  .shiny-sidenote-popover__nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    opacity: 0.6;
+    margin-bottom: 0.5em;
+
+    .shiny-sidenote-popover__nav-arrows {
+      display: flex;
+      align-items: center;
+      gap: 0.6em;
+      // Cancel the leading button's own left padding so the pair sits
+      // flush with the popover's inner edge despite the enlarged tap
+      // target (see button padding/margin below).
+      margin-left: -0.55em;
+    }
+
+    .shiny-sidenote-popover__count {
+      font-size: 0.75em;
+    }
+
+    button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: none;
+      color: inherit;
+      cursor: pointer;
+      border-radius: 0.4em;
+      // Enlarge the pointer target well beyond the icon itself; the
+      // vertical margin absorbs the vertical padding so the nav row keeps
+      // its compact height. (No horizontal margin: the two buttons sit
+      // side by side, and `gap` above already controls the space between
+      // them — a horizontal negative margin here would eat into that gap
+      // instead of the row's outer edge.)
+      padding: 0.4em 0.55em;
+      margin: -0.4em 0;
+
+      &:hover {
+        background: rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.08);
+      }
+    }
+  }
+
+  .shiny-sidenote-popover__label {
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+    font-weight: 600;
+    margin-bottom: 0.4em;
+
+    img {
+      width: 1.1em;
+      height: 1.1em;
+      border-radius: 50%;
+    }
+  }
+
+  .shiny-sidenote-popover__body {
+    p:last-child {
+      margin-bottom: 0;
+    }
+  }
+}

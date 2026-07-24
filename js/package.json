@@ -23,6 +23,7 @@
     "watch-fast": "npx nodemon --exec 'npm run build-fast' --ext '*' --ignore dist/ --ignore esbuild-metadata.json"
   },
   "dependencies": {
+    "@floating-ui/react": "^0.27.20",
     "@tiptap/core": "^3.26.0",
     "@tiptap/extension-document": "^3.26.0",
     "@tiptap/extension-hard-break": "^3.26.0",

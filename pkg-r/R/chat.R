@@ -504,6 +504,74 @@ chat_ui <- function(
 #' observer, shinychat will log the error message and show a message that the
 #' error occurred in the chat UI.
 #'
+#' # Sidenotes
+#'
+#' A sidenote is a small pill that appears at the end of the paragraph or list
+#' item it's attached to, showing a popover on hover, click, or keyboard
+#' focus. Create one by writing (or prompting an LLM to write) an inline
+#' `<shiny-sidenote>` tag anywhere in a block's markdown; the tag's content
+#' becomes the popover body:
+#'
+#' * `<shiny-sidenote label="a source name" url="https://...">markdown shown in the popover</shiny-sidenote>`
+#'
+#' `label` and `url` are optional but recommended together — a sidenote with a
+#' `label` renders as an identity chip (with a favicon derived from `url`,
+#' unless `icon` overrides it); without one, it falls back to a plain
+#' numbered/count marker. The body is ordinary markdown: inline for a
+#' one-liner, or — by separating it with blank lines — a rich block body
+#' (paragraphs, lists, code) shown in the popover. Multiple sidenotes in the
+#' same paragraph or list item collapse into a single pill, deduped by `label`
+#' (sidenotes sharing a label are the same source; the first occurrence's
+#' content is kept).
+#'
+#' **A labeled sidenote with a one-line body:**
+#'
+#' ```r
+#' chat_append(
+#'   "chat",
+#'   paste0(
+#'     "Hub motors are cheaper",
+#'     '<shiny-sidenote label="eBicycles" url="https://ebicycles.example/hub-vs-mid-drive">',
+#'     "[Hub Motor vs. Mid-Drive Motor Differences Explained]",
+#'     "(https://ebicycles.example/hub-vs-mid-drive)",
+#'     "</shiny-sidenote>",
+#'     ", and ideal for flatter terrain."
+#'   )
+#' )
+#' ```
+#'
+#' **Two sidenotes cited in the same sentence** collapse into one pill (the
+#' first source's label becomes the face, with a "+1" overflow):
+#'
+#' ```r
+#' chat_append(
+#'   "chat",
+#'   paste0(
+#'     "Hub motors are cheaper",
+#'     '<shiny-sidenote label="eBicycles" url="https://ebicycles.example">...</shiny-sidenote>',
+#'     '<shiny-sidenote label="WIRED" url="https://wired.example">...</shiny-sidenote>',
+#'     ", and ideal for flatter terrain."
+#'   )
+#' )
+#' ```
+#'
+#' **A label-less sidenote with a rich block body** (falls back to a plain
+#' numbered pill):
+#'
+#' ```r
+#' chat_append(
+#'   "chat",
+#'   paste0(
+#'     "Battery quality matters more than raw power",
+#'     "<shiny-sidenote>\n\n",
+#'     "**Methodology**\n\n",
+#'     "- 40 commuter e-bike models\n",
+#'     "- released in 2024\n\n",
+#'     "</shiny-sidenote>"
+#'   )
+#' )
+#' ```
+#'
 #' @param id The ID of the chat element
 #' @param response The message or message stream to append to the chat element.
 #'   The actual message content can one of the following:

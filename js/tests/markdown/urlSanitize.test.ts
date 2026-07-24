@@ -90,4 +90,16 @@ describe("sanitizeUrls", () => {
     sanitizeUrls(tree)
     expect((tree.children[0] as Element).properties.href).toBe(123)
   })
+
+  it("blanks javascript: url on <shiny-sidenote>", () => {
+    const tree = makeTree("shiny-sidenote", { url: "javascript:alert(1)" })
+    sanitizeUrls(tree)
+    expect((tree.children[0] as Element).properties.url).toBe("")
+  })
+
+  it("blanks javascript: icon on <shiny-sidenote>", () => {
+    const tree = makeTree("shiny-sidenote", { icon: "javascript:alert(1)" })
+    sanitizeUrls(tree)
+    expect((tree.children[0] as Element).properties.icon).toBe("")
+  })
 })

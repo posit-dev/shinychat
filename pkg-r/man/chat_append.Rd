@@ -70,6 +70,72 @@ observer, shinychat will log the error message and show a message that the
 error occurred in the chat UI.
 }
 
+\section{Sidenotes}{
+A sidenote is a small pill that appears at the end of the paragraph or list
+item it's attached to, showing a popover on hover, click, or keyboard
+focus. Create one by writing (or prompting an LLM to write) an inline
+\verb{<shiny-sidenote>} tag anywhere in a block's markdown; the tag's content
+becomes the popover body:
+\itemize{
+\item \verb{<shiny-sidenote label="a source name" url="https://...">markdown shown in the popover</shiny-sidenote>}
+}
+
+\code{label} and \code{url} are optional but recommended together — a sidenote with a
+\code{label} renders as an identity chip (with a favicon derived from \code{url},
+unless \code{icon} overrides it); without one, it falls back to a plain
+numbered/count marker. The body is ordinary markdown: inline for a
+one-liner, or — by separating it with blank lines — a rich block body
+(paragraphs, lists, code) shown in the popover. Multiple sidenotes in the
+same paragraph or list item collapse into a single pill, deduped by \code{label}
+(sidenotes sharing a label are the same source; the first occurrence's
+content is kept).
+
+\strong{A labeled sidenote with a one-line body:}
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_append(
+  "chat",
+  paste0(
+    "Hub motors are cheaper",
+    '<shiny-sidenote label="eBicycles" url="https://ebicycles.example/hub-vs-mid-drive">',
+    "[Hub Motor vs. Mid-Drive Motor Differences Explained]",
+    "(https://ebicycles.example/hub-vs-mid-drive)",
+    "</shiny-sidenote>",
+    ", and ideal for flatter terrain."
+  )
+)
+}\if{html}{\out{</div>}}
+
+\strong{Two sidenotes cited in the same sentence} collapse into one pill (the
+first source's label becomes the face, with a "+1" overflow):
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_append(
+  "chat",
+  paste0(
+    "Hub motors are cheaper",
+    '<shiny-sidenote label="eBicycles" url="https://ebicycles.example">...</shiny-sidenote>',
+    '<shiny-sidenote label="WIRED" url="https://wired.example">...</shiny-sidenote>',
+    ", and ideal for flatter terrain."
+  )
+)
+}\if{html}{\out{</div>}}
+
+\strong{A label-less sidenote with a rich block body} (falls back to a plain
+numbered pill):
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_append(
+  "chat",
+  paste0(
+    "Battery quality matters more than raw power",
+    "<shiny-sidenote>\\n\\n",
+    "**Methodology**\\n\\n",
+    "- 40 commuter e-bike models\\n",
+    "- released in 2024\\n\\n",
+    "</shiny-sidenote>"
+  )
+)
+}\if{html}{\out{</div>}}
+}
+
 \examples{
 \dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
 library(shiny)

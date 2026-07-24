@@ -929,6 +929,38 @@ class Chat:
         heading.
         :::
 
+        :::{.callout-note title="Sidenotes"}
+        A sidenote is a small pill that appears at the end of the paragraph or
+        list item it's attached to, showing a popover on hover, click, or
+        keyboard focus. Create one by writing (or prompting an LLM to write) an
+        inline `<shiny-sidenote>` tag anywhere in a block's markdown; the tag's
+        content becomes the popover body:
+
+        * `<shiny-sidenote label="a source name" url="https://...">markdown shown in the popover</shiny-sidenote>`
+
+        `label` and `url` are optional but recommended together — a sidenote
+        with a `label` renders as an identity chip (with a favicon derived from
+        `url`, unless `icon` overrides it); without one, it falls back to a
+        plain numbered/count marker. The body is ordinary markdown: inline for a
+        one-liner, or — by separating it with blank lines — a rich block body
+        (paragraphs, lists, code) shown in the popover. Multiple sidenotes in
+        the same paragraph or list item collapse into a single pill, deduped by
+        `label` (sidenotes sharing a label are the same source; the first
+        occurrence's content is kept).
+
+        **Examples:**
+
+        * A labeled sidenote with a one-line body:
+          `Hub motors are cheaper<shiny-sidenote label="eBicycles" url="https://ebicycles.example/hub-vs-mid-drive">[Hub Motor vs. Mid-Drive Motor Differences Explained](https://ebicycles.example/hub-vs-mid-drive)</shiny-sidenote>, and ideal for flatter terrain.`
+        * Two sidenotes cited in the same sentence collapse into a single pill
+          — the first source's label becomes the face, with a "+1" overflow:
+          `...<shiny-sidenote label="eBicycles" url="https://ebicycles.example">...</shiny-sidenote><shiny-sidenote label="WIRED" url="https://wired.example">...</shiny-sidenote>...`
+        * A label-less sidenote with a rich block body (a blank line starts a
+          block body instead of an inline one), falling back to a plain
+          numbered pill:
+          `Battery quality matters more than raw power<shiny-sidenote>\n\n**Methodology**\n\n- 40 commuter e-bike models\n- released in 2024\n\n</shiny-sidenote>`
+        :::
+
         :::{.callout-note title="Streamed messages"}
         Use `.append_message_stream()` instead of this method when `stream=True` (or
         similar) is specified in model's completion method.
@@ -1194,6 +1226,38 @@ class Chat:
         text), which becomes the card heading; the suggestion's body becomes the card
         description. For ordered lists (`<ol>`), the list-item number is included in the
         heading.
+        ```
+
+        ```{.callout-note title="Sidenotes"}
+        A sidenote is a small pill that appears at the end of the paragraph or
+        list item it's attached to, showing a popover on hover, click, or
+        keyboard focus. Create one by writing (or prompting an LLM to write) an
+        inline `<shiny-sidenote>` tag anywhere in a block's markdown; the tag's
+        content becomes the popover body:
+
+        * `<shiny-sidenote label="a source name" url="https://...">markdown shown in the popover</shiny-sidenote>`
+
+        `label` and `url` are optional but recommended together — a sidenote
+        with a `label` renders as an identity chip (with a favicon derived from
+        `url`, unless `icon` overrides it); without one, it falls back to a
+        plain numbered/count marker. The body is ordinary markdown: inline for a
+        one-liner, or — by separating it with blank lines — a rich block body
+        (paragraphs, lists, code) shown in the popover. Multiple sidenotes in
+        the same paragraph or list item collapse into a single pill, deduped by
+        `label` (sidenotes sharing a label are the same source; the first
+        occurrence's content is kept).
+
+        **Examples:**
+
+        * A labeled sidenote with a one-line body:
+          `Hub motors are cheaper<shiny-sidenote label="eBicycles" url="https://ebicycles.example/hub-vs-mid-drive">[Hub Motor vs. Mid-Drive Motor Differences Explained](https://ebicycles.example/hub-vs-mid-drive)</shiny-sidenote>, and ideal for flatter terrain.`
+        * Two sidenotes cited in the same sentence collapse into a single pill
+          — the first source's label becomes the face, with a "+1" overflow:
+          `...<shiny-sidenote label="eBicycles" url="https://ebicycles.example">...</shiny-sidenote><shiny-sidenote label="WIRED" url="https://wired.example">...</shiny-sidenote>...`
+        * A label-less sidenote with a rich block body (a blank line starts a
+          block body instead of an inline one), falling back to a plain
+          numbered pill:
+          `Battery quality matters more than raw power<shiny-sidenote>\n\n**Methodology**\n\n- 40 commuter e-bike models\n- released in 2024\n\n</shiny-sidenote>`
         ```
 
         ```{.callout-note title="Streamed messages"}

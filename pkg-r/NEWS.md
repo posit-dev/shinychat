@@ -2,6 +2,8 @@
 
 ## New features and improvements
 
+* Added a `<shiny-sidenote>` markup convention: any assistant message can include an inline `<shiny-sidenote label="..." url="...">markdown shown in the popover</shiny-sidenote>` tag anywhere in its markdown, and it renders as a small pill at the end of the paragraph or list item it's attached to. Hovering, clicking, or focusing the pill opens a popover showing the sidenote's body; when a block contains more than one distinct sidenote, the popover becomes a carousel with previous/next controls. Sidenotes are deduped by their `label`. This is a general-purpose building block any LLM can be prompted to emit directly; it isn't tied to any particular content source.
+
 * Added `chat_server()` as the new primary way to wire up server-side chat logic. It does the same job as `chat_mod_server()` but runs directly in the caller's session scope rather than creating its own module scope. If you're already inside a `moduleServer()`, pass that session in — no extra nesting, no doubled namespaces. `chat_mod_server()` and `chat_mod_ui()` are now soft-deprecated in favor of `chat_server()` and `chat_ui()`. (#264)
 
 * `chat_server()` gets multi-conversation history automatically: a drawer for starting new chats and returning to previous ones, with LLM-generated titles, search, rename, and delete. Conversations are persisted per-user (or a custom scope) via a pluggable store — the default `FileConversationStore` finds a redeploy-safe location automatically on Posit Connect. Customize with `history = history_options(...)`, or opt out entirely with `history = FALSE`. For apps that can't use the module pattern, wire it up manually with `chat_enable_history()`. (#266)

@@ -12,7 +12,12 @@ import { remarkEscapeHtml } from "./plugins/remarkEscapeHtml"
 import { rehypeExternalLinks } from "./plugins/rehypeExternalLinks"
 import { rehypeUncontrolledInputs } from "./plugins/rehypeUncontrolledInputs"
 import { rehypeUnwrapBlockCEs } from "./plugins/rehypeUnwrapBlockCEs"
+import { rehypeGroupSidenotes } from "./plugins/rehypeGroupSidenotes"
 import { rehypeLazyContinuation } from "./plugins/rehypeLazyContinuation"
+import {
+  rehypeRewriteSidenoteToTemplate,
+  rehypeRewriteSidenoteFromTemplate,
+} from "./plugins/rewriteSidenoteTemplate"
 
 /**
  * Frozen processor for markdown content.
@@ -26,9 +31,12 @@ export const markdownProcessor = unified()
   .use(remarkParse)
   .use(remarkGfm)
   .use(remarkRehype, { allowDangerousHtml: true })
+  .use(rehypeRewriteSidenoteToTemplate)
   .use(rehypeRaw)
+  .use(rehypeRewriteSidenoteFromTemplate)
   .use(rehypeLazyContinuation)
   .use(rehypeUnwrapBlockCEs)
+  .use(rehypeGroupSidenotes)
   .use(rehypeUncontrolledInputs)
   .use(rehypeAccessibleSuggestions)
   .use(rehypeSuggestionCards)
@@ -39,9 +47,14 @@ export const markdownProcessor = unified()
 /**
  * Frozen processor for raw HTML content.
  * Preserves HTML fragment structure while still normalizing uncontrolled form
- * inputs and external link attributes.
+ * inputs, external link attributes, and <shiny-sidenote> grouping.
+ *
+ * No rehypeLazyContinuation/rehypeUnwrapBlockCEs: those work around quirks of
+ * markdown parsers wrapping inline HTML in <p> tags, which doesn't apply to a
+ * parse5-parsed HTML fragment.
  */
 export const htmlProcessor = unified()
+  .use(rehypeGroupSidenotes)
   .use(rehypeUncontrolledInputs)
   .use(rehypeAccessibleSuggestions)
   .use(rehypeSuggestionCards)
