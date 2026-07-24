@@ -462,7 +462,7 @@ export const ChatMessage = memo(function ChatMessage({
                 >
                   ‹
                 </button>
-                <span>
+                <span aria-live="polite">
                   {message.siblings.index + 1} / {message.siblings.total}
                 </span>
                 <button
