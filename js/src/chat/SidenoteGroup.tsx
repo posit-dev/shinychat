@@ -11,6 +11,7 @@ import {
 import type { Element } from "hast"
 import { toHtml } from "hast-util-to-html"
 import { MarkdownContent } from "../markdown/MarkdownContent"
+import { SIDENOTE_PENDING_ATTR } from "../markdown/plugins/markTrailingSidenotes"
 
 export interface SidenoteEntry {
   label?: string
@@ -160,6 +161,9 @@ export const SidenoteGroup = memo(function SidenoteGroup({
     return () => document.removeEventListener("mousedown", onDocMouseDown)
   }, [pinned, refs.floating])
 
+  // Withheld while its surrounding block is still streaming (see
+  // rehypeMarkTrailingSidenotes) so the pill doesn't flash in mid-sentence.
+  if (node?.properties?.[SIDENOTE_PENDING_ATTR] != null) return null
   if (entries.length === 0) return null
   const overflow = entries.length - 1
 

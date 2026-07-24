@@ -90,6 +90,13 @@ same paragraph or list item collapse into a single pill, deduped by \code{label}
 (sidenotes sharing a label are the same source; the first occurrence's
 content is kept).
 
+The favicon is fetched at render time from a third-party service
+(DuckDuckGo's icon service), which receives the cited site's hostname. To
+avoid that request — for privacy, or for offline/air-gapped deployments —
+set \code{icon} to a URL you control (e.g. a static asset, or one your server
+resolves before appending the message); an explicit \code{icon} bypasses the
+lookup entirely.
+
 \strong{A labeled sidenote with a one-line body:}
 
 \if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_append(

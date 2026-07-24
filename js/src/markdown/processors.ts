@@ -13,6 +13,7 @@ import { rehypeExternalLinks } from "./plugins/rehypeExternalLinks"
 import { rehypeUncontrolledInputs } from "./plugins/rehypeUncontrolledInputs"
 import { rehypeUnwrapBlockCEs } from "./plugins/rehypeUnwrapBlockCEs"
 import { rehypeGroupSidenotes } from "./plugins/rehypeGroupSidenotes"
+import { rehypeMarkTrailingSidenotes } from "./plugins/markTrailingSidenotes"
 import { rehypeLazyContinuation } from "./plugins/rehypeLazyContinuation"
 import {
   rehypeRewriteSidenoteToTemplate,
@@ -37,6 +38,7 @@ export const markdownProcessor = unified()
   .use(rehypeLazyContinuation)
   .use(rehypeUnwrapBlockCEs)
   .use(rehypeGroupSidenotes)
+  .use(rehypeMarkTrailingSidenotes)
   .use(rehypeUncontrolledInputs)
   .use(rehypeAccessibleSuggestions)
   .use(rehypeSuggestionCards)
@@ -55,6 +57,7 @@ export const markdownProcessor = unified()
  */
 export const htmlProcessor = unified()
   .use(rehypeGroupSidenotes)
+  .use(rehypeMarkTrailingSidenotes)
   .use(rehypeUncontrolledInputs)
   .use(rehypeAccessibleSuggestions)
   .use(rehypeSuggestionCards)

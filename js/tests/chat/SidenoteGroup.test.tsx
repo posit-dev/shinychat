@@ -13,6 +13,18 @@ function renderMarkdown(md: string) {
   )
 }
 
+function renderMarkdownStreaming(md: string) {
+  const hast = parseMarkdown(md, markdownProcessor)
+  return render(
+    <>
+      {hastToReact(hast, {
+        tagToComponentMap: chatTagToComponentMap,
+        streaming: true,
+      })}
+    </>,
+  )
+}
+
 describe("SidenoteGroup", () => {
   it("renders a chip with the label for a single labeled sidenote", () => {
     renderMarkdown(
@@ -89,7 +101,9 @@ describe("SidenoteGroup", () => {
       ".shiny-sidenote-pill img",
     ) as HTMLImageElement
     fireEvent.error(img)
-    expect(img.style.display).toBe("none")
+    // Unmounted rather than hidden: a display:none <img> still satisfies the
+    // pill's `:has(img)` padding rule, so the icon must leave the DOM entirely.
+    expect(container.querySelector(".shiny-sidenote-pill img")).toBeNull()
   })
 
   it("renders nothing for a block with no sidenotes", () => {
@@ -97,6 +111,33 @@ describe("SidenoteGroup", () => {
     expect(
       container.querySelector(".shiny-sidenote-group"),
     ).not.toBeInTheDocument()
+  })
+})
+
+describe("SidenoteGroup streaming", () => {
+  it("hides a sidenote pill while its paragraph is still the streaming block", () => {
+    renderMarkdownStreaming(
+      'A claim<shiny-sidenote label="eBicycles" url="https://ebicycles.example"></shiny-sidenote> and more text',
+    )
+    expect(screen.queryByText("eBicycles")).not.toBeInTheDocument()
+  })
+
+  it("shows a sidenote pill once a later block follows its paragraph, mid-stream", () => {
+    renderMarkdownStreaming(
+      [
+        'A claim<shiny-sidenote label="eBicycles" url="https://ebicycles.example"></shiny-sidenote>.',
+        "",
+        "A later paragraph still streaming",
+      ].join("\n"),
+    )
+    expect(screen.getByText("eBicycles")).toBeInTheDocument()
+  })
+
+  it("shows the trailing paragraph's sidenote pill once streaming ends", () => {
+    renderMarkdown(
+      'A claim<shiny-sidenote label="eBicycles" url="https://ebicycles.example"></shiny-sidenote>.',
+    )
+    expect(screen.getByText("eBicycles")).toBeInTheDocument()
   })
 })
 

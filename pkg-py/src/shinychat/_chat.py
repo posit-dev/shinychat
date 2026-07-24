@@ -948,6 +948,13 @@ class Chat:
         `label` (sidenotes sharing a label are the same source; the first
         occurrence's content is kept).
 
+        The favicon is fetched at render time from a third-party service
+        (DuckDuckGo's icon service), which receives the cited site's hostname.
+        To avoid that request — for privacy, or for offline/air-gapped
+        deployments — set `icon` to a URL you control (e.g. a static asset, or
+        one your server resolves before appending the message); an explicit
+        `icon` bypasses the lookup entirely.
+
         **Examples:**
 
         * A labeled sidenote with a one-line body:
@@ -1246,6 +1253,13 @@ class Chat:
         the same paragraph or list item collapse into a single pill, deduped by
         `label` (sidenotes sharing a label are the same source; the first
         occurrence's content is kept).
+
+        The favicon is fetched at render time from a third-party service
+        (DuckDuckGo's icon service), which receives the cited site's hostname.
+        To avoid that request — for privacy, or for offline/air-gapped
+        deployments — set `icon` to a URL you control (e.g. a static asset, or
+        one your server resolves before appending the message); an explicit
+        `icon` bypasses the lookup entirely.
 
         **Examples:**
 

@@ -61,6 +61,28 @@ describe("rewriteSidenoteTemplate round-trip", () => {
     expect(html).not.toContain("data-shiny-sidenote")
   })
 
+  it("treats a self-closing sidenote as empty, not swallowing following text", () => {
+    const html = process(
+      'A claim<shiny-sidenote label="x" url="https://e.example"/> and more text after.',
+    )
+    expect(html).not.toContain("<template")
+    expect(html).toContain(
+      '<shiny-sidenote label="x" url="https://e.example"></shiny-sidenote>',
+    )
+    // The trailing prose stays in the paragraph rather than becoming the body.
+    expect(html).toContain("</shiny-sidenote> and more text after.</p>")
+  })
+
+  it("does not mistake a slash inside a quoted attribute for the self-close", () => {
+    const html = process(
+      'A claim<shiny-sidenote url="https://e.example/path/"/> tail.',
+    )
+    expect(html).toContain(
+      '<shiny-sidenote url="https://e.example/path/"></shiny-sidenote>',
+    )
+    expect(html).toContain("</shiny-sidenote> tail.</p>")
+  })
+
   it("does not rewrite a sidenote tag written literally inside a code fence", () => {
     const html = process("```\n<shiny-sidenote>x</shiny-sidenote>\n```")
     expect(html).not.toContain("<template")
