@@ -808,6 +808,16 @@ class Chat:
         is called in a `.on_user_submit()` callback (as it most often is), the last
         message will be the most recent one submitted by the user.
 
+        Note
+        ----
+        This reflects the messages the browser has rendered and reported back,
+        so it is *eventually* consistent: it returns an empty tuple until the
+        client's first report, and a message passed to
+        :meth:`~shinychat.Chat.append_message` does not appear here until the
+        browser has rendered it and echoed its snapshot to the server. Read it
+        reactively (e.g. in an `.on_user_submit()` callback) rather than
+        expecting it to update synchronously right after appending.
+
         Returns
         -------
         tuple[ChatMessageDict, ...]
