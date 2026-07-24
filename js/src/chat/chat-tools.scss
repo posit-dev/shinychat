@@ -289,3 +289,244 @@
   max-width: 100%;
   border-radius: var(--bs-border-radius);
 }
+
+// Condensed tool view (Tier-1 group row / Tier-2 call rows / Tier-3 leaf
+// card). The whole activity block reads as a single dimmed unit whether it's
+// still running or finished — never full-strength while streaming.
+$shinychat-tool-row-min-height: 2em;
+
+.shinychat-tool-loop,
+.shiny-tool-result,
+.shiny-tool-request {
+  opacity: 0.65;
+}
+
+// Block spacing lives on the loop wrapper now (finalized cards render inside
+// .shinychat-tool-loop, not the standalone .shiny-tool-result/-request
+// wrappers those rules were written for — see the block above, still needed
+// for the streaming raw-HTML path and kept as-is).
+.shinychat-tool-loop {
+  display: block;
+  margin: 1em 0;
+
+  &:first-child {
+    margin-top: 0;
+  }
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.shinychat-tool-loop + p {
+  margin-top: 1rem;
+}
+
+.shinychat-tool-group {
+  font-size: 0.8em;
+}
+
+.shinychat-tool-group--single > .shiny-tool-card {
+  // The single-call leaf *is* the Tier-1 row; it shouldn't also carry the
+  // loop's own block margin on top of its own card spacing.
+  margin: 0;
+}
+
+.shinychat-tool-spacer {
+  margin-inline-start: auto;
+}
+
+.shinychat-tool-group__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: $shinychat-tool-row-min-height;
+  padding: 0.25rem 0;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+
+  &:hover,
+  &:focus-visible {
+    background-color: rgba(var(--bs-emphasis-color-rgb), 0.05);
+    outline: none;
+  }
+}
+
+.shinychat-tool-group__glyph {
+  --_size: 0.9em;
+  width: var(--_size);
+  height: var(--_size);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  color: var(--bs-secondary-color);
+
+  svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  &.running [class^=spinner] {
+    --bs-spinner-width: var(--_size);
+    --bs-spinner-height: var(--_size);
+    --bs-spinner-border-width: 0.2em;
+  }
+}
+
+.shinychat-tool-glyph-dot {
+  display: inline-block;
+  width: 0.4em;
+  height: 0.4em;
+  margin: auto;
+  border-radius: 50%;
+  background-color: var(--bs-secondary-color);
+}
+
+.shinychat-tool-group__toolname {
+  font-family: var(--bs-font-monospace);
+}
+
+.shinychat-tool-group__count {
+  font-size: 0.85em;
+  font-weight: 400;
+  color: var(--bs-secondary-color);
+}
+
+.shinychat-tool-group__failed {
+  font-size: 0.85em;
+  color: var(--bs-tertiary-color);
+}
+
+.shinychat-tool-group__chevron,
+.shinychat-tool-call-row__chevron {
+  display: grid;
+  place-items: center;
+  width: 1em;
+  height: 1em;
+  flex: none;
+  opacity: 0.66;
+  transition: transform 0.3s ease-in-out;
+}
+
+.shinychat-tool-group__row[aria-expanded="true"] .shinychat-tool-group__chevron,
+.shinychat-tool-call-row__summary[aria-expanded="true"] .shinychat-tool-call-row__chevron {
+  transform: rotate(180deg);
+}
+
+.shinychat-tool-group__calls {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+
+  &[hidden] {
+    display: none;
+  }
+}
+
+.shinychat-tool-call-row {
+  &__summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    min-height: $shinychat-tool-row-min-height;
+    padding: 0.25rem 0 0.25rem 1.4em;
+    background: none;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+
+    &:hover,
+    &:focus-visible {
+      background-color: rgba(var(--bs-emphasis-color-rgb), 0.05);
+      outline: none;
+    }
+  }
+
+  &__status {
+    --_size: 0.9em;
+    width: var(--_size);
+    height: var(--_size);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    color: var(--bs-secondary-color);
+
+    &.running [class^=spinner] {
+      --bs-spinner-width: var(--_size);
+      --bs-spinner-height: var(--_size);
+      --bs-spinner-border-width: 0.2em;
+    }
+
+    &.text-danger {
+      color: var(--bs-danger, #dc3545);
+    }
+  }
+
+  &__label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__preview {
+    opacity: 0.66;
+    font-style: italic;
+    flex-shrink: 3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__detail {
+    overflow: hidden;
+
+    &[hidden] {
+      display: none;
+    }
+
+    &:not([hidden]) {
+      animation: shinychat-tool-detail-reveal 0.2s ease-out;
+    }
+
+    // Trim the leaf card so expanding a Tier-2 row reads as a morph into the
+    // detail rather than a separate stacked card.
+    > .shiny-tool-card {
+      margin-top: 0;
+      border-top-width: 0;
+      border-top-left-radius: 0;
+      border-top-right-radius: 0;
+    }
+  }
+}
+
+@keyframes shinychat-tool-detail-reveal {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.tool-title-label {
+  font-weight: normal;
+  opacity: 0.85;
+}
+
+// Short textual status cue (e.g. "failed") in a leaf card header, so status is
+// legible without relying on icon/color alone. Color comes from the applied
+// status class (e.g. .text-danger) when present.
+.tool-status-note {
+  font-size: 0.85em;
+}
