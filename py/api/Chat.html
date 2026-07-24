@@ -74,7 +74,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-dbde6ece91fc58bf30abbd8587d2285d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-1e813ab646befc76a49ec748d55fbc6b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-3a8676f5fc5689abf272e1ad5890c09b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -938,6 +938,10 @@ specified in model's completion method.</code></pre>
 <h4 class="doc-section doc-section-note anchored" data-anchor-id="note-4">Note</h4>
 <p>Messages are listed in the order they were added. As a result, when this method is called in a <code>.on_user_submit()</code> callback (as it most often is), the last message will be the most recent one submitted by the user.</p>
 </section>
+<section id="note-5" class="level4 doc-section doc-section-note">
+<h4 class="doc-section doc-section-note anchored" data-anchor-id="note-5">Note</h4>
+<p>This reflects the messages the browser has rendered and reported back, so it is <em>eventually</em> consistent: it returns an empty tuple until the client’s first report, and a message passed to :meth:<code>~shinychat.Chat.append_message</code> does not appear here until the browser has rendered it and echoed its snapshot to the server. Read it reactively (e.g.&nbsp;in an <code>.on_user_submit()</code> callback) rather than expecting it to update synchronously right after appending.</p>
+</section>
 <section id="returns-3" class="level4 doc-section doc-section-returns">
 <h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-3">Returns</h4>
 <table class="caption-top table">
@@ -994,8 +998,8 @@ specified in model's completion method.</code></pre>
 </tbody>
 </table>
 </section>
-<section id="note-5" class="level4 doc-section doc-section-note">
-<h4 class="doc-section doc-section-note anchored" data-anchor-id="note-5">Note</h4>
+<section id="note-6" class="level4 doc-section doc-section-note">
+<h4 class="doc-section doc-section-note anchored" data-anchor-id="note-6">Note</h4>
 <p>This method creates a reactive effect that only gets invalidated when the user submits a message. Thus, the function <code>fn</code> can read other reactive dependencies, but it will only be re-invoked when the user submits a message.</p>
 </section>
 </section>
@@ -1278,8 +1282,8 @@ specified in model's completion method.</code></pre>
 </tbody>
 </table>
 </section>
-<section id="note-6" class="level4 doc-section doc-section-note">
-<h4 class="doc-section doc-section-note anchored" data-anchor-id="note-6">Note</h4>
+<section id="note-7" class="level4 doc-section doc-section-note">
+<h4 class="doc-section doc-section-note anchored" data-anchor-id="note-7">Note</h4>
 <p>Most users shouldn’t need to use this method directly since the last item in <code>.messages()</code> contains the most recent user input. It can be useful for:</p>
 <ol type="1">
 <li>Taking a reactive dependency on the user’s input outside of a <code>.on_user_submit()</code> callback.</li>
