@@ -7,17 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [UNRELEASED]
 
+### Changes
+
+* The record of displayed messages is now sourced from the browser rather than a server-side accumulator. As a consequence, `chat.messages()` is *eventually* consistent: it returns an empty tuple until the client's first report, and a message passed to `chat.append_message()` does not appear there until the browser has rendered it and reported back. Read it reactively rather than expecting a synchronous update immediately after appending. (#272)
+    * The user-submission input (`input[f"{id}_user_input"]`) is now a persistent regular input rather than an event-priority one, so it retains its last value between submissions. This lets it co-batch with the message snapshot in a single reactive flush. It remains excluded from bookmarks. (#272)
+
+## [0.6.0] - 2026-07-06
+
+### New features
+
 * `Chat(client=...)` now gets multi-conversation history automatically: a drawer for starting new chats and returning to previous ones, with LLM-generated titles, search, rename, and delete. Conversations are persisted per-user (or a custom scope) via a pluggable store — the default `FileConversationStore` finds a redeploy-safe location automatically on Posit Connect. Customize with `Chat(history=HistoryOptions(...))`, or opt out entirely with `history=False`. For apps that don't use `client=`, wire it up manually with `chat.history.enable()`. (#266)
     * `HistoryOptions(restore_mode=...)` controls how the active conversation is remembered across page reloads: `"browser"` (default) via `localStorage`, `"url"` via a `?shinychat_conversation_id=` query parameter, `"bookmark"` via full Shiny server bookmarking (requires `bookmark_store="server"`, and also restores raw input controls), or `"none"` to disable. Use `@chat.history.on_save` / `@chat.history.on_restore` to keep other app state (tabs, filters, model choice) synced to the active conversation. (#266)
 
 * File attachment support: users can upload images, PDFs, and text files alongside chat messages via a file picker button, drag-and-drop, or clipboard paste. Enable with `chat_ui(allow_attachments=True)` or pass a list of MIME types to restrict accepted file types. When using `client=`, attachments are enabled automatically and converted to the appropriate chatlas content types. For manual wiring, declare a second `list[Attachment]` parameter on your `@chat.on_user_submit` handler and use `attachment_to_content()` to convert each attachment. The maximum combined attachment size defaults to approximately 30 MB and can be configured via the `SHINYCHAT_MAX_ATTACHMENT_SIZE` environment variable.
 
-* The record of displayed messages is now sourced from the browser rather than a server-side accumulator. As a consequence, `chat.messages()` is *eventually* consistent: it returns an empty tuple until the client's first report, and a message passed to `chat.append_message()` does not appear there until the browser has rendered it and reported back. Read it reactively rather than expecting a synchronous update immediately after appending. (#272)
-    * The user-submission input (`input[f"{id}_user_input"]`) is now a persistent regular input rather than an event-priority one, so it retains its last value between submissions. This lets it co-batch with the message snapshot in a single reactive flush. It remains excluded from bookmarks. (#272)
-
-### Bug fixes
+### Changes
 
 * The `dismissible` parameter of `chat_greeting()` has been renamed to `persistent` with an inverted value. `dismissible=False` (greeting stays visible) is now `persistent=True`. The old `dismissible` argument still works but warns. (#260)
+
+### Bug fixes
 
 * Fixed suggestion cards and the greeting overflowing the chat container in narrow spaces such as sidebars. (#255)
 
