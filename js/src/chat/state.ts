@@ -584,7 +584,14 @@ function mergeAdjacentLoops(
   const out: MessageBlock[] = []
   for (const block of blocks) {
     const prev = out[out.length - 1]
-    if (block.type === "tool_loop" && prev?.type === "tool_loop") {
+    // Only coalesce loops that share a content type; segments may carry mixed
+    // content types (e.g. markdown then text) and merging them would re-render
+    // one segment's raw slice under the other's type.
+    if (
+      block.type === "tool_loop" &&
+      prev?.type === "tool_loop" &&
+      prev.contentType === block.contentType
+    ) {
       const calls = [...prev.groups.flatMap((g) => g.calls)]
       const combinedContent = prev.content + block.content
       const combinedCalls = calls.concat(block.groups.flatMap((g) => g.calls))
