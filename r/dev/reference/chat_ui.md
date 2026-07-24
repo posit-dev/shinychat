@@ -10,6 +10,18 @@ and use
 [`chat_append()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_append.md)
 to append messages to the chat.
 
+The chat also reports the client's current rendered message transcript
+as `input$ID_messages` (for example, `input$my_chat_messages`), tagged
+`shinychat.messages`. It updates every time a message finishes rendering
+or streaming (a "settle point"), and is a list of message objects:
+`list(role =, segments = list(list(content =, content_type =), ...))`,
+plus optional `htmlDeps` and `attachments` fields when present.
+[`chat_enable_history()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_enable_history.md)
+reads this internally to persist and restore exactly what was rendered —
+including raw HTML and Shiny UI dependencies — across a conversation
+switch or reload. It's exposed for advanced, read-only use (for example,
+custom logging or export); it is not an input you write to.
+
 ## Usage
 
 ``` r

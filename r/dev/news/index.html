@@ -69,6 +69,7 @@
 <h3 id="breaking-changes-development-version">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-development-version"></a></h3>
 <ul><li><p><code>input$&lt;id&gt;_user_input</code> now depends on <code>allow_attachments</code>. With <code>allow_attachments = FALSE</code>, it remains the historical typed string. With attachments enabled (<code>TRUE</code> or a MIME allow-list), it is always a list of ellmer <code>Content</code> objects (typed text, if present, followed by one object per attachment), and the separate <code>input$&lt;id&gt;_user_attachments</code> input has been removed. Forward either form to a chat method by splicing with <code>!!!</code>, e.g. <code>chat$stream_async(!!!input$&lt;id&gt;_user_input)</code>.</p></li>
 <li><p>The <code>last_input</code> reactive returned by <code><a href="../reference/chat_app.html">chat_server()</a></code> now mirrors the shape of <code>input$&lt;id&gt;_user_input</code>: a string when attachments are disabled, and a list of ellmer <code>Content</code> objects when enabled.</p></li>
+<li><p><code>input$&lt;id&gt;_user_input</code> is now a persistent regular input rather than an event input, so it retains its last submitted value between submissions instead of resetting to <code>NULL</code>. This lets it co-batch with the client’s message snapshot in a single reactive flush. It remains excluded from bookmarks.</p></li>
 </ul></div>
 <div class="section level3">
 <h3 id="bug-fixes-development-version">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-development-version"></a></h3>
@@ -167,7 +168,7 @@
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
     </footer></div>

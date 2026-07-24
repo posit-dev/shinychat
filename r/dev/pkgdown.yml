@@ -1,10 +1,10 @@
 pandoc: 3.8.3
-pkgdown: 2.2.0
+pkgdown: 2.2.1
 pkgdown_sha: ~
 articles:
   get-started: get-started.html
   articles/tool-ui: tool-ui.html
-last_built: 2026-07-02T20:07Z
+last_built: 2026-07-24T18:08Z
 urls:
   reference: https://posit-dev.github.io/shinychat/r/reference
   article: https://posit-dev.github.io/shinychat/r/articles
