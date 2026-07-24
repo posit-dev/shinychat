@@ -1916,6 +1916,35 @@ describe("routeToolBlocks (tool content router)", () => {
     const tail = blocks[blocks.length - 1]!
     expect(tail.type).toBe("content")
   })
+
+  it("merges adjacent tool loops that share a content type into one loop", () => {
+    const input: MessageBlock[] = [
+      { type: "content", content: res("1", "X"), contentType: "markdown" },
+      { type: "content", content: res("2", "X"), contentType: "markdown" },
+    ]
+    const blocks = routeToolBlocks(input, "tool")
+    expect(blocks.map((b) => b.type)).toEqual(["tool_loop"])
+    const calls = (blocks[0] as ToolLoopBlock).groups.flatMap((g) => g.calls)
+    expect(calls).toHaveLength(2)
+  })
+
+  it("does NOT merge adjacent tool loops from segments with different content types", () => {
+    const input: MessageBlock[] = [
+      { type: "content", content: res("1", "X"), contentType: "markdown" },
+      { type: "content", content: res("2", "X"), contentType: "text" },
+    ]
+    const blocks = routeToolBlocks(input, "tool")
+    expect(blocks.map((b) => b.type)).toEqual(["tool_loop", "tool_loop"])
+    expect((blocks[0] as ToolLoopBlock).contentType).toBe("markdown")
+    expect((blocks[1] as ToolLoopBlock).contentType).toBe("text")
+    // Each loop keeps only its own call, rather than the two being combined.
+    expect(
+      (blocks[0] as ToolLoopBlock).groups.flatMap((g) => g.calls),
+    ).toHaveLength(1)
+    expect(
+      (blocks[1] as ToolLoopBlock).groups.flatMap((g) => g.calls),
+    ).toHaveLength(1)
+  })
 })
 
 describe("toolGrouping state wiring (Phase 1)", () => {

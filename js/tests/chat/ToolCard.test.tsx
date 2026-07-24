@@ -94,4 +94,33 @@ describe("ToolCard", () => {
     expect(nameSpan!.querySelector("b")).toBeTruthy()
     expect(nameSpan!.textContent).toBe("bold")
   })
+
+  it("does not wrap the title in a 'Running '/'failed' template (titleTemplate removed)", () => {
+    const { container } = render(
+      <ToolCard
+        requestId="no-template"
+        toolName="search"
+        toolTitle="Searching"
+        statusNote="failed"
+      >
+        <div>body</div>
+      </ToolCard>,
+    )
+
+    // The title is rendered verbatim, with no prefix/suffix wrapper baked in.
+    expect(container.querySelector(".tool-title-name")?.textContent).toBe(
+      "Searching",
+    )
+    expect(container.querySelector(".tool-title")?.textContent).not.toContain(
+      "Running ",
+    )
+    // "failed" appears only in the separate status-note element, not appended
+    // to the title text itself.
+    expect(container.querySelector(".tool-title")?.textContent).not.toContain(
+      "failed",
+    )
+    expect(container.querySelector(".tool-status-note")?.textContent).toBe(
+      "failed",
+    )
+  })
 })

@@ -184,4 +184,72 @@ describe("ToolGroup", () => {
       container.querySelector(".shinychat-tool-group__glyph .spinner-border"),
     ).toBeTruthy()
   })
+
+  it("shows a text 'failed' status note (not just color/icon) for a single-call error result", () => {
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          title: "Ran R code",
+          calls: [
+            call({
+              requestId: "a",
+              status: "error",
+              value: "boom",
+              valueType: "text",
+            }),
+          ],
+        })}
+      />,
+    )
+    const note = container.querySelector(".tool-status-note")
+    expect(note?.textContent).toBe("failed")
+    // No leftover title-wrapper text like "failed" appended to the title itself.
+    expect(container.querySelector(".tool-title")?.textContent).not.toContain(
+      "failed",
+    )
+  })
+
+  it("gives the single-call running spinner a visually-hidden 'Running…' label", () => {
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          title: "Running R code",
+          calls: [
+            call({
+              requestId: "a",
+              status: "running",
+              title: "Running R code",
+            }),
+          ],
+        })}
+      />,
+    )
+    const hidden = container.querySelector(".tool-icon .visually-hidden")
+    expect(hidden?.textContent).toBe("Running…")
+    // The visible title text has no "Running " prefix wrapper baked in by us;
+    // it's whatever the server-provided title says.
+    expect(container.querySelector(".tool-title")?.textContent).toBe(
+      "Running R code",
+    )
+  })
+
+  it("does not render a label for a call with neither an explicit label nor a scalar argument", () => {
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          title: "Searched",
+          calls: [
+            call({ requestId: "a", arguments: '{"nested":{"a":1}}' }),
+            call({ requestId: "b", arguments: "{}" }),
+          ],
+        })}
+      />,
+    )
+    fireEvent.click(
+      container.querySelector(".shinychat-tool-group__row") as Element,
+    )
+    expect(
+      container.querySelector(".shinychat-tool-call-row__label"),
+    ).toBeNull()
+  })
 })
