@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import logging
-
 import pytest
 from shinychat._chat_types import StoredMessage
 from shinychat._input_handler import messages_input_value
@@ -22,38 +20,25 @@ def test_messages_handler_deserializes_snapshot():
     assert out[1].segments[0].html_deps == [{"name": "w", "version": "1.0.0"}]
 
 
-def test_messages_handler_skips_message_missing_content_type():
+def test_messages_handler_raises_on_message_missing_content_type():
     payload = [
         {"role": "user", "segments": [{"content": "hi"}]},
         {"role": "assistant", "segments": [{"content": "yo", "content_type": "markdown"}]},
     ]
-    out = messages_input_value(payload)
-    assert len(out) == 1
-    assert out[0].role == "assistant"
+    with pytest.raises(KeyError):
+        messages_input_value(payload)
 
 
-def test_messages_handler_skips_message_with_invalid_role():
+def test_messages_handler_raises_on_message_with_invalid_role():
     payload = [
         {"role": "bogus", "segments": [{"content": "hi", "content_type": "markdown"}]},
         {"role": "user", "segments": [{"content": "yo", "content_type": "markdown"}]},
     ]
-    out = messages_input_value(payload)
-    assert len(out) == 1
-    assert out[0].role == "user"
+    with pytest.raises(ValueError):
+        messages_input_value(payload)
 
 
-def test_messages_handler_logs_warning_on_skipped_message(
-    caplog: pytest.LogCaptureFixture,
-):
-    payload = [{"role": "bogus", "segments": []}]
-    with caplog.at_level(logging.WARNING):
-        out = messages_input_value(payload)
-    assert out == []
-    assert len(caplog.records) == 1
-    assert "malformed" in caplog.text.lower()
-
-
-def test_messages_handler_skips_message_with_unsupported_attachment_mime():
+def test_messages_handler_raises_on_message_with_unsupported_attachment_mime():
     payload = [
         {
             "role": "user",
@@ -69,12 +54,11 @@ def test_messages_handler_skips_message_with_unsupported_attachment_mime():
         },
         {"role": "assistant", "segments": [{"content": "yo", "content_type": "markdown"}]},
     ]
-    out = messages_input_value(payload)
-    assert len(out) == 1
-    assert out[0].role == "assistant"
+    with pytest.raises(ValueError):
+        messages_input_value(payload)
 
 
-def test_messages_handler_skips_message_with_oversized_attachment(
+def test_messages_handler_raises_on_message_with_oversized_attachment(
     monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.setenv("SHINYCHAT_MAX_ATTACHMENT_SIZE", "3")
@@ -93,5 +77,5 @@ def test_messages_handler_skips_message_with_oversized_attachment(
             ],
         },
     ]
-    out = messages_input_value(payload)
-    assert out == []
+    with pytest.raises(ValueError):
+        messages_input_value(payload)
