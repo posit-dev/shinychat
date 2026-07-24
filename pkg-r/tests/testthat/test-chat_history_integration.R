@@ -684,8 +684,11 @@ test_that("the client's `_messages` echo drives the save and preserves the displ
 
   make_turn <- function(role, text) {
     list(
-      class = if (role == "user") "ellmer::UserTurn" else
-        "ellmer::AssistantTurn",
+      class = if (role == "user") {
+        "ellmer::UserTurn"
+      } else {
+        "ellmer::AssistantTurn"
+      },
       version = 1,
       props = list(
         contents = list(
