@@ -8,12 +8,13 @@
 #' App's bookmark will be automatically updated without showing a modal to the
 #' user.
 #'
-#' Note: The `client`'s chat state and the greeting content are both
-#' saved/restored automatically. If the `client`'s state doesn't properly
-#' capture the chat's UI (i.e., a transformation is applied in-between
-#' receiving and displaying the message), you may need to implement your own
-#' `session$onRestore()` (and possibly `session$onBookmark`) handler to restore
-#' any additional state.
+#' Note: The chat's displayed UI is restored from the browser's own message
+#' snapshot when `bookmarkStore = "server"`, so display-only transformations
+#' (rendering applied between receiving a message and showing it) are preserved.
+#' Under `bookmarkStore = "url"`, and for bookmarks saved before this snapshot
+#' existed, restoration falls back to re-deriving the UI from the `client`'s
+#' turns, which does not capture such transformations. The greeting content is
+#' also saved/restored automatically.
 #'
 #' To avoid restoring chat history from the `client`, you can ensure that the
 #' history is empty by calling `client$set_turns(list())` before passing the
