@@ -8,7 +8,7 @@ import { toHtml } from "hast-util-to-html"
 import type { Element } from "hast"
 import type { ContentType } from "../transport/types"
 import { parseMarkdown, parseHtml, hastToReact } from "./markdownToReact"
-import { hideTrailingPartialSidenoteTag } from "./hideTrailingPartialTag"
+import { hideTrailingPartialAsideTag } from "./hideTrailingPartialTag"
 import {
   markdownProcessor,
   htmlProcessor,
@@ -65,7 +65,7 @@ export function MarkdownContent({
   )
 
   const parseSource =
-    streaming && !isText ? hideTrailingPartialSidenoteTag(content) : content
+    streaming && !isText ? hideTrailingPartialAsideTag(content) : content
 
   // Stage 1 (expensive): parse markdown string → HAST. Cached by content+processor.
   const hast = useMemo(

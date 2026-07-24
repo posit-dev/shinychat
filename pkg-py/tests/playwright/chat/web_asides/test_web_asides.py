@@ -4,7 +4,7 @@ from shiny.run import ShinyAppProc
 from shinychat.playwright import ChatController
 
 
-def test_web_sidenotes(page: Page, local_app: ShinyAppProc) -> None:
+def test_web_asides(page: Page, local_app: ShinyAppProc) -> None:
     page.goto(local_app.url)
 
     chat = ChatController(page, "chat")
@@ -17,55 +17,49 @@ def test_web_sidenotes(page: Page, local_app: ShinyAppProc) -> None:
     chat.set_user_input("tell me about e-bike motors")
     chat.send_user_input()
 
-    # Wait for the stream to finish: two sidenote groups should appear.
-    groups = page.locator(".shiny-sidenote-group")
+    # Wait for the stream to finish: two aside groups should appear.
+    groups = page.locator(".shiny-aside-group")
     expect(groups).to_have_count(2, timeout=30 * 1000)
 
-    # First group: two sidenotes sharing one sentence, different labels →
+    # First group: two asides sharing one sentence, different labels →
     # labeled chip (first source's label) with a "+1" overflow.
     first = groups.nth(0)
-    expect(first.locator(".shiny-sidenote-pill__label")).to_have_text(
-        "eBicycles"
-    )
-    expect(first.locator(".shiny-sidenote-pill__overflow")).to_have_text("+1")
+    expect(first.locator(".shiny-aside-pill__label")).to_have_text("eBicycles")
+    expect(first.locator(".shiny-aside-pill__overflow")).to_have_text("+1")
 
     # Clicking the pill opens the popover on the first source. The popover
     # renders through a portal (attached to document.body), so it is not a
     # descendant of the group — locate it from the page. Only one popover is
     # open at a time, so this resolves unambiguously.
-    first.locator(".shiny-sidenote-pill").click()
-    popover = page.locator(".shiny-sidenote-popover")
+    first.locator(".shiny-aside-pill").click()
+    popover = page.locator(".shiny-aside-popover")
     expect(popover).to_be_visible()
     expect(popover).to_contain_text("eBicycles")
-    expect(popover.locator(".shiny-sidenote-popover__count")).to_have_text(
-        "1 / 2"
-    )
+    expect(popover.locator(".shiny-aside-popover__count")).to_have_text("1 / 2")
 
     # Paging to the second source.
     popover.get_by_role("button", name="Next source").click()
     expect(popover).to_contain_text("WIRED")
-    expect(popover.locator(".shiny-sidenote-popover__count")).to_have_text(
-        "2 / 2"
-    )
+    expect(popover.locator(".shiny-aside-popover__count")).to_have_text("2 / 2")
 
-    # Second group: a bare, label-less developer-authored sidenote → falls
+    # Second group: a bare, label-less developer-authored aside → falls
     # back to a plain count pill (no chip, no favicon).
     second = groups.nth(1)
-    expect(second.locator(".shiny-sidenote-pill--count")).to_have_text("1")
-    second.locator(".shiny-sidenote-pill").click()
+    expect(second.locator(".shiny-aside-pill--count")).to_have_text("1")
+    second.locator(".shiny-aside-pill").click()
 
-    # The label-less sidenote carries a rich block body (a list) in its
+    # The label-less aside carries a rich block body (a list) in its
     # popover.
-    second_popover = page.locator(".shiny-sidenote-popover")
+    second_popover = page.locator(".shiny-aside-popover")
     expect(second_popover).to_contain_text("Methodology")
     expect(second_popover).to_contain_text("40 commuter e-bike models")
     expect(second_popover).to_contain_text("released in 2024")
 
 
-def test_web_sidenote_symmetric_padding_when_favicon_fails(
+def test_web_aside_symmetric_padding_when_favicon_fails(
     page: Page, local_app: ShinyAppProc
 ) -> None:
-    # A labeled sidenote whose favicon fails to load shows no icon, so its
+    # A labeled aside whose favicon fails to load shows no icon, so its
     # pill must keep symmetric padding — not the reduced start padding
     # reserved for pills that actually display an icon. The failed <img> must
     # be removed from the DOM (not merely hidden) so `:has(img)` reflects
@@ -78,11 +72,8 @@ def test_web_sidenote_symmetric_padding_when_favicon_fails(
     chat.set_user_input("tell me about e-bike motors")
     chat.send_user_input()
 
-    pill = (
-        page.locator(".shiny-sidenote-group")
-        .first.locator(".shiny-sidenote-pill")
-    )
-    expect(pill.locator(".shiny-sidenote-pill__label")).to_have_text(
+    pill = page.locator(".shiny-aside-group").first.locator(".shiny-aside-pill")
+    expect(pill.locator(".shiny-aside-pill__label")).to_have_text(
         "eBicycles", timeout=30 * 1000
     )
     expect(pill.locator("img")).to_have_count(0)

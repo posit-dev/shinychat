@@ -10,7 +10,7 @@ import type { Processor } from "unified"
 import { sanitizeUrls } from "./urlSanitize"
 import { withStreamingDot } from "./streamingDot"
 import { finalizePendingSuggestionLists } from "./plugins/rehypeSuggestionCards"
-import { finalizePendingSidenotes } from "./plugins/markTrailingSidenotes"
+import { finalizePendingAsides } from "./plugins/markTrailingAsides"
 
 /** React prop names → HTML attribute names (where they differ). */
 const reactToHtmlAttr: Record<string, string> = {
@@ -132,7 +132,7 @@ export function hastToReact(
   const { tagToComponentMap, streaming } = options
   const finalized = streaming
     ? hast
-    : finalizePendingSidenotes(finalizePendingSuggestionLists(hast))
+    : finalizePendingAsides(finalizePendingSuggestionLists(hast))
   const tree = streaming ? withStreamingDot(finalized) : finalized
 
   return toJsxRuntime(tree, {

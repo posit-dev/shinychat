@@ -2,20 +2,20 @@ import type { Root, Element, ElementContent, RootContent } from "hast"
 import type { Plugin } from "unified"
 
 /**
- * Attribute marking a sidenote group whose surrounding block is still being
- * streamed. While present, `<SidenoteGroup>` renders nothing so the pill does
+ * Attribute marking an aside group whose surrounding block is still being
+ * streamed. While present, `<AsideGroup>` renders nothing so the pill does
  * not flash into view (and jitter as text streams past it) before its position
- * is settled. `finalizePendingSidenotes` clears it at end of stream.
+ * is settled. `finalizePendingAsides` clears it at end of stream.
  */
-export const SIDENOTE_PENDING_ATTR = "dataPending"
+export const ASIDE_PENDING_ATTR = "dataPending"
 
-const GROUP_TAG = "shiny-sidenote-group"
+const GROUP_TAG = "shiny-aside-group"
 
 function isPendingGroup(el: Element): boolean {
   return (
     el.tagName === GROUP_TAG &&
     el.properties != null &&
-    SIDENOTE_PENDING_ATTR in el.properties
+    ASIDE_PENDING_ATTR in el.properties
   )
 }
 
@@ -31,22 +31,22 @@ function lastElementChild(node: Root | Element): Element | null {
 function markGroupChildrenPending(container: Root | Element): void {
   for (const child of container.children) {
     if (child.type === "element" && child.tagName === GROUP_TAG) {
-      child.properties = { ...child.properties, [SIDENOTE_PENDING_ATTR]: "" }
+      child.properties = { ...child.properties, [ASIDE_PENDING_ATTR]: "" }
     }
   }
 }
 
 /**
- * Mark every sidenote group inside the still-open trailing block as pending.
+ * Mark every aside group inside the still-open trailing block as pending.
  *
  * During streaming the growing block is always the deepest one reached by
- * following the last element child at each level. `rehypeGroupSidenotes`
+ * following the last element child at each level. `rehypeGroupAsides`
  * appends each group as the last child of its container, so encountering a
- * group along that descent means its parent is the open block — its sidenotes
+ * group along that descent means its parent is the open block — its asides
  * are not yet fixed in place. Everything earlier in document order has been
  * settled by a following block and is left visible.
  */
-export const rehypeMarkTrailingSidenotes: Plugin<[], Root> = () => (tree) => {
+export const rehypeMarkTrailingAsides: Plugin<[], Root> = () => (tree) => {
   let current: Root | Element = tree
   while (true) {
     const lastEl = lastElementChild(current)
@@ -60,12 +60,12 @@ export const rehypeMarkTrailingSidenotes: Plugin<[], Root> = () => (tree) => {
 }
 
 /**
- * Clear pending markers from all sidenote groups, returning a new tree only if
+ * Clear pending markers from all aside groups, returning a new tree only if
  * something changed (identity otherwise). Called from `hastToReact` when
  * streaming has ended; mirrors the path-copy strategy of the suggestion
  * finalizer so the cached Stage-1 HAST is never mutated.
  */
-export function finalizePendingSidenotes(tree: Root): Root {
+export function finalizePendingAsides(tree: Root): Root {
   const children = stripChildren(tree.children)
   return children ? { ...tree, children } : tree
 }
@@ -89,6 +89,6 @@ function stripElement(el: Element): Element {
   const newChildren = stripChildren(el.children)
   if (!pending && !newChildren) return el
   const properties = { ...el.properties }
-  if (pending) delete properties[SIDENOTE_PENDING_ATTR]
+  if (pending) delete properties[ASIDE_PENDING_ATTR]
   return { ...el, properties, children: newChildren ?? el.children }
 }

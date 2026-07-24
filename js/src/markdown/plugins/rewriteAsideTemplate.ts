@@ -22,48 +22,47 @@ function isElementContent(node: RootContent): node is ElementContent {
 }
 
 /**
- * BEFORE rehype-raw: rewrite `<shiny-sidenote …>`/`</shiny-sidenote>` raw
- * strings to `<template data-shiny-sidenote …>`/`</template>`. `<template>` is
+ * BEFORE rehype-raw: rewrite `<shiny-aside …>`/`</shiny-aside>` raw
+ * strings to `<template data-shiny-aside …>`/`</template>`. `<template>` is
  * the one tag parse5 gives "in template" tree construction, so its content is
  * pulled into a `.content` fragment with full block nesting instead of being
  * orphaned by the `<p>`-can't-contain-blocks auto-close rule. Operating on raw
- * nodes only means literal sidenote text inside code fences/spans is untouched.
- * The lookahead `[\s/>]` avoids matching `<shiny-sidenote-group>`.
+ * nodes only means literal aside text inside code fences/spans is untouched.
+ * The lookahead `[\s/>]` avoids matching `<shiny-aside-group>`.
  *
- * Self-closing `<shiny-sidenote .../>` is normalized to an open/close pair
- * first: a lone `<template data-shiny-sidenote/>` would (like any non-void
+ * Self-closing `<shiny-aside .../>` is normalized to an open/close pair
+ * first: a lone `<template data-shiny-aside/>` would (like any non-void
  * element) ignore the `/` and swallow everything up to the next `</template>`,
  * eating the text that follows the tag. The attribute scan skips over quoted
  * values so a `/` inside e.g. `url="https://…"` isn't mistaken for the close.
  */
-export const rehypeRewriteSidenoteToTemplate: Plugin<[], Root> =
-  () => (tree) => {
-    visit(tree, (node) => {
-      if (!isRaw(node)) return
-      node.value = node.value
-        .replace(
-          /<shiny-sidenote(?=[\s/>])((?:"[^"]*"|'[^']*'|[^"'>])*?)\/>/g,
-          "<shiny-sidenote$1></shiny-sidenote>",
-        )
-        .replace(/<shiny-sidenote(?=[\s/>])/g, "<template data-shiny-sidenote")
-        .replace(/<\/shiny-sidenote\s*>/g, "</template>")
-    })
-  }
+export const rehypeRewriteAsideToTemplate: Plugin<[], Root> = () => (tree) => {
+  visit(tree, (node) => {
+    if (!isRaw(node)) return
+    node.value = node.value
+      .replace(
+        /<shiny-aside(?=[\s/>])((?:"[^"]*"|'[^']*'|[^"'>])*?)\/>/g,
+        "<shiny-aside$1></shiny-aside>",
+      )
+      .replace(/<shiny-aside(?=[\s/>])/g, "<template data-shiny-aside")
+      .replace(/<\/shiny-aside\s*>/g, "</template>")
+  })
+}
 
 /**
  * AFTER rehype-raw: undo the disguise. parse5 stores template content in the
  * `.content` fragment (which `toJsxRuntime` ignores), so hoist it into normal
- * `.children` and rename back to `<shiny-sidenote>`. Downstream code then sees
+ * `.children` and rename back to `<shiny-aside>`. Downstream code then sees
  * an ordinary custom element whose children may contain blocks.
  */
-export const rehypeRewriteSidenoteFromTemplate: Plugin<[], Root> =
+export const rehypeRewriteAsideFromTemplate: Plugin<[], Root> =
   () => (tree) => {
     visit(tree, "element", (node: Element) => {
       if (node.tagName !== "template") return
-      if (!node.properties || !("dataShinySidenote" in node.properties)) return
-      node.tagName = "shiny-sidenote"
+      if (!node.properties || !("dataShinyAside" in node.properties)) return
+      node.tagName = "shiny-aside"
       node.children = (node.content?.children ?? []).filter(isElementContent)
       delete node.content
-      delete node.properties.dataShinySidenote
+      delete node.properties.dataShinyAside
     })
   }

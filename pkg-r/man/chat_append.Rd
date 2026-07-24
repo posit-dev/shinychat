@@ -70,25 +70,25 @@ observer, shinychat will log the error message and show a message that the
 error occurred in the chat UI.
 }
 
-\section{Sidenotes}{
-A sidenote is a small pill that appears at the end of the paragraph or list
+\section{Asides}{
+An aside is a small pill that appears at the end of the paragraph or list
 item it's attached to, showing a popover on hover, click, or keyboard
 focus. Create one by writing (or prompting an LLM to write) an inline
-\verb{<shiny-sidenote>} tag anywhere in a block's markdown; the tag's content
+\verb{<shiny-aside>} tag anywhere in a block's markdown; the tag's content
 becomes the popover body:
 \itemize{
-\item \verb{<shiny-sidenote label="a source name" url="https://...">markdown shown in the popover</shiny-sidenote>}
+\item \verb{<shiny-aside label="a source name" url="https://...">markdown shown in the popover</shiny-aside>}
 }
 
-\code{label} and \code{url} are optional but recommended together — a sidenote with a
+\code{label} and \code{url} are optional but recommended together — an aside with a
 \code{label} renders as an identity chip (with a favicon derived from \code{url},
 unless \code{icon} overrides it); without one, it falls back to a plain
 numbered/count marker. The body is ordinary markdown: inline for a
 one-liner, or — by separating it with blank lines — a rich block body
-(paragraphs, lists, code) shown in the popover. Multiple sidenotes in the
+(paragraphs, lists, code) shown in the popover. Multiple asides in the
 same paragraph or list item collapse into a single pill, each kept as a
 separate popover page you can page through. The pill shows a \code{+N} overflow
-count only when the grouped sidenotes have differing labels; sidenotes
+count only when the grouped asides have differing labels; asides
 sharing one label collapse to a single face with no count.
 
 The favicon is fetched at render time from a third-party service
@@ -98,47 +98,47 @@ set \code{icon} to a URL you control (e.g. a static asset, or one your server
 resolves before appending the message); an explicit \code{icon} bypasses the
 lookup entirely.
 
-\strong{A labeled sidenote with a one-line body:}
+\strong{A labeled aside with a one-line body:}
 
 \if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_append(
   "chat",
   paste0(
     "Hub motors are cheaper",
-    '<shiny-sidenote label="eBicycles" url="https://ebicycles.example/hub-vs-mid-drive">',
+    '<shiny-aside label="eBicycles" url="https://ebicycles.example/hub-vs-mid-drive">',
     "[Hub Motor vs. Mid-Drive Motor Differences Explained]",
     "(https://ebicycles.example/hub-vs-mid-drive)",
-    "</shiny-sidenote>",
+    "</shiny-aside>",
     ", and ideal for flatter terrain."
   )
 )
 }\if{html}{\out{</div>}}
 
-\strong{Two sidenotes cited in the same sentence} collapse into one pill (the
+\strong{Two asides cited in the same sentence} collapse into one pill (the
 first source's label becomes the face, with a "+1" overflow):
 
 \if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_append(
   "chat",
   paste0(
     "Hub motors are cheaper",
-    '<shiny-sidenote label="eBicycles" url="https://ebicycles.example">...</shiny-sidenote>',
-    '<shiny-sidenote label="WIRED" url="https://wired.example">...</shiny-sidenote>',
+    '<shiny-aside label="eBicycles" url="https://ebicycles.example">...</shiny-aside>',
+    '<shiny-aside label="WIRED" url="https://wired.example">...</shiny-aside>',
     ", and ideal for flatter terrain."
   )
 )
 }\if{html}{\out{</div>}}
 
-\strong{A label-less sidenote with a rich block body} (falls back to a plain
+\strong{A label-less aside with a rich block body} (falls back to a plain
 numbered pill):
 
 \if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_append(
   "chat",
   paste0(
     "Battery quality matters more than raw power",
-    "<shiny-sidenote>\\n\\n",
+    "<shiny-aside>\\n\\n",
     "**Methodology**\\n\\n",
     "- 40 commuter e-bike models\\n",
     "- released in 2024\\n\\n",
-    "</shiny-sidenote>"
+    "</shiny-aside>"
   )
 )
 }\if{html}{\out{</div>}}

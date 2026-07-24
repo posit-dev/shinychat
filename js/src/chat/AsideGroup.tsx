@@ -11,9 +11,9 @@ import {
 import type { Element } from "hast"
 import { toHtml } from "hast-util-to-html"
 import { MarkdownContent } from "../markdown/MarkdownContent"
-import { SIDENOTE_PENDING_ATTR } from "../markdown/plugins/markTrailingSidenotes"
+import { ASIDE_PENDING_ATTR } from "../markdown/plugins/markTrailingAsides"
 
-export interface SidenoteEntry {
+export interface AsideEntry {
   label?: string
   url?: string
   icon?: string
@@ -21,7 +21,7 @@ export interface SidenoteEntry {
   index?: number
 }
 
-interface SidenoteGroupProps {
+interface AsideGroupProps {
   node?: Element
 }
 
@@ -35,12 +35,11 @@ function numProp(el: Element, name: string): number | undefined {
   return typeof v === "number" ? v : undefined
 }
 
-export function parseSidenoteEntries(node?: Element): SidenoteEntry[] {
+export function parseAsideEntries(node?: Element): AsideEntry[] {
   if (!node) return []
   return (node.children ?? [])
     .filter(
-      (c): c is Element =>
-        c.type === "element" && c.tagName === "shiny-sidenote",
+      (c): c is Element => c.type === "element" && c.tagName === "shiny-aside",
     )
     .map((el) => ({
       label: prop(el, "label"),
@@ -59,14 +58,14 @@ export function faviconUrl(url: string): string | undefined {
   }
 }
 
-function EntryIcon({ entry }: { entry: SidenoteEntry }) {
+function EntryIcon({ entry }: { entry: AsideEntry }) {
   const src = entry.icon || (entry.url ? faviconUrl(entry.url) : undefined)
   // Track which src failed (rather than a bare boolean) so that a later entry
   // with a different src — e.g. when paging the popover — gets a fresh attempt
   // instead of inheriting the previous entry's failure.
   const [failedSrc, setFailedSrc] = useState<string | null>(null)
   // Unmount on error rather than hiding with display:none: a hidden-but-present
-  // <img> still satisfies the pill's `:has(img)` padding rule, so a sidenote
+  // <img> still satisfies the pill's `:has(img)` padding rule, so an aside
   // whose favicon fails would keep the reduced start padding despite showing
   // no icon.
   if (!src || failedSrc === src) return null
@@ -94,7 +93,7 @@ function NavArrowIcon({ direction }: { direction: "prev" | "next" }) {
   )
 }
 
-// Gap between the pill and the popover (see .shiny-sidenote-popover's `top`
+// Gap between the pill and the popover (see .shiny-aside-popover's `top`
 // offset) is a dead zone the pointer must cross when moving from one to the
 // other. Closing on a delay — canceled if the pointer lands back inside
 // before it elapses — keeps the popover alive long enough to reach.
@@ -111,10 +110,8 @@ function isInsideWidget(
   return !!node && (containerEl?.contains(node) || floatingEl?.contains(node))
 }
 
-export const SidenoteGroup = memo(function SidenoteGroup({
-  node,
-}: SidenoteGroupProps) {
-  const entries = parseSidenoteEntries(node)
+export const AsideGroup = memo(function AsideGroup({ node }: AsideGroupProps) {
+  const entries = parseAsideEntries(node)
   const faceIndex = entries.findIndex((e) => e.label)
   const [open, setOpen] = useState(false)
   const [pinned, setPinned] = useState(false)
@@ -162,8 +159,8 @@ export const SidenoteGroup = memo(function SidenoteGroup({
   }, [pinned, refs.floating])
 
   // Withheld while its surrounding block is still streaming (see
-  // rehypeMarkTrailingSidenotes) so the pill doesn't flash in mid-sentence.
-  if (node?.properties?.[SIDENOTE_PENDING_ATTR] != null) return null
+  // rehypeMarkTrailingAsides) so the pill doesn't flash in mid-sentence.
+  if (node?.properties?.[ASIDE_PENDING_ATTR] != null) return null
   if (entries.length === 0) return null
   const overflow = entries.length - 1
   const allSameLabel =
@@ -216,7 +213,7 @@ export const SidenoteGroup = memo(function SidenoteGroup({
   const current = entries[index]!
   const pillLabel =
     faceIndex === -1
-      ? `Sidenote ${entries[0]!.index}`
+      ? `Aside ${entries[0]!.index}`
       : showOverflow
         ? `${entries[faceIndex]!.label} (+${overflow} more)`
         : entries[faceIndex]!.label
@@ -224,7 +221,7 @@ export const SidenoteGroup = memo(function SidenoteGroup({
   return (
     <span
       ref={containerRef}
-      className="shiny-sidenote-group"
+      className="shiny-aside-group"
       onMouseEnter={show}
       onMouseLeave={hideUnlessPinned}
       onKeyDown={handleKeyDown}
@@ -235,8 +232,8 @@ export const SidenoteGroup = memo(function SidenoteGroup({
         type="button"
         className={
           faceIndex === -1
-            ? "shiny-sidenote-pill shiny-sidenote-pill--count"
-            : "shiny-sidenote-pill"
+            ? "shiny-aside-pill shiny-aside-pill--count"
+            : "shiny-aside-pill"
         }
         onClick={togglePinned}
         onFocus={show}
@@ -247,11 +244,11 @@ export const SidenoteGroup = memo(function SidenoteGroup({
         {faceIndex !== -1 && (
           <>
             <EntryIcon entry={entries[faceIndex]!} />
-            <span className="shiny-sidenote-pill__label">
+            <span className="shiny-aside-pill__label">
               {entries[faceIndex]!.label}
             </span>
             {showOverflow && (
-              <span className="shiny-sidenote-pill__overflow">+{overflow}</span>
+              <span className="shiny-aside-pill__overflow">+{overflow}</span>
             )}
           </>
         )}
@@ -261,13 +258,13 @@ export const SidenoteGroup = memo(function SidenoteGroup({
         <FloatingPortal>
           <div
             ref={refs.setFloating}
-            className="shiny-sidenote-popover"
+            className="shiny-aside-popover"
             role="dialog"
             style={floatingStyles}
           >
             {entries.length > 1 && (
-              <div className="shiny-sidenote-popover__nav">
-                <div className="shiny-sidenote-popover__nav-arrows">
+              <div className="shiny-aside-popover__nav">
+                <div className="shiny-aside-popover__nav-arrows">
                   <button
                     type="button"
                     aria-label="Previous source"
@@ -285,19 +282,19 @@ export const SidenoteGroup = memo(function SidenoteGroup({
                     <NavArrowIcon direction="next" />
                   </button>
                 </div>
-                <span className="shiny-sidenote-popover__count">
+                <span className="shiny-aside-popover__count">
                   {index + 1} / {entries.length}
                 </span>
               </div>
             )}
             {current.label && (
-              <div className="shiny-sidenote-popover__label">
+              <div className="shiny-aside-popover__label">
                 <EntryIcon entry={current} />
                 {current.label}
               </div>
             )}
             {current.body && (
-              <div className="shiny-sidenote-popover__body">
+              <div className="shiny-aside-popover__body">
                 <MarkdownContent
                   content={current.body}
                   contentType="html"

@@ -52,19 +52,19 @@ describe("MarkdownContent (pure)", () => {
     expect(container.querySelector(".shiny-tool-card")).not.toBeNull()
   })
 
-  it("groups a <shiny-sidenote> tag in html content into a sidenote pill", () => {
+  it("groups a <shiny-aside> tag in html content into an aside pill", () => {
     const { container } = render(
       <MarkdownContent
         content={
-          '<p>A claim<shiny-sidenote label="Source" url="https://x.example"></shiny-sidenote>.</p>'
+          '<p>A claim<shiny-aside label="Source" url="https://x.example"></shiny-aside>.</p>'
         }
         contentType="html"
         tagToComponentMap={chatTagToComponentMap}
       />,
     )
 
-    expect(container.querySelector(".shiny-sidenote-pill")).not.toBeNull()
-    expect(container.querySelector("shiny-sidenote")).toBeNull()
+    expect(container.querySelector(".shiny-aside-pill")).not.toBeNull()
+    expect(container.querySelector("shiny-aside")).toBeNull()
   })
 
   it("renders empty content without errors", () => {
@@ -172,17 +172,17 @@ describe("MarkdownContent (pure)", () => {
     spy.mockRestore()
   })
 
-  it("does not show an incomplete sidenote opening tag as raw text while streaming", () => {
+  it("does not show an incomplete aside opening tag as raw text while streaming", () => {
     const { container } = render(
       <MarkdownContent
-        content='Hub motors are cheaper<shiny-sidenote label="eBi'
+        content='Hub motors are cheaper<shiny-aside label="eBi'
         contentType="markdown"
         streaming={true}
       />,
     )
     expect(container.textContent).toContain("Hub motors are cheaper")
-    expect(container.textContent).not.toContain("<shiny-sidenote")
-    expect(container.textContent).not.toContain("shiny-sidenote")
+    expect(container.textContent).not.toContain("<shiny-aside")
+    expect(container.textContent).not.toContain("shiny-aside")
   })
 
   it("does not call parseMarkdown for html content", () => {

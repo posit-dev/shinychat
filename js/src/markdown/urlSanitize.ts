@@ -26,8 +26,8 @@ const urlAttributes: Record<string, string[] | null> = {
   // Defense-in-depth: also scrub the `url` and `icon` attributes on our
   // custom elements in case they appear in the HAST tree before React
   // rendering.
-  url: ["shiny-sidenote"],
-  icon: ["shiny-sidenote"],
+  url: ["shiny-aside"],
+  icon: ["shiny-aside"],
 }
 
 const safeProtocol = /^(https?|ircs?|mailto|xmpp)$/i
