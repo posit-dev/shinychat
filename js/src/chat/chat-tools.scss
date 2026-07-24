@@ -295,9 +295,14 @@
 // still running or finished — never full-strength while streaming.
 $shinychat-tool-row-min-height: 2em;
 
-.shinychat-tool-loop,
-.shiny-tool-result,
-.shiny-tool-request {
+// Dim the inline row surfaces and the leaf cards directly (not the wrappers):
+// ancestor opacity can't be undone by a descendant, so dimming a wrapper would
+// also wash out a fullscreen card, which escapes the block visually. Scoping
+// the leaf card with :not([fullscreen]) keeps a fullscreen card at full
+// strength while everything at rest still reads at 0.65.
+.shinychat-tool-group__row,
+.shinychat-tool-call-row__summary,
+.shiny-tool-card:not([fullscreen]) {
   opacity: 0.65;
 }
 
