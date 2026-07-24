@@ -253,9 +253,12 @@ chat_restore <- function(
       cancel_update_bookmark()
     }
     # observeEvent() returns an Observer with $destroy()
-    if (!is.null(cancel_bookmark_on_input)) cancel_bookmark_on_input$destroy()
-    if (!is.null(cancel_bookmark_on_response))
+    if (!is.null(cancel_bookmark_on_input)) {
+      cancel_bookmark_on_input$destroy()
+    }
+    if (!is.null(cancel_bookmark_on_response)) {
       cancel_bookmark_on_response$destroy()
+    }
   }
 
   invisible(cancel_all)
