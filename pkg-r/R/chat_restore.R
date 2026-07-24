@@ -101,6 +101,7 @@ chat_restore <- function(
   # Exclude works with bookmark names
   excluded_names <- session$getBookmarkExclude()
   id_user_input <- paste0(id, "_user_input")
+  id_messages <- paste0(id, "_messages")
   to_exclude <- setdiff(
     paste0(
       id,
@@ -200,12 +201,26 @@ chat_restore <- function(
       NULL
     }
 
-  # Enable (or disable) session auto bookmarking if at least one chat wants it
-  set_session_bookmark_on_response(
-    session,
-    id,
-    enable = bookmark_on_response
-  )
+  # Bookmark once the browser has echoed a settled transcript ending in an
+  # assistant reply. This must NOT fire on stream completion: the client reports
+  # the finished assistant message in a later round trip, so bookmarking earlier
+  # would persist a snapshot missing that reply (mirrors the history feature's
+  # message_response_effect).
+  cancel_bookmark_on_response <-
+    if (bookmark_on_response) {
+      shiny::observeEvent(
+        session$input[[id_messages]],
+        label = "on_response_do_bookmark",
+        ignoreInit = TRUE,
+        {
+          if (messages_end_with_assistant(get_reported_messages(session, id))) {
+            session$doBookmark()
+          }
+        }
+      )
+    } else {
+      NULL
+    }
 
   cancel_update_bookmark <- NULL
   if (bookmark_on_input || bookmark_on_response) {
@@ -238,6 +253,8 @@ chat_restore <- function(
     }
     # observeEvent() returns an Observer with $destroy()
     if (!is.null(cancel_bookmark_on_input)) cancel_bookmark_on_input$destroy()
+    if (!is.null(cancel_bookmark_on_response))
+      cancel_bookmark_on_response$destroy()
   }
 
   invisible(cancel_all)
@@ -260,6 +277,13 @@ bookmark_restore_ui <- function(state, client, id, session) {
   ui_snapshot <- decode_ui_snapshot(state$values[[paste0(id, "_ui")]])
   restore_chat_ui(client, id, ui_snapshot, session)
   invisible()
+}
+
+messages_end_with_assistant <- function(messages) {
+  if (length(messages) == 0) {
+    return(FALSE)
+  }
+  identical(messages[[length(messages)]]$role, "assistant")
 }
 
 # Method currently hooked into `chat_append_stream()` and `markdown_stream()`

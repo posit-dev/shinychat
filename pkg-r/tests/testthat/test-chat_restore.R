@@ -152,3 +152,14 @@ test_that("bookmark save skips UI capture when store is not server", {
   bookmark_restore_ui(state, client = NULL, id = "chat", session = session)
   expect_equal(fallback_calls, 1L)
 })
+
+test_that("messages_end_with_assistant detects a settled assistant reply", {
+  user_only <- list(list(role = "user", segments = list()))
+  ends_assistant <- list(
+    list(role = "user", segments = list()),
+    list(role = "assistant", segments = list())
+  )
+  expect_false(messages_end_with_assistant(list()))
+  expect_false(messages_end_with_assistant(user_only))
+  expect_true(messages_end_with_assistant(ends_assistant))
+})
