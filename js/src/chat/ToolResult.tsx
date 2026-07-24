@@ -105,6 +105,7 @@ export const ToolResult = memo(function ToolResult({
         intent={intent}
         icon={icon}
         classStatus={classStatus}
+        statusNote={isError ? "failed" : undefined}
         fullScreen={fullScreen}
         initialExpanded={expanded}
         footer={footer}

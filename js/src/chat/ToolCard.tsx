@@ -19,6 +19,8 @@ export interface ToolCardProps {
   intent?: string
   icon?: string
   classStatus?: string
+  /** A short text status cue (e.g. "failed") shown in the header, so status is not conveyed by color alone. */
+  statusNote?: string
   fullScreen?: boolean
   initialExpanded?: boolean
   footer?: string
@@ -35,6 +37,7 @@ export function ToolCard({
   intent,
   icon,
   classStatus = "",
+  statusNote,
   fullScreen = false,
   initialExpanded = false,
   footer,
@@ -97,6 +100,13 @@ export function ToolCard({
           className={`tool-title${classStatus ? ` ${classStatus}` : ""}`}
           dangerouslySetInnerHTML={titleDSIH}
         />
+        {statusNote && (
+          <div
+            className={`tool-status-note${classStatus ? ` ${classStatus}` : ""}`}
+          >
+            {statusNote}
+          </div>
+        )}
         <div className="tool-spacer" />
         {intent && <div className="tool-intent">{intent}</div>}
         <div

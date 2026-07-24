@@ -3,7 +3,8 @@ import { ToolCard } from "./ToolCard"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { markdownCodeBlock } from "../markdown/markdownCodeBlock"
 
-const spinnerIcon = '<div class="spinner-border" role="status"></div>'
+const spinnerIcon =
+  '<div class="spinner-border" role="status"><span class="visually-hidden">Running…</span></div>'
 
 export interface ToolRequestProps {
   requestId: string
