@@ -74,6 +74,13 @@ HistoryController <- R6::R6Class(
     },
 
     on_response = function(recorded_turns) {
+      # These two flags guard the *restore* transaction, which the count-based
+      # check below does not: replay_ui() clears the client and re-sends the
+      # stored messages, and the client's echo of that replay would otherwise
+      # trigger a save. is_replaying suppresses saves during the replay window;
+      # suppress_next_save swallows the first post-replay echo. (Python drops
+      # these and relies on its count guard alone, but R's replay re-sends UI
+      # to the client, so it suppresses the resulting echo explicitly.)
       if (self$is_replaying) {
         return(invisible())
       }
