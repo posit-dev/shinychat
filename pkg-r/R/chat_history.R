@@ -477,9 +477,19 @@ HistoryController <- R6::R6Class(
         # below, rather than falling to the else branch and leaving whatever
         # happens to be staged in the main compose box untouched.
         #
-        # Same normalize-then-validate pattern as the regular (non-edit) send
-        # path in attachments.R -- never trust client-side validation alone.
+        # Same validate-then-normalize pattern as Python's handle_edit --
+        # never trust client-side validation alone, and reconstruct a
+        # canonical record per attachment so any extra client-sent fields are
+        # dropped before echoing them back through update_input.
         validate_attachments(attachments)
+        attachments <- lapply(attachments, function(a) {
+          list(
+            mime = a[["mime"]],
+            data_url = a[["data_url"]],
+            name = a[["name"]],
+            size = a[["size"]]
+          )
+        })
         update_chat_user_input(
           private$chat_id,
           value = content,
