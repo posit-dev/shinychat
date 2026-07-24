@@ -2166,15 +2166,22 @@ class ChatExpress(Chat):
             by default. Customize with CSS properties ``--shiny-chat-footer-font-size``
             and ``--shiny-chat-footer-color`` on the chat container or footer element.
         tool_grouping
-            Controls how consecutive tool calls are grouped together in the UI:
+            Controls how tool calls are grouped together in the UI:
 
-            - ``"tool"`` (default): consecutive calls to the *same* tool are grouped
-              into a single collapsible card.
-            - ``"all"``: all consecutive tool calls are grouped into a single
-              collapsible card, regardless of tool name.
+            - ``"tool"`` (default): calls to the *same* tool within a turn's
+              tool-calling phase are grouped into a single collapsible card.
+              This groups by tool name across the whole phase, not just
+              consecutive calls -- e.g. calls to tools ``X``, ``Y``, ``Z``,
+              ``X``, ``Y`` (in that order) are grouped into ``X`` (2 calls),
+              ``Y`` (2 calls), and ``Z`` (1 call).
+            - ``"all"``: every tool call within a turn's tool-calling phase is
+              grouped into a single collapsible card, regardless of tool name.
             - ``"none"``: each tool call is displayed in its own card.
 
-            Individual tools can override this via a `grouping` tool annotation.
+            Individual tools can override this via a ``grouping`` tool
+            annotation. For chatlas tools, set it under
+            ``annotations={"extra": {"grouping": ...}}`` (chatlas drops
+            unknown top-level annotation keys).
         kwargs
             Additional attributes for the chat container element.
         """
@@ -2380,15 +2387,22 @@ def chat_ui(
         by default. Customize with CSS properties ``--shiny-chat-footer-font-size``
         and ``--shiny-chat-footer-color`` on the chat container or footer element.
     tool_grouping
-        Controls how consecutive tool calls are grouped together in the UI:
+        Controls how tool calls are grouped together in the UI:
 
-        - ``"tool"`` (default): consecutive calls to the *same* tool are grouped
-          into a single collapsible card.
-        - ``"all"``: all consecutive tool calls are grouped into a single
-          collapsible card, regardless of tool name.
+        - ``"tool"`` (default): calls to the *same* tool within a turn's
+          tool-calling phase are grouped into a single collapsible card.
+          This groups by tool name across the whole phase, not just
+          consecutive calls -- e.g. calls to tools ``X``, ``Y``, ``Z``, ``X``,
+          ``Y`` (in that order) are grouped into ``X`` (2 calls), ``Y``
+          (2 calls), and ``Z`` (1 call).
+        - ``"all"``: every tool call within a turn's tool-calling phase is
+          grouped into a single collapsible card, regardless of tool name.
         - ``"none"``: each tool call is displayed in its own card.
 
-        Individual tools can override this via a `grouping` tool annotation.
+        Individual tools can override this via a ``grouping`` tool annotation.
+        For chatlas tools, set it under
+        ``annotations={"extra": {"grouping": ...}}`` (chatlas drops unknown
+        top-level annotation keys).
     kwargs
         Additional attributes for the chat container element.
     """

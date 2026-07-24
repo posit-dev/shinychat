@@ -230,15 +230,19 @@ chat_greeting <- function(
 #'   The footer text is styled slightly smaller and lighter than body text
 #'   by default. Customize with CSS properties `--shiny-chat-footer-font-size`
 #'   and `--shiny-chat-footer-color` on the chat container or footer element.
-#' @param tool_grouping Controls how consecutive tool calls are grouped
-#'   together in the UI:
-#'   * `"tool"` (default): consecutive calls to the *same* tool are grouped
-#'     into a single collapsible card.
-#'   * `"all"`: all consecutive tool calls are grouped into a single
-#'     collapsible card, regardless of tool name.
+#' @param tool_grouping Controls how tool calls are grouped together in the
+#'   UI:
+#'   * `"tool"` (default): calls to the *same* tool within a turn's
+#'     tool-calling phase are grouped into a single collapsible card. This
+#'     groups by tool name across the whole phase, not just consecutive
+#'     calls -- e.g. calls to tools `X`, `Y`, `Z`, `X`, `Y` (in that order)
+#'     are grouped into `X` (2 calls), `Y` (2 calls), and `Z` (1 call).
+#'   * `"all"`: every tool call within a turn's tool-calling phase is grouped
+#'     into a single collapsible card, regardless of tool name.
 #'   * `"none"`: each tool call is displayed in its own card.
 #'
-#'   Individual tools can override this via a `grouping` tool annotation.
+#'   Individual tools can override this via a top-level `grouping` tool
+#'   annotation, e.g. `tool(..., annotations = list(grouping = "all"))`.
 #' @section Thinking display:
 #'
 #' When a model produces reasoning or "thinking" tokens, shinychat renders them

@@ -34,6 +34,8 @@ knitr::opts_chunk$set(
 
 shinychat automatically displays rich UI for tool calls and results, providing users with an intuitive view of what tools are being executed and their outcomes. This tool UI works out-of-the-box with ellmer and requires no additional configuration to get started.
 
+By default, tool calls render as a quiet, collapsed activity row that summarizes what's happening without crowding the conversation. Users can expand that row to see each individual call, and drill into any call to see the full request and result. The rest of this article walks through the default collapsed/expanded behavior and the ways you can customize it---titles and icons, per-call labels and previews, how calls are grouped, and the content shown inside an expanded result.
+
 ## Basic tool display
 
 Let's start with a simple weather forecasting tool to demonstrate the default behavior:
@@ -226,14 +228,25 @@ result_with_annotations <- ContentToolResult(
 contents_shinychat(result_with_annotations)
 ```
 
+### Present tense while running, past tense once done
+
+A tool call's title can come from two independent places:
+
+- The tool's **definition title**---set via `tool_annotations(title = )`---is shown while the call is running. Write it in the present tense, e.g. `"Running R code"`.
+- The **result title**---set via `tool_result_display(title = )` (see [Customizing tool result display](#customizing-tool-result-display))---is shown once the first result for that call arrives. Write it in the past tense, e.g. `"Ran R code"`.
+
+shinychat swaps from the definition title to the result title exactly once, the moment a result lands; it never rewrites or conjugates either string for you. If you don't supply a result title, the definition title stays put for the life of the card.
+
+Older versions of shinychat wrapped the definition title in a client-side template---`"Running {title}"` while in progress, `"{title} failed"` on error. That template has been removed. If your tool's title reads a little oddly while running (e.g. it was written to read well only after the automatic "Running " prefix was added), add an explicit present-tense definition title, or a past-tense result title, to get the wording you want. Failures are no longer folded into the title string at all; they're shown as a separate status cue (a "failed" or "N failed" note with an icon) next to the title.
+
 ### Via the tool result
 
 Using tool annotations is an easy way to set the title and icon for all tool requests and results, but sometimes you'll want to customize the display for specific tool calls or results.
 In these cases, you'll need to update your tool function to return an `ellmer::ContentToolResult` object, which takes an `extra` property that includes a list of extra data to attach to the result.
 
-shinychat looks for and uses a `display` list within `extra` to customize how the tool result is shown.
-These properties can be computed dynamically based on the tool's input or the data it prepares to show to the LLM.
-If this list contains `title` and `icon` items, these values override the values in the tool's annotations.
+shinychat looks for and uses a `display` object within `extra` to customize how the tool result is shown.
+The recommended way to build this object is with `tool_result_display()`, which validates its arguments and documents every supported field; a bare named list with the same fields still works and is promoted internally, but `tool_result_display()` is preferred going forward.
+If the display's `title` and `icon` are set, these values override the values in the tool's annotations.
 
 One useful strategy is to include display parameters in the tool's function signature, allowing the LLM to include context or additional information in the tool call.
 In the example below, we'll let the LLM write the tool result title and we'll pick an icon based on the forecasted temperatures.
@@ -257,7 +270,7 @@ get_weather_forecast <- tool(
     ContentToolResult(
       forecast,
       extra = list(
-        display = list(
+        display = tool_result_display(
           title = paste("Weather Forecast for", location_name),
           icon = icon
         )
@@ -349,12 +362,34 @@ contents_shinychat(result_random_number)
 
 ## Customizing tool result display
 
-We've already seen that we can [customize the tool title and icon](#via-the-tool-result) by returning a `ContentToolResult` object from our tool function and specifying `title` and `icon` in the `extra$display` list.
+We've already seen that we can [customize the tool title and icon](#via-the-tool-result) by returning a `ContentToolResult` object from our tool function and specifying `title` and `icon` in `extra$display`, built with `tool_result_display()`.
 
-shinychat uses the `display` list for two additional categories of customization:
+shinychat uses the `display` object for three additional categories of customization:
 
-1. Alternative `html`, `markdown`, or `text` to show the user in place of the text value shown to the LLM.
-2. Options to control how the tool result is presented.
+1. A short per-call `label` and `value_preview`, shown in the collapsed view.
+2. Alternative `html`, `markdown`, or `text` to show the user in place of the text value shown to the LLM.
+3. Options to control how the tool result is presented.
+
+### Collapsed-view label and value preview
+
+While a tool call is collapsed, shinychat shows a per-call `label`---a short identifying value like a filename or query, used to tell this call apart from other calls to the same tool---and a `value_preview`, a terse peek at the result, like `"1,204 rows"` or `"3 files updated"`. Both are optional and, like `title` and `icon`, are computed inside your tool function and returned via `tool_result_display()`:
+
+```{r}
+#| echo: true
+#| eval: false
+
+ContentToolResult(
+  forecast_data,
+  extra = list(
+    display = tool_result_display(
+      label = location_name,
+      value_preview = paste(nrow(forecast_data), "hourly readings")
+    )
+  )
+)
+```
+
+`label` and `value_preview` only affect the collapsed summary; the full result (or its [alternative display content](#alternative-display-content)) is still shown when the call is expanded.
 
 ### Alternative display content
 
@@ -388,7 +423,7 @@ get_weather_forecast <- tool(
     ContentToolResult(
       forecast_data,
       extra = list(
-        display = list(
+        display = tool_result_display(
           html = forecast_table,
           title = paste("Weather Forecast for", location_name),
           full_screen = TRUE
@@ -460,7 +495,7 @@ get_weather_forecast <- tool(
     ContentToolResult(
       forecast_data,
       extra = list(
-        display = list(
+        display = tool_result_display(
           markdown = forecast_summary,
           title = paste("Weather Forecast for", location_name)
         )
@@ -498,9 +533,9 @@ contents_shinychat(result_html)
 
 ### Display Options
 
-In addition to customizing the [tool title and icon](#via-the-tool-result) and providing alternative display content, you can also control how the tool result is presented using options in the `display` list.
+In addition to customizing the [tool title and icon](#via-the-tool-result) and providing alternative display content, you can also control how the tool result is presented using `tool_result_display()` arguments.
 
-shinychat supports several options in the `display` list to control how results are presented:
+shinychat supports several options to control how results are presented:
 
 - **`show_request = FALSE`**: Hide the tool call details from the tool results display.
 
@@ -517,6 +552,50 @@ shinychat supports several options in the `display` list to control how results 
 
 - **`title`** and **`icon`**: Choose the title and icon displayed in the tool result card header.
 
+- **`label`** and **`value_preview`**: Choose the [per-call label and result preview](#collapsed-view-label-and-value-preview) shown in the collapsed view.
+
+
+## Grouping tool calls
+
+When a conversation includes several tool calls, shinychat can collapse them together into a single group rather than showing one card per call. Control this with `tool_grouping` on `chat_ui()`:
+
+```{r}
+#| echo: true
+#| eval: false
+
+chat_ui("chat", tool_grouping = "tool")
+```
+
+`tool_grouping` accepts one of:
+
+- **`"tool"`** (the default): calls to the *same* tool made within one assistant turn's tool-calling phase are grouped together, regardless of the order in which they and other tools were called. For example, if a turn calls `get_weather_forecast`, then `search_web`, then `get_weather_forecast` again, the two `get_weather_forecast` calls are grouped even though a different tool call came between them.
+- **`"all"`**: every tool call within the turn's tool-calling phase is grouped into a single collapsible summary, regardless of tool name.
+- **`"none"`**: each tool call gets its own card; nothing is grouped.
+
+Individual tools can override the chat-level setting with a `grouping` annotation:
+
+```{r}
+#| echo: true
+#| eval: false
+
+get_weather_forecast <- tool(
+  function(lat, lon) {
+    point_tomorrow(lat, lon, short = FALSE)
+  },
+  name = "get_weather_forecast",
+  description = "Get the weather forecast for a location.",
+  arguments = list(
+    lat = type_number("Latitude"),
+    lon = type_number("Longitude")
+  ),
+  annotations = tool_annotations(
+    title = "Weather Forecast",
+    grouping = "all"
+  )
+)
+```
+
+`grouping`, like `title` and `icon`, is a top-level field on the tool's annotations---no need to nest it under anything else.
 
 ## Global display options
 

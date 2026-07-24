@@ -109,17 +109,21 @@ The footer text is styled slightly smaller and lighter than body text
 by default. Customize with CSS properties \code{--shiny-chat-footer-font-size}
 and \code{--shiny-chat-footer-color} on the chat container or footer element.}
 
-\item{tool_grouping}{Controls how consecutive tool calls are grouped
-together in the UI:
+\item{tool_grouping}{Controls how tool calls are grouped together in the
+UI:
 \itemize{
-\item \code{"tool"} (default): consecutive calls to the \emph{same} tool are grouped
-into a single collapsible card.
-\item \code{"all"}: all consecutive tool calls are grouped into a single
-collapsible card, regardless of tool name.
+\item \code{"tool"} (default): calls to the \emph{same} tool within a turn's
+tool-calling phase are grouped into a single collapsible card. This
+groups by tool name across the whole phase, not just consecutive
+calls -- e.g. calls to tools \code{X}, \code{Y}, \code{Z}, \code{X}, \code{Y} (in that order)
+are grouped into \code{X} (2 calls), \code{Y} (2 calls), and \code{Z} (1 call).
+\item \code{"all"}: every tool call within a turn's tool-calling phase is grouped
+into a single collapsible card, regardless of tool name.
 \item \code{"none"}: each tool call is displayed in its own card.
 }
 
-Individual tools can override this via a \code{grouping} tool annotation.}
+Individual tools can override this via a top-level \code{grouping} tool
+annotation, e.g. \code{tool(..., annotations = list(grouping = "all"))}.}
 }
 \value{
 A Shiny tag object, suitable for inclusion in a Shiny UI

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### New features
+
+* Tool calls now render as a condensed, collapsed activity row by default, which expands to show each individual call and drills into the full request/result card. `ToolResultDisplay` gained `label` (a short per-call identifying value, e.g. a filename or query) and `value_preview` (a terse peek at the result, e.g. "1,204 rows"), both shown in the collapsed view.
+
+* Added `tool_grouping` to `chat_ui()` / `Chat.ui()`: `"tool"` (default) groups calls to the same tool within a turn's tool-calling phase (order-independent, not just consecutive calls); `"all"` groups every call in the phase together; `"none"` shows one card per call. Individual tools can override the chat-level setting via a `grouping` tool annotation -- for chatlas tools, set it under `annotations={"extra": {"grouping": ...}}`.
+
+### Changes
+
+* A tool's definition `title` (from its annotations) and its result `title` (from `ToolResultDisplay`) are now shown as-is, without any client-side tense conjugation: the definition title is shown while the call is running, and the result title (if provided) replaces it once the first result arrives. The old `"Running {title}"` / `"{title} failed"` client-side title template has been removed. If a tool's title reads oddly while running now that the automatic "Running " prefix is gone, write an explicit present-tense definition title (e.g. "Running R code") and, optionally, a past-tense result title (e.g. "Ran R code"). Failures are shown via a separate status cue (a "failed"/"N failed" note and icon) rather than appended to the title.
+
 ## [0.6.0] - 2026-07-06
 
 ### New features
