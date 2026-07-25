@@ -74,6 +74,7 @@ test_that("restore_chat_ui replays the stored snapshot faithfully", {
   )
 
   expect_length(captured, 2L)
+  expect_equal(captured[[1]]$message$role, "user")
   expect_equal(captured[[2]]$message$role, "assistant")
   expect_equal(captured[[2]]$message$segments[[1]]$content, "hello (displayed)")
 })
@@ -95,6 +96,30 @@ test_that("restore_chat_ui falls back to client turns when no snapshot", {
     client = NULL,
     id = "chat",
     ui_snapshot = NULL,
+    session = session
+  )
+
+  expect_equal(replay_calls, 0L)
+  expect_equal(fallback_calls, 1L)
+})
+
+test_that("restore_chat_ui falls back to client turns when snapshot is empty list", {
+  replay_calls <- 0L
+  fallback_calls <- 0L
+  local_mocked_bindings(
+    restore_history_message = function(chat_id, message, session) {
+      replay_calls <<- replay_calls + 1L
+    },
+    client_set_ui = function(client, ..., id) {
+      fallback_calls <<- fallback_calls + 1L
+    }
+  )
+  session <- shiny::MockShinySession$new()
+
+  restore_chat_ui(
+    client = NULL,
+    id = "chat",
+    ui_snapshot = list(),
     session = session
   )
 

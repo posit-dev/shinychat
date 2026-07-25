@@ -150,11 +150,40 @@ chat_restore <- function(
       }
     })
 
+  # Guards against cancel_bookmark_on_response() firing on the browser's echo
+  # of UI we just populated ourselves (initial turn replay or restore), rather
+  # than an actual user-triggered response. is_replaying_ui/suppress_next_bookmark
+  # mirror HistoryController's is_replaying/suppress_next_save pair (see
+  # chat_history.R): the echo is async, so is_replaying alone (cleared on next
+  # flush) isn't enough to cover every flush between now and the echo's
+  # arrival. Those two flags are NOT sufficient on their own here, though:
+  # replaying N existing messages (turn replay or restore) can make the
+  # browser echo back N separate growing "_messages" snapshots -- one as each
+  # message settles -- and every one of them can independently end in an
+  # assistant message, so a single-use suppression flag only catches the
+  # first of an arbitrary number of pre-interaction echoes (confirmed
+  # empirically: a 2-message replay produces two such echoes, both bookmark-
+  # worthy by the naive check). has_user_submitted closes that gap: no
+  # response-triggered bookmark is legitimate before the user has actually
+  # submitted something in *this* session, no matter how many startup echoes
+  # arrive before that happens.
+  is_replaying_ui <- FALSE
+  suppress_next_bookmark <- FALSE
+  has_user_submitted <- FALSE
+
   cancel_set_ui <- NULL
   if (restore_ui) {
     cancel_set_ui <- shiny::observe(label = "set_ui", {
+      is_replaying_ui <<- TRUE
+      suppress_next_bookmark <<- TRUE
       client_set_ui(client, id = id)
       cancel_set_ui$destroy()
+      session$onFlushed(
+        function() {
+          is_replaying_ui <<- FALSE
+        },
+        once = TRUE
+      )
     })
   }
 
@@ -171,10 +200,18 @@ chat_restore <- function(
       }
       client_set_state(client, client_state)
 
+      is_replaying_ui <<- TRUE
+      suppress_next_bookmark <<- TRUE
       # Set the UI: prefer the browser's displayed snapshot, fall back to turns.
       shiny::withReactiveDomain(session, {
         bookmark_restore_ui(state, client, id, session)
       })
+      session$onFlushed(
+        function() {
+          is_replaying_ui <<- FALSE
+        },
+        once = TRUE
+      )
     })
 
   cancel_on_restore_greeting <-
@@ -195,7 +232,24 @@ chat_restore <- function(
         label = "on_user_submit_do_bookmark",
         {
           # On user submit
+          has_user_submitted <<- TRUE
           session$doBookmark()
+        }
+      )
+    } else {
+      NULL
+    }
+
+  # Track real user submissions even when bookmark_on_input is disabled: it's
+  # what cancel_bookmark_on_response uses to tell a genuine response apart
+  # from the browser's echo of messages we populated ourselves at startup.
+  cancel_mark_user_submitted <-
+    if (bookmark_on_response && !bookmark_on_input) {
+      shiny::observeEvent(
+        session$input[[id_user_input]],
+        label = "mark_user_submitted",
+        {
+          has_user_submitted <<- TRUE
         }
       )
     } else {
@@ -206,7 +260,9 @@ chat_restore <- function(
   # assistant reply. This must NOT fire on stream completion: the client reports
   # the finished assistant message in a later round trip, so bookmarking earlier
   # would persist a snapshot missing that reply (mirrors the history feature's
-  # message_response_effect).
+  # message_response_effect). It also must NOT fire on the browser's echo of
+  # messages we populated ourselves (initial turn replay or restore) -- see
+  # has_user_submitted's comment above.
   cancel_bookmark_on_response <-
     if (bookmark_on_response) {
       shiny::observeEvent(
@@ -214,6 +270,16 @@ chat_restore <- function(
         label = "on_response_do_bookmark",
         ignoreInit = TRUE,
         {
+          if (!has_user_submitted) {
+            return()
+          }
+          if (is_replaying_ui) {
+            return()
+          }
+          if (suppress_next_bookmark) {
+            suppress_next_bookmark <<- FALSE
+            return()
+          }
           if (messages_end_with_assistant(get_reported_messages(session, id))) {
             session$doBookmark()
           }
@@ -255,6 +321,9 @@ chat_restore <- function(
     # observeEvent() returns an Observer with $destroy()
     if (!is.null(cancel_bookmark_on_input)) {
       cancel_bookmark_on_input$destroy()
+    }
+    if (!is.null(cancel_mark_user_submitted)) {
+      cancel_mark_user_submitted$destroy()
     }
     if (!is.null(cancel_bookmark_on_response)) {
       cancel_bookmark_on_response$destroy()

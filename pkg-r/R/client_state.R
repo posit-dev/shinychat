@@ -105,8 +105,8 @@ method(client_set_ui, S7::new_S3_class(c("Chat", "R6"))) <-
   }
 
 # Serialize the browser-reported message snapshot for storage in a bookmark's
-# state$values. Uses the same stable serializeJSON -> gzip -> base64 pipeline as
-# client_get_state(); jsonlite::toJSON()/fromJSON() are lossy round-trips.
+# state$values. Uses the same serializeJSON/base64 pipeline as
+# client_get_state() (see its comment for why, over toJSON()/fromJSON()).
 encode_ui_snapshot <- function(messages) {
   if (is.null(messages) || length(messages) == 0) {
     return(NULL)
