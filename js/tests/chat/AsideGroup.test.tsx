@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from "vitest"
 import { render, screen, cleanup, fireEvent, act } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { markdownProcessor } from "../../src/markdown/processors"
 import { parseMarkdown, hastToReact } from "../../src/markdown/markdownToReact"
 import { chatTagToComponentMap } from "../../src/chat/chatTagToComponentMap"
@@ -203,7 +204,7 @@ describe("AsideGroup popover", () => {
       const pill = screen.getByRole("button", { name: /eBicycles/ })
       fireEvent.mouseEnter(pill)
       expect(screen.getByRole("dialog")).toBeInTheDocument()
-      fireEvent.mouseLeave(pill.closest(".shiny-aside-group")!)
+      fireEvent.mouseLeave(pill)
       act(() => {
         vi.runAllTimers()
       })
@@ -221,7 +222,7 @@ describe("AsideGroup popover", () => {
       )
       const pill = screen.getByRole("button", { name: /eBicycles/ })
       fireEvent.mouseEnter(pill)
-      fireEvent.mouseLeave(pill.closest(".shiny-aside-group")!)
+      fireEvent.mouseLeave(pill)
       // The popover must still be present immediately after leaving the pill,
       // otherwise the pointer has nothing left to land on while crossing the gap.
       expect(screen.getByRole("dialog")).toBeInTheDocument()
@@ -237,9 +238,8 @@ describe("AsideGroup popover", () => {
         'A claim<shiny-aside label="eBicycles" url="https://ebicycles.example"></shiny-aside>.',
       )
       const pill = screen.getByRole("button", { name: /eBicycles/ })
-      const container = pill.closest(".shiny-aside-group")!
       fireEvent.mouseEnter(pill)
-      fireEvent.mouseLeave(container)
+      fireEvent.mouseLeave(pill)
       fireEvent.mouseEnter(screen.getByRole("dialog"))
       act(() => {
         vi.runAllTimers()
@@ -256,7 +256,7 @@ describe("AsideGroup popover", () => {
     )
     const pill = screen.getByRole("button", { name: /eBicycles/ })
     fireEvent.click(pill)
-    fireEvent.mouseLeave(pill.closest(".shiny-aside-group")!)
+    fireEvent.mouseLeave(pill)
     expect(screen.getByRole("dialog")).toBeInTheDocument()
   })
 
@@ -347,8 +347,54 @@ describe("AsideGroup popover", () => {
     const pill = screen.getByRole("button", { name: /eBicycles/ })
     fireEvent.click(pill)
     const nextButton = screen.getByRole("button", { name: "Next source" })
-    fireEvent.blur(pill, { relatedTarget: nextButton })
+    act(() => nextButton.focus())
     expect(screen.getByRole("dialog")).toBeInTheDocument()
+  })
+
+  it("gives the dialog an accessible name", () => {
+    renderMarkdown(
+      'A claim<shiny-aside label="eBicycles" url="https://ebicycles.example">Hub motors are cheaper.</shiny-aside>.',
+    )
+    fireEvent.click(screen.getByRole("button", { name: /eBicycles/ }))
+    expect(screen.getByRole("dialog")).toHaveAccessibleName()
+  })
+
+  it("opens the popover when the pill receives keyboard focus", () => {
+    renderMarkdown(
+      'A claim<shiny-aside label="eBicycles" url="https://ebicycles.example">Hub motors are cheaper.</shiny-aside>.',
+    )
+    const pill = screen.getByRole("button", { name: /eBicycles/ })
+    act(() => pill.focus())
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+  })
+
+  it("closes on Escape and leaves focus on the pill instead of dropping it", async () => {
+    const user = userEvent.setup()
+    renderMarkdown(
+      'A claim<shiny-aside label="eBicycles" url="https://ebicycles.example">Hub motors are cheaper.</shiny-aside>.',
+    )
+    const pill = screen.getByRole("button", { name: /eBicycles/ })
+    await user.click(pill)
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+    await user.keyboard("{Escape}")
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(pill).toHaveFocus()
+  })
+
+  it("reaches the popover's nav controls by tabbing forward from the pill", async () => {
+    const user = userEvent.setup()
+    renderMarkdown(
+      [
+        'Claim one<shiny-aside label="eBicycles" url="https://ebicycles.example">first</shiny-aside>.',
+        'Claim two<shiny-aside label="WIRED" url="https://wired.example">second</shiny-aside>.',
+      ].join(" "),
+    )
+    const pill = screen.getByRole("button", { name: /eBicycles/ })
+    await user.click(pill)
+    await user.tab()
+    expect(
+      screen.getByRole("button", { name: "Previous source" }),
+    ).toHaveFocus()
   })
 
   it("gives two separate anonymous asides in different paragraphs different numbers", () => {

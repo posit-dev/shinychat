@@ -1,5 +1,4 @@
-import { memo, useEffect, useRef, useState } from "react"
-import type { KeyboardEvent, FocusEvent } from "react"
+import { memo, useEffect, useState } from "react"
 import {
   useFloating,
   autoUpdate,
@@ -7,6 +6,13 @@ import {
   flip,
   shift,
   FloatingPortal,
+  FloatingFocusManager,
+  useHover,
+  useFocus,
+  useClick,
+  useDismiss,
+  useRole,
+  useInteractions,
 } from "@floating-ui/react"
 import type { Element } from "hast"
 import { toHtml } from "hast-util-to-html"
@@ -95,68 +101,54 @@ function NavArrowIcon({ direction }: { direction: "prev" | "next" }) {
 
 // Gap between the pill and the popover (see .shiny-aside-popover's `top`
 // offset) is a dead zone the pointer must cross when moving from one to the
-// other. Closing on a delay — canceled if the pointer lands back inside
-// before it elapses — keeps the popover alive long enough to reach.
+// other. useHover's `delay.close` keeps the popover alive long enough to
+// reach it, and is canceled automatically if the pointer lands back on the
+// pill or the popover before it elapses.
 const CLOSE_GRACE_PERIOD_MS = 150
-
-// The popover renders through a portal, so it's no longer a DOM descendant
-// of the group span — "did this click/blur target land inside our own
-// widget" checks must also consider the floating element.
-function isInsideWidget(
-  node: Node | null,
-  containerEl: HTMLElement | null,
-  floatingEl: HTMLElement | null,
-) {
-  return !!node && (containerEl?.contains(node) || floatingEl?.contains(node))
-}
 
 export const AsideGroup = memo(function AsideGroup({ node }: AsideGroupProps) {
   const entries = parseAsideEntries(node)
   const faceIndex = entries.findIndex((e) => e.label)
   const [open, setOpen] = useState(false)
-  const [pinned, setPinned] = useState(false)
   const [index, setIndex] = useState(0)
-  const containerRef = useRef<HTMLSpanElement>(null)
-  const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // strategy: "fixed" + the middleware below let the popover escape the
   // message list's `overflow: auto` (needed for scrolling, so it can't just
   // be set to visible) and reposition itself (flip above the pill, shift
   // within the viewport) when there isn't room where it'd normally go.
-  const { refs, floatingStyles } = useFloating({
+  const { refs, floatingStyles, context } = useFloating({
     open,
+    onOpenChange: setOpen,
     strategy: "fixed",
     placement: "bottom-start",
     middleware: [offset(6), flip(), shift({ padding: 8 })],
     whileElementsMounted: autoUpdate,
   })
 
-  function cancelScheduledClose() {
-    if (closeTimeoutRef.current !== null) {
-      clearTimeout(closeTimeoutRef.current)
-      closeTimeoutRef.current = null
-    }
-  }
+  // Composed rather than hand-rolled: useHover already tracks pointer entry
+  // on both the pill and the popover (canceling the close delay if the
+  // pointer lands on either), and useClick's open event marks the popover as
+  // "click-opened" so useHover no longer auto-closes it on mouse-leave —
+  // i.e. clicking pins it, clicking again un-pins and closes it.
+  const hover = useHover(context, { delay: { close: CLOSE_GRACE_PERIOD_MS } })
+  const focus = useFocus(context)
+  const click = useClick(context)
+  const dismiss = useDismiss(context, { outsidePressEvent: "mousedown" })
+  const role = useRole(context)
 
-  useEffect(() => cancelScheduledClose, [])
+  const { getReferenceProps, getFloatingProps } = useInteractions([
+    hover,
+    focus,
+    click,
+    dismiss,
+    role,
+  ])
 
+  // Reset paging to the face entry whenever the popover opens, regardless of
+  // which interaction (hover, focus, click) opened it.
   useEffect(() => {
-    if (!pinned) return
-    function onDocMouseDown(e: MouseEvent) {
-      if (
-        !isInsideWidget(
-          e.target as Node,
-          containerRef.current,
-          refs.floating.current,
-        )
-      ) {
-        setOpen(false)
-        setPinned(false)
-      }
-    }
-    document.addEventListener("mousedown", onDocMouseDown)
-    return () => document.removeEventListener("mousedown", onDocMouseDown)
-  }, [pinned, refs.floating])
+    if (open) setIndex(faceIndex === -1 ? 0 : faceIndex)
+  }, [open, faceIndex])
 
   // Withheld while its surrounding block is still streaming (see
   // rehypeMarkTrailingAsides) so the pill doesn't flash in mid-sentence.
@@ -168,48 +160,6 @@ export const AsideGroup = memo(function AsideGroup({ node }: AsideGroupProps) {
     entries.every((e) => e.label === entries[faceIndex]!.label)
   const showOverflow = overflow > 0 && !allSameLabel
 
-  function show() {
-    cancelScheduledClose()
-    setIndex(faceIndex === -1 ? 0 : faceIndex)
-    setOpen(true)
-  }
-  function hideUnlessPinned() {
-    if (pinned) return
-    cancelScheduledClose()
-    closeTimeoutRef.current = setTimeout(() => {
-      closeTimeoutRef.current = null
-      setOpen(false)
-    }, CLOSE_GRACE_PERIOD_MS)
-  }
-  function togglePinned() {
-    if (pinned) {
-      setPinned(false)
-      setOpen(false)
-    } else {
-      setPinned(true)
-      show()
-    }
-  }
-  function handleKeyDown(e: KeyboardEvent<HTMLSpanElement>) {
-    if (e.key === "Escape") {
-      setOpen(false)
-      setPinned(false)
-      ;(document.activeElement as HTMLElement | null)?.blur()
-    }
-  }
-  function handleBlur(e: FocusEvent<HTMLSpanElement>) {
-    if (
-      !pinned &&
-      !isInsideWidget(
-        e.relatedTarget as Node | null,
-        containerRef.current,
-        refs.floating.current,
-      )
-    ) {
-      setOpen(false)
-    }
-  }
-
   const current = entries[index]!
   const pillLabel =
     faceIndex === -1
@@ -219,14 +169,7 @@ export const AsideGroup = memo(function AsideGroup({ node }: AsideGroupProps) {
         : entries[faceIndex]!.label
 
   return (
-    <span
-      ref={containerRef}
-      className="shiny-aside-group"
-      onMouseEnter={show}
-      onMouseLeave={hideUnlessPinned}
-      onKeyDown={handleKeyDown}
-      onBlur={handleBlur}
-    >
+    <span className="shiny-aside-group">
       <button
         ref={refs.setReference}
         type="button"
@@ -235,11 +178,8 @@ export const AsideGroup = memo(function AsideGroup({ node }: AsideGroupProps) {
             ? "shiny-aside-pill shiny-aside-pill--count"
             : "shiny-aside-pill"
         }
-        onClick={togglePinned}
-        onFocus={show}
-        aria-haspopup="dialog"
-        aria-expanded={open}
         aria-label={pillLabel}
+        {...getReferenceProps()}
       >
         {faceIndex !== -1 && (
           <>
@@ -256,53 +196,63 @@ export const AsideGroup = memo(function AsideGroup({ node }: AsideGroupProps) {
       </button>
       {open && (
         <FloatingPortal>
-          <div
-            ref={refs.setFloating}
-            className="shiny-aside-popover"
-            role="dialog"
-            style={floatingStyles}
+          <FloatingFocusManager
+            context={context}
+            modal={false}
+            initialFocus={-1}
+            returnFocus
           >
-            {entries.length > 1 && (
-              <div className="shiny-aside-popover__nav">
-                <div className="shiny-aside-popover__nav-arrows">
-                  <button
-                    type="button"
-                    aria-label="Previous source"
-                    onClick={() =>
-                      setIndex((i) => (i - 1 + entries.length) % entries.length)
-                    }
-                  >
-                    <NavArrowIcon direction="prev" />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Next source"
-                    onClick={() => setIndex((i) => (i + 1) % entries.length)}
-                  >
-                    <NavArrowIcon direction="next" />
-                  </button>
+            <div
+              ref={refs.setFloating}
+              className="shiny-aside-popover"
+              style={floatingStyles}
+              aria-label={pillLabel}
+              {...getFloatingProps()}
+            >
+              {entries.length > 1 && (
+                <div className="shiny-aside-popover__nav">
+                  <div className="shiny-aside-popover__nav-arrows">
+                    <button
+                      type="button"
+                      aria-label="Previous source"
+                      onClick={() =>
+                        setIndex(
+                          (i) => (i - 1 + entries.length) % entries.length,
+                        )
+                      }
+                    >
+                      <NavArrowIcon direction="prev" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Next source"
+                      onClick={() => setIndex((i) => (i + 1) % entries.length)}
+                    >
+                      <NavArrowIcon direction="next" />
+                    </button>
+                  </div>
+                  <span className="shiny-aside-popover__count">
+                    {index + 1} / {entries.length}
+                  </span>
                 </div>
-                <span className="shiny-aside-popover__count">
-                  {index + 1} / {entries.length}
-                </span>
-              </div>
-            )}
-            {current.label && (
-              <div className="shiny-aside-popover__label">
-                <EntryIcon entry={current} />
-                {current.label}
-              </div>
-            )}
-            {current.body && (
-              <div className="shiny-aside-popover__body">
-                <MarkdownContent
-                  content={current.body}
-                  contentType="html"
-                  streaming={false}
-                />
-              </div>
-            )}
-          </div>
+              )}
+              {current.label && (
+                <div className="shiny-aside-popover__label">
+                  <EntryIcon entry={current} />
+                  {current.label}
+                </div>
+              )}
+              {current.body && (
+                <div className="shiny-aside-popover__body">
+                  <MarkdownContent
+                    content={current.body}
+                    contentType="html"
+                    streaming={false}
+                  />
+                </div>
+              )}
+            </div>
+          </FloatingFocusManager>
         </FloatingPortal>
       )}
     </span>
