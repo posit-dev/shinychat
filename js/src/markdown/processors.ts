@@ -12,6 +12,7 @@ import { remarkEscapeHtml } from "./plugins/remarkEscapeHtml"
 import { rehypeExternalLinks } from "./plugins/rehypeExternalLinks"
 import { rehypeUncontrolledInputs } from "./plugins/rehypeUncontrolledInputs"
 import { rehypeUnwrapBlockCEs } from "./plugins/rehypeUnwrapBlockCEs"
+import { rehypeGroupWebActivity } from "./plugins/rehypeGroupWebActivity"
 import { rehypeGroupAsides } from "./plugins/rehypeGroupAsides"
 import { rehypeMarkTrailingAsides } from "./plugins/markTrailingAsides"
 import { rehypeLazyContinuation } from "./plugins/rehypeLazyContinuation"
@@ -37,6 +38,7 @@ export const markdownProcessor = unified()
   .use(rehypeRewriteAsideFromTemplate)
   .use(rehypeLazyContinuation)
   .use(rehypeUnwrapBlockCEs)
+  .use(rehypeGroupWebActivity)
   .use(rehypeGroupAsides)
   .use(rehypeMarkTrailingAsides)
   .use(rehypeUncontrolledInputs)
@@ -56,6 +58,7 @@ export const markdownProcessor = unified()
  * parse5-parsed HTML fragment.
  */
 export const htmlProcessor = unified()
+  .use(rehypeGroupWebActivity)
   .use(rehypeGroupAsides)
   .use(rehypeMarkTrailingAsides)
   .use(rehypeUncontrolledInputs)
