@@ -397,6 +397,27 @@ $shinychat-tool-row-min-height: 2em;
   font-family: var(--bs-font-monospace);
 }
 
+// Title + per-call label glued together (colon form) on a single-call row, so
+// the flex row gap doesn't push them apart into "title : label".
+.shinychat-tool-group__titlewrap {
+  display: inline-flex;
+  align-items: baseline;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.shinychat-tool-group__label {
+  font-weight: normal;
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  code {
+    font-size: 0.9em;
+  }
+}
+
 .shinychat-tool-group__count {
   font-size: 0.85em;
   font-weight: 400;
@@ -503,13 +524,19 @@ $shinychat-tool-row-min-height: 2em;
       animation: shinychat-tool-detail-reveal 0.2s ease-out;
     }
 
-    // Trim the leaf card so expanding a Tier-2 row reads as a morph into the
-    // detail rather than a separate stacked card.
-    > .shiny-tool-card {
+    // The row above already is the header (glyph + title + peek + chevron), so
+    // the leaf card drops its own redundant header and reveals just the
+    // request/result body — the row morphs into the card. A fullscreen card
+    // keeps its header (it escapes the row into an overlay).
+    > .shiny-tool-card:not([fullscreen]) {
       margin-top: 0;
       border-top-width: 0;
       border-top-left-radius: 0;
       border-top-right-radius: 0;
+
+      > .card-header {
+        display: none;
+      }
     }
   }
 }

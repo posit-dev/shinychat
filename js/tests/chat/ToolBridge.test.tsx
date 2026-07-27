@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest"
-import { render, act } from "@testing-library/react"
+import { render, act, fireEvent } from "@testing-library/react"
 import { ChatApp } from "../../src/chat/ChatApp"
 import {
   createMockTransport,
@@ -10,6 +10,13 @@ import {
 beforeEach(() => {
   installShinyWindowStub()
 })
+
+// A completed single tool call now rests as a quiet Tier-1 row that morphs into
+// the full card on expand; open it to assert on the leaf card / result body.
+function expandToolRow() {
+  const row = document.querySelector(".shinychat-tool-group__row")
+  if (row) act(() => fireEvent.click(row))
+}
 
 describe("Tool component bridge rendering", () => {
   it("renders a tool request card from server HTML", () => {
@@ -49,12 +56,16 @@ describe("Tool component bridge rendering", () => {
       })
     })
 
-    // The React ToolRequest renders a ToolCard with class shiny-tool-card
+    // A running single call rests as a Tier-1 row (with a spinner) carrying the
+    // tool title; the full card appears only on expand.
+    expect(document.querySelector(".shinychat-tool-group__row")).toBeTruthy()
+    expect(document.querySelector(".spinner-border")).toBeTruthy()
+    expect(
+      document.querySelector(".shinychat-tool-group__title")?.textContent,
+    ).toContain("Get Weather")
+
+    expandToolRow()
     expect(document.querySelector(".shiny-tool-card")).toBeTruthy()
-    // The title should contain the tool title
-    expect(document.querySelector(".tool-title")?.textContent).toContain(
-      "Get Weather",
-    )
   })
 
   it("renders a tool result card and hides the corresponding request", () => {
@@ -120,7 +131,8 @@ describe("Tool component bridge rendering", () => {
       })
     })
 
-    // The result card should be visible with the text value
+    // The result rests as a row; expand it to reveal the leaf card body.
+    expandToolRow()
     const resultDiv = document.querySelector(".shiny-tool-result__result")
     expect(resultDiv).toBeTruthy()
     expect(resultDiv?.textContent).toContain("Sunny, 72°F")
@@ -182,9 +194,10 @@ describe("Tool component bridge rendering", () => {
       })
     })
 
-    // The result supersedes the request: the running (spinner) card is gone,
-    // and the result value is shown.
+    // The result supersedes the request: the running (spinner) glyph is gone,
+    // and the result value is shown once the row is expanded.
     expect(document.querySelector(".spinner-border")).toBeNull()
+    expandToolRow()
     expect(document.body.textContent).toContain("Sunny, 72°F")
   })
 
@@ -251,6 +264,7 @@ describe("Tool component bridge rendering", () => {
     })
 
     expect(document.querySelector(".spinner-border")).toBeNull()
+    expandToolRow()
     expect(document.body.textContent).toContain("Done")
   })
 
@@ -291,8 +305,8 @@ describe("Tool component bridge rendering", () => {
       })
     })
 
-    // Tool request card should be visible
-    expect(document.querySelector(".shiny-tool-card")).toBeTruthy()
+    // The running request rests as a Tier-1 row.
+    expect(document.querySelector(".shinychat-tool-group__row")).toBeTruthy()
 
     // Server sends hide action
     act(() => {
@@ -302,7 +316,8 @@ describe("Tool component bridge rendering", () => {
       })
     })
 
-    // Card should be gone (ToolRequest returns null when hidden)
+    // The only call is hidden, so its group (and row) drops out entirely.
+    expect(document.querySelector(".shinychat-tool-group__row")).toBeNull()
     expect(document.querySelector(".shiny-tool-card")).toBeNull()
   })
 
@@ -361,6 +376,7 @@ describe("Tool component bridge rendering", () => {
 
     // The preloaded result supersedes the preloaded request (no spinner card).
     expect(document.querySelector(".spinner-border")).toBeNull()
+    expandToolRow()
     expect(document.body.textContent).toContain("Done")
   })
 
@@ -402,9 +418,10 @@ describe("Tool component bridge rendering", () => {
       })
     })
 
-    const toolIcon = document.querySelector(".tool-icon")
-    expect(toolIcon).toBeTruthy()
-    expect(toolIcon!.innerHTML).toContain("bi-folder2-open")
+    // The tool's identity icon leads the resting Tier-1 row.
+    const glyph = document.querySelector(".shinychat-tool-group__glyph")
+    expect(glyph).toBeTruthy()
+    expect(glyph!.innerHTML).toContain("bi-folder2-open")
   })
 
   it("falls back to a bare dot glyph when no icon is specified on a successful tool result", () => {
@@ -444,11 +461,11 @@ describe("Tool component bridge rendering", () => {
       })
     })
 
-    const toolIcon = document.querySelector(".tool-icon")
-    expect(toolIcon).toBeTruthy()
-    // Should contain the muted identity dot (never a wrench).
-    expect(toolIcon!.innerHTML).toContain("shinychat-tool-glyph-dot")
-    expect(toolIcon!.innerHTML).not.toContain("bi-wrench-adjustable")
+    // Should lead with the muted identity dot (never a wrench).
+    const glyph = document.querySelector(".shinychat-tool-group__glyph")
+    expect(glyph).toBeTruthy()
+    expect(glyph!.innerHTML).toContain("shinychat-tool-glyph-dot")
+    expect(glyph!.innerHTML).not.toContain("bi-wrench-adjustable")
   })
 
   it("renders the empty-result placeholder when a tool result value is an empty string", () => {

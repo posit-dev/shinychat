@@ -97,11 +97,22 @@ describe("chat-entry custom element boot", () => {
     })
 
     // Preloaded tool HTML is routed into a tool_loop block and rendered as a
-    // condensed tool group (leaf card).
+    // condensed tool group — a quiet Tier-1 row (the tool name in code font,
+    // since this call has no title) that morphs into the leaf card on expand.
     await waitFor(() => {
-      expect(host.querySelector(".shiny-tool-card")).not.toBeNull()
-      expect(host.textContent).toContain("done")
+      expect(host.querySelector(".shinychat-tool-group__row")).not.toBeNull()
+      expect(
+        host.querySelector(".shinychat-tool-group__toolname")?.textContent,
+      ).toBe("foo")
     })
+
+    const row = host.querySelector(".shinychat-tool-group__row") as HTMLElement
+    await act(async () => {
+      row.click()
+    })
+
+    expect(host.querySelector(".shiny-tool-card")).not.toBeNull()
+    expect(host.textContent).toContain("done")
   })
 
   it("falls back to the conventional input id when no child input id is provided", async () => {

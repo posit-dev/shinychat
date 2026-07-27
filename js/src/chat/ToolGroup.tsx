@@ -123,6 +123,69 @@ function GroupTitle({ group }: { group: ToolCallGroup }): ReactNode {
   )
 }
 
+// A single-call group is itself the leaf, but it still rests as a quiet Tier-1
+// row (glyph + title + label + peek + chevron) that morphs straight into the
+// full card on expand — matching a collapsed multi-call group rather than
+// standing out as a bare card.
+function SingleCallRow({
+  group,
+  item,
+}: {
+  group: ToolCallGroup
+  item: ToolCallItem
+}): ReactNode {
+  const [open, setOpen] = useState(item.expanded ?? false)
+  const running = item.status === "running"
+  const failed = item.status === "error"
+  const label = perCallLabel(item, group.title)
+  const glyphHtml = running ? spinnerHtml : group.icon || bareDot
+  const contentId = `tool-call-${item.requestId}`
+
+  return (
+    <div className="shinychat-tool-group shinychat-tool-group--single">
+      <button
+        type="button"
+        className="shinychat-tool-group__row"
+        aria-expanded={open}
+        aria-controls={contentId}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span
+          className={`shinychat-tool-group__glyph${running ? " running" : ""}`}
+          dangerouslySetInnerHTML={{ __html: glyphHtml }}
+        />
+        <span className="shinychat-tool-group__titlewrap">
+          <GroupTitle group={group} />
+          {label && (
+            <span className="shinychat-tool-group__label">
+              {": "}
+              {label.code ? <code>{label.text}</code> : label.text}
+            </span>
+          )}
+        </span>
+        {item.valuePreview && (
+          <span className="shinychat-tool-call-row__preview">
+            {item.valuePreview}
+          </span>
+        )}
+        <span className="shinychat-tool-spacer" />
+        {failed && <span className="shinychat-tool-group__failed">failed</span>}
+        <span
+          className="shinychat-tool-group__chevron"
+          dangerouslySetInnerHTML={chevronDSIH}
+        />
+      </button>
+      <div
+        id={contentId}
+        className="shinychat-tool-call-row__detail"
+        hidden={!open}
+      >
+        {open && renderLeaf(item, true)}
+      </div>
+    </div>
+  )
+}
+
 function ToolCallRow({
   item,
   groupTitle,
@@ -200,14 +263,10 @@ export const ToolGroup = memo(function ToolGroup({
     }
   }, [dispatch, group.calls])
 
-  // A single-call group is itself the leaf: render the card directly so its
-  // collapsed header is the resting row and expanding morphs into the detail.
+  // A single-call group rests as a quiet Tier-1 row (skipping Tier 2) and
+  // morphs into the full card on expand.
   if (group.calls.length === 1) {
-    return (
-      <div className="shinychat-tool-group shinychat-tool-group--single">
-        {renderLeaf(group.calls[0]!, false)}
-      </div>
-    )
+    return <SingleCallRow group={group} item={group.calls[0]!} />
   }
 
   const anyRunning = group.calls.some((c) => c.status === "running")

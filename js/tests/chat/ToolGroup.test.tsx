@@ -29,7 +29,7 @@ function group(
 }
 
 describe("ToolGroup", () => {
-  it("renders a single-call group as a leaf card, with no group row", () => {
+  it("rests a single-call group as a Tier-1 row and morphs into the card on expand", () => {
     const { container } = render(
       <ToolGroup
         group={group({
@@ -44,13 +44,19 @@ describe("ToolGroup", () => {
         })}
       />,
     )
-    expect(container.querySelector(".shiny-tool-card")).toBeTruthy()
-    expect(container.querySelector(".shinychat-tool-group__row")).toBeNull()
-    // No ×N badge for a single call.
+    const row = container.querySelector(".shinychat-tool-group__row")
+    expect(row).toBeTruthy()
+    // At rest it's a quiet row, not a card, and carries no ×N badge.
+    expect(container.querySelector(".shiny-tool-card")).toBeNull()
     expect(container.textContent).not.toContain("×")
+    expect(row?.getAttribute("aria-expanded")).toBe("false")
+
+    fireEvent.click(row as Element)
+    expect(row?.getAttribute("aria-expanded")).toBe("true")
+    expect(container.querySelector(".shiny-tool-card")).toBeTruthy()
   })
 
-  it("shows a title:label colon form for a single call with a label", () => {
+  it("shows a title: label colon form for a single call with a label", () => {
     const { container } = render(
       <ToolGroup
         group={group({
@@ -66,8 +72,12 @@ describe("ToolGroup", () => {
         })}
       />,
     )
-    const title = container.querySelector(".tool-title")
-    expect(title?.textContent).toContain("fib.R")
+    expect(
+      container.querySelector(".shinychat-tool-group__title")?.textContent,
+    ).toContain("Ran R code")
+    expect(
+      container.querySelector(".shinychat-tool-group__label")?.textContent,
+    ).toContain("fib.R")
   })
 
   it("renders a multi-call group as a Tier-1 row with an ×N badge that expands to a Tier-2 list", () => {
@@ -185,7 +195,7 @@ describe("ToolGroup", () => {
     ).toBeTruthy()
   })
 
-  it("shows a text 'failed' status note (not just color/icon) for a single-call error result", () => {
+  it("shows a subtle text 'failed' note (not just color/icon) on a resting single-call error row", () => {
     const { container } = render(
       <ToolGroup
         group={group({
@@ -201,12 +211,13 @@ describe("ToolGroup", () => {
         })}
       />,
     )
-    const note = container.querySelector(".tool-status-note")
-    expect(note?.textContent).toBe("failed")
-    // No leftover title-wrapper text like "failed" appended to the title itself.
-    expect(container.querySelector(".tool-title")?.textContent).not.toContain(
-      "failed",
-    )
+    expect(
+      container.querySelector(".shinychat-tool-group__failed")?.textContent,
+    ).toBe("failed")
+    // The resting glyph stays the muted identity glyph, not a red error icon.
+    expect(
+      container.querySelector(".shinychat-tool-group__glyph.text-danger"),
+    ).toBeNull()
   })
 
   it("gives the single-call running spinner a visually-hidden 'Running…' label", () => {
@@ -214,6 +225,7 @@ describe("ToolGroup", () => {
       <ToolGroup
         group={group({
           title: "Running R code",
+          titleSettled: false,
           calls: [
             call({
               requestId: "a",
@@ -224,13 +236,15 @@ describe("ToolGroup", () => {
         })}
       />,
     )
-    const hidden = container.querySelector(".tool-icon .visually-hidden")
+    const hidden = container.querySelector(
+      ".shinychat-tool-group__glyph .visually-hidden",
+    )
     expect(hidden?.textContent).toBe("Running…")
     // The visible title text has no "Running " prefix wrapper baked in by us;
     // it's whatever the server-provided title says.
-    expect(container.querySelector(".tool-title")?.textContent).toBe(
-      "Running R code",
-    )
+    expect(
+      container.querySelector(".shinychat-tool-group__title")?.textContent,
+    ).toBe("Running R code")
   })
 
   it("does not render a label for a call with neither an explicit label nor a scalar argument", () => {
