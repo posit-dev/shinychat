@@ -1,25 +1,14 @@
-import { memo, useEffect, useState } from "react"
-import {
-  useFloating,
-  autoUpdate,
-  offset,
-  flip,
-  shift,
-  FloatingPortal,
-  FloatingFocusManager,
-  useHover,
-  useFocus,
-  useClick,
-  useDismiss,
-  useRole,
-  useInteractions,
-} from "@floating-ui/react"
+import { memo, useEffect, useId, useState } from "react"
+import { FloatingPortal, FloatingFocusManager } from "@floating-ui/react"
 import type { Element } from "hast"
 import { toHtml } from "hast-util-to-html"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { ASIDE_PENDING_ATTR } from "../markdown/plugins/markTrailingAsides"
 import { externalLinkAttributes } from "../markdown/plugins/rehypeExternalLinks"
 import { useAsideFavicon } from "./context"
+import { useCitationRegister } from "./citationCollector"
+import { citationEntriesFromGroup, type CitationEntry } from "./citations"
+import { useDismissiblePopover } from "./useDismissiblePopover"
 
 export interface AsideEntry {
   label?: string
@@ -114,19 +103,24 @@ function NavArrowIcon({ direction }: { direction: "prev" | "next" }) {
   )
 }
 
-// Gap between the pill and the popover (see .shiny-aside-popover's `top`
-// offset) is a dead zone the pointer must cross when moving from one to the
-// other. useHover's `delay.close` keeps the popover alive long enough to
-// reach it, and is canceled automatically if the pointer lands back on the
-// pill or the popover before it elapses.
-const CLOSE_GRACE_PERIOD_MS = 150
-
 export const AsideGroup = memo(function AsideGroup({ node }: AsideGroupProps) {
+  const entries = parseAsideEntries(node)
+  const pending = node?.properties?.[ASIDE_PENDING_ATTR] != null
+  const registry = useCitationRegister()
+  const instanceId = useId()
+  const citationSignature =
+    node && !pending ? JSON.stringify(citationEntriesFromGroup(node)) : ""
+
+  useEffect(() => {
+    if (!registry || citationSignature === "") return
+    const citations = JSON.parse(citationSignature) as CitationEntry[]
+    if (citations.length === 0) return
+    registry.register(instanceId, citations)
+    return () => registry.unregister(instanceId)
+  }, [registry, instanceId, citationSignature])
+
   return (
-    <AsideGroupView
-      entries={parseAsideEntries(node)}
-      pending={node?.properties?.[ASIDE_PENDING_ATTR] != null}
-    />
+    <AsideGroupView entries={entries} pending={pending} />
   )
 })
 
@@ -139,37 +133,8 @@ export const AsideGroupView = memo(function AsideGroupView({
   const [open, setOpen] = useState(false)
   const [index, setIndex] = useState(0)
 
-  // strategy: "fixed" + the middleware below let the popover escape the
-  // message list's `overflow: auto` (needed for scrolling, so it can't just
-  // be set to visible) and reposition itself (flip above the pill, shift
-  // within the viewport) when there isn't room where it'd normally go.
-  const { refs, floatingStyles, context } = useFloating({
-    open,
-    onOpenChange: setOpen,
-    strategy: "fixed",
-    placement: "bottom-start",
-    middleware: [offset(6), flip(), shift({ padding: 8 })],
-    whileElementsMounted: autoUpdate,
-  })
-
-  // Composed rather than hand-rolled: useHover already tracks pointer entry
-  // on both the pill and the popover (canceling the close delay if the
-  // pointer lands on either), and useClick's open event marks the popover as
-  // "click-opened" so useHover no longer auto-closes it on mouse-leave —
-  // i.e. clicking pins it, clicking again un-pins and closes it.
-  const hover = useHover(context, { delay: { close: CLOSE_GRACE_PERIOD_MS } })
-  const focus = useFocus(context)
-  const click = useClick(context)
-  const dismiss = useDismiss(context, { outsidePressEvent: "mousedown" })
-  const role = useRole(context)
-
-  const { getReferenceProps, getFloatingProps } = useInteractions([
-    hover,
-    focus,
-    click,
-    dismiss,
-    role,
-  ])
+  const { refs, floatingStyles, context, getReferenceProps, getFloatingProps } =
+    useDismissiblePopover(open, setOpen)
 
   // Reset paging to the face entry whenever the popover opens, regardless of
   // which interaction (hover, focus, click) opened it.

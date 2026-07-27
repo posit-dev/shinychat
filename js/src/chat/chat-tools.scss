@@ -974,6 +974,7 @@ shinychat-raw-html {
     }
   }
 }
+
 .shiny-web-activity {
   margin: 0.5em 0;
   font-size: 0.9em;
@@ -1119,4 +1120,106 @@ shinychat-raw-html {
   .shiny-web-activity__status--ok {
     color: var(--bs-success, #2a9d4a);
   }
+}
+
+.shiny-sources {
+  display: inline-block;
+  margin-top: 0.5rem;
+}
+
+.shiny-sources-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--bs-border-color, #d5d7db);
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem 0.25rem 0.5rem;
+  background: var(--bs-tertiary-bg, #f6f7f9);
+  color: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.shiny-sources-pill__stack {
+  display: inline-flex;
+
+  .shiny-sources-favicon {
+    margin-left: -0.4375rem;
+    border: 2px solid var(--bs-tertiary-bg, #f6f7f9);
+    border-radius: 50%;
+
+    &:first-child {
+      margin-left: 0;
+    }
+  }
+}
+
+.shiny-sources-favicon {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 0.25rem;
+  flex: 0 0 auto;
+}
+
+.shiny-sources-favicon--blank {
+  background: var(--bs-secondary-bg, #e3e3e6);
+}
+
+.shiny-sources-popover {
+  width: 21rem;
+  max-height: 18rem;
+  overflow-y: auto;
+  background: var(--bs-body-bg, #fff);
+  border: 1px solid var(--bs-border-color, #d5d7db);
+  border-radius: 0.75rem;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14);
+  padding: 0.375rem 0;
+  // Same layer as .shiny-aside-popover — both render through a Floating-UI
+  // portal and should stack consistently with each other.
+  z-index: 1040;
+}
+
+.shiny-sources-popover__title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.5rem 0.875rem 0.375rem;
+}
+
+.shiny-sources-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.shiny-sources-item__link {
+  display: flex;
+  gap: 0.625rem;
+  padding: 0.5625rem 0.875rem;
+  text-decoration: none;
+  color: inherit;
+
+  &:hover {
+    background: var(--bs-tertiary-bg, #f6f7f9);
+  }
+
+  .shiny-sources-favicon {
+    margin-top: 0.125rem;
+  }
+}
+
+.shiny-sources-item__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.shiny-sources-item__site {
+  font-size: 0.71875rem;
+  color: var(--bs-secondary-color, #8a8a8e);
+}
+
+.shiny-sources-item__title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.35;
 }

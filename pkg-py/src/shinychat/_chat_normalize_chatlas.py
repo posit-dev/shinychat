@@ -5,6 +5,7 @@ import os
 import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Optional, Sequence, Union
+from urllib.parse import urlparse
 
 from htmltools import (
     HTML,
@@ -247,6 +248,24 @@ class ShinyToolCardMessage(ChatMessage):
     """Marker for shinychat's own rich tool-result card."""
 
     pass
+
+
+def domain_from_url(url: str) -> str:
+    "Best-effort hostname for use as a citation's display label."
+    return urlparse(url).hostname or url
+
+
+def citation_aside(url: str, title: Optional[str]) -> str:
+    "Render a chatlas web citation as <shiny-aside> markup with a dedup marker."
+    return str(
+        Tag(
+            "shiny-aside",
+            Tag("a", title or url, href=url),
+            data_citation="",
+            label=domain_from_url(url),
+            url=url,
+        )
+    )
 
 
 class ToolResultDisplay(BaseModel):

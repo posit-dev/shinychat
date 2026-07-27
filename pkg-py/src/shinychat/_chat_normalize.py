@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from functools import singledispatch
 from typing import TYPE_CHECKING, Any, TypeGuard
@@ -220,6 +221,8 @@ try:
 
     # Import here to avoid hard dependency on pydantic
     from ._chat_normalize_chatlas import (
+        citation_aside,
+        tool_display_override,
         tool_request_contents,
         tool_result_contents,
         tool_result_message,
@@ -292,6 +295,92 @@ try:
     @message_content_chunk.register
     def _(chunk: ContentToolResult):
         return message_content(chunk)
+
+    try:
+        from chatlas.types import (
+            ContentCitation,
+            ContentToolRequestFetch,
+            ContentToolRequestSearch,
+            ContentToolResponseFetch,
+            ContentToolResponseSearch,
+        )
+
+        @message_content.register
+        def _(message: ContentToolRequestSearch):
+            if tool_display_override() == "none":
+                return ChatMessage(content="")
+            return ChatMessage(
+                content=Tag(
+                    "shiny-web-search",
+                    data_shinychat_react=True,
+                    query=message.query,
+                )
+            )
+
+        @message_content_chunk.register
+        def _(chunk: ContentToolRequestSearch):
+            return message_content(chunk)
+
+        @message_content.register
+        def _(message: ContentToolResponseSearch):
+            if tool_display_override() == "none":
+                return ChatMessage(content="")
+            sources = [
+                {"url": s.url, "title": s.title, "domain": s.domain}
+                for s in message.sources
+            ]
+            return ChatMessage(
+                content=Tag(
+                    "shiny-web-search-results",
+                    data_shinychat_react=True,
+                    sources=json.dumps(sources),
+                )
+            )
+
+        @message_content_chunk.register
+        def _(chunk: ContentToolResponseSearch):
+            return message_content(chunk)
+
+        @message_content.register
+        def _(message: ContentToolRequestFetch):
+            return ChatMessage(content="")
+
+        @message_content_chunk.register
+        def _(chunk: ContentToolRequestFetch):
+            return message_content(chunk)
+
+        @message_content.register
+        def _(message: ContentToolResponseFetch):
+            if tool_display_override() == "none":
+                return ChatMessage(content="")
+            return ChatMessage(
+                content=Tag(
+                    "shiny-web-fetch",
+                    data_shinychat_react=True,
+                    url=message.url,
+                    status=message.status,
+                )
+            )
+
+        @message_content_chunk.register
+        def _(chunk: ContentToolResponseFetch):
+            return message_content(chunk)
+
+        @message_content.register
+        def _(message: ContentCitation):
+            if tool_display_override() == "none":
+                return ChatMessage(content="")
+            return ChatMessage(
+                content=citation_aside(message.url, message.title),
+                content_type="markdown",
+            )
+
+        @message_content_chunk.register
+        def _(chunk: ContentCitation):
+            return message_content(chunk)
+
+    except ImportError:
+        pass
 
     # ContentThinking is a complete thought stored in a turn, ContentThinkingDelta is
     # a thinking chunk from .stream(content="all")
