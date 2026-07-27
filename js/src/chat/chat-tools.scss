@@ -555,6 +555,13 @@ $shinychat-tool-row-min-height: 2em;
   }
 }
 
+// Nest the Tier-2 drill-in body under its call row (aligned with the row's
+// content indent). A single-call row sits at the loop's base indent, so its
+// detail — same class, but not inside a .shinychat-tool-call-row — stays flush.
+.shinychat-tool-call-row > .shinychat-tool-call-row__detail {
+  padding-inline-start: 1.4em;
+}
+
 @keyframes shinychat-tool-detail-reveal {
   from {
     opacity: 0;
