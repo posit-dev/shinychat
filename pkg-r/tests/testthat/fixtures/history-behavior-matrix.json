@@ -73,5 +73,17 @@
     "setup": { "turns": 1, "conversations": 2 },
     "operation": { "method": "delete", "args": ["$first_id"] },
     "expect": { "response_count": 1 }
+  },
+  {
+    "name": "edit_truncates_current_leaf_to_fork_parent",
+    "setup": { "turns": 1 },
+    "operation": { "method": "handle_edit", "args": [0, "edited content", null] },
+    "expect": { "current_leaf": null }
+  },
+  {
+    "name": "navigate_with_no_siblings_is_noop",
+    "setup": { "turns": 1 },
+    "operation": { "method": "handle_navigate", "args": [0, "prev"] },
+    "expect": {}
   }
 ]

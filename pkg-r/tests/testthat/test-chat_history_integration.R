@@ -767,6 +767,114 @@ test_that("the client's `_messages` echo drives the save and preserves the displ
   })
 })
 
+test_that("editing a message after the first forks at the correct node even when the client's UI echo lags the assistant turn (regression)", {
+  # Regression: the history save trigger used to fire as soon as the
+  # server-side stream finished (chained directly onto chat_append_stream()'s
+  # promise), before the browser had echoed the just-completed assistant
+  # reply back through `<chat_id>_messages`. Given that lag,
+  # extend_record_linear() attached the *previous* round's late-arriving
+  # assistant ui message to the *current* round's fallback node, permanently
+  # leaving one node's `ui` unset. record_node_id_for_message_index() counts
+  # by `length(node$ui)`, so that unset node silently undercounted by one --
+  # shifting every later handle_edit()/handle_navigate() message_index lookup
+  # one node too far. In particular, editing any message after the first
+  # forked one node too late, leaving the pre-edit message on the path
+  # alongside whatever got resubmitted in its place (a visible duplicate).
+  skip_if_not_installed("ellmer")
+
+  make_live_turn <- function(role, text) {
+    content <- ellmer::ContentText(text = text)
+    if (role == "user") {
+      ellmer::UserTurn(contents = list(content))
+    } else {
+      ellmer::AssistantTurn(contents = list(content))
+    }
+  }
+  make_ui_message <- function(role, text) {
+    list(
+      role = role,
+      segments = list(list(content = text, content_type = "markdown"))
+    )
+  }
+
+  client <- mock_chat_client()
+  session <- shiny::MockShinySession$new()
+  session$user <- "testuser"
+  store <- InMemoryConversationStore$new()
+
+  server <- function(input, output, session) {
+    chat_server(
+      "chat",
+      client,
+      history = history_options(
+        store = store,
+        title = NULL,
+        restore_mode = "none"
+      ),
+      session = session
+    )
+  }
+
+  shiny::testServer(server, session = session, {
+    # Round 1: user "one" -> assistant "R1". The browser's echo of
+    # `chat_messages` necessarily lags the server-side stream completion by a
+    # round trip: it reports only "one" first, then catches up to include
+    # "R1" once the client has rendered and re-echoed it.
+    client$set_turns(list(
+      make_live_turn("user", "one"),
+      make_live_turn("assistant", "R1")
+    ))
+    session$setInputs(chat_messages = list(make_ui_message("user", "one")))
+    session$setInputs(
+      chat_messages = list(
+        make_ui_message("user", "one"),
+        make_ui_message("assistant", "R1")
+      )
+    )
+
+    ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
+    expect_equal(length(ctrl$record$nodes), 2)
+
+    # Round 2: user "two" -> assistant "R2", same lag pattern.
+    client$set_turns(list(
+      make_live_turn("user", "one"),
+      make_live_turn("assistant", "R1"),
+      make_live_turn("user", "two"),
+      make_live_turn("assistant", "R2")
+    ))
+    session$setInputs(
+      chat_messages = list(
+        make_ui_message("user", "one"),
+        make_ui_message("assistant", "R1"),
+        make_ui_message("user", "two")
+      )
+    )
+    session$setInputs(
+      chat_messages = list(
+        make_ui_message("user", "one"),
+        make_ui_message("assistant", "R1"),
+        make_ui_message("user", "two"),
+        make_ui_message("assistant", "R2")
+      )
+    )
+    expect_equal(length(ctrl$record$nodes), 4)
+
+    # Edit the second user message ("two", ui message index 2). The fork
+    # point must land on "R1"'s node (n_0002) -- excluding "two" and "R2"
+    # entirely -- not one node later, which would keep the original "two"
+    # message on the path alongside whatever gets resubmitted in its place.
+    session$setInputs(
+      chat_message_edit = list(
+        index = 2L,
+        content = "two EDITED",
+        attachments = list()
+      )
+    )
+
+    expect_equal(ctrl$record$current_leaf, "n_0002")
+  })
+})
+
 test_that("HistoryController does not evict when no limit set", {
   store <- InMemoryConversationStore$new()
   old <- new_conversation_record("old")

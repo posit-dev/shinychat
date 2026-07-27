@@ -148,6 +148,11 @@ class HistoryNavigateAction(TypedDict):
     reload: NotRequired[bool]
 
 
+class UpdateSiblingsAction(TypedDict):
+    type: Literal["update_siblings"]
+    data: dict[int, dict[str, int]]
+
+
 ChatAction = Union[
     MessageAction,
     ChunkStartAction,
@@ -167,6 +172,7 @@ ChatAction = Union[
     UpdateSlashCommandsAction,
     HistoryUpdateAction,
     HistoryNavigateAction,
+    UpdateSiblingsAction,
 ]
 
 

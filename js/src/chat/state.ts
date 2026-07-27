@@ -51,6 +51,8 @@ export interface ChatMessageData {
   fenceMarker?: string
   /** True when the stream was cancelled by the user before it completed. */
   cancelled?: boolean
+  /** Sibling navigation metadata (index within a set of edited variants, total variants). */
+  siblings?: { index: number; total: number }
 }
 
 export interface GreetingData {
@@ -152,6 +154,7 @@ function messagePayloadToData(msg: MessagePayload): ChatMessageData {
     icon: msg.icon,
     ...(attachments.length > 0 ? { attachments } : {}),
     blocks,
+    siblings: msg.siblings,
   }
 }
 
@@ -1062,6 +1065,20 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     case "history_navigate": {
       // Side effect handled imperatively in ChatApp; no state change.
       return state
+    }
+
+    case "update_siblings": {
+      const updated = state.messages.map((msg, i) => {
+        const siblingData = action.data[i]
+        if (siblingData) {
+          return { ...msg, siblings: siblingData }
+        }
+        if (msg.siblings) {
+          return { ...msg, siblings: undefined }
+        }
+        return msg
+      })
+      return { ...state, messages: updated }
     }
 
     default: {

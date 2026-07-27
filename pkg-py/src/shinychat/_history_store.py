@@ -250,6 +250,7 @@ class FileConversationStore(ConversationStore):
                 children=node_data.get("children", []),
                 turns=turns,
                 ui=ui_map.get(nid),
+                selected_child=node_data.get("selected_child"),
             )
 
         return ConversationRecord(
@@ -307,6 +308,7 @@ class FileConversationStore(ConversationStore):
                 "parent": node.parent,
                 "children": node.children,
                 "turn_ids": ws.turn_seq_map.get(nid, []),
+                "selected_child": node.selected_child,
             }
 
         turns_file = conv_dir / "turns.jsonl"

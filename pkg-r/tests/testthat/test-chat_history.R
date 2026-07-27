@@ -1041,3 +1041,473 @@ test_that("on_evict fires before store$delete in evict_one and delete", {
   expect_true(evict_saw_record_in_store)
   expect_null(store$get(conversation_partition("chat", "test-user"), conv_id))
 })
+
+test_that("send_sibling_metadata() sends update_siblings with 0-based index/total for a branched path", {
+  spy <- history_mock_session_with_spy()
+  client <- mock_chat_client()
+  store <- InMemoryConversationStore$new()
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = spy$session
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+
+  rec <- new_conversation_record("test")
+  rec$nodes <- list(
+    n_0001 = list(
+      parent = NULL,
+      children = list("n_0002"),
+      ui = list(list(role = "user"))
+    ),
+    n_0002 = list(
+      parent = "n_0001",
+      children = list(),
+      ui = list(list(role = "assistant"))
+    ),
+    n_0003 = list(
+      parent = NULL,
+      children = list("n_0004"),
+      ui = list(list(role = "user"))
+    ),
+    n_0004 = list(
+      parent = "n_0003",
+      children = list(),
+      ui = list(list(role = "assistant"))
+    )
+  )
+  rec$current_leaf <- "n_0004"
+  ctrl$record <- rec
+
+  ctrl$send_sibling_metadata()
+
+  sent <- history_spy_messages(spy)
+  update_siblings_msgs <- Filter(
+    function(m) identical(m$message$action$type, "update_siblings"),
+    sent
+  )
+  expect_length(update_siblings_msgs, 1)
+  data <- update_siblings_msgs[[1]]$message$action$data
+  expect_equal(data[["0"]]$index, 1L)
+  expect_equal(data[["0"]]$total, 2L)
+})
+
+test_that("send_sibling_metadata() sends nothing when no path node has siblings", {
+  spy <- history_mock_session_with_spy()
+  client <- mock_chat_client()
+  store <- InMemoryConversationStore$new()
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = spy$session
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+
+  rec <- new_conversation_record("test")
+  rec$nodes <- list(
+    n_0001 = list(
+      parent = NULL,
+      children = list(),
+      ui = list(list(role = "user"))
+    )
+  )
+  rec$current_leaf <- "n_0001"
+  ctrl$record <- rec
+
+  ctrl$send_sibling_metadata()
+
+  sent <- history_spy_messages(spy)
+  update_siblings_msgs <- Filter(
+    function(m) identical(m$message$action$type, "update_siblings"),
+    sent
+  )
+  expect_length(update_siblings_msgs, 0)
+})
+
+test_that("handle_navigate() steps to the previous sibling branch and replays it", {
+  spy <- history_mock_session_with_spy()
+  client <- mock_chat_client()
+  store <- InMemoryConversationStore$new()
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = spy$session
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+
+  make_turn <- function(role, text) {
+    class_name <- if (role == "user") {
+      "ellmer::UserTurn"
+    } else {
+      "ellmer::AssistantTurn"
+    }
+    list(
+      class = class_name,
+      version = 1,
+      props = list(
+        contents = list(
+          list(
+            class = "ellmer::ContentText",
+            version = 1,
+            props = list(text = text)
+          )
+        )
+      )
+    )
+  }
+  make_ui_message <- function(role, text) {
+    list(
+      role = role,
+      segments = list(list(content = text, content_type = "markdown"))
+    )
+  }
+  report_client_messages <- function(texts) {
+    roles <- rep(c("user", "assistant"), length.out = length(texts))
+    spy$session$setInputs(chat_messages = Map(make_ui_message, roles, texts))
+  }
+
+  # First branch: "Hi" / "Hello"
+  report_client_messages(c("Hi", "Hello"))
+  ctrl$on_response(list(
+    make_turn("user", "Hi"),
+    make_turn("assistant", "Hello")
+  ))
+  first_leaf <- ctrl$record$current_leaf
+  first_root <- ctrl$record$nodes[[first_leaf]]$parent
+
+  # Fork at the root by editing message 0 ("Hi"), then simulate the resubmit's
+  # on_response with new turns "Hi again" / "New reply" -- this creates a
+  # second root-level sibling.
+  ctrl$handle_edit(0, "Hi again", NULL)
+  report_client_messages(c("Hi again", "New reply"))
+  ctrl$on_response(list(
+    make_turn("user", "Hi again"),
+    make_turn("assistant", "New reply")
+  ))
+  second_leaf <- ctrl$record$current_leaf
+  second_root <- ctrl$record$nodes[[second_leaf]]$parent
+
+  expect_false(identical(first_root, second_root))
+  expect_equal(ctrl$record$current_leaf, second_leaf)
+
+  ctrl$handle_navigate(0, "prev")
+
+  expect_equal(ctrl$record$current_leaf, first_leaf)
+  expect_equal(
+    record_path_turns(ctrl$record)[[1]]$props$contents[[1]]$props$text,
+    "Hi"
+  )
+})
+
+test_that("handle_navigate() is a no-op past the first/last sibling", {
+  spy <- history_mock_session_with_spy()
+  client <- mock_chat_client()
+  store <- InMemoryConversationStore$new()
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = spy$session
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+
+  rec <- new_conversation_record("test")
+  rec$nodes <- list(
+    n_0001 = list(
+      parent = NULL,
+      children = list(),
+      turns = list(list(
+        class = "ellmer::UserTurn",
+        version = 1,
+        props = list(
+          contents = list(list(
+            class = "ellmer::ContentText",
+            version = 1,
+            props = list(text = "Hi")
+          ))
+        )
+      )),
+      ui = list(list(
+        role = "user",
+        segments = list(list(content = "Hi", content_type = "markdown"))
+      ))
+    )
+  )
+  rec$current_leaf <- "n_0001"
+  ctrl$record <- rec
+
+  ctrl$handle_navigate(0, "prev")
+  expect_equal(ctrl$record$current_leaf, "n_0001")
+
+  ctrl$handle_navigate(0, "next")
+  expect_equal(ctrl$record$current_leaf, "n_0001")
+})
+
+test_that("handle_edit() truncates current_leaf to the fork parent and resubmits via update_chat_user_input", {
+  spy <- history_mock_session_with_spy()
+  client <- mock_chat_client()
+  store <- InMemoryConversationStore$new()
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = spy$session
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+
+  make_turn <- function(role, text) {
+    class_name <- if (role == "user") {
+      "ellmer::UserTurn"
+    } else {
+      "ellmer::AssistantTurn"
+    }
+    list(
+      class = class_name,
+      version = 1,
+      props = list(
+        contents = list(
+          list(
+            class = "ellmer::ContentText",
+            version = 1,
+            props = list(text = text)
+          )
+        )
+      )
+    )
+  }
+  make_ui_message <- function(role, text) {
+    list(
+      role = role,
+      segments = list(list(content = text, content_type = "markdown"))
+    )
+  }
+  spy$session$setInputs(
+    chat_messages = list(
+      make_ui_message("user", "Hi"),
+      make_ui_message("assistant", "Hello")
+    )
+  )
+  ctrl$on_response(list(
+    make_turn("user", "Hi"),
+    make_turn("assistant", "Hello")
+  ))
+
+  user_node_id <- record_node_id_for_message_index(ctrl$record, 0)
+  expect_null(ctrl$record$nodes[[user_node_id]]$parent)
+
+  ctrl$handle_edit(0, "Hi again", NULL)
+
+  # Truncated to the fork parent (root's parent is NULL here).
+  expect_null(ctrl$record$current_leaf)
+
+  sent <- history_spy_messages(spy)
+  update_input_msgs <- Filter(
+    function(m) identical(m$message$action$type, "update_input"),
+    sent
+  )
+  expect_length(update_input_msgs, 1)
+  expect_equal(update_input_msgs[[1]]$message$action$value, "Hi again")
+  expect_true(isTRUE(update_input_msgs[[1]]$message$action$submit))
+})
+
+test_that("handle_edit() revalidates and forwards attachments with attachment_mode = set", {
+  spy <- history_mock_session_with_spy()
+  client <- mock_chat_client()
+  store <- InMemoryConversationStore$new()
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = spy$session
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+
+  make_turn <- function(role, text) {
+    class_name <- if (role == "user") {
+      "ellmer::UserTurn"
+    } else {
+      "ellmer::AssistantTurn"
+    }
+    list(
+      class = class_name,
+      version = 1,
+      props = list(
+        contents = list(list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = text)
+        ))
+      )
+    )
+  }
+  make_ui_message <- function(role, text) {
+    list(
+      role = role,
+      segments = list(list(content = text, content_type = "markdown"))
+    )
+  }
+  spy$session$setInputs(
+    chat_messages = list(
+      make_ui_message("user", "Hi"),
+      make_ui_message("assistant", "Hello")
+    )
+  )
+  ctrl$on_response(list(
+    make_turn("user", "Hi"),
+    make_turn("assistant", "Hello")
+  ))
+
+  attachments <- list(list(
+    mime = "image/png",
+    name = "a.png",
+    size = 1L,
+    data_url = "data:image/png;base64,AA=="
+  ))
+
+  ctrl$handle_edit(0, "see attached", attachments)
+
+  sent <- history_spy_messages(spy)
+  update_input_msgs <- Filter(
+    function(m) identical(m$message$action$type, "update_input"),
+    sent
+  )
+  expect_length(update_input_msgs, 1)
+  expect_equal(
+    update_input_msgs[[1]]$message$action$attachments[[1]]$name,
+    "a.png"
+  )
+  expect_equal(update_input_msgs[[1]]$message$action$attachment_mode, "set")
+})
+
+test_that("handle_edit() forces attachment_mode = set for an empty-but-present attachments list", {
+  spy <- history_mock_session_with_spy()
+  client <- mock_chat_client()
+  store <- InMemoryConversationStore$new()
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = spy$session
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+
+  make_turn <- function(role, text) {
+    class_name <- if (role == "user") {
+      "ellmer::UserTurn"
+    } else {
+      "ellmer::AssistantTurn"
+    }
+    list(
+      class = class_name,
+      version = 1,
+      props = list(
+        contents = list(list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = text)
+        ))
+      )
+    )
+  }
+  make_ui_message <- function(role, text) {
+    list(
+      role = role,
+      segments = list(list(content = text, content_type = "markdown"))
+    )
+  }
+  spy$session$setInputs(
+    chat_messages = list(
+      make_ui_message("user", "Hi"),
+      make_ui_message("assistant", "Hello")
+    )
+  )
+  ctrl$on_response(list(
+    make_turn("user", "Hi"),
+    make_turn("assistant", "Hello")
+  ))
+
+  # Wire-realistic case: sendMessageEdit() always sends `attachments`,
+  # defaulting to `[]`, which jsonlite deserializes to a non-NULL, length-0
+  # list() -- not NULL.
+  ctrl$handle_edit(0, "some content", list())
+
+  sent <- history_spy_messages(spy)
+  update_input_msgs <- Filter(
+    function(m) identical(m$message$action$type, "update_input"),
+    sent
+  )
+  expect_length(update_input_msgs, 1)
+  expect_equal(update_input_msgs[[1]]$message$action$attachment_mode, "set")
+  expect_equal(update_input_msgs[[1]]$message$action$attachments, list())
+})
+
+test_that("handle_edit() rejects unsupported attachment MIME types before resubmitting", {
+  spy <- history_mock_session_with_spy()
+  client <- mock_chat_client()
+  store <- InMemoryConversationStore$new()
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = spy$session
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+
+  make_turn <- function(role, text) {
+    class_name <- if (role == "user") {
+      "ellmer::UserTurn"
+    } else {
+      "ellmer::AssistantTurn"
+    }
+    list(
+      class = class_name,
+      version = 1,
+      props = list(
+        contents = list(list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = text)
+        ))
+      )
+    )
+  }
+  make_ui_message <- function(role, text) {
+    list(
+      role = role,
+      segments = list(list(content = text, content_type = "markdown"))
+    )
+  }
+  spy$session$setInputs(
+    chat_messages = list(
+      make_ui_message("user", "Hi"),
+      make_ui_message("assistant", "Hello")
+    )
+  )
+  ctrl$on_response(list(
+    make_turn("user", "Hi"),
+    make_turn("assistant", "Hello")
+  ))
+
+  bad_attachments <- list(list(
+    mime = "application/octet-stream",
+    name = "x.bin",
+    size = 1L,
+    data_url = "data:application/octet-stream;base64,AA=="
+  ))
+
+  expect_error(
+    ctrl$handle_edit(0, "see attached", bad_attachments),
+    "unsupported MIME type"
+  )
+})
