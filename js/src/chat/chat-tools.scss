@@ -418,6 +418,20 @@ $shinychat-tool-row-min-height: 2em;
   }
 }
 
+// The tool's `_intent`, surfaced only on drill-in (when the row is expanded),
+// trailing before the chevron — the row is the card header now, so intent
+// rides the row rather than a hidden card header.
+.shinychat-tool-row__intent {
+  font-style: italic;
+  opacity: 0.66;
+  text-align: end;
+  flex-shrink: 3;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .shinychat-tool-group__count {
   font-size: 0.85em;
   font-weight: 400;

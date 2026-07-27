@@ -80,6 +80,32 @@ describe("ToolGroup", () => {
     ).toContain("fib.R")
   })
 
+  it("surfaces a single call's intent only on drill-in (expanded row)", () => {
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          title: "Rendered plot",
+          calls: [
+            call({
+              requestId: "a",
+              intent: "Visualize the trend",
+              value: "chart",
+              valueType: "text",
+            }),
+          ],
+        })}
+      />,
+    )
+    // Intent is hidden while the row is at rest.
+    expect(container.querySelector(".shinychat-tool-row__intent")).toBeNull()
+    fireEvent.click(
+      container.querySelector(".shinychat-tool-group__row") as Element,
+    )
+    expect(
+      container.querySelector(".shinychat-tool-row__intent")?.textContent,
+    ).toBe("Visualize the trend")
+  })
+
   it("renders a multi-call group as a Tier-1 row with an ×N badge that expands to a Tier-2 list", () => {
     const { container } = render(
       <ToolGroup
