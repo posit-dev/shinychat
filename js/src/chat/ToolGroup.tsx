@@ -163,14 +163,14 @@ function SingleCallRow({
             </span>
           )}
         </span>
+        <span className="shinychat-tool-spacer" />
+        {open && item.intent && (
+          <span className="shinychat-tool-row__intent">{item.intent}</span>
+        )}
         {item.valuePreview && (
           <span className="shinychat-tool-call-row__preview">
             {item.valuePreview}
           </span>
-        )}
-        <span className="shinychat-tool-spacer" />
-        {open && item.intent && (
-          <span className="shinychat-tool-row__intent">{item.intent}</span>
         )}
         {failed && <span className="shinychat-tool-group__failed">failed</span>}
         <span
@@ -224,14 +224,14 @@ function ToolCallRow({
             {label.code ? <code>{label.text}</code> : label.text}
           </span>
         )}
+        <span className="shinychat-tool-spacer" />
+        {open && item.intent && (
+          <span className="shinychat-tool-row__intent">{item.intent}</span>
+        )}
         {item.valuePreview && (
           <span className="shinychat-tool-call-row__preview">
             {item.valuePreview}
           </span>
-        )}
-        <span className="shinychat-tool-spacer" />
-        {open && item.intent && (
-          <span className="shinychat-tool-row__intent">{item.intent}</span>
         )}
         <span
           className="shinychat-tool-call-row__chevron"

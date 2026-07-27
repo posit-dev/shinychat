@@ -397,18 +397,38 @@ $shinychat-tool-row-min-height: 2em;
   font-family: var(--bs-font-monospace);
 }
 
+// The group/tool title never wraps; if the row is squeezed it truncates with
+// an ellipsis rather than pushing onto a second line.
+.shinychat-tool-group__title,
+.shinychat-tool-group__toolname {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 // Title + per-call label glued together (colon form) on a single-call row, so
 // the flex row gap doesn't push them apart into "title : label".
 .shinychat-tool-group__titlewrap {
   display: inline-flex;
   align-items: baseline;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
+
+  // Keep the identity title whole; a long label truncates instead of wrapping
+  // the title onto a second line.
+  > .shinychat-tool-group__title,
+  > .shinychat-tool-group__toolname {
+    flex: none;
+  }
 }
 
 .shinychat-tool-group__label {
+  flex: 1 1 auto;
   font-weight: normal;
   opacity: 0.85;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -513,6 +533,7 @@ $shinychat-tool-row-min-height: 2em;
   }
 
   &__label {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -522,6 +543,8 @@ $shinychat-tool-row-min-height: 2em;
     opacity: 0.66;
     font-style: italic;
     flex-shrink: 3;
+    min-width: 0;
+    text-align: end;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
