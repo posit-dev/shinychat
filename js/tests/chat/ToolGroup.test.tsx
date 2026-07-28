@@ -158,7 +158,7 @@ describe("ToolGroup", () => {
     expect(code?.textContent).toBe("run_sql")
   })
 
-  it("uses an argument preview as the per-call label fallback", () => {
+  it("uses a dictionary-style argument preview as the per-call label fallback", () => {
     const { container } = render(
       <ToolGroup
         group={group({
@@ -166,9 +166,9 @@ describe("ToolGroup", () => {
           calls: [
             call({
               requestId: "a",
-              arguments: '{"query":"insulin resistance"}',
+              arguments: '{"query":"glucose"}',
             }),
-            call({ requestId: "b", arguments: '{"query":"glucose"}' }),
+            call({ requestId: "b", arguments: '{"query":"mannose"}' }),
           ],
         })}
       />,
@@ -179,7 +179,88 @@ describe("ToolGroup", () => {
     const labels = Array.from(
       container.querySelectorAll(".shinychat-tool-call-row__label code"),
     ).map((el) => el.textContent)
-    expect(labels).toContain("insulin resistance")
+    expect(labels).toContain("query: glucose")
+  })
+
+  it("previews up to three args as key: value, skipping keys starting with _ or .", () => {
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          title: "Weather Forecast",
+          calls: [
+            call({
+              requestId: "a",
+              arguments:
+                '{"lat":45.5152,"lon":-122.6784,"loc":"PDX","extra":"x","_intent":"why",".hidden":"h"}',
+            }),
+            call({ requestId: "b", arguments: '{"lat":1}' }),
+          ],
+        })}
+      />,
+    )
+    fireEvent.click(
+      container.querySelector(".shinychat-tool-group__row") as Element,
+    )
+    const preview = container.querySelector(
+      ".shinychat-tool-call-row__label code",
+    )?.textContent
+    expect(preview).toBe("lat: 45.5152, lon: -122.6784, loc: PDX")
+  })
+
+  it("shows each call's full dynamic title on the per-call rows of an aggregated group", () => {
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          title: "Weather Forecast",
+          calls: [
+            call({ requestId: "a", title: "Weather Forecast for Portland" }),
+            call({
+              requestId: "b",
+              title: "Weather Forecast for San Francisco",
+            }),
+          ],
+        })}
+      />,
+    )
+    // Header is the static title.
+    expect(
+      container.querySelector(".shinychat-tool-group__title")?.textContent,
+    ).toBe("Weather Forecast")
+    fireEvent.click(
+      container.querySelector(".shinychat-tool-group__row") as Element,
+    )
+    const labels = Array.from(
+      container.querySelectorAll(".shinychat-tool-call-row__label"),
+    ).map((el) => el.textContent)
+    expect(labels).toEqual([
+      "Weather Forecast for Portland",
+      "Weather Forecast for San Francisco",
+    ])
+  })
+
+  it("shows a single call's dynamic title alone, with no arg-preview suffix", () => {
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          title: "Weather Forecast for Portland",
+          calls: [
+            call({
+              requestId: "a",
+              title: "Weather Forecast for Portland",
+              definitionTitle: "Weather Forecast",
+              arguments: '{"lat":45.5152}',
+              value: "sunny",
+              valueType: "text",
+            }),
+          ],
+        })}
+      />,
+    )
+    expect(
+      container.querySelector(".shinychat-tool-group__title")?.textContent,
+    ).toBe("Weather Forecast for Portland")
+    // No colon/label appended (the title is the header).
+    expect(container.querySelector(".shinychat-tool-group__label")).toBeNull()
   })
 
   it("shows a subtle 'N failed' note but no red on the resting group row", () => {

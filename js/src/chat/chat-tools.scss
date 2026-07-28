@@ -438,6 +438,15 @@ $shinychat-tool-row-min-height: 2em;
   }
 }
 
+// Argument-preview / label code reads as monospace but drops the code
+// background, padding, and color tint so it sits inline in the row.
+.shinychat-tool-group__label code,
+.shinychat-tool-call-row__label code {
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+
 // The tool's `_intent`, surfaced only on drill-in (when the row is expanded),
 // trailing before the chevron — the row is the card header now, so intent
 // rides the row rather than a hidden card header.

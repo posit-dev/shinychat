@@ -13,6 +13,10 @@ const checkHtml =
 const chevronDSIH = { __html: chevronDown }
 
 // Truncate a scalar argument value for use as a fallback per-call label.
+// A dictionary-style preview of a call's arguments: up to the first three
+// scalar args as "key: value", skipping internal keys (those starting with "_"
+// or "."). Truncated as a whole to keep the row compact.
+const ARG_PREVIEW_MAX = 40
 function argPreview(argsJson?: string): string | null {
   if (!argsJson) return null
   let parsed: unknown
@@ -22,32 +26,21 @@ function argPreview(argsJson?: string): string | null {
     return null
   }
   if (!parsed || typeof parsed !== "object") return null
-  for (const v of Object.values(parsed as Record<string, unknown>)) {
+  const parts: string[] = []
+  for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+    if (k.startsWith("_") || k.startsWith(".")) continue
     if (
       typeof v === "string" ||
       typeof v === "number" ||
       typeof v === "boolean"
     ) {
-      const s = String(v)
-      return s.length > 40 ? `${s.slice(0, 39)}…` : s
+      parts.push(`${k}: ${v}`)
+      if (parts.length === 3) break
     }
   }
-  return null
-}
-
-// Remainder of a per-call title after stripping the group title's common
-// prefix, but only when the match ends on a word boundary (so "Searching
-// glucose" − "Searching" → "glucose", while a tense mismatch yields nothing).
-function stripCommonPrefix(title: string, groupTitle: string): string | null {
-  if (!groupTitle) return null
-  let i = 0
-  const n = Math.min(title.length, groupTitle.length)
-  while (i < n && title[i] === groupTitle[i]) i++
-  const atBoundary =
-    i === groupTitle.length || title[i] === " " || title[i - 1] === " "
-  if (!atBoundary) return null
-  const remainder = title.slice(i).trim()
-  return remainder && remainder !== title.trim() ? remainder : null
+  if (parts.length === 0) return null
+  const s = parts.join(", ")
+  return s.length > ARG_PREVIEW_MAX ? `${s.slice(0, ARG_PREVIEW_MAX - 1)}…` : s
 }
 
 interface PerCallLabel {
@@ -55,15 +48,21 @@ interface PerCallLabel {
   code?: boolean
 }
 
+// The per-call row label: an explicit `label`, else the call's full dynamic
+// (result) title when it adds information beyond the group header, else a
+// dictionary-style argument preview. For a single-call row the title is already
+// shown as the header, so the arg preview only stands in for a bare tool with
+// no title.
 function perCallLabel(
   item: ToolCallItem,
   groupTitle: string | undefined,
+  isSingle: boolean,
 ): PerCallLabel | null {
   if (item.label) return { text: item.label }
-  if (item.title && groupTitle) {
-    const rem = stripCommonPrefix(item.title, groupTitle)
-    if (rem) return { text: rem }
+  if (!isSingle && item.title && item.title !== groupTitle) {
+    return { text: item.title }
   }
+  if (isSingle && groupTitle) return null
   const ap = argPreview(item.arguments)
   if (ap) return { text: ap, code: true }
   return null
@@ -83,7 +82,7 @@ function renderLeaf(item: ToolCallItem, open: boolean): ReactNode {
       <ToolRequest
         requestId={item.requestId}
         toolName={item.toolName}
-        toolTitle={item.title}
+        toolTitle={item.title ?? item.definitionTitle}
         intent={item.intent}
         arguments={item.arguments ?? "{}"}
       />
@@ -93,7 +92,7 @@ function renderLeaf(item: ToolCallItem, open: boolean): ReactNode {
     <ToolResult
       requestId={item.requestId}
       toolName={item.toolName}
-      toolTitle={item.title}
+      toolTitle={item.title ?? item.definitionTitle}
       intent={item.intent}
       status={item.status}
       value={item.value ?? ""}
@@ -137,7 +136,7 @@ function SingleCallRow({
   const [open, setOpen] = useState(item.expanded ?? false)
   const running = item.status === "running"
   const failed = item.status === "error"
-  const label = perCallLabel(item, group.title)
+  const label = perCallLabel(item, group.title, true)
   const glyphHtml = running ? spinnerHtml : group.icon || bareDot
   const contentId = `tool-call-${item.requestId}`
 
@@ -197,7 +196,7 @@ function ToolCallRow({
   groupTitle: string | undefined
 }): ReactNode {
   const [open, setOpen] = useState(false)
-  const label = perCallLabel(item, groupTitle)
+  const label = perCallLabel(item, groupTitle, false)
   const statusClass =
     item.status === "error"
       ? " text-danger"

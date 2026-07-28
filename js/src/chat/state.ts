@@ -38,7 +38,10 @@ export interface ToolCallItem {
   requestId: string
   toolName: string
   status: "running" | "success" | "error"
+  /** Dynamic (result) title — the per-call title, set from the result element. */
   title?: string
+  /** Static (definition) title — from the request element's tool annotation. */
+  definitionTitle?: string
   icon?: string
   label?: string
   valuePreview?: string
@@ -409,14 +412,20 @@ function applyAttrsToItem(item: ToolCallItem, el: ParsedToolElement): void {
   if (grp === "none" || grp === "tool" || grp === "all") item.grouping = grp
   if (a["intent"] !== undefined) item.intent = a["intent"]
   if (a["icon"]) item.icon = a["icon"]
-  if (a["tool-title"]) item.title = a["tool-title"]
 
   if (el.tag === "request") {
+    // The request carries the static (definition) title.
+    if (a["tool-title"]) item.definitionTitle = a["tool-title"]
     if (a["arguments"] !== undefined) item.arguments = a["arguments"]
     return
   }
 
-  // result — settles status and carries the Tier-3 payload
+  // result — carries the dynamic (per-call) title, settles status and the
+  // Tier-3 payload. It also carries the request's arguments so a restored
+  // result-only item (request paired in a separate message) can still preview
+  // them.
+  if (a["tool-title"]) item.title = a["tool-title"]
+  if (a["arguments"] !== undefined) item.arguments = a["arguments"]
   item.status = a["status"] === "error" ? "error" : "success"
   if (a["label"] !== undefined) item.label = a["label"]
   if (a["value-preview"] !== undefined) item.valuePreview = a["value-preview"]
@@ -464,13 +473,22 @@ function groupCalls(
 
   return keyOrder.map((key) => {
     const gcalls = byKey.get(key)!
-    // Monotonic title latch: the first completed call latches the (past-tense)
-    // title; until then the first running call supplies the (present) title.
     const firstDone = gcalls.find((c) => c.status !== "running")
     const settled = firstDone !== undefined
-    const title = settled
-      ? firstDone!.title
-      : gcalls.find((c) => c.title !== undefined)?.title
+    // The static (definition) title, shared across a tool's calls.
+    const definitionTitle = gcalls.find(
+      (c) => c.definitionTitle !== undefined,
+    )?.definitionTitle
+    // The dynamic (result) title of the first completed call.
+    const resultTitle =
+      firstDone?.title ?? gcalls.find((c) => c.title !== undefined)?.title
+    // An aggregated group keeps the static header so it stays stable across the
+    // calls' differing dynamic titles; a lone call shows its own most-specific
+    // (dynamic) title instead.
+    const title =
+      gcalls.length > 1
+        ? (definitionTitle ?? resultTitle)
+        : (resultTitle ?? definitionTitle)
     return {
       key,
       toolName: gcalls[0]!.toolName,

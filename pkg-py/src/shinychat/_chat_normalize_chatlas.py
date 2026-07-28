@@ -158,6 +158,9 @@ class ToolResultComponent(ToolCardComponent):
     request_call: str = ""
     "The original tool call that generated this result. Used to display the tool invocation."
 
+    arguments: str = ""
+    "The request's arguments (JSON), carried so a restored result-only item can still preview them."
+
     status: Literal["success", "error"] = "success"
     """
     The status of the tool execution. When set to "error", displays in an error state with
@@ -214,6 +217,7 @@ class ToolResultComponent(ToolCardComponent):
             icon=icon_ui["html"] if self.icon else None,
             intent=self.intent,
             request_call=self.request_call,
+            arguments=self.arguments,
             status=self.status,
             value=value_ui["html"],
             value_type=self.value_type,
@@ -419,6 +423,7 @@ def tool_result_contents(x: "ContentToolResult") -> Tagifiable:
     return ToolResultComponent(
         request_id=x.id,
         request_call=request_call,
+        arguments=json.dumps(x.request.arguments),
         tool_name=x.request.name,
         tool_title=display.title or tool_title,
         status="success" if x.error is None else "error",

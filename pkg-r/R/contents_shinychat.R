@@ -282,6 +282,7 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     "result",
     request_id = content@request@id,
     request_call = request_call,
+    arguments = jsonlite::toJSON(content@request@arguments, auto_unbox = TRUE),
     status = if (tool_errored(content)) "error" else "success",
     tool_name = content@request@name,
     tool_title = display$title %||% annotations$title,

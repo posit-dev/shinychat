@@ -1830,25 +1830,41 @@ describe("routeToolBlocks (tool content router)", () => {
     expect(yGroups[0]!.count).toBe(2)
   })
 
-  it("shows the definition (present) title while running, unsettled", () => {
+  it("shows the definition (static) title while a single call is running", () => {
     const groups = loops(
       route(req("1", "search", 'tool-title="Searching"')),
     )[0]!.groups
     expect(groups[0]!.title).toBe("Searching")
-    expect(groups[0]!.titleSettled).toBe(false)
     expect(groups[0]!.calls[0]!.status).toBe("running")
   })
 
-  it("latches to the first result (past) title once a result arrives", () => {
+  it("a single call shows its dynamic (result) title once a result arrives", () => {
     const content =
       req("1", "search", 'tool-title="Searching"') +
       res("1", "search", 'tool-title="Searched"')
     const groups = loops(route(content))[0]!.groups
     expect(groups[0]!.title).toBe("Searched")
-    expect(groups[0]!.titleSettled).toBe(true)
+    // The static (definition) title is retained separately on the call.
+    expect(groups[0]!.calls[0]!.definitionTitle).toBe("Searching")
   })
 
-  it("keeps the first-result title latched; later same-tool calls only bump count", () => {
+  it("an aggregated group keeps the static header; calls carry their dynamic titles", () => {
+    const content =
+      req("1", "weather", 'tool-title="Weather Forecast"') +
+      res("1", "weather", 'tool-title="Weather Forecast for Portland"') +
+      req("2", "weather", 'tool-title="Weather Forecast"') +
+      res("2", "weather", 'tool-title="Weather Forecast for San Francisco"')
+    const groups = loops(route(content, "tool"))[0]!.groups
+    expect(groups[0]!.count).toBe(2)
+    // Header is the static definition title, not the first result's title.
+    expect(groups[0]!.title).toBe("Weather Forecast")
+    expect(groups[0]!.calls.map((c) => c.title)).toEqual([
+      "Weather Forecast for Portland",
+      "Weather Forecast for San Francisco",
+    ])
+  })
+
+  it("aggregated group falls back to a result title when no request/definition title exists", () => {
     const content =
       res("1", "search", 'tool-title="Found A"') +
       res("2", "search", 'tool-title="Found B"')
@@ -1879,6 +1895,12 @@ describe("routeToolBlocks (tool content router)", () => {
     expect(call.valuePreview).toBe("1,204 rows")
     expect(call.value).toBe("ok")
     expect(call.status).toBe("error")
+  })
+
+  it("reads arguments off a result-only element (restore keeps the arg preview)", () => {
+    const content = res("1", "weather", 'arguments="{&quot;lat&quot;:45.5}"')
+    const call = loops(route(content))[0]!.groups[0]!.calls[0]!
+    expect(call.arguments).toBe('{"lat":45.5}')
   })
 
   it("parses attribute values containing '>' inside quotes (e.g. an icon)", () => {
