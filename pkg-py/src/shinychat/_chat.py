@@ -850,7 +850,7 @@ class Chat:
         self,
         message: Any,
         *,
-        icon: HTML | Tag | TagList | None = None,
+        icon: HTML | Tag | TagList | bool | None = None,
     ):
         """
         Append a message to the chat.
@@ -878,7 +878,8 @@ class Chat:
         icon
             An optional icon to display next to the message, currently only used for
             assistant messages. The icon can be any HTML element (e.g., an
-            :func:`~shiny.ui.img` tag) or a string of HTML.
+            :func:`~shiny.ui.img` tag) or a string of HTML. Pass ``False`` to remove
+            the icon for this message, or ``True`` to use the default icon.
 
         Note
         ----
@@ -1034,7 +1035,7 @@ class Chat:
         chunk: Literal[True, "start", "end"] = True,
         stream_id: str,
         operation: Literal["append", "replace"] = "append",
-        icon: HTML | Tag | TagList | None = None,
+        icon: HTML | Tag | TagList | bool | None = None,
     ) -> None:
         # If currently we're in a *different* stream, queue the message chunk
         if self._current_stream_id and self._current_stream_id != stream_id:
@@ -1127,7 +1128,7 @@ class Chat:
         self,
         message: Iterable[Any] | AsyncIterable[Any],
         *,
-        icon: HTML | Tag | None = None,
+        icon: HTML | Tag | bool | None = None,
     ):
         """
         Append a message as a stream of message chunks.
@@ -1156,7 +1157,8 @@ class Chat:
         icon
             An optional icon to display next to the message, currently only used for
             assistant messages. The icon can be any HTML element (e.g., an
-            :func:`~shiny.ui.img` tag) or a string of HTML.
+            :func:`~shiny.ui.img` tag) or a string of HTML. Pass ``False`` to remove
+            the icon for this message, or ``True`` to use the default icon.
 
         Note
         ----
@@ -1256,7 +1258,7 @@ class Chat:
     async def _append_message_stream(
         self,
         message: AsyncIterable[Any],
-        icon: HTML | Tag | None = None,
+        icon: HTML | Tag | bool | None = None,
     ):
         id = _utils.private_random_id()
 
@@ -1295,7 +1297,7 @@ class Chat:
         message: StoredMessage | ChatMessage,
         chunk: ChunkOption = False,
         operation: Literal["append", "replace"] = "append",
-        icon: HTML | Tag | TagList | None = None,
+        icon: HTML | Tag | TagList | bool | None = None,
     ):
         message = self._as_stored_message(message)
 
@@ -1317,8 +1319,9 @@ class Chat:
         }
         if message.attachments:
             msg_payload["attachments"] = [a.model_dump() for a in message.attachments]
-        if icon is not None:
-            msg_payload["icon"] = str(icon)
+        icon_attr = _resolve_icon_attr(icon)
+        if icon_attr is not None:
+            msg_payload["icon"] = icon_attr
 
         if chunk == "start":
             action: ChatAction = {"type": "chunk_start", "message": msg_payload}
@@ -2087,7 +2090,7 @@ class ChatExpress(Chat):
         width: "CssUnit" = "min(680px, 100%)",
         height: "CssUnit" = "auto",
         fill: bool = True,
-        icon_assistant: HTML | Tag | TagList | None = None,
+        icon_assistant: HTML | Tag | TagList | bool | None = None,
         enable_cancel: "bool | MISSING_TYPE" = MISSING,
         submit_key: 'Literal["enter", "enter+modifier"]' = "enter",
         allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
@@ -2120,8 +2123,10 @@ class ChatExpress(Chat):
             container.
         icon_assistant
             The icon to use for the assistant chat messages. Can be a HTML or a tag in
-            the form of :class:`~htmltools.HTML` or :class:`~htmltools.Tag`. If `None`,
-            a default robot icon is used.
+            the form of :class:`~htmltools.HTML` or :class:`~htmltools.Tag`. If `None`
+            (or `True`), a default robot icon is used. Pass `False` to remove the
+            assistant icon entirely (individual messages can still opt back in via
+            the `icon` argument of `.append_message()`).
         enable_cancel
             Whether to show a stop button during streaming that allows the user to
             cancel the in-progress response. When ``True``, the chat UI shows a stop
@@ -2259,6 +2264,22 @@ class ChatExpress(Chat):
         return super().enable_bookmarking(client, bookmark_on=bookmark_on)
 
 
+def _resolve_icon_attr(
+    icon: "HTML | Tag | TagList | bool | None",
+) -> "str | None":
+    """Translate an icon value into its wire attribute.
+
+    ``False`` removes the icon (wire ``""``, which the client reads as "no
+    icon"); ``True``/``None`` defer to the default (attribute omitted);
+    anything else is stringified HTML.
+    """
+    if icon is None or icon is True:
+        return None
+    if icon is False:
+        return ""
+    return str(icon)
+
+
 def _container_style(width: "str | None", height: "str | None") -> "str | None":
     # `width` is emitted as a pseudo-private custom property consumed by
     # `.shiny-chat-wrapper` (as max-width), so the container itself stays
@@ -2283,7 +2304,7 @@ def chat_ui(
     width: "CssUnit" = "min(680px, 100%)",
     height: "CssUnit" = "auto",
     fill: bool = True,
-    icon_assistant: Optional[HTML | Tag | TagList] = None,
+    icon_assistant: Optional[HTML | Tag | TagList | bool] = None,
     enable_cancel: "bool | MISSING_TYPE" = MISSING,
     submit_key: 'Literal["enter", "enter+modifier"]' = "enter",
     allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
@@ -2340,8 +2361,10 @@ def chat_ui(
         Whether the chat should vertically take available space inside a fillable container.
     icon_assistant
             The icon to use for the assistant chat messages. Can be a HTML or a tag in
-            the form of :class:`~htmltools.HTML` or :class:`~htmltools.Tag`. If `None`,
-            a default robot icon is used.
+            the form of :class:`~htmltools.HTML` or :class:`~htmltools.Tag`. If `None`
+            (or `True`), a default robot icon is used. Pass `False` to remove the
+            assistant icon entirely (individual messages can still opt back in via
+            the `icon` argument of `.append_message()`).
     enable_cancel
         Whether to show a stop button during streaming that allows the user to
         cancel the in-progress response. When ``True``, the chat UI shows a stop
@@ -2412,9 +2435,7 @@ def chat_ui(
 
     id = resolve_id(id)
 
-    icon_attr = None
-    if icon_assistant is not None:
-        icon_attr = str(icon_assistant)
+    icon_attr = _resolve_icon_attr(icon_assistant)
 
     icon_deps = None
     if isinstance(icon_assistant, (Tag, TagList)):

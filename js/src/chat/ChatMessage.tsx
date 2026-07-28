@@ -74,7 +74,15 @@ export const ChatMessage = memo(function ChatMessage({
   if (isUser) {
     iconHtml = message.icon || undefined
   } else {
-    iconHtml = hasContent ? (message.icon ?? iconAssistant ?? robot) : dots_fade
+    // Resolve the assistant icon through the per-message -> container chain. An
+    // explicit "" (from icon_assistant=False / icon=False) removes the icon
+    // entirely: no glyph and no streaming dots in the icon slot.
+    const resolved = message.icon ?? iconAssistant
+    if (resolved === "") {
+      iconHtml = undefined
+    } else {
+      iconHtml = hasContent ? (resolved ?? robot) : dots_fade
+    }
   }
 
   const leadingCommand = isUser

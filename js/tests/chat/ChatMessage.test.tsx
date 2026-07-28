@@ -240,6 +240,61 @@ describe("ChatMessage attachments", () => {
     expect(icon!.querySelector(".spinner_S1WN")).not.toBeNull()
   })
 
+  it('removes the icon entirely when the assistant icon is "" (icon_assistant=False)', () => {
+    const { container } = render(
+      <ChatMessage
+        message={{
+          ...userMessage({ content: "hello" }),
+          role: "assistant",
+          icon: "",
+        }}
+      />,
+    )
+    expect(container.querySelector(".message-icon")).toBeNull()
+  })
+
+  it('removes the icon via the container default (iconAssistant="")', () => {
+    const { container } = render(
+      <ChatMessage
+        message={{
+          ...userMessage({ content: "hello" }),
+          role: "assistant",
+        }}
+        iconAssistant=""
+      />,
+    )
+    expect(container.querySelector(".message-icon")).toBeNull()
+  })
+
+  it("suppresses the loading dots too when the icon is removed", () => {
+    const { container } = render(
+      <ChatMessage
+        message={{
+          ...userMessage({ content: "", blocks: [] }),
+          role: "assistant",
+          icon: "",
+        }}
+      />,
+    )
+    expect(container.querySelector(".message-icon")).toBeNull()
+  })
+
+  it("lets a per-message icon override a suppressed container default", () => {
+    const { container } = render(
+      <ChatMessage
+        message={{
+          ...userMessage({ content: "hello" }),
+          role: "assistant",
+          icon: "<span class='custom-icon'>x</span>",
+        }}
+        iconAssistant=""
+      />,
+    )
+    const icon = container.querySelector(".message-icon")
+    expect(icon).not.toBeNull()
+    expect(icon!.querySelector(".custom-icon")).not.toBeNull()
+  })
+
   it("traps focus inside the lightbox", () => {
     render(
       <ChatMessage

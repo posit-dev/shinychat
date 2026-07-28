@@ -237,6 +237,13 @@ shiny-chat-container:not([fill]) {
     align-self: center;
     padding-right: 1px;
   }
+
+  /* When the icon is removed (icon_assistant=False / icon=False), collapse the
+     grid to a single content column so nothing dangles where the icon was. */
+  &:not(:has(> .message-icon)) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
 }
 
 .shiny-chat-message-content > hr:first-child {

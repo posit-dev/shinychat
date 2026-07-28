@@ -37,7 +37,8 @@ to "assistant".}
 
 \item{icon}{An optional icon to display next to the message, currently only
 used for assistant messages. The icon can be any HTML element (e.g., an
-\code{\link[htmltools:img]{htmltools::img()}} tag) or a string of HTML.}
+\code{\link[htmltools:img]{htmltools::img()}} tag) or a string of HTML. Pass \code{FALSE} to remove the
+icon for this message, or \code{TRUE} to use the default icon.}
 
 \item{session}{The Shiny session object}
 }

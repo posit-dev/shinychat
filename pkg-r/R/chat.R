@@ -189,7 +189,9 @@ chat_greeting <- function(
 #'   [fillable](https://rstudio.github.io/bslib/articles/filling/index.html)
 #' @param icon_assistant The icon to use for the assistant chat messages.
 #'   Can be HTML or a tag in the form of [htmltools::HTML()] or
-#'   [htmltools::tags()]. If `None`, a default robot icon is used.
+#'   [htmltools::tags()]. If `NULL` (or `TRUE`), a default robot icon is used.
+#'   Pass `FALSE` to remove the assistant icon entirely (individual messages
+#'   can still opt back in via the `icon` argument of [chat_append()]).
 #' @param enable_cancel Whether to show a stop button during streaming that
 #'   allows the user to cancel the in-progress response. When using
 #'   [chat_server()], cancellation is wired up automatically and this defaults
@@ -358,7 +360,7 @@ chat_ui <- function(
       rlang::list2(
         `data-role` = role,
         content = ui[["html"]],
-        icon = if (!is.null(icon_assistant)) as.character(icon_assistant),
+        icon = resolve_icon_attr(icon_assistant),
         ui[["dependencies"]],
       )
     )
@@ -460,9 +462,7 @@ chat_ui <- function(
       `max-attachment-size` = max_attachment_size,
       # Also include icon on the parent so that when messages are dynamically added,
       # we know the default icon has changed
-      `icon-assistant` = if (!is.null(icon_assistant)) {
-        as.character(icon_assistant)
-      },
+      `icon-assistant` = resolve_icon_attr(icon_assistant),
       greeting = greeting_attr,
       ...,
       tag("shiny-chat-messages", message_tags),
@@ -525,7 +525,8 @@ chat_ui <- function(
 #'   to "assistant".
 #' @param icon An optional icon to display next to the message, currently only
 #'   used for assistant messages. The icon can be any HTML element (e.g., an
-#'   [htmltools::img()] tag) or a string of HTML.
+#'   [htmltools::img()] tag) or a string of HTML. Pass `FALSE` to remove the
+#'   icon for this message, or `TRUE` to use the default icon.
 #' @param session The Shiny session object
 #'
 #' @returns Returns a promise that resolves to the contents of the stream, or an
@@ -608,7 +609,8 @@ chat_append <- function(
 #'   content. Ignored if `chunk` is `FALSE`.
 #' @param icon An optional icon to display next to the message, currently only
 #'   used for assistant messages. The icon can be any HTML element (e.g.,
-#'   [htmltools::img()] tag) or a string of HTML.
+#'   [htmltools::img()] tag) or a string of HTML. Pass `FALSE` to remove the
+#'   icon for this message, or `TRUE` to use the default icon.
 #' @param session The Shiny session object
 #'
 #' @returns Returns nothing (\code{invisible(NULL)}).
@@ -736,7 +738,7 @@ chat_append_message <- function(
 
   html_deps <- ui[["deps"]]
 
-  icon_str <- if (!is.null(icon)) as.character(icon) else NULL
+  icon_str <- resolve_icon_attr(icon)
 
   if (chunk_type == "start") {
     message_payload <- list(
