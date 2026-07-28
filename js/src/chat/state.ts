@@ -421,11 +421,9 @@ function applyAttrsToItem(item: ToolCallItem, el: ParsedToolElement): void {
   }
 
   // result — carries the dynamic (per-call) title, settles status and the
-  // Tier-3 payload. It also carries the request's arguments so a restored
-  // result-only item (request paired in a separate message) can still preview
-  // them.
+  // Tier-3 payload. The request supplies `arguments` (paired in the same
+  // content string), so the result element doesn't carry them.
   if (a["tool-title"]) item.title = a["tool-title"]
-  if (a["arguments"] !== undefined) item.arguments = a["arguments"]
   item.status = a["status"] === "error" ? "error" : "success"
   if (a["label"] !== undefined) item.label = a["label"]
   if (a["value-preview"] !== undefined) item.valuePreview = a["value-preview"]

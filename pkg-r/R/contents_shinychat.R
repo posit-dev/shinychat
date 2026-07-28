@@ -282,7 +282,6 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     "result",
     request_id = content@request@id,
     request_call = request_call,
-    arguments = jsonlite::toJSON(content@request@arguments, auto_unbox = TRUE),
     status = if (tool_errored(content)) "error" else "success",
     tool_name = content@request@name,
     tool_title = display$title %||% annotations$title,
@@ -609,14 +608,11 @@ S7::method(contents_shinychat, S7::new_S3_class(c("Chat", "R6"))) <- function(
       return(turn)
     }
 
-    # Filter out tool requests as they'll be shown in results
-    is_tool_request <- map_lgl(
-      turn@contents,
-      S7::S7_inherits,
-      ellmer::ContentToolRequest
-    )
-    turn@contents <- turn@contents[!is_tool_request]
-
+    # Tool requests are kept (not filtered): once adjacent same-role turns are
+    # consolidated below, each request lands in the same message as its result,
+    # so the client pairs them by request-id and the result inherits the
+    # request's arguments. The paired request is then hidden in the condensed
+    # view (its result supersedes it).
     turn
   })
 

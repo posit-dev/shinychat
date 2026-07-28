@@ -425,7 +425,7 @@ test_that("doesn't consolidate adjacent turns with different roles in a Chat obj
   expect_equal(messages[[2]]$role, "assistant")
 })
 
-test_that("drops requests and moves results to assistant turn role in a Chat object", {
+test_that("keeps requests with results in a consolidated assistant turn in a Chat object", {
   withr::local_options(OPENAI_API_KEY = "boop")
   chat <- ellmer::chat_openai()
 
@@ -449,8 +449,10 @@ test_that("drops requests and moves results to assistant turn role in a Chat obj
   expect_length(messages, 1)
   expect_equal(messages[[1]]$role, "assistant")
 
-  # Verify tool requests are filtered but results appear
-  expect_false(
+  # The request is kept (not filtered) and consolidated into the same message
+  # as its result, so the client pairs them by request-id and the result
+  # inherits the request's arguments.
+  expect_true(
     some(messages[[1]]$content, inherits, "shinychat_tool_request")
   )
   expect_true(

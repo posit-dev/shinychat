@@ -1897,10 +1897,13 @@ describe("routeToolBlocks (tool content router)", () => {
     expect(call.status).toBe("error")
   })
 
-  it("reads arguments off a result-only element (restore keeps the arg preview)", () => {
-    const content = res("1", "weather", 'arguments="{&quot;lat&quot;:45.5}"')
+  it("pairs a request's arguments onto the result within one content string", () => {
+    const content =
+      req("1", "weather", 'arguments="{&quot;lat&quot;:45.5}"') +
+      res("1", "weather", 'tool-title="Weather Forecast for Portland"')
     const call = loops(route(content))[0]!.groups[0]!.calls[0]!
     expect(call.arguments).toBe('{"lat":45.5}')
+    expect(call.title).toBe("Weather Forecast for Portland")
   })
 
   it("parses attribute values containing '>' inside quotes (e.g. an icon)", () => {
