@@ -5,7 +5,7 @@ import threading
 from typing import Any, cast
 
 import pytest
-from htmltools import tags
+from htmltools import HTML, tags
 from shiny import Inputs, Session
 from shiny.module import ResolvedId
 from shiny.session import session_context
@@ -382,6 +382,25 @@ def test_chat_ui_icon_assistant_none_omits_attribute():
     html = tag.get_html_string()
     assert "icon-assistant" not in html
     assert "icon=" not in html
+
+
+def test_chat_ui_icon_assistant_skips_user_messages():
+    # User messages render `icon` directly, so the assistant default must not
+    # be copied onto them (it would misattribute who said what).
+    tag = chat_ui(
+        "myid",
+        messages=[
+            {"role": "user", "content": "Hi"},
+            {"role": "assistant", "content": "Hello"},
+        ],
+        icon_assistant=HTML("<span>ROBOT</span>"),
+    )
+    html = tag.get_html_string()
+    user_msg, assistant_msg = html.split("<shiny-chat-message ")[1:3]
+    assert 'data-role="user"' in user_msg
+    assert "ROBOT" not in user_msg
+    assert 'data-role="assistant"' in assistant_msg
+    assert "ROBOT" in assistant_msg
 
 
 # ---------------------------------------------------------------------------

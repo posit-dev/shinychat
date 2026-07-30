@@ -337,6 +337,8 @@ chat_ui <- function(
     rlang::abort("All arguments in ... must be named.")
   }
 
+  icon_attr <- resolve_icon_attr(icon_assistant)
+
   message_tags <- lapply(messages, function(x) {
     role <- "assistant"
     content <- x
@@ -360,7 +362,9 @@ chat_ui <- function(
       rlang::list2(
         `data-role` = role,
         content = ui[["html"]],
-        icon = resolve_icon_attr(icon_assistant),
+        # The assistant default must not leak onto user messages, which render
+        # `message.icon` directly (no assistant fallback chain).
+        icon = if (!identical(role, "user")) icon_attr,
         ui[["dependencies"]],
       )
     )

@@ -12,7 +12,7 @@ Covers:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from chatlas._tools import Tool
@@ -30,7 +30,9 @@ def _tool(annotations: dict[str, Any] | None = None) -> Tool:
     def my_tool(x: int) -> int:
         return x
 
-    return Tool.from_func(my_tool, annotations=annotations)
+    # Tests pass ad-hoc annotation dicts (including unknown keys); chatlas types
+    # this as the `ToolAnnotations` TypedDict, so cast to keep pyright quiet.
+    return Tool.from_func(my_tool, annotations=cast(Any, annotations))
 
 
 def _request(

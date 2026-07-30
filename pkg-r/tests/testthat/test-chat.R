@@ -96,6 +96,25 @@ test_that("chat_ui(icon_assistant = TRUE/NULL) omits the icon attribute", {
   expect_no_match(as.character(ui_null), "icon-assistant", fixed = TRUE)
 })
 
+test_that("chat_ui() does not put the assistant icon on user messages", {
+  # User messages render `icon` directly, so the assistant default must not be
+  # copied onto them (it would misattribute who said what).
+  ui <- chat_ui(
+    "chat",
+    messages = list(
+      list(role = "user", content = "Hi"),
+      list(role = "assistant", content = "Hello")
+    ),
+    icon_assistant = htmltools::HTML("<span>ROBOT</span>")
+  )
+
+  msgs <- strsplit(as.character(ui), "<shiny-chat-message ")[[1]]
+  expect_match(msgs[[2]], 'data-role="user"')
+  expect_false(grepl("ROBOT", msgs[[2]], fixed = TRUE))
+  expect_match(msgs[[3]], 'data-role="assistant"')
+  expect_true(grepl("ROBOT", msgs[[3]], fixed = TRUE))
+})
+
 test_that("resolve_icon_attr() translates the boolean sentinel", {
   expect_null(resolve_icon_attr(NULL))
   expect_null(resolve_icon_attr(TRUE))
