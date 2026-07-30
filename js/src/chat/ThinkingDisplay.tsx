@@ -243,10 +243,19 @@ function getHeaderText(
   if (thinking.streaming) {
     return displayedTopic ?? "Thinking"
   }
-  if (thinking.durationMs != null && thinking.durationMs >= 500) {
+  if (thinking.durationMs != null) {
     const seconds = Math.round(thinking.durationMs / 1000)
+    // Sub-second thinking is common (a short reasoning burst between two tool
+    // calls). It used to be excluded by a `>= 500` gate and fall through to the
+    // in-progress label below, so a finished block read as if it were still
+    // running — and the branch written to handle it was unreachable, since
+    // anything past that gate rounds to at least 1s.
     if (seconds < 1) return "Thought for less than a second"
     return `Thought for ${seconds}s`
   }
+  // No duration to report. `durationMs` is computed client-side and never
+  // serialized, so a restored transcript's thinking blocks always land here.
+  // Reusing the in-progress label is a deliberate tradeoff (user, 2026-07-30):
+  // the alternative is copy that claims something we don't know.
   return "Thinking"
 }

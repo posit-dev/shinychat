@@ -59,6 +59,49 @@ describe("ThinkingDisplay", () => {
     expect(glyph.hasAttribute("data-expanded")).toBe(false)
   })
 
+  it("reports sub-second thinking as finished, not as still thinking", () => {
+    // A short reasoning burst between two tool calls finalizes in well under a
+    // second. It used to fall through to the in-progress "Thinking" label, so a
+    // finished block was indistinguishable from a running one.
+    const { container } = render(
+      <ThinkingDisplay
+        thinking={thinking({ durationMs: 170 })}
+        messageId="m1"
+      />,
+    )
+    expect(
+      container.querySelector(".shinychat-thinking-label")?.textContent,
+    ).toBe("Thought for less than a second")
+  })
+
+  it("still reports whole seconds for longer thinking", () => {
+    const { container } = render(
+      <ThinkingDisplay
+        thinking={thinking({ durationMs: 1200 })}
+        messageId="m1"
+      />,
+    )
+    expect(
+      container.querySelector(".shinychat-thinking-label")?.textContent,
+    ).toBe("Thought for 1s")
+  })
+
+  it("falls back to 'Thinking' when no duration was recorded", () => {
+    // `durationMs` is computed client-side and never serialized, so every
+    // restored transcript lands here. Keeping the in-progress label is a
+    // deliberate tradeoff, not an oversight — pinned so it isn't "fixed" into
+    // copy that claims a duration we don't have.
+    const { container } = render(
+      <ThinkingDisplay
+        thinking={thinking({ durationMs: undefined })}
+        messageId="m1"
+      />,
+    )
+    expect(
+      container.querySelector(".shinychat-thinking-label")?.textContent,
+    ).toBe("Thinking")
+  })
+
   it("keeps the streaming dot beside the label, ahead of the disclosure", () => {
     const { container } = render(
       <ThinkingDisplay
