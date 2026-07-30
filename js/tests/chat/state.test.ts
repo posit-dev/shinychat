@@ -2058,6 +2058,64 @@ describe("routeToolBlocks (tool content router)", () => {
     expect(groups[0]!.count).toBe(2)
   })
 
+  it("gives a homogeneous group exactly one segment carrying its own identity", () => {
+    const content =
+      req("1", "search", 'tool-title="Searching"') +
+      res("1", "search", 'tool-title="Searched A"') +
+      req("2", "search", 'tool-title="Searching"') +
+      res("2", "search", 'tool-title="Searched B"')
+    const g = loops(route(content, "tool"))[0]!.groups[0]!
+    expect(g.segments).toEqual([
+      { toolName: "search", title: "Searching", count: 2, settled: true },
+    ])
+    expect(g.title).toBe("Searching")
+  })
+
+  it("splits a loop-wide group into one segment per tool, in first-appearance order", () => {
+    const content =
+      req("1", "search", 'tool-title="Searching"') +
+      res("1", "search", 'tool-title="Searched A"') +
+      req("2", "search", 'tool-title="Searching"') +
+      res("2", "search", 'tool-title="Searched B"') +
+      res("3", "read_page", 'tool-title="Read page"')
+    const g = loops(route(content, "all"))[0]!.groups[0]!
+    // Each segment resolves its title by the same rule the group uses, scoped
+    // to that tool: the aggregated `search` keeps its definition title, while
+    // the lone `read_page` call shows its own result title.
+    expect(g.segments).toEqual([
+      { toolName: "search", title: "Searching", count: 2, settled: true },
+      { toolName: "read_page", title: "Read page", count: 1, settled: true },
+    ])
+    // The group-level identity fields are unchanged (the first tool's).
+    expect(g.toolName).toBe("search")
+    expect(g.count).toBe(3)
+  })
+
+  it("settles each segment on its own tool's first result", () => {
+    const content =
+      res("1", "search", 'tool-title="Searched"') +
+      req("2", "read_page", 'tool-title="Reading page"')
+    const g = loops(route(content, "all"))[0]!.groups[0]!
+    expect(g.segments.map((s) => [s.toolName, s.settled])).toEqual([
+      ["search", true],
+      ["read_page", false],
+    ])
+  })
+
+  it("two tools annotated grouping=all share one heterogeneous bucket", () => {
+    // Reachable at default chat settings: the mode is resolved per tool but the
+    // bucket key is the literal string "all", so both tools land together.
+    const content =
+      res("1", "search", 'grouping="all"') +
+      res("2", "read_page", 'grouping="all"')
+    const groups = loops(route(content, "tool"))[0]!.groups
+    expect(groups).toHaveLength(1)
+    expect(groups[0]!.segments.map((s) => s.toolName)).toEqual([
+      "search",
+      "read_page",
+    ])
+  })
+
   it("resets the loop when prose interrupts a run of tools", () => {
     const content = res("1", "X") + "\n\nSome prose here.\n\n" + res("2", "X")
     const blocks = route(content, "tool")

@@ -287,6 +287,7 @@ describe("ChatMessage attachments", () => {
               toolName: "search",
               titleSettled: false,
               count: 1,
+              segments: [{ toolName: "search", count: 1, settled: false }],
               calls: [
                 {
                   requestId: "req-1",

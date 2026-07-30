@@ -72,6 +72,27 @@ export interface ToolCallItem {
 }
 
 /**
+ * One tool's contribution to a group's header. A group is usually homogeneous
+ * (one tool, one segment), but a loop-wide ("all") bucket can hold several
+ * distinct tools — reachable both from `tool_grouping="all"` and from two tools
+ * each annotated `grouping = "all"`, since the bucket key is a literal string.
+ * Such a group must not wear one tool's identity, so the header is a list of
+ * segments instead.
+ */
+export interface ToolCallSegment {
+  toolName: string
+  /** Resolved title for this tool's calls; undefined for an untitled tool. */
+  title?: string
+  count: number
+  /**
+   * True once one of this tool's calls has finished. Drives the same monotonic
+   * present→past verb latch the definition→result title swap uses, but scoped
+   * to the segment.
+   */
+  settled: boolean
+}
+
+/**
  * Block-model data for an aggregated set of calls (distinct from any React
  * `ToolGroup` component). `title`/`icon` are the resolved group identity after
  * applying the monotonic title latch.
@@ -85,6 +106,12 @@ export interface ToolCallGroup {
   titleSettled: boolean
   icon?: string
   count: number
+  /**
+   * Per-tool header segments, in first-appearance order. Longer than one entry
+   * only for a heterogeneous group; `title`/`toolName`/`icon`/`count` above
+   * still describe the group as a whole (the first tool's identity).
+   */
+  segments: ToolCallSegment[]
   calls: ToolCallItem[]
   /** Reserved for the thinking-lift fast-follow; unused in v1 core. */
   liftedThinking?: ThinkingBlock[]
@@ -545,6 +572,51 @@ function applyAttrsToItem(item: ToolCallItem, el: ParsedToolElement): void {
   item.expanded = attrTruthy(a, "expanded")
 }
 
+// The resolved header title for a set of calls belonging to one tool. An
+// aggregated set keeps the static (definition) title so the header stays stable
+// across the calls' differing dynamic titles; a lone call shows its own
+// most-specific (dynamic) title instead. Shared by the group header and its
+// per-tool segments so the two can never drift apart.
+function resolveTitle(calls: ToolCallItem[]): string | undefined {
+  const firstDone = calls.find((c) => c.status !== "running")
+  // The static (definition) title, shared across a tool's calls.
+  const definitionTitle = calls.find(
+    (c) => c.definitionTitle !== undefined,
+  )?.definitionTitle
+  // The dynamic (result) title of the first completed call.
+  const resultTitle =
+    firstDone?.title ?? calls.find((c) => c.title !== undefined)?.title
+  return calls.length > 1
+    ? (definitionTitle ?? resultTitle)
+    : (resultTitle ?? definitionTitle)
+}
+
+// Split a group's calls into per-tool header segments, in first-appearance
+// order. A homogeneous group yields exactly one segment, so the header keeps
+// rendering as it always has.
+function buildSegments(calls: ToolCallItem[]): ToolCallSegment[] {
+  const order: string[] = []
+  const byTool = new Map<string, ToolCallItem[]>()
+  for (const c of calls) {
+    let bucket = byTool.get(c.toolName)
+    if (!bucket) {
+      bucket = []
+      byTool.set(c.toolName, bucket)
+      order.push(c.toolName)
+    }
+    bucket.push(c)
+  }
+  return order.map((toolName) => {
+    const tcalls = byTool.get(toolName)!
+    return {
+      toolName,
+      title: resolveTitle(tcalls),
+      count: tcalls.length,
+      settled: tcalls.some((c) => c.status !== "running"),
+    }
+  })
+}
+
 // Group a loop's calls per the chat-level grouping, honoring per-tool overrides.
 // none → one group per call; tool → group by tool name (first-appearance order);
 // all → one group for the loop.
@@ -582,28 +654,15 @@ function groupCalls(
     const gcalls = byKey.get(key)!
     const firstDone = gcalls.find((c) => c.status !== "running")
     const settled = firstDone !== undefined
-    // The static (definition) title, shared across a tool's calls.
-    const definitionTitle = gcalls.find(
-      (c) => c.definitionTitle !== undefined,
-    )?.definitionTitle
-    // The dynamic (result) title of the first completed call.
-    const resultTitle =
-      firstDone?.title ?? gcalls.find((c) => c.title !== undefined)?.title
-    // An aggregated group keeps the static header so it stays stable across the
-    // calls' differing dynamic titles; a lone call shows its own most-specific
-    // (dynamic) title instead.
-    const title =
-      gcalls.length > 1
-        ? (definitionTitle ?? resultTitle)
-        : (resultTitle ?? definitionTitle)
     return {
       key,
       toolName: gcalls[0]!.toolName,
-      title,
+      title: resolveTitle(gcalls),
       titleSettled: settled,
       icon: firstDone?.icon ?? gcalls[0]!.icon,
       count: gcalls.length,
       calls: gcalls,
+      segments: buildSegments(gcalls),
     }
   })
 }

@@ -419,6 +419,29 @@ $shinychat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 
   white-space: nowrap;
 }
 
+// A heterogeneous group names every tool it ran, joined by commas. The list
+// gets its own box so the row's flex gap doesn't open up around each comma;
+// inside a segment the title and its ×N keep that same gap, and the comma sits
+// tight against the segment it follows.
+.shinychat-tool-group__segments {
+  display: inline-flex;
+  align-items: baseline;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.shinychat-tool-group__segment {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+
+  + .shinychat-tool-group__segment {
+    margin-inline-start: 0.25em;
+  }
+}
+
 // Title + per-call label glued together (colon form) on a single-call row, so
 // the flex row gap doesn't push them apart into "title : label".
 .shinychat-tool-group__titlewrap {

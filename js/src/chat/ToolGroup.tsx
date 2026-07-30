@@ -1,4 +1,5 @@
 import {
+  Fragment,
   memo,
   useContext,
   useEffect,
@@ -7,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import type { ToolCallGroup, ToolCallItem } from "./state"
+import type { ToolCallGroup, ToolCallItem, ToolCallSegment } from "./state"
 import { ToolResult } from "./ToolResult"
 import { ToolRequest } from "./ToolRequest"
 import { ChatDispatchContext } from "./context"
@@ -57,20 +58,24 @@ interface PerCallLabel {
 }
 
 // The per-call row label: an explicit `label`, else the call's full dynamic
-// (result) title when it adds information beyond the group header, else a
+// (result) title when it adds information beyond the header, else a
 // dictionary-style argument preview, else the tool name. For a single-call row
 // the title is already shown as the header, so the arg preview only stands in
 // for a bare tool with no title.
+//
+// `segmentTitle` is the header title for *this call's tool* — not the whole
+// header, which for a heterogeneous group names several tools and would both
+// fail to suppress a repeat and suppress an unrelated tool's title.
 function perCallLabel(
   item: ToolCallItem,
-  groupTitle: string | undefined,
+  segmentTitle: string | undefined,
   isSingle: boolean,
 ): PerCallLabel | null {
   if (item.label) return { text: item.label }
-  if (!isSingle && item.title && item.title !== groupTitle) {
+  if (!isSingle && item.title && item.title !== segmentTitle) {
     return { text: item.title }
   }
-  if (isSingle && groupTitle) return null
+  if (isSingle && segmentTitle) return null
   const ap = argPreview(item.arguments)
   if (ap) return { text: ap, code: true }
   // Nothing identifying left (a bare no-argument tool). A Tier-2 row would
@@ -136,17 +141,72 @@ function renderLeaf(item: ToolCallItem, open: boolean): ReactNode {
   )
 }
 
+// One tool's stretch of the header: its title (or the bare tool name), then its
+// own ×N. The title is `dangerouslySetInnerHTML` because server-provided titles
+// may carry markup.
+function TitleSegment({
+  segment,
+  showVerb,
+}: {
+  segment: ToolCallSegment
+  showVerb: boolean
+}): ReactNode {
+  return (
+    <>
+      {segment.title ? (
+        <span
+          className="shinychat-tool-group__title"
+          dangerouslySetInnerHTML={{ __html: segment.title }}
+        />
+      ) : (
+        <>
+          {/* Same monotonic present→past latch the definition→result title
+              swap follows, scoped to this tool's calls. */}
+          {showVerb && (segment.settled ? "Used " : "Using ")}
+          <code className="shinychat-tool-group__toolname">
+            {segment.toolName}
+          </code>
+        </>
+      )}
+      {segment.count > 1 && (
+        <span
+          className="shinychat-tool-group__count"
+          aria-label={`${segment.count} calls`}
+        >
+          {`×${segment.count}`}
+        </span>
+      )}
+    </>
+  )
+}
+
+// The group header's identity. A heterogeneous ("all") group holds several
+// tools, so it names each one with its own count — the same titles the tools
+// would show ungrouped — joined by ", ". A homogeneous group has a single
+// segment and renders exactly as it always has: the title span (plus its ×N),
+// unwrapped, straight into the row's flex layout.
 function GroupTitle({ group }: { group: ToolCallGroup }): ReactNode {
-  if (group.title) {
-    return (
-      <span
-        className="shinychat-tool-group__title"
-        dangerouslySetInnerHTML={{ __html: group.title }}
-      />
-    )
+  const segments = group.segments
+  // With nothing titled the verbs would stack up ("Used a ×2, Used b ×3"); a
+  // single leading verb reads as covering the whole list. As soon as one tool
+  // has a title the list is no longer a plain enumeration, so each untitled
+  // segment keeps its own verb.
+  const anyTitled = segments.some((s) => s.title)
+
+  if (segments.length === 1) {
+    return <TitleSegment segment={segments[0]!} showVerb={true} />
   }
   return (
-    <code className="shinychat-tool-group__toolname">{group.toolName}</code>
+    <span className="shinychat-tool-group__segments">
+      {segments.map((segment, i) => (
+        <Fragment key={segment.toolName}>
+          {i > 0 && ", "}
+          <span className="shinychat-tool-group__segment">
+            <TitleSegment segment={segment} showVerb={anyTitled || i === 0} />
+          </span>
+        </Fragment>
+      ))}
+    </span>
   )
 }
 
@@ -220,13 +280,13 @@ function SingleCallRow({
 
 function ToolCallRow({
   item,
-  groupTitle,
+  segmentTitle,
 }: {
   item: ToolCallItem
-  groupTitle: string | undefined
+  segmentTitle: string | undefined
 }): ReactNode {
   const [open, setOpen] = useExpandable(item.expanded)
-  const label = perCallLabel(item, groupTitle, false)
+  const label = perCallLabel(item, segmentTitle, false)
   const statusClass =
     item.status === "error"
       ? " text-danger"
@@ -324,6 +384,11 @@ export const ToolGroup = memo(function ToolGroup({
   const anyRunning = group.calls.some((c) => c.status === "running")
   const failedCount = group.calls.filter((c) => c.status === "error").length
   const glyphHtml = anyRunning ? spinnerHtml : group.icon || bareDot
+  // A row must not repeat a title its own segment already shows, so it compares
+  // against that tool's segment title rather than the combined header.
+  const segmentTitles = new Map(
+    group.segments.map((s) => [s.toolName, s.title]),
+  )
 
   return (
     <div className="shinychat-tool-group shinychat-tool-group--multi">
@@ -338,15 +403,10 @@ export const ToolGroup = memo(function ToolGroup({
           className={`shinychat-tool-group__glyph${anyRunning ? " running" : ""}`}
           dangerouslySetInnerHTML={{ __html: glyphHtml }}
         />
+        {/* The ×N lives inside the header, one per tool: a heterogeneous group
+            has no single count to show, and a homogeneous one has exactly one
+            segment, so its badge lands in the same place as before. */}
         <GroupTitle group={group} />
-        {group.count > 1 && (
-          <span
-            className="shinychat-tool-group__count"
-            aria-label={`${group.count} calls`}
-          >
-            {`×${group.count}`}
-          </span>
-        )}
         {failedCount > 0 && (
           <span className="shinychat-tool-group__failed">
             {`${failedCount} failed`}
@@ -368,7 +428,7 @@ export const ToolGroup = memo(function ToolGroup({
           <ToolCallRow
             key={item.localId}
             item={item}
-            groupTitle={group.title}
+            segmentTitle={segmentTitles.get(item.toolName)}
           />
         ))}
       </ul>

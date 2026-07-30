@@ -26,7 +26,27 @@ function group(
     icon: partial.icon,
     count: partial.count ?? calls.length,
     calls,
+    // A homogeneous group is one segment carrying the group's own identity,
+    // which is what `groupCalls` builds for every non-"all" bucket.
+    segments: partial.segments ?? [
+      {
+        toolName: partial.toolName ?? calls[0]!.toolName,
+        title: partial.title,
+        count: calls.length,
+        settled: partial.titleSettled ?? true,
+      },
+    ],
   }
+}
+
+// The header row's visible text, minus the glyph (whose spinner carries a
+// visually-hidden "Running…" label).
+function headerText(container: HTMLElement): string {
+  const row = container
+    .querySelector(".shinychat-tool-group__row")!
+    .cloneNode(true) as HTMLElement
+  row.querySelector(".shinychat-tool-group__glyph")?.remove()
+  return row.textContent ?? ""
 }
 
 describe("ToolGroup", () => {
@@ -157,6 +177,211 @@ describe("ToolGroup", () => {
     const code = container.querySelector(".shinychat-tool-group__toolname")
     expect(code?.tagName).toBe("CODE")
     expect(code?.textContent).toBe("run_sql")
+  })
+
+  it("names every tool with its own count in a heterogeneous group header", () => {
+    // A loop-wide ("all") group can hold several tools; wearing one tool's
+    // title would misrepresent what ran, so each tool shows the title it would
+    // show on its own.
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          key: "all",
+          toolName: "search_web",
+          title: "Searched the web",
+          calls: [
+            call({ requestId: "a", toolName: "search_web" }),
+            call({ requestId: "b", toolName: "search_web" }),
+            call({ requestId: "c", toolName: "read_page" }),
+            call({ requestId: "d", toolName: "read_page" }),
+            call({ requestId: "e", toolName: "read_page" }),
+          ],
+          segments: [
+            {
+              toolName: "search_web",
+              title: "Searched the web",
+              count: 2,
+              settled: true,
+            },
+            {
+              toolName: "read_page",
+              title: "Read page",
+              count: 3,
+              settled: true,
+            },
+          ],
+        })}
+      />,
+    )
+    expect(
+      Array.from(
+        container.querySelectorAll(".shinychat-tool-group__title"),
+      ).map((el) => el.textContent),
+    ).toEqual(["Searched the web", "Read page"])
+    expect(
+      Array.from(
+        container.querySelectorAll(".shinychat-tool-group__count"),
+      ).map((el) => el.textContent),
+    ).toEqual(["×2", "×3"])
+    // Each count sits with its own tool, and the segments read as one list.
+    expect(headerText(container)).toBe("Searched the web×2, Read page×3")
+  })
+
+  it("leaves a homogeneous group header exactly as it was: one title, one ×N", () => {
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          title: "Searched",
+          calls: [
+            call({ requestId: "a", label: "glucose" }),
+            call({ requestId: "b", label: "mannose" }),
+          ],
+        })}
+      />,
+    )
+    // No segment wrapper, and the badge is still the title's next sibling in
+    // the row's own flex layout.
+    expect(
+      container.querySelector(".shinychat-tool-group__segments"),
+    ).toBeNull()
+    const title = container.querySelector(".shinychat-tool-group__title")!
+    expect(title.nextElementSibling?.className).toBe(
+      "shinychat-tool-group__count",
+    )
+    expect(
+      container.querySelectorAll(".shinychat-tool-group__count").length,
+    ).toBe(1)
+    expect(title.nextElementSibling?.getAttribute("aria-label")).toBe("2 calls")
+    expect(title.parentElement?.className).toBe("shinychat-tool-group__row")
+  })
+
+  it("says 'Used <tool>' for an untitled tool, and 'Using' until it settles", () => {
+    const settled = group({
+      toolName: "run_sql",
+      title: undefined,
+      calls: [
+        call({ requestId: "a", toolName: "run_sql" }),
+        call({ requestId: "b", toolName: "run_sql" }),
+      ],
+    })
+    const { container, rerender } = render(<ToolGroup group={settled} />)
+    expect(headerText(container)).toBe("Used run_sql×2")
+
+    rerender(
+      <ToolGroup
+        group={group({
+          toolName: "run_sql",
+          title: undefined,
+          titleSettled: false,
+          calls: [
+            call({ requestId: "a", toolName: "run_sql", status: "running" }),
+            call({ requestId: "b", toolName: "run_sql", status: "running" }),
+          ],
+        })}
+      />,
+    )
+    expect(headerText(container)).toBe("Using run_sql×2")
+  })
+
+  it("keeps one leading verb when no tool in the group has a title", () => {
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          key: "all",
+          toolName: "search_web",
+          title: undefined,
+          calls: [
+            call({ requestId: "a", toolName: "search_web" }),
+            call({ requestId: "b", toolName: "search_web" }),
+            call({ requestId: "c", toolName: "read_page" }),
+          ],
+          segments: [
+            { toolName: "search_web", count: 2, settled: true },
+            { toolName: "read_page", count: 1, settled: true },
+          ],
+        })}
+      />,
+    )
+    expect(headerText(container)).toBe("Used search_web×2, read_page")
+  })
+
+  it("keeps every verb when the group mixes titled and untitled tools", () => {
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          key: "all",
+          toolName: "search_web",
+          title: "Searched the web",
+          calls: [
+            call({ requestId: "a", toolName: "search_web" }),
+            call({ requestId: "b", toolName: "read_page" }),
+            call({ requestId: "c", toolName: "read_page", status: "running" }),
+          ],
+          segments: [
+            {
+              toolName: "search_web",
+              title: "Searched the web",
+              count: 1,
+              settled: true,
+            },
+            { toolName: "read_page", count: 2, settled: false },
+          ],
+        })}
+      />,
+    )
+    expect(headerText(container)).toBe("Searched the web, Using read_page×2")
+  })
+
+  it("suppresses a row title already shown by that call's own segment", () => {
+    // The comparison is per tool, not against the combined header: with a
+    // heterogeneous header, "Read page" is visible in its own segment even
+    // though it differs from the header's first title.
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          key: "all",
+          toolName: "search_web",
+          title: "Searched the web",
+          calls: [
+            call({
+              requestId: "a",
+              toolName: "search_web",
+              title: "Searched the web",
+              label: undefined,
+            }),
+            call({ requestId: "b", toolName: "read_page", title: "Read page" }),
+            call({
+              requestId: "c",
+              toolName: "read_page",
+              title: "Read page: docs",
+            }),
+          ],
+          segments: [
+            {
+              toolName: "search_web",
+              title: "Searched the web",
+              count: 1,
+              settled: true,
+            },
+            {
+              toolName: "read_page",
+              title: "Read page",
+              count: 2,
+              settled: true,
+            },
+          ],
+        })}
+      />,
+    )
+    fireEvent.click(
+      container.querySelector(".shinychat-tool-group__row") as Element,
+    )
+    const labels = Array.from(
+      container.querySelectorAll(".shinychat-tool-call-row__label"),
+    ).map((el) => el.textContent)
+    // Rows a and b repeat their segment's title, so they fall through to the
+    // tool-name fallback; only row c adds something new.
+    expect(labels).toEqual(["search_web", "read_page", "Read page: docs"])
   })
 
   it("uses a dictionary-style argument preview as the per-call label fallback", () => {
