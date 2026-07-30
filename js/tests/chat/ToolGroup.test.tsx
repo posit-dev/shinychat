@@ -355,7 +355,9 @@ describe("ToolGroup", () => {
     ).toBe("Running R code")
   })
 
-  it("does not render a label for a call with neither an explicit label nor a scalar argument", () => {
+  it("falls back to the tool name for a call with no label and no scalar argument", () => {
+    // Last resort in the per-call chain: without it the row would be an
+    // unnamed glyph + chevron button. Reuses the group header's own fallback.
     const { container } = render(
       <ToolGroup
         group={group({
@@ -370,9 +372,33 @@ describe("ToolGroup", () => {
     fireEvent.click(
       container.querySelector(".shinychat-tool-group__row") as Element,
     )
+    const labels = Array.from(
+      container.querySelectorAll(".shinychat-tool-call-row__label code"),
+    ).map((el) => el.textContent)
+    expect(labels).toEqual(["search", "search"])
+    // Every Tier-2 expand control has an accessible name.
+    for (const btn of container.querySelectorAll(
+      ".shinychat-tool-call-row__summary",
+    )) {
+      expect(btn.textContent!.trim()).not.toBe("")
+    }
+  })
+
+  it("leaves a bare single-call row's label empty (the header is the tool name)", () => {
+    // The tool-name fallback is Tier-2 only: a single-call row already shows it
+    // in the header, so adding it as a label would read "search: search".
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          title: undefined,
+          calls: [call({ requestId: "a", arguments: "{}", value: "ok" })],
+        })}
+      />,
+    )
     expect(
-      container.querySelector(".shinychat-tool-call-row__label"),
-    ).toBeNull()
+      container.querySelector(".shinychat-tool-group__toolname")?.textContent,
+    ).toBe("search")
+    expect(container.querySelector(".shinychat-tool-group__label")).toBeNull()
   })
   it("honors a call's `expanded` flag inside a grouped Tier-2 list", () => {
     // `expanded` (tool_result_display(open = TRUE) / ToolResultDisplay(open=True)

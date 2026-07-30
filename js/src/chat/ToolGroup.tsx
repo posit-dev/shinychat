@@ -58,9 +58,9 @@ interface PerCallLabel {
 
 // The per-call row label: an explicit `label`, else the call's full dynamic
 // (result) title when it adds information beyond the group header, else a
-// dictionary-style argument preview. For a single-call row the title is already
-// shown as the header, so the arg preview only stands in for a bare tool with
-// no title.
+// dictionary-style argument preview, else the tool name. For a single-call row
+// the title is already shown as the header, so the arg preview only stands in
+// for a bare tool with no title.
 function perCallLabel(
   item: ToolCallItem,
   groupTitle: string | undefined,
@@ -73,6 +73,11 @@ function perCallLabel(
   if (isSingle && groupTitle) return null
   const ap = argPreview(item.arguments)
   if (ap) return { text: ap, code: true }
+  // Nothing identifying left (a bare no-argument tool). A Tier-2 row would
+  // otherwise be an unnamed glyph + chevron button, so fall back to the tool
+  // name in code font — the same fallback `GroupTitle` uses for the header. A
+  // single-call row already carries it in the header, so it stays bare there.
+  if (!isSingle) return { text: item.toolName, code: true }
   return null
 }
 

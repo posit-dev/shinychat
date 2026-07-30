@@ -391,6 +391,8 @@ ContentToolResult(
 
 `label` and `value_preview` only affect the collapsed summary; the full result (or its [alternative display content](#alternative-display-content)) is still shown when the call is expanded.
 
+When you don't set a `label`, shinychat falls back through the next best identifier it has: the call's own `title` when it differs from the group's, then a short preview of the call's arguments (up to three, as `name: value`, skipping any whose name begins with `_` or `.`), and finally the tool's name. So a row always says something, even for a tool that takes no arguments---but a `label` is what makes two calls to the same tool easy to tell apart.
+
 ### Alternative display content
 
 By default, shinychat shows the tool result's `value` property as a code block to the user.

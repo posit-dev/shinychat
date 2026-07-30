@@ -268,7 +268,9 @@ class ToolResultDisplay(BaseModel):
     label
         A short, per-call identifying value shown alongside the title
         (e.g. a filename or query). Distinguishes this call from other calls
-        to the same tool.
+        to the same tool. Without one, shinychat falls back to the call's own
+        `title` (when it differs from the group's), then a short preview of the
+        call's arguments, then the tool name.
     value_preview
         A terse, per-call preview of the tool result, shown in the condensed
         view before the full result is expanded.
