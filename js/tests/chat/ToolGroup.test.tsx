@@ -285,6 +285,64 @@ describe("ToolGroup", () => {
     ).toBeNull()
   })
 
+  it("marks which grouped row failed with the same subtle text note, not just the red glyph", () => {
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          title: "Searched",
+          calls: [
+            call({ requestId: "a", label: "ok", status: "success" }),
+            call({ requestId: "b", label: "bad", status: "error" }),
+          ],
+        })}
+      />,
+    )
+    fireEvent.click(
+      container.querySelector(".shinychat-tool-group__row") as Element,
+    )
+    const rows = container.querySelectorAll(".shinychat-tool-call-row")
+    expect(rows.length).toBe(2)
+
+    // Only the failed row carries the note, and it is real text in the
+    // accessibility tree (not a CSS ::before), so a screen reader reaches it.
+    expect(rows[0]!.querySelector(".shinychat-tool-group__failed")).toBeNull()
+    expect(
+      rows[1]!.querySelector(".shinychat-tool-group__failed")?.textContent,
+    ).toBe("failed")
+    expect(rows[1]!.textContent).toContain("failed")
+    expect(rows[0]!.textContent).not.toContain("failed")
+
+    // The group header's own "N failed" note is unchanged.
+    expect(
+      container.querySelector(
+        ".shinychat-tool-group__row .shinychat-tool-group__failed",
+      )?.textContent,
+    ).toBe("1 failed")
+  })
+
+  it("leaves a running grouped row free of the failed note", () => {
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          title: "Searching",
+          titleSettled: false,
+          calls: [
+            call({ requestId: "a", status: "running", label: "one" }),
+            call({ requestId: "b", status: "success", label: "two" }),
+          ],
+        })}
+      />,
+    )
+    fireEvent.click(
+      container.querySelector(".shinychat-tool-group__row") as Element,
+    )
+    expect(
+      container.querySelectorAll(
+        ".shinychat-tool-call-row .shinychat-tool-group__failed",
+      ).length,
+    ).toBe(0)
+  })
+
   it("shows a spinner glyph while any call in the group is running", () => {
     const { container } = render(
       <ToolGroup

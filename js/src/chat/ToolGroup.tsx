@@ -264,6 +264,13 @@ function ToolCallRow({
             {item.valuePreview}
           </span>
         )}
+        {/* The red status glyph is decorative (aria-hidden), so a failed row
+            also carries the same subtle text note the single-call row uses —
+            otherwise only the group header says anything failed, never which
+            row. */}
+        {item.status === "error" && (
+          <span className="shinychat-tool-group__failed">failed</span>
+        )}
         <span
           className="shinychat-tool-call-row__chevron"
           dangerouslySetInnerHTML={chevronDSIH}
