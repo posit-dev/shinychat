@@ -189,6 +189,42 @@ def test_tool_annotation_grouping_top_level_also_supported():
     assert 'grouping="all"' in request_html
 
 
+def _request_with_raw_annotations(annotations: Any) -> ContentToolRequest:
+    # Bypasses `ToolInfo`'s validation so that malformed annotations (which a
+    # hand-built or mutated `ToolInfo` can carry) reach the rendering path.
+    request = _request()
+    request.tool = ToolInfo(name="my_tool", description="", parameters={})
+    request.tool.annotations = annotations
+    return request
+
+
+def test_tool_annotation_non_dict_extra_falls_back_to_top_level():
+    request = _request_with_raw_annotations(
+        {"extra": "oops", "grouping": "all", "icon": "<span>i</span>"}
+    )
+    result = _result(request)
+
+    request_html = _render(tool_request_contents(request))
+    result_html = _render(tool_result_contents(result))
+
+    assert 'grouping="all"' in request_html
+    assert 'grouping="all"' in result_html
+    assert 'icon="&lt;span&gt;i&lt;/span&gt;"' in result_html
+
+
+def test_tool_annotation_non_dict_extra_omits_grouping_and_icon():
+    request = _request_with_raw_annotations({"title": "My Tool", "extra": "oops"})
+    result = _result(request)
+
+    request_html = _render(tool_request_contents(request))
+    result_html = _render(tool_result_contents(result))
+
+    assert "grouping=" not in request_html
+    assert "grouping=" not in result_html
+    assert "icon=" not in result_html
+    assert 'tool-title="My Tool"' in result_html
+
+
 # ---------------------------------------------------------------------------
 # 4. SHINYCHAT_TOOL_DISPLAY x grouping matrix
 # ---------------------------------------------------------------------------
