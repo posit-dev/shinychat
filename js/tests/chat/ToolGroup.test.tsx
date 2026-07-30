@@ -374,6 +374,127 @@ describe("ToolGroup", () => {
       container.querySelector(".shinychat-tool-call-row__label"),
     ).toBeNull()
   })
+  it("honors a call's `expanded` flag inside a grouped Tier-2 list", () => {
+    // `expanded` (tool_result_display(open = TRUE) / ToolResultDisplay(open=True)
+    // / <shiny-tool-result expanded>) must survive aggregation: grouping is the
+    // default as soon as a tool is called twice.
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          title: "Searched",
+          calls: [
+            call({ requestId: "a", label: "glucose", value: "1" }),
+            call({
+              requestId: "b",
+              label: "mannose",
+              value: "2",
+              expanded: true,
+            }),
+          ],
+        })}
+      />,
+    )
+    // The group opened so the expanded row isn't stranded in a hidden list.
+    const groupRow = container.querySelector(".shinychat-tool-group__row")
+    expect(groupRow?.getAttribute("aria-expanded")).toBe("true")
+    expect(
+      (container.querySelector(".shinychat-tool-group__calls") as HTMLElement)
+        .hidden,
+    ).toBe(false)
+
+    const summaries = container.querySelectorAll(
+      ".shinychat-tool-call-row__summary",
+    )
+    expect(summaries[0]!.getAttribute("aria-expanded")).toBe("false")
+    expect(summaries[1]!.getAttribute("aria-expanded")).toBe("true")
+    // Only the flagged call reveals its Tier-3 card.
+    expect(container.querySelectorAll(".shiny-tool-card").length).toBe(1)
+  })
+
+  it("stays collapsed when no call in the group is flagged expanded", () => {
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          title: "Searched",
+          calls: [
+            call({ requestId: "a", label: "glucose", expanded: false }),
+            call({ requestId: "b", label: "mannose" }),
+          ],
+        })}
+      />,
+    )
+    expect(
+      container
+        .querySelector(".shinychat-tool-group__row")
+        ?.getAttribute("aria-expanded"),
+    ).toBe("false")
+  })
+
+  it("latches open when `expanded` arrives with the result after the row mounted", () => {
+    // The row mounts on the request (no `expanded` yet); the flag only appears
+    // once the result element lands, so seeding state at mount isn't enough.
+    const running = group({
+      title: "Searching",
+      titleSettled: false,
+      calls: [
+        call({ requestId: "a", label: "glucose", status: "running" }),
+        call({ requestId: "b", label: "mannose", status: "running" }),
+      ],
+    })
+    const { container, rerender } = render(<ToolGroup group={running} />)
+    expect(
+      container
+        .querySelector(".shinychat-tool-group__row")
+        ?.getAttribute("aria-expanded"),
+    ).toBe("false")
+
+    rerender(
+      <ToolGroup
+        group={group({
+          title: "Searched",
+          calls: [
+            call({ requestId: "a", label: "glucose", value: "1" }),
+            call({
+              requestId: "b",
+              label: "mannose",
+              value: "2",
+              expanded: true,
+            }),
+          ],
+        })}
+      />,
+    )
+    expect(
+      container
+        .querySelector(".shinychat-tool-group__row")
+        ?.getAttribute("aria-expanded"),
+    ).toBe("true")
+    const summaries = container.querySelectorAll(
+      ".shinychat-tool-call-row__summary",
+    )
+    expect(summaries[1]!.getAttribute("aria-expanded")).toBe("true")
+  })
+
+  it("does not reopen a group the user collapsed after `expanded` latched", () => {
+    const expandedGroup = group({
+      title: "Searched",
+      calls: [
+        call({ requestId: "a", label: "glucose", value: "1" }),
+        call({ requestId: "b", label: "mannose", value: "2", expanded: true }),
+      ],
+    })
+    const { container, rerender } = render(<ToolGroup group={expandedGroup} />)
+    const groupRow = container.querySelector(
+      ".shinychat-tool-group__row",
+    ) as Element
+    fireEvent.click(groupRow)
+    expect(groupRow.getAttribute("aria-expanded")).toBe("false")
+
+    // A re-render (streaming re-routes on every chunk) must not fight the user.
+    rerender(<ToolGroup group={{ ...expandedGroup }} />)
+    expect(groupRow.getAttribute("aria-expanded")).toBe("false")
+  })
+
   it("gives every row and leaf card a document-unique aria-controls target", () => {
     // Neither `group.key` nor `requestId` is unique across the transcript: the
     // key is per routed loop, and `requestId` is optional (anonymous calls get a

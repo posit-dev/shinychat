@@ -107,6 +107,22 @@ def test_tool_result_display_label_and_value_preview_serialize():
     assert 'value-preview="42 rows"' in rendered
 
 
+def test_tool_result_display_open_serializes_expanded():
+    request = _request()
+    display = ToolResultDisplay(open=True)
+    result = _result(request, extra={"display": display})
+
+    rendered = _render(tool_result_contents(result))
+    assert "expanded" in rendered
+
+
+def test_tool_result_display_open_absent_by_default():
+    request = _request()
+    result = _result(request)
+
+    assert "expanded" not in _render(tool_result_contents(result))
+
+
 def test_tool_result_display_label_and_value_preview_absent_by_default():
     request = _request()
     result = _result(request)

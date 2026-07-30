@@ -3,6 +3,7 @@ import {
   useContext,
   useEffect,
   useId,
+  useRef,
   useState,
   type ReactNode,
 } from "react"
@@ -75,6 +76,23 @@ function perCallLabel(
   return null
 }
 
+// Open state for a disclosure row that honors a server-provided `expanded`
+// flag. Seeding `useState` alone isn't enough: `expanded` arrives on the result
+// element, which can land after the row already mounted for the request. So
+// latch open when the flag turns on. It only ever opens — a user collapse is
+// not undone, because the flag doesn't transition again.
+function useExpandable(
+  expanded: boolean | undefined,
+): [boolean, (update: (v: boolean) => boolean) => void] {
+  const [open, setOpen] = useState(expanded ?? false)
+  const wasExpanded = useRef(expanded ?? false)
+  useEffect(() => {
+    if (expanded && !wasExpanded.current) setOpen(true)
+    wasExpanded.current = expanded ?? false
+  }, [expanded])
+  return [open, setOpen]
+}
+
 function statusGlyphHtml(status: ToolCallItem["status"]): string {
   if (status === "running") return spinnerHtml
   if (status === "error") return exclamationCircleFill
@@ -138,7 +156,7 @@ function SingleCallRow({
   group: ToolCallGroup
   item: ToolCallItem
 }): ReactNode {
-  const [open, setOpen] = useState(item.expanded ?? false)
+  const [open, setOpen] = useExpandable(item.expanded)
   const running = item.status === "running"
   const failed = item.status === "error"
   const label = perCallLabel(item, group.title, true)
@@ -202,7 +220,7 @@ function ToolCallRow({
   item: ToolCallItem
   groupTitle: string | undefined
 }): ReactNode {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useExpandable(item.expanded)
   const label = perCallLabel(item, groupTitle, false)
   const statusClass =
     item.status === "error"
@@ -262,7 +280,11 @@ export const ToolGroup = memo(function ToolGroup({
 }: {
   group: ToolCallGroup
 }) {
-  const [expanded, setExpanded] = useState(false)
+  // A call marked `expanded` must be reachable: open the group so its Tier-2
+  // row (which opens itself) isn't stranded inside the hidden call list.
+  const [expanded, setExpanded] = useExpandable(
+    group.calls.some((c) => c.expanded),
+  )
   const dispatch = useContext(ChatDispatchContext)
   // `group.key` is only unique within one routed loop, so it can't seed a
   // document-wide `id`: two messages that both group "all" (or repeat a tool
