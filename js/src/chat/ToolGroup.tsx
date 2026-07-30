@@ -281,9 +281,12 @@ function SingleCallRow({
 function ToolCallRow({
   item,
   segmentTitle,
+  heterogeneous,
 }: {
   item: ToolCallItem
   segmentTitle: string | undefined
+  /** True when the group spans several tools (see the glyph note below). */
+  heterogeneous: boolean
 }): ReactNode {
   const [open, setOpen] = useExpandable(item.expanded)
   const label = perCallLabel(item, segmentTitle, false)
@@ -293,6 +296,16 @@ function ToolCallRow({
       : item.status === "running"
         ? " running"
         : ""
+  // The glyph carries identity where identity varies and status where identity
+  // is constant. In a group spanning several tools the header can't name one,
+  // so each row wears its own tool's icon; a running call still shows the
+  // spinner (progress is the more urgent fact), and a tool with no icon falls
+  // back to its status glyph. `statusClass` still applies: a failed row tints
+  // whichever glyph it ends up with.
+  const glyphHtml =
+    heterogeneous && item.status !== "running"
+      ? item.icon || statusGlyphHtml(item.status)
+      : statusGlyphHtml(item.status)
   // Not derived from `item.requestId`: it is optional, and a request can
   // render in a different message than its result before pairing settles.
   const contentId = `tool-call${useId()}`
@@ -308,7 +321,7 @@ function ToolCallRow({
       >
         <span
           className={`shinychat-tool-call-row__status${statusClass}`}
-          dangerouslySetInnerHTML={{ __html: statusGlyphHtml(item.status) }}
+          dangerouslySetInnerHTML={{ __html: glyphHtml }}
         />
         {label && (
           <span className="shinychat-tool-call-row__label">
@@ -383,7 +396,14 @@ export const ToolGroup = memo(function ToolGroup({
 
   const anyRunning = group.calls.some((c) => c.status === "running")
   const failedCount = group.calls.filter((c) => c.status === "error").length
-  const glyphHtml = anyRunning ? spinnerHtml : group.icon || bareDot
+  // A group spanning several tools has no one icon to show, so the header
+  // keeps the generic dot and lets the rows carry the tool icons instead.
+  const heterogeneous = group.segments.length > 1
+  const glyphHtml = anyRunning
+    ? spinnerHtml
+    : heterogeneous
+      ? bareDot
+      : group.icon || bareDot
   // A row must not repeat a title its own segment already shows, so it compares
   // against that tool's segment title rather than the combined header.
   const segmentTitles = new Map(
@@ -429,6 +449,7 @@ export const ToolGroup = memo(function ToolGroup({
             key={item.localId}
             item={item}
             segmentTitle={segmentTitles.get(item.toolName)}
+            heterogeneous={heterogeneous}
           />
         ))}
       </ul>

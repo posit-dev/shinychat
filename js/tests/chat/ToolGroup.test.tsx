@@ -384,6 +384,122 @@ describe("ToolGroup", () => {
     expect(labels).toEqual(["search_web", "read_page", "Read page: docs"])
   })
 
+  // Icons in a group whose identity varies. Segment titles are irrelevant here,
+  // so these reuse one fixture and vary only the icons and statuses.
+  const webIcon = '<svg class="icon-web"></svg>'
+  const pageIcon = '<svg class="icon-page"></svg>'
+  function mixedGroup(calls: ToolCallItem[]): ToolCallGroup {
+    return group({
+      key: "all",
+      toolName: "search_web",
+      title: "Searched the web",
+      icon: webIcon,
+      calls,
+      segments: [
+        {
+          toolName: "search_web",
+          title: "Searched the web",
+          count: 1,
+          settled: true,
+        },
+        { toolName: "read_page", title: "Read page", count: 1, settled: true },
+      ],
+    })
+  }
+
+  it("keeps the tool icon on a homogeneous group header and status glyphs on its rows", () => {
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          title: "Searched",
+          icon: webIcon,
+          calls: [
+            call({ requestId: "a", label: "one", icon: webIcon }),
+            call({ requestId: "b", label: "two", icon: webIcon }),
+          ],
+        })}
+      />,
+    )
+    expect(
+      container.querySelector(".shinychat-tool-group__glyph .icon-web"),
+    ).toBeTruthy()
+    fireEvent.click(
+      container.querySelector(".shinychat-tool-group__row") as Element,
+    )
+    // The rows keep reporting status, since the identity never varies.
+    expect(
+      container.querySelectorAll(".shinychat-tool-call-row__status .icon-web")
+        .length,
+    ).toBe(0)
+    expect(
+      container.querySelectorAll(".shinychat-tool-call-row__status svg").length,
+    ).toBe(2)
+  })
+
+  it("moves the tool icons to the rows when the group spans several tools", () => {
+    const { container } = render(
+      <ToolGroup
+        group={mixedGroup([
+          call({ requestId: "a", toolName: "search_web", icon: webIcon }),
+          call({ requestId: "b", toolName: "read_page", icon: pageIcon }),
+        ])}
+      />,
+    )
+    // The header can't claim one tool's icon, so it takes the generic dot.
+    const glyph = container.querySelector(".shinychat-tool-group__glyph")!
+    expect(glyph.querySelector(".shinychat-tool-glyph-dot")).toBeTruthy()
+    expect(glyph.querySelector(".icon-web")).toBeNull()
+
+    fireEvent.click(
+      container.querySelector(".shinychat-tool-group__row") as Element,
+    )
+    const rows = container.querySelectorAll(".shinychat-tool-call-row__status")
+    expect(rows[0]!.querySelector(".icon-web")).toBeTruthy()
+    expect(rows[1]!.querySelector(".icon-page")).toBeTruthy()
+  })
+
+  it("keeps the spinner on a running row of a mixed group, over its tool icon", () => {
+    const { container } = render(
+      <ToolGroup
+        group={mixedGroup([
+          call({ requestId: "a", toolName: "search_web", icon: webIcon }),
+          call({
+            requestId: "b",
+            toolName: "read_page",
+            icon: pageIcon,
+            status: "running",
+          }),
+        ])}
+      />,
+    )
+    fireEvent.click(
+      container.querySelector(".shinychat-tool-group__row") as Element,
+    )
+    const rows = container.querySelectorAll(".shinychat-tool-call-row__status")
+    expect(rows[1]!.querySelector(".spinner-border")).toBeTruthy()
+    expect(rows[1]!.querySelector(".icon-page")).toBeNull()
+  })
+
+  it("falls back to the status glyph for an iconless tool in a mixed group", () => {
+    const { container } = render(
+      <ToolGroup
+        group={mixedGroup([
+          call({ requestId: "a", toolName: "search_web", icon: webIcon }),
+          call({ requestId: "b", toolName: "read_page", status: "error" }),
+        ])}
+      />,
+    )
+    fireEvent.click(
+      container.querySelector(".shinychat-tool-group__row") as Element,
+    )
+    const row = container.querySelectorAll(
+      ".shinychat-tool-call-row__status",
+    )[1]!
+    expect(row.className).toContain("text-danger")
+    expect(row.querySelector("svg")).toBeTruthy()
+    expect(row.querySelector(".icon-page")).toBeNull()
+  })
+
   it("uses a dictionary-style argument preview as the per-call label fallback", () => {
     const { container } = render(
       <ToolGroup
