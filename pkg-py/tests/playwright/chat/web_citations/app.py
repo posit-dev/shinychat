@@ -4,7 +4,7 @@ from chatlas.types import (
     ContentToolRequestSearch,
     ContentToolResponseFetch,
     ContentToolResponseSearch,
-    Source,
+    WebSource,
 )
 from shiny.express import render, ui
 from shinychat.express import Chat
@@ -19,10 +19,9 @@ async def fake_stream():
     yield ContentToolRequestSearch(query="e-bike motor types")
     yield ContentToolResponseSearch(
         sources=[
-            Source(
+            WebSource(
                 url="https://ebicycles.example/hub-vs-mid-drive",
                 title="Hub Motor vs. Mid-Drive Motor Differences Explained",
-                domain="ebicycles.example",
             ),
         ]
     )
@@ -31,15 +30,19 @@ async def fake_stream():
     )
     yield ContentText(text="Hub motors are cheaper and simpler")
     yield ContentCitation(
-        url="https://ebicycles.example/hub-vs-mid-drive",
-        title="Hub Motor vs. Mid-Drive Motor Differences Explained",
+        source=WebSource(
+            url="https://ebicycles.example/hub-vs-mid-drive",
+            title="Hub Motor vs. Mid-Drive Motor Differences Explained",
+        )
     )
     yield ContentText(text=", and ideal for flatter terrain. ")
     # A second, distinct source cited in the same sentence — both collapse
     # into one pill: the first source's label as the face, "+1" overflow.
     yield ContentCitation(
-        url="https://wired.example/ebike-motors",
-        title="How Electric Bike Motors Work",
+        source=WebSource(
+            url="https://wired.example/ebike-motors",
+            title="How Electric Bike Motors Work",
+        )
     )
     # Blank line starts a new paragraph, so this aside lands in a
     # separate block/group from the two citations above.
@@ -53,13 +56,17 @@ async def fake_stream():
     yield ContentText(text=".")
     yield ContentText(text=" Range depends on battery")
     yield ContentCitation(
-        url="https://ebicycles.example/hub-vs-mid-drive",
-        title="Hub Motor vs. Mid-Drive Motor Differences Explained",
+        source=WebSource(
+            url="https://ebicycles.example/hub-vs-mid-drive",
+            title="Hub Motor vs. Mid-Drive Motor Differences Explained",
+        )
     )
     yield ContentText(text=" and again on the same source")
     yield ContentCitation(
-        url="https://ebicycles.example/hub-vs-mid-drive",
-        title="Hub Motor vs. Mid-Drive Motor Differences Explained",
+        source=WebSource(
+            url="https://ebicycles.example/hub-vs-mid-drive",
+            title="Hub Motor vs. Mid-Drive Motor Differences Explained",
+        )
     )
     yield ContentText(text=".")
 

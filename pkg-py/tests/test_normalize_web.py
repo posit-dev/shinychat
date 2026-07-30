@@ -4,7 +4,7 @@ from chatlas.types import (
     ContentToolRequestSearch,
     ContentToolResponseFetch,
     ContentToolResponseSearch,
-    Source,
+    WebSource,
 )
 from htmltools import TagList
 from shinychat._chat_normalize import message_content
@@ -25,8 +25,8 @@ def test_search_response_renders_results_element_with_sources():
     html = _html(
         ContentToolResponseSearch(
             sources=[
-                Source(url="https://a.com", title="Alpha", domain="a.com"),
-                Source(url="https://b.com"),
+                WebSource(url="https://a.com", title="Alpha"),
+                WebSource(url="https://b.com"),
             ]
         )
     )
@@ -55,8 +55,10 @@ def test_citation_renders_aside_element_with_auto_derived_label():
     # into the surrounding text segment instead of forcing their own block.
     msg = message_content(
         ContentCitation(
-            url="https://cran.r-project.org/web/packages/ggplot2",
-            title="ggplot2 on CRAN",
+            source=WebSource(
+                url="https://cran.r-project.org/web/packages/ggplot2",
+                title="ggplot2 on CRAN",
+            )
         )
     )
     assert msg.content_type == "markdown"
@@ -68,7 +70,9 @@ def test_citation_renders_aside_element_with_auto_derived_label():
 
 
 def test_citation_without_title_uses_url_as_link_text():
-    msg = message_content(ContentCitation(url="https://example.com/page"))
+    msg = message_content(
+        ContentCitation(source=WebSource(url="https://example.com/page"))
+    )
     assert "shiny-aside" in msg.content
     assert "https://example.com/page" in msg.content
     # Never emit the unsafe `<url>` autolink form as HTML children.
@@ -77,21 +81,35 @@ def test_citation_without_title_uses_url_as_link_text():
 
 def test_citation_escapes_special_characters():
     msg = message_content(
-        ContentCitation(url="https://x.example/?a=1&b=2", title="A & B <ok>")
+        ContentCitation(
+            source=WebSource(url="https://x.example/?a=1&b=2", title="A & B <ok>")
+        )
     )
     assert "A &amp; B &lt;ok&gt;" in msg.content
     assert "a=1&amp;b=2" in msg.content
+
+
+def test_citation_without_source_renders_nothing():
+    msg = message_content(ContentCitation())
+    assert msg.content == ""
 
 
 def test_tool_display_none_suppresses(monkeypatch):
     monkeypatch.setenv("SHINYCHAT_TOOL_DISPLAY", "none")
     assert _html(ContentToolRequestSearch(query="x")).strip() == ""
     assert (
-        _html(ContentToolResponseSearch(sources=[Source(url="https://a.com")])).strip()
+        _html(
+            ContentToolResponseSearch(sources=[WebSource(url="https://a.com")])
+        ).strip()
         == ""
     )
     assert (
         _html(ContentToolResponseFetch(url="https://a.com", status="success")).strip()
         == ""
     )
-    assert message_content(ContentCitation(url="https://a.com")).content == ""
+    assert (
+        message_content(
+            ContentCitation(source=WebSource(url="https://a.com"))
+        ).content
+        == ""
+    )

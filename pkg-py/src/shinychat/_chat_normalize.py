@@ -222,6 +222,7 @@ try:
     # Import here to avoid hard dependency on pydantic
     from ._chat_normalize_chatlas import (
         citation_aside,
+        domain_from_url,
         tool_display_override,
         tool_request_contents,
         tool_result_contents,
@@ -303,6 +304,7 @@ try:
             ContentToolRequestSearch,
             ContentToolResponseFetch,
             ContentToolResponseSearch,
+            WebSource,
         )
 
         @message_content.register
@@ -326,7 +328,7 @@ try:
             if tool_display_override() == "none":
                 return ChatMessage(content="")
             sources = [
-                {"url": s.url, "title": s.title, "domain": s.domain}
+                {"url": s.url, "title": s.title, "domain": domain_from_url(s.url)}
                 for s in message.sources
             ]
             return ChatMessage(
@@ -368,10 +370,12 @@ try:
 
         @message_content.register
         def _(message: ContentCitation):
-            if tool_display_override() == "none":
+            if tool_display_override() == "none" or not isinstance(
+                message.source, WebSource
+            ):
                 return ChatMessage(content="")
             return ChatMessage(
-                content=citation_aside(message.url, message.title),
+                content=citation_aside(message.source.url, message.source.title),
                 content_type="markdown",
             )
 
