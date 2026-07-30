@@ -1801,6 +1801,21 @@ describe("routeToolBlocks (tool content router)", () => {
     expect(loops(route(inline))).toHaveLength(0)
   })
 
+  it("leaves tool tags inside a multi-backtick code span as literal prose", () => {
+    // A span quoting a sample that itself contains a backtick needs ``…``.
+    const doubled = "Write ``" + res("1", "a") + "`` verbatim."
+    expect(loops(route(doubled))).toHaveLength(0)
+  })
+
+  it("does not let stray single backticks on separate lines swallow an element", () => {
+    // Unbalanced backticks are common in prose; a code span must not pair
+    // across lines, or it would suppress a real tool element between them.
+    const strays = "don`t\n" + res("1", "a") + "\nit`s fine"
+    const l = loops(route(strays))
+    expect(l).toHaveLength(1)
+    expect(l[0]!.groups[0]!.calls[0]!.requestId).toBe("1")
+  })
+
   it("still routes a real tool element alongside a fenced example", () => {
     const mixed = "```html\n" + res("1", "a") + "\n```\n\n" + res("2", "a")
     const l = loops(route(mixed))

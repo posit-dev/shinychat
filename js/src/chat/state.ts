@@ -263,9 +263,25 @@ function codeRanges(content: string): (idx: number) => boolean {
   for (const m of content.matchAll(fenceRe)) {
     ranges.push([m.index, m.index + m[0].length])
   }
-  const inlineCodeRe = /`[^`\n]+`/g
-  for (const m of content.matchAll(inlineCodeRe)) {
-    ranges.push([m.index, m.index + m[0].length])
+  // Inline code spans. Per CommonMark a span opens with a run of N backticks and
+  // closes at the next run of exactly N, so a single-backtick pattern misses
+  // ``…`` — which is precisely how you quote a sample containing a backtick.
+  // Pairing is deliberately confined to one line: a stray unbalanced backtick is
+  // common in prose, and a multi-line span would let two of them swallow a real
+  // tool element (which the servers always emit on its own line).
+  const runs: Array<[number, number]> = [...content.matchAll(/`+/g)].map(
+    (m) => [m.index, m[0].length],
+  )
+  for (let i = 0; i < runs.length; i++) {
+    const [start, len] = runs[i]!
+    const lineEnd = content.indexOf("\n", start)
+    const limit = lineEnd === -1 ? content.length : lineEnd
+    for (let j = i + 1; j < runs.length && runs[j]![0] < limit; j++) {
+      if (runs[j]![1] !== len) continue
+      ranges.push([start, runs[j]![0] + runs[j]![1]])
+      i = j
+      break
+    }
   }
   return (idx: number) =>
     ranges.some(([start, end]) => idx >= start && idx < end)
