@@ -81,3 +81,128 @@ def test_web_citations(page: Page, local_app: ShinyAppProc) -> None:
     expect(sources_popover).to_contain_text("ebicycles.example")
     expect(sources_popover).to_contain_text("wired.example")
     expect(sources_popover.locator(".shiny-sources-item")).to_have_count(2)
+
+
+# Two columns define the block: the chevron / rail / dot gutter, and the text
+# column shared by the header label and the nested timeline rows.
+COLUMN_CENTERS_JS = """
+el => {
+  const centerX = (r) => r.x + r.width / 2;
+  const timeline = el.querySelector('.shiny-web-activity__timeline');
+  const nodes = [...timeline.querySelectorAll('.shiny-web-activity__node')];
+  const dots = nodes.map((node) => {
+    const nodeRect = node.getBoundingClientRect();
+    const dot = getComputedStyle(node, '::before');
+    return nodeRect.x + parseFloat(dot.left) + parseFloat(dot.width) / 2;
+  });
+  // Each node draws its own rail segment; `content: none` means no segment.
+  const rails = nodes.map((node) => {
+    const nodeRect = node.getBoundingClientRect();
+    const s = getComputedStyle(node, '::after');
+    if (s.content === 'none') return null;
+    const top = nodeRect.y + parseFloat(s.top);
+    return {
+      cx: nodeRect.x + parseFloat(s.left) + parseFloat(s.width) / 2,
+      top,
+      bottom: top + parseFloat(s.height),
+    };
+  });
+  const dotCentersY = nodes.map((node) => {
+    const nodeRect = node.getBoundingClientRect();
+    const dot = getComputedStyle(node, '::before');
+    return nodeRect.y + parseFloat(dot.top) + parseFloat(dot.height) / 2;
+  });
+  const header = el.querySelector('.shiny-web-activity__header');
+  const labelNode = [...header.childNodes].find(
+    (n) => n.nodeType === Node.TEXT_NODE && n.textContent.trim(),
+  );
+  const labelRange = document.createRange();
+  labelRange.selectNode(labelNode);
+  return {
+    chevron: centerX(
+      el.querySelector('.shiny-web-activity__chevron').getBoundingClientRect(),
+    ),
+    dots,
+    dotCentersY,
+    rails,
+    headerLabelLeft: labelRange.getBoundingClientRect().x,
+    rowLefts: nodes.map((node) => node.getBoundingClientRect().x),
+    lastHasResults: !!nodes[nodes.length - 1].querySelector(
+      '.shiny-web-activity__results',
+    ),
+  };
+}
+"""
+
+
+def test_web_activity_timeline_alignment(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.goto(local_app.url)
+
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30 * 1000)
+
+    chat.set_user_input("tell me about e-bike motors")
+    chat.send_user_input()
+
+    activity = page.locator(".shiny-web-activity").first
+    header = activity.locator(".shiny-web-activity__header")
+    expect(header).to_be_visible(timeout=30 * 1000)
+    header.click()
+    expect(activity.locator(".shiny-web-activity__timeline")).to_be_visible()
+
+    centers = activity.evaluate(COLUMN_CENTERS_JS)
+
+    # Sub-pixel layout means these will not be bit-identical; a half-pixel
+    # budget still rules out the misalignment a reader can see.
+    tolerance = 0.5
+
+    dots = centers["dots"]
+    rails = centers["rails"]
+    assert dots, f"expected at least one timeline dot, got {centers}"
+
+    # The chevron, every dot, and every rail segment share one column.
+    column = centers["chevron"]
+    labelled = [(f"dot[{i}]", d) for i, d in enumerate(dots)]
+    labelled += [
+        (f"rail[{i}]", r["cx"]) for i, r in enumerate(rails) if r is not None
+    ]
+    for name, value in labelled:
+        assert abs(value - column) <= tolerance, (
+            f"{name} center ({value}) is not on the chevron column ({column}): "
+            f"{centers}"
+        )
+
+    # The nested rows hang off the same text column as the header label, so the
+    # rail and dots sit in a gutter rather than staggering the text.
+    label_left = centers["headerLabelLeft"]
+    for i, row_left in enumerate(centers["rowLefts"]):
+        assert abs(row_left - label_left) <= tolerance, (
+            f"timeline row[{i}] left ({row_left}) is not on the header label "
+            f"column ({label_left}): {centers}"
+        )
+
+    # Every rail segment spans exactly from its own dot to the next one, so the
+    # rail never overshoots a dot or leaves a gap between rows.
+    dot_ys = centers["dotCentersY"]
+    for i, railseg in enumerate(rails[:-1]):
+        assert railseg is not None, f"rail[{i}] should connect to dot[{i + 1}]"
+        assert abs(railseg["top"] - dot_ys[i]) <= tolerance, (
+            f"rail[{i}] starts at {railseg['top']}, not at dot[{i}] "
+            f"({dot_ys[i]}): {centers}"
+        )
+        assert abs(railseg["bottom"] - dot_ys[i + 1]) <= tolerance, (
+            f"rail[{i}] ends at {railseg['bottom']}, not at dot[{i + 1}] "
+            f"({dot_ys[i + 1]}): {centers}"
+        )
+
+    # Nothing follows the last dot, so it only gets a rail when there is a
+    # results panel for that rail to run alongside.
+    assert not centers["lastHasResults"], (
+        "this fixture's last timeline node is a one-line fetch row; update the "
+        f"expectation below if that changes: {centers}"
+    )
+    assert rails[-1] is None, (
+        f"last node has no results panel, so it should draw no rail: {centers}"
+    )

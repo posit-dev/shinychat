@@ -976,13 +976,26 @@ shinychat-raw-html {
 }
 
 .shiny-web-activity {
+  // Must match the box drawn by <ChevronIcon>.
+  --_chevron-size: 12px;
+  --_header-gap: 0.35em;
+  // The rail and every dot are derived from the chevron's center so all three
+  // stay on one column; the nested rows are indented past the chevron so they
+  // share the header label's column.
+  --_chevron-center: calc(var(--_chevron-size) / 2);
+  --_rail-indent: calc(var(--_chevron-size) + var(--_header-gap));
+  --_dot-size: 0.5em;
+  // Vertical center of a dot within its row, and the space between rows.
+  --_dot-center: 0.7em;
+  --_node-gap: 0.7em;
+
   margin: 0.5em 0;
   font-size: 0.9em;
 
   .shiny-web-activity__header {
     display: inline-flex;
     align-items: center;
-    gap: 0.35em;
+    gap: var(--_header-gap);
     background: none;
     border: none;
     padding: 0.15em 0;
@@ -998,7 +1011,8 @@ shinychat-raw-html {
   }
 
   .shiny-web-activity__chevron {
-    display: inline-block;
+    display: block;
+    flex: none;
     transition: transform 0.2s ease;
 
     &[data-expanded] {
@@ -1006,38 +1020,59 @@ shinychat-raw-html {
     }
   }
 
-  // Left timeline connector
   .shiny-web-activity__timeline {
     position: relative;
     margin: 0.3em 0 0.2em;
-    padding-left: 1.6em;
-
-    &::before {
-      content: "";
-      position: absolute;
-      left: 0.5em;
-      top: 0.4em;
-      bottom: 0.4em;
-      width: 1px;
-      background: rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.15);
-    }
+    padding-left: var(--_rail-indent);
   }
 
   .shiny-web-activity__node {
     position: relative;
-    margin-bottom: 0.7em;
+    margin-bottom: var(--_node-gap);
 
     &::before {
       content: "";
       position: absolute;
-      left: -1.18em;
-      top: 0.45em;
-      width: 0.5em;
-      height: 0.5em;
+      // Offsets from the node's own left edge, which the timeline has already
+      // pushed in by --_rail-indent, back out onto the rail column.
+      left: calc(
+        var(--_chevron-center) - var(--_rail-indent) - var(--_dot-size) / 2
+      );
+      top: calc(var(--_dot-center) - var(--_dot-size) / 2);
+      width: var(--_dot-size);
+      height: var(--_dot-size);
       border-radius: 50%;
       background: var(--bs-body-bg, #fff);
       box-shadow: 0 0 0 1px rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.3);
     }
+  }
+
+  // The connector rail is drawn per node rather than across the whole timeline,
+  // so it always terminates on something instead of overshooting the last dot.
+  .shiny-web-activity__node::after {
+    content: "";
+    position: absolute;
+    left: calc(var(--_chevron-center) - var(--_rail-indent) - 0.5px);
+    top: var(--_dot-center);
+    width: 1px;
+    background: rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.15);
+  }
+
+  // Reach the next node's dot: the rest of this node, the gap between them,
+  // and the next dot's own offset within its row.
+  .shiny-web-activity__node:not(:last-child)::after {
+    height: calc(100% + var(--_node-gap));
+  }
+
+  .shiny-web-activity__node:last-child::after {
+    // No dot follows, so a rail here would just be a stub below the last dot.
+    content: none;
+  }
+
+  // ...unless it can serve as a bracket alongside this node's own results.
+  .shiny-web-activity__node:last-child:has(.shiny-web-activity__results)::after {
+    content: "";
+    bottom: 0;
   }
 
   .shiny-web-activity__qrow {

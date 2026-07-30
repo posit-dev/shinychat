@@ -1,6 +1,7 @@
 import { memo, useState } from "react"
 import type { Element, ElementContent } from "hast"
 import { isSafeUrl } from "../markdown/urlSanitize"
+import { ChevronIcon } from "./ChevronIcon"
 
 interface Source {
   url: string
@@ -112,13 +113,10 @@ export const WebActivity = memo(function WebActivity({
         aria-expanded={expanded}
         onClick={() => setExpanded((p) => !p)}
       >
-        <span
+        <ChevronIcon
           className="shiny-web-activity__chevron"
-          data-expanded={expanded || undefined}
-          aria-hidden="true"
-        >
-          ›
-        </span>
+          expanded={expanded}
+        />
         {headerText}
       </button>
       {expanded && (
