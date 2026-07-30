@@ -583,15 +583,9 @@ shiny-chat-container:not([fill]) {
   }
 }
 
-// The leading glyph, in the slot a tool row reserves for identity/status. It is
-// static — the trailing `.shinychat-thinking-disclosure` is what rotates.
-.shinychat-thinking-chevron {
-  width: var(--_row-glyph-width);
-  height: var(--_row-glyph-width);
-  flex: none;
-  display: block;
-}
-
+// The leading identity glyph is sized and shaped alongside the generic tool dot
+// (see `.shinychat-thinking-glyph` in chat-tools.scss); it is static, and the
+// trailing `.shinychat-thinking-disclosure` is what rotates.
 .shinychat-thinking-disclosure {
   margin-inline-start: auto;
 }

@@ -30,7 +30,7 @@ describe("ThinkingDisplay", () => {
     // A collapsed thinking header used to stand out sharply against the tool
     // rows around it — bigger, bolder, undimmed, and structurally mirrored (its
     // only chevron led the row). It now takes the tool-row shape: a static
-    // glyph in the leading slot, the rotating chevron trailing.
+    // identity glyph in the leading slot, the rotating chevron trailing.
     const { container } = render(
       <ThinkingDisplay thinking={thinking()} messageId="m1" />,
     )
@@ -38,19 +38,19 @@ describe("ThinkingDisplay", () => {
     const children = Array.from(header.children).map((el) =>
       el.getAttribute("class"),
     )
-    expect(children[0]).toBe("shinychat-thinking-chevron")
+    expect(children[0]).toBe("shinychat-thinking-glyph")
     expect(children[children.length - 1]).toBe("shinychat-thinking-disclosure")
   })
 
   it("keeps the leading glyph static and rotates only the trailing chevron", () => {
-    // The leading chevron is identity now, not an affordance, so it carries no
+    // The leading glyph is identity, not an affordance, so it carries no
     // expanded state to rotate on. Disclosure rotation is driven off the
     // header's aria-expanded, exactly as a tool row's is.
     const { container } = render(
       <ThinkingDisplay thinking={thinking()} messageId="m1" />,
     )
     const header = container.querySelector(".shinychat-thinking-header")!
-    const glyph = container.querySelector(".shinychat-thinking-chevron")!
+    const glyph = container.querySelector(".shinychat-thinking-glyph")!
     expect(header.getAttribute("aria-expanded")).toBe("false")
     expect(glyph.hasAttribute("data-expanded")).toBe(false)
 
@@ -70,7 +70,7 @@ describe("ThinkingDisplay", () => {
     expect(
       Array.from(header.children).map((el) => el.getAttribute("class")),
     ).toEqual([
-      "shinychat-thinking-chevron",
+      "shinychat-thinking-glyph",
       "shinychat-thinking-label",
       "shinychat-thinking-dot",
       "shinychat-thinking-disclosure",

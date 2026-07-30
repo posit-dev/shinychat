@@ -95,29 +95,13 @@ function useFadingText(text: string): { visible: string; fading: boolean } {
   return { visible, fading }
 }
 
-// The thinking header's leading glyph. It sits in the same reserved slot a tool
-// row gives its identity/status glyph, and like those it is static: the
-// disclosure affordance is the trailing chevron. Reusing the chevron here keeps
-// the row from needing a glyph of its own invented for it.
+// The thinking header's identity glyph, in the same reserved slot a tool row
+// gives its identity/status glyph. Static — the trailing chevron is the
+// disclosure affordance. Built like the generic `bareDot`: a styled span, the
+// same size, turned 45° into a diamond so a thinking row is distinguishable
+// from an untitled tool row.
 function ThinkingGlyph() {
-  return (
-    <svg
-      className="shinychat-thinking-chevron"
-      width="12"
-      height="12"
-      viewBox="0 0 12 12"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="M4.5 2.5L8 6L4.5 9.5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
+  return <span className="shinychat-thinking-glyph" aria-hidden="true" />
 }
 
 export const ThinkingDisplay = memo(function ThinkingDisplay({

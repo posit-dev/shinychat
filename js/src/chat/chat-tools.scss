@@ -294,6 +294,9 @@
 // card). The whole activity block reads as a single dimmed unit whether it's
 // still running or finished — never full-strength while streaming.
 $shinychat-tool-row-min-height: 2em;
+// Size of a bare identity mark — the generic dot, and thinking's diamond. Shared
+// so the two stay the same size.
+$shinychat-tool-glyph-mark: 0.4em;
 // Width of the drill-in blockquote left rule (matches the card border width).
 $shinychat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 1px));
 
@@ -421,13 +424,36 @@ $shinychat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 
   }
 }
 
+// The generic identity glyph: a tool with no icon of its own, or a mixed group.
 .shinychat-tool-glyph-dot {
   display: inline-block;
-  width: 0.4em;
-  height: 0.4em;
+  width: $shinychat-tool-glyph-mark;
+  height: $shinychat-tool-glyph-mark;
   margin: auto;
   border-radius: 50%;
   background-color: var(--bs-secondary-color);
+}
+
+// Thinking's identity glyph. Unlike the dot it is a direct child of its row
+// rather than sitting inside a glyph box, so it spans the reserved slot itself
+// and centers the mark — which is what keeps the thinking label aligned with the
+// tool rows' labels. The mark is the same size as the dot, turned 45° into a
+// diamond, so a thinking row is distinguishable from an untitled tool row
+// without needing a glyph invented for it.
+.shinychat-thinking-glyph {
+  display: grid;
+  place-items: center;
+  width: var(--_row-glyph-width);
+  height: var(--_row-glyph-width);
+  flex: none;
+
+  &::before {
+    content: "";
+    width: $shinychat-tool-glyph-mark;
+    height: $shinychat-tool-glyph-mark;
+    background-color: var(--bs-secondary-color);
+    transform: rotate(45deg);
+  }
 }
 
 .shinychat-tool-group__toolname {
@@ -567,6 +593,11 @@ $shinychat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 
   opacity: 0.66;
   transition: transform 0.3s ease-in-out;
 
+  // Collapsed points right, expanded points down — the disclosure convention
+  // `<details>` established. The shared icon ships pointing down (it is also the
+  // scroll-to-bottom arrow, where down is the meaning), so rest is -90°.
+  transform: rotate(-90deg);
+
   // The SVG ships at an intrinsic 16px; pin it to the box so it scales with the
   // row text and stays centered (an overflowing SVG shifts off-center when the
   // box is rotated, misaligning expanded vs. collapsed chevrons).
@@ -580,7 +611,7 @@ $shinychat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 
 .shinychat-tool-group__row[aria-expanded="true"] .shinychat-tool-group__chevron,
 .shinychat-tool-call-row__summary[aria-expanded="true"] .shinychat-tool-call-row__chevron,
 .shinychat-thinking-header[aria-expanded="true"] .shinychat-thinking-disclosure {
-  transform: rotate(180deg);
+  transform: rotate(0deg);
 }
 
 .shinychat-tool-group__calls {
