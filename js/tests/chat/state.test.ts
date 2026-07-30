@@ -4,6 +4,7 @@ import {
   contentFromBlocks,
   initialState,
   routeToolBlocks,
+  supersededRequestIds,
   buildMessagesSnapshot,
   type ChatState,
   type ChatMessageData,
@@ -647,15 +648,6 @@ describe("chatReducer", () => {
       expect(next.messages).toEqual([])
     })
 
-    it("resets hiddenToolRequests", () => {
-      const state = makeState({
-        messages: [makeAssistantMsg()],
-        hiddenToolRequests: new Set(["req-1", "req-2"]),
-      })
-      const next = chatReducer(state, { type: "clear" })
-      expect(next.hiddenToolRequests.size).toBe(0)
-    })
-
     it("resets inputDisabled when cleared during streaming", () => {
       const msg = makeAssistantMsg({ streaming: true })
       const state = makeState({
@@ -783,42 +775,6 @@ describe("chatReducer", () => {
       const state = makeState({ cancelRequested: true })
       const next = chatReducer(state, { type: "remove_loading" })
       expect(next.cancelRequested).toBe(false)
-    })
-  })
-
-  describe("chunk hiddenToolRequests handling", () => {
-    it("does not derive hidden tool requests from rendered chunk HTML", () => {
-      const msg = makeAssistantMsg({ streaming: true, content: "" })
-      const state = makeState({ streamingMessage: msg })
-      const next = chatReducer(state, {
-        type: "chunk",
-        content:
-          '<shiny-tool-result request-id="req-from-html" tool-name="foo" status="success" value="ok" value-type="text"></shiny-tool-result>',
-        operation: "replace",
-      })
-      expect(next.hiddenToolRequests).toBe(state.hiddenToolRequests)
-    })
-  })
-
-  describe("hide_tool_request", () => {
-    it("adds requestId to hiddenToolRequests", () => {
-      const state = makeState()
-      const next = chatReducer(state, {
-        type: "hide_tool_request",
-        requestId: "req-1",
-      })
-      expect(next.hiddenToolRequests.has("req-1")).toBe(true)
-    })
-
-    it("returns state unchanged for duplicate IDs (no re-render)", () => {
-      const state = makeState({
-        hiddenToolRequests: new Set(["req-1"]),
-      })
-      const next = chatReducer(state, {
-        type: "hide_tool_request",
-        requestId: "req-1",
-      })
-      expect(next).toBe(state)
     })
   })
 
@@ -2351,6 +2307,108 @@ describe("routeToolBlocks (tool content router)", () => {
         expect(loops(out)).toHaveLength(1)
       },
     )
+  })
+})
+
+describe("supersededRequestIds", () => {
+  const request = (id: string) =>
+    `<shiny-tool-request data-shinychat-react request-id="${id}" tool-name="search" arguments="{}"></shiny-tool-request>`
+  const result = (id: string) =>
+    `<shiny-tool-result data-shinychat-react request-id="${id}" tool-name="search" status="success" value="ok" value-type="text"></shiny-tool-result>`
+
+  // Routed the way the reducer routes a finalized message.
+  function routed(
+    content: string,
+    overrides: Partial<ChatMessageData> = {},
+  ): ChatMessageData {
+    const role = overrides.role ?? "assistant"
+    return {
+      id: "m",
+      role: "assistant",
+      content,
+      streaming: false,
+      ...overrides,
+      blocks: routeToolBlocks(
+        [{ type: "content", content, contentType: "markdown" }],
+        "tool",
+        role,
+      ),
+    }
+  }
+
+  // Raw, the way a streaming message's blocks look until ChatMessage routes
+  // them at render time.
+  function unrouted(
+    content: string,
+    overrides: Partial<ChatMessageData> = {},
+  ): ChatMessageData {
+    return {
+      id: "m",
+      role: "assistant",
+      content,
+      streaming: true,
+      blocks: [{ type: "content", content, contentType: "markdown" }],
+      ...overrides,
+    }
+  }
+
+  it("collects the id of a result paired in a finalized message", () => {
+    const ids = supersededRequestIds(
+      [routed(request("req-1") + result("req-1"))],
+      null,
+    )
+    expect([...ids]).toEqual(["req-1"])
+  })
+
+  it("collects across messages, so a result supersedes a request in an earlier one", () => {
+    const ids = supersededRequestIds(
+      [routed(request("req-1")), routed(result("req-1"))],
+      null,
+    )
+    expect(ids.has("req-1")).toBe(true)
+  })
+
+  it("collects from the streaming message, whose blocks are not routed yet", () => {
+    const ids = supersededRequestIds(
+      [routed(request("req-1"))],
+      unrouted(result("req-1")),
+    )
+    expect(ids.has("req-1")).toBe(true)
+  })
+
+  it("omits a request that has no result — nothing supersedes it", () => {
+    const ids = supersededRequestIds([routed(request("req-1"))], null)
+    expect(ids.size).toBe(0)
+  })
+
+  it("ignores a result in a user message, which must not blank a real call", () => {
+    const ids = supersededRequestIds(
+      [
+        routed(request("req-1")),
+        routed(result("req-1"), { id: "u", role: "user" }),
+      ],
+      null,
+    )
+    expect(ids.size).toBe(0)
+  })
+
+  it("ignores a result inside a code fence, matching what the router routes", () => {
+    const ids = supersededRequestIds(
+      [
+        routed(request("req-1")),
+        routed("```html\n" + result("req-1") + "\n```"),
+      ],
+      null,
+    )
+    expect(ids.size).toBe(0)
+  })
+
+  it("never collects the empty id an element without request-id yields", () => {
+    const bare =
+      '<shiny-tool-result data-shinychat-react tool-name="search" status="success" value="ok" value-type="text"></shiny-tool-result>'
+    const ids = supersededRequestIds([routed(bare)], null)
+    expect(ids.has("")).toBe(false)
+    expect(ids.size).toBe(0)
   })
 })
 

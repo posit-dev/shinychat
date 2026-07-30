@@ -27,6 +27,7 @@ import {
   type GreetingData,
   type ToolGrouping,
 } from "./state"
+import { useSupersededRequests } from "./useSupersededRequests"
 import { ChatContainer, type ChatContainerHandle } from "./ChatContainer"
 import type {
   ChatTransport,
@@ -312,11 +313,15 @@ export function ChatApp({
     [transport, elementId],
   )
 
+  // Derived from the transcript rather than accumulated from server signals —
+  // see `supersededRequestIds` for why.
+  const supersededRequests = useSupersededRequests(
+    state.messages,
+    state.streamingMessage,
+  )
   const toolState: ChatToolState = useMemo(
-    () => ({
-      hiddenToolRequests: state.hiddenToolRequests,
-    }),
-    [state.hiddenToolRequests],
+    () => ({ supersededRequests }),
+    [supersededRequests],
   )
 
   return (

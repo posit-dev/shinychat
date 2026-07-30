@@ -1,6 +1,4 @@
-import { useContext, useEffect } from "react"
 import { ToolResult } from "./ToolResult"
-import { ChatDispatchContext } from "./context"
 
 interface ToolResultBridgeProps {
   "request-id"?: string
@@ -41,14 +39,9 @@ export function ToolResultBridge({
   icon,
   footer,
 }: ToolResultBridgeProps) {
-  const dispatch = useContext(ChatDispatchContext)
-
-  useEffect(() => {
-    if (!dispatch || !requestId) return
-    // Keep tool-request hiding tied to rendered results, matching Lit behavior.
-    dispatch({ type: "hide_tool_request", requestId })
-  }, [dispatch, requestId])
-
+  // No longer announces that it supersedes its request: ChatApp derives that
+  // from the same content this bridge renders (`supersededRequestIds`), under
+  // the same gates the router uses. Announcing it here could only disagree.
   if (!requestId || !toolName) return null
 
   return (

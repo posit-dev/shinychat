@@ -106,14 +106,6 @@ describe("Tool component bridge rendering", () => {
       })
     })
 
-    // Server sends hide action (arrives before result HTML in real flow)
-    act(() => {
-      transport.fire("test-chat", {
-        type: "hide_tool_request",
-        requestId: "req-2",
-      })
-    })
-
     // Then send the result
     act(() => {
       transport.fire("test-chat", {
@@ -268,7 +260,12 @@ describe("Tool component bridge rendering", () => {
     expect(document.body.textContent).toContain("Done")
   })
 
-  it("hide_tool_request action hides a rendered tool request", () => {
+  // Supersession is derived from the result's own content, so a call whose
+  // result never arrives — a cancelled stream, a dropped connection, a server
+  // that errored after dispatching — keeps its request row. The former
+  // `hide_tool_request` action was sent *before* the result and could never be
+  // withdrawn, so this case lost the tool call permanently.
+  it("keeps a request row when no result ever arrives", () => {
     const transport = createMockTransport()
     const shinyLifecycle = createMockShinyLifecycle()
 
@@ -308,17 +305,22 @@ describe("Tool component bridge rendering", () => {
     // The running request rests as a Tier-1 row.
     expect(document.querySelector(".shinychat-tool-group__row")).toBeTruthy()
 
-    // Server sends hide action
+    // The conversation moves on without a result for req-3 ever arriving.
     act(() => {
       transport.fire("test-chat", {
-        type: "hide_tool_request",
-        requestId: "req-3",
+        type: "message",
+        message: {
+          role: "assistant",
+          segments: [
+            { content: "Sorry, that was cut short.", content_type: "markdown" },
+          ],
+        },
       })
     })
 
-    // The only call is hidden, so its group (and row) drops out entirely.
-    expect(document.querySelector(".shinychat-tool-group__row")).toBeNull()
-    expect(document.querySelector(".shiny-tool-card")).toBeNull()
+    // The row is still there — the call is visibly stuck, not silently gone.
+    expect(document.querySelector(".shinychat-tool-group__row")).toBeTruthy()
+    expect(document.body.textContent).toContain("Sorry, that was cut short.")
   })
 
   it("hides a preloaded tool request when a matching preloaded tool result is rendered", () => {

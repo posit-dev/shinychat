@@ -13,8 +13,9 @@ export function useChatStopScroll(): StopScroll | null {
   return useContext(ChatScrollContext)
 }
 
+// Nothing is superseded until a transcript exists to derive it from.
 const initialToolState: ChatToolState = {
-  hiddenToolRequests: initialState.hiddenToolRequests,
+  supersededRequests: new Set(),
 }
 
 export const ChatToolContext = createContext<ChatToolState>(initialToolState)

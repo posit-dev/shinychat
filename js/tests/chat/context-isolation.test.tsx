@@ -12,7 +12,7 @@ beforeEach(() => {
 })
 
 describe("ChatInputState / ChatToolState isolation", () => {
-  it("hiding a tool request does not disturb the input textarea", async () => {
+  it("superseding a tool request does not disturb the input textarea", async () => {
     const transport = createMockTransport()
     const shiny = createMockShinyLifecycle()
 
@@ -64,9 +64,21 @@ describe("ChatInputState / ChatToolState isolation", () => {
     })
     expect(editor.textContent).toBe("user is typing")
 
-    // Hide the tool request
+    // The result arrives and supersedes the request
     await act(async () => {
-      transport.fire("test", { type: "hide_tool_request", requestId: "r1" })
+      transport.fire("test", {
+        type: "message",
+        message: {
+          role: "assistant",
+          segments: [
+            {
+              content:
+                '<shiny-tool-result request-id="r1" tool-name="foo" status="success" value="ok" value-type="text"></shiny-tool-result>',
+              content_type: "html",
+            },
+          ],
+        },
+      })
     })
 
     // Editor content must not be disturbed

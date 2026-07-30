@@ -321,3 +321,37 @@ def test_tool_display_override_basic_suppresses_display_but_keeps_title(
     # annotation's title is used instead.
     assert 'tool-title="My Tool"' in rendered
     assert "Overridden title" not in rendered
+
+
+# ---------------------------------------------------------------------------
+# Superseded tool requests are derived client-side, not signalled
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_streaming_a_tool_result_sends_no_hide_action():
+    """The client pairs a request with its result from the content it renders,
+    so the server must not also announce it out of band. The old
+    `hide_tool_request` action went out *before* the result was appended, which
+    emptied the call's group and unmounted the whole tool row until the result
+    arrived -- and it could never be withdrawn, so a stream that died mid-tool
+    lost the call permanently.
+    """
+    from shiny.express._stub_session import ExpressStubSession
+    from shiny.session import session_context
+    from shinychat import Chat
+
+    sent: list[dict[str, Any]] = []
+
+    with session_context(ExpressStubSession()):
+        chat = Chat(id="chat")
+
+        async def capture(action: Any, html_deps: Any = None) -> None:
+            sent.append(dict(action))
+
+        chat._send_action = capture  # type: ignore[method-assign]
+
+        result = _result(_request(tool=_tool()))
+        await chat._append_message_chunk(result, stream_id="s1")
+
+    assert "hide_tool_request" not in [a.get("type") for a in sent]

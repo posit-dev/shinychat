@@ -1,7 +1,6 @@
 import {
   Fragment,
   memo,
-  useContext,
   useEffect,
   useId,
   useRef,
@@ -11,7 +10,6 @@ import {
 import type { ToolCallGroup, ToolCallItem, ToolCallSegment } from "./state"
 import { ToolResult } from "./ToolResult"
 import { ToolRequest } from "./ToolRequest"
-import { ChatDispatchContext } from "./context"
 import { useFadingValue } from "./useFadingText"
 import { bareDot, chevronDown, exclamationCircleFill } from "../utils/icons"
 
@@ -471,23 +469,15 @@ export const ToolGroup = memo(function ToolGroup({
   const [expanded, setExpanded] = useExpandable(
     group.calls.some((c) => c.expanded),
   )
-  const dispatch = useContext(ChatDispatchContext)
   // `group.key` is only unique within one routed loop, so it can't seed a
   // document-wide `id`: two messages that both group "all" (or repeat a tool
   // name) would point their rows' `aria-controls` at the same region.
   const listId = `tool-group${useId()}`
 
-  // A rendered result supersedes its matching request wherever it lives (often
-  // a separate/preloaded message the per-message router can't collapse), so
-  // hide that request — mirroring the pre-refactor ToolResultBridge behavior.
-  useEffect(() => {
-    if (!dispatch) return
-    for (const c of group.calls) {
-      if (c.status !== "running" && c.requestId) {
-        dispatch({ type: "hide_tool_request", requestId: c.requestId })
-      }
-    }
-  }, [dispatch, group.calls])
+  // A rendered result supersedes its matching request wherever it lives, but
+  // that is not this component's job to announce: ChatApp derives it from the
+  // transcript (`supersededRequestIds`). Rendering used to dispatch it as a
+  // side effect, which is why the row it superseded could unmount mid-render.
 
   // A single-call group rests as a quiet Tier-1 row (skipping Tier 2) and
   // morphs into the full card on expand.

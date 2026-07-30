@@ -925,19 +925,6 @@ rlang::on_load(
 
       res$add(msg)
 
-      if (S7::S7_inherits(msg, ellmer::ContentToolResult)) {
-        if (!is.null(msg@request)) {
-          send_chat_action(
-            id,
-            action = list(
-              type = "hide_tool_request",
-              requestId = msg@request@id
-            ),
-            session = session
-          )
-        }
-      }
-
       if (S7::S7_inherits(msg, ellmer::Content)) {
         msg <- contents_shinychat(msg)
       }

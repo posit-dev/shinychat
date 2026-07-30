@@ -83,7 +83,7 @@ export const ChatMessage = memo(function ChatMessage({
 }: ChatMessageProps) {
   const slashCommands = useSlashCommands()
   const toolGrouping = useToolGrouping()
-  const { hiddenToolRequests } = useChatToolState()
+  const { supersededRequests } = useChatToolState()
   const [lightbox, setLightbox] = useState<{
     src: string
     name: string
@@ -115,11 +115,12 @@ export const ChatMessage = memo(function ChatMessage({
   // resolve to real tool cards. Withholding the map leaves them inert elements.
   const tagToComponentMap = isUser ? undefined : chatTagToComponentMap
 
-  // Drop running requests whose result has rendered elsewhere (hidden via
-  // hide_tool_request), then any group left empty. Done here rather than in the
-  // render pass so `hasContent` — and the decision to render a row at all —
-  // reflect what is actually visible. The original block index is kept so React
-  // keys stay stable when a block drops out.
+  // Drop running requests whose result has rendered elsewhere in the transcript
+  // (the router can only pair the two within one content string), then any group
+  // left empty. Done here rather than in the render pass so `hasContent` — and
+  // the decision to render a row at all — reflect what is actually visible. The
+  // original block index is kept so React keys stay stable when a block drops
+  // out.
   const visibleBlocks = useMemo(() => {
     const out: { block: MessageBlock; index: number }[] = []
     blocks.forEach((block, index) => {
@@ -131,7 +132,7 @@ export const ChatMessage = memo(function ChatMessage({
         .map((g) => {
           const calls = g.calls.filter(
             (c) =>
-              !(c.status === "running" && hiddenToolRequests.has(c.requestId)),
+              !(c.status === "running" && supersededRequests.has(c.requestId)),
           )
           return calls.length === g.calls.length
             ? g
@@ -141,7 +142,7 @@ export const ChatMessage = memo(function ChatMessage({
       if (groups.length > 0) out.push({ block: { ...block, groups }, index })
     })
     return out
-  }, [blocks, hiddenToolRequests])
+  }, [blocks, supersededRequests])
 
   const touchHoldEnabled = isUser && !!onEdit && !disabled && !isEditing
 

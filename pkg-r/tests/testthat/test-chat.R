@@ -259,3 +259,29 @@ test_that("chat_append_message() emits segment payloads incl. thinking", {
   chunk <- captured[[2]]
   expect_equal(chunk$content_type, "thinking")
 })
+
+test_that("chat_append_stream() does not announce a superseded tool request", {
+  # The client derives request/result pairing from the content it renders, so
+  # the server must not also signal it out of band. The old `hide_tool_request`
+  # action was dispatched here *before* the result was appended, which emptied
+  # the call's group and unmounted the whole tool row until the result landed —
+  # and it could never be withdrawn, so a stream that died mid-tool lost the
+  # call for good.
+  actions <- list()
+  local_mocked_bindings(
+    chat_append_message = coro::async(function(...) invisible()),
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      actions[[length(actions) + 1]] <<- action
+      invisible()
+    }
+  )
+
+  stream <- coro::async_generator(function() {
+    yield(new_tool_result(value = "sunny", request = new_tool_request()))
+  })
+
+  sync(chat_append_stream("chat", stream()))
+
+  types <- vapply(actions, function(a) a$type %||% "", character(1))
+  expect_false("hide_tool_request" %in% types)
+})

@@ -286,9 +286,9 @@ describe("ChatMessage attachments", () => {
   })
 
   it("renders no row when every tool call was superseded by a result elsewhere", () => {
-    // A request-only message whose result rendered in a later message: the
-    // request is hidden via hide_tool_request, emptying the only group. The row
-    // must vanish entirely rather than linger as a bare icon or dots.
+    // A request-only message whose result rendered in a later message, so the
+    // transcript-derived superseded set empties the only group. The row must
+    // vanish entirely rather than linger as a bare icon or dots.
     const message: ChatMessageData = {
       ...userMessage({ content: "", blocks: [] }),
       role: "assistant",
@@ -320,7 +320,7 @@ describe("ChatMessage attachments", () => {
     }
     const { container } = render(
       <ChatToolContext.Provider
-        value={{ hiddenToolRequests: new Set(["req-1"]) }}
+        value={{ supersededRequests: new Set(["req-1"]) }}
       >
         <ChatMessage index={0} message={message} />
       </ChatToolContext.Provider>,

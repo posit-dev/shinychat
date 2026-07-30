@@ -72,7 +72,6 @@ from ._chat_types import (
 )
 from ._history import ChatHistory, HistoryOptions
 from ._html_deps_py_shiny import shinychat_dependency
-from ._typing_extensions import TypeGuard
 from ._utils_types import DEPRECATED, DEPRECATED_TYPE, MISSING, MISSING_TYPE
 
 if TYPE_CHECKING:
@@ -1068,9 +1067,6 @@ class Chat:
         msg = message_content_chunk(message)
         chunk_deps = msg.html_deps or []
 
-        if is_tool_result(message) and message.request is not None:
-            await self._hide_tool_request(message.request.id)  # type: ignore
-
         if operation == "replace":
             if has_mixed_content_types(
                 self._message_stream_segments_checkpoint
@@ -1837,13 +1833,6 @@ class Chat:
     async def _remove_loading_message(self):
         await self._send_action({"type": "remove_loading"})
 
-    async def _hide_tool_request(self, request_id: str) -> None:
-        action: ChatAction = {
-            "type": "hide_tool_request",
-            "requestId": request_id,
-        }
-        await self._send_action(action)
-
     async def _send_action(
         self,
         action: ChatAction,
@@ -2571,15 +2560,6 @@ class MessageStream:
             message_chunk,
             stream_id=self._stream_id,
         )
-
-
-def is_tool_result(val: object) -> "TypeGuard[chatlas.ContentToolResult]":
-    try:
-        from chatlas.types import ContentToolResult
-
-        return isinstance(val, ContentToolResult)
-    except ImportError:
-        return False
 
 
 CHAT_INSTANCES: WeakValueDictionary[str, Chat] = WeakValueDictionary()

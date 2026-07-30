@@ -19,10 +19,10 @@ export function ToolRequestBridge({
   intent,
   arguments: toolArguments,
 }: ToolRequestBridgeProps) {
-  const { hiddenToolRequests } = useChatToolState()
+  const { supersededRequests } = useChatToolState()
 
   if (!requestId || !toolName) return null
-  if (hiddenToolRequests.has(requestId)) return null
+  if (supersededRequests.has(requestId)) return null
 
   return (
     <div className="shiny-tool-request">

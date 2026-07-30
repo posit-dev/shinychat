@@ -182,8 +182,12 @@ export interface ChatInputState {
   inputPlaceholder: string
 }
 
+/**
+ * Tool state shared with every message through context. Derived from the
+ * transcript, *not* held in the reducer — see `supersededRequestIds`.
+ */
 export interface ChatToolState {
-  hiddenToolRequests: Set<string>
+  supersededRequests: Set<string>
 }
 
 export interface ChatHistoryState {
@@ -192,7 +196,7 @@ export interface ChatHistoryState {
   activeId: string | null
 }
 
-export interface ChatState extends ChatInputState, ChatToolState {
+export interface ChatState extends ChatInputState {
   messages: ChatMessageData[]
   streamingMessage: ChatMessageData | null
   greeting: GreetingData | null
@@ -246,7 +250,6 @@ export const initialState: ChatState = {
   enableUpload: false,
   enableUploadExplicit: false,
   toolGrouping: "tool",
-  hiddenToolRequests: new Set(),
   slashCommands: [],
   history: { enabled: false, conversations: [], activeId: null },
 }
@@ -875,6 +878,81 @@ function mergeAdjacentLoops(
     }
   }
   return out
+}
+
+/**
+ * The request-ids whose result has rendered somewhere in the transcript.
+ *
+ * A tool call reaches the client as two elements — the request, then its result
+ * — and the condensed view shows one row per call. Within a single content
+ * string the router pairs them itself; across messages it cannot (a restored or
+ * preloaded transcript routinely splits the pair), so the stale request row has
+ * to be suppressed by the result rendered elsewhere. This set is what suppresses
+ * it.
+ *
+ * It is **derived from content, never signalled.** It replaces a
+ * `hide_tool_request` action the servers used to send, which had two faults a
+ * derivation cannot have: it could arrive *before* the result it asserted —
+ * emptying the group, dropping the block and unmounting the whole subtree, which
+ * is what stopped the tool-title crossfade from ever running — and it could not
+ * be withdrawn, so a stream cancelled mid-tool lost the call permanently. Here
+ * the result and the supersession are the same fact, so neither is possible.
+ *
+ * Mirrors `routeToolBlocks`'s gates exactly (user role, routable content types,
+ * open-fence shielding), so an element the router refuses to route can never
+ * suppress a row either. Notably that keeps a user-typed
+ * `<shiny-tool-result request-id="…">` from blanking an assistant's tool call.
+ */
+export function supersededRequestIds(
+  messages: ChatMessageData[],
+  streamingMessage: ChatMessageData | null,
+): Set<string> {
+  const ids = new Set<string>()
+  for (const msg of messages) collectResultIds(msg, ids)
+  if (streamingMessage) collectResultIds(streamingMessage, ids)
+  return ids
+}
+
+function collectResultIds(msg: ChatMessageData, into: Set<string>): void {
+  if (msg.role === "user") return
+  // Matches how this message's blocks were (or will be) routed: ChatMessage
+  // shields the open fence while streaming, and finalizeMessage keeps shielding
+  // when a stream ended mid-fence. Disagreeing would let a documented tool-tag
+  // example suppress a real request row while rendering as literal text itself.
+  const shieldOpenFence = msg.streaming === true || msg.insideFence === true
+
+  for (const block of msg.blocks) {
+    if (block.type === "tool_loop") {
+      // Already routed — read the settled calls straight off the pairing.
+      for (const group of block.groups) {
+        for (const call of group.calls) {
+          // `""` is an element that omitted `request-id`: it pairs with nothing,
+          // and adding it would suppress every other id-less request row.
+          if (call.status !== "running" && call.requestId) {
+            into.add(call.requestId)
+          }
+        }
+      }
+      continue
+    }
+    // Still-raw content: the streaming message, whose blocks ChatMessage routes
+    // at render time rather than the reducer.
+    if (
+      block.type !== "content" ||
+      !ROUTABLE_CONTENT_TYPES.has(block.contentType) ||
+      !block.content.includes(TOOL_MARKER)
+    ) {
+      continue
+    }
+    for (const el of parseToolElements(
+      block.content,
+      block.contentType,
+      shieldOpenFence,
+    )) {
+      const id = el.attrs["request-id"]
+      if (el.tag === "result" && id) into.add(id)
+    }
+  }
 }
 
 export function contentFromBlocks(blocks: MessageBlock[]): string {
@@ -1567,13 +1645,6 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         inputDisabled: false,
         cancelRequested: false,
       }
-    }
-
-    case "hide_tool_request": {
-      if (state.hiddenToolRequests.has(action.requestId)) return state
-      const newSet = new Set(state.hiddenToolRequests)
-      newSet.add(action.requestId)
-      return { ...state, hiddenToolRequests: newSet }
     }
 
     case "greeting": {
