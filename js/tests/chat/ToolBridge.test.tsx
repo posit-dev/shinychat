@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest"
+import { describe, it, expect, beforeEach, vi } from "vitest"
 import { render, act, fireEvent } from "@testing-library/react"
 import { ChatApp } from "../../src/chat/ChatApp"
 import {
@@ -541,5 +541,46 @@ describe("Tool component bridge rendering", () => {
 
     expect(document.querySelector(".shinychat-tool-group__row")).toBeNull()
     expect(document.querySelector(".shiny-tool-card")).toBeNull()
+  })
+
+  it("splits thinking out of a preloaded message", () => {
+    // Preloaded/restored transcripts get the same block construction as live
+    // ones, so reasoning keeps its collapsible UI across a reload.
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+    const content = "<thinking>Weighing options</thinking>Here you go."
+    // ThinkingDisplay animates its label, which reads prefers-reduced-motion.
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn().mockReturnValue({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }),
+    )
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+        uploadAccept={[]}
+        maxUploadSize={30000000}
+        initialMessages={[
+          {
+            id: "msg-thinking",
+            role: "assistant",
+            content,
+            streaming: false,
+            blocks: [{ type: "content", content, contentType: "markdown" }],
+          },
+        ]}
+      />,
+    )
+
+    expect(document.querySelector(".shinychat-thinking")).toBeTruthy()
+    expect(document.body.textContent).toContain("Here you go.")
+    vi.unstubAllGlobals()
   })
 })

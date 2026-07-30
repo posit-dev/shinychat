@@ -11,6 +11,7 @@ import {
   chatReducer,
   initialState,
   routeToolBlocks,
+  splitThinkingBlocks,
   contentFromBlocks,
   type ChatMessageData,
   type ChatToolState,
@@ -94,12 +95,18 @@ export function ChatApp({
   submitKey,
 }: ChatAppProps) {
   const resolvedToolGrouping = toolGrouping ?? initialState.toolGrouping
-  // Route preloaded/restored messages through the same content router as live
-  // ones so restored transcripts carry identical tool_loop grouping.
+  // Put preloaded/restored messages through the same block-construction pass as
+  // live ones — thinking split first, then the content router — so a restored
+  // transcript carries identical ThinkingDisplay and tool_loop grouping.
   const messages = useMemo(
     () =>
       (initialMessages ?? []).map((m) => {
-        const blocks = routeToolBlocks(m.blocks, resolvedToolGrouping, m.role)
+        const split = m.blocks.flatMap((b) =>
+          b.type === "content"
+            ? splitThinkingBlocks(b.content, b.contentType)
+            : [b],
+        )
+        const blocks = routeToolBlocks(split, resolvedToolGrouping, m.role)
         return { ...m, blocks, content: contentFromBlocks(blocks) }
       }),
     [initialMessages, resolvedToolGrouping],

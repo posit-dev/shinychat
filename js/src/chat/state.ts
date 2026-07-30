@@ -365,7 +365,7 @@ function codeRanges(
     ranges.some(([start, end]) => idx >= start && idx < end)
 }
 
-function splitThinkingBlocks(
+export function splitThinkingBlocks(
   content: string,
   contentType: ContentType,
 ): MessageBlock[] {
