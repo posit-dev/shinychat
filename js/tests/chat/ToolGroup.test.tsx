@@ -9,6 +9,7 @@ function call(
   return {
     toolName: "search",
     status: "success",
+    localId: partial.requestId,
     ...partial,
   }
 }
@@ -373,37 +374,51 @@ describe("ToolGroup", () => {
       container.querySelector(".shinychat-tool-call-row__label"),
     ).toBeNull()
   })
-  it("gives every group and call row a document-unique aria-controls target", () => {
-    // `group.key` and `requestId` are only unique within one routed loop, so
-    // two loops in one transcript that group the same tool must not collide.
+  it("gives every row and leaf card a document-unique aria-controls target", () => {
+    // Neither `group.key` nor `requestId` is unique across the transcript: the
+    // key is per routed loop, and `requestId` is optional (anonymous calls get a
+    // loop-local synthetic id) so it can repeat. Two loops that group the same
+    // tool, down to their expanded Tier-3 cards, must not collide.
     const twoGroups = (
       <>
         <ToolGroup
           group={group({
             key: "all",
-            calls: [call({ requestId: "a" }), call({ requestId: "b" })],
+            calls: [
+              call({ requestId: "", localId: "__anon-0", value: "1" }),
+              call({ requestId: "", localId: "__anon-1", value: "2" }),
+            ],
           })}
         />
         <ToolGroup
           group={group({
             key: "all",
-            calls: [call({ requestId: "a" }), call({ requestId: "b" })],
+            calls: [
+              call({ requestId: "", localId: "__anon-0", value: "3" }),
+              call({ requestId: "", localId: "__anon-1", value: "4" }),
+            ],
           })}
         />
       </>
     )
     const { container } = render(twoGroups)
 
+    // Expand every tier so all ids are in the document at once.
     for (const row of container.querySelectorAll(
       ".shinychat-tool-group__row",
     )) {
       fireEvent.click(row)
     }
+    for (const row of container.querySelectorAll(
+      ".shinychat-tool-call-row__summary",
+    )) {
+      fireEvent.click(row)
+    }
+    expect(container.querySelectorAll(".shiny-tool-card").length).toBe(4)
 
     const targets = [...container.querySelectorAll("[aria-controls]")].map(
       (el) => el.getAttribute("aria-controls"),
     )
-    expect(targets.length).toBe(6)
     expect(new Set(targets).size).toBe(targets.length)
     for (const id of targets) {
       expect(container.querySelectorAll(`[id="${id}"]`).length).toBe(1)

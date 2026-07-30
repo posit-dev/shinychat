@@ -35,7 +35,14 @@ export type ToolGrouping = "none" | "tool" | "all"
  * the payload needed to render the Tier-3 leaf card.
  */
 export interface ToolCallItem {
+  /**
+   * The server's `request-id`, used to pair a request with its result and to
+   * hide a superseded request. Empty when the element omits it, and not
+   * guaranteed unique across the transcript — use `localId` for React keys.
+   */
   requestId: string
+  /** Loop-local unique id: the `request-id`, or a synthetic one when absent. */
+  localId: string
   toolName: string
   status: "running" | "success" | "error"
   /** Dynamic (result) title — the per-call title, set from the result element. */
@@ -456,7 +463,7 @@ function groupCalls(
     const mode = override.get(c.toolName) ?? chatGrouping
     const key =
       mode === "none"
-        ? `none:${c.requestId || i}`
+        ? `none:${c.localId}`
         : mode === "all"
           ? "all"
           : `tool:${c.toolName}`
@@ -514,6 +521,7 @@ function makeToolLoopBlock(
     if (!item) {
       item = {
         requestId,
+        localId: id,
         toolName: el.attrs["tool-name"] ?? "",
         status: "running",
       }

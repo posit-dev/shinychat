@@ -1,4 +1,4 @@
-import { useState, useMemo, type ReactNode, type Ref } from "react"
+import { useState, useMemo, useId, type ReactNode, type Ref } from "react"
 import { bareDot, plus } from "../utils/icons"
 import { fullscreenEnter } from "./useFullscreen"
 import { RawHTML } from "./RawHTML"
@@ -11,7 +11,6 @@ const plusDSIH = { __html: plus }
 const fullscreenEnterDSIH = { __html: fullscreenEnter }
 
 export interface ToolCardProps {
-  requestId: string
   toolName: string
   toolTitle?: string
   /** The per-call identifying value, appended as "{title}: {label}". */
@@ -30,7 +29,6 @@ export interface ToolCardProps {
 }
 
 export function ToolCard({
-  requestId,
   toolName,
   toolTitle,
   label,
@@ -47,8 +45,12 @@ export function ToolCard({
 }: ToolCardProps) {
   const [expanded, setExpanded] = useState(initialExpanded)
 
-  const headerId = `tool-header-${requestId}`
-  const contentId = `tool-content-${requestId}`
+  // Not derived from the tool's `request-id`: that is optional in routed
+  // content (anonymous calls get a loop-local synthetic id) and can repeat
+  // across messages, which would produce duplicate document ids.
+  const uid = useId()
+  const headerId = `tool-header${uid}`
+  const contentId = `tool-content${uid}`
   const iconHtml = icon || bareDot
   const displayName = toolTitle || `${toolName}()`
   const labelPart = label

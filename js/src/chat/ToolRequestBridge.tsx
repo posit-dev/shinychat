@@ -27,7 +27,6 @@ export function ToolRequestBridge({
   return (
     <div className="shiny-tool-request">
       <ToolRequest
-        requestId={requestId}
         toolName={toolName}
         toolTitle={toolTitle}
         intent={intent}

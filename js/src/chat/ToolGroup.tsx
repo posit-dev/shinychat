@@ -87,7 +87,6 @@ function renderLeaf(item: ToolCallItem, open: boolean): ReactNode {
   if (item.status === "running") {
     return (
       <ToolRequest
-        requestId={item.requestId}
         toolName={item.toolName}
         toolTitle={item.title ?? item.definitionTitle}
         intent={item.intent}
@@ -97,7 +96,6 @@ function renderLeaf(item: ToolCallItem, open: boolean): ReactNode {
   }
   return (
     <ToolResult
-      requestId={item.requestId}
       toolName={item.toolName}
       toolTitle={item.title ?? item.definitionTitle}
       intent={item.intent}
@@ -334,7 +332,7 @@ export const ToolGroup = memo(function ToolGroup({
       >
         {group.calls.map((item) => (
           <ToolCallRow
-            key={item.requestId}
+            key={item.localId}
             item={item}
             groupTitle={group.title}
           />

@@ -1769,6 +1769,20 @@ describe("routeToolBlocks (tool content router)", () => {
     ])
   })
 
+  it("gives each call a loop-local unique localId, synthesizing one when request-id is absent", () => {
+    // `localId` is what React keys and card DOM ids hang off, so it must stay
+    // distinct even when the server omits `request-id`.
+    const anon =
+      '<shiny-tool-result data-shinychat-react tool-name="a" status="success"></shiny-tool-result>'
+    const l = loops(route(anon + anon + res("1", "a"), "none"))
+    const ids = l
+      .flatMap((b) => b.groups.flatMap((g) => g.calls))
+      .map((c) => c.localId)
+    expect(ids).toHaveLength(3)
+    expect(new Set(ids).size).toBe(3)
+    expect(ids).toContain("1")
+  })
+
   it("emits a single-call loop that morphs straight to a leaf", () => {
     const blocks = route(res("1", "get_weather", 'tool-title="Got weather"'))
     const l = loops(blocks)

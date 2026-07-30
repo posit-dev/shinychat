@@ -56,7 +56,6 @@ function ContentExtraText({
 }
 
 export interface ToolResultProps {
-  requestId: string
   toolName: string
   toolTitle?: string
   label?: string
@@ -73,7 +72,6 @@ export interface ToolResultProps {
 }
 
 export const ToolResult = memo(function ToolResult({
-  requestId,
   toolName,
   toolTitle,
   label,
@@ -98,7 +96,6 @@ export const ToolResult = memo(function ToolResult({
   return (
     <>
       <ToolCard
-        requestId={requestId}
         toolName={toolName}
         toolTitle={toolTitle}
         label={label}

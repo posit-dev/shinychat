@@ -54,7 +54,6 @@ export function ToolResultBridge({
   return (
     <div className="shiny-tool-result">
       <ToolResult
-        requestId={requestId}
         toolName={toolName}
         toolTitle={toolTitle}
         label={label}
