@@ -2435,6 +2435,15 @@ def chat_ui(
 
     id = resolve_id(id)
 
+    # The client silently falls back to "tool" for an unrecognized value, so
+    # catch typos here instead of shipping the wrong grouping mode. (Also
+    # covers `ChatExpress.ui()`, which delegates here.)
+    if tool_grouping not in ("none", "tool", "all"):
+        raise ValueError(
+            '`tool_grouping` must be one of "none", "tool", or "all", '
+            f"not {tool_grouping!r}."
+        )
+
     icon_attr = _resolve_icon_attr(icon_assistant)
 
     icon_deps = None

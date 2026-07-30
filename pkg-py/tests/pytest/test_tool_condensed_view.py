@@ -85,6 +85,13 @@ def test_chat_ui_tool_grouping_explicit_tool_omits_attribute():
     assert "tool-grouping" not in html
 
 
+def test_chat_ui_tool_grouping_invalid_raises():
+    # The client silently falls back to "tool" for an unknown value, so a typo
+    # must fail on the server (mirrors R's `arg_match()`).
+    with pytest.raises(ValueError, match="`tool_grouping` must be one of"):
+        chat_ui("chat", tool_grouping=cast(Any, "bogus"))
+
+
 # ---------------------------------------------------------------------------
 # 2. ToolResultDisplay(label=..., value_preview=...) serialization
 # ---------------------------------------------------------------------------
