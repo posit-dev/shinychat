@@ -561,6 +561,125 @@ test_that("as_tool_result_display() warns and drops unrecognized fields", {
   expect_null(res$bogus)
 })
 
+test_that("as_tool_result_display() warns and drops non-logical flag fields", {
+  expect_warning(
+    res <- as_tool_result_display(
+      list(show_request = "false", open = 1, full_screen = "yes")
+    ),
+    class = "rlang_warning"
+  )
+  expect_null(res$show_request)
+  expect_null(res$open)
+  expect_null(res$full_screen)
+})
+
+test_that("as_tool_result_display() rejects non-scalar and NA logicals", {
+  expect_warning(
+    res <- as_tool_result_display(list(open = c(TRUE, TRUE))),
+    class = "rlang_warning"
+  )
+  expect_null(res$open)
+
+  # `NA` is a logical scalar but not a usable value: `isTRUE(NA)` and
+  # `isFALSE(NA)` are both `FALSE`, so it's dropped like any other bad value.
+  expect_warning(
+    res <- as_tool_result_display(list(show_request = NA)),
+    class = "rlang_warning"
+  )
+  expect_null(res$show_request)
+})
+
+test_that("as_tool_result_display() keeps valid logical flags", {
+  res <- as_tool_result_display(
+    list(show_request = FALSE, open = TRUE, full_screen = TRUE)
+  )
+  expect_equal(res$show_request, FALSE)
+  expect_equal(res$open, TRUE)
+  expect_equal(res$full_screen, TRUE)
+})
+
+test_that("as_tool_result_display() validates text and HTML fields", {
+  expect_warning(
+    res <- as_tool_result_display(
+      list(label = 1, value_preview = NA_character_, text = c("a", "b"))
+    ),
+    class = "rlang_warning"
+  )
+  expect_null(res$label)
+  expect_null(res$value_preview)
+  expect_null(res$text)
+
+  # HTML-rendered fields accept strings or tag-like content
+  res <- as_tool_result_display(
+    list(
+      title = HTML("Map of <i>Paris</i>"),
+      icon = htmltools::tags$i(class = "icon"),
+      footer = "Footer",
+      html = htmltools::tags$p("html")
+    )
+  )
+  expect_equal(res$title, HTML("Map of <i>Paris</i>"))
+  expect_equal(res$icon, htmltools::tags$i(class = "icon"))
+  expect_equal(res$footer, "Footer")
+  expect_equal(res$html, htmltools::tags$p("html"))
+
+  expect_warning(
+    res <- as_tool_result_display(list(title = 1)),
+    class = "rlang_warning"
+  )
+  expect_null(res$title)
+})
+
+test_that("tool_result_display() validates its arguments", {
+  expect_warning(
+    display <- tool_result_display(title = "Title", open = 1),
+    class = "rlang_warning"
+  )
+  expect_s3_class(display, "shinychat_tool_result_display")
+  expect_equal(display$title, "Title")
+  expect_null(display$open)
+})
+
+test_that("malformed display flags serialize to their defaults", {
+  local_shinychat_tool_display(opt = "rich")
+
+  result <- new_tool_result(
+    value = "test",
+    extra = list(
+      display = list(
+        text = "test",
+        show_request = "false",
+        open = 1,
+        full_screen = "yes"
+      )
+    )
+  )
+
+  expect_warning(res <- contents_shinychat(result), class = "rlang_warning")
+
+  # Defaults: the request is shown, the card is collapsed and not full screen
+  expect_equal(res$show_request, NA)
+  expect_null(res$expanded)
+  expect_null(res$full_screen)
+
+  # A well-formed bare list is still honored end to end
+  result_ok <- new_tool_result(
+    value = "test",
+    extra = list(
+      display = list(
+        text = "test",
+        show_request = FALSE,
+        open = TRUE,
+        full_screen = TRUE
+      )
+    )
+  )
+  res_ok <- contents_shinychat(result_ok)
+  expect_null(res_ok$show_request)
+  expect_equal(res_ok$expanded, NA)
+  expect_equal(res_ok$full_screen, NA)
+})
+
 test_that("as_tool_result_display() warns and returns an empty object for non-list input", {
   expect_warning(
     res <- as_tool_result_display("not a list"),

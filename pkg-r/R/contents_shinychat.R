@@ -364,7 +364,7 @@ tool_result_display <- function(
   label = NULL,
   value_preview = NULL
 ) {
-  structure(
+  as_tool_result_display(
     compact(list(
       title = title,
       icon = icon,
@@ -377,8 +377,7 @@ tool_result_display <- function(
       footer = footer,
       label = label,
       value_preview = value_preview
-    )),
-    class = "shinychat_tool_result_display"
+    ))
   )
 }
 
@@ -396,6 +395,46 @@ tool_result_display_fields <- c(
   "label",
   "value_preview"
 )
+
+# Fields that are rendered as HTML and therefore accept a string *or* tag-like
+# content (see `as.tags.shinychat_tool_card()`).
+tool_result_display_html_fields <- c("title", "icon", "html", "footer")
+
+# Fields that end up as plain-text tag attributes.
+tool_result_display_string_fields <- c(
+  "markdown",
+  "text",
+  "label",
+  "value_preview"
+)
+
+# Fields serialized via `isTRUE()`/`isFALSE()`, where a non-logical value
+# silently produces the opposite of the intended behavior.
+tool_result_display_flag_fields <- c("show_request", "open", "full_screen")
+
+is_tag_like <- function(x) {
+  inherits(x, c("html", "shiny.tag", "shiny.tag.list", "htmlwidget"))
+}
+
+tool_result_display_field_is_valid <- function(field, value) {
+  if (field %in% tool_result_display_flag_fields) {
+    is_bool(value)
+  } else if (field %in% tool_result_display_html_fields) {
+    is_string(value) || is_tag_like(value)
+  } else {
+    is_string(value)
+  }
+}
+
+tool_result_display_field_expects <- function(field) {
+  if (field %in% tool_result_display_flag_fields) {
+    cli::format_inline("{.code TRUE} or {.code FALSE}")
+  } else if (field %in% tool_result_display_html_fields) {
+    "a single string or HTML content"
+  } else {
+    "a single string"
+  }
+}
 
 # Coerce a bare list (or an existing `shinychat_tool_result_display`) into a
 # validated `shinychat_tool_result_display` object. Unknown or invalid fields
@@ -426,6 +465,27 @@ as_tool_result_display <- function(display, error_context = NULL) {
       )
     )
     display <- display[setdiff(names(display), unknown)]
+  }
+
+  known <- intersect(tool_result_display_fields, names(display))
+  invalid <- known[
+    !map_lgl(known, function(field) {
+      tool_result_display_field_is_valid(field, display[[field]])
+    })
+  ]
+  if (length(invalid) > 0) {
+    bullets <- map_chr(invalid, function(field) {
+      cli::format_inline(
+        "{.field {field}} must be {tool_result_display_field_expects(field)}, not {.obj_type_friendly {display[[field]]}}; ignoring."
+      )
+    })
+    cli::cli_warn(
+      c(
+        error_context,
+        set_names(bullets, rep("x", length(bullets)))
+      )
+    )
+    display <- display[setdiff(names(display), invalid)]
   }
 
   structure(display, class = "shinychat_tool_result_display")
