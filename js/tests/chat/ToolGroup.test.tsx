@@ -373,4 +373,40 @@ describe("ToolGroup", () => {
       container.querySelector(".shinychat-tool-call-row__label"),
     ).toBeNull()
   })
+  it("gives every group and call row a document-unique aria-controls target", () => {
+    // `group.key` and `requestId` are only unique within one routed loop, so
+    // two loops in one transcript that group the same tool must not collide.
+    const twoGroups = (
+      <>
+        <ToolGroup
+          group={group({
+            key: "all",
+            calls: [call({ requestId: "a" }), call({ requestId: "b" })],
+          })}
+        />
+        <ToolGroup
+          group={group({
+            key: "all",
+            calls: [call({ requestId: "a" }), call({ requestId: "b" })],
+          })}
+        />
+      </>
+    )
+    const { container } = render(twoGroups)
+
+    for (const row of container.querySelectorAll(
+      ".shinychat-tool-group__row",
+    )) {
+      fireEvent.click(row)
+    }
+
+    const targets = [...container.querySelectorAll("[aria-controls]")].map(
+      (el) => el.getAttribute("aria-controls"),
+    )
+    expect(targets.length).toBe(6)
+    expect(new Set(targets).size).toBe(targets.length)
+    for (const id of targets) {
+      expect(container.querySelectorAll(`[id="${id}"]`).length).toBe(1)
+    }
+  })
 })

@@ -1,4 +1,11 @@
-import { memo, useContext, useEffect, useState, type ReactNode } from "react"
+import {
+  memo,
+  useContext,
+  useEffect,
+  useId,
+  useState,
+  type ReactNode,
+} from "react"
 import type { ToolCallGroup, ToolCallItem } from "./state"
 import { ToolResult } from "./ToolResult"
 import { ToolRequest } from "./ToolRequest"
@@ -138,7 +145,9 @@ function SingleCallRow({
   const failed = item.status === "error"
   const label = perCallLabel(item, group.title, true)
   const glyphHtml = running ? spinnerHtml : group.icon || bareDot
-  const contentId = `tool-call-${item.requestId}`
+  // Not derived from `item.requestId`: it is optional, and a request can
+  // render in a different message than its result before pairing settles.
+  const contentId = `tool-call${useId()}`
 
   return (
     <div className="shinychat-tool-group shinychat-tool-group--single">
@@ -203,7 +212,9 @@ function ToolCallRow({
       : item.status === "running"
         ? " running"
         : ""
-  const contentId = `tool-call-${item.requestId}`
+  // Not derived from `item.requestId`: it is optional, and a request can
+  // render in a different message than its result before pairing settles.
+  const contentId = `tool-call${useId()}`
 
   return (
     <li className="shinychat-tool-call-row" role="listitem">
@@ -255,6 +266,10 @@ export const ToolGroup = memo(function ToolGroup({
 }) {
   const [expanded, setExpanded] = useState(false)
   const dispatch = useContext(ChatDispatchContext)
+  // `group.key` is only unique within one routed loop, so it can't seed a
+  // document-wide `id`: two messages that both group "all" (or repeat a tool
+  // name) would point their rows' `aria-controls` at the same region.
+  const listId = `tool-group${useId()}`
 
   // A rendered result supersedes its matching request wherever it lives (often
   // a separate/preloaded message the per-message router can't collapse), so
@@ -277,7 +292,6 @@ export const ToolGroup = memo(function ToolGroup({
   const anyRunning = group.calls.some((c) => c.status === "running")
   const failedCount = group.calls.filter((c) => c.status === "error").length
   const glyphHtml = anyRunning ? spinnerHtml : group.icon || bareDot
-  const listId = `tool-group-${group.key}`
 
   return (
     <div className="shinychat-tool-group shinychat-tool-group--multi">
