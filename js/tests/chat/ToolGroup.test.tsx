@@ -227,6 +227,90 @@ describe("ToolGroup", () => {
     expect(headerText(container)).toBe("Searched the web×2, Read page×3")
   })
 
+  it("collapses the segments that don't fit into 'and N others'", () => {
+    // Five single-call loops merging into one "all" group used to render every
+    // segment independently ellipsized ("Net revenue, last fo…, Exported th…,
+    // Emailed the s…"), which is illegible. Whole segments are shown until the
+    // character budget is spent; the rest are named by count.
+    const titles = [
+      "Net revenue, last four quarters",
+      "Exported the report",
+      "Emailed the summary",
+      "Scorecard for Q3",
+      "Summarized the findings",
+    ]
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          key: "all",
+          calls: titles.map((_, i) =>
+            call({ requestId: `c${i}`, toolName: `t${i}` }),
+          ),
+          segments: titles.map((title, i) => ({
+            toolName: `t${i}`,
+            title,
+            count: 1,
+            settled: true,
+          })),
+        })}
+      />,
+    )
+    expect(headerText(container)).toBe(
+      "Net revenue, last four quarters, Exported the report, and 3 others",
+    )
+    // The folded titles are gone from the DOM, not merely clipped by CSS.
+    expect(container.textContent).not.toContain("Emailed the summary")
+  })
+
+  it("says 'other', not 'others', when a single segment is folded away", () => {
+    // Four short titles all fit the character budget, so this is the segment
+    // cap doing the folding rather than the budget.
+    const titles = ["Alpha", "Beta", "Gamma", "Delta"]
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          key: "all",
+          calls: titles.map((_, i) =>
+            call({ requestId: `c${i}`, toolName: `t${i}` }),
+          ),
+          segments: titles.map((title, i) => ({
+            toolName: `t${i}`,
+            title,
+            count: 1,
+            settled: true,
+          })),
+        })}
+      />,
+    )
+    expect(headerText(container)).toBe("Alpha, Beta, Gamma, and 1 other")
+  })
+
+  it("shows the first segment whole even when it alone busts the budget", () => {
+    // Otherwise the header would be nothing but "and N others", naming nothing.
+    // Its overflow is the joined list's problem (a CSS ellipsis on the
+    // wrapper), never a truncated title.
+    const long = "Reconciled the quarterly ledger against the general ledger"
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          key: "all",
+          calls: [
+            call({ requestId: "a", toolName: "reconcile" }),
+            call({ requestId: "b", toolName: "notify" }),
+          ],
+          segments: [
+            { toolName: "reconcile", title: long, count: 1, settled: true },
+            { toolName: "notify", title: "Notified", count: 1, settled: true },
+          ],
+        })}
+      />,
+    )
+    expect(headerText(container)).toBe(`${long}, and 1 other`)
+    expect(
+      container.querySelector(".shinychat-tool-group__title")?.textContent,
+    ).toBe(long)
+  })
+
   it("leaves a homogeneous group header exactly as it was: one title, one ×N", () => {
     const { container } = render(
       <ToolGroup

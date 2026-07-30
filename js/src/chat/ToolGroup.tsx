@@ -189,6 +189,46 @@ function TitleSegment({
   )
 }
 
+// A heterogeneous group can name arbitrarily many tools and has one row to do
+// it in. Segments are shown whole or not at all — a header of independently
+// ellipsized titles ("Net revenue, last fo…, Exported th…, Emailed the s…") is
+// noise, so the ones that don't fit fold into "and N others" instead.
+//
+// The limit is a character budget over the visible text, not a measured width:
+// the header stays a pure function of its content, needing no layout read and
+// no re-measure on resize. The segment cap is a backstop for short titles, where
+// a long list can fit the budget and still read as a crowd.
+const SEGMENT_CHAR_BUDGET = 60
+const MAX_SEGMENTS = 3
+
+// Titles may carry markup, so measure what the reader actually sees.
+function segmentTextLength(segment: ToolCallSegment): number {
+  const text = segment.title
+    ? segment.title.replace(/<[^>]*>/g, "")
+    : `Used ${segment.toolName}`
+  return text.length + (segment.count > 1 ? `×${segment.count}`.length : 0)
+}
+
+function visibleSegments(segments: ToolCallSegment[]): {
+  shown: ToolCallSegment[]
+  hidden: number
+} {
+  const shown: ToolCallSegment[] = []
+  let used = 0
+  for (const segment of segments) {
+    const cost = segmentTextLength(segment) + (shown.length ? ", ".length : 0)
+    // The first segment is always shown, however long it is: a header of
+    // nothing but "and N others" would name nothing at all. Its overflow is
+    // absorbed by the joined list's ellipsis instead.
+    const full =
+      shown.length >= MAX_SEGMENTS || used + cost > SEGMENT_CHAR_BUDGET
+    if (shown.length && full) break
+    shown.push(segment)
+    used += cost
+  }
+  return { shown, hidden: segments.length - shown.length }
+}
+
 // The group header's identity. A heterogeneous ("all") group holds several
 // tools, so it names each one with its own count — the same titles the tools
 // would show ungrouped — joined by ", ". A homogeneous group has a single
@@ -196,18 +236,22 @@ function TitleSegment({
 // unwrapped, straight into the row's flex layout.
 function GroupTitle({ group }: { group: ToolCallGroup }): ReactNode {
   const segments = group.segments
-  // With nothing titled the verbs would stack up ("Used a ×2, Used b ×3"); a
-  // single leading verb reads as covering the whole list. As soon as one tool
-  // has a title the list is no longer a plain enumeration, so each untitled
-  // segment keeps its own verb.
-  const anyTitled = segments.some((s) => s.title)
 
   if (segments.length === 1) {
     return <TitleSegment segment={segments[0]!} showVerb={true} />
   }
+
+  const { shown, hidden } = visibleSegments(segments)
+  // With nothing titled the verbs would stack up ("Used a ×2, Used b ×3"); a
+  // single leading verb reads as covering the whole list. As soon as one tool
+  // has a title the list is no longer a plain enumeration, so each untitled
+  // segment keeps its own verb. Judged on what's rendered, since that's what
+  // the reader sees.
+  const anyTitled = shown.some((s) => s.title)
+
   return (
     <span className="shinychat-tool-group__segments">
-      {segments.map((segment, i) => (
+      {shown.map((segment, i) => (
         <Fragment key={segment.toolName}>
           {i > 0 && ", "}
           <span className="shinychat-tool-group__segment">
@@ -215,6 +259,11 @@ function GroupTitle({ group }: { group: ToolCallGroup }): ReactNode {
           </span>
         </Fragment>
       ))}
+      {hidden > 0 && (
+        <span className="shinychat-tool-group__overflow">
+          {`, and ${hidden} ${hidden === 1 ? "other" : "others"}`}
+        </span>
+      )}
     </span>
   )
 }

@@ -423,12 +423,33 @@ $shinychat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 
 // gets its own box so the row's flex gap doesn't open up around each comma;
 // inside a segment the title and its ×N keep that same gap, and the comma sits
 // tight against the segment it follows.
+//
+// A block container, not an inline flex box, so `text-overflow` applies:
+// overflow is the *joined list's* problem. `GroupTitle` drops whole segments
+// into "and N others" rather than letting each one ellipsize on its own, and
+// this box catches only what that can't — a single segment too long to fit,
+// which is always shown whole rather than replaced by the overflow copy.
 .shinychat-tool-group__segments {
-  display: inline-flex;
-  align-items: baseline;
+  display: block;
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  // A segment title is shown whole or not at all: an independently ellipsized
+  // title is illegible, and a header of several of them is unreadable.
+  .shinychat-tool-group__title,
+  .shinychat-tool-group__toolname {
+    overflow: visible;
+    text-overflow: clip;
+  }
+}
+
+// Stands in for the segments that didn't fit. Metadata about the list, like the
+// per-tool count, so it takes the same muted treatment.
+.shinychat-tool-group__overflow {
+  color: var(--bs-secondary-color);
 }
 
 .shinychat-tool-group__segment {
