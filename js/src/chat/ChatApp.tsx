@@ -1,9 +1,17 @@
-import { useReducer, useEffect, useRef, useMemo, useState } from "react"
+import {
+  useReducer,
+  useEffect,
+  useRef,
+  useMemo,
+  useState,
+  useCallback,
+} from "react"
 import {
   ShinyLifecycleContext,
   ChatToolContext,
   ChatDispatchContext,
   ToolGroupingContext,
+  ChatSubmitContext,
 } from "./context"
 import { setCurrentConversationId } from "./currentConversation"
 import { navigateTo } from "../utils/navigate"
@@ -13,6 +21,7 @@ import {
   routeToolBlocks,
   splitThinkingBlocks,
   contentFromBlocks,
+  buildMessagesSnapshot,
   type ChatMessageData,
   type ChatToolState,
   type GreetingData,
@@ -25,6 +34,7 @@ import type {
   GreetingOptions,
 } from "../transport/types"
 import type { SubmitKey } from "./tiptap/submitShortcut"
+import type { AttachmentPayload } from "./attachments"
 
 export interface InitialGreeting {
   content: string
@@ -124,6 +134,58 @@ export function ChatApp({
     enableUploadExplicit: enableUpload !== undefined,
     toolGrouping: resolvedToolGrouping,
   })
+
+  const stateRef = useRef(state)
+  stateRef.current = state
+
+  const reportSnapshot = useCallback(() => {
+    // Reports the entire settled transcript (all messages plus retained
+    // htmlDeps) on every change, so a session sends ~O(n^2) bytes over its
+    // lifetime. Fine for typical conversations; if very long transcripts
+    // become common, revisit with a delta/append protocol.
+    transport.sendMessagesSnapshot(
+      elementId,
+      buildMessagesSnapshot(stateRef.current),
+    )
+  }, [transport, elementId])
+
+  useEffect(() => {
+    reportSnapshot()
+  }, [state.messages, reportSnapshot])
+
+  const submitUserInput = useCallback(
+    (content: string, attachments: AttachmentPayload[]) => {
+      // Optimistic UI update (adds user message + loading placeholder).
+      dispatch({
+        type: "INPUT_SENT",
+        content,
+        role: "user",
+        ...(attachments.length > 0 ? { attachments } : {}),
+      })
+      // Build the snapshot from CURRENT settled state, then append the just-
+      // submitted user turn. Co-send userInput + snapshot in the SAME tick so
+      // Shiny batches them into one flush (server sees the turn in
+      // on_user_submit).
+      const snapshot = buildMessagesSnapshot(stateRef.current)
+      snapshot.push({
+        role: "user",
+        segments: [{ content, content_type: "markdown" }],
+        ...(attachments.length > 0 ? { attachments } : {}),
+      })
+      const uploadOn = stateRef.current.enableUpload
+      transport.sendInput(
+        inputId,
+        uploadOn ? { text: content, attachments } : content,
+      )
+      // The INPUT_SENT dispatch above also mutates state.messages, so the
+      // reportSnapshot effect fires a second, near-identical snapshot on the
+      // next render. That's intentional: this manual send is the one that
+      // co-batches with userInput in the current flush, and the server's
+      // save is idempotent, so the follow-up snapshot is a harmless no-op.
+      transport.sendMessagesSnapshot(elementId, snapshot)
+    },
+    [dispatch, transport, inputId, elementId],
+  )
 
   const containerRef = useRef<ChatContainerHandle>(null)
 
@@ -236,6 +298,20 @@ export function ChatApp({
     setCurrentConversationId(elementId, state.history.activeId)
   }, [elementId, state.history.enabled, state.history.activeId])
 
+  const handleEdit = useCallback(
+    (index: number, content: string, attachments: AttachmentPayload[]) => {
+      transport.sendMessageEdit(elementId, index, content, attachments)
+    },
+    [transport, elementId],
+  )
+
+  const handleNavigate = useCallback(
+    (index: number, direction: "prev" | "next") => {
+      transport.sendMessageNavigate(elementId, index, direction)
+    },
+    [transport, elementId],
+  )
+
   const toolState: ChatToolState = useMemo(
     () => ({
       hiddenToolRequests: state.hiddenToolRequests,
@@ -248,31 +324,35 @@ export function ChatApp({
       <ChatToolContext.Provider value={toolState}>
         <ToolGroupingContext.Provider value={state.toolGrouping}>
           <ChatDispatchContext.Provider value={dispatch}>
-            <ChatContainer
-              ref={containerRef}
-              transport={transport}
-              messages={state.messages}
-              streamingMessage={state.streamingMessage}
-              inputDisabled={state.inputDisabled}
-              inputPlaceholder={state.inputPlaceholder}
-              iconAssistant={iconAssistant}
-              inputId={inputId}
-              uploadAccept={uploadAccept}
-              maxUploadSize={maxUploadSize}
-              elementId={elementId}
-              greeting={state.greeting}
-              cancelId={cancelId}
-              enableCancel={state.enableCancel}
-              enableUpload={state.enableUpload}
-              cancelRequested={state.cancelRequested}
-              footerEl={footerEl}
-              slashCommands={state.slashCommands}
-              slashCommandId={slashCommandId}
-              submitKey={submitKey}
-              historyEnabled={state.history.enabled}
-              historyConversations={state.history.conversations}
-              historyActiveId={state.history.activeId}
-            />
+            <ChatSubmitContext.Provider value={submitUserInput}>
+              <ChatContainer
+                ref={containerRef}
+                transport={transport}
+                messages={state.messages}
+                streamingMessage={state.streamingMessage}
+                inputDisabled={state.inputDisabled}
+                inputPlaceholder={state.inputPlaceholder}
+                iconAssistant={iconAssistant}
+                inputId={inputId}
+                uploadAccept={uploadAccept}
+                maxUploadSize={maxUploadSize}
+                elementId={elementId}
+                greeting={state.greeting}
+                cancelId={cancelId}
+                enableCancel={state.enableCancel}
+                enableUpload={state.enableUpload}
+                cancelRequested={state.cancelRequested}
+                footerEl={footerEl}
+                slashCommands={state.slashCommands}
+                slashCommandId={slashCommandId}
+                submitKey={submitKey}
+                historyEnabled={state.history.enabled}
+                historyConversations={state.history.conversations}
+                historyActiveId={state.history.activeId}
+                onEdit={handleEdit}
+                onNavigate={handleNavigate}
+              />
+            </ChatSubmitContext.Provider>
           </ChatDispatchContext.Provider>
         </ToolGroupingContext.Provider>
       </ChatToolContext.Provider>

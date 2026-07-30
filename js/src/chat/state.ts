@@ -5,6 +5,7 @@ import type {
   MessagePayload,
   GreetingOptions,
   SlashCommandDef,
+  HtmlDep,
 } from "../transport/types"
 import type { AttachmentPayload } from "./attachments"
 import { uuid } from "../utils/uuid"
@@ -150,6 +151,8 @@ export interface ChatMessageData {
   icon?: string
   /** Attachments sent with this message. */
   attachments?: AttachmentPayload[]
+  /** Opaque serialized Shiny HTML dependencies received with this message; retained so the client can report them back for persistence/restore. */
+  htmlDeps?: HtmlDep[]
   blocks: MessageBlock[]
   /** Tracks whether streaming content is inside an unclosed <thinking> tag */
   insideThinkingTag?: boolean
@@ -161,6 +164,8 @@ export interface ChatMessageData {
   fenceMarker?: string
   /** True when the stream was cancelled by the user before it completed. */
   cancelled?: boolean
+  /** Sibling navigation metadata (index within a set of edited variants, total variants). */
+  siblings?: { index: number; total: number }
 }
 
 export interface GreetingData {
@@ -266,11 +271,19 @@ function messagePayloadToData(
     icon: msg.icon,
     ...(attachments.length > 0 ? { attachments } : {}),
     blocks,
+    siblings: msg.siblings,
   }
 }
 
 function removeLoadingMessage(messages: ChatMessageData[]): ChatMessageData[] {
   return messages.filter((m) => !m.isPlaceholder)
+}
+
+function mergeHtmlDeps(
+  existing: HtmlDep[] | undefined,
+  incoming: HtmlDep[] | undefined,
+): HtmlDep[] | undefined {
+  return incoming ? [...(existing ?? []), ...incoming] : existing
 }
 
 function dismissGreeting(greeting: GreetingData | null): GreetingData | null {
@@ -1167,12 +1180,11 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
 
     case "message": {
       const messages = removeLoadingMessage(state.messages)
+      const data = messagePayloadToData(action.message, state.toolGrouping)
+      if (action.html_deps) data.htmlDeps = action.html_deps
       return {
         ...state,
-        messages: [
-          ...messages,
-          messagePayloadToData(action.message, state.toolGrouping),
-        ],
+        messages: [...messages, data],
         streamingMessage: null,
         inputDisabled: false,
         greeting: dismissGreeting(state.greeting),
@@ -1186,6 +1198,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       newMsg.blocks = newMsg.blocks.map((b) =>
         b.type === "thinking" ? { ...b, streaming: true } : b,
       )
+      if (action.html_deps) newMsg.htmlDeps = action.html_deps
       return {
         ...state,
         messages,
@@ -1237,7 +1250,11 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         }
         return {
           ...state,
-          streamingMessage: { ...last, blocks },
+          streamingMessage: {
+            ...last,
+            blocks,
+            htmlDeps: mergeHtmlDeps(last.htmlDeps, action.html_deps),
+          },
         }
       }
 
@@ -1360,6 +1377,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
               tagBuffer: newTagState.tagBuffer,
               insideFence: newTagState.insideFence,
               fenceMarker: newTagState.fenceMarker,
+              htmlDeps: mergeHtmlDeps(last.htmlDeps, action.html_deps),
             },
           }
         }
@@ -1374,6 +1392,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
               tagBuffer: newTagState.tagBuffer,
               insideFence: newTagState.insideFence,
               fenceMarker: newTagState.fenceMarker,
+              htmlDeps: mergeHtmlDeps(last.htmlDeps, action.html_deps),
             },
           }
         }
@@ -1410,6 +1429,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
             ...last,
             content: action.content,
             blocks: newBlocks,
+            htmlDeps: mergeHtmlDeps(last.htmlDeps, action.html_deps),
           },
         }
       } else {
@@ -1441,6 +1461,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
           blocks,
           insideThinkingTag: false,
           tagBuffer: "",
+          htmlDeps: mergeHtmlDeps(last.htmlDeps, action.html_deps),
         },
       }
     }
@@ -1688,12 +1709,56 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       return state
     }
 
+    case "update_siblings": {
+      const updated = state.messages.map((msg, i) => {
+        const siblingData = action.data[i]
+        if (siblingData) {
+          return { ...msg, siblings: siblingData }
+        }
+        if (msg.siblings) {
+          return { ...msg, siblings: undefined }
+        }
+        return msg
+      })
+      return { ...state, messages: updated }
+    }
+
     default: {
       const _exhaustive: never = action
       void _exhaustive
       return state
     }
   }
+}
+
+export type SnapshotSegment = { content: string; content_type: ContentType }
+export type SnapshotMessage = {
+  role: "user" | "assistant"
+  segments: SnapshotSegment[]
+  attachments?: AttachmentPayload[]
+  htmlDeps?: HtmlDep[]
+}
+
+function blockToSegment(block: MessageBlock): SnapshotSegment {
+  if (block.type === "thinking") {
+    return { content: block.content, content_type: "thinking" }
+  }
+  return { content: block.content, content_type: block.contentType }
+}
+
+export function buildMessagesSnapshot(state: ChatState): SnapshotMessage[] {
+  return state.messages
+    .filter((m) => !m.isPlaceholder && !m.streaming)
+    .map((m) => {
+      const msg: SnapshotMessage = {
+        role: m.role,
+        segments: m.blocks.map(blockToSegment),
+      }
+      if (m.attachments && m.attachments.length > 0)
+        msg.attachments = m.attachments
+      if (m.htmlDeps && m.htmlDeps.length > 0) msg.htmlDeps = m.htmlDeps
+      return msg
+    })
 }
 
 function finalizeMessage(

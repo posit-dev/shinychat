@@ -5,7 +5,13 @@ import dataclasses
 import warnings
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal
 
-from ._chat_types import HistoryNavigateAction, HistoryUpdateAction
+from ._attachments import Attachment, validate_attachments
+from ._chat_types import (
+    HistoryNavigateAction,
+    HistoryUpdateAction,
+    UpdateInputAction,
+    UpdateSiblingsAction,
+)
 from ._history_bookmark import delete_bookmark_state, extract_state_id
 from ._history_client import (
     TurnsAdapter,
@@ -42,6 +48,8 @@ class HistoryInputIds:
     new: ResolvedId
     rename: ResolvedId
     delete: ResolvedId
+    message_edit: ResolvedId
+    message_navigate: ResolvedId
 
     @classmethod
     def for_chat(cls, chat_id: ResolvedId) -> HistoryInputIds:
@@ -55,6 +63,8 @@ class HistoryInputIds:
             new=RID(f"{chat_id}_history_new"),
             rename=RID(f"{chat_id}_history_rename"),
             delete=RID(f"{chat_id}_history_delete"),
+            message_edit=RID(f"{chat_id}_message_edit"),
+            message_navigate=RID(f"{chat_id}_message_navigate"),
         )
 
     def all_ids(self) -> list[ResolvedId]:
@@ -161,8 +171,6 @@ def extend_record_linear(
     """
     existing = len(record.path_node_ids())
     new_groups = turn_groups[existing:]
-    if not new_groups:
-        return
 
     new_node_ids = [record.append_linear(g) for g in new_groups]
     user_nodes = [
@@ -171,11 +179,18 @@ def extend_record_linear(
         if record.nodes[nid].turns[0].get("role") == "user"
     ]
 
+    # When a later save brings UI messages but no new turn groups (e.g. a
+    # streamed reply arriving after a synchronous side-channel append),
+    # attach them to the current leaf instead of dropping them.
+    fallback = new_node_ids[-1] if new_node_ids else record.current_leaf
+    if fallback is None:
+        return  # empty record and no new groups: nothing to attach to
+
     for message in ui_messages[ui_offset:]:
         if message.get("role") == "user" and user_nodes:
             target = user_nodes.pop(0)
         else:
-            target = new_node_ids[-1]
+            target = fallback
         node = record.nodes[target]
         node.ui = [*(node.ui or []), message]
 
@@ -234,12 +249,6 @@ class HistoryController:
         self.on_evict: Callable[[str], Awaitable[None]] | None = None
         self.max_store_bytes: int | None = max_store_bytes
         self._title_task: asyncio.Task[None] | None = None
-        # replay_ui awaits per message, so on_response can fire mid-replay;
-        # _is_replaying suppresses those. One more flush fires after
-        # replay_ui returns (once _is_replaying is already False) —
-        # _suppress_next_save catches that single case and self-clears.
-        self._is_replaying: bool = False
-        self._suppress_next_save: bool = False
         self._over_budget_warned: bool = False
 
     # -- save -----------------------------------------------------------
@@ -254,11 +263,6 @@ class HistoryController:
         full duration of effect execution, so two invocations of this effect
         can never overlap.
         """
-        if self._is_replaying:
-            return
-        if self._suppress_next_save:
-            self._suppress_next_save = False
-            return
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
         turn_groups = self.adapter.get_turns_grouped()
@@ -269,13 +273,19 @@ class HistoryController:
             record = self.record
             if record is None:
                 raise RuntimeError("HistoryController not initialized")
-            # Ignore reactive flushes that don't introduce new turn/UI data.
-            # Without this guard, a post-switch no-op fire can re-capture app
-            # state from the wrong conversation and overwrite persisted values.
-            if (
-                len(turn_groups) <= len(record.path_node_ids())
-                and len(messages) <= self.ui_offset
-            ):
+            stored_ui = [
+                m
+                for nid in record.path_node_ids()
+                for m in (record.nodes[nid].ui or [])
+            ]
+            # Idempotent + truncation guard. A restore re-renders the stored
+            # conversation and makes the client re-report its snapshot; that report
+            # must never overwrite the record. Skip when no new turn groups AND the
+            # reported snapshot is no longer than what's already stored (covers exact
+            # re-reports and shorter partial mid-restore reports).
+            if len(turn_groups) <= len(record.path_node_ids()) and len(
+                messages
+            ) <= len(stored_ui):
                 return
 
         if first_save:
@@ -299,6 +309,7 @@ class HistoryController:
             await self.on_response_saved(record)
         self.ui_offset = len(messages)
         await self.send_history_update()
+        await self._send_sibling_metadata()
 
         if first_save and self.on_active_id_change is not None:
             await self.on_active_id_change(record.id)
@@ -415,6 +426,7 @@ class HistoryController:
         await self.replay_ui(target)
         self._restore_app_state(target.values or {})
         self.record = target
+        await self._send_sibling_metadata()
         if self.on_active_id_change is not None:
             await self.on_active_id_change(target.id)
         await self.send_history_update()
@@ -430,30 +442,29 @@ class HistoryController:
         await self.send_history_update()
 
     async def replay_ui(self, record: ConversationRecord) -> None:
-        self._is_replaying = True
-        self._suppress_next_save = True
-        try:
-            await self.chat.clear_messages()
-            for node_id in record.path_node_ids():
-                node = record.nodes[node_id]
-                stored = node.ui or [
-                    {
-                        "role": node.turns[-1].get("role", "assistant"),
-                        "segments": [
-                            {
-                                "content": turn_fallback_markdown(
-                                    node.turns[-1]
-                                ),
-                                "content_type": "markdown",
-                            }
-                        ],
-                    }
-                ]
-                for message_dict in stored:
-                    await self.chat._restore_bookmark_message(message_dict)
-            self.ui_offset = len(self.chat._messages_for_bookmark())
-        finally:
-            self._is_replaying = False
+        await self.chat.clear_messages()
+        restored_count = 0
+        for node_id in record.path_node_ids():
+            node = record.nodes[node_id]
+            stored = node.ui or [
+                {
+                    "role": node.turns[-1].get("role", "assistant"),
+                    "segments": [
+                        {
+                            "content": turn_fallback_markdown(node.turns[-1]),
+                            "content_type": "markdown",
+                        }
+                    ],
+                }
+            ]
+            for message_dict in stored:
+                await self.chat._restore_bookmark_message(message_dict)
+                restored_count += 1
+        # ui_offset must reflect the messages the client will report for the
+        # restored conversation. `_messages_for_bookmark()` reads the async
+        # client-reported input, which still holds the PREVIOUS conversation's
+        # snapshot at this synchronous point — so count what we actually restored.
+        self.ui_offset = restored_count
 
     # -- list mutations ----------------------------------------------------
 
@@ -489,6 +500,108 @@ class HistoryController:
             if self.on_active_id_change is not None:
                 await self.on_active_id_change(None)
         await self.send_history_update()
+
+    # -- branch navigation --------------------------------------------------
+
+    async def _send_sibling_metadata(self) -> None:
+        if self.record is None:
+            return
+        sibling_meta = self.record.path_sibling_metadata()
+        if not sibling_meta:
+            # No "clear all badges" payload is needed. A badge only exists at a
+            # fork point (a node with >1 sibling), and forks are permanent:
+            # navigating between siblings keeps that node's sibling count > 1,
+            # and nothing prunes nodes from a record. So a path that currently
+            # has no forks never had one, meaning there is no stale badge to
+            # clear — empty here always means the client already shows none.
+            return
+        data: dict[int, dict[str, int]] = {}
+        msg_idx = 0
+        for nid in self.record.path_node_ids():
+            n_ui = self.record.nodes[nid].ui_message_count()
+            if nid in sibling_meta:
+                idx, total = sibling_meta[nid]
+                data[msg_idx] = {"index": idx, "total": total}
+            msg_idx += n_ui
+        if data:
+            action: UpdateSiblingsAction = {
+                "type": "update_siblings",
+                "data": data,
+            }
+            await self.chat._send_action(action)
+
+    async def handle_navigate(self, message_index: int, direction: str) -> None:
+        if direction not in ("prev", "next"):
+            return
+        if self.record is None:
+            return
+        node_id, _ = self.record.node_id_for_message_index(message_index)
+        siblings = self.record.siblings_of(node_id)
+        current_pos = siblings.index(node_id)
+
+        if direction == "prev":
+            if current_pos == 0:
+                return
+            target = siblings[current_pos - 1]
+        else:
+            if current_pos == len(siblings) - 1:
+                return
+            target = siblings[current_pos + 1]
+
+        leaf = self.record.subtree_leaf(target)
+        self.record.set_current_leaf(leaf)
+        self.adapter.set_turns_json(self.record.path_turns())
+        await self.replay_ui(self.record)
+        await self._send_sibling_metadata()
+        if self.partition is None:
+            raise RuntimeError("HistoryController not initialized")
+        await self.store.put(self.partition, self.record)
+        await self.send_history_update()
+
+    async def handle_edit(
+        self,
+        message_index: int,
+        content: str,
+        attachments: "list[dict[str, Any]] | None" = None,
+    ) -> None:
+        if self.record is None:
+            return
+
+        node_id, _ = self.record.node_id_for_message_index(message_index)
+        fork_parent = self.record.nodes[node_id].parent
+
+        # Branching happens implicitly: truncating current_leaf here means the next
+        # append_linear (from the resubmit's on_response) creates a sibling under
+        # fork_parent, not a child of the old leaf. We don't call branch_from here
+        # because there's no new turn content yet — that arrives via on_response.
+        self.record.set_current_leaf(fork_parent)
+        self.adapter.set_turns_json(self.record.path_turns())
+        await self.replay_ui(self.record)
+        await self._send_sibling_metadata()
+        action: UpdateInputAction = {
+            "type": "update_input",
+            "value": content,
+            "submit": True,
+        }
+        if attachments is not None:
+            # Same normalize-then-validate pattern as the regular (non-edit)
+            # send path in _input_handler.py and Chat.update_user_input —
+            # never trust client-side attachment validation alone.
+            parsed = [Attachment.model_validate(a) for a in attachments]
+            validate_attachments(parsed)
+            action["attachments"] = [
+                {
+                    "mime": a.mime,
+                    "data_url": a.data_url,
+                    "name": a.name,
+                    "size": a.size,
+                }
+                for a in parsed
+            ]
+            # Edits always replace the attachment set — the client's staged
+            # tray is a single source of truth, never a delta to append.
+            action["attachment_mode"] = "set"
+        await self.chat._send_action(action)
 
     # -- protocol ----------------------------------------------------------
 
@@ -636,6 +749,9 @@ class ChatHistory:
 
         ids = HistoryInputIds.for_chat(chat.id)
         root_session.bookmark.exclude.extend(ids.all_ids())
+        # `messages_input_id` carries StoredMessage (Pydantic) objects, which
+        # aren't JSON-serializable for Shiny's bookmark input.json.
+        root_session.bookmark.exclude.append(chat.messages_input_id)
 
         adapter = as_turns_adapter(chat_client)
         resolved_store = resolve_store(self._store)
@@ -827,6 +943,7 @@ class ChatHistory:
                     if restore_mode != "bookmark":
                         controller._restore_app_state(target.values or {})
                     controller.record = target
+                    await controller._send_sibling_metadata()
                     await controller.send_history_update()
                     initialized = True
                     return
@@ -856,6 +973,7 @@ class ChatHistory:
                     await controller.replay_ui(pointed)
                     controller._restore_app_state(pointed.values or {})
                     controller.record = pointed
+                    await controller._send_sibling_metadata()
             await controller.send_history_update()
             initialized = True
 
@@ -915,6 +1033,34 @@ class ChatHistory:
                 await controller.delete(str(payload["id"]))
             except Exception as e:
                 await notify_error("Could not delete conversation", e)
+
+        @reactive.effect
+        @reactive.event(chat._session.input[ids.message_edit])
+        async def _on_edit():
+            if controller.partition is None:
+                return
+            payload = chat._session.input[ids.message_edit]()
+            try:
+                await controller.handle_edit(
+                    int(payload["index"]),
+                    str(payload["content"]),
+                    payload.get("attachments"),
+                )
+            except Exception as e:
+                await notify_error("Could not edit message", e)
+
+        @reactive.effect
+        @reactive.event(chat._session.input[ids.message_navigate])
+        async def _on_navigate():
+            if controller.partition is None:
+                return
+            payload = chat._session.input[ids.message_navigate]()
+            try:
+                await controller.handle_navigate(
+                    int(payload["index"]), str(payload["direction"])
+                )
+            except Exception as e:
+                await notify_error("Could not navigate messages", e)
 
         def _on_session_end() -> None:
             if stamp_cancel is not None:

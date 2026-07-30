@@ -6,6 +6,7 @@ import {
   type ShinyChatEnvelope,
 } from "../../src/transport/types"
 import { installShinyWindowStub } from "../helpers/mocks"
+import type { SnapshotMessage } from "../../src/chat/state"
 
 function makeEnvelope(
   action: ChatAction,
@@ -305,10 +306,11 @@ describe("ShinyTransport", () => {
       })
 
       // The composite passes through unchanged — size included, since the
-      // server-side Attachment model carries it too.
+      // server-side Attachment model carries it too. A seq nonce also rides
+      // along, and there is no third (priority) argument.
       expect(setInputValue).toHaveBeenCalledWith(
         "chat_user_input:shinychat.userInput",
-        {
+        expect.objectContaining({
           text: "hello",
           attachments: [
             {
@@ -318,9 +320,160 @@ describe("ShinyTransport", () => {
               size: 0,
             },
           ],
-        },
-        { priority: "event" },
+          seq: expect.any(Number),
+        }),
       )
+    })
+
+    it("uses regular priority and a changing nonce", () => {
+      const transport = new ShinyTransport()
+
+      transport.sendInput("chat", { text: "hi", attachments: [] })
+      transport.sendInput("chat", { text: "hi", attachments: [] })
+
+      const calls = (
+        window.Shiny!.setInputValue as ReturnType<typeof vi.fn>
+      ).mock.calls.filter((c: unknown[]) => c[0] === "chat:shinychat.userInput")
+
+      expect(calls).toHaveLength(2)
+      const [first, second] = calls as [unknown[], unknown[]]
+      // no event priority
+      expect(first[2]).toBeUndefined()
+      // nonce differs between identical submissions
+      expect((first[1] as { seq: number }).seq).not.toEqual(
+        (second[1] as { seq: number }).seq,
+      )
+    })
+  })
+
+  describe("sendMessagesSnapshot", () => {
+    it("sets the ${id}_messages input with regular priority", () => {
+      const transport = new ShinyTransport()
+      const snap: SnapshotMessage[] = [
+        {
+          role: "user",
+          segments: [{ content: "hi", content_type: "markdown" }],
+        },
+      ]
+
+      transport.sendMessagesSnapshot("chat", snap)
+
+      expect(window.Shiny?.setInputValue).toHaveBeenCalledWith(
+        "chat_messages:shinychat.messages",
+        snap,
+      )
+    })
+
+    it("does not throw when Shiny is unavailable", () => {
+      const origShiny = window.Shiny
+      delete (window as unknown as Record<string, unknown>).Shiny
+      const transport = new ShinyTransport()
+      expect(() => transport.sendMessagesSnapshot("chat", [])).not.toThrow()
+      ;(window as unknown as Record<string, unknown>).Shiny = origShiny
+    })
+  })
+
+  describe("sendMessageEdit", () => {
+    it("calls setInputValue on `<id>_message_edit` with index and content", () => {
+      const setInputValue = vi.fn()
+      ;(window as unknown as Record<string, unknown>).Shiny = {
+        setInputValue,
+        addCustomMessageHandler: vi.fn(),
+      }
+      const transport = new ShinyTransport()
+
+      transport.sendMessageEdit("chat1", 2, "edited text")
+
+      expect(setInputValue).toHaveBeenCalledWith(
+        "chat1_message_edit",
+        expect.objectContaining({ index: 2, content: "edited text" }),
+      )
+    })
+
+    it("does not throw when Shiny is unavailable", () => {
+      const origShiny = window.Shiny
+      delete (window as unknown as Record<string, unknown>).Shiny
+      const transport = new ShinyTransport()
+      expect(() => transport.sendMessageEdit("chat1", 0, "x")).not.toThrow()
+      ;(window as unknown as Record<string, unknown>).Shiny = origShiny
+    })
+
+    it("includes attachments in the payload when provided", () => {
+      const setInputValue = vi.fn()
+      ;(window as unknown as Record<string, unknown>).Shiny = {
+        setInputValue,
+        addCustomMessageHandler: vi.fn(),
+      }
+      const transport = new ShinyTransport()
+
+      transport.sendMessageEdit("chat1", 2, "edited text", [
+        {
+          mime: "image/png",
+          data_url: "data:image/png;base64,AAA",
+          name: "pic.png",
+          size: 3,
+        },
+      ])
+
+      expect(setInputValue).toHaveBeenCalledWith(
+        "chat1_message_edit",
+        expect.objectContaining({
+          index: 2,
+          content: "edited text",
+          attachments: [
+            {
+              mime: "image/png",
+              data_url: "data:image/png;base64,AAA",
+              name: "pic.png",
+              size: 3,
+            },
+          ],
+        }),
+      )
+    })
+
+    it("defaults attachments to an empty array when omitted", () => {
+      const setInputValue = vi.fn()
+      ;(window as unknown as Record<string, unknown>).Shiny = {
+        setInputValue,
+        addCustomMessageHandler: vi.fn(),
+      }
+      const transport = new ShinyTransport()
+
+      transport.sendMessageEdit("chat1", 2, "edited text")
+
+      expect(setInputValue).toHaveBeenCalledWith(
+        "chat1_message_edit",
+        expect.objectContaining({ attachments: [] }),
+      )
+    })
+  })
+
+  describe("sendMessageNavigate", () => {
+    it("calls setInputValue on `<id>_message_navigate` with index and direction", () => {
+      const setInputValue = vi.fn()
+      ;(window as unknown as Record<string, unknown>).Shiny = {
+        setInputValue,
+        addCustomMessageHandler: vi.fn(),
+      }
+      const transport = new ShinyTransport()
+
+      transport.sendMessageNavigate("chat1", 3, "next")
+
+      expect(setInputValue).toHaveBeenCalledWith(
+        "chat1_message_navigate",
+        expect.objectContaining({ index: 3, direction: "next" }),
+      )
+    })
+
+    it("does not throw when Shiny is unavailable", () => {
+      const origShiny = window.Shiny
+      delete (window as unknown as Record<string, unknown>).Shiny
+      const transport = new ShinyTransport()
+      expect(() =>
+        transport.sendMessageNavigate("chat1", 0, "prev"),
+      ).not.toThrow()
+      ;(window as unknown as Record<string, unknown>).Shiny = origShiny
     })
   })
 

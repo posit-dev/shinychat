@@ -4,6 +4,7 @@ import {
   contentFromBlocks,
   initialState,
   routeToolBlocks,
+  buildMessagesSnapshot,
   type ChatState,
   type ChatMessageData,
   type GreetingData,
@@ -11,7 +12,7 @@ import {
   type ToolLoopBlock,
   type ToolGrouping,
 } from "../../src/chat/state"
-import type { ContentType } from "../../src/transport/types"
+import type { ContentType, HtmlDep } from "../../src/transport/types"
 import { uuid } from "../../src/utils/uuid"
 
 vi.mock("../../src/utils/uuid")
@@ -1682,6 +1683,38 @@ describe("chatReducer", () => {
     })
   })
 
+  describe("update_siblings", () => {
+    it("sets siblings on the targeted message and leaves others untouched", () => {
+      const msg0 = makeAssistantMsg({ id: "m0", role: "user", content: "q1" })
+      const msg1 = makeAssistantMsg({ id: "m1", content: "a1" })
+      const state = makeState({ messages: [msg0, msg1] })
+      const next = chatReducer(state, {
+        type: "update_siblings",
+        data: { 0: { index: 1, total: 2 } },
+      })
+      expect(next.messages[0]!.siblings).toEqual({ index: 1, total: 2 })
+      expect(next.messages[1]!.siblings).toBeUndefined()
+      expect(next.messages[1]).toBe(state.messages[1])
+    })
+
+    it("clears siblings from a message no longer present in a sparse data map", () => {
+      const msg0 = makeAssistantMsg({
+        id: "m0",
+        role: "user",
+        content: "q1",
+        siblings: { index: 1, total: 2 },
+      })
+      const msg1 = makeAssistantMsg({ id: "m1", content: "a1" })
+      const state = makeState({ messages: [msg0, msg1] })
+      const next = chatReducer(state, {
+        type: "update_siblings",
+        data: {},
+      })
+      expect(next.messages[0]!.siblings).toBeUndefined()
+      expect(next.messages[1]!.siblings).toBeUndefined()
+    })
+  })
+
   it("history_navigate is a state no-op (handled imperatively in ChatApp)", () => {
     const state = chatReducer(initialState, {
       type: "history_update",
@@ -2369,5 +2402,84 @@ describe("toolGrouping state wiring (Phase 1)", () => {
     const state = makeState({ toolGrouping: "all" })
     const next = chatReducer(state, { type: "clear" })
     expect(next.toolGrouping).toBe("all")
+  })
+})
+
+describe("html_deps retention", () => {
+  const dep: HtmlDep = { name: "widget", version: "1.0.0" }
+
+  it("attaches html_deps from a message action to the message", () => {
+    const next = chatReducer(initialState, {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [{ content: "hi", content_type: "markdown" }],
+      },
+      html_deps: [dep],
+    })
+    const last = next.messages[next.messages.length - 1]!
+    expect(last.htmlDeps).toEqual([dep])
+  })
+
+  it("accumulates html_deps across streaming chunks", () => {
+    let s = chatReducer(initialState, {
+      type: "chunk_start",
+      message: { role: "assistant", segments: [] },
+      html_deps: [dep],
+    })
+    s = chatReducer(s, {
+      type: "chunk",
+      content: "x",
+      operation: "append",
+      content_type: "markdown",
+    })
+    s = chatReducer(s, { type: "chunk_end" })
+    const last = s.messages[s.messages.length - 1]!
+    expect(last.htmlDeps).toEqual([dep])
+  })
+})
+
+describe("buildMessagesSnapshot", () => {
+  it("maps settled messages to wire segments and excludes placeholders/streaming", () => {
+    let s = chatReducer(initialState, {
+      type: "message",
+      message: {
+        role: "user",
+        segments: [{ content: "hello", content_type: "markdown" }],
+      },
+    })
+    // a streaming message must NOT appear
+    s = chatReducer(s, {
+      type: "chunk_start",
+      message: { role: "assistant", segments: [] },
+    })
+    const snap = buildMessagesSnapshot(s)
+    expect(snap).toEqual([
+      {
+        role: "user",
+        segments: [{ content: "hello", content_type: "markdown" }],
+      },
+    ])
+  })
+
+  it("emits thinking blocks with content_type 'thinking' and carries htmlDeps", () => {
+    const dep: HtmlDep = { name: "w", version: "1" }
+    const s = chatReducer(initialState, {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          { content: "reasoning", content_type: "thinking" },
+          { content: "answer", content_type: "markdown" },
+        ],
+      },
+      html_deps: [dep],
+    })
+    const snap = buildMessagesSnapshot(s)
+    expect(snap[0]!.segments).toEqual([
+      { content: "reasoning", content_type: "thinking" },
+      { content: "answer", content_type: "markdown" },
+    ])
+    expect(snap[0]!.htmlDeps).toEqual([dep])
   })
 })

@@ -1,5 +1,8 @@
 import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 import type { AttachmentPayload } from "../chat/attachments"
+import type { SnapshotMessage } from "../chat/state"
+
+export type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 
 export type ContentType = "markdown" | "html" | "text" | "thinking"
 
@@ -53,16 +56,18 @@ export type MessagePayload = {
   icon?: string
   segments: MessagePayloadSegment[]
   attachments?: AttachmentPayload[]
+  siblings?: { index: number; total: number }
 }
 
 export type ChatAction =
-  | { type: "message"; message: MessagePayload }
-  | { type: "chunk_start"; message: MessagePayload }
+  | { type: "message"; message: MessagePayload; html_deps?: HtmlDep[] }
+  | { type: "chunk_start"; message: MessagePayload; html_deps?: HtmlDep[] }
   | {
       type: "chunk"
       content: string
       operation: "append" | "replace"
       content_type?: ContentType
+      html_deps?: HtmlDep[]
     }
   | { type: "chunk_end" }
   | { type: "clear"; greeting?: boolean }
@@ -115,6 +120,10 @@ export type ChatAction =
       /** Used by bookmark-mode switches, where a soft URL update isn't sufficient. */
       reload?: boolean
     }
+  | {
+      type: "update_siblings"
+      data: Record<number, { index: number; total: number }>
+    }
 
 export type ShinyChatEnvelope = {
   id: string
@@ -162,11 +171,24 @@ export interface ChatTransport {
     userText: string,
     echo: boolean,
   ): void
+  /** Report the client's settled-message snapshot (regular-priority input). */
+  sendMessagesSnapshot(id: string, snapshot: SnapshotMessage[]): void
   onMessage(id: string, callback: (action: ChatAction) => void): () => void
   sendHistorySelect(id: string, convId: string): void
   sendHistoryNew(id: string): void
   sendHistoryRename(id: string, convId: string, title: string): void
   sendHistoryDelete(id: string, convId: string): void
+  sendMessageEdit(
+    id: string,
+    index: number,
+    content: string,
+    attachments?: AttachmentPayload[],
+  ): void
+  sendMessageNavigate(
+    id: string,
+    index: number,
+    direction: "prev" | "next",
+  ): void
 }
 
 /** Shiny-specific lifecycle: DOM binding, dependency rendering, error display. */

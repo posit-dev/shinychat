@@ -1,4 +1,5 @@
 import pytest
+from _history_test_helpers import branch_from
 from shinychat._history_types import (
     ConversationMeta,
     ConversationNode,
@@ -147,3 +148,207 @@ def test_children_round_trip_json():
     for nid in rec.nodes:
         assert rec2.nodes[nid].children == rec.nodes[nid].children
     assert rec2.next_node_seq == rec.next_node_seq
+
+
+def msg(role: str) -> dict[str, object]:
+    return {
+        "role": role,
+        "segments": [{"content": role, "content_type": "markdown"}],
+    }
+
+
+def test_children_of_returns_direct_children_sorted():
+    rec = new_conversation_record(title="t")
+    n1 = rec.append_linear(turn("user", "hi"))
+    n2 = rec.append_linear(turn("assistant", "hey"))
+    assert rec.children_of(None) == [n1]
+    assert rec.children_of(n1) == [n2]
+    assert rec.children_of(n2) == []
+
+
+def test_children_of_with_branch():
+    rec = new_conversation_record(title="t")
+    n1 = rec.append_linear(turn("user", "hi"))
+    n2 = rec.append_linear(turn("assistant", "v1"))
+    n3 = branch_from(rec, n1, turn("assistant", "v2"))
+    assert rec.children_of(n1) == [n2, n3]
+
+
+def test_siblings_of():
+    rec = new_conversation_record(title="t")
+    n1 = rec.append_linear(turn("user", "hi"))
+    n2 = rec.append_linear(turn("assistant", "v1"))
+    n3 = branch_from(rec, n1, turn("assistant", "v2"))
+    assert rec.siblings_of(n2) == [n2, n3]
+    assert rec.siblings_of(n3) == [n2, n3]
+    # n1 has no siblings (only child of root)
+    assert rec.siblings_of(n1) == [n1]
+
+
+def test_subtree_leaf_returns_self_for_leaf_node():
+    rec = new_conversation_record(title="t")
+    n1 = rec.append_linear(turn("user", "hi"))
+    assert rec.subtree_leaf(n1) == n1
+
+
+def test_subtree_leaf_follows_selected_child_else_newest():
+    rec = new_conversation_record(title="t")
+    n1 = rec.append_linear(turn("user", "hi"))
+    n2 = rec.append_linear(turn("assistant", "v1"))
+    n3 = rec.append_linear(turn("user", "q2"))
+    n4 = rec.append_linear(turn("assistant", "a2"))
+    # append_linear recorded selected_child at each node, so subtree_leaf
+    # replays it back to the current leaf.
+    assert rec.subtree_leaf(n1) == n4
+    # Branch a sibling of n3 under n2. branch_from bypasses set_current_leaf,
+    # so n2 still remembers n3 from the linear appends.
+    n5 = branch_from(rec, n2, turn("user", "q2-edited"))
+    n6 = branch_from(rec, n5, turn("assistant", "a2-new"))
+    # n2 remembers n3, so it returns to n4 rather than the newer n5 -> n6.
+    assert rec.subtree_leaf(n2) == n4
+    # With the memory cleared, it falls back to the newest child (n5 -> n6).
+    rec.nodes[n2].selected_child = None
+    assert rec.subtree_leaf(n2) == n6
+    # n3 still leads to n4.
+    assert rec.subtree_leaf(n3) == n4
+
+
+def test_subtree_leaf_remembers_descendant_across_sibling_navigation():
+    rec = new_conversation_record(title="t")
+    root = rec.append_linear(turn("user", "start"))
+    # Two sibling branches under root, each with two leaves of its own.
+    b1 = branch_from(rec, root, turn("assistant", "b1"))
+    b1a = branch_from(rec, b1, turn("assistant", "b1a"))
+    branch_from(rec, b1, turn("assistant", "b1b"))
+    b2 = branch_from(rec, root, turn("assistant", "b2"))
+    branch_from(rec, b2, turn("assistant", "b2a"))
+    b2b = branch_from(rec, b2, turn("assistant", "b2b"))
+
+    # Land inside b1 on the OLDER leaf b1a (not the newest, b1b).
+    rec.set_current_leaf(b1a)
+    # Navigate to sibling b2: no memory yet, so its newest leaf (b2b).
+    rec.set_current_leaf(rec.subtree_leaf(b2))
+    assert rec.current_leaf == b2b
+    # Navigate back to b1: returns to b1a, the last-viewed descendant, rather
+    # than the newest leaf b1b.
+    rec.set_current_leaf(rec.subtree_leaf(b1))
+    assert rec.current_leaf == b1a
+
+
+def test_branch_from_creates_sibling():
+    rec = new_conversation_record(title="t")
+    n1 = rec.append_linear(turn("user", "hi"))
+    n2 = rec.append_linear(turn("assistant", "v1"))
+    n3 = branch_from(rec, n1, turn("assistant", "v2"))
+    assert rec.nodes[n3].parent == n1
+    assert rec.current_leaf == n3
+    assert rec.children_of(n1) == [n2, n3]
+    assert rec.path_turns() == turn("user", "hi") + turn("assistant", "v2")
+
+
+def test_branch_from_root():
+    rec = new_conversation_record(title="t")
+    n1 = rec.append_linear(turn("user", "hi"))
+    rec.append_linear(turn("assistant", "v1"))
+    n3 = branch_from(rec, None, turn("user", "bye"))
+    assert rec.nodes[n3].parent is None
+    assert rec.current_leaf == n3
+    assert rec.children_of(None) == [n1, n3]
+
+
+def test_branch_from_preserves_old_branch():
+    rec = new_conversation_record(title="t")
+    _ = rec.append_linear(turn("user", "hi"))
+    n2 = rec.append_linear(turn("assistant", "v1"))
+    n3 = rec.append_linear(turn("user", "q2"))
+    n4 = rec.append_linear(turn("assistant", "a2"))
+    # Branch: edit q2 -> creates sibling of n3
+    n5 = branch_from(rec, n2, turn("user", "q2-edited"))
+    # Old branch is intact
+    assert rec.nodes[n3].parent == n2
+    assert rec.nodes[n4].parent == n3
+    # New branch is active
+    assert rec.current_leaf == n5
+    assert rec.path_turns() == (
+        turn("user", "hi") + turn("assistant", "v1") + turn("user", "q2-edited")
+    )
+
+
+def test_node_id_for_message_index_simple():
+    rec = new_conversation_record(title="t")
+    n1 = rec.append_linear(turn("user", "q"), ui=[msg("user")])
+    n2 = rec.append_linear(turn("assistant", "a"), ui=[msg("assistant")])
+    assert rec.node_id_for_message_index(0) == (n1, 0)
+    assert rec.node_id_for_message_index(1) == (n2, 1)
+
+
+def test_node_id_for_message_index_counts_empty_ui_nodes_as_one():
+    # A node with ui=None still renders one fabricated message on restore
+    # (replay_ui's `node.ui or [fallback]`), so it occupies one client message
+    # slot here too — the mapping must not skip it, or client indices would
+    # disagree with the server.
+    rec = new_conversation_record(title="t")
+    n1 = rec.append_linear(turn("user", "q"), ui=[msg("user")])
+    n2 = rec.append_linear(turn("assistant", "no-ui-1"))  # no ui
+    n3 = rec.append_linear(turn("user", "no-ui-2"))  # no ui
+    n4 = rec.append_linear(turn("assistant", "a"), ui=[msg("assistant")])
+    assert rec.node_id_for_message_index(0) == (n1, 0)
+    assert rec.node_id_for_message_index(1) == (n2, 1)
+    assert rec.node_id_for_message_index(2) == (n3, 2)
+    assert rec.node_id_for_message_index(3) == (n4, 3)
+
+
+def test_node_id_for_message_index_out_of_range():
+    rec = new_conversation_record(title="t")
+    rec.append_linear(turn("user", "q"), ui=[msg("user")])
+    with pytest.raises(IndexError):
+        rec.node_id_for_message_index(1)
+
+
+def test_node_id_for_message_index_negative_is_out_of_range():
+    rec = new_conversation_record(title="t")
+    rec.append_linear(turn("user", "q"), ui=[msg("user")])
+    with pytest.raises(IndexError):
+        rec.node_id_for_message_index(-1)
+
+
+def test_node_id_for_message_index_multi_ui_node():
+    rec = new_conversation_record(title="t")
+    n1 = rec.append_linear(turn("user", "q"), ui=[msg("user")])
+    n2 = rec.append_linear(
+        turn("assistant", "a"),
+        ui=[msg("assistant"), msg("assistant")],  # two UI messages
+    )
+    assert rec.node_id_for_message_index(0) == (n1, 0)
+    assert rec.node_id_for_message_index(1) == (n2, 1)  # first msg of n2
+    assert rec.node_id_for_message_index(2) == (n2, 1)  # second msg of n2
+
+
+def test_path_sibling_metadata_no_branches():
+    rec = new_conversation_record(title="t")
+    rec.append_linear(turn("user", "q"))
+    rec.append_linear(turn("assistant", "a"))
+    assert rec.path_sibling_metadata() == {}
+
+
+def test_path_sibling_metadata_with_branch():
+    rec = new_conversation_record(title="t")
+    n1 = rec.append_linear(turn("user", "q"))
+    rec.append_linear(turn("assistant", "v1"))
+    n3 = branch_from(rec, n1, turn("assistant", "v2"))
+    meta = rec.path_sibling_metadata()
+    assert meta == {n3: (1, 2)}  # n3 is index 1 of 2 siblings
+
+
+def test_path_sibling_metadata_multiple_branches():
+    rec = new_conversation_record(title="t")
+    _ = rec.append_linear(turn("user", "q"))
+    n2 = rec.append_linear(turn("assistant", "a1"))
+    rec.append_linear(turn("user", "q2"))
+    rec.append_linear(turn("assistant", "a2"))
+    # Branch at n2: create sibling of n3
+    n5 = branch_from(rec, n2, turn("user", "q2-edited"))
+    branch_from(rec, n5, turn("assistant", "a2-new"))
+    # Active path is [n1, n2, n5, n6]; n5 has siblings [n3, n5] -> (1, 2)
+    meta = rec.path_sibling_metadata()
+    assert meta == {n5: (1, 2)}

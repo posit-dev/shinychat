@@ -25,6 +25,8 @@
 
 * The `last_input` reactive returned by `chat_server()` now mirrors the shape of `input$<id>_user_input`: a string when attachments are disabled, and a list of ellmer `Content` objects when enabled.
 
+* `input$<id>_user_input` is now a persistent regular input rather than an event input, so it retains its last submitted value between submissions instead of resetting to `NULL`. This lets it co-batch with the client's message snapshot in a single reactive flush. It remains excluded from bookmarks.
+
 ## Bug fixes
 
 * `chat_app()` no longer renders a close button or registers a `stopApp()` observer when deployed to a server. Both are now gated on `rlang::is_interactive()`, preventing session crashes in multi-user deployments. (#265)

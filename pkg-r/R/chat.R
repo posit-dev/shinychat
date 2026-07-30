@@ -118,6 +118,18 @@ chat_greeting <- function(
 #' `id="my_chat"`, user input will be at `input$my_chat_user_input`), and use
 #' [chat_append()] to append messages to the chat.
 #'
+#' The chat also reports the client's current rendered message transcript as
+#' `input$ID_messages` (for example, `input$my_chat_messages`), tagged
+#' `shinychat.messages`. It updates every time a message finishes rendering
+#' or streaming (a "settle point"), and is a list of message objects:
+#' `list(role =, segments = list(list(content =, content_type =), ...))`,
+#' plus optional `htmlDeps` and `attachments` fields when present.
+#' [chat_enable_history()] reads this internally to persist and restore
+#' exactly what was rendered — including raw HTML and Shiny UI dependencies —
+#' across a conversation switch or reload. It's exposed for advanced,
+#' read-only use (for example, custom logging or export); it is not an input
+#' you write to.
+#'
 #' @section Greeting:
 #'
 #' A greeting is an optional welcome message shown before any conversation
@@ -809,6 +821,25 @@ chat_append_message <- function(
   invisible(NULL)
 }
 
+restore_history_message <- function(chat_id, message, session) {
+  message_payload <- list(
+    role = message$role,
+    segments = lapply(message$segments, function(seg) {
+      list(content = seg$content, content_type = seg$content_type)
+    })
+  )
+  if (!is.null(message$attachments) && length(message$attachments) > 0) {
+    message_payload$attachments <- message$attachments
+  }
+  action <- list(type = "message", message = message_payload)
+  send_chat_action(
+    chat_id,
+    action = action,
+    html_deps = message$htmlDeps,
+    session = session
+  )
+}
+
 chat_append_stream <- function(
   id,
   stream,
@@ -818,7 +849,10 @@ chat_append_stream <- function(
 ) {
   result <- chat_append_stream_impl(id, stream, role, icon, session)
   result <- chat_update_bookmark(id, result, session = session)
-  result <- chat_history_on_response(id, result, session = session)
+  # History saves are triggered by the client's `_messages` echo (see the
+  # message_response_effect observer in chat_enable_history()), not chained
+  # here onto stream completion -- the browser only reports the finished
+  # assistant reply after a separate render/report round trip.
   # Handle erroneous result...
   result <- promises::catch(result, function(reason) {
     # ...but rethrow the error as a silent error, so the caller can also handle
@@ -1127,11 +1161,13 @@ chat_set_greeting <- function(
   }
 
   if (is.function(content)) {
-    cli::cli_abort(c(
-      "{.fn chat_set_greeting} does not accept a function as greeting content.",
-      "i" = "Pass the {.emph result} of calling your function, not the function itself.",
-      "i" = "To use a greeting function with automatic lifecycle management, pass it to the {.arg greeting} argument of {.fn chat_server}."
-    ))
+    cli::cli_abort(
+      c(
+        "{.fn chat_set_greeting} does not accept a function as greeting content.",
+        "i" = "Pass the {.emph result} of calling your function, not the function itself.",
+        "i" = "To use a greeting function with automatic lifecycle management, pass it to the {.arg greeting} argument of {.fn chat_server}."
+      )
+    )
   }
 
   if (is.character(content) && !inherits(content, "html")) {
@@ -1184,12 +1220,14 @@ rlang::on_load(
       send_chat_action(id, action = action, session = session)
     }
 
-    send_greeting_action(list(
-      type = "greeting_start",
-      content = "",
-      content_type = "markdown",
-      options = options
-    ))
+    send_greeting_action(
+      list(
+        type = "greeting_start",
+        content = "",
+        content_type = "markdown",
+        options = options
+      )
+    )
 
     chunks <- character(0)
     for (msg in stream) {

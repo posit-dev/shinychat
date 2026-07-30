@@ -262,6 +262,7 @@ shiny-chat-container:not([fill]) {
 
 /* Align the user message to the right */
 .shiny-chat-user-message {
+  position: relative;
   align-self: flex-end;
   padding: 0.75rem 1rem;
   border-radius: 10px;
@@ -271,6 +272,9 @@ shiny-chat-container:not([fill]) {
   grid-template-columns: auto;
   // Prevent structural wrapper/button elements from appearing in clipboard copies
   user-select: none;
+  // Let vertical scrolling through a message pass through even while our own
+  // long-press-hold gesture is tracking the pointer (see ChatMessage.tsx).
+  touch-action: pan-y;
 
   .shiny-chat-message-content {
     user-select: text;
@@ -282,6 +286,70 @@ shiny-chat-container:not([fill]) {
   .content-type-text {
     white-space: pre;
     overflow-x: auto;
+  }
+}
+
+.shiny-chat-btn-send {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background-color: transparent;
+  color: var(--bs-primary, #007bc2);
+  transition: color 0.25s ease-in-out;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  line-height: 16px;
+  border-radius: 50%;
+  &:disabled {
+    cursor: not-allowed;
+    color: var(--bs-gray-500, #8d959e);
+  }
+  &.shiny-chat-btn-cancel {
+    color: var(--bs-danger, #dc3545);
+  }
+  &.shiny-chat-btn-spinner {
+    pointer-events: none;
+    cursor: default;
+    svg {
+      display: block;
+      animation: shiny-chat-spin 0.75s linear infinite;
+      transform-origin: center;
+    }
+  }
+}
+
+.shiny-chat-btn-attach {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  // The button renders before the editor (AttachmentTray comes first in the
+  // DOM) and .ProseMirror is position: relative, so without a z-index the
+  // editor's opaque form-control background paints over the button.
+  z-index: 1;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  color: var(--bs-gray-600, #707782);
+  transition: color 0.25s ease-in-out;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 50%;
+  svg {
+    display: block;
+    width: 22px;
+    height: 22px;
+  }
+  &:hover:not(:disabled) {
+    color: var(--bs-primary, #007bc2);
+  }
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
   }
 }
 
@@ -330,62 +398,10 @@ shiny-chat-container:not([fill]) {
     }
   }
   .shiny-chat-btn-send {
-    position: absolute;
     bottom: calc(6px + var(--_input-padding-bottom));
-    right: 8px;
-    background-color: transparent;
-    color: var(--bs-primary, #007bc2);
-    transition: color 0.25s ease-in-out;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    line-height: 16px;
-    border-radius: 50%;
-    &:disabled {
-      cursor: not-allowed;
-      color: var(--bs-gray-500, #8d959e);
-    }
-    &.shiny-chat-btn-cancel {
-      color: var(--bs-danger, #dc3545);
-    }
-    &.shiny-chat-btn-spinner {
-      pointer-events: none;
-      cursor: default;
-      svg {
-        display: block;
-        animation: shiny-chat-spin 0.75s linear infinite;
-        transform-origin: center;
-      }
-    }
   }
   .shiny-chat-btn-attach {
-    position: absolute;
     bottom: calc(6px + var(--_input-padding-bottom));
-    left: 8px;
-    width: 24px;
-    height: 24px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background-color: transparent;
-    color: var(--bs-gray-600, #707782);
-    transition: color 0.25s ease-in-out;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    border-radius: 50%;
-    svg {
-      display: block;
-      width: 22px;
-      height: 22px;
-    }
-    &:hover:not(:disabled) {
-      color: var(--bs-primary, #007bc2);
-    }
-    &:disabled {
-      cursor: not-allowed;
-      opacity: 0.5;
-    }
   }
 }
 
@@ -1003,4 +1019,165 @@ shiny-chat-container:not([fill]) {
   font-size: 1.25rem;
   line-height: 1;
   cursor: pointer;
+}
+
+/* Footer row below a user message — sibling nav + edit button.
+   Positioned outside the bubble (not overlapping its text) and right-aligned
+   to match the bubble's alignment. */
+.shiny-chat-message-footer {
+  position: absolute;
+  right: 0.25rem;
+  bottom: -1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* Edit button — shown on hover over user messages. Deliberately left
+   focusable (opacity-only, not visibility/display) so keyboard users can
+   Tab to it; visibility:hidden would remove it from the tab order entirely
+   and no amount of :focus-within on an ancestor could bring it back. */
+.shiny-chat-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  color: var(--bs-secondary-color, #6c757d);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background-color 0.15s;
+
+  &:hover,
+  &:focus-visible {
+    opacity: 1;
+    color: var(--bs-primary, #007bc2);
+    background-color: var(--bs-tertiary-bg, rgba(0, 0, 0, 0.05));
+  }
+
+  svg {
+    display: block;
+  }
+}
+
+.shiny-chat-user-message:hover .shiny-chat-edit-btn,
+.shiny-chat-user-message:focus-within .shiny-chat-edit-btn,
+.shiny-chat-user-message[data-touch-revealed] .shiny-chat-edit-btn {
+  opacity: 1;
+}
+
+/* Edit box — a boxed mini-composer matching the chrome of the main input at
+   the bottom of the chat, so editing a message reuses the same visual
+   language as sending one, rather than a bespoke inline form. */
+.shiny-chat-edit-wrap {
+  width: 100%;
+}
+
+// While editing, let the bubble span the full row so the composer isn't
+// constrained to the (possibly tiny) width of the original message.
+.shiny-chat-user-message:has(.shiny-chat-edit-wrap) {
+  width: 100%;
+}
+
+.shiny-chat-edit-box {
+  position: relative;
+  width: 100%;
+  border: 1px solid var(--bs-border-color, #ced4da);
+  border-radius: 20px;
+
+  &:focus-within {
+    border-color: var(--bs-primary, #007bc2);
+  }
+
+  .tiptap {
+    // The edit box draws the pill border itself, so strip the editor's own
+    // form-control chrome (otherwise it reads as a second box inside).
+    border-color: transparent !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding-right: 36px !important;
+    min-height: 1.5rem;
+    max-height: 16rem;
+    overflow-y: auto;
+    font: inherit;
+    color: inherit;
+
+    &.is-empty::before {
+      content: attr(data-placeholder);
+      color: var(--bs-gray-600, #707782);
+      float: left;
+      height: 0;
+      pointer-events: none;
+    }
+  }
+
+  // Only reserve left space when the attach button is actually rendered.
+  &:has(.shiny-chat-btn-attach) {
+    .tiptap {
+      padding-left: 36px !important;
+    }
+  }
+}
+
+.shiny-chat-edit-cancel-outside {
+  display: block;
+  margin: 0.35rem 0 0 auto;
+  padding: 0.3rem 0.75rem;
+  border: none;
+  border-radius: 14px;
+  background-color: var(--bs-tertiary-bg, rgba(0, 0, 0, 0.05));
+  color: var(--bs-secondary-color, #6c757d);
+  font-size: 0.85em;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+
+  &:hover {
+    background-color: var(--bs-border-color, #ced4da);
+    color: var(--bs-body-color, inherit);
+  }
+}
+
+/* Sibling navigation arrows */
+.shiny-chat-sibling-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  font-size: 0.75rem;
+  color: var(--bs-secondary-color, #6c757d);
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: 50%;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    color: inherit;
+    transition: color 0.15s, background-color 0.15s;
+
+    &:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+
+    &:not(:disabled):hover {
+      color: var(--bs-primary, #007bc2);
+      background-color: var(--bs-tertiary-bg, rgba(0, 0, 0, 0.05));
+    }
+  }
+
+  span {
+    min-width: 2.5rem;
+    text-align: center;
+  }
 }

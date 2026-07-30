@@ -5,15 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [UNRELEASED]
 
 ### New features
+
+* You can now edit a message you already sent, instead of only being able to send a new one. Hover a user message (or press and hold on a touch device) and click the pencil icon to open an inline editor (pre-filled with the original text and attachments); press Enter (or Cmd/Ctrl+Enter, depending on `submit_key`) to save and resend, or Escape to cancel. Editing forks the conversation from that point — the original branch isn't lost, it's kept as a sibling. `‹ 1 / 2 ›`-style controls appear on any message with more than one version, letting you step back and forth between them at any time, including after reloading the page or returning from the history drawer. Requires history to be enabled (the default when using `client=`). (#269)
 
 * Tool calls now render as a condensed, collapsed activity row by default, which expands to show each individual call and drills into the full request/result card. `ToolResultDisplay` gained `label` (a short per-call identifying value, e.g. a filename or query) and `value_preview` (a terse peek at the result, e.g. "1,204 rows"), both shown in the collapsed view.
 
 * Added `tool_grouping` to `chat_ui()` / `Chat.ui()`: `"tool"` (default) groups calls to the same tool within a turn's tool-calling phase (order-independent, not just consecutive calls); `"all"` groups every call in the phase together; `"none"` shows one card per call. Individual tools can override the chat-level setting via a `grouping` tool annotation -- for chatlas tools, set it under `annotations={"extra": {"grouping": ...}}`.
 
 ### Changes
+
+* The record of displayed messages is now sourced from the browser rather than a server-side accumulator. As a consequence, `chat.messages()` is *eventually* consistent: it returns an empty tuple until the client's first report, and a message passed to `chat.append_message()` does not appear there until the browser has rendered it and reported back. Read it reactively rather than expecting a synchronous update immediately after appending. (#272)
+
+    * The user-submission input (`input[f"{id}_user_input"]`) is now a persistent regular input rather than an event-priority one, so it retains its last value between submissions. This lets it co-batch with the message snapshot in a single reactive flush. It remains excluded from bookmarks. (#272)
 
 * A tool's definition `title` (from its annotations) and its result `title` (from `ToolResultDisplay`) are now shown as-is, without any client-side tense conjugation: the definition title is shown while the call is running, and the result title (if provided) replaces it once the first result arrives. The old `"Running {title}"` / `"{title} failed"` client-side title template has been removed. If a tool's title reads oddly while running now that the automatic "Running " prefix is gone, write an explicit present-tense definition title (e.g. "Running R code") and, optionally, a past-tense result title (e.g. "Ran R code"). Failures are shown via a separate status cue (a "failed"/"N failed" note and icon) rather than appended to the title.
 
