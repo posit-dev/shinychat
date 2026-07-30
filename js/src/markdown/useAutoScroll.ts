@@ -30,11 +30,25 @@ export interface UseAutoScrollReturn {
    *  Useful when a content change is about to happen and the post-render
    *  effect should handle scrolling with the correct scrollHeight. */
   engageStickToBottom: () => void
+  /** Re-engage stickToBottom if the container is at the bottom *right now*.
+   *  Call this immediately before applying a content change, while the DOM still
+   *  holds the pre-growth scrollHeight — see the note on scroll-event timing in
+   *  the hook's docstring. Only ever engages, never disengages. */
+  repinIfAtBottom: () => void
 }
 
 /**
  * Auto-scrolls a container to the bottom during streaming, disengaging when the
  * user scrolls up and re-engaging when they scroll back to the bottom.
+ *
+ * The scroll listener alone cannot be trusted to keep stickToBottom current: it
+ * reads geometry when the event is *delivered*, and browsers dispatch scroll
+ * events asynchronously (Firefox, from a paint tick that can lag under load). If
+ * a content chunk grows scrollHeight in that gap, the user's position no longer
+ * reads as "at bottom" while also not reading as "scrolling up", so neither
+ * branch fires and auto-scroll disengages permanently (posit-dev/py-shiny#2378).
+ * Callers therefore use `repinIfAtBottom()` to settle the question from live
+ * geometry at the moment a chunk is applied, when the answer is unambiguous.
  *
  * Uses direction-based detection (comparing scrollTop to its previous value)
  * rather than flag-based detection. The scroll listener is attached once via a
@@ -116,7 +130,26 @@ export function useAutoScroll({
     setStickToBottom(true)
   }, [])
 
-  return { containerRef, stickToBottom, scrollToBottom, engageStickToBottom }
+  const repinIfAtBottom = useCallback(() => {
+    const el = containerElRef.current
+    if (!el) return
+
+    const { scrollTop, scrollHeight, clientHeight } = el
+    if (scrollTop + clientHeight >= scrollHeight - bottomTolerance) {
+      setStickToBottom(true)
+    }
+    // Deliberately no `else`: chunks routinely arrive while a smooth scroll from
+    // the previous chunk is still animating, so "not at the bottom" here does not
+    // mean the user scrolled away. Disengaging stays the scroll handler's job.
+  }, [bottomTolerance])
+
+  return {
+    containerRef,
+    stickToBottom,
+    scrollToBottom,
+    engageStickToBottom,
+    repinIfAtBottom,
+  }
 }
 
 /**
