@@ -83,7 +83,7 @@ export function ToolCard({
   return (
     <div
       ref={cardRef}
-      className="shiny-tool-card card bslib-card html-fill-item html-fill-container m-0"
+      className="shiny-tool-card card html-fill-item html-fill-container m-0"
     >
       <button
         className="card-header"

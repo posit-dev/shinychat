@@ -294,6 +294,8 @@
 // card). The whole activity block reads as a single dimmed unit whether it's
 // still running or finished — never full-strength while streaming.
 $shinychat-tool-row-min-height: 2em;
+// Width of the drill-in blockquote left rule (matches the card border width).
+$shinychat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 1px));
 
 // Dim the inline row surfaces and the leaf cards directly (not the wrappers):
 // ancestor opacity can't be undone by a descendant, so dimming a wrapper would
@@ -329,6 +331,15 @@ $shinychat-tool-row-min-height: 2em;
 
 .shinychat-tool-group {
   font-size: 0.8em;
+
+  // Pseudo-private geometry tokens shared by the nested row and its drill-in
+  // rule. Deliberately `rem`, not `em`: the row's margin and the drill-in's
+  // padding resolve in different font contexts (the leaf card renders at a
+  // smaller size), so an `em` value would land at two different pixel lengths
+  // and the rule would miss the glyph. A fixed length keeps them locked.
+  --_row-indent: 1.125rem; // nesting step of a call row under the group header
+  --_row-pad: 0.4rem; // pill inner padding — also the glyph's offset from the edge
+  --_row-glyph-width: 0.9em; // status / identity glyph box size
 }
 
 .shinychat-tool-group--single > .shiny-tool-card {
@@ -347,7 +358,8 @@ $shinychat-tool-row-min-height: 2em;
   gap: 0.5rem;
   width: 100%;
   min-height: $shinychat-tool-row-min-height;
-  padding: 0.25rem 0;
+  padding: 0.25rem var(--_row-pad);
+  border-radius: 6px;
   background: none;
   border: none;
   text-align: left;
@@ -363,7 +375,7 @@ $shinychat-tool-row-min-height: 2em;
 }
 
 .shinychat-tool-group__glyph {
-  --_size: 0.9em;
+  --_size: var(--_row-glyph-width);
   width: var(--_size);
   height: var(--_size);
   display: flex;
@@ -476,11 +488,20 @@ $shinychat-tool-row-min-height: 2em;
 .shinychat-tool-call-row__chevron {
   display: grid;
   place-items: center;
-  width: 1em;
-  height: 1em;
+  width: 0.9em;
+  height: 0.9em;
   flex: none;
   opacity: 0.66;
   transition: transform 0.3s ease-in-out;
+
+  // The SVG ships at an intrinsic 16px; pin it to the box so it scales with the
+  // row text and stays centered (an overflowing SVG shifts off-center when the
+  // box is rotated, misaligning expanded vs. collapsed chevrons).
+  svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
 }
 
 .shinychat-tool-group__row[aria-expanded="true"] .shinychat-tool-group__chevron,
@@ -503,9 +524,13 @@ $shinychat-tool-row-min-height: 2em;
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    width: 100%;
+    // Indent the row (pill and all) rather than just its content, so the hover
+    // area nests under the group header; the right edge still lines up.
+    margin-left: var(--_row-indent);
+    width: calc(100% - var(--_row-indent));
     min-height: $shinychat-tool-row-min-height;
-    padding: 0.25rem 0 0.25rem 1.4em;
+    padding: 0.25rem var(--_row-pad);
+    border-radius: 6px;
     background: none;
     border: none;
     text-align: left;
@@ -521,7 +546,7 @@ $shinychat-tool-row-min-height: 2em;
   }
 
   &__status {
-    --_size: 0.9em;
+    --_size: var(--_row-glyph-width);
     width: var(--_size);
     height: var(--_size);
     display: flex;
@@ -571,27 +596,43 @@ $shinychat-tool-row-min-height: 2em;
     }
 
     // The row above already is the header (glyph + title + peek + chevron), so
-    // the leaf card drops its own redundant header and reveals just the
-    // request/result body — the row morphs into the card. A fullscreen card
-    // keeps its header (it escapes the row into an overlay).
+    // the leaf card drops its own box and reads as a blockquote: a single
+    // straight left rule (no corner curl) with the request/result body beside
+    // it. A fullscreen card keeps its full chrome (it escapes into an overlay).
     > .shiny-tool-card:not([fullscreen]) {
-      margin-top: 0;
-      border-top-width: 0;
-      border-top-left-radius: 0;
-      border-top-right-radius: 0;
+      margin: 0;
+      border: none;
+      border-inline-start: $shinychat-tool-detail-rule solid var(--bs-border-color);
+      border-radius: 0;
 
       > .card-header {
         display: none;
+      }
+
+      // Line the body text up with the header label. The rule is centered on
+      // the glyph, so the body sits a half-glyph + the row's gap past it (the
+      // header label is a full glyph + gap past the glyph's left edge).
+      > .card-body {
+        padding-inline-start: calc(
+          var(--_row-glyph-width) / 2 + 0.5rem - #{$shinychat-tool-detail-rule}
+        );
       }
     }
   }
 }
 
-// Nest the Tier-2 drill-in body under its call row (aligned with the row's
-// content indent). A single-call row sits at the loop's base indent, so its
-// detail — same class, but not inside a .shinychat-tool-call-row — stays flush.
+// Land the drill-in left rule on the glyph (not the pill edge): indent the
+// detail by the row's inline padding on top of the row indent, so the card's
+// border-inline-start sits under the status glyph. A single-call row sits at
+// the loop's base indent, so it only needs the inline-padding offset.
 .shinychat-tool-call-row > .shinychat-tool-call-row__detail {
-  padding-inline-start: 1.4em;
+  padding-inline-start: calc(
+    var(--_row-indent) + var(--_row-pad) + var(--_row-glyph-width) / 2
+  );
+}
+
+.shinychat-tool-group--single > .shinychat-tool-call-row__detail {
+  padding-inline-start: calc(var(--_row-pad) + var(--_row-glyph-width) / 2);
 }
 
 @keyframes shinychat-tool-detail-reveal {
