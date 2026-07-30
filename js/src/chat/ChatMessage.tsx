@@ -59,11 +59,12 @@ export const ChatMessage = memo(function ChatMessage({
   // reducer). While streaming, tool elements still live in content blocks, so
   // route them at render time — with the same grouping — so tool calls show
   // the Tier UI live and don't pop into it on finalize. An incomplete trailing
-  // tool element stays as prose (the router leaves it) until it closes.
+  // tool element stays as prose (the router leaves it) until it closes, and so
+  // does everything after a code fence that has not been closed yet.
   const blocks = useMemo(
     () =>
       message.streaming
-        ? routeToolBlocks(message.blocks, toolGrouping)
+        ? routeToolBlocks(message.blocks, toolGrouping, true)
         : message.blocks,
     [message.streaming, message.blocks, toolGrouping],
   )

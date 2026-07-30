@@ -1743,6 +1743,16 @@ describe("routeToolBlocks (tool content router)", () => {
       grouping,
     )
   }
+  function routeStreaming(
+    content: string,
+    grouping: ToolGrouping = "tool",
+  ): MessageBlock[] {
+    return routeToolBlocks(
+      [{ type: "content", content, contentType: "markdown" }],
+      grouping,
+      true,
+    )
+  }
   function loops(blocks: MessageBlock[]): ToolLoopBlock[] {
     return blocks.filter((b): b is ToolLoopBlock => b.type === "tool_loop")
   }
@@ -1849,6 +1859,42 @@ describe("routeToolBlocks (tool content router)", () => {
     const l = loops(route(mixed))
     expect(l).toHaveLength(1)
     expect(l[0]!.groups[0]!.calls.map((c) => c.requestId)).toEqual(["2"])
+  })
+
+  it("leaves a tool tag under a not-yet-closed fence as prose while streaming", () => {
+    // Mid-stream the opening fence has arrived but its closer has not, so the
+    // sample would otherwise flash into live tool UI for a few chunks.
+    const partial = "Example:\n\n```html\n" + res("1", "a") + "\n"
+    expect(loops(routeStreaming(partial))).toHaveLength(0)
+  })
+
+  it("keeps the example as prose once its fence closes", () => {
+    const complete = "Example:\n\n```html\n" + res("1", "a") + "\n```\n"
+    expect(loops(routeStreaming(complete))).toHaveLength(0)
+  })
+
+  it("still routes a real element outside any fence while streaming", () => {
+    // The to-EOF rule must only shield text after an *unmatched* opener.
+    const mixed = "```html\n" + res("1", "a") + "\n```\n\n" + res("2", "a")
+    const l = loops(routeStreaming(mixed))
+    expect(l).toHaveLength(1)
+    expect(l[0]!.groups[0]!.calls.map((c) => c.requestId)).toEqual(["2"])
+  })
+
+  it("routes a tool tag under an unclosed fence once the message is final", () => {
+    // Deliberate: at finalize an unclosed fence does *not* run to end of
+    // content, so a cancelled stream's example does pop into tool UI.
+    const partial = "Example:\n\n```html\n" + res("1", "a") + "\n"
+    expect(loops(route(partial))).toHaveLength(1)
+  })
+
+  it("does not let a stray fence suppress a later real element when final", () => {
+    // Preloaded/restored transcripts arrive as one markdown block, so one
+    // unbalanced ``` in prose must not hide the real tool calls after it.
+    const mixed = "Prose with a stray ```\n\nmore prose\n\n" + res("1", "a")
+    const l = loops(route(mixed))
+    expect(l).toHaveLength(1)
+    expect(l[0]!.groups[0]!.calls.map((c) => c.requestId)).toEqual(["1"])
   })
 
   it("gives each call a loop-local unique localId, synthesizing one when request-id is absent", () => {

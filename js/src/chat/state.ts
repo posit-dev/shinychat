@@ -258,25 +258,56 @@ function computeGreetingVisibility(
 
 const THINKING_TAG_RE = /<thinking>\n?([\s\S]*?)\n?<\/thinking>\n*/g
 
+// Per CommonMark a fence may be indented up to 3 spaces (so an example nested
+// in a list or blockquote still counts). Four or more leading spaces is an
+// indented code block, not a fence, and is deliberately not matched here:
+// recognizing one needs block context (blank lines, paragraph continuation)
+// that this raw-string pass does not have.
+const CODE_FENCE_OPEN_SRC = String.raw` {0,3}((\`|~)\2{2,}).*`
+// A closed fence: the opener, then anything, then a closer that is *at least*
+// as long as the opener — hence `\1\2*` rather than a bare `\1`, which would
+// leave a ``` block closed by ```` open forever.
+const CODE_FENCE_RE = new RegExp(
+  `^${CODE_FENCE_OPEN_SRC}\n[\\s\\S]*?^ {0,3}\\1\\2*[ \t]*$`,
+  "gm",
+)
+const CODE_FENCE_OPEN_RE = new RegExp(`^${CODE_FENCE_OPEN_SRC}$`, "gm")
+
 // Code fence regions and inline code spans, whose contents are literal text and
 // so must not be scanned for the custom elements we route on (<thinking>, tool
 // tags): a message documenting those tags should render the example verbatim.
-function codeRanges(content: string): (idx: number) => boolean {
+function codeRanges(
+  content: string,
+  unclosedFenceRunsToEnd = false,
+): (idx: number) => boolean {
   const ranges: Array<[number, number]> = []
-  // Per CommonMark both fences may be indented up to 3 spaces (so an example
-  // nested in a list or blockquote still counts), and the closer only has to be
-  // *at least* as long as the opener — hence `\1\2*` rather than a bare `\1`,
-  // which would leave a ``` block closed by ```` open forever. Four or more
-  // leading spaces is an indented code block, not a fence, and is deliberately
-  // not matched here: recognizing one needs block context (blank lines,
-  // paragraph continuation) that this raw-string pass does not have.
-  // An *unclosed* fence is likewise left unmatched, even though CommonMark runs
-  // it to the end of the document. One stray ``` in prose would otherwise
-  // swallow the rest of the message and silently stop real tool elements from
-  // rendering — the same risk that keeps code-span pairing to a single line.
-  const fenceRe = /^ {0,3}((`|~)\2{2,}).*\n[\s\S]*?^ {0,3}\1\2*[ \t]*$/gm
-  for (const m of content.matchAll(fenceRe)) {
+  for (const m of content.matchAll(CODE_FENCE_RE)) {
     ranges.push([m.index, m.index + m[0].length])
+  }
+  // An *unclosed* fence runs to the end of the document per CommonMark, but we
+  // only honor that while the message is still streaming, where a trailing open
+  // fence is just the live cursor and there is no "rest of the message" for it
+  // to swallow. Without this, a documented example flickers into live tool UI
+  // for the moment between "<shiny-tool-result …></shiny-tool-result> emitted"
+  // and "closing fence emitted", because the streaming path re-routes the whole
+  // accumulated block on every render.
+  //
+  // Applying it once the message is final was deliberately *not* done: real
+  // tool elements arrive as `markdown` content blocks (preloaded/restored
+  // transcripts concatenate a whole turn into one block), so one stray ``` in
+  // prose would permanently suppress every real tool element after it — the
+  // same risk that keeps code-span pairing to a single line. The cost is that a
+  // response cancelled while a fence is still open finalizes with the rule off
+  // and the example pops into tool UI then; that matches today's behavior for
+  // that rare case, while the common case never flickers at all.
+  if (unclosedFenceRunsToEnd) {
+    const isClosed = (idx: number) =>
+      ranges.some(([start, end]) => idx >= start && idx < end)
+    for (const m of content.matchAll(CODE_FENCE_OPEN_RE)) {
+      if (isClosed(m.index)) continue
+      ranges.push([m.index, content.length])
+      break
+    }
   }
   // Inline code spans. Per CommonMark a span opens with a run of N backticks and
   // closes at the next run of exactly N, so a single-backtick pattern misses
@@ -423,14 +454,16 @@ function attrTruthy(attrs: Record<string, string>, name: string): boolean {
 // Parse all complete tool custom elements from a content string, in order. A
 // trailing incomplete element (e.g. mid-stream) stops the scan — it is left as
 // prose until its closing tag arrives. In markdown, tags written inside a code
-// fence or inline code span are literal examples, not elements to route.
+// fence or inline code span are literal examples, not elements to route; while
+// streaming, a still-unclosed trailing fence counts as one (see `codeRanges`).
 function parseToolElements(
   content: string,
   contentType: ContentType,
+  streaming = false,
 ): ParsedToolElement[] {
   const els: ParsedToolElement[] = []
   const isInsideFence =
-    contentType === "markdown" ? codeRanges(content) : () => false
+    contentType === "markdown" ? codeRanges(content, streaming) : () => false
   TOOL_TAG_RE.lastIndex = 0
   let m: RegExpExecArray | null
   while ((m = TOOL_TAG_RE.exec(content)) !== null) {
@@ -590,10 +623,15 @@ function makeToolLoopBlock(
 /**
  * Pure content router: split content blocks around runs of tool elements,
  * emitting ToolLoopBlocks. Non-tool messages take the cheap identity path.
+ *
+ * Pass `streaming` when routing a message that is still arriving: an unclosed
+ * trailing code fence then shields the text after it, so a documented tool-tag
+ * example does not render as live tool UI before its closing fence arrives.
  */
 export function routeToolBlocks(
   blocks: MessageBlock[],
   grouping: ToolGrouping,
+  streaming = false,
 ): MessageBlock[] {
   const out: MessageBlock[] = []
 
@@ -602,7 +640,7 @@ export function routeToolBlocks(
       out.push(block)
       return
     }
-    const els = parseToolElements(block.content, block.contentType)
+    const els = parseToolElements(block.content, block.contentType, streaming)
     if (els.length === 0) {
       out.push(block)
       return
