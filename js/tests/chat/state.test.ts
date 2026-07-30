@@ -1816,6 +1816,34 @@ describe("routeToolBlocks (tool content router)", () => {
     expect(l[0]!.groups[0]!.calls[0]!.requestId).toBe("1")
   })
 
+  it("leaves tool tags inside a fence indented up to 3 spaces as literal prose", () => {
+    // CommonMark allows 3 leading spaces on either fence, which is how an
+    // example nested in a list item or blockquote is written.
+    for (const pad of [" ", "  ", "   "]) {
+      const fenced = `- Example:\n\n${pad}\`\`\`html\n${pad}${res("1", "a")}\n${pad}\`\`\`\n`
+      expect(loops(route(fenced))).toHaveLength(0)
+    }
+  })
+
+  it("treats a fence indented 4+ spaces as an indented code block, not a fence", () => {
+    // Four spaces is an indented code block per CommonMark, and detecting one
+    // needs block context this raw-string pass lacks — so no range is produced
+    // and the sample still routes. Documented here so the behavior is a choice.
+    const fenced = "    ```html\n    " + res("1", "a") + "\n    ```\n"
+    expect(loops(route(fenced))).toHaveLength(1)
+  })
+
+  it("closes a fence with a longer run of backticks", () => {
+    // The closer only has to be at least as long as the opener.
+    const fenced = "```html\n" + res("1", "a") + "\n````\n"
+    expect(loops(route(fenced))).toHaveLength(0)
+  })
+
+  it("leaves tool tags inside a tilde fence as literal prose", () => {
+    const fenced = "~~~html\n" + res("1", "a") + "\n~~~\n"
+    expect(loops(route(fenced))).toHaveLength(0)
+  })
+
   it("still routes a real tool element alongside a fenced example", () => {
     const mixed = "```html\n" + res("1", "a") + "\n```\n\n" + res("2", "a")
     const l = loops(route(mixed))

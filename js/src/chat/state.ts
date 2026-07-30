@@ -259,7 +259,18 @@ const THINKING_TAG_RE = /<thinking>\n?([\s\S]*?)\n?<\/thinking>\n*/g
 // tags): a message documenting those tags should render the example verbatim.
 function codeRanges(content: string): (idx: number) => boolean {
   const ranges: Array<[number, number]> = []
-  const fenceRe = /^(`{3,}|~{3,}).*\n([\s\S]*?)^\1\s*$/gm
+  // Per CommonMark both fences may be indented up to 3 spaces (so an example
+  // nested in a list or blockquote still counts), and the closer only has to be
+  // *at least* as long as the opener — hence `\1\2*` rather than a bare `\1`,
+  // which would leave a ``` block closed by ```` open forever. Four or more
+  // leading spaces is an indented code block, not a fence, and is deliberately
+  // not matched here: recognizing one needs block context (blank lines,
+  // paragraph continuation) that this raw-string pass does not have.
+  // An *unclosed* fence is likewise left unmatched, even though CommonMark runs
+  // it to the end of the document. One stray ``` in prose would otherwise
+  // swallow the rest of the message and silently stop real tool elements from
+  // rendering — the same risk that keeps code-span pairing to a single line.
+  const fenceRe = /^ {0,3}((`|~)\2{2,}).*\n[\s\S]*?^ {0,3}\1\2*[ \t]*$/gm
   for (const m of content.matchAll(fenceRe)) {
     ranges.push([m.index, m.index + m[0].length])
   }
