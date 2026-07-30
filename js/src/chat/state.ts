@@ -36,9 +36,13 @@ export type ToolGrouping = "none" | "tool" | "all"
  */
 export interface ToolCallItem {
   /**
-   * The server's `request-id`, used to pair a request with its result and to
-   * hide a superseded request. Empty when the element omits it, and not
-   * guaranteed unique across the transcript — use `localId` for React keys.
+   * The server-emitted `request-id`, unique per emitted call: it pairs a request
+   * with its result and keys the hiding of a request its result supersedes.
+   * Hiding is transcript-global on purpose — a result routinely lands in a
+   * different message than its request (preloaded or restored transcripts the
+   * per-message router cannot collapse), so a message-scoped key would never
+   * match. It is `""` when the element omits the attribute, which is why it
+   * cannot serve as a React key and why `localId` exists.
    */
   requestId: string
   /** Loop-local unique id: the `request-id`, or a synthetic one when absent. */
