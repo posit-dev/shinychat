@@ -1,5 +1,9 @@
 import { memo, useMemo, useState } from "react"
-import { routeToolBlocks, type ChatMessageData } from "./state"
+import {
+  routeToolBlocks,
+  type ChatMessageData,
+  type MessageBlock,
+} from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { ThinkingDisplay } from "./ThinkingDisplay"
 import { ToolGroup } from "./ToolGroup"
@@ -64,9 +68,39 @@ export const ChatMessage = memo(function ChatMessage({
     [message.streaming, message.blocks, toolGrouping],
   )
 
+  // Drop running requests whose result has rendered elsewhere (hidden via
+  // hide_tool_request), then any group left empty. Done here rather than in the
+  // render pass so `hasContent` — and the decision to render a row at all —
+  // reflect what is actually visible. The original block index is kept so React
+  // keys stay stable when a block drops out.
+  const visibleBlocks = useMemo(() => {
+    const out: { block: MessageBlock; index: number }[] = []
+    blocks.forEach((block, index) => {
+      if (block.type !== "tool_loop") {
+        out.push({ block, index })
+        return
+      }
+      const groups = block.groups
+        .map((g) => {
+          const calls = g.calls.filter(
+            (c) =>
+              !(c.status === "running" && hiddenToolRequests.has(c.requestId)),
+          )
+          return calls.length === g.calls.length
+            ? g
+            : { ...g, calls, count: calls.length }
+        })
+        .filter((g) => g.calls.length > 0)
+      if (groups.length > 0) out.push({ block: { ...block, groups }, index })
+    })
+    return out
+  }, [blocks, hiddenToolRequests])
+
   const hasContent =
     message.content.trim() !== "" ||
-    blocks.some((b) => b.type === "thinking" || b.type === "tool_loop") ||
+    visibleBlocks.some(
+      ({ block }) => block.type === "thinking" || block.type === "tool_loop",
+    ) ||
     (message.attachments?.length ?? 0) > 0 ||
     message.cancelled
 
@@ -84,6 +118,12 @@ export const ChatMessage = memo(function ChatMessage({
       iconHtml = hasContent ? (resolved ?? robot) : dots_fade
     }
   }
+
+  // Nothing left to render — e.g. a request-only message whose result rendered
+  // in another message and superseded it. Emit no row at all; an icon or the
+  // streaming dots would read as a stray empty turn. The pending-response
+  // placeholder and in-flight streams are legitimately empty, so they stay.
+  if (!hasContent && !message.streaming && !message.isPlaceholder) return null
 
   const leadingCommand = isUser
     ? parseLeadingCommand(message.content, slashCommands)
@@ -167,7 +207,7 @@ export const ChatMessage = memo(function ChatMessage({
         {/* User attachments sit above their text (mirroring the input tray);
             assistant attachments come after the prose that introduces them. */}
         {isUser && attachmentsEl}
-        {blocks.map((block, i) => {
+        {visibleBlocks.map(({ block, index: i }) => {
           if (block.type === "thinking") {
             return (
               <ThinkingDisplay
@@ -180,26 +220,9 @@ export const ChatMessage = memo(function ChatMessage({
           const isLast = i === blocks.length - 1
 
           if (block.type === "tool_loop") {
-            // Drop running requests whose result has rendered elsewhere (hidden
-            // via hide_tool_request), then any group left empty.
-            const groups = block.groups
-              .map((g) => {
-                const calls = g.calls.filter(
-                  (c) =>
-                    !(
-                      c.status === "running" &&
-                      hiddenToolRequests.has(c.requestId)
-                    ),
-                )
-                return calls.length === g.calls.length
-                  ? g
-                  : { ...g, calls, count: calls.length }
-              })
-              .filter((g) => g.calls.length > 0)
-            if (groups.length === 0) return null
             return (
               <div key={i} className="shinychat-tool-loop">
-                {groups.map((group) => (
+                {block.groups.map((group) => (
                   <ToolGroup key={group.key} group={group} />
                 ))}
               </div>

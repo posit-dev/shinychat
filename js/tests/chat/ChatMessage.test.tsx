@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import { render, screen, fireEvent } from "@testing-library/react"
 import { ChatMessage } from "../../src/chat/ChatMessage"
 import type { ChatMessageData } from "../../src/chat/state"
+import { ChatToolContext } from "../../src/chat/context"
 
 function userMessage(
   overrides: Partial<ChatMessageData> = {},
@@ -233,11 +234,80 @@ describe("ChatMessage attachments", () => {
         message={{
           ...userMessage({ content: "", blocks: [] }),
           role: "assistant",
+          isPlaceholder: true,
         }}
       />,
     )
     const icon = container.querySelector(".message-icon")
     expect(icon!.querySelector(".spinner_S1WN")).not.toBeNull()
+  })
+
+  it("still shows the loading dots for an empty streaming message", () => {
+    const { container } = render(
+      <ChatMessage
+        message={{
+          ...userMessage({ content: "", blocks: [] }),
+          role: "assistant",
+          streaming: true,
+        }}
+      />,
+    )
+    const icon = container.querySelector(".message-icon")
+    expect(icon!.querySelector(".spinner_S1WN")).not.toBeNull()
+  })
+
+  it("renders no row for a settled message with nothing to show", () => {
+    const { container } = render(
+      <ChatMessage
+        message={{
+          ...userMessage({ content: "", blocks: [] }),
+          role: "assistant",
+        }}
+      />,
+    )
+    expect(container.firstChild).toBeNull()
+  })
+
+  it("renders no row when every tool call was superseded by a result elsewhere", () => {
+    // A request-only message whose result rendered in a later message: the
+    // request is hidden via hide_tool_request, emptying the only group. The row
+    // must vanish entirely rather than linger as a bare icon or dots.
+    const message: ChatMessageData = {
+      ...userMessage({ content: "", blocks: [] }),
+      role: "assistant",
+      blocks: [
+        {
+          type: "tool_loop",
+          content: "",
+          contentType: "markdown",
+          grouping: "tool",
+          groups: [
+            {
+              key: "tool:search",
+              toolName: "search",
+              titleSettled: false,
+              count: 1,
+              calls: [
+                {
+                  requestId: "req-1",
+                  localId: "req-1",
+                  toolName: "search",
+                  status: "running",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }
+    const { container } = render(
+      <ChatToolContext.Provider
+        value={{ hiddenToolRequests: new Set(["req-1"]) }}
+      >
+        <ChatMessage message={message} />
+      </ChatToolContext.Provider>,
+    )
+    expect(container.firstChild).toBeNull()
   })
 
   it('removes the icon entirely when the assistant icon is "" (icon_assistant=False)', () => {
