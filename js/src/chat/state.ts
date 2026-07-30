@@ -391,6 +391,25 @@ function splitThinkingBlocks(
 
 const TOOL_TAG_RE = /<shiny-tool-(request|result)\b/g
 const TOOL_MARKER = "<shiny-tool-"
+
+// The content types whose text is server-authored markup worth scanning for
+// tool elements: "html" is what live streaming appends emit, and "markdown" is
+// what preloaded `chat_ui(messages=)` transcripts arrive as (<shiny-chat-message>
+// emits no content-type attribute). "text" is excluded because it means
+// "display literally" — MarkdownContent hands it back verbatim as a text child,
+// the same reason splitThinkingBlocks skips non-markdown — so tool markup in it
+// is a sample, not a call. No first-party server path emits a real tool element
+// as "text": R only produces thinking/html/markdown and Python's ChatMessage
+// only markdown/html; "text" belongs to MarkdownStream, which never routes.
+// "thinking" never reaches here — splitThinkingBlocks turns it into a
+// ThinkingBlock first.
+//
+// An allow-list rather than a `!== "text"` deny-check on purpose: a future
+// ContentType then has to opt in, instead of being routed by accident.
+const ROUTABLE_CONTENT_TYPES: ReadonlySet<ContentType> = new Set([
+  "markdown",
+  "html",
+])
 const ATTR_RE =
   /([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+)))?/g
 
@@ -661,7 +680,11 @@ export function routeToolBlocks(
   const out: MessageBlock[] = []
 
   blocks.forEach((block, blockIndex) => {
-    if (block.type !== "content" || !block.content.includes(TOOL_MARKER)) {
+    if (
+      block.type !== "content" ||
+      !ROUTABLE_CONTENT_TYPES.has(block.contentType) ||
+      !block.content.includes(TOOL_MARKER)
+    ) {
       out.push(block)
       return
     }

@@ -11,6 +11,7 @@ import {
   type ToolLoopBlock,
   type ToolGrouping,
 } from "../../src/chat/state"
+import type { ContentType } from "../../src/transport/types"
 import { uuid } from "../../src/utils/uuid"
 
 vi.mock("../../src/utils/uuid")
@@ -2102,12 +2103,12 @@ describe("routeToolBlocks (tool content router)", () => {
   it("does NOT merge adjacent tool loops from segments with different content types", () => {
     const input: MessageBlock[] = [
       { type: "content", content: res("1", "X"), contentType: "markdown" },
-      { type: "content", content: res("2", "X"), contentType: "text" },
+      { type: "content", content: res("2", "X"), contentType: "html" },
     ]
     const blocks = routeToolBlocks(input, "tool", "assistant")
     expect(blocks.map((b) => b.type)).toEqual(["tool_loop", "tool_loop"])
     expect((blocks[0] as ToolLoopBlock).contentType).toBe("markdown")
-    expect((blocks[1] as ToolLoopBlock).contentType).toBe("text")
+    expect((blocks[1] as ToolLoopBlock).contentType).toBe("html")
     // Each loop keeps only its own call, rather than the two being combined.
     expect(
       (blocks[0] as ToolLoopBlock).groups.flatMap((g) => g.calls),
@@ -2143,6 +2144,33 @@ describe("routeToolBlocks (tool content router)", () => {
       const out = routeToolBlocks(userBlocks, "tool", "system")
       expect(loops(out)).toHaveLength(1)
     })
+  })
+
+  describe("content-type allow-list", () => {
+    const markup = `${req("1", "search")}${res("1", "search")}`
+    const blocksOfType = (contentType: ContentType): MessageBlock[] => [
+      { type: "content", content: markup, contentType },
+    ]
+
+    it('does not route a "text"-typed block', () => {
+      // "text" means "display literally", so tool markup in it is a sample.
+      const input = blocksOfType("text")
+      const out = routeToolBlocks(input, "tool", "assistant")
+      expect(out).toEqual(input)
+      expect(loops(out)).toHaveLength(0)
+    })
+
+    it.each(["markdown", "html"] as const)(
+      'still routes a "%s"-typed block',
+      (contentType) => {
+        const out = routeToolBlocks(
+          blocksOfType(contentType),
+          "tool",
+          "assistant",
+        )
+        expect(loops(out)).toHaveLength(1)
+      },
+    )
   })
 })
 
