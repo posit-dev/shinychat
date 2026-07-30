@@ -681,10 +681,10 @@ export function routeToolBlocks(
   // content in system messages. Please don't "tidy" this into ===.
   //
   // Deliberately *not* handled here: a user block whose contentType is "html"
-  // sidesteps the same escaping inside MarkdownContent and renders tool cards
-  // through the bridges regardless of this router. That path is pre-existing
-  // and server-controlled (a user message is only html-typed if the app says
-  // so), so it stays out of scope.
+  // sidesteps the same escaping inside MarkdownContent, so leaving the tags in
+  // place is not enough to keep them from reaching the tool bridges. That half
+  // is covered in ChatMessage, which withholds the tool tag map entirely for
+  // user messages — this router covers markdown, that covers html.
   if (role === "user") return blocks
 
   const out: MessageBlock[] = []

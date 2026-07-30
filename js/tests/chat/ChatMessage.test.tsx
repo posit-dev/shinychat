@@ -519,3 +519,32 @@ describe("ChatMessage streaming tool routing", () => {
     expect(container.querySelector(".shinychat-tool-loop")).not.toBeNull()
   })
 })
+
+describe("ChatMessage html-typed tool markup", () => {
+  const typed =
+    '<shiny-tool-result data-shinychat-react request-id="req-1" tool-name="get_weather" status="success" value="Sunny" value-type="text"></shiny-tool-result>'
+
+  function htmlMessage(role: ChatMessageData["role"]): ChatMessageData {
+    return userMessage({
+      role,
+      content: typed,
+      blocks: [{ type: "content", content: typed, contentType: "html" }],
+    })
+  }
+
+  it("renders no tool UI for html-typed tool markup in a user message", () => {
+    // The router's role gate leaves the tags as text but cannot stop them from
+    // reaching the bridges: html content skips remarkEscapeHtml/rehypeSanitize.
+    // ChatMessage withholds the tag map for user messages instead.
+    const { container } = render(<ChatMessage message={htmlMessage("user")} />)
+    expect(container.querySelector(".shiny-tool-result")).toBeNull()
+    expect(container.querySelector(".shinychat-tool-group")).toBeNull()
+  })
+
+  it("still renders tool UI for html-typed tool markup in an assistant message", () => {
+    const { container } = render(
+      <ChatMessage message={htmlMessage("assistant")} />,
+    )
+    expect(container.querySelector(".shiny-tool-result")).not.toBeNull()
+  })
+})

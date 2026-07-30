@@ -69,6 +69,14 @@ export const ChatMessage = memo(function ChatMessage({
     [message.streaming, message.blocks, message.role, toolGrouping],
   )
 
+  // Tool UI is never legitimate in a user message, so don't hand the bridges to
+  // one. Defense in depth alongside the router's role gate: the router covers
+  // markdown (it just leaves the tags as text), but an html-typed user block
+  // skips the router's effect entirely and goes through `htmlProcessor` — no
+  // remarkEscapeHtml, no rehypeSanitize — so without this the tags would still
+  // resolve to real tool cards. Withholding the map leaves them inert elements.
+  const tagToComponentMap = isUser ? undefined : chatTagToComponentMap
+
   // Drop running requests whose result has rendered elsewhere (hidden via
   // hide_tool_request), then any group left empty. Done here rather than in the
   // render pass so `hasContent` — and the decision to render a row at all —
@@ -252,7 +260,7 @@ export const ChatMessage = memo(function ChatMessage({
                 contentType={block.contentType}
                 role={message.role}
                 streaming={message.streaming && isLast}
-                tagToComponentMap={chatTagToComponentMap}
+                tagToComponentMap={tagToComponentMap}
                 prefix={chip}
               />
             )
@@ -265,7 +273,7 @@ export const ChatMessage = memo(function ChatMessage({
               contentType={block.contentType}
               role={message.role}
               streaming={message.streaming && isLast}
-              tagToComponentMap={chatTagToComponentMap}
+              tagToComponentMap={tagToComponentMap}
             />
           )
           if (block.contentType === "text") {
