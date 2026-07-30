@@ -2058,6 +2058,57 @@ describe("routeToolBlocks (tool content router)", () => {
     expect(groups[0]!.count).toBe(2)
   })
 
+  // Icons follow the same static/dynamic split as titles: the request carries
+  // the tool's definition icon, the result carries its own (which the servers
+  // default to the definition icon when the result sets none).
+  const webIcon = '<svg class="icon-web"></svg>'
+  const pinIcon = '<svg class="icon-pin"></svg>'
+
+  it("keeps the request's definition icon separate from the result's icon", () => {
+    const content =
+      req("1", "search", `icon='${webIcon}'`) +
+      res("1", "search", `icon='${pinIcon}'`)
+    const call = loops(route(content))[0]!.groups[0]!.calls[0]!
+    expect(call.definitionIcon).toBe(webIcon)
+    expect(call.icon).toBe(pinIcon)
+  })
+
+  it("a single call's result icon wins over its definition icon", () => {
+    const content =
+      req("1", "search", `icon='${webIcon}'`) +
+      res("1", "search", `icon='${pinIcon}'`)
+    expect(loops(route(content))[0]!.groups[0]!.icon).toBe(pinIcon)
+  })
+
+  it("falls back to the definition icon for a single call with no result yet", () => {
+    const content = req("1", "search", `icon='${webIcon}'`)
+    expect(loops(route(content))[0]!.groups[0]!.icon).toBe(webIcon)
+  })
+
+  it("an aggregated group keeps the definition icon, never a call's result icon", () => {
+    const content =
+      req("1", "search", `icon='${webIcon}'`) +
+      res("1", "search", `icon='${pinIcon}'`) +
+      req("2", "search", `icon='${webIcon}'`) +
+      res("2", "search", `icon='${webIcon}'`)
+    const g = loops(route(content, "tool"))[0]!.groups[0]!
+    expect(g.count).toBe(2)
+    // The result-specific icon belongs to call 1 alone, so it must not stand in
+    // as the identity of both calls; it shows on that call's own row instead.
+    expect(g.icon).toBe(webIcon)
+  })
+
+  it("leaves an aggregated group iconless when only its results carry icons", () => {
+    const content =
+      res("1", "search", `icon='${webIcon}'`) +
+      res("2", "search", `icon='${pinIcon}'`)
+    const g = loops(route(content, "tool"))[0]!.groups[0]!
+    expect(g.count).toBe(2)
+    // No definition icon to share, and neither result's icon speaks for the
+    // other, so the header falls through to the generic dot at render time.
+    expect(g.icon).toBeUndefined()
+  })
+
   it("gives a homogeneous group exactly one segment carrying its own identity", () => {
     const content =
       req("1", "search", 'tool-title="Searching"') +

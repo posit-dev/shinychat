@@ -122,6 +122,41 @@ test_that("ContentToolRequest handles tool annotations", {
   expect_equal(res$tool_title, "Weather Tool")
 })
 
+test_that("ContentToolRequest emits the tool definition icon and its dependencies", {
+  # The client compares this static icon against the result's own icon to tell a
+  # result-specific icon from the tool's shared identity, so the request has to
+  # carry it even though the request card itself doesn't render an icon.
+  local_shinychat_tool_display(opt = "rich")
+
+  icon_dep <- htmltools::htmlDependency(
+    name = "test",
+    version = "1.0",
+    src = "."
+  )
+
+  tool <- new_tool(
+    annotations = list(icon = htmltools::tags$i(class = "icon", icon_dep))
+  )
+  res <- contents_shinychat(new_tool_request(tool = tool))
+
+  expect_equal(res$icon, tool@annotations$icon)
+
+  res_tags <- as.tags(res)
+  expect_equal(format(res_tags$attribs$icon), '<i class="icon"></i>')
+  expect_true(
+    list(icon_dep) %in% htmltools::findDependencies(res_tags$children)
+  )
+})
+
+test_that("ContentToolRequest emits no icon when the tool has no icon annotation", {
+  local_shinychat_tool_display(opt = "rich")
+
+  res <- contents_shinychat(new_tool_request(tool = new_tool()))
+
+  expect_null(res$icon)
+  expect_null(as.tags(res)$attribs$icon)
+})
+
 test_that("ContentToolResult requires an associated `@request` property", {
   expect_snapshot(
     error = TRUE,

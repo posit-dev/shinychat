@@ -209,6 +209,7 @@ def test_tool_annotation_non_dict_extra_falls_back_to_top_level():
 
     assert 'grouping="all"' in request_html
     assert 'grouping="all"' in result_html
+    assert 'icon="&lt;span&gt;i&lt;/span&gt;"' in request_html
     assert 'icon="&lt;span&gt;i&lt;/span&gt;"' in result_html
 
 
@@ -221,8 +222,50 @@ def test_tool_annotation_non_dict_extra_omits_grouping_and_icon():
 
     assert "grouping=" not in request_html
     assert "grouping=" not in result_html
+    assert "icon=" not in request_html
     assert "icon=" not in result_html
     assert 'tool-title="My Tool"' in result_html
+
+
+# ---------------------------------------------------------------------------
+# 3b. Definition icon on the request, so the client can spot a result-specific
+#     icon (the request card itself renders no icon).
+# ---------------------------------------------------------------------------
+
+
+def test_tool_annotation_icon_propagates_to_request_and_result():
+    tool = _tool(annotations={"extra": {"icon": "<span>i</span>"}})
+    request = _request(tool=tool)
+    result = _result(request)
+
+    escaped = 'icon="&lt;span&gt;i&lt;/span&gt;"'
+    assert escaped in _render(tool_request_contents(request))
+    # The result echoes the definition icon when it sets none of its own, so the
+    # client sees the two as equal and treats the icon as the tool's identity.
+    assert escaped in _render(tool_result_contents(result))
+
+
+def test_tool_result_display_icon_differs_from_the_request_icon():
+    tool = _tool(annotations={"extra": {"icon": "<span>i</span>"}})
+    request = _request(tool=tool)
+    result = _result(
+        request, extra={"display": ToolResultDisplay(icon="<span>j</span>")}
+    )
+
+    # The request keeps the definition icon while the result carries its own:
+    # the difference is exactly what makes it result-specific on the client.
+    assert 'icon="&lt;span&gt;i&lt;/span&gt;"' in _render(
+        tool_request_contents(request)
+    )
+    assert 'icon="&lt;span&gt;j&lt;/span&gt;"' in _render(
+        tool_result_contents(result)
+    )
+
+
+def test_tool_request_omits_icon_without_an_annotation():
+    request = _request(tool=_tool(annotations={"title": "My Tool"}))
+
+    assert "icon=" not in _render(tool_request_contents(request))
 
 
 # ---------------------------------------------------------------------------

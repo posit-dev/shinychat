@@ -355,11 +355,18 @@ def tool_request_contents(x: "ContentToolRequest") -> Tagifiable:
         intent = x.arguments.get("_intent")
 
     tool_title = None
+    icon = None
     grouping = None
     if x.tool and x.tool.annotations:
+        extra = _annotation_extra(x.tool.annotations)
         tool_title = x.tool.annotations.get("title")
-        grouping = as_grouping(_annotation_extra(x.tool.annotations).get("grouping"))
+        icon = extra.get("icon") or x.tool.annotations.get("icon")
+        grouping = as_grouping(extra.get("grouping"))
         grouping = grouping or as_grouping(x.tool.annotations.get("grouping"))
+
+    # Icon strings are HTML and never get escaped
+    if icon and isinstance(icon, str):
+        icon = HTML(icon)
 
     return ToolRequestComponent(
         request_id=x.id,
@@ -367,6 +374,10 @@ def tool_request_contents(x: "ContentToolRequest") -> Tagifiable:
         arguments=json.dumps(x.arguments),
         intent=intent,
         tool_title=tool_title,
+        # The tool *definition* icon. The result element sends the result's own
+        # icon (falling back to this one), so the client needs both to tell a
+        # result-specific icon from the tool's shared identity.
+        icon=icon,
         grouping=grouping,
     )
 

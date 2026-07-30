@@ -241,6 +241,10 @@ S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
     arguments = jsonlite::toJSON(content@arguments, auto_unbox = TRUE),
     intent = content@arguments[["_intent"]],
     tool_title = if (!is.null(tool)) tool@annotations$title,
+    # The tool *definition* icon. The result element sends the result's own icon
+    # (falling back to this one), so the client needs both to tell a
+    # result-specific icon from the tool's shared identity.
+    icon = if (!is.null(tool)) tool@annotations$icon,
     grouping = if (!is.null(tool)) as_grouping(tool@annotations$grouping)
   )
 }

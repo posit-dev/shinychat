@@ -388,6 +388,15 @@ describe("ToolGroup", () => {
   // so these reuse one fixture and vary only the icons and statuses.
   const webIcon = '<svg class="icon-web"></svg>'
   const pageIcon = '<svg class="icon-page"></svg>'
+  const pinIcon = '<svg class="icon-pin"></svg>'
+  // A settled call whose tool has an icon and whose result added none: the
+  // servers send the definition icon on the request and echo it on the result,
+  // so both fields carry it and nothing reads as result-specific.
+  function iconedCall(
+    partial: Partial<ToolCallItem> & { requestId: string; icon: string },
+  ): ToolCallItem {
+    return call({ definitionIcon: partial.icon, ...partial })
+  }
   function mixedGroup(calls: ToolCallItem[]): ToolCallGroup {
     return group({
       key: "all",
@@ -414,8 +423,8 @@ describe("ToolGroup", () => {
           title: "Searched",
           icon: webIcon,
           calls: [
-            call({ requestId: "a", label: "one", icon: webIcon }),
-            call({ requestId: "b", label: "two", icon: webIcon }),
+            iconedCall({ requestId: "a", label: "one", icon: webIcon }),
+            iconedCall({ requestId: "b", label: "two", icon: webIcon }),
           ],
         })}
       />,
@@ -498,6 +507,122 @@ describe("ToolGroup", () => {
     expect(row.className).toContain("text-danger")
     expect(row.querySelector("svg")).toBeTruthy()
     expect(row.querySelector(".icon-page")).toBeNull()
+  })
+
+  it("gives a row its result's own icon over the status glyph in a homogeneous group", () => {
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          title: "Searched",
+          // The header keeps the tool's definition icon: the result icon on
+          // call b speaks for that call alone.
+          icon: webIcon,
+          calls: [
+            iconedCall({ requestId: "a", label: "one", icon: webIcon }),
+            call({
+              requestId: "b",
+              label: "two",
+              definitionIcon: webIcon,
+              icon: pinIcon,
+            }),
+          ],
+        })}
+      />,
+    )
+    expect(
+      container.querySelector(".shinychat-tool-group__glyph .icon-web"),
+    ).toBeTruthy()
+    fireEvent.click(
+      container.querySelector(".shinychat-tool-group__row") as Element,
+    )
+    const rows = container.querySelectorAll(".shinychat-tool-call-row__status")
+    // Row a said nothing specific about itself, so it keeps reporting status.
+    expect(rows[0]!.querySelector(".icon-pin")).toBeNull()
+    expect(rows[0]!.querySelector("svg")).toBeTruthy()
+    expect(rows[1]!.querySelector(".icon-pin")).toBeTruthy()
+  })
+
+  it("gives a row its result's own icon over its tool icon in a mixed group", () => {
+    const { container } = render(
+      <ToolGroup
+        group={mixedGroup([
+          iconedCall({ requestId: "a", toolName: "search_web", icon: webIcon }),
+          call({
+            requestId: "b",
+            toolName: "read_page",
+            definitionIcon: pageIcon,
+            icon: pinIcon,
+          }),
+        ])}
+      />,
+    )
+    fireEvent.click(
+      container.querySelector(".shinychat-tool-group__row") as Element,
+    )
+    const rows = container.querySelectorAll(".shinychat-tool-call-row__status")
+    expect(rows[0]!.querySelector(".icon-web")).toBeTruthy()
+    expect(rows[1]!.querySelector(".icon-pin")).toBeTruthy()
+    expect(rows[1]!.querySelector(".icon-page")).toBeNull()
+  })
+
+  it("keeps a failed row's result icon, with the red tint and the 'failed' note", () => {
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          title: "Searched",
+          icon: webIcon,
+          calls: [
+            iconedCall({ requestId: "a", label: "one", icon: webIcon }),
+            call({
+              requestId: "b",
+              label: "two",
+              definitionIcon: webIcon,
+              icon: pinIcon,
+              status: "error",
+            }),
+          ],
+        })}
+      />,
+    )
+    fireEvent.click(
+      container.querySelector(".shinychat-tool-group__row") as Element,
+    )
+    const row = container.querySelectorAll(".shinychat-tool-call-row")[1]!
+    const glyph = row.querySelector(".shinychat-tool-call-row__status")!
+    // The icon replaces the exclamation, so failure has to stay legible through
+    // the tint on that icon plus the text note.
+    expect(glyph.querySelector(".icon-pin")).toBeTruthy()
+    expect(glyph.className).toContain("text-danger")
+    expect(
+      row.querySelector(".shinychat-tool-group__failed")?.textContent,
+    ).toBe("failed")
+  })
+
+  it("keeps the spinner on a running row over a result icon", () => {
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          title: "Searched",
+          icon: webIcon,
+          calls: [
+            iconedCall({ requestId: "a", label: "one", icon: webIcon }),
+            call({
+              requestId: "b",
+              label: "two",
+              definitionIcon: webIcon,
+              icon: pinIcon,
+              status: "running",
+            }),
+          ],
+        })}
+      />,
+    )
+    fireEvent.click(
+      container.querySelector(".shinychat-tool-group__row") as Element,
+    )
+    const rows = container.querySelectorAll(".shinychat-tool-call-row__status")
+    expect(rows[1]!.querySelector(".spinner-border")).toBeTruthy()
+    expect(rows[1]!.querySelector(".icon-pin")).toBeNull()
   })
 
   it("uses a dictionary-style argument preview as the per-call label fallback", () => {

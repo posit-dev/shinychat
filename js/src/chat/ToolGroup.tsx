@@ -103,6 +103,15 @@ function useExpandable(
   return [open, setOpen]
 }
 
+// The icon this particular result returned, as opposed to the one its tool
+// definition carries. The servers emit the result's `icon` as
+// `display.icon ?? annotations.icon`, so it identifies *this call* only when it
+// differs from the definition icon the request element carries.
+function resultSpecificIcon(item: ToolCallItem): string | undefined {
+  if (!item.icon || item.icon === item.definitionIcon) return undefined
+  return item.icon
+}
+
 function statusGlyphHtml(status: ToolCallItem["status"]): string {
   if (status === "running") return spinnerHtml
   if (status === "error") return exclamationCircleFill
@@ -297,15 +306,21 @@ function ToolCallRow({
         ? " running"
         : ""
   // The glyph carries identity where identity varies and status where identity
-  // is constant. In a group spanning several tools the header can't name one,
-  // so each row wears its own tool's icon; a running call still shows the
-  // spinner (progress is the more urgent fact), and a tool with no icon falls
-  // back to its status glyph. `statusClass` still applies: a failed row tints
-  // whichever glyph it ends up with.
+  // is constant. A running call always shows the spinner (progress is the more
+  // urgent fact). Otherwise an icon this result returned for itself wins — it is
+  // the most specific thing known about the call, and the group header can never
+  // show it. Failing that, a group spanning several tools has no header icon to
+  // name one, so each row wears its own tool's icon; a homogeneous group's rows
+  // keep pure status vocabulary. `statusClass` still applies: a failed row tints
+  // whichever glyph it ends up with, and it keeps the "failed" note below, so
+  // failure stays legible even when an icon replaces the exclamation.
   const glyphHtml =
-    heterogeneous && item.status !== "running"
-      ? item.icon || statusGlyphHtml(item.status)
-      : statusGlyphHtml(item.status)
+    item.status === "running"
+      ? spinnerHtml
+      : (resultSpecificIcon(item) ??
+        (heterogeneous
+          ? item.icon || item.definitionIcon || statusGlyphHtml(item.status)
+          : statusGlyphHtml(item.status)))
   // Not derived from `item.requestId`: it is optional, and a request can
   // render in a different message than its result before pairing settles.
   const contentId = `tool-call${useId()}`

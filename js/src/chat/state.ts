@@ -53,7 +53,14 @@ export interface ToolCallItem {
   title?: string
   /** Static (definition) title — from the request element's tool annotation. */
   definitionTitle?: string
+  /**
+   * Dynamic (result) icon — from the result element, which the servers emit as
+   * the result's own display icon falling back to the tool's annotation icon.
+   * It is *result-specific* only when it differs from `definitionIcon`.
+   */
   icon?: string
+  /** Static (definition) icon — from the request element's tool annotation. */
+  definitionIcon?: string
   label?: string
   valuePreview?: string
   intent?: string
@@ -547,11 +554,11 @@ function applyAttrsToItem(item: ToolCallItem, el: ParsedToolElement): void {
   const grp = a["grouping"]
   if (grp === "none" || grp === "tool" || grp === "all") item.grouping = grp
   if (a["intent"] !== undefined) item.intent = a["intent"]
-  if (a["icon"]) item.icon = a["icon"]
 
   if (el.tag === "request") {
-    // The request carries the static (definition) title.
+    // The request carries the static (definition) title and icon.
     if (a["tool-title"]) item.definitionTitle = a["tool-title"]
+    if (a["icon"]) item.definitionIcon = a["icon"]
     if (a["arguments"] !== undefined) item.arguments = a["arguments"]
     return
   }
@@ -560,6 +567,7 @@ function applyAttrsToItem(item: ToolCallItem, el: ParsedToolElement): void {
   // Tier-3 payload. The request supplies `arguments` (paired in the same
   // content string), so the result element doesn't carry them.
   if (a["tool-title"]) item.title = a["tool-title"]
+  if (a["icon"]) item.icon = a["icon"]
   item.status = a["status"] === "error" ? "error" : "success"
   if (a["label"] !== undefined) item.label = a["label"]
   if (a["value-preview"] !== undefined) item.valuePreview = a["value-preview"]
@@ -589,6 +597,19 @@ function resolveTitle(calls: ToolCallItem[]): string | undefined {
   return calls.length > 1
     ? (definitionTitle ?? resultTitle)
     : (resultTitle ?? definitionTitle)
+}
+
+// The resolved identity icon for a set of calls, mirroring `resolveTitle`. An
+// aggregated set keeps only the static (definition) icon, so a group can never
+// wear one call's result-specific icon as the identity of all of them (a result
+// icon shows on that call's own row instead). A lone call has no such conflict,
+// so it shows its own most-specific icon.
+function resolveIcon(calls: ToolCallItem[]): string | undefined {
+  const definitionIcon = calls.find(
+    (c) => c.definitionIcon !== undefined,
+  )?.definitionIcon
+  if (calls.length === 1) return calls[0]!.icon ?? definitionIcon
+  return definitionIcon
 }
 
 // Split a group's calls into per-tool header segments, in first-appearance
@@ -659,7 +680,7 @@ function groupCalls(
       toolName: gcalls[0]!.toolName,
       title: resolveTitle(gcalls),
       titleSettled: settled,
-      icon: firstDone?.icon ?? gcalls[0]!.icon,
+      icon: resolveIcon(gcalls),
       count: gcalls.length,
       calls: gcalls,
       segments: buildSegments(gcalls),
