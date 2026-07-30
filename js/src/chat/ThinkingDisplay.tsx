@@ -12,6 +12,9 @@ import { MarkdownContent } from "../markdown/MarkdownContent"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
 import { useChatStopScroll } from "./context"
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion"
+import { chevronDown } from "../utils/icons"
+
+const chevronDSIH = { __html: chevronDown }
 
 interface ThinkingDisplayProps {
   thinking: ThinkingBlock
@@ -92,7 +95,11 @@ function useFadingText(text: string): { visible: string; fading: boolean } {
   return { visible, fading }
 }
 
-function ChevronIcon({ expanded }: { expanded: boolean }) {
+// The thinking header's leading glyph. It sits in the same reserved slot a tool
+// row gives its identity/status glyph, and like those it is static: the
+// disclosure affordance is the trailing chevron. Reusing the chevron here keeps
+// the row from needing a glyph of its own invented for it.
+function ThinkingGlyph() {
   return (
     <svg
       className="shinychat-thinking-chevron"
@@ -101,7 +108,6 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
       viewBox="0 0 12 12"
       fill="none"
       aria-hidden="true"
-      {...(expanded ? { "data-expanded": "" } : {})}
     >
       <path
         d="M4.5 2.5L8 6L4.5 9.5"
@@ -198,7 +204,7 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
         aria-expanded={expanded}
         aria-controls={`thinking-content-${messageId}`}
       >
-        <ChevronIcon expanded={expanded} />
+        <ThinkingGlyph />
         <span
           className="shinychat-thinking-label"
           data-fading={labelFading || undefined}
@@ -216,6 +222,10 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
             <circle cx="4" cy="4" r="4" />
           </svg>
         )}
+        <span
+          className="shinychat-thinking-disclosure"
+          dangerouslySetInnerHTML={chevronDSIH}
+        />
       </button>
       <div
         className="shinychat-thinking-content"

@@ -548,51 +548,60 @@ shiny-chat-container:not([fill]) {
   --shinychat-thinking-header-color: var(--bs-secondary-color, #6c757d);
   --shinychat-thinking-border-color: var(--bs-border-color, #dee2e6);
   --shinychat-thinking-content-color: var(--bs-secondary-color, #6c757d);
-  // Chevron is 12px wide; border aligns to its horizontal center
-  --_chevron-center: 6px;
 
-  font-size: 0.875rem;
+  // Row geometry shared with the condensed tool rows, which define the same
+  // pseudo-private tokens (see `.shinychat-tool-group` in chat-tools.scss). A
+  // collapsed thinking header and a tool-call row are both subordinate activity
+  // lines in the transcript and should read as one quiet surface, so they share
+  // the sizing, dimming, glyph slot, and hover pill.
+  --_row-pad: 0.4rem;
+  --_row-glyph-width: 0.9em;
+
+  font-size: 0.8em;
 }
 
 .shinychat-thinking-header {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 2em;
+  padding: 0.25rem var(--_row-pad);
+  border-radius: 6px;
   background: none;
   border: none;
-  padding-block: 0.5em;
-  padding-inline: 0;
-  line-height: 1;
+  text-align: left;
   color: var(--shinychat-thinking-header-color);
   cursor: pointer;
-  font-size: inherit;
-  transition: color 0.15s;
-  border-radius: 4px;
+  font: inherit;
+  opacity: 0.65;
 
-  &:hover {
-    color: var(--bs-body-color, #212529);
-  }
-
+  // The focus ring is shared with the tool rows (see chat-tools.scss).
+  &:hover,
   &:focus-visible {
-    outline: 2px solid var(--bs-primary, #007bc2);
-    outline-offset: 2px;
+    background-color: rgba(var(--bs-emphasis-color-rgb), 0.05);
   }
 }
 
+// The leading glyph, in the slot a tool row reserves for identity/status. It is
+// static — the trailing `.shinychat-thinking-disclosure` is what rotates.
 .shinychat-thinking-chevron {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  transition: transform 0.2s ease;
+  width: var(--_row-glyph-width);
+  height: var(--_row-glyph-width);
+  flex: none;
+  display: block;
+}
 
-  &[data-expanded] {
-    transform: rotate(90deg);
-  }
+.shinychat-thinking-disclosure {
+  margin-inline-start: auto;
 }
 
 .shinychat-thinking-label {
-  font-weight: 500;
   transition: opacity 0.2s ease;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 
   &[data-fading] {
     opacity: 0;
@@ -634,8 +643,9 @@ shiny-chat-container:not([fill]) {
   display: grid;
   grid-template-rows: 0fr;
   transition: grid-template-rows 0.2s ease;
-  // Align left border with center of chevron
-  margin-left: calc(var(--_chevron-center) - 1px);
+  // Land the left rule on the leading glyph, the same way a tool row's drill-in
+  // rule does: past the row's inline padding, then half the glyph box.
+  margin-left: calc(var(--_row-pad) + var(--_row-glyph-width) / 2 - 1px);
   border-left: 2px solid var(--shinychat-thinking-border-color);
 
   &[data-expanded] {
@@ -668,7 +678,7 @@ shiny-chat-container:not([fill]) {
     animation: shinychat-thinking-dot-appear 0s ease 500ms forwards;
   }
 
-  .shinychat-thinking-chevron {
+  .shinychat-thinking-disclosure {
     transition: none;
   }
 

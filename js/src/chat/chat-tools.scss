@@ -370,8 +370,17 @@ $shinychat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 
   &:hover,
   &:focus-visible {
     background-color: rgba(var(--bs-emphasis-color-rgb), 0.05);
-    outline: none;
   }
+}
+
+// Keyboard focus needs more than the hover pill: a 5%-opacity background tint is
+// too low-contrast to stand alone as a focus indicator. Shared by every
+// subordinate activity row, the thinking header included, so they can't drift.
+.shinychat-tool-group__row:focus-visible,
+.shinychat-tool-call-row__summary:focus-visible,
+.shinychat-thinking-header:focus-visible {
+  outline: 2px solid var(--bs-primary, #007bc2);
+  outline-offset: 2px;
 }
 
 .shinychat-tool-group__glyph {
@@ -528,8 +537,12 @@ $shinychat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 
   color: var(--bs-tertiary-color);
 }
 
+// The trailing disclosure chevron. `.shinychat-thinking-disclosure` shares
+// these rules because a collapsed thinking header is the same kind of
+// subordinate activity row as a tool call, and the two must not drift apart.
 .shinychat-tool-group__chevron,
-.shinychat-tool-call-row__chevron {
+.shinychat-tool-call-row__chevron,
+.shinychat-thinking-disclosure {
   display: grid;
   place-items: center;
   width: 0.9em;
@@ -549,7 +562,8 @@ $shinychat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 
 }
 
 .shinychat-tool-group__row[aria-expanded="true"] .shinychat-tool-group__chevron,
-.shinychat-tool-call-row__summary[aria-expanded="true"] .shinychat-tool-call-row__chevron {
+.shinychat-tool-call-row__summary[aria-expanded="true"] .shinychat-tool-call-row__chevron,
+.shinychat-thinking-header[aria-expanded="true"] .shinychat-thinking-disclosure {
   transform: rotate(180deg);
 }
 
@@ -585,7 +599,6 @@ $shinychat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 
     &:hover,
     &:focus-visible {
       background-color: rgba(var(--bs-emphasis-color-rgb), 0.05);
-      outline: none;
     }
   }
 
