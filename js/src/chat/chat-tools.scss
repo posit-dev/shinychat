@@ -325,7 +325,23 @@ $shinychat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 
   }
 }
 
-.shinychat-tool-loop + p {
+// A thinking block between two tool loops is another activity row in the same
+// stack, not a separate section — thinking is part of the flow of what the
+// assistant did, so it reads continuous with the calls around it. (A thinking
+// block always splits a loop in two, since it becomes its own message block, so
+// without this the split shows up as a 1em trench.)
+.shinychat-tool-loop:has(+ .shinychat-thinking) {
+  margin-bottom: 0;
+}
+
+.shinychat-thinking + .shinychat-tool-loop {
+  margin-top: 0;
+}
+
+// Prose after an activity block needs the breathing room back: the answer is
+// not part of the stack.
+.shinychat-tool-loop + p,
+.shinychat-thinking + p {
   margin-top: 1rem;
 }
 
