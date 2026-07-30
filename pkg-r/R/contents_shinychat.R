@@ -95,7 +95,7 @@ opt_shinychat_tool_display <- function() {
 #'   res$value <- gt::as_raw_html(gt::gt(content@value))
 #'   res$value_type <- "html"
 #'   # ...and update the tool result title to include the location name
-#'   res$title <- paste("Weather Forecast for", content@location_name)
+#'   res$tool_title <- paste("Weather Forecast for", content@location_name)
 #'
 #'   res
 #' }

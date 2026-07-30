@@ -268,6 +268,29 @@ test_that("ContentToolResult with additional display options from result", {
   expect_equal(res_tags$attribs[["tool-title"]], "Custom Title")
 })
 
+test_that("mutating a card's tool_title overrides the annotation title", {
+  # The documented pattern for a custom result class (see the
+  # `contents_shinychat()` example): call the super method, then mutate the
+  # card. The field is `tool_title`, which renders as the `tool-title`
+  # attribute the client reads -- `res$title` would silently add an unread
+  # `title` attribute instead.
+  local_shinychat_tool_display(opt = "rich")
+
+  result <- new_tool_result(
+    value = "test",
+    request = new_tool_request(
+      tool = new_tool(annotations = ellmer::tool_annotations(title = "Static"))
+    )
+  )
+  res <- contents_shinychat(result)
+  expect_equal(res$tool_title, "Static")
+
+  res$tool_title <- "Dynamic for Portland"
+  res_tags <- as.tags(res)
+  expect_equal(res_tags$attribs[["tool-title"]], "Dynamic for Portland")
+  expect_null(res_tags$attribs$title)
+})
+
 test_that("ContentToolResult with HTML() title preserves markup", {
   local_shinychat_tool_display(opt = "rich")
 
