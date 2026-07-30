@@ -1769,6 +1769,45 @@ describe("routeToolBlocks (tool content router)", () => {
     ])
   })
 
+  const anonRes =
+    '<shiny-tool-result data-shinychat-react tool-name="a" status="success"></shiny-tool-result>'
+
+  it("keeps synthetic localIds distinct when adjacent loops from separate blocks merge", () => {
+    // Anonymous calls in different source blocks used to both become
+    // `__anon-0`; once merged, "none" grouping collapsed them into one group.
+    const out = routeToolBlocks(
+      [
+        { type: "content", content: anonRes, contentType: "markdown" },
+        { type: "content", content: anonRes, contentType: "markdown" },
+      ],
+      "none",
+    )
+    const l = loops(out)
+    expect(l).toHaveLength(1)
+    expect(l[0]!.groups).toHaveLength(2)
+    const ids = l[0]!.groups.flatMap((g) => g.calls).map((c) => c.localId)
+    expect(new Set(ids).size).toBe(2)
+  })
+
+  it("leaves tool tags inside a code fence or inline code as literal prose", () => {
+    const fenced =
+      "Here is the protocol:\n\n```html\n" + res("1", "a") + "\n```\n"
+    expect(loops(route(fenced))).toHaveLength(0)
+    expect(route(fenced)).toEqual([
+      { type: "content", content: fenced, contentType: "markdown" },
+    ])
+
+    const inline = "Use `" + res("1", "a") + "` to render a result."
+    expect(loops(route(inline))).toHaveLength(0)
+  })
+
+  it("still routes a real tool element alongside a fenced example", () => {
+    const mixed = "```html\n" + res("1", "a") + "\n```\n\n" + res("2", "a")
+    const l = loops(route(mixed))
+    expect(l).toHaveLength(1)
+    expect(l[0]!.groups[0]!.calls.map((c) => c.requestId)).toEqual(["2"])
+  })
+
   it("gives each call a loop-local unique localId, synthesizing one when request-id is absent", () => {
     // `localId` is what React keys and card DOM ids hang off, so it must stay
     // distinct even when the server omits `request-id`.

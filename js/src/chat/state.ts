@@ -254,6 +254,23 @@ function computeGreetingVisibility(
 
 const THINKING_TAG_RE = /<thinking>\n?([\s\S]*?)\n?<\/thinking>\n*/g
 
+// Code fence regions and inline code spans, whose contents are literal text and
+// so must not be scanned for the custom elements we route on (<thinking>, tool
+// tags): a message documenting those tags should render the example verbatim.
+function codeRanges(content: string): (idx: number) => boolean {
+  const ranges: Array<[number, number]> = []
+  const fenceRe = /^(`{3,}|~{3,}).*\n([\s\S]*?)^\1\s*$/gm
+  for (const m of content.matchAll(fenceRe)) {
+    ranges.push([m.index, m.index + m[0].length])
+  }
+  const inlineCodeRe = /`[^`\n]+`/g
+  for (const m of content.matchAll(inlineCodeRe)) {
+    ranges.push([m.index, m.index + m[0].length])
+  }
+  return (idx: number) =>
+    ranges.some(([start, end]) => idx >= start && idx < end)
+}
+
 function splitThinkingBlocks(
   content: string,
   contentType: ContentType,
@@ -268,20 +285,7 @@ function splitThinkingBlocks(
     return [{ type: "content", content, contentType }]
   }
 
-  // Find code fence regions and inline code spans to exclude from thinking tag detection
-  const fenceRanges: Array<[number, number]> = []
-  const fenceRe = /^(`{3,}|~{3,}).*\n([\s\S]*?)^\1\s*$/gm
-  for (const m of content.matchAll(fenceRe)) {
-    fenceRanges.push([m.index, m.index + m[0].length])
-  }
-  const inlineCodeRe = /`[^`\n]+`/g
-  for (const m of content.matchAll(inlineCodeRe)) {
-    fenceRanges.push([m.index, m.index + m[0].length])
-  }
-
-  function isInsideFence(idx: number): boolean {
-    return fenceRanges.some(([start, end]) => idx >= start && idx < end)
-  }
+  const isInsideFence = codeRanges(content)
 
   const blocks: MessageBlock[] = []
   let lastIndex = 0
@@ -387,12 +391,19 @@ function attrTruthy(attrs: Record<string, string>, name: string): boolean {
 
 // Parse all complete tool custom elements from a content string, in order. A
 // trailing incomplete element (e.g. mid-stream) stops the scan — it is left as
-// prose until its closing tag arrives.
-function parseToolElements(content: string): ParsedToolElement[] {
+// prose until its closing tag arrives. In markdown, tags written inside a code
+// fence or inline code span are literal examples, not elements to route.
+function parseToolElements(
+  content: string,
+  contentType: ContentType,
+): ParsedToolElement[] {
   const els: ParsedToolElement[] = []
+  const isInsideFence =
+    contentType === "markdown" ? codeRanges(content) : () => false
   TOOL_TAG_RE.lastIndex = 0
   let m: RegExpExecArray | null
   while ((m = TOOL_TAG_RE.exec(content)) !== null) {
+    if (isInsideFence(m.index)) continue
     const tag = m[1] as "request" | "result"
     const attrsStart = m.index + m[0].length
     const openEnd = findOpenTagEnd(content, attrsStart)
@@ -511,12 +522,17 @@ function makeToolLoopBlock(
   content: string,
   contentType: ContentType,
   grouping: ToolGrouping,
+  // Disambiguates synthetic ids for elements missing a `request-id`. Adjacent
+  // loops get coalesced (their calls concatenated), so a per-loop counter alone
+  // would collide; the source block index plus the loop's offset in it is both
+  // unique across a merged loop and stable across re-routes of the same content.
+  anonScope: string,
 ): ToolLoopBlock {
   const order: string[] = []
   const byId = new Map<string, ToolCallItem>()
   els.forEach((el, i) => {
     const requestId = el.attrs["request-id"] ?? ""
-    const id = requestId || `__anon-${i}`
+    const id = requestId || `__anon-${anonScope}-${i}`
     let item = byId.get(id)
     if (!item) {
       item = {
@@ -550,15 +566,15 @@ export function routeToolBlocks(
 ): MessageBlock[] {
   const out: MessageBlock[] = []
 
-  for (const block of blocks) {
+  blocks.forEach((block, blockIndex) => {
     if (block.type !== "content" || !block.content.includes(TOOL_MARKER)) {
       out.push(block)
-      continue
+      return
     }
-    const els = parseToolElements(block.content)
+    const els = parseToolElements(block.content, block.contentType)
     if (els.length === 0) {
       out.push(block)
-      continue
+      return
     }
 
     const contentType = block.contentType
@@ -574,6 +590,7 @@ export function routeToolBlocks(
           block.content.slice(loopStart, cursor),
           contentType,
           grouping,
+          `${blockIndex}:${loopStart}`,
         ),
       )
       loopEls = []
@@ -597,7 +614,7 @@ export function routeToolBlocks(
     if (tail.trim() !== "") {
       out.push({ type: "content", content: tail, contentType })
     }
-  }
+  })
 
   return mergeAdjacentLoops(out, grouping)
 }
