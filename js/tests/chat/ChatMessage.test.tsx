@@ -479,3 +479,43 @@ describe("ChatMessage attachments", () => {
     expect(screen.queryByRole("dialog")).toBeNull()
   })
 })
+
+describe("ChatMessage streaming tool routing", () => {
+  const typed =
+    '<shiny-tool-result data-shinychat-react request-id="req-1" tool-name="get_weather" status="success" value="Sunny" value-type="text"></shiny-tool-result>'
+
+  function streamingMessage(role: ChatMessageData["role"]): ChatMessageData {
+    return userMessage({
+      role,
+      content: typed,
+      streaming: true,
+      blocks: [{ type: "content", content: typed, contentType: "markdown" }],
+    })
+  }
+
+  it("does not route tool markup typed in a streaming user message", () => {
+    const { container } = render(
+      <ChatMessage message={streamingMessage("user")} />,
+    )
+    expect(container.querySelector(".shinychat-tool-loop")).toBeNull()
+  })
+
+  it("routes the same markup in a streaming assistant message", () => {
+    const { container } = render(
+      <ChatMessage message={streamingMessage("assistant")} />,
+    )
+    expect(container.querySelector(".shinychat-tool-loop")).not.toBeNull()
+  })
+
+  it('routes the same markup in a streaming "system" message', () => {
+    // Python's server-side Role allows "system", which the client's
+    // "user" | "assistant" union does not name — hence the cast. Pins the
+    // router's `role !== "user"` gate against being narrowed to `=== "assistant"`.
+    const message = {
+      ...streamingMessage("assistant"),
+      role: "system" as ChatMessageData["role"],
+    }
+    const { container } = render(<ChatMessage message={message} />)
+    expect(container.querySelector(".shinychat-tool-loop")).not.toBeNull()
+  })
+})

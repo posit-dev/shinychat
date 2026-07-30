@@ -508,4 +508,38 @@ describe("Tool component bridge rendering", () => {
     expect(document.querySelector(".shiny-tool-card")).toBeTruthy()
     expect(document.body.textContent).toContain("[Empty result]")
   })
+
+  it("does not route tool markup in a preloaded user message", () => {
+    // Preloaded/restored transcripts go through the same router; a user turn
+    // that literally contains a tool tag must stay text, not become tool UI.
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+    const typed =
+      '<shiny-tool-result data-shinychat-react request-id="req-typed" tool-name="get_weather" status="success" value="Sunny" value-type="text"></shiny-tool-result>'
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+        uploadAccept={[]}
+        maxUploadSize={30000000}
+        initialMessages={[
+          {
+            id: "msg-user",
+            role: "user",
+            content: typed,
+            streaming: false,
+            blocks: [
+              { type: "content", content: typed, contentType: "markdown" },
+            ],
+          },
+        ]}
+      />,
+    )
+
+    expect(document.querySelector(".shinychat-tool-group__row")).toBeNull()
+    expect(document.querySelector(".shiny-tool-card")).toBeNull()
+  })
 })

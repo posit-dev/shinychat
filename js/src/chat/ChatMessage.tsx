@@ -64,9 +64,9 @@ export const ChatMessage = memo(function ChatMessage({
   const blocks = useMemo(
     () =>
       message.streaming
-        ? routeToolBlocks(message.blocks, toolGrouping, true)
+        ? routeToolBlocks(message.blocks, toolGrouping, message.role, true)
         : message.blocks,
-    [message.streaming, message.blocks, toolGrouping],
+    [message.streaming, message.blocks, message.role, toolGrouping],
   )
 
   // Drop running requests whose result has rendered elsewhere (hidden via

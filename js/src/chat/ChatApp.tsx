@@ -99,7 +99,7 @@ export function ChatApp({
   const messages = useMemo(
     () =>
       (initialMessages ?? []).map((m) => {
-        const blocks = routeToolBlocks(m.blocks, resolvedToolGrouping)
+        const blocks = routeToolBlocks(m.blocks, resolvedToolGrouping, m.role)
         return { ...m, blocks, content: contentFromBlocks(blocks) }
       }),
     [initialMessages, resolvedToolGrouping],

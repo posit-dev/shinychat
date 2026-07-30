@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import {
   chatReducer,
+  contentFromBlocks,
   initialState,
   routeToolBlocks,
   type ChatState,
@@ -1741,6 +1742,7 @@ describe("routeToolBlocks (tool content router)", () => {
     return routeToolBlocks(
       [{ type: "content", content, contentType: "markdown" }],
       grouping,
+      "assistant",
     )
   }
   function routeStreaming(
@@ -1750,6 +1752,7 @@ describe("routeToolBlocks (tool content router)", () => {
     return routeToolBlocks(
       [{ type: "content", content, contentType: "markdown" }],
       grouping,
+      "assistant",
       true,
     )
   }
@@ -1761,7 +1764,7 @@ describe("routeToolBlocks (tool content router)", () => {
     const input: MessageBlock[] = [
       { type: "content", content: "just prose", contentType: "markdown" },
     ]
-    const out = routeToolBlocks(input, "tool")
+    const out = routeToolBlocks(input, "tool", "assistant")
     expect(out).toEqual(input)
   })
 
@@ -1771,7 +1774,7 @@ describe("routeToolBlocks (tool content router)", () => {
       { type: "thinking", content: "hmm", streaming: false },
       { type: "content", content: res("2", "a"), contentType: "markdown" },
     ]
-    const out = routeToolBlocks(input, "tool")
+    const out = routeToolBlocks(input, "tool", "assistant")
     expect(out.map((b) => b.type)).toEqual([
       "tool_loop",
       "thinking",
@@ -1791,6 +1794,7 @@ describe("routeToolBlocks (tool content router)", () => {
         { type: "content", content: anonRes, contentType: "markdown" },
       ],
       "none",
+      "assistant",
     )
     const l = loops(out)
     expect(l).toHaveLength(1)
@@ -2089,7 +2093,7 @@ describe("routeToolBlocks (tool content router)", () => {
       { type: "content", content: res("1", "X"), contentType: "markdown" },
       { type: "content", content: res("2", "X"), contentType: "markdown" },
     ]
-    const blocks = routeToolBlocks(input, "tool")
+    const blocks = routeToolBlocks(input, "tool", "assistant")
     expect(blocks.map((b) => b.type)).toEqual(["tool_loop"])
     const calls = (blocks[0] as ToolLoopBlock).groups.flatMap((g) => g.calls)
     expect(calls).toHaveLength(2)
@@ -2100,7 +2104,7 @@ describe("routeToolBlocks (tool content router)", () => {
       { type: "content", content: res("1", "X"), contentType: "markdown" },
       { type: "content", content: res("2", "X"), contentType: "text" },
     ]
-    const blocks = routeToolBlocks(input, "tool")
+    const blocks = routeToolBlocks(input, "tool", "assistant")
     expect(blocks.map((b) => b.type)).toEqual(["tool_loop", "tool_loop"])
     expect((blocks[0] as ToolLoopBlock).contentType).toBe("markdown")
     expect((blocks[1] as ToolLoopBlock).contentType).toBe("text")
@@ -2111,6 +2115,34 @@ describe("routeToolBlocks (tool content router)", () => {
     expect(
       (blocks[1] as ToolLoopBlock).groups.flatMap((g) => g.calls),
     ).toHaveLength(1)
+  })
+
+  describe("role gate", () => {
+    const typed = `${req("1", "search")}${res("1", "search")}`
+    const userBlocks: MessageBlock[] = [
+      { type: "content", content: typed, contentType: "markdown" },
+    ]
+
+    it("does not route tool elements a user typed", () => {
+      const out = routeToolBlocks(userBlocks, "tool", "user")
+      expect(out).toEqual(userBlocks)
+      expect(loops(out)).toHaveLength(0)
+      expect(contentFromBlocks(out)).toBe(typed)
+    })
+
+    it("still routes the same content in an assistant message", () => {
+      const out = routeToolBlocks(userBlocks, "tool", "assistant")
+      expect(loops(out)).toHaveLength(1)
+    })
+
+    it('still routes the same content in a "system" message', () => {
+      // The client model names only "user" | "assistant", but Python's
+      // server-side Role is Literal["assistant", "user", "system"], so a
+      // system role really does arrive here. This pins the gate to
+      // `role !== "user"` so it can't be narrowed to `role === "assistant"`.
+      const out = routeToolBlocks(userBlocks, "tool", "system")
+      expect(loops(out)).toHaveLength(1)
+    })
   })
 })
 

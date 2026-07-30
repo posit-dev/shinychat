@@ -220,7 +220,7 @@ function messagePayloadToData(
   for (const seg of msg.segments) {
     rawBlocks.push(...splitThinkingBlocks(seg.content, seg.content_type))
   }
-  const blocks = routeToolBlocks(rawBlocks, grouping)
+  const blocks = routeToolBlocks(rawBlocks, grouping, msg.role)
   const attachments: AttachmentPayload[] = msg.attachments ?? []
   const contentOnly = contentFromBlocks(blocks)
 
@@ -627,12 +627,37 @@ function makeToolLoopBlock(
  * Pass `streaming` when routing a message that is still arriving: an unclosed
  * trailing code fence then shields the text after it, so a documented tool-tag
  * example does not render as live tool UI before its closing fence arrives.
+ *
+ * `role` is required rather than defaulted so every call site has to state
+ * whose content it is routing — forgetting it is a compile error, not a
+ * silently permissive route.
  */
 export function routeToolBlocks(
   blocks: MessageBlock[],
   grouping: ToolGrouping,
+  // Typed as a bare string, not ChatMessageData["role"]: see the wire-role note
+  // below — "system" is reachable here and is not in the client union.
+  role: string,
   streaming = false,
 ): MessageBlock[] {
+  // Tool elements are server-authored. In a user message the same markup is
+  // just text the person typed, and routing runs *before* MarkdownContent, so
+  // consuming the tag here bypasses `userMarkdownProcessor`'s remarkEscapeHtml
+  // + rehypeSanitize entirely — letting typed content spoof tool activity.
+  //
+  // Gate on `!== "user"`, deliberately NOT on `=== "assistant"`: the client
+  // message model only names "user" | "assistant", but Python's server-side
+  // `Role` is Literal["assistant", "user", "system"], so a "system" role does
+  // reach this code. An equality check would silently stop routing real tool
+  // content in system messages. Please don't "tidy" this into ===.
+  //
+  // Deliberately *not* handled here: a user block whose contentType is "html"
+  // sidesteps the same escaping inside MarkdownContent and renders tool cards
+  // through the bridges regardless of this router. That path is pre-existing
+  // and server-controlled (a user message is only html-typed if the app says
+  // so), so it stays out of scope.
+  if (role === "user") return blocks
+
   const out: MessageBlock[] = []
 
   blocks.forEach((block, blockIndex) => {
@@ -1579,7 +1604,7 @@ function finalizeMessage(
     }
   }
 
-  const blocks = routeToolBlocks(rebuilt, grouping)
+  const blocks = routeToolBlocks(rebuilt, grouping, msg.role)
   const content = contentFromBlocks(blocks)
 
   return { ...msg, content, streaming: false, blocks }
