@@ -278,29 +278,34 @@ const CODE_FENCE_OPEN_RE = new RegExp(`^${CODE_FENCE_OPEN_SRC}$`, "gm")
 // tags): a message documenting those tags should render the example verbatim.
 function codeRanges(
   content: string,
-  unclosedFenceRunsToEnd = false,
+  shieldOpenFence = false,
 ): (idx: number) => boolean {
   const ranges: Array<[number, number]> = []
   for (const m of content.matchAll(CODE_FENCE_RE)) {
     ranges.push([m.index, m.index + m[0].length])
   }
   // An *unclosed* fence runs to the end of the document per CommonMark, but we
-  // only honor that while the message is still streaming, where a trailing open
-  // fence is just the live cursor and there is no "rest of the message" for it
-  // to swallow. Without this, a documented example flickers into live tool UI
-  // for the moment between "<shiny-tool-result …></shiny-tool-result> emitted"
-  // and "closing fence emitted", because the streaming path re-routes the whole
-  // accumulated block on every render.
+  // only honor that for content we know came off a live stream, where a
+  // trailing open fence is just the live cursor and there is no "rest of the
+  // message" for it to swallow. Without this, a documented example flickers
+  // into live tool UI for the moment between "<shiny-tool-result …>
+  // </shiny-tool-result> emitted" and "closing fence emitted", because the
+  // streaming path re-routes the whole accumulated block on every render.
   //
-  // Applying it once the message is final was deliberately *not* done: real
-  // tool elements arrive as `markdown` content blocks (preloaded/restored
+  // Applying the rule at finalize *unconditionally* stays rejected: real tool
+  // elements arrive as `markdown` content blocks (preloaded/restored
   // transcripts concatenate a whole turn into one block), so one stray ``` in
   // prose would permanently suppress every real tool element after it — the
-  // same risk that keeps code-span pairing to a single line. The cost is that a
-  // response cancelled while a fence is still open finalizes with the rule off
-  // and the example pops into tool UI then; that matches today's behavior for
-  // that rare case, while the common case never flickers at all.
-  if (unclosedFenceRunsToEnd) {
+  // same risk that keeps code-span pairing to a single line.
+  //
+  // What finalize *may* do is pass the flag when the message it is finalizing
+  // still has `insideFence` set. That flag is written only by the streaming tag
+  // state machine, so it is never set on a preloaded/restored transcript (those
+  // are built by `messagePayloadToData` and never touch the machine). It means
+  // "this stream really did stop mid-fence" — a cancelled or truncated
+  // response — so the example that was being documented stays prose instead of
+  // popping into tool UI at the moment of finalization.
+  if (shieldOpenFence) {
     const isClosed = (idx: number) =>
       ranges.some(([start, end]) => idx >= start && idx < end)
     for (const m of content.matchAll(CODE_FENCE_OPEN_RE)) {
@@ -473,16 +478,19 @@ function attrTruthy(attrs: Record<string, string>, name: string): boolean {
 // Parse all complete tool custom elements from a content string, in order. A
 // trailing incomplete element (e.g. mid-stream) stops the scan — it is left as
 // prose until its closing tag arrives. In markdown, tags written inside a code
-// fence or inline code span are literal examples, not elements to route; while
-// streaming, a still-unclosed trailing fence counts as one (see `codeRanges`).
+// fence or inline code span are literal examples, not elements to route; with
+// `shieldOpenFence`, a still-unclosed trailing fence counts as one (see
+// `codeRanges`).
 function parseToolElements(
   content: string,
   contentType: ContentType,
-  streaming = false,
+  shieldOpenFence = false,
 ): ParsedToolElement[] {
   const els: ParsedToolElement[] = []
   const isInsideFence =
-    contentType === "markdown" ? codeRanges(content, streaming) : () => false
+    contentType === "markdown"
+      ? codeRanges(content, shieldOpenFence)
+      : () => false
   TOOL_TAG_RE.lastIndex = 0
   let m: RegExpExecArray | null
   while ((m = TOOL_TAG_RE.exec(content)) !== null) {
@@ -643,9 +651,11 @@ function makeToolLoopBlock(
  * Pure content router: split content blocks around runs of tool elements,
  * emitting ToolLoopBlocks. Non-tool messages take the cheap identity path.
  *
- * Pass `streaming` when routing a message that is still arriving: an unclosed
+ * Pass `shieldOpenFence` when the content came off a live stream: an unclosed
  * trailing code fence then shields the text after it, so a documented tool-tag
  * example does not render as live tool UI before its closing fence arrives.
+ * It is named for the intent, not the caller — finalize is not streaming, yet
+ * passes it when the stream stopped mid-fence (see `finalizeMessage`).
  *
  * `role` is required rather than defaulted so every call site has to state
  * whose content it is routing — forgetting it is a compile error, not a
@@ -657,7 +667,7 @@ export function routeToolBlocks(
   // Typed as a bare string, not ChatMessageData["role"]: see the wire-role note
   // below — "system" is reachable here and is not in the client union.
   role: string,
-  streaming = false,
+  shieldOpenFence = false,
 ): MessageBlock[] {
   // Tool elements are server-authored. In a user message the same markup is
   // just text the person typed, and routing runs *before* MarkdownContent, so
@@ -688,7 +698,11 @@ export function routeToolBlocks(
       out.push(block)
       return
     }
-    const els = parseToolElements(block.content, block.contentType, streaming)
+    const els = parseToolElements(
+      block.content,
+      block.contentType,
+      shieldOpenFence,
+    )
     if (els.length === 0) {
       out.push(block)
       return
@@ -1627,7 +1641,19 @@ function finalizeMessage(
     }
   }
 
-  const blocks = routeToolBlocks(rebuilt, grouping, msg.role)
+  // `msg.insideFence` is the streaming tag state machine's own flag, mirrored
+  // onto the message as chunks arrive. Still set here means the stream ended
+  // (cancelled, truncated, errored) with a code fence open, so keep shielding
+  // what follows that fence: a documented tool-tag example must not pop into
+  // live tool UI at the instant of finalization. Messages that never streamed
+  // — preloaded/restored transcripts — never have the flag, so they keep
+  // routing real tool elements even past a stray ``` (see `codeRanges`).
+  const blocks = routeToolBlocks(
+    rebuilt,
+    grouping,
+    msg.role,
+    msg.insideFence ?? false,
+  )
   const content = contentFromBlocks(blocks)
 
   return { ...msg, content, streaming: false, blocks }

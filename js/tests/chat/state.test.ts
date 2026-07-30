@@ -1886,20 +1886,58 @@ describe("routeToolBlocks (tool content router)", () => {
     expect(l[0]!.groups[0]!.calls.map((c) => c.requestId)).toEqual(["2"])
   })
 
-  it("routes a tool tag under an unclosed fence once the message is final", () => {
-    // Deliberate: at finalize an unclosed fence does *not* run to end of
-    // content, so a cancelled stream's example does pop into tool UI.
+  it("routes a tool tag under an unclosed fence when the content never streamed", () => {
+    // Without the shield flag the to-EOF rule is off, so an unclosed fence in
+    // content that never came off a stream does not hide what follows it. This
+    // is the un-shielded default; `finalizeMessage` opts in only when the
+    // message it finalizes still has `insideFence` set.
     const partial = "Example:\n\n```html\n" + res("1", "a") + "\n"
     expect(loops(route(partial))).toHaveLength(1)
   })
 
   it("does not let a stray fence suppress a later real element when final", () => {
-    // Preloaded/restored transcripts arrive as one markdown block, so one
-    // unbalanced ``` in prose must not hide the real tool calls after it.
+    // Preloaded/restored transcripts arrive as one markdown block and never
+    // touch the streaming tag state machine, so they finalize (and route)
+    // unshielded: one unbalanced ``` in prose must not hide the real tool
+    // calls after it.
     const mixed = "Prose with a stray ```\n\nmore prose\n\n" + res("1", "a")
     const l = loops(route(mixed))
     expect(l).toHaveLength(1)
     expect(l[0]!.groups[0]!.calls.map((c) => c.requestId)).toEqual(["1"])
+  })
+
+  it("keeps a fenced example as prose when the stream ends mid-fence", () => {
+    // A cancelled/truncated stream finalizes with `insideFence` still set, so
+    // the shield stays on and the documented example must not pop into live
+    // tool UI at the moment of finalization.
+    const partial = "Example:\n\n```html\n" + res("1", "a") + "\n"
+    const msg = makeAssistantMsg({
+      streaming: true,
+      content: partial,
+      blocks: [{ type: "content", content: partial, contentType: "markdown" }],
+      insideFence: true,
+      fenceMarker: "```",
+    })
+    const next = chatReducer(makeState({ streamingMessage: msg }), {
+      type: "remove_loading",
+    })
+    const finalized = next.messages[next.messages.length - 1]!
+    expect(loops(finalized.blocks)).toHaveLength(0)
+  })
+
+  it("routes normally when the stream ends with no fence open", () => {
+    // Same finalize path, flag clear: the element is real and must render.
+    const content = "Result:\n\n" + res("1", "a")
+    const msg = makeAssistantMsg({
+      streaming: true,
+      content,
+      blocks: [{ type: "content", content, contentType: "markdown" }],
+    })
+    const next = chatReducer(makeState({ streamingMessage: msg }), {
+      type: "remove_loading",
+    })
+    const finalized = next.messages[next.messages.length - 1]!
+    expect(loops(finalized.blocks)).toHaveLength(1)
   })
 
   it("gives each call a loop-local unique localId, synthesizing one when request-id is absent", () => {
