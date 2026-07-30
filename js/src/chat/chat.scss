@@ -590,6 +590,9 @@ shiny-chat-container:not([fill]) {
   margin-inline-start: auto;
 }
 
+// Crossfades between labels ("Thinking" → "Thought for 2s"); the duration is
+// kept in step with `FADE_DURATION_MS` in `useFadingText.ts`, which the tool
+// group's title shares.
 .shinychat-thinking-label {
   transition: opacity 0.2s ease;
   min-width: 0;

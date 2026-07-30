@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest"
-import { render, fireEvent } from "@testing-library/react"
+import { describe, it, expect, vi } from "vitest"
+import { render, fireEvent, act } from "@testing-library/react"
 import { ToolGroup } from "../../src/chat/ToolGroup"
 import type { ToolCallGroup, ToolCallItem } from "../../src/chat/state"
 
@@ -348,23 +348,107 @@ describe("ToolGroup", () => {
         call({ requestId: "b", toolName: "run_sql" }),
       ],
     })
-    const { container, rerender } = render(<ToolGroup group={settled} />)
-    expect(headerText(container)).toBe("Used run_sql×2")
+    vi.useFakeTimers()
+    try {
+      const { container, rerender } = render(<ToolGroup group={settled} />)
+      expect(headerText(container)).toBe("Used run_sql×2")
 
-    rerender(
-      <ToolGroup
-        group={group({
-          toolName: "run_sql",
-          title: undefined,
-          titleSettled: false,
-          calls: [
-            call({ requestId: "a", toolName: "run_sql", status: "running" }),
-            call({ requestId: "b", toolName: "run_sql", status: "running" }),
-          ],
-        })}
-      />,
-    )
-    expect(headerText(container)).toBe("Using run_sql×2")
+      rerender(
+        <ToolGroup
+          group={group({
+            toolName: "run_sql",
+            title: undefined,
+            titleSettled: false,
+            calls: [
+              call({ requestId: "a", toolName: "run_sql", status: "running" }),
+              call({ requestId: "b", toolName: "run_sql", status: "running" }),
+            ],
+          })}
+        />,
+      )
+      // The verb crossfades rather than flipping, so the new text lands once
+      // the fade-out has run.
+      act(() => {
+        vi.advanceTimersByTime(200)
+      })
+      expect(headerText(container)).toBe("Using run_sql×2")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("crossfades a segment title when the result title replaces the definition title", () => {
+    // The same transition the thinking header animates ("Thinking" → "Thought
+    // for 2s"): a tool's title changes under the reader as the call settles, so
+    // it fades out, swaps, and fades back in instead of flipping mid-row.
+    vi.useFakeTimers()
+    try {
+      const running = group({
+        title: "Inspecting schema",
+        calls: [
+          call({ requestId: "a", status: "running" }),
+          call({ requestId: "b", status: "running" }),
+        ],
+      })
+      const { container, rerender } = render(<ToolGroup group={running} />)
+      const title = () =>
+        container.querySelector(".shinychat-tool-group__title")!
+      expect(title().hasAttribute("data-fading")).toBe(false)
+
+      rerender(
+        <ToolGroup
+          group={group({
+            title: "Inspected schema",
+            calls: [call({ requestId: "a" }), call({ requestId: "b" })],
+          })}
+        />,
+      )
+      // Mid-fade the old title is still the one on screen, at opacity 0.
+      expect(title().getAttribute("data-fading")).toBe("true")
+      expect(title().textContent).toBe("Inspecting schema")
+
+      act(() => {
+        vi.advanceTimersByTime(200)
+      })
+      expect(title().hasAttribute("data-fading")).toBe(false)
+      expect(title().textContent).toBe("Inspected schema")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("does not fade the title when only the call count changes", () => {
+    // The ×N badge lives outside the fading element on purpose: another call
+    // landing is not a change of identity, and blinking the title for it would
+    // make a busy group flicker.
+    vi.useFakeTimers()
+    try {
+      const { container, rerender } = render(
+        <ToolGroup
+          group={group({
+            title: "Searched the web",
+            calls: [call({ requestId: "a" }), call({ requestId: "b" })],
+          })}
+        />,
+      )
+      rerender(
+        <ToolGroup
+          group={group({
+            title: "Searched the web",
+            calls: [
+              call({ requestId: "a" }),
+              call({ requestId: "b" }),
+              call({ requestId: "c" }),
+            ],
+          })}
+        />,
+      )
+      const title = container.querySelector(".shinychat-tool-group__title")!
+      expect(title.hasAttribute("data-fading")).toBe(false)
+      expect(headerText(container)).toBe("Searched the web×3")
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("keeps one leading verb when no tool in the group has a title", () => {

@@ -1,17 +1,10 @@
-import {
-  useState,
-  useEffect,
-  useRef,
-  memo,
-  useCallback,
-  useLayoutEffect,
-} from "react"
+import { useState, useEffect, useRef, memo, useCallback } from "react"
 import { useStickToBottom } from "use-stick-to-bottom"
 import type { ThinkingBlock } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
 import { useChatStopScroll } from "./context"
-import { usePrefersReducedMotion } from "./usePrefersReducedMotion"
+import { useFadingText } from "./useFadingText"
 import { chevronDown } from "../utils/icons"
 
 const chevronDSIH = { __html: chevronDown }
@@ -63,36 +56,6 @@ function useDisplayedTopic(topic: string | null | undefined): string | null {
   }, [topic, displayed])
 
   return displayed
-}
-
-const FADE_DURATION_MS = 200
-
-function useFadingText(text: string): { visible: string; fading: boolean } {
-  const reducedMotion = usePrefersReducedMotion()
-  const [visible, setVisible] = useState(text)
-  const [fading, setFading] = useState(false)
-  const pendingText = useRef(text)
-
-  useLayoutEffect(() => {
-    if (text === visible) return
-    pendingText.current = text
-
-    if (reducedMotion) {
-      setVisible(text)
-      setFading(false)
-      return
-    }
-
-    setFading(true)
-    const timer = setTimeout(() => {
-      setVisible(pendingText.current)
-      setFading(false)
-    }, FADE_DURATION_MS)
-
-    return () => clearTimeout(timer)
-  }, [text, visible, reducedMotion])
-
-  return { visible, fading }
 }
 
 // The thinking header's identity glyph, in the same reserved slot a tool row

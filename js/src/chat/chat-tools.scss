@@ -456,18 +456,30 @@ $shinychat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 
   }
 }
 
+// Always nested inside `.shinychat-tool-group__title`, which is the element
+// that participates in the row's layout — this only sets the typeface.
 .shinychat-tool-group__toolname {
   font-family: var(--bs-font-monospace);
 }
 
 // The group/tool title never wraps; if the row is squeezed it truncates with
 // an ellipsis rather than pushing onto a second line.
-.shinychat-tool-group__title,
-.shinychat-tool-group__toolname {
+.shinychat-tool-group__title {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+
+  // A title changes under the reader as the call settles ("Inspecting schema"
+  // → "Inspected schema", "Using run_sql" → "Used run_sql"). It crossfades
+  // rather than flipping, matching the thinking header. Kept in step with
+  // `FADE_DURATION_MS` in `useFadingText.ts`; `[data-fading]` is never set
+  // under `prefers-reduced-motion`, so no reduced-motion rule is needed.
+  transition: opacity 0.2s ease;
+
+  &[data-fading] {
+    opacity: 0;
+  }
 }
 
 // A heterogeneous group names every tool it ran, joined by commas. The list
@@ -490,8 +502,7 @@ $shinychat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 
 
   // A segment title is shown whole or not at all: an independently ellipsized
   // title is illegible, and a header of several of them is unreadable.
-  .shinychat-tool-group__title,
-  .shinychat-tool-group__toolname {
+  .shinychat-tool-group__title {
     overflow: visible;
     text-overflow: clip;
   }
@@ -525,8 +536,7 @@ $shinychat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 
 
   // Keep the identity title whole; a long label truncates instead of wrapping
   // the title onto a second line.
-  > .shinychat-tool-group__title,
-  > .shinychat-tool-group__toolname {
+  > .shinychat-tool-group__title {
     flex: none;
   }
 }

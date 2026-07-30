@@ -12,6 +12,7 @@ import type { ToolCallGroup, ToolCallItem, ToolCallSegment } from "./state"
 import { ToolResult } from "./ToolResult"
 import { ToolRequest } from "./ToolRequest"
 import { ChatDispatchContext } from "./context"
+import { useFadingValue } from "./useFadingText"
 import { bareDot, chevronDown, exclamationCircleFill } from "../utils/icons"
 
 const spinnerHtml =
@@ -150,9 +151,37 @@ function renderLeaf(item: ToolCallItem, open: boolean): ReactNode {
   )
 }
 
-// One tool's stretch of the header: its title (or the bare tool name), then its
-// own ×N. The title is `dangerouslySetInnerHTML` because server-provided titles
-// may carry markup.
+// The naming half of a segment: the author's title, or the verb plus the bare
+// tool name when there isn't one. Both forms live in one element so the
+// present→past swap crossfades as a unit — fading the verb alone would leave
+// the tool name visibly jumping sideways as "Using" narrows to "Used".
+interface SegmentName {
+  title?: string
+  verb: string
+  toolName: string
+}
+
+function segmentName(segment: ToolCallSegment, showVerb: boolean): SegmentName {
+  return {
+    title: segment.title,
+    // Same monotonic present→past latch the definition→result title swap
+    // follows, scoped to this tool's calls.
+    verb: showVerb ? (segment.settled ? "Used " : "Using ") : "",
+    toolName: segment.toolName,
+  }
+}
+
+// Everything the rendered name depends on. The count is deliberately absent:
+// it sits outside the fading element, so a call landing shouldn't blink the
+// title.
+function segmentNameKey(name: SegmentName): string {
+  return name.title != null
+    ? `title:${name.title}`
+    : `tool:${name.verb}|${name.toolName}`
+}
+
+// One tool's stretch of the header: its name, then its own ×N. A title is
+// `dangerouslySetInnerHTML` because server-provided titles may carry markup.
 function TitleSegment({
   segment,
   showVerb,
@@ -160,22 +189,30 @@ function TitleSegment({
   segment: ToolCallSegment
   showVerb: boolean
 }): ReactNode {
+  const name = segmentName(segment, showVerb)
+  // A tool's title changes under it as the call settles (the definition title
+  // gives way to the result's), the same way the thinking header's does. Swap
+  // it behind a crossfade rather than having it flip mid-row.
+  const { visible, fading } = useFadingValue(name, segmentNameKey(name))
+  const nameProps = {
+    className: "shinychat-tool-group__title",
+    "data-fading": fading || undefined,
+  }
+
   return (
     <>
-      {segment.title ? (
+      {visible.title != null ? (
         <span
-          className="shinychat-tool-group__title"
-          dangerouslySetInnerHTML={{ __html: segment.title }}
+          {...nameProps}
+          dangerouslySetInnerHTML={{ __html: visible.title }}
         />
       ) : (
-        <>
-          {/* Same monotonic present→past latch the definition→result title
-              swap follows, scoped to this tool's calls. */}
-          {showVerb && (segment.settled ? "Used " : "Using ")}
+        <span {...nameProps}>
+          {visible.verb}
           <code className="shinychat-tool-group__toolname">
-            {segment.toolName}
+            {visible.toolName}
           </code>
-        </>
+        </span>
       )}
       {segment.count > 1 && (
         <span
