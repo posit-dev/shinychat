@@ -312,3 +312,88 @@ test_that("a custom result with no @request emits bare tags, no wrap", {
   expect_no_match(html, "custom-display", fixed = TRUE)
   expect_match(html, "my-custom", fixed = TRUE)
 })
+
+# The restore/preload path (`chat_restore()` -> `client_set_ui()` ->
+# `contents_shinychat(Chat)` -> `merge_ellmer_turn_group()`) converts a whole
+# turn at once, so it never sees the original `ContentToolResult` the way the
+# stream's wrap site does. Without its own wrap, a restored transcript's custom
+# tool result arrives with no `<shiny-tool-result>` and its request row spins
+# forever -- the same defect the live stream had.
+
+test_that("merge_ellmer_turn_group() wraps custom tool output on restore", {
+  local_shinychat_tool_display(opt = "rich")
+
+  RestoredCustomToolResult <- S7::new_class(
+    "RestoredCustomToolResult",
+    parent = ellmer::ContentToolResult
+  )
+  S7::method(contents_shinychat, RestoredCustomToolResult) <- function(
+    content
+  ) {
+    htmltools::div(class = "my-custom", "Sunny, 72F")
+  }
+
+  request <- new_tool_request(id = "req-restore", name = "get_weather")
+  turn <- ellmer::Turn(
+    "assistant",
+    contents = list(
+      request,
+      RestoredCustomToolResult(value = "Sunny, 72F", request = request)
+    )
+  )
+
+  message <- merge_ellmer_turn_group(list(turn), tools = list())
+  html <- as.character(htmltools::as.tags(message$content))
+
+  expect_match(html, "<shiny-tool-result", fixed = TRUE)
+  expect_match(html, "custom-display", fixed = TRUE)
+  expect_match(html, 'request-id="req-restore"', fixed = TRUE)
+  expect_match(html, "my-custom", fixed = TRUE)
+})
+
+test_that("contents_shinychat(Turn) wraps custom tool output", {
+  local_shinychat_tool_display(opt = "rich")
+
+  TurnCustomToolResult <- S7::new_class(
+    "TurnCustomToolResult",
+    parent = ellmer::ContentToolResult
+  )
+  S7::method(contents_shinychat, TurnCustomToolResult) <- function(content) {
+    htmltools::div(class = "my-custom", "Sunny, 72F")
+  }
+
+  request <- new_tool_request(id = "req-turn", name = "get_weather")
+  turn <- ellmer::Turn(
+    "assistant",
+    contents = list(
+      request,
+      TurnCustomToolResult(value = "Sunny, 72F", request = request)
+    )
+  )
+
+  html <- as.character(htmltools::as.tags(contents_shinychat(turn)))
+
+  expect_match(html, "<shiny-tool-result", fixed = TRUE)
+  expect_match(html, "custom-display", fixed = TRUE)
+  expect_match(html, 'request-id="req-turn"', fixed = TRUE)
+})
+
+test_that("the wrap is idempotent, so a normal tool card is not double-wrapped", {
+  # `contents_shinychat_wrapped()` is mapped over every content object on the
+  # turn paths, including plain `ContentToolResult`s that already convert to
+  # shinychat's own card. Those must pass through untouched.
+  local_shinychat_tool_display(opt = "rich")
+
+  request <- new_tool_request(id = "req-plain", name = "get_weather")
+  result <- ellmer::ContentToolResult(value = "Sunny, 72F", request = request)
+
+  once <- contents_shinychat_wrapped(result)
+  twice <- wrap_custom_tool_result(result, once)
+
+  expect_identical(once, twice)
+  expect_no_match(
+    as.character(htmltools::as.tags(once)),
+    "custom-display",
+    fixed = TRUE
+  )
+})

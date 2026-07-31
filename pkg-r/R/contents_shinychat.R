@@ -232,6 +232,19 @@ wrap_custom_tool_result <- function(content, msg) {
   )
 }
 
+# `contents_shinychat()` plus the custom-result wrap, for the paths that convert
+# a whole turn's worth of content at once and so would otherwise lose the
+# original `ContentToolResult` before the wrap could see it.
+#
+# Safe to map over any content object: `wrap_custom_tool_result()` returns its
+# input untouched for everything except a `ContentToolResult` whose method
+# returned something other than shinychat's own tool card. It is also
+# idempotent, since a wrapped result *is* a `shinychat_tool_card` and so fails
+# the wrap's own guard on a second pass.
+contents_shinychat_wrapped <- function(content) {
+  wrap_custom_tool_result(content, contents_shinychat(content))
+}
+
 #' @export
 as.tags.shinychat_tool_card <- function(x, ...) {
   tag_name <- switch(
@@ -710,8 +723,13 @@ tool_default_display <- function(content) {
 }
 
 S7::method(contents_shinychat, ellmer::Turn) <- function(content) {
-  # Process all contents in the turn, filtering out empty results
-  compact(map(content@contents, contents_shinychat))
+  # Process all contents in the turn, filtering out empty results.
+  #
+  # Wrapped, for the same reason as `merge_ellmer_turn_group()`: converting a
+  # whole turn discards each `ContentToolResult` before any caller could wrap
+  # it, so a turn carrying a custom tool result would otherwise emit bare UI
+  # with no `<shiny-tool-result>` to pair its request against.
+  compact(map(content@contents, contents_shinychat_wrapped))
 }
 
 ellmer_turn_effective_role <- function(turn) {
@@ -766,7 +784,13 @@ merge_ellmer_turn_group <- function(group, tools) {
     recursive = FALSE
   )
 
-  content <- compact(map(contents, contents_shinychat))
+  # Wrapped, not bare `contents_shinychat()`: this is the restore/preload path
+  # (`client_set_ui()` -> `contents_shinychat(Chat)`), which re-appends
+  # *already-converted* content. Without the wrap here, a custom
+  # `contents_shinychat()` method's output arrives with no
+  # `<shiny-tool-result>`, leaving the client nothing to pair its request
+  # against -- the same permanently-spinning row the live stream used to have.
+  content <- compact(map(contents, contents_shinychat_wrapped))
   if (is.null(content) || identical(content, "")) {
     return(NULL)
   }
