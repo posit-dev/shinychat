@@ -620,3 +620,70 @@ async def test_custom_result_inside_a_turn_is_wrapped() -> None:
     assert "custom-display" in html
     assert 'request-id="call-1"' in html
     assert "my-custom-ui" in html
+
+
+@pytest.mark.anyio
+async def test_custom_result_inside_a_turn_keeps_html_dependencies() -> None:
+    """Pairing the result is not enough -- its dependencies must arrive too.
+
+    `message_content(Turn)` concatenates only the rendered strings, so per-item
+    dependencies have to be collected separately or the custom UI renders
+    unstyled and unscripted.
+    """
+    from chatlas import Turn
+    from shinychat import message_content
+
+    dep = HTMLDependency("turn-widget", "1.0.0", head=HTML("<meta name='y'>"))
+
+    registry = gc.get_referents(message_content.registry)[0]
+    before = set(registry)
+
+    def handler(message: _CustomToolResult) -> ChatMessage:
+        return ChatMessage(content=Tag("div", dep, "Custom UI"))
+
+    message_content.register(_CustomToolResult, handler)
+    try:
+        request = _request(tool=_tool())
+        turn = Turn(
+            [_CustomToolResult(value=2, request=request)], role="assistant"
+        )
+        msg = message_content(turn)
+    finally:
+        for key in list(registry):
+            if key not in before:
+                del registry[key]
+        message_content._clear_cache()
+
+    assert "<shiny-tool-result" in msg.content
+    assert "turn-widget" in [d.name for d in msg.html_deps]
+
+
+@pytest.mark.anyio
+async def test_custom_tool_result_attachments_survive_the_wrap(
+    custom_display_handler: Any,
+) -> None:
+    """Wrapping replaces the author's `ChatMessage`, so anything it set beyond
+    the content -- notably `attachments` -- must be carried across rather than
+    silently reset to the constructor defaults."""
+    from shinychat.types import Attachment
+
+    attachment = Attachment(
+        mime="image/png",
+        data_url="data:image/png;base64,AAA",
+        name="chart.png",
+    )
+
+    def handler(chunk: _CustomToolResult) -> ChatMessage:
+        return ChatMessage(
+            content=Tag("div", "Custom UI"), attachments=[attachment]
+        )
+
+    custom_display_handler(handler)
+
+    request = _request(tool=_tool())
+    result = _CustomToolResult(value=2, request=request)
+    sent = await _stream_custom_result(result)
+
+    assert len(sent) == 1
+    assert "<shiny-tool-result" in sent[0].content
+    assert [a.name for a in sent[0].attachments] == ["chart.png"]
