@@ -479,11 +479,6 @@ export const ToolGroup = memo(function ToolGroup({
             </span>
           )}
         </span>
-        {!single && failedCount > 0 && (
-          <span className="shinychat-tool-group__failed">
-            {`${failedCount} failed`}
-          </span>
-        )}
         <span className="shinychat-tool-spacer" />
         {single && expanded && single.intent && (
           <span className="shinychat-tool-row__intent">{single.intent}</span>
@@ -493,8 +488,14 @@ export const ToolGroup = memo(function ToolGroup({
             {single.valuePreview}
           </span>
         )}
-        {single?.status === "error" && (
-          <span className="shinychat-tool-group__failed">failed</span>
+        {/* One trailing slot for both shapes, so the note sits by the chevron
+            whether the group holds one call or many. The status glyph is
+            decorative (aria-hidden), so this text is the only cue a screen
+            reader gets. */}
+        {failedCount > 0 && (
+          <span className="shinychat-tool-group__failed">
+            {single ? "failed" : `${failedCount} failed`}
+          </span>
         )}
         <span
           className="shinychat-tool-group__chevron"

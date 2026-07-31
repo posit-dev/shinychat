@@ -1046,6 +1046,49 @@ describe("ToolGroup", () => {
     ).toBeNull()
   })
 
+  // The note trails the spacer so it lands by the chevron, matching the
+  // single-call row (user, 2026-07-30). Asserted structurally rather than by
+  // text, because the position is the decision — a note that drifts back to
+  // the left of the spacer would still pass a textContent check.
+  it("puts the failure note after the spacer in both shapes", () => {
+    const after = (container: HTMLElement) => {
+      const kids = [
+        ...container.querySelector(".shinychat-tool-group__row")!.children,
+      ]
+      const spacer = kids.findIndex((n) =>
+        n.classList.contains("shinychat-tool-spacer"),
+      )
+      const note = kids.findIndex((n) =>
+        n.classList.contains("shinychat-tool-group__failed"),
+      )
+      expect(note).toBeGreaterThan(-1)
+      return note > spacer
+    }
+
+    const multi = render(
+      <ToolGroup
+        group={group({
+          title: "Searched",
+          calls: [
+            call({ requestId: "a", status: "success" }),
+            call({ requestId: "b", status: "error" }),
+          ],
+        })}
+      />,
+    )
+    expect(after(multi.container)).toBe(true)
+
+    const solo = render(
+      <ToolGroup
+        group={group({
+          title: "Searched",
+          calls: [call({ requestId: "a", status: "error" })],
+        })}
+      />,
+    )
+    expect(after(solo.container)).toBe(true)
+  })
+
   it("marks which grouped row failed with the same subtle text note, not just the red glyph", () => {
     const { container } = render(
       <ToolGroup
