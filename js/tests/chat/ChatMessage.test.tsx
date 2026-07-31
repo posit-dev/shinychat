@@ -328,6 +328,61 @@ describe("ChatMessage attachments", () => {
     expect(container.firstChild).toBeNull()
   })
 
+  it("rebuilds a heterogeneous group's header when supersession thins it to one call", () => {
+    // Two different tools bucketed under "all" grouping. The "search" request
+    // is superseded by a result rendered elsewhere, leaving only the "email"
+    // call visible. The header must describe just that call -- not the ×2 the
+    // unfiltered group carries, and not the "search" tool it no longer shows.
+    const message: ChatMessageData = {
+      ...userMessage({ content: "", blocks: [] }),
+      role: "assistant",
+      blocks: [
+        {
+          type: "tool_loop",
+          content: "",
+          contentType: "markdown",
+          grouping: "all",
+          groups: [
+            {
+              key: "all",
+              toolName: "search",
+              titleSettled: false,
+              count: 2,
+              segments: [
+                { toolName: "search", count: 1, settled: false },
+                { toolName: "email", count: 1, settled: false },
+              ],
+              calls: [
+                {
+                  requestId: "req-1",
+                  localId: "req-1",
+                  toolName: "search",
+                  status: "running",
+                },
+                {
+                  requestId: "req-2",
+                  localId: "req-2",
+                  toolName: "email",
+                  status: "running",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }
+    const { container } = render(
+      <ChatToolContext.Provider
+        value={{ supersededRequests: new Set(["req-1"]) }}
+      >
+        <ChatMessage index={0} message={message} />
+      </ChatToolContext.Provider>,
+    )
+    expect(container.textContent).toContain("email")
+    expect(container.textContent).not.toContain("search")
+    expect(container.textContent).not.toContain("×2")
+  })
+
   it('removes the icon entirely when the assistant icon is "" (icon_assistant=False)', () => {
     const { container } = render(
       <ChatMessage

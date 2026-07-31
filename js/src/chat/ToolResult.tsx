@@ -110,7 +110,11 @@ export const ToolResult = memo(function ToolResult({
         cardRef={cardRef}
       >
         {renderRequest(requestCall, showRequest)}
-        {renderResult(value, valueType, showRequest)}
+        <ToolResultValue
+          value={value}
+          valueType={valueType}
+          showRequest={showRequest}
+        />
       </ToolCard>
       {overlay}
     </>
@@ -153,11 +157,21 @@ function renderRequest(
   )
 }
 
-function renderResult(
-  value: string,
-  valueType: string,
-  showRequest: boolean,
-): React.ReactNode {
+/**
+ * The Tier-3 value: maps `value`/`valueType` to rendered content. Exported so
+ * `ToolGroup` can reuse the exact same path for a migrated custom-display
+ * payload — that path is `valueType === "html"` with `showRequest` false,
+ * which is already the one case below that returns with no card chrome.
+ */
+export function ToolResultValue({
+  value,
+  valueType,
+  showRequest,
+}: {
+  value: string
+  valueType: string
+  showRequest: boolean
+}): React.ReactNode {
   const displayValue = value || "[Empty result]"
 
   let resultContent: React.ReactNode

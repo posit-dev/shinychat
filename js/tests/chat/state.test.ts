@@ -2299,6 +2299,83 @@ describe("routeToolBlocks (tool content router)", () => {
     ).toHaveLength(1)
   })
 
+  describe("custom-display and resolveIndex", () => {
+    it("parses custom-display into customDisplay: true", () => {
+      const l = loops(route(res("1", "weather", 'custom-display="true"')))
+      expect(l[0]!.groups[0]!.calls[0]!.customDisplay).toBe(true)
+    })
+
+    it("leaves customDisplay falsy when the attribute is absent", () => {
+      const l = loops(route(res("1", "weather")))
+      expect(l[0]!.groups[0]!.calls[0]!.customDisplay).toBeFalsy()
+    })
+
+    it("sets resolveIndex from the result element's character offset", () => {
+      const content = res("1", "weather")
+      const l = loops(route(content))
+      const call = l[0]!.groups[0]!.calls[0]!
+      expect(call.resolveIndex).toBe(content.indexOf("<shiny-tool-result"))
+    })
+
+    it("orders two out-of-order parallel results by resolveIndex, not call order", () => {
+      // weather2's element appears first in the content, but its resolveIndex
+      // must still reflect its own (earlier) offset rather than weather1's —
+      // ordering migrated payloads depends on this being per-element, not
+      // per-call-position.
+      const r2 = res("2", "weather", 'custom-display="true"')
+      const r1 = res("1", "weather", 'custom-display="true"')
+      const content = r2 + r1
+      const l = loops(route(content, "none"))
+      const byRequestId = new Map(
+        l[0]!.groups.flatMap((g) => g.calls).map((c) => [c.requestId, c]),
+      )
+      const idx2 = byRequestId.get("2")!.resolveIndex!
+      const idx1 = byRequestId.get("1")!.resolveIndex!
+      expect(idx2).toBe(0)
+      expect(idx1).toBeGreaterThan(idx2)
+      expect(idx1).toBe(content.indexOf(r1))
+    })
+  })
+
+  describe("migrated (custom-display) calls stay in group.calls", () => {
+    // `collectResultIds` (via `supersededRequestIds`) reads `group.calls`
+    // directly to suppress a paired request row — see the comment at
+    // `state.ts:963-983`. A custom result leaving `group.calls` at the routing
+    // layer would silently break that suppression, so this is asserted
+    // explicitly rather than left as an implication of other tests.
+    it("keeps a custom-display call in group.calls after routing", () => {
+      const content = res("1", "weather", 'custom-display="true"')
+      const l = loops(route(content))
+      const calls = l[0]!.groups.flatMap((g) => g.calls)
+      expect(calls.map((c) => c.requestId)).toContain("1")
+      expect(calls[0]!.customDisplay).toBe(true)
+    })
+
+    it("still reports a migrated call's requestId as superseded", () => {
+      const requestThenResult =
+        req("1", "weather") + res("1", "weather", 'custom-display="true"')
+      const msg: ChatMessageData = {
+        id: "m",
+        role: "assistant",
+        content: requestThenResult,
+        streaming: false,
+        blocks: routeToolBlocks(
+          [
+            {
+              type: "content",
+              content: requestThenResult,
+              contentType: "markdown",
+            },
+          ],
+          "tool",
+          "assistant",
+        ),
+      }
+      const ids = supersededRequestIds([msg], null)
+      expect(ids.has("1")).toBe(true)
+    })
+  })
+
   describe("role gate", () => {
     const typed = `${req("1", "search")}${res("1", "search")}`
     const userBlocks: MessageBlock[] = [

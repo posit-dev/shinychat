@@ -348,6 +348,31 @@ $shinychat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 
   margin-top: 1rem;
 }
 
+// A migrated custom-display payload sits outside `.shinychat-tool-group`, as
+// a sibling in `.shinychat-tool-loop`, so it renders at normal font size, not
+// the row's 0.8em. `.shinychat-tool-loop` is `display: block` with no gap, so
+// without this the payload would butt straight against the row above it. The
+// trailing margin collapses on the last child so the loop's own
+// `margin-bottom` (not this one) governs the boundary after the loop.
+.shinychat-tool-custom-display {
+  margin: 1em 0;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+// Python's `ChatMessage.__init__` runs `split_html_islands` eagerly, so an
+// author's custom UI reaches the wire already wrapped in a real
+// `<shinychat-raw-html>` element. It lands here via `RawHTML`'s `innerHTML`,
+// so no React tag map runs on it (`MarkdownContent.tsx`'s is the only place
+// that maps this tag away) — it hits the DOM as an unknown element, which
+// defaults to `display: inline` and wraps its block content in an inline box.
+// This is what the element already means: an island marker, not a box.
+shinychat-raw-html {
+  display: contents;
+}
+
 .shinychat-tool-group {
   font-size: 0.8em;
 

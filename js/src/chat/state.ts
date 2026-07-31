@@ -685,6 +685,35 @@ function buildSegments(calls: ToolCallItem[]): ToolCallSegment[] {
   })
 }
 
+/**
+ * A group's row identity — title, its settled latch, icon, count and header
+ * segments — derived from the calls it is built over. `groupCalls` calls this
+ * over a group's full call list; `ToolGroup` calls it again over just the
+ * *visible* subset (calls a custom result hasn't migrated out), so a row
+ * whose calls have partly left still describes only what it still renders.
+ * One derivation, two callers, so the two can never drift apart.
+ */
+export interface ToolGroupIdentity {
+  title?: string
+  titleSettled: boolean
+  icon?: string
+  count: number
+  segments: ToolCallSegment[]
+}
+
+export function deriveToolGroupIdentity(
+  calls: ToolCallItem[],
+): ToolGroupIdentity {
+  const firstDone = calls.find((c) => c.status !== "running")
+  return {
+    title: resolveTitle(calls),
+    titleSettled: firstDone !== undefined,
+    icon: resolveIcon(calls),
+    count: calls.length,
+    segments: buildSegments(calls),
+  }
+}
+
 // Group a loop's calls per the chat-level grouping, honoring per-tool overrides.
 // none → one group per call; tool → group by tool name (first-appearance order);
 // all → one group for the loop.
@@ -720,17 +749,16 @@ function groupCalls(
 
   return keyOrder.map((key) => {
     const gcalls = byKey.get(key)!
-    const firstDone = gcalls.find((c) => c.status !== "running")
-    const settled = firstDone !== undefined
+    const identity = deriveToolGroupIdentity(gcalls)
     return {
       key,
       toolName: gcalls[0]!.toolName,
-      title: resolveTitle(gcalls),
-      titleSettled: settled,
-      icon: resolveIcon(gcalls),
-      count: gcalls.length,
+      title: identity.title,
+      titleSettled: identity.titleSettled,
+      icon: identity.icon,
+      count: identity.count,
       calls: gcalls,
-      segments: buildSegments(gcalls),
+      segments: identity.segments,
     }
   })
 }

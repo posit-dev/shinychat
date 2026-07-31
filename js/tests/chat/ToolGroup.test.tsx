@@ -1434,3 +1434,335 @@ describe("ToolGroup", () => {
     }
   })
 })
+
+// A custom-display call renders its `value` verbatim, with no card chrome.
+function customCall(
+  partial: Partial<ToolCallItem> & { requestId: string; value: string },
+): ToolCallItem {
+  return call({
+    status: "success",
+    customDisplay: true,
+    valueType: "html",
+    ...partial,
+  })
+}
+
+function payloadTexts(container: HTMLElement): string[] {
+  return [...container.querySelectorAll(".shinychat-tool-custom-display")].map(
+    (el) => el.textContent ?? "",
+  )
+}
+
+describe("ToolGroup migrating custom rows", () => {
+  it("walks the two-call weather example: request, request, migrate, migrate", () => {
+    // Step 1: weather1 requested — a spinning single-call row.
+    const w1Running = call({
+      requestId: "w1",
+      toolName: "weather",
+      status: "running",
+    })
+    const { container, rerender } = render(
+      <ToolGroup group={group({ toolName: "weather", calls: [w1Running] })} />,
+    )
+    expect(
+      container.querySelector(".shinychat-tool-group__glyph .spinner-border"),
+    ).toBeTruthy()
+    expect(container.textContent).not.toContain("×")
+
+    // Step 2: weather2 requested — the title updates, row becomes ×2.
+    const w2Running = call({
+      requestId: "w2",
+      toolName: "weather",
+      status: "running",
+    })
+    rerender(
+      <ToolGroup
+        group={group({
+          toolName: "weather",
+          calls: [w1Running, w2Running],
+        })}
+      />,
+    )
+    expect(headerText(container)).toContain("×2")
+
+    // Step 3: weather1 settles custom — [row (×1, weather2 still spinning),
+    // custom1]. `group.calls` still holds both calls (load-bearing for
+    // `collectResultIds`); only rendering filters.
+    const w1Custom = customCall({
+      requestId: "w1",
+      toolName: "weather",
+      value: "<p>Weather for Portland</p>",
+      resolveIndex: 10,
+    })
+    rerender(
+      <ToolGroup
+        group={group({
+          toolName: "weather",
+          calls: [w1Custom, w2Running],
+        })}
+      />,
+    )
+    expect(container.querySelector(".shinychat-tool-group")).toBeTruthy()
+    // Recomputed to the visible subset: one call left (weather2), so the row
+    // is single-call shaped, not ×2.
+    expect(headerText(container)).not.toContain("×")
+    expect(
+      container.querySelector(".shinychat-tool-group__glyph .spinner-border"),
+    ).toBeTruthy()
+    expect(payloadTexts(container)).toEqual(["Weather for Portland"])
+
+    // Step 4: weather2 settles custom too — [custom1, custom2], row gone.
+    const w2Custom = customCall({
+      requestId: "w2",
+      toolName: "weather",
+      value: "<p>Weather for Seattle</p>",
+      resolveIndex: 20,
+    })
+    rerender(
+      <ToolGroup
+        group={group({
+          toolName: "weather",
+          calls: [w1Custom, w2Custom],
+        })}
+      />,
+    )
+    expect(container.querySelector(".shinychat-tool-group")).toBeNull()
+    expect(payloadTexts(container)).toEqual([
+      "Weather for Portland",
+      "Weather for Seattle",
+    ])
+  })
+
+  it("keeps the row for good when the other call settles non-custom instead", () => {
+    const w1Custom = customCall({
+      requestId: "w1",
+      toolName: "weather",
+      value: "<p>Weather for Portland</p>",
+      resolveIndex: 10,
+    })
+    const w2Normal = call({
+      requestId: "w2",
+      toolName: "weather",
+      status: "success",
+      label: "Seattle",
+    })
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          toolName: "weather",
+          calls: [w1Custom, w2Normal],
+        })}
+      />,
+    )
+    expect(container.querySelector(".shinychat-tool-group")).toBeTruthy()
+    expect(headerText(container)).not.toContain("×")
+    expect(payloadTexts(container)).toEqual(["Weather for Portland"])
+  })
+
+  it("does not remount the row when the visible subset shrinks from two calls to one", () => {
+    const w1 = call({ requestId: "w1", toolName: "weather", status: "running" })
+    const w2 = call({ requestId: "w2", toolName: "weather", status: "running" })
+    const { container, rerender } = render(
+      <ToolGroup group={group({ toolName: "weather", calls: [w1, w2] })} />,
+    )
+    const row = container.querySelector(".shinychat-tool-group")!
+    const title = container.querySelector(".shinychat-tool-group__title")!
+
+    const w1Custom = customCall({
+      requestId: "w1",
+      toolName: "weather",
+      value: "<p>done</p>",
+      resolveIndex: 5,
+    })
+    rerender(
+      <ToolGroup
+        group={group({ toolName: "weather", calls: [w1Custom, w2] })}
+      />,
+    )
+    // The subset really did shrink to one visible call — otherwise this test
+    // would pass vacuously without touching the migration behavior at all.
+    expect(headerText(container)).not.toContain("×2")
+    // Same nodes, so nothing remounted — the ToolGroup update is a state
+    // change (which calls are visible), not a fresh mount.
+    expect(container.querySelector(".shinychat-tool-group")).toBe(row)
+    expect(container.querySelector(".shinychat-tool-group__title")).toBe(title)
+  })
+
+  it("recomputes the row's title, count, segments and failed note from the visible subset", () => {
+    // Two custom successes migrate out; the one non-custom failure is what's
+    // left in the row. Un-recomputed the row would still claim ×3.
+    const success1 = customCall({
+      requestId: "s1",
+      toolName: "run_query",
+      value: "<table>ok1</table>",
+      resolveIndex: 1,
+    })
+    const success2 = customCall({
+      requestId: "s2",
+      toolName: "run_query",
+      value: "<table>ok2</table>",
+      resolveIndex: 2,
+    })
+    const failure = call({
+      requestId: "f1",
+      toolName: "run_query",
+      status: "error",
+    })
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          toolName: "run_query",
+          calls: [success1, success2, failure],
+        })}
+      />,
+    )
+    expect(headerText(container)).not.toContain("×3")
+    expect(headerText(container)).not.toContain("×")
+    expect(
+      container.querySelector(".shinychat-tool-group__failed")?.textContent,
+    ).toBe("failed")
+    expect(payloadTexts(container)).toEqual(["ok1", "ok2"])
+  })
+
+  it("gives a failed custom call no failure note once it migrates out", () => {
+    const failedCustom = customCall({
+      requestId: "f1",
+      toolName: "weather",
+      status: "error",
+      value: "<p>error UI</p>",
+      resolveIndex: 1,
+    })
+    const stillRunning = call({
+      requestId: "r1",
+      toolName: "weather",
+      status: "running",
+    })
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          toolName: "weather",
+          calls: [failedCustom, stillRunning],
+        })}
+      />,
+    )
+    // The row shows only the still-running call — no failure note anywhere,
+    // since the failed call already left with its payload.
+    expect(container.querySelector(".shinychat-tool-group__failed")).toBeNull()
+    expect(payloadTexts(container)).toEqual(["error UI"])
+  })
+
+  it("orders migrated payloads by resolveIndex, not by group.calls order", () => {
+    const later = customCall({
+      requestId: "later",
+      toolName: "weather",
+      value: "<p>second</p>",
+      resolveIndex: 50,
+    })
+    const earlier = customCall({
+      requestId: "earlier",
+      toolName: "weather",
+      value: "<p>first</p>",
+      resolveIndex: 5,
+    })
+    // group.calls in the "wrong" order — resolveIndex must win.
+    const { container } = render(
+      <ToolGroup
+        group={group({ toolName: "weather", calls: [later, earlier] })}
+      />,
+    )
+    expect(payloadTexts(container)).toEqual(["first", "second"])
+  })
+
+  it("renders each payload as a sibling after .shinychat-tool-group, not nested inside it", () => {
+    const custom1 = customCall({
+      requestId: "c1",
+      toolName: "weather",
+      value: "<p>payload</p>",
+      resolveIndex: 1,
+    })
+    const stillRunning = call({
+      requestId: "r1",
+      toolName: "weather",
+      status: "running",
+    })
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          toolName: "weather",
+          calls: [custom1, stillRunning],
+        })}
+      />,
+    )
+    const rowEl = container.querySelector(".shinychat-tool-group")
+    const payload = container.querySelector(".shinychat-tool-custom-display")
+    expect(rowEl).toBeTruthy()
+    expect(payload).toBeTruthy()
+    // Not nested inside the row...
+    expect(rowEl!.querySelector(".shinychat-tool-custom-display")).toBeNull()
+    // ...and it follows the row as a later sibling.
+    expect(
+      rowEl!.compareDocumentPosition(payload!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
+  it("does not let the settled/'Used' latch revert as the visible subset shrinks", () => {
+    // An untitled tool: the header reads "Used <tool>" once any visible call
+    // has settled, and "Using <tool>" until then. Call `kept` settles
+    // non-custom first, latching the row to "Used"; `migrating` then settles
+    // custom and leaves. Since `kept` never leaves (only a custom settlement
+    // can remove a call), the latch must not fall back to "Using".
+    vi.useFakeTimers()
+    try {
+      const kept = call({
+        requestId: "kept",
+        toolName: "run_sql",
+        status: "success",
+      })
+      const migratingRunning = call({
+        requestId: "migrating",
+        toolName: "run_sql",
+        status: "running",
+      })
+      const { container, rerender } = render(
+        <ToolGroup
+          group={group({
+            toolName: "run_sql",
+            title: undefined,
+            calls: [kept, migratingRunning],
+          })}
+        />,
+      )
+      act(() => {
+        vi.advanceTimersByTime(200)
+      })
+      expect(headerText(container)).toContain("Used run_sql")
+
+      const migratingCustom = customCall({
+        requestId: "migrating",
+        toolName: "run_sql",
+        value: "<p>custom</p>",
+        resolveIndex: 1,
+      })
+      rerender(
+        <ToolGroup
+          group={group({
+            toolName: "run_sql",
+            title: undefined,
+            calls: [kept, migratingCustom],
+          })}
+        />,
+      )
+      act(() => {
+        vi.advanceTimersByTime(200)
+      })
+      expect(headerText(container)).toContain("Used run_sql")
+      expect(headerText(container)).not.toContain("Using")
+      // `migrating` really did leave the row — otherwise this test would pass
+      // vacuously without exercising the migration behavior at all.
+      expect(headerText(container)).not.toContain("×2")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})

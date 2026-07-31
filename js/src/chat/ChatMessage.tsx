@@ -1,5 +1,6 @@
 import { memo, useMemo, useState, useRef, useCallback, useEffect } from "react"
 import {
+  deriveToolGroupIdentity,
   routeToolBlocks,
   type ChatMessageData,
   type MessageBlock,
@@ -121,6 +122,12 @@ export const ChatMessage = memo(function ChatMessage({
   // the decision to render a row at all — reflect what is actually visible. The
   // original block index is kept so React keys stay stable when a block drops
   // out.
+  //
+  // A group that loses a call this way rederives its whole identity from the
+  // survivors rather than patching `count` alone: the row must describe the
+  // calls it actually renders, and title/segments/icon are just as call-shaped
+  // as count is. Patching one field while leaving the rest is exactly what let
+  // a filtered group keep naming a tool it no longer shows.
   const visibleBlocks = useMemo(() => {
     const out: { block: MessageBlock; index: number }[] = []
     blocks.forEach((block, index) => {
@@ -136,7 +143,7 @@ export const ChatMessage = memo(function ChatMessage({
           )
           return calls.length === g.calls.length
             ? g
-            : { ...g, calls, count: calls.length }
+            : { ...g, calls, ...deriveToolGroupIdentity(calls) }
         })
         .filter((g) => g.calls.length > 0)
       if (groups.length > 0) out.push({ block: { ...block, groups }, index })

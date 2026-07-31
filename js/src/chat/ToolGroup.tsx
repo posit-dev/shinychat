@@ -7,8 +7,14 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import type { ToolCallGroup, ToolCallItem, ToolCallSegment } from "./state"
-import { ToolResult } from "./ToolResult"
+import {
+  deriveToolGroupIdentity,
+  type ToolCallGroup,
+  type ToolCallItem,
+  type ToolCallSegment,
+  type ToolGroupIdentity,
+} from "./state"
+import { ToolResult, ToolResultValue } from "./ToolResult"
 import { ToolRequest } from "./ToolRequest"
 import { useFadingValue } from "./useFadingText"
 import { bareDot, chevronDown, exclamationCircleFill } from "../utils/icons"
@@ -269,9 +275,7 @@ function visibleSegments(segments: ToolCallSegment[]): {
 // would show ungrouped — joined by ", ". A homogeneous group has a single
 // segment and renders exactly as it always has: the title span (plus its ×N),
 // unwrapped, straight into the row's flex layout.
-function GroupTitle({ group }: { group: ToolCallGroup }): ReactNode {
-  const segments = group.segments
-
+function GroupTitle({ segments }: { segments: ToolCallSegment[] }): ReactNode {
   if (segments.length === 1) {
     return <TitleSegment segment={segments[0]!} showVerb={true} />
   }
@@ -410,11 +414,33 @@ export const ToolGroup = memo(function ToolGroup({
 }: {
   group: ToolCallGroup
 }) {
+  // A call that settles with author-supplied custom output leaves the row —
+  // its payload renders below the group instead — while every call still
+  // *running*, or settled with non-custom output, stays in the row. This is a
+  // render-time split, never done in `groupCalls`: `collectResultIds`
+  // (state.ts) reads `group.calls` directly to suppress a paired request row
+  // elsewhere in the transcript, and removing a migrated call there would
+  // silently stop that suppression. Filtering only here leaves `group.calls`
+  // intact for that read.
+  const visibleCalls = group.calls.filter(
+    (c) => c.status === "running" || !c.customDisplay,
+  )
+  const migratedCalls = group.calls.filter(
+    (c) => c.customDisplay && c.status !== "running",
+  )
+  // Results settle (and so migrate) in arrival order, not `group.calls` order
+  // (parallel calls can resolve out of order) — sort by the element's source
+  // offset. A copy: `group.calls` is not this component's to mutate.
+  const orderedMigratedCalls = [...migratedCalls].sort(
+    (a, b) => (a.resolveIndex ?? 0) - (b.resolveIndex ?? 0),
+  )
+
   // A call marked `expanded` must be reachable: open the group so its Tier-2
-  // row (which opens itself) isn't stranded inside the hidden call list. For a
-  // single-call group this is just that one call's own flag.
+  // row (which opens itself) isn't stranded inside the hidden call list.
+  // Seeded from the *visible* calls only — a migrated call renders as a
+  // payload with no Tier-2 row of its own to be stranded in.
   const [expanded, setExpanded] = useExpandable(
-    group.calls.some((c) => c.expanded),
+    visibleCalls.some((c) => c.expanded),
   )
   // Not seeded from `group.key` or a call's `requestId`: `group.key` is only
   // unique within one routed loop (two messages that both group "all", or
@@ -428,105 +454,144 @@ export const ToolGroup = memo(function ToolGroup({
   // transcript (`supersededRequestIds`). Rendering used to dispatch it as a
   // side effect, which is why the row it superseded could unmount mid-render.
 
-  // The lone call of a single-call group. Its label, intent and value preview
+  // The row's identity. `group.title`/`count`/`segments`/`icon` always
+  // describe `group.calls` exactly — both `groupCalls` and `ChatMessage`'s
+  // supersession filter derive them with this same helper, so the two can
+  // never drift apart. Once a call has migrated out with its own payload,
+  // `group.calls` includes a call the row no longer renders, so the identity
+  // needs recomputing from the visible subset. With nothing migrated the
+  // subset is the full call list, so recomputing would just reproduce
+  // `group`'s own fields — skip the redundant work and reuse them instead.
+  const identity: ToolGroupIdentity =
+    migratedCalls.length > 0
+      ? deriveToolGroupIdentity(visibleCalls)
+      : {
+          title: group.title,
+          titleSettled: group.titleSettled,
+          icon: group.icon,
+          count: group.count,
+          segments: group.segments,
+        }
+
+  // The lone call of a single-call row. Its label, intent and value preview
   // ride the header row itself, because there is no Tier-2 row to carry them.
-  const single = group.calls.length === 1 ? group.calls[0]! : null
-  const label = single && perCallLabel(single, group.title, true)
-  const anyRunning = group.calls.some((c) => c.status === "running")
-  const failedCount = group.calls.filter((c) => c.status === "error").length
+  const single = visibleCalls.length === 1 ? visibleCalls[0]! : null
+  const label = single && perCallLabel(single, identity.title, true)
+  const anyRunning = visibleCalls.some((c) => c.status === "running")
+  const failedCount = visibleCalls.filter((c) => c.status === "error").length
   // A group spanning several tools has no one icon to show, so the header
   // keeps the generic dot and lets the rows carry the tool icons instead.
-  const heterogeneous = group.segments.length > 1
+  const heterogeneous = identity.segments.length > 1
   const glyphHtml = anyRunning
     ? spinnerHtml
     : heterogeneous
       ? bareDot
-      : group.icon || bareDot
+      : identity.icon || bareDot
   // A row must not repeat a title its own segment already shows, so it compares
   // against that tool's segment title rather than the combined header.
   const segmentTitles = new Map(
-    group.segments.map((s) => [s.toolName, s.title]),
+    identity.segments.map((s) => [s.toolName, s.title]),
   )
 
   return (
-    <div
-      className={`shinychat-tool-group shinychat-tool-group--${
-        single ? "single" : "multi"
-      }`}
-    >
-      <button
-        type="button"
-        className="shinychat-tool-group__row"
-        aria-expanded={expanded}
-        aria-controls={bodyId}
-        onClick={() => setExpanded((v) => !v)}
-      >
-        <span
-          className={`shinychat-tool-group__glyph${anyRunning ? " running" : ""}`}
-          dangerouslySetInnerHTML={{ __html: glyphHtml }}
-        />
-        {/* The title sits at this exact depth in both shapes, so it survives a
-            1→N growth and can crossfade across it. The ×N lives inside the
-            header, one per tool: a heterogeneous group has no single count to
-            show, and a homogeneous one has exactly one segment, so its badge
-            lands beside the title either way. */}
-        <span className="shinychat-tool-group__titlewrap">
-          <GroupTitle group={group} />
-          {label && (
-            <span className="shinychat-tool-group__label">
-              {": "}
-              {label.code ? <code>{label.text}</code> : label.text}
-            </span>
-          )}
-        </span>
-        <span className="shinychat-tool-spacer" />
-        {single && expanded && single.intent && (
-          <span className="shinychat-tool-row__intent">{single.intent}</span>
-        )}
-        {single?.valuePreview && (
-          <span className="shinychat-tool-call-row__preview">
-            {single.valuePreview}
-          </span>
-        )}
-        {/* One trailing slot for both shapes, so the note sits by the chevron
-            whether the group holds one call or many. The status glyph is
-            decorative (aria-hidden), so this text is the only cue a screen
-            reader gets. */}
-        {failedCount > 0 && (
-          <span className="shinychat-tool-group__failed">
-            {single ? "failed" : `${failedCount} failed`}
-          </span>
-        )}
-        <span
-          className="shinychat-tool-group__chevron"
-          dangerouslySetInnerHTML={chevronDSIH}
-        />
-      </button>
-      {single ? (
+    <>
+      {/* Fragment adds no DOM, so `.shinychat-tool-group` stays a direct child
+          of `.shinychat-tool-loop` when it renders at all — existing CSS keyed
+          on that relationship is unaffected. When every call has migrated out
+          there is nothing left for the row to show, so it disappears rather
+          than rendering empty. */}
+      {visibleCalls.length > 0 && (
         <div
-          id={bodyId}
-          className="shinychat-tool-call-row__detail"
-          hidden={!expanded}
+          className={`shinychat-tool-group shinychat-tool-group--${
+            single ? "single" : "multi"
+          }`}
         >
-          {expanded && renderLeaf(single, true)}
-        </div>
-      ) : (
-        <ul
-          id={bodyId}
-          className="shinychat-tool-group__calls"
-          role="list"
-          hidden={!expanded}
-        >
-          {group.calls.map((item) => (
-            <ToolCallRow
-              key={item.localId}
-              item={item}
-              segmentTitle={segmentTitles.get(item.toolName)}
-              heterogeneous={heterogeneous}
+          <button
+            type="button"
+            className="shinychat-tool-group__row"
+            aria-expanded={expanded}
+            aria-controls={bodyId}
+            onClick={() => setExpanded((v) => !v)}
+          >
+            <span
+              className={`shinychat-tool-group__glyph${anyRunning ? " running" : ""}`}
+              dangerouslySetInnerHTML={{ __html: glyphHtml }}
             />
-          ))}
-        </ul>
+            {/* The title sits at this exact depth in both shapes, so it survives a
+                1→N growth and can crossfade across it. The ×N lives inside the
+                header, one per tool: a heterogeneous group has no single count to
+                show, and a homogeneous one has exactly one segment, so its badge
+                lands beside the title either way. */}
+            <span className="shinychat-tool-group__titlewrap">
+              <GroupTitle segments={identity.segments} />
+              {label && (
+                <span className="shinychat-tool-group__label">
+                  {": "}
+                  {label.code ? <code>{label.text}</code> : label.text}
+                </span>
+              )}
+            </span>
+            <span className="shinychat-tool-spacer" />
+            {single && expanded && single.intent && (
+              <span className="shinychat-tool-row__intent">
+                {single.intent}
+              </span>
+            )}
+            {single?.valuePreview && (
+              <span className="shinychat-tool-call-row__preview">
+                {single.valuePreview}
+              </span>
+            )}
+            {/* One trailing slot for both shapes, so the note sits by the chevron
+                whether the group holds one call or many. The status glyph is
+                decorative (aria-hidden), so this text is the only cue a screen
+                reader gets. */}
+            {failedCount > 0 && (
+              <span className="shinychat-tool-group__failed">
+                {single ? "failed" : `${failedCount} failed`}
+              </span>
+            )}
+            <span
+              className="shinychat-tool-group__chevron"
+              dangerouslySetInnerHTML={chevronDSIH}
+            />
+          </button>
+          {single ? (
+            <div
+              id={bodyId}
+              className="shinychat-tool-call-row__detail"
+              hidden={!expanded}
+            >
+              {expanded && renderLeaf(single, true)}
+            </div>
+          ) : (
+            <ul
+              id={bodyId}
+              className="shinychat-tool-group__calls"
+              role="list"
+              hidden={!expanded}
+            >
+              {visibleCalls.map((item) => (
+                <ToolCallRow
+                  key={item.localId}
+                  item={item}
+                  segmentTitle={segmentTitles.get(item.toolName)}
+                  heterogeneous={heterogeneous}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
       )}
-    </div>
+      {orderedMigratedCalls.map((item) => (
+        <div key={item.localId} className="shinychat-tool-custom-display">
+          <ToolResultValue
+            value={item.value ?? ""}
+            valueType={item.valueType ?? "html"}
+            showRequest={false}
+          />
+        </div>
+      ))}
+    </>
   )
 })
