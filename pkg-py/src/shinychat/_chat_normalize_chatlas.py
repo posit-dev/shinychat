@@ -192,6 +192,15 @@ class ToolResultComponent(ToolCardComponent):
     value_preview: Optional[str] = None
     "A terse per-call preview of the tool result, shown in the condensed view."
 
+    custom_display: bool = False
+    """
+    Internal provenance marker only: set when `_chat.py` wraps an author's
+    own `message_content_chunk` override for a `ContentToolResult` subclass,
+    never by an author. Not part of `ToolResultDisplay` or any author-facing
+    API. Records *that* shinychat performed the wrap, not how the client
+    should behave -- that interpretation stays free to change independently.
+    """
+
     def tagify(self) -> Tagified:
         icon_ui = TagList(self.icon).render()
 
@@ -213,7 +222,7 @@ class ToolResultComponent(ToolCardComponent):
             tool_title=self.tool_title,
             icon=icon_ui["html"] if self.icon else None,
             intent=self.intent,
-            request_call=self.request_call,
+            request_call=self.request_call or None,
             status=self.status,
             value=value_ui["html"],
             value_type=self.value_type,
@@ -224,6 +233,7 @@ class ToolResultComponent(ToolCardComponent):
             grouping=self.grouping,
             label=self.label,
             value_preview=self.value_preview,
+            custom_display="" if self.custom_display else None,
             *icon_ui["dependencies"],
             *value_ui["dependencies"],
             *footer_ui["dependencies"],
@@ -451,6 +461,57 @@ def tool_result_contents(x: "ContentToolResult") -> Tagifiable:
         grouping=grouping,
         label=display.label,
         value_preview=display.value_preview,
+    )
+
+
+def attach_tool_result_marker(msg: Any, result: Tagifiable) -> None:
+    """Mark `msg` as carrying shinychat's own rendered tool result.
+
+    `result` is only a `ToolResultComponent` when `tool_result_contents()`
+    took its normal path; it's a `TagList()` (display "none") or the raw
+    content object (legacy chatlas) otherwise, and neither of those gets
+    marked. Kept as a small helper here, rather than having callers
+    `isinstance`-check against `ToolResultComponent` themselves: doing that
+    check from another module, with the narrowed value then flowing out of
+    that module (as a return, a reassignment, or a further call argument),
+    confuses pyright's resolution of this class's recursive `TagChild` alias,
+    surfacing a bogus `reportInvalidTypeForm` on the alias's own definition
+    above. Narrowing stays inside this module; callers only ever pass values
+    in and never see a `ToolResultComponent`-typed value come back out.
+    """
+    if isinstance(result, ToolResultComponent):
+        setattr(msg, "_tool_result", result)
+
+
+def wrap_custom_tool_result(
+    *,
+    request_id: str,
+    tool_name: str,
+    status: Literal["success", "error"],
+    value: Tagifiable,
+    grouping: Optional[GroupingValue],
+) -> Tagifiable:
+    """Build the `<shiny-tool-result>` wrapper for an author's custom result UI.
+
+    Kept as a factory here, rather than having `_chat.py` import and construct
+    `ToolResultComponent` directly, for the same cross-module resolution
+    reason as `attach_tool_result_marker()` above: construction stays inside
+    this module, same as `tool_result_contents()`; the caller only ever sees
+    the opaque `Tagifiable` return type.
+    """
+    return ToolResultComponent(
+        request_id=request_id,
+        tool_name=tool_name,
+        status=status,
+        value=value,
+        value_type="html",
+        # Keep the wire minimal: none of these render for a migrated call.
+        show_request=False,
+        grouping=grouping,
+        # Internal provenance marker only ("shinychat wrapped an author's
+        # custom output"), not part of any author-facing API and not
+        # surfaced by `ToolResultDisplay`.
+        custom_display=True,
     )
 
 

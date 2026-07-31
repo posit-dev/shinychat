@@ -12,18 +12,20 @@ Covers:
 
 from __future__ import annotations
 
+import gc
 from typing import Any, cast
 
 import pytest
 from chatlas._tools import Tool
 from chatlas.types import ContentToolRequest, ContentToolResult, ToolInfo
-from htmltools import TagList
-from shinychat import chat_ui
+from htmltools import HTML, HTMLDependency, Tag, TagList
+from shinychat import chat_ui, message_content_chunk
 from shinychat._chat_normalize_chatlas import (
     ToolResultDisplay,
     tool_request_contents,
     tool_result_contents,
 )
+from shinychat.types import ChatMessage
 
 
 def _tool(annotations: dict[str, Any] | None = None) -> Tool:
@@ -365,3 +367,182 @@ async def test_streaming_a_tool_result_sends_the_hide_action_after_the_content()
         await chat._append_message_chunk(result, stream_id="s1")
 
     assert events == ["content", "hide_tool_request"]
+
+
+# ---------------------------------------------------------------------------
+# 6. Fully-custom tool result UI: `_append_message_chunk` wraps an author's
+#    `message_content_chunk` override for a `ContentToolResult` subclass in a
+#    real `<shiny-tool-result custom-display>`, so the client always has an
+#    element to pair against the request (see `is_tool_result()` block, above).
+# ---------------------------------------------------------------------------
+
+
+class _CustomToolResult(ContentToolResult):
+    """Stand-in for an author's own `ContentToolResult` subclass."""
+
+
+@pytest.fixture
+def custom_display_handler():
+    """Register a `message_content_chunk` handler and undo it afterward.
+
+    `singledispatch` registries (like `message_content_chunk`'s) are
+    process-global, so a handler left registered here would leak into
+    unrelated tests that happen to run later in the same process.
+    """
+    registry = gc.get_referents(message_content_chunk.registry)[0]
+    before = set(registry)
+
+    def _register(handler: Any) -> None:
+        message_content_chunk.register(_CustomToolResult, handler)
+
+    yield _register
+
+    for key in list(registry):
+        if key not in before:
+            del registry[key]
+    message_content_chunk._clear_cache()
+
+
+async def _stream_custom_result(result: ContentToolResult) -> list[Any]:
+    """Drive `result` through `chat._append_message_chunk`, capturing what's sent."""
+    from shiny.express._stub_session import ExpressStubSession
+    from shiny.session import session_context
+    from shinychat import Chat
+
+    sent: list[Any] = []
+
+    async def capture_append(message: Any, **kwargs: Any) -> None:
+        sent.append(message)
+
+    async def capture_action(*args: Any, **kwargs: Any) -> None:
+        pass
+
+    with session_context(ExpressStubSession()):
+        chat = Chat(id="chat")
+        chat._send_append_message = capture_append  # type: ignore[method-assign]
+        chat._send_action = capture_action  # type: ignore[method-assign]
+        await chat._append_message_chunk(result, stream_id="s1")
+
+    return sent
+
+
+@pytest.mark.anyio
+async def test_custom_tool_result_handler_is_wrapped_in_a_result_element(
+    custom_display_handler: Any,
+) -> None:
+    """An author's bare custom UI must still reach the client as a
+    `<shiny-tool-result>`, or the client has no element to pair against the
+    request and the request row spins forever."""
+
+    def handler(chunk: _CustomToolResult) -> ChatMessage:
+        return ChatMessage(
+            content=Tag("div", "Custom UI", class_="my-custom-ui")
+        )
+
+    custom_display_handler(handler)
+
+    request = _request(tool=_tool())
+    result = _CustomToolResult(value=2, request=request)
+    sent = await _stream_custom_result(result)
+
+    assert len(sent) == 1
+    html = sent[0].content
+    assert "<shiny-tool-result" in html
+    assert "custom-display" in html
+    assert 'value-type="html"' in html
+    assert 'request-id="call-1"' in html
+    assert 'tool-name="my_tool"' in html
+    assert 'status="success"' in html
+    assert "Custom UI" in html
+    assert "my-custom-ui" in html
+
+
+@pytest.mark.anyio
+async def test_custom_tool_result_error_renders_like_a_successful_one(
+    custom_display_handler: Any,
+) -> None:
+    """A failed custom call must still be wrapped -- `status="error"`, with
+    `custom-display` still present -- not silently dropped."""
+
+    def handler(chunk: _CustomToolResult) -> ChatMessage:
+        return ChatMessage(content=Tag("div", "Something went wrong"))
+
+    custom_display_handler(handler)
+
+    request = _request(tool=_tool())
+    result = _CustomToolResult(
+        value=None, error=Exception("boom"), request=request
+    )
+    sent = await _stream_custom_result(result)
+
+    assert len(sent) == 1
+    html = sent[0].content
+    assert "<shiny-tool-result" in html
+    assert "custom-display" in html
+    assert 'status="error"' in html
+
+
+@pytest.mark.anyio
+async def test_plain_tool_result_is_not_misread_as_custom_display() -> None:
+    """shinychat's own tool card (no author override) must never carry
+    `custom-display` -- that attribute is reserved for the bypass path."""
+    result = _result(_request(tool=_tool()))
+    sent = await _stream_custom_result(result)
+
+    assert len(sent) == 1
+    html = sent[0].content
+    assert "<shiny-tool-result" in html
+    assert "custom-display" not in html
+
+
+@pytest.mark.anyio
+async def test_tool_display_none_is_not_misread_as_custom_display(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`SHINYCHAT_TOOL_DISPLAY=none` returns `TagList()` -- shinychat's own
+    (empty) return, not an author bypass -- so no `custom-display` either."""
+    monkeypatch.setenv("SHINYCHAT_TOOL_DISPLAY", "none")
+
+    result = _result(_request(tool=_tool()))
+    sent = await _stream_custom_result(result)
+
+    assert len(sent) == 1
+    assert "custom-display" not in sent[0].content
+
+
+@pytest.mark.anyio
+async def test_legacy_chatlas_tool_result_is_not_misread_as_custom_display(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`is_legacy()` returns the raw content object -- shinychat's own
+    fallback for old chatlas versions -- so no `custom-display` either."""
+    monkeypatch.setattr("chatlas._version.version_tuple", (0, 10, 0))
+
+    result = _result(_request(tool=_tool()))
+    sent = await _stream_custom_result(result)
+
+    assert len(sent) == 1
+    assert "custom-display" not in sent[0].content
+
+
+@pytest.mark.anyio
+async def test_custom_tool_result_html_dependencies_survive_the_wrap(
+    custom_display_handler: Any,
+) -> None:
+    """Wrapping the author's UI in `<shiny-tool-result>` must not drop the
+    `HTMLDependency` objects the UI carries -- they still need to reach the
+    client."""
+    dep = HTMLDependency("custom-widget", "1.0.0", head=HTML("<meta name='x'>"))
+
+    def handler(chunk: _CustomToolResult) -> ChatMessage:
+        return ChatMessage(content=Tag("div", dep, "Custom UI"))
+
+    custom_display_handler(handler)
+
+    request = _request(tool=_tool())
+    result = _CustomToolResult(value=2, request=request)
+    sent = await _stream_custom_result(result)
+
+    assert len(sent) == 1
+    dep_names = [d.name for d in sent[0].html_deps]
+    assert "custom-widget" in dep_names

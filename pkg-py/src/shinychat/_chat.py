@@ -1066,6 +1066,10 @@ class Chat:
 
         # Normalize various message types into a ChatMessage()
         msg = message_content_chunk(message)
+        # `msg` is rebound (and can become None) by `_transform_message()`
+        # below, so the custom-tool-result wrap must happen here, before that
+        # rebind, not at the `_hide_tool_request` call site further down.
+        msg = _wrap_custom_tool_result(message, msg)
         chunk_deps = msg.html_deps or []
 
         if operation == "replace":
@@ -2591,6 +2595,80 @@ def is_tool_result(val: object) -> "TypeGuard[chatlas.ContentToolResult]":
         return isinstance(val, ContentToolResult)
     except ImportError:
         return False
+
+
+def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
+    """Wrap an author's fully-custom tool result UI in a real `<shiny-tool-result>`.
+
+    A `message_content_chunk` handler registered for a `ContentToolResult`
+    subclass may return arbitrary UI instead of shinychat's own tool card
+    (see the module docs on extending `message_content_chunk`). That leaves
+    no `<shiny-tool-result>` element in the transcript at all, so the
+    condensed tool view -- which derives "this call finished" from that
+    element's presence -- has nothing to key off of, and the request row
+    spins forever on restore. Wrap the author's rendered output in a real
+    element carrying only the fields needed to pair a result with its
+    request; everything else about the row (title, icon, footer, ...) is the
+    author's own UI to manage.
+
+    Detection is by artifact, not dispatch: shinychat's own `ContentToolResult`
+    handler marks its `ChatMessage` with `_tool_result` (see
+    `_chat_normalize.py`), and that mark survives an author calling
+    `message_content(chunk)` and returning shinychat's own message unmodified
+    -- so that pattern correctly reads as *not* custom. Anything else returned
+    for a `ContentToolResult` is custom UI and gets wrapped.
+    """
+    if not is_tool_result(message) or message.request is None:
+        return msg
+
+    if getattr(msg, "_tool_result", None) is not None:
+        return msg
+
+    try:
+        from ._chat_normalize_chatlas import (
+            _annotation_extra,
+            as_grouping,
+            is_legacy,
+            tool_display_override,
+            wrap_custom_tool_result,
+        )
+    except ImportError:
+        return msg
+
+    # `tool_display_override() == "none"` and `is_legacy()` are shinychat's
+    # own early returns from `tool_result_contents()` -- a `TagList()` and
+    # the raw content object, respectively -- not an author bypass. Neither
+    # is a `ToolResultComponent`, so neither carries `_tool_result`; exclude
+    # them explicitly so they aren't misread as custom UI.
+    if tool_display_override() == "none" or is_legacy():
+        return msg
+
+    grouping = None
+    tool = message.request.tool
+    if tool and tool.annotations:
+        extra = _annotation_extra(tool.annotations)
+        grouping = as_grouping(extra.get("grouping"))
+        grouping = grouping or as_grouping(tool.annotations.get("grouping"))
+
+    wrapped = wrap_custom_tool_result(
+        request_id=message.request.id,
+        tool_name=message.request.name,
+        # Locked: the author is assumed to present the error state inside
+        # their own UI, so a failed custom call is wrapped exactly like a
+        # successful one; only the request-pairing signal matters here.
+        status="success" if message.error is None else "error",
+        value=TagList(HTML(msg.content)),
+        grouping=grouping,
+    )
+
+    result = ChatMessage(content=wrapped, content_type=msg.content_type)
+    # `ChatMessage.__init__` re-renders `wrapped` from scratch, so it never
+    # sees the author's original html_deps -- they rode in on `msg.content`
+    # as an already-rendered HTML string. Carry them forward alongside
+    # whatever the wrap itself contributed (e.g. the element's own
+    # dependency).
+    result.html_deps = list(msg.html_deps) + list(result.html_deps)
+    return result
 
 
 CHAT_INSTANCES: WeakValueDictionary[str, Chat] = WeakValueDictionary()

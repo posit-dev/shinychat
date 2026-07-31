@@ -132,6 +132,7 @@ try:
 
     # Import here to avoid hard dependency on pydantic
     from ._chat_normalize_chatlas import (
+        attach_tool_result_marker,
         tool_request_contents,
         tool_result_contents,
     )
@@ -197,7 +198,19 @@ try:
 
     @message_content.register
     def _(chunk: ContentToolResult):
-        return ChatMessage(content=tool_result_contents(chunk))
+        result = tool_result_contents(chunk)
+        msg = ChatMessage(content=result)
+        # Mark this as shinychat's own tool card, by artifact rather than by
+        # dispatch: `_chat.py` uses the presence of `_tool_result` to tell an
+        # author's `message_content_chunk` override (custom UI, no marker)
+        # apart from a call that builds on this handler via `message_content`
+        # and returns shinychat's own `ChatMessage` back out (still marked,
+        # and correctly *not* custom). `tool_result_contents` may also return
+        # a `TagList()` (display "none") or the raw content object (legacy
+        # chatlas), neither of which is a `ToolResultComponent`, so the mark
+        # is naturally skipped for those.
+        attach_tool_result_marker(msg, result)
+        return msg
 
     @message_content_chunk.register
     def _(chunk: ContentToolResult):
