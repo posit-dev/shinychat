@@ -216,7 +216,9 @@ def test_tool_annotation_non_dict_extra_falls_back_to_top_level():
 
 
 def test_tool_annotation_non_dict_extra_omits_grouping_and_icon():
-    request = _request_with_raw_annotations({"title": "My Tool", "extra": "oops"})
+    request = _request_with_raw_annotations(
+        {"title": "My Tool", "extra": "oops"}
+    )
     result = _result(request)
 
     request_html = _render(tool_request_contents(request))

@@ -192,7 +192,9 @@ def test_attachment_to_content_pdf_malformed_base64_raises_clean_error():
         data_url="data:application/pdf;base64,%%%not-base64%%%",
         name="broken.pdf",
     )
-    with pytest.raises(ValueError, match="Malformed base64 payload in data URL"):
+    with pytest.raises(
+        ValueError, match="Malformed base64 payload in data URL"
+    ):
         attachment_to_content(att)
 
 

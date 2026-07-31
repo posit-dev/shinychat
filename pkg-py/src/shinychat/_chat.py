@@ -350,7 +350,9 @@ class Chat:
 
         # Keep track of effects so we can destroy them when the chat is destroyed
         self._effects: list["Effect_"] = []
-        history_config = history if isinstance(history, HistoryOptions) else None
+        history_config = (
+            history if isinstance(history, HistoryOptions) else None
+        )
         self._history_enabled: bool = history is not False
         self.history: ChatHistory = ChatHistory(self, config=history_config)
         self._cancel_bookmarking_callbacks: CancelCallback | None = None
@@ -369,9 +371,9 @@ class Chat:
                 dict[str, SlashCommandRegistration] | None
             ] = reactive.Value(None)
 
-            self._latest_user_input: reactive.Value[
-                StoredMessage | None
-            ] = reactive.Value(None)
+            self._latest_user_input: reactive.Value[StoredMessage | None] = (
+                reactive.Value(None)
+            )
 
             @reactive.extended_task
             async def _mock_task() -> str:
@@ -499,7 +501,9 @@ class Chat:
         with session_context(self._session):
 
             @self.on_user_submit
-            async def _on_user_submit(user_input: str, attachments: list[Attachment]) -> None:
+            async def _on_user_submit(
+                user_input: str, attachments: list[Attachment]
+            ) -> None:
                 contents = [attachment_to_content(a) for a in attachments]
                 response = await chat_client.value.stream_async(
                     user_input,
@@ -664,7 +668,9 @@ class Chat:
         *,
         echo: bool | None = None,
         force: bool = False,
-    ) -> Callable[[UserSubmitFunction], UserSubmitFunction] | Callable[[], None]:
+    ) -> (
+        Callable[[UserSubmitFunction], UserSubmitFunction] | Callable[[], None]
+    ):
         """
         Register a slash command and its handler.
 
@@ -1028,7 +1034,9 @@ class Chat:
         """
         # Checkpoint the current stream state so operation="replace" can return to it
         old_checkpoint = self._message_stream_segments_checkpoint
-        self._message_stream_segments_checkpoint = copy_segments(self._current_stream_segments)
+        self._message_stream_segments_checkpoint = copy_segments(
+            self._current_stream_segments
+        )
 
         # No stream currently exists, start one
         stream_id = self._current_stream_id
@@ -1326,7 +1334,9 @@ class Chat:
         # is the flat-string form that re-wraps thinking in tags instead.
         content = "".join(s.content for s in message.segments)
         content_type = (
-            message.segments[-1].content_type if message.segments else "markdown"
+            message.segments[-1].content_type
+            if message.segments
+            else "markdown"
         )
 
         msg_payload: MessagePayload = {
@@ -1334,7 +1344,9 @@ class Chat:
             "segments": message.wire_segments(),
         }
         if message.attachments:
-            msg_payload["attachments"] = [a.model_dump() for a in message.attachments]
+            msg_payload["attachments"] = [
+                a.model_dump() for a in message.attachments
+            ]
         icon_attr = _resolve_icon_attr(icon)
         if icon_attr is not None:
             msg_payload["icon"] = icon_attr
@@ -1553,7 +1565,6 @@ class Chat:
         val = cast("UserInputValue", self._session.input[self.user_input_id]())
         return val["text"], val["attachments"]
 
-
     def _slash_command_input(self) -> dict[str, Any]:
         return self._session.input[self._slash_command_id]()
 
@@ -1612,7 +1623,12 @@ class Chat:
             action["focus"] = focus
         if attachments is not None:
             action["attachments"] = [
-                {"mime": a.mime, "data_url": a.data_url, "name": a.name, "size": a.size}
+                {
+                    "mime": a.mime,
+                    "data_url": a.data_url,
+                    "name": a.name,
+                    "size": a.size,
+                }
                 for a in attachments
             ]
             if attachment_mode != "append":
@@ -1715,13 +1731,16 @@ class Chat:
         ```python
         @reactive.effect
         async def _():
-            await chat.set_greeting("## Welcome!\\n\\nHow can I help you today?")
+            await chat.set_greeting(
+                "## Welcome!\\n\\nHow can I help you today?"
+            )
         ```
 
         Static greeting with custom options:
 
         ```python
         from shinychat import chat_greeting
+
 
         @reactive.effect
         async def _():
@@ -1753,6 +1772,7 @@ class Chat:
         chat_model = chatlas.ChatOpenAI(model="gpt-4o")
         chat = Chat(id="chat")
 
+
         @reactive.effect
         @reactive.event(input.chat_greeting_requested)
         async def _():
@@ -1769,6 +1789,7 @@ class Chat:
         @reactive.event(input.regenerate)
         async def _():
             await chat.clear_messages(greeting=True)
+
 
         # greeting_requested fires again after clear_messages(greeting=True),
         # so the LLM-generated greeting handler above will run again.
@@ -1789,7 +1810,11 @@ class Chat:
             greeting = chat_greeting(greeting)
 
         options: GreetingOptions = {"persistent": greeting.persistent}
-        html_deps = self._serialize_html_deps(greeting.html_deps) if greeting.html_deps else None
+        html_deps = (
+            self._serialize_html_deps(greeting.html_deps)
+            if greeting.html_deps
+            else None
+        )
 
         content = greeting.content
         if isinstance(content, AsyncIterable):
@@ -1935,7 +1960,14 @@ class Chat:
         # Must use `root_session` as the id is already resolved. :-/
         # Using a proxy session would double-encode the proxy-prefix
         root_session = session.root_scope()
-        for suffix in ("_user_input", "_messages", "_cancel", "_slash_command", "_greeting_requested", "_greeting_dismissed"):
+        for suffix in (
+            "_user_input",
+            "_messages",
+            "_cancel",
+            "_slash_command",
+            "_greeting_requested",
+            "_greeting_dismissed",
+        ):
             root_session.bookmark.exclude.append(self.id + suffix)
 
         # ###########
@@ -1955,9 +1987,7 @@ class Chat:
         if bookmark_on == "response":
 
             @reactive.effect
-            @reactive.event(
-                self.messages, ignore_init=True
-            )
+            @reactive.event(self.messages, ignore_init=True)
             async def _auto_bookmark() -> None:
                 messages = self.messages()
 
@@ -2007,14 +2037,18 @@ class Chat:
                 # This does NOT contain the `chat.ui(messages=)` values.
                 # When restoring, the `chat.ui(messages=)` values will need to be kept
                 # and the `ui.Chat(messages=)` values will need to be reset
-                state.values[resolved_bookmark_id_msgs_str] = self._messages_for_bookmark()
+                state.values[resolved_bookmark_id_msgs_str] = (
+                    self._messages_for_bookmark()
+                )
 
         resolved_greeting_key = resolved_bookmark_id_str + "--greeting"
 
         @root_session.bookmark.on_bookmark
         def _on_bookmark_greeting(state: BookmarkState):
             if self._greeting_content is not None:
-                state.values[resolved_greeting_key] = {"content": self._greeting_content}
+                state.values[resolved_greeting_key] = {
+                    "content": self._greeting_content
+                }
 
         # Attempt to stop the initialization of the `ui.Chat(messages=)` messages
         self._init_chat.destroy()
@@ -2067,7 +2101,6 @@ class Chat:
         self._cancel_bookmarking_callbacks = _cancel_bookmarking
 
         return BookmarkCancelCallback(_cancel_bookmarking)
-
 
 
 class ChatExpress(Chat):
