@@ -210,7 +210,19 @@ wrap_custom_tool_result <- function(content, msg) {
     status = if (tool_errored(content)) "error" else "success",
     grouping = grouping,
     value = msg,
-    value_type = "html",
+    # Mirror the content mode the message would have been appended with had
+    # it not been wrapped, so wrapping never changes how the author's output
+    # renders. A bare character vector is markdown (`chat_append_message()`
+    # treats anything outside its `is_html` class list that way), and
+    # re-labelling it `"html"` would both drop markdown formatting and move
+    # the string from the client's markdown pipeline -- inert React elements
+    # -- onto `RawHTML`'s live `innerHTML`, where event-handler attributes
+    # fire. `shiny::HTML()` is character *and* HTML, hence the class check.
+    value_type = if (is.character(msg) && !inherits(msg, "html")) {
+      "markdown"
+    } else {
+      "html"
+    },
     # Internal provenance marker only ("shinychat wrapped an author's custom
     # output"), not part of any author-facing API and not surfaced by
     # `tool_result_display()`. What the client does with this fact is the

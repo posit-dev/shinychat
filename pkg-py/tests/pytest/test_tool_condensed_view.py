@@ -414,6 +414,37 @@ async def test_custom_tool_result_handler_is_wrapped_in_a_result_element(
 
 
 @pytest.mark.anyio
+async def test_custom_string_result_stays_markdown(
+    custom_display_handler: Any,
+) -> None:
+    """A handler returning a plain string must keep `value-type="markdown"`.
+
+    `ChatMessage.__init__` only renders non-strings, so such a message keeps
+    `content_type="markdown"` and an unrendered payload. Forcing `"html"` would
+    drop the markdown formatting *and* move the string off the client's
+    markdown pipeline (inert React elements) onto `RawHTML`'s live `innerHTML`,
+    where event-handler attributes fire.
+    """
+
+    def handler(chunk: _CustomToolResult) -> ChatMessage:
+        return ChatMessage(content="**Sunny**, 72F")
+
+    custom_display_handler(handler)
+
+    request = _request(tool=_tool())
+    result = _CustomToolResult(value=2, request=request)
+    sent = await _stream_custom_result(result)
+
+    assert len(sent) == 1
+    html = sent[0].content
+    assert "<shiny-tool-result" in html
+    assert "custom-display" in html
+    assert 'value-type="markdown"' in html
+    assert 'value-type="html"' not in html
+    assert "**Sunny**, 72F" in html
+
+
+@pytest.mark.anyio
 async def test_custom_tool_result_error_renders_like_a_successful_one(
     custom_display_handler: Any,
 ) -> None:

@@ -2605,6 +2605,7 @@ def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
 
     try:
         from ._chat_normalize_chatlas import (
+            ValueType,
             _annotation_extra,
             as_grouping,
             is_legacy,
@@ -2629,6 +2630,19 @@ def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
         grouping = as_grouping(extra.get("grouping"))
         grouping = grouping or as_grouping(tool.annotations.get("grouping"))
 
+    # Mirror the content mode `msg` already carries, so wrapping never changes
+    # how the author's output renders. `ChatMessage.__init__` only renders
+    # non-strings, so a handler returning a plain string keeps
+    # `content_type="markdown"` and an unrendered payload; forcing `"html"`
+    # there would both drop markdown formatting and move the string from the
+    # client's markdown pipeline -- inert React elements -- onto `RawHTML`'s
+    # live `innerHTML`, where event-handler attributes fire.
+    value_type: ValueType = (
+        msg.content_type
+        if msg.content_type in ("html", "markdown", "text")
+        else "markdown"
+    )
+
     wrapped = wrap_custom_tool_result(
         request_id=message.request.id,
         tool_name=message.request.name,
@@ -2636,7 +2650,12 @@ def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
         # their own UI, so a failed custom call is wrapped exactly like a
         # successful one; only the request-pairing signal matters here.
         status="success" if message.error is None else "error",
-        value=TagList(HTML(msg.content)),
+        # `tagify()` renders an `"html"` value as tags and stringifies every
+        # other mode verbatim, so only the html branch wants the `HTML()` wrap.
+        value=TagList(HTML(msg.content))
+        if value_type == "html"
+        else msg.content,
+        value_type=value_type,
         grouping=grouping,
     )
 

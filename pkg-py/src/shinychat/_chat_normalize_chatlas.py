@@ -488,7 +488,14 @@ def wrap_custom_tool_result(
     request_id: str,
     tool_name: str,
     status: Literal["success", "error"],
-    value: Tagifiable,
+    # Not annotated `TagChild`: that name is rebound in this module to a
+    # pydantic `TypeAliasType` whose recursive `Sequence[TagChild]` arm pyright
+    # cannot resolve in a plain function signature (same limitation as the
+    # `_tool_result: Any` note in `_chat_types.py`). These are the only two
+    # shapes callers pass -- tags for `value_type="html"`, a plain string for
+    # every other mode, matching the split in `tagify()`.
+    value: Union[Tagifiable, str],
+    value_type: ValueType,
     grouping: Optional[GroupingValue],
 ) -> Tagifiable:
     """Build the `<shiny-tool-result>` wrapper for an author's custom result UI.
@@ -504,7 +511,11 @@ def wrap_custom_tool_result(
         tool_name=tool_name,
         status=status,
         value=value,
-        value_type="html",
+        # Supplied by the caller, which mirrors the content mode the message
+        # already had, so wrapping never changes how the author's output
+        # renders (notably: a plain-string return stays on the markdown path
+        # rather than being promoted to `RawHTML`'s live `innerHTML`).
+        value_type=value_type,
         # Keep the wire minimal: none of these render for a migrated call.
         show_request=False,
         grouping=grouping,
