@@ -74,6 +74,25 @@ export interface ToolCallItem {
   showRequest?: boolean
   fullScreen?: boolean
   expanded?: boolean
+  /**
+   * Internal wire attribute: the server sets it when shinychat itself wraps an
+   * author's custom UI in a real `<shiny-tool-result>` element. It is
+   * deliberately provenance ("the server wrapped custom output"), not
+   * behavior — what the client does with that fact is the client's own
+   * decision and stays changeable. Not part of any author-facing API.
+   */
+  customDisplay?: boolean
+  /**
+   * The result element's character offset within the routed content block
+   * (`el.start`). Used only to order migrated custom payloads: results settle
+   * in the order their elements appear, and the offset is monotonically
+   * increasing within a block. `mergeAdjacentLoops` can coalesce loops
+   * originating in two different source content blocks, whose offsets restart
+   * from 0 — ordering degrades in that case. It is rare (a thinking or prose
+   * block between two loops prevents adjacency) and only affects the relative
+   * order of parallel custom results that resolve out of order.
+   */
+  resolveIndex?: number
   footer?: string
   /** Raw arguments JSON from the request element. */
   arguments?: string
@@ -604,6 +623,8 @@ function applyAttrsToItem(item: ToolCallItem, el: ParsedToolElement): void {
   item.showRequest = attrTruthy(a, "show-request")
   item.fullScreen = attrTruthy(a, "full-screen")
   item.expanded = attrTruthy(a, "expanded")
+  item.customDisplay = attrTruthy(a, "custom-display")
+  item.resolveIndex = el.start
 }
 
 // The resolved header title for a set of calls belonging to one tool. An
