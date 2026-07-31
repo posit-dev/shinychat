@@ -595,9 +595,13 @@ $shinychat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 
   color: var(--bs-secondary-color);
 }
 
+// The failure note, shared by the group header, the single-call row and the
+// Tier-2 rows. It stays small and unadorned — no badge, no icon — but carries
+// the danger token rather than the muted one: it is the only text cue a screen
+// reader gets, and the decorative glyph beside it is already tinted.
 .shinychat-tool-group__failed {
   font-size: 0.85em;
-  color: var(--bs-tertiary-color);
+  color: var(--bs-danger);
 }
 
 // The trailing disclosure chevron. `.shinychat-thinking-disclosure` shares
