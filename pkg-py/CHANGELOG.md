@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * A tool's definition `title` (from its annotations) and its result `title` (from `ToolResultDisplay`) are now shown as-is, without any client-side tense conjugation: the definition title is shown while the call is running, and the result title (if provided) replaces it once the first result arrives. The old `"Running {title}"` / `"{title} failed"` client-side title template has been removed. If a tool's title reads oddly while running now that the automatic "Running " prefix is gone, write an explicit present-tense definition title (e.g. "Running R code") and, optionally, a past-tense result title (e.g. "Ran R code"). Failures are shown via a separate status cue (a "failed"/"N failed" note and icon) rather than appended to the title.
 
+### Bug fixes
+
+* Fixed `MarkdownStream` permanently stopping following new content after the user scrolled back to the bottom. Pinning was decided only from `scroll` events, which browsers dispatch asynchronously; if a chunk grew the container first, the user's at-bottom position no longer read as at-bottom and auto-scroll silently disengaged for good. (#282)
+
 ## [0.6.0] - 2026-07-06
 
 ### New features
