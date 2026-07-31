@@ -2343,6 +2343,185 @@ describe("routeToolBlocks (tool content router)", () => {
     })
   })
 
+  describe("thinking-lift (chat-level grouping=all)", () => {
+    function think(
+      content: string,
+      extra: Partial<Extract<MessageBlock, { type: "thinking" }>> = {},
+    ): MessageBlock {
+      return { type: "thinking", content, streaming: false, ...extra }
+    }
+    function tools(content: string): MessageBlock {
+      return { type: "content", content, contentType: "markdown" }
+    }
+    function routeMixed(
+      blocks: MessageBlock[],
+      grouping: ToolGrouping = "all",
+    ): MessageBlock[] {
+      return routeToolBlocks(blocks, grouping, "assistant")
+    }
+
+    // [inspect x3], think, [search, read] -> think, [inspect x3, search, read]
+    const interleaved: MessageBlock[] = [
+      tools(res("1", "inspect") + res("2", "inspect") + res("3", "inspect")),
+      think("first thought"),
+      tools(res("4", "search") + res("5", "read")),
+    ]
+
+    it("merges loops across thinking and hoists the thinking onto the loop", () => {
+      const out = routeMixed(interleaved)
+      const loop = loops(out)[0]!
+      expect(loops(out)).toHaveLength(1)
+      expect(loop.liftedThinking?.content).toBe("first thought")
+      expect(loop.groups).toHaveLength(1)
+      expect(
+        loop.groups[0]!.segments.map((s) => [s.toolName, s.count]),
+      ).toEqual([
+        ["inspect", 3],
+        ["search", 1],
+        ["read", 1],
+      ])
+    })
+
+    it("keeps the original thinking block in the list, flagged lifted", () => {
+      // The flagged original is what serializes and what a re-route reads; the
+      // copy on the loop is only a render model.
+      const out = routeMixed(interleaved)
+      const thinkingBlocks = out.filter((b) => b.type === "thinking")
+      expect(thinkingBlocks).toHaveLength(1)
+      expect(thinkingBlocks[0]).toMatchObject({
+        content: "first thought",
+        lifted: true,
+      })
+    })
+
+    it("appends a later thinking block into the same lifted row", () => {
+      const out = routeMixed([
+        ...interleaved,
+        think("second thought"),
+        tools(res("6", "search") + res("7", "read")),
+      ])
+      const loop = loops(out)[0]!
+      expect(loops(out)).toHaveLength(1)
+      expect(loop.liftedThinking?.content).toBe(
+        "first thought\n\nsecond thought",
+      )
+      expect(
+        loop.groups[0]!.segments.map((s) => [s.toolName, s.count]),
+      ).toEqual([
+        ["inspect", 3],
+        ["search", 2],
+        ["read", 2],
+      ])
+    })
+
+    it("sums the merged blocks' durations and stays live while any streams", () => {
+      const out = routeMixed([
+        think("a", { durationMs: 4000 }),
+        tools(res("1", "search")),
+        think("b", { durationMs: 5000 }),
+        tools(res("2", "read")),
+        think("c", { streaming: true }),
+      ])
+      const lifted = loops(out)[0]!.liftedThinking!
+      expect(lifted.durationMs).toBe(9000)
+      expect(lifted.streaming).toBe(true)
+      // Not carried over: it is only meaningful for the block being streamed
+      // into, and would turn a duration read into a wall-clock span.
+      expect(lifted.startedAt).toBeUndefined()
+    })
+
+    it("lifts thinking that trails the last call in the run", () => {
+      // Mid-stream there is no way to know a block is trailing, so the rule is
+      // unconditional rather than dependent on what arrives next.
+      const out = routeMixed([tools(res("1", "search")), think("after")])
+      expect(loops(out)[0]!.liftedThinking?.content).toBe("after")
+    })
+
+    it("leaves thinking alone when its run has no tool call", () => {
+      const out = routeMixed([think("just musing"), tools("plain prose")])
+      expect(
+        out.filter((b) => b.type === "thinking")[0]!.lifted,
+      ).toBeUndefined()
+    })
+
+    it("does not lift across prose, which still breaks the run", () => {
+      const out = routeMixed([
+        think("before"),
+        tools(res("1", "search")),
+        tools("Here is the answer."),
+        think("after prose"),
+        tools(res("2", "read")),
+      ])
+      const [first, second] = loops(out)
+      expect(loops(out)).toHaveLength(2)
+      expect(first!.liftedThinking?.content).toBe("before")
+      expect(second!.liftedThinking?.content).toBe("after prose")
+    })
+
+    it.each(["tool", "none"] as const)(
+      "does not lift at grouping=%s",
+      (grouping) => {
+        const out = routeMixed(interleaved, grouping)
+        expect(loops(out).every((l) => l.liftedThinking === undefined)).toBe(
+          true,
+        )
+        expect(out.filter((b) => b.type === "thinking")[0]!.lifted).toBe(
+          undefined,
+        )
+      },
+    )
+
+    it("does not lift for a per-tool grouping=all annotation", () => {
+      // Thinking belongs to the loop, not to a tool, and a tool annotation has
+      // no way to speak for it.
+      const out = routeMixed(
+        [
+          think("thought"),
+          tools(
+            res("1", "search", 'grouping="all"') +
+              res("2", "read", 'grouping="all"'),
+          ),
+        ],
+        "tool",
+      )
+      expect(loops(out)[0]!.liftedThinking).toBeUndefined()
+      expect(
+        out.filter((b) => b.type === "thinking")[0]!.lifted,
+      ).toBeUndefined()
+    })
+
+    it("re-routing at all then tool does not leave a stale lifted flag", () => {
+      const lifted = routeMixed(interleaved)
+      const raw: MessageBlock[] = lifted.map((b) =>
+        b.type === "tool_loop"
+          ? { type: "content", content: b.content, contentType: b.contentType }
+          : b,
+      )
+      const out = routeMixed(raw, "tool")
+      expect(
+        out.filter((b) => b.type === "thinking")[0]!.lifted,
+      ).toBeUndefined()
+    })
+
+    it("keeps the lifted thinking in the snapshot segments", () => {
+      // Nothing special in blockToSegment: the lifted original is still an
+      // ordinary thinking block sitting in the list, so a restored transcript
+      // re-derives the same lift from the same content.
+      const blocks = routeMixed([
+        think("first thought"),
+        tools(res("1", "search") + res("2", "read")),
+      ])
+      const segments = buildMessagesSnapshot(
+        makeState({ messages: [makeAssistantMsg({ blocks, content: "" })] }),
+      )[0]!.segments
+      expect(segments.map((s) => s.content_type)).toEqual([
+        "thinking",
+        "markdown",
+      ])
+      expect(segments[0]!.content).toBe("first thought")
+    })
+  })
+
   describe("role gate", () => {
     const typed = `${req("1", "search")}${res("1", "search")}`
     const userBlocks: MessageBlock[] = [

@@ -131,6 +131,12 @@ export const ChatMessage = memo(function ChatMessage({
   const visibleBlocks = useMemo(() => {
     const out: { block: MessageBlock; index: number }[] = []
     blocks.forEach((block, index) => {
+      if (block.type === "thinking") {
+        // Its content renders as the adjacent loop's hoisted row instead. The
+        // block stays in the list so serialization and re-routing still see it.
+        if (!block.lifted) out.push({ block, index })
+        return
+      }
       if (block.type !== "tool_loop") {
         out.push({ block, index })
         return
@@ -146,7 +152,14 @@ export const ChatMessage = memo(function ChatMessage({
             : { ...g, calls, ...deriveToolGroupIdentity(calls) }
         })
         .filter((g) => g.calls.length > 0)
-      if (groups.length > 0) out.push({ block: { ...block, groups }, index })
+      if (groups.length > 0) {
+        out.push({ block: { ...block, groups }, index })
+      } else if (block.liftedThinking) {
+        // Every call was superseded, so the row the thinking was hoisted into is
+        // gone — but the reasoning still happened. Re-surface it standalone
+        // rather than letting a request-only message swallow it.
+        out.push({ block: block.liftedThinking, index })
+      }
     })
     return out
   }, [blocks, supersededRequests])
@@ -385,6 +398,12 @@ export const ChatMessage = memo(function ChatMessage({
     if (block.type === "tool_loop") {
       return (
         <div key={i} className="shinychat-tool-loop">
+          {block.liftedThinking && (
+            <ThinkingDisplay
+              thinking={block.liftedThinking}
+              messageId={`${message.id}-${i}-thinking`}
+            />
+          )}
           {block.groups.map((group) => (
             <ToolGroup key={group.key} group={group} />
           ))}
