@@ -731,9 +731,16 @@ function groupCalls(
   chatGrouping: ToolGrouping,
 ): ToolCallGroup[] {
   const override = new Map<string, ToolGrouping>()
-  for (const c of calls) {
-    if (c.grouping && !override.has(c.toolName)) {
-      override.set(c.toolName, c.grouping)
+  // `none` at the chat level turns grouping off entirely — a tool annotated
+  // `grouping="all"` must not aggregate anyway. The annotation opts a tool out
+  // of the chat's *choice* of how to group; it can't opt back into grouping the
+  // app has switched off. (Overrides still apply under `tool`/`all`, including
+  // an override *to* `none`.)
+  if (chatGrouping !== "none") {
+    for (const c of calls) {
+      if (c.grouping && !override.has(c.toolName)) {
+        override.set(c.toolName, c.grouping)
+      }
     }
   }
 

@@ -2156,6 +2156,18 @@ describe("routeToolBlocks (tool content router)", () => {
     ])
   })
 
+  it("chat-level none overrides a per-tool grouping=all annotation", () => {
+    // "none" means grouping is off. The annotation opts a tool out of the chat's
+    // *choice* of how to group, not back into grouping the app switched off.
+    const content =
+      res("1", "search", 'grouping="all"') +
+      res("2", "search", 'grouping="all"') +
+      res("3", "read_page", 'grouping="all"')
+    const groups = loops(route(content, "none"))[0]!.groups
+    expect(groups).toHaveLength(3)
+    expect(groups.every((g) => g.count === 1)).toBe(true)
+  })
+
   it("resets the loop when prose interrupts a run of tools", () => {
     const content = res("1", "X") + "\n\nSome prose here.\n\n" + res("2", "X")
     const blocks = route(content, "tool")
