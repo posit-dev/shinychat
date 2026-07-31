@@ -243,9 +243,22 @@ try:
     def _(message: Turn):
         from chatlas import ContentToolResult
 
+        # Imported here, not at module scope: `_chat` imports this module, so a
+        # top-level import would be circular.
+        from ._chat import _wrap_custom_tool_result
+
         content = ""
         for x in message.contents:
-            content += message_content(x).content
+            # Wrap per item, mirroring R's `contents_shinychat_wrapped()`.
+            # Converting a turn discards each `ContentToolResult` before any
+            # caller could wrap it, so a turn carrying a custom tool result
+            # would otherwise emit bare UI with no `<shiny-tool-result>` for
+            # the client to pair its request against.
+            #
+            # This does not fix the separate, pre-existing loss of each item's
+            # `html_deps`: concatenating rendered strings drops them, and that
+            # half needs this generic restructured to stop flattening.
+            content += _wrap_custom_tool_result(x, message_content(x)).content
         if all(isinstance(x, ContentToolResult) for x in message.contents):
             role = "assistant"
         else:

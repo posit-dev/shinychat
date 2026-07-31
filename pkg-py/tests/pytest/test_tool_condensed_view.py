@@ -581,3 +581,42 @@ async def test_custom_tool_result_html_dependencies_survive_the_wrap(
     assert len(sent) == 1
     dep_names = [d.name for d in sent[0].html_deps]
     assert "custom-widget" in dep_names
+
+
+@pytest.mark.anyio
+async def test_custom_result_inside_a_turn_is_wrapped() -> None:
+    """A `Turn` carrying a custom tool result must wrap it too.
+
+    Converting a turn discards each `ContentToolResult` before any caller could
+    wrap it, so without a per-item wrap the transcript gets bare custom UI with
+    no element for the client to pair the request against. Mirrors R's
+    `contents_shinychat(ellmer::Turn)`.
+    """
+    from chatlas import Turn
+    from shinychat import message_content
+
+    registry = gc.get_referents(message_content.registry)[0]
+    before = set(registry)
+
+    def handler(message: _CustomToolResult) -> ChatMessage:
+        return ChatMessage(
+            content=Tag("div", "Custom UI", class_="my-custom-ui")
+        )
+
+    message_content.register(_CustomToolResult, handler)
+    try:
+        request = _request(tool=_tool())
+        turn = Turn(
+            [_CustomToolResult(value=2, request=request)], role="assistant"
+        )
+        html = message_content(turn).content
+    finally:
+        for key in list(registry):
+            if key not in before:
+                del registry[key]
+        message_content._clear_cache()
+
+    assert "<shiny-tool-result" in html
+    assert "custom-display" in html
+    assert 'request-id="call-1"' in html
+    assert "my-custom-ui" in html
