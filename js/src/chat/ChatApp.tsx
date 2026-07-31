@@ -43,7 +43,7 @@ export interface InitialGreeting {
   options: GreetingOptions
 }
 
-interface ChatAppProps {
+export interface ChatAppProps {
   transport: ChatTransport
   shinyLifecycle: ShinyLifecycle
   elementId: string
@@ -135,6 +135,13 @@ export function ChatApp({
     enableUploadExplicit: enableUpload !== undefined,
     toolGrouping: resolvedToolGrouping,
   })
+
+  // `tool-grouping` is a live attribute: the custom element re-renders this
+  // component when it changes, and the reducer re-routes the settled transcript
+  // at the new mode. No-ops on mount, where the prop already seeded the state.
+  useEffect(() => {
+    dispatch({ type: "SET_TOOL_GROUPING", grouping: resolvedToolGrouping })
+  }, [resolvedToolGrouping])
 
   const stateRef = useRef(state)
   stateRef.current = state

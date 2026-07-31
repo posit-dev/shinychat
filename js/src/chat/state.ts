@@ -278,6 +278,7 @@ export interface ChatState extends ChatInputState {
 
 // Actions that originate from the UI (not from the server)
 export type UIAction =
+  | { type: "SET_TOOL_GROUPING"; grouping: ToolGrouping }
   | {
       type: "INPUT_SENT"
       content: string
@@ -1847,6 +1848,24 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       return { ...state, enableUpload: action.enable_upload }
     }
 
+    case "SET_TOOL_GROUPING": {
+      // Re-routing the settled transcript is what makes `tool-grouping` a live
+      // attribute rather than one that only governs future messages: the router
+      // is a pure function of (blocks, grouping, role), so the same content
+      // regroups at the new mode. The streaming message needs nothing —
+      // ChatMessage routes it at render time off the context value.
+      //
+      // The no-op guard is load-bearing: ChatApp dispatches once on mount to
+      // adopt the prop, and re-routing there would throw away every group's
+      // expand state for no change in output.
+      if (action.grouping === state.toolGrouping) return state
+      return {
+        ...state,
+        toolGrouping: action.grouping,
+        messages: state.messages.map((m) => rerouteMessage(m, action.grouping)),
+      }
+    }
+
     case "clear": {
       // action.greeting=true means "also clear the greeting"; otherwise restore it as visible
       const greetingAfterClear = action.greeting
@@ -2081,6 +2100,33 @@ export function buildMessagesSnapshot(state: ChatState): SnapshotMessage[] {
       if (m.htmlDeps && m.htmlDeps.length > 0) msg.htmlDeps = m.htmlDeps
       return msg
     })
+}
+
+/**
+ * Re-route one settled message at a new grouping mode.
+ *
+ * A `tool_loop` carries the raw content slice it was parsed from, so unwinding
+ * it back into a content block recovers the router's own input — no reparse of
+ * the message, no server round-trip. Thinking blocks pass straight through:
+ * `liftThinking` recomputes the `lifted` flag from the new mode.
+ */
+function rerouteMessage(
+  msg: ChatMessageData,
+  grouping: ToolGrouping,
+): ChatMessageData {
+  if (!msg.blocks.some((b) => b.type === "tool_loop")) return msg
+  const raw: MessageBlock[] = msg.blocks.map((b) =>
+    b.type === "tool_loop"
+      ? { type: "content", content: b.content, contentType: b.contentType }
+      : b,
+  )
+  const blocks = routeToolBlocks(
+    raw,
+    grouping,
+    msg.role,
+    msg.insideFence ?? false,
+  )
+  return { ...msg, blocks, content: contentFromBlocks(blocks) }
 }
 
 function finalizeMessage(

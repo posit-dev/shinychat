@@ -2729,6 +2729,69 @@ describe("toolGrouping state wiring (Phase 1)", () => {
     const next = chatReducer(state, { type: "clear" })
     expect(next.toolGrouping).toBe("all")
   })
+
+  describe("SET_TOOL_GROUPING", () => {
+    function stateWithTranscript(grouping: ToolGrouping): ChatState {
+      return chatReducer(makeState({ toolGrouping: grouping }), {
+        type: "message",
+        message: {
+          role: "assistant",
+          segments: [{ content: twoTools, content_type: "markdown" }],
+        },
+      })
+    }
+
+    it("re-routes the settled transcript at the new mode", () => {
+      // What makes the attribute live: the router is pure, and a loop keeps the
+      // raw slice it was parsed from, so the same content regroups in place.
+      const next = chatReducer(stateWithTranscript("tool"), {
+        type: "SET_TOOL_GROUPING",
+        grouping: "all",
+      })
+      expect(next.toolGrouping).toBe("all")
+      const groups = loopGroups(next.messages[0]!)
+      expect(groups).toHaveLength(1)
+      expect(groups[0]!.count).toBe(2)
+    })
+
+    it("keeps message identity so nothing remounts", () => {
+      const before = stateWithTranscript("tool")
+      const after = chatReducer(before, {
+        type: "SET_TOOL_GROUPING",
+        grouping: "none",
+      })
+      expect(after.messages.map((m) => m.id)).toEqual(
+        before.messages.map((m) => m.id),
+      )
+      expect(loopGroups(after.messages[0]!)).toHaveLength(2)
+    })
+
+    it("is a no-op for the mode already in effect", () => {
+      // ChatApp dispatches once on mount to adopt the prop; re-routing there
+      // would discard every group's expand state for no change in output.
+      const before = stateWithTranscript("all")
+      const after = chatReducer(before, {
+        type: "SET_TOOL_GROUPING",
+        grouping: "all",
+      })
+      expect(after).toBe(before)
+    })
+
+    it("leaves a message with no tool calls untouched", () => {
+      const before = chatReducer(makeState({ toolGrouping: "tool" }), {
+        type: "message",
+        message: {
+          role: "assistant",
+          segments: [{ content: "just prose", content_type: "markdown" }],
+        },
+      })
+      const after = chatReducer(before, {
+        type: "SET_TOOL_GROUPING",
+        grouping: "all",
+      })
+      expect(after.messages[0]).toBe(before.messages[0])
+    })
+  })
 })
 
 describe("html_deps retention", () => {

@@ -115,6 +115,43 @@ describe("chat-entry custom element boot", () => {
     expect(host.textContent).toContain("done")
   })
 
+  it("re-routes the existing transcript when tool-grouping changes", async () => {
+    // `tool-grouping` is observed, so switching it regroups the conversation
+    // already on screen instead of only future messages.
+    const call = (id: string, name: string) =>
+      `<shiny-tool-result data-shinychat-react request-id="${id}" tool-name="${name}" status="success" value="v" value-type="text"></shiny-tool-result>`
+
+    const host = document.createElement("shiny-chat-container")
+    host.setAttribute("id", "live-grouping")
+    host.setAttribute("tool-grouping", "none")
+    host.innerHTML = `
+      <shiny-chat-messages>
+        <shiny-chat-message
+          data-role="assistant"
+          content-type="markdown"
+          content='${call("r1", "foo")}${call("r2", "foo")}'
+        ></shiny-chat-message>
+      </shiny-chat-messages>
+      <shiny-chat-input placeholder="p"></shiny-chat-input>
+    `
+
+    await act(async () => {
+      document.body.appendChild(host)
+    })
+
+    const rows = () => host.querySelectorAll(".shinychat-tool-group__row")
+    await waitFor(() => expect(rows()).toHaveLength(2))
+
+    await act(async () => {
+      host.setAttribute("tool-grouping", "tool")
+    })
+
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    expect(
+      host.querySelector(".shinychat-tool-group__count")?.textContent,
+    ).toBe("×2")
+  })
+
   it("falls back to the conventional input id when no child input id is provided", async () => {
     const host = document.createElement("shiny-chat-container")
     host.setAttribute("id", "fallback-chat")
