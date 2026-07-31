@@ -27,6 +27,7 @@ Imports:
     ellmer (>= 0.4.1),
     fastmap,
     htmltools,
+    httr2,
     jsonlite,
     lifecycle,
     promises (>= 1.3.2),

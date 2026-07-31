@@ -463,6 +463,104 @@ test_that("tool_result_display rich format", {
   )
 })
 
+test_that("web content renders as shinychat web activity and citations", {
+  local_shinychat_tool_display(opt = "rich")
+
+  request <- ellmer::ContentToolRequestSearch(
+    query = "ggplot2 release date"
+  )
+  request_tag <- contents_shinychat(request)
+  expect_equal(request_tag$name, "shiny-web-search")
+  expect_equal(request_tag$attribs$query, "ggplot2 release date")
+  expect_true("data-shinychat-react" %in% names(request_tag$attribs))
+
+  response <- ellmer::ContentToolResponseSearch(
+    sources = list(
+      ellmer::WebSource(
+        "https://cran.r-project.org/package=ggplot2",
+        "ggplot2"
+      ),
+      ellmer::WebSource(title = "No URL")
+    )
+  )
+  response_tag <- contents_shinychat(response)
+  sources <- jsonlite::fromJSON(
+    response_tag$attribs$sources,
+    simplifyVector = FALSE
+  )
+  expect_equal(length(sources), 1L)
+  expect_equal(sources[[1]]$domain, "cran.r-project.org")
+
+  expect_null(
+    contents_shinychat(
+      ellmer::ContentToolRequestFetch("https://example.com")
+    )
+  )
+
+  fetch_tag <- contents_shinychat(
+    ellmer::ContentToolResponseFetch(
+      url = "https://example.com",
+      status = "success"
+    )
+  )
+  expect_equal(fetch_tag$name, "shiny-web-fetch")
+  expect_equal(fetch_tag$attribs$status, "success")
+
+  citation <- ellmer::ContentCitation(
+    source = ellmer::WebSource(
+      "https://x.example/?a=1&b=2",
+      "A & B <source>"
+    )
+  )
+  citation_markup <- contents_shinychat(citation)
+  expect_match(citation_markup, "<shiny-aside", fixed = TRUE)
+  expect_match(citation_markup, "data-citation", fixed = TRUE)
+  expect_match(citation_markup, 'label="x.example"', fixed = TRUE)
+  expect_match(citation_markup, "A &amp; B &lt;source&gt;", fixed = TRUE)
+  expect_match(citation_markup, "a=1&amp;b=2", fixed = TRUE)
+
+  expect_null(contents_shinychat(ellmer::ContentCitation()))
+  expect_null(
+    contents_shinychat(
+      ellmer::ContentToolResponseFetch(status = "error")
+    )
+  )
+})
+
+test_that("web content feature detection requires every ellmer export", {
+  exports <- ellmer_web_content_classes
+  expect_true(ellmer_web_content_available(exports))
+  expect_false(ellmer_web_content_available(exports[-1]))
+})
+
+test_that("web content renderers respect disabled tool display", {
+  local_shinychat_tool_display(opt = "none")
+
+  contents <- list(
+    ellmer::ContentToolRequestSearch("ggplot2 release date"),
+    ellmer::ContentToolResponseSearch(
+      list(ellmer::WebSource("https://cran.r-project.org", "CRAN"))
+    ),
+    ellmer::ContentToolRequestFetch("https://example.com"),
+    ellmer::ContentToolResponseFetch("https://example.com", "success"),
+    ellmer::ContentCitation(
+      ellmer::WebSource("https://example.com", "Example")
+    )
+  )
+
+  expect_true(
+    all(
+      vapply(
+        contents,
+        function(content) {
+          is.null(contents_shinychat(content))
+        },
+        logical(1)
+      )
+    )
+  )
+})
+
 test_that("processes a Turn object", {
   # Create a turn with multiple content items
   turn <- ellmer::AssistantTurn(
