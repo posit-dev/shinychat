@@ -72,6 +72,7 @@ from ._chat_types import (
 )
 from ._history import ChatHistory, HistoryOptions
 from ._html_deps_py_shiny import shinychat_dependency
+from ._typing_extensions import TypeGuard
 from ._utils_types import DEPRECATED, DEPRECATED_TYPE, MISSING, MISSING_TYPE
 
 if TYPE_CHECKING:
@@ -1122,6 +1123,20 @@ class Chat:
                 operation=operation,
                 icon=icon,
             )
+
+            # Tell the client this result supersedes its request. Usually
+            # redundant -- the client pairs a `<shiny-tool-result>` with its
+            # request from the content itself, which is also the only thing that
+            # works on restore. But a `message_content_chunk` handler registered
+            # for a `ContentToolResult` subclass may return arbitrary UI instead
+            # of a tool card, leaving no element to pair against, and then this
+            # is the only signal the request is done.
+            #
+            # Ordering is load-bearing: this must follow the append. Sent first,
+            # it hides a request whose result has not arrived, which empties the
+            # call's group and unmounts the whole tool row until it does.
+            if is_tool_result(message) and message.request is not None:
+                await self._hide_tool_request(message.request.id)  # type: ignore
         finally:
             if chunk == "end":
                 self._current_stream_id = None
@@ -1832,6 +1847,13 @@ class Chat:
 
     async def _remove_loading_message(self):
         await self._send_action({"type": "remove_loading"})
+
+    async def _hide_tool_request(self, request_id: str) -> None:
+        action: ChatAction = {
+            "type": "hide_tool_request",
+            "requestId": request_id,
+        }
+        await self._send_action(action)
 
     async def _send_action(
         self,
@@ -2560,6 +2582,15 @@ class MessageStream:
             message_chunk,
             stream_id=self._stream_id,
         )
+
+
+def is_tool_result(val: object) -> "TypeGuard[chatlas.ContentToolResult]":
+    try:
+        from chatlas.types import ContentToolResult
+
+        return isinstance(val, ContentToolResult)
+    except ImportError:
+        return False
 
 
 CHAT_INSTANCES: WeakValueDictionary[str, Chat] = WeakValueDictionary()

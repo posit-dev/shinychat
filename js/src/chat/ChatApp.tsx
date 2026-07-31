@@ -313,11 +313,13 @@ export function ChatApp({
     [transport, elementId],
   )
 
-  // Derived from the transcript rather than accumulated from server signals —
-  // see `supersededRequestIds` for why.
+  // Mostly derived from the transcript; the server additionally signals the
+  // results that render as custom UI, which leave no element to derive from.
+  // See `signalledSupersededRequests` — neither source covers the other.
   const supersededRequests = useSupersededRequests(
     state.messages,
     state.streamingMessage,
+    state.signalledSupersededRequests,
   )
   const toolState: ChatToolState = useMemo(
     () => ({ supersededRequests }),

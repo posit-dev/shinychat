@@ -2,8 +2,9 @@ import { useMemo, useRef } from "react"
 import { supersededRequestIds, type ChatMessageData } from "./state"
 
 /**
- * The transcript's superseded request-ids (see `supersededRequestIds`), with a
- * stable object identity.
+ * Every superseded request-id: those derived from the transcript (see
+ * `supersededRequestIds`) unioned with those the server signalled (see
+ * `signalledSupersededRequests`), with a stable object identity.
  *
  * The ids are recomputed whenever the transcript changes, which while a response
  * streams means every chunk. They reach every message through context, so
@@ -15,15 +16,17 @@ import { supersededRequestIds, type ChatMessageData } from "./state"
 export function useSupersededRequests(
   messages: ChatMessageData[],
   streamingMessage: ChatMessageData | null,
+  signalled: Set<string>,
 ): Set<string> {
   const previous = useRef<Set<string>>(new Set())
   return useMemo(() => {
     const next = supersededRequestIds(messages, streamingMessage)
+    for (const id of signalled) next.add(id)
     const prev = previous.current
     if (next.size === prev.size && [...next].every((id) => prev.has(id))) {
       return prev
     }
     previous.current = next
     return next
-  }, [messages, streamingMessage])
+  }, [messages, streamingMessage, signalled])
 }
