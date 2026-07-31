@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from functools import singledispatch
 
-from htmltools import HTML, Tag, Tagifiable
+from htmltools import HTML, HTMLDependency, Tag, Tagifiable
 
 from ._chat_types import ChatMessage
 
@@ -248,22 +248,26 @@ try:
         from ._chat import _wrap_custom_tool_result
 
         content = ""
+        deps: list[HTMLDependency] = []
         for x in message.contents:
             # Wrap per item, mirroring R's `contents_shinychat_wrapped()`.
             # Converting a turn discards each `ContentToolResult` before any
             # caller could wrap it, so a turn carrying a custom tool result
             # would otherwise emit bare UI with no `<shiny-tool-result>` for
             # the client to pair its request against.
-            #
-            # This does not fix the separate, pre-existing loss of each item's
-            # `html_deps`: concatenating rendered strings drops them, and that
-            # half needs this generic restructured to stop flattening.
-            content += _wrap_custom_tool_result(x, message_content(x)).content
+            item = _wrap_custom_tool_result(x, message_content(x))
+            content += item.content
+            # Collected separately from the content: only the rendered *string*
+            # is concatenated, so per-item dependencies would otherwise be
+            # dropped and the item's UI would arrive unstyled and unscripted.
+            deps += item.html_deps
         if all(isinstance(x, ContentToolResult) for x in message.contents):
             role = "assistant"
         else:
             role = message.role
-        return ChatMessage(content=content, role=role)
+        result = ChatMessage(content=content, role=role)
+        result.html_deps = deps + result.html_deps
+        return result
 
     @message_content_chunk.register
     def _(chunk: Turn):
