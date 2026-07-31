@@ -687,3 +687,33 @@ async def test_custom_tool_result_attachments_survive_the_wrap(
     assert len(sent) == 1
     assert "<shiny-tool-result" in sent[0].content
     assert [a.name for a in sent[0].attachments] == ["chart.png"]
+
+
+@pytest.mark.anyio
+async def test_custom_text_result_stays_routable(
+    custom_display_handler: Any,
+) -> None:
+    """A `content_type="text"` handler must still produce a routable message.
+
+    The client deliberately excludes text blocks from tool routing ("text"
+    means display literally), so the wrapped element has to travel in an
+    html/markdown container or it renders as visible markup and never pairs
+    with its request. `value_type` still records that the payload itself is
+    text.
+    """
+
+    def handler(chunk: _CustomToolResult) -> ChatMessage:
+        return ChatMessage(content="Sunny, 72F", content_type="text")
+
+    custom_display_handler(handler)
+
+    request = _request(tool=_tool())
+    result = _CustomToolResult(value=2, request=request)
+    sent = await _stream_custom_result(result)
+
+    assert len(sent) == 1
+    assert sent[0].content_type == "html"
+    html = sent[0].content
+    assert "<shiny-tool-result" in html
+    assert "custom-display" in html
+    assert 'value-type="text"' in html

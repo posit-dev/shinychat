@@ -2669,10 +2669,18 @@ def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
     # Carry `role` and `attachments` across: wrapping replaces the author's
     # message, so anything it set that isn't the content itself would otherwise
     # be silently dropped (`ChatMessage.__init__` would default them).
+    #
+    # `content_type` is deliberately *not* carried across, unlike the rest.
+    # It described the author's payload, and that role now belongs to
+    # `value_type` above; here it types the **container**, which must stay
+    # routable. Passing `None` lets `__init__` promote this non-string content
+    # to `"html"`. Reusing `"text"` would be a silent no-op for the whole
+    # feature: the client excludes text blocks from tool routing on purpose
+    # ("text" means display literally, `state.ts:485-496`), so the element
+    # would render as visible markup and never pair with its request.
     result = ChatMessage(
         content=wrapped,
         role=msg.role,
-        content_type=msg.content_type,
         attachments=msg.attachments,
     )
     # `ChatMessage.__init__` re-renders `wrapped` from scratch, so it never
