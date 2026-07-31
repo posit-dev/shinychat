@@ -24,7 +24,7 @@ Imports:
     bslib,
     cli,
     coro,
-    ellmer (>= 0.4.1),
+    ellmer (> 0.4.2),
     fastmap,
     htmltools,
     httr2,
@@ -42,6 +42,8 @@ Suggests:
     shinytest2,
     testthat (>= 3.0.0),
     withr
+Remotes:
+    tidyverse/ellmer@feat/citation-content-model
 Config/Needs/website: tidyverse/tidytemplate, rmarkdown, weathR, gt, glue,
     bsicons
 Config/roxygen2/version: 8.1.0
