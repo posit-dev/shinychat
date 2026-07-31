@@ -127,6 +127,43 @@ describe("ToolGroup", () => {
     ).toBe("Visualize the trend")
   })
 
+  it("peeks at a call's value on the resting row, single and grouped alike", () => {
+    // The preview rides the header on a single-call row (there is no Tier-2 row
+    // to carry it) and each call's own row once the group has several.
+    const { container, rerender } = render(
+      <ToolGroup
+        group={group({
+          title: "Queried",
+          calls: [call({ requestId: "a", valuePreview: "1,204 rows" })],
+        })}
+      />,
+    )
+    const previews = () =>
+      [...container.querySelectorAll(".shinychat-tool-call-row__preview")].map(
+        (el) => el.textContent,
+      )
+    expect(previews()).toEqual(["1,204 rows"])
+
+    rerender(
+      <ToolGroup
+        group={group({
+          title: "Queried",
+          calls: [
+            call({ requestId: "a", valuePreview: "1,204 rows" }),
+            call({ requestId: "b", valuePreview: "17 rows" }),
+          ],
+        })}
+      />,
+    )
+    // The group header itself stays clean — the peeks moved down to the rows.
+    expect(
+      container.querySelector(
+        ".shinychat-tool-group__row .shinychat-tool-call-row__preview",
+      ),
+    ).toBeNull()
+    expect(previews()).toEqual(["1,204 rows", "17 rows"])
+  })
+
   it("renders a multi-call group as a Tier-1 row with an ×N badge that expands to a Tier-2 list", () => {
     const { container } = render(
       <ToolGroup
@@ -323,8 +360,15 @@ describe("ToolGroup", () => {
         })}
       />,
     )
-    // No segment wrapper, and the badge is still the title's next sibling in
-    // the row's own flex layout.
+    // No segment wrapper, and the badge is still the title's next sibling.
+    //
+    // 2026-07-30: this used to also assert the title's parent was the row
+    // itself. Relaxed deliberately when the single- and multi-call shapes were
+    // merged into one component — the title now sits inside
+    // `__titlewrap` in *both* shapes, which is what keeps React from remounting
+    // it (and dropping the crossfade) when a group grows from one call to two.
+    // Don't restore that assertion; the invariant that matters is the one
+    // below, that a homogeneous header still renders one title and one badge.
     expect(
       container.querySelector(".shinychat-tool-group__segments"),
     ).toBeNull()
@@ -336,7 +380,6 @@ describe("ToolGroup", () => {
       container.querySelectorAll(".shinychat-tool-group__count").length,
     ).toBe(1)
     expect(title.nextElementSibling?.getAttribute("aria-label")).toBe("2 calls")
-    expect(title.parentElement?.className).toBe("shinychat-tool-group__row")
   })
 
   it("says 'Used <tool>' for an untitled tool, and 'Using' until it settles", () => {
@@ -412,6 +455,90 @@ describe("ToolGroup", () => {
       })
       expect(title().hasAttribute("data-fading")).toBe(false)
       expect(title().textContent).toBe("Inspected schema")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("keeps the same header elements when a group grows from one call to two", () => {
+    // The two shapes used to be separate components in the same position, so
+    // React tore the subtree down at this boundary — discarding every row's
+    // expand state and remounting the title, which is exactly where the
+    // crossfade fires.
+    const { container, rerender } = render(
+      <ToolGroup
+        group={group({
+          title: "Weather for Portland",
+          calls: [call({ requestId: "a", value: "1" })],
+        })}
+      />,
+    )
+    const row = container.querySelector(".shinychat-tool-group__row")!
+    const title = container.querySelector(".shinychat-tool-group__title")!
+    fireEvent.click(row)
+    expect(row.getAttribute("aria-expanded")).toBe("true")
+
+    rerender(
+      <ToolGroup
+        group={group({
+          title: "Weather Forecast",
+          calls: [
+            call({ requestId: "a", value: "1" }),
+            call({ requestId: "b", value: "2" }),
+          ],
+        })}
+      />,
+    )
+    // The very same nodes, so nothing remounted...
+    expect(container.querySelector(".shinychat-tool-group__row")).toBe(row)
+    expect(container.querySelector(".shinychat-tool-group__title")).toBe(title)
+    // ...and the disclosure the user opened is still open, now over the list of
+    // calls rather than the lone call's card.
+    expect(row.getAttribute("aria-expanded")).toBe("true")
+    expect(
+      (container.querySelector(".shinychat-tool-group__calls") as HTMLElement)
+        .hidden,
+    ).toBe(false)
+  })
+
+  it("crossfades the title when a group grows from one call to two", () => {
+    // A single-call header shows that call's own dynamic result title; a
+    // grouped header shows the tool's static definition title instead (see
+    // `resolveTitle`). That swap is a real change of identity, and it can only
+    // animate if the title element survives the growth.
+    vi.useFakeTimers()
+    try {
+      const { container, rerender } = render(
+        <ToolGroup
+          group={group({
+            title: "Weather for Portland",
+            calls: [call({ requestId: "a" })],
+          })}
+        />,
+      )
+      const title = () =>
+        container.querySelector(".shinychat-tool-group__title")!
+      expect(title().hasAttribute("data-fading")).toBe(false)
+
+      rerender(
+        <ToolGroup
+          group={group({
+            title: "Weather Forecast",
+            calls: [call({ requestId: "a" }), call({ requestId: "b" })],
+          })}
+        />,
+      )
+      // Mid-fade the old title is still the one on screen, at opacity 0 — while
+      // the ×N, which lives outside the fading element, has already landed.
+      expect(title().getAttribute("data-fading")).toBe("true")
+      expect(title().textContent).toBe("Weather for Portland")
+      expect(headerText(container)).toBe("Weather for Portland×2")
+
+      act(() => {
+        vi.advanceTimersByTime(200)
+      })
+      expect(title().hasAttribute("data-fading")).toBe(false)
+      expect(headerText(container)).toBe("Weather Forecast×2")
     } finally {
       vi.useRealTimers()
     }

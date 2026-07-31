@@ -303,74 +303,6 @@ function GroupTitle({ group }: { group: ToolCallGroup }): ReactNode {
   )
 }
 
-// A single-call group is itself the leaf, but it still rests as a quiet Tier-1
-// row (glyph + title + label + peek + chevron) that morphs straight into the
-// full card on expand — matching a collapsed multi-call group rather than
-// standing out as a bare card.
-function SingleCallRow({
-  group,
-  item,
-}: {
-  group: ToolCallGroup
-  item: ToolCallItem
-}): ReactNode {
-  const [open, setOpen] = useExpandable(item.expanded)
-  const running = item.status === "running"
-  const failed = item.status === "error"
-  const label = perCallLabel(item, group.title, true)
-  const glyphHtml = running ? spinnerHtml : group.icon || bareDot
-  // Not derived from `item.requestId`: it is optional, and a request can
-  // render in a different message than its result before pairing settles.
-  const contentId = `tool-call${useId()}`
-
-  return (
-    <div className="shinychat-tool-group shinychat-tool-group--single">
-      <button
-        type="button"
-        className="shinychat-tool-group__row"
-        aria-expanded={open}
-        aria-controls={contentId}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span
-          className={`shinychat-tool-group__glyph${running ? " running" : ""}`}
-          dangerouslySetInnerHTML={{ __html: glyphHtml }}
-        />
-        <span className="shinychat-tool-group__titlewrap">
-          <GroupTitle group={group} />
-          {label && (
-            <span className="shinychat-tool-group__label">
-              {": "}
-              {label.code ? <code>{label.text}</code> : label.text}
-            </span>
-          )}
-        </span>
-        <span className="shinychat-tool-spacer" />
-        {open && item.intent && (
-          <span className="shinychat-tool-row__intent">{item.intent}</span>
-        )}
-        {item.valuePreview && (
-          <span className="shinychat-tool-call-row__preview">
-            {item.valuePreview}
-          </span>
-        )}
-        {failed && <span className="shinychat-tool-group__failed">failed</span>}
-        <span
-          className="shinychat-tool-group__chevron"
-          dangerouslySetInnerHTML={chevronDSIH}
-        />
-      </button>
-      <div
-        id={contentId}
-        className="shinychat-tool-call-row__detail"
-        hidden={!open}
-      >
-        {open && renderLeaf(item, true)}
-      </div>
-    </div>
-  )
-}
-
 function ToolCallRow({
   item,
   segmentTitle,
@@ -459,32 +391,47 @@ function ToolCallRow({
   )
 }
 
+// One Tier-1 activity row, whether the group holds a single call or many.
+//
+// A single-call group is itself the leaf: the row opens straight into the full
+// card, skipping Tier 2. A multi-call group opens into its list of Tier-2 rows
+// instead. Both shapes are one component on purpose — React reconciles by
+// position and type, so rendering them as two components tore the whole subtree
+// down the moment a group grew from one call to two (the default, as soon as a
+// tool is called twice). That discarded every row's expand state and remounted
+// the header, which is exactly where the title crossfade belongs: `resolveTitle`
+// swaps the call's own dynamic result title for the tool's static definition
+// title at that boundary ("Weather for Portland" → "Weather Forecast ×2").
+//
+// So the shell down to the title element is identical in both shapes; only the
+// trailing row elements and the body below the row differ.
 export const ToolGroup = memo(function ToolGroup({
   group,
 }: {
   group: ToolCallGroup
 }) {
   // A call marked `expanded` must be reachable: open the group so its Tier-2
-  // row (which opens itself) isn't stranded inside the hidden call list.
+  // row (which opens itself) isn't stranded inside the hidden call list. For a
+  // single-call group this is just that one call's own flag.
   const [expanded, setExpanded] = useExpandable(
     group.calls.some((c) => c.expanded),
   )
-  // `group.key` is only unique within one routed loop, so it can't seed a
-  // document-wide `id`: two messages that both group "all" (or repeat a tool
-  // name) would point their rows' `aria-controls` at the same region.
-  const listId = `tool-group${useId()}`
+  // Not seeded from `group.key` or a call's `requestId`: `group.key` is only
+  // unique within one routed loop (two messages that both group "all", or
+  // repeat a tool name, would point their rows' `aria-controls` at the same
+  // region), and a request id is optional and can render in a different message
+  // than its result before pairing settles.
+  const bodyId = `tool-group${useId()}`
 
   // A rendered result supersedes its matching request wherever it lives, but
   // that is not this component's job to announce: ChatApp derives it from the
   // transcript (`supersededRequestIds`). Rendering used to dispatch it as a
   // side effect, which is why the row it superseded could unmount mid-render.
 
-  // A single-call group rests as a quiet Tier-1 row (skipping Tier 2) and
-  // morphs into the full card on expand.
-  if (group.calls.length === 1) {
-    return <SingleCallRow group={group} item={group.calls[0]!} />
-  }
-
+  // The lone call of a single-call group. Its label, intent and value preview
+  // ride the header row itself, because there is no Tier-2 row to carry them.
+  const single = group.calls.length === 1 ? group.calls[0]! : null
+  const label = single && perCallLabel(single, group.title, true)
   const anyRunning = group.calls.some((c) => c.status === "running")
   const failedCount = group.calls.filter((c) => c.status === "error").length
   // A group spanning several tools has no one icon to show, so the header
@@ -502,48 +449,83 @@ export const ToolGroup = memo(function ToolGroup({
   )
 
   return (
-    <div className="shinychat-tool-group shinychat-tool-group--multi">
+    <div
+      className={`shinychat-tool-group shinychat-tool-group--${
+        single ? "single" : "multi"
+      }`}
+    >
       <button
         type="button"
         className="shinychat-tool-group__row"
         aria-expanded={expanded}
-        aria-controls={listId}
+        aria-controls={bodyId}
         onClick={() => setExpanded((v) => !v)}
       >
         <span
           className={`shinychat-tool-group__glyph${anyRunning ? " running" : ""}`}
           dangerouslySetInnerHTML={{ __html: glyphHtml }}
         />
-        {/* The ×N lives inside the header, one per tool: a heterogeneous group
-            has no single count to show, and a homogeneous one has exactly one
-            segment, so its badge lands in the same place as before. */}
-        <GroupTitle group={group} />
-        {failedCount > 0 && (
+        {/* The title sits at this exact depth in both shapes, so it survives a
+            1→N growth and can crossfade across it. The ×N lives inside the
+            header, one per tool: a heterogeneous group has no single count to
+            show, and a homogeneous one has exactly one segment, so its badge
+            lands beside the title either way. */}
+        <span className="shinychat-tool-group__titlewrap">
+          <GroupTitle group={group} />
+          {label && (
+            <span className="shinychat-tool-group__label">
+              {": "}
+              {label.code ? <code>{label.text}</code> : label.text}
+            </span>
+          )}
+        </span>
+        {!single && failedCount > 0 && (
           <span className="shinychat-tool-group__failed">
             {`${failedCount} failed`}
           </span>
         )}
         <span className="shinychat-tool-spacer" />
+        {single && expanded && single.intent && (
+          <span className="shinychat-tool-row__intent">{single.intent}</span>
+        )}
+        {single?.valuePreview && (
+          <span className="shinychat-tool-call-row__preview">
+            {single.valuePreview}
+          </span>
+        )}
+        {single?.status === "error" && (
+          <span className="shinychat-tool-group__failed">failed</span>
+        )}
         <span
           className="shinychat-tool-group__chevron"
           dangerouslySetInnerHTML={chevronDSIH}
         />
       </button>
-      <ul
-        id={listId}
-        className="shinychat-tool-group__calls"
-        role="list"
-        hidden={!expanded}
-      >
-        {group.calls.map((item) => (
-          <ToolCallRow
-            key={item.localId}
-            item={item}
-            segmentTitle={segmentTitles.get(item.toolName)}
-            heterogeneous={heterogeneous}
-          />
-        ))}
-      </ul>
+      {single ? (
+        <div
+          id={bodyId}
+          className="shinychat-tool-call-row__detail"
+          hidden={!expanded}
+        >
+          {expanded && renderLeaf(single, true)}
+        </div>
+      ) : (
+        <ul
+          id={bodyId}
+          className="shinychat-tool-group__calls"
+          role="list"
+          hidden={!expanded}
+        >
+          {group.calls.map((item) => (
+            <ToolCallRow
+              key={item.localId}
+              item={item}
+              segmentTitle={segmentTitles.get(item.toolName)}
+              heterogeneous={heterogeneous}
+            />
+          ))}
+        </ul>
+      )}
     </div>
   )
 })

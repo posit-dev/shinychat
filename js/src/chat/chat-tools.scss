@@ -361,12 +361,6 @@ $shinychat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 
   --_row-glyph-width: 0.9em; // status / identity glyph box size
 }
 
-.shinychat-tool-group--single > .shiny-tool-card {
-  // The single-call leaf *is* the Tier-1 row; it shouldn't also carry the
-  // loop's own block margin on top of its own card spacing.
-  margin: 0;
-}
-
 .shinychat-tool-spacer {
   margin-inline-start: auto;
 }
@@ -525,8 +519,12 @@ $shinychat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 
   }
 }
 
-// Title + per-call label glued together (colon form) on a single-call row, so
-// the flex row gap doesn't push them apart into "title : label".
+// The row's identity box: the title, its ×N, and — on a single-call row — the
+// per-call label glued to it in colon form, so the flex row gap doesn't push
+// them apart into "title : label". Every row shape uses it, single- and
+// multi-call alike: the title has to sit at the same depth in both or React
+// remounts it when a group grows from one call to two, and the crossfade at
+// that boundary never runs.
 .shinychat-tool-group__titlewrap {
   display: inline-flex;
   align-items: baseline;
@@ -534,10 +532,23 @@ $shinychat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 
   min-width: 0;
   overflow: hidden;
 
-  // Keep the identity title whole; a long label truncates instead of wrapping
-  // the title onto a second line.
-  > .shinychat-tool-group__title {
+  // Keep the identity title whole when a label sits beside it: the label
+  // truncates instead of wrapping the title onto a second line. With no label
+  // (a multi-call header) the title is the only thing that can ellipsize, so it
+  // has to stay shrinkable.
+  &:has(> .shinychat-tool-group__label) > .shinychat-tool-group__title {
     flex: none;
+  }
+
+  // A homogeneous header's ×N is a direct child here; a heterogeneous group's
+  // sits inside its segment, which sets its own gap. This box has none of its
+  // own — the label glues to the title deliberately — so the badge carries its
+  // own separation, matching the row gap it used to inherit. Centered rather
+  // than baseline-aligned because the title is an `overflow: hidden` flex item
+  // and so has no real baseline to align against.
+  > .shinychat-tool-group__count {
+    align-self: center;
+    margin-inline-start: 0.5rem;
   }
 }
 
