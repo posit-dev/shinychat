@@ -529,15 +529,38 @@ interface ParsedToolElement {
   end: number
 }
 
+// Attribute values reach the router still HTML-encoded. The browser decodes an
+// attribute while parsing it, but this router parses attributes out of the raw
+// content string itself (see `parseAttributes`), so the decoding is ours to do.
+//
+// Numeric references are not an edge case here: htmltools escapes a newline in
+// an attribute value as `&#10;` in *both* languages, so every multi-line tool
+// value and every pretty-printed arguments JSON arrives carrying them. Without
+// this the literal text `&#10;` showed up inside the rendered card.
+//
+// `&amp;` is decoded **last**, and numeric refs before it, so `&amp;#10;` — an
+// author writing the literal text "&#10;" — survives as text instead of being
+// double-decoded into a newline.
 function decodeEntities(s: string): string {
   if (!s.includes("&")) return s
   return s
     .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
     .replace(/&apos;/g, "'")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
+    .replace(/&#(\d+);/g, (m, dec: string) => codePointOr(m, parseInt(dec, 10)))
+    .replace(/&#[xX]([0-9a-fA-F]+);/g, (m, hex: string) =>
+      codePointOr(m, parseInt(hex, 16)),
+    )
     .replace(/&amp;/g, "&")
+}
+
+// A reference outside Unicode range (or a surrogate) isn't decodable; leave the
+// original text rather than throwing or emitting a replacement character.
+function codePointOr(original: string, code: number): string {
+  if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return original
+  if (code >= 0xd800 && code <= 0xdfff) return original
+  return String.fromCodePoint(code)
 }
 
 // Index of the `>` closing an open tag, skipping quoted attribute values (which

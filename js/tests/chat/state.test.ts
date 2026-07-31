@@ -2201,6 +2201,35 @@ describe("routeToolBlocks (tool content router)", () => {
     expect(call.title).toBe("Weather Forecast for Portland")
   })
 
+  it("decodes numeric character references in attribute values", () => {
+    // htmltools escapes a newline in an attribute value as `&#10;` -- in *both*
+    // languages -- so every multi-line tool value and every pretty-printed
+    // arguments JSON arrives carrying them. The browser would decode them while
+    // parsing the attribute, but this router parses attributes out of the raw
+    // string itself, so it has to do the decoding.
+    const content =
+      req(
+        "1",
+        "list_tables",
+        'arguments="{&#10;  &quot;db&quot;: &quot;prod&quot;&#10;}"',
+      ) +
+      res(
+        "1",
+        "list_tables",
+        'value="customers&#10;orders&#9;refunds&#x0A;shipments"',
+      )
+    const call = loops(route(content))[0]!.groups[0]!.calls[0]!
+    expect(call.value).toBe("customers\norders\trefunds\nshipments")
+    expect(call.arguments).toBe('{\n  "db": "prod"\n}')
+  })
+
+  it("leaves an escaped ampersand alone rather than double-decoding it", () => {
+    // `&amp;#10;` is an author writing the literal text "&#10;", not a newline.
+    const content = res("1", "echo", 'value="a &amp;#10; b &amp;amp; c"')
+    const call = loops(route(content))[0]!.groups[0]!.calls[0]!
+    expect(call.value).toBe("a &#10; b &amp; c")
+  })
+
   it("parses attribute values containing '>' inside quotes (e.g. an icon)", () => {
     const icon =
       "&lt;svg&gt;&lt;path d=&quot;M0 0&gt;L1 1&quot;/&gt;&lt;/svg&gt;"
