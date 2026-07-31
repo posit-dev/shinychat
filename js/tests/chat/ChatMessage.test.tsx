@@ -602,6 +602,73 @@ describe("ChatMessage streaming tool routing", () => {
   })
 })
 
+describe("ChatMessage tool custom-display migration (through the real router)", () => {
+  // These content strings go through routeToolBlocks -> groupCalls ->
+  // deriveToolGroupIdentity for real (via the streaming render path exercised
+  // above), not a hand-built ToolCallGroup -- the seam neither state.test.ts
+  // nor ToolGroup.test.tsx covers alone.
+  function toolMessage(content: string): ChatMessageData {
+    return userMessage({
+      role: "assistant",
+      content,
+      streaming: true,
+      blocks: [{ type: "content", content, contentType: "markdown" }],
+    })
+  }
+
+  it("renders a lone custom-display call as a payload with no row and no spinner", () => {
+    const content =
+      '<shiny-tool-request data-shinychat-react request-id="w1" tool-name="weather" arguments="{}"></shiny-tool-request>' +
+      '<shiny-tool-result data-shinychat-react request-id="w1" tool-name="weather" status="success" value="&lt;p&gt;Portland&lt;/p&gt;" value-type="html" custom-display></shiny-tool-result>'
+    const { container } = render(
+      <ChatMessage index={0} message={toolMessage(content)} />,
+    )
+    const payload = container.querySelector(".shinychat-tool-custom-display")
+    expect(payload).not.toBeNull()
+    expect(payload!.textContent).toContain("Portland")
+    expect(container.querySelector(".shinychat-tool-group")).toBeNull()
+    expect(container.querySelector(".spinner-border")).toBeNull()
+  })
+
+  it("renders one row plus one payload when only one of two same-tool calls migrates", () => {
+    const content =
+      '<shiny-tool-request data-shinychat-react request-id="w1" tool-name="weather" tool-title="Weather Forecast" arguments="{}"></shiny-tool-request>' +
+      '<shiny-tool-request data-shinychat-react request-id="w2" tool-name="weather" tool-title="Weather Forecast" arguments="{}"></shiny-tool-request>' +
+      '<shiny-tool-result data-shinychat-react request-id="w1" tool-name="weather" status="success" value="&lt;p&gt;Seattle&lt;/p&gt;" value-type="html" custom-display></shiny-tool-result>' +
+      '<shiny-tool-result data-shinychat-react request-id="w2" tool-name="weather" status="success" value="Rainy" value-type="text"></shiny-tool-result>'
+    const { container } = render(
+      <ChatMessage index={0} message={toolMessage(content)} />,
+    )
+    expect(container.querySelectorAll(".shinychat-tool-group")).toHaveLength(1)
+    expect(
+      container.querySelectorAll(".shinychat-tool-custom-display"),
+    ).toHaveLength(1)
+    expect(container.textContent).toContain("Weather Forecast")
+    // The visible subset is one call -- the header must not carry the
+    // unfiltered group's ×2, which the two-tool identity would produce.
+    expect(container.textContent).not.toContain("×2")
+  })
+
+  it("orders migrated payloads by resolveIndex when results settle out of request order", () => {
+    const content =
+      '<shiny-tool-request data-shinychat-react request-id="w1" tool-name="weather" arguments="{}"></shiny-tool-request>' +
+      '<shiny-tool-request data-shinychat-react request-id="w2" tool-name="weather" arguments="{}"></shiny-tool-request>' +
+      '<shiny-tool-result data-shinychat-react request-id="w2" tool-name="weather" status="success" value="&lt;p&gt;Boston&lt;/p&gt;" value-type="html" custom-display></shiny-tool-result>' +
+      '<shiny-tool-result data-shinychat-react request-id="w1" tool-name="weather" status="success" value="&lt;p&gt;Seattle&lt;/p&gt;" value-type="html" custom-display></shiny-tool-result>'
+    const { container } = render(
+      <ChatMessage index={0} message={toolMessage(content)} />,
+    )
+    const payloads = Array.from(
+      container.querySelectorAll(".shinychat-tool-custom-display"),
+    )
+    expect(payloads).toHaveLength(2)
+    // w2's result appears first in the content string, so its payload leads --
+    // resolveIndex tracks the result element's offset, not request order.
+    expect(payloads[0]!.textContent).toContain("Boston")
+    expect(payloads[1]!.textContent).toContain("Seattle")
+  })
+})
+
 describe("ChatMessage html-typed tool markup", () => {
   const typed =
     '<shiny-tool-result data-shinychat-react request-id="req-1" tool-name="get_weather" status="success" value="Sunny" value-type="text"></shiny-tool-result>'
