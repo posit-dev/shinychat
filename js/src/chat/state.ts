@@ -83,16 +83,28 @@ export interface ToolCallItem {
    */
   customDisplay?: boolean
   /**
-   * The result element's character offset within the routed content block
+   * The result element's character offset within its *source* content block
    * (`el.start`). Used only to order migrated custom payloads: results settle
-   * in the order their elements appear, and the offset is monotonically
-   * increasing within a block. `mergeAdjacentLoops` can coalesce loops
-   * originating in two different source content blocks, whose offsets restart
-   * from 0 — ordering degrades in that case. It is rare (a thinking or prose
-   * block between two loops prevents adjacency) and only affects the relative
-   * order of parallel custom results that resolve out of order.
+   * in the order their elements appear.
+   *
+   * Not globally comparable on its own. `mergeAdjacentLoops` coalesces loops
+   * originating in two different source blocks, whose offsets restart from 0,
+   * so a later payload could otherwise sort ahead of an earlier one. Always
+   * order by `resolveBlock` first — see `orderedMigratedCalls` in
+   * `ToolGroup.tsx`.
    */
   resolveIndex?: number
+  /**
+   * Index of the source content block this result was parsed from, which is
+   * the high-order half of the ordering key `resolveIndex` alone can't
+   * provide.
+   *
+   * Note this cannot be replaced by rebasing `resolveIndex` onto the merged
+   * loop's accumulated content length: a loop's `content` is the slice
+   * `block.content.slice(loopStart, cursor)`, while `el.start` indexes the
+   * *whole* source block, so the two live in different coordinate spaces.
+   */
+  resolveBlock?: number
   footer?: string
   /** Raw arguments JSON from the request element. */
   arguments?: string
@@ -585,7 +597,11 @@ function parseToolElements(
   return els
 }
 
-function applyAttrsToItem(item: ToolCallItem, el: ParsedToolElement): void {
+function applyAttrsToItem(
+  item: ToolCallItem,
+  el: ParsedToolElement,
+  sourceBlock: number,
+): void {
   const a = el.attrs
   if (a["tool-name"]) item.toolName = a["tool-name"]
   const grp = a["grouping"]
@@ -617,6 +633,7 @@ function applyAttrsToItem(item: ToolCallItem, el: ParsedToolElement): void {
   item.expanded = attrTruthy(a, "expanded")
   item.customDisplay = attrTruthy(a, "custom-display")
   item.resolveIndex = el.start
+  item.resolveBlock = sourceBlock
 }
 
 // The resolved header title for a set of calls belonging to one tool. An
@@ -765,6 +782,10 @@ function makeToolLoopBlock(
   // would collide; the source block index plus the loop's offset in it is both
   // unique across a merged loop and stable across re-routes of the same content.
   anonScope: string,
+  // Index of the source content block these elements were parsed from. Recorded
+  // on each call as the high-order half of the migrated-payload ordering key,
+  // since `el.start` restarts from 0 in every source block.
+  sourceBlock: number,
 ): ToolLoopBlock {
   const order: string[] = []
   const byId = new Map<string, ToolCallItem>()
@@ -782,7 +803,7 @@ function makeToolLoopBlock(
       byId.set(id, item)
       order.push(id)
     }
-    applyAttrsToItem(item, el)
+    applyAttrsToItem(item, el, sourceBlock)
   })
   const calls = order.map((id) => byId.get(id)!)
   return {
@@ -869,6 +890,7 @@ export function routeToolBlocks(
           contentType,
           grouping,
           `${blockIndex}:${loopStart}`,
+          blockIndex,
         ),
       )
       loopEls = []

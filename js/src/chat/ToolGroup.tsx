@@ -429,10 +429,15 @@ export const ToolGroup = memo(function ToolGroup({
     (c) => c.customDisplay && c.status !== "running",
   )
   // Results settle (and so migrate) in arrival order, not `group.calls` order
-  // (parallel calls can resolve out of order) — sort by the element's source
-  // offset. A copy: `group.calls` is not this component's to mutate.
+  // (parallel calls can resolve out of order) — sort by the element's position
+  // in the transcript. `resolveBlock` must lead: `resolveIndex` restarts from 0
+  // in every source content block, and `mergeAdjacentLoops` can put calls from
+  // two different blocks in one group, so offset alone can invert the order.
+  // A copy: `group.calls` is not this component's to mutate.
   const orderedMigratedCalls = [...migratedCalls].sort(
-    (a, b) => (a.resolveIndex ?? 0) - (b.resolveIndex ?? 0),
+    (a, b) =>
+      (a.resolveBlock ?? 0) - (b.resolveBlock ?? 0) ||
+      (a.resolveIndex ?? 0) - (b.resolveIndex ?? 0),
   )
 
   // A call marked `expanded` must be reachable: open the group so its Tier-2

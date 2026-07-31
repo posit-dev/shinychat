@@ -667,6 +667,44 @@ describe("ChatMessage tool custom-display migration (through the real router)", 
     expect(payloads[0]!.textContent).toContain("Boston")
     expect(payloads[1]!.textContent).toContain("Seattle")
   })
+
+  it("orders migrated payloads across merged source blocks, not by raw offset", () => {
+    // `mergeAdjacentLoops` coalesces these two blocks into one group, but
+    // `el.start` restarts from 0 in each. The first block is padded so its
+    // result sits at a *larger* offset than the second block's, which is the
+    // case where sorting on the offset alone inverts the transcript order.
+    const padding = "x".repeat(300)
+    const first =
+      `<shiny-tool-request data-shinychat-react request-id="w1" tool-name="weather" arguments="{&quot;pad&quot;:&quot;${padding}&quot;}"></shiny-tool-request>` +
+      '<shiny-tool-result data-shinychat-react request-id="w1" tool-name="weather" status="success" value="&lt;p&gt;Seattle&lt;/p&gt;" value-type="html" custom-display></shiny-tool-result>'
+    const second =
+      '<shiny-tool-request data-shinychat-react request-id="w2" tool-name="weather" arguments="{}"></shiny-tool-request>' +
+      '<shiny-tool-result data-shinychat-react request-id="w2" tool-name="weather" status="success" value="&lt;p&gt;Boston&lt;/p&gt;" value-type="html" custom-display></shiny-tool-result>'
+
+    const { container } = render(
+      <ChatMessage
+        index={0}
+        message={userMessage({
+          role: "assistant",
+          content: first + second,
+          streaming: true,
+          blocks: [
+            { type: "content", content: first, contentType: "markdown" },
+            { type: "content", content: second, contentType: "markdown" },
+          ],
+        })}
+      />,
+    )
+
+    const payloads = Array.from(
+      container.querySelectorAll(".shinychat-tool-custom-display"),
+    )
+    expect(payloads).toHaveLength(2)
+    // Transcript order: Seattle (block 0) then Boston (block 1), even though
+    // Boston's offset within its own block is the smaller of the two.
+    expect(payloads[0]!.textContent).toContain("Seattle")
+    expect(payloads[1]!.textContent).toContain("Boston")
+  })
 })
 
 describe("ChatMessage html-typed tool markup", () => {
