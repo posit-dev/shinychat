@@ -933,9 +933,11 @@ rlang::on_load(
         }
       }
 
+      orig_msg <- msg
       if (S7::S7_inherits(msg, ellmer::Content)) {
         msg <- contents_shinychat(msg)
       }
+      msg <- wrap_custom_tool_result(orig_msg, msg)
 
       chat_append_(msg)
 

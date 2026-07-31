@@ -162,6 +162,64 @@ new_tool_card <- function(type, request_id, tool_name, ...) {
   structure(dots, class = classes)
 }
 
+# A `contents_shinychat()` method on a `ContentToolResult` subclass may
+# return arbitrary tags instead of shinychat's own tool card (see the
+# `S7::method(contents_shinychat, ...)` examples above). That leaves no
+# `<shiny-tool-result>` element in the transcript at all, so the condensed
+# tool view — which derives "this call finished" from that element's
+# presence — has nothing to key off of and the request row spins forever.
+# Wrap the author's tags in a real element carrying only the fields needed
+# to pair a result with its request; everything else about the row (title,
+# icon, footer, ...) is the author's own UI to manage.
+#
+# Detection is by artifact, not dispatch: `new_tool_card()` marks its output
+# with the `shinychat_tool_card` class, and that class survives the
+# documented `S7::super()` extend pattern (the author gets shinychat's own
+# card back and only mutates fields on it), so that pattern correctly reads
+# as *not* custom. Anything else returned for a `ContentToolResult` is
+# custom UI and gets wrapped.
+wrap_custom_tool_result <- function(content, msg) {
+  if (
+    !S7::S7_inherits(content, ellmer::ContentToolResult) ||
+      inherits(msg, "shinychat_tool_card") ||
+      is.null(msg)
+  ) {
+    return(msg)
+  }
+
+  # A custom `contents_shinychat()` method bypasses the base method's check
+  # that `@request` is present, so it can reach this point with nothing to
+  # pair a result against. With no request there is no wrap to make; emit
+  # the author's tags as-is, same as before this feature existed.
+  if (is.null(content@request)) {
+    return(msg)
+  }
+
+  grouping <- NULL
+  if (!is.null(content@request@tool)) {
+    grouping <- as_grouping(content@request@tool@annotations$grouping)
+  }
+
+  new_tool_card(
+    "result",
+    request_id = content@request@id,
+    tool_name = content@request@name,
+    # Locked: the author is assumed to present the error state inside their
+    # own UI, so a failed custom call is wrapped exactly like a successful
+    # one; only the request-pairing signal matters here.
+    status = if (tool_errored(content)) "error" else "success",
+    grouping = grouping,
+    value = msg,
+    value_type = "html",
+    # Internal provenance marker only ("shinychat wrapped an author's custom
+    # output"), not part of any author-facing API and not surfaced by
+    # `tool_result_display()`. What the client does with this fact is the
+    # client's own decision and stays free to change independently of this
+    # wrap.
+    custom_display = NA
+  )
+}
+
 #' @export
 as.tags.shinychat_tool_card <- function(x, ...) {
   tag_name <- switch(
