@@ -107,7 +107,9 @@
 
   >.card-body {
     position: relative;
-    transition: max-height 0.3s ease-out, opacity 0.2s ease-out;
+    // No `max-height` transition: the expanded state leaves it at `none`, which
+    // is not interpolable with the collapsed `0`, so it never animated anyway.
+    transition: opacity 0.2s ease-out;
     opacity: 1;
     overflow: auto;
 

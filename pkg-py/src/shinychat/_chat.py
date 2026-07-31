@@ -2209,9 +2209,10 @@ class ChatExpress(Chat):
             - ``"none"``: each tool call is displayed in its own card.
 
             Individual tools can override this via a ``grouping`` tool
-            annotation. For chatlas tools, set it under
-            ``annotations={"extra": {"grouping": ...}}`` (chatlas drops
-            unknown top-level annotation keys).
+            annotation. For chatlas tools, prefer
+            ``annotations={"extra": {"grouping": ...}}``: a top-level
+            ``grouping`` key is also read, but it isn't part of chatlas'
+            ``ToolAnnotations``, so type checkers reject it.
         kwargs
             Additional attributes for the chat container element.
         """
@@ -2448,9 +2449,9 @@ def chat_ui(
         - ``"none"``: each tool call is displayed in its own card.
 
         Individual tools can override this via a ``grouping`` tool annotation.
-        For chatlas tools, set it under
-        ``annotations={"extra": {"grouping": ...}}`` (chatlas drops unknown
-        top-level annotation keys).
+        For chatlas tools, prefer ``annotations={"extra": {"grouping": ...}}``:
+        a top-level ``grouping`` key is also read, but it isn't part of
+        chatlas' ``ToolAnnotations``, so type checkers reject it.
     kwargs
         Additional attributes for the chat container element.
     """

@@ -657,7 +657,9 @@ shiny-chat-container:not([fill]) {
   padding-block: 0;
   color: var(--shinychat-thinking-content-color);
   font-size: 0.9em;
-  transition: padding-block 0.2s ease;
+  // No `padding-block` transition: the parent already animates the open/close
+  // with `grid-template-rows` over the same duration, so this only added a
+  // second layout-triggering property for 4px.
 
   [data-expanded] > & {
     padding-block: 0.25rem;
