@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest"
 import { render, screen, fireEvent, act } from "@testing-library/react"
 import { ChatMessage } from "../../src/chat/ChatMessage"
-import { routeToolBlocks, type ChatMessageData } from "../../src/chat/state"
+import type { ChatMessageData } from "../../src/chat/state"
 import { ChatToolContext } from "../../src/chat/context"
 
 vi.mock("../../src/chat/TiptapInput", async () => {
@@ -599,55 +599,6 @@ describe("ChatMessage streaming tool routing", () => {
     }
     const { container } = render(<ChatMessage index={0} message={message} />)
     expect(container.querySelector(".shinychat-tool-loop")).not.toBeNull()
-  })
-})
-
-describe("ChatMessage lifted thinking (chat-level grouping=all)", () => {
-  // A request still awaiting its result, so the supersession test below has a
-  // running call to drop (a settled result is never superseded).
-  const search =
-    '<shiny-tool-request data-shinychat-react request-id="req-1" tool-name="search"></shiny-tool-request>'
-
-  function liftedMessage(): ChatMessageData {
-    return {
-      ...userMessage({ content: "", blocks: [] }),
-      role: "assistant",
-      blocks: routeToolBlocks(
-        [
-          { type: "thinking", content: "weighing options", streaming: false },
-          { type: "content", content: search, contentType: "markdown" },
-        ],
-        "all",
-        "assistant",
-      ),
-    }
-  }
-
-  function renderLifted(supersededRequests = new Set<string>()) {
-    return render(
-      <ChatToolContext.Provider value={{ supersededRequests }}>
-        <ChatMessage index={0} message={liftedMessage()} />
-      </ChatToolContext.Provider>,
-    )
-  }
-
-  it("renders the thinking row inside the loop, above the groups", () => {
-    const { container } = renderLifted()
-    const loop = container.querySelector(".shinychat-tool-loop")!
-    const rows = loop.querySelectorAll(
-      ":scope > .shinychat-thinking, :scope > .shinychat-tool-group",
-    )
-    expect(rows[0]!.className).toContain("shinychat-thinking")
-    // Exactly one thinking row: the flagged original renders nothing, so the
-    // hoisted copy is not a duplicate of it.
-    expect(container.querySelectorAll(".shinychat-thinking")).toHaveLength(1)
-  })
-
-  it("re-surfaces the thinking when every call in the loop is superseded", () => {
-    // The row it was hoisted into is gone, but the reasoning still happened.
-    const { container } = renderLifted(new Set(["req-1"]))
-    expect(container.querySelector(".shinychat-tool-loop")).toBeNull()
-    expect(container.querySelectorAll(".shinychat-thinking")).toHaveLength(1)
   })
 })
 

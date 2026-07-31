@@ -24,18 +24,6 @@ export interface ThinkingBlock {
   startedAt?: number
   durationMs?: number
   streaming: boolean
-  /**
-   * Set by the router when this block's content has been lifted into an
-   * adjacent loop's `liftedThinking` (chat-level `tool_grouping="all"` only).
-   * The block stays in the list at its original position but renders nothing —
-   * the loop renders the merged copy instead.
-   *
-   * Keeping the original rather than replacing it is what makes the lift
-   * round-trip: `blockToSegment` and `contentFromBlocks` need no special case,
-   * and a restored transcript re-derives the same lift from the same content.
-   * Purely derived, so a re-route must recompute it — never inherit it.
-   */
-  lifted?: boolean
 }
 
 /** How a loop's tool calls are aggregated in the condensed view. */
@@ -178,16 +166,6 @@ export interface ToolLoopBlock {
   contentType: ContentType
   grouping: ToolGrouping
   groups: ToolCallGroup[]
-  /**
-   * The loop's reasoning, merged into one row hoisted above the groups. Set
-   * only under chat-level `tool_grouping="all"` — see `liftThinking`.
-   *
-   * On the loop rather than on a group: a loop whose calls carry a per-tool
-   * `grouping` override has several groups, and the thinking belongs above all
-   * of them. It is a render model derived from the `lifted` blocks still in the
-   * block list, which remain the serializable source of truth.
-   */
-  liftedThinking?: ThinkingBlock
 }
 
 export type MessageBlock = ContentBlock | ThinkingBlock | ToolLoopBlock
@@ -967,7 +945,7 @@ export function routeToolBlocks(
     }
   })
 
-  return liftThinking(mergeAdjacentLoops(out, grouping), grouping)
+  return mergeAdjacentLoops(out, grouping)
 }
 
 // Coalesce tool loops that end up adjacent (no intervening prose/thinking) into
@@ -1002,146 +980,6 @@ function mergeAdjacentLoops(
     }
   }
   return out
-}
-
-function withoutLift(block: ThinkingBlock): ThinkingBlock {
-  if (!block.lifted) return block
-  const { lifted: _lifted, ...rest } = block
-  return rest
-}
-
-/**
- * Hoist a loop's thinking above its calls, under chat-level `"all"` only.
- *
- * `[inspect ×3], think, [search, read]` becomes `think, [inspect ×3, search,
- * read]`: one merged thinking row, then one aggregated group set. Runs of
- * `{thinking | tool_loop}` therefore coalesce across the thinking that
- * otherwise splits them into separate loops — which is the whole point, since
- * `"all"` promises one row per tool for the loop and a mid-loop thought is not
- * a new loop. **Prose still breaks the run**, exactly as it breaks a loop.
- *
- * Only chat-level `"all"` lifts. A per-tool `grouping="all"` annotation
- * aggregates that tool's calls; thinking carries no annotation, and belongs to
- * the loop rather than to any one tool.
- *
- * Thinking whose run contains no tool element has nothing to lift into and
- * stays a standalone row.
- */
-function liftThinking(
-  blocks: MessageBlock[],
-  grouping: ToolGrouping,
-): MessageBlock[] {
-  if (grouping !== "all") {
-    // Re-routing already-routed blocks (a live `tool-grouping` change) hands us
-    // blocks a previous pass at "all" flagged. The flag is derived, so it has to
-    // be recomputed here rather than inherited.
-    return blocks.map((b) => (b.type === "thinking" ? withoutLift(b) : b))
-  }
-
-  const out: MessageBlock[] = []
-  let i = 0
-  while (i < blocks.length) {
-    const block = blocks[i]!
-    if (block.type !== "thinking" && block.type !== "tool_loop") {
-      out.push(block)
-      i += 1
-      continue
-    }
-    let end = i
-    while (
-      end < blocks.length &&
-      (blocks[end]!.type === "thinking" || blocks[end]!.type === "tool_loop")
-    ) {
-      end += 1
-    }
-    out.push(...liftRun(blocks.slice(i, end), grouping))
-    i = end
-  }
-  return out
-}
-
-// One run of activity blocks: fold its loops into the first one and its thinking
-// into that loop's hoisted row.
-function liftRun(run: MessageBlock[], grouping: ToolGrouping): MessageBlock[] {
-  const loops = run.filter((b): b is ToolLoopBlock => b.type === "tool_loop")
-  const thinking = run.filter((b): b is ThinkingBlock => b.type === "thinking")
-  if (loops.length === 0 || thinking.length === 0) {
-    return run.map((b) => (b.type === "thinking" ? withoutLift(b) : b))
-  }
-
-  // Same guard `mergeAdjacentLoops` uses: a loop's `content` is a raw slice
-  // replayed under its own content type, so loops of differing types must not
-  // be concatenated. A non-matching loop stays where it is and keeps its own
-  // groups; the thinking still lifts into the first loop.
-  const primary = loops[0]!
-  const mergeable = new Set(
-    loops.filter((l) => l.contentType === primary.contentType),
-  )
-  const merged: ToolLoopBlock = {
-    type: "tool_loop",
-    content: [...mergeable].map((l) => l.content).join(""),
-    contentType: primary.contentType,
-    grouping,
-    groups: groupCalls(
-      [...mergeable].flatMap((l) => l.groups.flatMap((g) => g.calls)),
-      grouping,
-    ),
-    liftedThinking: mergeThinkingBlocks(thinking),
-  }
-
-  const out: MessageBlock[] = []
-  for (const b of run) {
-    if (b.type === "thinking") {
-      out.push({ ...b, lifted: true })
-    } else if (b === primary) {
-      out.push(merged)
-    } else if (!mergeable.has(b as ToolLoopBlock)) {
-      out.push(b)
-    }
-  }
-  return out
-}
-
-/**
- * Collapse a loop's thinking blocks into the single row shown above its calls.
- *
- * The label reports the **sum** of the constituents' own durations, so it
- * measures time spent thinking rather than the wall-clock span — which would
- * fold in the time spent executing the tools between them. `startedAt` is
- * deliberately not carried over: it is only meaningful for the block a reducer
- * is actively streaming into, and a first-block `startedAt` on the merged row
- * would turn any `Date.now() - startedAt` into exactly that wall-clock number.
- *
- * A block streams only while it is the tail, so `streaming` on any of them means
- * the row is live. That is what flips a settled row back to "Thinking" when a
- * second thinking block arrives mid-loop, and what makes the total resume
- * accumulating from there.
- */
-function mergeThinkingBlocks(blocks: ThinkingBlock[]): ThinkingBlock {
-  if (blocks.length === 1) return withoutLift(blocks[0]!)
-
-  const last = blocks[blocks.length - 1]!
-  const durations = blocks
-    .map((b) => b.durationMs)
-    .filter((d): d is number => d !== undefined)
-  // Topic tags are rewritten inline into each block's content, so the
-  // concatenation keeps every sub-heading; this field is just the latest one,
-  // which is what the streaming header reads.
-  const topic = blocks.reduce<string | null | undefined>(
-    (acc, b) => (b.topic != null ? b.topic : acc),
-    undefined,
-  )
-
-  return {
-    type: "thinking",
-    content: blocks.map((b) => b.content).join("\n\n"),
-    streaming: blocks.some((b) => b.streaming),
-    ...(durations.length > 0
-      ? { durationMs: durations.reduce((a, b) => a + b, 0) }
-      : {}),
-    ...(topic != null ? { topic } : {}),
-    ...(last.topicBuffer ? { topicBuffer: last.topicBuffer } : {}),
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2130,8 +1968,8 @@ export function buildMessagesSnapshot(state: ChatState): SnapshotMessage[] {
  *
  * A `tool_loop` carries the raw content slice it was parsed from, so unwinding
  * it back into a content block recovers the router's own input — no reparse of
- * the message, no server round-trip. Thinking blocks pass straight through:
- * `liftThinking` recomputes the `lifted` flag from the new mode.
+ * the message, no server round-trip. Thinking blocks pass straight through
+ * unchanged — they render in place at every mode and break the run either way.
  */
 function rerouteMessage(
   msg: ChatMessageData,
