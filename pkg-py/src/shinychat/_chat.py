@@ -941,6 +941,13 @@ class Chat:
             return
 
         msg = message_content(message)
+        # Same wrap as the streaming path (`_append_message_chunk`), for the
+        # same reason: an author who registers a `ContentToolResult` handler on
+        # `message_content` -- which this method's own docs point them to --
+        # otherwise returns custom UI with no `<shiny-tool-result>` element at
+        # all, leaving the condensed view nothing to pair the request against.
+        # Must precede `_transform_message()`, which rebinds `msg`.
+        msg = _wrap_custom_tool_result(message, msg)
         msg = await self._transform_message(msg)
         if msg is None:
             return

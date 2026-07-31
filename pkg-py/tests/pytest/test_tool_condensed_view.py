@@ -445,6 +445,54 @@ async def test_custom_string_result_stays_markdown(
 
 
 @pytest.mark.anyio
+async def test_custom_result_via_append_message_is_wrapped() -> None:
+    """`append_message()` must wrap too, not just the streaming path.
+
+    Its own docs point authors at `message_content`, and a handler registered
+    there returns custom UI with no `<shiny-tool-result>` at all unless this
+    path wraps as well.
+    """
+    from shiny.express._stub_session import ExpressStubSession
+    from shiny.session import session_context
+    from shinychat import Chat, message_content
+
+    registry = gc.get_referents(message_content.registry)[0]
+    before = set(registry)
+
+    def handler(message: _CustomToolResult) -> ChatMessage:
+        return ChatMessage(
+            content=Tag("div", "Custom UI", class_="my-custom-ui")
+        )
+
+    message_content.register(_CustomToolResult, handler)
+    try:
+        sent: list[Any] = []
+
+        async def capture_append(message: Any, **kwargs: Any) -> None:
+            sent.append(message)
+
+        request = _request(tool=_tool())
+        result = _CustomToolResult(value=2, request=request)
+
+        with session_context(ExpressStubSession()):
+            chat = Chat(id="chat")
+            chat._send_append_message = capture_append  # type: ignore[method-assign]
+            await chat.append_message(result)
+    finally:
+        for key in list(registry):
+            if key not in before:
+                del registry[key]
+        message_content._clear_cache()
+
+    assert len(sent) == 1
+    html = sent[0].content
+    assert "<shiny-tool-result" in html
+    assert "custom-display" in html
+    assert 'request-id="call-1"' in html
+    assert "my-custom-ui" in html
+
+
+@pytest.mark.anyio
 async def test_custom_tool_result_error_renders_like_a_successful_one(
     custom_display_handler: Any,
 ) -> None:
