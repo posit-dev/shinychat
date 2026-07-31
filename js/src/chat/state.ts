@@ -204,10 +204,8 @@ export interface ChatInputState {
 /**
  * Tool state shared with every message through context.
  *
- * `supersededRequests` is the union of two sources — see
- * `supersededRequestIds` (derived) and `signalledSupersededRequests`
- * (signalled). Consumers need neither distinction: a superseded request is a
- * superseded request.
+ * `supersededRequests` is `supersededRequestIds`, derived from the
+ * transcript — see there for how it decides a request is done.
  */
 export interface ChatToolState {
   supersededRequests: Set<string>
@@ -243,11 +241,6 @@ export interface ChatState extends ChatInputState {
   enableUploadExplicit: boolean
   /** How tool calls are aggregated in the condensed view. Client-reflected. */
   toolGrouping: ToolGrouping
-  /**
-   * Request-ids the *server* told us are superseded, for the results that leave
-   * no element behind to derive it from. See `signalledSupersededRequests`.
-   */
-  signalledSupersededRequests: Set<string>
   history: ChatHistoryState
 }
 
@@ -278,7 +271,6 @@ export const initialState: ChatState = {
   enableUpload: false,
   enableUploadExplicit: false,
   toolGrouping: "tool",
-  signalledSupersededRequests: new Set(),
   slashCommands: [],
   history: { enabled: false, conversations: [], activeId: null },
 }
@@ -940,32 +932,17 @@ function mergeAdjacentLoops(
 }
 
 // ---------------------------------------------------------------------------
-// Superseded tool requests come from two places. BOTH ARE NEEDED — deleting
-// either one breaks a real case, so neither is redundant with the other.
-//
-//  1. Derived from transcript content, below (`supersededRequestIds`).
-//  2. Signalled by the server's `hide_tool_request` action, accumulated into
-//     `ChatState.signalledSupersededRequests` by the reducer.
-//
-// Deriving assumes the result leaves a `<shiny-tool-result>` element behind to
-// pair against. Usually it does — but both packages let an app render a tool
-// result as *entirely custom UI* (R: a `contents_shinychat()` method returning
-// arbitrary tags; Python: a `message_content_chunk` handler registered for a
-// `ContentToolResult` subclass). Those emit no tool element at all, so there is
-// nothing to derive from and the request row would spin forever. The action is
-// the only signal for that case.
-//
-// Conversely the action fires only from the live streaming loop, so it is
-// absent on restore/reload — where the derivation is the only thing that works.
-// The two cover disjoint gaps; the union is in `ChatApp`.
-//
-// Ordering is load-bearing: the servers send the action *after* appending the
-// result content. Sent before, it hides a request whose result has not arrived,
-// emptying the group and unmounting the whole tool subtree. See the dispatch
-// sites in `pkg-r/R/chat.R` and `pkg-py/src/shinychat/_chat.py`.
-//
-// Known gap, deliberately unfixed: a custom-UI result *on restore* still shows
-// an orphan request row — no element to derive from, and no action on that path.
+// Superseded tool requests used to be derived from content OR signalled by a
+// server action, because deriving assumed the result left a
+// `<shiny-tool-result>` element behind to pair against, and a result that
+// rendered as *entirely custom UI* (R: a `contents_shinychat()` method
+// returning arbitrary tags; Python: a `message_content_chunk` handler
+// registered for a `ContentToolResult` subclass) left no such element. Both
+// servers now wrap that custom output in a real `<shiny-tool-result>` before
+// it ever reaches the client (see `wrap_custom_tool_result` in
+// `pkg-r/R/contents_shinychat.R` and `_wrap_custom_tool_result` in
+// `pkg-py/src/shinychat/_chat.py`), so every result leaves an element behind
+// on every path and derivation alone is enough.
 // ---------------------------------------------------------------------------
 
 /**
@@ -978,26 +955,15 @@ function mergeAdjacentLoops(
  * to be suppressed by the result rendered elsewhere. This set is what suppresses
  * it.
  *
- * It is **derived from content, never signalled**, which is what makes it the
- * only mechanism that works on restore: a reloaded transcript is content and
- * nothing else, and the server's `hide_tool_request` action fires solely from
- * the live streaming loop.
- *
- * Deriving also rules out two faults the action alone had. It could arrive
- * *before* the result it asserted — emptying the group, dropping the block and
- * unmounting the whole subtree, which is what stopped the tool-title crossfade
- * from ever running — and it could not be withdrawn, so a stream cancelled
- * mid-tool lost the call permanently. Here the result and the supersession are
- * the same fact, so neither is expressible.
+ * It is derived from content, never signalled, which is what makes it work on
+ * restore: a reloaded transcript is content and nothing else. Deriving also
+ * means a stream cancelled mid-tool simply leaves the request row standing —
+ * there is no separate "done" fact to get stuck in a stale state.
  *
  * Mirrors `routeToolBlocks`'s gates exactly (user role, routable content types,
  * open-fence shielding), so an element the router refuses to route can never
  * suppress a row either. Notably that keeps a user-typed
  * `<shiny-tool-result request-id="…">` from blanking an assistant's tool call.
- *
- * **This does not cover every tool call** — see `signalledSupersededRequests`
- * for the case that has no result element to derive from. The two sets are
- * unioned in `ChatApp`; neither is redundant.
  */
 export function supersededRequestIds(
   messages: ChatMessageData[],
@@ -1741,13 +1707,6 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         inputDisabled: false,
         cancelRequested: false,
       }
-    }
-
-    case "hide_tool_request": {
-      if (state.signalledSupersededRequests.has(action.requestId)) return state
-      const newSet = new Set(state.signalledSupersededRequests)
-      newSet.add(action.requestId)
-      return { ...state, signalledSupersededRequests: newSet }
     }
 
     case "greeting": {

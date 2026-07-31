@@ -648,15 +648,6 @@ describe("chatReducer", () => {
       expect(next.messages).toEqual([])
     })
 
-    it("resets signalledSupersededRequests", () => {
-      const state = makeState({
-        messages: [makeAssistantMsg()],
-        signalledSupersededRequests: new Set(["req-1", "req-2"]),
-      })
-      const next = chatReducer(state, { type: "clear" })
-      expect(next.signalledSupersededRequests.size).toBe(0)
-    })
-
     it("resets inputDisabled when cleared during streaming", () => {
       const msg = makeAssistantMsg({ streaming: true })
       const state = makeState({
@@ -784,42 +775,6 @@ describe("chatReducer", () => {
       const state = makeState({ cancelRequested: true })
       const next = chatReducer(state, { type: "remove_loading" })
       expect(next.cancelRequested).toBe(false)
-    })
-  })
-
-  describe("hide_tool_request", () => {
-    it("adds requestId to signalledSupersededRequests", () => {
-      const state = makeState()
-      const next = chatReducer(state, {
-        type: "hide_tool_request",
-        requestId: "req-1",
-      })
-      expect(next.signalledSupersededRequests.has("req-1")).toBe(true)
-    })
-
-    it("returns state unchanged for duplicate IDs (no re-render)", () => {
-      const state = makeState({
-        signalledSupersededRequests: new Set(["req-1"]),
-      })
-      const next = chatReducer(state, {
-        type: "hide_tool_request",
-        requestId: "req-1",
-      })
-      expect(next).toBe(state)
-    })
-
-    it("does not derive signalled ids from rendered chunk HTML", () => {
-      const msg = makeAssistantMsg({ streaming: true, content: "" })
-      const state = makeState({ streamingMessage: msg })
-      const next = chatReducer(state, {
-        type: "chunk",
-        content:
-          '<shiny-tool-result request-id="req-from-html" tool-name="foo" status="success" value="ok" value-type="text"></shiny-tool-result>',
-        operation: "replace",
-      })
-      expect(next.signalledSupersededRequests).toBe(
-        state.signalledSupersededRequests,
-      )
     })
   })
 

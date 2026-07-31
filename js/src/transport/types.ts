@@ -83,12 +83,6 @@ export type ChatAction =
   | { type: "remove_loading" }
   | { type: "update_cancel"; enable_cancel: boolean }
   | { type: "update_upload"; enable_upload: boolean }
-  /**
-   * A tool result rendered as custom UI, with no `<shiny-tool-result>` element
-   * for the client to pair against — see `signalledSupersededRequests` in
-   * `chat/state.ts`. Sent *after* the result content.
-   */
-  | { type: "hide_tool_request"; requestId: string }
   | {
       type: "greeting"
       content: string

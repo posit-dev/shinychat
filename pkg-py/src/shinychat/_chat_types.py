@@ -85,18 +85,6 @@ class UpdateUploadAction(TypedDict):
     enable_upload: bool
 
 
-class HideToolRequestAction(TypedDict):
-    """Supersede a tool request whose result renders as custom UI.
-
-    Only needed when the result produces no ``<shiny-tool-result>`` element for
-    the client to pair against; everything else is derived from content. Must be
-    sent *after* the result content -- see ``Chat._append_message_chunk``.
-    """
-
-    type: Literal["hide_tool_request"]
-    requestId: str
-
-
 class GreetingOptions(TypedDict):
     persistent: NotRequired[bool]
 
@@ -170,7 +158,6 @@ ChatAction = Union[
     RemoveLoadingAction,
     UpdateCancelAction,
     UpdateUploadAction,
-    HideToolRequestAction,
     GreetingAction,
     GreetingStartAction,
     GreetingChunkAction,

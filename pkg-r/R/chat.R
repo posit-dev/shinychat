@@ -925,14 +925,6 @@ rlang::on_load(
 
       res$add(msg)
 
-      # Captured before `contents_shinychat()` rewrites `msg` below.
-      superseded_request <- NULL
-      if (S7::S7_inherits(msg, ellmer::ContentToolResult)) {
-        if (!is.null(msg@request)) {
-          superseded_request <- msg@request@id
-        }
-      }
-
       orig_msg <- msg
       if (S7::S7_inherits(msg, ellmer::Content)) {
         msg <- contents_shinychat(msg)
@@ -940,27 +932,6 @@ rlang::on_load(
       msg <- wrap_custom_tool_result(orig_msg, msg)
 
       chat_append_(msg)
-
-      # Tell the client this result supersedes its request. Usually redundant —
-      # the client pairs a `<shiny-tool-result>` with its request from the
-      # content itself, which is also the only thing that works on restore. But
-      # a `contents_shinychat()` method may return arbitrary UI instead of a
-      # tool card, leaving no element to pair against, and then this is the only
-      # signal the request is done.
-      #
-      # Ordering is load-bearing: this must follow `chat_append_()`. Sent first,
-      # it hides a request whose result has not arrived, which empties the
-      # call's group and unmounts the whole tool row until it does.
-      if (!is.null(superseded_request)) {
-        send_chat_action(
-          id,
-          action = list(
-            type = "hide_tool_request",
-            requestId = superseded_request
-          ),
-          session = session
-        )
-      }
     }
 
     chat_append_("", chunk = "end")

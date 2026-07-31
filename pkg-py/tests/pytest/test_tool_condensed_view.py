@@ -326,54 +326,10 @@ def test_tool_display_override_basic_suppresses_display_but_keeps_title(
 
 
 # ---------------------------------------------------------------------------
-# Superseded tool requests: mostly derived client-side, signalled when a result
-# renders as custom UI and leaves no element to derive from
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.anyio
-async def test_streaming_a_tool_result_sends_the_hide_action_after_the_content():
-    """The `hide_tool_request` action must trail the content it refers to.
-
-    Sent first -- as it was until 2026-07-30 -- the client hides a request whose
-    result has not arrived, which empties the call's group, drops the block and
-    unmounts the whole tool row until the result lands.
-
-    The action itself is not redundant: the client pairs a
-    `<shiny-tool-result>` with its request from content, but a
-    `message_content_chunk` handler registered for a `ContentToolResult`
-    subclass may return arbitrary UI with no tool element at all, and then this
-    is the only signal the request is done.
-    """
-    from shiny.express._stub_session import ExpressStubSession
-    from shiny.session import session_context
-    from shinychat import Chat
-
-    events: list[str] = []
-
-    with session_context(ExpressStubSession()):
-        chat = Chat(id="chat")
-
-        async def capture_action(action: Any, html_deps: Any = None) -> None:
-            events.append(str(action.get("type")))
-
-        async def capture_append(*args: Any, **kwargs: Any) -> None:
-            events.append("content")
-
-        chat._send_action = capture_action  # type: ignore[method-assign]
-        chat._send_append_message = capture_append  # type: ignore[method-assign]
-
-        result = _result(_request(tool=_tool()))
-        await chat._append_message_chunk(result, stream_id="s1")
-
-    assert events == ["content", "hide_tool_request"]
-
-
-# ---------------------------------------------------------------------------
-# 6. Fully-custom tool result UI: `_append_message_chunk` wraps an author's
+# 5. Fully-custom tool result UI: `_append_message_chunk` wraps an author's
 #    `message_content_chunk` override for a `ContentToolResult` subclass in a
 #    real `<shiny-tool-result custom-display>`, so the client always has an
-#    element to pair against the request (see `is_tool_result()` block, above).
+#    element to pair against the request.
 # ---------------------------------------------------------------------------
 
 

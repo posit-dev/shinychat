@@ -1068,7 +1068,7 @@ class Chat:
         msg = message_content_chunk(message)
         # `msg` is rebound (and can become None) by `_transform_message()`
         # below, so the custom-tool-result wrap must happen here, before that
-        # rebind, not at the `_hide_tool_request` call site further down.
+        # rebind.
         msg = _wrap_custom_tool_result(message, msg)
         chunk_deps = msg.html_deps or []
 
@@ -1127,20 +1127,6 @@ class Chat:
                 operation=operation,
                 icon=icon,
             )
-
-            # Tell the client this result supersedes its request. Usually
-            # redundant -- the client pairs a `<shiny-tool-result>` with its
-            # request from the content itself, which is also the only thing that
-            # works on restore. But a `message_content_chunk` handler registered
-            # for a `ContentToolResult` subclass may return arbitrary UI instead
-            # of a tool card, leaving no element to pair against, and then this
-            # is the only signal the request is done.
-            #
-            # Ordering is load-bearing: this must follow the append. Sent first,
-            # it hides a request whose result has not arrived, which empties the
-            # call's group and unmounts the whole tool row until it does.
-            if is_tool_result(message) and message.request is not None:
-                await self._hide_tool_request(message.request.id)  # type: ignore
         finally:
             if chunk == "end":
                 self._current_stream_id = None
@@ -1851,13 +1837,6 @@ class Chat:
 
     async def _remove_loading_message(self):
         await self._send_action({"type": "remove_loading"})
-
-    async def _hide_tool_request(self, request_id: str) -> None:
-        action: ChatAction = {
-            "type": "hide_tool_request",
-            "requestId": request_id,
-        }
-        await self._send_action(action)
 
     async def _send_action(
         self,

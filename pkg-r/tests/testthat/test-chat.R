@@ -259,38 +259,3 @@ test_that("chat_append_message() emits segment payloads incl. thinking", {
   chunk <- captured[[2]]
   expect_equal(chunk$content_type, "thinking")
 })
-
-test_that("chat_append_stream() announces a superseded request after its result", {
-  # The `hide_tool_request` action must trail the content it refers to. Sent
-  # first — as it was until 2026-07-30 — the client hides a request whose result
-  # has not arrived, which empties the call's group, drops the block and
-  # unmounts the whole tool row until the result lands.
-  #
-  # The action itself is not redundant: the client pairs a `<shiny-tool-result>`
-  # with its request from content, but a `contents_shinychat()` method may
-  # return arbitrary UI with no tool element at all, and then this is the only
-  # signal the request is done.
-  events <- character()
-  local_mocked_bindings(
-    chat_append_message = coro::async(function(id, msg, chunk = FALSE, ...) {
-      # Only the content append matters here; the stream's start/end bookends
-      # carry no content and would just add noise.
-      if (!identical(chunk, "start") && !identical(chunk, "end")) {
-        events[[length(events) + 1]] <<- "content"
-      }
-      invisible()
-    }),
-    send_chat_action = function(id, action, html_deps = NULL, session) {
-      events[[length(events) + 1]] <<- action$type
-      invisible()
-    }
-  )
-
-  stream <- coro::async_generator(function() {
-    yield(new_tool_result(value = "sunny", request = new_tool_request()))
-  })
-
-  sync(chat_append_stream("chat", stream()))
-
-  expect_equal(events, c("content", "hide_tool_request"))
-})
