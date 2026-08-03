@@ -579,14 +579,14 @@ describe("ChatMessage streaming tool routing", () => {
     const { container } = render(
       <ChatMessage index={0} message={streamingMessage("user")} />,
     )
-    expect(container.querySelector(".shinychat-tool-loop")).toBeNull()
+    expect(container.querySelector(".shiny-chat-tool-loop")).toBeNull()
   })
 
   it("routes the same markup in a streaming assistant message", () => {
     const { container } = render(
       <ChatMessage index={0} message={streamingMessage("assistant")} />,
     )
-    expect(container.querySelector(".shinychat-tool-loop")).not.toBeNull()
+    expect(container.querySelector(".shiny-chat-tool-loop")).not.toBeNull()
   })
 
   it('routes the same markup in a streaming "system" message', () => {
@@ -598,7 +598,7 @@ describe("ChatMessage streaming tool routing", () => {
       role: "system" as ChatMessageData["role"],
     }
     const { container } = render(<ChatMessage index={0} message={message} />)
-    expect(container.querySelector(".shinychat-tool-loop")).not.toBeNull()
+    expect(container.querySelector(".shiny-chat-tool-loop")).not.toBeNull()
   })
 })
 
@@ -623,10 +623,10 @@ describe("ChatMessage tool custom-display migration (through the real router)", 
     const { container } = render(
       <ChatMessage index={0} message={toolMessage(content)} />,
     )
-    const payload = container.querySelector(".shinychat-tool-custom-display")
+    const payload = container.querySelector(".shiny-chat-tool-custom-display")
     expect(payload).not.toBeNull()
     expect(payload!.textContent).toContain("Portland")
-    expect(container.querySelector(".shinychat-tool-group")).toBeNull()
+    expect(container.querySelector(".shiny-chat-tool-group")).toBeNull()
     expect(container.querySelector(".spinner-border")).toBeNull()
   })
 
@@ -639,9 +639,9 @@ describe("ChatMessage tool custom-display migration (through the real router)", 
     const { container } = render(
       <ChatMessage index={0} message={toolMessage(content)} />,
     )
-    expect(container.querySelectorAll(".shinychat-tool-group")).toHaveLength(1)
+    expect(container.querySelectorAll(".shiny-chat-tool-group")).toHaveLength(1)
     expect(
-      container.querySelectorAll(".shinychat-tool-custom-display"),
+      container.querySelectorAll(".shiny-chat-tool-custom-display"),
     ).toHaveLength(1)
     expect(container.textContent).toContain("Weather Forecast")
     // The visible subset is one call -- the header must not carry the
@@ -659,7 +659,7 @@ describe("ChatMessage tool custom-display migration (through the real router)", 
       <ChatMessage index={0} message={toolMessage(content)} />,
     )
     const payloads = Array.from(
-      container.querySelectorAll(".shinychat-tool-custom-display"),
+      container.querySelectorAll(".shiny-chat-tool-custom-display"),
     )
     expect(payloads).toHaveLength(2)
     // w2's result appears first in the content string, so its payload leads --
@@ -697,7 +697,7 @@ describe("ChatMessage tool custom-display migration (through the real router)", 
     )
 
     const payloads = Array.from(
-      container.querySelectorAll(".shinychat-tool-custom-display"),
+      container.querySelectorAll(".shiny-chat-tool-custom-display"),
     )
     expect(payloads).toHaveLength(2)
     // Transcript order: Seattle (block 0) then Boston (block 1), even though
@@ -727,7 +727,7 @@ describe("ChatMessage html-typed tool markup", () => {
       <ChatMessage index={0} message={htmlMessage("user")} />,
     )
     expect(container.querySelector(".shiny-tool-result")).toBeNull()
-    expect(container.querySelector(".shinychat-tool-group")).toBeNull()
+    expect(container.querySelector(".shiny-chat-tool-group")).toBeNull()
   })
 
   it("still renders tool UI for html-typed tool markup in an assistant message", () => {

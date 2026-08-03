@@ -43,9 +43,9 @@ function group(
 // visually-hidden "Running…" label).
 function headerText(container: HTMLElement): string {
   const row = container
-    .querySelector(".shinychat-tool-group__row")!
+    .querySelector(".shiny-chat-tool-group__row")!
     .cloneNode(true) as HTMLElement
-  row.querySelector(".shinychat-tool-group__glyph")?.remove()
+  row.querySelector(".shiny-chat-tool-group__glyph")?.remove()
   return row.textContent ?? ""
 }
 
@@ -65,7 +65,7 @@ describe("ToolGroup", () => {
         })}
       />,
     )
-    const row = container.querySelector(".shinychat-tool-group__row")
+    const row = container.querySelector(".shiny-chat-tool-group__row")
     expect(row).toBeTruthy()
     // At rest it's a quiet row, not a card, and carries no ×N badge.
     expect(container.querySelector(".shiny-tool-card")).toBeNull()
@@ -94,10 +94,10 @@ describe("ToolGroup", () => {
       />,
     )
     expect(
-      container.querySelector(".shinychat-tool-group__title")?.textContent,
+      container.querySelector(".shiny-chat-tool-group__title")?.textContent,
     ).toContain("Ran R code")
     expect(
-      container.querySelector(".shinychat-tool-group__label")?.textContent,
+      container.querySelector(".shiny-chat-tool-group__label")?.textContent,
     ).toContain("fib.R")
   })
 
@@ -118,12 +118,12 @@ describe("ToolGroup", () => {
       />,
     )
     // Intent is hidden while the row is at rest.
-    expect(container.querySelector(".shinychat-tool-row__intent")).toBeNull()
+    expect(container.querySelector(".shiny-chat-tool-row__intent")).toBeNull()
     fireEvent.click(
-      container.querySelector(".shinychat-tool-group__row") as Element,
+      container.querySelector(".shiny-chat-tool-group__row") as Element,
     )
     expect(
-      container.querySelector(".shinychat-tool-row__intent")?.textContent,
+      container.querySelector(".shiny-chat-tool-row__intent")?.textContent,
     ).toBe("Visualize the trend")
   })
 
@@ -139,7 +139,7 @@ describe("ToolGroup", () => {
       />,
     )
     const previews = () =>
-      [...container.querySelectorAll(".shinychat-tool-call-row__preview")].map(
+      [...container.querySelectorAll(".shiny-chat-tool-call-row__preview")].map(
         (el) => el.textContent,
       )
     expect(previews()).toEqual(["1,204 rows"])
@@ -158,7 +158,7 @@ describe("ToolGroup", () => {
     // The group header itself stays clean — the peeks moved down to the rows.
     expect(
       container.querySelector(
-        ".shinychat-tool-group__row .shinychat-tool-call-row__preview",
+        ".shiny-chat-tool-group__row .shiny-chat-tool-call-row__preview",
       ),
     ).toBeNull()
     expect(previews()).toEqual(["1,204 rows", "17 rows"])
@@ -176,22 +176,22 @@ describe("ToolGroup", () => {
         })}
       />,
     )
-    const row = container.querySelector(".shinychat-tool-group__row")
+    const row = container.querySelector(".shiny-chat-tool-group__row")
     expect(row).toBeTruthy()
     expect(
-      container.querySelector(".shinychat-tool-group__count")?.textContent,
+      container.querySelector(".shiny-chat-tool-group__count")?.textContent,
     ).toBe("×2")
     expect(row?.getAttribute("aria-expanded")).toBe("false")
 
     // The call list is present but hidden until expanded.
-    const list = container.querySelector(".shinychat-tool-group__calls")
+    const list = container.querySelector(".shiny-chat-tool-group__calls")
     expect(list?.getAttribute("role")).toBe("list")
     expect((list as HTMLElement).hidden).toBe(true)
 
     fireEvent.click(row as Element)
     expect(row?.getAttribute("aria-expanded")).toBe("true")
     expect((list as HTMLElement).hidden).toBe(false)
-    expect(container.querySelectorAll(".shinychat-tool-call-row").length).toBe(
+    expect(container.querySelectorAll(".shiny-chat-tool-call-row").length).toBe(
       2,
     )
     expect(container.textContent).toContain("glucose")
@@ -211,7 +211,7 @@ describe("ToolGroup", () => {
         })}
       />,
     )
-    const code = container.querySelector(".shinychat-tool-group__toolname")
+    const code = container.querySelector(".shiny-chat-tool-group__toolname")
     expect(code?.tagName).toBe("CODE")
     expect(code?.textContent).toBe("run_sql")
   })
@@ -252,12 +252,12 @@ describe("ToolGroup", () => {
     )
     expect(
       Array.from(
-        container.querySelectorAll(".shinychat-tool-group__title"),
+        container.querySelectorAll(".shiny-chat-tool-group__title"),
       ).map((el) => el.textContent),
     ).toEqual(["Searched the web", "Read page"])
     expect(
       Array.from(
-        container.querySelectorAll(".shinychat-tool-group__count"),
+        container.querySelectorAll(".shiny-chat-tool-group__count"),
       ).map((el) => el.textContent),
     ).toEqual(["×2", "×3"])
     // Each count sits with its own tool, and the segments read as one list.
@@ -344,7 +344,7 @@ describe("ToolGroup", () => {
     )
     expect(headerText(container)).toBe(`${long}, and 1 other`)
     expect(
-      container.querySelector(".shinychat-tool-group__title")?.textContent,
+      container.querySelector(".shiny-chat-tool-group__title")?.textContent,
     ).toBe(long)
   })
 
@@ -370,14 +370,14 @@ describe("ToolGroup", () => {
     // Don't restore that assertion; the invariant that matters is the one
     // below, that a homogeneous header still renders one title and one badge.
     expect(
-      container.querySelector(".shinychat-tool-group__segments"),
+      container.querySelector(".shiny-chat-tool-group__segments"),
     ).toBeNull()
-    const title = container.querySelector(".shinychat-tool-group__title")!
+    const title = container.querySelector(".shiny-chat-tool-group__title")!
     expect(title.nextElementSibling?.className).toBe(
-      "shinychat-tool-group__count",
+      "shiny-chat-tool-group__count",
     )
     expect(
-      container.querySelectorAll(".shinychat-tool-group__count").length,
+      container.querySelectorAll(".shiny-chat-tool-group__count").length,
     ).toBe(1)
     expect(title.nextElementSibling?.getAttribute("aria-label")).toBe("2 calls")
   })
@@ -435,7 +435,7 @@ describe("ToolGroup", () => {
       })
       const { container, rerender } = render(<ToolGroup group={running} />)
       const title = () =>
-        container.querySelector(".shinychat-tool-group__title")!
+        container.querySelector(".shiny-chat-tool-group__title")!
       expect(title().hasAttribute("data-fading")).toBe(false)
 
       rerender(
@@ -473,8 +473,8 @@ describe("ToolGroup", () => {
         })}
       />,
     )
-    const row = container.querySelector(".shinychat-tool-group__row")!
-    const title = container.querySelector(".shinychat-tool-group__title")!
+    const row = container.querySelector(".shiny-chat-tool-group__row")!
+    const title = container.querySelector(".shiny-chat-tool-group__title")!
     fireEvent.click(row)
     expect(row.getAttribute("aria-expanded")).toBe("true")
 
@@ -490,13 +490,13 @@ describe("ToolGroup", () => {
       />,
     )
     // The very same nodes, so nothing remounted...
-    expect(container.querySelector(".shinychat-tool-group__row")).toBe(row)
-    expect(container.querySelector(".shinychat-tool-group__title")).toBe(title)
+    expect(container.querySelector(".shiny-chat-tool-group__row")).toBe(row)
+    expect(container.querySelector(".shiny-chat-tool-group__title")).toBe(title)
     // ...and the disclosure the user opened is still open, now over the list of
     // calls rather than the lone call's card.
     expect(row.getAttribute("aria-expanded")).toBe("true")
     expect(
-      (container.querySelector(".shinychat-tool-group__calls") as HTMLElement)
+      (container.querySelector(".shiny-chat-tool-group__calls") as HTMLElement)
         .hidden,
     ).toBe(false)
   })
@@ -517,7 +517,7 @@ describe("ToolGroup", () => {
         />,
       )
       const title = () =>
-        container.querySelector(".shinychat-tool-group__title")!
+        container.querySelector(".shiny-chat-tool-group__title")!
       expect(title().hasAttribute("data-fading")).toBe(false)
 
       rerender(
@@ -570,7 +570,7 @@ describe("ToolGroup", () => {
           })}
         />,
       )
-      const title = container.querySelector(".shinychat-tool-group__title")!
+      const title = container.querySelector(".shiny-chat-tool-group__title")!
       expect(title.hasAttribute("data-fading")).toBe(false)
       expect(headerText(container)).toBe("Searched the web×3")
     } finally {
@@ -669,10 +669,10 @@ describe("ToolGroup", () => {
       />,
     )
     fireEvent.click(
-      container.querySelector(".shinychat-tool-group__row") as Element,
+      container.querySelector(".shiny-chat-tool-group__row") as Element,
     )
     const labels = Array.from(
-      container.querySelectorAll(".shinychat-tool-call-row__label"),
+      container.querySelectorAll(".shiny-chat-tool-call-row__label"),
     ).map((el) => el.textContent)
     // Rows a and b repeat their segment's title, so they fall through to the
     // tool-name fallback; only row c adds something new.
@@ -725,18 +725,19 @@ describe("ToolGroup", () => {
       />,
     )
     expect(
-      container.querySelector(".shinychat-tool-group__glyph .icon-web"),
+      container.querySelector(".shiny-chat-tool-group__glyph .icon-web"),
     ).toBeTruthy()
     fireEvent.click(
-      container.querySelector(".shinychat-tool-group__row") as Element,
+      container.querySelector(".shiny-chat-tool-group__row") as Element,
     )
     // The rows keep reporting status, since the identity never varies.
     expect(
-      container.querySelectorAll(".shinychat-tool-call-row__status .icon-web")
+      container.querySelectorAll(".shiny-chat-tool-call-row__status .icon-web")
         .length,
     ).toBe(0)
     expect(
-      container.querySelectorAll(".shinychat-tool-call-row__status svg").length,
+      container.querySelectorAll(".shiny-chat-tool-call-row__status svg")
+        .length,
     ).toBe(2)
   })
 
@@ -750,14 +751,14 @@ describe("ToolGroup", () => {
       />,
     )
     // The header can't claim one tool's icon, so it takes the generic dot.
-    const glyph = container.querySelector(".shinychat-tool-group__glyph")!
-    expect(glyph.querySelector(".shinychat-tool-glyph-dot")).toBeTruthy()
+    const glyph = container.querySelector(".shiny-chat-tool-group__glyph")!
+    expect(glyph.querySelector(".shiny-chat-tool-glyph-dot")).toBeTruthy()
     expect(glyph.querySelector(".icon-web")).toBeNull()
 
     fireEvent.click(
-      container.querySelector(".shinychat-tool-group__row") as Element,
+      container.querySelector(".shiny-chat-tool-group__row") as Element,
     )
-    const rows = container.querySelectorAll(".shinychat-tool-call-row__status")
+    const rows = container.querySelectorAll(".shiny-chat-tool-call-row__status")
     expect(rows[0]!.querySelector(".icon-web")).toBeTruthy()
     expect(rows[1]!.querySelector(".icon-page")).toBeTruthy()
   })
@@ -777,9 +778,9 @@ describe("ToolGroup", () => {
       />,
     )
     fireEvent.click(
-      container.querySelector(".shinychat-tool-group__row") as Element,
+      container.querySelector(".shiny-chat-tool-group__row") as Element,
     )
-    const rows = container.querySelectorAll(".shinychat-tool-call-row__status")
+    const rows = container.querySelectorAll(".shiny-chat-tool-call-row__status")
     expect(rows[1]!.querySelector(".spinner-border")).toBeTruthy()
     expect(rows[1]!.querySelector(".icon-page")).toBeNull()
   })
@@ -794,10 +795,10 @@ describe("ToolGroup", () => {
       />,
     )
     fireEvent.click(
-      container.querySelector(".shinychat-tool-group__row") as Element,
+      container.querySelector(".shiny-chat-tool-group__row") as Element,
     )
     const row = container.querySelectorAll(
-      ".shinychat-tool-call-row__status",
+      ".shiny-chat-tool-call-row__status",
     )[1]!
     expect(row.className).toContain("text-danger")
     expect(row.querySelector("svg")).toBeTruthy()
@@ -825,12 +826,12 @@ describe("ToolGroup", () => {
       />,
     )
     expect(
-      container.querySelector(".shinychat-tool-group__glyph .icon-web"),
+      container.querySelector(".shiny-chat-tool-group__glyph .icon-web"),
     ).toBeTruthy()
     fireEvent.click(
-      container.querySelector(".shinychat-tool-group__row") as Element,
+      container.querySelector(".shiny-chat-tool-group__row") as Element,
     )
-    const rows = container.querySelectorAll(".shinychat-tool-call-row__status")
+    const rows = container.querySelectorAll(".shiny-chat-tool-call-row__status")
     // Row a said nothing specific about itself, so it keeps reporting status.
     expect(rows[0]!.querySelector(".icon-pin")).toBeNull()
     expect(rows[0]!.querySelector("svg")).toBeTruthy()
@@ -852,9 +853,9 @@ describe("ToolGroup", () => {
       />,
     )
     fireEvent.click(
-      container.querySelector(".shinychat-tool-group__row") as Element,
+      container.querySelector(".shiny-chat-tool-group__row") as Element,
     )
-    const rows = container.querySelectorAll(".shinychat-tool-call-row__status")
+    const rows = container.querySelectorAll(".shiny-chat-tool-call-row__status")
     expect(rows[0]!.querySelector(".icon-web")).toBeTruthy()
     expect(rows[1]!.querySelector(".icon-pin")).toBeTruthy()
     expect(rows[1]!.querySelector(".icon-page")).toBeNull()
@@ -880,16 +881,16 @@ describe("ToolGroup", () => {
       />,
     )
     fireEvent.click(
-      container.querySelector(".shinychat-tool-group__row") as Element,
+      container.querySelector(".shiny-chat-tool-group__row") as Element,
     )
-    const row = container.querySelectorAll(".shinychat-tool-call-row")[1]!
-    const glyph = row.querySelector(".shinychat-tool-call-row__status")!
+    const row = container.querySelectorAll(".shiny-chat-tool-call-row")[1]!
+    const glyph = row.querySelector(".shiny-chat-tool-call-row__status")!
     // The icon replaces the exclamation, so failure has to stay legible through
     // the tint on that icon plus the text note.
     expect(glyph.querySelector(".icon-pin")).toBeTruthy()
     expect(glyph.className).toContain("text-danger")
     expect(
-      row.querySelector(".shinychat-tool-group__failed")?.textContent,
+      row.querySelector(".shiny-chat-tool-group__failed")?.textContent,
     ).toBe("failed")
   })
 
@@ -913,9 +914,9 @@ describe("ToolGroup", () => {
       />,
     )
     fireEvent.click(
-      container.querySelector(".shinychat-tool-group__row") as Element,
+      container.querySelector(".shiny-chat-tool-group__row") as Element,
     )
-    const rows = container.querySelectorAll(".shinychat-tool-call-row__status")
+    const rows = container.querySelectorAll(".shiny-chat-tool-call-row__status")
     expect(rows[1]!.querySelector(".spinner-border")).toBeTruthy()
     expect(rows[1]!.querySelector(".icon-pin")).toBeNull()
   })
@@ -936,10 +937,10 @@ describe("ToolGroup", () => {
       />,
     )
     fireEvent.click(
-      container.querySelector(".shinychat-tool-group__row") as Element,
+      container.querySelector(".shiny-chat-tool-group__row") as Element,
     )
     const labels = Array.from(
-      container.querySelectorAll(".shinychat-tool-call-row__label code"),
+      container.querySelectorAll(".shiny-chat-tool-call-row__label code"),
     ).map((el) => el.textContent)
     expect(labels).toContain("query: glucose")
   })
@@ -961,10 +962,10 @@ describe("ToolGroup", () => {
       />,
     )
     fireEvent.click(
-      container.querySelector(".shinychat-tool-group__row") as Element,
+      container.querySelector(".shiny-chat-tool-group__row") as Element,
     )
     const preview = container.querySelector(
-      ".shinychat-tool-call-row__label code",
+      ".shiny-chat-tool-call-row__label code",
     )?.textContent
     expect(preview).toBe("lat: 45.5152, lon: -122.6784, loc: PDX")
   })
@@ -986,13 +987,13 @@ describe("ToolGroup", () => {
     )
     // Header is the static title.
     expect(
-      container.querySelector(".shinychat-tool-group__title")?.textContent,
+      container.querySelector(".shiny-chat-tool-group__title")?.textContent,
     ).toBe("Weather Forecast")
     fireEvent.click(
-      container.querySelector(".shinychat-tool-group__row") as Element,
+      container.querySelector(".shiny-chat-tool-group__row") as Element,
     )
     const labels = Array.from(
-      container.querySelectorAll(".shinychat-tool-call-row__label"),
+      container.querySelectorAll(".shiny-chat-tool-call-row__label"),
     ).map((el) => el.textContent)
     expect(labels).toEqual([
       "Weather Forecast for Portland",
@@ -1019,10 +1020,10 @@ describe("ToolGroup", () => {
       />,
     )
     expect(
-      container.querySelector(".shinychat-tool-group__title")?.textContent,
+      container.querySelector(".shiny-chat-tool-group__title")?.textContent,
     ).toBe("Weather Forecast for Portland")
     // No colon/label appended (the title is the header).
-    expect(container.querySelector(".shinychat-tool-group__label")).toBeNull()
+    expect(container.querySelector(".shiny-chat-tool-group__label")).toBeNull()
   })
 
   it("shows a subtle 'N failed' note but no red on the resting group row", () => {
@@ -1038,11 +1039,11 @@ describe("ToolGroup", () => {
       />,
     )
     expect(
-      container.querySelector(".shinychat-tool-group__failed")?.textContent,
+      container.querySelector(".shiny-chat-tool-group__failed")?.textContent,
     ).toBe("1 failed")
     // The resting glyph is not styled as an error.
     expect(
-      container.querySelector(".shinychat-tool-group__glyph.text-danger"),
+      container.querySelector(".shiny-chat-tool-group__glyph.text-danger"),
     ).toBeNull()
   })
 
@@ -1053,13 +1054,13 @@ describe("ToolGroup", () => {
   it("puts the failure note after the spacer in both shapes", () => {
     const after = (container: HTMLElement) => {
       const kids = [
-        ...container.querySelector(".shinychat-tool-group__row")!.children,
+        ...container.querySelector(".shiny-chat-tool-group__row")!.children,
       ]
       const spacer = kids.findIndex((n) =>
-        n.classList.contains("shinychat-tool-spacer"),
+        n.classList.contains("shiny-chat-tool-spacer"),
       )
       const note = kids.findIndex((n) =>
-        n.classList.contains("shinychat-tool-group__failed"),
+        n.classList.contains("shiny-chat-tool-group__failed"),
       )
       expect(note).toBeGreaterThan(-1)
       return note > spacer
@@ -1102,16 +1103,16 @@ describe("ToolGroup", () => {
       />,
     )
     fireEvent.click(
-      container.querySelector(".shinychat-tool-group__row") as Element,
+      container.querySelector(".shiny-chat-tool-group__row") as Element,
     )
-    const rows = container.querySelectorAll(".shinychat-tool-call-row")
+    const rows = container.querySelectorAll(".shiny-chat-tool-call-row")
     expect(rows.length).toBe(2)
 
     // Only the failed row carries the note, and it is real text in the
     // accessibility tree (not a CSS ::before), so a screen reader reaches it.
-    expect(rows[0]!.querySelector(".shinychat-tool-group__failed")).toBeNull()
+    expect(rows[0]!.querySelector(".shiny-chat-tool-group__failed")).toBeNull()
     expect(
-      rows[1]!.querySelector(".shinychat-tool-group__failed")?.textContent,
+      rows[1]!.querySelector(".shiny-chat-tool-group__failed")?.textContent,
     ).toBe("failed")
     expect(rows[1]!.textContent).toContain("failed")
     expect(rows[0]!.textContent).not.toContain("failed")
@@ -1119,7 +1120,7 @@ describe("ToolGroup", () => {
     // The group header's own "N failed" note is unchanged.
     expect(
       container.querySelector(
-        ".shinychat-tool-group__row .shinychat-tool-group__failed",
+        ".shiny-chat-tool-group__row .shiny-chat-tool-group__failed",
       )?.textContent,
     ).toBe("1 failed")
   })
@@ -1138,11 +1139,11 @@ describe("ToolGroup", () => {
       />,
     )
     fireEvent.click(
-      container.querySelector(".shinychat-tool-group__row") as Element,
+      container.querySelector(".shiny-chat-tool-group__row") as Element,
     )
     expect(
       container.querySelectorAll(
-        ".shinychat-tool-call-row .shinychat-tool-group__failed",
+        ".shiny-chat-tool-call-row .shiny-chat-tool-group__failed",
       ).length,
     ).toBe(0)
   })
@@ -1161,7 +1162,7 @@ describe("ToolGroup", () => {
       />,
     )
     expect(
-      container.querySelector(".shinychat-tool-group__glyph .spinner-border"),
+      container.querySelector(".shiny-chat-tool-group__glyph .spinner-border"),
     ).toBeTruthy()
   })
 
@@ -1182,11 +1183,11 @@ describe("ToolGroup", () => {
       />,
     )
     expect(
-      container.querySelector(".shinychat-tool-group__failed")?.textContent,
+      container.querySelector(".shiny-chat-tool-group__failed")?.textContent,
     ).toBe("failed")
     // The resting glyph stays the muted identity glyph, not a red error icon.
     expect(
-      container.querySelector(".shinychat-tool-group__glyph.text-danger"),
+      container.querySelector(".shiny-chat-tool-group__glyph.text-danger"),
     ).toBeNull()
   })
 
@@ -1207,13 +1208,13 @@ describe("ToolGroup", () => {
       />,
     )
     const hidden = container.querySelector(
-      ".shinychat-tool-group__glyph .visually-hidden",
+      ".shiny-chat-tool-group__glyph .visually-hidden",
     )
     expect(hidden?.textContent).toBe("Running…")
     // The visible title text has no "Running " prefix wrapper baked in by us;
     // it's whatever the server-provided title says.
     expect(
-      container.querySelector(".shinychat-tool-group__title")?.textContent,
+      container.querySelector(".shiny-chat-tool-group__title")?.textContent,
     ).toBe("Running R code")
   })
 
@@ -1232,15 +1233,15 @@ describe("ToolGroup", () => {
       />,
     )
     fireEvent.click(
-      container.querySelector(".shinychat-tool-group__row") as Element,
+      container.querySelector(".shiny-chat-tool-group__row") as Element,
     )
     const labels = Array.from(
-      container.querySelectorAll(".shinychat-tool-call-row__label code"),
+      container.querySelectorAll(".shiny-chat-tool-call-row__label code"),
     ).map((el) => el.textContent)
     expect(labels).toEqual(["search", "search"])
     // Every Tier-2 expand control has an accessible name.
     for (const btn of container.querySelectorAll(
-      ".shinychat-tool-call-row__summary",
+      ".shiny-chat-tool-call-row__summary",
     )) {
       expect(btn.textContent!.trim()).not.toBe("")
     }
@@ -1258,9 +1259,9 @@ describe("ToolGroup", () => {
       />,
     )
     expect(
-      container.querySelector(".shinychat-tool-group__toolname")?.textContent,
+      container.querySelector(".shiny-chat-tool-group__toolname")?.textContent,
     ).toBe("search")
-    expect(container.querySelector(".shinychat-tool-group__label")).toBeNull()
+    expect(container.querySelector(".shiny-chat-tool-group__label")).toBeNull()
   })
   it("honors a call's `expanded` flag inside a grouped Tier-2 list", () => {
     // `expanded` (tool_result_display(open = TRUE) / ToolResultDisplay(open=True)
@@ -1283,15 +1284,15 @@ describe("ToolGroup", () => {
       />,
     )
     // The group opened so the expanded row isn't stranded in a hidden list.
-    const groupRow = container.querySelector(".shinychat-tool-group__row")
+    const groupRow = container.querySelector(".shiny-chat-tool-group__row")
     expect(groupRow?.getAttribute("aria-expanded")).toBe("true")
     expect(
-      (container.querySelector(".shinychat-tool-group__calls") as HTMLElement)
+      (container.querySelector(".shiny-chat-tool-group__calls") as HTMLElement)
         .hidden,
     ).toBe(false)
 
     const summaries = container.querySelectorAll(
-      ".shinychat-tool-call-row__summary",
+      ".shiny-chat-tool-call-row__summary",
     )
     expect(summaries[0]!.getAttribute("aria-expanded")).toBe("false")
     expect(summaries[1]!.getAttribute("aria-expanded")).toBe("true")
@@ -1313,7 +1314,7 @@ describe("ToolGroup", () => {
     )
     expect(
       container
-        .querySelector(".shinychat-tool-group__row")
+        .querySelector(".shiny-chat-tool-group__row")
         ?.getAttribute("aria-expanded"),
     ).toBe("false")
   })
@@ -1332,7 +1333,7 @@ describe("ToolGroup", () => {
     const { container, rerender } = render(<ToolGroup group={running} />)
     expect(
       container
-        .querySelector(".shinychat-tool-group__row")
+        .querySelector(".shiny-chat-tool-group__row")
         ?.getAttribute("aria-expanded"),
     ).toBe("false")
 
@@ -1354,11 +1355,11 @@ describe("ToolGroup", () => {
     )
     expect(
       container
-        .querySelector(".shinychat-tool-group__row")
+        .querySelector(".shiny-chat-tool-group__row")
         ?.getAttribute("aria-expanded"),
     ).toBe("true")
     const summaries = container.querySelectorAll(
-      ".shinychat-tool-call-row__summary",
+      ".shiny-chat-tool-call-row__summary",
     )
     expect(summaries[1]!.getAttribute("aria-expanded")).toBe("true")
   })
@@ -1373,7 +1374,7 @@ describe("ToolGroup", () => {
     })
     const { container, rerender } = render(<ToolGroup group={expandedGroup} />)
     const groupRow = container.querySelector(
-      ".shinychat-tool-group__row",
+      ".shiny-chat-tool-group__row",
     ) as Element
     fireEvent.click(groupRow)
     expect(groupRow.getAttribute("aria-expanded")).toBe("false")
@@ -1414,12 +1415,12 @@ describe("ToolGroup", () => {
 
     // Expand every tier so all ids are in the document at once.
     for (const row of container.querySelectorAll(
-      ".shinychat-tool-group__row",
+      ".shiny-chat-tool-group__row",
     )) {
       fireEvent.click(row)
     }
     for (const row of container.querySelectorAll(
-      ".shinychat-tool-call-row__summary",
+      ".shiny-chat-tool-call-row__summary",
     )) {
       fireEvent.click(row)
     }
@@ -1448,7 +1449,7 @@ function customCall(
 }
 
 function payloadTexts(container: HTMLElement): string[] {
-  return [...container.querySelectorAll(".shinychat-tool-custom-display")].map(
+  return [...container.querySelectorAll(".shiny-chat-tool-custom-display")].map(
     (el) => el.textContent ?? "",
   )
 }
@@ -1465,7 +1466,7 @@ describe("ToolGroup migrating custom rows", () => {
       <ToolGroup group={group({ toolName: "weather", calls: [w1Running] })} />,
     )
     expect(
-      container.querySelector(".shinychat-tool-group__glyph .spinner-border"),
+      container.querySelector(".shiny-chat-tool-group__glyph .spinner-border"),
     ).toBeTruthy()
     expect(container.textContent).not.toContain("×")
 
@@ -1502,12 +1503,12 @@ describe("ToolGroup migrating custom rows", () => {
         })}
       />,
     )
-    expect(container.querySelector(".shinychat-tool-group")).toBeTruthy()
+    expect(container.querySelector(".shiny-chat-tool-group")).toBeTruthy()
     // Recomputed to the visible subset: one call left (weather2), so the row
     // is single-call shaped, not ×2.
     expect(headerText(container)).not.toContain("×")
     expect(
-      container.querySelector(".shinychat-tool-group__glyph .spinner-border"),
+      container.querySelector(".shiny-chat-tool-group__glyph .spinner-border"),
     ).toBeTruthy()
     expect(payloadTexts(container)).toEqual(["Weather for Portland"])
 
@@ -1526,7 +1527,7 @@ describe("ToolGroup migrating custom rows", () => {
         })}
       />,
     )
-    expect(container.querySelector(".shinychat-tool-group")).toBeNull()
+    expect(container.querySelector(".shiny-chat-tool-group")).toBeNull()
     expect(payloadTexts(container)).toEqual([
       "Weather for Portland",
       "Weather for Seattle",
@@ -1554,7 +1555,7 @@ describe("ToolGroup migrating custom rows", () => {
         })}
       />,
     )
-    expect(container.querySelector(".shinychat-tool-group")).toBeTruthy()
+    expect(container.querySelector(".shiny-chat-tool-group")).toBeTruthy()
     expect(headerText(container)).not.toContain("×")
     expect(payloadTexts(container)).toEqual(["Weather for Portland"])
   })
@@ -1565,8 +1566,8 @@ describe("ToolGroup migrating custom rows", () => {
     const { container, rerender } = render(
       <ToolGroup group={group({ toolName: "weather", calls: [w1, w2] })} />,
     )
-    const row = container.querySelector(".shinychat-tool-group")!
-    const title = container.querySelector(".shinychat-tool-group__title")!
+    const row = container.querySelector(".shiny-chat-tool-group")!
+    const title = container.querySelector(".shiny-chat-tool-group__title")!
 
     const w1Custom = customCall({
       requestId: "w1",
@@ -1584,8 +1585,8 @@ describe("ToolGroup migrating custom rows", () => {
     expect(headerText(container)).not.toContain("×2")
     // Same nodes, so nothing remounted — the ToolGroup update is a state
     // change (which calls are visible), not a fresh mount.
-    expect(container.querySelector(".shinychat-tool-group")).toBe(row)
-    expect(container.querySelector(".shinychat-tool-group__title")).toBe(title)
+    expect(container.querySelector(".shiny-chat-tool-group")).toBe(row)
+    expect(container.querySelector(".shiny-chat-tool-group__title")).toBe(title)
   })
 
   it("recomputes the row's title, count, segments and failed note from the visible subset", () => {
@@ -1619,7 +1620,7 @@ describe("ToolGroup migrating custom rows", () => {
     expect(headerText(container)).not.toContain("×3")
     expect(headerText(container)).not.toContain("×")
     expect(
-      container.querySelector(".shinychat-tool-group__failed")?.textContent,
+      container.querySelector(".shiny-chat-tool-group__failed")?.textContent,
     ).toBe("failed")
     expect(payloadTexts(container)).toEqual(["ok1", "ok2"])
   })
@@ -1647,7 +1648,7 @@ describe("ToolGroup migrating custom rows", () => {
     )
     // The row shows only the still-running call — no failure note anywhere,
     // since the failed call already left with its payload.
-    expect(container.querySelector(".shinychat-tool-group__failed")).toBeNull()
+    expect(container.querySelector(".shiny-chat-tool-group__failed")).toBeNull()
     expect(payloadTexts(container)).toEqual(["error UI"])
   })
 
@@ -1673,7 +1674,7 @@ describe("ToolGroup migrating custom rows", () => {
     expect(payloadTexts(container)).toEqual(["first", "second"])
   })
 
-  it("renders each payload as a sibling after .shinychat-tool-group, not nested inside it", () => {
+  it("renders each payload as a sibling after .shiny-chat-tool-group, not nested inside it", () => {
     const custom1 = customCall({
       requestId: "c1",
       toolName: "weather",
@@ -1693,12 +1694,12 @@ describe("ToolGroup migrating custom rows", () => {
         })}
       />,
     )
-    const rowEl = container.querySelector(".shinychat-tool-group")
-    const payload = container.querySelector(".shinychat-tool-custom-display")
+    const rowEl = container.querySelector(".shiny-chat-tool-group")
+    const payload = container.querySelector(".shiny-chat-tool-custom-display")
     expect(rowEl).toBeTruthy()
     expect(payload).toBeTruthy()
     // Not nested inside the row...
-    expect(rowEl!.querySelector(".shinychat-tool-custom-display")).toBeNull()
+    expect(rowEl!.querySelector(".shiny-chat-tool-custom-display")).toBeNull()
     // ...and it follows the row as a later sibling.
     expect(
       rowEl!.compareDocumentPosition(payload!) &

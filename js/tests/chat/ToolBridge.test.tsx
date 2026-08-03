@@ -14,7 +14,7 @@ beforeEach(() => {
 // A completed single tool call now rests as a quiet Tier-1 row that morphs into
 // the full card on expand; open it to assert on the leaf card / result body.
 function expandToolRow() {
-  const row = document.querySelector(".shinychat-tool-group__row")
+  const row = document.querySelector(".shiny-chat-tool-group__row")
   if (row) act(() => fireEvent.click(row))
 }
 
@@ -58,10 +58,10 @@ describe("Tool component bridge rendering", () => {
 
     // A running single call rests as a Tier-1 row (with a spinner) carrying the
     // tool title; the full card appears only on expand.
-    expect(document.querySelector(".shinychat-tool-group__row")).toBeTruthy()
+    expect(document.querySelector(".shiny-chat-tool-group__row")).toBeTruthy()
     expect(document.querySelector(".spinner-border")).toBeTruthy()
     expect(
-      document.querySelector(".shinychat-tool-group__title")?.textContent,
+      document.querySelector(".shiny-chat-tool-group__title")?.textContent,
     ).toContain("Get Weather")
 
     expandToolRow()
@@ -303,7 +303,7 @@ describe("Tool component bridge rendering", () => {
     })
 
     // The running request rests as a Tier-1 row.
-    expect(document.querySelector(".shinychat-tool-group__row")).toBeTruthy()
+    expect(document.querySelector(".shiny-chat-tool-group__row")).toBeTruthy()
 
     // The conversation moves on without a result for req-3 ever arriving.
     act(() => {
@@ -319,7 +319,7 @@ describe("Tool component bridge rendering", () => {
     })
 
     // The row is still there — the call is visibly stuck, not silently gone.
-    expect(document.querySelector(".shinychat-tool-group__row")).toBeTruthy()
+    expect(document.querySelector(".shiny-chat-tool-group__row")).toBeTruthy()
     expect(document.body.textContent).toContain("Sorry, that was cut short.")
   })
 
@@ -421,7 +421,7 @@ describe("Tool component bridge rendering", () => {
     })
 
     // The tool's identity icon leads the resting Tier-1 row.
-    const glyph = document.querySelector(".shinychat-tool-group__glyph")
+    const glyph = document.querySelector(".shiny-chat-tool-group__glyph")
     expect(glyph).toBeTruthy()
     expect(glyph!.innerHTML).toContain("bi-folder2-open")
   })
@@ -464,9 +464,9 @@ describe("Tool component bridge rendering", () => {
     })
 
     // Should lead with the muted identity dot (never a wrench).
-    const glyph = document.querySelector(".shinychat-tool-group__glyph")
+    const glyph = document.querySelector(".shiny-chat-tool-group__glyph")
     expect(glyph).toBeTruthy()
-    expect(glyph!.innerHTML).toContain("shinychat-tool-glyph-dot")
+    expect(glyph!.innerHTML).toContain("shiny-chat-tool-glyph-dot")
     expect(glyph!.innerHTML).not.toContain("bi-wrench-adjustable")
   })
 
@@ -541,7 +541,7 @@ describe("Tool component bridge rendering", () => {
       />,
     )
 
-    expect(document.querySelector(".shinychat-tool-group__row")).toBeNull()
+    expect(document.querySelector(".shiny-chat-tool-group__row")).toBeNull()
     expect(document.querySelector(".shiny-tool-card")).toBeNull()
   })
 

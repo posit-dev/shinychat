@@ -100,13 +100,13 @@ describe("chat-entry custom element boot", () => {
     // condensed tool group — a quiet Tier-1 row (the tool name in code font,
     // since this call has no title) that morphs into the leaf card on expand.
     await waitFor(() => {
-      expect(host.querySelector(".shinychat-tool-group__row")).not.toBeNull()
+      expect(host.querySelector(".shiny-chat-tool-group__row")).not.toBeNull()
       expect(
-        host.querySelector(".shinychat-tool-group__toolname")?.textContent,
+        host.querySelector(".shiny-chat-tool-group__toolname")?.textContent,
       ).toBe("foo")
     })
 
-    const row = host.querySelector(".shinychat-tool-group__row") as HTMLElement
+    const row = host.querySelector(".shiny-chat-tool-group__row") as HTMLElement
     await act(async () => {
       row.click()
     })
@@ -139,7 +139,7 @@ describe("chat-entry custom element boot", () => {
       document.body.appendChild(host)
     })
 
-    const rows = () => host.querySelectorAll(".shinychat-tool-group__row")
+    const rows = () => host.querySelectorAll(".shiny-chat-tool-group__row")
     await waitFor(() => expect(rows()).toHaveLength(2))
 
     await act(async () => {
@@ -148,7 +148,7 @@ describe("chat-entry custom element boot", () => {
 
     await waitFor(() => expect(rows()).toHaveLength(1))
     expect(
-      host.querySelector(".shinychat-tool-group__count")?.textContent,
+      host.querySelector(".shiny-chat-tool-group__count")?.textContent,
     ).toBe("×2")
   })
 

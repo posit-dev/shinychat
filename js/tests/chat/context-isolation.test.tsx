@@ -124,7 +124,7 @@ describe("ChatInputState / ChatToolState isolation", () => {
       })
     })
 
-    expect(document.querySelector(".shinychat-tool-group__row")).not.toBeNull()
+    expect(document.querySelector(".shiny-chat-tool-group__row")).not.toBeNull()
 
     // Change input state
     await act(async () => {
@@ -135,6 +135,6 @@ describe("ChatInputState / ChatToolState isolation", () => {
     })
 
     // Tool request must still be visible
-    expect(document.querySelector(".shinychat-tool-group__row")).not.toBeNull()
+    expect(document.querySelector(".shiny-chat-tool-group__row")).not.toBeNull()
   })
 })
