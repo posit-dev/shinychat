@@ -384,7 +384,7 @@ export const ChatMessage = memo(function ChatMessage({
 
     if (block.type === "tool_loop") {
       return (
-        <div key={i} className="shinychat-tool-loop">
+        <div key={i} className="shiny-chat-tool-loop">
           {block.groups.map((group) => (
             <ToolGroup key={group.key} group={group} />
           ))}

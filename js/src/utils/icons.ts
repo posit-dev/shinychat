@@ -25,7 +25,7 @@ export const wrenchAdjustable = `<svg xmlns="http://www.w3.org/2000/svg" width="
 
 // Muted identity glyph shown where a tool has no icon of its own (never a
 // wrench, never a status check — see the condensed tool view design).
-export const bareDot = `<span class="shinychat-tool-glyph-dot" aria-hidden="true"></span>`
+export const bareDot = `<span class="shiny-chat-tool-glyph-dot" aria-hidden="true"></span>`
 
 export const plus = `<svg xmlns="http://www.w3.org/2000/svg" width="10px" height="10px" viewBox="4 4 12 12" fill="none">
   <path class="horizontal" d="M5 11C4.44772 11 4 10.5523 4 10C4 9.44772 4.44772 9 5 9H15C15.5523 9 16 9.44772 16 10C16 10.5523 15.5523 11 15 11H5Z" fill="currentColor"/>

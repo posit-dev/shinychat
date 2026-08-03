@@ -295,20 +295,20 @@
 // Condensed tool view (Tier-1 group row / Tier-2 call rows / Tier-3 leaf
 // card). The whole activity block reads as a single dimmed unit whether it's
 // still running or finished — never full-strength while streaming.
-$shinychat-tool-row-min-height: 2em;
+$shiny-chat-tool-row-min-height: 2em;
 // Size of a bare identity mark — the generic dot, and thinking's diamond. Shared
 // so the two stay the same size.
-$shinychat-tool-glyph-mark: 0.4em;
+$shiny-chat-tool-glyph-mark: 0.4em;
 // Width of the drill-in blockquote left rule (matches the card border width).
-$shinychat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 1px));
+$shiny-chat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 1px));
 
 // Dim the inline row surfaces and the leaf cards directly (not the wrappers):
 // ancestor opacity can't be undone by a descendant, so dimming a wrapper would
 // also wash out a fullscreen card, which escapes the block visually. Scoping
 // the leaf card with :not([fullscreen]) keeps a fullscreen card at full
-// strength while everything at rest still reads at 0.65.
-.shinychat-tool-group__row,
-.shinychat-tool-call-row__summary,
+// strength while everything at rest reads at the shared activity opacity.
+.shiny-chat-tool-group__row,
+.shiny-chat-tool-call-row__summary,
 .shiny-tool-card:not([fullscreen]) {
   // Shared with the thinking header via --_activity-opacity on
   // shiny-chat-container; high contrast resets it to 1 (see chat.scss).
@@ -316,10 +316,10 @@ $shinychat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 
 }
 
 // Block spacing lives on the loop wrapper now (finalized cards render inside
-// .shinychat-tool-loop, not the standalone .shiny-tool-result/-request
+// .shiny-chat-tool-loop, not the standalone .shiny-tool-result/-request
 // wrappers those rules were written for — see the block above, still needed
 // for the streaming raw-HTML path and kept as-is).
-.shinychat-tool-loop {
+.shiny-chat-tool-loop {
   display: block;
   margin: 1em 0;
 
@@ -337,28 +337,28 @@ $shinychat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 
 // assistant did, so it reads continuous with the calls around it. (A thinking
 // block always splits a loop in two, since it becomes its own message block, so
 // without this the split shows up as a 1em trench.)
-.shinychat-tool-loop:has(+ .shinychat-thinking) {
+.shiny-chat-tool-loop:has(+ .shinychat-thinking) {
   margin-bottom: 0;
 }
 
-.shinychat-thinking + .shinychat-tool-loop {
+.shinychat-thinking + .shiny-chat-tool-loop {
   margin-top: 0;
 }
 
 // Prose after an activity block needs the breathing room back: the answer is
 // not part of the stack.
-.shinychat-tool-loop + p,
+.shiny-chat-tool-loop + p,
 .shinychat-thinking + p {
   margin-top: 1rem;
 }
 
-// A migrated custom-display payload sits outside `.shinychat-tool-group`, as
-// a sibling in `.shinychat-tool-loop`, so it renders at normal font size, not
-// the row's 0.8em. `.shinychat-tool-loop` is `display: block` with no gap, so
+// A migrated custom-display payload sits outside `.shiny-chat-tool-group`, as
+// a sibling in `.shiny-chat-tool-loop`, so it renders at normal font size, not
+// the row's 0.8em. `.shiny-chat-tool-loop` is `display: block` with no gap, so
 // without this the payload would butt straight against the row above it. The
 // trailing margin collapses on the last child so the loop's own
 // `margin-bottom` (not this one) governs the boundary after the loop.
-.shinychat-tool-custom-display {
+.shiny-chat-tool-custom-display {
   margin: 1em 0;
 
   &:last-child {
@@ -377,7 +377,7 @@ shinychat-raw-html {
   display: contents;
 }
 
-.shinychat-tool-group {
+.shiny-chat-tool-group {
   font-size: 0.8em;
 
   // Pseudo-private geometry tokens shared by the nested row and its drill-in
@@ -390,16 +390,16 @@ shinychat-raw-html {
   --_row-glyph-width: 0.9em; // status / identity glyph box size
 }
 
-.shinychat-tool-spacer {
+.shiny-chat-tool-spacer {
   margin-inline-start: auto;
 }
 
-.shinychat-tool-group__row {
+.shiny-chat-tool-group__row {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   width: 100%;
-  min-height: $shinychat-tool-row-min-height;
+  min-height: $shiny-chat-tool-row-min-height;
   padding: 0.25rem var(--_row-pad);
   border-radius: 6px;
   background: none;
@@ -418,14 +418,14 @@ shinychat-raw-html {
 // Keyboard focus needs more than the hover pill: a 5%-opacity background tint is
 // too low-contrast to stand alone as a focus indicator. Shared by every
 // subordinate activity row, the thinking header included, so they can't drift.
-.shinychat-tool-group__row:focus-visible,
-.shinychat-tool-call-row__summary:focus-visible,
+.shiny-chat-tool-group__row:focus-visible,
+.shiny-chat-tool-call-row__summary:focus-visible,
 .shinychat-thinking-header:focus-visible {
   outline: 2px solid var(--bs-primary, #007bc2);
   outline-offset: 2px;
 }
 
-.shinychat-tool-group__glyph {
+.shiny-chat-tool-group__glyph {
   --_size: var(--_row-glyph-width);
   width: var(--_size);
   height: var(--_size);
@@ -448,10 +448,10 @@ shinychat-raw-html {
 }
 
 // The generic identity glyph: a tool with no icon of its own, or a mixed group.
-.shinychat-tool-glyph-dot {
+.shiny-chat-tool-glyph-dot {
   display: inline-block;
-  width: $shinychat-tool-glyph-mark;
-  height: $shinychat-tool-glyph-mark;
+  width: $shiny-chat-tool-glyph-mark;
+  height: $shiny-chat-tool-glyph-mark;
   margin: auto;
   border-radius: 50%;
   background-color: var(--bs-secondary-color);
@@ -472,22 +472,22 @@ shinychat-raw-html {
 
   &::before {
     content: "";
-    width: $shinychat-tool-glyph-mark;
-    height: $shinychat-tool-glyph-mark;
+    width: $shiny-chat-tool-glyph-mark;
+    height: $shiny-chat-tool-glyph-mark;
     background-color: var(--bs-secondary-color);
     transform: rotate(45deg);
   }
 }
 
-// Always nested inside `.shinychat-tool-group__title`, which is the element
+// Always nested inside `.shiny-chat-tool-group__title`, which is the element
 // that participates in the row's layout — this only sets the typeface.
-.shinychat-tool-group__toolname {
+.shiny-chat-tool-group__toolname {
   font-family: var(--bs-font-monospace);
 }
 
 // The group/tool title never wraps; if the row is squeezed it truncates with
 // an ellipsis rather than pushing onto a second line.
-.shinychat-tool-group__title {
+.shiny-chat-tool-group__title {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -515,7 +515,7 @@ shinychat-raw-html {
 // into "and N others" rather than letting each one ellipsize on its own, and
 // this box catches only what that can't — a single segment too long to fit,
 // which is always shown whole rather than replaced by the overflow copy.
-.shinychat-tool-group__segments {
+.shiny-chat-tool-group__segments {
   display: block;
   flex: 0 1 auto;
   min-width: 0;
@@ -525,7 +525,7 @@ shinychat-raw-html {
 
   // A segment title is shown whole or not at all: an independently ellipsized
   // title is illegible, and a header of several of them is unreadable.
-  .shinychat-tool-group__title {
+  .shiny-chat-tool-group__title {
     overflow: visible;
     text-overflow: clip;
   }
@@ -533,17 +533,17 @@ shinychat-raw-html {
 
 // Stands in for the segments that didn't fit. Metadata about the list, like the
 // per-tool count, so it takes the same muted treatment.
-.shinychat-tool-group__overflow {
+.shiny-chat-tool-group__overflow {
   color: var(--bs-secondary-color);
 }
 
-.shinychat-tool-group__segment {
+.shiny-chat-tool-group__segment {
   display: inline-flex;
   align-items: baseline;
   gap: 0.5rem;
   min-width: 0;
 
-  + .shinychat-tool-group__segment {
+  + .shiny-chat-tool-group__segment {
     margin-inline-start: 0.25em;
   }
 }
@@ -554,7 +554,7 @@ shinychat-raw-html {
 // multi-call alike: the title has to sit at the same depth in both or React
 // remounts it when a group grows from one call to two, and the crossfade at
 // that boundary never runs.
-.shinychat-tool-group__titlewrap {
+.shiny-chat-tool-group__titlewrap {
   display: inline-flex;
   align-items: baseline;
   flex: 0 1 auto;
@@ -565,7 +565,7 @@ shinychat-raw-html {
   // truncates instead of wrapping the title onto a second line. With no label
   // (a multi-call header) the title is the only thing that can ellipsize, so it
   // has to stay shrinkable.
-  &:has(> .shinychat-tool-group__label) > .shinychat-tool-group__title {
+  &:has(> .shiny-chat-tool-group__label) > .shiny-chat-tool-group__title {
     flex: none;
   }
 
@@ -575,13 +575,13 @@ shinychat-raw-html {
   // own separation, matching the row gap it used to inherit. Centered rather
   // than baseline-aligned because the title is an `overflow: hidden` flex item
   // and so has no real baseline to align against.
-  > .shinychat-tool-group__count {
+  > .shiny-chat-tool-group__count {
     align-self: center;
     margin-inline-start: 0.5rem;
   }
 }
 
-.shinychat-tool-group__label {
+.shiny-chat-tool-group__label {
   flex: 1 1 auto;
   font-weight: normal;
   opacity: 0.85;
@@ -597,8 +597,8 @@ shinychat-raw-html {
 
 // Argument-preview / label code reads as monospace but drops the code
 // background, padding, and color tint so it sits inline in the row.
-.shinychat-tool-group__label code,
-.shinychat-tool-call-row__label code {
+.shiny-chat-tool-group__label code,
+.shiny-chat-tool-call-row__label code {
   background: none;
   padding: 0;
   color: inherit;
@@ -607,7 +607,7 @@ shinychat-raw-html {
 // The tool's `_intent`, surfaced only on drill-in (when the row is expanded),
 // trailing before the chevron — the row is the card header now, so intent
 // rides the row rather than a hidden card header.
-.shinychat-tool-row__intent {
+.shiny-chat-tool-row__intent {
   font-style: italic;
   opacity: var(--_activity-opacity-muted);
   text-align: end;
@@ -618,7 +618,7 @@ shinychat-raw-html {
   white-space: nowrap;
 }
 
-.shinychat-tool-group__count {
+.shiny-chat-tool-group__count {
   font-size: 0.85em;
   font-weight: 400;
   color: var(--bs-secondary-color);
@@ -628,7 +628,7 @@ shinychat-raw-html {
 // Tier-2 rows. It stays small and unadorned — no badge, no icon — but carries
 // the danger token rather than the muted one: it is the only text cue a screen
 // reader gets, and the decorative glyph beside it is already tinted.
-.shinychat-tool-group__failed {
+.shiny-chat-tool-group__failed {
   font-size: 0.85em;
   color: var(--bs-danger);
 }
@@ -636,8 +636,8 @@ shinychat-raw-html {
 // The trailing disclosure chevron. `.shinychat-thinking-disclosure` shares
 // these rules because a collapsed thinking header is the same kind of
 // subordinate activity row as a tool call, and the two must not drift apart.
-.shinychat-tool-group__chevron,
-.shinychat-tool-call-row__chevron,
+.shiny-chat-tool-group__chevron,
+.shiny-chat-tool-call-row__chevron,
 .shinychat-thinking-disclosure {
   display: grid;
   place-items: center;
@@ -662,13 +662,13 @@ shinychat-raw-html {
   }
 }
 
-.shinychat-tool-group__row[aria-expanded="true"] .shinychat-tool-group__chevron,
-.shinychat-tool-call-row__summary[aria-expanded="true"] .shinychat-tool-call-row__chevron,
+.shiny-chat-tool-group__row[aria-expanded="true"] .shiny-chat-tool-group__chevron,
+.shiny-chat-tool-call-row__summary[aria-expanded="true"] .shiny-chat-tool-call-row__chevron,
 .shinychat-thinking-header[aria-expanded="true"] .shinychat-thinking-disclosure {
   transform: rotate(0deg);
 }
 
-.shinychat-tool-group__calls {
+.shiny-chat-tool-group__calls {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -678,7 +678,7 @@ shinychat-raw-html {
   }
 }
 
-.shinychat-tool-call-row {
+.shiny-chat-tool-call-row {
   &__summary {
     display: flex;
     align-items: center;
@@ -687,7 +687,7 @@ shinychat-raw-html {
     // area nests under the group header; the right edge still lines up.
     margin-left: var(--_row-indent);
     width: calc(100% - var(--_row-indent));
-    min-height: $shinychat-tool-row-min-height;
+    min-height: $shiny-chat-tool-row-min-height;
     padding: 0.25rem var(--_row-pad);
     border-radius: 6px;
     background: none;
@@ -760,7 +760,7 @@ shinychat-raw-html {
     > .shiny-tool-card:not([fullscreen]) {
       margin: 0;
       border: none;
-      border-inline-start: $shinychat-tool-detail-rule solid var(--bs-border-color);
+      border-inline-start: $shiny-chat-tool-detail-rule solid var(--bs-border-color);
       border-radius: 0;
 
       > .card-header {
@@ -772,7 +772,7 @@ shinychat-raw-html {
       // header label is a full glyph + gap past the glyph's left edge).
       > .card-body {
         padding-inline-start: calc(
-          var(--_row-glyph-width) / 2 + 0.5rem - #{$shinychat-tool-detail-rule}
+          var(--_row-glyph-width) / 2 + 0.5rem - #{$shiny-chat-tool-detail-rule}
         );
       }
     }
@@ -783,13 +783,13 @@ shinychat-raw-html {
 // detail by the row's inline padding on top of the row indent, so the card's
 // border-inline-start sits under the status glyph. A single-call row sits at
 // the loop's base indent, so it only needs the inline-padding offset.
-.shinychat-tool-call-row > .shinychat-tool-call-row__detail {
+.shiny-chat-tool-call-row > .shiny-chat-tool-call-row__detail {
   padding-inline-start: calc(
     var(--_row-indent) + var(--_row-pad) + var(--_row-glyph-width) / 2
   );
 }
 
-.shinychat-tool-group--single > .shinychat-tool-call-row__detail {
+.shiny-chat-tool-group--single > .shiny-chat-tool-call-row__detail {
   padding-inline-start: calc(var(--_row-pad) + var(--_row-glyph-width) / 2);
 }
 

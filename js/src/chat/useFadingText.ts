@@ -3,7 +3,7 @@ import { usePrefersReducedMotion } from "./usePrefersReducedMotion"
 
 // Kept in step with the `transition: opacity` duration on the elements that
 // consume this hook (`.shinychat-thinking-label`,
-// `.shinychat-tool-group__title`): the swap happens once the fade-out has
+// `.shiny-chat-tool-group__title`): the swap happens once the fade-out has
 // finished, so the reader never sees the text change.
 export const FADE_DURATION_MS = 200
 

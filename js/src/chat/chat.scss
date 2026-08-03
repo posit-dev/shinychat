@@ -576,7 +576,7 @@ shiny-chat-container:not([fill]) {
   --shinychat-thinking-content-color: var(--bs-secondary-color, #6c757d);
 
   // Row geometry shared with the condensed tool rows, which define the same
-  // pseudo-private tokens (see `.shinychat-tool-group` in chat-tools.scss). A
+  // pseudo-private tokens (see `.shiny-chat-tool-group` in chat-tools.scss). A
   // collapsed thinking header and a tool-call row are both subordinate activity
   // lines in the transcript and should read as one quiet surface, so they share
   // the sizing, dimming, glyph slot, and hover pill.

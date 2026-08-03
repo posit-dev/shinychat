@@ -41,16 +41,16 @@ def test_custom_tool_output_leaves_no_orphan_spinner(
 def test_custom_tool_output_renders_outside_the_tool_group_row(
     page: Page, local_app: ShinyAppProc
 ) -> None:
-    """The custom payload renders in a `.shinychat-tool-custom-display`
-    wrapper, as a sibling after `.shinychat-tool-group` inside
-    `.shinychat-tool-loop` -- never nested inside the tool group row itself."""
+    """The custom payload renders in a `.shiny-chat-tool-custom-display`
+    wrapper, as a sibling after `.shiny-chat-tool-group` inside
+    `.shiny-chat-tool-loop` -- never nested inside the tool group row itself."""
     page.goto(local_app.url)
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30_000)
 
     _run_tool_call(page)
 
-    custom_display = chat.loc.locator(".shinychat-tool-custom-display")
+    custom_display = chat.loc.locator(".shiny-chat-tool-custom-display")
     expect(custom_display).to_be_visible(timeout=10_000)
 
     payload = custom_display.locator("#custom_tool_output")
@@ -58,6 +58,6 @@ def test_custom_tool_output_renders_outside_the_tool_group_row(
 
     # The payload must never end up nested inside the tool group row.
     nested_in_group = chat.loc.locator(
-        ".shinychat-tool-group #custom_tool_output"
+        ".shiny-chat-tool-group #custom_tool_output"
     )
     expect(nested_in_group).to_have_count(0)

@@ -199,7 +199,7 @@ function TitleSegment({
   // it behind a crossfade rather than having it flip mid-row.
   const { visible, fading } = useFadingValue(name, segmentNameKey(name))
   const nameProps = {
-    className: "shinychat-tool-group__title",
+    className: "shiny-chat-tool-group__title",
     "data-fading": fading || undefined,
   }
 
@@ -213,14 +213,14 @@ function TitleSegment({
       ) : (
         <span {...nameProps}>
           {visible.verb}
-          <code className="shinychat-tool-group__toolname">
+          <code className="shiny-chat-tool-group__toolname">
             {visible.toolName}
           </code>
         </span>
       )}
       {segment.count > 1 && (
         <span
-          className="shinychat-tool-group__count"
+          className="shiny-chat-tool-group__count"
           aria-label={`${segment.count} calls`}
         >
           {`×${segment.count}`}
@@ -289,17 +289,17 @@ function GroupTitle({ segments }: { segments: ToolCallSegment[] }): ReactNode {
   const anyTitled = shown.some((s) => s.title)
 
   return (
-    <span className="shinychat-tool-group__segments">
+    <span className="shiny-chat-tool-group__segments">
       {shown.map((segment, i) => (
         <Fragment key={segment.toolName}>
           {i > 0 && ", "}
-          <span className="shinychat-tool-group__segment">
+          <span className="shiny-chat-tool-group__segment">
             <TitleSegment segment={segment} showVerb={anyTitled || i === 0} />
           </span>
         </Fragment>
       ))}
       {hidden > 0 && (
-        <span className="shinychat-tool-group__overflow">
+        <span className="shiny-chat-tool-group__overflow">
           {`, and ${hidden} ${hidden === 1 ? "other" : "others"}`}
         </span>
       )}
@@ -346,29 +346,29 @@ function ToolCallRow({
   const contentId = `tool-call${useId()}`
 
   return (
-    <li className="shinychat-tool-call-row" role="listitem">
+    <li className="shiny-chat-tool-call-row" role="listitem">
       <button
         type="button"
-        className="shinychat-tool-call-row__summary"
+        className="shiny-chat-tool-call-row__summary"
         aria-expanded={open}
         aria-controls={contentId}
         onClick={() => setOpen((v) => !v)}
       >
         <span
-          className={`shinychat-tool-call-row__status${statusClass}`}
+          className={`shiny-chat-tool-call-row__status${statusClass}`}
           dangerouslySetInnerHTML={{ __html: glyphHtml }}
         />
         {label && (
-          <span className="shinychat-tool-call-row__label">
+          <span className="shiny-chat-tool-call-row__label">
             {label.code ? <code>{label.text}</code> : label.text}
           </span>
         )}
-        <span className="shinychat-tool-spacer" />
+        <span className="shiny-chat-tool-spacer" />
         {open && item.intent && (
-          <span className="shinychat-tool-row__intent">{item.intent}</span>
+          <span className="shiny-chat-tool-row__intent">{item.intent}</span>
         )}
         {item.valuePreview && (
-          <span className="shinychat-tool-call-row__preview">
+          <span className="shiny-chat-tool-call-row__preview">
             {item.valuePreview}
           </span>
         )}
@@ -377,16 +377,16 @@ function ToolCallRow({
             otherwise only the group header says anything failed, never which
             row. */}
         {item.status === "error" && (
-          <span className="shinychat-tool-group__failed">failed</span>
+          <span className="shiny-chat-tool-group__failed">failed</span>
         )}
         <span
-          className="shinychat-tool-call-row__chevron"
+          className="shiny-chat-tool-call-row__chevron"
           dangerouslySetInnerHTML={chevronDSIH}
         />
       </button>
       <div
         id={contentId}
-        className="shinychat-tool-call-row__detail"
+        className="shiny-chat-tool-call-row__detail"
         hidden={!open}
       >
         {open && renderLeaf(item, true)}
@@ -500,26 +500,26 @@ export const ToolGroup = memo(function ToolGroup({
 
   return (
     <>
-      {/* Fragment adds no DOM, so `.shinychat-tool-group` stays a direct child
-          of `.shinychat-tool-loop` when it renders at all — existing CSS keyed
+      {/* Fragment adds no DOM, so `.shiny-chat-tool-group` stays a direct child
+          of `.shiny-chat-tool-loop` when it renders at all — existing CSS keyed
           on that relationship is unaffected. When every call has migrated out
           there is nothing left for the row to show, so it disappears rather
           than rendering empty. */}
       {visibleCalls.length > 0 && (
         <div
-          className={`shinychat-tool-group shinychat-tool-group--${
+          className={`shiny-chat-tool-group shiny-chat-tool-group--${
             single ? "single" : "multi"
           }`}
         >
           <button
             type="button"
-            className="shinychat-tool-group__row"
+            className="shiny-chat-tool-group__row"
             aria-expanded={expanded}
             aria-controls={bodyId}
             onClick={() => setExpanded((v) => !v)}
           >
             <span
-              className={`shinychat-tool-group__glyph${anyRunning ? " running" : ""}`}
+              className={`shiny-chat-tool-group__glyph${anyRunning ? " running" : ""}`}
               dangerouslySetInnerHTML={{ __html: glyphHtml }}
             />
             {/* The title sits at this exact depth in both shapes, so it survives a
@@ -527,23 +527,23 @@ export const ToolGroup = memo(function ToolGroup({
                 header, one per tool: a heterogeneous group has no single count to
                 show, and a homogeneous one has exactly one segment, so its badge
                 lands beside the title either way. */}
-            <span className="shinychat-tool-group__titlewrap">
+            <span className="shiny-chat-tool-group__titlewrap">
               <GroupTitle segments={identity.segments} />
               {label && (
-                <span className="shinychat-tool-group__label">
+                <span className="shiny-chat-tool-group__label">
                   {": "}
                   {label.code ? <code>{label.text}</code> : label.text}
                 </span>
               )}
             </span>
-            <span className="shinychat-tool-spacer" />
+            <span className="shiny-chat-tool-spacer" />
             {single && expanded && single.intent && (
-              <span className="shinychat-tool-row__intent">
+              <span className="shiny-chat-tool-row__intent">
                 {single.intent}
               </span>
             )}
             {single?.valuePreview && (
-              <span className="shinychat-tool-call-row__preview">
+              <span className="shiny-chat-tool-call-row__preview">
                 {single.valuePreview}
               </span>
             )}
@@ -552,19 +552,19 @@ export const ToolGroup = memo(function ToolGroup({
                 decorative (aria-hidden), so this text is the only cue a screen
                 reader gets. */}
             {failedCount > 0 && (
-              <span className="shinychat-tool-group__failed">
+              <span className="shiny-chat-tool-group__failed">
                 {single ? "failed" : `${failedCount} failed`}
               </span>
             )}
             <span
-              className="shinychat-tool-group__chevron"
+              className="shiny-chat-tool-group__chevron"
               dangerouslySetInnerHTML={chevronDSIH}
             />
           </button>
           {single ? (
             <div
               id={bodyId}
-              className="shinychat-tool-call-row__detail"
+              className="shiny-chat-tool-call-row__detail"
               hidden={!expanded}
             >
               {expanded && renderLeaf(single, true)}
@@ -572,7 +572,7 @@ export const ToolGroup = memo(function ToolGroup({
           ) : (
             <ul
               id={bodyId}
-              className="shinychat-tool-group__calls"
+              className="shiny-chat-tool-group__calls"
               role="list"
               hidden={!expanded}
             >
@@ -589,7 +589,7 @@ export const ToolGroup = memo(function ToolGroup({
         </div>
       )}
       {orderedMigratedCalls.map((item) => (
-        <div key={item.localId} className="shinychat-tool-custom-display">
+        <div key={item.localId} className="shiny-chat-tool-custom-display">
           <ToolResultValue
             value={item.value ?? ""}
             valueType={item.valueType ?? "html"}

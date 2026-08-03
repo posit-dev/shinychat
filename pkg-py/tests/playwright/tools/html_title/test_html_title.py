@@ -15,7 +15,7 @@ def test_tool_title_renders_html(page: Page, local_app: ShinyAppProc) -> None:
     # A single tool call rests as a condensed Tier-1 row; its title carries the
     # tool title. The <i> tag in the title should render as an actual italic
     # element, not as escaped text like "&lt;i&gt;Paris&lt;/i&gt;".
-    title = chat.loc.locator(".shinychat-tool-group__title")
+    title = chat.loc.locator(".shiny-chat-tool-group__title")
     expect(title).to_be_visible(timeout=10_000)
 
     italic = title.locator("i")
