@@ -7,7 +7,7 @@
   }
 
   .tool-intent {
-    opacity: 0.66;
+    opacity: var(--_activity-opacity-muted);
     font-style: italic;
     font-weight: normal;
     text-align: end;
@@ -85,7 +85,7 @@
       place-items: center;
       width: 1em;
       height: 1em;
-      opacity: 0.66;
+      opacity: var(--_activity-opacity-muted);
 
       &,
       >.horizontal {
@@ -310,7 +310,9 @@ $shinychat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 
 .shinychat-tool-group__row,
 .shinychat-tool-call-row__summary,
 .shiny-tool-card:not([fullscreen]) {
-  opacity: 0.65;
+  // Shared with the thinking header via --_activity-opacity on
+  // shiny-chat-container; high contrast resets it to 1 (see chat.scss).
+  opacity: var(--_activity-opacity);
 }
 
 // Block spacing lives on the loop wrapper now (finalized cards render inside
@@ -607,7 +609,7 @@ shinychat-raw-html {
 // rides the row rather than a hidden card header.
 .shinychat-tool-row__intent {
   font-style: italic;
-  opacity: 0.66;
+  opacity: var(--_activity-opacity-muted);
   text-align: end;
   flex-shrink: 3;
   min-width: 0;
@@ -642,7 +644,7 @@ shinychat-raw-html {
   width: 0.9em;
   height: 0.9em;
   flex: none;
-  opacity: 0.66;
+  opacity: var(--_activity-opacity-muted);
   transition: transform 0.3s ease-in-out;
 
   // Collapsed points right, expanded points down — the disclosure convention
@@ -730,7 +732,7 @@ shinychat-raw-html {
   }
 
   &__preview {
-    opacity: 0.66;
+    opacity: var(--_activity-opacity-muted);
     font-style: italic;
     flex-shrink: 3;
     min-width: 0;
