@@ -571,7 +571,14 @@ shiny-chat-container:not([fill]) {
 
 /* Thinking display */
 .shinychat-thinking {
-  --shinychat-thinking-header-color: var(--bs-secondary-color, #6c757d);
+  // `inherit`, not the muted secondary, so the header matches the tool rows'
+  // `color: inherit` exactly — the shared --_activity-opacity below is what
+  // quiets it, and muting the color on top of that made the header read dimmer
+  // than the rows it sits between. It also compounded: secondary at 0.7 is
+  // 2.49:1 (light), below AA for what is real text; inherited body color at the
+  // same opacity is 5.76:1. The thought *body* stays secondary — that prose is
+  // genuinely subordinate, and it is not part of the row stack.
+  --shinychat-thinking-header-color: inherit;
   --shinychat-thinking-border-color: var(--bs-border-color, #dee2e6);
   --shinychat-thinking-content-color: var(--bs-secondary-color, #6c757d);
 
