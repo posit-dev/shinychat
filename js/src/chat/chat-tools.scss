@@ -315,6 +315,17 @@ $shiny-chat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width,
   opacity: var(--_activity-opacity);
 }
 
+// The leaf card keeps bslib's `.bslib-card` class, so a fullscreen card gets the
+// same chrome it has on main: the card shadow, a transparent border, and the
+// `--bs-card-cap-bg` reset that keeps the header untinted. At rest the row above
+// is already the card's box, so the leaf sheds the shadow and shows a plain
+// border for the drill-in rule to sit on. Done through bslib's own custom
+// properties rather than by overriding its rules.
+.shiny-tool-card:not([fullscreen]) {
+  --bslib-card-box-shadow: none;
+  --bslib-card-border-color: var(--bs-card-border-color);
+}
+
 // Block spacing lives on the loop wrapper now (finalized cards render inside
 // .shiny-chat-tool-loop, not the standalone .shiny-tool-result/-request
 // wrappers those rules were written for — see the block above, still needed
