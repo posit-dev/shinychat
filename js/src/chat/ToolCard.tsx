@@ -140,6 +140,7 @@ export function ToolCard({
           html={footer}
           className="card-footer"
           displayContents={false}
+          fillable={false}
         />
       )}
     </div>

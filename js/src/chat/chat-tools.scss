@@ -287,6 +287,18 @@
   }
 }
 
+// The "Tool call" / "Tool result" labels above each half of an expanded card.
+// They are inline <strong>s, which worked only because every payload used to be
+// block-level (a markdown stream, or a <p>). A custom `html` result can be
+// inline — a bare <svg>, <img>, or <span> — and would then share the label's
+// line box instead of starting below it. `flex: none` keeps the label at its
+// own height if the wrapper is ever laid out as a flex container.
+.shiny-tool-result__request > strong,
+.shiny-tool-result__result > strong {
+  display: block;
+  flex: none;
+}
+
 .shinychat-tool-image {
   max-width: 100%;
   border-radius: var(--bs-border-radius);
