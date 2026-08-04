@@ -195,9 +195,10 @@ class ToolResultComponent(ToolCardComponent):
 
     custom_display: bool = False
     """
-    Internal provenance marker only: set when `_chat.py` wraps an author's
-    own `message_content_chunk` override for a `ContentToolResult` subclass,
-    never by an author. Not part of `ToolResultDisplay` or any author-facing
+    Internal provenance marker only: set when `_chat_normalize.py` wraps an
+    author's own `message_content_chunk` override for a `ContentToolResult`
+    subclass through its internal normalization boundary, never by an author.
+    Not part of `ToolResultDisplay` or any author-facing
     API. Records *that* shinychat performed the wrap, not how the client
     should behave -- that interpretation stays free to change independently.
     """
