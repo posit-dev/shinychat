@@ -8,7 +8,7 @@
   )
   shiny::registerInputHandler(
     "shinychat.messages",
-    function(value, session, name) messages_input_value(value),
+    function(value, session, name) messages_input_value(value, session),
     force = TRUE
   )
 }

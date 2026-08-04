@@ -48,16 +48,24 @@ test_that("messages_input_value() parses a decoded JSON payload into message lis
     )
   )
 
-  parsed <- messages_input_value(value)
+  # The reported dep is only an identity to look up, so it survives exactly
+  # when the server has sent it (see trusted_html_deps()).
+  session <- shiny::MockShinySession$new()
+  dep <- list(name = "widgetdep", version = "1.0.0", script = "widget.js")
+  send_chat_action(
+    "chat",
+    action = list(type = "message"),
+    html_deps = list(dep),
+    session = session
+  )
+
+  parsed <- messages_input_value(value, session)
 
   expect_length(parsed, 2)
   expect_equal(parsed[[1]]$role, "user")
   expect_equal(parsed[[1]]$segments[[1]]$content, "hi")
   expect_null(parsed[[1]]$htmlDeps)
-  expect_equal(
-    parsed[[2]]$htmlDeps,
-    list(list(name = "widgetdep", version = "1.0.0"))
-  )
+  expect_equal(parsed[[2]]$htmlDeps, list(dep))
 })
 
 test_that("messages_input_value() carries attachments through when present", {

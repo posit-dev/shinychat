@@ -23,6 +23,13 @@
 
 ## Bug fixes
 
+* HTML dependencies reported back by the browser in `input$<id>_messages` are
+  now matched against the dependencies the server actually sent, and the
+  server's own copy is used in their place. Previously the client's dependency
+  objects were carried through verbatim into saved history and bookmark state,
+  so a forged report could have been replayed as scripts into anyone opening the
+  resulting bookmark URL.
+
 * Fixed `output_markdown_stream()` permanently stopping following new content after the user scrolled back to the bottom. Pinning was decided only from `scroll` events, which browsers dispatch asynchronously; if a chunk grew the container first, the user's at-bottom position no longer read as at-bottom and auto-scroll silently disengaged for good. (#282)
 
 * `chat_app()` no longer renders a close button or registers a `stopApp()` observer when deployed to a server. Both are now gated on `rlang::is_interactive()`, preventing session crashes in multi-user deployments. (#265)
