@@ -53,6 +53,18 @@ test_that("Chat component markup", {
   # TODO: it'd be nice to mock the shinyChatMessage custom messages
 })
 
+test_that("chat_ui() labels non-string messages as html content", {
+  md_only <- as.character(chat_ui("chat", messages = list("plain string")))
+  expect_false(grepl("content-type", md_only, fixed = TRUE))
+
+  tagged <- as.character(chat_ui("chat", messages = list(htmltools::div("hi"))))
+  expect_match(tagged, 'content-type="html"', fixed = TRUE)
+
+  # The island wrapper is what the html content type exists to protect: as
+  # markdown it would be escaped and shown as literal text.
+  expect_match(tagged, "shinychat-raw-html", fixed = TRUE)
+})
+
 test_that("chat_append_stream() returns the stream contents as string if all text", {
   local_mocked_bindings(
     chat_append_message = coro::async(function(...) invisible())
