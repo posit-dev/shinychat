@@ -35,6 +35,11 @@
   content and display as literal text; HTML content built by the server is
   unaffected.
 
+* `chat_ui(messages = )` now renders htmltools/Shiny UI correctly again. Such
+  content was labelled as markdown, so its internal `<shinychat-raw-html>`
+  wrapper displayed as literal text and htmlwidgets in initial messages were
+  never bound.
+
 * `chat_app()` no longer renders a close button or registers a `stopApp()` observer when deployed to a server. Both are now gated on `rlang::is_interactive()`, preventing session crashes in multi-user deployments. (#265)
 
 * The `dismissible` parameter of `chat_greeting()` has been renamed to `persistent` with an inverted value. `dismissible = FALSE` (greeting stays visible) is now `persistent = TRUE`. The old `dismissible` argument still works but warns. When both `persistent` and `dismissible` are provided, `persistent` now takes precedence silently rather than erroring. (#260)
