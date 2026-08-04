@@ -160,3 +160,177 @@ test_that("non-html and malformed segments never enter the registry", {
   # `content`; guard against that regressing back in.
   expect_false(is_trusted_html_content(session, "html"))
 })
+
+reported_html <- function(...) {
+  list(list(role = "assistant", segments = list(...)))
+}
+
+test_that("html content the server never sent degrades to markdown", {
+  session <- shiny::MockShinySession$new()
+
+  expect_warning(
+    out <- messages_input_value(
+      reported_html(seg("<img src=x onerror=alert(1)>")),
+      session
+    ),
+    "did not send"
+  )
+
+  expect_equal(out[[1]]$segments[[1]]$content_type, "markdown")
+  # Content is preserved: the client escapes reserved element names on the
+  # markdown branch, so it renders as literal text.
+  expect_equal(out[[1]]$segments[[1]]$content, "<img src=x onerror=alert(1)>")
+})
+
+test_that("html content the server sent survives unchanged", {
+  session <- shiny::MockShinySession$new()
+  send_message(session, seg("<div>widget</div>"))
+
+  out <- messages_input_value(reported_html(seg("<div>widget</div>")), session)
+
+  expect_equal(out[[1]]$segments[[1]]$content_type, "html")
+  expect_equal(out[[1]]$segments[[1]]$content, "<div>widget</div>")
+})
+
+test_that("only the untrusted segment degrades", {
+  session <- shiny::MockShinySession$new()
+  send_message(session, seg("<div>ok</div>"))
+
+  expect_warning(
+    out <- messages_input_value(
+      list(
+        list(
+          role = "assistant",
+          segments = list(
+            seg("<div>ok</div>"),
+            seg("<div>forged</div>"),
+            seg("some *markdown*", content_type = "markdown")
+          )
+        ),
+        list(role = "user", segments = list(seg("hi", "markdown")))
+      ),
+      session
+    ),
+    "did not send"
+  )
+
+  types <- vapply(out[[1]]$segments, function(s) s$content_type, character(1))
+  expect_equal(types, c("html", "markdown", "markdown"))
+  expect_equal(out[[2]]$segments[[1]]$content, "hi")
+})
+
+test_that("a merged streamed html segment survives", {
+  session <- shiny::MockShinySession$new()
+  send_chunk_start(session, seg("<div>a</div>"))
+  send_chunk(session, "<div>b</div>")
+  send_chunk_end(session)
+
+  out <- messages_input_value(
+    reported_html(seg("<div>a</div><div>b</div>")),
+    session
+  )
+
+  expect_equal(out[[1]]$segments[[1]]$content_type, "html")
+})
+
+test_that("one warning covers a whole forged transcript", {
+  session <- shiny::MockShinySession$new()
+  forged <- reported_html(seg("<div>1</div>"), seg("<div>2</div>"))
+
+  warnings <- character()
+  withCallingHandlers(
+    messages_input_value(forged, session),
+    warning = function(w) {
+      warnings <<- c(warnings, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  expect_length(warnings, 1)
+  expect_match(warnings[[1]], "2")
+})
+
+test_that("no session means no trusted html", {
+  expect_warning(
+    out <- messages_input_value(reported_html(seg("<div>a</div>")), NULL),
+    "did not send"
+  )
+  expect_equal(out[[1]]$segments[[1]]$content_type, "markdown")
+})
+
+test_that("a legitimate multi-block conversation round-trips, and replay repopulates the registry", {
+  author <- shiny::MockShinySession$new()
+  send_message(author, seg("<div>island</div>"), seg("<div>tool card</div>"))
+  sanitized <- messages_input_value(
+    reported_html(seg("<div>island</div>"), seg("<div>tool card</div>")),
+    author
+  )
+  types <- vapply(
+    sanitized[[1]]$segments,
+    function(s) s$content_type,
+    character(1)
+  )
+  expect_equal(types, c("html", "html"))
+
+  local_mocked_bindings(
+    is_server_bookmarkstore = function() TRUE,
+    get_reported_messages = function(session, chat_id) sanitized
+  )
+  state <- rlang::env(values = list())
+  bookmark_save_ui(state, author, "chat")
+
+  # A restore replays through send_chat_action(), so the restoring session ends
+  # up trusting what it just rendered -- that's what keeps a
+  # restore-then-rebookmark chain valid without special-casing restore.
+  restorer <- shiny::MockShinySession$new()
+  expect_false(is_trusted_html_content(restorer, "<div>island</div>"))
+  bookmark_restore_ui(state, client = NULL, id = "chat", session = restorer)
+  expect_true(is_trusted_html_content(restorer, "<div>island</div>"))
+  expect_true(is_trusted_html_content(restorer, "<div>tool card</div>"))
+
+  rebookmarked <- messages_input_value(
+    reported_html(seg("<div>island</div>"), seg("<div>tool card</div>")),
+    restorer
+  )
+  retypes <- vapply(
+    rebookmarked[[1]]$segments,
+    function(s) s$content_type,
+    character(1)
+  )
+  expect_equal(retypes, c("html", "html"))
+})
+
+test_that("a forged snapshot cannot replay attacker html through a bookmark", {
+  # End-to-end for the stored-script vector, mirroring the html_deps case in
+  # test-html_deps_trust.R: a server bookmark is shareable via its `_state_id_`
+  # URL, so anything persisted from the browser's report is replayed into
+  # whoever opens that URL.
+  attacker <- shiny::MockShinySession$new()
+  forged <- reported_html(seg("<img src=x onerror=alert(1)>"))
+  sanitized <- suppressWarnings(messages_input_value(forged, attacker))
+
+  local_mocked_bindings(
+    is_server_bookmarkstore = function() TRUE,
+    get_reported_messages = function(session, chat_id) sanitized
+  )
+  state <- rlang::env(values = list())
+  bookmark_save_ui(state, attacker, "chat")
+
+  victim <- shiny::MockShinySession$new()
+  captured <- list()
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      captured[[length(captured) + 1]] <<- action
+      invisible()
+    }
+  )
+  bookmark_restore_ui(state, client = NULL, id = "chat", session = victim)
+
+  types <- unlist(
+    lapply(captured, function(a) {
+      vapply(a$message$segments, function(s) s$content_type, character(1))
+    })
+  )
+  expect_true(length(types) > 0)
+  expect_false("html" %in% types)
+})
