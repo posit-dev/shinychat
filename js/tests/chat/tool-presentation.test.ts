@@ -3,8 +3,18 @@ import {
   deriveToolGroupIdentity,
   type ToolCallGroup,
   type ToolCallItem,
+  type ToolCallSegment,
 } from "../../src/chat/tool-model"
-import { projectToolGroup } from "../../src/chat/tool-presentation"
+import {
+  projectToolGroup,
+  toolArgumentPreview,
+  toolCallGlyph,
+  toolCallLabel,
+  toolGroupGlyph,
+  toolHeaderSegments,
+  toolSegmentName,
+  toolSegmentNameKey,
+} from "../../src/chat/tool-presentation"
 import {
   supersededRequestIds,
   type ChatMessageData,
@@ -27,6 +37,16 @@ function group(calls: ToolCallItem[]): ToolCallGroup {
     toolName: calls[0]?.toolName ?? "",
     calls,
     ...identity,
+  }
+}
+
+function segment(
+  partial: Partial<ToolCallSegment> & { toolName: string },
+): ToolCallSegment {
+  return {
+    count: 1,
+    settled: true,
+    ...partial,
   }
 }
 
@@ -266,6 +286,213 @@ describe("tool presentation projection", () => {
     expect(lifecycleGroup.calls).toEqual([custom])
     expect(supersededRequestIds([message], null)).toEqual(
       new Set(["settled-custom"]),
+    )
+  })
+})
+
+describe("tool presentation policy", () => {
+  it("rejects invalid and non-object argument JSON previews", () => {
+    for (const argumentsJson of [
+      undefined,
+      "",
+      "not json",
+      "null",
+      '"scalar"',
+      "42",
+      "false",
+    ]) {
+      expect(toolArgumentPreview(argumentsJson)).toBeNull()
+    }
+  })
+
+  it("keeps only the first three public scalar arguments", () => {
+    expect(
+      toolArgumentPreview(
+        '{"_intent":"hidden",".internal":true,"query":"glucose","page":2,"exact":false,"ignored":"later","nested":{"value":1}}',
+      ),
+    ).toBe("query: glucose, page: 2, exact: false")
+  })
+
+  it("truncates a complete argument preview to the compact row budget", () => {
+    expect(
+      toolArgumentPreview(
+        '{"query":"0123456789012345678901234567890123456789"}',
+      ),
+    ).toBe("query: 01234567890123456789012345678901…")
+  })
+
+  it("chooses labels differently for single and multi-call rows", () => {
+    const callWithLabel = call({ label: "Portland" })
+    const titled = call({
+      title: "Weather Forecast for Portland",
+      arguments: '{"city":"Portland"}',
+    })
+    const bare = call({ toolName: "run_sql", arguments: "{}" })
+
+    expect(toolCallLabel(callWithLabel, "Weather", false)).toEqual({
+      text: "Portland",
+    })
+    expect(toolCallLabel(titled, "Weather Forecast", false)).toEqual({
+      text: "Weather Forecast for Portland",
+    })
+    expect(
+      toolCallLabel(titled, "Weather Forecast for Portland", false),
+    ).toEqual({ text: "city: Portland", code: true })
+    expect(
+      toolCallLabel(titled, "Weather Forecast for Portland", true),
+    ).toBeNull()
+    expect(toolCallLabel(bare, undefined, false)).toEqual({
+      text: "run_sql",
+      code: true,
+    })
+    expect(toolCallLabel(bare, undefined, true)).toBeNull()
+  })
+
+  it("uses a dynamic title only when its own segment does not already show it", () => {
+    const callWithTitle = call({
+      toolName: "read_page",
+      title: "Read page: docs",
+      arguments: "{}",
+    })
+
+    expect(toolCallLabel(callWithTitle, "Read page", false)).toEqual({
+      text: "Read page: docs",
+    })
+    expect(
+      toolCallLabel(
+        { ...callWithTitle, title: "Read page" },
+        "Read page",
+        false,
+      ),
+    ).toEqual({ text: "read_page", code: true })
+  })
+
+  it("selects row glyph semantics with result-specific and running precedence", () => {
+    const definitionIcon = '<svg class="definition"></svg>'
+    const resultIcon = '<svg class="result"></svg>'
+
+    expect(
+      toolCallGlyph(
+        call({ definitionIcon, icon: definitionIcon, status: "success" }),
+        false,
+      ),
+    ).toEqual({ kind: "status", status: "success" })
+    expect(
+      toolCallGlyph(
+        call({ definitionIcon, icon: definitionIcon, status: "error" }),
+        true,
+      ),
+    ).toEqual({ kind: "icon", icon: definitionIcon })
+    expect(
+      toolCallGlyph(
+        call({ definitionIcon, icon: resultIcon, status: "error" }),
+        false,
+      ),
+    ).toEqual({ kind: "icon", icon: resultIcon })
+    expect(
+      toolCallGlyph(
+        call({ definitionIcon, icon: resultIcon, status: "running" }),
+        true,
+      ),
+    ).toEqual({ kind: "status", status: "running" })
+    expect(toolCallGlyph(call({ status: "error" }), true)).toEqual({
+      kind: "status",
+      status: "error",
+    })
+  })
+
+  it("selects only stable identity for group glyphs", () => {
+    const homogeneous = projectToolGroup(
+      group([call({ definitionIcon: "definition", icon: "definition" })]),
+    ).row!
+    const heterogeneous = projectToolGroup(
+      group([
+        call({ requestId: "one", localId: "one", toolName: "search" }),
+        call({ requestId: "two", localId: "two", toolName: "read" }),
+      ]),
+    ).row!
+    const running = projectToolGroup(
+      group([
+        call({ definitionIcon: "definition", icon: "definition" }),
+        call({
+          requestId: "running",
+          localId: "running",
+          status: "running",
+        }),
+      ]),
+    ).row!
+
+    expect(toolGroupGlyph(homogeneous)).toEqual({
+      kind: "icon",
+      icon: "definition",
+    })
+    expect(toolGroupGlyph(heterogeneous)).toEqual({ kind: "default" })
+    expect(toolGroupGlyph(running)).toEqual({
+      kind: "status",
+      status: "running",
+    })
+  })
+
+  it("projects whole header segments, verb placement, and overflow copy", () => {
+    const visible = toolHeaderSegments([
+      segment({
+        toolName: "reconcile",
+        title: "Reconciled the quarterly ledger against the general ledger",
+      }),
+      segment({ toolName: "notify", title: "Notified" }),
+    ])
+    const capped = toolHeaderSegments(
+      ["Alpha", "Beta", "Gamma", "Delta"].map((title, i) =>
+        segment({ toolName: `tool-${i}`, title }),
+      ),
+    )
+
+    expect(visible.shown.map(({ segment }) => segment.toolName)).toEqual([
+      "reconcile",
+    ])
+    expect(visible.shown[0]!.showVerb).toBe(true)
+    expect(visible.overflowText).toBe(", and 1 other")
+    expect(capped.shown.map(({ segment }) => segment.title)).toEqual([
+      "Alpha",
+      "Beta",
+      "Gamma",
+    ])
+    expect(capped.shown.map(({ showVerb }) => showVerb)).toEqual([
+      true,
+      true,
+      true,
+    ])
+    expect(capped.overflowText).toBe(", and 1 other")
+
+    const untitled = toolHeaderSegments([
+      segment({ toolName: "search", settled: true }),
+      segment({ toolName: "read", settled: false }),
+    ])
+    expect(untitled.shown.map(({ showVerb }) => showVerb)).toEqual([
+      true,
+      false,
+    ])
+  })
+
+  it("uses one leading verb for untitled segments and stable title keys", () => {
+    const first = segment({ toolName: "search", settled: true })
+    const second = segment({ toolName: "read", settled: false })
+    const title = segment({ toolName: "weather", title: "Weather" })
+
+    const firstName = toolSegmentName(first, true)
+    expect(firstName).toEqual({
+      toolName: "search",
+      verb: "Used ",
+      title: undefined,
+    })
+    expect(toolSegmentName(second, false)).toEqual({
+      toolName: "read",
+      verb: "",
+      title: undefined,
+    })
+    expect(toolSegmentNameKey(firstName)).toBe("tool:Used |search")
+    expect(toolSegmentNameKey(toolSegmentName(title, true))).toBe(
+      "title:Weather",
     )
   })
 })

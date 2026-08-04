@@ -12,7 +12,17 @@ import {
   type ToolCallItem,
   type ToolCallSegment,
 } from "./tool-model"
-import { projectToolGroup, type ToolGroupRowView } from "./tool-presentation"
+import {
+  projectToolGroup,
+  toolCallGlyph,
+  toolCallLabel,
+  toolGroupGlyph,
+  toolHeaderSegments,
+  toolSegmentName,
+  toolSegmentNameKey,
+  type ToolGlyph,
+  type ToolGroupRowView,
+} from "./tool-presentation"
 import { ToolResult, ToolResultValue } from "./ToolResult"
 import { ToolRequest } from "./ToolRequest"
 import { useFadingValue } from "./useFadingText"
@@ -24,71 +34,6 @@ const checkHtml =
   '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l1.093 1.093 3.473-4.425z"/></svg>'
 
 const chevronDSIH = { __html: chevronDown }
-
-// Truncate a scalar argument value for use as a fallback per-call label.
-// A dictionary-style preview of a call's arguments: up to the first three
-// scalar args as "key: value", skipping internal keys (those starting with "_"
-// or "."). Truncated as a whole to keep the row compact.
-const ARG_PREVIEW_MAX = 40
-function argPreview(argsJson?: string): string | null {
-  if (!argsJson) return null
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(argsJson)
-  } catch {
-    return null
-  }
-  if (!parsed || typeof parsed !== "object") return null
-  const parts: string[] = []
-  for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-    if (k.startsWith("_") || k.startsWith(".")) continue
-    if (
-      typeof v === "string" ||
-      typeof v === "number" ||
-      typeof v === "boolean"
-    ) {
-      parts.push(`${k}: ${v}`)
-      if (parts.length === 3) break
-    }
-  }
-  if (parts.length === 0) return null
-  const s = parts.join(", ")
-  return s.length > ARG_PREVIEW_MAX ? `${s.slice(0, ARG_PREVIEW_MAX - 1)}…` : s
-}
-
-interface PerCallLabel {
-  text: string
-  code?: boolean
-}
-
-// The per-call row label: an explicit `label`, else the call's full dynamic
-// (result) title when it adds information beyond the header, else a
-// dictionary-style argument preview, else the tool name. For a single-call row
-// the title is already shown as the header, so the arg preview only stands in
-// for a bare tool with no title.
-//
-// `segmentTitle` is the header title for *this call's tool* — not the whole
-// header, which for a heterogeneous group names several tools and would both
-// fail to suppress a repeat and suppress an unrelated tool's title.
-function perCallLabel(
-  item: ToolCallItem,
-  segmentTitle: string | undefined,
-  isSingle: boolean,
-): PerCallLabel | null {
-  if (item.label) return { text: item.label }
-  if (!isSingle && item.title && item.title !== segmentTitle) {
-    return { text: item.title }
-  }
-  if (isSingle && segmentTitle) return null
-  const ap = argPreview(item.arguments)
-  if (ap) return { text: ap, code: true }
-  // Nothing identifying left (a bare no-argument tool). A Tier-2 row would
-  // otherwise be an unnamed glyph + chevron button, so fall back to the tool
-  // name in code font — the same fallback `GroupTitle` uses for the header. A
-  // single-call row already carries it in the header, so it stays bare there.
-  if (!isSingle) return { text: item.toolName, code: true }
-  return null
-}
 
 // Open state for a disclosure row that honors a server-provided `expanded`
 // flag. Seeding `useState` alone isn't enough: `expanded` arrives on the result
@@ -107,19 +52,16 @@ function useExpandable(
   return [open, setOpen]
 }
 
-// The icon this particular result returned, as opposed to the one its tool
-// definition carries. The servers emit the result's `icon` as
-// `display.icon ?? annotations.icon`, so it identifies *this call* only when it
-// differs from the definition icon the request element carries.
-function resultSpecificIcon(item: ToolCallItem): string | undefined {
-  if (!item.icon || item.icon === item.definitionIcon) return undefined
-  return item.icon
-}
-
 function statusGlyphHtml(status: ToolCallItem["status"]): string {
   if (status === "running") return spinnerHtml
   if (status === "error") return exclamationCircleFill
   return checkHtml
+}
+
+function glyphHtml(glyph: ToolGlyph): string {
+  if (glyph.kind === "icon") return glyph.icon
+  if (glyph.kind === "status") return statusGlyphHtml(glyph.status)
+  return bareDot
 }
 
 // The Tier-3 leaf: the full request/result card, reusing the existing tool
@@ -154,35 +96,6 @@ function renderLeaf(item: ToolCallItem, open: boolean): ReactNode {
   )
 }
 
-// The naming half of a segment: the author's title, or the verb plus the bare
-// tool name when there isn't one. Both forms live in one element so the
-// present→past swap crossfades as a unit — fading the verb alone would leave
-// the tool name visibly jumping sideways as "Using" narrows to "Used".
-interface SegmentName {
-  title?: string
-  verb: string
-  toolName: string
-}
-
-function segmentName(segment: ToolCallSegment, showVerb: boolean): SegmentName {
-  return {
-    title: segment.title,
-    // Same monotonic present→past latch the definition→result title swap
-    // follows, scoped to this tool's calls.
-    verb: showVerb ? (segment.settled ? "Used " : "Using ") : "",
-    toolName: segment.toolName,
-  }
-}
-
-// Everything the rendered name depends on. The count is deliberately absent:
-// it sits outside the fading element, so a call landing shouldn't blink the
-// title.
-function segmentNameKey(name: SegmentName): string {
-  return name.title != null
-    ? `title:${name.title}`
-    : `tool:${name.verb}|${name.toolName}`
-}
-
 // One tool's stretch of the header: its name, then its own ×N. A title is
 // `dangerouslySetInnerHTML` because server-provided titles may carry markup.
 function TitleSegment({
@@ -192,11 +105,11 @@ function TitleSegment({
   segment: ToolCallSegment
   showVerb: boolean
 }): ReactNode {
-  const name = segmentName(segment, showVerb)
+  const name = toolSegmentName(segment, showVerb)
   // A tool's title changes under it as the call settles (the definition title
   // gives way to the result's), the same way the thinking header's does. Swap
   // it behind a crossfade rather than having it flip mid-row.
-  const { visible, fading } = useFadingValue(name, segmentNameKey(name))
+  const { visible, fading } = useFadingValue(name, toolSegmentNameKey(name))
   const nameProps = {
     className: "shiny-chat-tool-group__title",
     "data-fading": fading || undefined,
@@ -229,46 +142,6 @@ function TitleSegment({
   )
 }
 
-// A heterogeneous group can name arbitrarily many tools and has one row to do
-// it in. Segments are shown whole or not at all — a header of independently
-// ellipsized titles ("Net revenue, last fo…, Exported th…, Emailed the s…") is
-// noise, so the ones that don't fit fold into "and N others" instead.
-//
-// The limit is a character budget over the visible text, not a measured width:
-// the header stays a pure function of its content, needing no layout read and
-// no re-measure on resize. The segment cap is a backstop for short titles, where
-// a long list can fit the budget and still read as a crowd.
-const SEGMENT_CHAR_BUDGET = 60
-const MAX_SEGMENTS = 3
-
-// Titles may carry markup, so measure what the reader actually sees.
-function segmentTextLength(segment: ToolCallSegment): number {
-  const text = segment.title
-    ? segment.title.replace(/<[^>]*>/g, "")
-    : `Used ${segment.toolName}`
-  return text.length + (segment.count > 1 ? `×${segment.count}`.length : 0)
-}
-
-function visibleSegments(segments: ToolCallSegment[]): {
-  shown: ToolCallSegment[]
-  hidden: number
-} {
-  const shown: ToolCallSegment[] = []
-  let used = 0
-  for (const segment of segments) {
-    const cost = segmentTextLength(segment) + (shown.length ? ", ".length : 0)
-    // The first segment is always shown, however long it is: a header of
-    // nothing but "and N others" would name nothing at all. Its overflow is
-    // absorbed by the joined list's ellipsis instead.
-    const full =
-      shown.length >= MAX_SEGMENTS || used + cost > SEGMENT_CHAR_BUDGET
-    if (shown.length && full) break
-    shown.push(segment)
-    used += cost
-  }
-  return { shown, hidden: segments.length - shown.length }
-}
-
 // The group header's identity. A heterogeneous ("all") group holds several
 // tools, so it names each one with its own count — the same titles the tools
 // would show ungrouped — joined by ", ". A homogeneous group has a single
@@ -279,28 +152,19 @@ function GroupTitle({ segments }: { segments: ToolCallSegment[] }): ReactNode {
     return <TitleSegment segment={segments[0]!} showVerb={true} />
   }
 
-  const { shown, hidden } = visibleSegments(segments)
-  // With nothing titled the verbs would stack up ("Used a ×2, Used b ×3"); a
-  // single leading verb reads as covering the whole list. As soon as one tool
-  // has a title the list is no longer a plain enumeration, so each untitled
-  // segment keeps its own verb. Judged on what's rendered, since that's what
-  // the reader sees.
-  const anyTitled = shown.some((s) => s.title)
-
+  const { shown, overflowText } = toolHeaderSegments(segments)
   return (
     <span className="shiny-chat-tool-group__segments">
-      {shown.map((segment, i) => (
+      {shown.map(({ segment, showVerb }, i) => (
         <Fragment key={segment.toolName}>
           {i > 0 && ", "}
           <span className="shiny-chat-tool-group__segment">
-            <TitleSegment segment={segment} showVerb={anyTitled || i === 0} />
+            <TitleSegment segment={segment} showVerb={showVerb} />
           </span>
         </Fragment>
       ))}
-      {hidden > 0 && (
-        <span className="shiny-chat-tool-group__overflow">
-          {`, and ${hidden} ${hidden === 1 ? "other" : "others"}`}
-        </span>
+      {overflowText && (
+        <span className="shiny-chat-tool-group__overflow">{overflowText}</span>
       )}
     </span>
   )
@@ -317,7 +181,7 @@ function ToolCallRow({
   heterogeneous: boolean
 }): ReactNode {
   const [open, setOpen] = useExpandable(item.expanded)
-  const label = perCallLabel(item, segmentTitle, false)
+  const label = toolCallLabel(item, segmentTitle, false)
   const statusClass =
     item.status === "error"
       ? " text-danger"
@@ -333,13 +197,7 @@ function ToolCallRow({
   // keep pure status vocabulary. `statusClass` still applies: a failed row tints
   // whichever glyph it ends up with, and it keeps the "failed" note below, so
   // failure stays legible even when an icon replaces the exclamation.
-  const glyphHtml =
-    item.status === "running"
-      ? spinnerHtml
-      : (resultSpecificIcon(item) ??
-        (heterogeneous
-          ? item.icon || item.definitionIcon || statusGlyphHtml(item.status)
-          : statusGlyphHtml(item.status)))
+  const glyph = glyphHtml(toolCallGlyph(item, heterogeneous))
   // Not derived from `item.requestId`: it is optional, and a request can
   // render in a different message than its result before pairing settles.
   const contentId = `tool-call${useId()}`
@@ -355,7 +213,7 @@ function ToolCallRow({
       >
         <span
           className={`shiny-chat-tool-call-row__status${statusClass}`}
-          dangerouslySetInnerHTML={{ __html: glyphHtml }}
+          dangerouslySetInnerHTML={{ __html: glyph }}
         />
         {label && (
           <span className="shiny-chat-tool-call-row__label">
@@ -467,14 +325,8 @@ function ToolGroupRow({
   bodyId: string
 }): ReactNode {
   const { identity, single, anyRunning, failedCount, heterogeneous } = row
-  const label = single && perCallLabel(single, identity.title, true)
-  // A group spanning several tools has no one icon to show, so the header
-  // keeps the generic dot and lets the rows carry the tool icons instead.
-  const glyphHtml = anyRunning
-    ? spinnerHtml
-    : heterogeneous
-      ? bareDot
-      : identity.icon || bareDot
+  const label = single && toolCallLabel(single, identity.title, true)
+  const glyph = glyphHtml(toolGroupGlyph(row))
 
   return (
     <div
@@ -491,7 +343,7 @@ function ToolGroupRow({
       >
         <span
           className={`shiny-chat-tool-group__glyph${anyRunning ? " running" : ""}`}
-          dangerouslySetInnerHTML={{ __html: glyphHtml }}
+          dangerouslySetInnerHTML={{ __html: glyph }}
         />
         {/* The title sits at this exact depth in both shapes, so it survives a
                 1→N growth and can crossfade across it. The ×N lives inside the
