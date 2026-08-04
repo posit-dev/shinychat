@@ -123,4 +123,20 @@ describe("reserved elements in html content still render", () => {
 
     expect(container.querySelector(".shiny-tool-card")).not.toBeNull()
   })
+
+  it("renders a server-built island when the content is labelled html", () => {
+    const { container } = render(
+      <MarkdownContent
+        content={
+          "<shinychat-raw-html>\n  <div>Hello</div>\n</shinychat-raw-html>"
+        }
+        contentType="html"
+      />,
+    )
+
+    // This is exactly what chat_ui(messages = list(div("Hello"))) now sends;
+    // as markdown it would come out as the literal wrapper text instead.
+    expect(container.textContent).toContain("Hello")
+    expect(container.textContent).not.toContain("shinychat-raw-html")
+  })
 })

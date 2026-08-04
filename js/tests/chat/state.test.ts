@@ -1834,4 +1834,26 @@ describe("buildMessagesSnapshot", () => {
     ])
     expect(snap[0]!.htmlDeps).toEqual([dep])
   })
+
+  it("excludes messages parsed from page markup", () => {
+    const s = makeState({
+      messages: [
+        makeAssistantMsg({
+          id: "from-markup",
+          content: "STATIC",
+          fromMarkup: true,
+        }),
+        makeAssistantMsg({ id: "from-server", content: "SENT" }),
+      ],
+    })
+
+    const snap = buildMessagesSnapshot(s)
+
+    expect(snap).toEqual([
+      {
+        role: "assistant",
+        segments: [{ content: "SENT", content_type: "markdown" }],
+      },
+    ])
+  })
 })
