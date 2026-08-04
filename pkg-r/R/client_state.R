@@ -36,17 +36,9 @@ method(client_get_state, S7::new_S3_class(c("Chat", "R6"))) <-
       )
     }
 
-    # Pre-serialize the contents so that when shiny:::toJSON() is called, it is stable.
-    # jsonlite::toJSON() is not stable as it is a lossy serialization. In addition, jsonlite::fromJSON() (which shiny:::safeFromJSON() uses) is not stable as it tries to make everything a data.frame.
-    #
-    # * `jsonlite::serializeJSON()` is a stable transformation
-    # * `jsonlite::unserializeJSON()` is a stable transformation
-    state_json <- jsonlite::serializeJSON(recorded_turns)
-    state_str <- base64enc::base64encode(memCompress(state_json, "gzip"))
-
     list(
       version = 1,
-      state = state_str
+      state = gzip_b64_encode(recorded_turns)
     )
   }
 
@@ -63,14 +55,7 @@ method(client_set_state, S7::new_S3_class(c("Chat", "R6"))) <-
       )
     }
 
-    state_str <- state$state
-
-    state_json <- memDecompress(
-      base64enc::base64decode(state_str),
-      type = "gzip",
-      asChar = TRUE
-    )
-    recorded_turns <- jsonlite::unserializeJSON(state_json)
+    recorded_turns <- gzip_b64_decode(state$state)
 
     replayed_turns <- lapply(
       recorded_turns,
@@ -105,14 +90,12 @@ method(client_set_ui, S7::new_S3_class(c("Chat", "R6"))) <-
   }
 
 # Serialize the browser-reported message snapshot for storage in a bookmark's
-# state$values. Uses the same serializeJSON/base64 pipeline as
-# client_get_state() (see its comment for why, over toJSON()/fromJSON()).
+# state$values.
 encode_ui_snapshot <- function(messages) {
   if (is.null(messages) || length(messages) == 0) {
     return(NULL)
   }
-  json <- jsonlite::serializeJSON(messages)
-  base64enc::base64encode(memCompress(json, "gzip"))
+  gzip_b64_encode(messages)
 }
 
 decode_ui_snapshot <- function(str) {
@@ -126,14 +109,7 @@ decode_ui_snapshot <- function(str) {
     return(NULL)
   }
   tryCatch(
-    {
-      json <- memDecompress(
-        base64enc::base64decode(str),
-        type = "gzip",
-        asChar = TRUE
-      )
-      jsonlite::unserializeJSON(json)
-    },
+    gzip_b64_decode(str),
     error = function(e) NULL
   )
 }
@@ -152,7 +128,26 @@ restore_chat_ui <- function(client, id, ui_snapshot, session) {
   invisible()
 }
 
-# Used to avoid R CMD check NOTE about unused imports
-`_ignore` <- function() {
-  base64enc::base64encode
+# Shared codec for anything we stash in a bookmark's state$values.
+#
+# serializeJSON/unserializeJSON rather than toJSON/fromJSON: toJSON() is a lossy
+# transformation and fromJSON() (which shiny:::safeFromJSON() uses) coerces
+# structures into data.frames, so neither round-trips these objects. Both
+# serializeJSON() and unserializeJSON() are stable. gzip keeps the payload small
+# enough to live in bookmark state.
+gzip_b64_encode <- function(x) {
+  base64enc::base64encode(memCompress(jsonlite::serializeJSON(x), "gzip"))
+}
+
+# `type = "gzip"` must be explicit: memCompress(x, "gzip") writes RFC 1950
+# (zlib) data, and memDecompress's default `type = "unknown"` only detects that
+# reliably from R 4.4.0 on. Older R silently falls back to "none" and corrupts
+# the payload.
+gzip_b64_decode <- function(str) {
+  json <- memDecompress(
+    base64enc::base64decode(str),
+    type = "gzip",
+    asChar = TRUE
+  )
+  jsonlite::unserializeJSON(json)
 }
