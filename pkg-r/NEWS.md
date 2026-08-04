@@ -23,6 +23,16 @@
 
 ## Bug fixes
 
+* Fixed a cross-site scripting vulnerability in message rendering. shinychat's
+  internal custom elements (`<shinychat-raw-html>`, `<shiny-tool-request>`,
+  `<shiny-tool-result>`) render their content as raw HTML, which is safe when
+  the server builds them from Shiny/htmltools UI. Assistant *markdown* naming
+  those elements was rendered the same way, so model output — including model
+  output steered by untrusted data, as in retrieval or tool-using apps — could
+  execute script in the app's origin. Those names are now escaped in markdown
+  content and display as literal text; HTML content built by the server is
+  unaffected.
+
 * `chat_restore()` now restores the chat's displayed UI from the browser's
   message snapshot (server bookmark store), preserving display-only
   transformations. The bookmark on a completed response now fires once the

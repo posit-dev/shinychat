@@ -82,8 +82,12 @@ describe("MarkdownContent (pure)", () => {
     const content =
       '<shiny-tool-result request-id="req-1" tool-name="get_weather" status="success" value="Sunny" value-type="text"></shiny-tool-result>'
 
+    // contentType "html" is what the server sends for tool cards: they are
+    // built as htmltools tags, and tag content is always labelled "html".
+    // In markdown content these element names are escaped (see
+    // reservedElementsRendering.test.tsx).
     const { container } = render(
-      <MarkdownContent content={content} contentType="markdown" />,
+      <MarkdownContent content={content} contentType="html" />,
     )
 
     expect(container.querySelector("shiny-tool-result")).not.toBeNull()
@@ -99,7 +103,7 @@ describe("MarkdownContent (pure)", () => {
     const { container } = render(
       <MarkdownContent
         content={content}
-        contentType="markdown"
+        contentType="html"
         tagToComponentMap={chatTagToComponentMap}
       />,
     )
