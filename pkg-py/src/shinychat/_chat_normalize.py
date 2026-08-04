@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import sys
 from functools import singledispatch
+from typing import Any
 
-from htmltools import HTML, HTMLDependency, Tag, Tagifiable
+from htmltools import HTML, HTMLDependency, Tag, Tagifiable, TagList
 
 from ._chat_types import ChatMessage
 
@@ -241,21 +242,16 @@ try:
 
     @message_content.register
     def _(message: Turn):
-        from chatlas import ContentToolResult
-
-        # Imported here, not at module scope: `_chat` imports this module, so a
-        # top-level import would be circular.
-        from ._chat import _wrap_custom_tool_result
-
         content = ""
         deps: list[HTMLDependency] = []
         for x in message.contents:
-            # Wrap per item, mirroring R's `contents_shinychat_wrapped()`.
+            # Normalize and wrap per item, mirroring R's
+            # `contents_shinychat_wrapped()`.
             # Converting a turn discards each `ContentToolResult` before any
             # caller could wrap it, so a turn carrying a custom tool result
             # would otherwise emit bare UI with no `<shiny-tool-result>` for
             # the client to pair its request against.
-            item = _wrap_custom_tool_result(x, message_content(x))
+            item = normalize_message(x)
             content += item.content
             # Collected separately from the content: only the rendered *string*
             # is concatenated, so per-item dependencies would otherwise be
@@ -278,6 +274,79 @@ try:
     # shinychat_contents() method for Chat, but Python doesn't.
 except ImportError:
     pass
+
+
+def normalize_message(message: Any) -> ChatMessage:
+    """Normalize a complete message and apply shared postprocessing."""
+    return _wrap_custom_tool_result(message, message_content(message))
+
+
+def normalize_message_chunk(chunk: Any) -> ChatMessage:
+    """Normalize a message chunk and apply shared postprocessing."""
+    return _wrap_custom_tool_result(chunk, message_content_chunk(chunk))
+
+
+def _is_tool_result(value: object) -> bool:
+    try:
+        from chatlas.types import ContentToolResult
+
+        return isinstance(value, ContentToolResult)
+    except ImportError:
+        return False
+
+
+def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
+    """Wrap custom tool-result UI in a routable result element."""
+    if not _is_tool_result(message) or message.request is None:
+        return msg
+
+    if getattr(msg, "_tool_result", None) is not None:
+        return msg
+
+    try:
+        from ._chat_normalize_chatlas import (
+            ValueType,
+            is_legacy,
+            resolve_tool_annotations,
+            tool_display_override,
+            wrap_custom_tool_result,
+        )
+    except ImportError:
+        return msg
+
+    # These are shinychat's own early returns, not an author's bypass.
+    if tool_display_override() == "none" or is_legacy():
+        return msg
+
+    # Mirror the author's payload mode, while keeping the wrapper itself
+    # routable as HTML.
+    value_type: ValueType = (
+        msg.content_type
+        if msg.content_type in ("html", "markdown", "text")
+        else "markdown"
+    )
+    annotations = resolve_tool_annotations(message.request.tool)
+    wrapped = wrap_custom_tool_result(
+        request_id=message.request.id,
+        tool_name=message.request.name,
+        # A custom renderer owns its error presentation; the wrapper only
+        # carries the lifecycle signal needed by the client.
+        status="success" if message.error is None else "error",
+        value=TagList(HTML(msg.content))
+        if value_type == "html"
+        else msg.content,
+        value_type=value_type,
+        grouping=annotations.grouping,
+    )
+
+    result = ChatMessage(
+        content=wrapped,
+        role=msg.role,
+        attachments=msg.attachments,
+    )
+    result.html_deps = list(msg.html_deps) + list(result.html_deps)
+    return result
+
 
 # ------------------------------------------------------------------
 # LangChain content extractor

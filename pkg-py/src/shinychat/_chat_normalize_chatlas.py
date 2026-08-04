@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import warnings
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Optional, Sequence, Union
 
 from htmltools import (
@@ -336,6 +337,13 @@ class ToolResultDisplay(BaseModel):
 GroupingValue = Literal["none", "tool", "all"]
 
 
+@dataclass(frozen=True)
+class ResolvedToolAnnotations:
+    title: Optional[str] = None
+    icon: Any = None
+    grouping: Optional[GroupingValue] = None
+
+
 def as_grouping(value: object) -> Optional[GroupingValue]:
     "Validate a tool annotation's `grouping` value, ignoring anything unexpected."
     if value in ("none", "tool", "all"):
@@ -351,6 +359,21 @@ def _annotation_extra(annotations: object) -> dict[str, Any]:
     return extra if isinstance(extra, dict) else {}
 
 
+def resolve_tool_annotations(tool: Any) -> ResolvedToolAnnotations:
+    """Resolve the shared title, icon, and grouping annotation policy."""
+    if not tool or not tool.annotations:
+        return ResolvedToolAnnotations()
+
+    annotations = tool.annotations
+    extra = _annotation_extra(annotations)
+    return ResolvedToolAnnotations(
+        title=annotations.get("title"),
+        icon=extra.get("icon") or annotations.get("icon"),
+        grouping=as_grouping(extra.get("grouping"))
+        or as_grouping(annotations.get("grouping")),
+    )
+
+
 def tool_request_contents(x: "ContentToolRequest") -> Tagifiable:
     if tool_display_override() == "none":
         return TagList()
@@ -364,31 +387,26 @@ def tool_request_contents(x: "ContentToolRequest") -> Tagifiable:
     if isinstance(x.arguments, dict):
         intent = x.arguments.get("_intent")
 
-    tool_title = None
-    icon = None
-    grouping = None
-    if x.tool and x.tool.annotations:
-        extra = _annotation_extra(x.tool.annotations)
-        tool_title = x.tool.annotations.get("title")
-        icon = extra.get("icon") or x.tool.annotations.get("icon")
-        grouping = as_grouping(extra.get("grouping"))
-        grouping = grouping or as_grouping(x.tool.annotations.get("grouping"))
+    annotations = resolve_tool_annotations(x.tool)
 
     # Icon strings are HTML and never get escaped
-    if icon and isinstance(icon, str):
-        icon = HTML(icon)
+    icon = (
+        HTML(annotations.icon)
+        if isinstance(annotations.icon, str)
+        else annotations.icon
+    )
 
     return ToolRequestComponent(
         request_id=x.id,
         tool_name=x.name,
         arguments=json.dumps(x.arguments),
         intent=intent,
-        tool_title=tool_title,
+        tool_title=annotations.title,
         # The tool *definition* icon. The result element sends the result's own
         # icon (falling back to this one), so the client needs both to tell a
         # result-specific icon from the tool's shared identity.
         icon=icon,
-        grouping=grouping,
+        grouping=annotations.grouping,
     )
 
 
@@ -423,20 +441,10 @@ def tool_result_contents(x: "ContentToolResult") -> Tagifiable:
     if isinstance(x.arguments, dict):
         intent = x.arguments.get("_intent")
 
-    tool = x.request.tool
-    tool_title = None
-    icon = None
-    grouping = None
-    if tool and tool.annotations:
-        tool_title = tool.annotations.get("title")
-        extra = _annotation_extra(tool.annotations)
-        icon = extra.get("icon")
-        icon = icon or tool.annotations.get("icon")
-        grouping = as_grouping(extra.get("grouping"))
-        grouping = grouping or as_grouping(tool.annotations.get("grouping"))
+    annotations = resolve_tool_annotations(x.request.tool)
 
     # Icon strings and HTML display never get escaped
-    icon = display.icon or icon
+    icon = display.icon or annotations.icon
     if icon and isinstance(icon, str):
         icon = HTML(icon)
     if value_type == "html" and isinstance(value, str):
@@ -448,7 +456,7 @@ def tool_result_contents(x: "ContentToolResult") -> Tagifiable:
         request_id=x.id,
         request_call=request_call,
         tool_name=x.request.name,
-        tool_title=display.title or tool_title,
+        tool_title=display.title or annotations.title,
         status="success" if x.error is None else "error",
         value=value,
         value_type=value_type,
@@ -458,7 +466,7 @@ def tool_result_contents(x: "ContentToolResult") -> Tagifiable:
         expanded=display.open,
         footer=display.footer,
         full_screen=display.full_screen,
-        grouping=grouping,
+        grouping=annotations.grouping,
         label=display.label,
         value_preview=display.value_preview,
     )

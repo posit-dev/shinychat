@@ -423,6 +423,7 @@ async def test_custom_tool_result_handler_is_wrapped_in_a_result_element(
 
     assert len(sent) == 1
     html = sent[0].content
+    assert html.count("<shiny-tool-result") == 1
     assert "<shiny-tool-result" in html
     assert "custom-display" in html
     assert 'value-type="html"' in html
@@ -457,6 +458,7 @@ async def test_custom_string_result_stays_markdown(
 
     assert len(sent) == 1
     html = sent[0].content
+    assert html.count("<shiny-tool-result") == 1
     assert "<shiny-tool-result" in html
     assert "custom-display" in html
     assert 'value-type="markdown"' in html
@@ -499,6 +501,7 @@ async def test_custom_result_via_append_message_is_wrapped(
 
     assert len(sent) == 1
     html = sent[0].content
+    assert html.count("<shiny-tool-result") == 1
     assert "<shiny-tool-result" in html
     assert "custom-display" in html
     assert 'request-id="call-1"' in html
@@ -540,6 +543,7 @@ def test_custom_result_via_chat_ui_messages_is_wrapped(
     result_html = result_tag.attrs["content"]
 
     assert "<shiny-tool-request" in request_html
+    assert result_html.count("<shiny-tool-result") == 1
     assert "<shiny-tool-result" in result_html
     assert "custom-display" in result_html
     assert 'request-id="call-1"' in request_html
@@ -569,6 +573,7 @@ async def test_custom_tool_result_error_renders_like_a_successful_one(
 
     assert len(sent) == 1
     html = sent[0].content
+    assert html.count("<shiny-tool-result") == 1
     assert "<shiny-tool-result" in html
     assert "custom-display" in html
     assert 'status="error"' in html
@@ -585,6 +590,27 @@ async def test_plain_tool_result_is_not_misread_as_custom_display() -> None:
     html = sent[0].content
     assert "<shiny-tool-result" in html
     assert "custom-display" not in html
+
+
+@pytest.mark.anyio
+async def test_custom_tool_result_wrap_uses_tool_grouping_annotation(
+    custom_display_handler: Any,
+) -> None:
+    """Custom result wrapping shares the request/result annotation policy."""
+
+    def handler(chunk: _CustomToolResult) -> ChatMessage:
+        return ChatMessage(content=Tag("div", "Custom UI"))
+
+    custom_display_handler(handler)
+
+    request = _request(tool=_tool(annotations={"extra": {"grouping": "all"}}))
+    result = _CustomToolResult(value=2, request=request)
+    sent = await _stream_custom_result(result)
+
+    assert len(sent) == 1
+    html = sent[0].content
+    assert html.count("<shiny-tool-result") == 1
+    assert 'grouping="all"' in html
 
 
 @pytest.mark.anyio
@@ -673,6 +699,7 @@ async def test_custom_result_inside_a_turn_is_wrapped() -> None:
                 del registry[key]
         message_content._clear_cache()
 
+    assert html.count("<shiny-tool-result") == 1
     assert "<shiny-tool-result" in html
     assert "custom-display" in html
     assert 'request-id="call-1"' in html

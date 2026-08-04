@@ -48,7 +48,10 @@ from ._chat_bookmark import (
     is_chatlas_chat_client,
     set_chatlas_state,
 )
-from ._chat_normalize import message_content, message_content_chunk
+from ._chat_normalize import (
+    normalize_message,
+    normalize_message_chunk,
+)
 from ._chat_segments import (
     append_to_segments,
     copy_segments,
@@ -72,7 +75,6 @@ from ._chat_types import (
 )
 from ._history import ChatHistory, HistoryOptions
 from ._html_deps_py_shiny import shinychat_dependency
-from ._typing_extensions import TypeGuard
 from ._utils_types import DEPRECATED, DEPRECATED_TYPE, MISSING, MISSING_TYPE
 
 if TYPE_CHECKING:
@@ -946,14 +948,7 @@ class Chat:
             self._pending_messages.append((message, False, "append", None))
             return
 
-        msg = message_content(message)
-        # Same wrap as the streaming path (`_append_message_chunk`), for the
-        # same reason: an author who registers a `ContentToolResult` handler on
-        # `message_content` -- which this method's own docs point them to --
-        # otherwise returns custom UI with no `<shiny-tool-result>` element at
-        # all, leaving the condensed view nothing to pair the request against.
-        # Must precede `_transform_message()`, which rebinds `msg`.
-        msg = _wrap_custom_tool_result(message, msg)
+        msg = normalize_message(message)
         msg = await self._transform_message(msg)
         if msg is None:
             return
@@ -1080,11 +1075,7 @@ class Chat:
         self._current_stream_id = stream_id
 
         # Normalize various message types into a ChatMessage()
-        msg = message_content_chunk(message)
-        # `msg` is rebound (and can become None) by `_transform_message()`
-        # below, so the custom-tool-result wrap must happen here, before that
-        # rebind.
-        msg = _wrap_custom_tool_result(message, msg)
+        msg = normalize_message_chunk(message)
         chunk_deps = msg.html_deps or []
 
         if operation == "replace":
@@ -2480,11 +2471,7 @@ def chat_ui(
     if messages is None:
         messages = []
     for x in messages:
-        msg = message_content(x)
-        # Match append_message() and the Turn normalizer: a direct custom
-        # ContentToolResult must retain a real result element so a preloaded
-        # request with the same id is recognized as settled.
-        msg = _wrap_custom_tool_result(x, msg)
+        msg = normalize_message(x)
         message_tags.append(
             Tag(
                 "shiny-chat-message",
@@ -2610,124 +2597,6 @@ class MessageStream:
             message_chunk,
             stream_id=self._stream_id,
         )
-
-
-def is_tool_result(val: object) -> "TypeGuard[chatlas.ContentToolResult]":
-    try:
-        from chatlas.types import ContentToolResult
-
-        return isinstance(val, ContentToolResult)
-    except ImportError:
-        return False
-
-
-def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
-    """Wrap an author's fully-custom tool result UI in a real `<shiny-tool-result>`.
-
-    A `message_content_chunk` handler registered for a `ContentToolResult`
-    subclass may return arbitrary UI instead of shinychat's own tool card
-    (see the module docs on extending `message_content_chunk`). That leaves
-    no `<shiny-tool-result>` element in the transcript at all, so the
-    condensed tool view -- which derives "this call finished" from that
-    element's presence -- has nothing to key off of, and the request row
-    spins forever on restore. Wrap the author's rendered output in a real
-    element carrying only the fields needed to pair a result with its
-    request; everything else about the row (title, icon, footer, ...) is the
-    author's own UI to manage.
-
-    Detection is by artifact, not dispatch: shinychat's own `ContentToolResult`
-    handler marks its `ChatMessage` with `_tool_result` (see
-    `_chat_normalize.py`), and that mark survives an author calling
-    `message_content(chunk)` and returning shinychat's own message unmodified
-    -- so that pattern correctly reads as *not* custom. Anything else returned
-    for a `ContentToolResult` is custom UI and gets wrapped.
-    """
-    if not is_tool_result(message) or message.request is None:
-        return msg
-
-    if getattr(msg, "_tool_result", None) is not None:
-        return msg
-
-    try:
-        from ._chat_normalize_chatlas import (
-            ValueType,
-            _annotation_extra,
-            as_grouping,
-            is_legacy,
-            tool_display_override,
-            wrap_custom_tool_result,
-        )
-    except ImportError:
-        return msg
-
-    # `tool_display_override() == "none"` and `is_legacy()` are shinychat's
-    # own early returns from `tool_result_contents()` -- a `TagList()` and
-    # the raw content object, respectively -- not an author bypass. Neither
-    # is a `ToolResultComponent`, so neither carries `_tool_result`; exclude
-    # them explicitly so they aren't misread as custom UI.
-    if tool_display_override() == "none" or is_legacy():
-        return msg
-
-    grouping = None
-    tool = message.request.tool
-    if tool and tool.annotations:
-        extra = _annotation_extra(tool.annotations)
-        grouping = as_grouping(extra.get("grouping"))
-        grouping = grouping or as_grouping(tool.annotations.get("grouping"))
-
-    # Mirror the content mode `msg` already carries, so wrapping never changes
-    # how the author's output renders. `ChatMessage.__init__` only renders
-    # non-strings, so a handler returning a plain string keeps
-    # `content_type="markdown"` and an unrendered payload; forcing `"html"`
-    # there would both drop markdown formatting and move the string from the
-    # client's markdown pipeline -- inert React elements -- onto `RawHTML`'s
-    # live `innerHTML`, where event-handler attributes fire.
-    value_type: ValueType = (
-        msg.content_type
-        if msg.content_type in ("html", "markdown", "text")
-        else "markdown"
-    )
-
-    wrapped = wrap_custom_tool_result(
-        request_id=message.request.id,
-        tool_name=message.request.name,
-        # Locked: the author is assumed to present the error state inside
-        # their own UI, so a failed custom call is wrapped exactly like a
-        # successful one; only the request-pairing signal matters here.
-        status="success" if message.error is None else "error",
-        # `tagify()` renders an `"html"` value as tags and stringifies every
-        # other mode verbatim, so only the html branch wants the `HTML()` wrap.
-        value=TagList(HTML(msg.content))
-        if value_type == "html"
-        else msg.content,
-        value_type=value_type,
-        grouping=grouping,
-    )
-
-    # Carry `role` and `attachments` across: wrapping replaces the author's
-    # message, so anything it set that isn't the content itself would otherwise
-    # be silently dropped (`ChatMessage.__init__` would default them).
-    #
-    # `content_type` is deliberately *not* carried across, unlike the rest.
-    # It described the author's payload, and that role now belongs to
-    # `value_type` above; here it types the **container**, which must stay
-    # routable. Passing `None` lets `__init__` promote this non-string content
-    # to `"html"`. Reusing `"text"` would be a silent no-op for the whole
-    # feature: the client excludes text blocks from tool routing on purpose
-    # ("text" means display literally, `state.ts:485-496`), so the element
-    # would render as visible markup and never pair with its request.
-    result = ChatMessage(
-        content=wrapped,
-        role=msg.role,
-        attachments=msg.attachments,
-    )
-    # `ChatMessage.__init__` re-renders `wrapped` from scratch, so it never
-    # sees the author's original html_deps -- they rode in on `msg.content`
-    # as an already-rendered HTML string. Carry them forward alongside
-    # whatever the wrap itself contributed (e.g. the element's own
-    # dependency).
-    result.html_deps = list(msg.html_deps) + list(result.html_deps)
-    return result
 
 
 CHAT_INSTANCES: WeakValueDictionary[str, Chat] = WeakValueDictionary()
