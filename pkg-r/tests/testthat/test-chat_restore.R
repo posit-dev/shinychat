@@ -185,6 +185,192 @@ test_that("bookmark save skips UI capture when store is not server", {
   expect_equal(fallback_calls, 1L)
 })
 
+# --- response-bookmark observer -----------------------------------------
+
+ui_message <- function(role, text) {
+  list(
+    role = role,
+    segments = list(list(content = text, content_type = "markdown"))
+  )
+}
+
+# Runs `body` inside a testServer that has registered chat_restore(), with
+# session$doBookmark() replaced by a counter. `body` receives the session, a
+# `bookmarks()` reader for the count, and `cancel()` to tear the registrations
+# down. `...` is forwarded to chat_restore().
+with_restore_server <- function(body, ...) {
+  args <- rlang::list2(...)
+
+  count <- 0L
+  cancel_all <- NULL
+  session <- shiny::MockShinySession$new()
+  session$doBookmark <- function() {
+    count <<- count + 1L
+    invisible()
+  }
+
+  server <- function(input, output, session) {
+    cancel_all <<- rlang::exec(
+      chat_restore,
+      "chat",
+      mock_chat_client(),
+      !!!args,
+      session = session
+    )
+  }
+
+  shiny::testServer(server, session = session, {
+    body(
+      session,
+      bookmarks = function() count,
+      cancel = function() cancel_all()
+    )
+  })
+}
+
+test_that("the browser's startup echo never mints a response bookmark", {
+  # A fresh session replays the client's existing turns (or a restored
+  # snapshot) into the UI, and the browser echoes back one growing `_messages`
+  # snapshot per settled message. None of them are user-triggered responses,
+  # and any of them can end in an assistant message.
+  with_restore_server(function(session, bookmarks, cancel) {
+    session$setInputs(chat_messages = list(ui_message("user", "hi")))
+    session$setInputs(
+      chat_messages = list(
+        ui_message("user", "hi"),
+        ui_message("assistant", "hello")
+      )
+    )
+    session$setInputs(
+      chat_messages = list(
+        ui_message("user", "hi"),
+        ui_message("assistant", "hello"),
+        ui_message("user", "again"),
+        ui_message("assistant", "sure")
+      )
+    )
+    expect_equal(bookmarks(), 0L)
+  })
+})
+
+test_that("a user-only snapshot does not mint a response bookmark", {
+  with_restore_server(
+    function(session, bookmarks, cancel) {
+      session$setInputs(chat_user_input = "hi")
+      session$setInputs(chat_messages = list(ui_message("user", "hi")))
+      expect_equal(bookmarks(), 0L)
+    },
+    bookmark_on_input = FALSE
+  )
+})
+
+test_that("the first settled assistant reply after a startup replay bookmarks exactly once", {
+  # Regression: the response guard used to consume a single-use suppression
+  # flag, but the startup echoes returned before reaching it -- leaving the
+  # flag set to swallow the first genuine response instead. That miss is
+  # invisible unless the post-submit echo coalesces the user and assistant
+  # messages into one update, which is exactly what this drives.
+  with_restore_server(
+    function(session, bookmarks, cancel) {
+      session$setInputs(chat_messages = list(ui_message("user", "old")))
+      session$setInputs(
+        chat_messages = list(
+          ui_message("user", "old"),
+          ui_message("assistant", "older reply")
+        )
+      )
+      expect_equal(bookmarks(), 0L)
+
+      session$setInputs(chat_user_input = "new")
+      session$setInputs(
+        chat_messages = list(
+          ui_message("user", "old"),
+          ui_message("assistant", "older reply"),
+          ui_message("user", "new"),
+          ui_message("assistant", "new reply")
+        )
+      )
+      expect_equal(bookmarks(), 1L)
+    },
+    bookmark_on_input = FALSE
+  )
+})
+
+test_that("with bookmark_on_input, the submit and the reply each bookmark once", {
+  with_restore_server(function(session, bookmarks, cancel) {
+    session$setInputs(chat_messages = list(ui_message("user", "old")))
+    expect_equal(bookmarks(), 0L)
+
+    session$setInputs(chat_user_input = "new")
+    expect_equal(bookmarks(), 1L)
+
+    session$setInputs(
+      chat_messages = list(
+        ui_message("user", "new"),
+        ui_message("assistant", "reply")
+      )
+    )
+    expect_equal(bookmarks(), 2L)
+  })
+})
+
+test_that("a submit co-batched with a settled snapshot still bookmarks the reply", {
+  # `_user_input` is a persistent input, so it can land in the same reactive
+  # flush as the client's snapshot. Shiny invalidates observers in the order the
+  # inputs arrive, and the client queues `_user_input` before the snapshot it
+  # triggers, so has_user_submitted is set by the time the response observer
+  # runs on that flush.
+  with_restore_server(
+    function(session, bookmarks, cancel) {
+      session$setInputs(chat_messages = list())
+      session$setInputs(
+        chat_user_input = "hi",
+        chat_messages = list(
+          ui_message("user", "hi"),
+          ui_message("assistant", "hello")
+        )
+      )
+      expect_equal(bookmarks(), 1L)
+    },
+    bookmark_on_input = FALSE
+  )
+})
+
+test_that("the cancel callback stops both bookmark observers", {
+  with_restore_server(function(session, bookmarks, cancel) {
+    session$setInputs(chat_user_input = "hi")
+    expect_equal(bookmarks(), 1L)
+
+    cancel()
+
+    session$setInputs(chat_user_input = "again")
+    session$setInputs(
+      chat_messages = list(
+        ui_message("user", "again"),
+        ui_message("assistant", "sure")
+      )
+    )
+    expect_equal(bookmarks(), 1L)
+  })
+})
+
+test_that("bookmark_on_response = FALSE never bookmarks on the echo", {
+  with_restore_server(
+    function(session, bookmarks, cancel) {
+      session$setInputs(chat_user_input = "hi")
+      session$setInputs(
+        chat_messages = list(
+          ui_message("user", "hi"),
+          ui_message("assistant", "hello")
+        )
+      )
+      expect_equal(bookmarks(), 0L)
+    },
+    bookmark_on_response = FALSE,
+    bookmark_on_input = FALSE
+  )
+})
+
 test_that("messages_end_with_assistant detects a settled assistant reply", {
   user_only <- list(list(role = "user", segments = list()))
   ends_assistant <- list(
