@@ -19,40 +19,45 @@ tool_result_display(
 )
 }
 \arguments{
-\item{title}{The title to display in the header of the tool result.}
+\item{title}{The title to use for the settled call and drill-down card. It
+replaces the definition-level title from \code{ellmer::tool_annotations()} in a
+single-call row. In a multi-call group, a distinct result title can identify
+the call in the expanded call list. Write the definition title in the
+present tense (for example, \code{"Getting weather"}) and this result title in
+the past tense (for example, \code{"Got weather"}).}
 
-\item{icon}{An icon to display in the header (alongside the title). Can be
-a character string or HTML content (e.g. from \link[htmltools:tags]{htmltools::tags}).}
+\item{icon}{An icon to display with the settled call and drill-down card. Can
+be a character string or HTML content (e.g. from \link[htmltools:tags]{htmltools::tags}).}
 
 \item{html}{Custom HTML content (to use in place of the default result
-display).}
+content in the drill-down card).}
 
 \item{markdown}{Custom Markdown string (to use in place of the default
-result display).}
+result content in the drill-down card).}
 
 \item{text}{Custom plain text string (to use in place of the default
-result display).}
+result content in the drill-down card).}
 
-\item{show_request}{Whether to show the tool request inside the tool
-result container.}
+\item{show_request}{Whether to show the tool request inside the drill-down
+card.}
 
-\item{open}{Whether or not the tool result details are expanded by
-default.}
+\item{open}{Whether to open the drill-down card by default when the result
+settles.}
 
 \item{full_screen}{Whether or not to display a fullscreen toggle button on
-the card.}
+the drill-down card.}
 
-\item{footer}{Optional HTML content to display in the card footer (below
-the card body).}
+\item{footer}{Optional HTML content to display below the drill-down card
+body.}
 
-\item{label}{A short, per-call identifying value shown alongside the tool
-title (e.g. a filename or query). Distinguishes this call from other
-calls to the same tool. Without one, shinychat falls back to the call's
-own \code{title} (when it differs from the group's), then a short preview of
-the call's arguments, then the tool name.}
+\item{label}{A short, per-call identifying value shown in the activity row
+(e.g. a filename or query). Distinguishes this call from other calls to the
+same tool. Without one, shinychat falls back to the call's own \code{title}
+(when it differs from the group's), then a short preview of the call's
+arguments, then the tool name.}
 
 \item{value_preview}{A terse, per-call preview of the tool result, shown
-in the condensed view before the full result is expanded.}
+in the activity row before its drill-down card is opened.}
 }
 \value{
 An object of class \code{shinychat_tool_result_display}, for use as
@@ -65,16 +70,25 @@ An object of class \code{shinychat_tool_result_display}, for use as
 to customize how shinychat displays the tool result to the user, while
 keeping the underlying \code{value} sent to the model unchanged.
 }
+\details{
+It preserves shinychat's compact activity row and drill-down card. Use it for
+result titles, per-call labels and previews, or rich card content. To replace
+the settled card with fully custom standalone UI, extend
+\code{\link[=contents_shinychat]{contents_shinychat()}} instead. See the \href{https://posit-dev.github.io/shinychat/r/articles/tool-ui.html}{Tool Calling UI article} for a
+complete guide.
+}
 \examples{
 \dontshow{if (rlang::is_installed("ellmer")) withAutoprint(\{ # examplesIf}
 library(ellmer)
 
-get_current_weather <- function() {
+get_current_weather <- function(location) {
   ContentToolResult(
     value = "72 degrees and sunny",
     extra = list(
       display = tool_result_display(
-        title = "Current weather",
+        title = paste("Got weather for", location),
+        label = location,
+        value_preview = "72°F and sunny",
         markdown = "It's **72°F** and sunny."
       )
     )

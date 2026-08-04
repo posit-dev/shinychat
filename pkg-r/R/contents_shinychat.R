@@ -21,6 +21,13 @@ opt_shinychat_tool_display <- function() {
 #' generics and methods in the [S7
 #' documentation](https://rconsortium.github.io/S7/articles/S7.html).
 #'
+#' For most tool-result customization, use [tool_result_display()] in the
+#' result's `extra = list(display = ...)`. It keeps shinychat's compact activity
+#' row and drill-down card while letting you set a title, label, result preview,
+#' and rich card content. The [Tool Calling UI
+#' article](https://posit-dev.github.io/shinychat/r/articles/tool-ui.html)
+#' describes that recommended path.
+#'
 #' We'll work through a short example creating a custom display for the results
 #' of a tool that gets local weather forecasts. We first need to create a custom
 #' class that extends [ellmer::ContentToolResult].
@@ -60,10 +67,8 @@ opt_shinychat_tool_display <- function() {
 #' )
 #' ```
 #'
-#' Finally, we can extend `contents_shinychat()` to render our custom content
-#' class for display in the chat interface. The basic process is to define a
-#' `contents_shinychat()` external generic and then implement a method for your
-#' custom class.
+#' Finally, define the external generic and implement a method for your custom
+#' class:
 #'
 #' ```r
 #' contents_shinychat <- S7::new_external_generic(
@@ -77,13 +82,9 @@ opt_shinychat_tool_display <- function() {
 #' }
 #' ```
 #'
-#' You can use this pattern to completely customize how the content is displayed
-#' inside shinychat by returning HTML objects directly from this method.
-#'
-#' You can also use this pattern to build upon the default shinychat display for
-#' tool requests and results. By using [S7::super()], you can create the
-#' object shinychat uses for tool results (or tool requests), and then modify it
-#' to suit your needs.
+#' Use [S7::super()] when you want to extend shinychat's default card. The
+#' resulting output still participates in the normal compact activity row and
+#' drill-down card:
 #'
 #' ```r
 #' S7::method(contents_shinychat, WeatherToolResult) <- function(content) {
@@ -95,18 +96,22 @@ opt_shinychat_tool_display <- function() {
 #'   res$value <- gt::as_raw_html(gt::gt(content@value))
 #'   res$value_type <- "html"
 #'   # ...and update the tool result title to include the location name
-#'   res$tool_title <- paste("Weather Forecast for", content@location_name)
+#'   res$tool_title <- paste("Got weather forecast for", content@location_name)
+#'   res$label <- content@location_name
+#'   res$value_preview <- paste(nrow(content@value), "hourly readings")
 #'
 #'   res
 #' }
 #' ```
 #'
-#' Note that you do **not** need to create a new class or extend
-#' `contents_shinychat()` to customize the tool display. Rather, you can use the
-#' strategies discussed in the [Tool Calling UI
-#' article](https://posit-dev.github.io/shinychat/r/articles/tool-ui.html) to
-#' customize the tool request and result display by providing a `display` list
-#' in the `extra` argument of the tool result.
+#' Alternatively, return arbitrary HTML or Shiny UI directly from the method to
+#' replace the default card completely. While the tool runs, shinychat still
+#' shows its activity row. When the custom result settles, shinychat renders that
+#' UI as standalone output and removes the call from the activity row.
+#'
+#' This extension point is for fully custom standalone output. To customize the
+#' default card, use [tool_result_display()] instead of constructing a generic
+#' `display` list yourself.
 #'
 #' @param content An [`ellmer::Content`] object.
 #'
@@ -407,30 +412,42 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
 #' to customize how shinychat displays the tool result to the user, while
 #' keeping the underlying `value` sent to the model unchanged.
 #'
-#' @param title The title to display in the header of the tool result.
-#' @param icon An icon to display in the header (alongside the title). Can be
-#'   a character string or HTML content (e.g. from [htmltools::tags]).
+#' It preserves shinychat's compact activity row and drill-down card. Use it for
+#' result titles, per-call labels and previews, or rich card content. To replace
+#' the settled card with fully custom standalone UI, extend
+#' [contents_shinychat()] instead. See the [Tool Calling UI
+#' article](https://posit-dev.github.io/shinychat/r/articles/tool-ui.html) for a
+#' complete guide.
+#'
+#' @param title The title to use for the settled call and drill-down card. It
+#'   replaces the definition-level title from `ellmer::tool_annotations()` in a
+#'   single-call row. In a multi-call group, a distinct result title can identify
+#'   the call in the expanded call list. Write the definition title in the
+#'   present tense (for example, `"Getting weather"`) and this result title in
+#'   the past tense (for example, `"Got weather"`).
+#' @param icon An icon to display with the settled call and drill-down card. Can
+#'   be a character string or HTML content (e.g. from [htmltools::tags]).
 #' @param html Custom HTML content (to use in place of the default result
-#'   display).
+#'   content in the drill-down card).
 #' @param markdown Custom Markdown string (to use in place of the default
-#'   result display).
+#'   result content in the drill-down card).
 #' @param text Custom plain text string (to use in place of the default
-#'   result display).
-#' @param show_request Whether to show the tool request inside the tool
-#'   result container.
-#' @param open Whether or not the tool result details are expanded by
-#'   default.
+#'   result content in the drill-down card).
+#' @param show_request Whether to show the tool request inside the drill-down
+#'   card.
+#' @param open Whether to open the drill-down card by default when the result
+#'   settles.
 #' @param full_screen Whether or not to display a fullscreen toggle button on
-#'   the card.
-#' @param footer Optional HTML content to display in the card footer (below
-#'   the card body).
-#' @param label A short, per-call identifying value shown alongside the tool
-#'   title (e.g. a filename or query). Distinguishes this call from other
-#'   calls to the same tool. Without one, shinychat falls back to the call's
-#'   own `title` (when it differs from the group's), then a short preview of
-#'   the call's arguments, then the tool name.
+#'   the drill-down card.
+#' @param footer Optional HTML content to display below the drill-down card
+#'   body.
+#' @param label A short, per-call identifying value shown in the activity row
+#'   (e.g. a filename or query). Distinguishes this call from other calls to the
+#'   same tool. Without one, shinychat falls back to the call's own `title`
+#'   (when it differs from the group's), then a short preview of the call's
+#'   arguments, then the tool name.
 #' @param value_preview A terse, per-call preview of the tool result, shown
-#'   in the condensed view before the full result is expanded.
+#'   in the activity row before its drill-down card is opened.
 #'
 #' @return An object of class `shinychat_tool_result_display`, for use as
 #'   `extra = list(display = tool_result_display(...))` when creating an
@@ -439,12 +456,14 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
 #' @examplesIf rlang::is_installed("ellmer")
 #' library(ellmer)
 #'
-#' get_current_weather <- function() {
+#' get_current_weather <- function(location) {
 #'   ContentToolResult(
 #'     value = "72 degrees and sunny",
 #'     extra = list(
 #'       display = tool_result_display(
-#'         title = "Current weather",
+#'         title = paste("Got weather for", location),
+#'         label = location,
+#'         value_preview = "72°F and sunny",
 #'         markdown = "It's **72°F** and sunny."
 #'       )
 #'     )

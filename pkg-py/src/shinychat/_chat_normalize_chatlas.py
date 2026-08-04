@@ -244,11 +244,33 @@ class ToolResultComponent(ToolCardComponent):
 
 class ToolResultDisplay(BaseModel):
     """
-    Customize how tool results are displayed.
+    Customize the condensed display for a tool result.
 
     Assign a `ToolResultDisplay` instance to a
     [`chatlas.ContentToolResult`](https://posit-dev.github.io/chatlas/reference/types.ContentToolResult.html)
-    to customize the UI shown to the user when tool calls occur.
+    in its ``extra={"display": ...}`` metadata. Tool calls normally appear as a
+    compact activity row, optionally expand into a grouped call list, and drill
+    into a full request/result card. ``ToolResultDisplay`` customizes that row
+    and card without replacing either.
+
+    Use a present-tense definition title while the tool is running, then a
+    settled result title here when that improves the wording. For example,
+    register a tool with ``annotations={"title": "Looking up weather"}`` and
+    return ``title="Looked up weather for Duluth"``. In a single-call row, the
+    result title replaces the definition title when the result arrives. A
+    multi-call group keeps the shared definition title in its group row and can
+    use distinct result titles to identify calls in the expanded list.
+    shinychat does not conjugate titles automatically.
+
+    ``label`` and ``value_preview`` are compact, per-call metadata shown in the
+    activity row and grouped call list. Use them to distinguish repeated calls
+    without opening the card. ``html``, ``markdown``, and ``text`` customize the
+    result body inside the drill-down card. To replace the card with standalone
+    UI instead, register a custom ``message_content`` or
+    ``message_content_chunk`` handler for a ``ContentToolResult`` subclass.
+
+    See the [Tool calling guide](https://shiny.posit.co/py/docs/genai-tools.html)
+    for complete tool-display examples.
 
     Examples
     --------
@@ -260,7 +282,9 @@ class ToolResultDisplay(BaseModel):
 
     def my_tool():
         display = ToolResultDisplay(
-            title="Tool result title",
+            title="Looked up weather for Duluth",
+            label="Duluth, MN",
+            value_preview="18 C, clear",
             markdown="A _markdown_ message shown to user.",
         )
         return ctl.ContentToolResult(
@@ -273,35 +297,41 @@ class ToolResultDisplay(BaseModel):
     chat_client.register_tool(my_tool)
     ```
 
-    Parameters
-    ---------
-    title
-        The title to display in the header of the tool result.
-    label
+    Display fields
+    --------------
+    - ``title``:
+        The settled title for this result and its drill-down card. It replaces
+        the definition title in a single-call row. In a multi-call group, a
+        distinct result title can identify the call in the expanded call list.
+    - ``label``:
         A short, per-call identifying value shown alongside the title
         (e.g. a filename or query). Distinguishes this call from other calls
         to the same tool. Without one, shinychat falls back to the call's own
         `title` (when it differs from the group's), then a short preview of the
         call's arguments, then the tool name.
-    value_preview
+    - ``value_preview``:
         A terse, per-call preview of the tool result, shown in the condensed
-        view before the full result is expanded.
-    icon
-        An icon to display in the header (alongside the title).
-    show_request
-        Whether to show the tool request inside the tool result container.
-    open
-        Whether or not the tool result details are expanded by default.
-    full_screen
-        Whether or not to display a fullscreen toggle button on the card.
-    html
-        Custom HTML content (to use in place of the default result display).
-    markdown
-        Custom Markdown string (to use in place of the default result display).
-    text
-        Custom plain text string (to use in place of the default result display).
-    footer
-        Optional HTML content to display in the card footer (below the card body).
+        activity row and grouped call list before the full result is expanded.
+    - ``icon``:
+        An icon to display alongside the title in the activity row and
+        drill-down card.
+    - ``show_request``:
+        Whether to show the tool request inside the drill-down card.
+    - ``open``:
+        Whether the drill-down card is expanded by default.
+    - ``full_screen``:
+        Whether to display a fullscreen toggle button on the drill-down card.
+    - ``html``:
+        Custom HTML content inside the drill-down card, in place of the
+        default result display.
+    - ``markdown``:
+        Custom Markdown string inside the drill-down card, in place of the
+        default result display.
+    - ``text``:
+        Custom plain text string inside the drill-down card, in place of the
+        default result display.
+    - ``footer``:
+        Optional HTML content to display in the drill-down card footer.
     """
 
     title: Optional[str] = None

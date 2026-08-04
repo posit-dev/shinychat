@@ -2189,21 +2189,26 @@ class ChatExpress(Chat):
         tool_grouping
             Controls how tool calls are grouped together in the UI:
 
-            - ``"tool"`` (default): calls to the *same* tool within a turn's
-              tool-calling phase are grouped into a single collapsible card.
-              This groups by tool name across the whole phase, not just
+            - ``"tool"`` (default): calls to the *same* tool within a
+              tool-calling loop are grouped into a single activity row.
+              This groups by tool name across the whole loop, not just
               consecutive calls -- e.g. calls to tools ``X``, ``Y``, ``Z``,
               ``X``, ``Y`` (in that order) are grouped into ``X`` (2 calls),
               ``Y`` (2 calls), and ``Z`` (1 call).
-            - ``"all"``: every tool call within a turn's tool-calling phase is
-              grouped into a single collapsible card, regardless of tool name.
-            - ``"none"``: each tool call is displayed in its own card.
+            - ``"all"``: every tool call within a tool-calling loop is
+              grouped into a single activity row, regardless of tool name.
+            - ``"none"``: each tool call is shown in its own activity row.
+
+            Prose or thinking between calls starts a new tool-calling loop, so
+            grouping never crosses those transcript boundaries.
 
             Individual tools can override this via a ``grouping`` tool
             annotation. For chatlas tools, prefer
             ``annotations={"extra": {"grouping": ...}}``: a top-level
             ``grouping`` key is also read, but it isn't part of chatlas'
-            ``ToolAnnotations``, so type checkers reject it.
+            ``ToolAnnotations``, so type checkers reject it. Chat-level
+            ``"none"`` always disables grouping, even when a tool annotation
+            requests ``"tool"`` or ``"all"``.
         kwargs
             Additional attributes for the chat container element.
         """
@@ -2429,20 +2434,25 @@ def chat_ui(
     tool_grouping
         Controls how tool calls are grouped together in the UI:
 
-        - ``"tool"`` (default): calls to the *same* tool within a turn's
-          tool-calling phase are grouped into a single collapsible card.
-          This groups by tool name across the whole phase, not just
+        - ``"tool"`` (default): calls to the *same* tool within a tool-calling
+          loop are grouped into a single activity row.
+          This groups by tool name across the whole loop, not just
           consecutive calls -- e.g. calls to tools ``X``, ``Y``, ``Z``, ``X``,
           ``Y`` (in that order) are grouped into ``X`` (2 calls), ``Y``
           (2 calls), and ``Z`` (1 call).
-        - ``"all"``: every tool call within a turn's tool-calling phase is
-          grouped into a single collapsible card, regardless of tool name.
-        - ``"none"``: each tool call is displayed in its own card.
+        - ``"all"``: every tool call within a tool-calling loop is
+          grouped into a single activity row, regardless of tool name.
+        - ``"none"``: each tool call is shown in its own activity row.
+
+        Prose or thinking between calls starts a new tool-calling loop, so
+        grouping never crosses those transcript boundaries.
 
         Individual tools can override this via a ``grouping`` tool annotation.
         For chatlas tools, prefer ``annotations={"extra": {"grouping": ...}}``:
         a top-level ``grouping`` key is also read, but it isn't part of
-        chatlas' ``ToolAnnotations``, so type checkers reject it.
+        chatlas' ``ToolAnnotations``, so type checkers reject it. Chat-level
+        ``"none"`` always disables grouping, even when a tool annotation
+        requests ``"tool"`` or ``"all"``.
     kwargs
         Additional attributes for the chat container element.
     """

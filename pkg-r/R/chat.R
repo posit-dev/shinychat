@@ -245,18 +245,24 @@ chat_greeting <- function(
 #'   by default. Customize with CSS properties `--shiny-chat-footer-font-size`
 #'   and `--shiny-chat-footer-color` on the chat container or footer element.
 #' @param tool_grouping Controls how tool calls are grouped together in the
-#'   UI:
+#'   compact activity rows:
 #'   * `"tool"` (default): calls to the *same* tool within a turn's
-#'     tool-calling phase are grouped into a single collapsible card. This
-#'     groups by tool name across the whole phase, not just consecutive
+#'     contiguous tool loop are grouped into one activity row. This groups by
+#'     tool name across the whole loop, not just consecutive
 #'     calls -- e.g. calls to tools `X`, `Y`, `Z`, `X`, `Y` (in that order)
 #'     are grouped into `X` (2 calls), `Y` (2 calls), and `Z` (1 call).
-#'   * `"all"`: every tool call within a turn's tool-calling phase is grouped
-#'     into a single collapsible card, regardless of tool name.
-#'   * `"none"`: each tool call is displayed in its own card.
+#'   * `"all"`: every tool call within a contiguous tool loop is summarized in
+#'     one activity row, regardless of tool name.
+#'   * `"none"`: each tool call is shown in its own activity row. Its request
+#'     and result remain available by drilling into that row; this does not
+#'     restore an always-visible card stack.
 #'
-#'   Individual tools can override this via a top-level `grouping` tool
-#'   annotation, e.g. `tool(..., annotations = list(grouping = "all"))`.
+#'   Prose or thinking between tool calls starts a new tool loop, so calls on
+#'   opposite sides of either boundary never group together. Individual tools can
+#'   override `"tool"` or `"all"` via a top-level `grouping` tool annotation,
+#'   e.g. `ellmer::tool(..., annotations = ellmer::tool_annotations(grouping = "all"))`.
+#'   `tool_grouping = "none"` takes precedence over every annotation and disables
+#'   grouping for the whole chat.
 #' @section Thinking display:
 #'
 #' When a model produces reasoning or "thinking" tokens, shinychat renders them

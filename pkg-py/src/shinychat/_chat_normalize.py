@@ -20,6 +20,48 @@ def message_content(message):
     new message types. To add support for a new type, register a new function
     using the `@message_content.register` decorator.
 
+    To render a `chatlas.ContentToolResult` subclass as fully custom,
+    standalone UI after a tool call settles, register complete and streaming
+    handlers for it here and in `message_content_chunk()`. The pending
+    condensed activity row remains while the tool runs, then shinychat pairs
+    the custom result with that call and renders the returned UI outside the
+    default drill-down card.
+
+    Examples
+    --------
+
+    ```python
+    from chatlas import ContentToolResult
+    from shiny import ui
+    from shinychat import message_content, message_content_chunk
+    from shinychat.types import ChatMessage
+
+
+    class WeatherResult(ContentToolResult):
+        location_name: str
+
+
+    def weather_result_ui(result: WeatherResult) -> ChatMessage:
+        temperature = result.value["temperature_2m"]
+        return ChatMessage(
+            content=ui.div(
+                ui.h4(result.location_name),
+                f"{temperature} C",
+                class_="weather-result",
+            )
+        )
+
+
+    @message_content.register
+    def _(result: WeatherResult) -> ChatMessage:
+        return weather_result_ui(result)
+
+
+    @message_content_chunk.register
+    def _(result: WeatherResult) -> ChatMessage:
+        return weather_result_ui(result)
+    ```
+
     Parameters
     ----------
     message
@@ -68,6 +110,48 @@ def message_content_chunk(chunk):
     This function uses `singledispatch` to allow for easy extension to support
     new chunk types. To add support for a new type, register a new function
     using the `@message_content_chunk.register` decorator.
+
+    To render a `chatlas.ContentToolResult` subclass as fully custom,
+    standalone UI after a tool call settles, register complete and streaming
+    handlers for it here and in `message_content()`. The pending condensed
+    activity row remains while the tool runs, then shinychat pairs the custom
+    result with that call and renders the returned UI outside the default
+    drill-down card.
+
+    Examples
+    --------
+
+    ```python
+    from chatlas import ContentToolResult
+    from shiny import ui
+    from shinychat import message_content, message_content_chunk
+    from shinychat.types import ChatMessage
+
+
+    class WeatherResult(ContentToolResult):
+        location_name: str
+
+
+    def weather_result_ui(result: WeatherResult) -> ChatMessage:
+        temperature = result.value["temperature_2m"]
+        return ChatMessage(
+            content=ui.div(
+                ui.h4(result.location_name),
+                f"{temperature} C",
+                class_="weather-result",
+            )
+        )
+
+
+    @message_content.register
+    def _(result: WeatherResult) -> ChatMessage:
+        return weather_result_ui(result)
+
+
+    @message_content_chunk.register
+    def _(result: WeatherResult) -> ChatMessage:
+        return weather_result_ui(result)
+    ```
 
     Parameters
     ----------

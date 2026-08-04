@@ -112,20 +112,26 @@ by default. Customize with CSS properties \code{--shiny-chat-footer-font-size}
 and \code{--shiny-chat-footer-color} on the chat container or footer element.}
 
 \item{tool_grouping}{Controls how tool calls are grouped together in the
-UI:
+compact activity rows:
 \itemize{
 \item \code{"tool"} (default): calls to the \emph{same} tool within a turn's
-tool-calling phase are grouped into a single collapsible card. This
-groups by tool name across the whole phase, not just consecutive
+contiguous tool loop are grouped into one activity row. This groups by
+tool name across the whole loop, not just consecutive
 calls -- e.g. calls to tools \code{X}, \code{Y}, \code{Z}, \code{X}, \code{Y} (in that order)
 are grouped into \code{X} (2 calls), \code{Y} (2 calls), and \code{Z} (1 call).
-\item \code{"all"}: every tool call within a turn's tool-calling phase is grouped
-into a single collapsible card, regardless of tool name.
-\item \code{"none"}: each tool call is displayed in its own card.
+\item \code{"all"}: every tool call within a contiguous tool loop is summarized in
+one activity row, regardless of tool name.
+\item \code{"none"}: each tool call is shown in its own activity row. Its request
+and result remain available by drilling into that row; this does not
+restore an always-visible card stack.
 }
 
-Individual tools can override this via a top-level \code{grouping} tool
-annotation, e.g. \code{tool(..., annotations = list(grouping = "all"))}.}
+Prose or thinking between tool calls starts a new tool loop, so calls on
+opposite sides of either boundary never group together. Individual tools can
+override \code{"tool"} or \code{"all"} via a top-level \code{grouping} tool annotation,
+e.g. \code{ellmer::tool(..., annotations = ellmer::tool_annotations(grouping = "all"))}.
+\code{tool_grouping = "none"} takes precedence over every annotation and disables
+grouping for the whole chat.}
 }
 \value{
 A Shiny tag object, suitable for inclusion in a Shiny UI

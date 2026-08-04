@@ -103,8 +103,8 @@ If you're working interactively in the R console---and if you've set the `echo =
 ```
 
 shinychat's tool UI works in the same way, but with rich output displays that are shown directly in the `chat_ui()` interface in Shiny apps.
-When the LLM calls a tool, shinychat automatically displays the tool request in a collapsed card.
-Expanding the card shows the arguments passed to the tool.
+When the LLM calls a tool, shinychat adds a compact activity row to the conversation.
+Depending on `tool_grouping`, one row can summarize several calls; expand the row to inspect its calls, then drill into a call to see its full request and result.
 
 ```{r}
 #| echo: false
@@ -123,7 +123,8 @@ request <- ContentToolRequest(
 contents_shinychat(request)
 ```
 
-When the tool result is completed, shinychat replaces the request with a card containing the tool result:
+When the tool result completes, the activity row becomes settled.
+Drilling into that call opens a card containing the request and result:
 
 ```{r}
 #| echo: false
@@ -139,7 +140,7 @@ contents_shinychat(result)
 ```
 
 If the tool throws an error when called, ellmer captures the error and shows it to the LLM.
-shinychat updates the tool card to show the error message:
+shinychat marks the settled activity row as failed and shows the error in its drill-down card:
 
 ```{r}
 request@id <- "tool_call_001c"
@@ -177,7 +178,7 @@ As a result, `ellmer::ContentToolRequest` and `ellmer::ContentToolResult` object
 ### Via tool annotations
 
 You can improve the visual presentation by adding `annotations` to your `ellmer::tool()` definition using `ellmer::tool_annotations()`.
-If the tool annotations include a `title` or `icon`, shinychat will use them in the tool request and result displays.
+If the tool annotations include a `title` or `icon`, shinychat uses them in the activity row and its drill-down card.
 
 ```{r}
 #| echo: true
@@ -193,13 +194,13 @@ get_weather_forecast <- tool(
     lon = type_number("Longitude")
   ),
   annotations = tool_annotations(
-    title = "Weather Forecast",
+    title = "Getting weather forecast",
     icon = bsicons::bs_icon("cloud-sun")
   )
 )
 ```
 
-Now the tool request shows the custom title
+Now the running activity row shows the custom title:
 
 ```{r}
 request_with_annotations <- ContentToolRequest(
@@ -215,7 +216,7 @@ request_with_annotations <- ContentToolRequest(
 contents_shinychat(request_with_annotations)
 ```
 
-and the tool results show both the custom title and the icon.
+The settled call keeps that title unless its result supplies a replacement, and it uses the same icon:
 
 ```{r}
 request_with_annotations@id <- "tool_call_004"
@@ -232,12 +233,12 @@ contents_shinychat(result_with_annotations)
 
 A tool call's title can come from two independent places:
 
-- The tool's **definition title**---set via `tool_annotations(title = )`---is shown while the call is running. Write it in the present tense, e.g. `"Running R code"`.
-- The **result title**---set via `tool_result_display(title = )` (see [Customizing tool result display](#customizing-tool-result-display))---is shown once the first result for that call arrives. Write it in the past tense, e.g. `"Ran R code"`.
+- The tool's **definition title**---set via `tool_annotations(title = )`---is shown while the call is running and labels a group of calls to that tool. Write it in the present tense, e.g. `"Running R code"`.
+- The **result title**---set via `tool_result_display(title = )` (see [Customizing tool result display](#customizing-tool-result-display))---is shown for a settled single-call row and its drill-down card. In a multi-call group, a distinct result title helps identify that call in the expanded call list. Write it in the past tense, e.g. `"Ran R code"`.
 
-shinychat swaps from the definition title to the result title exactly once, the moment a result lands; it never rewrites or conjugates either string for you. If you don't supply a result title, the definition title stays put for the life of the card.
+For a single-call row, shinychat swaps from the definition title to the result title when the result lands. A multi-call group keeps the shared definition title in its group row; result titles remain specific to their calls. shinychat never rewrites or conjugates either string for you. If you don't supply a result title, the definition title stays put after the call settles.
 
-Older versions of shinychat wrapped the definition title in a client-side template---`"Running {title}"` while in progress, `"{title} failed"` on error. That template has been removed. If your tool's title reads a little oddly while running (e.g. it was written to read well only after the automatic "Running " prefix was added), add an explicit present-tense definition title, or a past-tense result title, to get the wording you want. Failures are no longer folded into the title string at all; they're shown as a separate status cue (a "failed" or "N failed" note with an icon) next to the title.
+Older versions of shinychat wrapped the definition title in a client-side template---`"Running {title}"` while in progress, `"{title} failed"` on error. That template has been removed. If your tool's title reads a little oddly while running (for example, it was written to read well only after the automatic "Running " prefix was added), add an explicit present-tense definition title and, where useful, a past-tense result title. Failures are not folded into the title string; they're shown as a separate status cue next to the title.
 
 ### Via the tool result
 
@@ -271,8 +272,10 @@ get_weather_forecast <- tool(
       forecast,
       extra = list(
         display = tool_result_display(
-          title = paste("Weather Forecast for", location_name),
-          icon = icon
+          title = paste("Got weather forecast for", location_name),
+          icon = icon,
+          label = location_name,
+          value_preview = paste(nrow(forecast), "hourly readings")
         )
       )
     )
@@ -285,13 +288,13 @@ get_weather_forecast <- tool(
     location_name = type_string("Name of the location for display to the user")
   ),
   annotations = tool_annotations(
-    title = "Weather Forecast",
+    title = "Getting weather forecast",
     icon = bsicons::bs_icon("cloud-sun")
   )
 )
 ```
 
-Now when the tool result is completed, shinychat shows the custom title and icon based on the forecasted temperature:
+This complete example gives the running call a present-tense title, then gives the settled call a past-tense title and icon based on the forecast. Its `label` identifies the location in a group of calls, and its `value_preview` reports the result size without opening the drill-down card:
 
 ```{r}
 request_title_icon_result <- ContentToolRequest(
@@ -336,13 +339,13 @@ tool_random_number <- tool(
     )
   ),
   annotations = tool_annotations(
-    title = "Random Number Generator",
+    title = "Generating random number",
     icon = bsicons::bs_icon("dice-3-fill")
   )
 )
 ```
 
-When the tool is called, shinychat shows the reason the LLM called the tool in the header of the tool card.
+When the tool is called, shinychat shows the reason the LLM called the tool in the activity row and drill-down card.
 
 ```{r}
 request_random_number <- ContentToolRequest(
@@ -366,34 +369,19 @@ We've already seen that we can [customize the tool title and icon](#via-the-tool
 
 shinychat uses the `display` object for three additional categories of customization:
 
-1. A short per-call `label` and `value_preview`, shown in the collapsed view.
+1. A short per-call `label` and `value_preview`, shown in the activity row.
 2. Alternative `html`, `markdown`, or `text` to show the user in place of the text value shown to the LLM.
 3. Options to control how the tool result is presented.
 
-### Collapsed-view label and value preview
+### Activity-row label and value preview
 
-While a tool call is collapsed, shinychat shows a per-call `label`---a short identifying value like a filename or query, used to tell this call apart from other calls to the same tool---and a `value_preview`, a terse peek at the result, like `"1,204 rows"` or `"3 files updated"`. Both are optional and, like `title` and `icon`, are computed inside your tool function and returned via `tool_result_display()`:
+While an activity row is collapsed, shinychat shows a per-call `label`---a short identifying value like a filename or query, used to tell this call apart from other calls to the same tool---and a `value_preview`, a terse peek at the result, like `"1,204 rows"` or `"3 files updated"`. Both are optional and, like `title` and `icon`, are computed inside the tool function. The complete weather example above computes `label = location_name` from the tool input and `value_preview = paste(nrow(forecast), "hourly readings")` from its result.
 
-```{r}
-#| echo: true
-#| eval: false
-
-ContentToolResult(
-  forecast_data,
-  extra = list(
-    display = tool_result_display(
-      label = location_name,
-      value_preview = paste(nrow(forecast_data), "hourly readings")
-    )
-  )
-)
-```
-
-`label` and `value_preview` only affect the collapsed summary; the full result (or its [alternative display content](#alternative-display-content)) is still shown when the call is expanded.
+`label` and `value_preview` only affect the activity row and expanded call list; the full result (or its [rich display content](#rich-content-in-the-drill-down-card)) is still shown in the drill-down card.
 
 When you don't set a `label`, shinychat falls back through the next best identifier it has: the call's own `title` when it differs from the group's, then a short preview of the call's arguments (up to three, as `name: value`, skipping any whose name begins with `_` or `.`), and finally the tool's name. So a row always says something, even for a tool that takes no arguments---but a `label` is what makes two calls to the same tool easy to tell apart.
 
-### Alternative display content
+### Rich content in the drill-down card
 
 By default, shinychat shows the tool result's `value` property as a code block to the user.
 This is often sufficient, but in some cases your tool may collect or prepare data that could be better presented to users in a different format.
@@ -401,7 +389,7 @@ This is often sufficient, but in some cases your tool may collect or prepare dat
 For example, our weather tool returns a data frame with the forecast for the next day.
 The LLM sees a JSON representation of this data frame, but users would likely prefer to see a nicely formatted table.
 
-shinychat looks for the following properties in the `display` list and shows the user the first available display in the following order:
+Set one of the following fields in `tool_result_display()` to replace the default result content in the drill-down card:
 
 1. `html`: An HTML string or object. This can be HTML generated via R packages like `{htmltools}`, `{gt}`, `{reactable}` or even `{htmlwidgets}`.
 2. `markdown`: A markdown string that is automatically rendered as rich HTML in shinychat.
@@ -409,6 +397,7 @@ shinychat looks for the following properties in the `display` list and shows the
 
 Keep in mind that the content you show to your users should faithfully represent the `value` shown to the LLM.
 Our weather tool is a great example---a JSON object isn't very user-friendly, but a table showing the forecast data is perfect.
+This is still shinychat's normal tool UI: the compact activity row remains, and the rich content appears when the user drills into the settled call.
 
 #### Alternative HTML display
 
@@ -427,8 +416,13 @@ get_weather_forecast <- tool(
       extra = list(
         display = tool_result_display(
           html = forecast_table,
-          title = paste("Weather Forecast for", location_name),
-          full_screen = TRUE
+          title = paste("Got weather forecast for", location_name),
+          label = location_name,
+          value_preview = paste(nrow(forecast_data), "hourly readings"),
+          show_request = FALSE,
+          open = TRUE,
+          full_screen = TRUE,
+          footer = htmltools::tags$small("Forecast data from weather.gov")
         )
       )
     )
@@ -441,14 +435,13 @@ get_weather_forecast <- tool(
     location_name = type_string("Name of the location for display to the user")
   ),
   annotations = tool_annotations(
-    title = "Weather Forecast",
+    title = "Getting weather forecast",
     icon = bsicons::bs_icon("cloud-sun")
   )
 )
 ```
 
-Expand the tool result card to see the forecast as a table.
-Notice the fullscreen toggle button in the card body---clicking it expands the card to fill the viewport.
+This result opens its drill-down card by default. Its rich table, footer, and fullscreen toggle all live in that card; the compact activity row remains available as the summary.
 
 ```{r}
 request_html <- ContentToolRequest(
@@ -499,7 +492,7 @@ get_weather_forecast <- tool(
       extra = list(
         display = tool_result_display(
           markdown = forecast_summary,
-          title = paste("Weather Forecast for", location_name)
+          title = paste("Got weather forecast for", location_name)
         )
       )
     )
@@ -512,7 +505,7 @@ get_weather_forecast <- tool(
     location_name = type_string("Name of the location for display to the user")
   ),
   annotations = tool_annotations(
-    title = "Weather Forecast",
+    title = "Getting weather forecast",
     icon = bsicons::bs_icon("cloud-sun")
   )
 )
@@ -532,34 +525,43 @@ result_html@request <- request_html
 contents_shinychat(result_html)
 ```
 
+### Fully custom standalone output
+
+`tool_result_display(html = )`, `markdown =`, and `text =` customize shinychat's drill-down card. Use a custom `contents_shinychat()` method only when the finished result should be entirely different UI, such as a `bslib::value_box()` or interactive application component.
+
+Return that UI directly from a method for an `ellmer::ContentToolResult` subclass. While the tool is running, shinychat still shows its activity row. Once the custom result settles, shinychat removes that call from the row and renders the returned UI as standalone output below the tool loop. See [`contents_shinychat()`](../reference/contents_shinychat.html) for the extension pattern.
+
+For most rich results, prefer `tool_result_display()` because it preserves the normal activity row and drill-down card. A custom method is the deliberate escape hatch for owning the entire settled result UI.
 
 ### Display Options
 
 In addition to customizing the [tool title and icon](#via-the-tool-result) and providing alternative display content, you can also control how the tool result is presented using `tool_result_display()` arguments.
 
-shinychat supports several options to control how results are presented:
+These options apply to the drill-down card beneath the activity row:
 
-- **`show_request = FALSE`**: Hide the tool call details from the tool results display.
+- **`show_request = FALSE`**: Hide the tool call details from the drill-down card.
 
    This is useful when you have rich output and the tool call details are clear from the rest of the display.
    For example, it might be appropriate to hide the request details when showing a [full formatted table of results](#alternative-html-display).
 
-- **`open = TRUE`**: Expand the result panel by default.
+- **`open = TRUE`**: Open the drill-down card by default once the result settles.
 
-   This is most useful when you've [customized the tool display](#alternative-display-content) to include an `{htmlwidget}` or other rich content that users should see immediately.
+   This is most useful when you've [customized the drill-down content](#rich-content-in-the-drill-down-card) to include an `{htmlwidget}` or other rich content that users should see immediately.
 
-- **`full_screen = TRUE`**: Add a fullscreen toggle button to the tool result card.
+- **`full_screen = TRUE`**: Add a fullscreen toggle button to the drill-down card.
 
    When clicked, the card expands to fill the entire viewport, making it easy to inspect large or detailed content like maps, tables, and plots. Users can exit fullscreen by pressing `Escape`, clicking the backdrop, or using the close button.
 
-- **`title`** and **`icon`**: Choose the title and icon displayed in the tool result card header.
+- **`footer`**: Add HTML content below the drill-down card body. Use it for attribution, a compact summary, or related controls.
 
-- **`label`** and **`value_preview`**: Choose the [per-call label and result preview](#collapsed-view-label-and-value-preview) shown in the collapsed view.
+- **`title`** and **`icon`**: Choose the title and icon used for the settled call and drill-down card. A result `title` replaces the definition-level title in a single-call row; in a multi-call group, it can identify the call in the expanded call list.
+
+- **`label`** and **`value_preview`**: Choose the [per-call label and result preview](#activity-row-label-and-value-preview) shown in the activity row and expanded call list.
 
 
 ## Grouping tool calls
 
-When a conversation includes several tool calls, shinychat can collapse them together into a single group rather than showing one card per call. Control this with `tool_grouping` on `chat_ui()`:
+When a conversation includes several tool calls, shinychat can summarize them in one activity row rather than showing one row per call. Control this with `tool_grouping` on `chat_ui()`:
 
 ```{r}
 #| echo: true
@@ -570,9 +572,11 @@ chat_ui("chat", tool_grouping = "tool")
 
 `tool_grouping` accepts one of:
 
-- **`"tool"`** (the default): calls to the *same* tool made within one assistant turn's tool-calling phase are grouped together, regardless of the order in which they and other tools were called. For example, if a turn calls `get_weather_forecast`, then `search_web`, then `get_weather_forecast` again, the two `get_weather_forecast` calls are grouped even though a different tool call came between them.
-- **`"all"`**: every tool call within the turn's tool-calling phase is grouped into a single collapsible summary, regardless of tool name.
-- **`"none"`**: each tool call gets its own card; nothing is grouped.
+- **`"tool"`** (the default): calls to the *same* tool within one contiguous tool loop are grouped in one activity row, regardless of the order in which other tools were called. For example, if a loop calls `get_weather_forecast`, then `search_web`, then `get_weather_forecast` again, the two weather calls are grouped even though a different tool call came between them.
+- **`"all"`**: every tool call in a contiguous tool loop is summarized in one activity row, regardless of tool name.
+- **`"none"`**: each tool call gets its own activity row. A call's request and result are still available only after drilling into that row; this does not restore the old always-visible card stack.
+
+Prose or thinking between tool calls starts a new tool loop, so calls on opposite sides of either boundary never group together.
 
 Individual tools can override the chat-level setting with a `grouping` annotation:
 
@@ -591,13 +595,13 @@ get_weather_forecast <- tool(
     lon = type_number("Longitude")
   ),
   annotations = tool_annotations(
-    title = "Weather Forecast",
+    title = "Getting weather forecast",
     grouping = "all"
   )
 )
 ```
 
-`grouping`, like `title` and `icon`, is a top-level field on the tool's annotations---no need to nest it under anything else.
+`grouping`, like `title` and `icon`, is a top-level field on the tool's annotations---no need to nest it under anything else. An annotation can override `"tool"` or `"all"` for its tool, including by setting `grouping = "none"`. But `chat_ui(tool_grouping = "none")` takes precedence over every annotation and disables grouping for the entire chat.
 
 ## Global display options
 
