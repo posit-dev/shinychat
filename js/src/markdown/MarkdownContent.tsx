@@ -16,6 +16,7 @@ import {
 import { CopyableCodeBlock } from "./components/CopyableCodeBlock"
 import { BootstrapTable } from "./components/BootstrapTable"
 import { RawHTML } from "../chat/RawHTML"
+import { escapeReservedElements } from "./reservedElements"
 
 const baseAssistantComponents: Record<string, ComponentType<unknown>> = {
   pre: CopyableCodeBlock as ComponentType<unknown>,
@@ -64,13 +65,18 @@ export function MarkdownContent({
   )
 
   // Stage 1 (expensive): parse markdown string → HAST. Cached by content+processor.
+  //
+  // Only the html branch may produce shinychat's raw-HTML elements; escaping
+  // them on the markdown branch keeps model output away from innerHTML. This
+  // has to happen here rather than server-side, because a streamed tag name can
+  // be split across chunks and is only whole once the client has reassembled it.
   const hast = useMemo(
     () =>
       isText
         ? null
         : isHtml
           ? parseHtml(content, processor)
-          : parseMarkdown(content, processor),
+          : parseMarkdown(escapeReservedElements(content), processor),
     [content, isText, isHtml, processor],
   )
 

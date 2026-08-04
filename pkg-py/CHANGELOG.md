@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* Fixed a cross-site scripting vulnerability in message rendering. shinychat's internal custom elements (`<shinychat-raw-html>`, `<shiny-tool-request>`, `<shiny-tool-result>`) render their content as raw HTML, which is safe when the server builds them from Shiny/htmltools UI. Assistant *markdown* naming those elements was rendered the same way, so model output — including model output steered by untrusted data, as in retrieval or tool-using apps — could execute script in the app's origin. Those names are now escaped in markdown content and display as literal text; HTML content built by the server is unaffected.
+
 * Fixed `MarkdownStream` permanently stopping following new content after the user scrolled back to the bottom. Pinning was decided only from `scroll` events, which browsers dispatch asynchronously; if a chunk grew the container first, the user's at-bottom position no longer read as at-bottom and auto-scroll silently disengaged for good. (#282)
 
 ## [0.6.0] - 2026-07-06
