@@ -769,6 +769,18 @@ def test_chat_ui_allow_attachments_attribute():
     assert attachment_attr(chat_ui("c", allow_attachments=False)) == "false"
 
 
+def test_chat_ui_labels_tag_messages_as_html():
+    from htmltools import div
+    from shinychat import chat_ui
+
+    plain = str(chat_ui("chat", messages=["plain string"]))
+    assert "content-type" not in plain
+
+    tagged = str(chat_ui("chat", messages=[div("hi")]))
+    assert 'content-type="html"' in tagged
+    assert "shinychat-raw-html" in tagged
+
+
 def test_chat_ui_accept_list_and_max_attachment_size(
     monkeypatch: pytest.MonkeyPatch,
 ):
