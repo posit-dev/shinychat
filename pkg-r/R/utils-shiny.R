@@ -102,10 +102,12 @@ HTML_CONTENT_SENT_KEY <- "shinychat_html_content_sent"
 HTML_CONTENT_RUN_KEY <- "shinychat_html_content_run"
 
 record_sent_html_content <- function(session, id, action) {
-  if (is.null(session) || !is.list(action) || !is_string(action$type)) {
+  if (is.null(session) || !is.list(action) || !is_string(action[["type"]])) {
     return(invisible())
   }
-  if (!action$type %in% c("chunk_start", "chunk", "chunk_end", "message")) {
+  if (
+    !action[["type"]] %in% c("chunk_start", "chunk", "chunk_end", "message")
+  ) {
     # Anything else (greeting*, clear, update_input, ...) carries no message
     # content. Leaving the run untouched matters: resetting it would let an
     # unrelated action sent mid-stream invalidate the concatenation in flight.
@@ -116,14 +118,14 @@ record_sent_html_content <- function(session, id, action) {
   runs <- session$userData[[HTML_CONTENT_RUN_KEY]] %||% list()
   run <- runs[[id]] %||% ""
 
-  if (identical(action$type, "chunk_end")) {
+  if (identical(action[["type"]], "chunk_end")) {
     run <- ""
-  } else if (identical(action$type, "chunk")) {
-    if (is_html_content(action$content_type, action$content)) {
-      run <- if (identical(action$operation, "replace")) {
-        action$content
+  } else if (identical(action[["type"]], "chunk")) {
+    if (is_html_content(action[["content_type"]], action[["content"]])) {
+      run <- if (identical(action[["operation"]], "replace")) {
+        action[["content"]]
       } else {
-        paste0(run, action$content)
+        paste0(run, action[["content"]])
       }
       sent <- c(sent, rlang::hash(run))
     } else {
@@ -132,21 +134,21 @@ record_sent_html_content <- function(session, id, action) {
   } else {
     # message / chunk_start: one client block per segment, so each segment is
     # trusted on its own and the concatenation across them never appears.
-    segments <- action$message$segments %||% list()
+    segments <- action[["message"]][["segments"]] %||% list()
     for (s in segments) {
-      if (is_html_content(s$content_type, s$content)) {
-        sent <- c(sent, rlang::hash(s$content))
+      if (is_html_content(s[["content_type"]], s[["content"]])) {
+        sent <- c(sent, rlang::hash(s[["content"]]))
       }
     }
     # Only a chunk_start's final segment can be extended by later chunks; a
     # completed `message` is never appended to.
     last <- if (length(segments) > 0) segments[[length(segments)]] else NULL
     run <- if (
-      identical(action$type, "chunk_start") &&
+      identical(action[["type"]], "chunk_start") &&
         !is.null(last) &&
-        is_html_content(last$content_type, last$content)
+        is_html_content(last[["content_type"]], last[["content"]])
     ) {
-      last$content
+      last[["content"]]
     } else {
       ""
     }

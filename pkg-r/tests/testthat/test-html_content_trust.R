@@ -156,4 +156,7 @@ test_that("non-html and malformed segments never enter the registry", {
   expect_false(is_trusted_html_content(session, "42"))
   expect_false(is_trusted_html_content(session, NULL))
   expect_false(is_trusted_html_content(NULL, "plain"))
+  # `$` partial-matches "content" to "content_type" on a segment missing
+  # `content`; guard against that regressing back in.
+  expect_false(is_trusted_html_content(session, "html"))
 })
