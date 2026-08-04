@@ -47,8 +47,9 @@ def _request(
         # Mirrors what chatlas itself does internally: `x.tool =
         # ToolInfo.from_tool(tool)`. Going through `ToolInfo` (a pydantic
         # model with a typed `annotations` field) is important -- unknown
-        # top-level annotation keys get silently dropped by pydantic, while
-        # keys nested under `annotations["extra"]` survive untouched.
+        # top-level annotation keys survive at runtime, but are outside
+        # chatlas's `ToolAnnotations` typing; `annotations["extra"]` is the
+        # type-checker-friendly spelling.
         req.tool = ToolInfo.from_tool(tool)
     return req
 
@@ -175,10 +176,10 @@ def test_tool_annotation_invalid_grouping_omits_attribute(bogus_grouping: Any):
 
 
 def test_tool_annotation_grouping_top_level_also_supported():
-    # Top-level annotation keys are stripped by chatlas's `ToolInfo` model
-    # once a tool round-trips through the real request pipeline, but the
-    # top-level key is still honored as a fallback (e.g. for hand-built
-    # `ContentToolRequest.tool` values that bypass that validation).
+    # Top-level annotation keys survive at runtime, but are outside chatlas's
+    # `ToolAnnotations` typing; `annotations["extra"]` is the
+    # type-checker-friendly spelling. This test exercises the top-level
+    # fallback with a hand-built `ContentToolRequest.tool` value.
     request = _request()
     request.tool = ToolInfo(
         name="my_tool",
@@ -530,9 +531,13 @@ def test_custom_result_via_chat_ui_messages_is_wrapped(
     result = _CustomToolResult(value=2, request=request)
 
     ui = chat_ui("chat", messages=[request, result])
-    message_tags = ui.children[0].children
-    request_html = message_tags[0].attrs["content"]
-    result_html = message_tags[1].attrs["content"]
+    messages_container = ui.children[0]
+    assert isinstance(messages_container, Tag)
+    request_tag, result_tag = messages_container.children
+    assert isinstance(request_tag, Tag)
+    assert isinstance(result_tag, Tag)
+    request_html = request_tag.attrs["content"]
+    result_html = result_tag.attrs["content"]
 
     assert "<shiny-tool-request" in request_html
     assert "<shiny-tool-result" in result_html
