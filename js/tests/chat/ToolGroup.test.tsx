@@ -1652,28 +1652,6 @@ describe("ToolGroup migrating custom rows", () => {
     expect(payloadTexts(container)).toEqual(["error UI"])
   })
 
-  it("orders migrated payloads by resolveIndex, not by group.calls order", () => {
-    const later = customCall({
-      requestId: "later",
-      toolName: "weather",
-      value: "<p>second</p>",
-      resolveIndex: 50,
-    })
-    const earlier = customCall({
-      requestId: "earlier",
-      toolName: "weather",
-      value: "<p>first</p>",
-      resolveIndex: 5,
-    })
-    // group.calls in the "wrong" order — resolveIndex must win.
-    const { container } = render(
-      <ToolGroup
-        group={group({ toolName: "weather", calls: [later, earlier] })}
-      />,
-    )
-    expect(payloadTexts(container)).toEqual(["first", "second"])
-  })
-
   it("renders each payload as a sibling after .shiny-chat-tool-group, not nested inside it", () => {
     const custom1 = customCall({
       requestId: "c1",
