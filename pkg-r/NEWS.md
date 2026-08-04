@@ -53,6 +53,22 @@
 
 * Fixed the copy button on code blocks not working in some embedded contexts. (@thisisnic, #247)
 
+* Fixed a cross-site scripting vulnerability in bookmark and chat-history
+  restoration. The browser's message snapshot was persisted verbatim and
+  replayed through sinks that render raw HTML, so a forged snapshot minted into
+  a shareable server bookmark could execute script against whoever opened that
+  URL. HTML content in a reported snapshot is now accepted only when it matches
+  content the server actually sent; anything else renders as literal text.
+
+* `chat_ui(messages = )` now renders htmltools/Shiny UI correctly again. Such
+  content was labelled as markdown, so its internal `<shinychat-raw-html>`
+  wrapper displayed as literal text and htmlwidgets in initial messages were
+  never bound.
+
+* Messages passed to `chat_ui(messages = )` are no longer captured in the chat's
+  persisted transcript. Because the page markup re-renders them on every load,
+  restoring a bookmark previously showed each of them twice.
+
 # shinychat 0.4.0
 
 ## Experimental internal changes
