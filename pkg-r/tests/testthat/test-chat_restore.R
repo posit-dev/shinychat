@@ -37,11 +37,76 @@ test_that("encode returns NULL for empty input; decode guards non-values", {
   expect_null(decode_ui_snapshot(NA_character_))
 })
 
-test_that("decode_ui_snapshot returns NULL (not an error) for corrupted input", {
-  expect_null(decode_ui_snapshot("not valid base64/gzip"))
-  expect_null(
-    decode_ui_snapshot(base64enc::base64encode(charToRaw("not gzip")))
+test_that("decode_ui_snapshot warns and returns NULL for corrupted input", {
+  expect_warning(
+    expect_null(decode_ui_snapshot("not valid base64/gzip")),
+    "could not be decoded"
   )
+  expect_warning(
+    expect_null(
+      decode_ui_snapshot(base64enc::base64encode(charToRaw("not gzip")))
+    ),
+    "could not be decoded"
+  )
+})
+
+test_that("decode_ui_snapshot rejects well-formed payloads that aren't a transcript", {
+  # A payload can survive base64/gzip/serializeJSON intact and still be the
+  # wrong shape; replay must not reach `message$role` on it.
+  not_transcripts <- list(
+    1L,
+    "hello",
+    list(role = "user"),
+    list(list(role = "user")),
+    list(list(role = "user", segments = list(list(content = "hi")))),
+    list(list(role = 1L, segments = list())),
+    list(
+      list(
+        role = "user",
+        segments = list(list(content = "hi", content_type = c("a", "b")))
+      )
+    )
+  )
+  for (payload in not_transcripts) {
+    expect_warning(
+      expect_null(decode_ui_snapshot(gzip_b64_encode(payload))),
+      "not a chat transcript",
+      info = paste(utils::capture.output(str(payload)), collapse = " ")
+    )
+  }
+})
+
+test_that("decode_ui_snapshot accepts a transcript with optional fields", {
+  messages <- list(
+    list(
+      role = "user",
+      segments = list(list(content = "hi", content_type = "markdown")),
+      attachments = list(list(content_type = "image/png", url = "data:"))
+    ),
+    list(
+      role = "assistant",
+      segments = list(),
+      htmlDeps = list(list(name = "w", version = "1.0"))
+    )
+  )
+  expect_identical(decode_ui_snapshot(encode_ui_snapshot(messages)), messages)
+})
+
+test_that("a malformed snapshot routes restore to the turn-derived fallback", {
+  session <- shiny::MockShinySession$new()
+  fallback_calls <- 0L
+  local_mocked_bindings(
+    client_set_ui = function(client, ..., id) {
+      fallback_calls <<- fallback_calls + 1L
+    }
+  )
+  state <- rlang::env(values = list(chat_ui = gzip_b64_encode(1L)))
+
+  expect_warning(
+    bookmark_restore_ui(state, client = NULL, id = "chat", session = session),
+    "not a chat transcript"
+  )
+  expect_equal(fallback_calls, 1L)
 })
 
 test_that("restore_chat_ui replays the stored snapshot faithfully", {

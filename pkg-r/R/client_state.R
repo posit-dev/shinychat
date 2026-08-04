@@ -98,6 +98,10 @@ encode_ui_snapshot <- function(messages) {
   gzip_b64_encode(messages)
 }
 
+# Returns NULL for anything we can't confidently replay, so callers fall through
+# to the turn-derived UI documented in ?chat_restore rather than aborting the
+# whole onRestore handler. Warns on the way, since a silent downgrade from
+# faithful restore to re-derived UI is otherwise undiagnosable.
 decode_ui_snapshot <- function(str) {
   if (
     is.null(str) ||
@@ -108,10 +112,46 @@ decode_ui_snapshot <- function(str) {
   ) {
     return(NULL)
   }
-  tryCatch(
+  snapshot <- tryCatch(
     gzip_b64_decode(str),
-    error = function(e) NULL
+    error = function(e) {
+      rlang::warn(
+        c(
+          "Saved chat UI snapshot could not be decoded; restoring the chat UI from the client's turns instead.",
+          i = conditionMessage(e)
+        )
+      )
+      NULL
+    }
   )
+  if (is.null(snapshot)) {
+    return(NULL)
+  }
+  if (!is_ui_snapshot(snapshot)) {
+    rlang::warn(
+      "Saved chat UI snapshot is not a chat transcript; restoring the chat UI from the client's turns instead."
+    )
+    return(NULL)
+  }
+  snapshot
+}
+
+is_ui_snapshot <- function(x) {
+  is.list(x) && is.null(names(x)) && all(vapply(x, is_ui_message, logical(1)))
+}
+
+is_ui_message <- function(x) {
+  is.list(x) &&
+    is_string(x$role) &&
+    is.list(x$segments) &&
+    is.null(names(x$segments)) &&
+    all(vapply(x$segments, is_ui_segment, logical(1))) &&
+    (is.null(x$attachments) || is.list(x$attachments)) &&
+    (is.null(x$htmlDeps) || is.list(x$htmlDeps))
+}
+
+is_ui_segment <- function(x) {
+  is.list(x) && is_string(x$content) && is_string(x$content_type)
 }
 
 # Render restored chat UI: replay the browser's stored message snapshot when we

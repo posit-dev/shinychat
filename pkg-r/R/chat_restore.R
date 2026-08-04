@@ -13,7 +13,8 @@
 #' (rendering applied between receiving a message and showing it) are preserved.
 #' Under `bookmarkStore = "url"`, and for bookmarks saved before this snapshot
 #' existed, restoration falls back to re-deriving the UI from the `client`'s
-#' turns, which does not capture such transformations. The greeting content is
+#' turns, which does not capture such transformations. The same fallback (with
+#' a warning) covers a snapshot that can't be read back. The greeting content is
 #' also saved/restored automatically.
 #'
 #' To avoid restoring chat history from the `client`, you can ensure that the
