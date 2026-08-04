@@ -344,10 +344,15 @@ chat_ui <- function(
     # (it's also important that we *don't escape HTML* here).
     if (is.character(content)) {
       ui <- list(html = paste(content, collapse = "\n"))
+      content_type <- NULL
     } else {
       ui <- with_current_theme({
         htmltools::renderTags(pre_process_ui(content))
       })
+      # pre_process_ui() emits <shinychat-raw-html> islands, which only reach a
+      # raw-HTML sink on the client's html branch. Without this the client
+      # defaults to markdown and escapes the island name into visible text.
+      content_type <- "html"
     }
 
     tag(
@@ -355,6 +360,7 @@ chat_ui <- function(
       rlang::list2(
         `data-role` = role,
         content = ui[["html"]],
+        `content-type` = content_type,
         icon = if (!is.null(icon_assistant)) as.character(icon_assistant),
         ui[["dependencies"]],
       )
