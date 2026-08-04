@@ -22,6 +22,10 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => {
     document.body.replaceChildren()
+    // ChatContainerElement defers React unmount to distinguish removal from a
+    // DOM move, then Tiptap defers Editor.destroy() by another timer tick.
+    // Keep jsdom alive until both teardown stages have completed.
+    await new Promise((resolve) => setTimeout(resolve, 5))
   })
 })
 
