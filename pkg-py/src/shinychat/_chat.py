@@ -2481,6 +2481,10 @@ def chat_ui(
         messages = []
     for x in messages:
         msg = message_content(x)
+        # Match append_message() and the Turn normalizer: a direct custom
+        # ContentToolResult must retain a real result element so a preloaded
+        # request with the same id is recognized as settled.
+        msg = _wrap_custom_tool_result(x, msg)
         message_tags.append(
             Tag(
                 "shiny-chat-message",

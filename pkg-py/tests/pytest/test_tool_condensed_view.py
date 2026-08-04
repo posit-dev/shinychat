@@ -19,7 +19,7 @@ import pytest
 from chatlas._tools import Tool
 from chatlas.types import ContentToolRequest, ContentToolResult, ToolInfo
 from htmltools import HTML, HTMLDependency, Tag, TagList
-from shinychat import chat_ui, message_content_chunk
+from shinychat import chat_ui, message_content, message_content_chunk
 from shinychat._chat_normalize_chatlas import (
     ToolResultDisplay,
     tool_request_contents,
@@ -361,6 +361,23 @@ def custom_display_handler():
     message_content_chunk._clear_cache()
 
 
+@pytest.fixture
+def custom_message_handler():
+    """Register a complete-message handler and undo it afterward."""
+    registry = gc.get_referents(message_content.registry)[0]
+    before = set(registry)
+
+    def _register(handler: Any) -> None:
+        message_content.register(_CustomToolResult, handler)
+
+    yield _register
+
+    for key in list(registry):
+        if key not in before:
+            del registry[key]
+    message_content._clear_cache()
+
+
 async def _stream_custom_result(result: ContentToolResult) -> list[Any]:
     """Drive `result` through `chat._append_message_chunk`, capturing what's sent."""
     from shiny.express._stub_session import ExpressStubSession
@@ -447,7 +464,9 @@ async def test_custom_string_result_stays_markdown(
 
 
 @pytest.mark.anyio
-async def test_custom_result_via_append_message_is_wrapped() -> None:
+async def test_custom_result_via_append_message_is_wrapped(
+    custom_message_handler: Any,
+) -> None:
     """`append_message()` must wrap too, not just the streaming path.
 
     Its own docs point authors at `message_content`, and a handler registered
@@ -456,35 +475,26 @@ async def test_custom_result_via_append_message_is_wrapped() -> None:
     """
     from shiny.express._stub_session import ExpressStubSession
     from shiny.session import session_context
-    from shinychat import Chat, message_content
-
-    registry = gc.get_referents(message_content.registry)[0]
-    before = set(registry)
+    from shinychat import Chat
 
     def handler(message: _CustomToolResult) -> ChatMessage:
         return ChatMessage(
             content=Tag("div", "Custom UI", class_="my-custom-ui")
         )
 
-    message_content.register(_CustomToolResult, handler)
-    try:
-        sent: list[Any] = []
+    custom_message_handler(handler)
+    sent: list[Any] = []
 
-        async def capture_append(message: Any, **kwargs: Any) -> None:
-            sent.append(message)
+    async def capture_append(message: Any, **kwargs: Any) -> None:
+        sent.append(message)
 
-        request = _request(tool=_tool())
-        result = _CustomToolResult(value=2, request=request)
+    request = _request(tool=_tool())
+    result = _CustomToolResult(value=2, request=request)
 
-        with session_context(ExpressStubSession()):
-            chat = Chat(id="chat")
-            chat._send_append_message = capture_append  # type: ignore[method-assign]
-            await chat.append_message(result)
-    finally:
-        for key in list(registry):
-            if key not in before:
-                del registry[key]
-        message_content._clear_cache()
+    with session_context(ExpressStubSession()):
+        chat = Chat(id="chat")
+        chat._send_append_message = capture_append  # type: ignore[method-assign]
+        await chat.append_message(result)
 
     assert len(sent) == 1
     html = sent[0].content
@@ -492,6 +502,46 @@ async def test_custom_result_via_append_message_is_wrapped() -> None:
     assert "custom-display" in html
     assert 'request-id="call-1"' in html
     assert "my-custom-ui" in html
+
+
+def test_custom_result_via_chat_ui_messages_is_wrapped(
+    custom_message_handler: Any,
+) -> None:
+    """A direct static result must settle its preloaded request.
+
+    A Turn already wraps each content item in its own normalizer, but
+    chat_ui(messages=[request, result]) normalizes the two items separately.
+    The result therefore needs the same post-normalization wrap as
+    append_message().
+    """
+    dep = HTMLDependency(
+        "static-custom-widget",
+        "1.0.0",
+        head=HTML("<meta name='static-custom-widget'>"),
+    )
+
+    def handler(message: _CustomToolResult) -> ChatMessage:
+        return ChatMessage(
+            content=Tag("div", dep, "Custom UI", class_="my-custom-ui")
+        )
+
+    custom_message_handler(handler)
+    request = _request(tool=_tool())
+    result = _CustomToolResult(value=2, request=request)
+
+    ui = chat_ui("chat", messages=[request, result])
+    message_tags = ui.children[0].children
+    request_html = message_tags[0].attrs["content"]
+    result_html = message_tags[1].attrs["content"]
+
+    assert "<shiny-tool-request" in request_html
+    assert "<shiny-tool-result" in result_html
+    assert "custom-display" in result_html
+    assert 'request-id="call-1"' in request_html
+    assert 'request-id="call-1"' in result_html
+    assert "Custom UI" in result_html
+    assert "my-custom-ui" in result_html
+    assert "static-custom-widget" in [dep.name for dep in ui.get_dependencies()]
 
 
 @pytest.mark.anyio
