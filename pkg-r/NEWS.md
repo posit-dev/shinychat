@@ -28,6 +28,13 @@
   transformations. The bookmark on a completed response now fires once the
   browser reports the finished reply, so the persisted UI includes it (#272 follow-up).
 
+* HTML dependencies reported back by the browser in `input$<id>_messages` are
+  now matched against the dependencies the server actually sent, and the
+  server's own copy is used in their place. Previously the client's dependency
+  objects were carried through verbatim into saved history and bookmark state,
+  so a forged report could have been replayed as scripts into anyone opening the
+  resulting bookmark URL.
+
 * `chat_app()` no longer renders a close button or registers a `stopApp()` observer when deployed to a server. Both are now gated on `rlang::is_interactive()`, preventing session crashes in multi-user deployments. (#265)
 
 * The `dismissible` parameter of `chat_greeting()` has been renamed to `persistent` with an inverted value. `dismissible = FALSE` (greeting stays visible) is now `persistent = TRUE`. The old `dismissible` argument still works but warns. When both `persistent` and `dismissible` are provided, `persistent` now takes precedence silently rather than erroring. (#260)

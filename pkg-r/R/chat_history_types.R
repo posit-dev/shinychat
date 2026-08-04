@@ -1,4 +1,4 @@
-messages_input_value <- function(value) {
+messages_input_value <- function(value, session = NULL) {
   if (!is.list(value)) {
     rlang::abort(paste0(
       "Expected a list from shinychat.messages, got ",
@@ -12,8 +12,11 @@ messages_input_value <- function(value) {
         list(content = s$content, content_type = s$content_type)
       })
     )
-    if (!is.null(m$htmlDeps)) {
-      message$htmlDeps <- m$htmlDeps
+    # Never carry the client's own dependency objects forward -- see
+    # trusted_html_deps() for why the report is only an identity lookup.
+    deps <- trusted_html_deps(session, m$htmlDeps)
+    if (!is.null(deps)) {
+      message$htmlDeps <- deps
     }
     if (!is.null(m$attachments) && length(m$attachments) > 0) {
       validate_attachments(m$attachments)
