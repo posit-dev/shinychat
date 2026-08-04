@@ -100,10 +100,12 @@ test_that("deps with a malformed identity are dropped", {
   expect_null(messages_input_value(reported, session)[[1]]$htmlDeps)
 })
 
-test_that("a forged snapshot cannot replay attacker scripts through a bookmark", {
-  # End-to-end for the stored-script vector: a server bookmark is shareable via
-  # its `_state_id_` URL, so anything we persist from the browser's `_messages`
-  # report is replayed into whoever opens that URL.
+test_that("a forged snapshot cannot replay attacker scripts through the store", {
+  # End-to-end for the stored-script vector: both the history store and a
+  # server bookmark persist the browser's sanitized `_messages` report and
+  # later replay it -- possibly into a different session -- via
+  # restore_history_message(), the primitive shared by a history-conversation
+  # switch (chat_history.R's replay_ui()) and bookmark restore alike.
   attacker <- shiny::MockShinySession$new()
   forged <- list(
     list(
@@ -114,13 +116,6 @@ test_that("a forged snapshot cannot replay attacker scripts through a bookmark",
   )
   sanitized <- messages_input_value(forged, attacker)
 
-  local_mocked_bindings(
-    is_server_bookmarkstore = function() TRUE,
-    get_reported_messages = function(session, chat_id) sanitized
-  )
-  state <- rlang::env(values = list())
-  bookmark_save_ui(state, attacker, "chat")
-
   victim <- shiny::MockShinySession$new()
   captured_deps <- list()
   local_mocked_bindings(
@@ -129,7 +124,7 @@ test_that("a forged snapshot cannot replay attacker scripts through a bookmark",
       invisible()
     }
   )
-  bookmark_restore_ui(state, client = NULL, id = "chat", session = victim)
+  restore_history_message("chat", sanitized[[1]], session = victim)
 
   expect_true(all(vapply(captured_deps, is.null, logical(1))))
 })

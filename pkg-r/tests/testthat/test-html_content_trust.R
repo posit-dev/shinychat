@@ -70,17 +70,30 @@ test_that("each segment of a multi-segment message is trusted on its own", {
   expect_false(is_trusted_html_content(session, "<div>a</div><div>b</div>"))
 })
 
-test_that("consecutive html chunks are trusted merged and individually", {
+test_that("a streamed html message is trusted as the client merges it", {
   session <- shiny::MockShinySession$new()
   send_chunk_start(session, seg("A"))
   send_chunk(session, "B")
   send_chunk(session, "C")
   send_chunk_end(session)
 
-  expect_true(is_trusted_html_content(session, "A"))
-  expect_true(is_trusted_html_content(session, "AB"))
   expect_true(is_trusted_html_content(session, "ABC"))
   expect_false(is_trusted_html_content(session, "AC"))
+})
+
+test_that("a stream in flight has nothing to trust yet", {
+  # The browser reports only settled messages -- buildMessagesSnapshot() drops
+  # anything still streaming -- so the intermediate prefixes of a stream are
+  # never reported back and must not be trusted just because we sent them.
+  session <- shiny::MockShinySession$new()
+  send_chunk_start(session, seg("A"))
+  send_chunk(session, "B")
+
+  expect_false(is_trusted_html_content(session, "A"))
+  expect_false(is_trusted_html_content(session, "AB"))
+
+  send_chunk_end(session)
+  expect_true(is_trusted_html_content(session, "AB"))
 })
 
 test_that("two consecutive one-shot html messages are both trusted", {
@@ -93,44 +106,71 @@ test_that("two consecutive one-shot html messages are both trusted", {
   expect_false(is_trusted_html_content(session, "AB"))
 })
 
-test_that("a non-html chunk ends the run", {
+test_that("a chunk of another content type starts a new segment", {
   session <- shiny::MockShinySession$new()
   send_chunk_start(session, seg("A"))
   send_chunk(session, "text", content_type = "markdown")
   send_chunk(session, "B")
+  send_chunk_end(session)
 
   expect_true(is_trusted_html_content(session, "A"))
   expect_true(is_trusted_html_content(session, "B"))
   expect_false(is_trusted_html_content(session, "AB"))
 })
 
-test_that("operation = replace restarts the run", {
+test_that("a chunk without a content type continues the one in progress", {
   session <- shiny::MockShinySession$new()
   send_chunk_start(session, seg("A"))
-  send_chunk(session, "B", operation = "replace")
-  send_chunk(session, "C")
-
-  expect_true(is_trusted_html_content(session, "A"))
-  expect_true(is_trusted_html_content(session, "B"))
-  expect_true(is_trusted_html_content(session, "BC"))
-  expect_false(is_trusted_html_content(session, "AB"))
-})
-
-test_that("an unrelated action between chunks does not split the run", {
-  session <- shiny::MockShinySession$new()
-  send_chunk_start(session, seg("A"))
-  send_chat_action("chat", action = list(type = "clear"), session = session)
-  send_chunk(session, "B")
+  send_chat_action(
+    "chat",
+    action = list(type = "chunk", content = "B", operation = "append"),
+    session = session
+  )
+  send_chunk_end(session)
 
   expect_true(is_trusted_html_content(session, "AB"))
 })
 
-test_that("runs from concurrent chats do not interleave", {
+test_that("operation = replace restarts the accumulation", {
+  session <- shiny::MockShinySession$new()
+  send_chunk_start(session, seg("A"))
+  send_chunk(session, "B", operation = "replace")
+  send_chunk(session, "C")
+  send_chunk_end(session)
+
+  expect_true(is_trusted_html_content(session, "BC"))
+  expect_false(is_trusted_html_content(session, "A"))
+  expect_false(is_trusted_html_content(session, "ABC"))
+})
+
+test_that("an unrelated action between chunks does not split the merge", {
+  session <- shiny::MockShinySession$new()
+  send_chunk_start(session, seg("A"))
+  send_chat_action("chat", action = list(type = "clear"), session = session)
+  send_chunk(session, "B")
+  send_chunk_end(session)
+
+  expect_true(is_trusted_html_content(session, "AB"))
+})
+
+test_that("a chunk with no stream open displays nothing to trust", {
+  # The client's `chunk` reducer bails when there is no streaming message, so
+  # neither should the ledger invent one.
+  session <- shiny::MockShinySession$new()
+  send_chunk(session, "orphan")
+  send_chunk_end(session)
+
+  expect_false(is_trusted_html_content(session, "orphan"))
+})
+
+test_that("streams from concurrent chats do not interleave", {
   session <- shiny::MockShinySession$new()
   send_chunk_start(session, seg("A1"), id = "one")
   send_chunk_start(session, seg("B1"), id = "two")
   send_chunk(session, "A2", id = "one")
   send_chunk(session, "B2", id = "two")
+  send_chunk_end(session, id = "one")
+  send_chunk_end(session, id = "two")
 
   expect_true(is_trusted_html_content(session, "A1A2"))
   expect_true(is_trusted_html_content(session, "B1B2"))
@@ -259,6 +299,11 @@ test_that("no session means no trusted html", {
 })
 
 test_that("a legitimate multi-block conversation round-trips, and replay repopulates the registry", {
+  # restore_history_message() is the shared replay primitive: it's what a
+  # history-conversation switch calls per stored message (chat_history.R's
+  # replay_ui()), and what bookmark restore calls per snapshot message. Neither
+  # scaffold is available to this trust boundary on its own, so exercising the
+  # primitive directly covers both callers without depending on either.
   author <- shiny::MockShinySession$new()
   send_message(author, seg("<div>island</div>"), seg("<div>tool card</div>"))
   sanitized <- messages_input_value(
@@ -272,49 +317,36 @@ test_that("a legitimate multi-block conversation round-trips, and replay repopul
   )
   expect_equal(types, c("html", "html"))
 
-  local_mocked_bindings(
-    is_server_bookmarkstore = function() TRUE,
-    get_reported_messages = function(session, chat_id) sanitized
-  )
-  state <- rlang::env(values = list())
-  bookmark_save_ui(state, author, "chat")
-
-  # A restore replays through send_chat_action(), so the restoring session ends
-  # up trusting what it just rendered -- that's what keeps a
-  # restore-then-rebookmark chain valid without special-casing restore.
+  # A replay goes through send_chat_action(), so the restoring session ends up
+  # trusting what it just rendered -- that's what keeps a
+  # replay-then-report-again chain valid without special-casing replay.
   restorer <- shiny::MockShinySession$new()
   expect_false(is_trusted_html_content(restorer, "<div>island</div>"))
-  bookmark_restore_ui(state, client = NULL, id = "chat", session = restorer)
+  restore_history_message("chat", sanitized[[1]], session = restorer)
   expect_true(is_trusted_html_content(restorer, "<div>island</div>"))
   expect_true(is_trusted_html_content(restorer, "<div>tool card</div>"))
 
-  rebookmarked <- messages_input_value(
+  rereported <- messages_input_value(
     reported_html(seg("<div>island</div>"), seg("<div>tool card</div>")),
     restorer
   )
   retypes <- vapply(
-    rebookmarked[[1]]$segments,
+    rereported[[1]]$segments,
     function(s) s$content_type,
     character(1)
   )
   expect_equal(retypes, c("html", "html"))
 })
 
-test_that("a forged snapshot cannot replay attacker html through a bookmark", {
+test_that("a forged snapshot cannot replay attacker html through the store", {
   # End-to-end for the stored-script vector, mirroring the html_deps case in
-  # test-html_deps_trust.R: a server bookmark is shareable via its `_state_id_`
-  # URL, so anything persisted from the browser's report is replayed into
-  # whoever opens that URL.
+  # test-html_deps_trust.R: both the history store and a server bookmark are
+  # persisted then replayed into a (possibly different) later session, so
+  # anything saved from the browser's report reaches that later session's
+  # renderer via restore_history_message().
   attacker <- shiny::MockShinySession$new()
   forged <- reported_html(seg("<img src=x onerror=alert(1)>"))
   sanitized <- suppressWarnings(messages_input_value(forged, attacker))
-
-  local_mocked_bindings(
-    is_server_bookmarkstore = function() TRUE,
-    get_reported_messages = function(session, chat_id) sanitized
-  )
-  state <- rlang::env(values = list())
-  bookmark_save_ui(state, attacker, "chat")
 
   victim <- shiny::MockShinySession$new()
   captured <- list()
@@ -324,7 +356,7 @@ test_that("a forged snapshot cannot replay attacker html through a bookmark", {
       invisible()
     }
   )
-  bookmark_restore_ui(state, client = NULL, id = "chat", session = victim)
+  restore_history_message("chat", sanitized[[1]], session = victim)
 
   types <- unlist(
     lapply(captured, function(a) {

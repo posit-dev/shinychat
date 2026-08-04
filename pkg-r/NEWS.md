@@ -23,6 +23,13 @@
 
 ## Bug fixes
 
+* Fixed a cross-site scripting vulnerability in bookmark and chat-history
+  restoration. The browser's message snapshot was persisted verbatim and
+  replayed through sinks that render raw HTML, so a forged snapshot minted into
+  a shareable server bookmark could execute script against whoever opened that
+  URL. HTML content in a reported snapshot is now accepted only when it matches
+  content the server actually sent; anything else renders as literal text.
+
 * HTML dependencies reported back by the browser in `input$<id>_messages` are
   now matched against the dependencies the server actually sent, and the
   server's own copy is used in their place. Previously the client's dependency
