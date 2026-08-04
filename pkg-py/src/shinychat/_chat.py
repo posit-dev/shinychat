@@ -2384,6 +2384,13 @@ def chat_ui(
                 "shiny-chat-message",
                 *msg.html_deps,
                 content=msg.content,
+                # Non-string content is rendered into <shinychat-raw-html>
+                # islands, which only reach a raw-HTML sink on the client's html
+                # branch; unlabelled, the client defaults to markdown and
+                # escapes the island name into visible text.
+                content_type=(
+                    msg.content_type if msg.content_type != "markdown" else None
+                ),
                 icon=icon_attr,
                 data_role=msg.role,
             )
