@@ -1,8 +1,7 @@
 # A `contents_shinychat()` method on a `ContentToolResult` subclass may return
 # arbitrary tags instead of shinychat's own tool card. These tests drive that
-# content through `chat_append_stream()` (the only place the wrap can happen)
-# rather than calling `contents_shinychat()` directly, because the wire shape
-# is what the client actually consumes.
+# content through `chat_append_stream()` so the live path exercises the same
+# conversion-plus-wrap boundary as Turn and restore conversion.
 
 # Captures the content of the single non-bookend `chat_append_message()` call
 # produced by streaming `result` through `chat_append_stream()`.
@@ -396,4 +395,9 @@ test_that("the wrap is idempotent, so a normal tool card is not double-wrapped",
     "custom-display",
     fixed = TRUE
   )
+})
+
+test_that("the wrapped conversion boundary passes ordinary stream values through", {
+  expect_identical(contents_shinychat_wrapped("plain text"), "plain text")
+  expect_null(contents_shinychat_wrapped(NULL))
 })

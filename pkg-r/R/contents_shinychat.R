@@ -162,6 +162,22 @@ new_tool_card <- function(type, request_id, tool_name, ...) {
   structure(dots, class = classes)
 }
 
+# Resolve definition-level tool annotations once, at the boundary between
+# ellmer content and shinychat's tool cards. Result display metadata is
+# intentionally handled separately because it can override title and icon.
+shinychat_tool_annotations <- function(tool) {
+  if (is.null(tool)) {
+    return(list(title = NULL, icon = NULL, grouping = NULL))
+  }
+
+  annotations <- tool@annotations %||% list()
+  list(
+    title = annotations$title,
+    icon = annotations$icon,
+    grouping = as_grouping(annotations$grouping)
+  )
+}
+
 # A `contents_shinychat()` method on a `ContentToolResult` subclass may
 # return arbitrary tags instead of shinychat's own tool card (see the
 # `S7::method(contents_shinychat, ...)` examples above). That leaves no
@@ -195,10 +211,7 @@ wrap_custom_tool_result <- function(content, msg) {
     return(msg)
   }
 
-  grouping <- NULL
-  if (!is.null(content@request@tool)) {
-    grouping <- as_grouping(content@request@tool@annotations$grouping)
-  }
+  annotations <- shinychat_tool_annotations(content@request@tool)
 
   new_tool_card(
     "result",
@@ -208,7 +221,7 @@ wrap_custom_tool_result <- function(content, msg) {
     # own UI, so a failed custom call is wrapped exactly like a successful
     # one; only the request-pairing signal matters here.
     status = if (tool_errored(content)) "error" else "success",
-    grouping = grouping,
+    grouping = annotations$grouping,
     value = msg,
     # Mirror the content mode the message would have been appended with had
     # it not been wrapped, so wrapping never changes how the author's output
@@ -232,9 +245,9 @@ wrap_custom_tool_result <- function(content, msg) {
   )
 }
 
-# `contents_shinychat()` plus the custom-result wrap, for the paths that convert
-# a whole turn's worth of content at once and so would otherwise lose the
-# original `ContentToolResult` before the wrap could see it.
+# `contents_shinychat()` plus the custom-result wrap. Every internal caller that
+# needs routable shinychat content goes through this boundary, so a caller
+# cannot accidentally convert a custom result without its pairing element.
 #
 # Safe to map over any content object: `wrap_custom_tool_result()` returns its
 # input untouched for everything except a `ContentToolResult` whose method
@@ -242,6 +255,10 @@ wrap_custom_tool_result <- function(content, msg) {
 # idempotent, since a wrapped result *is* a `shinychat_tool_card` and so fails
 # the wrap's own guard on a second pass.
 contents_shinychat_wrapped <- function(content) {
+  if (!S7::S7_inherits(content, ellmer::Content)) {
+    return(content)
+  }
+
   wrap_custom_tool_result(content, contents_shinychat(content))
 }
 
@@ -316,6 +333,7 @@ S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
   }
 
   tool <- content@tool
+  annotations <- shinychat_tool_annotations(tool)
 
   new_tool_card(
     "request",
@@ -323,12 +341,12 @@ S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
     tool_name = content@name,
     arguments = jsonlite::toJSON(content@arguments, auto_unbox = TRUE),
     intent = content@arguments[["_intent"]],
-    tool_title = if (!is.null(tool)) tool@annotations$title,
+    tool_title = annotations$title,
     # The tool *definition* icon. The result element sends the result's own icon
     # (falling back to this one), so the client needs both to tell a
     # result-specific icon from the tool's shared identity.
-    icon = if (!is.null(tool)) tool@annotations$icon,
-    grouping = if (!is.null(tool)) as_grouping(tool@annotations$grouping)
+    icon = annotations$icon,
+    grouping = annotations$grouping
   )
 }
 
@@ -344,12 +362,9 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
   }
 
   display <- get_tool_result_display(content)
-  annotations <- list()
-  grouping <- NULL
+  annotations <- shinychat_tool_annotations(content@request@tool)
 
   if (!is.null(content@request@tool)) {
-    annotations <- content@request@tool@annotations
-    grouping <- as_grouping(annotations$grouping)
     request_call <- format(content@request, show = "call")
   } else {
     # formatting the request fails if tool is not present
@@ -378,7 +393,7 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     expanded = if (isTRUE(display$open)) NA,
     full_screen = if (isTRUE(display$full_screen)) NA,
     footer = display$footer,
-    grouping = grouping,
+    grouping = annotations$grouping,
     label = display$label,
     value_preview = display$value_preview,
     !!!tool_result_value(content, display)
