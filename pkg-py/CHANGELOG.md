@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * `chat_ui(messages=)` now renders htmltools/Shiny UI correctly again. Such content was labelled as markdown, so its internal `<shinychat-raw-html>` wrapper displayed as literal text and htmlwidgets in initial messages were never bound.
 
+* `output_markdown_stream()` now labels non-string `content` (e.g. UI with input/output bindings) as `"html"` regardless of the `content_type` argument. Such content was previously mislabelled by default, so its internal `<shinychat-raw-html>` wrapper displayed as literal text and the UI never bound.
+
 * Fixed `MarkdownStream` permanently stopping following new content after the user scrolled back to the bottom. Pinning was decided only from `scroll` events, which browsers dispatch asynchronously; if a chunk grew the container first, the user's at-bottom position no longer read as at-bottom and auto-scroll silently disengaged for good. (#282)
 
 ## [0.6.0] - 2026-07-06

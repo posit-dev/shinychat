@@ -40,6 +40,12 @@
   wrapper displayed as literal text and htmlwidgets in initial messages were
   never bound.
 
+* `output_markdown_stream()` now labels non-string `content` (e.g. UI with
+  input/output bindings) as `"html"` regardless of the `content_type`
+  argument. Such content was previously mislabelled by default, so its
+  internal `<shinychat-raw-html>` wrapper displayed as literal text and the
+  UI never bound.
+
 * `chat_app()` no longer renders a close button or registers a `stopApp()` observer when deployed to a server. Both are now gated on `rlang::is_interactive()`, preventing session crashes in multi-user deployments. (#265)
 
 * The `dismissible` parameter of `chat_greeting()` has been renamed to `persistent` with an inverted value. `dismissible = FALSE` (greeting stays visible) is now `persistent = TRUE`. The old `dismissible` argument still works but warns. When both `persistent` and `dismissible` are provided, `persistent` now takes precedence silently rather than erroring. (#260)

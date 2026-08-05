@@ -18,3 +18,24 @@ test_that("Chat component markup", {
 
   # TODO: it'd be nice to mock the messages that send_stream_message() sends
 })
+
+test_that("non-string content is always labelled html, regardless of content_type", {
+  tag <- output_markdown_stream("stream", content = div("Hello"))
+  expect_equal(tag$attribs[["content-type"]], "html")
+
+  # Even if the caller explicitly (and wrongly) asks for markdown.
+  tag <- output_markdown_stream(
+    "stream",
+    content = div("Hello"),
+    content_type = "markdown"
+  )
+  expect_equal(tag$attribs[["content-type"]], "html")
+
+  # A plain string keeps whatever the caller asked for.
+  tag <- output_markdown_stream(
+    "stream",
+    content = "Hello",
+    content_type = "text"
+  )
+  expect_equal(tag$attribs[["content-type"]], "text")
+})
