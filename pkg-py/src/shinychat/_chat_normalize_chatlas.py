@@ -19,6 +19,8 @@ from packaging import version
 from pydantic import BaseModel, field_serializer, field_validator
 from typing_extensions import TypeAliasType
 
+from ._chat_types import ChatMessage
+
 if TYPE_CHECKING:
     from chatlas.types import ContentToolRequest, ContentToolResult
     from htmltools import Tagified
@@ -240,6 +242,12 @@ class ToolResultComponent(ToolCardComponent):
             *value_ui["dependencies"],
             *footer_ui["dependencies"],
         ).tagify()
+
+
+class ShinyToolCardMessage(ChatMessage):
+    """Marker for shinychat's own rich tool-result card."""
+
+    pass
 
 
 class ToolResultDisplay(BaseModel):
@@ -503,23 +511,14 @@ def tool_result_contents(x: "ContentToolResult") -> Tagifiable:
     )
 
 
-def attach_tool_result_marker(msg: Any, result: Tagifiable) -> None:
-    """Mark `msg` as carrying shinychat's own rendered tool result.
-
-    `result` is only a `ToolResultComponent` when `tool_result_contents()`
-    took its normal path; it's a `TagList()` (display "none") or the raw
-    content object (legacy chatlas) otherwise, and neither of those gets
-    marked. Kept as a small helper here, rather than having callers
-    `isinstance`-check against `ToolResultComponent` themselves: doing that
-    check from another module, with the narrowed value then flowing out of
-    that module (as a return, a reassignment, or a further call argument),
-    confuses pyright's resolution of this class's recursive `TagChild` alias,
-    surfacing a bogus `reportInvalidTypeForm` on the alias's own definition
-    above. Narrowing stays inside this module; callers only ever pass values
-    in and never see a `ToolResultComponent`-typed value come back out.
-    """
-    if isinstance(result, ToolResultComponent):
-        setattr(msg, "_tool_result", result)
+def tool_result_message(result: Tagifiable) -> ChatMessage:
+    """Wrap shinychat's rich tool card in a marker message."""
+    cls = (
+        ShinyToolCardMessage
+        if isinstance(result, ToolResultComponent)
+        else ChatMessage
+    )
+    return cls(content=result)
 
 
 def wrap_custom_tool_result(
@@ -528,22 +527,18 @@ def wrap_custom_tool_result(
     tool_name: str,
     status: Literal["success", "error"],
     # Not annotated `TagChild`: that name is rebound in this module to a
-    # pydantic `TypeAliasType` whose recursive `Sequence[TagChild]` arm pyright
-    # cannot resolve in a plain function signature (same limitation as the
-    # `_tool_result: Any` note in `_chat_types.py`). These are the only two
-    # shapes callers pass -- tags for `value_type="html"`, a plain string for
-    # every other mode, matching the split in `tagify()`.
+    # pydantic `TypeAliasType` whose recursive `Sequence[TagChild]` arm
+    # pyright cannot resolve in a plain function signature. These are the only
+    # two shapes callers pass -- tags for `value_type="html"`, a plain string
+    # for every other mode, matching the split in `tagify()`.
     value: Union[Tagifiable, str],
     value_type: ValueType,
     grouping: Optional[GroupingValue],
 ) -> Tagifiable:
     """Build the `<shiny-tool-result>` wrapper for an author's custom result UI.
 
-    Kept as a factory here, rather than having `_chat.py` import and construct
-    `ToolResultComponent` directly, for the same cross-module resolution
-    reason as `attach_tool_result_marker()` above: construction stays inside
-    this module, same as `tool_result_contents()`; the caller only ever sees
-    the opaque `Tagifiable` return type.
+    Kept as a factory here so the caller only sees the opaque `Tagifiable`
+    return type.
     """
     return ToolResultComponent(
         request_id=request_id,

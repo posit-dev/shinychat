@@ -191,20 +191,6 @@ class ChatMessageDict(TypedDict):
 
 
 class ChatMessage:
-    # Set only by shinychat's own `ContentToolResult` handler (see
-    # `_chat_normalize.py`), never by `__init__`. Its presence (vs. absence)
-    # is how `_chat.py` tells shinychat's own tool result apart from an
-    # author's custom UI that bypassed it -- not declared here as an
-    # `__init__` parameter, since authors never construct it themselves.
-    #
-    # Typed as `Any` (not the precise `ToolResultComponent | None`) on
-    # purpose: this module has no chatlas dependency, and pyright checking a
-    # `setattr(msg, "_tool_result", ...)` call elsewhere against a pydantic
-    # `ToolResultComponent`-typed annotation forces resolution of that class's
-    # recursive `TagChild` alias from a foreign module context, which pyright
-    # cannot do (spurious `reportInvalidTypeForm` in `_chat_normalize_chatlas.py`).
-    _tool_result: Any
-
     def __init__(
         self,
         content: TagChild,

@@ -21,6 +21,7 @@ from chatlas.types import ContentToolRequest, ContentToolResult, ToolInfo
 from htmltools import HTML, HTMLDependency, Tag, TagList
 from shinychat import chat_ui, message_content, message_content_chunk
 from shinychat._chat_normalize_chatlas import (
+    ShinyToolCardMessage,
     ToolResultDisplay,
     tool_request_contents,
     tool_result_contents,
@@ -590,6 +591,15 @@ async def test_plain_tool_result_is_not_misread_as_custom_display() -> None:
     html = sent[0].content
     assert "<shiny-tool-result" in html
     assert "custom-display" not in html
+
+
+def test_plain_tool_result_uses_marker_message() -> None:
+    result = _result(_request(tool=_tool()))
+
+    msg = message_content(result)
+
+    assert isinstance(msg, ShinyToolCardMessage)
+    assert not hasattr(msg, "_tool_result")
 
 
 @pytest.mark.anyio

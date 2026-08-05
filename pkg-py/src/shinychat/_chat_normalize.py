@@ -217,9 +217,9 @@ try:
 
     # Import here to avoid hard dependency on pydantic
     from ._chat_normalize_chatlas import (
-        attach_tool_result_marker,
         tool_request_contents,
         tool_result_contents,
+        tool_result_message,
     )
 
     @message_content.register
@@ -284,18 +284,7 @@ try:
     @message_content.register
     def _(chunk: ContentToolResult):
         result = tool_result_contents(chunk)
-        msg = ChatMessage(content=result)
-        # Mark this as shinychat's own tool card, by artifact rather than by
-        # dispatch: `_chat.py` uses the presence of `_tool_result` to tell an
-        # author's `message_content_chunk` override (custom UI, no marker)
-        # apart from a call that builds on this handler via `message_content`
-        # and returns shinychat's own `ChatMessage` back out (still marked,
-        # and correctly *not* custom). `tool_result_contents` may also return
-        # a `TagList()` (display "none") or the raw content object (legacy
-        # chatlas), neither of which is a `ToolResultComponent`, so the mark
-        # is naturally skipped for those.
-        attach_tool_result_marker(msg, result)
-        return msg
+        return tool_result_message(result)
 
     @message_content_chunk.register
     def _(chunk: ContentToolResult):
@@ -384,11 +373,9 @@ def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
     if not _is_tool_result(message) or message.request is None:
         return msg
 
-    if getattr(msg, "_tool_result", None) is not None:
-        return msg
-
     try:
         from ._chat_normalize_chatlas import (
+            ShinyToolCardMessage,
             ValueType,
             is_legacy,
             resolve_tool_annotations,
@@ -396,6 +383,9 @@ def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
             wrap_custom_tool_result,
         )
     except ImportError:
+        return msg
+
+    if isinstance(msg, ShinyToolCardMessage):
         return msg
 
     # These are shinychat's own early returns, not an author's bypass.
