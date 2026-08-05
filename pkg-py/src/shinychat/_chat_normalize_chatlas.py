@@ -59,9 +59,6 @@ class ToolCardComponent(BaseModel):
     intent: Optional[str] = None
     "Optional intent description explaining the purpose of the tool execution."
 
-    expanded: bool = False
-    "Controls whether the card content is expanded/visible."
-
     grouping: Optional[Literal["none", "tool", "all"]] = None
     """
     Per-tool override for how consecutive tool calls are grouped in the UI.
@@ -105,7 +102,6 @@ class ToolRequestComponent(ToolCardComponent):
             tool_title=self.tool_title,
             icon=icon_ui["html"] if self.icon else None,
             intent=self.intent,
-            expanded="" if self.expanded else None,
             arguments=self.arguments,
             grouping=self.grouping,
             *icon_ui["dependencies"],
@@ -188,6 +184,9 @@ class ToolResultComponent(ToolCardComponent):
 
     full_screen: bool = False
     "Controls whether a fullscreen toggle button is displayed on the card."
+
+    expanded: bool = False
+    "Controls whether the card content is expanded/visible."
 
     label: Optional[str] = None
     "A short, per-call identifying value shown alongside the tool title."

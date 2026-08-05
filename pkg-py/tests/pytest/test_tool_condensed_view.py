@@ -22,6 +22,7 @@ from htmltools import HTML, HTMLDependency, Tag, TagList
 from shinychat import chat_ui, message_content, message_content_chunk
 from shinychat._chat_normalize_chatlas import (
     ShinyToolCardMessage,
+    ToolRequestComponent,
     ToolResultDisplay,
     tool_request_contents,
     tool_result_contents,
@@ -125,6 +126,22 @@ def test_tool_result_display_open_absent_by_default():
     result = _result(request)
 
     assert "expanded" not in _render(tool_result_contents(result))
+
+
+def test_tool_request_never_serializes_expanded():
+    kwargs: dict[str, Any] = {
+        "request_id": "call-1",
+        "tool_name": "my_tool",
+        "arguments": '{"x": 1}',
+        # Pydantic ignores unknown constructor fields by default. Preserve that
+        # compatibility while ensuring a request cannot leak this stale wire
+        # attribute.
+        "expanded": True,
+    }
+    request = ToolRequestComponent(**kwargs)
+
+    assert not hasattr(request, "expanded")
+    assert "expanded" not in _render(request)
 
 
 def test_tool_result_display_label_and_value_preview_absent_by_default():
