@@ -249,6 +249,16 @@ def test_non_html_segments_never_enter_the_ledger():
     assert not is_trusted_html(None, "plain")
 
 
+def test_non_string_content_is_never_trusted():
+    # A forged report can claim content_type "html" for a non-string value;
+    # that must degrade to untrusted, not raise out of hash_content().
+    session = new_session()
+    send_message(session, seg("<div>a</div>"))
+    assert not is_trusted_html(session, 42)
+    assert not is_trusted_html(session, None)
+    assert not is_trusted_html(session, ["<div>a</div>"])
+
+
 def test_ledgers_do_not_leak_between_sessions():
     author = new_session()
     other = new_session()
@@ -392,6 +402,32 @@ def test_trusted_html_deps_guards_missing_inputs():
     assert trusted_html_deps(session, None) is None
     assert trusted_html_deps(session, []) is None
     assert trusted_html_deps(None, [{"name": "w", "version": "1.0"}]) is None
+
+
+def test_malformed_dep_entries_are_ignored_not_raised():
+    # A forged htmlDeps entry need not even be a dict.
+    session = new_session()
+    real = {"name": "widget", "version": "1.0", "script": [{"src": "real.js"}]}
+    record_sent_action(
+        session,
+        "chat",
+        cast(
+            Any,
+            {"type": "message", "message": {"role": "assistant", "segments": []}},
+        ),
+        [real],
+    )
+    out = messages_input_value(
+        [
+            {
+                "role": "assistant",
+                "segments": [seg("hi", "markdown")],
+                "htmlDeps": ["not-a-dict", 42, None, real],
+            }
+        ],
+        session,
+    )
+    assert out[0].segments[0].html_deps == [real]
 
 
 # ----------------------------------------------------------------------

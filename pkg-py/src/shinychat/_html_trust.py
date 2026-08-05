@@ -98,9 +98,12 @@ def record_sent_action(
     # would let an unrelated action sent mid-stream break the merge in flight.
 
 
-def is_trusted_html(session: "Session | None", content: str) -> bool:
+def is_trusted_html(session: "Session | None", content: object) -> bool:
     """Did this session's server send exactly this html string?"""
-    if session is None:
+    # `content` is client-reported, so it may not actually be a string --
+    # e.g. a forged report claiming content_type "html" for a non-string
+    # value. Treat that as untrusted rather than raising out of hash_content().
+    if session is None or not isinstance(content, str):
         return False
     sent = sent_by_session.get(session)
     return sent is not None and hash_content(content) in sent.content_hashes
@@ -170,7 +173,12 @@ def trust_segments(
             sent.content_hashes.add(hash_content(seg["content"]))
 
 
-def dep_key(dep: SerializedDep) -> str | None:
+def dep_key(dep: object) -> str | None:
+    # `dep` is one entry of a client-reported list, so it may not actually be
+    # a dict -- e.g. a forged htmlDeps entry. Treat that as unidentifiable
+    # rather than raising out of .get().
+    if not isinstance(dep, dict):
+        return None
     name = dep.get("name")
     version = dep.get("version")
     if not isinstance(name, str) or not isinstance(version, str):
