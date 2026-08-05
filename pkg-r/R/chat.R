@@ -341,10 +341,20 @@ chat_ui <- function(
     }
 
     # `content` is most likely a string, so avoid overhead in that case
-    # (it's also important that we *don't escape HTML* here).
-    if (is.character(content)) {
+    # (it's also important that we *don't escape HTML* here). Mirrors the
+    # greeting's three-way branch below: htmltools::HTML() is a character
+    # vector too (class c("html", "character")), so it must be checked before
+    # the plain is.character() case -- otherwise it's treated as markdown and
+    # (as of the escaping fix) has no reserved element names to protect it.
+    if (is.character(content) && !inherits(content, "html")) {
       ui <- list(html = paste(content, collapse = "\n"))
       content_type <- NULL
+    } else if (
+      inherits(content, "html") &&
+        !inherits(content, c("shiny.tag", "shiny.tag.list"))
+    ) {
+      ui <- list(html = paste(as.character(content), collapse = "\n"))
+      content_type <- "html"
     } else {
       ui <- with_current_theme({
         htmltools::renderTags(pre_process_ui(content))
