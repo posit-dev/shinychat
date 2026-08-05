@@ -1,4 +1,5 @@
 import { ToolResult } from "./ToolResult"
+import { isTruthyAttribute } from "./tool-protocol"
 
 interface ToolResultBridgeProps {
   "request-id"?: string
@@ -13,14 +14,11 @@ interface ToolResultBridgeProps {
   "show-request"?: string | boolean
   "full-screen"?: string | boolean
   expanded?: string | boolean
+  "custom-display"?: string | boolean
   icon?: string
   footer?: string
   node?: unknown
   children?: React.ReactNode
-}
-
-function isTruthy(val: string | boolean | undefined): boolean {
-  return val === true || val === "" || val === "true"
 }
 
 export function ToolResultBridge({
@@ -36,9 +34,16 @@ export function ToolResultBridge({
   "show-request": showRequest,
   "full-screen": fullScreen,
   expanded,
+  "custom-display": customDisplay,
   icon,
   footer,
 }: ToolResultBridgeProps) {
+  // Complete tool elements are consumed by routeToolBlocks before Markdown
+  // rendering. This bridge is fallback-only for incomplete or otherwise
+  // unrouted assistant content, so a custom payload must wait for that router
+  // path rather than becoming a subtly incorrect ordinary card.
+  if (isTruthyAttribute(customDisplay)) return null
+
   // No longer announces that it supersedes its request: ChatApp derives that
   // from the same content this bridge renders (`supersededRequestIds`), under
   // the same gates the router uses. Announcing it here could only disagree.
@@ -55,9 +60,9 @@ export function ToolResultBridge({
         value={value ?? ""}
         valueType={valueType ?? "markdown"}
         requestCall={requestCall}
-        showRequest={isTruthy(showRequest)}
-        fullScreen={isTruthy(fullScreen)}
-        expanded={isTruthy(expanded)}
+        showRequest={isTruthyAttribute(showRequest)}
+        fullScreen={isTruthyAttribute(fullScreen)}
+        expanded={isTruthyAttribute(expanded)}
         icon={icon}
         footer={footer}
       />

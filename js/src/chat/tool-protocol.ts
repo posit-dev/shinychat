@@ -127,10 +127,14 @@ function parseAttributes(s: string): Record<string, string> {
   return attrs
 }
 
+export function isTruthyAttribute(
+  value: string | boolean | undefined,
+): boolean {
+  return value === true || value === "" || value === "true"
+}
+
 function attrTruthy(attrs: Record<string, string>, name: string): boolean {
-  if (!(name in attrs)) return false
-  const v = attrs[name]
-  return v === "" || v === "true"
+  return name in attrs && isTruthyAttribute(attrs[name])
 }
 
 function optionalTruthyAttribute(
