@@ -757,6 +757,30 @@ def test_restore_bookmark_message_warns_and_skips_malformed():
     assert contents == ["before", "after"]
 
 
+def test_restore_bookmark_message_warning_omits_the_offending_value():
+    # pydantic's default ValidationError string embeds the invalid input
+    # value, which for a chat message is arbitrary (and possibly sensitive)
+    # content -- the warning must not repeat it.
+    with session_context(test_session):
+        chat = Chat(id="chat_restore_malformed_no_leak")
+        secret = "sk-super-secret-token-do-not-log-me"
+
+        async def _exercise() -> None:
+            with pytest.warns(UserWarning) as record:
+                # The invalid *value* here is the secret itself: content_type
+                # only accepts a fixed set of literals, so a bogus string
+                # fails validation with that string as the reported input.
+                await chat._restore_bookmark_message(
+                    {
+                        "role": "user",
+                        "segments": [{"content": "hi", "content_type": secret}],
+                    }
+                )
+            assert secret not in str(record[0].message)
+
+        run_async(_exercise)
+
+
 def test_user_input_reads_latest_stored():
     from shiny import reactive
     from shinychat._chat import UserInput
