@@ -201,11 +201,9 @@ test_that("chat_server slash_command echo defaults to handler presence", {
       )
       session$returned$slash_command("nohandler", "No handler", NULL)
 
-      # slash_commands lives in the module closure; read it via the function env
-      cmds <- get(
-        "slash_commands",
-        envir = environment(session$returned$slash_command)
-      )()
+      # slash_commands state now lives in session$userData, keyed by id; read
+      # it back through the same registry accessor the machinery uses.
+      cmds <- slash_commands_registry("chat", session = session)()
       expect_true(cmds[["withhandler"]]$definition$echo)
       expect_false(cmds[["nohandler"]]$definition$echo)
       expect_null(cmds[["nohandler"]]$handler)
@@ -233,10 +231,7 @@ test_that("chat_server slash_command echo can be set explicitly", {
         function() NULL,
         echo = FALSE
       )
-      cmds <- get(
-        "slash_commands",
-        envir = environment(session$returned$slash_command)
-      )()
+      cmds <- slash_commands_registry("chat", session = session)()
       expect_false(cmds[["sideeffect"]]$definition$echo)
     }
   )
@@ -289,10 +284,7 @@ test_that("chat_server slash_command with NULL handler does not run server-side"
       )
       session$returned$slash_command("clientside", "Client side", NULL)
 
-      slash_commands <- get(
-        "slash_commands",
-        envir = environment(session$returned$slash_command)
-      )()
+      slash_commands <- slash_commands_registry("chat", session = session)()
       expect_null(slash_commands[["clientside"]]$handler)
 
       # Invoking the NULL-handler command must not error (the observer guard
@@ -315,4 +307,136 @@ test_that("chat_server slash_command with NULL handler does not run server-side"
       expect_equal(calls, 1)
     }
   )
+})
+
+
+# ---------------------------------------------------------------------------
+# register_slash_command(): the standalone, free-function entry point. Works
+# WITHOUT chat_server() and without threading any returned value -- callers
+# just need the chat `id` and the `session`. chat_server() uses the same
+# machinery internally.
+# ---------------------------------------------------------------------------
+
+# A bare server function (no chat_server, no module wrapper) so these tests
+# exercise register_slash_command() exactly as an app author would call it.
+slash_only_server <- function(input, output, session) {
+  invisible(NULL)
+}
+
+test_that("register_slash_command dispatches a zero-argument handler standalone", {
+  local_mocked_bindings(send_chat_action = function(...) invisible(NULL))
+  calls <- 0
+
+  shiny::testServer(slash_only_server, {
+    register_slash_command(
+      "chat", "clear", "Clear the conversation",
+      function() calls <<- calls + 1,
+      session = session
+    )
+    session$setInputs(
+      chat_slash_command = list(command = "clear", userText = "ignored")
+    )
+    expect_equal(calls, 1)
+  })
+})
+
+test_that("register_slash_command passes a ContentSlashCommand to 1-arg handlers", {
+  local_mocked_bindings(send_chat_action = function(...) invisible(NULL))
+  received <- NULL
+
+  shiny::testServer(slash_only_server, {
+    register_slash_command(
+      "chat", "greet", "Greet someone",
+      function(content) received <<- content,
+      session = session
+    )
+    session$setInputs(
+      chat_slash_command = list(command = "greet", userText = "world")
+    )
+    expect_s3_class(received, "shinychat::ContentSlashCommand")
+    expect_equal(received@command, "greet")
+    expect_equal(received@user_text, "world")
+    expect_match(received@text, "greet slash command with arguments: world")
+  })
+})
+
+test_that("register_slash_command validates name, description, handler, arity", {
+  local_mocked_bindings(send_chat_action = function(...) invisible(NULL))
+
+  shiny::testServer(slash_only_server, {
+    expect_error(
+      register_slash_command("chat", c("a", "b"), "d", NULL, session = session),
+      "single string"
+    )
+    expect_error(
+      register_slash_command("chat", "bad name", "d", NULL, session = session),
+      "alphanumeric"
+    )
+    expect_error(
+      register_slash_command("chat", "ok", 1, NULL, session = session),
+      "single string"
+    )
+    expect_error(
+      register_slash_command("chat", "ok", "d", 42, session = session),
+      "function or"
+    )
+    expect_error(
+      register_slash_command("chat", "ok", "d", function(a, b) NULL, session = session),
+      "0 or 1 argument"
+    )
+  })
+})
+
+test_that("register_slash_command echo defaults to handler presence", {
+  local_mocked_bindings(send_chat_action = function(...) invisible(NULL))
+
+  shiny::testServer(slash_only_server, {
+    register_slash_command("chat", "withh", "has handler", function() NULL, session = session)
+    register_slash_command("chat", "noh", "no handler", NULL, session = session)
+    register_slash_command("chat", "forced", "explicit", NULL, echo = TRUE, session = session)
+
+    cmds <- slash_commands_registry("chat", session = session)()
+    expect_true(cmds[["withh"]]$definition$echo)
+    expect_false(cmds[["noh"]]$definition$echo)
+    expect_true(cmds[["forced"]]$definition$echo)
+  })
+})
+
+test_that("register_slash_command enforces force = TRUE on duplicate names", {
+  local_mocked_bindings(send_chat_action = function(...) invisible(NULL))
+
+  shiny::testServer(slash_only_server, {
+    register_slash_command("chat", "dup", "first", NULL, session = session)
+    expect_error(
+      register_slash_command("chat", "dup", "second", NULL, session = session),
+      "already registered"
+    )
+    expect_no_error(
+      register_slash_command("chat", "dup", "second", NULL, force = TRUE, session = session)
+    )
+  })
+})
+
+test_that("register_slash_command returns a working unregister function", {
+  local_mocked_bindings(send_chat_action = function(...) invisible(NULL))
+
+  shiny::testServer(slash_only_server, {
+    unregister <- register_slash_command("chat", "tmp", "temp", NULL, session = session)
+    cmds <- slash_commands_registry("chat", session = session)
+    expect_true("tmp" %in% names(cmds()))
+    unregister()
+    expect_false("tmp" %in% names(cmds()))
+  })
+})
+
+test_that("register_slash_command reuses one registry per (session, id)", {
+  local_mocked_bindings(send_chat_action = function(...) invisible(NULL))
+
+  shiny::testServer(slash_only_server, {
+    register_slash_command("chat", "one", "first", NULL, session = session)
+    register_slash_command("chat", "two", "second", NULL, session = session)
+    # Both commands land in the same registry -- no threading, no re-setup.
+    cmds <- slash_commands_registry("chat", session = session)()
+    expect_setequal(names(cmds), c("one", "two"))
+  })
 })

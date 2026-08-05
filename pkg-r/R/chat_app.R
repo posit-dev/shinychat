@@ -525,79 +525,13 @@ chat_server <- function(
     session = session
   )
 
-  # Registered slash commands. Each entry: list(handler, takes_args, definition).
-  # Using a reactiveVal lets multiple registrations during app startup coalesce
-  # into a single client sync on the next flush. Starts as NULL so the sync
-  # observer skips the redundant initial send (the client already initializes
-  # to []); an empty list is sent when the last command is removed.
-  slash_commands <- shiny::reactiveVal(NULL, label = "slash_commands")
-
-  shiny::observeEvent(
-    session$input[[paste0(id, "_slash_command")]],
-    label = "on_chat_slash_command",
-    {
-      data <- session$input[[paste0(id, "_slash_command")]]
-      reg <- isolate(slash_commands())[[data$command]]
-      if (!is.null(reg) && is.function(reg$handler)) {
-        tryCatch(
-          {
-            if (isTRUE(reg$takes_args)) {
-              user_text <- data$userText %||% ""
-              content <- ContentSlashCommand(
-                command = data$command,
-                user_text = user_text,
-                text = paste0(
-                  sprintf(
-                    "The user entered the /%s slash command",
-                    data$command
-                  ),
-                  if (nzchar(user_text)) {
-                    paste0(" with arguments: ", user_text)
-                  } else {
-                    "."
-                  }
-                )
-              )
-              reg$handler(content)
-            } else {
-              reg$handler()
-            }
-          },
-          error = function(e) {
-            shiny::showNotification(
-              sanitized_error_message(e),
-              type = "error",
-              duration = NULL
-            )
-            rlang::warn(
-              sprintf("Error in slash command '/%s'", data$command),
-              parent = e
-            )
-          }
-        )
-      }
-      send_chat_action(
-        id,
-        list(type = "remove_loading"),
-        session = session
-      )
-    }
-  )
-
-  shiny::observe(label = "sync_slash_commands", {
-    cmds <- slash_commands()
-    if (!is.null(cmds)) {
-      defs <- lapply(cmds, `[[`, "definition")
-      send_chat_action(
-        id,
-        list(type = "update_slash_commands", commands = unname(defs)),
-        session = session
-      )
-    }
-  })
-
-  # TODO: Support a standalone register_slash_command() that works outside the
-  # returned environment (e.g., so callers don't have to thread the return value)
+  # Slash-command palette. Registration, dispatch, and client sync live in
+  # register_slash_command() / slash_commands_registry() so the same machinery
+  # can be reused standalone (without chat_server()); see
+  # ?register_slash_command. Set up the registry + observers eagerly here so the
+  # palette is live for the whole session, then expose registration as a thin
+  # wrapper that doesn't require threading this returned environment around.
+  slash_commands_registry(id, session = session)
   slash_command_method <- function(
     name,
     description,
@@ -606,57 +540,16 @@ chat_server <- function(
     echo = NULL,
     force = FALSE
   ) {
-    rlang::check_dots_empty()
-    if (!is.character(name) || length(name) != 1) {
-      cli::cli_abort("{.arg name} must be a single string.")
-    }
-    if (!grepl("^[a-zA-Z0-9_-]+$", name)) {
-      cli::cli_abort(
-        "{.arg name} must contain only alphanumeric characters, underscores, or hyphens, got {.val {name}}."
-      )
-    }
-    if (!is.character(description) || length(description) != 1) {
-      cli::cli_abort("{.arg description} must be a single string.")
-    }
-    if (!is.null(handler) && !is.function(handler)) {
-      cli::cli_abort("{.arg handler} must be a function or {.code NULL}.")
-    }
-
-    takes_args <- FALSE
-    if (is.function(handler)) {
-      handler_args <- names(formals(handler))
-      if (length(handler_args) > 1 || identical(handler_args, "...")) {
-        cli::cli_abort("{.arg handler} must take 0 or 1 argument.")
-      }
-      takes_args <- length(handler_args) > 0
-    }
-
-    cmds <- isolate(slash_commands()) %||% list()
-
-    if (!force && name %in% names(cmds)) {
-      cli::cli_abort(
-        "Slash command {.val {name}} is already registered. Use {.code force = TRUE} to overwrite it."
-      )
-    }
-
-    resolved_echo <- if (is.null(echo)) !is.null(handler) else isTRUE(echo)
-
-    cmds[[name]] <- list(
-      handler = handler,
-      takes_args = takes_args,
-      definition = list(
-        name = name,
-        description = description,
-        echo = resolved_echo
-      )
+    register_slash_command(
+      id,
+      name,
+      description,
+      handler,
+      ...,
+      echo = echo,
+      force = force,
+      session = session
     )
-    slash_commands(cmds)
-
-    function() {
-      cmds <- isolate(slash_commands())
-      cmds[[name]] <- NULL
-      slash_commands(cmds)
-    }
   }
 
   client_clear <- function(
