@@ -108,6 +108,46 @@ test_that("ContentToolRequest rich display", {
   )
 })
 
+test_that("tool card serialization matches the shared wire fixture", {
+  fixture <- jsonlite::read_json(
+    test_path("fixtures", "tool-wire-protocol.json"),
+    simplifyVector = TRUE
+  )
+
+  request <- new_tool_card(
+    "request",
+    request_id = "wire-1",
+    tool_name = "search",
+    tool_title = "Searching",
+    icon = "<i>search</i>",
+    intent = "Find docs",
+    arguments = '{"q":"shiny"}',
+    grouping = "all"
+  )
+  result <- new_tool_card(
+    "result",
+    request_id = "wire-1",
+    tool_name = "search",
+    tool_title = "Searched",
+    icon = "<i>done</i>",
+    intent = "Find docs",
+    status = "success",
+    label = "docs",
+    value_preview = "3 results",
+    value = "Result body",
+    value_type = "markdown",
+    request_call = 'search(q="shiny")',
+    show_request = NA,
+    full_screen = NA,
+    expanded = NA,
+    footer = "<span>footer</span>",
+    grouping = "all"
+  )
+
+  expect_identical(format(as.tags(request)), fixture$request)
+  expect_identical(format(as.tags(result)), fixture$result)
+})
+
 test_that("ContentToolRequest handles tool annotations", {
   local_shinychat_tool_display(opt = "rich")
 
