@@ -29,11 +29,11 @@
   (`<shinychat-raw-html>`, `<shiny-tool-request>`, `<shiny-tool-result>`) is
   now shown as plain text instead of being rendered as HTML. This closes a
   gap where AI-generated markdown could render as HTML the same way trusted,
-  server-built content does. As part of this, `chat_ui(messages = )` and
-  `output_markdown_stream()` now always label non-string/UI content as HTML
-  (regardless of the `content_type` argument), so their internal
-  `<shinychat-raw-html>` wrapper is still handled correctly rather than being
-  treated like ordinary markdown.
+  server-built content does. As part of this, `chat_ui(messages = )`,
+  `chat_append_message()`, and `output_markdown_stream()` now always label
+  non-string/UI content as HTML (regardless of the `content_type` argument),
+  so their internal `<shinychat-raw-html>` wrapper is still handled correctly
+  rather than being treated like ordinary markdown.
 
 * `chat_app()` no longer renders a close button or registers a `stopApp()` observer when deployed to a server. Both are now gated on `rlang::is_interactive()`, preventing session crashes in multi-user deployments. (#265)
 

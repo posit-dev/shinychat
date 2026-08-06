@@ -340,12 +340,7 @@ chat_ui <- function(
       role <- x[["role"]] %||% role
     }
 
-    # A plain string is most likely, so avoid overhead in that case (it's also
-    # important that we *don't escape HTML* here). htmltools::HTML() is also
-    # is.character() (class c("html", "character")), but it gets the same
-    # <shinychat-raw-html> wrapping as Tag/TagList below -- unlike a plain
-    # string, it's meant to render exactly like real HTML (e.g. Shiny bindings
-    # inside it via RawHTML's bindAll()), which only the raw-HTML sink does.
+    # htmltools::HTML() is also is.character(), so exclude it explicitly.
     if (is.character(content) && !inherits(content, "html")) {
       ui <- list(html = paste(content, collapse = "\n"))
       content_type <- NULL
@@ -401,14 +396,11 @@ chat_ui <- function(
       )
     }
 
+    # htmltools::HTML() is also is.character(), so exclude it explicitly.
     if (is.character(content) && !inherits(content, "html")) {
-      # Plain markdown string
       greeting_content <- content
       greeting_content_type <- "markdown"
     } else {
-      # htmltools::HTML() string, Tag, or TagList -- render to HTML (wrapping
-      # in a <shinychat-raw-html> island as needed, so e.g. Shiny bindings
-      # inside an HTML() string still work) and collect deps.
       rendered <- with_current_theme({
         htmltools::renderTags(pre_process_ui(content))
       })
@@ -697,27 +689,19 @@ chat_append_message <- function(
   if (is_thinking) {
     content <- unclass(content)
   }
-  is_html <- inherits(
-    content,
-    c(
-      "shiny.tag",
-      "shiny.tag.list",
-      "html",
-      "htmlwidget",
-      "shinychat_tool_card"
-    )
-  )
+  # htmltools::HTML() is also is.character(), so exclude it explicitly.
+  is_plain_string <- is.character(content) && !inherits(content, "html")
   content_type <- if (is_thinking) {
     "thinking"
-  } else if (is_html) {
-    "html"
-  } else {
+  } else if (is_plain_string) {
     "markdown"
+  } else {
+    "html"
   }
 
   operation <- match.arg(operation)
 
-  if (is.character(content) && !is_html) {
+  if (is_plain_string) {
     # content is most likely a string, so avoid overhead in that case
     ui <- list(html = content, deps = NULL)
   } else {
@@ -729,7 +713,7 @@ chat_append_message <- function(
   }
 
   msg_content <- ui[["html"]]
-  if (is_html) {
+  if (content_type == "html") {
     # Surround with blank lines so the markdown parser treats
     # block-level custom elements correctly.
     msg_content <- paste0("\n\n", msg_content, "\n\n")
@@ -1153,14 +1137,12 @@ chat_set_greeting <- function(
     )
   }
 
+  # htmltools::HTML() is also is.character(), so exclude it explicitly.
   if (is.character(content) && !inherits(content, "html")) {
     greeting_content <- content
     greeting_content_type <- "markdown"
     html_deps <- NULL
   } else {
-    # htmltools::HTML() string, Tag, or TagList -- render to HTML (wrapping
-    # in a <shinychat-raw-html> island as needed, so e.g. Shiny bindings
-    # inside an HTML() string still work).
     ui <- process_ui(pre_process_ui(content), session)
     greeting_content <- ui[["html"]]
     greeting_content_type <- "html"

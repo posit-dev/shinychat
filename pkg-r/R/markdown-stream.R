@@ -38,12 +38,7 @@ output_markdown_stream <- function(
   width = "min(680px, 100%)",
   height = "auto"
 ) {
-  # A plain string is most likely, so avoid overhead in that case (it's also
-  # important that we *don't escape HTML* here). htmltools::HTML() is also
-  # is.character() (class c("html", "character")), but it gets the same
-  # <shinychat-raw-html> wrapping as Tag/TagList below -- unlike a plain
-  # string, it's meant to render exactly like real HTML (e.g. Shiny bindings
-  # inside it via RawHTML's bindAll()), which only the raw-HTML sink does.
+  # htmltools::HTML() is also is.character(), so exclude it explicitly.
   if (is.character(content) && !inherits(content, "html")) {
     ui <- list(html = paste(content, collapse = "\n"))
     content_type <- content_type %||% "markdown"
@@ -51,10 +46,6 @@ output_markdown_stream <- function(
     ui <- with_current_theme({
       htmltools::renderTags(pre_process_ui(content))
     })
-    # pre_process_ui() emits <shinychat-raw-html> islands, which only reach a
-    # raw-HTML sink on the client's html branch; a caller-supplied
-    # content_type of "markdown" (the default) would otherwise escape the
-    # island's own wrapper into visible text.
     content_type <- "html"
   }
 
