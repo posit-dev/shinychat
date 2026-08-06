@@ -879,7 +879,7 @@ test_that("editing a message after the first forks at the correct node even when
   })
 })
 
-test_that("reload restores file-backed ellmer turns without type loss", {
+test_that("file-backed turns survive restore, continuation, and a second restore", {
   skip_if_not_installed("ellmer")
 
   make_live_turn <- function(role, text) {
@@ -901,11 +901,11 @@ test_that("reload restores file-backed ellmer turns without type loss", {
   }
 
   dir <- withr::local_tempdir()
-  store <- FileConversationStore$new(dir = dir)
 
   client <- mock_chat_client()
   session <- shiny::MockShinySession$new()
   session$user <- "testuser"
+  store <- FileConversationStore$new(dir = dir)
 
   server <- function(input, output, session) {
     chat_server(
@@ -940,12 +940,13 @@ test_that("reload restores file-backed ellmer turns without type loss", {
   new_client <- mock_chat_client()
   new_session <- shiny::MockShinySession$new()
   new_session$user <- "testuser"
+  restarted_store <- FileConversationStore$new(dir = dir)
 
   new_server <- function(input, output, session) {
     chat_server(
       "chat",
       new_client,
-      history = history_options(store = store, title = NULL),
+      history = history_options(store = restarted_store, title = NULL),
       session = session
     )
   }
@@ -969,6 +970,65 @@ test_that("reload restores file-backed ellmer turns without type loss", {
     expect_identical(restored_turns[[2]]@cost, NA_real_)
     expect_identical(restored_turns[[2]]@duration, NA_real_)
     expect_identical(restored_turns[[2]]@finish_reason, NA_character_)
+
+    session$setInputs(
+      chat_messages = list(
+        make_ui_message("user", "hi"),
+        make_ui_message("assistant", "hello")
+      )
+    )
+
+    new_client$set_turns(
+      c(
+        restored_turns,
+        list(
+          make_live_turn("user", "again"),
+          make_live_turn("assistant", "welcome back")
+        )
+      )
+    )
+    session$setInputs(
+      chat_messages = list(
+        make_ui_message("user", "hi"),
+        make_ui_message("assistant", "hello"),
+        make_ui_message("user", "again"),
+        make_ui_message("assistant", "welcome back")
+      )
+    )
+  })
+
+  final_client <- mock_chat_client()
+  final_session <- shiny::MockShinySession$new()
+  final_session$user <- "testuser"
+  final_store <- FileConversationStore$new(dir = dir)
+
+  final_server <- function(input, output, session) {
+    chat_server(
+      "chat",
+      final_client,
+      history = history_options(store = final_store, title = NULL),
+      session = session
+    )
+  }
+
+  shiny::testServer(final_server, session = final_session, {
+    session$setInputs(
+      chat_history_browser_token = "tok-abc",
+      chat_history_current_id = saved_id
+    )
+
+    restored_turns <- final_client$get_turns()
+    expect_length(restored_turns, 4)
+    expect_equal(
+      vapply(
+        restored_turns,
+        function(turn) turn@contents[[1]]@text,
+        character(1)
+      ),
+      c("hi", "hello", "again", "welcome back")
+    )
+    expect_identical(restored_turns[[2]]@json, list(1, "two"))
+    expect_identical(restored_turns[[4]]@json, list(1, "two"))
   })
 })
 
