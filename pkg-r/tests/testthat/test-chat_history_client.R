@@ -33,6 +33,36 @@ test_that("set_turns_recorded() round-trips through record/replay", {
   expect_equal(turns_set[[1]]@contents[[1]]@text, "hello")
 })
 
+test_that("set_turns_recorded() survives a JSON round-trip (regression)", {
+  # Regression: FileConversationStore persists recorded turns via
+  # jsonlite::toJSON()/fromJSON(simplifyVector = FALSE). That round-trip
+  # decodes the recorded object's `version = 1` (a double) as `1L` (an
+  # integer). ellmer::check_recorded() compares with
+  # `identical(recorded$version, 1)`, which is FALSE for `1L`, so every
+  # restore of a file-backed conversation failed with "Unsupported version
+  # 1" -- crashing history_init on reload once a real turn had been saved.
+  skip_if_not_installed("ellmer")
+  turn <- ellmer::UserTurn(list(ellmer::ContentText("hello")))
+  recorded <- ellmer::contents_record(turn)
+
+  json <- jsonlite::toJSON(recorded, auto_unbox = TRUE)
+  roundtripped <- jsonlite::fromJSON(json, simplifyVector = FALSE)
+
+  turns_set <- NULL
+  client <- list(
+    get_tools = function() list(),
+    set_turns = function(value) {
+      turns_set <<- value
+    }
+  )
+  class(client) <- c("Chat", "R6")
+
+  set_turns_recorded(client, list(roundtripped))
+  expect_length(turns_set, 1)
+  expect_true(S7::S7_inherits(turns_set[[1]], ellmer::UserTurn))
+  expect_equal(turns_set[[1]]@contents[[1]]@text, "hello")
+})
+
 test_that("get_client_info() reads provider name and model via public ellmer API", {
   skip_if_not_installed("ellmer")
   withr::local_envvar(OPENAI_API_KEY = NA)

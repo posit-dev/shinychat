@@ -820,10 +820,12 @@ test_that("editing a message after the first forks at the correct node even when
     # `chat_messages` necessarily lags the server-side stream completion by a
     # round trip: it reports only "one" first, then catches up to include
     # "R1" once the client has rendered and re-echoed it.
-    client$set_turns(list(
-      make_live_turn("user", "one"),
-      make_live_turn("assistant", "R1")
-    ))
+    client$set_turns(
+      list(
+        make_live_turn("user", "one"),
+        make_live_turn("assistant", "R1")
+      )
+    )
     session$setInputs(chat_messages = list(make_ui_message("user", "one")))
     session$setInputs(
       chat_messages = list(
@@ -836,12 +838,14 @@ test_that("editing a message after the first forks at the correct node even when
     expect_equal(length(ctrl$record$nodes), 2)
 
     # Round 2: user "two" -> assistant "R2", same lag pattern.
-    client$set_turns(list(
-      make_live_turn("user", "one"),
-      make_live_turn("assistant", "R1"),
-      make_live_turn("user", "two"),
-      make_live_turn("assistant", "R2")
-    ))
+    client$set_turns(
+      list(
+        make_live_turn("user", "one"),
+        make_live_turn("assistant", "R1"),
+        make_live_turn("user", "two"),
+        make_live_turn("assistant", "R2")
+      )
+    )
     session$setInputs(
       chat_messages = list(
         make_ui_message("user", "one"),
@@ -872,6 +876,113 @@ test_that("editing a message after the first forks at the correct node even when
     )
 
     expect_equal(ctrl$record$current_leaf, "n_0002")
+  })
+})
+
+test_that("reloading after a real turn was saved to FileConversationStore restores without error (regression)", {
+  # Regression: FileConversationStore persists recorded turns as JSON.
+  # jsonlite::fromJSON(simplifyVector = FALSE) decodes the recorded object's
+  # `version = 1` as an integer, but ellmer::check_recorded() requires
+  # identical(recorded$version, 1) (a double) -- so restoring a real,
+  # previously-saved turn crashed history_init with "Unsupported version 1"
+  # on every reload. InMemoryConversationStore never hits this because it
+  # keeps the original R objects, never round-tripping through JSON.
+  skip_if_not_installed("ellmer")
+
+  make_live_turn <- function(role, text) {
+    content <- ellmer::ContentText(text = text)
+    if (role == "user") {
+      ellmer::UserTurn(contents = list(content))
+    } else {
+      # A real provider response always has concrete (non-NA) tokens/cost/
+      # duration/finish_reason -- unlike AssistantTurn()'s NA defaults, which
+      # jsonlite serializes inconsistently (NA in a numeric vector becomes
+      # JSON null, but a bare NA_real_ becomes the string "NA"). That's a
+      # separate, real bug, but not the one this test targets, so use
+      # realistic values here to isolate the version-int round-trip issue.
+      ellmer::AssistantTurn(
+        contents = list(content),
+        tokens = c(10, 5, 15),
+        cost = 0.001,
+        duration = 0.5,
+        finish_reason = "stop"
+      )
+    }
+  }
+  make_ui_message <- function(role, text) {
+    list(
+      role = role,
+      segments = list(list(content = text, content_type = "markdown"))
+    )
+  }
+
+  dir <- withr::local_tempdir()
+  store <- FileConversationStore$new(dir = dir)
+
+  client <- mock_chat_client()
+  session <- shiny::MockShinySession$new()
+  session$user <- "testuser"
+
+  server <- function(input, output, session) {
+    chat_server(
+      "chat",
+      client,
+      history = history_options(store = store, title = NULL),
+      session = session
+    )
+  }
+
+  saved_id <- NULL
+  shiny::testServer(server, session = session, {
+    session$setInputs(chat_history_browser_token = "tok-abc")
+
+    client$set_turns(
+      list(
+        make_live_turn("user", "hi"),
+        make_live_turn("assistant", "hello")
+      )
+    )
+    session$setInputs(
+      chat_messages = list(
+        make_ui_message("user", "hi"),
+        make_ui_message("assistant", "hello")
+      )
+    )
+
+    ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
+    saved_id <<- ctrl$record$id
+  })
+
+  # A fresh session with a fresh client simulates the browser reload: same
+  # store (so the record is actually read back off disk), same conversation
+  # id (as the browser would echo back from localStorage).
+  new_client <- mock_chat_client()
+  new_session <- shiny::MockShinySession$new()
+  new_session$user <- "testuser"
+
+  new_server <- function(input, output, session) {
+    chat_server(
+      "chat",
+      new_client,
+      history = history_options(store = store, title = NULL),
+      session = session
+    )
+  }
+
+  shiny::testServer(new_server, session = new_session, {
+    expect_no_error(
+      session$setInputs(
+        chat_history_browser_token = "tok-abc",
+        chat_history_current_id = saved_id
+      )
+    )
+
+    restored_turns <- new_client$get_turns()
+    expect_length(restored_turns, 2)
+    expect_true(S7::S7_inherits(restored_turns[[1]], ellmer::UserTurn))
+    expect_equal(restored_turns[[1]]@contents[[1]]@text, "hi")
+    expect_true(S7::S7_inherits(restored_turns[[2]], ellmer::AssistantTurn))
+    expect_equal(restored_turns[[2]]@contents[[1]]@text, "hello")
   })
 })
 
