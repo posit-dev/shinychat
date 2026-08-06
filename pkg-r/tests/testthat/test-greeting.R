@@ -73,7 +73,10 @@ test_that("chat_ui() HTML() greeting produces html content_type", {
   expect_equal(payload$content_type, "html")
   # Wrapped in a <shinychat-raw-html> island, same as a Tag/TagList greeting,
   # so e.g. Shiny bindings inside an HTML() string still work.
-  expect_equal(payload$content, "<shinychat-raw-html><b>hi</b></shinychat-raw-html>")
+  expect_equal(
+    payload$content,
+    "<shinychat-raw-html><b>hi</b></shinychat-raw-html>"
+  )
 })
 
 test_that("chat_ui() tag greeting produces html content_type and attaches dependencies", {
