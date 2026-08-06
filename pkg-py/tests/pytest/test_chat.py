@@ -235,6 +235,14 @@ def test_tagifiable_normalization():
     assert m.role == "assistant"
 
 
+def test_tagifiable_normalization_forces_html_content_type():
+    markdown = ChatMessage(tags.div("Hello"), content_type="markdown")
+    text = ChatMessage(tags.div("Hello"), content_type="text")
+
+    assert markdown.content_type == "html"
+    assert text.content_type == "html"
+
+
 def test_langchain_normalization():
     from langchain_core.language_models.chat_models import BaseChatModel
     from langchain_core.messages import BaseMessage, BaseMessageChunk

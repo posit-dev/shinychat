@@ -218,8 +218,7 @@ class ChatMessage:
             # Surround with blank lines so the markdown parser treats
             # block-level custom elements correctly.
             content = f"\n\n{content}\n\n"
-            if content_type is None:
-                self.content_type = "html"
+            self.content_type = "html"
 
         self.content = content
         self.html_deps: list[HTMLDependency] = deps
