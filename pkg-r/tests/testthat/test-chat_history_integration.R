@@ -879,14 +879,7 @@ test_that("editing a message after the first forks at the correct node even when
   })
 })
 
-test_that("reloading after a real turn was saved to FileConversationStore restores without error (regression)", {
-  # Regression: FileConversationStore persists recorded turns as JSON.
-  # jsonlite::fromJSON(simplifyVector = FALSE) decodes the recorded object's
-  # `version = 1` as an integer, but ellmer::check_recorded() requires
-  # identical(recorded$version, 1) (a double) -- so restoring a real,
-  # previously-saved turn crashed history_init with "Unsupported version 1"
-  # on every reload. InMemoryConversationStore never hits this because it
-  # keeps the original R objects, never round-tripping through JSON.
+test_that("reload restores file-backed ellmer turns without type loss", {
   skip_if_not_installed("ellmer")
 
   make_live_turn <- function(role, text) {
@@ -894,18 +887,9 @@ test_that("reloading after a real turn was saved to FileConversationStore restor
     if (role == "user") {
       ellmer::UserTurn(contents = list(content))
     } else {
-      # A real provider response always has concrete (non-NA) tokens/cost/
-      # duration/finish_reason -- unlike AssistantTurn()'s NA defaults, which
-      # jsonlite serializes inconsistently (NA in a numeric vector becomes
-      # JSON null, but a bare NA_real_ becomes the string "NA"). That's a
-      # separate, real bug, but not the one this test targets, so use
-      # realistic values here to isolate the version-int round-trip issue.
       ellmer::AssistantTurn(
         contents = list(content),
-        tokens = c(10, 5, 15),
-        cost = 0.001,
-        duration = 0.5,
-        finish_reason = "stop"
+        json = list(1, "two")
       )
     }
   }
@@ -953,9 +937,6 @@ test_that("reloading after a real turn was saved to FileConversationStore restor
     saved_id <<- ctrl$record$id
   })
 
-  # A fresh session with a fresh client simulates the browser reload: same
-  # store (so the record is actually read back off disk), same conversation
-  # id (as the browser would echo back from localStorage).
   new_client <- mock_chat_client()
   new_session <- shiny::MockShinySession$new()
   new_session$user <- "testuser"
@@ -983,6 +964,11 @@ test_that("reloading after a real turn was saved to FileConversationStore restor
     expect_equal(restored_turns[[1]]@contents[[1]]@text, "hi")
     expect_true(S7::S7_inherits(restored_turns[[2]], ellmer::AssistantTurn))
     expect_equal(restored_turns[[2]]@contents[[1]]@text, "hello")
+    expect_identical(restored_turns[[2]]@json, list(1, "two"))
+    expect_identical(restored_turns[[2]]@tokens, rep(NA_real_, 3))
+    expect_identical(restored_turns[[2]]@cost, NA_real_)
+    expect_identical(restored_turns[[2]]@duration, NA_real_)
+    expect_identical(restored_turns[[2]]@finish_reason, NA_character_)
   })
 })
 

@@ -186,6 +186,34 @@ test_that("FileConversationStore: response_count round-trips via JSON", {
   expect_equal(result$response_count, 2L)
 })
 
+test_that("FileConversationStore preserves recorded turn types", {
+  skip_if_not_installed("ellmer")
+  dir <- withr::local_tempdir()
+  store <- FileConversationStore$new(dir = dir)
+  rec <- new_conversation_record("Test chat")
+  recorded <- ellmer::contents_record(
+    ellmer::AssistantTurn(
+      contents = list(ellmer::ContentText("hello")),
+      json = list(1, "two")
+    )
+  )
+  rec$nodes <- list(
+    n_0001 = list(
+      parent = NULL,
+      children = list(),
+      turns = list(recorded),
+      ui = NULL,
+      selected_child = NULL
+    )
+  )
+  rec$current_leaf <- "n_0001"
+
+  store$put(part(), rec)
+  result <- store$get(part(), rec$id)
+
+  expect_identical(result$nodes$n_0001$turns[[1]], recorded)
+})
+
 test_that("FileConversationStore: files are written to disk", {
   dir <- withr::local_tempdir()
   store <- FileConversationStore$new(dir = dir)
