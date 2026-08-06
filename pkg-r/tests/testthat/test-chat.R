@@ -66,14 +66,14 @@ test_that("chat_ui() labels non-string messages as html content", {
 
   # htmltools::HTML() is a character vector too (class c("html", "character")),
   # so is.character() alone would treat it as markdown -- it needs its own
-  # branch, same as chat_set_greeting()'s three-way split.
+  # branch, same as chat_set_greeting()'s check. It gets the same
+  # <shinychat-raw-html> wrapping as a Tag/TagList, so e.g. Shiny bindings
+  # inside an HTML() string still work.
   html_string <- as.character(
     chat_ui("chat", messages = list(htmltools::HTML("<b>hi</b>")))
   )
   expect_match(html_string, 'content-type="html"', fixed = TRUE)
-  # A raw HTML *string* isn't run through pre_process_ui(), so it's not
-  # wrapped in a <shinychat-raw-html> island -- unlike a Tag/TagList.
-  expect_false(grepl("shinychat-raw-html", html_string, fixed = TRUE))
+  expect_match(html_string, "shinychat-raw-html", fixed = TRUE)
 })
 
 test_that("chat_append_stream() returns the stream contents as string if all text", {

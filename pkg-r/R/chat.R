@@ -340,21 +340,15 @@ chat_ui <- function(
       role <- x[["role"]] %||% role
     }
 
-    # `content` is most likely a string, so avoid overhead in that case
-    # (it's also important that we *don't escape HTML* here). Mirrors the
-    # greeting's three-way branch below: htmltools::HTML() is a character
-    # vector too (class c("html", "character")), so it must be checked before
-    # the plain is.character() case -- otherwise it's treated as markdown and
-    # (as of the escaping fix) has no reserved element names to protect it.
+    # A plain string is most likely, so avoid overhead in that case (it's also
+    # important that we *don't escape HTML* here). htmltools::HTML() is also
+    # is.character() (class c("html", "character")), but it gets the same
+    # <shinychat-raw-html> wrapping as Tag/TagList below -- unlike a plain
+    # string, it's meant to render exactly like real HTML (e.g. Shiny bindings
+    # inside it via RawHTML's bindAll()), which only the raw-HTML sink does.
     if (is.character(content) && !inherits(content, "html")) {
       ui <- list(html = paste(content, collapse = "\n"))
       content_type <- NULL
-    } else if (
-      inherits(content, "html") &&
-        !inherits(content, c("shiny.tag", "shiny.tag.list"))
-    ) {
-      ui <- list(html = paste(as.character(content), collapse = "\n"))
-      content_type <- "html"
     } else {
       ui <- with_current_theme({
         htmltools::renderTags(pre_process_ui(content))
@@ -411,15 +405,10 @@ chat_ui <- function(
       # Plain markdown string
       greeting_content <- content
       greeting_content_type <- "markdown"
-    } else if (
-      inherits(content, "html") &&
-        !inherits(content, c("shiny.tag", "shiny.tag.list"))
-    ) {
-      # htmltools::HTML() - raw HTML string
-      greeting_content <- as.character(content)
-      greeting_content_type <- "html"
     } else {
-      # htmltools tag or tagList - render to HTML and collect deps
+      # htmltools::HTML() string, Tag, or TagList -- render to HTML (wrapping
+      # in a <shinychat-raw-html> island as needed, so e.g. Shiny bindings
+      # inside an HTML() string still work) and collect deps.
       rendered <- with_current_theme({
         htmltools::renderTags(pre_process_ui(content))
       })
@@ -1168,14 +1157,10 @@ chat_set_greeting <- function(
     greeting_content <- content
     greeting_content_type <- "markdown"
     html_deps <- NULL
-  } else if (
-    inherits(content, "html") &&
-      !inherits(content, c("shiny.tag", "shiny.tag.list"))
-  ) {
-    greeting_content <- as.character(content)
-    greeting_content_type <- "html"
-    html_deps <- NULL
   } else {
+    # htmltools::HTML() string, Tag, or TagList -- render to HTML (wrapping
+    # in a <shinychat-raw-html> island as needed, so e.g. Shiny bindings
+    # inside an HTML() string still work).
     ui <- process_ui(pre_process_ui(content), session)
     greeting_content <- ui[["html"]]
     greeting_content_type <- "html"

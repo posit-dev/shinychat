@@ -11,8 +11,11 @@
 #' @param content A string of content to display before any streaming occurs.
 #'   When `content_type` is Markdown or HTML, it may also be UI element(s) such
 #'   as input and output bindings.
-#' @param content_type The content type. Default is `"markdown"` (specifically,
-#'   CommonMark). Supported content types include:
+#' @param content_type The content type of a plain-string `content`. Default
+#'   is `NULL`, treated as `"markdown"`. Ignored for anything that isn't a
+#'   plain string -- `htmltools::HTML()` strings and UI element(s) are always
+#'   treated as HTML, since they need the same DOM fidelity (e.g. so Shiny
+#'   bindings inside them still work). Supported content types include:
 #'       * `"markdown"`: markdown text, specifically CommonMark
 #'       * `"html"`: for rendering HTML content.
 #'       * `"text"`: for plain text.
@@ -30,15 +33,20 @@ output_markdown_stream <- function(
   id,
   ...,
   content = "",
-  content_type = "markdown",
+  content_type = NULL,
   auto_scroll = TRUE,
   width = "min(680px, 100%)",
   height = "auto"
 ) {
-  # `content` is most likely a string, so avoid overhead in that case
-  # (it's also important that we *don't escape HTML* here).
-  if (is.character(content)) {
+  # A plain string is most likely, so avoid overhead in that case (it's also
+  # important that we *don't escape HTML* here). htmltools::HTML() is also
+  # is.character() (class c("html", "character")), but it gets the same
+  # <shinychat-raw-html> wrapping as Tag/TagList below -- unlike a plain
+  # string, it's meant to render exactly like real HTML (e.g. Shiny bindings
+  # inside it via RawHTML's bindAll()), which only the raw-HTML sink does.
+  if (is.character(content) && !inherits(content, "html")) {
     ui <- list(html = paste(content, collapse = "\n"))
+    content_type <- content_type %||% "markdown"
   } else {
     ui <- with_current_theme({
       htmltools::renderTags(pre_process_ui(content))

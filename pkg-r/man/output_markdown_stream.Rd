@@ -8,7 +8,7 @@ output_markdown_stream(
   id,
   ...,
   content = "",
-  content_type = "markdown",
+  content_type = NULL,
   auto_scroll = TRUE,
   width = "min(680px, 100\%)",
   height = "auto"
@@ -23,8 +23,11 @@ output_markdown_stream(
 When \code{content_type} is Markdown or HTML, it may also be UI element(s) such
 as input and output bindings.}
 
-\item{content_type}{The content type. Default is \code{"markdown"} (specifically,
-CommonMark). Supported content types include:
+\item{content_type}{The content type of a plain-string \code{content}. Default
+is \code{NULL}, treated as \code{"markdown"}. Ignored for anything that isn't a
+plain string -- \code{htmltools::HTML()} strings and UI element(s) are always
+treated as HTML, since they need the same DOM fidelity (e.g. so Shiny
+bindings inside them still work). Supported content types include:
 * \code{"markdown"}: markdown text, specifically CommonMark
 * \code{"html"}: for rendering HTML content.
 * \code{"text"}: for plain text.}
