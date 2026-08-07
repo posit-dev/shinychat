@@ -286,3 +286,131 @@ def test_edit_add_and_remove_attachment_resends_with_final_set(
 
     # The resent user message still carries exactly one attached image.
     expect(first_user.locator(".shiny-chat-message-image")).to_have_count(1)
+
+
+def test_editing_a_scrolled_out_message_autoscrolls_to_new_response(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    """Editing a message that's scrolled out of view (an early message in a
+    long conversation) must still auto-scroll down to the newly generated
+    response -- the same way an ordinary (non-edit) send already does."""
+    page.set_viewport_size({"width": 800, "height": 400})
+    page.goto(local_app.url)
+
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+
+    # Send enough messages that the small viewport overflows.
+    for i in range(6):
+        chat.set_user_input(f"message {i}")
+        chat.send_user_input(method="enter")
+        chat.expect_latest_message(f"Echo: message {i}", timeout=10_000)
+
+    # Edit an early message. Playwright scrolls it into view to click the
+    # edit button, which leaves the container scrolled away from the bottom
+    # -- exactly how a real user would end up there.
+    user_messages = page.locator(".shiny-chat-user-message")
+    early_user = user_messages.nth(1)
+    early_user.hover()
+    edit_btn = early_user.locator(".shiny-chat-edit-btn")
+    expect(edit_btn).to_be_visible(timeout=5_000)
+    edit_btn.click()
+
+    scroll_container = chat.loc_scroll_container
+    at_bottom_before = scroll_container.evaluate(
+        "el => el.scrollHeight - el.scrollTop - el.clientHeight < 2"
+    )
+    assert not at_bottom_before, (
+        "test setup failed: container should be scrolled away from the bottom"
+    )
+
+    editor = early_user.get_by_role("textbox", name="Chat message")
+    expect(editor).to_be_visible(timeout=5_000)
+    editor.click()
+    editor.press("ControlOrMeta+a")
+    editor.press_sequentially("edited message 1")
+    early_user.locator(".shiny-chat-btn-send").click()
+
+    chat.expect_latest_message("Echo: edited message 1", timeout=15_000)
+
+    # The newly generated response should have been auto-scrolled into view.
+    expect(chat.loc_latest_message).to_be_in_viewport(timeout=5_000)
+
+    # The scroll-to-bottom is a spring animation, not an instant jump -- wait
+    # for it to actually arrive rather than sampling once after a fixed delay.
+    page.wait_for_function(
+        "el => el.scrollHeight - el.scrollTop - el.clientHeight < 2",
+        arg=scroll_container.element_handle(),
+        timeout=10_000,
+    )
+
+
+def test_sibling_navigation_scrolled_away_autoscrolls_to_new_branch(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    """Switching to a sibling branch (created by editing) must auto-scroll
+    down to reveal that branch's response, the same way editing itself
+    already does -- navigation currently has no equivalent trigger."""
+    page.set_viewport_size({"width": 800, "height": 400})
+    page.goto(local_app.url)
+
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+
+    # Filler messages so the container overflows.
+    for i in range(6):
+        chat.set_user_input(f"filler {i}")
+        chat.send_user_input(method="enter")
+        chat.expect_latest_message(f"Echo: filler {i}", timeout=10_000)
+
+    chat.set_user_input("hello")
+    chat.send_user_input(method="enter")
+    chat.expect_latest_message("Echo: hello", timeout=10_000)
+
+    # Edit the last message to create a second branch/response.
+    user_messages = page.locator(".shiny-chat-user-message")
+    target_user = user_messages.last
+    target_user.hover()
+    edit_btn = target_user.locator(".shiny-chat-edit-btn")
+    expect(edit_btn).to_be_visible(timeout=5_000)
+    # Click via JS, bypassing Playwright's auto-scroll-into-view -- otherwise
+    # each click would do the container's scrolling job for it, masking bugs
+    # in the app's own auto-scroll logic.
+    edit_btn.evaluate("el => el.click()")
+    editor = target_user.get_by_role("textbox", name="Chat message")
+    expect(editor).to_be_visible(timeout=5_000)
+    editor.click()
+    editor.press("ControlOrMeta+a")
+    editor.press_sequentially("hello again")
+    target_user.locator(".shiny-chat-btn-send").evaluate("el => el.click()")
+    chat.expect_latest_message("Echo: hello again", timeout=15_000)
+
+    sibling_nav = page.locator(".shiny-chat-sibling-nav")
+    expect(sibling_nav).to_be_visible(timeout=10_000)
+    expect(sibling_nav.locator("span")).to_have_text("2 / 2", timeout=5_000)
+
+    scroll_container = chat.loc_scroll_container
+    scroll_container.hover()
+    for _ in range(10):
+        page.mouse.wheel(0, -1000)
+        page.wait_for_timeout(50)
+    at_bottom_before = scroll_container.evaluate(
+        "el => el.scrollHeight - el.scrollTop - el.clientHeight < 2"
+    )
+    assert not at_bottom_before, (
+        "test setup failed: container should be scrolled away from the bottom"
+    )
+
+    prev_btn = sibling_nav.locator("button").first
+    prev_btn.evaluate("el => el.click()")
+
+    chat.expect_latest_message("Echo: hello", timeout=10_000)
+    expect(sibling_nav.locator("span")).to_have_text("1 / 2", timeout=5_000)
+
+    # The scroll-to-bottom is a spring animation, not an instant jump -- wait
+    # for it to actually arrive rather than sampling once after a fixed delay.
+    page.wait_for_function(
+        "el => el.scrollHeight - el.scrollTop - el.clientHeight < 2",
+        arg=scroll_container.element_handle(),
+        timeout=10_000,
+    )

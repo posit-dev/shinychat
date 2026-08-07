@@ -200,6 +200,15 @@ export function ChatApp({
         }
         return
       }
+      if (action.type === "update_siblings") {
+        dispatch(action)
+        // Unlike an edit (which resubmits through the input and so re-engages
+        // stick-to-bottom via its onSend), switching branches has no
+        // submission step of its own -- nothing else would scroll the newly
+        // revealed response into view if the user had scrolled away.
+        containerRef.current?.scrollToBottom()
+        return
+      }
       dispatch(action)
     })
     return unsubscribe
