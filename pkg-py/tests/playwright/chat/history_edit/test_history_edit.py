@@ -365,9 +365,10 @@ def test_sibling_navigation_preserves_manual_scroll_position(
     chat.send_user_input(method="enter")
     chat.expect_latest_message("Echo: hello", timeout=10_000)
 
-    # Edit the last message to create a second branch/response.
+    # Edit an early message so returning to the original branch restores the
+    # later messages that were removed from the edited branch.
     user_messages = page.locator(".shiny-chat-user-message")
-    target_user = user_messages.last
+    target_user = user_messages.nth(1)
     target_user.hover()
     edit_btn = target_user.locator(".shiny-chat-edit-btn")
     expect(edit_btn).to_be_visible(timeout=5_000)
@@ -379,24 +380,18 @@ def test_sibling_navigation_preserves_manual_scroll_position(
     expect(editor).to_be_visible(timeout=5_000)
     editor.click()
     editor.press("ControlOrMeta+a")
-    editor.press_sequentially("hello again")
+    editor.press_sequentially("filler 1 again")
     target_user.locator(".shiny-chat-btn-send").evaluate("el => el.click()")
-    chat.expect_latest_message("Echo: hello again", timeout=15_000)
+    chat.expect_latest_message("Echo: filler 1 again", timeout=15_000)
 
     sibling_nav = page.locator(".shiny-chat-sibling-nav")
     expect(sibling_nav).to_be_visible(timeout=10_000)
     expect(sibling_nav.locator("span")).to_have_text("2 / 2", timeout=5_000)
 
     scroll_container = chat.loc_scroll_container
-    scroll_container.hover()
-    for _ in range(10):
-        page.mouse.wheel(0, -1000)
-        page.wait_for_timeout(50)
-    at_bottom_before = scroll_container.evaluate(
-        "el => el.scrollHeight - el.scrollTop - el.clientHeight < 2"
-    )
-    assert not at_bottom_before, (
-        "test setup failed: container should be scrolled away from the bottom"
+    scroll_top_before = scroll_container.evaluate("el => el.scrollTop")
+    assert scroll_top_before <= 1, (
+        "test setup failed: edited branch should begin at the top"
     )
 
     prev_btn = sibling_nav.locator("button").first
@@ -405,13 +400,12 @@ def test_sibling_navigation_preserves_manual_scroll_position(
     chat.expect_latest_message("Echo: hello", timeout=10_000)
     expect(sibling_nav.locator("span")).to_have_text("1 / 2", timeout=5_000)
 
-    # Wait beyond a possible spring scroll-to-bottom animation before sampling.
+    # Restoring the original branch makes the conversation overflow again, but
+    # must not treat the short edited branch's top position as a bottom pin.
     page.wait_for_timeout(1_000)
-    distance_from_bottom = scroll_container.evaluate(
-        "el => el.scrollHeight - el.scrollTop - el.clientHeight"
-    )
-    assert distance_from_bottom >= 2, (
-        "sibling navigation should not override manual scrolling"
+    scroll_top_after = scroll_container.evaluate("el => el.scrollTop")
+    assert scroll_top_after <= 1, (
+        "sibling navigation should preserve the edited branch's top position"
     )
 
 

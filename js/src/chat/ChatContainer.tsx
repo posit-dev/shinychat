@@ -75,7 +75,10 @@ export interface ChatContainerProps {
   onNavigate?: (index: number, direction: "prev" | "next") => void
 }
 
-export type ChatContainerHandle = ChatInputHandle
+export interface ChatContainerHandle extends ChatInputHandle {
+  beginSiblingNavigation(): void
+  endSiblingNavigation(): void
+}
 
 export const ChatContainer = forwardRef<
   ChatContainerHandle,
@@ -125,6 +128,18 @@ export const ChatContainer = forwardRef<
 
   const { scrollRef, contentRef, scrollToBottom, stopScroll } =
     useStickToBottom({ resize: "smooth" })
+  const contentElementRef = useRef<HTMLDivElement>(null)
+  const savedScrollTopRef = useRef<number | null>(null)
+
+  const handleContentRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      contentElementRef.current = element
+      if (savedScrollTopRef.current === null) {
+        contentRef(element)
+      }
+    },
+    [contentRef],
+  )
 
   // Track scroll position of the scroll container directly. useStickToBottom's
   // own `isAtBottom` is computed from contentRef, which excludes the greeting
@@ -231,6 +246,29 @@ export const ChatContainer = forwardRef<
     },
     focus() {
       chatInputRef.current?.focus()
+    },
+    beginSiblingNavigation() {
+      const scroll = scrollRef.current
+      if (!scroll) return
+
+      savedScrollTopRef.current = scroll.scrollTop
+      contentRef(null)
+      stopScroll()
+    },
+    endSiblingNavigation() {
+      const savedScrollTop = savedScrollTopRef.current
+      if (savedScrollTop === null) return
+
+      requestAnimationFrame(() => {
+        const content = contentElementRef.current
+        const scroll = scrollRef.current
+        if (!content || !scroll) return
+
+        contentRef(content)
+        stopScroll()
+        scroll.scrollTop = savedScrollTop
+        savedScrollTopRef.current = null
+      })
     },
   }))
 
@@ -449,7 +487,7 @@ export const ChatContainer = forwardRef<
               {greeting != null && <ChatGreeting greeting={greeting} />}
               <div
                 className="shiny-chat-messages-content"
-                ref={contentRef}
+                ref={handleContentRef}
                 role="log"
                 aria-live="polite"
                 {...(greeting?.status === "dismissing"
