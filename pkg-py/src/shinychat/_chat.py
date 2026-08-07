@@ -19,7 +19,6 @@ from typing import (
     NamedTuple,
     Optional,
     Sequence,
-    Tuple,
     Union,
     cast,
     overload,
@@ -161,13 +160,6 @@ class UserInput(NamedTuple):
 
 
 ChunkOption = Literal["start", "end", True, False]
-
-PendingMessage = Tuple[
-    Any,
-    ChunkOption,
-    Literal["append", "replace"],
-    Union[str, None],
-]
 
 
 class Chat:
@@ -349,7 +341,6 @@ class Chat:
         self._current_stream_segments: list[ContentSegment] = []
         self._current_stream_id: str | None = None
         self._current_stream_projection: StoredMessage | None = None
-        self._pending_messages: list[PendingMessage] = []
         self._message_lock = asyncio.Lock()
         # Prevent exited stream contexts from restoring state cleared mid-stream.
         self._stream_generation = 0
@@ -990,14 +981,11 @@ class Chat:
         message: Any,
         *,
         icon: HTML | Tag | TagList | None = None,
-        from_pending: bool = False,
     ) -> bool:
-        if self._current_stream_id or (
-            self._pending_messages and not from_pending
-        ):
-            if not from_pending:
-                self._pending_messages.append((message, False, "append", None))
-            return False
+        if self._current_stream_id is not None:
+            raise RuntimeError(
+                "Cannot append a complete message while a stream is active"
+            )
 
         msg = normalize_message(message)
         msg = await self._transform_message(msg)
@@ -1137,31 +1125,22 @@ class Chat:
         stream_id: str,
         operation: Literal["append", "replace"] = "append",
         icon: HTML | Tag | TagList | None = None,
-        from_pending: bool = False,
     ) -> bool:
-        has_pending_stream_write = any(
-            pending_chunk is not False and pending_stream_id == stream_id
-            for _, pending_chunk, _, pending_stream_id in self._pending_messages
-        )
-        if (
-            not from_pending
-            and self._pending_messages
-            and (self._current_stream_id is None or has_pending_stream_write)
-        ):
-            self._pending_messages.append(
-                (message, chunk, operation, stream_id)
-            )
-            return False
-
-        if self._current_stream_id is None and chunk != "start":
-            return True
-
-        if self._current_stream_id and self._current_stream_id != stream_id:
-            if not from_pending:
-                self._pending_messages.append(
-                    (message, chunk, operation, stream_id)
+        if chunk == "start":
+            if self._current_stream_id is not None:
+                raise RuntimeError(
+                    "Cannot start a stream while another stream is active"
                 )
-            return False
+        elif self._current_stream_id is None:
+            if chunk == "end":
+                raise RuntimeError(
+                    "Cannot end a stream without an active stream"
+                )
+            raise RuntimeError(
+                "Cannot apply a stream chunk without an active stream"
+            )
+        elif self._current_stream_id != stream_id:
+            raise RuntimeError("Cannot write to a stream that is not active")
 
         staged_segments = copy_segments(self._current_stream_segments)
         staged_stream_id = stream_id
@@ -1200,7 +1179,6 @@ class Chat:
         settled: StoredMessage | None = None
         next_projection = self._current_stream_projection
         wire_message: StoredMessage | ChatMessage = msg
-        terminal_succeeded = False
         try:
             if self._needs_transform(msg):
                 chunk_content = msg.content
@@ -1258,14 +1236,28 @@ class Chat:
                 self._current_stream_segments = staged_segments
                 if self._needs_transform(msg):
                     self._current_stream_projection = next_projection
-            terminal_succeeded = True
-            return True
-        finally:
-            if chunk == "end" and (terminal_succeeded or not from_pending):
+            else:
                 self._current_stream_id = None
                 self._current_stream_segments = []
                 self._current_stream_projection = None
                 self._message_stream_segments_checkpoint = []
+            return True
+        except BaseException:
+            if chunk == "end":
+                self._abort_message_stream_locked(stream_id)
+            raise
+
+    def _abort_message_stream_locked(self, stream_id: str) -> None:
+        if self._current_stream_id != stream_id:
+            return
+        self._current_stream_id = None
+        self._current_stream_segments = []
+        self._current_stream_projection = None
+        self._message_stream_segments_checkpoint = []
+
+    async def _abort_message_stream(self, stream_id: str) -> None:
+        async with self._message_lock:
+            self._abort_message_stream_locked(stream_id)
 
     async def append_message_stream(
         self,
@@ -1498,94 +1490,48 @@ class Chat:
         id = _utils.private_random_id()
 
         empty = ChatMessageDict(content="", role="assistant")
-        await self._append_message_chunk(
-            empty, chunk="start", stream_id=id, icon=icon
-        )
-
-        result = ""
-        primary_error: BaseException | None = None
-        secondary_warnings: list[str] = []
         try:
-            async for msg in message:
+            await self._append_message_chunk(
+                empty, chunk="start", stream_id=id, icon=icon
+            )
+        except BaseException:
+            await self._abort_message_stream(id)
+            raise
+
+        primary_error: BaseException | None = None
+
+        iterator = message.__aiter__()
+        while True:
+            try:
+                msg = await iterator.__anext__()
+            except StopAsyncIteration:
+                break
+            except BaseException as error:
+                primary_error = error
+                break
+
+            try:
                 await self._append_message_chunk(msg, chunk=True, stream_id=id)
-            result = "".join(str(s) for s in self._current_stream_segments)
-        except BaseException as error:
-            primary_error = error
+            except BaseException:
+                await self._abort_message_stream(id)
+                raise
+
+        result = (
+            ""
+            if primary_error is not None
+            else "".join(str(s) for s in self._current_stream_segments)
+        )
 
         try:
             await self._append_message_chunk(empty, chunk="end", stream_id=id)
         except BaseException as error:
             if primary_error is None:
                 primary_error = error
-            else:
-                secondary_warnings.append(
-                    f"Could not finish message stream: {error}",
-                )
-
-        try:
-            await self._flush_pending_messages()
-        except BaseException as error:
-            if primary_error is None:
-                primary_error = error
-            else:
-                secondary_warnings.append(
-                    f"Could not flush queued messages: {error}",
-                )
+            await self._abort_message_stream(id)
 
         if primary_error is not None:
-            with warnings.catch_warnings():
-                warnings.simplefilter("always", UserWarning)
-                for warning in secondary_warnings:
-                    warnings.warn(warning, stacklevel=1)
             raise primary_error
         return result
-
-    async def _flush_pending_messages(self):
-        async with self._message_lock:
-            stream_generation = self._stream_generation
-
-        while True:
-            async with self._message_lock:
-                if self._stream_generation != stream_generation:
-                    return
-                if not self._pending_messages:
-                    return
-
-                pending_index = 0
-                if self._current_stream_id is not None:
-                    pending_index = next(
-                        (
-                            index
-                            for index, pending in enumerate(
-                                self._pending_messages
-                            )
-                            if pending[1] in (True, "end")
-                            and pending[3] == self._current_stream_id
-                        ),
-                        -1,
-                    )
-                    if pending_index < 0:
-                        return
-
-                msg, chunk, operation, stream_id = self._pending_messages[
-                    pending_index
-                ]
-                if chunk is False:
-                    processed = await self._append_message_locked(
-                        msg,
-                        from_pending=True,
-                    )
-                else:
-                    processed = await self._append_message_chunk_locked(
-                        msg,
-                        chunk=chunk,
-                        operation=operation,
-                        stream_id=cast(str, stream_id),
-                        from_pending=True,
-                    )
-                if not processed:
-                    return
-                del self._pending_messages[pending_index]
 
     # Send a message to the UI
     async def _send_append_message(
@@ -1983,7 +1929,6 @@ class Chat:
         self._current_stream_segments = []
         self._current_stream_projection = None
         self._message_stream_segments_checkpoint = []
-        self._pending_messages = []
         self._stream_generation += 1
 
     def get_greeting(self) -> str | None:

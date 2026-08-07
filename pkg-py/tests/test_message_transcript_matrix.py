@@ -118,10 +118,6 @@ async def apply_operation(chat: Chat, operation: dict[str, Any]) -> None:
         return
 
     if operation_type == "stream_chunk":
-        if chat._current_stream_id is None:
-            raise ValueError(
-                "Cannot apply a stream chunk without an active stream"
-            )
         dependencies = make_dependencies(
             cast(list[dict[str, Any]], operation.get("html_deps", []))
         )
@@ -145,8 +141,6 @@ async def apply_operation(chat: Chat, operation: dict[str, Any]) -> None:
         return
 
     if operation_type == "stream_end":
-        if chat._current_stream_id is None:
-            raise ValueError("Cannot end a stream without an active stream")
         await chat._append_message_chunk(
             "",
             chunk="end",
@@ -209,7 +203,7 @@ async def test_message_transcript_matrix(
 
         if "error" in case:
             with pytest.raises(
-                ValueError, match=re.escape(cast(str, case["error"]))
+                RuntimeError, match=re.escape(cast(str, case["error"]))
             ):
                 await apply_all()
         else:
@@ -222,4 +216,3 @@ async def test_message_transcript_matrix(
                 assert chat._current_stream_id is None
                 assert chat._current_stream_segments == []
                 assert chat._message_stream_segments_checkpoint == []
-                assert chat._pending_messages == []
