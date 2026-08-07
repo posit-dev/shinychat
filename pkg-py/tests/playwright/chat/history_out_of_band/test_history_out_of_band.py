@@ -20,18 +20,14 @@ def message_count(page: Page):
 def test_out_of_band_message_survives_history_restore(
     page: Page, local_app: ShinyAppProc
 ) -> None:
-    """
-    A message appended out-of-band (a second, independent `append_message`
-    call inside `on_user_submit`, not the "reply" to the user's turn) must be
-    captured in the client-authoritative `${id}_messages` snapshot and thus
-    round-trip through a history save/restore, just like the primary
-    assistant reply does.
-    """
+    """A server-side out-of-band message round-trips through history."""
     page.goto(local_app.url)
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30_000)
 
     marker = page.locator("#oob-marker-content")
+    messages = page.locator("pre#messages.shiny-text-output")
+    record = page.locator("pre#record.shiny-text-output")
 
     # --- Conversation A: one exchange producing 3 messages (user, out-of-band
     # notice, streamed reply). ---
@@ -45,6 +41,8 @@ def test_out_of_band_message_survives_history_restore(
         )
     ).to_be_visible(timeout=10_000)
     expect(message_count(page)).to_have_count(3, timeout=10_000)
+    expect(messages).to_contain_text("oob-marker-content", timeout=10_000)
+    expect(record).to_contain_text("oob-marker-content", timeout=10_000)
 
     # --- Switch to a new conversation so there's something to restore from. ---
     open_drawer(page)
@@ -70,3 +68,5 @@ def test_out_of_band_message_survives_history_restore(
         )
     ).to_be_visible(timeout=10_000)
     expect(message_count(page)).to_have_count(3, timeout=10_000)
+    expect(messages).to_contain_text("oob-marker-content", timeout=10_000)
+    expect(record).to_contain_text("oob-marker-content", timeout=10_000)

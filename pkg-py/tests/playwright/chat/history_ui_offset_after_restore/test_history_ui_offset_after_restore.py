@@ -25,44 +25,11 @@ def start_new_conversation(page: Page) -> None:
     page.locator(".shiny-chat-history-drawer").wait_for(state="hidden")
 
 
-def wait_for_save_count_to_settle(page: Page) -> str:
-    """
-    Wait until `save_count` stops changing, then return its final value.
-
-    Each turn in this app appends a message twice (the non-streamed rich-UI
-    card, then the streamed echo reply), and each client re-report of its
-    message snapshot fires a save -- so the exact count after a turn isn't a
-    fixed, predictable number. This just needs a reliable "the save(s)
-    landed" sync point before switching conversations, not an exact count.
-    """
-    loc = page.locator("pre#save_count.shiny-text-output")
-    last = loc.inner_text()
-    while True:
-        page.wait_for_timeout(500)
-        current = loc.inner_text()
-        if current == last:
-            return current
-        last = current
-
-
 def test_new_turn_ui_survives_second_restore(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     """
-    Regression test for a stale `ui_offset` after `replay_ui`.
-
-    `replay_ui` used to seed `self.ui_offset` from
-    `len(self.chat._messages_for_bookmark())`, which reads the
-    client-reported `${id}_messages` input -- an async, browser-driven
-    snapshot that (immediately after the synchronous restore loop) still
-    reflects the *previous* conversation, not the one just restored. That
-    stale offset makes `extend_record_linear` re-slice UI messages from index
-    0 instead of from the true restore point, so the next turn's node (and
-    all subsequent nodes) end up re-absorbing every earlier message on top of
-    their own: `node.ui` for the new turn is polluted with duplicated copies
-    of prior turns' messages (including a prior turn's plain user message
-    misattached into what should be a purely-assistant node), rather than
-    holding just that turn's own UI.
+    Regression test for a correct server transcript cursor after replay.
 
     Sequence:
       1. Conversation A: submit "q1" -> rich reply with marker #1. Wait for
@@ -89,6 +56,8 @@ def test_new_turn_ui_survives_second_restore(
     all_messages = page.locator(
         ".shiny-chat-message-content, .shiny-chat-user-message-content"
     )
+    messages = page.locator("pre#messages.shiny-text-output")
+    record = page.locator("pre#record.shiny-text-output")
 
     # --- Conversation A, turn 1: rich reply with marker #1. ---
     chat.set_user_input("q1")
@@ -98,7 +67,8 @@ def test_new_turn_ui_survives_second_restore(
         ".ui-offset-marker-card", has_text="rich reply for: q1"
     )
     expect(card_q1).to_have_count(1, timeout=10_000)
-    wait_for_save_count_to_settle(page)
+    expect(messages).to_contain_text("rich reply for: q1", timeout=10_000)
+    expect(record).to_contain_text("rich reply for: q1", timeout=10_000)
 
     # --- Start a new conversation: conversation A's messages leave the DOM. ---
     start_new_conversation(page)
@@ -119,7 +89,8 @@ def test_new_turn_ui_survives_second_restore(
         ".ui-offset-marker-card", has_text="rich reply for: q2"
     )
     expect(card_q2).to_have_count(1, timeout=10_000)
-    wait_for_save_count_to_settle(page)
+    expect(messages).to_contain_text("rich reply for: q2", timeout=10_000)
+    expect(record).to_contain_text("rich reply for: q2", timeout=10_000)
 
     # --- Switch away and back to A again: second restore. ---
     start_new_conversation(page)
@@ -134,3 +105,7 @@ def test_new_turn_ui_survives_second_restore(
     expect(card_q2).to_have_count(1, timeout=10_000)
     expect(card_q2).to_have_css("border-color", "rgb(255, 0, 0)", timeout=5_000)
     expect(all_messages).to_have_count(6, timeout=10_000)
+    expect(messages).to_contain_text("rich reply for: q1", timeout=10_000)
+    expect(messages).to_contain_text("rich reply for: q2", timeout=10_000)
+    expect(record).to_contain_text("rich reply for: q1", timeout=10_000)
+    expect(record).to_contain_text("rich reply for: q2", timeout=10_000)

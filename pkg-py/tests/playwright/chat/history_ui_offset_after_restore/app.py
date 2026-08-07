@@ -1,26 +1,8 @@
-"""
-Regression app for stale `ui_offset` after restore (see `replay_ui` in
-`_history.py`).
-
-`replay_ui` used to set `self.ui_offset` from
-`len(self.chat._messages_for_bookmark())`, which reads the client-reported
-`${id}_messages` input. That input is only updated by the BROWSER,
-asynchronously, so immediately after `replay_ui`'s synchronous restore loop
-it still holds the PREVIOUS conversation's snapshot. That stale offset then
-clips the next turn's UI out of `extend_record_linear`'s
-`ui_messages[ui_offset:]` slice, so the new node is saved with no `node.ui`
-and later restores fall back to lossy `turn_fallback_markdown` (losing rich
-HTML).
-
-Each assistant reply carries a distinctive rich-UI marker (a styled
-`<div>` with an HTMLDependency-provided border color) keyed to the turn
-number, so the test can assert that a turn's *rich* UI - not just its
-plain-text fallback - survives a *second* restore after a conversation
-switch.
-"""
+"""Regression app for server-owned history replay after a conversation switch."""
 
 from __future__ import annotations
 
+import json
 import tempfile
 from pathlib import Path
 from typing import Any, AsyncGenerator
@@ -88,7 +70,12 @@ class EchoChatClient(chatlas.Chat):
 
 store_dir = tempfile.mkdtemp(prefix="shinychat-history-ui-offset-")
 
-app_ui = ui.page_fluid(chat_ui("chat"), ui.output_text_verbatim("save_count"))
+app_ui = ui.page_fluid(
+    chat_ui("chat"),
+    ui.output_text_verbatim("save_count"),
+    ui.output_text_verbatim("messages"),
+    ui.output_text_verbatim("record"),
+)
 
 
 def server(input: Inputs, output: Outputs, session: Session) -> None:
@@ -105,14 +92,33 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     client.shinychat_chat = chat
 
     saves = reactive.value(0)
+    restores = reactive.value(0)
 
     @chat.history.on_save
     def _(values: dict[str, object]) -> None:
         saves.set(saves() + 1)
 
+    @chat.history.on_restore
+    def on_history_restore(_: dict[str, object]) -> None:
+        restores.set(restores() + 1)
+
     @render.text
     def save_count():
         return str(saves())
+
+    @render.text
+    def messages() -> str:
+        chat.messages()
+        return json.dumps(chat._messages_for_bookmark())
+
+    @render.text
+    def record() -> str:
+        saves()
+        restores()
+        controller = chat.history._controller
+        if controller is None or controller.record is None:
+            return "null"
+        return json.dumps(controller.record.model_dump(mode="json"))
 
 
 app = App(app_ui, server)

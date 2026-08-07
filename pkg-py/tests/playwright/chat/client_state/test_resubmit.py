@@ -6,11 +6,7 @@ from shinychat.playwright import ChatController
 def test_identical_resubmission_refires_on_user_submit(
     page: Page, local_app: ShinyAppProc
 ) -> None:
-    """Regression test for the B1 dedup nonce: submitting the exact same text
-    twice must fire `on_user_submit` twice. Client-side history dedup (which
-    keys purely on message content) must not suppress the second identical
-    submission server-side — each submit carries a fresh nonce that makes the
-    two submissions distinguishable end-to-end."""
+    """Identical submissions carry distinct event-priority sequence values."""
     page.goto(local_app.url)
 
     chat = ChatController(page, "chat")
@@ -19,6 +15,9 @@ def test_identical_resubmission_refires_on_user_submit(
     for _ in range(2):
         chat.set_user_input("same")
         chat.send_user_input(method="enter")
-        page.wait_for_timeout(500)
+        chat.expect_latest_message("echo: same", timeout=10_000)
 
     expect(page.locator("#submits")).to_have_text("2", timeout=10 * 1000)
+    expect(page.locator("pre#messages.shiny-text-output")).to_contain_text(
+        '"content": "same"', timeout=10_000
+    )

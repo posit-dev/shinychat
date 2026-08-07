@@ -22,12 +22,8 @@ def test_restore_does_not_trigger_extra_save(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     """
-    Restoring a conversation (switching away and back) must not trigger a
-    spurious save: replay_ui re-renders the stored conversation, which makes
-    the client re-report its full snapshot, which fires the same
-    `@reactive.event(chat.messages, ...)` trigger used for real saves. That
-    re-report must be a no-op — it must not re-save (save_count unchanged)
-    and must not truncate or duplicate the restored conversation.
+    Restoring a conversation must not trigger another managed-response save or
+    change the restored transcript.
     """
     page.goto(local_app.url)
     chat = ChatController(page, "chat")
@@ -59,9 +55,7 @@ def test_restore_does_not_trigger_extra_save(
 
     # --- Switch back to conversation A: this is the restore path under test. ---
     # `switch_to()` also unconditionally calls `save_current()` (saving B
-    # before leaving it), then replay_ui() restores A. Capture save_count
-    # right after the switch settles, before asserting no *further* save
-    # occurs from the client's post-restore re-report.
+    # before leaving it), then replays A's server-owned transcript.
     open_drawer(page)
     conv_a = page.locator(".shiny-chat-history-item").filter(
         has_text="first question"
@@ -75,12 +69,7 @@ def test_restore_does_not_trigger_extra_save(
     # not truncated and not duplicated.
     expect(message_count(page)).to_have_count(2, timeout=10_000)
 
-    # Give any spurious client re-report time to reach the server and (if the
-    # idempotency guard were missing) fire an extra save.
-    page.wait_for_timeout(1_500)
-
-    # save_count must still be 4: the client's post-restore re-report of
-    # conversation A's snapshot must NOT trigger another save.
+    # The completed restore does not settle another managed response.
     save_count.expect_value("4", timeout=5_000)
 
     # Re-open the drawer: still exactly 2 conversations (no phantom save
