@@ -12,8 +12,6 @@ from chatlas import Turn
 from chatlas._turn import AssistantTurn
 from htmltools import HTMLDependency, TagList, tags
 from shiny import App, Inputs, Outputs, Session, reactive, render, ui
-from shiny.input_handler import input_handlers
-from shiny.module import ResolvedId
 from shinychat import Chat, chat_ui
 from shinychat.types import (
     Attachment,
@@ -30,16 +28,6 @@ server_state_dep = HTMLDependency(
     source={"subdir": str(CSS_DIR)},
     stylesheet=[{"href": "custom.css"}],
 )
-
-
-@input_handlers.add("shinychat.messages")
-def discard_forged_messages(
-    value: Any,
-    name: ResolvedId,
-    session: Session,
-) -> None:
-    return None
-
 
 class EchoChatClient(chatlas.Chat):
     def __init__(self) -> None:
