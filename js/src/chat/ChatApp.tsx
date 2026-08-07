@@ -22,7 +22,6 @@ import {
   routeToolBlocks,
   splitThinkingBlocks,
   contentFromBlocks,
-  buildMessagesSnapshot,
   type ChatMessageData,
   type ChatToolState,
   type GreetingData,
@@ -146,24 +145,6 @@ export function ChatApp({
     dispatch({ type: "SET_TOOL_GROUPING", grouping: resolvedToolGrouping })
   }, [resolvedToolGrouping])
 
-  const stateRef = useRef(state)
-  stateRef.current = state
-
-  const reportSnapshot = useCallback(() => {
-    // Reports the entire settled transcript (all messages plus retained
-    // htmlDeps) on every change, so a session sends ~O(n^2) bytes over its
-    // lifetime. Fine for typical conversations; if very long transcripts
-    // become common, revisit with a delta/append protocol.
-    transport.sendMessagesSnapshot(
-      elementId,
-      buildMessagesSnapshot(stateRef.current),
-    )
-  }, [transport, elementId])
-
-  useEffect(() => {
-    reportSnapshot()
-  }, [state.messages, reportSnapshot])
-
   const submitUserInput = useCallback(
     (content: string, attachments: AttachmentPayload[]) => {
       // Optimistic UI update (adds user message + loading placeholder).
@@ -173,29 +154,12 @@ export function ChatApp({
         role: "user",
         ...(attachments.length > 0 ? { attachments } : {}),
       })
-      // Build the snapshot from CURRENT settled state, then append the just-
-      // submitted user turn. Co-send userInput + snapshot in the SAME tick so
-      // Shiny batches them into one flush (server sees the turn in
-      // on_user_submit).
-      const snapshot = buildMessagesSnapshot(stateRef.current)
-      snapshot.push({
-        role: "user",
-        segments: [{ content, content_type: "markdown" }],
-        ...(attachments.length > 0 ? { attachments } : {}),
-      })
-      const uploadOn = stateRef.current.enableUpload
       transport.sendInput(
         inputId,
-        uploadOn ? { text: content, attachments } : content,
+        state.enableUpload ? { text: content, attachments } : content,
       )
-      // The INPUT_SENT dispatch above also mutates state.messages, so the
-      // reportSnapshot effect fires a second, near-identical snapshot on the
-      // next render. That's intentional: this manual send is the one that
-      // co-batches with userInput in the current flush, and the server's
-      // save is idempotent, so the follow-up snapshot is a harmless no-op.
-      transport.sendMessagesSnapshot(elementId, snapshot)
     },
-    [dispatch, transport, inputId, elementId],
+    [dispatch, transport, inputId, state.enableUpload],
   )
 
   const containerRef = useRef<ChatContainerHandle>(null)

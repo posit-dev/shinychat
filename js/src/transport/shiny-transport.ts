@@ -7,7 +7,6 @@ import {
   type UserInputValue,
 } from "./types"
 import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
-import type { SnapshotMessage } from "../chat/state"
 import type { AttachmentPayload } from "../chat/attachments"
 
 // Window-global singleton to ensure only one shinyChatMessage handler is
@@ -48,9 +47,8 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
 
         const { id, action, html_deps } = envelope
 
-        // Register deps with Shiny for immediate rendering, AND attach them to
-        // the action so the reducer can retain them on the message (needed for
-        // client-authoritative persistence/restore).
+        // Register dependencies for immediate rendering and retain them on
+        // message actions for the local React state.
         if (html_deps && Array.isArray(html_deps)) {
           await this.renderDependencies(html_deps)
           if (
@@ -83,13 +81,11 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
     const composite =
       typeof value === "string" ? { text: value, attachments: [] } : value
     this.inputSeq += 1
-    // Regular priority so it co-batches with a same-tick messages snapshot.
-    // The seq nonce bypasses client-side no-resend dedup so identical
-    // resubmissions still fire the server-side reactive.
-    window.Shiny.setInputValue(`${id}:shinychat.userInput`, {
-      ...composite,
-      seq: this.inputSeq,
-    })
+    window.Shiny.setInputValue(
+      `${id}:shinychat.userInput`,
+      { ...composite, seq: this.inputSeq },
+      { priority: "event" },
+    )
   }
 
   sendCancel(id: string): void {
@@ -109,13 +105,6 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
       { command, userText, echo },
       { priority: "event" },
     )
-  }
-
-  sendMessagesSnapshot(id: string, snapshot: SnapshotMessage[]): void {
-    if (!window.Shiny?.setInputValue) return
-    // Regular priority (NOT event) so it co-batches in one flush with a
-    // same-tick sendInput. See design doc "Ordering guarantee".
-    window.Shiny.setInputValue(`${id}_messages:shinychat.messages`, snapshot)
   }
 
   sendHistorySelect(id: string, convId: string): void {
