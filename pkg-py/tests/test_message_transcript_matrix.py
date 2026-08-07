@@ -64,6 +64,23 @@ def fixture_message(value: dict[str, Any]) -> StoredMessage:
     return StoredMessage.model_validate(value)
 
 
+def fixture_chat_message(value: dict[str, Any]) -> ChatMessage:
+    segments = cast(list[dict[str, Any]], value["segments"])
+    assert len(segments) == 1, (
+        "fixture_chat_message() only supports single-segment complete messages"
+    )
+    segment = segments[0]
+    return ChatMessage(
+        content=cast(str, segment["content"]),
+        role=cast(Role, value["role"]),
+        content_type=cast(
+            Literal["markdown", "html", "text", "thinking"],
+            segment["content_type"],
+        ),
+        attachments=value.get("attachments"),
+    )
+
+
 def canonical_messages(chat: Chat) -> list[dict[str, Any]]:
     with reactive.isolate():
         messages = chat._messages()
@@ -86,7 +103,7 @@ def canonical_messages(chat: Chat) -> list[dict[str, Any]]:
 async def apply_operation(chat: Chat, operation: dict[str, Any]) -> None:
     operation_type = cast(str, operation["type"])
     if operation_type == "message":
-        await chat.append_message(fixture_message(operation))
+        await chat.append_message(fixture_chat_message(operation))
         return
 
     if operation_type == "stream_start":
