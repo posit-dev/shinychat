@@ -1,5 +1,13 @@
-import { describe, it, expect, afterEach, vi } from "vitest"
-import { render, screen, cleanup, fireEvent, act } from "@testing-library/react"
+import { describe, it, expect, afterEach } from "vitest"
+import {
+  render,
+  screen,
+  cleanup,
+  fireEvent,
+  act,
+  waitFor,
+  within,
+} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { markdownProcessor } from "../../src/markdown/processors"
 import { parseMarkdown, hastToReact } from "../../src/markdown/markdownToReact"
@@ -135,6 +143,38 @@ describe("AsideGroup", () => {
     expect(img?.getAttribute("src")).toBe("https://example.com/icon.png")
   })
 
+  it("renders a source URL as an external link in the popover", async () => {
+    const user = userEvent.setup()
+    renderMarkdown(
+      'A claim<shiny-aside label="Source" url="https://example.com/source">body</shiny-aside>.',
+    )
+
+    await user.click(screen.getByRole("button", { name: "Source" }))
+
+    const link = within(screen.getByRole("dialog")).getByRole("link", {
+      name: "Source",
+    })
+    expect(link).toHaveAttribute("href", "https://example.com/source")
+    expect(link).toHaveAttribute("target", "_blank")
+    expect(link).toHaveAttribute("rel", "noopener noreferrer")
+    expect(link).toHaveAttribute("data-shinychat-link", "")
+  })
+
+  it("does not render a source link for an unsafe URL", async () => {
+    const user = userEvent.setup()
+    renderMarkdown(
+      'A claim<shiny-aside label="Source" url="javascript:alert(1)">body</shiny-aside>.',
+    )
+
+    await user.click(screen.getByRole("button", { name: "Source" }))
+
+    expect(
+      within(screen.getByRole("dialog")).queryByRole("link", {
+        name: "Source",
+      }),
+    ).not.toBeInTheDocument()
+  })
+
   it("hides a broken icon without reserving its layout space", () => {
     const { container } = renderMarkdown(
       'A claim<shiny-aside label="Term" icon="https://example.com/broken.png"></shiny-aside>.',
@@ -142,7 +182,9 @@ describe("AsideGroup", () => {
     const img = container.querySelector(
       ".shiny-aside-pill img",
     ) as HTMLImageElement
-    fireEvent.error(img)
+    act(() => {
+      fireEvent.error(img)
+    })
     // Unmounted rather than hidden: a display:none <img> still satisfies the
     // pill's `:has(img)` padding rule, so the icon must leave the DOM entirely.
     expect(container.querySelector(".shiny-aside-pill img")).toBeNull()
@@ -195,59 +237,52 @@ describe("AsideGroup popover", () => {
     )
   })
 
-  it("closes on mouse-leave when not pinned", () => {
-    vi.useFakeTimers()
-    try {
-      renderMarkdown(
-        'A claim<shiny-aside label="eBicycles" url="https://ebicycles.example"></shiny-aside>.',
-      )
-      const pill = screen.getByRole("button", { name: /eBicycles/ })
-      fireEvent.mouseEnter(pill)
-      expect(screen.getByRole("dialog")).toBeInTheDocument()
-      fireEvent.mouseLeave(pill)
-      act(() => {
-        vi.runAllTimers()
-      })
+  it("closes on mouse-leave when not pinned", async () => {
+    const user = userEvent.setup()
+    renderMarkdown(
+      'A claim<shiny-aside label="eBicycles" url="https://ebicycles.example"></shiny-aside>.',
+    )
+    const pill = screen.getByRole("button", { name: /eBicycles/ })
+    await user.hover(pill)
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+    await user.unhover(pill)
+    await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
-    } finally {
-      vi.useRealTimers()
-    }
+    })
   })
 
-  it("keeps the popover open briefly after mouse-leave so the pointer can reach it", () => {
-    vi.useFakeTimers()
-    try {
-      renderMarkdown(
-        'A claim<shiny-aside label="eBicycles" url="https://ebicycles.example"></shiny-aside>.',
-      )
-      const pill = screen.getByRole("button", { name: /eBicycles/ })
-      fireEvent.mouseEnter(pill)
-      fireEvent.mouseLeave(pill)
-      // The popover must still be present immediately after leaving the pill,
-      // otherwise the pointer has nothing left to land on while crossing the gap.
-      expect(screen.getByRole("dialog")).toBeInTheDocument()
-    } finally {
-      vi.useRealTimers()
-    }
+  it("keeps the popover open briefly after mouse-leave so the pointer can reach it", async () => {
+    const user = userEvent.setup()
+    renderMarkdown(
+      'A claim<shiny-aside label="eBicycles" url="https://ebicycles.example"></shiny-aside>.',
+    )
+    const pill = screen.getByRole("button", { name: /eBicycles/ })
+    await user.hover(pill)
+    await user.unhover(pill)
+    // The popover must still be present immediately after leaving the pill,
+    // otherwise the pointer has nothing left to land on while crossing the gap.
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
   })
 
-  it("cancels the pending close when the pointer re-enters before the grace period elapses", () => {
-    vi.useFakeTimers()
-    try {
-      renderMarkdown(
-        'A claim<shiny-aside label="eBicycles" url="https://ebicycles.example"></shiny-aside>.',
-      )
-      const pill = screen.getByRole("button", { name: /eBicycles/ })
-      fireEvent.mouseEnter(pill)
-      fireEvent.mouseLeave(pill)
-      fireEvent.mouseEnter(screen.getByRole("dialog"))
-      act(() => {
-        vi.runAllTimers()
+  it("cancels the pending close when the pointer re-enters before the grace period elapses", async () => {
+    const user = userEvent.setup()
+    renderMarkdown(
+      'A claim<shiny-aside label="eBicycles" url="https://ebicycles.example"></shiny-aside>.',
+    )
+    const pill = screen.getByRole("button", { name: /eBicycles/ })
+    await user.hover(pill)
+    await user.unhover(pill)
+    await user.hover(screen.getByRole("dialog"))
+
+    // This test exercises the 150ms close timer itself, so wait past that
+    // known interval before checking that the re-entry canceled it.
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, 200)
       })
-      expect(screen.getByRole("dialog")).toBeInTheDocument()
-    } finally {
-      vi.useRealTimers()
-    }
+    })
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
   })
 
   it("pins the popover open on click, surviving mouse-leave", () => {
@@ -260,13 +295,15 @@ describe("AsideGroup popover", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument()
   })
 
-  it("closes a pinned popover on outside click", () => {
+  it("closes a pinned popover on outside click", async () => {
+    const user = userEvent.setup()
     renderMarkdown(
       'A claim<shiny-aside label="eBicycles" url="https://ebicycles.example"></shiny-aside>.',
     )
-    fireEvent.click(screen.getByRole("button", { name: /eBicycles/ }))
+    await user.click(screen.getByRole("button", { name: /eBicycles/ }))
     expect(screen.getByRole("dialog")).toBeInTheDocument()
-    fireEvent.mouseDown(document.body)
+    await user.pointer({ keys: "[MouseLeft>]", target: document.body })
+    await user.pointer({ keys: "[/MouseLeft]", target: document.body })
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
   })
 

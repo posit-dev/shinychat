@@ -6,6 +6,9 @@ ui.page_opts(title="Web Asides Test")
 chat = Chat(id="chat")
 chat.ui()
 
+LONG_ASIDE_LABEL = "source" * 40
+LONG_ASIDE_BODY = " ".join(["A detailed source explanation."] * 100)
+
 
 async def fake_stream():
     # The public <shiny-aside> convention: any markdown content (chatlas
@@ -38,6 +41,12 @@ async def fake_stream():
         "</shiny-aside>"
     )
     yield "."
+    yield "\n\nLong source details"
+    yield (
+        f'<shiny-aside label="{LONG_ASIDE_LABEL}" url="https://example.com/long">'
+        f"{LONG_ASIDE_BODY}"
+        "</shiny-aside>"
+    )
 
 
 @chat.on_user_submit

@@ -350,6 +350,12 @@
     opacity: 0.65;
   }
 
+  .shiny-aside-pill__label {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
   &:hover,
   &[aria-expanded="true"] {
     background: rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.12);
@@ -367,8 +373,12 @@
   // (.shiny-chat-lightbox at 1080, fullscreen tool card at 1050) — now
   // that this lives at the body level rather than inline with the message.
   z-index: 1040;
-  min-width: 14em;
-  max-width: 22em;
+  box-sizing: border-box;
+  width: min(22em, calc(100vw - 1rem));
+  max-height: min(32rem, calc(100vh - 1rem));
+  overflow: auto;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   background: var(--bs-body-bg, #fff);
   border: 1px solid rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.12);
   border-radius: 0.6em;
@@ -383,7 +393,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    opacity: 0.6;
+    opacity: 0.65;
     margin-bottom: 0.5em;
 
     .shiny-aside-popover__nav-arrows {
@@ -409,6 +419,8 @@
       color: inherit;
       cursor: pointer;
       border-radius: 0.4em;
+      min-width: 24px;
+      min-height: 24px;
       // Enlarge the pointer target well beyond the icon itself; the
       // vertical margin absorbs the vertical padding so the nav row keeps
       // its compact height. (No horizontal margin: the two buttons sit
@@ -430,6 +442,9 @@
     gap: 0.4em;
     font-weight: 600;
     margin-bottom: 0.4em;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 
     img {
       width: 1.1em;

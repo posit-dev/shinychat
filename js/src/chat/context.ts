@@ -32,6 +32,8 @@ export const ChatSubmitContext = createContext<SubmitUserInput | null>(null)
 
 export const SlashCommandsContext = createContext<SlashCommandDef[]>([])
 
+export const AsideFaviconContext = createContext(true)
+
 export function useShinyLifecycle(): ShinyLifecycle {
   const ctx = useContext(ShinyLifecycleContext)
   if (!ctx) {
@@ -64,6 +66,10 @@ export function useChatSubmit(): SubmitUserInput {
     )
   }
   return ctx
+}
+
+export function useAsideFavicon(): boolean {
+  return useContext(AsideFaviconContext)
 }
 
 export function useSlashCommands(): SlashCommandDef[] {

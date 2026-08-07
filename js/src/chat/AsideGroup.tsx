@@ -18,6 +18,8 @@ import type { Element } from "hast"
 import { toHtml } from "hast-util-to-html"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { ASIDE_PENDING_ATTR } from "../markdown/plugins/markTrailingAsides"
+import { externalLinkAttributes } from "../markdown/plugins/rehypeExternalLinks"
+import { useAsideFavicon } from "./context"
 
 export interface AsideEntry {
   label?: string
@@ -64,8 +66,16 @@ export function faviconUrl(url: string): string | undefined {
   }
 }
 
-function EntryIcon({ entry }: { entry: AsideEntry }) {
-  const src = entry.icon || (entry.url ? faviconUrl(entry.url) : undefined)
+function EntryIcon({
+  entry,
+  deriveFavicon,
+}: {
+  entry: AsideEntry
+  deriveFavicon: boolean
+}) {
+  const src =
+    entry.icon ||
+    (deriveFavicon && entry.url ? faviconUrl(entry.url) : undefined)
   // Track which src failed (rather than a bare boolean) so that a later entry
   // with a different src — e.g. when paging the popover — gets a fresh attempt
   // instead of inheriting the previous entry's failure.
@@ -108,6 +118,7 @@ const CLOSE_GRACE_PERIOD_MS = 150
 
 export const AsideGroup = memo(function AsideGroup({ node }: AsideGroupProps) {
   const entries = parseAsideEntries(node)
+  const deriveFavicon = useAsideFavicon()
   const faceIndex = entries.findIndex((e) => e.label)
   const [open, setOpen] = useState(false)
   const [index, setIndex] = useState(0)
@@ -183,7 +194,10 @@ export const AsideGroup = memo(function AsideGroup({ node }: AsideGroupProps) {
       >
         {faceIndex !== -1 && (
           <>
-            <EntryIcon entry={entries[faceIndex]!} />
+            <EntryIcon
+              entry={entries[faceIndex]!}
+              deriveFavicon={deriveFavicon}
+            />
             <span className="shiny-aside-pill__label">
               {entries[faceIndex]!.label}
             </span>
@@ -237,10 +251,29 @@ export const AsideGroup = memo(function AsideGroup({ node }: AsideGroupProps) {
                 </div>
               )}
               {current.label && (
-                <div className="shiny-aside-popover__label">
-                  <EntryIcon entry={current} />
-                  {current.label}
-                </div>
+                <>
+                  {current.url ? (
+                    <a
+                      className="shiny-aside-popover__label"
+                      href={current.url}
+                      {...externalLinkAttributes}
+                    >
+                      <EntryIcon
+                        entry={current}
+                        deriveFavicon={deriveFavicon}
+                      />
+                      {current.label}
+                    </a>
+                  ) : (
+                    <div className="shiny-aside-popover__label">
+                      <EntryIcon
+                        entry={current}
+                        deriveFavicon={deriveFavicon}
+                      />
+                      {current.label}
+                    </div>
+                  )}
+                </>
               )}
               {current.body && (
                 <div className="shiny-aside-popover__body">

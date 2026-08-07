@@ -17,9 +17,9 @@ def test_web_asides(page: Page, local_app: ShinyAppProc) -> None:
     chat.set_user_input("tell me about e-bike motors")
     chat.send_user_input()
 
-    # Wait for the stream to finish: two aside groups should appear.
+    # Wait for the stream to finish: three aside groups should appear.
     groups = page.locator(".shiny-aside-group")
-    expect(groups).to_have_count(2, timeout=30 * 1000)
+    expect(groups).to_have_count(3, timeout=30 * 1000)
 
     # First group: two asides sharing one sentence, different labels →
     # labeled chip (first source's label) with a "+1" overflow.
@@ -41,6 +41,14 @@ def test_web_asides(page: Page, local_app: ShinyAppProc) -> None:
     popover.get_by_role("button", name="Next source").click()
     expect(popover).to_contain_text("WIRED")
     expect(popover.locator(".shiny-aside-popover__count")).to_have_text("2 / 2")
+    for button_name in ("Previous source", "Next source"):
+        control = popover.get_by_role("button", name=button_name)
+        box = control.bounding_box()
+        assert box is not None
+        assert box["width"] >= 24
+        assert box["height"] >= 24
+        opacity = float(control.evaluate("el => getComputedStyle(el).opacity"))
+        assert opacity >= 0.65
 
     # Second group: a bare, label-less developer-authored aside → falls
     # back to a plain count pill (no chip, no favicon).
@@ -84,4 +92,36 @@ def test_web_aside_symmetric_padding_when_favicon_fails(
     )
     assert padding[0] == padding[1], (
         f"expected symmetric padding for iconless pill, got {padding}"
+    )
+
+
+def test_web_aside_popover_wraps_and_scrolls_in_a_narrow_viewport(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.set_viewport_size({"width": 320, "height": 480})
+    page.goto(local_app.url)
+    page.evaluate("document.documentElement.style.fontSize = '200%'")
+
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30 * 1000)
+    chat.set_user_input("tell me about e-bike motors")
+    chat.send_user_input()
+
+    groups = page.locator(".shiny-aside-group")
+    expect(groups).to_have_count(3, timeout=30 * 1000)
+    groups.nth(2).locator(".shiny-aside-pill").click()
+
+    popover = page.locator(".shiny-aside-popover")
+    expect(popover).to_be_visible()
+    box = popover.bounding_box()
+    assert box is not None
+    assert box["width"] <= 304
+    assert box["height"] <= 464
+    assert popover.evaluate("el => getComputedStyle(el).overflowY") == "auto"
+    assert popover.evaluate("el => getComputedStyle(el).overflowWrap") == "anywhere"
+    assert (
+        popover.locator(".shiny-aside-popover__label").evaluate(
+            "el => getComputedStyle(el).overflowWrap"
+        )
+        == "anywhere"
     )

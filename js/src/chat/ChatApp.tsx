@@ -11,6 +11,7 @@ import {
   ChatToolContext,
   ChatDispatchContext,
   ChatSubmitContext,
+  AsideFaviconContext,
 } from "./context"
 import { setCurrentConversationId } from "./currentConversation"
 import { navigateTo } from "../utils/navigate"
@@ -51,6 +52,7 @@ interface ChatAppProps {
   initialGreeting?: InitialGreeting
   enableCancel?: boolean
   enableUpload?: boolean
+  asideFavicon?: boolean
   footerEl?: Element
   slashCommandId?: string
   submitKey?: SubmitKey
@@ -93,6 +95,7 @@ export function ChatApp({
   initialGreeting,
   enableCancel,
   enableUpload,
+  asideFavicon = true,
   footerEl,
   slashCommandId = "",
   submitKey,
@@ -300,33 +303,35 @@ export function ChatApp({
       <ChatToolContext.Provider value={toolState}>
         <ChatDispatchContext.Provider value={dispatch}>
           <ChatSubmitContext.Provider value={submitUserInput}>
-            <ChatContainer
-              ref={containerRef}
-              transport={transport}
-              messages={state.messages}
-              streamingMessage={state.streamingMessage}
-              inputDisabled={state.inputDisabled}
-              inputPlaceholder={state.inputPlaceholder}
-              iconAssistant={iconAssistant}
-              inputId={inputId}
-              uploadAccept={uploadAccept}
-              maxUploadSize={maxUploadSize}
-              elementId={elementId}
-              greeting={state.greeting}
-              cancelId={cancelId}
-              enableCancel={state.enableCancel}
-              enableUpload={state.enableUpload}
-              cancelRequested={state.cancelRequested}
-              footerEl={footerEl}
-              slashCommands={state.slashCommands}
-              slashCommandId={slashCommandId}
-              submitKey={submitKey}
-              historyEnabled={state.history.enabled}
-              historyConversations={state.history.conversations}
-              historyActiveId={state.history.activeId}
-              onEdit={handleEdit}
-              onNavigate={handleNavigate}
-            />
+            <AsideFaviconContext.Provider value={asideFavicon}>
+              <ChatContainer
+                ref={containerRef}
+                transport={transport}
+                messages={state.messages}
+                streamingMessage={state.streamingMessage}
+                inputDisabled={state.inputDisabled}
+                inputPlaceholder={state.inputPlaceholder}
+                iconAssistant={iconAssistant}
+                inputId={inputId}
+                uploadAccept={uploadAccept}
+                maxUploadSize={maxUploadSize}
+                elementId={elementId}
+                greeting={state.greeting}
+                cancelId={cancelId}
+                enableCancel={state.enableCancel}
+                enableUpload={state.enableUpload}
+                cancelRequested={state.cancelRequested}
+                footerEl={footerEl}
+                slashCommands={state.slashCommands}
+                slashCommandId={slashCommandId}
+                submitKey={submitKey}
+                historyEnabled={state.history.enabled}
+                historyConversations={state.history.conversations}
+                historyActiveId={state.history.activeId}
+                onEdit={handleEdit}
+                onNavigate={handleNavigate}
+              />
+            </AsideFaviconContext.Provider>
           </ChatSubmitContext.Provider>
         </ChatDispatchContext.Provider>
       </ChatToolContext.Provider>

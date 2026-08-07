@@ -1,8 +1,8 @@
 import { visit, SKIP } from "unist-util-visit"
-import type { Root, Element, ElementContent } from "hast"
+import type { Root, RootContent, Element, ElementContent } from "hast"
 import type { Plugin } from "unified"
 
-function isAside(node: ElementContent): node is Element {
+function isAside(node: RootContent | ElementContent): node is Element {
   return node.type === "element" && node.tagName === "shiny-aside"
 }
 
@@ -42,6 +42,13 @@ function collectAndRemoveAsides(container: Element): Element[] {
   return collected
 }
 
+function collectAndRemoveRootAsides(root: Root): Element[] {
+  const collected = root.children.filter(isAside)
+  if (collected.length === 0) return []
+  root.children = root.children.filter((child) => !isAside(child))
+  return collected
+}
+
 function makeGroup(children: Element[]): Element {
   return {
     type: "element",
@@ -51,31 +58,43 @@ function makeGroup(children: Element[]): Element {
   }
 }
 
-function transform(tree: Root): void {
-  let asideIndex = 0
-  visit(tree, "element", (node: Element) => {
-    if (!isAsideContainer(node)) return
-    const found = collectAndRemoveAsides(node)
-    if (found.length === 0) return
+function makeGroups(found: Element[]): Element[] {
+  const labeled = found.filter(isLabeled)
+  const labeledGroup = labeled.length > 0 ? makeGroup(labeled) : null
+  let labeledGroupPlaced = false
+  const groups: Element[] = []
 
-    const labeled = found.filter(isLabeled)
-    const labeledGroup = labeled.length > 0 ? makeGroup(labeled) : null
-    let labeledGroupPlaced = false
-    const groups: Element[] = []
-    for (const aside of found) {
-      if (isLabeled(aside)) {
-        if (!labeledGroupPlaced) {
-          groups.push(labeledGroup!)
-          labeledGroupPlaced = true
-        }
-        continue
+  for (const aside of found) {
+    if (isLabeled(aside)) {
+      if (!labeledGroupPlaced) {
+        groups.push(labeledGroup!)
+        labeledGroupPlaced = true
       }
-      asideIndex += 1
-      aside.properties = { ...aside.properties, index: asideIndex }
+    } else {
       groups.push(makeGroup([aside]))
     }
-    node.children.push(...groups)
+  }
+  return groups
+}
+
+function assignAnonymousAsideIndexes(tree: Root): void {
+  let asideIndex = 0
+  visit(tree, "element", (node: Element) => {
+    if (!isAside(node) || isLabeled(node)) return
+    asideIndex += 1
+    node.properties = { ...node.properties, index: asideIndex }
   })
+}
+
+function transform(tree: Root): void {
+  visit(tree, "element", (node: Element) => {
+    if (!isAsideContainer(node)) return
+    node.children.push(...makeGroups(collectAndRemoveAsides(node)))
+  })
+
+  const rootGroups = makeGroups(collectAndRemoveRootAsides(tree))
+  tree.children.push(...rootGroups)
+  assignAnonymousAsideIndexes(tree)
 }
 
 /**

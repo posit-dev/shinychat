@@ -108,6 +108,7 @@ class ChatContainerElement extends HTMLElement {
 
     const elementId = this.getAttribute("id") ?? ""
     const iconAssistant = this.getAttribute("icon-assistant") ?? undefined
+    const asideFavicon = this.getAttribute("aside-favicon") !== "false"
     // Any present value other than "false" counts as enabled, which keeps the
     // R package's bare `enable-cancel` boolean attribute working. Absent (null)
     // defers the choice to the server (`client=`) via `update_cancel`.
@@ -208,6 +209,7 @@ class ChatContainerElement extends HTMLElement {
         initialGreeting,
         enableCancel,
         enableUpload,
+        asideFavicon,
         footerEl: this.footerEl ?? undefined,
         slashCommandId,
         submitKey,

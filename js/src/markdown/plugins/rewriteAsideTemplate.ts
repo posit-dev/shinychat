@@ -21,6 +21,16 @@ function isElementContent(node: RootContent): node is ElementContent {
   return node.type !== "doctype"
 }
 
+export function rewriteAsideToTemplateHtml(value: string): string {
+  return value
+    .replace(
+      /<shiny-aside(?=[\s/>])((?:"[^"]*"|'[^']*'|[^"'>])*?)\/>/g,
+      "<shiny-aside$1></shiny-aside>",
+    )
+    .replace(/<shiny-aside(?=[\s/>])/g, "<template data-shiny-aside")
+    .replace(/<\/shiny-aside\s*>/g, "</template>")
+}
+
 /**
  * BEFORE rehype-raw: rewrite `<shiny-aside …>`/`</shiny-aside>` raw
  * strings to `<template data-shiny-aside …>`/`</template>`. `<template>` is
@@ -39,13 +49,18 @@ function isElementContent(node: RootContent): node is ElementContent {
 export const rehypeRewriteAsideToTemplate: Plugin<[], Root> = () => (tree) => {
   visit(tree, (node) => {
     if (!isRaw(node)) return
-    node.value = node.value
-      .replace(
-        /<shiny-aside(?=[\s/>])((?:"[^"]*"|'[^']*'|[^"'>])*?)\/>/g,
-        "<shiny-aside$1></shiny-aside>",
-      )
-      .replace(/<shiny-aside(?=[\s/>])/g, "<template data-shiny-aside")
-      .replace(/<\/shiny-aside\s*>/g, "</template>")
+    node.value = rewriteAsideToTemplateHtml(node.value)
+  })
+}
+
+export function restoreAsideTemplates(tree: Root): void {
+  visit(tree, "element", (node: Element) => {
+    if (node.tagName !== "template") return
+    if (!node.properties || !("dataShinyAside" in node.properties)) return
+    node.tagName = "shiny-aside"
+    node.children = (node.content?.children ?? []).filter(isElementContent)
+    delete node.content
+    delete node.properties.dataShinyAside
   })
 }
 
@@ -55,14 +70,5 @@ export const rehypeRewriteAsideToTemplate: Plugin<[], Root> = () => (tree) => {
  * `.children` and rename back to `<shiny-aside>`. Downstream code then sees
  * an ordinary custom element whose children may contain blocks.
  */
-export const rehypeRewriteAsideFromTemplate: Plugin<[], Root> =
-  () => (tree) => {
-    visit(tree, "element", (node: Element) => {
-      if (node.tagName !== "template") return
-      if (!node.properties || !("dataShinyAside" in node.properties)) return
-      node.tagName = "shiny-aside"
-      node.children = (node.content?.children ?? []).filter(isElementContent)
-      delete node.content
-      delete node.properties.dataShinyAside
-    })
-  }
+export const rehypeRewriteAsideFromTemplate: Plugin<[], Root> = () =>
+  restoreAsideTemplates

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render } from "@testing-library/react"
+import { fireEvent, render, screen, within } from "@testing-library/react"
 import * as markdownToReactModule from "../../src/markdown/markdownToReact"
 import { MarkdownContent } from "../../src/markdown/MarkdownContent"
 import { chatTagToComponentMap } from "../../src/chat/chatTagToComponentMap"
@@ -65,6 +65,38 @@ describe("MarkdownContent (pure)", () => {
 
     expect(container.querySelector(".shiny-aside-pill")).not.toBeNull()
     expect(container.querySelector("shiny-aside")).toBeNull()
+  })
+
+  it("groups a root-level <shiny-aside> tag in html content", () => {
+    const { container } = render(
+      <MarkdownContent
+        content={
+          'A claim<shiny-aside label="Source">source body</shiny-aside>.'
+        }
+        contentType="html"
+        tagToComponentMap={chatTagToComponentMap}
+      />,
+    )
+
+    expect(container.querySelector(".shiny-aside-pill")).not.toBeNull()
+    expect(container.textContent).toContain("A claim")
+  })
+
+  it("preserves rich html content inside a <shiny-aside> popover", () => {
+    const { container } = render(
+      <MarkdownContent
+        content={
+          '<p>A claim<shiny-aside label="Source"><p><strong>Details</strong></p><ul><li>one</li></ul></shiny-aside>.</p>'
+        }
+        contentType="html"
+        tagToComponentMap={chatTagToComponentMap}
+      />,
+    )
+
+    fireEvent.click(within(container).getByRole("button", { name: /Source/ }))
+    const popover = screen.getByRole("dialog")
+    expect(within(popover).getByText("Details")).toBeInTheDocument()
+    expect(within(popover).getByText("one")).toBeInTheDocument()
   })
 
   it("renders empty content without errors", () => {
