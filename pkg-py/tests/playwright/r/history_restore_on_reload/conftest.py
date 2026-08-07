@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import socket
 import subprocess
 import time
@@ -37,6 +38,10 @@ def wait_until_ready(
 
 @pytest.fixture
 def r_app_url(tmp_path: Path) -> Iterator[str]:
+    rscript = shutil.which("Rscript")
+    if rscript is None:
+        pytest.skip("Rscript is not installed")
+
     here = Path(__file__).resolve()
     pkg_py_dir = next(p for p in here.parents if p.name == "pkg-py")
     root = pkg_py_dir.parent
@@ -51,7 +56,7 @@ def r_app_url(tmp_path: Path) -> Iterator[str]:
         "launch.browser = FALSE)"
     )
     process = subprocess.Popen(
-        ["Rscript", "-e", expression],
+        [rscript, "-e", expression],
         cwd=root,
         env=env,
         stdout=subprocess.PIPE,
