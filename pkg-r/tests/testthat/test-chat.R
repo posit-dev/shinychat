@@ -142,7 +142,7 @@ test_that("resolve_icon_attr() translates the boolean sentinel", {
 
 test_that("chat_append_stream() returns the stream contents as string if all text", {
   local_mocked_bindings(
-    chat_append_message = coro::async(function(...) invisible())
+    chat_append_message_impl = function(...) invisible()
   )
 
   stream <- coro::async_generator(function() {
@@ -160,7 +160,7 @@ test_that("chat_append_stream() returns the stream contents as string if all tex
 
 test_that("chat_append_stream() returns the stream contents as list if not all text", {
   local_mocked_bindings(
-    chat_append_message = coro::async(function(...) invisible())
+    chat_append_message_impl = function(...) invisible()
   )
 
   stream <- coro::async_generator(function() {
@@ -184,7 +184,7 @@ test_that("chat_append_stream() returns the stream contents as list if not all t
 
 test_that("chat_append_stream() handles errors in the stream", {
   local_mocked_bindings(
-    chat_append_message = coro::async(function(...) invisible())
+    chat_append_message_impl = function(...) invisible()
   )
 
   shiny::withReactiveDomain(shiny::MockShinySession$new(), {
@@ -248,6 +248,128 @@ test_that("chat_append_stream() settles a sanitized error before rejecting", {
             content_type = "markdown"
           )
         )
+      )
+    )
+  )
+})
+
+test_that("a managed competing stream rejects without disturbing the active stream", {
+  session <- shiny::MockShinySession$new()
+  transcript <- register_chat_transcript(session, "chat")
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      invisible(NULL)
+    }
+  )
+
+  resolve_a <- NULL
+  # A synchronous generator so the first chunk is processed (and the second,
+  # suspending, yield reached) within this same call -- an `async_generator()`
+  # defers every value (even plain ones) behind an extra tick of promise
+  # resolution, which would leave `resolve_a` unset at this point.
+  stream_a <- coro::generator(function() {
+    yield("first")
+    yield(
+      promises::promise(function(resolve, reject) {
+        resolve_a <<- resolve
+      })
+    )
+  })
+  result_a <- chat_append_stream("chat", stream_a(), session = session)
+
+  active_stream_id <- transcript$.__enclos_env__$private$active_stream_id
+  expect_false(is.null(active_stream_id))
+
+  stream_b <- coro::async_generator(function() {
+    yield("second stream")
+  })
+  # The rejection happens synchronously (before any suspension point in the
+  # underlying `coro::async()` generator), so `chat_append_stream()` throws
+  # directly rather than returning a rejected promise.
+  err_b <- tryCatch(
+    chat_append_stream("chat", stream_b(), session = session),
+    error = identity
+  )
+  expect_s3_class(err_b, "error")
+  expect_match(
+    conditionMessage(err_b),
+    "Cannot start a stream while another stream is active",
+    fixed = TRUE
+  )
+
+  # Stream A is still the active stream; its identity was not replaced.
+  expect_true(transcript$is_active(active_stream_id))
+
+  resolve_a("second")
+  expect_identical(sync(result_a), "firstsecond")
+  expect_identical(
+    transcript$read(),
+    list(
+      list(
+        role = "assistant",
+        segments = list(
+          list(content = "firstsecond", content_type = "markdown")
+        )
+      )
+    )
+  )
+})
+
+test_that("a managed transport failure aborts the active stream locally", {
+  session <- shiny::MockShinySession$new()
+  transcript <- register_chat_transcript(session, "chat")
+  resolve_chunk <- NULL
+  actions <- list()
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      actions[[length(actions) + 1L]] <<- action
+      if (
+        identical(action$type, "chunk") && identical(action$content, "boom")
+      ) {
+        rlang::abort("send failed")
+      }
+      invisible(NULL)
+    }
+  )
+
+  stream <- coro::async_generator(function() {
+    yield(
+      promises::promise(function(resolve, reject) {
+        resolve_chunk <<- resolve
+      })
+    )
+  })
+
+  p <- chat_append_stream("chat", stream(), session = session)
+
+  captured_stream_id <- transcript$.__enclos_env__$private$active_stream_id
+  expect_false(is.null(captured_stream_id))
+
+  resolve_chunk("boom")
+
+  expect_warning(
+    err <- tryCatch(sync(p), error = identity),
+    regexp = "chat_append_stream"
+  )
+
+  expect_s3_class(err, "error")
+  expect_identical(conditionMessage(err), "send failed")
+
+  # The failed transport transition aborts locally -- no second browser
+  # round-trip is required to observe that the stream is no longer active.
+  expect_false(transcript$is_active(captured_stream_id))
+
+  # A transport failure must not fall back to a sanitized terminal render:
+  # the transcript stays empty, and no "error occurred" content was sent.
+  expect_identical(transcript$read(), list())
+  expect_false(
+    any(
+      vapply(
+        actions,
+        function(action) {
+          grepl("An error occurred", action$content %||% "", fixed = TRUE)
+        },
+        logical(1)
       )
     )
   )

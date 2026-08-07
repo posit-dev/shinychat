@@ -1081,24 +1081,37 @@ chat_append_stream <- function(
   icon = NULL,
   session = getDefaultReactiveDomain()
 ) {
-  owner <- claim_chat_stream(session, id)
-  result <- chat_append_stream_impl(id, stream, role, icon, session, owner)
+  stream_id <- new.env(parent = emptyenv())
+  result <- chat_append_stream_impl(id, stream, role, icon, session, stream_id)
   result <- chat_update_bookmark(id, result, session = session)
   result <- promises::catch(result, function(reason) {
     class(reason) <- c("shiny.silent.error", class(reason))
     render_error <- NULL
-    if (isTRUE(owner$started) && owns_chat_stream(session, id, owner)) {
+    transcript <- get_chat_transcript(session, id)
+    # For managed chats, only settle a sanitized terminal message while this
+    # stream is still the transcript's active one -- a failed transport
+    # transition already aborted locally (see `chat_append_stream_impl()`)
+    # and must propagate as-is. Unmanaged (transcript-less) streams have no
+    # such state to consult, so fall back to whether this stream ever wrote
+    # its opening chunk.
+    can_render_terminal <- if (!is.null(transcript)) {
+      transcript$is_active(stream_id)
+    } else {
+      isTRUE(stream_id$started)
+    }
+    if (can_render_terminal) {
       render_error <- tryCatch(
         {
-          chat_append_message(
+          chat_append_message_impl(
             id,
-            list(
+            msg = list(
               role = role,
               content = sanitized_chat_error(reason)
             ),
             chunk = "end",
             operation = "append",
-            session = session
+            session = session,
+            stream_id = stream_id
           )
           NULL
         },
@@ -1130,38 +1143,6 @@ chat_append_stream <- function(
   result
 }
 
-claim_chat_stream <- function(session, id) {
-  owner <- new.env(parent = emptyenv())
-  owner$started <- FALSE
-  owner$tracked <- !is.null(session)
-  if (owner$tracked) {
-    set_session_chat_bookmark_info(
-      session,
-      paste0(id, ".stream-owner"),
-      owner
-    )
-  }
-  owner
-}
-
-owns_chat_stream <- function(session, id, owner) {
-  if (!owner$tracked) {
-    return(TRUE)
-  }
-  identical(
-    get_session_chat_bookmark_info(
-      session,
-      paste0(id, ".stream-owner")
-    ),
-    owner
-  )
-}
-
-invalidate_chat_stream <- function(session, id) {
-  claim_chat_stream(session, id)
-  invisible(NULL)
-}
-
 utils:::globalVariables(c("generator_env", "exits", "yield"))
 
 chat_append_stream_impl <- NULL
@@ -1172,21 +1153,51 @@ rlang::on_load(
     role = "assistant",
     icon = NULL,
     session = shiny::getDefaultReactiveDomain(),
-    owner
+    stream_id
   ) {
+    # `start` is never wrapped: if its own transport send fails, `transition()`
+    # (see chat_transcript.R) raises before committing, so the stream never
+    # became the transcript's active one and there is nothing to abort.
+    # `chunk`/`end` transitions, once active, must be aborted explicitly on a
+    # transport failure -- a failed `send()` also raises before `transition()`
+    # commits, so the transcript would otherwise keep reporting this
+    # already-broken stream as active.
     chat_append_ <- function(content, chunk = TRUE, ...) {
-      chat_append_message(
-        id,
-        msg = list(role = role, content = content),
-        operation = "append",
-        chunk = chunk,
-        session = session,
-        ...
+      if (identical(chunk, "start")) {
+        return(
+          chat_append_message_impl(
+            id,
+            msg = list(role = role, content = content),
+            operation = "append",
+            chunk = chunk,
+            session = session,
+            stream_id = stream_id,
+            ...
+          )
+        )
+      }
+      tryCatch(
+        chat_append_message_impl(
+          id,
+          msg = list(role = role, content = content),
+          operation = "append",
+          chunk = chunk,
+          session = session,
+          stream_id = stream_id,
+          ...
+        ),
+        error = function(e) {
+          transcript <- get_chat_transcript(session, id)
+          if (!is.null(transcript)) {
+            transcript$abort(stream_id)
+          }
+          cnd_signal(e)
+        }
       )
     }
 
     chat_append_("", chunk = "start", icon = icon)
-    owner$started <- TRUE
+    stream_id$started <- TRUE
 
     res <- fastmap::fastqueue(200)
 
@@ -1197,7 +1208,8 @@ rlang::on_load(
       if (coro::is_exhausted(msg)) {
         break
       }
-      if (!owns_chat_stream(session, id, owner)) {
+      transcript <- get_chat_transcript(session, id)
+      if (!is.null(transcript) && !transcript$is_active(stream_id)) {
         break
       }
 
@@ -1208,7 +1220,8 @@ rlang::on_load(
       chat_append_(msg)
     }
 
-    if (owns_chat_stream(session, id, owner)) {
+    transcript <- get_chat_transcript(session, id)
+    if (is.null(transcript) || transcript$is_active(stream_id)) {
       chat_append_("", chunk = "end")
     }
 
@@ -1610,11 +1623,13 @@ chat_clear <- function(
   if (is.null(transcript)) {
     send_chat_action(id, action = action, session = session)
   } else {
+    # Invalidates any managed stream mid-flight: `clear()` resets the
+    # transcript's active stream id, so the generator loop's next
+    # `transcript$is_active(stream_id)` check will fail and stop the stream.
     transcript$clear(send = function() {
       send_chat_action(id, action = action, session = session)
     })
   }
-  invalidate_chat_stream(session, id)
 }
 
 #' Update the user input of a chat control
