@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import os
 import re
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -952,9 +953,9 @@ class Chat:
         The favicon is fetched at render time from a third-party service
         (DuckDuckGo's icon service), which receives the cited site's hostname.
         To avoid that request — for privacy, or for offline/air-gapped
-        deployments — set `icon` to a URL you control (e.g. a static asset, or
-        one your server resolves before appending the message); an explicit
-        `icon` bypasses the lookup entirely.
+        deployments — set the ``SHINYCHAT_ASIDE_FAVICON`` environment variable
+        to ``false``. You can still set `icon` to a URL you control; an
+        explicit `icon` bypasses the lookup entirely.
 
         **Examples:**
 
@@ -1259,9 +1260,9 @@ class Chat:
         The favicon is fetched at render time from a third-party service
         (DuckDuckGo's icon service), which receives the cited site's hostname.
         To avoid that request — for privacy, or for offline/air-gapped
-        deployments — set `icon` to a URL you control (e.g. a static asset, or
-        one your server resolves before appending the message); an explicit
-        `icon` bypasses the lookup entirely.
+        deployments — set the ``SHINYCHAT_ASIDE_FAVICON`` environment variable
+        to ``false``. You can still set `icon` to a URL you control; an
+        explicit `icon` bypasses the lookup entirely.
 
         **Examples:**
 
@@ -2489,6 +2490,7 @@ def chat_ui(
         allow_attachments
     )
     max_attachment_size_attr = str(resolve_max_attachment_size())
+    aside_favicon_attr = None if resolve_aside_favicon() else "false"
 
     greeting_attr: Optional[str] = None
     greeting_deps: list[HTMLDependency] = []
@@ -2527,6 +2529,7 @@ def chat_ui(
         placeholder=placeholder,
         fill=fill,
         greeting=greeting_attr,
+        aside_favicon=aside_favicon_attr,
         enable_cancel=enable_cancel_attr,
         allow_attachments=allow_attachments_attr,
         attachment_accept=attachment_accept_attr,
@@ -2542,6 +2545,20 @@ def chat_ui(
         res = as_fillable_container(as_fill_item(res))
 
     return res
+
+
+ASIDE_FAVICON_ENV_VAR = "SHINYCHAT_ASIDE_FAVICON"
+
+
+def resolve_aside_favicon() -> bool:
+    value = os.environ.get(ASIDE_FAVICON_ENV_VAR, "true").lower()
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    raise ValueError(
+        f'{ASIDE_FAVICON_ENV_VAR} must be "true" or "false", got {value!r}.'
+    )
 
 
 class MessageStream:

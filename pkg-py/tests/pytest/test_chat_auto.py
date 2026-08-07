@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import threading
 from typing import Any, cast
 
@@ -11,6 +12,7 @@ from shiny.module import ResolvedId
 from shiny.session import session_context
 from shiny.types import NotifyException
 from shinychat import Chat, chat_ui
+from shinychat._chat import ChatExpress
 from shinychat._chat_client import ChatClient, messages_to_turns
 from shinychat._chat_types import ChatMessageDict
 
@@ -342,6 +344,42 @@ def test_chat_ui_enable_cancel_unset_omits_attribute():
     tag = chat_ui("myid")
     html = tag.get_html_string()
     assert "enable-cancel" not in html
+
+
+def test_chat_ui_aside_favicon_env_unset_omits_attribute(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.delenv("SHINYCHAT_ASIDE_FAVICON", raising=False)
+    assert "aside-favicon" not in chat_ui("myid").get_html_string()
+
+
+def test_chat_ui_aside_favicon_env_false_disables_derived_icons(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("SHINYCHAT_ASIDE_FAVICON", "false")
+    assert 'aside-favicon="false"' in chat_ui("myid").get_html_string()
+
+
+@pytest.mark.parametrize("value", ["true", "TRUE", "TrUe"])
+def test_chat_ui_aside_favicon_env_true_is_case_insensitive(
+    monkeypatch: pytest.MonkeyPatch,
+    value: str,
+):
+    monkeypatch.setenv("SHINYCHAT_ASIDE_FAVICON", value)
+    assert "aside-favicon" not in chat_ui("myid").get_html_string()
+
+
+def test_chat_ui_aside_favicon_env_rejects_invalid_value(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("SHINYCHAT_ASIDE_FAVICON", "sometimes")
+    with pytest.raises(ValueError, match="SHINYCHAT_ASIDE_FAVICON"):
+        chat_ui("myid")
+
+
+def test_chat_ui_has_no_aside_favicon_argument():
+    assert "aside_favicon" not in inspect.signature(chat_ui).parameters
+    assert "aside_favicon" not in inspect.signature(ChatExpress.ui).parameters
 
 
 def test_chat_ui_forwards_kwargs():

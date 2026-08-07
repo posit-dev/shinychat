@@ -443,6 +443,7 @@ chat_ui <- function(
       ),
       placeholder = placeholder,
       fill = if (isTRUE(fill)) NA else NULL,
+      `aside-favicon` = if (!resolve_aside_favicon()) "false",
       `enable-cancel` = if (isTRUE(enable_cancel)) {
         NA
       } else if (isFALSE(enable_cancel)) {
@@ -478,6 +479,21 @@ chat_ui <- function(
   }
 
   tag_require(res, version = 5, caller = "chat_ui")
+}
+
+resolve_aside_favicon <- function() {
+  value <- tolower(
+    Sys.getenv("SHINYCHAT_ASIDE_FAVICON", unset = "true")
+  )
+  if (identical(value, "true")) {
+    return(TRUE)
+  }
+  if (identical(value, "false")) {
+    return(FALSE)
+  }
+  cli::cli_abort(
+    "{.envvar SHINYCHAT_ASIDE_FAVICON} must be {.val true} or {.val false}, got {.val {value}}."
+  )
 }
 
 #' Append an assistant response (or user message) to a chat control
@@ -528,8 +544,8 @@ chat_ui <- function(
 #' The favicon is fetched at render time from a third-party service
 #' (DuckDuckGo's icon service), which receives the cited site's hostname. To
 #' avoid that request — for privacy, or for offline/air-gapped deployments —
-#' set `icon` to a URL you control (e.g. a static asset, or one your server
-#' resolves before appending the message); an explicit `icon` bypasses the
+#' set the `SHINYCHAT_ASIDE_FAVICON` environment variable to `false`. You can
+#' still set `icon` to a URL you control; an explicit `icon` bypasses the
 #' lookup entirely.
 #'
 #' **A labeled aside with a one-line body:**

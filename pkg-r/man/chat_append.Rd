@@ -94,8 +94,8 @@ sharing one label collapse to a single face with no count.
 The favicon is fetched at render time from a third-party service
 (DuckDuckGo's icon service), which receives the cited site's hostname. To
 avoid that request — for privacy, or for offline/air-gapped deployments —
-set \code{icon} to a URL you control (e.g. a static asset, or one your server
-resolves before appending the message); an explicit \code{icon} bypasses the
+set the \code{SHINYCHAT_ASIDE_FAVICON} environment variable to \code{false}. You can
+still set \code{icon} to a URL you control; an explicit \code{icon} bypasses the
 lookup entirely.
 
 \strong{A labeled aside with a one-line body:}
