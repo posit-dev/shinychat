@@ -118,17 +118,11 @@ chat_greeting <- function(
 #' `id="my_chat"`, user input will be at `input$my_chat_user_input`), and use
 #' [chat_append()] to append messages to the chat.
 #'
-#' The chat also reports the client's current rendered message transcript as
-#' `input$ID_messages` (for example, `input$my_chat_messages`), tagged
-#' `shinychat.messages`. It updates every time a message finishes rendering
-#' or streaming (a "settle point"), and is a list of message objects:
-#' `list(role =, segments = list(list(content =, content_type =), ...))`,
-#' plus optional `htmlDeps` and `attachments` fields when present.
-#' [chat_enable_history()] reads this internally to persist and restore
-#' exactly what was rendered — including raw HTML and Shiny UI dependencies —
-#' across a conversation switch or reload. It's exposed for advanced,
-#' read-only use (for example, custom logging or export); it is not an input
-#' you write to.
+#' Message state emitted by server functions is maintained internally for
+#' history and replay. Applications that need a public transcript should keep
+#' application-owned state alongside calls to [chat_append()] or
+#' [chat_append_message()]. Static `messages` passed to `chat_ui()` are
+#' display-only.
 #'
 #' @section Pairing with `chat_server()`:
 #'

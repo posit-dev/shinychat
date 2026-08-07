@@ -51,11 +51,19 @@ After `split_html_islands()`:
 <shinychat-raw-html><div>More widget output</div></shinychat-raw-html>
 ```
 
-## HTML Dependencies: Client-Authoritative Round-Trip
+## HTML Dependencies: Server-Authoritative Persistence
 
-Shiny HTML dependencies (`html_deps`) attached to a message follow a round-trip that keeps the client as the source of truth for chat history. `js/src/transport/shiny-transport.ts` renders each dependency (so its CSS/JS loads immediately) *and* attaches the serialized deps to the reducer action, rather than discarding them after rendering as it did previously. The reducer in `js/src/chat/state.ts` retains them per message as `ChatMessageData.htmlDeps`, and `buildMessagesSnapshot()` includes them when building the settled-message snapshot the client reports back to the server as the `${id}_messages:shinychat.messages` input.
+Server-side message normalization captures and serializes Shiny HTML dependencies
+(`html_deps`) once. The normalized dependencies are written both to the outgoing
+message action, so `js/src/transport/shiny-transport.ts` can render their CSS and
+JS immediately, and to the server transcript for history, persistence, and
+replay.
 
-On the server, `messages_input_value()` (`pkg-py/src/shinychat/_input_handler.py`) deserializes that snapshot into `StoredMessage`s and parks each message's `htmlDeps` on `segments[0].html_deps` (`StoredSegment.html_deps` in `pkg-py/src/shinychat/_chat_types.py`). Because the deps travel with the message data itself, they persist through chat history and can be re-registered on restore — even in a brand-new browser session with no prior Shiny binding state. This is a new capability of the client-authoritative model; the R package does not have an equivalent round-trip.
+The browser retains the dependencies on its local message state only to render
+the current transcript, support editing and navigation, and replay received
+actions. It never sends dependencies or a message transcript back to the
+server. On restore, the server replays the stored message actions and their
+serialized dependencies, including in a new browser session.
 
 ## Client-Side: The Markdown/HAST Pipeline
 
