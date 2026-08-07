@@ -194,6 +194,285 @@ test_that("chat_history_on_response() saves fulfilled and rejected settlements",
   expect_equal(saved, 2L)
 })
 
+managed_stream_client <- function(stream_factory) {
+  client <- mock_chat_client()
+  client$stream_async <- function(..., stream, controller) {
+    input <- rlang::list2(...)[[1L]]
+    client$set_turns(list(ellmer::UserTurn(input)))
+    stream_factory(client, controller)
+  }
+  client
+}
+
+wait_for_condition <- function(condition, session) {
+  deadline <- Sys.time() + 2
+  while (!condition() && Sys.time() < deadline) {
+    later::run_now(0.05)
+    session$flushReact()
+  }
+  expect_true(condition())
+  later::run_now(0.1)
+  session$flushReact()
+}
+
+recorded_ui_messages <- function(record) {
+  unlist(
+    lapply(record_path_node_ids(record), function(node_id) {
+      record$nodes[[node_id]]$ui %||% list()
+    }),
+    recursive = FALSE
+  )
+}
+
+test_that("cancelled managed streams save once after transcript settlement", {
+  release <- NULL
+  released <- promises::promise(function(resolve, reject) {
+    release <<- resolve
+  })
+  put_calls <- 0L
+  transcript_at_put <- NULL
+  active_session <- NULL
+  RecordingStore <- R6::R6Class(
+    "CancelledManagedRecordingStore",
+    inherit = InMemoryConversationStore,
+    public = list(
+      put = function(partition, record) {
+        put_calls <<- put_calls + 1L
+        transcript_at_put <<- get_chat_transcript(
+          active_session,
+          "chat"
+        )$read()
+        super$put(partition, record)
+      }
+    )
+  )
+  store <- RecordingStore$new()
+  client <- managed_stream_client(function(client, controller) {
+    coro::async_generator(function() {
+      yield("partial")
+      coro::await(released)
+      if (controller$cancelled) {
+        client$set_turns(
+          c(
+            client$get_turns(),
+            list(ellmer::AssistantPartialTurn("partial", reason = "cancelled"))
+          )
+        )
+        return(coro::exhausted())
+      }
+      yield("late")
+    })()
+  })
+  mod_ref <- NULL
+  local_mocked_bindings(
+    send_chat_action = function(...) invisible(NULL)
+  )
+
+  shiny::testServer(
+    function(input, output, session) {
+      active_session <<- session
+      mod_ref <<- chat_server(
+        "chat",
+        client,
+        history = history_options(
+          store = store,
+          scope = "test-user",
+          restore_mode = "none",
+          title = NULL
+        ),
+        session = session
+      )
+    },
+    {
+      session$setInputs(chat_user_input = "Hello")
+      wait_for_condition(
+        function() identical(mod_ref$status(), "streaming"),
+        session
+      )
+      session$setInputs(chat_cancel = 1)
+      release(NULL)
+      wait_for_condition(function() put_calls == 1L, session)
+
+      expect_equal(put_calls, 1L)
+      expect_identical(
+        transcript_at_put,
+        list(
+          list(
+            role = "user",
+            segments = list(
+              list(content = "Hello", content_type = "markdown")
+            )
+          ),
+          list(
+            role = "assistant",
+            segments = list(
+              list(content = "partial", content_type = "markdown")
+            )
+          )
+        )
+      )
+    }
+  )
+})
+
+test_that("errored managed streams save the sanitized settled transcript once", {
+  withr::local_options(shiny.sanitize.errors = TRUE)
+  put_calls <- 0L
+  saved_record <- NULL
+  transcript_at_put <- NULL
+  active_session <- NULL
+  RecordingStore <- R6::R6Class(
+    "ErroredManagedRecordingStore",
+    inherit = InMemoryConversationStore,
+    public = list(
+      put = function(partition, record) {
+        put_calls <<- put_calls + 1L
+        saved_record <<- rlang::duplicate(record, shallow = FALSE)
+        transcript_at_put <<- get_chat_transcript(
+          active_session,
+          "chat"
+        )$read()
+        super$put(partition, record)
+      }
+    )
+  )
+  store <- RecordingStore$new()
+  original <- rlang::error_cnd("secret model failure")
+  client <- managed_stream_client(function(client, controller) {
+    coro::async_generator(function() {
+      yield("partial")
+      client$set_turns(
+        c(
+          client$get_turns(),
+          list(ellmer::AssistantPartialTurn("partial", reason = "error"))
+        )
+      )
+      stop(original)
+    })()
+  })
+  mod_ref <- NULL
+  local_mocked_bindings(
+    send_chat_action = function(...) invisible(NULL)
+  )
+
+  withCallingHandlers(
+    shiny::testServer(
+      function(input, output, session) {
+        active_session <<- session
+        mod_ref <<- chat_server(
+          "chat",
+          client,
+          history = history_options(
+            store = store,
+            scope = "test-user",
+            restore_mode = "none",
+            title = NULL
+          ),
+          session = session
+        )
+      },
+      {
+        session$setInputs(chat_user_input = "Hello")
+        wait_for_condition(function() put_calls == 1L, session)
+      }
+    ),
+    warning = function(warning) {
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  sanitized <- paste0(
+    "partial\n\n**An error occurred. ",
+    "Please try again or contact the app author.**"
+  )
+  expect_equal(put_calls, 1L)
+  expect_identical(
+    transcript_at_put[[2L]]$segments[[1L]]$content,
+    sanitized
+  )
+  expect_identical(
+    recorded_ui_messages(saved_record)[[2L]]$segments[[1L]]$content,
+    sanitized
+  )
+})
+
+test_that("history failure cannot replace a managed stream error", {
+  put_calls <- 0L
+  FailingStore <- R6::R6Class(
+    "FailingManagedResponseStore",
+    inherit = InMemoryConversationStore,
+    public = list(
+      put = function(partition, record) {
+        put_calls <<- put_calls + 1L
+        rlang::abort("history save failed", class = "history_save_error")
+      }
+    )
+  )
+  marker <- new.env(parent = emptyenv())
+  original <- structure(
+    list(message = "original model failure", call = NULL, marker = marker),
+    class = c("model_original_error", "error", "condition")
+  )
+  client <- managed_stream_client(function(client, controller) {
+    coro::async_generator(function() {
+      yield("partial")
+      client$set_turns(
+        c(
+          client$get_turns(),
+          list(ellmer::AssistantPartialTurn("partial", reason = "error"))
+        )
+      )
+      stop(original)
+    })()
+  })
+  warnings <- list()
+  mod_ref <- NULL
+  store <- FailingStore$new()
+  local_mocked_bindings(
+    send_chat_action = function(...) invisible(NULL)
+  )
+
+  withCallingHandlers(
+    shiny::testServer(
+      function(input, output, session) {
+        mod_ref <<- chat_server(
+          "chat",
+          client,
+          history = history_options(
+            store = store,
+            scope = "test-user",
+            restore_mode = "none",
+            title = NULL
+          ),
+          session = session
+        )
+      },
+      {
+        session$setInputs(chat_user_input = "Hello")
+        wait_for_condition(function() put_calls == 1L, session)
+      }
+    ),
+    warning = function(warning) {
+      warnings[[length(warnings) + 1L]] <<- warning
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  expect_equal(put_calls, 1L)
+  task_warnings <- Filter(
+    function(warning) {
+      grepl("ExtendedTask", conditionMessage(warning), fixed = TRUE)
+    },
+    warnings
+  )
+  expect_length(task_warnings, 1L)
+  task_error <- task_warnings[[1L]]$parent
+  expect_s3_class(task_error, "model_original_error")
+  expect_s3_class(task_error, "shiny.silent.error")
+  expect_identical(task_error$marker, marker)
+  expect_identical(conditionMessage(task_error), "original model failure")
+})
+
 test_that("standalone streams update the transcript without history responses", {
   session <- shiny::MockShinySession$new()
   client <- mock_chat_client()
@@ -224,6 +503,59 @@ test_that("standalone streams update the transcript without history responses", 
     get_chat_transcript(session, "chat")$read()[[1L]]$segments[[1L]]$content,
     "standalone"
   )
+})
+
+test_that("standalone failed streams do not save a history response", {
+  put_calls <- 0L
+  CountingStore <- R6::R6Class(
+    "StandaloneFailedCountingStore",
+    inherit = InMemoryConversationStore,
+    public = list(
+      put = function(partition, record) {
+        put_calls <<- put_calls + 1L
+        super$put(partition, record)
+      }
+    )
+  )
+  session <- shiny::MockShinySession$new()
+  client <- mock_chat_client()
+  store <- CountingStore$new()
+  chat_enable_history(
+    "chat",
+    client,
+    options = history_options(
+      store = store,
+      scope = "test-user",
+      restore_mode = "none",
+      title = NULL
+    ),
+    session = session
+  )
+  session$flushReact()
+  stream <- coro::async_generator(function() {
+    yield("partial")
+    stop("standalone failure")
+  })
+
+  error <- withCallingHandlers(
+    tryCatch(
+      sync(chat_append_stream("chat", stream(), session = session)),
+      error = identity
+    ),
+    warning = function(warning) {
+      invokeRestart("muffleWarning")
+    }
+  )
+  later::run_now(0.1)
+
+  controller <- get_session_chat_bookmark_info(
+    session,
+    "chat.history-controller"
+  )
+  expect_s3_class(error, "shiny.silent.error")
+  expect_identical(conditionMessage(error), "standalone failure")
+  expect_equal(put_calls, 0L)
+  expect_null(controller$record)
 })
 
 test_that("forged client message snapshots cannot change history", {
