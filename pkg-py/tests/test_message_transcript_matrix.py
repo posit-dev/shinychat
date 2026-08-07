@@ -185,3 +185,11 @@ async def test_message_transcript_matrix(
         else:
             await apply_all()
             assert canonical_messages(chat) == case["expected"]
+            if any(
+                operation["type"] == "clear"
+                for operation in cast(list[dict[str, Any]], case["operations"])
+            ):
+                assert chat._current_stream_id is None
+                assert chat._current_stream_segments == []
+                assert chat._message_stream_segments_checkpoint == []
+                assert chat._pending_messages == []

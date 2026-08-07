@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 import os
@@ -350,6 +351,9 @@ class Chat:
         self._current_stream_segments: list[ContentSegment] = []
         self._current_stream_id: str | None = None
         self._pending_messages: list[PendingMessage] = []
+        self._message_lock = asyncio.Lock()
+        # Prevent exited stream contexts from restoring state cleared mid-stream.
+        self._stream_generation = 0
 
         # For tracking message stream state when entering/exiting nested streams
         self._message_stream_segments_checkpoint: list[ContentSegment] = []
@@ -974,6 +978,15 @@ class Chat:
         similar) is specified in model's completion method.
         :::
         """
+        async with self._message_lock:
+            await self._append_message_locked(message, icon=icon)
+
+    async def _append_message_locked(
+        self,
+        message: Any,
+        *,
+        icon: HTML | Tag | TagList | None = None,
+    ):
         # If we're in a stream, queue the message
         if self._current_stream_id:
             self._pending_messages.append((message, False, "append", None))
@@ -1059,34 +1072,36 @@ class Chat:
         `.message_stream_context()` before the mixed content if you need a clean
         checkpoint to replace back to.
         """
-        # Checkpoint the current stream state so operation="replace" can return to it
-        old_checkpoint = self._message_stream_segments_checkpoint
-        self._message_stream_segments_checkpoint = copy_segments(
-            self._current_stream_segments
-        )
-
-        # No stream currently exists, start one
-        stream_id = self._current_stream_id
-        is_root_stream = stream_id is None
-        if is_root_stream:
-            stream_id = _utils.private_random_id()
-            await self._append_message_chunk(
-                "", chunk="start", stream_id=stream_id
+        async with self._message_lock:
+            old_checkpoint = self._message_stream_segments_checkpoint
+            self._message_stream_segments_checkpoint = copy_segments(
+                self._current_stream_segments
             )
+            stream_generation = self._stream_generation
+            stream_id = self._current_stream_id
+            is_root_stream = stream_id is None
+            try:
+                if is_root_stream:
+                    stream_id = _utils.private_random_id()
+                    await self._append_message_chunk_locked(
+                        "", chunk="start", stream_id=stream_id
+                    )
+            except BaseException:
+                self._message_stream_segments_checkpoint = old_checkpoint
+                raise
 
         try:
             yield MessageStream(self, stream_id)
         finally:
-            # Restore the checkpoint
-            self._message_stream_segments_checkpoint = old_checkpoint
-
-            # If this was the root stream, end it
-            if is_root_stream:
-                await self._append_message_chunk(
-                    "",
-                    chunk="end",
-                    stream_id=stream_id,
-                )
+            async with self._message_lock:
+                if self._stream_generation == stream_generation:
+                    self._message_stream_segments_checkpoint = old_checkpoint
+                    if is_root_stream:
+                        await self._append_message_chunk_locked(
+                            "",
+                            chunk="end",
+                            stream_id=stream_id,
+                        )
 
     async def _append_message_chunk(
         self,
@@ -1097,6 +1112,27 @@ class Chat:
         operation: Literal["append", "replace"] = "append",
         icon: HTML | Tag | TagList | bool | None = None,
     ) -> None:
+        async with self._message_lock:
+            await self._append_message_chunk_locked(
+                message,
+                chunk=chunk,
+                stream_id=stream_id,
+                operation=operation,
+                icon=icon,
+            )
+
+    async def _append_message_chunk_locked(
+        self,
+        message: Any,
+        *,
+        chunk: Literal[True, "start", "end"] = True,
+        stream_id: str,
+        operation: Literal["append", "replace"] = "append",
+        icon: HTML | Tag | TagList | None = None,
+    ) -> None:
+        if self._current_stream_id is None and chunk != "start":
+            return
+
         # If currently we're in a *different* stream, queue the message chunk
         if self._current_stream_id and self._current_stream_id != stream_id:
             self._pending_messages.append(
@@ -1773,12 +1809,21 @@ class Chat:
             react to the request to generate a new one via
             :meth:`~shinychat.Chat.set_greeting`.
         """
-        action: ClearAction = {"type": "clear"}
-        if greeting:
-            self._greeting_content = None
-            action["greeting"] = True
-        await self._send_action(action)
+        async with self._message_lock:
+            action: ClearAction = {"type": "clear"}
+            if greeting:
+                self._greeting_content = None
+                action["greeting"] = True
+            await self._send_action(action)
+            self._clear_message_state()
+
+    def _clear_message_state(self) -> None:
         self._replace_messages(())
+        self._current_stream_id = None
+        self._current_stream_segments = []
+        self._message_stream_segments_checkpoint = []
+        self._pending_messages = []
+        self._stream_generation += 1
 
     def get_greeting(self) -> str | None:
         """

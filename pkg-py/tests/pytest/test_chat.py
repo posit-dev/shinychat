@@ -238,6 +238,157 @@ def test_stream_send_failures_do_not_commit_active_or_settled_state(
             assert failed_end.messages() == ()
 
 
+@pytest.mark.anyio
+async def test_concurrent_stream_start_queues_other_streams_and_messages(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    with session_context(test_session):
+        chat = Chat("concurrent_start", history=False)
+        first_start_sent = asyncio.Event()
+        release_first_start = asyncio.Event()
+        second_start_sent = asyncio.Event()
+        message_sent = asyncio.Event()
+
+        async def send_action(action: Any, deps: Any = None) -> None:
+            if action["type"] == "chunk_start":
+                if first_start_sent.is_set():
+                    second_start_sent.set()
+                    return
+                first_start_sent.set()
+                await release_first_start.wait()
+            elif action["type"] == "message":
+                message_sent.set()
+
+        monkeypatch.setattr(chat, "_send_action", send_action)
+        first_start = asyncio.create_task(
+            chat._append_message_chunk("", chunk="start", stream_id="first")
+        )
+        await first_start_sent.wait()
+
+        second_start = asyncio.create_task(
+            chat._append_message_chunk("", chunk="start", stream_id="second")
+        )
+        await asyncio.sleep(0)
+        queued_message = asyncio.create_task(chat.append_message("queued"))
+        await asyncio.sleep(0)
+
+        assert not second_start_sent.is_set()
+        assert not message_sent.is_set()
+
+        release_first_start.set()
+        await asyncio.gather(first_start, second_start, queued_message)
+
+        assert chat._current_stream_id == "first"
+        assert chat._current_stream_segments == []
+        assert chat._pending_messages == [
+            ("", "start", "append", "second"),
+            ("queued", False, "append", None),
+        ]
+        assert not second_start_sent.is_set()
+        assert not message_sent.is_set()
+
+
+@pytest.mark.anyio
+async def test_concurrent_stream_chunks_commit_in_send_order(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    with session_context(test_session):
+        chat = Chat("concurrent_chunks", history=False)
+        first_chunk_sent = asyncio.Event()
+        release_first_chunk = asyncio.Event()
+        second_chunk_sent = asyncio.Event()
+
+        async def send_action(action: Any, deps: Any = None) -> None:
+            if action["type"] != "chunk":
+                return
+            if action["content"] == "one":
+                first_chunk_sent.set()
+                await release_first_chunk.wait()
+            if action["content"] == "two":
+                second_chunk_sent.set()
+
+        monkeypatch.setattr(chat, "_send_action", send_action)
+        await chat._append_message_chunk("", chunk="start", stream_id="stream")
+        first_chunk = asyncio.create_task(
+            chat._append_message_chunk("one", chunk=True, stream_id="stream")
+        )
+        await first_chunk_sent.wait()
+
+        second_chunk = asyncio.create_task(
+            chat._append_message_chunk("two", chunk=True, stream_id="stream")
+        )
+        await asyncio.sleep(0)
+        assert not second_chunk_sent.is_set()
+
+        release_first_chunk.set()
+        await asyncio.gather(first_chunk, second_chunk)
+
+        assert [segment.content for segment in chat._current_stream_segments] == [
+            "onetwo"
+        ]
+        assert second_chunk_sent.is_set()
+
+
+def test_clear_messages_discards_active_and_pending_stream_state(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    with session_context(test_session):
+        chat = Chat("clear_state", history=False)
+        state_during_clear: list[tuple[str | None, int, int]] = []
+
+        async def send_action(action: Any, deps: Any = None) -> None:
+            if action["type"] == "clear":
+                state_during_clear.append(
+                    (
+                        chat._current_stream_id,
+                        len(chat._current_stream_segments),
+                        len(chat._pending_messages),
+                    )
+                )
+
+        monkeypatch.setattr(chat, "_send_action", send_action)
+        chat._store_message(stored_message("settled", "assistant"))
+        run_async(
+            lambda: chat._append_message_chunk(
+                "", chunk="start", stream_id="active"
+            )
+        )
+        run_async(
+            lambda: chat._append_message_chunk(
+                "draft", chunk=True, stream_id="active"
+            )
+        )
+        run_async(
+            lambda: chat._append_message_chunk(
+                "queued", chunk=True, stream_id="other"
+            )
+        )
+
+        run_async(chat.clear_messages)
+
+        assert state_during_clear == [("active", 1, 1)]
+        assert chat._current_stream_id is None
+        assert chat._current_stream_segments == []
+        assert chat._message_stream_segments_checkpoint == []
+        assert chat._pending_messages == []
+        with reactive.isolate():
+            assert chat.messages() == ()
+        run_async(
+            lambda: chat._append_message_chunk(
+                "stale", chunk=True, stream_id="active"
+            )
+        )
+        run_async(
+            lambda: chat._append_message_chunk(
+                "", chunk="end", stream_id="active"
+            )
+        )
+        assert chat._current_stream_id is None
+        assert chat._current_stream_segments == []
+        with reactive.isolate():
+            assert chat.messages() == ()
+
+
 def test_user_submit_messages_include_attachments_before_callback():
     from shinychat._attachments import Attachment
 
