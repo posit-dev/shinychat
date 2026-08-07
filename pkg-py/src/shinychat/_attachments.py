@@ -211,11 +211,7 @@ def validate_attachment_payload_size(attachments: list[Attachment]) -> None:
 def validate_attachment_types(attachments: list[Attachment]) -> None:
     """Validate attachment MIME types against the supported server allowlist."""
     invalid = sorted(
-        {
-            att.mime
-            for att in attachments
-            if att.mime not in SUPPORTED_ATTACHMENT_TYPES
-        }
+        {att.mime for att in attachments if att.mime not in SUPPORTED_ATTACHMENT_TYPES}
     )
     if invalid:
         raise ValueError(

@@ -359,9 +359,7 @@ class Chat:
 
         # Keep track of effects so we can destroy them when the chat is destroyed
         self._effects: list["Effect_"] = []
-        history_config = (
-            history if isinstance(history, HistoryOptions) else None
-        )
+        history_config = history if isinstance(history, HistoryOptions) else None
         self._history_enabled: bool = history is not False
         self.history: ChatHistory = ChatHistory(self, config=history_config)
         self._cancel_bookmarking_callbacks: CancelCallback | None = None
@@ -384,9 +382,9 @@ class Chat:
                 dict[str, SlashCommandRegistration] | None
             ] = reactive.Value(None)
 
-            self._latest_user_input: reactive.Value[StoredMessage | None] = (
-                reactive.Value(None)
-            )
+            self._latest_user_input: reactive.Value[
+                StoredMessage | None
+            ] = reactive.Value(None)
 
             @reactive.extended_task
             async def _mock_task() -> str:
@@ -510,17 +508,15 @@ class Chat:
         with session_context(self._session):
 
             @self.on_user_submit
-            async def _on_user_submit(
-                user_input: str, attachments: list[Attachment]
-            ) -> None:
+            async def _on_user_submit(user_input: str, attachments: list[Attachment]) -> None:
                 contents = [attachment_to_content(a) for a in attachments]
                 try:
-                response = await chat_client.value.stream_async(
-                    user_input,
-                    *contents,
-                    content="all",
-                    controller=controller,
-                )
+                    response = await chat_client.value.stream_async(
+                        user_input,
+                        *contents,
+                        content="all",
+                        controller=controller,
+                    )
                 except BaseException as error:
                     await self._settle_response(
                         self.history._response_settled,
@@ -687,9 +683,7 @@ class Chat:
         *,
         echo: bool | None = None,
         force: bool = False,
-    ) -> (
-        Callable[[UserSubmitFunction], UserSubmitFunction] | Callable[[], None]
-    ):
+    ) -> Callable[[UserSubmitFunction], UserSubmitFunction] | Callable[[], None]:
         """
         Register a slash command and its handler.
 
@@ -1002,7 +996,7 @@ class Chat:
             self._pending_messages and not from_pending
         ):
             if not from_pending:
-            self._pending_messages.append((message, False, "append", None))
+                self._pending_messages.append((message, False, "append", None))
             return False
 
         msg = normalize_message(message)
@@ -1087,19 +1081,19 @@ class Chat:
         checkpoint to replace back to.
         """
         async with self._message_lock:
-        old_checkpoint = self._message_stream_segments_checkpoint
+            old_checkpoint = self._message_stream_segments_checkpoint
             self._message_stream_segments_checkpoint = copy_segments(
                 self._current_stream_segments
             )
             stream_generation = self._stream_generation
-        stream_id = self._current_stream_id
-        is_root_stream = stream_id is None
+            stream_id = self._current_stream_id
+            is_root_stream = stream_id is None
             try:
-        if is_root_stream:
-            stream_id = _utils.private_random_id()
+                if is_root_stream:
+                    stream_id = _utils.private_random_id()
                     await self._append_message_chunk_locked(
-                "", chunk="start", stream_id=stream_id
-            )
+                        "", chunk="start", stream_id=stream_id
+                    )
             except BaseException:
                 self._message_stream_segments_checkpoint = old_checkpoint
                 raise
@@ -1109,13 +1103,13 @@ class Chat:
         finally:
             async with self._message_lock:
                 if self._stream_generation == stream_generation:
-            self._message_stream_segments_checkpoint = old_checkpoint
-            if is_root_stream:
+                    self._message_stream_segments_checkpoint = old_checkpoint
+                    if is_root_stream:
                         await self._append_message_chunk_locked(
-                    "",
-                    chunk="end",
-                    stream_id=stream_id,
-                )
+                            "",
+                            chunk="end",
+                            stream_id=stream_id,
+                        )
 
     async def _append_message_chunk(
         self,
@@ -1164,9 +1158,9 @@ class Chat:
 
         if self._current_stream_id and self._current_stream_id != stream_id:
             if not from_pending:
-            self._pending_messages.append(
-                (message, chunk, operation, stream_id)
-            )
+                self._pending_messages.append(
+                    (message, chunk, operation, stream_id)
+                )
             return False
 
         staged_segments = copy_segments(self._current_stream_segments)
@@ -1229,7 +1223,7 @@ class Chat:
                 else:
                     next_projection = transformed
                     wire_message = transformed
-                if chunk == "end":
+                    if chunk == "end":
                         settled = self._settled_stream_projection(
                             transformed,
                             staged_segments,
@@ -1576,19 +1570,19 @@ class Chat:
                 msg, chunk, operation, stream_id = self._pending_messages[
                     pending_index
                 ]
-            if chunk is False:
+                if chunk is False:
                     processed = await self._append_message_locked(
                         msg,
                         from_pending=True,
                     )
-            else:
+                else:
                     processed = await self._append_message_chunk_locked(
-                    msg,
-                    chunk=chunk,
-                    operation=operation,
-                    stream_id=cast(str, stream_id),
+                        msg,
+                        chunk=chunk,
+                        operation=operation,
+                        stream_id=cast(str, stream_id),
                         from_pending=True,
-                )
+                    )
                 if not processed:
                     return
                 del self._pending_messages[pending_index]
@@ -1976,11 +1970,11 @@ class Chat:
             :meth:`~shinychat.Chat.set_greeting`.
         """
         async with self._message_lock:
-        action: ClearAction = {"type": "clear"}
-        if greeting:
-            self._greeting_content = None
-            action["greeting"] = True
-        await self._send_action(action)
+            action: ClearAction = {"type": "clear"}
+            if greeting:
+                self._greeting_content = None
+                action["greeting"] = True
+            await self._send_action(action)
             self._clear_message_state()
 
     def _clear_message_state(self) -> None:
