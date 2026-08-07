@@ -38,7 +38,8 @@ chat_ui(
   enable_cancel = NULL,
   submit_key = c("enter", "enter+modifier"),
   allow_attachments = NULL,
-  footer = NULL
+  footer = NULL,
+  tool_grouping = c("tool", "none", "all")
 )
 ```
 
@@ -109,7 +110,10 @@ chat_ui(
   [`htmltools::HTML()`](https://rstudio.github.io/htmltools/reference/HTML.html)
   or
   [`htmltools::tags()`](https://rstudio.github.io/htmltools/reference/builder.html).
-  If `None`, a default robot icon is used.
+  If `NULL` (or `TRUE`), a default robot icon is used. Pass `FALSE` to
+  remove the assistant icon entirely (individual messages can still opt
+  back in via the `icon` argument of
+  [`chat_append()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_append.md)).
 
 - enable_cancel:
 
@@ -168,6 +172,32 @@ chat_ui(
   is styled slightly smaller and lighter than body text by default.
   Customize with CSS properties `--shiny-chat-footer-font-size` and
   `--shiny-chat-footer-color` on the chat container or footer element.
+
+- tool_grouping:
+
+  Controls how tool calls are grouped together in the compact activity
+  rows:
+
+  - `"tool"` (default): calls to the *same* tool within a turn's
+    contiguous tool loop are grouped into one activity row. This groups
+    by tool name across the whole loop, not just consecutive calls –
+    e.g. calls to tools `X`, `Y`, `Z`, `X`, `Y` (in that order) are
+    grouped into `X` (2 calls), `Y` (2 calls), and `Z` (1 call).
+
+  - `"all"`: every tool call within a contiguous tool loop is summarized
+    in one activity row, regardless of tool name.
+
+  - `"none"`: each tool call is shown in its own activity row. Its
+    request and result remain available by drilling into that row; this
+    does not restore an always-visible card stack.
+
+  Prose or thinking between tool calls starts a new tool loop, so calls
+  on opposite sides of either boundary never group together. Individual
+  tools can override `"tool"` or `"all"` via a top-level `grouping` tool
+  annotation, e.g.
+  `ellmer::tool(..., annotations = ellmer::tool_annotations(grouping = "all"))`.
+  `tool_grouping = "none"` takes precedence over every annotation and
+  disables grouping for the whole chat.
 
 ## Value
 

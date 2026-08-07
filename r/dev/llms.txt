@@ -127,6 +127,8 @@ to learn more.
 
 - [`contents_shinychat()`](https://posit-dev.github.io/shinychat/r/dev/reference/contents_shinychat.md)
   : Format ellmer content for shinychat
+- [`tool_result_display()`](https://posit-dev.github.io/shinychat/r/dev/reference/tool_result_display.md)
+  : Customize how a tool result is displayed
 
 # Articles
 

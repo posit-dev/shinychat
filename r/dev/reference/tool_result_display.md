@@ -1,0 +1,126 @@
+# Customize how a tool result is displayed
+
+`tool_result_display()` creates an object you can assign to the
+`display` item of the `extra` argument of an
+[`ellmer::ContentToolResult`](https://ellmer.tidyverse.org/reference/Content.html)
+to customize how shinychat displays the tool result to the user, while
+keeping the underlying `value` sent to the model unchanged.
+
+## Usage
+
+``` r
+tool_result_display(
+  title = NULL,
+  icon = NULL,
+  html = NULL,
+  markdown = NULL,
+  text = NULL,
+  show_request = TRUE,
+  open = FALSE,
+  full_screen = FALSE,
+  footer = NULL,
+  label = NULL,
+  value_preview = NULL
+)
+```
+
+## Arguments
+
+- title:
+
+  The title to use for the settled call and drill-down card. It replaces
+  the definition-level title from
+  [`ellmer::tool_annotations()`](https://ellmer.tidyverse.org/reference/tool_annotations.html)
+  in a single-call row. In a multi-call group, a distinct result title
+  can identify the call in the expanded call list. Write the definition
+  title in the present tense (for example, `"Getting weather"`) and this
+  result title in the past tense (for example, `"Got weather"`).
+
+- icon:
+
+  An icon to display with the settled call and drill-down card. Can be a
+  character string or HTML content (e.g. from
+  [htmltools::tags](https://rstudio.github.io/htmltools/reference/builder.html)).
+
+- html:
+
+  Custom HTML content (to use in place of the default result content in
+  the drill-down card).
+
+- markdown:
+
+  Custom Markdown string (to use in place of the default result content
+  in the drill-down card).
+
+- text:
+
+  Custom plain text string (to use in place of the default result
+  content in the drill-down card).
+
+- show_request:
+
+  Whether to show the tool request inside the drill-down card.
+
+- open:
+
+  Whether to open the drill-down card by default when the result
+  settles.
+
+- full_screen:
+
+  Whether or not to display a fullscreen toggle button on the drill-down
+  card.
+
+- footer:
+
+  Optional HTML content to display below the drill-down card body.
+
+- label:
+
+  A short, per-call identifying value shown in the activity row (e.g. a
+  filename or query). Distinguishes this call from other calls to the
+  same tool. Without one, shinychat falls back to the call's own `title`
+  (when it differs from the group's), then a short preview of the call's
+  arguments, then the tool name.
+
+- value_preview:
+
+  A terse, per-call preview of the tool result, shown in the activity
+  row before its drill-down card is opened.
+
+## Value
+
+An object of class `shinychat_tool_result_display`, for use as
+`extra = list(display = tool_result_display(...))` when creating an
+[`ellmer::ContentToolResult`](https://ellmer.tidyverse.org/reference/Content.html).
+
+## Details
+
+It preserves shinychat's compact activity row and drill-down card. Use
+it for result titles, per-call labels and previews, or rich card
+content. To replace the settled card with fully custom standalone UI,
+extend
+[`contents_shinychat()`](https://posit-dev.github.io/shinychat/r/dev/reference/contents_shinychat.md)
+instead. See the [Tool Calling UI
+article](https://posit-dev.github.io/shinychat/r/articles/tool-ui.html)
+for a complete guide.
+
+## Examples
+
+``` r
+library(ellmer)
+
+get_current_weather <- function(location) {
+  ContentToolResult(
+    value = "72 degrees and sunny",
+    extra = list(
+      display = tool_result_display(
+        title = paste("Got weather for", location),
+        label = location,
+        value_preview = "72°F and sunny",
+        markdown = "It's **72°F** and sunny."
+      )
+    )
+  )
+}
+```

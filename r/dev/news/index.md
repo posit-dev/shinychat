@@ -4,6 +4,39 @@
 
 ### New features and improvements
 
+- Tool calls now render as a condensed activity row by default. Expand a
+  group row to see each individual call, then drill into a call to see
+  its full request/result card. Added
+  [`tool_result_display()`](https://posit-dev.github.io/shinychat/r/dev/reference/tool_result_display.md),
+  a validated constructor for the `display` object passed as
+  `extra = list(display = tool_result_display(...))` on an
+  [`ellmer::ContentToolResult`](https://ellmer.tidyverse.org/reference/Content.html)
+  – the recommended way to build it going forward. A bare named list
+  with the same fields still works and is promoted internally.
+  [`tool_result_display()`](https://posit-dev.github.io/shinychat/r/dev/reference/tool_result_display.md)
+  gained `label` (a short per-call identifying value, e.g. a filename or
+  query) and `value_preview` (a terse peek at the result, e.g. “1,204
+  rows”), both shown in the activity row.
+
+- Fully custom tool-result UI returned from a
+  [`contents_shinychat()`](https://posit-dev.github.io/shinychat/r/dev/reference/contents_shinychat.md)
+  method is now paired with its tool request. While the tool runs, it
+  appears in the activity row; after the custom result settles, that
+  call leaves the row and the custom UI renders as standalone output.
+  This also preserves custom results when preloading or restoring
+  conversations.
+
+- Added `tool_grouping` to
+  [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md):
+  `"tool"` (default) groups calls to the same tool in a contiguous tool
+  loop (order-independent, not just consecutive calls); `"all"` groups
+  every call in the loop together; `"none"` shows one activity row per
+  call. Thinking or prose starts a new loop, and chat-level `"none"`
+  disables grouping even when an annotation asks for it. Individual
+  tools can override `"tool"` or `"all"` with a top-level `grouping`
+  tool annotation,
+  e.g. `tool(..., annotations = tool_annotations(grouping = "all"))`.
+
 - Added
   [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
   as the new primary way to wire up server-side chat logic. It does the
@@ -85,6 +118,22 @@
 
 ### Breaking changes
 
+- A tool’s definition `title` (from its annotations) and its result
+  `title` (from
+  [`tool_result_display()`](https://posit-dev.github.io/shinychat/r/dev/reference/tool_result_display.md))
+  are now shown as-is, without any client-side tense conjugation. The
+  definition title is shown while the call is running and labels
+  multi-call groups. For a single-call row, the result title (if
+  provided) replaces it when the result arrives; in a multi-call group,
+  a distinct result title can identify that call in the expanded list.
+  The old `"Running {title}"` / `"{title} failed"` client-side title
+  template has been removed. If a tool’s title reads oddly while running
+  now that the automatic “Running” prefix is gone, write an explicit
+  present-tense definition title (e.g. “Running R code”) and,
+  optionally, a past-tense result title (e.g. “Ran R code”). Failures
+  are shown via a separate status cue (a “failed”/“N failed” note and
+  icon) rather than appended to the title.
+
 - `input$<id>_user_input` now depends on `allow_attachments`. With
   `allow_attachments = FALSE`, it remains the historical typed string.
   With attachments enabled (`TRUE` or a MIME allow-list), it is always a
@@ -107,6 +156,15 @@
   excluded from bookmarks.
 
 ### Bug fixes
+
+- Fixed
+  [`output_markdown_stream()`](https://posit-dev.github.io/shinychat/r/dev/reference/output_markdown_stream.md)
+  permanently stopping following new content after the user scrolled
+  back to the bottom. Pinning was decided only from `scroll` events,
+  which browsers dispatch asynchronously; if a chunk grew the container
+  first, the user’s at-bottom position no longer read as at-bottom and
+  auto-scroll silently disengaged for good.
+  ([\#282](https://github.com/posit-dev/shinychat/issues/282))
 
 - [`chat_app()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
   no longer renders a close button or registers a

@@ -83,6 +83,11 @@
 application. <code>contents_shinychat()</code> is <a href="https://rconsortium.github.io/S7/reference/new_generic.html" class="external-link">an S7 generic</a>. If
 you haven't worked with S7 before, you can learn more about S7 classes,
 generics and methods in the <a href="https://rconsortium.github.io/S7/articles/S7.html" class="external-link">S7 documentation</a>.</p>
+<p>For most tool-result customization, use <code><a href="tool_result_display.html">tool_result_display()</a></code> in the
+result's <code>extra = list(display = ...)</code>. It keeps shinychat's compact activity
+row and drill-down card while letting you set a title, label, result preview,
+and rich card content. The <a href="https://posit-dev.github.io/shinychat/r/articles/tool-ui.html">Tool Calling UI article</a>
+describes that recommended path.</p>
 <p>We'll work through a short example creating a custom display for the results
 of a tool that gets local weather forecasts. We first need to create a custom
 class that extends <a href="https://ellmer.tidyverse.org/reference/Content.html" class="external-link">ellmer::ContentToolResult</a>.</p>
@@ -114,10 +119,8 @@ class works just like a regular <code>ContentToolResult</code>, but it has an ad
 <span>    location_name <span class="op">=</span> <span class="fu"><a href="https://ellmer.tidyverse.org/reference/type_boolean.html" class="external-link">type_string</a></span><span class="op">(</span><span class="st">"Name of the location for display to the user"</span><span class="op">)</span></span>
 <span>  <span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre><p></p></div>
-<p>Finally, we can extend <code>contents_shinychat()</code> to render our custom content
-class for display in the chat interface. The basic process is to define a
-<code>contents_shinychat()</code> external generic and then implement a method for your
-custom class.</p>
+<p>Finally, define the external generic and implement a method for your custom
+class:</p>
 <p></p><div class="sourceCode r"><pre><code><span><span class="va">contents_shinychat</span> <span class="op">&lt;-</span> <span class="fu">S7</span><span class="fu">::</span><span class="fu"><a href="https://rconsortium.github.io/S7/reference/new_external_generic.html" class="external-link">new_external_generic</a></span><span class="op">(</span></span>
 <span>  package <span class="op">=</span> <span class="st">"shinychat"</span>,</span>
 <span>  name <span class="op">=</span> <span class="st">"contents_shinychat"</span>,</span>
@@ -127,12 +130,9 @@ custom class.</p>
 <span><span class="fu">S7</span><span class="fu">::</span><span class="fu"><a href="https://rconsortium.github.io/S7/reference/method.html" class="external-link">method</a></span><span class="op">(</span><span class="va">contents_shinychat</span>, <span class="va">WeatherToolResult</span><span class="op">)</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">content</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="co"># Your custom rendering logic here</span></span>
 <span><span class="op">}</span></span></code></pre><p></p></div>
-<p>You can use this pattern to completely customize how the content is displayed
-inside shinychat by returning HTML objects directly from this method.</p>
-<p>You can also use this pattern to build upon the default shinychat display for
-tool requests and results. By using <code><a href="https://rconsortium.github.io/S7/reference/super.html" class="external-link">S7::super()</a></code>, you can create the
-object shinychat uses for tool results (or tool requests), and then modify it
-to suit your needs.</p>
+<p>Use <code><a href="https://rconsortium.github.io/S7/reference/super.html" class="external-link">S7::super()</a></code> when you want to extend shinychat's default card. The
+resulting output still participates in the normal compact activity row and
+drill-down card:</p>
 <p></p><div class="sourceCode r"><pre><code><span><span class="fu">S7</span><span class="fu">::</span><span class="fu"><a href="https://rconsortium.github.io/S7/reference/method.html" class="external-link">method</a></span><span class="op">(</span><span class="va">contents_shinychat</span>, <span class="va">WeatherToolResult</span><span class="op">)</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">content</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="co"># Call the super method for ContentToolResult to get shinychat's defaults</span></span>
 <span>  <span class="va">res</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/contents_shinychat.html">contents_shinychat</a></span><span class="op">(</span><span class="fu">S7</span><span class="fu">::</span><span class="fu"><a href="https://rconsortium.github.io/S7/reference/super.html" class="external-link">super</a></span><span class="op">(</span><span class="va">content</span>, <span class="va">ContentToolResult</span><span class="op">)</span><span class="op">)</span></span>
@@ -142,15 +142,19 @@ to suit your needs.</p>
 <span>  <span class="va">res</span><span class="op">$</span><span class="va">value</span> <span class="op">&lt;-</span> <span class="fu">gt</span><span class="fu">::</span><span class="fu"><a href="https://gt.rstudio.com/reference/as_raw_html.html" class="external-link">as_raw_html</a></span><span class="op">(</span><span class="fu">gt</span><span class="fu">::</span><span class="fu"><a href="https://gt.rstudio.com/reference/gt.html" class="external-link">gt</a></span><span class="op">(</span><span class="va">content</span><span class="op">@</span><span class="va">value</span><span class="op">)</span><span class="op">)</span></span>
 <span>  <span class="va">res</span><span class="op">$</span><span class="va">value_type</span> <span class="op">&lt;-</span> <span class="st">"html"</span></span>
 <span>  <span class="co"># ...and update the tool result title to include the location name</span></span>
-<span>  <span class="va">res</span><span class="op">$</span><span class="va">title</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste</a></span><span class="op">(</span><span class="st">"Weather Forecast for"</span>, <span class="va">content</span><span class="op">@</span><span class="va">location_name</span><span class="op">)</span></span>
+<span>  <span class="va">res</span><span class="op">$</span><span class="va">tool_title</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste</a></span><span class="op">(</span><span class="st">"Got weather forecast for"</span>, <span class="va">content</span><span class="op">@</span><span class="va">location_name</span><span class="op">)</span></span>
+<span>  <span class="va">res</span><span class="op">$</span><span class="va">label</span> <span class="op">&lt;-</span> <span class="va">content</span><span class="op">@</span><span class="va">location_name</span></span>
+<span>  <span class="va">res</span><span class="op">$</span><span class="va">value_preview</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">content</span><span class="op">@</span><span class="va">value</span><span class="op">)</span>, <span class="st">"hourly readings"</span><span class="op">)</span></span>
 <span></span>
 <span>  <span class="va">res</span></span>
 <span><span class="op">}</span></span></code></pre><p></p></div>
-<p>Note that you do <strong>not</strong> need to create a new class or extend
-<code>contents_shinychat()</code> to customize the tool display. Rather, you can use the
-strategies discussed in the <a href="https://posit-dev.github.io/shinychat/r/articles/tool-ui.html">Tool Calling UI article</a> to
-customize the tool request and result display by providing a <code>display</code> list
-in the <code>extra</code> argument of the tool result.</p>
+<p>Alternatively, return arbitrary HTML or Shiny UI directly from the method to
+replace the default card completely. While the tool runs, shinychat still
+shows its activity row. When the custom result settles, shinychat renders that
+UI as standalone output and removes the call from the activity row.</p>
+<p>This extension point is for fully custom standalone output. To customize the
+default card, use <code><a href="tool_result_display.html">tool_result_display()</a></code> instead of constructing a generic
+<code>display</code> list yourself.</p>
     </div>
 
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
