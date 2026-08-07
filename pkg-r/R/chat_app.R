@@ -230,7 +230,10 @@ chat_mod_ui <- function(
 #' @describeIn chat_app Wire up batteries-included chat server logic in a Shiny
 #'   session. Pair with [chat_ui()] by passing it the same `id`; see *Pairing
 #'   with `chat_server()`* in [chat_ui()] for the top-level and module-based
-#'   patterns.
+#'   patterns. Registers `id` for managed server transcript state (see
+#'   [chat_enable_history()]), which opts it in to history persistence,
+#'   bookmark restore, and the single-flight streaming rules described in
+#'   [chat_append()].
 #' @inheritParams chat_restore
 #' @param history Conversation history configuration. `TRUE` (default) enables
 #'   history with default settings; `FALSE` disables it; pass a [history_options()]

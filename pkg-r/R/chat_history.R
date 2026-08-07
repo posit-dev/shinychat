@@ -642,6 +642,13 @@ history_options <- function(
 
 #' Enable conversation history for a chat
 #'
+#' @description
+#' Registers `id` for managed server transcript state -- the same state
+#' [chat_server()] registers automatically -- so appended messages become
+#' available for history persistence, bookmark restore, and the
+#' single-flight streaming rules described in [chat_append()]. Safe to call
+#' even if `id` is already registered (e.g. by [chat_server()]).
+#'
 #' @param id The chat element ID.
 #' @param client An [ellmer::Chat] object.
 #' @param ... Reserved for future use.

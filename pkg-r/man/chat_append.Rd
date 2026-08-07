@@ -158,6 +158,18 @@ numbered pill):
 }\if{html}{\out{</div>}}
 }
 
+\section{Concurrency}{
+For an \code{id} registered by \code{\link[=chat_server]{chat_server()}} or \code{\link[=chat_enable_history]{chat_enable_history()}}, only
+one stream may be active at a time. Calling \code{chat_append()} with a new
+stream while another is already streaming to the same \code{id} rejects
+immediately instead of interleaving output; appending a complete
+(non-streaming) message while a stream is active rejects the same way.
+
+Calls made for an \code{id} managed by \code{\link[=chat_server]{chat_server()}} or
+\code{\link[=chat_enable_history]{chat_enable_history()}} enter server transcript state. Other calls only
+update the browser and are not available to history or bookmark restore.
+}
+
 \examples{
 \dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
 library(shiny)

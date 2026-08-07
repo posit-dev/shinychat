@@ -658,6 +658,18 @@ resolve_aside_favicon <- function() {
 #'   )
 #' )
 #' ```
+#
+#' # Concurrency
+#'
+#' For an `id` registered by [chat_server()] or [chat_enable_history()], only
+#' one stream may be active at a time. Calling `chat_append()` with a new
+#' stream while another is already streaming to the same `id` rejects
+#' immediately instead of interleaving output; appending a complete
+#' (non-streaming) message while a stream is active rejects the same way.
+#'
+#' Calls made for an `id` managed by [chat_server()] or
+#' [chat_enable_history()] enter server transcript state. Other calls only
+#' update the browser and are not available to history or bookmark restore.
 #'
 #' @param id The ID of the chat element
 #' @param response The message or message stream to append to the chat element.
