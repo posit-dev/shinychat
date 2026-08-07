@@ -2,41 +2,20 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any, Literal, cast
 
 import pytest
 from htmltools import HTMLDependency
-from shiny import Inputs, Session, reactive
-from shiny.module import ResolvedId
-from shiny.session import session_context
-from shinychat import Chat
-from shinychat._chat_types import ChatMessage, Role, StoredMessage
-
-
-class MatrixSession:
-    ns: ResolvedId = ResolvedId("")
-    app: object = None
-    id: str = "matrix-session"
-    input: Any
-
-    def __init__(self) -> None:
-        self.input = Inputs({}, ns=ResolvedId)
-
-    def on_ended(self, callback: object) -> None:
-        pass
-
-    def on_destroy(self, callback: object) -> None:
-        pass
-
-    def _increment_busy_count(self) -> None:
-        pass
-
-    def _decrement_busy_count(self) -> None:
-        pass
-
-    async def send_custom_message(self, type: str, message: Any) -> None:
-        pass
+from shinychat._chat_transcript import ChatTranscript, StreamCandidate
+from shinychat._chat_types import (
+    ChatMessage,
+    Role,
+    SerializedDep,
+    StoredMessage,
+    StoredSegment,
+)
 
 
 def load_matrix() -> list[dict[str, Any]]:
@@ -60,33 +39,48 @@ def make_dependencies(
     ]
 
 
+def serialize_html_deps(
+    dependencies: list[HTMLDependency] | None,
+) -> list[SerializedDep] | None:
+    if not dependencies:
+        return None
+    return [
+        {"name": dependency.name, "version": str(dependency.version)}
+        for dependency in dependencies
+    ]
+
+
 def fixture_message(value: dict[str, Any]) -> StoredMessage:
     return StoredMessage.model_validate(value)
 
 
-def fixture_chat_message(value: dict[str, Any]) -> ChatMessage:
-    segments = cast(list[dict[str, Any]], value["segments"])
-    assert len(segments) == 1, (
-        "fixture_chat_message() only supports single-segment complete messages"
+def send_for(operation: dict[str, Any]) -> Callable[[], Awaitable[None]]:
+    async def send() -> None:
+        error = operation.get("send_error")
+        if error is not None:
+            raise RuntimeError(cast(str, error))
+
+    return send
+
+
+def candidate_to_stored(candidate: StreamCandidate) -> StoredMessage:
+    return StoredMessage(
+        role=candidate.role,
+        segments=[
+            StoredSegment(
+                content=segment.content,
+                content_type=segment.content_type,
+                html_deps=serialize_html_deps(segment.html_deps),
+            )
+            for segment in candidate.segments
+        ],
+        attachments=list(candidate.attachments),
     )
-    segment = segments[0]
-    return ChatMessage(
-        content=cast(str, segment["content"]),
-        role=cast(Role, value["role"]),
-        content_type=cast(
-            Literal["markdown", "html", "text", "thinking"],
-            segment["content_type"],
-        ),
-        attachments=value.get("attachments"),
-    )
 
 
-def canonical_messages(chat: Chat) -> list[dict[str, Any]]:
-    with reactive.isolate():
-        messages = chat._messages()
-
+def canonical_messages(transcript: ChatTranscript) -> list[dict[str, Any]]:
     canonical: list[dict[str, Any]] = []
-    for message in messages:
+    for message in transcript.read():
         dumped = message.model_dump(exclude_none=True)
         if not dumped.get("attachments"):
             dumped.pop("attachments", None)
@@ -100,27 +94,25 @@ def canonical_messages(chat: Chat) -> list[dict[str, Any]]:
     return canonical
 
 
-async def apply_operation(chat: Chat, operation: dict[str, Any]) -> None:
+async def apply_operation(
+    transcript: ChatTranscript, operation: dict[str, Any]
+) -> None:
     operation_type = cast(str, operation["type"])
+    send = send_for(operation)
+
     if operation_type == "message":
-        await chat.append_message(fixture_chat_message(operation))
+        await transcript.append(fixture_message(operation), send=send)
         return
 
     if operation_type == "stream_start":
-        await chat._append_message_chunk(
-            ChatMessage(
-                content="",
-                role=cast(Role, operation["role"]),
-            ),
-            chunk="start",
+        await transcript.start(
+            ChatMessage(content="", role=cast(Role, operation["role"])),
             stream_id=cast(str, operation["stream_id"]),
+            send=send,
         )
         return
 
     if operation_type == "stream_chunk":
-        dependencies = make_dependencies(
-            cast(list[dict[str, Any]], operation.get("html_deps", []))
-        )
         message = ChatMessage(
             content=cast(str, operation["content"]),
             role="assistant",
@@ -129,31 +121,43 @@ async def apply_operation(chat: Chat, operation: dict[str, Any]) -> None:
                 operation["content_type"],
             ),
         )
-        message.html_deps = dependencies
-        await chat._append_message_chunk(
+        message.html_deps = make_dependencies(
+            cast(list[dict[str, Any]], operation.get("html_deps", []))
+        )
+
+        async def chunk_send(
+            candidate: StreamCandidate,
+        ) -> StoredMessage | None:
+            await send()
+            return candidate_to_stored(candidate)
+
+        await transcript.chunk(
             message,
-            chunk=True,
             stream_id=cast(str, operation["stream_id"]),
             operation=cast(
                 Literal["append", "replace"], operation["operation"]
             ),
+            send=chunk_send,
         )
         return
 
     if operation_type == "stream_end":
-        await chat._append_message_chunk(
-            "",
-            chunk="end",
-            stream_id=cast(str, operation["stream_id"]),
+
+        async def settle_send(candidate: StreamCandidate) -> StoredMessage:
+            await send()
+            return candidate_to_stored(candidate)
+
+        await transcript.settle(
+            stream_id=cast(str, operation["stream_id"]), send=settle_send
         )
         return
 
     if operation_type == "stream_abort":
-        await chat._abort_message_stream(cast(str, operation["stream_id"]))
+        transcript.abort(cast(str, operation["stream_id"]))
         return
 
     if operation_type == "clear":
-        await chat.clear_messages()
+        await transcript.clear(send=send)
         return
 
     if operation_type == "replay":
@@ -161,7 +165,7 @@ async def apply_operation(chat: Chat, operation: dict[str, Any]) -> None:
             fixture_message(message)
             for message in cast(list[dict[str, Any]], operation["messages"])
         ]
-        chat._replace_messages(messages)
+        await transcript.replace(messages, send=send)
         return
 
     raise AssertionError(f"Unknown matrix operation: {operation_type}")
@@ -169,50 +173,25 @@ async def apply_operation(chat: Chat, operation: dict[str, Any]) -> None:
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("case", load_matrix(), ids=lambda case: case["name"])
-async def test_message_transcript_matrix(
-    case: dict[str, Any],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    session = cast(Session, MatrixSession())
+async def test_message_transcript_matrix(case: dict[str, Any]) -> None:
+    transcript = ChatTranscript()
 
-    with session_context(session):
-        chat = Chat("matrix", history=False)
+    async def apply_all() -> None:
+        for operation in cast(list[dict[str, Any]], case["operations"]):
+            await apply_operation(transcript, operation)
 
-        async def send_action(
-            action: Any,
-            html_deps: Any = None,
-        ) -> None:
-            return None
-
-        def serialize_html_deps(
-            dependencies: list[HTMLDependency] | None,
-        ) -> list[dict[str, object]] | None:
-            if not dependencies:
-                return None
-            return [
-                {"name": dependency.name, "version": str(dependency.version)}
-                for dependency in dependencies
-            ]
-
-        monkeypatch.setattr(chat, "_send_action", send_action)
-        monkeypatch.setattr(chat, "_serialize_html_deps", serialize_html_deps)
-
-        async def apply_all() -> None:
-            for operation in cast(list[dict[str, Any]], case["operations"]):
-                await apply_operation(chat, operation)
-
-        if "error" in case:
-            with pytest.raises(
-                RuntimeError, match=re.escape(cast(str, case["error"]))
-            ):
-                await apply_all()
-        else:
+    if "error" in case:
+        with pytest.raises(
+            RuntimeError, match=re.escape(cast(str, case["error"]))
+        ):
             await apply_all()
-            assert canonical_messages(chat) == case["expected"]
-            if any(
-                operation["type"] == "clear"
-                for operation in cast(list[dict[str, Any]], case["operations"])
-            ):
-                assert chat._current_stream_id is None
-                assert chat._current_stream_segments == []
-                assert chat._message_stream_segments_checkpoint == []
+    else:
+        await apply_all()
+
+    assert canonical_messages(transcript) == case["expected"]
+    if any(
+        operation["type"] == "clear"
+        for operation in cast(list[dict[str, Any]], case["operations"])
+    ):
+        assert transcript.active_stream_id is None
+        assert transcript.active_segments == ()
