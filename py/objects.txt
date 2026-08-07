@@ -60,6 +60,12 @@ shinychat.chat_ui py:function 1 api/chat_ui.html#shinychat.chat_ui -
 shinychat._chat.chat_ui py:function 1 api/chat_ui.html#shinychat.chat_ui shinychat.chat_ui
 shinychat.chat_greeting py:function 1 api/chat_greeting.html#shinychat.chat_greeting -
 shinychat._chat_types.chat_greeting py:function 1 api/chat_greeting.html#shinychat.chat_greeting shinychat.chat_greeting
+shinychat.types.ToolResultDisplay py:class 1 api/types.ToolResultDisplay.html#shinychat.types.ToolResultDisplay -
+shinychat._chat_normalize_chatlas.ToolResultDisplay py:class 1 api/types.ToolResultDisplay.html#shinychat.types.ToolResultDisplay shinychat.types.ToolResultDisplay
+shinychat.message_content py:function 1 api/message_content.html#shinychat.message_content -
+shinychat._chat_normalize.message_content py:function 1 api/message_content.html#shinychat.message_content shinychat.message_content
+shinychat.message_content_chunk py:function 1 api/message_content_chunk.html#shinychat.message_content_chunk -
+shinychat._chat_normalize.message_content_chunk py:function 1 api/message_content_chunk.html#shinychat.message_content_chunk shinychat.message_content_chunk
 shinychat.express.Chat.append_message py:function 1 api/express.Chat.html#shinychat.express.Chat.append_message -
 shinychat._chat.Chat.append_message py:function 1 api/express.Chat.html#shinychat.express.Chat.append_message shinychat.express.Chat.append_message
 shinychat.express.Chat.append_message_stream py:function 1 api/express.Chat.html#shinychat.express.Chat.append_message_stream -
