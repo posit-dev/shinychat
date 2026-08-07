@@ -131,9 +131,10 @@ document.querySelector(".shiny-chat-messages-content")?.append(forged)
     )
 
     expect(page.locator("#forged-dom-message")).to_have_text("forged")
-    page.reload()
-    expect(chat.loc).to_be_visible(timeout=30_000)
-    chat.expect_latest_message("echo: secure question", timeout=30_000)
+    page.locator("#sync_after_forgery").click()
+    expect(page.locator("pre#forgery_ack_output.shiny-text-output")).to_have_text(
+        "1", timeout=10_000
+    )
 
     chat.set_user_input("legitimate follow-up")
     chat.send_user_input(method="enter")
