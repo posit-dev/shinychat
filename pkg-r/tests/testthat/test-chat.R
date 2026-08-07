@@ -253,6 +253,115 @@ test_that("chat_append_stream() settles a sanitized error before rejecting", {
   )
 })
 
+test_that("a cleared stream cannot write into or settle its replacement", {
+  deferred_promise <- function() {
+    resolve_deferred <- NULL
+    promise <- promises::promise(function(resolve, reject) {
+      resolve_deferred <<- resolve
+    })
+    list(
+      promise = promise,
+      resolve = function(value) resolve_deferred(value)
+    )
+  }
+
+  session <- shiny::MockShinySession$new()
+  transcript <- get_chat_transcript(session, "chat")
+  actions <- list()
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      actions[[length(actions) + 1L]] <<- action
+      invisible(NULL)
+    }
+  )
+
+  deferred_a <- deferred_promise()
+  stream_a <- coro::async_generator(function() {
+    yield(deferred_a$promise)
+  })
+  result_a <- chat_append_stream("chat", stream_a(), session = session)
+
+  chat_clear("chat", session = session)
+
+  deferred_b <- deferred_promise()
+  stream_b <- coro::async_generator(function() {
+    yield(deferred_b$promise)
+  })
+  result_b <- chat_append_stream("chat", stream_b(), session = session)
+  actions_before_stale_chunk <- actions
+
+  deferred_a$resolve("stale")
+  sync(result_a)
+
+  expect_identical(actions, actions_before_stale_chunk)
+  expect_identical(transcript$read(), list())
+
+  deferred_b$resolve("fresh")
+  expect_identical(sync(result_b), "fresh")
+  expect_identical(
+    vapply(actions, `[[`, character(1), "type"),
+    c("chunk_start", "clear", "chunk_start", "chunk", "chunk_end")
+  )
+  expect_identical(
+    transcript$read(),
+    list(
+      list(
+        role = "assistant",
+        segments = list(list(content = "fresh", content_type = "markdown"))
+      )
+    )
+  )
+})
+
+test_that("an error-render send failure preserves the original rejection", {
+  original_marker <- new.env(parent = emptyenv())
+  original <- structure(
+    list(
+      message = "original stream failure",
+      call = NULL,
+      marker = original_marker
+    ),
+    class = c("stream_original_error", "error", "condition")
+  )
+  warnings <- list()
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      if (
+        identical(action$type, "chunk") &&
+          grepl("An error occurred", action$content, fixed = TRUE)
+      ) {
+        rlang::abort("error render send failed")
+      }
+      invisible(NULL)
+    }
+  )
+  session <- shiny::MockShinySession$new()
+  stream <- coro::async_generator(function() {
+    yield("partial")
+    stop(original)
+  })
+
+  result <- withCallingHandlers(
+    tryCatch(
+      sync(chat_append_stream("chat", stream(), session = session)),
+      error = identity
+    ),
+    warning = function(warning) {
+      warnings[[length(warnings) + 1L]] <<- warning
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  expect_s3_class(result, "stream_original_error")
+  expect_identical(result$marker, original_marker)
+  expect_identical(conditionMessage(result), "original stream failure")
+  expect_match(
+    paste(vapply(warnings, conditionMessage, character(1)), collapse = "\n"),
+    "error render send failed",
+    fixed = TRUE
+  )
+})
+
 test_that("chat_server handles string user_input values", {
   local_mocked_bindings(
     chat_restore = function(...) function() invisible(NULL),

@@ -1031,7 +1031,8 @@ chat_append_stream <- function(
   icon = NULL,
   session = getDefaultReactiveDomain()
 ) {
-  result <- chat_append_stream_impl(id, stream, role, icon, session)
+  owner <- claim_chat_stream(session, id)
+  result <- chat_append_stream_impl(id, stream, role, icon, session, owner)
   result <- chat_update_bookmark(id, result, session = session)
   # History saves are triggered by the client's `_messages` echo (see the
   # message_response_effect observer in chat_enable_history()), not chained
@@ -1039,16 +1040,34 @@ chat_append_stream <- function(
   # assistant reply after a separate render/report round trip.
   result <- promises::catch(result, function(reason) {
     class(reason) <- c("shiny.silent.error", class(reason))
-    chat_append_message(
-      id,
-      list(
-        role = role,
-        content = sanitized_chat_error(reason)
-      ),
-      chunk = "end",
-      operation = "append",
-      session = session
-    )
+    render_error <- NULL
+    if (isTRUE(owner$started) && owns_chat_stream(session, id, owner)) {
+      render_error <- tryCatch(
+        {
+          chat_append_message(
+            id,
+            list(
+              role = role,
+              content = sanitized_chat_error(reason)
+            ),
+            chunk = "end",
+            operation = "append",
+            session = session
+          )
+          NULL
+        },
+        error = identity
+      )
+    }
+    if (!is.null(render_error)) {
+      rlang::warn(
+        sprintf(
+          "ERROR: Could not display the error from `chat_append_stream(id=\"%s\")`",
+          session$ns(id)
+        ),
+        parent = render_error
+      )
+    }
     rlang::warn(
       sprintf(
         "ERROR: An error occurred in `chat_append_stream(id=\"%s\")`",
@@ -1065,6 +1084,38 @@ chat_append_stream <- function(
   result
 }
 
+claim_chat_stream <- function(session, id) {
+  owner <- new.env(parent = emptyenv())
+  owner$started <- FALSE
+  owner$tracked <- !is.null(session)
+  if (owner$tracked) {
+    set_session_chat_bookmark_info(
+      session,
+      paste0(id, ".stream-owner"),
+      owner
+    )
+  }
+  owner
+}
+
+owns_chat_stream <- function(session, id, owner) {
+  if (!owner$tracked) {
+    return(TRUE)
+  }
+  identical(
+    get_session_chat_bookmark_info(
+      session,
+      paste0(id, ".stream-owner")
+    ),
+    owner
+  )
+}
+
+invalidate_chat_stream <- function(session, id) {
+  claim_chat_stream(session, id)
+  invisible(NULL)
+}
+
 utils:::globalVariables(c("generator_env", "exits", "yield"))
 
 chat_append_stream_impl <- NULL
@@ -1074,7 +1125,8 @@ rlang::on_load(
     stream,
     role = "assistant",
     icon = NULL,
-    session = shiny::getDefaultReactiveDomain()
+    session = shiny::getDefaultReactiveDomain(),
+    owner
   ) {
     chat_append_ <- function(content, chunk = TRUE, ...) {
       chat_append_message(
@@ -1088,6 +1140,7 @@ rlang::on_load(
     }
 
     chat_append_("", chunk = "start", icon = icon)
+    owner$started <- TRUE
 
     res <- fastmap::fastqueue(200)
 
@@ -1098,6 +1151,9 @@ rlang::on_load(
       if (coro::is_exhausted(msg)) {
         break
       }
+      if (!owns_chat_stream(session, id, owner)) {
+        break
+      }
 
       res$add(msg)
 
@@ -1106,7 +1162,9 @@ rlang::on_load(
       chat_append_(msg)
     }
 
-    chat_append_("", chunk = "end")
+    if (owns_chat_stream(session, id, owner)) {
+      chat_append_("", chunk = "end")
+    }
 
     res <- res$as_list()
     if (every(res, is.character)) {
@@ -1506,6 +1564,7 @@ chat_clear <- function(
   transcript$clear(send = function() {
     send_chat_action(id, action = action, session = session)
   })
+  invalidate_chat_stream(session, id)
 }
 
 #' Update the user input of a chat control
