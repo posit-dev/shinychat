@@ -389,6 +389,55 @@ def test_clear_messages_discards_active_and_pending_stream_state(
             assert chat.messages() == ()
 
 
+@pytest.mark.anyio
+async def test_clear_stops_detached_pending_flush(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    with session_context(test_session):
+        chat = Chat("clear_pending_flush", history=False)
+        first_pending_sent = asyncio.Event()
+        release_first_pending = asyncio.Event()
+        clear_sent = asyncio.Event()
+        second_pending_sent = asyncio.Event()
+
+        async def send_action(action: Any, deps: Any = None) -> None:
+            if action["type"] == "clear":
+                clear_sent.set()
+                return
+            if action["type"] != "message":
+                return
+            content = action["message"]["segments"][0]["content"]
+            if content == "first":
+                first_pending_sent.set()
+                await release_first_pending.wait()
+            elif content == "second":
+                second_pending_sent.set()
+
+        monkeypatch.setattr(chat, "_send_action", send_action)
+        await chat._append_message_chunk("", chunk="start", stream_id="stream")
+        await chat.append_message("first")
+        await chat.append_message("second")
+        assert [message[0] for message in chat._pending_messages] == [
+            "first",
+            "second",
+        ]
+        await chat._append_message_chunk("", chunk="end", stream_id="stream")
+
+        flush_task = asyncio.create_task(chat._flush_pending_messages())
+        await first_pending_sent.wait()
+        clear_task = asyncio.create_task(chat.clear_messages())
+        await asyncio.sleep(0)
+        release_first_pending.set()
+
+        await clear_sent.wait()
+        await asyncio.gather(flush_task, clear_task)
+
+        assert not second_pending_sent.is_set()
+        assert chat._pending_messages == []
+        with reactive.isolate():
+            assert chat.messages() == ()
+
+
 def test_user_submit_messages_include_attachments_before_callback():
     from shinychat._attachments import Attachment
 

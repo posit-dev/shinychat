@@ -1433,18 +1433,24 @@ class Chat:
             await self._flush_pending_messages()
 
     async def _flush_pending_messages(self):
-        pending = self._pending_messages
-        self._pending_messages = []
+        async with self._message_lock:
+            pending = self._pending_messages
+            self._pending_messages = []
+            stream_generation = self._stream_generation
+
         for msg, chunk, operation, stream_id in pending:
-            if chunk is False:
-                await self.append_message(msg)
-            else:
-                await self._append_message_chunk(
-                    msg,
-                    chunk=chunk,
-                    operation=operation,
-                    stream_id=cast(str, stream_id),
-                )
+            async with self._message_lock:
+                if self._stream_generation != stream_generation:
+                    return
+                if chunk is False:
+                    await self._append_message_locked(msg)
+                else:
+                    await self._append_message_chunk_locked(
+                        msg,
+                        chunk=chunk,
+                        operation=operation,
+                        stream_id=cast(str, stream_id),
+                    )
 
     # Send a message to the UI
     async def _send_append_message(
