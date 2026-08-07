@@ -362,7 +362,11 @@ FileConversationStore <- R6::R6Class(
             next
           }
           entry <- tryCatch(
-            jsonlite::fromJSON(line, simplifyVector = FALSE),
+            {
+              entry <- jsonlite::fromJSON(line, simplifyVector = FALSE)
+              entry$data <- jsonlite::unserializeJSON(entry$data)
+              entry
+            },
             error = function(e) NULL
           )
           if (!is.null(entry)) {
@@ -446,7 +450,10 @@ FileConversationStore <- R6::R6Class(
             new_turns_lines <- c(
               new_turns_lines,
               as.character(jsonlite::toJSON(
-                list(seq = seq, data = turn_data),
+                list(
+                  seq = seq,
+                  data = jsonlite::serializeJSON(turn_data)
+                ),
                 auto_unbox = TRUE,
                 null = "null"
               ))

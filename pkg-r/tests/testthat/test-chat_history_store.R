@@ -186,6 +186,81 @@ test_that("FileConversationStore: response_count round-trips via JSON", {
   expect_equal(result$response_count, 2L)
 })
 
+test_that("FileConversationStore preserves recorded turn types", {
+  skip_if_not_installed("ellmer")
+  dir <- withr::local_tempdir()
+  store <- FileConversationStore$new(dir = dir)
+  rec <- new_conversation_record("Test chat")
+  recorded <- ellmer::contents_record(
+    ellmer::AssistantTurn(
+      contents = list(ellmer::ContentText("hello")),
+      json = list(1, "two")
+    )
+  )
+  rec$nodes <- list(
+    n_0001 = list(
+      parent = NULL,
+      children = list(),
+      turns = list(recorded),
+      ui = NULL,
+      selected_child = NULL
+    )
+  )
+  rec$current_leaf <- "n_0001"
+
+  store$put(part(), rec)
+  result <- store$get(part(), rec$id)
+
+  expect_identical(result$nodes$n_0001$turns[[1]], recorded)
+})
+
+test_that("FileConversationStore appends exact recorded turns after a cold start", {
+  skip_if_not_installed("ellmer")
+  dir <- withr::local_tempdir()
+  first_turn <- ellmer::contents_record(
+    ellmer::UserTurn(contents = list(ellmer::ContentText("first")))
+  )
+  second_turn <- ellmer::contents_record(
+    ellmer::AssistantTurn(
+      contents = list(ellmer::ContentText("second")),
+      json = list(1, "two")
+    )
+  )
+  rec <- new_conversation_record("Test chat")
+  rec$nodes <- list(
+    n_0001 = list(
+      parent = NULL,
+      children = list(),
+      turns = list(first_turn),
+      ui = NULL,
+      selected_child = NULL
+    )
+  )
+  rec$current_leaf <- "n_0001"
+
+  FileConversationStore$new(dir = dir)$put(part(), rec)
+
+  restarted_store <- FileConversationStore$new(dir = dir)
+  restarted_record <- restarted_store$get(part(), rec$id)
+  restarted_record$nodes$n_0001$children <- list("n_0002")
+  restarted_record$nodes$n_0002 <- list(
+    parent = "n_0001",
+    children = list(),
+    turns = list(second_turn),
+    ui = NULL,
+    selected_child = NULL
+  )
+  restarted_record$current_leaf <- "n_0002"
+  restarted_store$put(part(), restarted_record)
+
+  result <- FileConversationStore$new(dir = dir)$get(part(), rec$id)
+
+  expect_identical(
+    record_path_turns(result),
+    list(first_turn, second_turn)
+  )
+})
+
 test_that("FileConversationStore: files are written to disk", {
   dir <- withr::local_tempdir()
   store <- FileConversationStore$new(dir = dir)
@@ -343,15 +418,19 @@ test_that("FileConversationStore persists turns and ui across multiple put()s wi
     n_0001 = list(
       parent = NULL,
       children = list(),
-      turns = list(list(
-        class = "ellmer::UserTurn",
-        version = 1,
-        props = list(contents = list())
-      )),
-      ui = list(list(
-        role = "user",
-        segments = list(list(content = "hi", content_type = "markdown"))
-      ))
+      turns = list(
+        list(
+          class = "ellmer::UserTurn",
+          version = 1,
+          props = list(contents = list())
+        )
+      ),
+      ui = list(
+        list(
+          role = "user",
+          segments = list(list(content = "hi", content_type = "markdown"))
+        )
+      )
     )
   )
   rec$current_leaf <- "n_0001"
@@ -363,34 +442,46 @@ test_that("FileConversationStore persists turns and ui across multiple put()s wi
   expect_true(dir.exists(conv_dir))
   expect_true(file.exists(file.path(conv_dir, "turns.jsonl")))
   expect_true(file.exists(file.path(conv_dir, "ui.jsonl")))
-  turns_lines_after_first_put <- length(readLines(file.path(
-    conv_dir,
-    "turns.jsonl"
-  )))
+  turns_lines_after_first_put <- length(
+    readLines(
+      file.path(
+        conv_dir,
+        "turns.jsonl"
+      )
+    )
+  )
   expect_equal(turns_lines_after_first_put, 1)
 
   # Extend with a second node; the first node's turns/ui must not be rewritten.
   rec$nodes$n_0002 <- list(
     parent = "n_0001",
     children = list(),
-    turns = list(list(
-      class = "ellmer::AssistantTurn",
-      version = 1,
-      props = list(contents = list())
-    )),
-    ui = list(list(
-      role = "assistant",
-      segments = list(list(content = "hello", content_type = "markdown"))
-    ))
+    turns = list(
+      list(
+        class = "ellmer::AssistantTurn",
+        version = 1,
+        props = list(contents = list())
+      )
+    ),
+    ui = list(
+      list(
+        role = "assistant",
+        segments = list(list(content = "hello", content_type = "markdown"))
+      )
+    )
   )
   rec$nodes$n_0001$children <- list("n_0002")
   rec$current_leaf <- "n_0002"
   store$put(part(), rec)
 
-  turns_lines_after_second_put <- length(readLines(file.path(
-    conv_dir,
-    "turns.jsonl"
-  )))
+  turns_lines_after_second_put <- length(
+    readLines(
+      file.path(
+        conv_dir,
+        "turns.jsonl"
+      )
+    )
+  )
   expect_equal(turns_lines_after_second_put, 2)
 
   fetched <- store$get(part(), rec$id)
@@ -408,15 +499,19 @@ test_that("FileConversationStore re-appends a node's ui when it grows across sav
     n_0001 = list(
       parent = NULL,
       children = list(),
-      turns = list(list(
-        class = "ellmer::AssistantTurn",
-        version = 1,
-        props = list(contents = list())
-      )),
-      ui = list(list(
-        role = "assistant",
-        segments = list(list(content = "partial", content_type = "markdown"))
-      ))
+      turns = list(
+        list(
+          class = "ellmer::AssistantTurn",
+          version = 1,
+          props = list(contents = list())
+        )
+      ),
+      ui = list(
+        list(
+          role = "assistant",
+          segments = list(list(content = "partial", content_type = "markdown"))
+        )
+      )
     )
   )
   rec$current_leaf <- "n_0001"
@@ -425,10 +520,12 @@ test_that("FileConversationStore re-appends a node's ui when it grows across sav
   # Same node grows its ui (a streamed reply attaching more content).
   rec$nodes$n_0001$ui <- c(
     rec$nodes$n_0001$ui,
-    list(list(
-      role = "assistant",
-      segments = list(list(content = "more", content_type = "markdown"))
-    ))
+    list(
+      list(
+        role = "assistant",
+        segments = list(list(content = "more", content_type = "markdown"))
+      )
+    )
   )
   store$put(part(), rec)
 
@@ -446,21 +543,25 @@ test_that("FileConversationStore preserves schema_version and children on round 
     n_0001 = list(
       parent = NULL,
       children = list("n_0002"),
-      turns = list(list(
-        class = "ellmer::UserTurn",
-        version = 1,
-        props = list(contents = list())
-      )),
+      turns = list(
+        list(
+          class = "ellmer::UserTurn",
+          version = 1,
+          props = list(contents = list())
+        )
+      ),
       ui = NULL
     ),
     n_0002 = list(
       parent = "n_0001",
       children = list(),
-      turns = list(list(
-        class = "ellmer::AssistantTurn",
-        version = 1,
-        props = list(contents = list())
-      )),
+      turns = list(
+        list(
+          class = "ellmer::AssistantTurn",
+          version = 1,
+          props = list(contents = list())
+        )
+      ),
       ui = NULL
     )
   )
