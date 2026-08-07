@@ -30,7 +30,9 @@ CSS identifiers for the chat use the `shiny-chat` prefix:
 Do not introduce CSS identifiers with a `shinychat-` prefix.
 The unhyphenated `shinychat` name remains appropriate for package names and
 existing non-CSS integration identifiers, such as `data-shinychat-*` attributes,
-storage keys, and internal raw-HTML marker elements.
+and storage keys. New raw-HTML islands use `<shiny-chat-raw-html>`; preserve
+`<shinychat-raw-html>` only as a legacy input until its compatibility window
+closes.
 
 ## Common Development Commands
 

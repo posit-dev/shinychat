@@ -391,11 +391,14 @@ $shiny-chat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width,
 
 // Python's `ChatMessage.__init__` runs `split_html_islands` eagerly, so an
 // author's custom UI reaches the wire already wrapped in a real
-// `<shinychat-raw-html>` element. It lands here via `RawHTML`'s `innerHTML`,
+// `<shiny-chat-raw-html>` element. The legacy `<shinychat-raw-html>` tag is
+// also accepted while old serialized content remains in use. It lands here via
+// `RawHTML`'s `innerHTML`,
 // so no React tag map runs on it (`MarkdownContent.tsx`'s is the only place
 // that maps this tag away) — it hits the DOM as an unknown element, which
 // defaults to `display: inline` and wraps its block content in an inline box.
 // This is what the element already means: an island marker, not a box.
+shiny-chat-raw-html,
 shinychat-raw-html {
   display: contents;
 }

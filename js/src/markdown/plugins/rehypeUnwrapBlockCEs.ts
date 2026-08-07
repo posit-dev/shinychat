@@ -6,6 +6,7 @@ import type { Plugin } from "unified"
 const blockCEs = new Set([
   "shiny-tool-request",
   "shiny-tool-result",
+  "shiny-chat-raw-html",
   "shinychat-raw-html",
 ])
 
