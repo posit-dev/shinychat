@@ -192,7 +192,6 @@ content_from_attachment <- function(att) {
   cli::cli_abort("Unsupported attachment type: {.val {mime}}")
 }
 
-
 # Shape the value exposed on `input$<id>_user_input`. The wire shape encodes the
 # upload mode, so the return type is predictable per mode:
 #   * disabled -> a bare string (the historical string-valued input).
@@ -214,7 +213,19 @@ user_input_contents <- function(value) {
   if (nzchar(text)) {
     contents <- c(list(text), contents)
   }
+  attr(contents, "shinychat_submission") <- list(
+    text = text,
+    attachments = attachments
+  )
   contents
+}
+
+user_input_submission <- function(value) {
+  submission <- attr(value, "shinychat_submission", exact = TRUE)
+  if (!is.null(submission)) {
+    return(submission)
+  }
+  list(text = as.character(value)[[1L]], attachments = list())
 }
 
 # Decode the base64 payload of a data URL to a UTF-8 string. R strings cannot
@@ -245,16 +256,20 @@ chat_attachment <- function(path, mime = NULL, name = NULL) {
     ext <- tolower(tools::file_ext(path))
     mime <- attachment_types()$ext_map[[ext]]
     if (is.null(mime)) {
-      cli::cli_abort(c(
-        "Cannot determine MIME type for {.path {path}}.",
-        "i" = "Specify the {.arg mime} argument explicitly."
-      ))
+      cli::cli_abort(
+        c(
+          "Cannot determine MIME type for {.path {path}}.",
+          "i" = "Specify the {.arg mime} argument explicitly."
+        )
+      )
     }
   } else if (!mime %in% attachment_types()$supported) {
-    cli::cli_abort(c(
-      "Unsupported MIME type: {.val {mime}}.",
-      "i" = "Supported types: {.val {attachment_types()$supported}}"
-    ))
+    cli::cli_abort(
+      c(
+        "Unsupported MIME type: {.val {mime}}.",
+        "i" = "Supported types: {.val {attachment_types()$supported}}"
+      )
+    )
   }
 
   raw <- readBin(path, "raw", n = file.size(path))

@@ -815,7 +815,18 @@ test_that("html_deps travel with a stored message and are resent on replay in a 
   store <- InMemoryConversationStore$new()
   client <- mock_chat_client()
   session <- shiny::MockShinySession$new()
-  dep <- list(name = "widgetdep", version = "1.0.0")
+  dep <- list(
+    name = "widgetdep",
+    version = "1.0.0",
+    src = list(href = "widgetdep"),
+    stylesheet = "widget.css"
+  )
+  attachment <- list(
+    mime = "text/plain",
+    data_url = "data:text/plain;base64,aGk=",
+    name = "note.txt",
+    size = 2
+  )
   session$setInputs(
     chat_messages = list(
       list(
@@ -823,7 +834,8 @@ test_that("html_deps travel with a stored message and are resent on replay in a 
         segments = list(
           list(content = "<div>widget</div>", content_type = "html")
         ),
-        htmlDeps = list(dep)
+        htmlDeps = list(dep),
+        attachments = list(attachment)
       )
     )
   )
@@ -870,6 +882,19 @@ test_that("html_deps travel with a stored message and are resent on replay in a 
   )
   expect_length(message_actions, 1)
   expect_equal(message_actions[[1]]$message$html_deps, list(dep))
+  expect_identical(
+    get_chat_transcript(spy$session, "chat")$read(),
+    list(
+      list(
+        role = "assistant",
+        segments = list(
+          list(content = "<div>widget</div>", content_type = "html")
+        ),
+        attachments = list(attachment),
+        htmlDeps = list(dep)
+      )
+    )
+  )
 })
 
 test_that("switching between two conversations repeatedly never duplicates or misattributes messages", {
@@ -926,13 +951,15 @@ test_that("switching between two conversations repeatedly never duplicates or mi
   # Collect the ui segment content for every node on a record's current path,
   # in order, so we can assert exact per-node content rather than a total.
   record_ui_texts <- function(record) {
-    unlist(lapply(record_path_node_ids(record), function(node_id) {
-      vapply(
-        record$nodes[[node_id]]$ui,
-        function(m) m$segments[[1]]$content,
-        character(1)
-      )
-    }))
+    unlist(
+      lapply(record_path_node_ids(record), function(node_id) {
+        vapply(
+          record$nodes[[node_id]]$ui,
+          function(m) m$segments[[1]]$content,
+          character(1)
+        )
+      })
+    )
   }
 
   report_client_messages(c("A", "B"))
@@ -989,11 +1016,13 @@ test_that("switching between two conversations repeatedly never duplicates or mi
     record_path_turns(ctrl$record),
     list(make_turn("user", "E"))
   )
-  client$set_turns(lapply(
-    new_turns,
-    ellmer::contents_replay,
-    tools = client$get_tools()
-  ))
+  client$set_turns(
+    lapply(
+      new_turns,
+      ellmer::contents_replay,
+      tools = client$get_tools()
+    )
+  )
   report_client_messages(c("A", "B", "E"))
   ctrl$on_response(get_turns_recorded(client))
 
@@ -1174,10 +1203,12 @@ test_that("handle_navigate() steps to the previous sibling branch and replays it
 
   # First branch: "Hi" / "Hello"
   report_client_messages(c("Hi", "Hello"))
-  ctrl$on_response(list(
-    make_turn("user", "Hi"),
-    make_turn("assistant", "Hello")
-  ))
+  ctrl$on_response(
+    list(
+      make_turn("user", "Hi"),
+      make_turn("assistant", "Hello")
+    )
+  )
   first_leaf <- ctrl$record$current_leaf
   first_root <- ctrl$record$nodes[[first_leaf]]$parent
 
@@ -1186,10 +1217,12 @@ test_that("handle_navigate() steps to the previous sibling branch and replays it
   # second root-level sibling.
   ctrl$handle_edit(0, "Hi again", NULL)
   report_client_messages(c("Hi again", "New reply"))
-  ctrl$on_response(list(
-    make_turn("user", "Hi again"),
-    make_turn("assistant", "New reply")
-  ))
+  ctrl$on_response(
+    list(
+      make_turn("user", "Hi again"),
+      make_turn("assistant", "New reply")
+    )
+  )
   second_leaf <- ctrl$record$current_leaf
   second_root <- ctrl$record$nodes[[second_leaf]]$parent
 
@@ -1223,21 +1256,27 @@ test_that("handle_navigate() is a no-op past the first/last sibling", {
     n_0001 = list(
       parent = NULL,
       children = list(),
-      turns = list(list(
-        class = "ellmer::UserTurn",
-        version = 1,
-        props = list(
-          contents = list(list(
-            class = "ellmer::ContentText",
-            version = 1,
-            props = list(text = "Hi")
-          ))
+      turns = list(
+        list(
+          class = "ellmer::UserTurn",
+          version = 1,
+          props = list(
+            contents = list(
+              list(
+                class = "ellmer::ContentText",
+                version = 1,
+                props = list(text = "Hi")
+              )
+            )
+          )
         )
-      )),
-      ui = list(list(
-        role = "user",
-        segments = list(list(content = "Hi", content_type = "markdown"))
-      ))
+      ),
+      ui = list(
+        list(
+          role = "user",
+          segments = list(list(content = "Hi", content_type = "markdown"))
+        )
+      )
     )
   )
   rec$current_leaf <- "n_0001"
@@ -1295,10 +1334,12 @@ test_that("handle_edit() truncates current_leaf to the fork parent and resubmits
       make_ui_message("assistant", "Hello")
     )
   )
-  ctrl$on_response(list(
-    make_turn("user", "Hi"),
-    make_turn("assistant", "Hello")
-  ))
+  ctrl$on_response(
+    list(
+      make_turn("user", "Hi"),
+      make_turn("assistant", "Hello")
+    )
+  )
 
   user_node_id <- record_node_id_for_message_index(ctrl$record, 0)
   expect_null(ctrl$record$nodes[[user_node_id]]$parent)
@@ -1341,11 +1382,13 @@ test_that("handle_edit() revalidates and forwards attachments with attachment_mo
       class = class_name,
       version = 1,
       props = list(
-        contents = list(list(
-          class = "ellmer::ContentText",
-          version = 1,
-          props = list(text = text)
-        ))
+        contents = list(
+          list(
+            class = "ellmer::ContentText",
+            version = 1,
+            props = list(text = text)
+          )
+        )
       )
     )
   }
@@ -1361,17 +1404,21 @@ test_that("handle_edit() revalidates and forwards attachments with attachment_mo
       make_ui_message("assistant", "Hello")
     )
   )
-  ctrl$on_response(list(
-    make_turn("user", "Hi"),
-    make_turn("assistant", "Hello")
-  ))
+  ctrl$on_response(
+    list(
+      make_turn("user", "Hi"),
+      make_turn("assistant", "Hello")
+    )
+  )
 
-  attachments <- list(list(
-    mime = "image/png",
-    name = "a.png",
-    size = 1L,
-    data_url = "data:image/png;base64,AA=="
-  ))
+  attachments <- list(
+    list(
+      mime = "image/png",
+      name = "a.png",
+      size = 1L,
+      data_url = "data:image/png;base64,AA=="
+    )
+  )
 
   ctrl$handle_edit(0, "see attached", attachments)
 
@@ -1411,11 +1458,13 @@ test_that("handle_edit() forces attachment_mode = set for an empty-but-present a
       class = class_name,
       version = 1,
       props = list(
-        contents = list(list(
-          class = "ellmer::ContentText",
-          version = 1,
-          props = list(text = text)
-        ))
+        contents = list(
+          list(
+            class = "ellmer::ContentText",
+            version = 1,
+            props = list(text = text)
+          )
+        )
       )
     )
   }
@@ -1431,10 +1480,12 @@ test_that("handle_edit() forces attachment_mode = set for an empty-but-present a
       make_ui_message("assistant", "Hello")
     )
   )
-  ctrl$on_response(list(
-    make_turn("user", "Hi"),
-    make_turn("assistant", "Hello")
-  ))
+  ctrl$on_response(
+    list(
+      make_turn("user", "Hi"),
+      make_turn("assistant", "Hello")
+    )
+  )
 
   # Wire-realistic case: sendMessageEdit() always sends `attachments`,
   # defaulting to `[]`, which jsonlite deserializes to a non-NULL, length-0
@@ -1474,11 +1525,13 @@ test_that("handle_edit() rejects unsupported attachment MIME types before resubm
       class = class_name,
       version = 1,
       props = list(
-        contents = list(list(
-          class = "ellmer::ContentText",
-          version = 1,
-          props = list(text = text)
-        ))
+        contents = list(
+          list(
+            class = "ellmer::ContentText",
+            version = 1,
+            props = list(text = text)
+          )
+        )
       )
     )
   }
@@ -1494,17 +1547,21 @@ test_that("handle_edit() rejects unsupported attachment MIME types before resubm
       make_ui_message("assistant", "Hello")
     )
   )
-  ctrl$on_response(list(
-    make_turn("user", "Hi"),
-    make_turn("assistant", "Hello")
-  ))
+  ctrl$on_response(
+    list(
+      make_turn("user", "Hi"),
+      make_turn("assistant", "Hello")
+    )
+  )
 
-  bad_attachments <- list(list(
-    mime = "application/octet-stream",
-    name = "x.bin",
-    size = 1L,
-    data_url = "data:application/octet-stream;base64,AA=="
-  ))
+  bad_attachments <- list(
+    list(
+      mime = "application/octet-stream",
+      name = "x.bin",
+      size = 1L,
+      data_url = "data:application/octet-stream;base64,AA=="
+    )
+  )
 
   expect_error(
     ctrl$handle_edit(0, "see attached", bad_attachments),

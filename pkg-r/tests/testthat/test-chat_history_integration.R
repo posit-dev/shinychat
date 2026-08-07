@@ -42,6 +42,136 @@ test_that("chat_server() accepts history = FALSE", {
   )
 })
 
+test_that("chat_server() stores raw user input before the stream reads it", {
+  local_mocked_bindings(
+    chat_append = function(...) invisible(NULL),
+    send_chat_action = function(...) invisible(NULL)
+  )
+  attachment <- list(
+    mime = "text/plain",
+    data_url = "data:text/plain;base64,bm90ZXM=",
+    name = "notes.txt",
+    size = 5
+  )
+  input_value <- user_input_contents(
+    list(text = "Summarize", attachments = list(attachment))
+  )
+  state_during_stream <- NULL
+  stream_args <- NULL
+  active_session <- NULL
+  client <- structure(
+    list(
+      stream_async = function(...) {
+        state_during_stream <<- get_chat_transcript(
+          active_session,
+          "chat"
+        )$read()
+        stream_args <<- rlang::list2(...)
+        NULL
+      },
+      last_turn = function() NULL
+    ),
+    class = "Chat"
+  )
+
+  shiny::testServer(
+    function(input, output, session) {
+      active_session <<- session
+      chat_server("chat", client, history = FALSE, session = session)
+    },
+    {
+      session$setInputs(chat_user_input = input_value)
+      later::run_now(0.1)
+      session$flushReact()
+
+      expect_identical(stream_args[[1]], input_value[[1]])
+      expect_identical(stream_args[[2]], input_value[[2]])
+      expect_identical(
+        state_during_stream,
+        list(
+          list(
+            role = "user",
+            segments = list(
+              list(content = "Summarize", content_type = "markdown")
+            ),
+            attachments = list(attachment)
+          )
+        )
+      )
+    }
+  )
+})
+
+test_that("chat_server() stores only echoed slash commands before handlers", {
+  local_mocked_bindings(
+    send_chat_action = function(...) invisible(NULL)
+  )
+  state_in_echoed_handler <- NULL
+  state_in_silent_handler <- NULL
+  active_session <- NULL
+  client <- structure(list(), class = "Chat")
+
+  chat_module <- function(id) {
+    shiny::moduleServer(id, function(input, output, session) {
+      active_session <<- session
+      chat_server("chat", client, history = FALSE, session = session)
+    })
+  }
+
+  shiny::testServer(chat_module, args = list(id = "mod"), {
+    session$returned$slash_command(
+      "search",
+      "Search",
+      function(content) {
+        state_in_echoed_handler <<- get_chat_transcript(
+          active_session,
+          "chat"
+        )$read()
+      },
+      echo = TRUE
+    )
+    session$returned$slash_command(
+      "silent",
+      "Silent",
+      function() {
+        state_in_silent_handler <<- get_chat_transcript(
+          active_session,
+          "chat"
+        )$read()
+      },
+      echo = FALSE
+    )
+
+    session$setInputs(
+      chat_slash_command = list(
+        command = "search",
+        userText = "docs",
+        echo = TRUE
+      )
+    )
+    expect_identical(
+      state_in_echoed_handler,
+      list(
+        list(
+          role = "user",
+          segments = list(
+            list(content = "/search docs", content_type = "markdown")
+          )
+        )
+      )
+    )
+
+    session$setInputs(
+      chat_slash_command = list(
+        command = "silent",
+        userText = "",
+        echo = FALSE
+      )
+    )
+    expect_identical(state_in_silent_handler, state_in_echoed_handler)
+  })
+})
+
 test_that("chat_server() accepts history = history_options() config", {
   skip_if_not_installed("ellmer")
 

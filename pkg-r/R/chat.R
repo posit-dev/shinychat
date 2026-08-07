@@ -850,6 +850,87 @@ chat_append_message <- function(
     chunk_type <- "complete"
   }
 
+  operation <- match.arg(operation)
+  normalized <- normalize_chat_append_message(
+    msg,
+    chunk_type = chunk_type,
+    operation = operation,
+    icon = icon,
+    session = session
+  )
+  transcript <- get_chat_transcript(session, id)
+
+  if (chunk_type == "start") {
+    transcript$start(normalized$message, send = function() {
+      send_chat_action(
+        id,
+        action = normalized$action,
+        html_deps = normalized$html_deps,
+        session = session
+      )
+    })
+  } else if (chunk_type == "end") {
+    segment <- normalized$message$segments[[1L]]
+    if (nzchar(segment$content)) {
+      transcript$chunk(
+        content = segment$content,
+        content_type = segment$content_type,
+        html_deps = normalized$html_deps,
+        operation = operation,
+        send = function() {
+          send_chat_action(
+            id,
+            action = normalized$action,
+            html_deps = normalized$html_deps,
+            session = session
+          )
+        }
+      )
+    }
+    transcript$settle(send = function() {
+      send_chat_action(
+        id,
+        action = list(type = "chunk_end"),
+        session = session
+      )
+    })
+  } else if (chunk_type == "intermediate") {
+    segment <- normalized$message$segments[[1L]]
+    transcript$chunk(
+      content = segment$content,
+      content_type = segment$content_type,
+      html_deps = normalized$html_deps,
+      operation = operation,
+      send = function() {
+        send_chat_action(
+          id,
+          action = normalized$action,
+          html_deps = normalized$html_deps,
+          session = session
+        )
+      }
+    )
+  } else {
+    transcript$append(normalized$message, send = function() {
+      send_chat_action(
+        id,
+        action = normalized$action,
+        html_deps = normalized$html_deps,
+        session = session
+      )
+    })
+  }
+
+  invisible(NULL)
+}
+
+normalize_chat_append_message <- function(
+  msg,
+  chunk_type,
+  operation,
+  icon,
+  session
+) {
   content <- msg[["content"]]
   is_thinking <- inherits(content, "shinychat_thinking")
   if (is_thinking) {
@@ -873,93 +954,52 @@ chat_append_message <- function(
     "markdown"
   }
 
-  operation <- match.arg(operation)
-
   if (is.character(content) && !is_html) {
-    # content is most likely a string, so avoid overhead in that case
     ui <- list(html = content, deps = NULL)
   } else {
-    # process_ui() does *not* render markdown->HTML, but it does:
-    # 1. Extract and register HTMLdependency()s with the session.
-    # 2. Returns a HTML string representation of the TagChild
-    #    (i.e., `div()` -> `"<div>"`).
     ui <- process_ui(pre_process_ui(content), session)
   }
 
   msg_content <- ui[["html"]]
   if (is_html) {
-    # Surround with blank lines so the markdown parser treats
-    # block-level custom elements correctly.
     msg_content <- paste0("\n\n", msg_content, "\n\n")
   }
-
   html_deps <- ui[["deps"]]
 
   icon_str <- resolve_icon_attr(icon)
+  message <- list(
+    role = msg[["role"]],
+    segments = list(
+      list(content = msg_content, content_type = content_type)
+    ),
+    attachments = msg[["attachments"]],
+    htmlDeps = html_deps
+  )
+  message_payload <- list(
+    role = message$role,
+    segments = message$segments
+  )
+  if (!is.null(message$attachments) && length(message$attachments) > 0) {
+    message_payload$attachments <- message$attachments
+  }
+  if (!is.null(icon_str)) {
+    message_payload$icon <- icon_str
+  }
 
-  if (chunk_type == "start") {
-    message_payload <- list(
-      role = msg[["role"]],
-      segments = list(list(content = msg_content, content_type = content_type))
-    )
-    if (!is.null(icon_str)) {
-      message_payload$icon <- icon_str
-    }
-    action <- list(type = "chunk_start", message = message_payload)
-    send_chat_action(
-      id,
-      action = action,
-      html_deps = html_deps,
-      session = session
-    )
-  } else if (chunk_type == "end") {
-    if (nzchar(msg_content)) {
-      chunk_action <- list(
-        type = "chunk",
-        content = msg_content,
-        operation = operation,
-        content_type = content_type
-      )
-      send_chat_action(
-        id,
-        action = chunk_action,
-        html_deps = html_deps,
-        session = session
-      )
-    }
-    send_chat_action(id, action = list(type = "chunk_end"), session = session)
-  } else if (chunk_type == "intermediate") {
-    action <- list(
+  action <- if (chunk_type == "start") {
+    list(type = "chunk_start", message = message_payload)
+  } else if (chunk_type == "complete") {
+    list(type = "message", message = message_payload)
+  } else {
+    list(
       type = "chunk",
       content = msg_content,
       operation = operation,
       content_type = content_type
     )
-    send_chat_action(
-      id,
-      action = action,
-      html_deps = html_deps,
-      session = session
-    )
-  } else {
-    # chunk_type == "complete"
-    message_payload <- list(
-      role = msg[["role"]],
-      segments = list(list(content = msg_content, content_type = content_type))
-    )
-    if (!is.null(icon_str)) {
-      message_payload$icon <- icon_str
-    }
-    action <- list(type = "message", message = message_payload)
-    send_chat_action(
-      id,
-      action = action,
-      html_deps = html_deps,
-      session = session
-    )
   }
 
-  invisible(NULL)
+  list(message = message, action = action, html_deps = html_deps)
 }
 
 restore_history_message <- function(chat_id, message, session) {
@@ -973,12 +1013,15 @@ restore_history_message <- function(chat_id, message, session) {
     message_payload$attachments <- message$attachments
   }
   action <- list(type = "message", message = message_payload)
-  send_chat_action(
-    chat_id,
-    action = action,
-    html_deps = message$htmlDeps,
-    session = session
-  )
+  transcript <- get_chat_transcript(session, chat_id)
+  transcript$append(message, send = function() {
+    send_chat_action(
+      chat_id,
+      action = action,
+      html_deps = message$htmlDeps,
+      session = session
+    )
+  })
 }
 
 chat_append_stream <- function(
@@ -994,15 +1037,8 @@ chat_append_stream <- function(
   # message_response_effect observer in chat_enable_history()), not chained
   # here onto stream completion -- the browser only reports the finished
   # assistant reply after a separate render/report round trip.
-  # Handle erroneous result...
   result <- promises::catch(result, function(reason) {
-    # ...but rethrow the error as a silent error, so the caller can also handle
-    # it if they want, but it won't bring down the app.
     class(reason) <- c("shiny.silent.error", class(reason))
-    cnd_signal(reason)
-  })
-
-  promises::catch(result, function(reason) {
     chat_append_message(
       id,
       list(
@@ -1020,13 +1056,12 @@ chat_append_stream <- function(
       ),
       parent = reason
     )
+    cnd_signal(reason)
   })
 
-  # Note that we're not returning the result of `promises::catch()`, because we
-  # want to return a rejected promise so the caller can see the error. But we
-  # use the `catch()` both to make the error visible to the user *and* to ensure
-  # there's no "unhandled promise error" warning if the caller chooses not to do
-  # anything with it.
+  # Keep the returned promise rejected while marking ignored rejections handled.
+  promises::catch(result, function(reason) NULL)
+
   result
 }
 
@@ -1467,7 +1502,10 @@ chat_clear <- function(
     action$greeting <- TRUE
     set_session_greeting_state(session, id, value = NULL)
   }
-  send_chat_action(id, action = action, session = session)
+  transcript <- get_chat_transcript(session, id)
+  transcript$clear(send = function() {
+    send_chat_action(id, action = action, session = session)
+  })
 }
 
 #' Update the user input of a chat control

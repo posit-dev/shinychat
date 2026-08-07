@@ -209,6 +209,50 @@ test_that("chat_append_stream() handles errors in the stream", {
   })
 })
 
+test_that("chat_append_stream() settles a sanitized error before rejecting", {
+  withr::local_options(shiny.sanitize.errors = TRUE)
+  local_mocked_bindings(
+    send_chat_action = function(...) invisible(NULL)
+  )
+  session <- shiny::MockShinySession$new()
+  transcript <- get_chat_transcript(session, "chat")
+  state_on_rejection <- NULL
+
+  stream <- coro::async_generator(function() {
+    yield("partial")
+    stop("secret failure")
+  })
+
+  p <- chat_append_stream("chat", stream(), session = session)
+  observed <- promises::catch(p, function(reason) {
+    state_on_rejection <<- transcript$read()
+    NULL
+  })
+  expect_warning(
+    sync(observed),
+    regexp = "chat_append_stream"
+  )
+
+  expect_promise(p, "rejected")
+  expect_identical(
+    state_on_rejection,
+    list(
+      list(
+        role = "assistant",
+        segments = list(
+          list(
+            content = paste0(
+              "partial\n\n**An error occurred. ",
+              "Please try again or contact the app author.**"
+            ),
+            content_type = "markdown"
+          )
+        )
+      )
+    )
+  )
+})
+
 test_that("chat_server handles string user_input values", {
   local_mocked_bindings(
     chat_restore = function(...) function() invisible(NULL),
@@ -310,6 +354,12 @@ test_that("chat_append_message() emits segment payloads incl. thinking", {
     chunk = FALSE,
     session = session
   )
+  chat_append_message(
+    "chat",
+    list(role = "assistant", content = ""),
+    chunk = "start",
+    session = session
+  )
   th <- structure("reasoning", class = "shinychat_thinking")
   chat_append_message(
     "chat",
@@ -324,6 +374,177 @@ test_that("chat_append_message() emits segment payloads incl. thinking", {
   expect_equal(msg$message$segments[[1]]$content, "hello")
   expect_equal(msg$message$segments[[1]]$content_type, "markdown")
 
-  chunk <- captured[[2]]
+  chunk <- captured[[3]]
   expect_equal(chunk$content_type, "thinking")
+})
+
+test_that("chat_append_message() sends complete messages before committing", {
+  session <- shiny::MockShinySession$new()
+  transcript <- get_chat_transcript(session, "chat")
+  state_during_send <- NULL
+  local_mocked_bindings(
+    send_chat_action = function(...) {
+      state_during_send <<- transcript$read()
+      invisible(NULL)
+    }
+  )
+
+  chat_append_message(
+    "chat",
+    list(role = "assistant", content = "Hi"),
+    chunk = FALSE,
+    session = session
+  )
+
+  expect_identical(state_during_send, list())
+  expect_identical(
+    transcript$read(),
+    list(
+      list(
+        role = "assistant",
+        segments = list(list(content = "Hi", content_type = "markdown"))
+      )
+    )
+  )
+})
+
+test_that("chat_append_message() does not commit failed complete sends", {
+  session <- shiny::MockShinySession$new()
+  transcript <- get_chat_transcript(session, "chat")
+  local_mocked_bindings(
+    send_chat_action = function(...) rlang::abort("send failed")
+  )
+
+  expect_error(
+    chat_append_message(
+      "chat",
+      list(role = "assistant", content = "Hi"),
+      chunk = FALSE,
+      session = session
+    ),
+    "send failed",
+    fixed = TRUE
+  )
+  expect_identical(transcript$read(), list())
+})
+
+test_that("chat_append_message() commits streamed append, replace, and end sends", {
+  session <- shiny::MockShinySession$new()
+  transcript <- get_chat_transcript(session, "chat")
+  action_types <- character()
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      action_types <<- c(action_types, action$type)
+      invisible(NULL)
+    }
+  )
+
+  chat_append_message(
+    "chat",
+    list(role = "assistant", content = ""),
+    chunk = "start",
+    session = session
+  )
+  chat_append_message(
+    "chat",
+    list(role = "assistant", content = "draft"),
+    session = session
+  )
+  chat_append_message(
+    "chat",
+    list(role = "assistant", content = "final"),
+    chunk = "end",
+    operation = "replace",
+    session = session
+  )
+
+  expect_identical(
+    action_types,
+    c("chunk_start", "chunk", "chunk", "chunk_end")
+  )
+  expect_identical(
+    transcript$read(),
+    list(
+      list(
+        role = "assistant",
+        segments = list(list(content = "final", content_type = "markdown"))
+      )
+    )
+  )
+})
+
+test_that("chat_append_message() excludes a stream chunk whose send fails", {
+  session <- shiny::MockShinySession$new()
+  transcript <- get_chat_transcript(session, "chat")
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      if (identical(action$content, "lost")) {
+        rlang::abort("send failed")
+      }
+      invisible(NULL)
+    }
+  )
+
+  chat_append_message(
+    "chat",
+    list(role = "assistant", content = ""),
+    chunk = "start",
+    session = session
+  )
+  expect_error(
+    chat_append_message(
+      "chat",
+      list(role = "assistant", content = "lost"),
+      session = session
+    ),
+    "send failed",
+    fixed = TRUE
+  )
+  chat_append_message(
+    "chat",
+    list(role = "assistant", content = "kept"),
+    chunk = "end",
+    session = session
+  )
+
+  expect_identical(
+    transcript$read()[[1]]$segments[[1]]$content,
+    "kept"
+  )
+})
+
+test_that("chat_clear() clears only after its send succeeds", {
+  session <- shiny::MockShinySession$new()
+  transcript <- get_chat_transcript(session, "chat")
+  fail_send <- FALSE
+  local_mocked_bindings(
+    send_chat_action = function(...) {
+      if (fail_send) {
+        rlang::abort("send failed")
+      }
+      invisible(NULL)
+    }
+  )
+
+  chat_append_message(
+    "chat",
+    list(role = "assistant", content = "keep"),
+    chunk = FALSE,
+    session = session
+  )
+
+  fail_send <- TRUE
+  expect_error(
+    chat_clear("chat", session = session),
+    "send failed",
+    fixed = TRUE
+  )
+  expect_identical(
+    transcript$read()[[1]]$segments[[1]]$content,
+    "keep"
+  )
+
+  fail_send <- FALSE
+  chat_clear("chat", session = session)
+  expect_identical(transcript$read(), list())
 })

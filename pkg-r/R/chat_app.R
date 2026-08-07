@@ -431,12 +431,28 @@ chat_server <- function(
   shiny::observeEvent(
     session$input[[paste0(id, "_user_input")]],
     label = "on_chat_user_input",
+    priority = 9999,
     {
-      last_input(session$input[[paste0(id, "_user_input")]])
+      user_input <- session$input[[paste0(id, "_user_input")]]
+      submission <- user_input_submission(user_input)
+      transcript <- get_chat_transcript(session, id)
+      transcript$append(
+        list(
+          role = "user",
+          segments = list(
+            list(
+              content = submission$text,
+              content_type = "markdown"
+            )
+          ),
+          attachments = submission$attachments
+        )
+      )
+      last_input(user_input)
       append_stream_task$invoke(
         client,
         id,
-        session$input[[paste0(id, "_user_input")]],
+        user_input,
         controller = ctrl
       )
     }
@@ -542,6 +558,27 @@ chat_server <- function(
     {
       data <- session$input[[paste0(id, "_slash_command")]]
       reg <- isolate(slash_commands())[[data$command]]
+      if (isTRUE(data$echo)) {
+        get_chat_transcript(session, id)$append(
+          list(
+            role = "user",
+            segments = list(
+              list(
+                content = trimws(
+                  paste0(
+                    "/",
+                    data$command,
+                    " ",
+                    data$userText %||% ""
+                  ),
+                  which = "right"
+                ),
+                content_type = "markdown"
+              )
+            )
+          )
+        )
+      }
       if (!is.null(reg) && is.function(reg$handler)) {
         tryCatch(
           {
