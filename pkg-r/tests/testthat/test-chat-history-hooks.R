@@ -112,22 +112,26 @@ test_that("on_restore does NOT fire on new_chat by default", {
     class = "ellmer::UserTurn",
     version = 1,
     props = list(
-      contents = list(list(
-        class = "ellmer::ContentText",
-        version = 1,
-        props = list(text = "Hi")
-      ))
+      contents = list(
+        list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = "Hi")
+        )
+      )
     )
   )
   asst_turn <- list(
     class = "ellmer::AssistantTurn",
     version = 1,
     props = list(
-      contents = list(list(
-        class = "ellmer::ContentText",
-        version = 1,
-        props = list(text = "Hello")
-      ))
+      contents = list(
+        list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = "Hello")
+        )
+      )
     )
   )
   ctrl$on_response(list(user_turn, asst_turn))
@@ -156,22 +160,26 @@ test_that("on_response with no new turns does not overwrite saved values", {
     class = "ellmer::UserTurn",
     version = 1,
     props = list(
-      contents = list(list(
-        class = "ellmer::ContentText",
-        version = 1,
-        props = list(text = "Hi")
-      ))
+      contents = list(
+        list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = "Hi")
+        )
+      )
     )
   )
   asst_turn <- list(
     class = "ellmer::AssistantTurn",
     version = 1,
     props = list(
-      contents = list(list(
-        class = "ellmer::ContentText",
-        version = 1,
-        props = list(text = "Hello")
-      ))
+      contents = list(
+        list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = "Hello")
+        )
+      )
     )
   )
 

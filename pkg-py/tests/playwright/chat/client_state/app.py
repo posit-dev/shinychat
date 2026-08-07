@@ -29,6 +29,7 @@ server_state_dep = HTMLDependency(
     stylesheet=[{"href": "custom.css"}],
 )
 
+
 class EchoChatClient(chatlas.Chat):
     def __init__(self) -> None:
         provider = MagicMock()

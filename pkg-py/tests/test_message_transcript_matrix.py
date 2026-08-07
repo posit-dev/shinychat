@@ -41,7 +41,8 @@ class MatrixSession:
 
 def load_matrix() -> list[dict[str, Any]]:
     matrix_path = (
-        Path(__file__).parents[2] / "tests/shared/message-transcript-matrix.json"
+        Path(__file__).parents[2]
+        / "tests/shared/message-transcript-matrix.json"
     )
     return cast(list[dict[str, Any]], json.loads(matrix_path.read_text()))
 
@@ -102,21 +103,30 @@ async def apply_operation(chat: Chat, operation: dict[str, Any]) -> None:
 
     if operation_type == "stream_chunk":
         if chat._current_stream_id is None:
-            raise ValueError("Cannot apply a stream chunk without an active stream")
+            raise ValueError(
+                "Cannot apply a stream chunk without an active stream"
+            )
         dependencies = make_dependencies(
             cast(list[dict[str, Any]], operation.get("html_deps", []))
         )
         message = ChatMessage(
             content=cast(str, operation["content"]),
             role="assistant",
-            content_type=cast(Literal["markdown", "html", "text", "thinking"], operation["content_type"]),
+            content_type=cast(
+                Literal["markdown", "html", "text", "thinking"],
+                operation["content_type"],
+            ),
         )
         message.html_deps = dependencies
         await chat._append_message_chunk(
             message,
             chunk=True,
-            stream_id=cast(str, operation.get("stream_id", chat._current_stream_id)),
-            operation=cast(Literal["append", "replace"], operation["operation"]),
+            stream_id=cast(
+                str, operation.get("stream_id", chat._current_stream_id)
+            ),
+            operation=cast(
+                Literal["append", "replace"], operation["operation"]
+            ),
         )
         return
 
@@ -126,7 +136,9 @@ async def apply_operation(chat: Chat, operation: dict[str, Any]) -> None:
         await chat._append_message_chunk(
             "",
             chunk="end",
-            stream_id=cast(str, operation.get("stream_id", chat._current_stream_id)),
+            stream_id=cast(
+                str, operation.get("stream_id", chat._current_stream_id)
+            ),
         )
         return
 
@@ -180,7 +192,9 @@ async def test_message_transcript_matrix(
                 await apply_operation(chat, operation)
 
         if "error" in case:
-            with pytest.raises(ValueError, match=re.escape(cast(str, case["error"]))):
+            with pytest.raises(
+                ValueError, match=re.escape(cast(str, case["error"]))
+            ):
                 await apply_all()
         else:
             await apply_all()

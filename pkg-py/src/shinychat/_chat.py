@@ -35,7 +35,6 @@ from htmltools import (
     TagList,
 )
 from pydantic import ValidationError
-from shiny import reactive
 
 from . import _utils
 from ._attachments import (
@@ -368,6 +367,7 @@ class Chat:
         self._greeting_content: str | None = None
 
         # Initialize chat state and user input effect
+        from shiny import reactive
         from shiny.session import session_context
 
         with session_context(self._session):
@@ -1565,6 +1565,8 @@ class Chat:
             await self._send_action(action, message.html_deps)
 
     def _messages_for_bookmark(self) -> list[dict[str, Any]]:
+        from shiny import reactive
+
         with reactive.isolate():
             messages = self._messages()
 
@@ -1721,6 +1723,8 @@ class Chat:
         self,
         message: StoredMessage | ChatMessage,
     ) -> None:
+        from shiny import reactive
+
         message = self._as_stored_message(message)
 
         with reactive.isolate():

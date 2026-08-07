@@ -108,10 +108,12 @@ test_that("chat_ui() snapshot for plain string greeting", {
 })
 
 test_that("chat_ui() snapshot for chat_greeting with persistent=TRUE", {
-  expect_snapshot(chat_ui(
-    "chat",
-    greeting = chat_greeting("## Hi", persistent = TRUE)
-  ))
+  expect_snapshot(
+    chat_ui(
+      "chat",
+      greeting = chat_greeting("## Hi", persistent = TRUE)
+    )
+  )
 })
 
 # ── chat_set_greeting() ───────────────────────────────────────────────────────
@@ -234,7 +236,6 @@ test_that("chat_clear(greeting = TRUE) includes greeting in action", {
   expect_true(action$greeting)
 })
 
-
 # ── chat_server() greeting function ──────────────────────────────────────────
 
 # Helper: minimal R6 mock that satisfies check_ellmer_chat() and chat_restore().
@@ -281,19 +282,22 @@ test_that("named-arg detection: 'client' in formals identifies one-arg greeting"
   expect_true(
     "client" %in%
       names(
-        formals(function(client) {})
+        formals(function(client) {
+        })
       )
   )
   expect_false(
     "client" %in%
       names(
-        formals(function() {})
+        formals(function() {
+        })
       )
   )
   expect_false(
     "client" %in%
       names(
-        formals(function(x) {})
+        formals(function(x) {
+        })
       )
   )
 })
@@ -428,7 +432,8 @@ test_that("chat_server() does not error with static string greeting", {
         function(input, output, session) {
           chat_server("chat", client, greeting = "## Static", session = session)
         },
-        {}
+        {
+        }
       )
     )
   )

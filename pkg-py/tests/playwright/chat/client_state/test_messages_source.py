@@ -33,11 +33,17 @@ def test_static_ui_is_visible_but_excluded_from_server_state(
 
     chat.expect_latest_message("echo: first question", timeout=30_000)
     expect(chat.loc_messages).to_contain_text("static")
-    expect(messages).to_contain_text('"content": "first question"', timeout=10_000)
+    expect(messages).to_contain_text(
+        '"content": "first question"', timeout=10_000
+    )
     expect(messages).not_to_contain_text("static")
-    expect(bookmark).to_contain_text('"content": "first question"', timeout=10_000)
+    expect(bookmark).to_contain_text(
+        '"content": "first question"', timeout=10_000
+    )
     expect(bookmark).not_to_contain_text("static")
-    expect(record).to_contain_text('"content": "first question"', timeout=10_000)
+    expect(record).to_contain_text(
+        '"content": "first question"', timeout=10_000
+    )
     expect(record).not_to_contain_text("static")
 
     card = page.locator(".server-state-card")
@@ -59,7 +65,9 @@ def test_static_ui_is_visible_but_excluded_from_server_state(
     expect(card).to_have_css("border-color", "rgb(255, 0, 0)", timeout=5_000)
     expect(page.locator(".shiny-chat-text-preview")).to_have_count(1)
     expect(messages).not_to_contain_text("static")
-    expect(record).to_contain_text('"content": "first question"', timeout=10_000)
+    expect(record).to_contain_text(
+        '"content": "first question"', timeout=10_000
+    )
     expect(record).not_to_contain_text("static")
 
 
@@ -80,7 +88,9 @@ def test_server_projection_commits_complete_and_streamed_messages(
     page.locator("#append_stream").click()
     stream_dot = chat.loc_messages.locator(".markdown-stream-dot")
     expect(stream_dot).to_be_visible(timeout=10_000)
-    expect(chat.loc_messages).to_contain_text("streamed response", timeout=10_000)
+    expect(chat.loc_messages).to_contain_text(
+        "streamed response", timeout=10_000
+    )
     expect(messages).not_to_contain_text("streamed response")
 
     page.locator("#release_stream").click()
@@ -112,9 +122,7 @@ def test_forged_messages_input_cannot_change_server_transcript(
     chat.expect_latest_message("echo: secure question", timeout=30_000)
     expect(record).to_contain_text("secure question", timeout=10_000)
 
-    rejection_error = (
-        "No input handler registered for type: shinychat.messages"
-    )
+    rejection_error = "No input handler registered for type: shinychat.messages"
     rejection_count_before = str(local_app.stderr).count(rejection_error)
     page.evaluate(
         """() => {
@@ -135,8 +143,10 @@ document.querySelector(".shiny-chat-messages-content")?.append(forged)
 
     expect(page.locator("#forged-dom-message")).to_have_text("forged")
     assert local_app.stderr.wait_for(
-        lambda _: str(local_app.stderr).count(rejection_error)
-        > rejection_count_before,
+        lambda _: (
+            str(local_app.stderr).count(rejection_error)
+            > rejection_count_before
+        ),
         timeout_secs=10,
     )
     expect(page.locator("html")).to_have_attribute(

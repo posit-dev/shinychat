@@ -42,4 +42,6 @@ def _(value: Any, _name: "ResolvedId", _session: "Session") -> UserInputValue:
         Attachment.model_validate(a) for a in (value.get("attachments") or [])
     ]
     validate_attachments(attachments)
-    return UserInputValue(text=str(value.get("text", "")), attachments=attachments)
+    return UserInputValue(
+        text=str(value.get("text", "")), attachments=attachments
+    )

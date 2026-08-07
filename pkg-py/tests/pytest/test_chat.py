@@ -356,9 +356,9 @@ async def test_concurrent_stream_chunks_commit_in_send_order(
         release_first_chunk.set()
         await asyncio.gather(first_chunk, second_chunk)
 
-        assert [segment.content for segment in chat._current_stream_segments] == [
-            "onetwo"
-        ]
+        assert [
+            segment.content for segment in chat._current_stream_segments
+        ] == ["onetwo"]
         assert second_chunk_sent.is_set()
 
 
@@ -790,9 +790,7 @@ async def test_managed_response_stream_error_preserves_original_when_history_fai
         assert store.put_calls == 1
 
 
-@pytest.mark.filterwarnings(
-    "ignore:Error in Effect"
-)
+@pytest.mark.filterwarnings("ignore:Error in Effect")
 @pytest.mark.anyio
 async def test_managed_response_stream_error_surfaces_when_history_warning_errors(
     monkeypatch: pytest.MonkeyPatch,
@@ -973,7 +971,9 @@ def test_transformed_complete_message_preserves_dependencies_and_attachments(
         ) -> list[dict[str, object]] | None:
             if not deps:
                 return None
-            return [{"name": dep.name, "version": str(dep.version)} for dep in deps]
+            return [
+                {"name": dep.name, "version": str(dep.version)} for dep in deps
+            ]
 
         monkeypatch.setattr(chat, "_send_action", capture)
         monkeypatch.setattr(chat, "_serialize_html_deps", serialize)
@@ -1038,7 +1038,9 @@ def test_streamed_messages_store_mixed_segments_and_transformed_content(
         ) -> list[dict[str, object]] | None:
             if not deps:
                 return None
-            return [{"name": dep.name, "version": str(dep.version)} for dep in deps]
+            return [
+                {"name": dep.name, "version": str(dep.version)} for dep in deps
+            ]
 
         monkeypatch.setattr(chat, "_send_action", capture)
         monkeypatch.setattr(chat, "_serialize_html_deps", serialize)

@@ -1,0 +1,4 @@
+# Minified bundles contain literal multiline template strings.
+js/dist/shinychat.js whitespace=-blank-at-eol
+pkg-py/src/shinychat/www/shinychat.js whitespace=-blank-at-eol
+pkg-r/inst/lib/shiny/shinychat.js whitespace=-blank-at-eol
