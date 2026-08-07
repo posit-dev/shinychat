@@ -47,7 +47,9 @@ def split_html_islands(content: TagChild | TagList) -> list[TagChild]:
         return [Tag("shinychat-raw-html", content)]
     elif isinstance(content, Tagifiable):
         resolved = content.tagify()
-        if isinstance(resolved, (Tag, TagifiedTag)) and _has_react_attr(resolved):
+        if isinstance(resolved, (Tag, TagifiedTag)) and _has_react_attr(
+            resolved
+        ):
             return [resolved]
         return [Tag("shinychat-raw-html", content)]
     else:

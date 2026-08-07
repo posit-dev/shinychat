@@ -7,7 +7,10 @@ from shinychat._input_handler import messages_input_value
 
 def test_messages_handler_deserializes_snapshot():
     payload = [
-        {"role": "user", "segments": [{"content": "hi", "content_type": "markdown"}]},
+        {
+            "role": "user",
+            "segments": [{"content": "hi", "content_type": "markdown"}],
+        },
         {
             "role": "assistant",
             "segments": [{"content": "yo", "content_type": "markdown"}],
@@ -23,7 +26,10 @@ def test_messages_handler_deserializes_snapshot():
 def test_messages_handler_raises_on_message_missing_content_type():
     payload = [
         {"role": "user", "segments": [{"content": "hi"}]},
-        {"role": "assistant", "segments": [{"content": "yo", "content_type": "markdown"}]},
+        {
+            "role": "assistant",
+            "segments": [{"content": "yo", "content_type": "markdown"}],
+        },
     ]
     with pytest.raises(KeyError):
         messages_input_value(payload)
@@ -31,8 +37,14 @@ def test_messages_handler_raises_on_message_missing_content_type():
 
 def test_messages_handler_raises_on_message_with_invalid_role():
     payload = [
-        {"role": "bogus", "segments": [{"content": "hi", "content_type": "markdown"}]},
-        {"role": "user", "segments": [{"content": "yo", "content_type": "markdown"}]},
+        {
+            "role": "bogus",
+            "segments": [{"content": "hi", "content_type": "markdown"}],
+        },
+        {
+            "role": "user",
+            "segments": [{"content": "yo", "content_type": "markdown"}],
+        },
     ]
     with pytest.raises(ValueError):
         messages_input_value(payload)
@@ -52,7 +64,10 @@ def test_messages_handler_raises_on_message_with_unsupported_attachment_mime():
                 }
             ],
         },
-        {"role": "assistant", "segments": [{"content": "yo", "content_type": "markdown"}]},
+        {
+            "role": "assistant",
+            "segments": [{"content": "yo", "content_type": "markdown"}],
+        },
     ]
     with pytest.raises(ValueError):
         messages_input_value(payload)

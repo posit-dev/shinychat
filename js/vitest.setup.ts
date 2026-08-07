@@ -11,6 +11,22 @@ class MockResizeObserver {
 globalThis.ResizeObserver =
   MockResizeObserver as unknown as typeof ResizeObserver
 
+// jsdom doesn't implement matchMedia, which `usePrefersReducedMotion` reads —
+// and that hook is now reached by any component with a crossfading label.
+// Defaults to "motion is fine"; a test that cares stubs its own.
+if (!window.matchMedia) {
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })) as unknown as typeof window.matchMedia
+}
+
 // jsdom doesn't implement scrollTo on elements
 if (!Element.prototype.scrollTo) {
   Element.prototype.scrollTo = vi.fn()

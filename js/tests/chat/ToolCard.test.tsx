@@ -9,7 +9,7 @@ describe("ToolCard", () => {
 
   it("collapsed card body has inert attribute", () => {
     const { container } = render(
-      <ToolCard requestId="test-1" toolName="my_tool" initialExpanded={false}>
+      <ToolCard toolName="my_tool" initialExpanded={false}>
         <div>body content</div>
       </ToolCard>,
     )
@@ -22,7 +22,7 @@ describe("ToolCard", () => {
 
   it("expanded card body does not have inert attribute", () => {
     const { container } = render(
-      <ToolCard requestId="test-2" toolName="my_tool" initialExpanded={true}>
+      <ToolCard toolName="my_tool" initialExpanded={true}>
         <div>body content</div>
       </ToolCard>,
     )
@@ -34,7 +34,7 @@ describe("ToolCard", () => {
 
   it("does not toggle collapse when fullscreen is active", () => {
     const { container } = render(
-      <ToolCard requestId="test-3" toolName="my_tool" initialExpanded={true}>
+      <ToolCard toolName="my_tool" initialExpanded={true}>
         <div>body content</div>
       </ToolCard>,
     )
@@ -54,7 +54,7 @@ describe("ToolCard", () => {
 
   it("dispatches a resize event after toggling collapse", () => {
     const { container } = render(
-      <ToolCard requestId="test-4" toolName="my_tool" initialExpanded={false}>
+      <ToolCard toolName="my_tool" initialExpanded={false}>
         <div>body content</div>
       </ToolCard>,
     )
@@ -84,7 +84,7 @@ describe("ToolCard", () => {
 
   it("renders toolTitle as HTML (developer-controlled content)", () => {
     const { container } = render(
-      <ToolCard requestId="xss-2" toolName="safe" toolTitle="<b>bold</b>">
+      <ToolCard toolName="safe" toolTitle="<b>bold</b>">
         <div>body</div>
       </ToolCard>,
     )
@@ -93,5 +93,29 @@ describe("ToolCard", () => {
     expect(nameSpan).toBeTruthy()
     expect(nameSpan!.querySelector("b")).toBeTruthy()
     expect(nameSpan!.textContent).toBe("bold")
+  })
+
+  it("does not wrap the title in a 'Running '/'failed' template (titleTemplate removed)", () => {
+    const { container } = render(
+      <ToolCard toolName="search" toolTitle="Searching" statusNote="failed">
+        <div>body</div>
+      </ToolCard>,
+    )
+
+    // The title is rendered verbatim, with no prefix/suffix wrapper baked in.
+    expect(container.querySelector(".tool-title-name")?.textContent).toBe(
+      "Searching",
+    )
+    expect(container.querySelector(".tool-title")?.textContent).not.toContain(
+      "Running ",
+    )
+    // "failed" appears only in the separate status-note element, not appended
+    // to the title text itself.
+    expect(container.querySelector(".tool-title")?.textContent).not.toContain(
+      "failed",
+    )
+    expect(container.querySelector(".tool-status-note")?.textContent).toBe(
+      "failed",
+    )
   })
 })

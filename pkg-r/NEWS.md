@@ -2,6 +2,12 @@
 
 ## New features and improvements
 
+* Tool calls now render as a condensed activity row by default. Expand a group row to see each individual call, then drill into a call to see its full request/result card. Added `tool_result_display()`, a validated constructor for the `display` object passed as `extra = list(display = tool_result_display(...))` on an `ellmer::ContentToolResult` -- the recommended way to build it going forward. A bare named list with the same fields still works and is promoted internally. `tool_result_display()` gained `label` (a short per-call identifying value, e.g. a filename or query) and `value_preview` (a terse peek at the result, e.g. "1,204 rows"), both shown in the activity row.
+
+* Fully custom tool-result UI returned from a `contents_shinychat()` method is now paired with its tool request. While the tool runs, it appears in the activity row; after the custom result settles, that call leaves the row and the custom UI renders as standalone output. This also preserves custom results when preloading or restoring conversations.
+
+* Added `tool_grouping` to `chat_ui()`: `"tool"` (default) groups calls to the same tool in a contiguous tool loop (order-independent, not just consecutive calls); `"all"` groups every call in the loop together; `"none"` shows one activity row per call. Thinking or prose starts a new loop, and chat-level `"none"` disables grouping even when an annotation asks for it. Individual tools can override `"tool"` or `"all"` with a top-level `grouping` tool annotation, e.g. `tool(..., annotations = tool_annotations(grouping = "all"))`.
+
 * Added `chat_server()` as the new primary way to wire up server-side chat logic. It does the same job as `chat_mod_server()` but runs directly in the caller's session scope rather than creating its own module scope. If you're already inside a `moduleServer()`, pass that session in — no extra nesting, no doubled namespaces. `chat_mod_server()` and `chat_mod_ui()` are now soft-deprecated in favor of `chat_server()` and `chat_ui()`. (#264)
 
 * `chat_server()` gets multi-conversation history automatically: a drawer for starting new chats and returning to previous ones, with LLM-generated titles, search, rename, and delete. Conversations are persisted per-user (or a custom scope) via a pluggable store — the default `FileConversationStore` finds a redeploy-safe location automatically on Posit Connect. Customize with `history = history_options(...)`, or opt out entirely with `history = FALSE`. For apps that can't use the module pattern, wire it up manually with `chat_enable_history()`. (#266)
@@ -14,6 +20,8 @@
 * Added `submit_key` parameter to `chat_ui()`: `"enter"` (default, Enter submits) or `"enter+modifier"` (Ctrl/Cmd+Enter submits, plain Enter inserts a line break). The input remains editable while a response is streaming — only submission is blocked, not typing. (#251)
 
 ## Breaking changes
+
+* A tool's definition `title` (from its annotations) and its result `title` (from `tool_result_display()`) are now shown as-is, without any client-side tense conjugation. The definition title is shown while the call is running and labels multi-call groups. For a single-call row, the result title (if provided) replaces it when the result arrives; in a multi-call group, a distinct result title can identify that call in the expanded list. The old `"Running {title}"` / `"{title} failed"` client-side title template has been removed. If a tool's title reads oddly while running now that the automatic "Running " prefix is gone, write an explicit present-tense definition title (e.g. "Running R code") and, optionally, a past-tense result title (e.g. "Ran R code"). Failures are shown via a separate status cue (a "failed"/"N failed" note and icon) rather than appended to the title.
 
 * `input$<id>_user_input` now depends on `allow_attachments`. With `allow_attachments = FALSE`, it remains the historical typed string. With attachments enabled (`TRUE` or a MIME allow-list), it is always a list of ellmer `Content` objects (typed text, if present, followed by one object per attachment), and the separate `input$<id>_user_attachments` input has been removed. Forward either form to a chat method by splicing with `!!!`, e.g. `chat$stream_async(!!!input$<id>_user_input)`.
 

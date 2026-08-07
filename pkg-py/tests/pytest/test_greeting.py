@@ -147,7 +147,9 @@ def test_chat_ui_async_iterator_raises():
 
 
 def test_chat_greeting_tag_with_dependency_has_html_deps():
-    dep = HTMLDependency("my-dep", "1.0.0", source={"package": None, "subdir": "."})
+    dep = HTMLDependency(
+        "my-dep", "1.0.0", source={"package": None, "subdir": "."}
+    )
     g = chat_greeting(tags.div("hello", dep))
     assert g.content_type == "html"
     dep_names = [d.name for d in g.html_deps]
@@ -429,5 +431,3 @@ def test_enable_bookmarking_excludes_greeting_dismissed():
     with session_context(cast(Any, bm_sess)):
         chat.enable_bookmarking(_MockClient())
     assert "bm_chat_dis_greeting_dismissed" in bm_sess.bookmark.exclude
-
-

@@ -1,10 +1,16 @@
-import { memo, useState, useRef, useCallback, useEffect } from "react"
-import type { ChatMessageData } from "./state"
+import { memo, useMemo, useState, useRef, useCallback, useEffect } from "react"
+import {
+  deriveToolGroupIdentity,
+  routeToolBlocks,
+  type ChatMessageData,
+  type MessageBlock,
+} from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { ThinkingDisplay } from "./ThinkingDisplay"
+import { ToolGroup } from "./ToolGroup"
 import { robot, dots_fade, arrowUpCircleFill, pencil } from "../utils/icons"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
-import { useSlashCommands } from "./context"
+import { useSlashCommands, useToolGrouping, useChatToolState } from "./context"
 import { CommandChip } from "./CommandChip"
 import type { SlashCommandDef } from "../transport/types"
 import {
@@ -77,6 +83,8 @@ export const ChatMessage = memo(function ChatMessage({
   enableUpload,
 }: ChatMessageProps) {
   const slashCommands = useSlashCommands()
+  const toolGrouping = useToolGrouping()
+  const { supersededRequests } = useChatToolState()
   const [lightbox, setLightbox] = useState<{
     src: string
     name: string
@@ -85,6 +93,64 @@ export const ChatMessage = memo(function ChatMessage({
   const [hasEditText, setHasEditText] = useState(false)
   const editRef = useRef<TiptapInputHandle>(null)
   const isUser = message.role === "user"
+
+  // Finalized messages already carry routed tool_loop blocks (built in the
+  // reducer). While streaming, tool elements still live in content blocks, so
+  // route them at render time — with the same grouping — so tool calls show
+  // the Tier UI live and don't pop into it on finalize. An incomplete trailing
+  // tool element stays as prose (the router leaves it) until it closes, and so
+  // does everything after a code fence that has not been closed yet.
+  const blocks = useMemo(
+    () =>
+      message.streaming
+        ? routeToolBlocks(message.blocks, toolGrouping, message.role, true)
+        : message.blocks,
+    [message.streaming, message.blocks, message.role, toolGrouping],
+  )
+
+  // Tool UI is never legitimate in a user message, so don't hand the bridges to
+  // one. Defense in depth alongside the router's role gate: the router covers
+  // markdown (it just leaves the tags as text), but an html-typed user block
+  // skips the router's effect entirely and goes through `htmlProcessor` — no
+  // remarkEscapeHtml, no rehypeSanitize — so without this the tags would still
+  // resolve to real tool cards. Withholding the map leaves them inert elements.
+  const tagToComponentMap = isUser ? undefined : chatTagToComponentMap
+
+  // Drop running requests whose result has rendered elsewhere in the transcript
+  // (the router can only pair the two within one content string), then any group
+  // left empty. Done here rather than in the render pass so `hasContent` — and
+  // the decision to render a row at all — reflect what is actually visible. The
+  // original block index is kept so React keys stay stable when a block drops
+  // out.
+  //
+  // A group that loses a call this way rederives its whole identity from the
+  // survivors rather than patching `count` alone: the row must describe the
+  // calls it actually renders, and title/segments/icon are just as call-shaped
+  // as count is. Patching one field while leaving the rest is exactly what let
+  // a filtered group keep naming a tool it no longer shows.
+  const visibleBlocks = useMemo(() => {
+    const out: { block: MessageBlock; index: number }[] = []
+    blocks.forEach((block, index) => {
+      if (block.type !== "tool_loop") {
+        out.push({ block, index })
+        return
+      }
+      const groups = block.groups
+        .map((g) => {
+          const calls = g.calls.filter(
+            (c) =>
+              !(c.status === "running" && supersededRequests.has(c.requestId)),
+          )
+          return calls.length === g.calls.length
+            ? g
+            : { ...g, calls, ...deriveToolGroupIdentity(calls) }
+        })
+        .filter((g) => g.calls.length > 0)
+      if (groups.length > 0) out.push({ block: { ...block, groups }, index })
+    })
+    return out
+  }, [blocks, supersededRequests])
+
   const touchHoldEnabled = isUser && !!onEdit && !disabled && !isEditing
 
   const [touchRevealed, setTouchRevealed] = useState(false)
@@ -207,7 +273,9 @@ export const ChatMessage = memo(function ChatMessage({
 
   const hasContent =
     message.content.trim() !== "" ||
-    message.blocks.some((b) => b.type === "thinking") ||
+    visibleBlocks.some(
+      ({ block }) => block.type === "thinking" || block.type === "tool_loop",
+    ) ||
     (message.attachments?.length ?? 0) > 0 ||
     message.cancelled
 
@@ -215,8 +283,22 @@ export const ChatMessage = memo(function ChatMessage({
   if (isUser) {
     iconHtml = message.icon || undefined
   } else {
-    iconHtml = hasContent ? (message.icon ?? iconAssistant ?? robot) : dots_fade
+    // Resolve the assistant icon through the per-message -> container chain. An
+    // explicit "" (from icon_assistant=False / icon=False) removes the icon
+    // entirely: no glyph and no streaming dots in the icon slot.
+    const resolved = message.icon ?? iconAssistant
+    if (resolved === "") {
+      iconHtml = undefined
+    } else {
+      iconHtml = hasContent ? (resolved ?? robot) : dots_fade
+    }
   }
+
+  // Nothing left to render — e.g. a request-only message whose result rendered
+  // in another message and superseded it. Emit no row at all; an icon or the
+  // streaming dots would read as a stray empty turn. The pending-response
+  // placeholder and in-flight streams are legitimately empty, so they stay.
+  if (!hasContent && !message.streaming && !message.isPlaceholder) return null
 
   const leadingCommand = isUser
     ? parseLeadingCommand(message.content, slashCommands)
@@ -288,7 +370,7 @@ export const ChatMessage = memo(function ChatMessage({
       </div>
     ) : null
 
-  const messageBlocks = message.blocks.map((block, i) => {
+  const messageBlocks = visibleBlocks.map(({ block, index: i }) => {
     if (block.type === "thinking") {
       return (
         <ThinkingDisplay
@@ -298,7 +380,17 @@ export const ChatMessage = memo(function ChatMessage({
         />
       )
     }
-    const isLast = i === message.blocks.length - 1
+    const isLast = i === blocks.length - 1
+
+    if (block.type === "tool_loop") {
+      return (
+        <div key={i} className="shiny-chat-tool-loop">
+          {block.groups.map((group) => (
+            <ToolGroup key={group.key} group={group} />
+          ))}
+        </div>
+      )
+    }
 
     if (leadingCommand && i === 0) {
       const chip = <CommandChip name={leadingCommand.commandName} />
@@ -322,7 +414,7 @@ export const ChatMessage = memo(function ChatMessage({
           contentType={block.contentType}
           role={message.role}
           streaming={message.streaming && isLast}
-          tagToComponentMap={chatTagToComponentMap}
+          tagToComponentMap={tagToComponentMap}
           prefix={chip}
         />
       )
@@ -335,7 +427,7 @@ export const ChatMessage = memo(function ChatMessage({
         contentType={block.contentType}
         role={message.role}
         streaming={message.streaming && isLast}
-        tagToComponentMap={chatTagToComponentMap}
+        tagToComponentMap={tagToComponentMap}
       />
     )
     if (block.contentType === "text") {

@@ -19,9 +19,11 @@ get_weather_forecast <- tool(
     ContentToolResult(
       forecast,
       extra = list(
-        display = list(
-          title = paste("Weather Forecast for", location_name),
-          icon = icon
+        display = tool_result_display(
+          title = paste("Got weather forecast for", location_name),
+          icon = icon,
+          label = location_name,
+          value_preview = paste(nrow(forecast), "hourly readings")
         )
       )
     )
@@ -34,7 +36,7 @@ get_weather_forecast <- tool(
     location_name = type_string("Name of the location for display to the user")
   ),
   annotations = tool_annotations(
-    title = "Weather Forecast",
+    title = "Getting weather forecast",
     icon = bsicons::bs_icon("cloud-sun")
   )
 )

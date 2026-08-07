@@ -273,7 +273,9 @@ def test_edit_add_and_remove_attachment_resends_with_final_set(
     # box's own attach button/hidden file input.
     edit_box.locator(".shiny-chat-input-thumbnail button").click()
     expect(edit_box.locator(".shiny-chat-input-thumbnail")).to_have_count(0)
-    edit_box.locator("input[type=file]").set_input_files(str(HERE / "one_px.png"))
+    edit_box.locator("input[type=file]").set_input_files(
+        str(HERE / "one_px.png")
+    )
     expect(edit_box.locator(".shiny-chat-input-thumbnail img")).to_have_count(1)
 
     editor = first_user.get_by_role("textbox", name="Chat message")

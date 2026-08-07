@@ -3,10 +3,10 @@ import { ToolCard } from "./ToolCard"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { markdownCodeBlock } from "../markdown/markdownCodeBlock"
 
-const spinnerIcon = '<div class="spinner-border" role="status"></div>'
+const spinnerIcon =
+  '<div class="spinner-border" role="status"><span class="visually-hidden">Running…</span></div>'
 
 export interface ToolRequestProps {
-  requestId: string
   toolName: string
   toolTitle?: string
   intent?: string
@@ -15,7 +15,6 @@ export interface ToolRequestProps {
 
 /** Ports ShinyToolRequest from the Lit implementation. */
 export const ToolRequest = memo(function ToolRequest({
-  requestId,
   toolName,
   toolTitle,
   intent,
@@ -23,12 +22,10 @@ export const ToolRequest = memo(function ToolRequest({
 }: ToolRequestProps) {
   return (
     <ToolCard
-      requestId={requestId}
       toolName={toolName}
       toolTitle={toolTitle}
       intent={intent}
       icon={spinnerIcon}
-      titleTemplate="Running {title}"
     >
       <div className="shiny-tool-request__arguments">
         <strong>Tool arguments</strong>
