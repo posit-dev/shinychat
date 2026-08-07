@@ -49,7 +49,10 @@ from ._chat_bookmark import (
     is_chatlas_chat_client,
     set_chatlas_state,
 )
-from ._chat_normalize import message_content, message_content_chunk
+from ._chat_normalize import (
+    normalize_message,
+    normalize_message_chunk,
+)
 from ._chat_segments import (
     append_to_segments,
     copy_segments,
@@ -73,7 +76,6 @@ from ._chat_types import (
 )
 from ._history import ChatHistory, HistoryOptions
 from ._html_deps_py_shiny import shinychat_dependency
-from ._typing_extensions import TypeGuard
 from ._utils_types import DEPRECATED, DEPRECATED_TYPE, MISSING, MISSING_TYPE
 
 if TYPE_CHECKING:
@@ -351,7 +353,9 @@ class Chat:
 
         # Keep track of effects so we can destroy them when the chat is destroyed
         self._effects: list["Effect_"] = []
-        history_config = history if isinstance(history, HistoryOptions) else None
+        history_config = (
+            history if isinstance(history, HistoryOptions) else None
+        )
         self._history_enabled: bool = history is not False
         self.history: ChatHistory = ChatHistory(self, config=history_config)
         self._cancel_bookmarking_callbacks: CancelCallback | None = None
@@ -370,9 +374,9 @@ class Chat:
                 dict[str, SlashCommandRegistration] | None
             ] = reactive.Value(None)
 
-            self._latest_user_input: reactive.Value[
-                StoredMessage | None
-            ] = reactive.Value(None)
+            self._latest_user_input: reactive.Value[StoredMessage | None] = (
+                reactive.Value(None)
+            )
 
             @reactive.extended_task
             async def _mock_task() -> str:
@@ -500,7 +504,9 @@ class Chat:
         with session_context(self._session):
 
             @self.on_user_submit
-            async def _on_user_submit(user_input: str, attachments: list[Attachment]) -> None:
+            async def _on_user_submit(
+                user_input: str, attachments: list[Attachment]
+            ) -> None:
                 contents = [attachment_to_content(a) for a in attachments]
                 response = await chat_client.value.stream_async(
                     user_input,
@@ -665,7 +671,9 @@ class Chat:
         *,
         echo: bool | None = None,
         force: bool = False,
-    ) -> Callable[[UserSubmitFunction], UserSubmitFunction] | Callable[[], None]:
+    ) -> (
+        Callable[[UserSubmitFunction], UserSubmitFunction] | Callable[[], None]
+    ):
         """
         Register a slash command and its handler.
 
@@ -870,7 +878,7 @@ class Chat:
         self,
         message: Any,
         *,
-        icon: HTML | Tag | TagList | None = None,
+        icon: HTML | Tag | TagList | bool | None = None,
     ):
         """
         Append a message to the chat.
@@ -898,7 +906,8 @@ class Chat:
         icon
             An optional icon to display next to the message, currently only used for
             assistant messages. The icon can be any HTML element (e.g., an
-            :func:`~shiny.ui.img` tag) or a string of HTML.
+            :func:`~shiny.ui.img` tag) or a string of HTML. Pass ``False`` to remove
+            the icon for this message, or ``True`` to use the default icon.
 
         Note
         ----
@@ -981,7 +990,7 @@ class Chat:
             self._pending_messages.append((message, False, "append", None))
             return
 
-        msg = message_content(message)
+        msg = normalize_message(message)
         msg = await self._transform_message(msg)
         if msg is None:
             return
@@ -1062,7 +1071,9 @@ class Chat:
         """
         # Checkpoint the current stream state so operation="replace" can return to it
         old_checkpoint = self._message_stream_segments_checkpoint
-        self._message_stream_segments_checkpoint = copy_segments(self._current_stream_segments)
+        self._message_stream_segments_checkpoint = copy_segments(
+            self._current_stream_segments
+        )
 
         # No stream currently exists, start one
         stream_id = self._current_stream_id
@@ -1094,7 +1105,7 @@ class Chat:
         chunk: Literal[True, "start", "end"] = True,
         stream_id: str,
         operation: Literal["append", "replace"] = "append",
-        icon: HTML | Tag | TagList | None = None,
+        icon: HTML | Tag | TagList | bool | None = None,
     ) -> None:
         # If currently we're in a *different* stream, queue the message chunk
         if self._current_stream_id and self._current_stream_id != stream_id:
@@ -1106,11 +1117,8 @@ class Chat:
         self._current_stream_id = stream_id
 
         # Normalize various message types into a ChatMessage()
-        msg = message_content_chunk(message)
+        msg = normalize_message_chunk(message)
         chunk_deps = msg.html_deps or []
-
-        if is_tool_result(message) and message.request is not None:
-            await self._hide_tool_request(message.request.id)  # type: ignore
 
         if operation == "replace":
             if has_mixed_content_types(
@@ -1177,7 +1185,7 @@ class Chat:
         self,
         message: Iterable[Any] | AsyncIterable[Any],
         *,
-        icon: HTML | Tag | None = None,
+        icon: HTML | Tag | bool | None = None,
     ):
         """
         Append a message as a stream of message chunks.
@@ -1206,7 +1214,8 @@ class Chat:
         icon
             An optional icon to display next to the message, currently only used for
             assistant messages. The icon can be any HTML element (e.g., an
-            :func:`~shiny.ui.img` tag) or a string of HTML.
+            :func:`~shiny.ui.img` tag) or a string of HTML. Pass ``False`` to remove
+            the icon for this message, or ``True`` to use the default icon.
 
         Note
         ----
@@ -1347,7 +1356,7 @@ class Chat:
     async def _append_message_stream(
         self,
         message: AsyncIterable[Any],
-        icon: HTML | Tag | None = None,
+        icon: HTML | Tag | bool | None = None,
     ):
         id = _utils.private_random_id()
 
@@ -1386,7 +1395,7 @@ class Chat:
         message: StoredMessage | ChatMessage,
         chunk: ChunkOption = False,
         operation: Literal["append", "replace"] = "append",
-        icon: HTML | Tag | TagList | None = None,
+        icon: HTML | Tag | TagList | bool | None = None,
     ):
         message = self._as_stored_message(message)
 
@@ -1399,7 +1408,9 @@ class Chat:
         # is the flat-string form that re-wraps thinking in tags instead.
         content = "".join(s.content for s in message.segments)
         content_type = (
-            message.segments[-1].content_type if message.segments else "markdown"
+            message.segments[-1].content_type
+            if message.segments
+            else "markdown"
         )
 
         msg_payload: MessagePayload = {
@@ -1407,9 +1418,12 @@ class Chat:
             "segments": message.wire_segments(),
         }
         if message.attachments:
-            msg_payload["attachments"] = [a.model_dump() for a in message.attachments]
-        if icon is not None:
-            msg_payload["icon"] = str(icon)
+            msg_payload["attachments"] = [
+                a.model_dump() for a in message.attachments
+            ]
+        icon_attr = _resolve_icon_attr(icon)
+        if icon_attr is not None:
+            msg_payload["icon"] = icon_attr
 
         if chunk == "start":
             action: ChatAction = {"type": "chunk_start", "message": msg_payload}
@@ -1625,7 +1639,6 @@ class Chat:
         val = cast("UserInputValue", self._session.input[self.user_input_id]())
         return val["text"], val["attachments"]
 
-
     def _slash_command_input(self) -> dict[str, Any]:
         return self._session.input[self._slash_command_id]()
 
@@ -1684,7 +1697,12 @@ class Chat:
             action["focus"] = focus
         if attachments is not None:
             action["attachments"] = [
-                {"mime": a.mime, "data_url": a.data_url, "name": a.name, "size": a.size}
+                {
+                    "mime": a.mime,
+                    "data_url": a.data_url,
+                    "name": a.name,
+                    "size": a.size,
+                }
                 for a in attachments
             ]
             if attachment_mode != "append":
@@ -1787,13 +1805,16 @@ class Chat:
         ```python
         @reactive.effect
         async def _():
-            await chat.set_greeting("## Welcome!\\n\\nHow can I help you today?")
+            await chat.set_greeting(
+                "## Welcome!\\n\\nHow can I help you today?"
+            )
         ```
 
         Static greeting with custom options:
 
         ```python
         from shinychat import chat_greeting
+
 
         @reactive.effect
         async def _():
@@ -1825,6 +1846,7 @@ class Chat:
         chat_model = chatlas.ChatOpenAI(model="gpt-4o")
         chat = Chat(id="chat")
 
+
         @reactive.effect
         @reactive.event(input.chat_greeting_requested)
         async def _():
@@ -1841,6 +1863,7 @@ class Chat:
         @reactive.event(input.regenerate)
         async def _():
             await chat.clear_messages(greeting=True)
+
 
         # greeting_requested fires again after clear_messages(greeting=True),
         # so the LLM-generated greeting handler above will run again.
@@ -1861,7 +1884,11 @@ class Chat:
             greeting = chat_greeting(greeting)
 
         options: GreetingOptions = {"persistent": greeting.persistent}
-        html_deps = self._serialize_html_deps(greeting.html_deps) if greeting.html_deps else None
+        html_deps = (
+            self._serialize_html_deps(greeting.html_deps)
+            if greeting.html_deps
+            else None
+        )
 
         content = greeting.content
         if isinstance(content, AsyncIterable):
@@ -1916,13 +1943,6 @@ class Chat:
 
     async def _remove_loading_message(self):
         await self._send_action({"type": "remove_loading"})
-
-    async def _hide_tool_request(self, request_id: str) -> None:
-        action: ChatAction = {
-            "type": "hide_tool_request",
-            "requestId": request_id,
-        }
-        await self._send_action(action)
 
     async def _send_action(
         self,
@@ -2014,7 +2034,14 @@ class Chat:
         # Must use `root_session` as the id is already resolved. :-/
         # Using a proxy session would double-encode the proxy-prefix
         root_session = session.root_scope()
-        for suffix in ("_user_input", "_messages", "_cancel", "_slash_command", "_greeting_requested", "_greeting_dismissed"):
+        for suffix in (
+            "_user_input",
+            "_messages",
+            "_cancel",
+            "_slash_command",
+            "_greeting_requested",
+            "_greeting_dismissed",
+        ):
             root_session.bookmark.exclude.append(self.id + suffix)
 
         # ###########
@@ -2034,9 +2061,7 @@ class Chat:
         if bookmark_on == "response":
 
             @reactive.effect
-            @reactive.event(
-                self.messages, ignore_init=True
-            )
+            @reactive.event(self.messages, ignore_init=True)
             async def _auto_bookmark() -> None:
                 messages = self.messages()
 
@@ -2086,14 +2111,18 @@ class Chat:
                 # This does NOT contain the `chat.ui(messages=)` values.
                 # When restoring, the `chat.ui(messages=)` values will need to be kept
                 # and the `ui.Chat(messages=)` values will need to be reset
-                state.values[resolved_bookmark_id_msgs_str] = self._messages_for_bookmark()
+                state.values[resolved_bookmark_id_msgs_str] = (
+                    self._messages_for_bookmark()
+                )
 
         resolved_greeting_key = resolved_bookmark_id_str + "--greeting"
 
         @root_session.bookmark.on_bookmark
         def _on_bookmark_greeting(state: BookmarkState):
             if self._greeting_content is not None:
-                state.values[resolved_greeting_key] = {"content": self._greeting_content}
+                state.values[resolved_greeting_key] = {
+                    "content": self._greeting_content
+                }
 
         # Attempt to stop the initialization of the `ui.Chat(messages=)` messages
         self._init_chat.destroy()
@@ -2148,7 +2177,6 @@ class Chat:
         return BookmarkCancelCallback(_cancel_bookmarking)
 
 
-
 class ChatExpress(Chat):
     def ui(
         self,
@@ -2161,11 +2189,12 @@ class ChatExpress(Chat):
         width: "CssUnit" = "min(680px, 100%)",
         height: "CssUnit" = "auto",
         fill: bool = True,
-        icon_assistant: HTML | Tag | TagList | None = None,
+        icon_assistant: HTML | Tag | TagList | bool | None = None,
         enable_cancel: "bool | MISSING_TYPE" = MISSING,
         submit_key: 'Literal["enter", "enter+modifier"]' = "enter",
         allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
         footer: Optional[TagChild] = None,
+        tool_grouping: 'Literal["none", "tool", "all"]' = "tool",
         **kwargs: TagAttrValue,
     ) -> Tag:
         """
@@ -2193,8 +2222,10 @@ class ChatExpress(Chat):
             container.
         icon_assistant
             The icon to use for the assistant chat messages. Can be a HTML or a tag in
-            the form of :class:`~htmltools.HTML` or :class:`~htmltools.Tag`. If `None`,
-            a default robot icon is used.
+            the form of :class:`~htmltools.HTML` or :class:`~htmltools.Tag`. If `None`
+            (or `True`), a default robot icon is used. Pass `False` to remove the
+            assistant icon entirely (individual messages can still opt back in via
+            the `icon` argument of `.append_message()`).
         enable_cancel
             Whether to show a stop button during streaming that allows the user to
             cancel the in-progress response. When ``True``, the chat UI shows a stop
@@ -2238,6 +2269,29 @@ class ChatExpress(Chat):
             The footer text is styled slightly smaller and lighter than body text
             by default. Customize with CSS properties ``--shiny-chat-footer-font-size``
             and ``--shiny-chat-footer-color`` on the chat container or footer element.
+        tool_grouping
+            Controls how tool calls are grouped together in the UI:
+
+            - ``"tool"`` (default): calls to the *same* tool within a
+              tool-calling loop are grouped into a single activity row.
+              This groups by tool name across the whole loop, not just
+              consecutive calls -- e.g. calls to tools ``X``, ``Y``, ``Z``,
+              ``X``, ``Y`` (in that order) are grouped into ``X`` (2 calls),
+              ``Y`` (2 calls), and ``Z`` (1 call).
+            - ``"all"``: every tool call within a tool-calling loop is
+              grouped into a single activity row, regardless of tool name.
+            - ``"none"``: each tool call is shown in its own activity row.
+
+            Prose or thinking between calls starts a new tool-calling loop, so
+            grouping never crosses those transcript boundaries.
+
+            Individual tools can override this via a ``grouping`` tool
+            annotation. For chatlas tools, prefer
+            ``annotations={"extra": {"grouping": ...}}``: a top-level
+            ``grouping`` key is also read, but it isn't part of chatlas'
+            ``ToolAnnotations``, so type checkers reject it. Chat-level
+            ``"none"`` always disables grouping, even when a tool annotation
+            requests ``"tool"`` or ``"all"``.
         kwargs
             Additional attributes for the chat container element.
         """
@@ -2258,6 +2312,7 @@ class ChatExpress(Chat):
             submit_key=submit_key,
             allow_attachments=allow_attachments,
             footer=footer,
+            tool_grouping=tool_grouping,
             **kwargs,
         )
 
@@ -2314,6 +2369,22 @@ class ChatExpress(Chat):
         return super().enable_bookmarking(client, bookmark_on=bookmark_on)
 
 
+def _resolve_icon_attr(
+    icon: "HTML | Tag | TagList | bool | None",
+) -> "str | None":
+    """Translate an icon value into its wire attribute.
+
+    ``False`` removes the icon (wire ``""``, which the client reads as "no
+    icon"); ``True``/``None`` defer to the default (attribute omitted);
+    anything else is stringified HTML.
+    """
+    if icon is None or icon is True:
+        return None
+    if icon is False:
+        return ""
+    return str(icon)
+
+
 def _container_style(width: "str | None", height: "str | None") -> "str | None":
     # `width` is emitted as a pseudo-private custom property consumed by
     # `.shiny-chat-wrapper` (as max-width), so the container itself stays
@@ -2338,11 +2409,12 @@ def chat_ui(
     width: "CssUnit" = "min(680px, 100%)",
     height: "CssUnit" = "auto",
     fill: bool = True,
-    icon_assistant: Optional[HTML | Tag | TagList] = None,
+    icon_assistant: Optional[HTML | Tag | TagList | bool] = None,
     enable_cancel: "bool | MISSING_TYPE" = MISSING,
     submit_key: 'Literal["enter", "enter+modifier"]' = "enter",
     allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
     footer: Optional[TagChild] = None,
+    tool_grouping: 'Literal["none", "tool", "all"]' = "tool",
     **kwargs: TagAttrValue,
 ) -> Tag:
     """
@@ -2394,8 +2466,10 @@ def chat_ui(
         Whether the chat should vertically take available space inside a fillable container.
     icon_assistant
             The icon to use for the assistant chat messages. Can be a HTML or a tag in
-            the form of :class:`~htmltools.HTML` or :class:`~htmltools.Tag`. If `None`,
-            a default robot icon is used.
+            the form of :class:`~htmltools.HTML` or :class:`~htmltools.Tag`. If `None`
+            (or `True`), a default robot icon is used. Pass `False` to remove the
+            assistant icon entirely (individual messages can still opt back in via
+            the `icon` argument of `.append_message()`).
     enable_cancel
         Whether to show a stop button during streaming that allows the user to
         cancel the in-progress response. When ``True``, the chat UI shows a stop
@@ -2440,6 +2514,28 @@ def chat_ui(
         The footer text is styled slightly smaller and lighter than body text
         by default. Customize with CSS properties ``--shiny-chat-footer-font-size``
         and ``--shiny-chat-footer-color`` on the chat container or footer element.
+    tool_grouping
+        Controls how tool calls are grouped together in the UI:
+
+        - ``"tool"`` (default): calls to the *same* tool within a tool-calling
+          loop are grouped into a single activity row.
+          This groups by tool name across the whole loop, not just
+          consecutive calls -- e.g. calls to tools ``X``, ``Y``, ``Z``, ``X``,
+          ``Y`` (in that order) are grouped into ``X`` (2 calls), ``Y``
+          (2 calls), and ``Z`` (1 call).
+        - ``"all"``: every tool call within a tool-calling loop is
+          grouped into a single activity row, regardless of tool name.
+        - ``"none"``: each tool call is shown in its own activity row.
+
+        Prose or thinking between calls starts a new tool-calling loop, so
+        grouping never crosses those transcript boundaries.
+
+        Individual tools can override this via a ``grouping`` tool annotation.
+        For chatlas tools, prefer ``annotations={"extra": {"grouping": ...}}``:
+        a top-level ``grouping`` key is also read, but it isn't part of
+        chatlas' ``ToolAnnotations``, so type checkers reject it. Chat-level
+        ``"none"`` always disables grouping, even when a tool annotation
+        requests ``"tool"`` or ``"all"``.
     kwargs
         Additional attributes for the chat container element.
     """
@@ -2449,9 +2545,16 @@ def chat_ui(
 
     id = resolve_id(id)
 
-    icon_attr = None
-    if icon_assistant is not None:
-        icon_attr = str(icon_assistant)
+    # The client silently falls back to "tool" for an unrecognized value, so
+    # catch typos here instead of shipping the wrong grouping mode. (Also
+    # covers `ChatExpress.ui()`, which delegates here.)
+    if tool_grouping not in ("none", "tool", "all"):
+        raise ValueError(
+            '`tool_grouping` must be one of "none", "tool", or "all", '
+            f"not {tool_grouping!r}."
+        )
+
+    icon_attr = _resolve_icon_attr(icon_assistant)
 
     icon_deps = None
     if isinstance(icon_assistant, (Tag, TagList)):
@@ -2461,13 +2564,15 @@ def chat_ui(
     if messages is None:
         messages = []
     for x in messages:
-        msg = message_content(x)
+        msg = normalize_message(x)
         message_tags.append(
             Tag(
                 "shiny-chat-message",
                 *msg.html_deps,
                 content=msg.content,
-                icon=icon_attr,
+                # The assistant default must not leak onto user messages, which
+                # render `message.icon` directly (no assistant fallback chain).
+                icon=icon_attr if msg.role != "user" else None,
                 data_role=msg.role,
             )
         )
@@ -2540,6 +2645,7 @@ def chat_ui(
         # we know the default icon has changed
         icon_assistant=icon_attr,
         submit_key=submit_key if submit_key != "enter" else None,
+        tool_grouping=tool_grouping if tool_grouping != "tool" else None,
         **kwargs,
     )
 
@@ -2600,15 +2706,6 @@ class MessageStream:
             message_chunk,
             stream_id=self._stream_id,
         )
-
-
-def is_tool_result(val: object) -> "TypeGuard[chatlas.ContentToolResult]":
-    try:
-        from chatlas.types import ContentToolResult
-
-        return isinstance(val, ContentToolResult)
-    except ImportError:
-        return False
 
 
 CHAT_INSTANCES: WeakValueDictionary[str, Chat] = WeakValueDictionary()

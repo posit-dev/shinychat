@@ -75,12 +75,16 @@ def _make_matrix_controller() -> tuple[
     return controller, store
 
 
-async def _seed(controller: HistoryController, setup: dict[str, Any]) -> dict[str, str]:
+async def _seed(
+    controller: HistoryController, setup: dict[str, Any]
+) -> dict[str, str]:
     n = setup.get("conversations", 1) if setup.get("turns", 0) > 0 else 0
     ids: list[str] = []
     for i in range(n):
         await controller.on_response()
-        assert controller.record is not None, "setup must produce an active record"
+        assert controller.record is not None, (
+            "setup must produce an active record"
+        )
         ids.append(controller.record.id)
         if i < n - 1:
             await controller.new_chat()

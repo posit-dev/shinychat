@@ -1,0 +1,36 @@
+{
+  "request": "<shiny-tool-request data-shinychat-react=\"\" request-id=\"wire-1\" tool-name=\"search\" tool-title=\"Searching\" icon=\"&lt;i&gt;search&lt;/i&gt;\" intent=\"Find docs\" arguments=\"{&quot;q&quot;:&quot;shiny&quot;}\" grouping=\"all\"></shiny-tool-request>",
+  "result": "<shiny-tool-result data-shinychat-react=\"\" request-id=\"wire-1\" tool-name=\"search\" tool-title=\"Searched\" icon=\"&lt;i&gt;done&lt;/i&gt;\" intent=\"Find docs\" request-call=\"search(q=&quot;shiny&quot;)\" status=\"success\" value=\"Result body\" value-type=\"markdown\" show-request=\"\" expanded=\"\" footer=\"&lt;span&gt;footer&lt;/span&gt;\" full-screen=\"\" grouping=\"all\" label=\"docs\" value-preview=\"3 results\"></shiny-tool-result>",
+  "expected": {
+    "request": {
+      "kind": "request",
+      "requestId": "wire-1",
+      "toolName": "search",
+      "grouping": "all",
+      "intent": "Find docs",
+      "definitionTitle": "Searching",
+      "definitionIcon": "<i>search</i>",
+      "arguments": "{\"q\":\"shiny\"}"
+    },
+    "result": {
+      "kind": "result",
+      "requestId": "wire-1",
+      "toolName": "search",
+      "grouping": "all",
+      "intent": "Find docs",
+      "title": "Searched",
+      "icon": "<i>done</i>",
+      "status": "success",
+      "label": "docs",
+      "valuePreview": "3 results",
+      "value": "Result body",
+      "valueType": "markdown",
+      "requestCall": "search(q=\"shiny\")",
+      "showRequest": true,
+      "fullScreen": true,
+      "expanded": true,
+      "customDisplay": false,
+      "footer": "<span>footer</span>"
+    }
+  }
+}

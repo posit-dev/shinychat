@@ -56,9 +56,9 @@ function ContentExtraText({
 }
 
 export interface ToolResultProps {
-  requestId: string
   toolName: string
   toolTitle?: string
+  label?: string
   intent?: string
   status: string
   value: string
@@ -72,9 +72,9 @@ export interface ToolResultProps {
 }
 
 export const ToolResult = memo(function ToolResult({
-  requestId,
   toolName,
   toolTitle,
+  label,
   intent,
   status,
   value,
@@ -92,18 +92,17 @@ export const ToolResult = memo(function ToolResult({
   const isError = status === "error"
   const classStatus = isError ? "text-danger" : ""
   const icon = isError ? exclamationCircleFill : iconProp
-  const titleTemplate = isError ? "{title} failed" : "{title}"
 
   return (
     <>
       <ToolCard
-        requestId={requestId}
         toolName={toolName}
         toolTitle={toolTitle}
+        label={label}
         intent={intent}
         icon={icon}
         classStatus={classStatus}
-        titleTemplate={titleTemplate}
+        statusNote={isError ? "failed" : undefined}
         fullScreen={fullScreen}
         initialExpanded={expanded}
         footer={footer}
@@ -111,7 +110,11 @@ export const ToolResult = memo(function ToolResult({
         cardRef={cardRef}
       >
         {renderRequest(requestCall, showRequest)}
-        {renderResult(value, valueType, showRequest)}
+        <ToolResultValue
+          value={value}
+          valueType={valueType}
+          showRequest={showRequest}
+        />
       </ToolCard>
       {overlay}
     </>
@@ -154,11 +157,21 @@ function renderRequest(
   )
 }
 
-function renderResult(
-  value: string,
-  valueType: string,
-  showRequest: boolean,
-): React.ReactNode {
+/**
+ * The Tier-3 value: maps `value`/`valueType` to rendered content. Exported so
+ * `ToolGroup` can reuse the exact same path for a migrated custom-display
+ * payload — that path is `valueType === "html"` with `showRequest` false,
+ * which is already the one case below that returns with no card chrome.
+ */
+export function ToolResultValue({
+  value,
+  valueType,
+  showRequest,
+}: {
+  value: string
+  valueType: string
+  showRequest: boolean
+}): React.ReactNode {
   const displayValue = value || "[Empty result]"
 
   let resultContent: React.ReactNode

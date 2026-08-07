@@ -33,6 +33,8 @@
       i You can also use `markdown` or `text` items in `display` to show Markdown or plain text, respectively.
     Output
       list()
+      attr(,"class")
+      [1] "shinychat_tool_result_display"
 
 ---
 
@@ -41,9 +43,11 @@
     Condition
       Warning:
       Invalid `@extra$display` format for `ContentToolResult` from `test-tool()` (call id: test-id).
-      x Expected a list with fields `html`, `markdown`, `text`, `show_request`, `open`, `full_screen`, `title`, `icon`, or `footer`, not a string.
+      x Expected a list with fields `title`, `icon`, `html`, `markdown`, `text`, `show_request`, `open`, `full_screen`, `footer`, `label`, or `value_preview`, not a string.
     Output
       list()
+      attr(,"class")
+      [1] "shinychat_tool_result_display"
 
 # throws when a result does not have a `request` property
 

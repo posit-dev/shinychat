@@ -1,19 +1,25 @@
-import { useState, useMemo, type ReactNode, type Ref } from "react"
-import { wrenchAdjustable, plus } from "../utils/icons"
+import { useState, useMemo, useId, type ReactNode, type Ref } from "react"
+import { bareDot, plus } from "../utils/icons"
 import { fullscreenEnter } from "./useFullscreen"
 import { RawHTML } from "./RawHTML"
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
 
 const plusDSIH = { __html: plus }
 const fullscreenEnterDSIH = { __html: fullscreenEnter }
 
 export interface ToolCardProps {
-  requestId: string
   toolName: string
   toolTitle?: string
+  /** The per-call identifying value, appended as "{title}: {label}". */
+  label?: string
   intent?: string
   icon?: string
   classStatus?: string
-  titleTemplate?: string
+  /** A short text status cue (e.g. "failed") shown in the header, so status is not conveyed by color alone. */
+  statusNote?: string
   fullScreen?: boolean
   initialExpanded?: boolean
   footer?: string
@@ -23,13 +29,13 @@ export interface ToolCardProps {
 }
 
 export function ToolCard({
-  requestId,
   toolName,
   toolTitle,
+  label,
   intent,
   icon,
   classStatus = "",
-  titleTemplate = "{title}",
+  statusNote,
   fullScreen = false,
   initialExpanded = false,
   footer,
@@ -39,14 +45,18 @@ export function ToolCard({
 }: ToolCardProps) {
   const [expanded, setExpanded] = useState(initialExpanded)
 
-  const headerId = `tool-header-${requestId}`
-  const contentId = `tool-content-${requestId}`
-  const iconHtml = icon || wrenchAdjustable
+  // Not derived from the tool's `request-id`: that is optional in routed
+  // content (anonymous calls get a loop-local synthetic id) and can repeat
+  // across messages, which would produce duplicate document ids.
+  const uid = useId()
+  const headerId = `tool-header${uid}`
+  const contentId = `tool-content${uid}`
+  const iconHtml = icon || bareDot
   const displayName = toolTitle || `${toolName}()`
-  const formattedTitle = titleTemplate.replace(
-    "{title}",
-    `<span class="tool-title-name">${displayName}</span>`,
-  )
+  const labelPart = label
+    ? `: <span class="tool-title-label">${escapeHtml(label)}</span>`
+    : ""
+  const formattedTitle = `<span class="tool-title-name">${displayName}</span>${labelPart}`
 
   // Memoize dangerouslySetInnerHTML objects so React 19 sees stable
   // references and skips unnecessary innerHTML resets on re-render.
@@ -92,6 +102,13 @@ export function ToolCard({
           className={`tool-title${classStatus ? ` ${classStatus}` : ""}`}
           dangerouslySetInnerHTML={titleDSIH}
         />
+        {statusNote && (
+          <div
+            className={`tool-status-note${classStatus ? ` ${classStatus}` : ""}`}
+          >
+            {statusNote}
+          </div>
+        )}
         <div className="tool-spacer" />
         {intent && <div className="tool-intent">{intent}</div>}
         <div
@@ -123,6 +140,7 @@ export function ToolCard({
           html={footer}
           className="card-footer"
           displayContents={false}
+          fillable={false}
         />
       )}
     </div>

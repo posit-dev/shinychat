@@ -347,4 +347,53 @@ describe("ChatApp integration: editable messages gated by history state", () => 
       "next",
     )
   })
+
+  it("disables sibling navigation until the server acknowledges it", async () => {
+    mockMatchMedia(false)
+    const transport = createMockTransport()
+    renderChatApp(transport)
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+      })
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "user",
+          segments: [{ content: "hello", content_type: "markdown" }],
+        },
+      })
+      transport.fire("test-chat", {
+        type: "update_siblings",
+        data: { 0: { index: 0, total: 2 } },
+      })
+    })
+
+    const previous = screen.getByRole("button", {
+      name: /previous version/i,
+    })
+    const next = screen.getByRole("button", { name: /next version/i })
+    expect(previous).toHaveProperty("disabled", true)
+    expect(next).toHaveProperty("disabled", false)
+
+    fireEvent.click(next)
+
+    expect(previous).toHaveProperty("disabled", true)
+    expect(next).toHaveProperty("disabled", true)
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+      })
+    })
+
+    expect(next).toHaveProperty("disabled", false)
+  })
 })

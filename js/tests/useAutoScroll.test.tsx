@@ -53,11 +53,33 @@ function createMockScrollContainer(
  * Simulates a scroll event by overriding scrollTop and dispatching a scroll event.
  */
 function simulateScroll(element: HTMLElement, newScrollTop: number): void {
+  moveScrollTopSilently(element, newScrollTop)
+  element.dispatchEvent(new Event("scroll"))
+}
+
+/**
+ * Moves scrollTop *without* dispatching a scroll event, emulating a scroll whose
+ * event has not been delivered yet. Firefox dispatches scroll events from a
+ * paint tick, which can lag arbitrarily under load.
+ */
+function moveScrollTopSilently(
+  element: HTMLElement,
+  newScrollTop: number,
+): void {
   Object.defineProperty(element, "scrollTop", {
     get: () => newScrollTop,
     configurable: true,
   })
-  element.dispatchEvent(new Event("scroll"))
+}
+
+/**
+ * Grows the container's scrollHeight, emulating a rendered content chunk.
+ */
+function growContent(element: HTMLElement, newScrollHeight: number): void {
+  Object.defineProperty(element, "scrollHeight", {
+    get: () => newScrollHeight,
+    configurable: true,
+  })
 }
 
 describe("useAutoScroll", () => {
@@ -225,6 +247,111 @@ describe("useAutoScroll", () => {
         simulateScroll(element, 500)
       })
       expect(result.current.stickToBottom).toBe(true)
+    })
+
+    it("re-pins on repinIfAtBottom when parked at the bottom with no scroll event delivered", () => {
+      // Regression test for posit-dev/py-shiny#2378. The scroll handler reads
+      // geometry when its event is *delivered*, so if a content chunk grows
+      // scrollHeight first, the same position no longer reads as "at bottom" and
+      // auto-scroll silently disengages forever.
+      const element = createMockScrollContainer({
+        scrollTop: 500,
+        scrollHeight: 1000,
+        clientHeight: 500,
+      })
+
+      const { result } = renderHook(() =>
+        useAutoScroll({
+          streaming: true,
+          contentDependency: [],
+        }),
+      )
+
+      act(() => {
+        result.current.containerRef(element)
+      })
+
+      // User scrolls up: unpinned.
+      act(() => {
+        simulateScroll(element, 0)
+      })
+      expect(result.current.stickToBottom).toBe(false)
+
+      // User scrolls back to the bottom, but the scroll event has not been
+      // dispatched yet.
+      moveScrollTopSilently(element, 500)
+
+      // A chunk arrives. Deciding from live geometry *now* — before the DOM
+      // grows — sees the user parked at the bottom.
+      act(() => {
+        result.current.repinIfAtBottom()
+      })
+      expect(result.current.stickToBottom).toBe(true)
+
+      // The chunk renders, and only then does the stale scroll event land. It
+      // must not undo the re-pin.
+      growContent(element, 1500)
+      act(() => {
+        simulateScroll(element, 500)
+      })
+      expect(result.current.stickToBottom).toBe(true)
+    })
+
+    it("keeps stickToBottom engaged when repinIfAtBottom runs mid-scroll-animation", () => {
+      // Chunks routinely arrive faster than the smooth scroll animation
+      // finishes, so the container is usually *not* at the bottom when the next
+      // one lands. repinIfAtBottom must only ever re-engage, never disengage.
+      const element = createMockScrollContainer({
+        scrollTop: 500,
+        scrollHeight: 1500,
+        clientHeight: 500,
+      })
+
+      const { result } = renderHook(() =>
+        useAutoScroll({
+          streaming: true,
+          contentDependency: [],
+        }),
+      )
+
+      act(() => {
+        result.current.containerRef(element)
+      })
+      expect(result.current.stickToBottom).toBe(true)
+
+      act(() => {
+        result.current.repinIfAtBottom()
+      })
+      expect(result.current.stickToBottom).toBe(true)
+    })
+
+    it("does not re-pin on repinIfAtBottom while the user is scrolled away", () => {
+      const element = createMockScrollContainer({
+        scrollTop: 500,
+        scrollHeight: 1000,
+        clientHeight: 500,
+      })
+
+      const { result } = renderHook(() =>
+        useAutoScroll({
+          streaming: true,
+          contentDependency: [],
+        }),
+      )
+
+      act(() => {
+        result.current.containerRef(element)
+      })
+
+      act(() => {
+        simulateScroll(element, 0)
+      })
+      expect(result.current.stickToBottom).toBe(false)
+
+      act(() => {
+        result.current.repinIfAtBottom()
+      })
+      expect(result.current.stickToBottom).toBe(false)
     })
 
     it("uses custom bottomTolerance", () => {

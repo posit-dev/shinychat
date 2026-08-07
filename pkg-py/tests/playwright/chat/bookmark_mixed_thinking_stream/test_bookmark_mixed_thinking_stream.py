@@ -16,14 +16,18 @@ def _assert_all_three(page: Page) -> None:
         thinking_header.locator("span.shinychat-thinking-label")
     ).to_be_visible(timeout=5_000)
     # markdown segment rendered as <strong>
-    expect(content.locator("strong", has_text="hello")).to_be_visible(timeout=10_000)
+    expect(content.locator("strong", has_text="hello")).to_be_visible(
+        timeout=10_000
+    )
     # html segment with its CSS dep
     card = page.locator(".custom-styled-card")
     expect(card).to_be_visible(timeout=10_000)
     expect(card).to_have_css("border-color", "rgb(255, 0, 0)", timeout=5_000)
 
 
-def test_mixed_thinking_survives_bookmark(page: Page, local_app: ShinyAppProc) -> None:
+def test_mixed_thinking_survives_bookmark(
+    page: Page, local_app: ShinyAppProc
+) -> None:
     page.goto(local_app.url)
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30_000)

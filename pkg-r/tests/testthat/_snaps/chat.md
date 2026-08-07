@@ -81,3 +81,21 @@
         <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
       </shiny-chat-container>
 
+# chat_ui() emits tool-grouping only when non-default
+
+    Code
+      chat_ui("chat", tool_grouping = "all")
+    Output
+      <shiny-chat-container class="html-fill-item html-fill-container" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill id="chat" max-attachment-size="31457280" placeholder="Enter a message..." style="--_chat-width:min(680px, 100%);height:auto;" tool-grouping="all">
+        <shiny-chat-messages></shiny-chat-messages>
+        <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
+      </shiny-chat-container>
+
+# chat_ui() errors for an invalid tool_grouping value
+
+    Code
+      chat_ui("chat", tool_grouping = "invalid")
+    Condition
+      Error in `chat_ui()`:
+      ! `tool_grouping` must be one of "tool", "none", or "all", not "invalid".
+

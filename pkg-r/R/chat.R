@@ -201,7 +201,9 @@ chat_greeting <- function(
 #'   [fillable](https://rstudio.github.io/bslib/articles/filling/index.html)
 #' @param icon_assistant The icon to use for the assistant chat messages.
 #'   Can be HTML or a tag in the form of [htmltools::HTML()] or
-#'   [htmltools::tags()]. If `None`, a default robot icon is used.
+#'   [htmltools::tags()]. If `NULL` (or `TRUE`), a default robot icon is used.
+#'   Pass `FALSE` to remove the assistant icon entirely (individual messages
+#'   can still opt back in via the `icon` argument of [chat_append()]).
 #' @param enable_cancel Whether to show a stop button during streaming that
 #'   allows the user to cancel the in-progress response. When using
 #'   [chat_server()], cancellation is wired up automatically and this defaults
@@ -242,6 +244,25 @@ chat_greeting <- function(
 #'   The footer text is styled slightly smaller and lighter than body text
 #'   by default. Customize with CSS properties `--shiny-chat-footer-font-size`
 #'   and `--shiny-chat-footer-color` on the chat container or footer element.
+#' @param tool_grouping Controls how tool calls are grouped together in the
+#'   compact activity rows:
+#'   * `"tool"` (default): calls to the *same* tool within a turn's
+#'     contiguous tool loop are grouped into one activity row. This groups by
+#'     tool name across the whole loop, not just consecutive
+#'     calls -- e.g. calls to tools `X`, `Y`, `Z`, `X`, `Y` (in that order)
+#'     are grouped into `X` (2 calls), `Y` (2 calls), and `Z` (1 call).
+#'   * `"all"`: every tool call within a contiguous tool loop is summarized in
+#'     one activity row, regardless of tool name.
+#'   * `"none"`: each tool call is shown in its own activity row. Its request
+#'     and result remain available by drilling into that row; this does not
+#'     restore an always-visible card stack.
+#'
+#'   Prose or thinking between tool calls starts a new tool loop, so calls on
+#'   opposite sides of either boundary never group together. Individual tools can
+#'   override `"tool"` or `"all"` via a top-level `grouping` tool annotation,
+#'   e.g. `ellmer::tool(..., annotations = ellmer::tool_annotations(grouping = "all"))`.
+#'   `tool_grouping = "none"` takes precedence over every annotation and disables
+#'   grouping for the whole chat.
 #' @section Thinking display:
 #'
 #' When a model produces reasoning or "thinking" tokens, shinychat renders them
@@ -323,14 +344,18 @@ chat_ui <- function(
   enable_cancel = NULL,
   submit_key = c("enter", "enter+modifier"),
   allow_attachments = NULL,
-  footer = NULL
+  footer = NULL,
+  tool_grouping = c("tool", "none", "all")
 ) {
   submit_key <- rlang::arg_match(submit_key)
+  tool_grouping <- rlang::arg_match(tool_grouping)
 
   attrs <- rlang::list2(...)
   if (!all(nzchar(rlang::names2(attrs)))) {
     rlang::abort("All arguments in ... must be named.")
   }
+
+  icon_attr <- resolve_icon_attr(icon_assistant)
 
   message_tags <- lapply(messages, function(x) {
     role <- "assistant"
@@ -355,7 +380,9 @@ chat_ui <- function(
       rlang::list2(
         `data-role` = role,
         content = ui[["html"]],
-        icon = if (!is.null(icon_assistant)) as.character(icon_assistant),
+        # The assistant default must not leak onto user messages, which render
+        # `message.icon` directly (no assistant fallback chain).
+        icon = if (!identical(role, "user")) icon_attr,
         ui[["dependencies"]],
       )
     )
@@ -452,14 +479,13 @@ chat_ui <- function(
         NULL
       },
       `submit-key` = if (submit_key != "enter") submit_key,
+      `tool-grouping` = if (tool_grouping != "tool") tool_grouping,
       `allow-attachments` = attachment_attrs$allow,
       `attachment-accept` = attachment_attrs$accept,
       `max-attachment-size` = max_attachment_size,
       # Also include icon on the parent so that when messages are dynamically added,
       # we know the default icon has changed
-      `icon-assistant` = if (!is.null(icon_assistant)) {
-        as.character(icon_assistant)
-      },
+      `icon-assistant` = resolve_icon_attr(icon_assistant),
       greeting = greeting_attr,
       ...,
       tag("shiny-chat-messages", message_tags),
@@ -614,7 +640,8 @@ resolve_aside_favicon <- function() {
 #'   to "assistant".
 #' @param icon An optional icon to display next to the message, currently only
 #'   used for assistant messages. The icon can be any HTML element (e.g., an
-#'   [htmltools::img()] tag) or a string of HTML.
+#'   [htmltools::img()] tag) or a string of HTML. Pass `FALSE` to remove the
+#'   icon for this message, or `TRUE` to use the default icon.
 #' @param session The Shiny session object
 #'
 #' @returns Returns a promise that resolves to the contents of the stream, or an
@@ -697,7 +724,8 @@ chat_append <- function(
 #'   content. Ignored if `chunk` is `FALSE`.
 #' @param icon An optional icon to display next to the message, currently only
 #'   used for assistant messages. The icon can be any HTML element (e.g.,
-#'   [htmltools::img()] tag) or a string of HTML.
+#'   [htmltools::img()] tag) or a string of HTML. Pass `FALSE` to remove the
+#'   icon for this message, or `TRUE` to use the default icon.
 #' @param session The Shiny session object
 #'
 #' @returns Returns nothing (\code{invisible(NULL)}).
@@ -825,7 +853,7 @@ chat_append_message <- function(
 
   html_deps <- ui[["deps"]]
 
-  icon_str <- if (!is.null(icon)) as.character(icon) else NULL
+  icon_str <- resolve_icon_attr(icon)
 
   if (chunk_type == "start") {
     message_payload <- list(
@@ -996,22 +1024,7 @@ rlang::on_load(
 
       res$add(msg)
 
-      if (S7::S7_inherits(msg, ellmer::ContentToolResult)) {
-        if (!is.null(msg@request)) {
-          send_chat_action(
-            id,
-            action = list(
-              type = "hide_tool_request",
-              requestId = msg@request@id
-            ),
-            session = session
-          )
-        }
-      }
-
-      if (S7::S7_inherits(msg, ellmer::Content)) {
-        msg <- contents_shinychat(msg)
-      }
+      msg <- contents_shinychat_wrapped(msg)
 
       chat_append_(msg)
     }

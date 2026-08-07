@@ -35,7 +35,9 @@ def test_slash_command_fires_handler(page: Page, local_app: ShinyAppProc):
     ctrl.expect_latest_message("Hello! You said: world", timeout=10_000)
 
 
-def test_slash_command_does_not_fire_on_user_submit(page: Page, local_app: ShinyAppProc):
+def test_slash_command_does_not_fire_on_user_submit(
+    page: Page, local_app: ShinyAppProc
+):
     page.goto(local_app.url)
     ctrl = ChatController(page, "chat")
     expect(ctrl.loc).to_be_visible(timeout=30_000)
@@ -55,7 +57,9 @@ def test_slash_command_does_not_fire_on_user_submit(page: Page, local_app: Shiny
     assert not any("Echo:" in m for m in messages)
 
 
-def test_regular_message_bypasses_slash_commands(page: Page, local_app: ShinyAppProc):
+def test_regular_message_bypasses_slash_commands(
+    page: Page, local_app: ShinyAppProc
+):
     page.goto(local_app.url)
     ctrl = ChatController(page, "chat")
     expect(ctrl.loc).to_be_visible(timeout=30_000)
@@ -79,17 +83,23 @@ def test_slash_palette_keyboard_navigation(page: Page, local_app: ShinyAppProc):
     expect(palette).to_be_visible()
 
     first_item = palette.locator(".shiny-chat-slash-palette-item").first
-    expect(first_item).to_have_class("shiny-chat-slash-palette-item highlighted")
+    expect(first_item).to_have_class(
+        "shiny-chat-slash-palette-item highlighted"
+    )
 
     page.keyboard.press("ArrowDown")
     second_item = palette.locator(".shiny-chat-slash-palette-item").nth(1)
-    expect(second_item).to_have_class("shiny-chat-slash-palette-item highlighted")
+    expect(second_item).to_have_class(
+        "shiny-chat-slash-palette-item highlighted"
+    )
 
     page.keyboard.press("Escape")
     expect(palette).not_to_be_visible()
 
 
-def test_unrecognized_slash_sent_as_regular_input(page: Page, local_app: ShinyAppProc):
+def test_unrecognized_slash_sent_as_regular_input(
+    page: Page, local_app: ShinyAppProc
+):
     page.goto(local_app.url)
     ctrl = ChatController(page, "chat")
     expect(ctrl.loc).to_be_visible(timeout=30_000)
@@ -113,7 +123,9 @@ def test_slash_palette_filter(page: Page, local_app: ShinyAppProc):
     palette = page.locator(".shiny-chat-slash-palette")
     expect(palette).to_be_visible()
     expect(palette.locator(".shiny-chat-slash-palette-item")).to_have_count(1)
-    expect(palette.locator(".shiny-chat-slash-palette-name")).to_have_text("/greet")
+    expect(palette.locator(".shiny-chat-slash-palette-name")).to_have_text(
+        "/greet"
+    )
 
 
 def test_client_side_slash_command_echo(page: Page, local_app: ShinyAppProc):

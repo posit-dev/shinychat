@@ -94,7 +94,7 @@ describe("server-shaped chat payloads", () => {
       })
     })
 
-    expect(document.querySelector(".shiny-tool-result")).toBeTruthy()
+    expect(document.querySelector(".shiny-tool-card")).toBeTruthy()
     expect(document.body.textContent).toContain("[Empty result]")
     expect(document.body.textContent).not.toContain("Tool call")
     expect(document.querySelector(".card-footer")).toBeNull()

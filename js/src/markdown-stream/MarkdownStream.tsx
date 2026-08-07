@@ -45,7 +45,7 @@ export function MarkdownStream({
   // Auto-scroll: the hook gives us a callback ref for the scrollable container.
   // In standalone mode we don't own the scrollable ancestor, so we do a one-time
   // DOM walk on mount and wire the callback ref to the found element.
-  const { containerRef, scrollToBottom } = useAutoScroll({
+  const { containerRef, scrollToBottom, repinIfAtBottom } = useAutoScroll({
     streaming: autoScroll && streaming,
     contentDependency: content,
   })
@@ -84,9 +84,16 @@ export function MarkdownStream({
     }
   }, [streaming, autoScroll, scrollToBottom])
 
-  const appendContent = useCallback((chunk: string) => {
-    setContent((prev) => prev + chunk)
-  }, [])
+  const appendContent = useCallback(
+    (chunk: string) => {
+      // Settle pinnedness here, before React grows the DOM: at this point
+      // "at the bottom" is unambiguous. Leaving it to the scroll handler alone
+      // loses the race whenever the scroll event lands after the growth.
+      repinIfAtBottom()
+      setContent((prev) => prev + chunk)
+    },
+    [repinIfAtBottom],
+  )
 
   const replaceContent = useCallback((newContent: string) => {
     setContent(newContent)

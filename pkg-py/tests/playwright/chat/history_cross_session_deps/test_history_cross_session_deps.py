@@ -35,7 +35,9 @@ def test_html_deps_reregister_across_sessions(
     chat.set_user_input("first question")
     chat.send_user_input(method="enter")
     expect(
-        page.locator(".shiny-chat-message-content", has_text="echo: first question")
+        page.locator(
+            ".shiny-chat-message-content", has_text="echo: first question"
+        )
     ).to_be_visible(timeout=30_000)
 
     expect(card).to_be_visible(timeout=10_000)
@@ -59,7 +61,9 @@ def test_html_deps_reregister_across_sessions(
 
     # Transcript (including the streamed reply) is restored.
     expect(
-        page.locator(".shiny-chat-message-content", has_text="echo: first question")
+        page.locator(
+            ".shiny-chat-message-content", has_text="echo: first question"
+        )
     ).to_be_visible(timeout=30_000)
 
     # CRITICAL: the non-streaming path's HTMLDependency must be re-sent to

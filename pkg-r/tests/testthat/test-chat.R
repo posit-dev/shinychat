@@ -69,7 +69,75 @@ test_that("chat_ui configures derived aside favicons from the environment", {
 
   Sys.setenv(SHINYCHAT_ASIDE_FAVICON = "sometimes")
   expect_error(chat_ui("chat"), "SHINYCHAT_ASIDE_FAVICON")
-  expect_false("aside_favicon" %in% names(formals(chat_ui)))
+})
+
+test_that("chat_ui() emits tool-grouping only when non-default", {
+  ui_default <- chat_ui("chat")
+  expect_null(ui_default$attribs[["tool-grouping"]])
+
+  ui_tool <- chat_ui("chat", tool_grouping = "tool")
+  expect_null(ui_tool$attribs[["tool-grouping"]])
+
+  ui_all <- chat_ui("chat", tool_grouping = "all")
+  expect_equal(ui_all$attribs[["tool-grouping"]], "all")
+
+  ui_none <- chat_ui("chat", tool_grouping = "none")
+  expect_equal(ui_none$attribs[["tool-grouping"]], "none")
+
+  expect_snapshot(chat_ui("chat", tool_grouping = "all"))
+})
+
+test_that("chat_ui() errors for an invalid tool_grouping value", {
+  expect_snapshot(
+    error = TRUE,
+    chat_ui("chat", tool_grouping = "invalid")
+  )
+})
+
+test_that("chat_ui(icon_assistant = FALSE) removes the icon", {
+  # FALSE removes the icon: the container and each message carry icon="".
+  ui <- chat_ui("chat", messages = list("Hello"), icon_assistant = FALSE)
+  expect_equal(ui$attribs[["icon-assistant"]], "")
+
+  html <- as.character(ui)
+  expect_match(html, 'icon-assistant=""', fixed = TRUE)
+  expect_match(html, 'icon=""', fixed = TRUE)
+})
+
+test_that("chat_ui(icon_assistant = TRUE/NULL) omits the icon attribute", {
+  ui_true <- chat_ui("chat", messages = list("Hello"), icon_assistant = TRUE)
+  expect_null(ui_true$attribs[["icon-assistant"]])
+  expect_no_match(as.character(ui_true), "icon-assistant", fixed = TRUE)
+
+  ui_null <- chat_ui("chat", messages = list("Hello"))
+  expect_null(ui_null$attribs[["icon-assistant"]])
+  expect_no_match(as.character(ui_null), "icon-assistant", fixed = TRUE)
+})
+
+test_that("chat_ui() does not put the assistant icon on user messages", {
+  # User messages render `icon` directly, so the assistant default must not be
+  # copied onto them (it would misattribute who said what).
+  ui <- chat_ui(
+    "chat",
+    messages = list(
+      list(role = "user", content = "Hi"),
+      list(role = "assistant", content = "Hello")
+    ),
+    icon_assistant = htmltools::HTML("<span>ROBOT</span>")
+  )
+
+  msgs <- strsplit(as.character(ui), "<shiny-chat-message ")[[1]]
+  expect_match(msgs[[2]], 'data-role="user"')
+  expect_false(grepl("ROBOT", msgs[[2]], fixed = TRUE))
+  expect_match(msgs[[3]], 'data-role="assistant"')
+  expect_true(grepl("ROBOT", msgs[[3]], fixed = TRUE))
+})
+
+test_that("resolve_icon_attr() translates the boolean sentinel", {
+  expect_null(resolve_icon_attr(NULL))
+  expect_null(resolve_icon_attr(TRUE))
+  expect_equal(resolve_icon_attr(FALSE), "")
+  expect_equal(resolve_icon_attr("<span>x</span>"), "<span>x</span>")
 })
 
 test_that("chat_append_stream() returns the stream contents as string if all text", {

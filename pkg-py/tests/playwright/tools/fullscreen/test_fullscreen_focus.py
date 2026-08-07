@@ -6,9 +6,13 @@ from shinychat.playwright import ChatController
 
 
 def _add_tool_result(page: Page) -> None:
-    """Click the button to add a tool result card and wait for it to appear."""
+    """Click the button to add a tool result card and wait for it to appear.
+
+    A single tool call rests as a condensed Tier-1 row; the app marks this one
+    ``expanded`` so the row opens and reveals the leaf card immediately.
+    """
     page.click("#add_tool")
-    expect(page.locator(".shiny-tool-result")).to_be_visible(timeout=10_000)
+    expect(page.locator(".shiny-tool-card")).to_be_visible(timeout=10_000)
 
 
 def _enter_fullscreen(page: Page) -> None:
