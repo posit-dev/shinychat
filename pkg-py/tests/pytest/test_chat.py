@@ -94,6 +94,7 @@ async def wait_for_stream(task: Any) -> str:
         with reactive.isolate():
             status = task.status()
         if status not in ("initial", "running"):
+            await reactive.flush()
             return status
         await asyncio.sleep(0)
 
@@ -587,6 +588,49 @@ async def test_managed_response_settles_history_once_after_stream_cleanup(
         "assistant",
         "assistant",
     ]
+
+
+@pytest.mark.anyio
+async def test_managed_response_settles_real_history_outside_extended_task():
+    with session_context(test_session):
+        chat = Chat("managed_real_history", history=False)
+        chat._store_message(stored_message("question", "user"))
+        store = InMemoryConversationStore()
+        save_state = reactive.Value("saved from reactive state")
+
+        def capture_app_state(values: dict[str, Any]) -> None:
+            values["state"] = save_state()
+
+        history_controller = HistoryController(
+            chat=chat,
+            adapter=TurnsAdapter(_StaticTurnsClient()),
+            store=store,
+            title_fn=None,
+            title_enabled=False,
+            client=None,
+            save_callbacks=[capture_app_state],
+        )
+        history_controller.partition = ConversationPartition(
+            chat_id="managed_real_history",
+            scope="test",
+        )
+        chat.history._controller = history_controller
+
+        async def response() -> AsyncIterator[str]:
+            yield "complete"
+
+        stream = await chat._start_message_stream(
+            response(),
+            on_settled=chat.history._response_settled,
+        )
+
+        assert await wait_for_stream(stream) == "success"
+        assert history_controller.record is not None
+        assert history_controller.record.response_count == 1
+        assert history_controller.transcript_offset == 2
+        assert history_controller.record.values == {
+            "state": "saved from reactive state"
+        }
 
 
 @pytest.mark.anyio

@@ -1382,31 +1382,33 @@ class Chat:
         # Run the stream in the background to get non-blocking behavior
         @reactive.extended_task
         async def _stream_task() -> str:
-            response_error: BaseException | None = None
-            try:
-                return await self._append_message_stream(message, icon=icon)
-            except BaseException as error:
-                response_error = error
-                raise
-            finally:
-                await self._settle_response(
-                    on_settled,
-                    response_error=response_error,
-                )
+            return await self._append_message_stream(message, icon=icon)
 
         _stream_task()
 
         self._latest_stream.set(_stream_task)
 
-        # Since the task runs in the background (outside/beyond the current context,
-        # if any), we need to manually raise any exceptions that occur
-        @reactive.effect
-        async def _handle_error():
-            e = _stream_task.error()
-            if e:
-                await self._raise_exception(e)
-            _handle_error.destroy()  # type: ignore
+        settle_effect: Effect_ | None = None
 
+        @reactive.effect
+        async def _settle_stream():
+            status = _stream_task.status()
+            if status in ("initial", "running"):
+                return
+
+            response_error = _stream_task.error() if status == "error" else None
+            try:
+                await self._settle_response(
+                    on_settled,
+                    response_error=response_error,
+                )
+                if response_error is not None:
+                    await self._raise_exception(response_error)
+            finally:
+                assert settle_effect is not None
+                settle_effect.destroy()
+
+        settle_effect = _settle_stream
         return _stream_task
 
     async def _settle_response(
