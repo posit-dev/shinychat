@@ -1,0 +1,73 @@
+[
+  {
+    "name": "complete_messages_and_attachment",
+    "operations": [
+      {"type":"message","role":"user","segments":[{"content":"Hi","content_type":"markdown"}],"attachments":[{"mime":"text/plain","data_url":"data:text/plain;base64,SGk=","name":"hi.txt","size":2}]},
+      {"type":"message","role":"assistant","segments":[{"content":"Hello","content_type":"text"}]}
+    ],
+    "expected": [
+      {"role":"user","segments":[{"content":"Hi","content_type":"markdown"}],"attachments":[{"mime":"text/plain","data_url":"data:text/plain;base64,SGk=","name":"hi.txt","size":2}]},
+      {"role":"assistant","segments":[{"content":"Hello","content_type":"text"}]}
+    ]
+  },
+  {
+    "name": "mixed_stream_and_dependencies",
+    "operations": [
+      {"type":"stream_start","role":"assistant","segments":[]},
+      {"type":"stream_chunk","content":"reasoning","content_type":"thinking","operation":"append"},
+      {"type":"stream_chunk","content":"answer","content_type":"markdown","operation":"append","html_deps":[{"name":"widget","version":"1.0.0"}]},
+      {"type":"stream_end"}
+    ],
+    "expected": [
+      {"role":"assistant","segments":[{"content":"reasoning","content_type":"thinking"},{"content":"answer","content_type":"markdown"}],"htmlDeps":[{"name":"widget","version":"1.0.0"}]}
+    ]
+  },
+  {
+    "name": "append_coalesces_matching_content_type",
+    "operations": [
+      {"type":"stream_start","role":"assistant","segments":[]},
+      {"type":"stream_chunk","content":"one","content_type":"markdown","operation":"append"},
+      {"type":"stream_chunk","content":" two","content_type":"markdown","operation":"append"},
+      {"type":"stream_end"}
+    ],
+    "expected": [{"role":"assistant","segments":[{"content":"one two","content_type":"markdown"}]}]
+  },
+  {
+    "name": "replace_resets_active_stream",
+    "operations": [
+      {"type":"stream_start","role":"assistant","segments":[]},
+      {"type":"stream_chunk","content":"draft","content_type":"markdown","operation":"append"},
+      {"type":"stream_chunk","content":"final","content_type":"html","operation":"replace"},
+      {"type":"stream_end"}
+    ],
+    "expected": [{"role":"assistant","segments":[{"content":"final","content_type":"html"}]}]
+  },
+  {
+    "name": "clear_discards_settled_and_active_state",
+    "operations": [
+      {"type":"message","role":"user","segments":[{"content":"Hi","content_type":"markdown"}]},
+      {"type":"stream_start","role":"assistant","segments":[]},
+      {"type":"stream_chunk","content":"draft","content_type":"markdown","operation":"append"},
+      {"type":"clear"}
+    ],
+    "expected": []
+  },
+  {
+    "name": "replay_replaces_transcript",
+    "operations": [
+      {"type":"message","role":"user","segments":[{"content":"discard","content_type":"markdown"}]},
+      {"type":"replay","messages":[{"role":"assistant","segments":[{"content":"restored","content_type":"markdown"}]}]}
+    ],
+    "expected": [{"role":"assistant","segments":[{"content":"restored","content_type":"markdown"}]}]
+  },
+  {
+    "name": "chunk_without_stream_is_invalid",
+    "operations": [{"type":"stream_chunk","content":"bad","content_type":"markdown","operation":"append"}],
+    "error": "Cannot apply a stream chunk without an active stream"
+  },
+  {
+    "name": "stream_end_without_start_is_invalid",
+    "operations": [{"type":"stream_end"}],
+    "error": "Cannot end a stream without an active stream"
+  }
+]

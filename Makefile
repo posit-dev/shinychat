@@ -117,8 +117,16 @@ history-matrix-sync: ## Sync the shared history-behavior test matrix into pkg-r
 	cp tests/shared/history-behavior-matrix.json \
 		$(PATH_PKG_R)/tests/testthat/fixtures/history-behavior-matrix.json
 
+.PHONY: transcript-matrix-sync
+transcript-matrix-sync:
+	@echo ""
+	@echo "Syncing message transcript matrix into pkg-r"
+	mkdir -p $(PATH_PKG_R)/tests/testthat/fixtures
+	cp tests/shared/message-transcript-matrix.json \
+		$(PATH_PKG_R)/tests/testthat/fixtures/message-transcript-matrix.json
+
 .PHONY: r-update-dist
-r-update-dist: history-matrix-sync ## [r] Update shinychat web assets
+r-update-dist: history-matrix-sync transcript-matrix-sync ## [r] Update shinychat web assets
 	@echo ""
 	@echo "🔄 Updating shinychat web assets"
 	if [ -d $(PATH_PKG_R)/inst/lib/shiny ]; then \

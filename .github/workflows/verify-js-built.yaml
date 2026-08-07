@@ -49,6 +49,9 @@ jobs:
       - name: 🔄 Sync history matrix fixture
         run: make history-matrix-sync
 
+      - name: 🔄 Sync transcript matrix fixture
+        run: make transcript-matrix-sync
+
       - name: 🧐 Check for uncommitted changes
         run: |
           if [[ `git status --porcelain` ]]; then
