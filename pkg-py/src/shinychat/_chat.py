@@ -944,11 +944,12 @@ class Chat:
         `url`, unless `icon` overrides it); without one, it falls back to a
         plain numbered/count marker. The body is ordinary markdown: inline for a
         one-liner, or — by separating it with blank lines — a rich block body
-        (paragraphs, lists, code) shown in the popover. Multiple asides in
-        the same paragraph or list item collapse into a single pill, each kept
-        as a separate popover page you can page through. The pill shows a `+N`
-        overflow count only when the grouped asides have differing labels;
-        asides sharing one label collapse to a single face with no count.
+        (paragraphs, lists, code) shown in the popover. Labeled asides in the
+        same paragraph or list item collapse into one pill, with each aside kept
+        as a separate popover page. Each unlabeled aside remains a separate
+        numbered pill. The grouped pill shows a `+N` overflow count only when
+        its labeled asides have different labels. Asides that share one label
+        use a single face with no count.
 
         The favicon is fetched at render time from a third-party service
         (DuckDuckGo's icon service), which receives the cited site's hostname.
@@ -1251,11 +1252,12 @@ class Chat:
         `url`, unless `icon` overrides it); without one, it falls back to a
         plain numbered/count marker. The body is ordinary markdown: inline for a
         one-liner, or — by separating it with blank lines — a rich block body
-        (paragraphs, lists, code) shown in the popover. Multiple asides in
-        the same paragraph or list item collapse into a single pill, each kept
-        as a separate popover page you can page through. The pill shows a `+N`
-        overflow count only when the grouped asides have differing labels;
-        asides sharing one label collapse to a single face with no count.
+        (paragraphs, lists, code) shown in the popover. Labeled asides in the
+        same paragraph or list item collapse into one pill, with each aside kept
+        as a separate popover page. Each unlabeled aside remains a separate
+        numbered pill. The grouped pill shows a `+N` overflow count only when
+        its labeled asides have different labels. Asides that share one label
+        use a single face with no count.
 
         The favicon is fetched at render time from a third-party service
         (DuckDuckGo's icon service), which receives the cited site's hostname.
