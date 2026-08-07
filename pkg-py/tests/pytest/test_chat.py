@@ -5,10 +5,10 @@ import inspect
 import sys
 import threading
 from datetime import datetime
-from typing import Any, cast
+from typing import Any, AsyncIterator, cast
 
 import pytest
-from htmltools import HTMLDependency, TagList, tags
+from htmltools import HTML, HTMLDependency, TagList, tags
 from shiny import Session, reactive
 from shiny.module import ResolvedId
 from shiny.session import session_context
@@ -46,6 +46,9 @@ class _MockSession:
         pass
 
     def _increment_busy_count(self) -> None:
+        pass
+
+    def _decrement_busy_count(self) -> None:
         pass
 
     async def send_custom_message(self, type: str, message: Any) -> None:
@@ -101,6 +104,19 @@ def test_messages_token_limits_raises():
             chat.messages(token_limits=(100, 0))  # type: ignore[arg-type]
 
 
+def test_messages_input_id_is_an_inert_compatibility_field():
+    with session_context(test_session):
+        chat = Chat(id="chat", history=False)
+
+        assert chat.messages_input_id == ResolvedId("chat_messages")
+        test_session.input[chat.messages_input_id]._set(
+            (stored_message("browser snapshot", "assistant"),)
+        )
+
+        with reactive.isolate():
+            assert chat.messages() == ()
+
+
 def test_tokenizer_raises():
     with session_context(test_session):
         with pytest.raises(TypeError, match="tokenizer.*removed"):
@@ -113,6 +129,350 @@ def test_transform_user_input_raises():
 
         with pytest.raises(TypeError, match="transform_user_input.*removed"):
             chat.transform_user_input(lambda x: x)
+
+
+def test_same_flush_append_message_updates_messages():
+    with session_context(test_session):
+        chat = Chat("chat", history=False)
+
+        run_async(lambda: chat.append_message("server message"))
+
+        with reactive.isolate():
+            assert chat.messages() == (
+                {"content": "server message", "role": "assistant"},
+            )
+
+
+def test_send_failure_does_not_append_message(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    with session_context(test_session):
+        chat = Chat("chat", history=False)
+
+        run_async(lambda: chat.append_message("settled message"))
+
+        async def send_failure(action: Any, deps: Any = None) -> None:
+            raise RuntimeError("send failed")
+
+        monkeypatch.setattr(chat, "_send_action", send_failure)
+
+        with pytest.raises(RuntimeError, match="send failed"):
+            run_async(lambda: chat.append_message("failed message"))
+
+        with reactive.isolate():
+            assert chat.messages() == (
+                {"content": "settled message", "role": "assistant"},
+            )
+
+
+def test_stream_send_failures_do_not_commit_active_or_settled_state(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    with session_context(test_session):
+        failed_start = Chat("failed_start", history=False)
+
+        async def fail_start(action: Any, deps: Any = None) -> None:
+            raise RuntimeError("start failed")
+
+        monkeypatch.setattr(failed_start, "_send_action", fail_start)
+        with pytest.raises(RuntimeError, match="start failed"):
+            run_async(
+                lambda: failed_start._append_message_chunk(
+                    "", chunk="start", stream_id="stream"
+                )
+            )
+        assert failed_start._current_stream_id is None
+        assert failed_start._current_stream_segments == []
+
+        failed_chunk = Chat("failed_chunk", history=False)
+
+        async def fail_chunk(action: Any, deps: Any = None) -> None:
+            if action["type"] == "chunk":
+                raise RuntimeError("chunk failed")
+
+        monkeypatch.setattr(failed_chunk, "_send_action", fail_chunk)
+        run_async(
+            lambda: failed_chunk._append_message_chunk(
+                "", chunk="start", stream_id="stream"
+            )
+        )
+        with pytest.raises(RuntimeError, match="chunk failed"):
+            run_async(
+                lambda: failed_chunk._append_message_chunk(
+                    "partial", chunk=True, stream_id="stream"
+                )
+            )
+        assert failed_chunk._current_stream_id == "stream"
+        assert failed_chunk._current_stream_segments == []
+
+        failed_end = Chat("failed_end", history=False)
+
+        async def succeed(action: Any, deps: Any = None) -> None:
+            return None
+
+        monkeypatch.setattr(failed_end, "_send_action", succeed)
+        run_async(
+            lambda: failed_end._append_message_chunk(
+                "", chunk="start", stream_id="stream"
+            )
+        )
+        run_async(
+            lambda: failed_end._append_message_chunk(
+                "partial", chunk=True, stream_id="stream"
+            )
+        )
+
+        async def fail_end(action: Any, deps: Any = None) -> None:
+            raise RuntimeError("end failed")
+
+        monkeypatch.setattr(failed_end, "_send_action", fail_end)
+        with pytest.raises(RuntimeError, match="end failed"):
+            run_async(
+                lambda: failed_end._append_message_chunk(
+                    "", chunk="end", stream_id="stream"
+                )
+            )
+        assert failed_end._current_stream_id is None
+        assert failed_end._current_stream_segments == []
+        with reactive.isolate():
+            assert failed_end.messages() == ()
+
+
+def test_user_submit_messages_include_attachments_before_callback():
+    from shinychat._attachments import Attachment
+
+    session = cast(Session, _MockSession())
+    attachment = Attachment.from_data(
+        b"file contents", mime="text/plain", name="note.txt"
+    )
+    messages_seen_by_callback: list[tuple[ChatMessageDict, ...]] = []
+
+    with session_context(session):
+        chat = Chat("chat", history=False)
+
+        @chat.on_user_submit
+        async def on_submit() -> None:
+            messages_seen_by_callback.append(chat.messages())
+
+        cast(Any, session.input[chat.user_input_id])._set(
+            {"text": "message from user", "attachments": [attachment]}
+        )
+        run_async(reactive.flush)
+
+    assert len(messages_seen_by_callback) == 1
+    message = messages_seen_by_callback[0][0]
+    assert message["content"] == "message from user"
+    assert message["role"] == "user"
+    assert message.get("attachments") == [attachment]
+
+
+def test_slash_command_messages_are_stored_before_handler():
+    session = cast(Session, _MockSession())
+    messages_seen_by_handler: list[tuple[ChatMessageDict, ...]] = []
+
+    with session_context(session):
+        chat = Chat("chat", history=False)
+
+        @chat.slash_command("help", "Show help")
+        async def help_command(_: str) -> None:
+            messages_seen_by_handler.append(chat.messages())
+
+        cast(Any, session.input[chat._slash_command_id])._set(
+            {"command": "help", "userText": "topic", "echo": True}
+        )
+        run_async(reactive.flush)
+
+    assert messages_seen_by_handler == [
+        ({"content": "/help topic", "role": "user"},)
+    ]
+
+
+def test_slash_command_messages_skip_echo_false():
+    session = cast(Session, _MockSession())
+    messages_seen_by_handler: list[tuple[ChatMessageDict, ...]] = []
+
+    with session_context(session):
+        chat = Chat("chat", history=False)
+
+        @chat.slash_command("help", "Show help", echo=False)
+        async def help_command(_: str) -> None:
+            messages_seen_by_handler.append(chat.messages())
+
+        cast(Any, session.input[chat._slash_command_id])._set(
+            {"command": "help", "userText": "topic", "echo": False}
+        )
+        run_async(reactive.flush)
+
+    assert messages_seen_by_handler == [()]
+
+
+@pytest.mark.filterwarnings(
+    "ignore:The `.transform_assistant_response` decorator is deprecated"
+)
+def test_transformed_complete_message_preserves_dependencies_and_attachments(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from shinychat._attachments import Attachment
+
+    with session_context(test_session):
+        chat = Chat("chat", history=False)
+        sent: list[tuple[dict[str, Any], list[dict[str, object]] | None]] = []
+        attachment = Attachment.from_data(
+            b"file contents", mime="text/plain", name="note.txt"
+        )
+        dependency = HTMLDependency(
+            name="transformed-widget",
+            version="1.0.0",
+            source={"subdir": "."},
+        )
+
+        async def capture(
+            action: dict[str, Any], deps: list[dict[str, object]] | None = None
+        ) -> None:
+            sent.append((action, deps))
+
+        def serialize(
+            deps: list[HTMLDependency] | None,
+        ) -> list[dict[str, object]] | None:
+            if not deps:
+                return None
+            return [{"name": dep.name, "version": str(dep.version)} for dep in deps]
+
+        monkeypatch.setattr(chat, "_send_action", capture)
+        monkeypatch.setattr(chat, "_serialize_html_deps", serialize)
+
+        @chat.transform_assistant_response
+        def transform(_: str) -> HTML:
+            return HTML("<strong>transformed</strong>")
+
+        run_async(
+            lambda: chat.append_message(
+                ChatMessage(
+                    TagList(dependency, tags.div("original")),
+                    attachments=[attachment],
+                )
+            )
+        )
+
+        with reactive.isolate():
+            messages = chat.messages()
+
+    assert messages == (
+        {
+            "content": "\n\n<shinychat-raw-html><strong>transformed</strong></shinychat-raw-html>\n\n",
+            "role": "assistant",
+            "html_deps": [{"name": "transformed-widget", "version": "1.0.0"}],
+            "attachments": [attachment],
+        },
+    )
+    action, deps = sent[-1]
+    assert action["message"]["segments"] == [
+        {
+            "content": "\n\n<shinychat-raw-html><strong>transformed</strong></shinychat-raw-html>\n\n",
+            "content_type": "html",
+        }
+    ]
+    assert action["message"]["attachments"] == [attachment.model_dump()]
+    assert deps == [{"name": "transformed-widget", "version": "1.0.0"}]
+
+
+@pytest.mark.filterwarnings(
+    "ignore:The `.transform_assistant_response` decorator is deprecated"
+)
+def test_streamed_messages_store_mixed_segments_and_transformed_content(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    with session_context(test_session):
+        chat = Chat("chat", history=False)
+        sent: list[tuple[dict[str, Any], list[dict[str, object]] | None]] = []
+        dependency = HTMLDependency(
+            name="streamed-widget",
+            version="1.0.0",
+            source={"subdir": "."},
+        )
+
+        async def capture(
+            action: dict[str, Any], deps: list[dict[str, object]] | None = None
+        ) -> None:
+            sent.append((action, deps))
+
+        def serialize(
+            deps: list[HTMLDependency] | None,
+        ) -> list[dict[str, object]] | None:
+            if not deps:
+                return None
+            return [{"name": dep.name, "version": str(dep.version)} for dep in deps]
+
+        monkeypatch.setattr(chat, "_send_action", capture)
+        monkeypatch.setattr(chat, "_serialize_html_deps", serialize)
+
+        async def mixed_stream() -> AsyncIterator[ChatMessage]:
+            yield ChatMessage(
+                content="reasoning",
+                role="assistant",
+                content_type="thinking",
+            )
+            yield ChatMessage(
+                content=TagList(dependency, tags.div("answer")),
+                role="assistant",
+            )
+
+        run_async(lambda: chat._append_message_stream(mixed_stream()))
+
+        with reactive.isolate():
+            mixed_messages = chat.messages()
+
+    assert mixed_messages == (
+        {
+            "content": "<thinking>\nreasoning\n</thinking>\n\n\n\n<shinychat-raw-html>\n  <div>answer</div>\n</shinychat-raw-html>\n\n",
+            "role": "assistant",
+            "html_deps": [{"name": "streamed-widget", "version": "1.0.0"}],
+        },
+    )
+    chunk_actions = [action for action, _ in sent if action["type"] == "chunk"]
+    assert chunk_actions == [
+        {
+            "type": "chunk",
+            "content": "reasoning",
+            "operation": "append",
+            "content_type": "thinking",
+        },
+        {
+            "type": "chunk",
+            "content": "\n\n<shinychat-raw-html>\n  <div>answer</div>\n</shinychat-raw-html>\n\n",
+            "operation": "append",
+            "content_type": "html",
+        },
+    ]
+
+    with session_context(test_session):
+        transformed = Chat("transformed", history=False)
+
+        async def noop(
+            action: dict[str, Any], deps: list[dict[str, object]] | None = None
+        ) -> None:
+            return None
+
+        monkeypatch.setattr(transformed, "_send_action", noop)
+
+        @transformed.transform_assistant_response
+        def transform(content: str, _: str, done: bool) -> str:
+            return f"{content} done" if done else content
+
+        async def transformed_stream() -> AsyncIterator[str]:
+            yield "one"
+            yield " two"
+
+        run_async(
+            lambda: transformed._append_message_stream(transformed_stream())
+        )
+
+        with reactive.isolate():
+            transformed_messages = transformed.messages()
+
+    assert transformed_messages == (
+        {"content": "one two done", "role": "assistant"},
+    )
 
 
 def test_stream_replace_discards_stale_html_dependencies():
@@ -649,8 +1009,6 @@ def test_bookmark_round_trips_echoed_slash_command():
 
     with session_context(test_session):
         chat = Chat(id="chat")
-        # `_messages_for_bookmark()` reads the client-reported snapshot input,
-        # not the server-side append log, so seed that input directly.
         reported = (
             chat._as_stored_message(
                 ChatMessage(content="/greet world", role="user")
@@ -659,7 +1017,7 @@ def test_bookmark_round_trips_echoed_slash_command():
                 ChatMessage(content="Hello! You said: world", role="assistant")
             ),
         )
-        test_session.input[chat.messages_input_id]._set(reported)
+        chat._replace_messages(reported)
         with reactive.isolate():
             saved = chat._messages_for_bookmark()
 
@@ -694,9 +1052,9 @@ def test_bookmark_round_trips_echoed_slash_command():
             for message_dict in saved:
                 await restored._restore_bookmark_message(message_dict)
 
-            # `_restore_bookmark_message` re-sends each message to the client
-            # (which re-reports it into the messages snapshot on render); the
-            # server no longer keeps its own append log to read back from.
+            with reactive.isolate():
+                assert restored._messages() == reported
+
             return [
                 (
                     cast(Role, a["message"]["role"]),
@@ -728,16 +1086,12 @@ def test_bookmark_omits_side_effect_only_slash_command():
     with session_context(test_session):
         chat = Chat(id="chat")
         chat.slash_command("note", "Side-effect only", echo=False)
-        # `_messages_for_bookmark()` reads the client-reported snapshot
-        # input, not the server-side append log, so seed that input
-        # directly with only the explicit message (the echo=False command
-        # reports nothing).
         reported = (
             chat._as_stored_message(
                 ChatMessage(content="real message", role="user")
             ),
         )
-        test_session.input[chat.messages_input_id]._set(reported)
+        chat._replace_messages(reported)
         with reactive.isolate():
             saved = chat._messages_for_bookmark()
 
@@ -908,7 +1262,7 @@ def test_thinking_stream_stores_segment_not_tags():
             yield "the answer"
 
         async def _exercise() -> None:
-            await chat.append_message_stream(gen())
+            await chat._append_message_stream(gen())
 
         run_async(_exercise)
 
@@ -964,9 +1318,6 @@ def test_bookmark_roundtrip_thinking_segment():
             sent.append(action)
 
         chat._send_action = _capture  # type: ignore[method-assign]
-        # `_messages_for_bookmark()` reads the client-reported snapshot
-        # input, not the server-side append log, so seed that input
-        # directly.
         reported = (
             StoredMessage(
                 role="assistant",
@@ -976,7 +1327,7 @@ def test_bookmark_roundtrip_thinking_segment():
                 ],
             ),
         )
-        test_session.input[chat.messages_input_id]._set(reported)
+        chat._replace_messages(reported)
         with reactive.isolate():
             saved = chat._messages_for_bookmark()
         assert saved[0]["segments"][0]["content_type"] == "thinking"
@@ -1279,8 +1630,6 @@ def test_messages_surfaces_attachments():
     with session_context(test_session):
         chat = Chat(id="chat")
 
-        # `.messages()` reads the client-reported snapshot input, not the
-        # server-side append log, so seed that input directly.
         reported = (
             StoredMessage.from_chat_message(
                 ChatMessage(
@@ -1297,9 +1646,7 @@ def test_messages_surfaces_attachments():
                 ChatMessage("plain text", role="assistant")
             ),
         )
-        # Input values are read-only from application code; `_set()` is the
-        # same mechanism Shiny itself uses to deliver client-reported values.
-        test_session.input[chat.messages_input_id]._set(reported)
+        chat._replace_messages(reported)
 
         with reactive.isolate():
             msgs = chat.messages()

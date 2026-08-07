@@ -33,6 +33,7 @@ from htmltools import (
     TagList,
 )
 from pydantic import ValidationError
+from shiny import reactive
 
 from . import _utils
 from ._attachments import (
@@ -72,6 +73,7 @@ from ._chat_types import (
     SerializedDep,
     SlashCommandDef,
     StoredMessage,
+    StoredSegment,
     chat_greeting,
 )
 from ._history import ChatHistory, HistoryOptions
@@ -323,6 +325,7 @@ class Chat:
 
         self.id = resolve_id(id)
         self.user_input_id = ResolvedId(f"{self.id}_user_input")
+        # Retained until history stops excluding the retired snapshot input.
         self.messages_input_id = ResolvedId(f"{self.id}_messages")
         self._slash_command_id = ResolvedId(f"{self.id}_slash_command")
         self._transform_user: TransformUserInputAsync | None = None
@@ -362,10 +365,13 @@ class Chat:
         self._greeting_content: str | None = None
 
         # Initialize chat state and user input effect
-        from shiny import reactive
         from shiny.session import session_context
 
         with session_context(self._session):
+            self._messages: reactive.Value[tuple[StoredMessage, ...]] = (
+                reactive.Value(())
+            )
+
             # `None` until the first registration, which lets us skip the
             # redundant initial sync (the client already initializes to `[]`).
             # An empty dict, by contrast, is sent so that removing the last
@@ -399,10 +405,6 @@ class Chat:
             self._append_init_messages = _append_init_messages
             self._init_chat = _init_chat
 
-            # Record the latest submission into `_latest_user_input`, which
-            # backs the public `user_input()` method. priority=9999 ensures
-            # this runs before `on_user_submit`/other effects so `user_input()`
-            # reflects the latest submission.
             @reactive.effect(priority=9999)
             @reactive.event(self._user_input)
             async def _on_user_input():
@@ -413,7 +415,7 @@ class Chat:
                         role="user",
                         attachments=attachments,
                     )
-                    self._latest_user_input.set(self._as_stored_message(msg))
+                    self._store_message(msg)
                 except Exception as e:
                     await self._raise_exception(e)
 
@@ -439,7 +441,7 @@ class Chat:
                 if echo:
                     full_text = f"/{command} {user_text}".rstrip()
                     msg = ChatMessage(content=full_text, role="user")
-                    self._latest_user_input.set(self._as_stored_message(msg))
+                    self._store_message(msg)
                 cmds = self._slash_commands()
                 reg = cmds.get(command) if cmds else None
                 try:
@@ -817,16 +819,6 @@ class Chat:
         is called in a `.on_user_submit()` callback (as it most often is), the last
         message will be the most recent one submitted by the user.
 
-        Note
-        ----
-        This reflects the messages the browser has rendered and reported back,
-        so it is *eventually* consistent: it returns an empty tuple until the
-        client's first report, and a message passed to
-        :meth:`~shinychat.Chat.append_message` does not appear here until the
-        browser has rendered it and echoed its snapshot to the server. Read it
-        reactively (e.g. in an `.on_user_submit()` callback) rather than
-        expecting it to update synchronously right after appending.
-
         Returns
         -------
         tuple[ChatMessageDict, ...]
@@ -849,7 +841,7 @@ class Chat:
                 "Use your LLM provider (e.g., chatlas, LangChain) to manage conversation context instead."
             )
 
-        messages = self._reported_messages()
+        messages = self._messages()
 
         res: list[ChatMessageDict] = []
         for m in messages:
@@ -861,18 +853,6 @@ class Chat:
             res.append(chat_msg)
 
         return tuple(res)
-
-    def _reported_messages(self) -> tuple[StoredMessage, ...]:
-        # Client-authoritative UI state: the React client reports its settled-
-        # message snapshot as the `${id}_messages` input (see _input_handler.py).
-        # Returns () before the client has reported anything.
-        from shiny.types import SilentException
-
-        try:
-            val = self._session.input[self.messages_input_id]()
-        except SilentException:
-            return ()
-        return tuple(val) if val else ()
 
     async def append_message(
         self,
@@ -1008,6 +988,7 @@ class Chat:
             chunk=False,
             icon=icon,
         )
+        self._store_message(msg)
 
     @asynccontextmanager
     async def message_stream_context(self):
@@ -1123,7 +1104,8 @@ class Chat:
             )
             return
 
-        self._current_stream_id = stream_id
+        staged_segments = copy_segments(self._current_stream_segments)
+        staged_stream_id = stream_id
 
         # Normalize various message types into a ChatMessage()
         msg = normalize_message_chunk(message)
@@ -1140,22 +1122,23 @@ class Chat:
                     "cannot be restored. Open a `.message_stream_context()` before the "
                     "mixed content to get a clean checkpoint, or use `.append()`."
                 )
-            self._current_stream_segments = copy_segments(
+            staged_segments = copy_segments(
                 self._message_stream_segments_checkpoint
             )
 
         append_to_segments(
-            self._current_stream_segments,
+            staged_segments,
             msg.content,
             msg.content_type,
             chunk_deps or None,
         )
 
-        stream_content = segments_content(self._current_stream_segments)
+        stream_content = segments_content(staged_segments)
 
         if operation == "replace":
             msg.content = stream_content
 
+        settled: StoredMessage | None = None
         try:
             if self._needs_transform(msg):
                 # Transforming may change the meaning of msg.content to be a *replace*
@@ -1170,12 +1153,27 @@ class Chat:
                 if msg is None:
                     return
                 if chunk == "end":
-                    stream_deps = segments_deps(self._current_stream_segments)
+                    stream_deps = segments_deps(staged_segments)
                     serialized_deps = self._serialize_html_deps(stream_deps)
                     # _transform_message returns a single-segment StoredMessage, so all stream
                     # deps belong on segments[0].
                     if serialized_deps and msg.segments:
                         msg.segments[0].html_deps = serialized_deps
+                    settled = msg
+            elif chunk == "end":
+                settled = StoredMessage(
+                    role=msg.role,
+                    segments=[
+                        StoredSegment(
+                            content=segment.content,
+                            content_type=segment.content_type,
+                            html_deps=self._serialize_html_deps(
+                                segment.html_deps
+                            ),
+                        )
+                        for segment in staged_segments
+                    ],
+                )
 
             # Send the message to the client
             await self._send_append_message(
@@ -1184,6 +1182,11 @@ class Chat:
                 operation=operation,
                 icon=icon,
             )
+            if settled is not None:
+                self._store_message(settled)
+            if chunk != "end":
+                self._current_stream_id = staged_stream_id
+                self._current_stream_segments = staged_segments
         finally:
             if chunk == "end":
                 self._current_stream_id = None
@@ -1469,10 +1472,8 @@ class Chat:
             await self._send_action(action, message.html_deps)
 
     def _messages_for_bookmark(self) -> list[dict[str, Any]]:
-        from shiny import reactive
-
         with reactive.isolate():
-            messages = self._reported_messages()
+            messages = self._messages()
 
         dumps: list[dict[str, Any]] = []
         for m in messages:
@@ -1491,6 +1492,7 @@ class Chat:
                 "(bookmark likely written by an incompatible shinychat version)."
             ) from e
         await self._send_append_message(stored)
+        self._store_message(stored)
 
     def transform_user_input(self, *args: object, **kwargs: object) -> object:
         raise TypeError(
@@ -1621,6 +1623,22 @@ class Chat:
 
         html_deps = self._serialize_html_deps(message.html_deps)
         return StoredMessage.from_chat_message(message, html_deps=html_deps)
+
+    def _store_message(
+        self,
+        message: StoredMessage | ChatMessage,
+    ) -> None:
+        message = self._as_stored_message(message)
+
+        with reactive.isolate():
+            messages = self._messages()
+
+        self._messages.set((*messages, message))
+        if message.role == "user":
+            self._latest_user_input.set(message)
+
+    def _replace_messages(self, messages: Sequence[StoredMessage]) -> None:
+        self._messages.set(tuple(messages))
 
     def user_input(self) -> "UserInput | None":
         """
@@ -1760,6 +1778,7 @@ class Chat:
             self._greeting_content = None
             action["greeting"] = True
         await self._send_action(action)
+        self._replace_messages(())
 
     def get_greeting(self) -> str | None:
         """
@@ -2166,6 +2185,7 @@ class Chat:
                     f"Bookmark value with id (`{resolved_bookmark_id_msgs_str}`) must be a list of messages."
                 )
 
+            self._replace_messages(())
             for message_dict in msgs:
                 await self._restore_bookmark_message(message_dict)
 
