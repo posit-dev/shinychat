@@ -11,16 +11,19 @@ run_operations <- function(operations) {
     if (identical(operation$type, "message")) {
       transcript$append(operation)
     } else if (identical(operation$type, "stream_start")) {
-      transcript$start(operation)
+      transcript$start(operation, stream_id = operation$stream_id)
     } else if (identical(operation$type, "stream_chunk")) {
       transcript$chunk(
         operation$content,
         operation$content_type,
         html_deps = operation$html_deps,
-        operation = operation$operation
+        operation = operation$operation,
+        stream_id = operation$stream_id
       )
     } else if (identical(operation$type, "stream_end")) {
-      transcript$settle()
+      transcript$settle(stream_id = operation$stream_id)
+    } else if (identical(operation$type, "stream_abort")) {
+      transcript$abort(operation$stream_id)
     } else if (identical(operation$type, "clear")) {
       transcript$clear()
     } else if (identical(operation$type, "replay")) {

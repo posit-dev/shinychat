@@ -13,10 +13,10 @@
   {
     "name": "mixed_stream_and_dependencies",
     "operations": [
-      {"type":"stream_start","role":"assistant","segments":[]},
-      {"type":"stream_chunk","content":"reasoning","content_type":"thinking","operation":"append"},
-      {"type":"stream_chunk","content":"answer","content_type":"markdown","operation":"append","html_deps":[{"name":"widget","version":"1.0.0"}]},
-      {"type":"stream_end"}
+      {"type":"stream_start","stream_id":"primary","role":"assistant","segments":[]},
+      {"type":"stream_chunk","stream_id":"primary","content":"reasoning","content_type":"thinking","operation":"append"},
+      {"type":"stream_chunk","stream_id":"primary","content":"answer","content_type":"markdown","operation":"append","html_deps":[{"name":"widget","version":"1.0.0"}]},
+      {"type":"stream_end","stream_id":"primary"}
     ],
     "expected": [
       {"role":"assistant","segments":[{"content":"reasoning","content_type":"thinking"},{"content":"answer","content_type":"markdown"}],"htmlDeps":[{"name":"widget","version":"1.0.0"}]}
@@ -25,20 +25,20 @@
   {
     "name": "append_coalesces_matching_content_type",
     "operations": [
-      {"type":"stream_start","role":"assistant","segments":[]},
-      {"type":"stream_chunk","content":"one","content_type":"markdown","operation":"append"},
-      {"type":"stream_chunk","content":" two","content_type":"markdown","operation":"append"},
-      {"type":"stream_end"}
+      {"type":"stream_start","stream_id":"primary","role":"assistant","segments":[]},
+      {"type":"stream_chunk","stream_id":"primary","content":"one","content_type":"markdown","operation":"append"},
+      {"type":"stream_chunk","stream_id":"primary","content":" two","content_type":"markdown","operation":"append"},
+      {"type":"stream_end","stream_id":"primary"}
     ],
     "expected": [{"role":"assistant","segments":[{"content":"one two","content_type":"markdown"}]}]
   },
   {
     "name": "replace_resets_active_stream",
     "operations": [
-      {"type":"stream_start","role":"assistant","segments":[]},
-      {"type":"stream_chunk","content":"draft","content_type":"markdown","operation":"append"},
-      {"type":"stream_chunk","content":"final","content_type":"html","operation":"replace"},
-      {"type":"stream_end"}
+      {"type":"stream_start","stream_id":"primary","role":"assistant","segments":[]},
+      {"type":"stream_chunk","stream_id":"primary","content":"draft","content_type":"markdown","operation":"append"},
+      {"type":"stream_chunk","stream_id":"primary","content":"final","content_type":"html","operation":"replace"},
+      {"type":"stream_end","stream_id":"primary"}
     ],
     "expected": [{"role":"assistant","segments":[{"content":"final","content_type":"html"}]}]
   },
@@ -46,8 +46,8 @@
     "name": "clear_discards_settled_and_active_state",
     "operations": [
       {"type":"message","role":"user","segments":[{"content":"Hi","content_type":"markdown"}]},
-      {"type":"stream_start","role":"assistant","segments":[]},
-      {"type":"stream_chunk","content":"draft","content_type":"markdown","operation":"append"},
+      {"type":"stream_start","stream_id":"primary","role":"assistant","segments":[]},
+      {"type":"stream_chunk","stream_id":"primary","content":"draft","content_type":"markdown","operation":"append"},
       {"type":"clear"}
     ],
     "expected": []
@@ -62,12 +62,60 @@
   },
   {
     "name": "chunk_without_stream_is_invalid",
-    "operations": [{"type":"stream_chunk","content":"bad","content_type":"markdown","operation":"append"}],
+    "operations": [{"type":"stream_chunk","stream_id":"primary","content":"bad","content_type":"markdown","operation":"append"}],
     "error": "Cannot apply a stream chunk without an active stream"
   },
   {
     "name": "stream_end_without_start_is_invalid",
-    "operations": [{"type":"stream_end"}],
+    "operations": [{"type":"stream_end","stream_id":"primary"}],
     "error": "Cannot end a stream without an active stream"
+  },
+  {
+    "name": "competing_root_stream_is_invalid",
+    "operations": [
+      {"type":"stream_start","stream_id":"primary","role":"assistant","segments":[]},
+      {"type":"stream_start","stream_id":"other","role":"assistant","segments":[]}
+    ],
+    "error": "Cannot start a stream while another stream is active"
+  },
+  {
+    "name": "complete_append_during_stream_is_invalid",
+    "operations": [
+      {"type":"stream_start","stream_id":"primary","role":"assistant","segments":[]},
+      {"type":"message","role":"assistant","segments":[{"content":"late","content_type":"markdown"}]}
+    ],
+    "error": "Cannot append a complete message while a stream is active"
+  },
+  {
+    "name": "foreign_stream_chunk_is_invalid",
+    "operations": [
+      {"type":"stream_start","stream_id":"primary","role":"assistant","segments":[]},
+      {"type":"stream_chunk","stream_id":"other","content":"bad","content_type":"markdown","operation":"append"}
+    ],
+    "error": "Cannot write to a stream that is not active"
+  },
+  {
+    "name": "active_identity_accepts_nested_writes",
+    "operations": [
+      {"type":"stream_start","stream_id":"primary","role":"assistant","segments":[]},
+      {"type":"stream_chunk","stream_id":"primary","content":"outer","content_type":"markdown","operation":"append"},
+      {"type":"stream_chunk","stream_id":"primary","content":" nested","content_type":"markdown","operation":"append"},
+      {"type":"stream_end","stream_id":"primary"}
+    ],
+    "expected": [
+      {"role":"assistant","segments":[{"content":"outer nested","content_type":"markdown"}]}
+    ]
+  },
+  {
+    "name": "abort_releases_active_stream_without_settlement",
+    "operations": [
+      {"type":"stream_start","stream_id":"primary","role":"assistant","segments":[]},
+      {"type":"stream_chunk","stream_id":"primary","content":"discard","content_type":"markdown","operation":"append"},
+      {"type":"stream_abort","stream_id":"primary"},
+      {"type":"message","role":"assistant","segments":[{"content":"after","content_type":"markdown"}]}
+    ],
+    "expected": [
+      {"role":"assistant","segments":[{"content":"after","content_type":"markdown"}]}
+    ]
   }
 ]

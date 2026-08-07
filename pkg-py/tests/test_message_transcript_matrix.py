@@ -86,18 +86,17 @@ def canonical_messages(chat: Chat) -> list[dict[str, Any]]:
 async def apply_operation(chat: Chat, operation: dict[str, Any]) -> None:
     operation_type = cast(str, operation["type"])
     if operation_type == "message":
-        chat._store_message(fixture_message(operation))
+        await chat.append_message(fixture_message(operation))
         return
 
     if operation_type == "stream_start":
-        stream_id = cast(str, operation.get("stream_id", "matrix-stream"))
         await chat._append_message_chunk(
             ChatMessage(
                 content="",
                 role=cast(Role, operation["role"]),
             ),
             chunk="start",
-            stream_id=stream_id,
+            stream_id=cast(str, operation["stream_id"]),
         )
         return
 
@@ -121,9 +120,7 @@ async def apply_operation(chat: Chat, operation: dict[str, Any]) -> None:
         await chat._append_message_chunk(
             message,
             chunk=True,
-            stream_id=cast(
-                str, operation.get("stream_id", chat._current_stream_id)
-            ),
+            stream_id=cast(str, operation["stream_id"]),
             operation=cast(
                 Literal["append", "replace"], operation["operation"]
             ),
@@ -136,10 +133,12 @@ async def apply_operation(chat: Chat, operation: dict[str, Any]) -> None:
         await chat._append_message_chunk(
             "",
             chunk="end",
-            stream_id=cast(
-                str, operation.get("stream_id", chat._current_stream_id)
-            ),
+            stream_id=cast(str, operation["stream_id"]),
         )
+        return
+
+    if operation_type == "stream_abort":
+        await chat._abort_message_stream(cast(str, operation["stream_id"]))
         return
 
     if operation_type == "clear":
