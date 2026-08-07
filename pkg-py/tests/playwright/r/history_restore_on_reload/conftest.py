@@ -37,8 +37,10 @@ def wait_until_ready(
 
 @pytest.fixture
 def r_app_url(tmp_path: Path) -> Iterator[str]:
-    root = Path(__file__).resolve().parents[5]
-    app = Path(__file__).with_name("app.R")
+    here = Path(__file__).resolve()
+    pkg_py_dir = next(p for p in here.parents if p.name == "pkg-py")
+    root = pkg_py_dir.parent
+    app = here.with_name("app.R")
     port = available_port()
     url = f"http://127.0.0.1:{port}/"
     env = os.environ.copy()
