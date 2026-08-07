@@ -21,7 +21,11 @@ def test_append_splits_on_content_type_change():
     append_to_segments(segs, "t", "thinking")
     append_to_segments(segs, "b", "markdown")
     assert all(isinstance(s, ContentSegment) for s in segs)
-    assert [s.content_type for s in segs] == ["markdown", "thinking", "markdown"]
+    assert [s.content_type for s in segs] == [
+        "markdown",
+        "thinking",
+        "markdown",
+    ]
 
 
 def test_segments_content_concatenates():

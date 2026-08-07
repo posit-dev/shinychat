@@ -21,6 +21,13 @@ opt_shinychat_tool_display <- function() {
 #' generics and methods in the [S7
 #' documentation](https://rconsortium.github.io/S7/articles/S7.html).
 #'
+#' For most tool-result customization, use [tool_result_display()] in the
+#' result's `extra = list(display = ...)`. It keeps shinychat's compact activity
+#' row and drill-down card while letting you set a title, label, result preview,
+#' and rich card content. The [Tool Calling UI
+#' article](https://posit-dev.github.io/shinychat/r/articles/tool-ui.html)
+#' describes that recommended path.
+#'
 #' We'll work through a short example creating a custom display for the results
 #' of a tool that gets local weather forecasts. We first need to create a custom
 #' class that extends [ellmer::ContentToolResult].
@@ -60,10 +67,8 @@ opt_shinychat_tool_display <- function() {
 #' )
 #' ```
 #'
-#' Finally, we can extend `contents_shinychat()` to render our custom content
-#' class for display in the chat interface. The basic process is to define a
-#' `contents_shinychat()` external generic and then implement a method for your
-#' custom class.
+#' Finally, define the external generic and implement a method for your custom
+#' class:
 #'
 #' ```r
 #' contents_shinychat <- S7::new_external_generic(
@@ -77,13 +82,9 @@ opt_shinychat_tool_display <- function() {
 #' }
 #' ```
 #'
-#' You can use this pattern to completely customize how the content is displayed
-#' inside shinychat by returning HTML objects directly from this method.
-#'
-#' You can also use this pattern to build upon the default shinychat display for
-#' tool requests and results. By using [S7::super()], you can create the
-#' object shinychat uses for tool results (or tool requests), and then modify it
-#' to suit your needs.
+#' Use [S7::super()] when you want to extend shinychat's default card. The
+#' resulting output still participates in the normal compact activity row and
+#' drill-down card:
 #'
 #' ```r
 #' S7::method(contents_shinychat, WeatherToolResult) <- function(content) {
@@ -95,18 +96,22 @@ opt_shinychat_tool_display <- function() {
 #'   res$value <- gt::as_raw_html(gt::gt(content@value))
 #'   res$value_type <- "html"
 #'   # ...and update the tool result title to include the location name
-#'   res$title <- paste("Weather Forecast for", content@location_name)
+#'   res$tool_title <- paste("Got weather forecast for", content@location_name)
+#'   res$label <- content@location_name
+#'   res$value_preview <- paste(nrow(content@value), "hourly readings")
 #'
 #'   res
 #' }
 #' ```
 #'
-#' Note that you do **not** need to create a new class or extend
-#' `contents_shinychat()` to customize the tool display. Rather, you can use the
-#' strategies discussed in the [Tool Calling UI
-#' article](https://posit-dev.github.io/shinychat/r/articles/tool-ui.html) to
-#' customize the tool request and result display by providing a `display` list
-#' in the `extra` argument of the tool result.
+#' Alternatively, return arbitrary HTML or Shiny UI directly from the method to
+#' replace the default card completely. While the tool runs, shinychat still
+#' shows its activity row. When the custom result settles, shinychat renders that
+#' UI as standalone output and removes the call from the activity row.
+#'
+#' This extension point is for fully custom standalone output. To customize the
+#' default card, use [tool_result_display()] instead of constructing a generic
+#' `display` list yourself.
 #'
 #' @param content An [`ellmer::Content`] object.
 #'
@@ -160,6 +165,106 @@ new_tool_card <- function(type, request_id, tool_name, ...) {
   )
 
   structure(dots, class = classes)
+}
+
+# Resolve definition-level tool annotations once, at the boundary between
+# ellmer content and shinychat's tool cards. Result display metadata is
+# intentionally handled separately because it can override title and icon.
+shinychat_tool_annotations <- function(tool) {
+  if (is.null(tool)) {
+    return(list(title = NULL, icon = NULL, grouping = NULL))
+  }
+
+  annotations <- tool@annotations %||% list()
+  list(
+    title = annotations$title,
+    icon = annotations$icon,
+    grouping = as_grouping(annotations$grouping)
+  )
+}
+
+# A `contents_shinychat()` method on a `ContentToolResult` subclass may
+# return arbitrary tags instead of shinychat's own tool card (see the
+# `S7::method(contents_shinychat, ...)` examples above). That leaves no
+# `<shiny-tool-result>` element in the transcript at all, so the condensed
+# tool view — which derives "this call finished" from that element's
+# presence — has nothing to key off of and the request row spins forever.
+# Wrap the author's tags in a real element carrying only the fields needed
+# to pair a result with its request; everything else about the row (title,
+# icon, footer, ...) is the author's own UI to manage.
+#
+# Detection is by artifact, not dispatch: `new_tool_card()` marks its output
+# with the `shinychat_tool_card` class, and that class survives the
+# documented `S7::super()` extend pattern (the author gets shinychat's own
+# card back and only mutates fields on it), so that pattern correctly reads
+# as *not* custom. Anything else returned for a `ContentToolResult` is
+# custom UI and gets wrapped.
+wrap_custom_tool_result <- function(content, msg) {
+  if (
+    !S7::S7_inherits(content, ellmer::ContentToolResult) ||
+      inherits(msg, "shinychat_tool_card") ||
+      is.null(msg)
+  ) {
+    return(msg)
+  }
+
+  # A custom `contents_shinychat()` method bypasses the base method's check
+  # that `@request` is present, so it can reach this point with nothing to
+  # pair a result against. With no request there is no wrap to make; emit
+  # the author's tags as-is, same as before this feature existed.
+  if (is.null(content@request)) {
+    return(msg)
+  }
+
+  annotations <- shinychat_tool_annotations(content@request@tool)
+
+  new_tool_card(
+    "result",
+    request_id = content@request@id,
+    tool_name = content@request@name,
+    # Locked: the author is assumed to present the error state inside their
+    # own UI, so a failed custom call is wrapped exactly like a successful
+    # one; only the request-pairing signal matters here.
+    status = if (tool_errored(content)) "error" else "success",
+    grouping = annotations$grouping,
+    value = msg,
+    # Mirror the content mode the message would have been appended with had
+    # it not been wrapped, so wrapping never changes how the author's output
+    # renders. A bare character vector is markdown (`chat_append_message()`
+    # treats anything outside its `is_html` class list that way), and
+    # re-labelling it `"html"` would both drop markdown formatting and move
+    # the string from the client's markdown pipeline -- inert React elements
+    # -- onto `RawHTML`'s live `innerHTML`, where event-handler attributes
+    # fire. `shiny::HTML()` is character *and* HTML, hence the class check.
+    value_type = if (is.character(msg) && !inherits(msg, "html")) {
+      "markdown"
+    } else {
+      "html"
+    },
+    # Internal provenance marker only ("shinychat wrapped an author's custom
+    # output"), not part of any author-facing API and not surfaced by
+    # `tool_result_display()`. What the client does with this fact is the
+    # client's own decision and stays free to change independently of this
+    # wrap.
+    custom_display = NA
+  )
+}
+
+# `contents_shinychat()` plus the custom-result wrap. Every internal caller that
+# needs routable shinychat content goes through this boundary, so a caller
+# cannot accidentally convert a custom result without its pairing element.
+#
+# Safe to map over any content object: `wrap_custom_tool_result()` returns its
+# input untouched for everything except a `ContentToolResult` whose method
+# returned something other than shinychat's own tool card. It is also
+# idempotent, since a wrapped result *is* a `shinychat_tool_card` and so fails
+# the wrap's own guard on a second pass.
+contents_shinychat_wrapped <- function(content) {
+  if (!S7::S7_inherits(content, ellmer::Content)) {
+    return(content)
+  }
+
+  wrap_custom_tool_result(content, contents_shinychat(content))
 }
 
 #' @export
@@ -233,6 +338,7 @@ S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
   }
 
   tool <- content@tool
+  annotations <- shinychat_tool_annotations(tool)
 
   new_tool_card(
     "request",
@@ -240,7 +346,12 @@ S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
     tool_name = content@name,
     arguments = jsonlite::toJSON(content@arguments, auto_unbox = TRUE),
     intent = content@arguments[["_intent"]],
-    tool_title = if (!is.null(tool)) tool@annotations$title
+    tool_title = annotations$title,
+    # The tool *definition* icon. The result element sends the result's own icon
+    # (falling back to this one), so the client needs both to tell a
+    # result-specific icon from the tool's shared identity.
+    icon = annotations$icon,
+    grouping = annotations$grouping
   )
 }
 
@@ -256,10 +367,9 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
   }
 
   display <- get_tool_result_display(content)
-  annotations <- list()
+  annotations <- shinychat_tool_annotations(content@request@tool)
 
   if (!is.null(content@request@tool)) {
-    annotations <- content@request@tool@annotations
     request_call <- format(content@request, show = "call")
   } else {
     # formatting the request fails if tool is not present
@@ -288,8 +398,218 @@ S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     expanded = if (isTRUE(display$open)) NA,
     full_screen = if (isTRUE(display$full_screen)) NA,
     footer = display$footer,
-    !!!tool_result_display(content, display)
+    grouping = annotations$grouping,
+    label = display$label,
+    value_preview = display$value_preview,
+    !!!tool_result_value(content, display)
   )
+}
+
+#' Customize how a tool result is displayed
+#'
+#' `tool_result_display()` creates an object you can assign to the
+#' `display` item of the `extra` argument of an [`ellmer::ContentToolResult`]
+#' to customize how shinychat displays the tool result to the user, while
+#' keeping the underlying `value` sent to the model unchanged.
+#'
+#' It preserves shinychat's compact activity row and drill-down card. Use it for
+#' result titles, per-call labels and previews, or rich card content. To replace
+#' the settled card with fully custom standalone UI, extend
+#' [contents_shinychat()] instead. See the [Tool Calling UI
+#' article](https://posit-dev.github.io/shinychat/r/articles/tool-ui.html) for a
+#' complete guide.
+#'
+#' @param title The title to use for the settled call and drill-down card. It
+#'   replaces the definition-level title from `ellmer::tool_annotations()` in a
+#'   single-call row. In a multi-call group, a distinct result title can identify
+#'   the call in the expanded call list. Write the definition title in the
+#'   present tense (for example, `"Getting weather"`) and this result title in
+#'   the past tense (for example, `"Got weather"`).
+#' @param icon An icon to display with the settled call and drill-down card. Can
+#'   be a character string or HTML content (e.g. from [htmltools::tags]).
+#' @param html Custom HTML content (to use in place of the default result
+#'   content in the drill-down card).
+#' @param markdown Custom Markdown string (to use in place of the default
+#'   result content in the drill-down card).
+#' @param text Custom plain text string (to use in place of the default
+#'   result content in the drill-down card).
+#' @param show_request Whether to show the tool request inside the drill-down
+#'   card.
+#' @param open Whether to open the drill-down card by default when the result
+#'   settles.
+#' @param full_screen Whether or not to display a fullscreen toggle button on
+#'   the drill-down card.
+#' @param footer Optional HTML content to display below the drill-down card
+#'   body.
+#' @param label A short, per-call identifying value shown in the activity row
+#'   (e.g. a filename or query). Distinguishes this call from other calls to the
+#'   same tool. Without one, shinychat falls back to the call's own `title`
+#'   (when it differs from the group's), then a short preview of the call's
+#'   arguments, then the tool name.
+#' @param value_preview A terse, per-call preview of the tool result, shown
+#'   in the activity row before its drill-down card is opened.
+#'
+#' @return An object of class `shinychat_tool_result_display`, for use as
+#'   `extra = list(display = tool_result_display(...))` when creating an
+#'   [`ellmer::ContentToolResult`].
+#'
+#' @examplesIf rlang::is_installed("ellmer")
+#' library(ellmer)
+#'
+#' get_current_weather <- function(location) {
+#'   ContentToolResult(
+#'     value = "72 degrees and sunny",
+#'     extra = list(
+#'       display = tool_result_display(
+#'         title = paste("Got weather for", location),
+#'         label = location,
+#'         value_preview = "72°F and sunny",
+#'         markdown = "It's **72°F** and sunny."
+#'       )
+#'     )
+#'   )
+#' }
+#'
+#' @family tool display
+#' @export
+tool_result_display <- function(
+  title = NULL,
+  icon = NULL,
+  html = NULL,
+  markdown = NULL,
+  text = NULL,
+  show_request = TRUE,
+  open = FALSE,
+  full_screen = FALSE,
+  footer = NULL,
+  label = NULL,
+  value_preview = NULL
+) {
+  as_tool_result_display(
+    compact(list(
+      title = title,
+      icon = icon,
+      html = html,
+      markdown = markdown,
+      text = text,
+      show_request = show_request,
+      open = open,
+      full_screen = full_screen,
+      footer = footer,
+      label = label,
+      value_preview = value_preview
+    ))
+  )
+}
+
+# fmt: skip
+tool_result_display_fields <- c(
+  "title",
+  "icon",
+  "html",
+  "markdown",
+  "text",
+  "show_request",
+  "open",
+  "full_screen",
+  "footer",
+  "label",
+  "value_preview"
+)
+
+# Fields that are rendered as HTML and therefore accept a string *or* tag-like
+# content (see `as.tags.shinychat_tool_card()`).
+tool_result_display_html_fields <- c("title", "icon", "html", "footer")
+
+# Fields that end up as plain-text tag attributes.
+tool_result_display_string_fields <- c(
+  "markdown",
+  "text",
+  "label",
+  "value_preview"
+)
+
+# Fields serialized via `isTRUE()`/`isFALSE()`, where a non-logical value
+# silently produces the opposite of the intended behavior.
+tool_result_display_flag_fields <- c("show_request", "open", "full_screen")
+
+is_tag_like <- function(x) {
+  inherits(x, c("html", "shiny.tag", "shiny.tag.list", "htmlwidget"))
+}
+
+tool_result_display_field_is_valid <- function(field, value) {
+  if (field %in% tool_result_display_flag_fields) {
+    is_bool(value)
+  } else if (field %in% tool_result_display_html_fields) {
+    is_string(value) || is_tag_like(value)
+  } else {
+    is_string(value)
+  }
+}
+
+tool_result_display_field_expects <- function(field) {
+  if (field %in% tool_result_display_flag_fields) {
+    cli::format_inline("{.code TRUE} or {.code FALSE}")
+  } else if (field %in% tool_result_display_html_fields) {
+    "a single string or HTML content"
+  } else {
+    "a single string"
+  }
+}
+
+# Coerce a bare list (or an existing `shinychat_tool_result_display`) into a
+# validated `shinychat_tool_result_display` object. Unknown or invalid fields
+# are dropped with a warning; this never aborts, so a badly-formed `display`
+# degrades to the default rendering rather than breaking the chat turn.
+as_tool_result_display <- function(display, error_context = NULL) {
+  if (inherits(display, "shinychat_tool_result_display")) {
+    return(display)
+  }
+
+  if (!is.list(display)) {
+    cli::cli_warn(
+      c(
+        error_context,
+        "x" = "Expected a list with fields {.or {.var {tool_result_display_fields}}}, not {.obj_type_friendly {display}}."
+      )
+    )
+    return(structure(list(), class = "shinychat_tool_result_display"))
+  }
+
+  unknown <- setdiff(names(display), tool_result_display_fields)
+  if (length(unknown) > 0) {
+    cli::cli_warn(
+      c(
+        error_context,
+        "x" = "Unrecognized field{?s} {.field {unknown}} in {.code display}; ignoring.",
+        "i" = "Expected fields: {.or {.var {tool_result_display_fields}}}."
+      )
+    )
+    display <- display[setdiff(names(display), unknown)]
+  }
+
+  known <- intersect(tool_result_display_fields, names(display))
+  invalid <- known[
+    !map_lgl(known, function(field) {
+      tool_result_display_field_is_valid(field, display[[field]])
+    })
+  ]
+  if (length(invalid) > 0) {
+    bullets <- map_chr(invalid, function(field) {
+      cli::format_inline(
+        "{.field {field}} must be {tool_result_display_field_expects(field)}, not {.obj_type_friendly {display[[field]]}}; ignoring."
+      )
+    })
+    cli::cli_warn(
+      c(
+        error_context,
+        set_names(bullets, rep("x", length(bullets)))
+      )
+    )
+    display <- display[setdiff(names(display), invalid)]
+  }
+
+  structure(display, class = "shinychat_tool_result_display")
 }
 
 get_tool_result_display <- function(content) {
@@ -297,10 +617,12 @@ get_tool_result_display <- function(content) {
   request <- content@request
 
   if (is.null(display) || opt_shinychat_tool_display() == "basic") {
-    return(list())
+    return(as_tool_result_display(list()))
   }
 
-  invalid_display_fmt <- "Invalid {.code @extra$display} format for {.code ContentToolResult} from {.fn {request@name}} (call id: {request@id})."
+  invalid_display_fmt <- cli::format_inline(
+    "Invalid {.code @extra$display} format for {.code ContentToolResult} from {.fn {request@name}} (call id: {request@id})."
+  )
 
   if (
     inherits(display, c("html", "shiny.tag", "shiny.tag.list", "htmlwidgets"))
@@ -312,36 +634,21 @@ get_tool_result_display <- function(content) {
         "i" = "You can also use {.code markdown} or {.code text} items in {.code display} to show Markdown or plain text, respectively."
       )
     )
-    return(list())
+    return(as_tool_result_display(list()))
   }
 
-  # fmt: skip
-  expected_fields <- c(
-    "html",
-    "markdown",
-    "text",
-    "show_request",
-    "open",
-    "full_screen",
-    "title",
-    "icon",
-    "footer"
-  )
-
-  if (!is.list(display)) {
-    cli::cli_warn(
-      c(
-        invalid_display_fmt,
-        "x" = "Expected a list with fields {.or {.var {expected_fields}}}, not {.obj_type_friendly {display}}."
-      )
-    )
-    return(list())
-  }
-
-  display
+  as_tool_result_display(display, error_context = invalid_display_fmt)
 }
 
-tool_result_display <- function(content, display = NULL) {
+# Validate a tool annotation's `grouping` value, ignoring anything unexpected.
+as_grouping <- function(x) {
+  if (!is.character(x) || length(x) != 1 || !x %in% c("none", "tool", "all")) {
+    return(NULL)
+  }
+  x
+}
+
+tool_result_value <- function(content, display = NULL) {
   display <- display %||% content@extra$display
 
   has_display <- !is.null(display) && is.list(display) && length(display) > 0
@@ -450,8 +757,13 @@ tool_default_display <- function(content) {
 }
 
 S7::method(contents_shinychat, ellmer::Turn) <- function(content) {
-  # Process all contents in the turn, filtering out empty results
-  compact(map(content@contents, contents_shinychat))
+  # Process all contents in the turn, filtering out empty results.
+  #
+  # Wrapped, for the same reason as `merge_ellmer_turn_group()`: converting a
+  # whole turn discards each `ContentToolResult` before any caller could wrap
+  # it, so a turn carrying a custom tool result would otherwise emit bare UI
+  # with no `<shiny-tool-result>` to pair its request against.
+  compact(map(content@contents, contents_shinychat_wrapped))
 }
 
 ellmer_turn_effective_role <- function(turn) {
@@ -495,17 +807,24 @@ merge_ellmer_turn_group <- function(group, tools) {
         }
         x
       })
-      is_tool_request <- map_lgl(
-        turn_contents,
-        S7::S7_inherits,
-        ellmer::ContentToolRequest
-      )
-      turn_contents[!is_tool_request]
+      # Tool requests are kept (not filtered): the group's turns are merged into
+      # one message below, so each request lands in the same content string as
+      # its result. The client pairs them by request-id, the result inherits the
+      # request's `arguments` (which the condensed view previews on its call
+      # rows), and the paired request is then hidden since its result
+      # supersedes it.
+      turn_contents
     }),
     recursive = FALSE
   )
 
-  content <- compact(map(contents, contents_shinychat))
+  # Wrapped, not bare `contents_shinychat()`: this is the restore/preload path
+  # (`client_set_ui()` -> `contents_shinychat(Chat)`), which re-appends
+  # *already-converted* content. Without the wrap here, a custom
+  # `contents_shinychat()` method's output arrives with no
+  # `<shiny-tool-result>`, leaving the client nothing to pair its request
+  # against -- the same permanently-spinning row the live stream used to have.
+  content <- compact(map(contents, contents_shinychat_wrapped))
   if (is.null(content) || identical(content, "")) {
     return(NULL)
   }

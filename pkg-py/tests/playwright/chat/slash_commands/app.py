@@ -9,6 +9,7 @@ ui.tags.div(id="slash_output")
 # Client-side command: handled entirely in JS via shiny:chat-slash-command
 _remove_ping = chat.slash_command("ping", "Client-side ping", fn=None)
 
+
 # Side-effect-only server command: runs server-side but not echoed/stored
 @chat.slash_command("note", "Side-effect only", echo=False)
 async def _():

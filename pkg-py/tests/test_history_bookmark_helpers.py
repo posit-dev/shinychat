@@ -10,7 +10,9 @@ from shinychat._history_bookmark import delete_bookmark_state, extract_state_id
 
 @pytest.fixture(autouse=True)
 def reset_globals(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(bookmark_global, "_default_bookmark_restore_dir_fn", None)
+    monkeypatch.setattr(
+        bookmark_global, "_default_bookmark_restore_dir_fn", None
+    )
 
 
 def test_extract_state_id_finds_param():

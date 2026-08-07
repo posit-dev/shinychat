@@ -10,10 +10,18 @@ export function RawHTML({
   html,
   className,
   displayContents = true,
+  fillable = true,
 }: {
   html: string
   className?: string
   displayContents?: boolean
+  /**
+   * Whether to join the fill layout when the parent is a fill container, so a
+   * Shiny output payload (a plot, a value box) can absorb the available height
+   * instead of collapsing. Pass `false` for card chrome — a footer is sized by
+   * its content, and promoting it makes it split the free space with the body.
+   */
+  fillable?: boolean
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [isFillCarrier, setIsFillCarrier] = useState(false)
@@ -26,9 +34,9 @@ export function RawHTML({
     el.innerHTML = html
 
     const parent = el.parentElement
-    if (parent?.classList.contains("html-fill-container")) {
-      setIsFillCarrier(true)
-    }
+    setIsFillCarrier(
+      fillable && !!parent?.classList.contains("html-fill-container"),
+    )
 
     if (shiny && html) {
       shiny.bindAll(el)
@@ -39,7 +47,7 @@ export function RawHTML({
         shiny.unbindAll(el)
       }
     }
-  }, [html, shiny])
+  }, [html, shiny, fillable])
 
   return (
     <div

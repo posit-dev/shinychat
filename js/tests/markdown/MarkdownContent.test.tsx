@@ -52,6 +52,36 @@ describe("MarkdownContent (pure)", () => {
     expect(container.querySelector(".shiny-tool-card")).not.toBeNull()
   })
 
+  it("renders an ordinary tool result through the fallback bridge", () => {
+    const { container } = render(
+      <MarkdownContent
+        content={
+          '<shiny-tool-result request-id="req-html-result" tool-name="test" value="done" value-type="text"></shiny-tool-result>'
+        }
+        contentType="html"
+        tagToComponentMap={chatTagToComponentMap}
+      />,
+    )
+
+    expect(container.querySelector(".shiny-tool-card")).not.toBeNull()
+    expect(container.textContent).toContain("done")
+  })
+
+  it("renders no card for custom-display through the fallback bridge", () => {
+    const { container } = render(
+      <MarkdownContent
+        content={
+          '<shiny-tool-result request-id="req-custom" tool-name="test" value="&lt;p&gt;custom&lt;/p&gt;" value-type="html" custom-display></shiny-tool-result>'
+        }
+        contentType="html"
+        tagToComponentMap={chatTagToComponentMap}
+      />,
+    )
+
+    expect(container.querySelector(".shiny-tool-card")).toBeNull()
+    expect(container.textContent).not.toContain("custom")
+  })
+
   it("renders empty content without errors", () => {
     const { container } = render(
       <MarkdownContent content="" contentType="markdown" />,

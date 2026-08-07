@@ -5,7 +5,7 @@ import threading
 from typing import Any, cast
 
 import pytest
-from htmltools import tags
+from htmltools import HTML, tags
 from shiny import Inputs, Session
 from shiny.module import ResolvedId
 from shiny.session import session_context
@@ -359,6 +359,48 @@ def test_chat_ui_forwards_kwargs():
     assert "400px" in html
     assert "Hello!" in html
     assert "footer text" in html
+
+
+def test_chat_ui_icon_assistant_false_removes_icon():
+    # False removes the icon: the container and each message carry icon="".
+    tag = chat_ui("myid", messages=["Hello there"], icon_assistant=False)
+    html = tag.get_html_string()
+    assert 'icon-assistant=""' in html
+    assert 'icon=""' in html
+
+
+def test_chat_ui_icon_assistant_true_omits_attribute():
+    # True (like None) defers to the default robot: no icon attribute emitted.
+    tag = chat_ui("myid", messages=["Hello there"], icon_assistant=True)
+    html = tag.get_html_string()
+    assert "icon-assistant" not in html
+    assert "icon=" not in html
+
+
+def test_chat_ui_icon_assistant_none_omits_attribute():
+    tag = chat_ui("myid", messages=["Hello there"])
+    html = tag.get_html_string()
+    assert "icon-assistant" not in html
+    assert "icon=" not in html
+
+
+def test_chat_ui_icon_assistant_skips_user_messages():
+    # User messages render `icon` directly, so the assistant default must not
+    # be copied onto them (it would misattribute who said what).
+    tag = chat_ui(
+        "myid",
+        messages=[
+            {"role": "user", "content": "Hi"},
+            {"role": "assistant", "content": "Hello"},
+        ],
+        icon_assistant=HTML("<span>ROBOT</span>"),
+    )
+    html = tag.get_html_string()
+    user_msg, assistant_msg = html.split("<shiny-chat-message ")[1:3]
+    assert 'data-role="user"' in user_msg
+    assert "ROBOT" not in user_msg
+    assert 'data-role="assistant"' in assistant_msg
+    assert "ROBOT" in assistant_msg
 
 
 # ---------------------------------------------------------------------------

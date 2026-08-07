@@ -3,7 +3,7 @@ import pandas as pd
 from chatlas import ChatOpenAI, ContentToolResult
 from shiny.express import ui
 from shiny.ui import value_box
-from shinychat import message_content_chunk
+from shinychat import message_content, message_content_chunk
 from shinychat.express import Chat
 from shinychat.types import ChatMessage
 
@@ -18,8 +18,7 @@ class WeatherToolResult(ContentToolResult):
     location_name: str
 
 
-@message_content_chunk.register
-def _(message: WeatherToolResult):
+def weather_result_ui(message: WeatherToolResult) -> ChatMessage:
     val = message.value
     high_temp = str(val["temperature"].max())
     low_temp = str(val["temperature"].min())
@@ -33,6 +32,16 @@ def _(message: WeatherToolResult):
         full_screen=True,
     )
     return ChatMessage(content=content)
+
+
+@message_content.register
+def _(message: WeatherToolResult) -> ChatMessage:
+    return weather_result_ui(message)
+
+
+@message_content_chunk.register
+def _(message: WeatherToolResult) -> ChatMessage:
+    return weather_result_ui(message)
 
 
 def get_weather_forecast(
@@ -55,7 +64,7 @@ def get_weather_forecast(
 client = ChatOpenAI(model="gpt-4.1-nano")
 client.register_tool(
     get_weather_forecast,
-    annotations={"title": "Weather Forecast"},
+    annotations={"title": "Looking up weather"},
 )
 
 ui.page_opts(title="Weather Tool - Custom Output")

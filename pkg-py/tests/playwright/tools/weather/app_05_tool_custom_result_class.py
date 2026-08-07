@@ -27,7 +27,9 @@ class WeatherToolResult(ContentToolResult):
         extra = {
             "display": ToolResultDisplay(
                 html=ui.HTML(html_table),
-                title=f"Weather Forecast for {location_name}",
+                title=f"Looked up weather for {location_name}",
+                label=location_name,
+                value_preview=f"{len(forecast_data)} forecast periods",
                 full_screen=True,
             )
         }
@@ -55,7 +57,7 @@ def get_weather_forecast(
 client = ChatOpenAI(model="gpt-4.1-nano")
 client.register_tool(
     get_weather_forecast,
-    annotations={"title": "Weather Forecast"},
+    annotations={"title": "Looking up weather"},
 )
 
 ui.page_opts(title="Weather Tool - Custom Result Class")
