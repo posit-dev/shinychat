@@ -558,8 +558,8 @@ test_that("extend_record_linear() attaches a late-arriving message to the curren
     turns,
     transcript = list(
       list(
-        role = "user",
-        segments = list(list(content = "hi", content_type = "markdown"))
+      role = "user",
+      segments = list(list(content = "hi", content_type = "markdown"))
       )
     ),
     transcript_offset = 0,

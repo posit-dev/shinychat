@@ -1479,8 +1479,8 @@ test_that("set_client() seeds transcript_offset from the restored record so a po
     expect_equal(ctrl$transcript_offset, 2)
 
     get_chat_transcript(session, "chat")$append(
-      make_ui_message("user", "again")
-    )
+        make_ui_message("user", "again")
+      )
 
     ctrl$on_response(
       list(
@@ -1627,8 +1627,8 @@ test_that("editing a settled message forks at the correct transcript node", {
   shiny::testServer(server, session = session, {
     client$set_turns(
       list(
-        make_live_turn("user", "one"),
-        make_live_turn("assistant", "R1")
+      make_live_turn("user", "one"),
+      make_live_turn("assistant", "R1")
       )
     )
     get_chat_transcript(session, "chat")$replace(
@@ -1645,10 +1645,10 @@ test_that("editing a settled message forks at the correct transcript node", {
 
     client$set_turns(
       list(
-        make_live_turn("user", "one"),
-        make_live_turn("assistant", "R1"),
-        make_live_turn("user", "two"),
-        make_live_turn("assistant", "R2")
+      make_live_turn("user", "one"),
+      make_live_turn("assistant", "R1"),
+      make_live_turn("user", "two"),
+      make_live_turn("assistant", "R2")
       )
     )
     get_chat_transcript(session, "chat")$replace(

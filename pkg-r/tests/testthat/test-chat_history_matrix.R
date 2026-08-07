@@ -62,19 +62,19 @@ matrix_seed <- function(ctrl, session, chat_id, setup) {
       setNames(
         list(
           list(
-            list(
-              role = "user",
+          list(
+            role = "user",
               segments = list(
                 list(content = "Hello", content_type = "markdown")
               )
-            ),
-            list(
-              role = "assistant",
+          ),
+          list(
+            role = "assistant",
               segments = list(
                 list(
-                  content = "Hi there",
-                  content_type = "markdown"
-                )
+              content = "Hi there",
+              content_type = "markdown"
+          )
               )
             )
           )

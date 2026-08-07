@@ -118,9 +118,9 @@ record_ui_count <- function(record) {
   ids <- record_path_node_ids(record)
   sum(
     vapply(
-      ids,
-      function(id) length(record$nodes[[id]]$ui),
-      integer(1)
+    ids,
+    function(id) length(record$nodes[[id]]$ui),
+    integer(1)
     )
   )
 }

@@ -320,10 +320,10 @@ chat_server <- function(
         promises::promise_resolve(NULL),
         function(...) {
           client$stream_async(
-            !!!user_input,
-            stream = "content",
-            controller = controller
-          )
+        !!!user_input,
+        stream = "content",
+        controller = controller
+      )
         }
       )
       stream_result <- promises::then(stream_result, function(stream) {

@@ -488,15 +488,15 @@ test_that("FileConversationStore persists turns and ui across multiple put()s wi
       children = list(),
       turns = list(
         list(
-          class = "ellmer::UserTurn",
-          version = 1,
-          props = list(contents = list())
+        class = "ellmer::UserTurn",
+        version = 1,
+        props = list(contents = list())
         )
       ),
       ui = list(
         list(
-          role = "user",
-          segments = list(list(content = "hi", content_type = "markdown"))
+        role = "user",
+        segments = list(list(content = "hi", content_type = "markdown"))
         )
       )
     )
@@ -513,8 +513,8 @@ test_that("FileConversationStore persists turns and ui across multiple put()s wi
   turns_lines_after_first_put <- length(
     readLines(
       file.path(
-        conv_dir,
-        "turns.jsonl"
+    conv_dir,
+    "turns.jsonl"
       )
     )
   )
@@ -526,15 +526,15 @@ test_that("FileConversationStore persists turns and ui across multiple put()s wi
     children = list(),
     turns = list(
       list(
-        class = "ellmer::AssistantTurn",
-        version = 1,
-        props = list(contents = list())
+      class = "ellmer::AssistantTurn",
+      version = 1,
+      props = list(contents = list())
       )
     ),
     ui = list(
       list(
-        role = "assistant",
-        segments = list(list(content = "hello", content_type = "markdown"))
+      role = "assistant",
+      segments = list(list(content = "hello", content_type = "markdown"))
       )
     )
   )
@@ -545,8 +545,8 @@ test_that("FileConversationStore persists turns and ui across multiple put()s wi
   turns_lines_after_second_put <- length(
     readLines(
       file.path(
-        conv_dir,
-        "turns.jsonl"
+    conv_dir,
+    "turns.jsonl"
       )
     )
   )
@@ -569,15 +569,15 @@ test_that("FileConversationStore re-appends a node's ui when it grows across sav
       children = list(),
       turns = list(
         list(
-          class = "ellmer::AssistantTurn",
-          version = 1,
-          props = list(contents = list())
+        class = "ellmer::AssistantTurn",
+        version = 1,
+        props = list(contents = list())
         )
       ),
       ui = list(
         list(
-          role = "assistant",
-          segments = list(list(content = "partial", content_type = "markdown"))
+        role = "assistant",
+        segments = list(list(content = "partial", content_type = "markdown"))
         )
       )
     )
@@ -590,8 +590,8 @@ test_that("FileConversationStore re-appends a node's ui when it grows across sav
     rec$nodes$n_0001$ui,
     list(
       list(
-        role = "assistant",
-        segments = list(list(content = "more", content_type = "markdown"))
+      role = "assistant",
+      segments = list(list(content = "more", content_type = "markdown"))
       )
     )
   )
@@ -613,9 +613,9 @@ test_that("FileConversationStore preserves schema_version and children on round 
       children = list("n_0002"),
       turns = list(
         list(
-          class = "ellmer::UserTurn",
-          version = 1,
-          props = list(contents = list())
+        class = "ellmer::UserTurn",
+        version = 1,
+        props = list(contents = list())
         )
       ),
       ui = NULL
@@ -625,9 +625,9 @@ test_that("FileConversationStore preserves schema_version and children on round 
       children = list(),
       turns = list(
         list(
-          class = "ellmer::AssistantTurn",
-          version = 1,
-          props = list(contents = list())
+        class = "ellmer::AssistantTurn",
+        version = 1,
+        props = list(contents = list())
         )
       ),
       ui = NULL

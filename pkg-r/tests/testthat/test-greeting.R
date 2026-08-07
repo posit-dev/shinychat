@@ -110,8 +110,8 @@ test_that("chat_ui() snapshot for plain string greeting", {
 test_that("chat_ui() snapshot for chat_greeting with persistent=TRUE", {
   expect_snapshot(
     chat_ui(
-      "chat",
-      greeting = chat_greeting("## Hi", persistent = TRUE)
+    "chat",
+    greeting = chat_greeting("## Hi", persistent = TRUE)
     )
   )
 })

@@ -144,12 +144,6 @@ enter new messages.
 To respond to user input, listen for \code{input$ID_user_input} (for example, if
 \code{id="my_chat"}, user input will be at \code{input$my_chat_user_input}), and use
 \code{\link[=chat_append]{chat_append()}} to append messages to the chat.
-
-Message state emitted by server functions is maintained internally for
-history and replay. Applications that need a public transcript should keep
-application-owned state alongside calls to \code{\link[=chat_append]{chat_append()}} or
-\code{\link[=chat_append_message]{chat_append_message()}}. Static \code{messages} passed to \code{chat_ui()} are
-display-only.
 }
 \section{Pairing with \code{chat_server()}}{
 

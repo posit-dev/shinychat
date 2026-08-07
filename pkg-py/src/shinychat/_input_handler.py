@@ -38,10 +38,10 @@ def _(value: Any, _name: "ResolvedId", _session: "Session") -> UserInputValue:
         raise TypeError(
             f"Expected str or dict from shinychat.userInput, got {type(value)!r}"
         )
-    attachments = [
+        attachments = [
         Attachment.model_validate(a) for a in (value.get("attachments") or [])
-    ]
-    validate_attachments(attachments)
+        ]
+        validate_attachments(attachments)
     return UserInputValue(
         text=str(value.get("text", "")), attachments=attachments
-    )
+        )

@@ -93,32 +93,32 @@ function renderChatInput(
 
   const result = render(
     <ChatDispatchContext.Provider value={dispatch}>
-      <ChatInput
-        ref={internalRef}
-        transport={transport}
-        inputId={inputId}
-        uploadAccept={
-          props.uploadAccept ?? [
-            "image/png",
-            "image/jpeg",
-            "image/gif",
-            "image/webp",
-            "application/pdf",
-          ]
-        }
-        maxUploadSize={props.maxUploadSize ?? 30_000_000}
-        disabled={props.disabled ?? false}
-        placeholder={props.placeholder ?? "Type here..."}
-        onSend={props.onSend}
-        userMessages={props.userMessages ?? []}
-        enableCancel={props.enableCancel}
-        enableUpload={enableUpload}
-        cancelRequested={props.cancelRequested}
-        isStreaming={props.isStreaming}
-        onCancel={props.onCancel}
-        slashCommandId={props.slashCommandId}
-        slashCommands={props.slashCommands}
-      />
+        <ChatInput
+          ref={internalRef}
+          transport={transport}
+          inputId={inputId}
+          uploadAccept={
+            props.uploadAccept ?? [
+              "image/png",
+              "image/jpeg",
+              "image/gif",
+              "image/webp",
+              "application/pdf",
+            ]
+          }
+          maxUploadSize={props.maxUploadSize ?? 30_000_000}
+          disabled={props.disabled ?? false}
+          placeholder={props.placeholder ?? "Type here..."}
+          onSend={props.onSend}
+          userMessages={props.userMessages ?? []}
+          enableCancel={props.enableCancel}
+          enableUpload={enableUpload}
+          cancelRequested={props.cancelRequested}
+          isStreaming={props.isStreaming}
+          onCancel={props.onCancel}
+          slashCommandId={props.slashCommandId}
+          slashCommands={props.slashCommands}
+        />
     </ChatDispatchContext.Provider>,
   )
 
@@ -357,22 +357,22 @@ describe("ChatInput", () => {
 
       const { rerender } = render(
         <ChatDispatchContext.Provider value={dispatch}>
-          <ChatInput
-            ref={ref}
-            transport={transport}
-            inputId="test-input"
-            uploadAccept={[
-              "image/png",
-              "image/jpeg",
-              "image/gif",
-              "image/webp",
-              "application/pdf",
-            ]}
-            maxUploadSize={30_000_000}
-            disabled={true}
-            placeholder="Type here..."
-            userMessages={[]}
-          />
+            <ChatInput
+              ref={ref}
+              transport={transport}
+              inputId="test-input"
+              uploadAccept={[
+                "image/png",
+                "image/jpeg",
+                "image/gif",
+                "image/webp",
+                "application/pdf",
+              ]}
+              maxUploadSize={30_000_000}
+              disabled={true}
+              placeholder="Type here..."
+              userMessages={[]}
+            />
         </ChatDispatchContext.Provider>,
       )
 
@@ -383,22 +383,22 @@ describe("ChatInput", () => {
 
       rerender(
         <ChatDispatchContext.Provider value={dispatch}>
-          <ChatInput
-            ref={ref}
-            transport={transport}
-            inputId="test-input"
-            uploadAccept={[
-              "image/png",
-              "image/jpeg",
-              "image/gif",
-              "image/webp",
-              "application/pdf",
-            ]}
-            maxUploadSize={30_000_000}
-            disabled={false}
-            placeholder="Type here..."
-            userMessages={[]}
-          />
+            <ChatInput
+              ref={ref}
+              transport={transport}
+              inputId="test-input"
+              uploadAccept={[
+                "image/png",
+                "image/jpeg",
+                "image/gif",
+                "image/webp",
+                "application/pdf",
+              ]}
+              maxUploadSize={30_000_000}
+              disabled={false}
+              placeholder="Type here..."
+              userMessages={[]}
+            />
         </ChatDispatchContext.Provider>,
       )
 

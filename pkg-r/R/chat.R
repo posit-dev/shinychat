@@ -962,13 +962,13 @@ normalize_chat_append_message <- function(
 
   icon_str <- resolve_icon_attr(icon)
   message <- list(
-    role = msg[["role"]],
+      role = msg[["role"]],
     segments = list(
       list(content = msg_content, content_type = content_type)
     ),
     attachments = msg[["attachments"]],
     htmlDeps = html_deps
-  )
+      )
   message_payload <- list(
     role = message$role,
     segments = message$segments
@@ -1009,12 +1009,12 @@ restore_history_message <- function(chat_id, message, session) {
   action <- list(type = "message", message = message_payload)
   transcript <- get_chat_transcript(session, chat_id)
   transcript$append(message, send = function() {
-    send_chat_action(
-      chat_id,
-      action = action,
-      html_deps = message$htmlDeps,
-      session = session
-    )
+  send_chat_action(
+    chat_id,
+    action = action,
+    html_deps = message$htmlDeps,
+    session = session
+  )
   })
 }
 
@@ -1034,16 +1034,16 @@ chat_append_stream <- function(
     if (isTRUE(owner$started) && owns_chat_stream(session, id, owner)) {
       render_error <- tryCatch(
         {
-          chat_append_message(
-            id,
-            list(
-              role = role,
-              content = sanitized_chat_error(reason)
-            ),
-            chunk = "end",
-            operation = "append",
-            session = session
-          )
+    chat_append_message(
+      id,
+      list(
+        role = role,
+        content = sanitized_chat_error(reason)
+      ),
+      chunk = "end",
+      operation = "append",
+      session = session
+    )
           NULL
         },
         error = identity
@@ -1153,7 +1153,7 @@ rlang::on_load(
     }
 
     if (owns_chat_stream(session, id, owner)) {
-      chat_append_("", chunk = "end")
+    chat_append_("", chunk = "end")
     }
 
     res <- res$as_list()
@@ -1552,7 +1552,7 @@ chat_clear <- function(
   }
   transcript <- get_chat_transcript(session, id)
   transcript$clear(send = function() {
-    send_chat_action(id, action = action, session = session)
+  send_chat_action(id, action = action, session = session)
   })
   invalidate_chat_stream(session, id)
 }
