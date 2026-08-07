@@ -1169,6 +1169,42 @@ async def test_terminal_transform_none_send_failure_does_not_settle_projection(
         assert chat._current_stream_projection is None
 
 
+@pytest.mark.anyio
+async def test_model_error_remains_primary_when_terminal_send_also_fails(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    class ModelError(RuntimeError):
+        pass
+
+    original_error = ModelError("model failed")
+
+    with session_context(test_session):
+        chat = Chat("dual_failure_precedence", history=False)
+        terminal_attempts = 0
+
+        async def send_action(action: Any, deps: Any = None) -> None:
+            nonlocal terminal_attempts
+            if action["type"] == "chunk_end":
+                terminal_attempts += 1
+                raise RuntimeError("terminal send failed")
+
+        monkeypatch.setattr(chat, "_send_action", send_action)
+
+        async def response() -> AsyncIterator[str]:
+            yield "partial"
+            raise original_error
+
+        with pytest.raises(ModelError) as raised:
+            await chat._append_message_stream(response())
+
+        assert raised.value is original_error
+        assert terminal_attempts == 1
+        assert chat._current_stream_id is None
+        assert chat._current_stream_segments == []
+        with reactive.isolate():
+            assert chat.messages() == ()
+
+
 def test_stream_replace_discards_stale_html_dependencies():
     with session_context(test_session):
         chat = Chat(id="chat")
