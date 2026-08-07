@@ -1127,7 +1127,12 @@ chat_append_stream <- function(
           )
           NULL
         },
-        error = identity
+        error = function(e) {
+          if (!is.null(transcript)) {
+            transcript$abort(stream_id)
+          }
+          e
+        }
       )
     }
     if (!is.null(render_error)) {

@@ -484,6 +484,53 @@ test_that("an error-render send failure preserves the original rejection", {
   )
 })
 
+test_that("a managed sanitized-error-render send failure still aborts the active stream", {
+  session <- shiny::MockShinySession$new()
+  transcript <- register_chat_transcript(session, "chat")
+  terminal_attempts <- 0
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      if (identical(action$type, "chunk_end")) {
+        terminal_attempts <<- terminal_attempts + 1
+        if (terminal_attempts == 1L) {
+          rlang::abort("terminal send failed")
+        }
+      }
+      invisible(NULL)
+    }
+  )
+
+  stream <- coro::async_generator(function() {
+    yield("partial")
+    stop("model failed")
+  })
+
+  p <- chat_append_stream("chat", stream(), session = session)
+  captured_stream_id <- transcript$.__enclos_env__$private$active_stream_id
+  expect_false(is.null(captured_stream_id))
+
+  expect_warning(
+    err <- tryCatch(sync(p), error = identity),
+    regexp = "chat_append_stream"
+  )
+
+  expect_s3_class(err, "error")
+  expect_identical(conditionMessage(err), "model failed")
+  expect_identical(terminal_attempts, 1)
+
+  # The sanitized terminal render's own transport failure must not wedge the
+  # transcript -- it still aborts the active stream locally.
+  expect_false(transcript$is_active(captured_stream_id))
+
+  # A subsequent stream on the same chat id must not be blocked by the
+  # (now-aborted) failed stream.
+  stream2 <- coro::async_generator(function() {
+    yield("ok")
+  })
+  p2 <- chat_append_stream("chat", stream2(), session = session)
+  expect_identical(sync(p2), "ok")
+})
+
 test_that("chat_server handles string user_input values", {
   local_mocked_bindings(
     chat_restore = function(...) function() invisible(NULL),
