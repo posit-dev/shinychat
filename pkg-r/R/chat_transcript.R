@@ -4,6 +4,7 @@ ChatTranscript <- R6::R6Class(
     initialize = function() {
       private$messages <- list()
       private$active_stream <- NULL
+      private$active_stream_id <- NULL
     },
 
     read = function() {
@@ -11,17 +12,18 @@ ChatTranscript <- R6::R6Class(
     },
 
     append = function(message, send = NULL) {
+      if (!is.null(private$active_stream)) {
+        rlang::abort(
+          "Cannot append a complete message while a stream is active"
+        )
+      }
       next_message <- normalize_transcript_message(message)
       next_messages <- c(copy_messages(private$messages), list(next_message))
 
-      private$transition(
-        next_messages,
-        copy_message(private$active_stream),
-        send
-      )
+      private$transition(next_messages, NULL, NULL, send)
     },
 
-    start = function(message, send = NULL) {
+    start = function(message, stream_id, send = NULL) {
       if (!is.null(private$active_stream)) {
         rlang::abort("Cannot start a stream while another stream is active")
       }
@@ -30,6 +32,7 @@ ChatTranscript <- R6::R6Class(
       private$transition(
         copy_messages(private$messages),
         next_active_stream,
+        stream_id,
         send
       )
     },
@@ -37,6 +40,7 @@ ChatTranscript <- R6::R6Class(
     chunk = function(
       content,
       content_type,
+      stream_id,
       html_deps = NULL,
       operation = "append",
       send = NULL
@@ -44,6 +48,7 @@ ChatTranscript <- R6::R6Class(
       if (is.null(private$active_stream)) {
         rlang::abort("Cannot apply a stream chunk without an active stream")
       }
+      private$assert_active_stream(stream_id)
       if (!operation %in% c("append", "replace")) {
         rlang::abort("`operation` must be either \"append\" or \"replace\".")
       }
@@ -94,37 +99,65 @@ ChatTranscript <- R6::R6Class(
       private$transition(
         copy_messages(private$messages),
         next_active_stream,
+        stream_id,
         send
       )
     },
 
-    settle = function(send = NULL) {
+    settle = function(stream_id, send = NULL) {
       if (is.null(private$active_stream)) {
         rlang::abort("Cannot end a stream without an active stream")
       }
+      private$assert_active_stream(stream_id)
       next_messages <- c(
         copy_messages(private$messages),
         list(copy_message(private$active_stream))
       )
 
-      private$transition(next_messages, NULL, send)
+      private$transition(next_messages, NULL, NULL, send)
+    },
+
+    abort = function(stream_id) {
+      if (!identical(private$active_stream_id, stream_id)) {
+        return(invisible(NULL))
+      }
+      private$active_stream <- NULL
+      private$active_stream_id <- NULL
+      invisible(NULL)
+    },
+
+    is_active = function(stream_id) {
+      !is.null(private$active_stream) &&
+        identical(private$active_stream_id, stream_id)
     },
 
     clear = function(send = NULL) {
-      private$transition(list(), NULL, send)
+      private$transition(list(), NULL, NULL, send)
     },
 
     replace = function(messages, send = NULL) {
       next_messages <- normalize_transcript_messages(messages)
 
-      private$transition(next_messages, NULL, send)
+      private$transition(next_messages, NULL, NULL, send)
     }
   ),
   private = list(
     messages = NULL,
     active_stream = NULL,
+    active_stream_id = NULL,
 
-    transition = function(next_messages, next_active_stream, send) {
+    assert_active_stream = function(stream_id) {
+      if (!identical(private$active_stream_id, stream_id)) {
+        rlang::abort("Cannot write to a stream that is not active")
+      }
+    },
+
+    transition = function(
+      next_messages,
+      next_active_stream,
+      next_active_stream_id,
+      send
+    ) {
       validate_transcript_state(next_messages, next_active_stream)
       validate_send_callback(send)
       if (!is.null(send)) {
@@ -132,6 +165,7 @@ ChatTranscript <- R6::R6Class(
       }
       private$messages <- next_messages
       private$active_stream <- next_active_stream
+      private$active_stream_id <- next_active_stream_id
 
       invisible(NULL)
     }
