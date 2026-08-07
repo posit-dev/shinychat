@@ -215,7 +215,7 @@ test_that("chat_append_stream() settles a sanitized error before rejecting", {
     send_chat_action = function(...) invisible(NULL)
   )
   session <- shiny::MockShinySession$new()
-  transcript <- get_chat_transcript(session, "chat")
+  transcript <- register_chat_transcript(session, "chat")
   state_on_rejection <- NULL
 
   stream <- coro::async_generator(function() {
@@ -266,7 +266,7 @@ test_that("a cleared stream cannot write into or settle its replacement", {
   }
 
   session <- shiny::MockShinySession$new()
-  transcript <- get_chat_transcript(session, "chat")
+  transcript <- register_chat_transcript(session, "chat")
   actions <- list()
   local_mocked_bindings(
     send_chat_action = function(id, action, html_deps = NULL, session) {
@@ -489,7 +489,7 @@ test_that("chat_append_message() emits segment payloads incl. thinking", {
 
 test_that("chat_append_message() sends complete messages before committing", {
   session <- shiny::MockShinySession$new()
-  transcript <- get_chat_transcript(session, "chat")
+  transcript <- register_chat_transcript(session, "chat")
   state_during_send <- NULL
   local_mocked_bindings(
     send_chat_action = function(...) {
@@ -519,7 +519,7 @@ test_that("chat_append_message() sends complete messages before committing", {
 
 test_that("chat_append_message() does not commit failed complete sends", {
   session <- shiny::MockShinySession$new()
-  transcript <- get_chat_transcript(session, "chat")
+  transcript <- register_chat_transcript(session, "chat")
   local_mocked_bindings(
     send_chat_action = function(...) rlang::abort("send failed")
   )
@@ -539,7 +539,7 @@ test_that("chat_append_message() does not commit failed complete sends", {
 
 test_that("chat_append_message() commits streamed append, replace, and end sends", {
   session <- shiny::MockShinySession$new()
-  transcript <- get_chat_transcript(session, "chat")
+  transcript <- register_chat_transcript(session, "chat")
   actions <- list()
   local_mocked_bindings(
     send_chat_action = function(id, action, html_deps = NULL, session) {
@@ -585,7 +585,7 @@ test_that("chat_append_message() commits streamed append, replace, and end sends
 
 test_that("chat_append_message() excludes a stream chunk whose send fails", {
   session <- shiny::MockShinySession$new()
-  transcript <- get_chat_transcript(session, "chat")
+  transcript <- register_chat_transcript(session, "chat")
   local_mocked_bindings(
     send_chat_action = function(id, action, html_deps = NULL, session) {
       if (identical(action$content, "lost")) {
@@ -625,7 +625,7 @@ test_that("chat_append_message() excludes a stream chunk whose send fails", {
 
 test_that("chat_clear() clears only after its send succeeds", {
   session <- shiny::MockShinySession$new()
-  transcript <- get_chat_transcript(session, "chat")
+  transcript <- register_chat_transcript(session, "chat")
   fail_send <- FALSE
   local_mocked_bindings(
     send_chat_action = function(...) {
@@ -657,4 +657,60 @@ test_that("chat_clear() clears only after its send succeeds", {
   fail_send <- FALSE
   chat_clear("chat", session = session)
   expect_identical(transcript$read(), list())
+})
+
+test_that("standalone appends send without registering transcript state", {
+  session <- shiny::MockShinySession$new()
+  actions <- list()
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      actions[[length(actions) + 1L]] <<- action
+    }
+  )
+
+  chat_append_message(
+    "chat",
+    list(role = "assistant", content = "display only"),
+    chunk = FALSE,
+    session = session
+  )
+
+  expect_length(actions, 1L)
+  expect_null(get_chat_transcript(session, "chat"))
+})
+
+test_that("standalone chat_append_stream() sends actions but leaves no transcript", {
+  session <- shiny::MockShinySession$new()
+  actions <- list()
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      actions[[length(actions) + 1L]] <<- action
+      invisible(NULL)
+    }
+  )
+  stream <- coro::async_generator(function() {
+    yield("standalone")
+  })
+
+  res <- sync(chat_append_stream("chat", stream(), session = session))
+
+  expect_equal(res, "standalone")
+  expect_true(length(actions) > 0)
+  expect_null(get_chat_transcript(session, "chat"))
+})
+
+test_that("standalone chat_clear() sends the clear action without creating transcript state", {
+  session <- shiny::MockShinySession$new()
+  actions <- list()
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      actions[[length(actions) + 1L]] <<- action
+      invisible(NULL)
+    }
+  )
+
+  chat_clear("chat", session = session)
+
+  expect_identical(actions, list(list(type = "clear")))
+  expect_null(get_chat_transcript(session, "chat"))
 })

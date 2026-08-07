@@ -172,14 +172,21 @@ ChatTranscript <- R6::R6Class(
   )
 )
 
-get_chat_transcript <- function(session, id) {
-  key <- paste0(id, ".transcript")
-  transcript <- get_session_chat_bookmark_info(session, key)
+register_chat_transcript <- function(session, id) {
+  transcript <- get_chat_transcript(session, id)
   if (is.null(transcript)) {
     transcript <- ChatTranscript$new()
-    set_session_chat_bookmark_info(session, key, transcript)
+    set_session_chat_bookmark_info(
+      session,
+      paste0(id, ".transcript"),
+      transcript
+    )
   }
   transcript
+}
+
+get_chat_transcript <- function(session, id) {
+  get_session_chat_bookmark_info(session, paste0(id, ".transcript"))
 }
 
 normalize_transcript_messages <- function(messages) {

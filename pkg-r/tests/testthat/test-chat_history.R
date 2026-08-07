@@ -20,7 +20,7 @@ history_append_message <- function(
   attachments = NULL,
   html_deps = NULL
 ) {
-  get_chat_transcript(session, "chat")$append(
+  register_chat_transcript(session, "chat")$append(
     list(
       role = role,
       segments = list(
@@ -669,7 +669,7 @@ test_that("HistoryController$on_response() attaches transcript messages to nodes
   store <- InMemoryConversationStore$new()
   client <- mock_chat_client()
   session <- shiny::MockShinySession$new()
-  get_chat_transcript(session, "chat")$replace(
+  register_chat_transcript(session, "chat")$replace(
     list(
       list(
         role = "user",
@@ -731,7 +731,7 @@ test_that("HistoryController$on_response() is idempotent without new state", {
   store <- InMemoryConversationStore$new()
   client <- mock_chat_client()
   session <- shiny::MockShinySession$new()
-  get_chat_transcript(session, "chat")$replace(
+  register_chat_transcript(session, "chat")$replace(
     list(
       list(
         role = "user",
@@ -877,7 +877,7 @@ test_that("an out-of-band message survives a conversation switch and restore", {
   store <- InMemoryConversationStore$new()
   client <- mock_chat_client()
   session <- shiny::MockShinySession$new()
-  get_chat_transcript(session, "chat")$replace(
+  register_chat_transcript(session, "chat")$replace(
     list(
       list(
         role = "user",
@@ -978,7 +978,7 @@ test_that("html_deps travel with a stored message and are resent on replay in a 
     name = "note.txt",
     size = 2
   )
-  get_chat_transcript(session, "chat")$replace(
+  register_chat_transcript(session, "chat")$replace(
     list(
       list(
         role = "assistant",

@@ -314,16 +314,18 @@ chat_server <- function(
     bm_on_response <- isTRUE(bookmark_on_response)
   }
 
+  register_chat_transcript(session, id)
+
   append_stream_task <- shiny::ExtendedTask$new(
     function(client, ui_id, user_input, controller = NULL) {
       stream_result <- promises::then(
         promises::promise_resolve(NULL),
         function(...) {
           client$stream_async(
-        !!!user_input,
-        stream = "content",
-        controller = controller
-      )
+            !!!user_input,
+            stream = "content",
+            controller = controller
+          )
         }
       )
       stream_result <- promises::then(stream_result, function(stream) {

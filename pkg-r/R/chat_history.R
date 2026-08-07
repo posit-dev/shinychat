@@ -81,7 +81,8 @@ HistoryController <- R6::R6Class(
       chat_id,
       client,
       options,
-      session
+      session,
+      transcript = NULL
     ) {
       title <- options$title
       private$store <- resolve_store(options$store)
@@ -90,7 +91,8 @@ HistoryController <- R6::R6Class(
       private$title_fn <- if (is.function(title)) title else NULL
       private$title_enabled <- !is.null(title)
       private$session <- session
-      private$transcript <- get_chat_transcript(session, chat_id)
+      private$transcript <- transcript %||%
+        register_chat_transcript(session, chat_id)
       private$max_store_bytes <- if (!is.null(options$max_store_mb)) {
         # Bytes must stay a double: as.integer() overflows R's 32-bit integer
         # range at max_store_mb >= 2048, yielding NA.
@@ -691,12 +693,14 @@ chat_enable_history <- function(
     )
   }
   resolved_id <- resolve_id(id, session)
+  transcript <- register_chat_transcript(session, id)
 
   controller <- HistoryController$new(
     chat_id = id,
     client = client,
     options = options,
-    session = session
+    session = session,
+    transcript = transcript
   )
 
   if (!is.null(on_save)) {

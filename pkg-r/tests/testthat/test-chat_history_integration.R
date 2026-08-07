@@ -42,6 +42,63 @@ test_that("chat_server() accepts history = FALSE", {
   )
 })
 
+test_that("chat_server(history = FALSE) registers a transcript", {
+  client <- mock_chat_client()
+
+  shiny::testServer(
+    function(input, output, session) {
+      chat_server("chat", client, history = FALSE, session = session)
+    },
+    {
+      expect_false(is.null(get_chat_transcript(session, "chat")))
+    }
+  )
+})
+
+test_that("chat_enable_history() registers a transcript", {
+  client <- mock_chat_client()
+  session <- shiny::MockShinySession$new()
+  store <- InMemoryConversationStore$new()
+
+  chat_enable_history(
+    "chat",
+    client,
+    options = history_options(
+      store = store,
+      restore_mode = "none",
+      title = NULL
+    ),
+    session = session
+  )
+
+  expect_false(is.null(get_chat_transcript(session, "chat")))
+})
+
+test_that("chat_server() followed by chat_enable_history() reuses one transcript", {
+  client <- mock_chat_client()
+  store <- InMemoryConversationStore$new()
+
+  shiny::testServer(
+    function(input, output, session) {
+      chat_server("chat", client, history = FALSE, session = session)
+    },
+    {
+      before <- get_chat_transcript(session, "chat")
+      chat_enable_history(
+        "chat",
+        client,
+        options = history_options(
+          store = store,
+          restore_mode = "none",
+          title = NULL
+        ),
+        session = session
+      )
+      expect_identical(get_chat_transcript(session, "chat"), before)
+    }
+  )
+})
+
 test_that("chat_server() stores raw user input before the stream reads it", {
   local_mocked_bindings(
     chat_append = function(...) invisible(NULL),

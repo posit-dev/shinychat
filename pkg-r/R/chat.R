@@ -820,6 +820,33 @@ chat_append_message <- function(
   icon = NULL,
   session = getDefaultReactiveDomain()
 ) {
+  chat_append_message_impl(
+    id = id,
+    msg = msg,
+    chunk = chunk,
+    operation = operation,
+    icon = icon,
+    session = session,
+    stream_id = "direct"
+  )
+}
+
+# The low-level engine behind `chat_append_message()`. `stream_id` identifies
+# the logical stream a `chunk`/`operation` transition belongs to, so callers
+# with their own stream identity (e.g. `chat_append_stream()`, once it moves
+# off the "direct" identity) can drive `ChatTranscript`'s admission checks
+# directly. When no transcript is registered for `id` (i.e. neither
+# `chat_server()` nor `chat_enable_history()` has claimed it), the message is
+# display-only: it's sent to the browser but never recorded server-side.
+chat_append_message_impl <- function(
+  id,
+  msg,
+  chunk = TRUE,
+  operation = c("append", "replace"),
+  icon = NULL,
+  session = getDefaultReactiveDomain(),
+  stream_id
+) {
   check_active_session(session)
 
   if (!is.list(msg)) {
@@ -854,21 +881,49 @@ chat_append_message <- function(
   )
   transcript <- get_chat_transcript(session, id)
 
-  if (chunk_type == "start") {
-    transcript$start(normalized$message, send = function() {
+  if (is.null(transcript)) {
+    if (chunk_type == "end") {
+      segment <- normalized$message$segments[[1L]]
+      if (nzchar(segment$content)) {
+        send_chat_action(
+          id,
+          action = normalized$action,
+          html_deps = normalized$html_deps,
+          session = session
+        )
+      }
+      send_chat_action(id, action = list(type = "chunk_end"), session = session)
+    } else {
       send_chat_action(
         id,
         action = normalized$action,
         html_deps = normalized$html_deps,
         session = session
       )
-    })
+    }
+    return(invisible(NULL))
+  }
+
+  if (chunk_type == "start") {
+    transcript$start(
+      normalized$message,
+      stream_id = stream_id,
+      send = function() {
+        send_chat_action(
+          id,
+          action = normalized$action,
+          html_deps = normalized$html_deps,
+          session = session
+        )
+      }
+    )
   } else if (chunk_type == "end") {
     segment <- normalized$message$segments[[1L]]
     if (nzchar(segment$content)) {
       transcript$chunk(
         content = segment$content,
         content_type = segment$content_type,
+        stream_id = stream_id,
         html_deps = normalized$html_deps,
         operation = operation,
         send = function() {
@@ -881,7 +936,7 @@ chat_append_message <- function(
         }
       )
     }
-    transcript$settle(send = function() {
+    transcript$settle(stream_id = stream_id, send = function() {
       send_chat_action(
         id,
         action = list(type = "chunk_end"),
@@ -893,6 +948,7 @@ chat_append_message <- function(
     transcript$chunk(
       content = segment$content,
       content_type = segment$content_type,
+      stream_id = stream_id,
       html_deps = normalized$html_deps,
       operation = operation,
       send = function() {
@@ -962,13 +1018,13 @@ normalize_chat_append_message <- function(
 
   icon_str <- resolve_icon_attr(icon)
   message <- list(
-      role = msg[["role"]],
+    role = msg[["role"]],
     segments = list(
       list(content = msg_content, content_type = content_type)
     ),
     attachments = msg[["attachments"]],
     htmlDeps = html_deps
-      )
+  )
   message_payload <- list(
     role = message$role,
     segments = message$segments
@@ -1007,14 +1063,14 @@ restore_history_message <- function(chat_id, message, session) {
     message_payload$attachments <- message$attachments
   }
   action <- list(type = "message", message = message_payload)
-  transcript <- get_chat_transcript(session, chat_id)
+  transcript <- register_chat_transcript(session, chat_id)
   transcript$append(message, send = function() {
-  send_chat_action(
-    chat_id,
-    action = action,
-    html_deps = message$htmlDeps,
-    session = session
-  )
+    send_chat_action(
+      chat_id,
+      action = action,
+      html_deps = message$htmlDeps,
+      session = session
+    )
   })
 }
 
@@ -1034,16 +1090,16 @@ chat_append_stream <- function(
     if (isTRUE(owner$started) && owns_chat_stream(session, id, owner)) {
       render_error <- tryCatch(
         {
-    chat_append_message(
-      id,
-      list(
-        role = role,
-        content = sanitized_chat_error(reason)
-      ),
-      chunk = "end",
-      operation = "append",
-      session = session
-    )
+          chat_append_message(
+            id,
+            list(
+              role = role,
+              content = sanitized_chat_error(reason)
+            ),
+            chunk = "end",
+            operation = "append",
+            session = session
+          )
           NULL
         },
         error = identity
@@ -1153,7 +1209,7 @@ rlang::on_load(
     }
 
     if (owns_chat_stream(session, id, owner)) {
-    chat_append_("", chunk = "end")
+      chat_append_("", chunk = "end")
     }
 
     res <- res$as_list()
@@ -1551,9 +1607,13 @@ chat_clear <- function(
     set_session_greeting_state(session, id, value = NULL)
   }
   transcript <- get_chat_transcript(session, id)
-  transcript$clear(send = function() {
-  send_chat_action(id, action = action, session = session)
-  })
+  if (is.null(transcript)) {
+    send_chat_action(id, action = action, session = session)
+  } else {
+    transcript$clear(send = function() {
+      send_chat_action(id, action = action, session = session)
+    })
+  }
   invalidate_chat_stream(session, id)
 }
 
