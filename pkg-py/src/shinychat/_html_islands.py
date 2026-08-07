@@ -35,7 +35,7 @@ def split_html_islands(content: TagChild | TagList) -> list[TagChild]:
 
     Elements WITH the attribute are emitted bare.
     Consecutive elements WITHOUT the attribute are grouped into
-    <shinychat-html> wrappers.
+    <shinychat-raw-html> wrappers.
 
     Returns a list of TagChild items ready to be serialized.
     """

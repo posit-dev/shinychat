@@ -2,7 +2,7 @@
 #'
 #' Elements WITH the attribute are emitted bare.
 #' Consecutive elements WITHOUT the attribute are grouped into
-#' <shinychat-html> wrappers.
+#' <shinychat-raw-html> wrappers.
 #'
 #' @param content A tag, tagList, or other HTML content.
 #' @return A list of tag children ready to be serialized.
