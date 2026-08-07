@@ -73,6 +73,7 @@ export interface ChatContainerProps {
     attachments: AttachmentPayload[],
   ) => void
   onNavigate?: (index: number, direction: "prev" | "next") => void
+  siblingNavigationPending?: boolean
 }
 
 export interface ChatContainerHandle extends ChatInputHandle {
@@ -109,6 +110,7 @@ export const ChatContainer = forwardRef<
     historyActiveId,
     onEdit,
     onNavigate,
+    siblingNavigationPending,
   },
   ref,
 ) {
@@ -503,6 +505,7 @@ export const ChatContainer = forwardRef<
                   // buttons would render but silently no-op on click.
                   onEdit={historyEnabled ? onEdit : undefined}
                   onNavigate={historyEnabled ? onNavigate : undefined}
+                  siblingNavigationPending={siblingNavigationPending}
                   disabled={isStreaming}
                   inputId={inputId}
                   submitKey={submitKey}

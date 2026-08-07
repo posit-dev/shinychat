@@ -55,6 +55,7 @@ interface ChatMessageProps {
     attachments: AttachmentPayload[],
   ) => void
   onNavigate?: (index: number, direction: "prev" | "next") => void
+  siblingNavigationPending?: boolean
   disabled?: boolean
   inputId?: string
   submitKey?: SubmitKey
@@ -72,6 +73,7 @@ export const ChatMessage = memo(function ChatMessage({
   iconAssistant,
   onEdit,
   onNavigate,
+  siblingNavigationPending = false,
   disabled,
   inputId,
   submitKey = "enter",
@@ -548,7 +550,11 @@ export const ChatMessage = memo(function ChatMessage({
               <div className="shiny-chat-sibling-nav">
                 <button
                   type="button"
-                  disabled={message.siblings.index === 0 || disabled}
+                  disabled={
+                    message.siblings.index === 0 ||
+                    disabled ||
+                    siblingNavigationPending
+                  }
                   onClick={() => onNavigate?.(index, "prev")}
                   aria-label="Previous version"
                 >
@@ -561,7 +567,8 @@ export const ChatMessage = memo(function ChatMessage({
                   type="button"
                   disabled={
                     message.siblings.index === message.siblings.total - 1 ||
-                    disabled
+                    disabled ||
+                    siblingNavigationPending
                   }
                   onClick={() => onNavigate?.(index, "next")}
                   aria-label="Next version"

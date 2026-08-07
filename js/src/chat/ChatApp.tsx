@@ -197,6 +197,8 @@ export function ChatApp({
 
   const containerRef = useRef<ChatContainerHandle>(null)
   const siblingNavigationPendingRef = useRef(false)
+  const [siblingNavigationPending, setSiblingNavigationPending] =
+    useState(false)
 
   // The textarea is fully uncontrolled, so value/focus mutations go through
   // the imperative handle rather than the reducer.
@@ -239,6 +241,7 @@ export function ChatApp({
         siblingNavigationPendingRef.current
       ) {
         siblingNavigationPendingRef.current = false
+        setSiblingNavigationPending(false)
         containerRef.current?.endSiblingNavigation()
       }
     })
@@ -323,7 +326,10 @@ export function ChatApp({
 
   const handleNavigate = useCallback(
     (index: number, direction: "prev" | "next") => {
+      if (siblingNavigationPendingRef.current) return
+
       siblingNavigationPendingRef.current = true
+      setSiblingNavigationPending(true)
       containerRef.current?.beginSiblingNavigation()
       transport.sendMessageNavigate(elementId, index, direction)
     },
@@ -371,6 +377,7 @@ export function ChatApp({
                 historyActiveId={state.history.activeId}
                 onEdit={handleEdit}
                 onNavigate={handleNavigate}
+                siblingNavigationPending={siblingNavigationPending}
               />
             </ChatSubmitContext.Provider>
           </ChatDispatchContext.Provider>

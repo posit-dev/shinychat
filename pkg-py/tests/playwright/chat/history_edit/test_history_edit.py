@@ -404,10 +404,10 @@ def test_sibling_navigation_preserves_manual_scroll_position(
 
     # Restoring the original branch makes the conversation overflow again, but
     # must not treat the short edited branch's top position as a bottom pin.
-    page.wait_for_timeout(1_000)
-    scroll_top_after = scroll_container.evaluate("el => el.scrollTop")
-    assert scroll_top_after <= 1, (
-        "sibling navigation should preserve the edited branch's top position"
+    page.wait_for_function(
+        "el => el.scrollHeight > el.clientHeight && el.scrollTop <= 1",
+        arg=scroll_container.element_handle(),
+        timeout=10_000,
     )
 
 

@@ -14,6 +14,7 @@ export interface ChatMessagesProps {
     attachments: AttachmentPayload[],
   ) => void
   onNavigate?: (index: number, direction: "prev" | "next") => void
+  siblingNavigationPending?: boolean
   disabled?: boolean
   inputId: string
   submitKey?: SubmitKey
@@ -27,6 +28,7 @@ export const ChatMessages = memo(function ChatMessages({
   iconAssistant,
   onEdit,
   onNavigate,
+  siblingNavigationPending,
   disabled,
   inputId,
   submitKey,
@@ -55,6 +57,7 @@ export const ChatMessages = memo(function ChatMessages({
             iconAssistant={iconAssistant}
             onEdit={onEdit}
             onNavigate={onNavigate}
+            siblingNavigationPending={siblingNavigationPending}
             disabled={disabled}
             inputId={inputId}
             submitKey={submitKey}
