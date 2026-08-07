@@ -56,21 +56,7 @@ test_that("file-backed history restores after reload", {
       ),
       timeout = 30 * 1000
     )
-  }
-
-  wait_for_history_save <- function() {
-    app$click(selector = ".shiny-chat-history-trigger")
-    app$wait_for_js(
-      paste(
-        "document.querySelectorAll(",
-        "'.shiny-chat-history-item').length === 1;",
-        sep = "\n"
-      ),
-      timeout = 30 * 1000
-    )
-    app$run_js(
-      "document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})); return true;"
-    )
+    app$wait_for_idle(timeout = 30 * 1000)
   }
 
   reload_app <- function() {
@@ -96,14 +82,12 @@ test_that("file-backed history restores after reload", {
 
   submit_message("first")
   wait_for_message("echo: first")
-  wait_for_history_save()
 
   reload_app()
   wait_for_message("echo: first")
 
   submit_message("second")
   wait_for_message("echo: second")
-  wait_for_history_save()
 
   reload_app()
   wait_for_message("echo: second")
