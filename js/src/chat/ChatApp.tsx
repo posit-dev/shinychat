@@ -11,7 +11,6 @@ import {
   ChatToolContext,
   ChatDispatchContext,
   ToolGroupingContext,
-  ChatSubmitContext,
   AsideFaviconContext,
 } from "./context"
 import { setCurrentConversationId } from "./currentConversation"
@@ -144,23 +143,6 @@ export function ChatApp({
   useEffect(() => {
     dispatch({ type: "SET_TOOL_GROUPING", grouping: resolvedToolGrouping })
   }, [resolvedToolGrouping])
-
-  const submitUserInput = useCallback(
-    (content: string, attachments: AttachmentPayload[]) => {
-      // Optimistic UI update (adds user message + loading placeholder).
-      dispatch({
-        type: "INPUT_SENT",
-        content,
-        role: "user",
-        ...(attachments.length > 0 ? { attachments } : {}),
-      })
-      transport.sendInput(
-        inputId,
-        state.enableUpload ? { text: content, attachments } : content,
-      )
-    },
-    [dispatch, transport, inputId, state.enableUpload],
-  )
 
   const containerRef = useRef<ChatContainerHandle>(null)
   const siblingNavigationPendingRef = useRef(false)
@@ -317,38 +299,36 @@ export function ChatApp({
       <ChatToolContext.Provider value={toolState}>
         <ToolGroupingContext.Provider value={state.toolGrouping}>
           <ChatDispatchContext.Provider value={dispatch}>
-            <ChatSubmitContext.Provider value={submitUserInput}>
-              <AsideFaviconContext.Provider value={asideFavicon}>
-                <ChatContainer
-                  ref={containerRef}
-                  transport={transport}
-                  messages={state.messages}
-                  streamingMessage={state.streamingMessage}
-                  inputDisabled={state.inputDisabled}
-                  inputPlaceholder={state.inputPlaceholder}
-                  iconAssistant={iconAssistant}
-                  inputId={inputId}
-                  uploadAccept={uploadAccept}
-                  maxUploadSize={maxUploadSize}
-                  elementId={elementId}
-                  greeting={state.greeting}
-                  cancelId={cancelId}
-                  enableCancel={state.enableCancel}
-                  enableUpload={state.enableUpload}
-                  cancelRequested={state.cancelRequested}
-                  footerEl={footerEl}
-                  slashCommands={state.slashCommands}
-                  slashCommandId={slashCommandId}
-                  submitKey={submitKey}
-                  historyEnabled={state.history.enabled}
-                  historyConversations={state.history.conversations}
-                  historyActiveId={state.history.activeId}
-                  onEdit={handleEdit}
-                  onNavigate={handleNavigate}
-                  siblingNavigationPending={siblingNavigationPending}
-                />
-              </AsideFaviconContext.Provider>
-            </ChatSubmitContext.Provider>
+            <AsideFaviconContext.Provider value={asideFavicon}>
+              <ChatContainer
+                ref={containerRef}
+                transport={transport}
+                messages={state.messages}
+                streamingMessage={state.streamingMessage}
+                inputDisabled={state.inputDisabled}
+                inputPlaceholder={state.inputPlaceholder}
+                iconAssistant={iconAssistant}
+                inputId={inputId}
+                uploadAccept={uploadAccept}
+                maxUploadSize={maxUploadSize}
+                elementId={elementId}
+                greeting={state.greeting}
+                cancelId={cancelId}
+                enableCancel={state.enableCancel}
+                enableUpload={state.enableUpload}
+                cancelRequested={state.cancelRequested}
+                footerEl={footerEl}
+                slashCommands={state.slashCommands}
+                slashCommandId={slashCommandId}
+                submitKey={submitKey}
+                historyEnabled={state.history.enabled}
+                historyConversations={state.history.conversations}
+                historyActiveId={state.history.activeId}
+                onEdit={handleEdit}
+                onNavigate={handleNavigate}
+                siblingNavigationPending={siblingNavigationPending}
+              />
+            </AsideFaviconContext.Provider>
           </ChatDispatchContext.Provider>
         </ToolGroupingContext.Provider>
       </ChatToolContext.Provider>

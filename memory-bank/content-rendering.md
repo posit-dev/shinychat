@@ -59,11 +59,10 @@ action carries serialized dependencies so `js/src/transport/shiny-transport.ts`
 can render their CSS and JS immediately; the server transcript retains
 dependencies for history, persistence, and replay.
 
-The browser retains the dependencies on its local message state only to render
-the current transcript, support editing and navigation, and replay received
-actions. It never sends dependencies or a message transcript back to the
-server. On restore, the server replays the stored message actions and their
-serialized dependencies, including in a new browser session.
+The browser renders the dependency before delivering the corresponding action
+to React, then discards it. It never sends dependencies or a message transcript
+back to the server. On restore, the server replays the stored message actions
+and their serialized dependencies, including in a new browser session.
 
 ## Client-Side: The Markdown/HAST Pipeline
 

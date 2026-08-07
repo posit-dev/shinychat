@@ -6,7 +6,7 @@ import {
   useImperativeHandle,
   memo,
 } from "react"
-import { useChatDispatch, useChatSubmit } from "./context"
+import { useChatDispatch } from "./context"
 import type {
   ChatTransport,
   SlashCommandDef,
@@ -92,7 +92,6 @@ export const ChatInput = memo(
     ref,
   ) {
     const dispatch = useChatDispatch()
-    const submitUserInput = useChatSubmit()
     const tiptapRef = useRef<TiptapInputHandle>(null)
     const [hasText, setHasText] = useState(false)
     const focusEditor = useCallback(() => tiptapRef.current?.focus(), [])
@@ -111,6 +110,22 @@ export const ChatInput = memo(
       clearAttachments,
       resetAll,
     } = staging
+
+    const submitUserInput = useCallback(
+      (content: string, attachments: AttachmentPayload[]): void => {
+        dispatch({
+          type: "INPUT_SENT",
+          content,
+          role: "user",
+          ...(attachments.length > 0 ? { attachments } : {}),
+        })
+        transport.sendInput(
+          inputId,
+          enableUpload ? { text: content, attachments } : content,
+        )
+      },
+      [dispatch, transport, inputId, enableUpload],
+    )
 
     const submitValue = useCallback(
       (content: string): boolean => {

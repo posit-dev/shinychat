@@ -59,14 +59,13 @@ export type MessagePayload = {
 }
 
 export type ChatAction =
-  | { type: "message"; message: MessagePayload; html_deps?: HtmlDep[] }
-  | { type: "chunk_start"; message: MessagePayload; html_deps?: HtmlDep[] }
+  | { type: "message"; message: MessagePayload }
+  | { type: "chunk_start"; message: MessagePayload }
   | {
       type: "chunk"
       content: string
       operation: "append" | "replace"
       content_type?: ContentType
-      html_deps?: HtmlDep[]
     }
   | { type: "chunk_end" }
   | { type: "clear"; greeting?: boolean }

@@ -482,6 +482,13 @@ describe("ShinyTransport", () => {
       expect(window.Shiny?.renderDependenciesAsync).toHaveBeenCalled()
       expect(received).toHaveLength(1)
       expect(order).toEqual(["deps", "listener"])
+      expect(received[0]).toEqual({
+        type: "message",
+        message: {
+          role: "assistant",
+          segments: [{ content: "with deps", content_type: "markdown" }],
+        },
+      })
     })
 
     it("routes an action to the correct listener by ID", async () => {

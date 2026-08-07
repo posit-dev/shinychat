@@ -32,9 +32,8 @@ import { ChatInput, type ChatInputHandle } from "../../src/chat/ChatInput"
 import {
   PASTE_AS_FILE_MIN_CHARS,
   processFile,
-  type AttachmentPayload,
 } from "../../src/chat/attachments"
-import { ChatDispatchContext, ChatSubmitContext } from "../../src/chat/context"
+import { ChatDispatchContext } from "../../src/chat/context"
 import type { ChatTransport } from "../../src/transport/types"
 import { createRef, type RefObject } from "react"
 
@@ -60,32 +59,6 @@ function createMockTransport(): ChatTransport {
     sendMessageEdit: vi.fn(),
     sendMessageNavigate: vi.fn(),
     onMessage: vi.fn(() => () => {}),
-  }
-}
-
-// Mirrors ChatApp's real submitUserInput: dispatches INPUT_SENT and sends the
-// wire-shaped input via transport.sendInput. Tests assert against `dispatch`
-// and `transport.sendInput`, so this stub must match production behavior
-// closely enough for those assertions to hold without re-deriving ChatApp
-// state here (co-send of the messages snapshot is exercised at the ChatApp
-// level, not here).
-function makeSubmitUserInput(
-  dispatch: (action: unknown) => void,
-  transport: ChatTransport,
-  inputId: string,
-  enableUpload: boolean,
-) {
-  return (content: string, attachments: AttachmentPayload[]): void => {
-    dispatch({
-      type: "INPUT_SENT",
-      content,
-      role: "user",
-      ...(attachments.length > 0 ? { attachments } : {}),
-    })
-    transport.sendInput(
-      inputId,
-      enableUpload ? { text: content, attachments } : content,
-    )
   }
 }
 
@@ -117,43 +90,35 @@ function renderChatInput(
   const internalRef = ref ?? createRef<ChatInputHandle>()
   const inputId = props.inputId ?? "test-input"
   const enableUpload = props.enableUpload ?? true
-  const submitUserInput = makeSubmitUserInput(
-    dispatch,
-    transport,
-    inputId,
-    enableUpload,
-  )
 
   const result = render(
     <ChatDispatchContext.Provider value={dispatch}>
-      <ChatSubmitContext.Provider value={submitUserInput}>
-        <ChatInput
-          ref={internalRef}
-          transport={transport}
-          inputId={inputId}
-          uploadAccept={
-            props.uploadAccept ?? [
-              "image/png",
-              "image/jpeg",
-              "image/gif",
-              "image/webp",
-              "application/pdf",
-            ]
-          }
-          maxUploadSize={props.maxUploadSize ?? 30_000_000}
-          disabled={props.disabled ?? false}
-          placeholder={props.placeholder ?? "Type here..."}
-          onSend={props.onSend}
-          userMessages={props.userMessages ?? []}
-          enableCancel={props.enableCancel}
-          enableUpload={enableUpload}
-          cancelRequested={props.cancelRequested}
-          isStreaming={props.isStreaming}
-          onCancel={props.onCancel}
-          slashCommandId={props.slashCommandId}
-          slashCommands={props.slashCommands}
-        />
-      </ChatSubmitContext.Provider>
+      <ChatInput
+        ref={internalRef}
+        transport={transport}
+        inputId={inputId}
+        uploadAccept={
+          props.uploadAccept ?? [
+            "image/png",
+            "image/jpeg",
+            "image/gif",
+            "image/webp",
+            "application/pdf",
+          ]
+        }
+        maxUploadSize={props.maxUploadSize ?? 30_000_000}
+        disabled={props.disabled ?? false}
+        placeholder={props.placeholder ?? "Type here..."}
+        onSend={props.onSend}
+        userMessages={props.userMessages ?? []}
+        enableCancel={props.enableCancel}
+        enableUpload={enableUpload}
+        cancelRequested={props.cancelRequested}
+        isStreaming={props.isStreaming}
+        onCancel={props.onCancel}
+        slashCommandId={props.slashCommandId}
+        slashCommands={props.slashCommands}
+      />
     </ChatDispatchContext.Provider>,
   )
 
@@ -389,33 +354,25 @@ describe("ChatInput", () => {
       const ref = createRef<ChatInputHandle>()
       const dispatch = vi.fn()
       const transport = createMockTransport()
-      const submitUserInput = makeSubmitUserInput(
-        dispatch,
-        transport,
-        "test-input",
-        false,
-      )
 
       const { rerender } = render(
         <ChatDispatchContext.Provider value={dispatch}>
-          <ChatSubmitContext.Provider value={submitUserInput}>
-            <ChatInput
-              ref={ref}
-              transport={transport}
-              inputId="test-input"
-              uploadAccept={[
-                "image/png",
-                "image/jpeg",
-                "image/gif",
-                "image/webp",
-                "application/pdf",
-              ]}
-              maxUploadSize={30_000_000}
-              disabled={true}
-              placeholder="Type here..."
-              userMessages={[]}
-            />
-          </ChatSubmitContext.Provider>
+          <ChatInput
+            ref={ref}
+            transport={transport}
+            inputId="test-input"
+            uploadAccept={[
+              "image/png",
+              "image/jpeg",
+              "image/gif",
+              "image/webp",
+              "application/pdf",
+            ]}
+            maxUploadSize={30_000_000}
+            disabled={true}
+            placeholder="Type here..."
+            userMessages={[]}
+          />
         </ChatDispatchContext.Provider>,
       )
 
@@ -426,24 +383,22 @@ describe("ChatInput", () => {
 
       rerender(
         <ChatDispatchContext.Provider value={dispatch}>
-          <ChatSubmitContext.Provider value={submitUserInput}>
-            <ChatInput
-              ref={ref}
-              transport={transport}
-              inputId="test-input"
-              uploadAccept={[
-                "image/png",
-                "image/jpeg",
-                "image/gif",
-                "image/webp",
-                "application/pdf",
-              ]}
-              maxUploadSize={30_000_000}
-              disabled={false}
-              placeholder="Type here..."
-              userMessages={[]}
-            />
-          </ChatSubmitContext.Provider>
+          <ChatInput
+            ref={ref}
+            transport={transport}
+            inputId="test-input"
+            uploadAccept={[
+              "image/png",
+              "image/jpeg",
+              "image/gif",
+              "image/webp",
+              "application/pdf",
+            ]}
+            maxUploadSize={30_000_000}
+            disabled={false}
+            placeholder="Type here..."
+            userMessages={[]}
+          />
         </ChatDispatchContext.Provider>,
       )
 

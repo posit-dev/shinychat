@@ -47,17 +47,9 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
 
         const { id, action, html_deps } = envelope
 
-        // Register dependencies for immediate rendering and retain them on
-        // message actions for the local React state.
+        // Register dependencies before delivering the associated content.
         if (html_deps && Array.isArray(html_deps)) {
           await this.renderDependencies(html_deps)
-          if (
-            action.type === "message" ||
-            action.type === "chunk_start" ||
-            action.type === "chunk"
-          ) {
-            ;(action as { html_deps?: HtmlDep[] }).html_deps = html_deps
-          }
         }
 
         const callbacks = this.listeners.get(id)
