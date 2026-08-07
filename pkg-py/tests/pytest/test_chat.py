@@ -12,15 +12,24 @@ from htmltools import HTML, HTMLDependency, TagList, tags
 from shiny import Session, reactive
 from shiny.module import ResolvedId
 from shiny.session import session_context
-from shinychat import Chat
+from shinychat import Chat, chat_ui
 from shinychat._chat_normalize import message_content, message_content_chunk
 from shinychat._chat_types import (
     ChatMessage,
     ChatMessageDict,
+    ContentSegment,
     Role,
     StoredMessage,
     StoredSegment,
 )
+from shinychat._history import HistoryController
+from shinychat._history_client import TurnsAdapter
+from shinychat._history_store import (
+    ConversationPartition,
+    ConversationStore,
+    InMemoryConversationStore,
+)
+from shinychat._history_types import ConversationRecord
 from shinychat._utils_types import MISSING
 
 # ----------------------------------------------------------------------
@@ -80,6 +89,15 @@ def stored_message(content: str, role: Role) -> StoredMessage:
     )
 
 
+async def wait_for_stream(task: Any) -> str:
+    while True:
+        with reactive.isolate():
+            status = task.status()
+        if status not in ("initial", "running"):
+            return status
+        await asyncio.sleep(0)
+
+
 def test_chat_user_input_no_longer_accepts_transform_argument():
     with session_context(test_session):
         chat = Chat(id="chat")
@@ -104,17 +122,30 @@ def test_messages_token_limits_raises():
             chat.messages(token_limits=(100, 0))  # type: ignore[arg-type]
 
 
-def test_messages_input_id_is_an_inert_compatibility_field():
+def test_forged_chat_messages_input_changes_no_server_state():
     with session_context(test_session):
         chat = Chat(id="chat", history=False)
+        forged_input_id = ResolvedId("chat_messages")
 
-        assert chat.messages_input_id == ResolvedId("chat_messages")
-        test_session.input[chat.messages_input_id]._set(
+        test_session.input[forged_input_id]._set(
             (stored_message("browser snapshot", "assistant"),)
         )
 
         with reactive.isolate():
             assert chat.messages() == ()
+        assert chat._messages_for_bookmark() == []
+        assert not hasattr(chat, "messages_input_id")
+
+
+def test_static_chat_ui_messages_never_enter_server_transcript_or_history():
+    chat_ui("static", messages=["browser-only initial message"])
+
+    with session_context(test_session):
+        chat = Chat(id="static", history=False)
+
+        with reactive.isolate():
+            assert chat.messages() == ()
+        assert chat._messages_for_bookmark() == []
 
 
 def test_tokenizer_raises():
@@ -436,6 +467,244 @@ async def test_clear_stops_detached_pending_flush(
         assert chat._pending_messages == []
         with reactive.isolate():
             assert chat.messages() == ()
+
+
+class _ManagedStreamClient:
+    def __init__(self) -> None:
+        self.chat: Chat | None = None
+
+    async def stream_async(
+        self,
+        user_input: str,
+        *contents: object,
+        content: str,
+        controller: object,
+    ) -> AsyncIterator[str]:
+        assert self.chat is not None
+        await self.chat.append_message("out-of-band notice")
+
+        async def response() -> AsyncIterator[str]:
+            yield f"response to {user_input}"
+
+        return response()
+
+
+class _StaticTurnsClient:
+    def __init__(self) -> None:
+        self.turns: list[dict[str, Any]] = [
+            {"role": "user", "content": "question"},
+            {"role": "assistant", "content": "partial"},
+        ]
+
+    def get_turns(self) -> list[dict[str, Any]]:
+        return list(self.turns)
+
+    def set_turns(self, turns: list[Any]) -> None:
+        self.turns = list(turns)
+
+
+class _FailingConversationStore(ConversationStore):
+    def __init__(self) -> None:
+        self.put_calls = 0
+
+    async def put(
+        self,
+        partition: ConversationPartition,
+        record: ConversationRecord,
+    ) -> None:
+        self.put_calls += 1
+        raise OSError("history store failed")
+
+    async def list(self, partition: ConversationPartition) -> list[Any]:
+        return []
+
+    async def get(
+        self,
+        partition: ConversationPartition,
+        conv_id: str,
+    ) -> ConversationRecord | None:
+        return None
+
+    async def delete(
+        self,
+        partition: ConversationPartition,
+        conv_id: str,
+    ) -> None:
+        return None
+
+
+@pytest.mark.anyio
+async def test_managed_response_settles_history_once_after_stream_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    session = cast(Session, _MockSession())
+    client = _ManagedStreamClient()
+
+    with session_context(session):
+        chat = Chat(
+            "managed_response",
+            client=cast(Any, client),
+            history=False,
+        )
+        client.chat = chat
+        settled_transcripts: list[list[dict[str, Any]]] = []
+
+        async def response_settled() -> None:
+            assert chat._current_stream_id is None
+            assert chat._current_stream_segments == []
+            settled_transcripts.append(chat._messages_for_bookmark())
+
+        monkeypatch.setattr(
+            chat.history,
+            "_response_settled",
+            response_settled,
+        )
+        cast(Any, session.input[chat.user_input_id])._set(
+            {"text": "question", "attachments": []}
+        )
+        await reactive.flush()
+        with reactive.isolate():
+            stream = chat.latest_message_stream
+        assert await wait_for_stream(stream) == "success"
+
+    assert len(settled_transcripts) == 1
+    assert [message["role"] for message in settled_transcripts[0]] == [
+        "user",
+        "assistant",
+        "assistant",
+    ]
+
+
+@pytest.mark.anyio
+async def test_managed_response_cancellation_settles_history_after_cleanup():
+    with session_context(test_session):
+        chat = Chat("managed_cancellation", history=False)
+        chat._store_message(stored_message("question", "user"))
+        store = InMemoryConversationStore()
+        history_controller = HistoryController(
+            chat=chat,
+            adapter=TurnsAdapter(_StaticTurnsClient()),
+            store=store,
+            title_fn=None,
+            title_enabled=False,
+            client=None,
+        )
+        history_controller.partition = ConversationPartition(
+            chat_id="managed_cancellation",
+            scope="test",
+        )
+        chat.history._controller = history_controller
+        stream_waiting = asyncio.Event()
+        never_finish = asyncio.Event()
+        settlements: list[tuple[str | None, list[ContentSegment]]] = []
+
+        async def response() -> AsyncIterator[str]:
+            yield "partial"
+            stream_waiting.set()
+            await never_finish.wait()
+
+        async def response_settled() -> None:
+            settlements.append(
+                (
+                    chat._current_stream_id,
+                    list(chat._current_stream_segments),
+                )
+            )
+            await chat.history._response_settled()
+
+        stream = await chat._start_message_stream(
+            response(),
+            on_settled=response_settled,
+        )
+        await stream_waiting.wait()
+        stream.cancel()
+
+        assert await wait_for_stream(stream) == "cancelled"
+        assert settlements == [(None, [])]
+        assert history_controller.record is not None
+        assert history_controller.record.response_count == 1
+        assert history_controller.transcript_offset == 2
+
+
+@pytest.mark.anyio
+async def test_managed_response_stream_error_preserves_original_when_history_fails(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    class StreamError(RuntimeError):
+        pass
+
+    original_error = StreamError("model stream failed")
+
+    with session_context(test_session):
+        chat = Chat("managed_stream_error", history=False)
+        store = _FailingConversationStore()
+        history_controller = HistoryController(
+            chat=chat,
+            adapter=TurnsAdapter(_StaticTurnsClient()),
+            store=store,
+            title_fn=None,
+            title_enabled=False,
+            client=None,
+        )
+        history_controller.partition = ConversationPartition(
+            chat_id="managed_stream_error",
+            scope="test",
+        )
+        chat.history._controller = history_controller
+
+        async def ignore_stream_error(error: BaseException) -> None:
+            return None
+
+        async def response() -> AsyncIterator[str]:
+            yield "partial"
+            raise original_error
+
+        monkeypatch.setattr(chat, "_raise_exception", ignore_stream_error)
+        with pytest.warns(
+            UserWarning,
+            match="Could not save conversation: history store failed",
+        ):
+            stream = await chat._start_message_stream(
+                response(),
+                on_settled=chat.history._response_settled,
+            )
+            assert await wait_for_stream(stream) == "error"
+
+        with reactive.isolate():
+            raised_error = stream.error()
+        assert raised_error is original_error
+        assert store.put_calls == 1
+
+
+@pytest.mark.anyio
+async def test_managed_response_history_error_notified_without_stream_failure(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    with session_context(test_session):
+        chat = Chat("managed_history_error", history=False)
+        notified: list[Exception] = []
+
+        async def response() -> AsyncIterator[str]:
+            yield "complete"
+
+        async def response_settled() -> None:
+            raise OSError("history store failed")
+
+        async def notify_save_error(error: Exception) -> None:
+            notified.append(error)
+
+        monkeypatch.setattr(
+            chat.history,
+            "_notify_save_error",
+            notify_save_error,
+        )
+        stream = await chat._start_message_stream(
+            response(),
+            on_settled=response_settled,
+        )
+
+        assert await wait_for_stream(stream) == "success"
+        assert [str(error) for error in notified] == ["history store failed"]
 
 
 def test_user_submit_messages_include_attachments_before_callback():

@@ -5,6 +5,7 @@ import inspect
 import json
 import os
 import re
+import warnings
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import (
@@ -326,8 +327,6 @@ class Chat:
 
         self.id = resolve_id(id)
         self.user_input_id = ResolvedId(f"{self.id}_user_input")
-        # Retained until history stops excluding the retired snapshot input.
-        self.messages_input_id = ResolvedId(f"{self.id}_messages")
         self._slash_command_id = ResolvedId(f"{self.id}_slash_command")
         self._transform_user: TransformUserInputAsync | None = None
         self._transform_assistant: (
@@ -520,7 +519,10 @@ class Chat:
                     content="all",
                     controller=controller,
                 )
-                await self.append_message_stream(response)
+                await self._start_message_stream(
+                    response,
+                    on_settled=self.history._response_settled,
+                )
 
             # A `client=` wires up cancellation, so enable the stop button
             # without requiring `enable_cancel=True` in `chat_ui()`. It only
@@ -1357,14 +1359,40 @@ class Chat:
             of the task can be called in a reactive context to get the final state of the
             stream.
         """
+        return await self._start_message_stream(message, icon=icon)
+
+    async def _start_message_stream(
+        self,
+        message: Iterable[Any] | AsyncIterable[Any],
+        *,
+        icon: HTML | Tag | None = None,
+        on_settled: Callable[[], Awaitable[None]] | None = None,
+    ) -> ExtendedTask[[], str]:
         from shiny import reactive
 
         message = _utils.wrap_async_iterable(message)
 
         # Run the stream in the background to get non-blocking behavior
         @reactive.extended_task
-        async def _stream_task():
-            return await self._append_message_stream(message, icon=icon)
+        async def _stream_task() -> str:
+            response_error: BaseException | None = None
+            try:
+                return await self._append_message_stream(message, icon=icon)
+            except BaseException as error:
+                response_error = error
+                raise
+            finally:
+                if on_settled is not None:
+                    try:
+                        await on_settled()
+                    except Exception as history_error:
+                        if response_error is None:
+                            await self.history._notify_save_error(history_error)
+                        else:
+                            warnings.warn(
+                                f"Could not save conversation: {history_error}",
+                                stacklevel=1,
+                            )
 
         _stream_task()
 
@@ -2124,7 +2152,6 @@ class Chat:
         root_session = session.root_scope()
         for suffix in (
             "_user_input",
-            "_messages",
             "_cancel",
             "_slash_command",
             "_greeting_requested",

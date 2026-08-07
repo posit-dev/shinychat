@@ -155,15 +155,15 @@ class HistoryOptions:
 def extend_record_linear(
     record: ConversationRecord,
     turn_groups: list[list[dict[str, Any]]],
-    ui_messages: list[dict[str, Any]],
+    transcript: list[dict[str, Any]],
     *,
-    ui_offset: int,
+    transcript_offset: int,
 ) -> None:
     """
     Append turn groups beyond the record's current path as new linear nodes,
-    and attach the not-yet-saved UI messages (everything past `ui_offset`) to
-    the new nodes: each user message goes to the next new user-turn node; all
-    other messages go to the last appended node.
+    and attach the not-yet-saved transcript messages (everything past
+    `transcript_offset`) to the new nodes: each user message goes to the next
+    new user-turn node; all other messages go to the last appended node.
 
     Each group is one or more turns that form a single exchange unit — e.g. a
     tool-call round (assistant-request, user-result, assistant-text) is one
@@ -186,7 +186,7 @@ def extend_record_linear(
     if fallback is None:
         return  # empty record and no new groups: nothing to attach to
 
-    for message in ui_messages[ui_offset:]:
+    for message in transcript[transcript_offset:]:
         if message.get("role") == "user" and user_nodes:
             target = user_nodes.pop(0)
         else:
@@ -229,7 +229,7 @@ class HistoryController:
 
         self.partition: ConversationPartition | None = None
         self.record: ConversationRecord | None = None  # None => unsaved draft
-        self.ui_offset = 0  # messages already attached to nodes
+        self.transcript_offset: int = 0  # messages already attached to nodes
         # Set by enable() when restore_mode="url"; called with the new
         # conversation id (or None) after any switch that changes the active
         # conversation.
@@ -254,40 +254,13 @@ class HistoryController:
     # -- save -----------------------------------------------------------
 
     async def on_response(self) -> None:
-        """Save trigger: a completed assistant response.
-
-        Reads ``self.ui_offset`` near the top and writes it near the bottom,
-        with awaits (``store.put``, eviction, bookmark mint) in between. This
-        is safe without an explicit lock because Shiny serializes reactive
-        flushes behind a single process-wide ``reactive.lock()`` for the
-        full duration of effect execution, so two invocations of this effect
-        can never overlap.
-        """
+        """Persist one settled managed response."""
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
         turn_groups = self.adapter.get_turns_grouped()
-        messages = self.chat._messages_for_bookmark()
+        transcript = self.chat._messages_for_bookmark()
 
         first_save = self.record is None
-        if not first_save:
-            record = self.record
-            if record is None:
-                raise RuntimeError("HistoryController not initialized")
-            stored_ui = [
-                m
-                for nid in record.path_node_ids()
-                for m in (record.nodes[nid].ui or [])
-            ]
-            # Idempotent + truncation guard. A restore re-renders the stored
-            # conversation and makes the client re-report its snapshot; that report
-            # must never overwrite the record. Skip when no new turn groups AND the
-            # reported snapshot is no longer than what's already stored (covers exact
-            # re-reports and shorter partial mid-restore reports).
-            if len(turn_groups) <= len(record.path_node_ids()) and len(
-                messages
-            ) <= len(stored_ui):
-                return
-
         if first_save:
             turns_flat = self.adapter.get_turns_json()
             self.record = new_conversation_record(
@@ -299,15 +272,18 @@ class HistoryController:
         if record is None:
             raise RuntimeError("HistoryController not initialized")
         extend_record_linear(
-            record, turn_groups, messages, ui_offset=self.ui_offset
+            record,
+            turn_groups,
+            transcript,
+            transcript_offset=self.transcript_offset,
         )
         record.response_count += 1
         self._capture_app_state(record)
         await self.store.put(self.partition, record)
+        self.transcript_offset = len(transcript)
         await self._evict_if_needed()
         if self.on_response_saved is not None:
             await self.on_response_saved(record)
-        self.ui_offset = len(messages)
         await self.send_history_update()
         await self._send_sibling_metadata()
 
@@ -386,13 +362,16 @@ class HistoryController:
         if self.record is None or self.partition is None:
             return
         turn_groups = self.adapter.get_turns_grouped()
-        messages = self.chat._messages_for_bookmark()
+        transcript = self.chat._messages_for_bookmark()
         extend_record_linear(
-            self.record, turn_groups, messages, ui_offset=self.ui_offset
+            self.record,
+            turn_groups,
+            transcript,
+            transcript_offset=self.transcript_offset,
         )
         self._capture_app_state(self.record)
         await self.store.put(self.partition, self.record)
-        self.ui_offset = len(messages)
+        self.transcript_offset = len(transcript)
 
     def _capture_app_state(self, record: ConversationRecord) -> None:
         values: dict[str, Any] = {}
@@ -435,7 +414,7 @@ class HistoryController:
         await self.save_current()
         self.adapter.set_turns_json([])
         await self.chat.clear_messages()
-        self.ui_offset = 0
+        self.transcript_offset = 0
         self.record = None
         if self.on_active_id_change is not None:
             await self.on_active_id_change(None)
@@ -460,11 +439,7 @@ class HistoryController:
             for message_dict in stored:
                 await self.chat._restore_bookmark_message(message_dict)
                 restored_count += 1
-        # ui_offset must reflect the messages the client will report for the
-        # restored conversation. `_messages_for_bookmark()` reads the async
-        # client-reported input, which still holds the PREVIOUS conversation's
-        # snapshot at this synchronous point — so count what we actually restored.
-        self.ui_offset = restored_count
+        self.transcript_offset = restored_count
 
     # -- list mutations ----------------------------------------------------
 
@@ -496,7 +471,7 @@ class HistoryController:
             self.record = None
             self.adapter.set_turns_json([])
             await self.chat.clear_messages()
-            self.ui_offset = 0
+            self.transcript_offset = 0
             if self.on_active_id_change is not None:
                 await self.on_active_id_change(None)
         await self.send_history_update()
@@ -660,6 +635,10 @@ class ChatHistory:
     ) -> None:
         self._chat = chat
         self._started: bool = False
+        self._controller: HistoryController | None = None
+        self._notify_save_error_callback: (
+            Callable[[Exception], Awaitable[None]] | None
+        ) = None
         self._save_callbacks: "list[Callable[[dict[str, Any]], None]]" = []
         self._restore_callbacks: "list[Callable[[dict[str, Any]], None]]" = []
         cfg = config if config is not None else HistoryOptions()
@@ -729,6 +708,17 @@ class ChatHistory:
         self._restore_callbacks.append(fn)
         return fn
 
+    async def _response_settled(self) -> None:
+        controller = self._controller
+        if controller is None or controller.partition is None:
+            return
+        await controller.on_response()
+
+    async def _notify_save_error(self, error: Exception) -> None:
+        callback = self._notify_save_error_callback
+        if callback is not None:
+            await callback(error)
+
     def _start(self) -> None:
         chat = self._chat
         chat_client = chat.client
@@ -749,9 +739,6 @@ class ChatHistory:
 
         ids = HistoryInputIds.for_chat(chat.id)
         root_session.bookmark.exclude.extend(ids.all_ids())
-        # `messages_input_id` carries StoredMessage (Pydantic) objects, which
-        # aren't JSON-serializable for Shiny's bookmark input.json.
-        root_session.bookmark.exclude.append(chat.messages_input_id)
 
         adapter = as_turns_adapter(chat_client)
         resolved_store = resolve_store(self._store)
@@ -905,13 +892,14 @@ class ChatHistory:
             return str(req(token))
 
         async def notify_error(prefix: str, e: Exception) -> None:
-            import warnings
-
             from shiny import ui as shiny_ui
 
             warnings.warn(f"{prefix}: {e}", stacklevel=1)
             with session_context(session):
                 shiny_ui.notification_show(f"{prefix}: {e}", type="error")
+
+        async def notify_save_error(error: Exception) -> None:
+            await notify_error("Could not save conversation", error)
 
         initialized = False
 
@@ -976,18 +964,6 @@ class ChatHistory:
                     await controller._send_sibling_metadata()
             await controller.send_history_update()
             initialized = True
-
-        @reactive.effect
-        @reactive.event(chat.messages, ignore_init=True)
-        async def _save_on_response():
-            if controller.partition is None:
-                return
-            messages = chat.messages()
-            if messages and messages[-1].get("role") == "assistant":
-                try:
-                    await controller.on_response()
-                except Exception as e:
-                    await notify_error("Could not save conversation", e)
 
         @reactive.effect
         @reactive.event(chat._session.input[ids.select])
@@ -1068,4 +1044,6 @@ class ChatHistory:
             controller.cancel_pending()
 
         session.on_ended(_on_session_end)
+        self._controller = controller
+        self._notify_save_error_callback = notify_save_error
         self._started = True
