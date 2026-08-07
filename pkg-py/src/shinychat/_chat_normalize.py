@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import sys
 from functools import singledispatch
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypeGuard
 
 from htmltools import HTML, HTMLDependency, Tag, Tagifiable, TagList
 
 from ._chat_types import ChatMessage
+
+if TYPE_CHECKING:
+    from chatlas.types import ContentToolResult
 
 __all__ = ["message_content", "message_content_chunk"]
 
@@ -359,7 +362,7 @@ def normalize_message_chunk(chunk: Any) -> ChatMessage:
     return _wrap_custom_tool_result(chunk, message_content_chunk(chunk))
 
 
-def _is_tool_result(value: object) -> bool:
+def _is_tool_result(value: object) -> TypeGuard["ContentToolResult"]:
     try:
         from chatlas.types import ContentToolResult
 
@@ -370,7 +373,10 @@ def _is_tool_result(value: object) -> bool:
 
 def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
     """Wrap custom tool-result UI in a routable result element."""
-    if not _is_tool_result(message) or message.request is None:
+    if not _is_tool_result(message):
+        return msg
+
+    if message.request is None:
         return msg
 
     try:
