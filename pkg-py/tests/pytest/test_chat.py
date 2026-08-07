@@ -177,6 +177,23 @@ def test_same_flush_append_message_updates_messages():
             )
 
 
+@pytest.mark.anyio
+async def test_messages_reacts_to_transcript_commit() -> None:
+    with session_context(test_session):
+        chat = Chat("reacts_to_transcript_commit", history=False)
+        seen: list[tuple[ChatMessageDict, ...]] = []
+
+        @reactive.effect
+        def capture() -> None:
+            seen.append(chat.messages())
+
+        await reactive.flush()
+        await chat.append_message("hello")
+        await reactive.flush()
+
+    assert seen[-1] == ({"content": "hello", "role": "assistant"},)
+
+
 def test_send_failure_does_not_append_message(
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -215,8 +232,8 @@ def test_stream_send_failures_do_not_commit_active_or_settled_state(
                     "", chunk="start", stream_id="stream"
                 )
             )
-        assert failed_start._current_stream_id is None
-        assert failed_start._current_stream_segments == []
+        assert failed_start._transcript.active_stream_id is None
+        assert failed_start._transcript.active_segments == ()
 
         failed_chunk = Chat("failed_chunk", history=False)
 
@@ -236,8 +253,8 @@ def test_stream_send_failures_do_not_commit_active_or_settled_state(
                     "partial", chunk=True, stream_id="stream"
                 )
             )
-        assert failed_chunk._current_stream_id == "stream"
-        assert failed_chunk._current_stream_segments == []
+        assert failed_chunk._transcript.active_stream_id == "stream"
+        assert failed_chunk._transcript.active_segments == ()
 
         failed_end = Chat("failed_end", history=False)
 
@@ -266,8 +283,8 @@ def test_stream_send_failures_do_not_commit_active_or_settled_state(
                     "", chunk="end", stream_id="stream"
                 )
             )
-        assert failed_end._current_stream_id is None
-        assert failed_end._current_stream_segments == []
+        assert failed_end._transcript.active_stream_id is None
+        assert failed_end._transcript.active_segments == ()
         with reactive.isolate():
             assert failed_end.messages() == ()
 
@@ -284,7 +301,7 @@ async def test_complete_append_fails_while_stream_is_active():
         ):
             await chat.append_message("late")
 
-        assert chat._current_stream_id == "active"
+        assert chat._transcript.active_stream_id == "active"
 
 
 @pytest.mark.anyio
@@ -301,7 +318,7 @@ async def test_competing_stream_fails_without_replacing_owner():
                 "", chunk="start", stream_id="other"
             )
 
-        assert chat._current_stream_id == "active"
+        assert chat._transcript.active_stream_id == "active"
 
 
 @pytest.mark.anyio
@@ -318,8 +335,8 @@ async def test_foreign_stream_chunk_fails_without_replacing_owner():
                 "bad", chunk=True, stream_id="other"
             )
 
-        assert chat._current_stream_id == "active"
-        assert chat._current_stream_segments == []
+        assert chat._transcript.active_stream_id == "active"
+        assert chat._transcript.active_segments == ()
 
 
 @pytest.mark.anyio
@@ -358,7 +375,7 @@ async def test_concurrent_stream_chunks_commit_in_send_order(
         await asyncio.gather(first_chunk, second_chunk)
 
         assert [
-            segment.content for segment in chat._current_stream_segments
+            segment.content for segment in chat._transcript.active_segments
         ] == ["onetwo"]
         assert second_chunk_sent.is_set()
 
@@ -374,13 +391,15 @@ def test_clear_messages_discards_active_and_pending_stream_state(
             if action["type"] == "clear":
                 state_during_clear.append(
                     (
-                        chat._current_stream_id,
-                        len(chat._current_stream_segments),
+                        chat._transcript.active_stream_id,
+                        len(chat._transcript.active_segments),
                     )
                 )
 
         monkeypatch.setattr(chat, "_send_action", send_action)
-        chat._store_message(stored_message("settled", "assistant"))
+        run_async(
+            lambda: chat._store_message(stored_message("settled", "assistant"))
+        )
         run_async(
             lambda: chat._append_message_chunk(
                 "", chunk="start", stream_id="active"
@@ -392,14 +411,13 @@ def test_clear_messages_discards_active_and_pending_stream_state(
             )
         )
 
-        generation_before_clear = chat._stream_generation
+        generation_before_clear = chat._transcript.generation
         run_async(chat.clear_messages)
 
         assert state_during_clear == [("active", 1)]
-        assert chat._current_stream_id is None
-        assert chat._current_stream_segments == []
-        assert chat._message_stream_segments_checkpoint == []
-        assert chat._stream_generation == generation_before_clear + 1
+        assert chat._transcript.active_stream_id is None
+        assert chat._transcript.active_segments == ()
+        assert chat._transcript.generation == generation_before_clear + 1
         with reactive.isolate():
             assert chat.messages() == ()
 
@@ -412,8 +430,8 @@ def test_clear_messages_discards_active_and_pending_stream_state(
                     "stale", chunk=True, stream_id="active"
                 )
             )
-        assert chat._current_stream_id is None
-        assert chat._current_stream_segments == []
+        assert chat._transcript.active_stream_id is None
+        assert chat._transcript.active_segments == ()
         with reactive.isolate():
             assert chat.messages() == ()
 
@@ -528,8 +546,8 @@ async def test_managed_response_settles_history_once_after_stream_cleanup(
         settled_transcripts: list[list[dict[str, Any]]] = []
 
         async def response_settled() -> None:
-            assert chat._current_stream_id is None
-            assert chat._current_stream_segments == []
+            assert chat._transcript.active_stream_id is None
+            assert chat._transcript.active_segments == ()
             settled_transcripts.append(chat._messages_for_bookmark())
 
         monkeypatch.setattr(
@@ -570,8 +588,8 @@ async def test_managed_response_conflicting_append_settles_history_once_after_cl
         settled_transcripts: list[list[dict[str, Any]]] = []
 
         async def response_settled() -> None:
-            assert chat._current_stream_id is None
-            assert chat._current_stream_segments == []
+            assert chat._transcript.active_stream_id is None
+            assert chat._transcript.active_segments == ()
             settled_transcripts.append(chat._messages_for_bookmark())
 
         monkeypatch.setattr(
@@ -598,8 +616,8 @@ async def test_managed_response_conflicting_append_settles_history_once_after_cl
         with reactive.isolate():
             raised_error = stream.error()
 
-        assert chat._current_stream_id is None
-        assert chat._current_stream_segments == []
+        assert chat._transcript.active_stream_id is None
+        assert chat._transcript.active_segments == ()
 
     assert isinstance(raised_error, RuntimeError)
     assert str(raised_error) == (
@@ -613,7 +631,7 @@ async def test_managed_response_conflicting_append_settles_history_once_after_cl
 async def test_managed_response_settles_real_history_outside_extended_task():
     with session_context(test_session):
         chat = Chat("managed_real_history", history=False)
-        chat._store_message(stored_message("question", "user"))
+        await chat._store_message(stored_message("question", "user"))
         store = InMemoryConversationStore()
         save_state = reactive.Value("saved from reactive state")
 
@@ -711,7 +729,7 @@ async def test_managed_response_creation_time_error_settles_once_and_preserves_e
 async def test_managed_response_cancellation_settles_history_after_cleanup():
     with session_context(test_session):
         chat = Chat("managed_cancellation", history=False)
-        chat._store_message(stored_message("question", "user"))
+        await chat._store_message(stored_message("question", "user"))
         store = InMemoryConversationStore()
         history_controller = HistoryController(
             chat=chat,
@@ -738,8 +756,8 @@ async def test_managed_response_cancellation_settles_history_after_cleanup():
         async def response_settled() -> None:
             settlements.append(
                 (
-                    chat._current_stream_id,
-                    list(chat._current_stream_segments),
+                    chat._transcript.active_stream_id,
+                    list(chat._transcript.active_segments),
                 )
             )
             await chat.history._response_settled()
@@ -1202,9 +1220,9 @@ async def test_terminal_transform_none_settles_last_successful_projection(
                     "attachments": [attachment],
                 },
             )
-        assert chat._current_stream_id is None
-        assert chat._current_stream_segments == []
-        assert chat._current_stream_projection is None
+        assert chat._transcript.active_stream_id is None
+        assert chat._transcript.active_segments == ()
+        assert chat._transcript.active_projection is None
 
 
 @pytest.mark.anyio
@@ -1235,9 +1253,9 @@ async def test_terminal_transform_none_send_failure_does_not_settle_projection(
 
         with reactive.isolate():
             assert chat.messages() == ()
-        assert chat._current_stream_id is None
-        assert chat._current_stream_segments == []
-        assert chat._current_stream_projection is None
+        assert chat._transcript.active_stream_id is None
+        assert chat._transcript.active_segments == ()
+        assert chat._transcript.active_projection is None
 
 
 @pytest.mark.anyio
@@ -1270,8 +1288,8 @@ async def test_model_error_remains_primary_when_terminal_send_also_fails(
 
         assert raised.value is original_error
         assert terminal_attempts == 1
-        assert chat._current_stream_id is None
-        assert chat._current_stream_segments == []
+        assert chat._transcript.active_stream_id is None
+        assert chat._transcript.active_segments == ()
         with reactive.isolate():
             assert chat.messages() == ()
 
@@ -1818,7 +1836,7 @@ def test_bookmark_round_trips_echoed_slash_command():
                 ChatMessage(content="Hello! You said: world", role="assistant")
             ),
         )
-        chat._replace_messages(reported)
+        run_async(lambda: chat._transcript.replace(reported))
         with reactive.isolate():
             saved = chat._messages_for_bookmark()
 
@@ -1853,8 +1871,7 @@ def test_bookmark_round_trips_echoed_slash_command():
             for message_dict in saved:
                 await restored._restore_bookmark_message(message_dict)
 
-            with reactive.isolate():
-                assert restored._messages() == reported
+            assert restored._transcript.read() == reported
 
             return [
                 (
@@ -1892,7 +1909,7 @@ def test_bookmark_omits_side_effect_only_slash_command():
                 ChatMessage(content="real message", role="user")
             ),
         )
-        chat._replace_messages(reported)
+        run_async(lambda: chat._transcript.replace(reported))
         with reactive.isolate():
             saved = chat._messages_for_bookmark()
 
@@ -2128,7 +2145,7 @@ def test_bookmark_roundtrip_thinking_segment():
                 ],
             ),
         )
-        chat._replace_messages(reported)
+        run_async(lambda: chat._transcript.replace(reported))
         with reactive.isolate():
             saved = chat._messages_for_bookmark()
         assert saved[0]["segments"][0]["content_type"] == "thinking"
@@ -2447,7 +2464,7 @@ def test_messages_surfaces_attachments():
                 ChatMessage("plain text", role="assistant")
             ),
         )
-        chat._replace_messages(reported)
+        run_async(lambda: chat._transcript.replace(reported))
 
         with reactive.isolate():
             msgs = chat.messages()
