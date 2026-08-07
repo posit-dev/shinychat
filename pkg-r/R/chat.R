@@ -1028,10 +1028,6 @@ chat_append_stream <- function(
   owner <- claim_chat_stream(session, id)
   result <- chat_append_stream_impl(id, stream, role, icon, session, owner)
   result <- chat_update_bookmark(id, result, session = session)
-  # History saves are triggered by the client's `_messages` echo (see the
-  # message_response_effect observer in chat_enable_history()), not chained
-  # here onto stream completion -- the browser only reports the finished
-  # assistant reply after a separate render/report round trip.
   result <- promises::catch(result, function(reason) {
     class(reason) <- c("shiny.silent.error", class(reason))
     render_error <- NULL

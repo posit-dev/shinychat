@@ -14,6 +14,7 @@ from shiny import Session, reactive
 from shiny.module import ResolvedId
 from shiny.session import session_context
 from shinychat import Chat, chat_ui
+from shinychat._attachments import Attachment
 from shinychat._chat_normalize import message_content, message_content_chunk
 from shinychat._chat_types import (
     ChatMessage,
@@ -269,6 +270,234 @@ def test_stream_send_failures_do_not_commit_active_or_settled_state(
         assert failed_end._current_stream_segments == []
         with reactive.isolate():
             assert failed_end.messages() == ()
+
+
+@pytest.mark.anyio
+async def test_pending_flush_retains_failed_tail_and_blocks_later_writes(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    with session_context(test_session):
+        chat = Chat("transactional_pending", history=False)
+        fail_first = True
+        sent_messages: list[str] = []
+
+        async def send_action(action: Any, deps: Any = None) -> None:
+            if action["type"] != "message":
+                return
+            content = action["message"]["segments"][0]["content"]
+            if fail_first and content == "first":
+                raise RuntimeError("first send failed")
+            sent_messages.append(content)
+
+        monkeypatch.setattr(chat, "_send_action", send_action)
+        await chat._append_message_chunk("", chunk="start", stream_id="stream")
+        await chat.append_message("first")
+        await chat.append_message("second")
+        await chat._append_message_chunk("", chunk="end", stream_id="stream")
+
+        with pytest.raises(RuntimeError, match="first send failed"):
+            await chat._flush_pending_messages()
+
+        assert [message[0] for message in chat._pending_messages] == [
+            "first",
+            "second",
+        ]
+
+        await chat.append_message("third")
+
+        assert sent_messages == []
+        assert [message[0] for message in chat._pending_messages] == [
+            "first",
+            "second",
+            "third",
+        ]
+
+        fail_first = False
+        await chat._flush_pending_messages()
+
+        assert sent_messages == ["first", "second", "third"]
+        assert chat._pending_messages == []
+
+
+@pytest.mark.anyio
+async def test_failed_queued_stream_chunk_blocks_later_chunks(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    with session_context(test_session):
+        chat = Chat("failed_queued_chunk", history=False)
+        fail_first = True
+        sent_chunks: list[str] = []
+
+        async def send_action(action: Any, deps: Any = None) -> None:
+            if action["type"] != "chunk":
+                return
+            if fail_first and action["content"] == "first":
+                raise RuntimeError("first chunk failed")
+            sent_chunks.append(action["content"])
+
+        monkeypatch.setattr(chat, "_send_action", send_action)
+        await chat._append_message_chunk("", chunk="start", stream_id="outer")
+        await chat._append_message_chunk("", chunk="start", stream_id="queued")
+        await chat._append_message_chunk(
+            "first", chunk=True, stream_id="queued"
+        )
+        await chat._append_message_chunk("", chunk="end", stream_id="outer")
+
+        with pytest.raises(RuntimeError, match="first chunk failed"):
+            await chat._flush_pending_messages()
+
+        assert chat._current_stream_id == "queued"
+        await chat._append_message_chunk(
+            "later", chunk=True, stream_id="queued"
+        )
+
+        assert sent_chunks == []
+        assert [message[0] for message in chat._pending_messages] == [
+            "first",
+            "later",
+        ]
+
+        fail_first = False
+        await chat._flush_pending_messages()
+
+        assert sent_chunks == ["first", "later"]
+        assert chat._pending_messages == []
+
+
+@pytest.mark.anyio
+async def test_pending_flush_finishes_stream_around_complete_messages(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    with session_context(test_session):
+        chat = Chat("interleaved_pending", history=False)
+        sent: list[tuple[str, str]] = []
+
+        async def send_action(action: Any, deps: Any = None) -> None:
+            if action["type"] == "chunk":
+                sent.append(("chunk", action["content"]))
+            elif action["type"] == "message":
+                content = action["message"]["segments"][0]["content"]
+                sent.append(("message", content))
+
+        monkeypatch.setattr(chat, "_send_action", send_action)
+        await chat._append_message_chunk("", chunk="start", stream_id="outer")
+        await chat._append_message_chunk("", chunk="start", stream_id="queued")
+        await chat.append_message("between")
+        await chat._append_message_chunk(
+            "answer", chunk=True, stream_id="queued"
+        )
+        await chat._append_message_chunk("", chunk="end", stream_id="queued")
+        await chat._append_message_chunk("", chunk="end", stream_id="outer")
+
+        await chat._flush_pending_messages()
+
+        assert sent == [
+            ("chunk", "answer"),
+            ("message", "between"),
+        ]
+        assert chat._current_stream_id is None
+        assert chat._pending_messages == []
+
+
+@pytest.mark.anyio
+async def test_stream_error_survives_terminal_and_queue_cleanup_failures(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    class ModelError(RuntimeError):
+        pass
+
+    original_error = ModelError("model failed")
+
+    with session_context(test_session):
+        chat = Chat("cleanup_error_precedence", history=False)
+        terminal_attempts = 0
+        queue_attempts = 0
+
+        async def send_action(action: Any, deps: Any = None) -> None:
+            nonlocal terminal_attempts, queue_attempts
+            if action["type"] == "chunk_end":
+                terminal_attempts += 1
+                raise RuntimeError("terminal send failed")
+            if action["type"] == "message":
+                queue_attempts += 1
+                raise RuntimeError("queued send failed")
+
+        monkeypatch.setattr(chat, "_send_action", send_action)
+
+        async def response() -> AsyncIterator[str]:
+            yield "partial"
+            await chat.append_message("queued")
+            raise original_error
+
+        with pytest.warns(UserWarning) as cleanup_warnings:
+            with pytest.raises(ModelError) as raised:
+                await chat._append_message_stream(response())
+
+        assert raised.value is original_error
+        assert terminal_attempts == 1
+        assert queue_attempts == 1
+        assert [message[0] for message in chat._pending_messages] == ["queued"]
+        assert [str(warning.message) for warning in cleanup_warnings] == [
+            "Could not finish message stream: terminal send failed",
+            "Could not flush queued messages: queued send failed",
+        ]
+
+
+@pytest.mark.anyio
+@pytest.mark.filterwarnings(
+    "ignore:The `.transform_assistant_response` decorator is deprecated"
+)
+async def test_transformed_terminal_payload_chunk_end_failure_flushes_queue(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    with session_context(test_session):
+        chat = Chat("payloadful_end_failure", history=False)
+        actions: list[dict[str, Any]] = []
+
+        @chat.transform_assistant_response
+        def transform(content: str, _: str, done: bool) -> str:
+            return f"{content} final" if done else content
+
+        async def send_action(action: Any, deps: Any = None) -> None:
+            actions.append(action)
+            if action["type"] == "chunk_end":
+                raise RuntimeError("chunk_end failed")
+
+        monkeypatch.setattr(chat, "_send_action", send_action)
+
+        async def response() -> AsyncIterator[str]:
+            yield "answer"
+            await chat.append_message("queued")
+
+        with pytest.raises(RuntimeError, match="chunk_end failed"):
+            await chat._append_message_stream(response())
+
+        assert {
+            "type": "chunk",
+            "content": "answer final",
+            "operation": "replace",
+            "content_type": "markdown",
+        } in actions
+        assert actions[-2:] == [
+            {"type": "chunk_end"},
+            {
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "segments": [
+                        {
+                            "content": "queued final",
+                            "content_type": "markdown",
+                        }
+                    ],
+                },
+            },
+        ]
+        assert chat._pending_messages == []
+        with reactive.isolate():
+            assert chat.messages() == (
+                {"content": "queued final", "role": "assistant"},
+            )
 
 
 @pytest.mark.anyio
@@ -1112,6 +1341,114 @@ def test_streamed_messages_store_mixed_segments_and_transformed_content(
     assert transformed_messages == (
         {"content": "one two done", "role": "assistant"},
     )
+
+
+@pytest.mark.anyio
+@pytest.mark.filterwarnings(
+    "ignore:The `.transform_assistant_response` decorator is deprecated"
+)
+async def test_terminal_transform_none_settles_last_successful_projection(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    with session_context(test_session):
+        chat = Chat("terminal_none", history=False)
+        actions: list[dict[str, Any]] = []
+        last_projection = ""
+        attachment = Attachment.from_data(
+            b"notes", mime="text/plain", name="notes.txt"
+        )
+        dependency = HTMLDependency(
+            name="stream-projection",
+            version="1.0.0",
+            source={"subdir": "."},
+        )
+
+        def serialize(
+            deps: list[HTMLDependency] | None,
+        ) -> list[dict[str, object]] | None:
+            if not deps:
+                return None
+            return [
+                {"name": dep.name, "version": str(dep.version)} for dep in deps
+            ]
+
+        @chat.transform_assistant_response
+        def transform(content: str, _: str, done: bool) -> str | None:
+            nonlocal last_projection
+            if done:
+                return None
+            last_projection = f"projection:{content}"
+            return last_projection
+
+        async def send_action(action: Any, deps: Any = None) -> None:
+            actions.append(action)
+
+        monkeypatch.setattr(chat, "_serialize_html_deps", serialize)
+        monkeypatch.setattr(chat, "_send_action", send_action)
+
+        async def response() -> AsyncIterator[ChatMessage]:
+            yield ChatMessage(
+                content="reasoning",
+                role="assistant",
+                content_type="thinking",
+            )
+            yield ChatMessage(
+                content=TagList(dependency, tags.div("answer")),
+                role="assistant",
+                attachments=[attachment],
+            )
+
+        await chat._append_message_stream(response())
+
+        assert actions[-1] == {"type": "chunk_end"}
+        assert len([a for a in actions if a["type"] == "chunk"]) == 2
+        with reactive.isolate():
+            assert chat.messages() == (
+                {
+                    "content": last_projection,
+                    "role": "assistant",
+                    "html_deps": [
+                        {"name": "stream-projection", "version": "1.0.0"}
+                    ],
+                    "attachments": [attachment],
+                },
+            )
+        assert chat._current_stream_id is None
+        assert chat._current_stream_segments == []
+        assert chat._current_stream_projection is None
+
+
+@pytest.mark.anyio
+@pytest.mark.filterwarnings(
+    "ignore:The `.transform_assistant_response` decorator is deprecated"
+)
+async def test_terminal_transform_none_send_failure_does_not_settle_projection(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    with session_context(test_session):
+        chat = Chat("terminal_none_failure", history=False)
+
+        @chat.transform_assistant_response
+        def transform(content: str, _: str, done: bool) -> str | None:
+            return None if done else f"projection:{content}"
+
+        async def send_action(action: Any, deps: Any = None) -> None:
+            if action["type"] == "chunk_end":
+                raise RuntimeError("chunk_end failed")
+
+        monkeypatch.setattr(chat, "_send_action", send_action)
+
+        async def response() -> AsyncIterator[str]:
+            yield "answer"
+
+        with pytest.raises(RuntimeError, match="chunk_end failed"):
+            await chat._append_message_stream(response())
+
+        with reactive.isolate():
+            assert chat.messages() == ()
+        assert chat._current_stream_id is None
+        assert chat._current_stream_segments == []
+        assert chat._current_stream_projection is None
 
 
 def test_stream_replace_discards_stale_html_dependencies():

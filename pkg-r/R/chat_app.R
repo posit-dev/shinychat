@@ -316,17 +316,20 @@ chat_server <- function(
 
   append_stream_task <- shiny::ExtendedTask$new(
     function(client, ui_id, user_input, controller = NULL) {
-      stream <- client$stream_async(
-        !!!user_input,
-        stream = "content",
-        controller = controller
+      stream_result <- promises::then(
+        promises::promise_resolve(NULL),
+        function(...) {
+          client$stream_async(
+            !!!user_input,
+            stream = "content",
+            controller = controller
+          )
+        }
       )
-
-      p <- promises::promise_resolve(stream)
-      promises::then(p, function(stream) {
-        stream_result <- chat_append(ui_id, stream, session = session)
-        chat_history_on_response(ui_id, stream_result, session)
+      stream_result <- promises::then(stream_result, function(stream) {
+        chat_append(ui_id, stream, session = session)
       })
+      chat_history_on_response(ui_id, stream_result, session)
     }
   )
 

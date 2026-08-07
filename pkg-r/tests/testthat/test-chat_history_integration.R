@@ -59,6 +59,7 @@ test_that("chat_server() stores raw user input before the stream reads it", {
   state_during_stream <- NULL
   stream_args <- NULL
   active_session <- NULL
+  mod_ref <- NULL
   client <- structure(
     list(
       stream_async = function(...) {
@@ -77,12 +78,23 @@ test_that("chat_server() stores raw user input before the stream reads it", {
   shiny::testServer(
     function(input, output, session) {
       active_session <<- session
-      chat_server("chat", client, history = FALSE, session = session)
+      mod_ref <<- chat_server(
+        "chat",
+        client,
+        history = FALSE,
+        session = session
+      )
     },
     {
       session$setInputs(chat_user_input = input_value)
-      later::run_now(0.1)
-      session$flushReact()
+      deadline <- Sys.time() + 2
+      while (
+        (is.null(stream_args) || identical(mod_ref$status(), "streaming")) &&
+          Sys.time() < deadline
+      ) {
+        later::run_now(0.05)
+        session$flushReact()
+      }
 
       expect_identical(stream_args[[1]], input_value[[1]])
       expect_identical(stream_args[[2]], input_value[[2]])
@@ -105,6 +117,7 @@ test_that("chat_server() stores raw user input before the stream reads it", {
 test_that("chat_server() chains one history branch to each managed response", {
   history_calls <- 0L
   managed_promise <- NULL
+  history_promise <- NULL
   local_mocked_bindings(
     chat_append = function(...) {
       managed_promise <<- promises::promise_resolve("complete")
@@ -112,8 +125,8 @@ test_that("chat_server() chains one history branch to each managed response", {
     },
     chat_history_on_response = function(id, stream_promise, session) {
       history_calls <<- history_calls + 1L
+      history_promise <<- stream_promise
       expect_equal(id, "chat")
-      expect_identical(stream_promise, managed_promise)
       stream_promise
     },
     send_chat_action = function(...) invisible(NULL)
@@ -148,8 +161,12 @@ test_that("chat_server() chains one history branch to each managed response", {
         later::run_now(0.05)
         session$flushReact()
       }
+      later::run_now(0.1)
+      session$flushReact()
 
       expect_equal(history_calls, 1L)
+      expect_promise(history_promise)
+      expect_promise(managed_promise)
       expect_equal(mod_ref$status(), "idle")
     }
   )
@@ -223,6 +240,184 @@ recorded_ui_messages <- function(record) {
     recursive = FALSE
   )
 }
+
+test_that("synchronous stream creation failure settles user history and preserves its error", {
+  put_calls <- 0L
+  attempted_record <- NULL
+  FailingStore <- R6::R6Class(
+    "SynchronousCreationFailingStore",
+    inherit = InMemoryConversationStore,
+    public = list(
+      put = function(partition, record) {
+        put_calls <<- put_calls + 1L
+        attempted_record <<- record
+        rlang::abort("history save failed", class = "history_save_error")
+      }
+    )
+  )
+  marker <- new.env(parent = emptyenv())
+  original <- structure(
+    list(message = "synchronous model failure", call = NULL, marker = marker),
+    class = c("creation_original_error", "error", "condition")
+  )
+  client <- mock_chat_client()
+  client$stream_async <- function(..., stream, controller) {
+    input <- rlang::list2(...)[[1L]]
+    client$set_turns(list(ellmer::UserTurn(input)))
+    stop(original)
+  }
+  warnings <- list()
+  store <- FailingStore$new()
+  local_mocked_bindings(
+    send_chat_action = function(...) invisible(NULL)
+  )
+
+  withCallingHandlers(
+    shiny::testServer(
+      function(input, output, session) {
+        chat_server(
+          "chat",
+          client,
+          history = history_options(
+            store = store,
+            scope = "test-user",
+            restore_mode = "none",
+            title = NULL
+          ),
+          session = session
+        )
+      },
+      {
+        session$setInputs(chat_user_input = "Hello")
+        wait_for_condition(function() put_calls == 1L, session)
+      }
+    ),
+    warning = function(warning) {
+      warnings[[length(warnings) + 1L]] <<- warning
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  expect_equal(put_calls, 1L)
+  expect_equal(attempted_record$response_count, 1L)
+  expect_identical(
+    recorded_ui_messages(attempted_record),
+    list(
+      list(
+        role = "user",
+        segments = list(list(content = "Hello", content_type = "markdown"))
+      )
+    )
+  )
+  expect_true(
+    any(
+      vapply(
+        warnings,
+        function(warning) {
+          grepl(
+            "Could not save conversation",
+            conditionMessage(warning),
+            fixed = TRUE
+          )
+        },
+        logical(1)
+      )
+    )
+  )
+  task_warnings <- Filter(
+    function(warning) {
+      grepl("ExtendedTask", conditionMessage(warning), fixed = TRUE)
+    },
+    warnings
+  )
+  expect_length(task_warnings, 1L)
+  task_error <- task_warnings[[1L]]$parent
+  expect_s3_class(task_error, "creation_original_error")
+  expect_identical(task_error$marker, marker)
+})
+
+test_that("rejected stream creation promise settles canonical user history once", {
+  put_calls <- 0L
+  RecordingStore <- R6::R6Class(
+    "RejectedCreationRecordingStore",
+    inherit = InMemoryConversationStore,
+    public = list(
+      put = function(partition, record) {
+        put_calls <<- put_calls + 1L
+        super$put(partition, record)
+      }
+    )
+  )
+  marker <- new.env(parent = emptyenv())
+  original <- structure(
+    list(message = "rejected model creation", call = NULL, marker = marker),
+    class = c("creation_original_error", "error", "condition")
+  )
+  client <- mock_chat_client()
+  client$stream_async <- function(..., stream, controller) {
+    input <- rlang::list2(...)[[1L]]
+    client$set_turns(list(ellmer::UserTurn(input)))
+    promises::promise_reject(original)
+  }
+  warnings <- list()
+  controller <- NULL
+  store <- RecordingStore$new()
+  local_mocked_bindings(
+    send_chat_action = function(...) invisible(NULL)
+  )
+
+  withCallingHandlers(
+    shiny::testServer(
+      function(input, output, session) {
+        chat_server(
+          "chat",
+          client,
+          history = history_options(
+            store = store,
+            scope = "test-user",
+            restore_mode = "none",
+            title = NULL
+          ),
+          session = session
+        )
+        controller <<- get_session_chat_bookmark_info(
+          session,
+          "chat.history-controller"
+        )
+      },
+      {
+        session$setInputs(chat_user_input = "Hello")
+        wait_for_condition(function() put_calls == 1L, session)
+      }
+    ),
+    warning = function(warning) {
+      warnings[[length(warnings) + 1L]] <<- warning
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  expect_equal(put_calls, 1L)
+  expect_equal(controller$record$response_count, 1L)
+  expect_identical(
+    recorded_ui_messages(controller$record),
+    list(
+      list(
+        role = "user",
+        segments = list(list(content = "Hello", content_type = "markdown"))
+      )
+    )
+  )
+  task_warnings <- Filter(
+    function(warning) {
+      grepl("ExtendedTask", conditionMessage(warning), fixed = TRUE)
+    },
+    warnings
+  )
+  expect_length(task_warnings, 1L)
+  task_error <- task_warnings[[1L]]$parent
+  expect_s3_class(task_error, "creation_original_error")
+  expect_identical(task_error$marker, marker)
+})
 
 test_that("cancelled managed streams save once after transcript settlement", {
   release <- NULL

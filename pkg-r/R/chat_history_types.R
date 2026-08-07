@@ -192,10 +192,8 @@ record_path_sibling_metadata <- function(record) {
   result
 }
 
-# Client-facing message count for a node. Mirrors replay_ui()'s NULL-ui
-# fallback: a missing/empty `ui` still renders one fabricated message, so index
-# math (record_node_id_for_message_index, send_sibling_metadata) stays aligned
-# with what the client reports.
+# Message count for replay and navigation. A missing/empty `ui` still renders
+# one turn-derived fallback, so index math stays aligned with replayed state.
 record_ui_message_count <- function(node) {
   if (length(node$ui) > 0) length(node$ui) else 1L
 }

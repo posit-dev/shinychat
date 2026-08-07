@@ -540,10 +540,10 @@ test_that("chat_append_message() does not commit failed complete sends", {
 test_that("chat_append_message() commits streamed append, replace, and end sends", {
   session <- shiny::MockShinySession$new()
   transcript <- get_chat_transcript(session, "chat")
-  action_types <- character()
+  actions <- list()
   local_mocked_bindings(
     send_chat_action = function(id, action, html_deps = NULL, session) {
-      action_types <<- c(action_types, action$type)
+      actions[[length(actions) + 1L]] <<- action
       invisible(NULL)
     }
   )
@@ -568,9 +568,10 @@ test_that("chat_append_message() commits streamed append, replace, and end sends
   )
 
   expect_identical(
-    action_types,
+    vapply(actions, `[[`, character(1), "type"),
     c("chunk_start", "chunk", "chunk", "chunk_end")
   )
+  expect_identical(actions[[4L]], list(type = "chunk_end"))
   expect_identical(
     transcript$read(),
     list(

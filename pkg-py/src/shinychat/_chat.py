@@ -348,6 +348,7 @@ class Chat:
         # Chunked messages get accumulated (using this property) before changing state
         self._current_stream_segments: list[ContentSegment] = []
         self._current_stream_id: str | None = None
+        self._current_stream_projection: StoredMessage | None = None
         self._pending_messages: list[PendingMessage] = []
         self._message_lock = asyncio.Lock()
         # Prevent exited stream contexts from restoring state cleared mid-stream.
@@ -995,22 +996,26 @@ class Chat:
         message: Any,
         *,
         icon: HTML | Tag | TagList | None = None,
-    ):
-        # If we're in a stream, queue the message
-        if self._current_stream_id:
-            self._pending_messages.append((message, False, "append", None))
-            return
+        from_pending: bool = False,
+    ) -> bool:
+        if self._current_stream_id or (
+            self._pending_messages and not from_pending
+        ):
+            if not from_pending:
+                self._pending_messages.append((message, False, "append", None))
+            return False
 
         msg = normalize_message(message)
         msg = await self._transform_message(msg)
         if msg is None:
-            return
+            return True
         await self._send_append_message(
             message=msg,
             chunk=False,
             icon=icon,
         )
         self._store_message(msg)
+        return True
 
     @asynccontextmanager
     async def message_stream_context(self):
@@ -1138,16 +1143,31 @@ class Chat:
         stream_id: str,
         operation: Literal["append", "replace"] = "append",
         icon: HTML | Tag | TagList | None = None,
-    ) -> None:
-        if self._current_stream_id is None and chunk != "start":
-            return
-
-        # If currently we're in a *different* stream, queue the message chunk
-        if self._current_stream_id and self._current_stream_id != stream_id:
+        from_pending: bool = False,
+    ) -> bool:
+        has_pending_stream_write = any(
+            pending_chunk is not False and pending_stream_id == stream_id
+            for _, pending_chunk, _, pending_stream_id in self._pending_messages
+        )
+        if (
+            not from_pending
+            and self._pending_messages
+            and (self._current_stream_id is None or has_pending_stream_write)
+        ):
             self._pending_messages.append(
                 (message, chunk, operation, stream_id)
             )
-            return
+            return False
+
+        if self._current_stream_id is None and chunk != "start":
+            return True
+
+        if self._current_stream_id and self._current_stream_id != stream_id:
+            if not from_pending:
+                self._pending_messages.append(
+                    (message, chunk, operation, stream_id)
+                )
+            return False
 
         staged_segments = copy_segments(self._current_stream_segments)
         staged_stream_id = stream_id
@@ -1184,27 +1204,37 @@ class Chat:
             msg.content = stream_content
 
         settled: StoredMessage | None = None
+        next_projection = self._current_stream_projection
+        wire_message: StoredMessage | ChatMessage = msg
         try:
             if self._needs_transform(msg):
-                # Transforming may change the meaning of msg.content to be a *replace*
-                # not *append*. So, update msg.content and the operation accordingly.
                 chunk_content = msg.content
                 msg.content = stream_content
                 operation = "replace"
-                msg = await self._transform_message(
+                transformed = await self._transform_message(
                     msg, chunk=chunk, chunk_content=chunk_content
                 )
-                # Act like nothing happened if transformed to None
-                if msg is None:
-                    return
-                if chunk == "end":
-                    stream_deps = segments_deps(staged_segments)
-                    serialized_deps = self._serialize_html_deps(stream_deps)
-                    # _transform_message returns a single-segment StoredMessage, so all stream
-                    # deps belong on segments[0].
-                    if serialized_deps and msg.segments:
-                        msg.segments[0].html_deps = serialized_deps
-                    settled = msg
+                if transformed is None:
+                    if chunk != "end":
+                        return True
+                    settled = self._settled_stream_projection(
+                        self._current_stream_projection,
+                        staged_segments,
+                    )
+                    wire_message = StoredMessage(
+                        role=msg.role,
+                        segments=[],
+                    )
+                else:
+                    next_projection = transformed
+                    wire_message = transformed
+                    if chunk == "end":
+                        settled = self._settled_stream_projection(
+                            transformed,
+                            staged_segments,
+                        )
+                        assert settled is not None
+                        wire_message = settled
             elif chunk == "end":
                 settled = StoredMessage(
                     role=msg.role,
@@ -1220,9 +1250,8 @@ class Chat:
                     ],
                 )
 
-            # Send the message to the client
             await self._send_append_message(
-                message=msg,
+                message=wire_message,
                 chunk=chunk,
                 operation=operation,
                 icon=icon,
@@ -1232,10 +1261,14 @@ class Chat:
             if chunk != "end":
                 self._current_stream_id = staged_stream_id
                 self._current_stream_segments = staged_segments
+                if self._needs_transform(msg):
+                    self._current_stream_projection = next_projection
+            return True
         finally:
             if chunk == "end":
                 self._current_stream_id = None
                 self._current_stream_segments = []
+                self._current_stream_projection = None
                 self._message_stream_segments_checkpoint = []
 
     async def append_message_stream(
@@ -1473,35 +1506,87 @@ class Chat:
             empty, chunk="start", stream_id=id, icon=icon
         )
 
+        result = ""
+        primary_error: BaseException | None = None
         try:
             async for msg in message:
                 await self._append_message_chunk(msg, chunk=True, stream_id=id)
-            # The string returned to the caller mirrors StoredMessage.content
-            # (thinking wrapped in <thinking> tags), not segments_content's bare join.
-            return "".join(str(s) for s in self._current_stream_segments)
-        finally:
+            result = "".join(str(s) for s in self._current_stream_segments)
+        except BaseException as error:
+            primary_error = error
+
+        try:
             await self._append_message_chunk(empty, chunk="end", stream_id=id)
+        except BaseException as error:
+            if primary_error is None:
+                primary_error = error
+            else:
+                warnings.warn(
+                    f"Could not finish message stream: {error}",
+                    stacklevel=1,
+                )
+
+        try:
             await self._flush_pending_messages()
+        except BaseException as error:
+            if primary_error is None:
+                primary_error = error
+            else:
+                warnings.warn(
+                    f"Could not flush queued messages: {error}",
+                    stacklevel=1,
+                )
+
+        if primary_error is not None:
+            raise primary_error
+        return result
 
     async def _flush_pending_messages(self):
         async with self._message_lock:
-            pending = self._pending_messages
-            self._pending_messages = []
             stream_generation = self._stream_generation
 
-        for msg, chunk, operation, stream_id in pending:
+        while True:
             async with self._message_lock:
                 if self._stream_generation != stream_generation:
                     return
+                if not self._pending_messages:
+                    return
+
+                pending_index = 0
+                if self._current_stream_id is not None:
+                    pending_index = next(
+                        (
+                            index
+                            for index, pending in enumerate(
+                                self._pending_messages
+                            )
+                            if pending[1] in (True, "end")
+                            and pending[3] == self._current_stream_id
+                        ),
+                        -1,
+                    )
+                    if pending_index < 0:
+                        return
+
+                msg, chunk, operation, stream_id = self._pending_messages[
+                    pending_index
+                ]
                 if chunk is False:
-                    await self._append_message_locked(msg)
+                    processed = await self._append_message_locked(
+                        msg,
+                        from_pending=True,
+                    )
                 else:
-                    await self._append_message_chunk_locked(
+                    processed = await self._append_message_chunk_locked(
                         msg,
                         chunk=chunk,
                         operation=operation,
                         stream_id=cast(str, stream_id),
+                        from_pending=True,
                     )
+                if not processed:
+                    return
+                del self._pending_messages[pending_index]
 
     # Send a message to the UI
     async def _send_append_message(
@@ -1699,6 +1784,21 @@ class Chat:
             and self._transform_assistant is not None
         )
 
+    def _settled_stream_projection(
+        self,
+        projection: StoredMessage | None,
+        segments: list[ContentSegment],
+    ) -> StoredMessage | None:
+        if projection is None:
+            return None
+
+        settled = projection.model_copy(deep=True)
+        if settled.segments:
+            settled.segments[0].html_deps = self._serialize_html_deps(
+                segments_deps(segments)
+            )
+        return settled
+
     def _serialize_html_deps(
         self, deps: list[HTMLDependency] | None
     ) -> list[SerializedDep] | None:
@@ -1882,6 +1982,7 @@ class Chat:
         self._replace_messages(())
         self._current_stream_id = None
         self._current_stream_segments = []
+        self._current_stream_projection = None
         self._message_stream_segments_checkpoint = []
         self._pending_messages = []
         self._stream_generation += 1

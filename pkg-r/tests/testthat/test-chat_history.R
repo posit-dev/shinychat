@@ -1033,6 +1033,10 @@ test_that("html_deps travel with a stored message and are resent on replay in a 
   )
   expect_length(message_actions, 1)
   expect_equal(message_actions[[1]]$message$html_deps, list(dep))
+  expect_equal(
+    message_actions[[1]]$message$action$message$attachments,
+    list(attachment)
+  )
   expect_identical(
     get_chat_transcript(spy$session, "chat")$read(),
     list(
