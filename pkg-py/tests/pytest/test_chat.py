@@ -958,6 +958,71 @@ def test_slash_command_messages_are_stored_before_handler():
     ]
 
 
+@pytest.mark.anyio
+async def test_user_input_mid_stream_surfaces_error_instead_of_crashing(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    session = cast(Session, _MockSession())
+
+    with session_context(session):
+        chat = Chat("user_input_mid_stream", history=False)
+        await chat._append_message_chunk("", chunk="start", stream_id="active")
+
+        surfaced_errors: list[BaseException] = []
+
+        async def capture_error(error: BaseException) -> None:
+            surfaced_errors.append(error)
+
+        monkeypatch.setattr(chat, "_raise_exception", capture_error)
+
+        cast(Any, session.input[chat.user_input_id])._set(
+            {"text": "question", "attachments": []}
+        )
+        await reactive.flush()
+
+    assert len(surfaced_errors) == 1
+    assert str(surfaced_errors[0]) == (
+        "Cannot append a complete message while a stream is active"
+    )
+
+
+@pytest.mark.anyio
+async def test_slash_command_echo_mid_stream_surfaces_error_instead_of_crashing(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    session = cast(Session, _MockSession())
+
+    with session_context(session):
+        chat = Chat("slash_echo_mid_stream", history=False)
+        await chat._append_message_chunk("", chunk="start", stream_id="active")
+
+        surfaced_errors: list[BaseException] = []
+
+        async def capture_error(error: BaseException) -> None:
+            surfaced_errors.append(error)
+
+        monkeypatch.setattr(chat, "_raise_exception", capture_error)
+
+        handler_calls: list[str] = []
+
+        @chat.slash_command("help", "Show help")
+        async def help_command(_: str) -> None:
+            handler_calls.append("called")
+
+        cast(Any, session.input[chat._slash_command_id])._set(
+            {"command": "help", "userText": "topic", "echo": True}
+        )
+        await reactive.flush()
+
+    assert len(surfaced_errors) == 1
+    assert str(surfaced_errors[0]) == (
+        "Cannot append a complete message while a stream is active"
+    )
+    # The echo failed to commit, so the handler must not have run either --
+    # the chat state (a missing user turn) would otherwise be inconsistent.
+    assert handler_calls == []
+
+
 def test_slash_command_messages_skip_echo_false():
     session = cast(Session, _MockSession())
     messages_seen_by_handler: list[tuple[ChatMessageDict, ...]] = []
@@ -1148,6 +1213,50 @@ def test_streamed_messages_store_mixed_segments_and_transformed_content(
     assert transformed_messages == (
         {"content": "one two done", "role": "assistant"},
     )
+
+
+@pytest.mark.anyio
+@pytest.mark.filterwarnings(
+    "ignore:The `.transform_assistant_response` decorator is deprecated"
+)
+async def test_mid_stream_transform_none_retains_suppressed_content_at_settle(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # A mid-stream transform can return `None` to suppress a wire update for
+    # one chunk (e.g. to buffer partial output) without losing that chunk's
+    # content: it must still be part of the accumulated segments that later
+    # chunks and the terminal settle build on, rather than being permanently
+    # dropped.
+    with session_context(test_session):
+        chat = Chat("mid_stream_suppress", history=False)
+        actions: list[dict[str, Any]] = []
+
+        async def send_action(action: Any, deps: Any = None) -> None:
+            actions.append(action)
+
+        monkeypatch.setattr(chat, "_send_action", send_action)
+
+        @chat.transform_assistant_response
+        def transform(
+            content: str, chunk_content: str, done: bool
+        ) -> str | None:
+            if chunk_content == "SECRET " and not done:
+                return None
+            return content
+
+        async def response() -> AsyncIterator[str]:
+            yield "hello "
+            yield "SECRET "
+
+        await chat._append_message_stream(response())
+
+        with reactive.isolate():
+            messages = chat.messages()
+
+    assert messages == ({"content": "hello SECRET ", "role": "assistant"},)
+
+    chunk_actions = [a for a in actions if a["type"] == "chunk"]
+    assert [a["content"] for a in chunk_actions] == ["hello ", "hello SECRET "]
 
 
 @pytest.mark.anyio

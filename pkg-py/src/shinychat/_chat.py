@@ -424,13 +424,13 @@ class Chat:
                 command = data.get("command", "")
                 user_text = data.get("userText", "")
                 echo = bool(data.get("echo", True))
-                if echo:
-                    full_text = f"/{command} {user_text}".rstrip()
-                    msg = ChatMessage(content=full_text, role="user")
-                    await self._store_message(msg)
-                cmds = self._slash_commands()
-                reg = cmds.get(command) if cmds else None
                 try:
+                    if echo:
+                        full_text = f"/{command} {user_text}".rstrip()
+                        msg = ChatMessage(content=full_text, role="user")
+                        await self._store_message(msg)
+                    cmds = self._slash_commands()
+                    reg = cmds.get(command) if cmds else None
                     if reg is not None and reg.handler is not None:
                         if reg.takes_args:
                             await _utils.wrap_async(
