@@ -54,7 +54,7 @@ export interface ChatMessageData {
   icon?: string
   /** Attachments sent with this message. */
   attachments?: AttachmentPayload[]
-  /** Opaque serialized Shiny HTML dependencies received with this message; retained so the client can report them back for persistence/restore. */
+  /** Opaque serialized Shiny HTML dependencies retained for local rendering during edit, navigation, and replay. */
   htmlDeps?: HtmlDep[]
   blocks: MessageBlock[]
   /** Tracks whether streaming content is inside an unclosed <thinking> tag */
