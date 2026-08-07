@@ -4,6 +4,7 @@ import asyncio
 import inspect
 import sys
 import threading
+import warnings
 from datetime import datetime
 from typing import Any, AsyncIterator, cast
 
@@ -787,6 +788,60 @@ async def test_managed_response_stream_error_preserves_original_when_history_fai
             raised_error = stream.error()
         assert raised_error is original_error
         assert store.put_calls == 1
+
+
+@pytest.mark.filterwarnings(
+    "ignore:Error in Effect"
+)
+@pytest.mark.anyio
+async def test_managed_response_stream_error_surfaces_when_history_warning_errors(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    class StreamError(RuntimeError):
+        pass
+
+    original_error = StreamError("model stream failed")
+
+    with session_context(test_session):
+        chat = Chat("managed_stream_warning_error", history=False)
+        surfaced_errors: list[BaseException] = []
+        unhandled_errors: list[BaseException] = []
+
+        async def response() -> AsyncIterator[str]:
+            yield "partial"
+            raise original_error
+
+        async def response_settled() -> None:
+            raise OSError("history store failed")
+
+        async def capture_stream_error(error: BaseException) -> None:
+            surfaced_errors.append(error)
+
+        async def capture_unhandled_error(error: BaseException) -> None:
+            unhandled_errors.append(error)
+
+        monkeypatch.setattr(chat, "_raise_exception", capture_stream_error)
+        monkeypatch.setattr(
+            test_session,
+            "_unhandled_error",
+            capture_unhandled_error,
+            raising=False,
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            stream = await chat._start_message_stream(
+                response(),
+                on_settled=response_settled,
+            )
+            await wait_for_stream(stream)
+
+        with reactive.isolate():
+            raised_error = stream.error()
+        assert raised_error is original_error
+        assert [str(error) for error in unhandled_errors] == [
+            "Could not save conversation: history store failed"
+        ]
+        assert surfaced_errors == [original_error]
 
 
 @pytest.mark.anyio

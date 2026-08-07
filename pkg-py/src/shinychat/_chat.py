@@ -1402,11 +1402,13 @@ class Chat:
                     on_settled,
                     response_error=response_error,
                 )
-                if response_error is not None:
-                    await self._raise_exception(response_error)
             finally:
-                assert settle_effect is not None
-                settle_effect.destroy()
+                try:
+                    if response_error is not None:
+                        await self._raise_exception(response_error)
+                finally:
+                    assert settle_effect is not None
+                    settle_effect.destroy()
 
         settle_effect = _settle_stream
         return _stream_task

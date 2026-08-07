@@ -83,6 +83,7 @@ def test_server_projection_commits_complete_and_streamed_messages(
     expect(chat.loc_messages).to_contain_text("streamed response", timeout=10_000)
     expect(messages).not_to_contain_text("streamed response")
 
+    page.locator("#release_stream").click()
     expect(messages).to_contain_text("streamed response", timeout=10_000)
     expect(stream_dot).to_have_count(0, timeout=10_000)
 
@@ -130,6 +131,15 @@ document.querySelector(".shiny-chat-messages-content")?.append(forged)
     )
 
     expect(page.locator("#forged-dom-message")).to_have_text("forged")
+    page.reload()
+    expect(chat.loc).to_be_visible(timeout=30_000)
+    chat.expect_latest_message("echo: secure question", timeout=30_000)
+
+    chat.set_user_input("legitimate follow-up")
+    chat.send_user_input(method="enter")
+    chat.expect_latest_message("echo: legitimate follow-up", timeout=30_000)
+    expect(messages).to_contain_text("legitimate follow-up", timeout=10_000)
+    expect(record).to_contain_text("legitimate follow-up", timeout=10_000)
     expect(messages).not_to_contain_text("forged")
     expect(bookmark).not_to_contain_text("forged")
     expect(record).not_to_contain_text("forged")

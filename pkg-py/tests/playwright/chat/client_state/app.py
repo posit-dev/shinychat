@@ -103,6 +103,7 @@ app_ui = ui.page_fluid(
     chat_ui("chat", messages=["static"], allow_attachments=True),
     ui.input_action_button("append_complete", "Append complete"),
     ui.input_action_button("append_stream", "Append stream"),
+    ui.input_action_button("release_stream", "Release stream"),
     ui.input_action_button("clear_messages", "Clear messages"),
     ui.output_text_verbatim("count"),
     ui.output_text_verbatim("submits"),
@@ -128,6 +129,7 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     submit_count = reactive.value(0)
     save_count = reactive.value(0)
     restore_count = reactive.value(0)
+    stream_completion = asyncio.Event()
 
     @chat.on_user_submit
     async def on_user_submit(_: str) -> None:
@@ -150,12 +152,19 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     @reactive.effect
     @reactive.event(input.append_stream)
     async def append_stream() -> None:
+        stream_completion.clear()
+
         async def generate() -> AsyncGenerator[str, None]:
             yield "streamed response"
-            await asyncio.sleep(3)
+            await stream_completion.wait()
             yield " complete"
 
         await chat.append_message_stream(generate())
+
+    @reactive.effect
+    @reactive.event(input.release_stream)
+    def release_stream() -> None:
+        stream_completion.set()
 
     @reactive.effect
     @reactive.event(input.clear_messages)
