@@ -489,6 +489,20 @@ class _ManagedStreamClient:
         return response()
 
 
+class _CreationErrorClient:
+    def __init__(self, error: Exception) -> None:
+        self.error = error
+
+    async def stream_async(
+        self,
+        user_input: str,
+        *contents: object,
+        content: str,
+        controller: object,
+    ) -> AsyncIterator[str]:
+        raise self.error
+
+
 class _StaticTurnsClient:
     def __init__(self) -> None:
         self.turns: list[dict[str, Any]] = [
@@ -573,6 +587,61 @@ async def test_managed_response_settles_history_once_after_stream_cleanup(
         "assistant",
         "assistant",
     ]
+
+
+@pytest.mark.anyio
+async def test_managed_response_creation_time_error_settles_once_and_preserves_error(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    class ModelError(RuntimeError):
+        pass
+
+    original_error = ModelError("model creation failed")
+    client = _CreationErrorClient(original_error)
+    session = cast(Session, _MockSession())
+
+    with session_context(session):
+        chat = Chat(
+            "managed_creation_error",
+            client=cast(Any, client),
+            history=False,
+        )
+        store = _FailingConversationStore()
+        history_controller = HistoryController(
+            chat=chat,
+            adapter=TurnsAdapter(_StaticTurnsClient()),
+            store=store,
+            title_fn=None,
+            title_enabled=False,
+            client=None,
+        )
+        history_controller.partition = ConversationPartition(
+            chat_id="managed_creation_error",
+            scope="test",
+        )
+        chat.history._controller = history_controller
+        surfaced_errors: list[BaseException] = []
+
+        async def capture_error(error: BaseException) -> None:
+            surfaced_errors.append(error)
+
+        monkeypatch.setattr(chat, "_raise_exception", capture_error)
+        cast(Any, session.input[chat.user_input_id])._set(
+            {"text": "question", "attachments": []}
+        )
+
+        with pytest.warns(
+            UserWarning,
+            match="Could not save conversation: history store failed",
+        ):
+            await reactive.flush()
+
+        with reactive.isolate():
+            stream_status = chat.latest_message_stream.status()
+
+    assert store.put_calls == 1
+    assert surfaced_errors == [original_error]
+    assert stream_status == "initial"
 
 
 @pytest.mark.anyio

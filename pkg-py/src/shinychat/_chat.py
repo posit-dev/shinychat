@@ -513,12 +513,19 @@ class Chat:
                 user_input: str, attachments: list[Attachment]
             ) -> None:
                 contents = [attachment_to_content(a) for a in attachments]
-                response = await chat_client.value.stream_async(
-                    user_input,
-                    *contents,
-                    content="all",
-                    controller=controller,
-                )
+                try:
+                    response = await chat_client.value.stream_async(
+                        user_input,
+                        *contents,
+                        content="all",
+                        controller=controller,
+                    )
+                except BaseException as error:
+                    await self._settle_response(
+                        self.history._response_settled,
+                        response_error=error,
+                    )
+                    raise
                 await self._start_message_stream(
                     response,
                     on_settled=self.history._response_settled,
@@ -1382,17 +1389,10 @@ class Chat:
                 response_error = error
                 raise
             finally:
-                if on_settled is not None:
-                    try:
-                        await on_settled()
-                    except Exception as history_error:
-                        if response_error is None:
-                            await self.history._notify_save_error(history_error)
-                        else:
-                            warnings.warn(
-                                f"Could not save conversation: {history_error}",
-                                stacklevel=1,
-                            )
+                await self._settle_response(
+                    on_settled,
+                    response_error=response_error,
+                )
 
         _stream_task()
 
@@ -1408,6 +1408,25 @@ class Chat:
             _handle_error.destroy()  # type: ignore
 
         return _stream_task
+
+    async def _settle_response(
+        self,
+        on_settled: Callable[[], Awaitable[None]] | None,
+        *,
+        response_error: BaseException | None,
+    ) -> None:
+        if on_settled is None:
+            return
+        try:
+            await on_settled()
+        except Exception as history_error:
+            if response_error is None:
+                await self.history._notify_save_error(history_error)
+            else:
+                warnings.warn(
+                    f"Could not save conversation: {history_error}",
+                    stacklevel=1,
+                )
 
     @property
     def latest_message_stream(self) -> ExtendedTask[[], str]:

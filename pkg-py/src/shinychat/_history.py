@@ -263,14 +263,12 @@ class HistoryController:
         first_save = self.record is None
         if first_save:
             turns_flat = self.adapter.get_turns_json()
-            self.record = new_conversation_record(
-                title=fallback_title(turns_flat)
-            )
-            self.record.client_info = self.adapter.client_info()
+            record = new_conversation_record(title=fallback_title(turns_flat))
+            record.client_info = self.adapter.client_info()
+        else:
+            assert self.record is not None
+            record = self.record.model_copy(deep=True)
 
-        record = self.record
-        if record is None:
-            raise RuntimeError("HistoryController not initialized")
         extend_record_linear(
             record,
             turn_groups,
@@ -280,6 +278,7 @@ class HistoryController:
         record.response_count += 1
         self._capture_app_state(record)
         await self.store.put(self.partition, record)
+        self.record = record
         self.transcript_offset = len(transcript)
         await self._evict_if_needed()
         if self.on_response_saved is not None:
@@ -363,14 +362,16 @@ class HistoryController:
             return
         turn_groups = self.adapter.get_turns_grouped()
         transcript = self.chat._messages_for_bookmark()
+        record = self.record.model_copy(deep=True)
         extend_record_linear(
-            self.record,
+            record,
             turn_groups,
             transcript,
             transcript_offset=self.transcript_offset,
         )
-        self._capture_app_state(self.record)
-        await self.store.put(self.partition, self.record)
+        self._capture_app_state(record)
+        await self.store.put(self.partition, record)
+        self.record = record
         self.transcript_offset = len(transcript)
 
     def _capture_app_state(self, record: ConversationRecord) -> None:

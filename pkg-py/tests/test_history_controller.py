@@ -249,6 +249,20 @@ class _FailingStore(_RecordingStore):
         raise OSError("disk full")
 
 
+class _ToggleFailStore(_RecordingStore):
+    def __init__(self, *, failures: int = 0) -> None:
+        super().__init__()
+        self.failures = failures
+        self.put_attempts = 0
+
+    async def put(self, partition: ConversationPartition, record: Any) -> None:
+        self.put_attempts += 1
+        if self.failures > 0:
+            self.failures -= 1
+            raise OSError("disk full")
+        await super().put(partition, record)
+
+
 class _PartitionCaptureStore(ConversationStore):
     def __init__(self) -> None:
         self.put_partitions: list[ConversationPartition] = []
@@ -427,6 +441,69 @@ async def test_transcript_offset_unchanged_when_save_current_put_raises():
     assert controller.transcript_offset == initial_offset, (
         "transcript_offset must not advance when store.put() raises"
     )
+
+
+@pytest.mark.anyio
+async def test_on_response_persistence_retry_does_not_duplicate_transcript():
+    chat = _FakeChat()
+    chat.messages = [msg("user"), msg("assistant"), msg("assistant")]
+    store = _ToggleFailStore(failures=1)
+    controller, _store = _make_controller(store=store, chat=chat)
+
+    with pytest.raises(OSError, match="disk full"):
+        await controller.on_response()
+
+    assert controller.record is None
+    assert controller.transcript_offset == 0
+
+    await controller.on_response()
+
+    assert store.put_attempts == 2
+    record = cast(ConversationRecord | None, controller.record)
+    assert record is not None
+    assert record.response_count == 1
+    persisted = [
+        message
+        for node_id in record.path_node_ids()
+        for message in (record.nodes[node_id].ui or [])
+    ]
+    assert persisted == chat.messages
+    assert controller.transcript_offset == len(chat.messages)
+
+
+@pytest.mark.anyio
+async def test_save_current_persistence_retry_does_not_duplicate_transcript():
+    chat = _FakeChat()
+    chat.messages = [msg("user"), msg("assistant")]
+    store = _ToggleFailStore()
+    controller, _store = _make_controller(store=store, chat=chat)
+    await controller.on_response()
+    original_record = controller.record
+    assert original_record is not None
+    before_failure = original_record.model_dump()
+
+    chat.messages.append(msg("assistant"))
+    store.failures = 1
+    with pytest.raises(OSError, match="disk full"):
+        await controller.save_current()
+
+    assert controller.record is original_record
+    assert original_record.model_dump() == before_failure
+    assert controller.transcript_offset == 2
+
+    await controller.save_current()
+
+    assert store.put_attempts == 3
+    record = cast(ConversationRecord | None, controller.record)
+    assert record is not None
+    assert record.response_count == 1
+    persisted = [
+        message
+        for node_id in record.path_node_ids()
+        for message in (record.nodes[node_id].ui or [])
+    ]
+    assert persisted == chat.messages
+    assert controller.transcript_offset == len(chat.messages)
 
 
 @pytest.mark.anyio
