@@ -283,7 +283,6 @@ export function ChatApp({
 
   const handleNavigate = useCallback(
     (index: number, direction: "prev" | "next") => {
-      containerRef.current?.scrollToBottom()
       transport.sendMessageNavigate(elementId, index, direction)
     },
     [transport, elementId],

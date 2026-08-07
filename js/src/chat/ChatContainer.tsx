@@ -75,9 +75,7 @@ export interface ChatContainerProps {
   onNavigate?: (index: number, direction: "prev" | "next") => void
 }
 
-export interface ChatContainerHandle extends ChatInputHandle {
-  scrollToBottom(): void
-}
+export type ChatContainerHandle = ChatInputHandle
 
 export const ChatContainer = forwardRef<
   ChatContainerHandle,
@@ -233,9 +231,6 @@ export const ChatContainer = forwardRef<
     },
     focus() {
       chatInputRef.current?.focus()
-    },
-    scrollToBottom() {
-      scrollToBottom()
     },
   }))
 
