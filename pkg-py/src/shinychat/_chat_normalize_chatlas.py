@@ -255,8 +255,13 @@ def domain_from_url(url: str) -> str:
     return urlparse(url).hostname or url
 
 
-def citation_aside(url: str, title: Optional[str]) -> str:
-    "Render a chatlas web citation as <shiny-aside> markup with a dedup marker."
+def citation_aside(
+    url: str,
+    title: Optional[str],
+    grounded_span: Optional[str] = None,
+    cited_quote: Optional[str] = None,
+) -> str:
+    "Render a chatlas web citation as <shiny-aside> markup."
     return str(
         Tag(
             "shiny-aside",
@@ -264,6 +269,8 @@ def citation_aside(url: str, title: Optional[str]) -> str:
             data_citation="",
             label=domain_from_url(url),
             url=url,
+            grounded_span=grounded_span,
+            cited_quote=cited_quote,
         )
     )
 

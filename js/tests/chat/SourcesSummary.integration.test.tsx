@@ -5,6 +5,7 @@ import { parseMarkdown, hastToReact } from "../../src/markdown/markdownToReact"
 import { chatTagToComponentMap } from "../../src/chat/chatTagToComponentMap"
 import { CitationCollectorProvider } from "../../src/chat/citationCollector"
 import { SourcesSummary } from "../../src/chat/SourcesSummary"
+import { AsideGroupView } from "../../src/chat/AsideGroup"
 
 afterEach(cleanup)
 
@@ -28,6 +29,28 @@ function renderMessage(md: string) {
 }
 
 describe("SourcesSummary wiring", () => {
+  it("registers normalized citation entries without serialized markup", () => {
+    render(
+      <CitationCollectorProvider>
+        <AsideGroupView
+          entries={[
+            {
+              label: "example.com",
+              url: "https://example.com/source",
+              body: "Evidence",
+              citation: { title: "Example source" },
+            },
+          ]}
+        />
+        <SourcesSummary />
+      </CitationCollectorProvider>,
+    )
+
+    expect(
+      screen.getByRole("button", { name: "Sources, 1 source" }),
+    ).toBeInTheDocument()
+  })
+
   it("aggregates and dedups citations across the whole message", () => {
     renderMessage(
       [

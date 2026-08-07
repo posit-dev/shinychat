@@ -1,4 +1,4 @@
-import type { Element, ElementContent } from "hast"
+import type { AsideEntry } from "./AsideGroup"
 
 export interface CitationEntry {
   url: string
@@ -6,42 +6,20 @@ export interface CitationEntry {
   title?: string
 }
 
-export function isCitationAside(node: ElementContent): node is Element {
-  return (
-    node.type === "element" &&
-    node.tagName === "shiny-aside" &&
-    node.properties != null &&
-    "dataCitation" in node.properties
-  )
-}
-
-function textContent(node: ElementContent): string {
-  if (node.type === "text") return node.value
-  if (node.type === "element")
-    return (node.children ?? []).map(textContent).join("")
-  return ""
-}
-
-function strProp(el: Element, name: string): string | undefined {
-  const v = el.properties?.[name]
-  return typeof v === "string" && v !== "" ? v : undefined
-}
-
 /**
- * Extract citation entries from a <shiny-aside-group>'s children. Only asides
- * carrying the data-citation marker are considered; hand-authored <shiny-aside>s
- * are ignored so they never appear in the message's Sources summary.
+ * Project normalized citation asides into the message's Sources summary model.
+ * Hand-authored asides have no citation metadata and are ignored.
  */
-export function citationEntriesFromGroup(node: Element): CitationEntry[] {
-  return (node.children ?? [])
-    .filter(isCitationAside)
-    .map((el) => {
-      const url = strProp(el, "url") ?? ""
-      const text = textContent(el).trim()
-      // Python emits <a>title or url</a>, so text === url means "no real title".
-      const title = text === "" || text === url ? undefined : text
-      return { url, domain: strProp(el, "label"), title }
-    })
+export function citationEntriesFromAsides(
+  entries: AsideEntry[],
+): CitationEntry[] {
+  return entries
+    .filter((entry) => entry.citation != null)
+    .map((entry) => ({
+      url: entry.url ?? "",
+      domain: entry.label,
+      title: entry.citation?.title,
+    }))
     .filter((e) => e.url !== "")
 }
 

@@ -1,8 +1,16 @@
 import { visit } from "unist-util-visit"
-import type { Root, Element } from "hast"
+import type { Root, Element, ElementContent } from "hast"
 import type { Plugin } from "unified"
 import { toHtml } from "hast-util-to-html"
-import { isCitationAside } from "../../chat/citations"
+
+function isCitationAside(node: ElementContent): node is Element {
+  return (
+    node.type === "element" &&
+    node.tagName === "shiny-aside" &&
+    node.properties != null &&
+    "dataCitation" in node.properties
+  )
+}
 
 // A citation's display is fully a function of (url, rendered body), so this
 // key collapses genuine repeats while keeping entries that differ in either.

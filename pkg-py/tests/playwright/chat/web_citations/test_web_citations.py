@@ -37,17 +37,25 @@ def test_web_citations(page: Page, local_app: ShinyAppProc) -> None:
     expect(popover).to_be_visible()
     expect(popover).to_contain_text("ebicycles.example")
     expect(popover.locator(".shiny-aside-popover__count")).to_have_text("1 / 2")
+    first_paragraph = first.locator("xpath=ancestor::p[1]")
+    first_grounded = first_paragraph.locator(".shiny-citation-grounded")
+    expect(first_grounded).to_have_count(2)
+    expect(first_grounded.nth(0)).to_have_attribute("data-active", "")
+    expect(first_grounded.nth(1)).not_to_have_attribute("data-active", "")
 
     # Paging to the second source.
     popover.get_by_role("button", name="Next source").click()
     expect(popover).to_contain_text("wired.example")
     expect(popover.locator(".shiny-aside-popover__count")).to_have_text("2 / 2")
+    expect(first_grounded.nth(0)).not_to_have_attribute("data-active", "")
+    expect(first_grounded.nth(1)).to_have_attribute("data-active", "")
 
     # Dismiss before interacting with the next pill: the portal-rendered
     # popover can visually overlap a later pill on the same line, which
     # would otherwise intercept the next click.
     page.keyboard.press("Escape")
     expect(popover).to_be_hidden()
+    expect(first_grounded.nth(1)).not_to_have_attribute("data-active", "")
 
     # Second group: a bare, label-less developer-authored aside → falls
     # back to a plain count pill (no chip, no favicon).
@@ -61,13 +69,22 @@ def test_web_citations(page: Page, local_app: ShinyAppProc) -> None:
     page.keyboard.press("Escape")
     expect(second_popover).to_be_hidden()
 
-    # Same source cited twice in one paragraph collapses to a single entry.
+    # Same source cited twice in one paragraph remains two local occurrences
+    # so each grounded claim can be inspected independently.
     third = groups.nth(2)
     third.locator(".shiny-aside-pill").click()
     popover = page.locator(".shiny-aside-popover")
     expect(popover).to_be_visible(timeout=10 * 1000)
-    # A single entry has no "n / m" pager.
-    expect(popover.locator(".shiny-aside-popover__count")).to_have_count(0)
+    expect(popover.locator(".shiny-aside-popover__count")).to_have_text("1 / 2")
+    third_paragraph = third.locator("xpath=ancestor::p[1]")
+    third_grounded = third_paragraph.locator(".shiny-citation-grounded")
+    expect(third_grounded).to_have_count(2)
+    expect(third_grounded.nth(0)).to_have_attribute("data-active", "")
+    expect(third_grounded.nth(1)).not_to_have_attribute("data-active", "")
+
+    popover.get_by_role("button", name="Next source").click()
+    expect(third_grounded.nth(0)).not_to_have_attribute("data-active", "")
+    expect(third_grounded.nth(1)).to_have_attribute("data-active", "")
 
     # End-of-message Sources summary pill: two distinct cited URLs across the
     # whole message (ebicycles cited twice + wired once); the hand-authored

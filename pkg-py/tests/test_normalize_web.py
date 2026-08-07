@@ -44,7 +44,9 @@ def test_fetch_request_renders_empty():
 
 
 def test_fetch_response_renders_web_fetch_element_with_status():
-    html = _html(ContentToolResponseFetch(url="https://example.com", status="success"))
+    html = _html(
+        ContentToolResponseFetch(url="https://example.com", status="success")
+    )
     assert "shiny-web-fetch" in html
     assert "https://example.com" in html
     assert "success" in html
@@ -82,11 +84,57 @@ def test_citation_without_title_uses_url_as_link_text():
 def test_citation_escapes_special_characters():
     msg = message_content(
         ContentCitation(
-            source=WebSource(url="https://x.example/?a=1&b=2", title="A & B <ok>")
+            source=WebSource(
+                url="https://x.example/?a=1&b=2", title="A & B <ok>"
+            )
         )
     )
     assert "A &amp; B &lt;ok&gt;" in msg.content
     assert "a=1&amp;b=2" in msg.content
+
+
+def test_citation_preserves_grounded_span_and_cited_quote():
+    msg = message_content(
+        ContentCitation(
+            source=WebSource(url="https://example.com", title="Example"),
+            grounded_span='Supported answer "text"',
+            cited_quote="Source evidence <verbatim>",
+        )
+    )
+    assert 'grounded-span="Supported answer &quot;text&quot;"' in msg.content
+    assert 'cited-quote="Source evidence &lt;verbatim&gt;"' in msg.content
+
+
+def test_citation_omits_missing_grounding_metadata():
+    msg = message_content(
+        ContentCitation(
+            source=WebSource(url="https://example.com", title="Example")
+        )
+    )
+    assert "grounded-span=" not in msg.content
+    assert "cited-quote=" not in msg.content
+
+
+def test_citation_preserves_grounded_span_without_cited_quote():
+    msg = message_content(
+        ContentCitation(
+            source=WebSource(url="https://example.com", title="Example"),
+            grounded_span="Supported answer",
+        )
+    )
+    assert 'grounded-span="Supported answer"' in msg.content
+    assert "cited-quote=" not in msg.content
+
+
+def test_citation_preserves_cited_quote_without_grounded_span():
+    msg = message_content(
+        ContentCitation(
+            source=WebSource(url="https://example.com", title="Example"),
+            cited_quote="Source evidence",
+        )
+    )
+    assert 'cited-quote="Source evidence"' in msg.content
+    assert "grounded-span=" not in msg.content
 
 
 def test_citation_without_source_renders_nothing():
@@ -104,7 +152,9 @@ def test_tool_display_none_suppresses(monkeypatch):
         == ""
     )
     assert (
-        _html(ContentToolResponseFetch(url="https://a.com", status="success")).strip()
+        _html(
+            ContentToolResponseFetch(url="https://a.com", status="success")
+        ).strip()
         == ""
     )
     assert (

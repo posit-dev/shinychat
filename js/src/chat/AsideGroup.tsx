@@ -7,8 +7,15 @@ import { ASIDE_PENDING_ATTR } from "../markdown/plugins/markTrailingAsides"
 import { externalLinkAttributes } from "../markdown/plugins/rehypeExternalLinks"
 import { useAsideFavicon } from "./context"
 import { useCitationRegister } from "./citationCollector"
-import { citationEntriesFromGroup, type CitationEntry } from "./citations"
+import { citationEntriesFromAsides, type CitationEntry } from "./citations"
 import { useDismissiblePopover } from "./useDismissiblePopover"
+
+export interface CitationMetadata {
+  title?: string
+  grounded_span?: string
+  cited_quote?: string
+  grounding_id?: string
+}
 
 export interface AsideEntry {
   label?: string
@@ -16,6 +23,7 @@ export interface AsideEntry {
   icon?: string
   body?: string
   index?: number
+  citation?: CitationMetadata
 }
 
 interface AsideGroupProps {
@@ -37,19 +45,43 @@ function numProp(el: Element, name: string): number | undefined {
   return typeof v === "number" ? v : undefined
 }
 
+function textContent(node: Element): string {
+  return node.children
+    .map((child) => {
+      if (child.type === "text") return child.value
+      if (child.type === "element") return textContent(child)
+      return ""
+    })
+    .join("")
+}
+
 export function parseAsideEntries(node?: Element): AsideEntry[] {
   if (!node) return []
   return (node.children ?? [])
     .filter(
       (c): c is Element => c.type === "element" && c.tagName === "shiny-aside",
     )
-    .map((el) => ({
-      label: prop(el, "label"),
-      url: prop(el, "url"),
-      icon: prop(el, "icon"),
-      body: el.children.length > 0 ? toHtml(el.children) : undefined,
-      index: numProp(el, "index"),
-    }))
+    .map((el) => {
+      const url = prop(el, "url")
+      const text = textContent(el).trim()
+      const citation =
+        el.properties?.dataCitation == null
+          ? undefined
+          : {
+              title: text === "" || text === url ? undefined : text,
+              grounded_span: prop(el, "grounded-span"),
+              cited_quote: prop(el, "cited-quote"),
+              grounding_id: prop(el, "dataGroundingId"),
+            }
+      return {
+        label: prop(el, "label"),
+        url,
+        icon: prop(el, "icon"),
+        body: el.children.length > 0 ? toHtml(el.children) : undefined,
+        index: numProp(el, "index"),
+        citation,
+      }
+    })
 }
 
 export function faviconUrl(url: string): string | undefined {
@@ -106,22 +138,7 @@ function NavArrowIcon({ direction }: { direction: "prev" | "next" }) {
 export const AsideGroup = memo(function AsideGroup({ node }: AsideGroupProps) {
   const entries = parseAsideEntries(node)
   const pending = node?.properties?.[ASIDE_PENDING_ATTR] != null
-  const registry = useCitationRegister()
-  const instanceId = useId()
-  const citationSignature =
-    node && !pending ? JSON.stringify(citationEntriesFromGroup(node)) : ""
-
-  useEffect(() => {
-    if (!registry || citationSignature === "") return
-    const citations = JSON.parse(citationSignature) as CitationEntry[]
-    if (citations.length === 0) return
-    registry.register(instanceId, citations)
-    return () => registry.unregister(instanceId)
-  }, [registry, instanceId, citationSignature])
-
-  return (
-    <AsideGroupView entries={entries} pending={pending} />
-  )
+  return <AsideGroupView entries={entries} pending={pending} />
 })
 
 export const AsideGroupView = memo(function AsideGroupView({
@@ -132,15 +149,47 @@ export const AsideGroupView = memo(function AsideGroupView({
   const faceIndex = entries.findIndex((e) => e.label)
   const [open, setOpen] = useState(false)
   const [index, setIndex] = useState(0)
+  const registry = useCitationRegister()
+  const instanceId = useId()
+  const citationSignature = !pending
+    ? JSON.stringify(citationEntriesFromAsides(entries))
+    : ""
 
   const { refs, floatingStyles, context, getReferenceProps, getFloatingProps } =
     useDismissiblePopover(open, setOpen)
+  const activeGroundingId = entries[index]?.citation?.grounding_id
+
+  useEffect(() => {
+    if (!registry || citationSignature === "") return
+    const citations = JSON.parse(citationSignature) as CitationEntry[]
+    if (citations.length === 0) return
+    registry.register(instanceId, citations)
+    return () => registry.unregister(instanceId)
+  }, [registry, instanceId, citationSignature])
 
   // Reset paging to the face entry whenever the popover opens, regardless of
   // which interaction (hover, focus, click) opened it.
   useEffect(() => {
     if (open) setIndex(faceIndex === -1 ? 0 : faceIndex)
   }, [open, faceIndex])
+
+  useEffect(() => {
+    if (!open || !activeGroundingId) return
+    const reference = refs.domReference.current
+    if (!(reference instanceof HTMLElement)) return
+    const container = reference.closest("p, li")
+    if (!container) return
+
+    const grounded = [
+      ...container.querySelectorAll<HTMLElement>("[data-citation-grounding]"),
+    ].filter((element) =>
+      element.dataset.citationGrounding?.split(" ").includes(activeGroundingId),
+    )
+    for (const element of grounded) element.dataset.active = ""
+    return () => {
+      for (const element of grounded) delete element.dataset.active
+    }
+  }, [open, activeGroundingId, refs.domReference])
 
   // Withheld while its surrounding block is still streaming (see
   // rehypeMarkTrailingAsides) so the pill doesn't flash in mid-sentence.

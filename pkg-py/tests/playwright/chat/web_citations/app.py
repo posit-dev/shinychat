@@ -33,7 +33,8 @@ async def fake_stream():
         source=WebSource(
             url="https://ebicycles.example/hub-vs-mid-drive",
             title="Hub Motor vs. Mid-Drive Motor Differences Explained",
-        )
+        ),
+        grounded_span="Hub motors are cheaper and simpler",
     )
     yield ContentText(text=", and ideal for flatter terrain. ")
     # A second, distinct source cited in the same sentence — both collapse
@@ -42,7 +43,8 @@ async def fake_stream():
         source=WebSource(
             url="https://wired.example/ebike-motors",
             title="How Electric Bike Motors Work",
-        )
+        ),
+        grounded_span="ideal for flatter terrain",
     )
     # Blank line starts a new paragraph, so this aside lands in a
     # separate block/group from the two citations above.
@@ -59,14 +61,16 @@ async def fake_stream():
         source=WebSource(
             url="https://ebicycles.example/hub-vs-mid-drive",
             title="Hub Motor vs. Mid-Drive Motor Differences Explained",
-        )
+        ),
+        grounded_span="Range depends on battery",
     )
     yield ContentText(text=" and again on the same source")
     yield ContentCitation(
         source=WebSource(
             url="https://ebicycles.example/hub-vs-mid-drive",
             title="Hub Motor vs. Mid-Drive Motor Differences Explained",
-        )
+        ),
+        grounded_span="again on the same source",
     )
     yield ContentText(text=".")
 

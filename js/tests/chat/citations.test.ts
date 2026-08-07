@@ -1,47 +1,8 @@
 import { describe, it, expect } from "vitest"
-import type { Element } from "hast"
 import {
   mergeCitations,
-  citationEntriesFromGroup,
+  citationEntriesFromAsides,
 } from "../../src/chat/citations"
-
-function citationAside(
-  url: string,
-  label: string,
-  anchorText: string,
-): Element {
-  return {
-    type: "element",
-    tagName: "shiny-aside",
-    properties: { dataCitation: "", label, url },
-    children: [
-      {
-        type: "element",
-        tagName: "a",
-        properties: { href: url },
-        children: [{ type: "text", value: anchorText }],
-      },
-    ],
-  }
-}
-
-function plainAside(text: string): Element {
-  return {
-    type: "element",
-    tagName: "shiny-aside",
-    properties: {},
-    children: [{ type: "text", value: text }],
-  }
-}
-
-function group(...children: Element[]): Element {
-  return {
-    type: "element",
-    tagName: "shiny-aside-group",
-    properties: {},
-    children,
-  }
-}
 
 describe("mergeCitations", () => {
   it("dedups by url, keeps first-seen order", () => {
@@ -66,25 +27,31 @@ describe("mergeCitations", () => {
   })
 })
 
-describe("citationEntriesFromGroup", () => {
-  it("extracts only citation asides, with url/domain/title", () => {
-    const out = citationEntriesFromGroup(
-      group(
-        citationAside("https://a.example", "a.example", "Title A"),
-        plainAside("hand-authored aside"),
-      ),
-    )
+describe("citationEntriesFromAsides", () => {
+  it("projects only normalized citation entries for the Sources summary", () => {
+    const out = citationEntriesFromAsides([
+      {
+        label: "a.example",
+        url: "https://a.example",
+        body: '<a href="https://a.example">Title A</a>',
+        citation: {
+          title: "Title A",
+          grounded_span: "Supported claim",
+          cited_quote: "Source evidence",
+        },
+      },
+      { body: "hand-authored aside" },
+    ])
     expect(out).toEqual([
       { url: "https://a.example", domain: "a.example", title: "Title A" },
     ])
   })
 
-  it("treats anchor text equal to the url as no title (falls back later)", () => {
-    const out = citationEntriesFromGroup(
-      group(
-        citationAside("https://a.example", "a.example", "https://a.example"),
-      ),
-    )
-    expect(out[0]!.title).toBeUndefined()
+  it("ignores citation entries without a source URL", () => {
+    expect(
+      citationEntriesFromAsides([
+        { label: "Missing URL", citation: { title: "Title" } },
+      ]),
+    ).toEqual([])
   })
 })

@@ -242,6 +242,8 @@ contents_shinychat_citation <- function(content) {
         `data-citation` = NA,
         label = web_source_domain(source@url),
         url = source@url,
+        `grounded-span` = content@grounded_span,
+        `cited-quote` = content@cited_quote,
         htmltools::tag(
           "a",
           list(
@@ -633,19 +635,21 @@ tool_result_display <- function(
   value_preview = NULL
 ) {
   as_tool_result_display(
-    compact(list(
-      title = title,
-      icon = icon,
-      html = html,
-      markdown = markdown,
-      text = text,
-      show_request = show_request,
-      open = open,
-      full_screen = full_screen,
-      footer = footer,
-      label = label,
-      value_preview = value_preview
-    ))
+    compact(
+      list(
+        title = title,
+        icon = icon,
+        html = html,
+        markdown = markdown,
+        text = text,
+        show_request = show_request,
+        open = open,
+        full_screen = full_screen,
+        footer = footer,
+        label = label,
+        value_preview = value_preview
+      )
+    )
   )
 }
 

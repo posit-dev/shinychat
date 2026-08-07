@@ -510,7 +510,9 @@ test_that("web content renders as shinychat web activity and citations", {
     source = ellmer::WebSource(
       "https://x.example/?a=1&b=2",
       "A & B <source>"
-    )
+    ),
+    grounded_span = 'Supported answer "text"',
+    cited_quote = "Source evidence <verbatim>"
   )
   citation_markup <- contents_shinychat(citation)
   expect_match(citation_markup, "<shiny-aside", fixed = TRUE)
@@ -518,6 +520,26 @@ test_that("web content renders as shinychat web activity and citations", {
   expect_match(citation_markup, 'label="x.example"', fixed = TRUE)
   expect_match(citation_markup, "A &amp; B &lt;source&gt;", fixed = TRUE)
   expect_match(citation_markup, "a=1&amp;b=2", fixed = TRUE)
+  expect_match(
+    citation_markup,
+    'grounded-span="Supported answer &quot;text&quot;"',
+    fixed = TRUE
+  )
+  expect_match(
+    citation_markup,
+    'cited-quote="Source evidence &lt;verbatim&gt;"',
+    fixed = TRUE
+  )
+
+  citation_without_grounding <- contents_shinychat(
+    ellmer::ContentCitation(
+      source = ellmer::WebSource("https://x.example", "Example")
+    )
+  )
+  expect_false(
+    grepl("grounded-span=", citation_without_grounding, fixed = TRUE)
+  )
+  expect_false(grepl("cited-quote=", citation_without_grounding, fixed = TRUE))
 
   expect_null(contents_shinychat(ellmer::ContentCitation()))
   expect_null(
@@ -525,6 +547,30 @@ test_that("web content renders as shinychat web activity and citations", {
       ellmer::ContentToolResponseFetch(status = "error")
     )
   )
+})
+
+test_that("ContentCitation preserves optional metadata independently", {
+  grounded_only <- contents_shinychat(
+    ellmer::ContentCitation(
+      source = ellmer::WebSource("https://x.example", "Example"),
+      grounded_span = "Supported answer"
+    )
+  )
+  expect_match(
+    grounded_only,
+    'grounded-span="Supported answer"',
+    fixed = TRUE
+  )
+  expect_false(grepl("cited-quote=", grounded_only, fixed = TRUE))
+
+  quote_only <- contents_shinychat(
+    ellmer::ContentCitation(
+      source = ellmer::WebSource("https://x.example", "Example"),
+      cited_quote = "Source evidence"
+    )
+  )
+  expect_match(quote_only, 'cited-quote="Source evidence"', fixed = TRUE)
+  expect_false(grepl("grounded-span=", quote_only, fixed = TRUE))
 })
 
 test_that("web content feature detection requires every ellmer export", {

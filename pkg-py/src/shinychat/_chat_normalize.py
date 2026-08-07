@@ -328,7 +328,11 @@ try:
             if tool_display_override() == "none":
                 return ChatMessage(content="")
             sources = [
-                {"url": s.url, "title": s.title, "domain": domain_from_url(s.url)}
+                {
+                    "url": s.url,
+                    "title": s.title,
+                    "domain": domain_from_url(s.url),
+                }
                 for s in message.sources
             ]
             return ChatMessage(
@@ -375,7 +379,12 @@ try:
             ):
                 return ChatMessage(content="")
             return ChatMessage(
-                content=citation_aside(message.source.url, message.source.title),
+                content=citation_aside(
+                    message.source.url,
+                    message.source.title,
+                    grounded_span=message.grounded_span,
+                    cited_quote=message.cited_quote,
+                ),
                 content_type="markdown",
             )
 

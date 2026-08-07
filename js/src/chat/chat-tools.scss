@@ -845,6 +845,15 @@ shinychat-raw-html {
   vertical-align: 0.1em;
 }
 
+.shiny-citation-grounded[data-active] {
+  background: rgba(var(--bs-primary-rgb, 13, 110, 253), 0.12);
+  border-radius: 0.12em;
+  text-decoration-line: underline;
+  text-decoration-color: rgba(var(--bs-primary-rgb, 13, 110, 253), 0.7);
+  text-decoration-thickness: 0.1em;
+  text-underline-offset: 0.14em;
+}
+
 .shiny-aside-pill {
   display: inline-flex;
   align-items: center;

@@ -12,15 +12,17 @@ function render(md: string): string {
   )
 }
 
-const cite = (url: string, title: string) =>
-  `<shiny-aside data-citation label="${new URL(url).hostname}" url="${url}"><a href="${url}">${title}</a></shiny-aside>`
+const cite = (url: string, title: string, groundedSpan: string) =>
+  `<shiny-aside data-citation label="${new URL(url).hostname}" url="${url}" grounded-span="${groundedSpan}"><a href="${url}">${title}</a></shiny-aside>`
 
-describe("markdownProcessor citation dedup", () => {
-  it("collapses identical citations in one paragraph to a single aside", () => {
+describe("markdownProcessor citation occurrences", () => {
+  it("preserves repeated citations for separate grounded claims", () => {
     const u = "https://ebicycles.example/hub"
     const html = render(
-      `Claim${cite(u, "Hub vs Mid")} again${cite(u, "Hub vs Mid")}.`,
+      `First claim${cite(u, "Hub vs Mid", "First claim")} and second claim${cite(u, "Hub vs Mid", "second claim")}.`,
     )
-    expect(html.match(/<shiny-aside\b(?!-group)/g)).toHaveLength(1)
+    expect(html.match(/<shiny-aside\b(?!-group)/g)).toHaveLength(2)
+    expect(html).toContain('data-grounding-id="citation-grounding-1"')
+    expect(html).toContain('data-grounding-id="citation-grounding-2"')
   })
 })
