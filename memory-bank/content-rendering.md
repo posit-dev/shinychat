@@ -53,11 +53,11 @@ After `split_html_islands()`:
 
 ## HTML Dependencies: Server-Authoritative Persistence
 
-Server-side message normalization captures and serializes Shiny HTML dependencies
-(`html_deps`) once. The normalized dependencies are written both to the outgoing
-message action, so `js/src/transport/shiny-transport.ts` can render their CSS and
-JS immediately, and to the server transcript for history, persistence, and
-replay.
+Server-side message normalization captures Shiny HTML dependencies (`html_deps`)
+for both the outgoing message action and the server transcript. The outgoing
+action carries serialized dependencies so `js/src/transport/shiny-transport.ts`
+can render their CSS and JS immediately; the server transcript retains
+dependencies for history, persistence, and replay.
 
 The browser retains the dependencies on its local message state only to render
 the current transcript, support editing and navigation, and replay received
