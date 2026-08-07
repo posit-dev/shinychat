@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import chatlas
 from chatlas import Turn
 from chatlas._turn import AssistantTurn
-from shiny import App, Inputs, Outputs, Session, ui
+from shiny import App, Inputs, Outputs, Session, reactive, ui
 from shinychat import Chat, chat_ui
 from shinychat.types import HistoryOptions
 
@@ -50,6 +50,20 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
             title=None,
         ),
     )
+
+    @reactive.effect
+    @reactive.event(input.test_passive_sibling_update)
+    async def _send_passive_sibling_update() -> None:
+        await session.send_custom_message(
+            "shinyChatMessage",
+            {
+                "id": "chat",
+                "action": {
+                    "type": "update_siblings",
+                    "data": {"0": {"index": 0, "total": 2}},
+                },
+            },
+        )
 
 
 app = App(app_ui, server)
