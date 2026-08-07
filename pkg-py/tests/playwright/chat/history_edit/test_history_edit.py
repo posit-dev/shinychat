@@ -414,3 +414,46 @@ def test_sibling_navigation_scrolled_away_autoscrolls_to_new_branch(
         arg=scroll_container.element_handle(),
         timeout=10_000,
     )
+
+
+def test_sibling_metadata_refresh_does_not_override_manual_scroll(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    """Passive sibling metadata updates must not re-engage bottom scrolling."""
+    page.set_viewport_size({"width": 800, "height": 400})
+    page.goto(local_app.url)
+
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+
+    for i in range(6):
+        chat.set_user_input(f"filler {i}")
+        chat.send_user_input(method="enter")
+        chat.expect_latest_message(f"Echo: filler {i}", timeout=10_000)
+
+    scroll_container = chat.loc_scroll_container
+    scroll_container.hover()
+    for _ in range(10):
+        page.mouse.wheel(0, -1000)
+        page.wait_for_timeout(50)
+
+    at_bottom_before = scroll_container.evaluate(
+        "el => el.scrollHeight - el.scrollTop - el.clientHeight < 2"
+    )
+    assert not at_bottom_before
+
+    page.evaluate(
+        """() => Shiny.setInputValue(
+            "test_passive_sibling_update",
+            Date.now(),
+            {priority: "event"}
+        )"""
+    )
+    expect(page.locator(".shiny-chat-sibling-nav")).to_be_visible(timeout=5_000)
+
+    distance_from_bottom = scroll_container.evaluate(
+        "el => el.scrollHeight - el.scrollTop - el.clientHeight"
+    )
+    assert distance_from_bottom >= 2, (
+        "passive sibling metadata refresh should not override manual scrolling"
+    )
