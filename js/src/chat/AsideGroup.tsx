@@ -33,6 +33,11 @@ interface AsideGroupProps {
   node?: Element
 }
 
+interface AsideGroupViewProps {
+  entries: AsideEntry[]
+  pending?: boolean
+}
+
 function prop(el: Element, name: string): string | undefined {
   const v = el.properties?.[name]
   return typeof v === "string" ? v : undefined
@@ -117,7 +122,18 @@ function NavArrowIcon({ direction }: { direction: "prev" | "next" }) {
 const CLOSE_GRACE_PERIOD_MS = 150
 
 export const AsideGroup = memo(function AsideGroup({ node }: AsideGroupProps) {
-  const entries = parseAsideEntries(node)
+  return (
+    <AsideGroupView
+      entries={parseAsideEntries(node)}
+      pending={node?.properties?.[ASIDE_PENDING_ATTR] != null}
+    />
+  )
+})
+
+export const AsideGroupView = memo(function AsideGroupView({
+  entries,
+  pending = false,
+}: AsideGroupViewProps) {
   const deriveFavicon = useAsideFavicon()
   const faceIndex = entries.findIndex((e) => e.label)
   const [open, setOpen] = useState(false)
@@ -163,7 +179,7 @@ export const AsideGroup = memo(function AsideGroup({ node }: AsideGroupProps) {
 
   // Withheld while its surrounding block is still streaming (see
   // rehypeMarkTrailingAsides) so the pill doesn't flash in mid-sentence.
-  if (node?.properties?.[ASIDE_PENDING_ATTR] != null) return null
+  if (pending) return null
   if (entries.length === 0) return null
   const overflow = entries.length - 1
   const allSameLabel =

@@ -12,6 +12,7 @@ import userEvent from "@testing-library/user-event"
 import { markdownProcessor } from "../../src/markdown/processors"
 import { parseMarkdown, hastToReact } from "../../src/markdown/markdownToReact"
 import { chatTagToComponentMap } from "../../src/chat/chatTagToComponentMap"
+import { AsideGroupView } from "../../src/chat/AsideGroup"
 
 afterEach(cleanup)
 
@@ -35,6 +36,25 @@ function renderMarkdownStreaming(md: string) {
 }
 
 describe("AsideGroup", () => {
+  it("renders normalized entries without a HAST node", async () => {
+    const user = userEvent.setup()
+    render(
+      <AsideGroupView
+        entries={[
+          {
+            label: "Example",
+            url: "https://example.com/source",
+            body: "<p>Evidence</p>",
+          },
+        ]}
+      />,
+    )
+
+    await user.click(screen.getByRole("button", { name: "Example" }))
+
+    expect(screen.getByRole("dialog")).toHaveTextContent("Evidence")
+  })
+
   it("renders a chip with the label for a single labeled aside", () => {
     renderMarkdown(
       'A claim<shiny-aside label="eBicycles" url="https://ebicycles.example"></shiny-aside>.',
