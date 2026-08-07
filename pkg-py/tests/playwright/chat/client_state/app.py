@@ -103,14 +103,12 @@ app_ui = ui.page_fluid(
     ui.input_action_button("append_complete", "Append complete"),
     ui.input_action_button("append_stream", "Append stream"),
     ui.input_action_button("release_stream", "Release stream"),
-    ui.input_action_button("sync_after_forgery", "Synchronize"),
     ui.input_action_button("clear_messages", "Clear messages"),
     ui.output_text_verbatim("count"),
     ui.output_text_verbatim("submits"),
     ui.output_text_verbatim("messages"),
     ui.output_text_verbatim("bookmark"),
     ui.output_text_verbatim("record"),
-    ui.output_text_verbatim("forgery_ack_output"),
 )
 
 
@@ -130,7 +128,6 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     submit_count = reactive.value(0)
     save_count = reactive.value(0)
     restore_count = reactive.value(0)
-    forgery_ack = reactive.value(0)
     stream_completion = asyncio.Event()
 
     @chat.on_user_submit
@@ -169,11 +166,6 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
         stream_completion.set()
 
     @reactive.effect
-    @reactive.event(input.sync_after_forgery)
-    def sync_after_forgery() -> None:
-        forgery_ack.set(forgery_ack() + 1)
-
-    @reactive.effect
     @reactive.event(input.clear_messages)
     async def clear_messages() -> None:
         await chat.clear_messages()
@@ -200,10 +192,6 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
         save_count()
         restore_count()
         return serialize_record(chat)
-
-    @render.text
-    def forgery_ack_output() -> str:
-        return str(forgery_ack())
 
 
 app = App(app_ui, server)
