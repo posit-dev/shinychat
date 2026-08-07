@@ -1415,10 +1415,40 @@ describe("ChatInput", () => {
       expect(remaining[1]!.getAttribute("aria-label")).toContain("c.pdf")
     })
 
+    it("queued staging focus does not steal focus after keyboard removal", async () => {
+      const animationFrames: FrameRequestCallback[] = []
+      const requestAnimationFrame = vi
+        .spyOn(window, "requestAnimationFrame")
+        .mockImplementation((callback) => {
+          animationFrames.push(callback)
+          return animationFrames.length
+        })
+
+      try {
+        const { container } = renderChatInput()
+        await stagePdfs(container, ["a.pdf", "b.pdf", "c.pdf"])
+
+        const middle = chips(container)[1]!
+        middle.focus()
+        await act(async () => {
+          fireEvent.keyDown(middle, { code: "Delete" })
+        })
+        const next = chips(container)[1]!
+        expect(document.activeElement).toBe(next)
+
+        act(() => {
+          for (const callback of animationFrames.splice(0)) {
+            callback(performance.now())
+          }
+        })
+
+        expect(document.activeElement).toBe(next)
+      } finally {
+        requestAnimationFrame.mockRestore()
+      }
+    })
+
     it("removing the last remaining attachment removes the tray", async () => {
-      // Focus moving back to the editor is covered in Playwright; jsdom does
-      // not implement focus for contenteditable elements, so we can only
-      // assert the removal itself here.
       const { container } = renderChatInput()
       await stagePdfs(container, ["a.pdf"])
       const chip = chips(container)[0]!

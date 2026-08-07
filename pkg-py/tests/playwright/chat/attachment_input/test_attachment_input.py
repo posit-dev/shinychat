@@ -41,3 +41,17 @@ def test_pdf_attachment_forwards_to_handler(
     # The sent message bubble rendered the PDF as a chip, not an <img>.
     expect(page.locator(".shiny-chat-message-attachment-chip")).to_have_count(1)
     expect(page.locator(".shiny-chat-message-image")).to_have_count(0)
+
+
+def test_keyboard_removing_last_attachment_returns_focus_to_input(
+    page: Page, chat: ChatController
+) -> None:
+    page.set_input_files("input[type=file]", str(HERE / "sample.pdf"))
+
+    chip = page.locator(".shiny-chat-input-attachment-chip")
+    expect(chip).to_have_count(1)
+    chip.focus()
+    chip.press("Delete")
+
+    expect(chip).to_have_count(0)
+    expect(chat.loc_input).to_be_focused()
