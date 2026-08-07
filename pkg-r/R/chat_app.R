@@ -324,7 +324,8 @@ chat_server <- function(
 
       p <- promises::promise_resolve(stream)
       promises::then(p, function(stream) {
-        chat_append(ui_id, stream)
+        stream_result <- chat_append(ui_id, stream, session = session)
+        chat_history_on_response(ui_id, stream_result, session)
       })
     }
   )

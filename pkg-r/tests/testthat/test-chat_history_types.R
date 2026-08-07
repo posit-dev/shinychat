@@ -30,109 +30,6 @@ test_that("new_conversation_record() accepts client_info", {
   expect_equal(rec$client_info$provider, "openai")
 })
 
-test_that("messages_input_value() parses a decoded JSON payload into message lists", {
-  # Shape mirrors what shiny:::decodeMessage(simplifyVector = FALSE) produces
-  # for the client's `${id}_messages:shinychat.messages` payload.
-  value <- list(
-    list(
-      role = "user",
-      segments = list(list(content = "hi", content_type = "markdown"))
-    ),
-    list(
-      role = "assistant",
-      segments = list(list(
-        content = "<div>widget</div>",
-        content_type = "html"
-      )),
-      htmlDeps = list(list(name = "widgetdep", version = "1.0.0"))
-    )
-  )
-
-  parsed <- messages_input_value(value)
-
-  expect_length(parsed, 2)
-  expect_equal(parsed[[1]]$role, "user")
-  expect_equal(parsed[[1]]$segments[[1]]$content, "hi")
-  expect_null(parsed[[1]]$htmlDeps)
-  expect_equal(
-    parsed[[2]]$htmlDeps,
-    list(list(name = "widgetdep", version = "1.0.0"))
-  )
-})
-
-test_that("messages_input_value() carries attachments through when present", {
-  value <- list(
-    list(
-      role = "user",
-      segments = list(list(
-        content = "see attached",
-        content_type = "markdown"
-      )),
-      attachments = list(list(
-        mime = "image/png",
-        name = "a.png",
-        size = 1L,
-        data_url = "data:image/png;base64,AA=="
-      ))
-    )
-  )
-  parsed <- messages_input_value(value)
-  expect_equal(parsed[[1]]$attachments[[1]]$name, "a.png")
-})
-
-test_that("messages_input_value() omits attachments when empty", {
-  value <- list(list(
-    role = "user",
-    segments = list(list(content = "hi", content_type = "markdown"))
-  ))
-  parsed <- messages_input_value(value)
-  expect_null(parsed[[1]]$attachments)
-})
-
-test_that("messages_input_value() rejects unsupported attachment MIME types", {
-  value <- list(
-    list(
-      role = "user",
-      segments = list(list(
-        content = "see attached",
-        content_type = "markdown"
-      )),
-      attachments = list(list(
-        mime = "application/octet-stream",
-        name = "x.bin",
-        size = 1L,
-        data_url = "data:application/octet-stream;base64,AA=="
-      ))
-    )
-  )
-  expect_error(messages_input_value(value), "unsupported MIME type")
-})
-
-test_that("messages_input_value() rejects oversized attachment payloads", {
-  withr::local_envvar(SHINYCHAT_MAX_ATTACHMENT_SIZE = "3")
-  value <- list(
-    list(
-      role = "user",
-      segments = list(list(
-        content = "see attached",
-        content_type = "markdown"
-      )),
-      attachments = list(list(
-        mime = "text/plain",
-        name = "x.txt",
-        # Spoofed smaller size should not bypass server-side enforcement.
-        size = 1L,
-        data_url = "data:text/plain;base64,AQIDBA=="
-      ))
-    )
-  )
-  expect_error(messages_input_value(value), "maximum attachment size")
-})
-
-test_that("messages_input_value() errors on a non-list payload", {
-  expect_error(messages_input_value("not a list"), "Expected a list")
-})
-
 test_that("record_path_node_ids() walks parent chain", {
   rec <- new_conversation_record("test")
   rec$nodes <- list(
@@ -515,8 +412,8 @@ test_that("extend_record_linear() appends new turn groups as nodes", {
   rec <- extend_record_linear(
     rec,
     turns,
-    ui_messages = list(),
-    ui_offset = 0,
+    transcript = list(),
+    transcript_offset = 0,
     tools = list()
   )
 
@@ -538,8 +435,8 @@ test_that("extend_record_linear() groups a tool-call round into a single node", 
   rec <- extend_record_linear(
     rec,
     turns,
-    ui_messages = list(),
-    ui_offset = 0,
+    transcript = list(),
+    transcript_offset = 0,
     tools = list()
   )
 
@@ -554,16 +451,16 @@ test_that("extend_record_linear() is idempotent for the same turns and messages"
   rec <- extend_record_linear(
     rec,
     turns,
-    ui_messages = list(),
-    ui_offset = 0,
+    transcript = list(),
+    transcript_offset = 0,
     tools = list()
   )
 
   rec2 <- extend_record_linear(
     rec,
     turns,
-    ui_messages = list(),
-    ui_offset = 0,
+    transcript = list(),
+    transcript_offset = 0,
     tools = list()
   )
   expect_equal(length(rec2$nodes), 1)
@@ -575,8 +472,8 @@ test_that("extend_record_linear() appends only new turn groups", {
   rec <- extend_record_linear(
     rec,
     turns1,
-    ui_messages = list(),
-    ui_offset = 0,
+    transcript = list(),
+    transcript_offset = 0,
     tools = list()
   )
 
@@ -584,8 +481,8 @@ test_that("extend_record_linear() appends only new turn groups", {
   rec <- extend_record_linear(
     rec,
     turns2,
-    ui_messages = list(),
-    ui_offset = 0,
+    transcript = list(),
+    transcript_offset = 0,
     tools = list()
   )
   expect_equal(length(rec$nodes), 2)
@@ -595,7 +492,7 @@ test_that("extend_record_linear() appends only new turn groups", {
 test_that("extend_record_linear() attaches a user message to the matching new user-turn node", {
   rec <- new_conversation_record("test")
   turns <- list(user_turn_fixture("hi"), assistant_turn_fixture("hello"))
-  ui_messages <- list(
+  transcript <- list(
     list(
       role = "user",
       segments = list(list(content = "hi", content_type = "markdown"))
@@ -609,13 +506,13 @@ test_that("extend_record_linear() attaches a user message to the matching new us
   rec <- extend_record_linear(
     rec,
     turns,
-    ui_messages = ui_messages,
-    ui_offset = 0,
+    transcript = transcript,
+    transcript_offset = 0,
     tools = list()
   )
 
-  expect_equal(rec$nodes$n_0001$ui, list(ui_messages[[1]]))
-  expect_equal(rec$nodes$n_0002$ui, list(ui_messages[[2]]))
+  expect_equal(rec$nodes$n_0001$ui, list(transcript[[1]]))
+  expect_equal(rec$nodes$n_0002$ui, list(transcript[[2]]))
 })
 
 test_that("extend_record_linear() attaches non-user messages to the last new node", {
@@ -626,7 +523,7 @@ test_that("extend_record_linear() attaches non-user messages to the last new nod
     tool_result_turn_fixture(),
     assistant_turn_fixture("sunny")
   )
-  ui_messages <- list(
+  transcript <- list(
     list(
       role = "user",
       segments = list(list(content = "weather?", content_type = "markdown"))
@@ -644,13 +541,13 @@ test_that("extend_record_linear() attaches non-user messages to the last new nod
   rec <- extend_record_linear(
     rec,
     turns,
-    ui_messages = ui_messages,
-    ui_offset = 0,
+    transcript = transcript,
+    transcript_offset = 0,
     tools = list()
   )
 
-  expect_equal(rec$nodes$n_0001$ui, list(ui_messages[[1]]))
-  expect_equal(rec$nodes$n_0002$ui, ui_messages[2:3])
+  expect_equal(rec$nodes$n_0001$ui, list(transcript[[1]]))
+  expect_equal(rec$nodes$n_0002$ui, transcript[2:3])
 })
 
 test_that("extend_record_linear() attaches a late-arriving message to the current leaf when no new node is created", {
@@ -659,11 +556,13 @@ test_that("extend_record_linear() attaches a late-arriving message to the curren
   rec <- extend_record_linear(
     rec,
     turns,
-    ui_messages = list(list(
-      role = "user",
-      segments = list(list(content = "hi", content_type = "markdown"))
-    )),
-    ui_offset = 0,
+    transcript = list(
+      list(
+        role = "user",
+        segments = list(list(content = "hi", content_type = "markdown"))
+      )
+    ),
+    transcript_offset = 0,
     tools = list()
   )
 
@@ -676,14 +575,14 @@ test_that("extend_record_linear() attaches a late-arriving message to the curren
   rec <- extend_record_linear(
     rec,
     turns,
-    ui_messages = list(
+    transcript = list(
       list(
         role = "user",
         segments = list(list(content = "hi", content_type = "markdown"))
       ),
       late_message
     ),
-    ui_offset = 1,
+    transcript_offset = 1,
     tools = list()
   )
 
@@ -706,8 +605,8 @@ test_that("extend_record_linear() records children pointers", {
   rec <- extend_record_linear(
     rec,
     turns,
-    ui_messages = list(),
-    ui_offset = 0,
+    transcript = list(),
+    transcript_offset = 0,
     tools = list()
   )
 

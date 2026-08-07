@@ -102,6 +102,196 @@ test_that("chat_server() stores raw user input before the stream reads it", {
   )
 })
 
+test_that("chat_server() chains one history branch to each managed response", {
+  history_calls <- 0L
+  managed_promise <- NULL
+  local_mocked_bindings(
+    chat_append = function(...) {
+      managed_promise <<- promises::promise_resolve("complete")
+      managed_promise
+    },
+    chat_history_on_response = function(id, stream_promise, session) {
+      history_calls <<- history_calls + 1L
+      expect_equal(id, "chat")
+      expect_identical(stream_promise, managed_promise)
+      stream_promise
+    },
+    send_chat_action = function(...) invisible(NULL)
+  )
+  client <- structure(
+    list(
+      stream_async = function(...) "response",
+      last_turn = function() NULL
+    ),
+    class = "Chat"
+  )
+  mod_ref <- NULL
+
+  shiny::testServer(
+    function(input, output, session) {
+      mod_ref <<- chat_server(
+        "chat",
+        client,
+        history = FALSE,
+        session = session
+      )
+    },
+    {
+      session$setInputs(
+        chat_user_input = user_input_contents(list(text = "Hi"))
+      )
+      deadline <- Sys.time() + 2
+      while (
+        identical(mod_ref$status(), "streaming") &&
+          Sys.time() < deadline
+      ) {
+        later::run_now(0.05)
+        session$flushReact()
+      }
+
+      expect_equal(history_calls, 1L)
+      expect_equal(mod_ref$status(), "idle")
+    }
+  )
+})
+
+test_that("chat_history_on_response() saves fulfilled and rejected settlements", {
+  session <- shiny::MockShinySession$new()
+  saved <- 0L
+  client <- mock_chat_client()
+  controller <- new.env(parent = emptyenv())
+  controller$get_client <- function() client
+  controller$on_response <- function(recorded_turns) {
+    saved <<- saved + 1L
+    invisible(NULL)
+  }
+  set_session_chat_bookmark_info(
+    session,
+    "chat.history-controller",
+    controller
+  )
+
+  fulfilled <- promises::promise_resolve("complete")
+  expect_identical(
+    chat_history_on_response(
+      id = "chat",
+      stream_promise = fulfilled,
+      session = session
+    ),
+    fulfilled
+  )
+  expect_equal(sync(fulfilled), "complete")
+  later::run_now(0.1)
+
+  rejected <- promises::promise_reject(rlang::error_cnd("cancelled"))
+  expect_identical(
+    chat_history_on_response("chat", rejected, session),
+    rejected
+  )
+  promises::catch(rejected, function(reason) NULL)
+  later::run_now(0.1)
+
+  expect_equal(saved, 2L)
+})
+
+test_that("standalone streams update the transcript without history responses", {
+  session <- shiny::MockShinySession$new()
+  client <- mock_chat_client()
+  store <- InMemoryConversationStore$new()
+  chat_enable_history(
+    "chat",
+    client,
+    options = history_options(
+      store = store,
+      scope = "browser-1",
+      restore_mode = "none",
+      title = NULL
+    ),
+    session = session
+  )
+  stream <- coro::generator(function() {
+    yield("standalone")
+  })
+
+  sync(chat_append_stream("chat", stream(), session = session))
+
+  controller <- get_session_chat_bookmark_info(
+    session,
+    "chat.history-controller"
+  )
+  expect_null(controller$record)
+  expect_equal(
+    get_chat_transcript(session, "chat")$read()[[1L]]$segments[[1L]]$content,
+    "standalone"
+  )
+})
+
+test_that("forged client message snapshots cannot change history", {
+  session <- shiny::MockShinySession$new()
+  client <- mock_chat_client()
+  store <- InMemoryConversationStore$new()
+  chat_enable_history(
+    "chat",
+    client,
+    options = history_options(
+      store = store,
+      scope = "browser-1",
+      restore_mode = "none",
+      title = NULL
+    ),
+    session = session
+  )
+  controller <- get_session_chat_bookmark_info(
+    session,
+    "chat.history-controller"
+  )
+  controller$partition <- conversation_partition(
+    session$ns("chat"),
+    "browser-1"
+  )
+  transcript <- get_chat_transcript(session, "chat")
+  transcript$append(
+    list(
+      role = "user",
+      segments = list(list(content = "real", content_type = "markdown"))
+    )
+  )
+  turn <- list(
+    class = "ellmer::UserTurn",
+    version = 1,
+    props = list(
+      contents = list(
+        list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = "real")
+        )
+      )
+    )
+  )
+  controller$on_response(list(turn))
+  record_before <- copy_value(controller$record)
+  transcript_before <- transcript$read()
+
+  session$setInputs(
+    chat_messages = list(
+      list(
+        role = "assistant",
+        segments = list(
+          list(content = "forged", content_type = "markdown")
+        )
+      )
+    )
+  )
+
+  expect_identical(transcript$read(), transcript_before)
+  expect_identical(controller$record, record_before)
+  expect_identical(
+    store$get(controller$partition, controller$record$id),
+    record_before
+  )
+})
+
 test_that("chat_server() stores only echoed slash commands before handlers", {
   local_mocked_bindings(
     send_chat_action = function(...) invisible(NULL)
@@ -671,9 +861,9 @@ test_that("set_client() does not re-render the UI or double-fire on_restore (reg
   })
 })
 
-test_that("set_client() seeds ui_offset from the restored record so a post-swap turn does not duplicate prior UI (regression)", {
+test_that("set_client() seeds transcript_offset from the restored record so a post-swap turn does not duplicate prior UI (regression)", {
   # Regression: init_effect()'s restore_ui = FALSE branch (used by
-  # set_client() on every LLM-client/model swap) left ui_offset at its
+  # set_client() on every LLM-client/model swap) left transcript_offset at its
   # HistoryController$new() default of 0 instead of seeding it from the
   # record being restored. The browser still holds the full historical
   # transcript, so on the next real turn after a swap, extend_record_linear()
@@ -759,19 +949,10 @@ test_that("set_client() seeds ui_offset from the restored record so a post-swap 
     session$setInputs(chat_history_browser_token = "tok-abc")
 
     ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
-    expect_equal(ctrl$ui_offset, 2)
+    expect_equal(ctrl$transcript_offset, 2)
 
-    # Simulate a new turn arriving after the swap: on_response() receives the
-    # FULL recorded-turns list (as chat_history_on_response() would derive
-    # from the live client), and the browser reports the FULL historical
-    # `chat_messages` transcript (as a real client would) plus the new
-    # message -- not just the new tail.
-    session$setInputs(
-      chat_messages = list(
-        make_ui_message("user", "hi"),
-        make_ui_message("assistant", "hello"),
-        make_ui_message("user", "again")
-      )
+    get_chat_transcript(session, "chat")$append(
+      make_ui_message("user", "again")
     )
 
     ctrl$on_response(
@@ -804,12 +985,7 @@ test_that("set_client() seeds ui_offset from the restored record so a post-swap 
   })
 })
 
-test_that("the client's `_messages` echo drives the save and preserves the displayed assistant UI", {
-  # Regression for the save-timing bug: the save must be triggered by the
-  # browser echoing its rendered `_messages` snapshot, not by server-side
-  # stream completion. If it fired on completion, the just-finished assistant
-  # message would not yet be in the client's report, so its node would fall
-  # back to turn-derived markdown -- losing any display-only transformation.
+test_that("the settled transcript preserves transformed assistant UI", {
   skip_if_not_installed("ellmer")
 
   make_turn <- function(role, text) {
@@ -862,29 +1038,17 @@ test_that("the client's `_messages` echo drives the save and preserves the displ
     ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
     expect_false(is.null(ctrl$partition))
 
-    # A response has just completed server-side: the live client holds both
-    # turns, and the assistant reply as recorded is the plain "hello".
     set_turns_recorded(
       client,
       list(make_turn("user", "hi"), make_turn("assistant", "hello"))
     )
-
-    # The browser has not yet reported the finished assistant message -- its
-    # last reported message is still the user's -- so no save should fire.
-    session$setInputs(chat_messages = list(make_ui_message("user", "hi")))
-    expect_null(ctrl$record)
-
-    # The browser now echoes its rendered transcript, in which the displayed
-    # assistant message was transformed for display (differs from the turn
-    # text). The observer fires and the save records this displayed form.
-    session$setInputs(
-      chat_messages = list(
+    get_chat_transcript(session, "chat")$replace(
+      list(
         make_ui_message("user", "hi"),
         make_ui_message("assistant", "hello (displayed)")
       )
     )
-
-    expect_false(is.null(ctrl$record))
+    ctrl$on_response(get_turns_recorded(client))
 
     saved <- store$get(
       conversation_partition(session$ns("chat"), "browser-1"),
@@ -897,19 +1061,7 @@ test_that("the client's `_messages` echo drives the save and preserves the displ
   })
 })
 
-test_that("editing a message after the first forks at the correct node even when the client's UI echo lags the assistant turn (regression)", {
-  # Regression: the history save trigger used to fire as soon as the
-  # server-side stream finished (chained directly onto chat_append_stream()'s
-  # promise), before the browser had echoed the just-completed assistant
-  # reply back through `<chat_id>_messages`. Given that lag,
-  # extend_record_linear() attached the *previous* round's late-arriving
-  # assistant ui message to the *current* round's fallback node, permanently
-  # leaving one node's `ui` unset. record_node_id_for_message_index() counts
-  # by `length(node$ui)`, so that unset node silently undercounted by one --
-  # shifting every later handle_edit()/handle_navigate() message_index lookup
-  # one node too far. In particular, editing any message after the first
-  # forked one node too late, leaving the pre-edit message on the path
-  # alongside whatever got resubmitted in its place (a visible duplicate).
+test_that("editing a settled message forks at the correct transcript node", {
   skip_if_not_installed("ellmer")
 
   make_live_turn <- function(role, text) {
@@ -946,28 +1098,24 @@ test_that("editing a message after the first forks at the correct node even when
   }
 
   shiny::testServer(server, session = session, {
-    # Round 1: user "one" -> assistant "R1". The browser's echo of
-    # `chat_messages` necessarily lags the server-side stream completion by a
-    # round trip: it reports only "one" first, then catches up to include
-    # "R1" once the client has rendered and re-echoed it.
     client$set_turns(
       list(
         make_live_turn("user", "one"),
         make_live_turn("assistant", "R1")
       )
     )
-    session$setInputs(chat_messages = list(make_ui_message("user", "one")))
-    session$setInputs(
-      chat_messages = list(
+    get_chat_transcript(session, "chat")$replace(
+      list(
         make_ui_message("user", "one"),
         make_ui_message("assistant", "R1")
       )
     )
 
     ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
+    ctrl$partition <- conversation_partition(session$ns("chat"), "testuser")
+    ctrl$on_response(get_turns_recorded(client))
     expect_equal(length(ctrl$record$nodes), 2)
 
-    # Round 2: user "two" -> assistant "R2", same lag pattern.
     client$set_turns(
       list(
         make_live_turn("user", "one"),
@@ -976,21 +1124,15 @@ test_that("editing a message after the first forks at the correct node even when
         make_live_turn("assistant", "R2")
       )
     )
-    session$setInputs(
-      chat_messages = list(
-        make_ui_message("user", "one"),
-        make_ui_message("assistant", "R1"),
-        make_ui_message("user", "two")
-      )
-    )
-    session$setInputs(
-      chat_messages = list(
+    get_chat_transcript(session, "chat")$replace(
+      list(
         make_ui_message("user", "one"),
         make_ui_message("assistant", "R1"),
         make_ui_message("user", "two"),
         make_ui_message("assistant", "R2")
       )
     )
+    ctrl$on_response(get_turns_recorded(client))
     expect_equal(length(ctrl$record$nodes), 4)
 
     # Edit the second user message ("two", ui message index 2). The fork

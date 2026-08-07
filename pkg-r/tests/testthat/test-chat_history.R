@@ -13,10 +13,52 @@ history_mock_session_with_spy <- function() {
 
 history_spy_messages <- function(spy) spy$spy_env$messages
 
-test_that("HistoryController$on_response() creates record on first save", {
-  store <- InMemoryConversationStore$new()
+history_append_message <- function(
+  session,
+  role,
+  content,
+  attachments = NULL,
+  html_deps = NULL
+) {
+  get_chat_transcript(session, "chat")$append(
+    list(
+      role = role,
+      segments = list(
+        list(content = content, content_type = "markdown")
+      ),
+      attachments = attachments,
+      htmlDeps = html_deps
+    )
+  )
+}
+
+history_record_messages <- function(record) {
+  unlist(
+    lapply(record_path_node_ids(record), function(node_id) {
+      record$nodes[[node_id]]$ui %||% list()
+    }),
+    recursive = FALSE
+  )
+}
+
+test_that("HistoryController$on_response() saves a managed transcript once", {
+  put_calls <- 0L
+  RecordingStore <- R6::R6Class(
+    "RecordingStore",
+    inherit = InMemoryConversationStore,
+    public = list(
+      put = function(partition, record) {
+        put_calls <<- put_calls + 1L
+        super$put(partition, record)
+      }
+    )
+  )
+  store <- RecordingStore$new()
   client <- mock_chat_client()
   session <- shiny::MockShinySession$new()
+  history_append_message(session, "user", "Hello")
+  history_append_message(session, "assistant", "Notice")
+  history_append_message(session, "assistant", "Hi there")
 
   ctrl <- HistoryController$new(
     chat_id = "chat",
@@ -56,9 +98,19 @@ test_that("HistoryController$on_response() creates record on first save", {
 
   ctrl$on_response(list(user_turn, asst_turn))
 
-  expect_false(is.null(ctrl$record))
+  expect_equal(put_calls, 1L)
   expect_equal(ctrl$record$title, "Hello")
   expect_equal(length(ctrl$record$nodes), 2)
+  expect_equal(ctrl$record$response_count, 1L)
+  expect_equal(ctrl$transcript_offset, 3L)
+  expect_equal(
+    vapply(
+      history_record_messages(ctrl$record),
+      function(message) message$segments[[1L]]$content,
+      character(1L)
+    ),
+    c("Hello", "Notice", "Hi there")
+  )
   expect_length(store$list(conversation_partition("chat", "test-user")), 1)
 })
 
@@ -136,10 +188,25 @@ test_that("HistoryController$on_response() extends existing record", {
   expect_equal(length(ctrl$record$nodes), 4)
 })
 
-test_that("HistoryController suppresses saves during replay", {
-  store <- InMemoryConversationStore$new()
+test_that("HistoryController retries failed response persistence atomically", {
+  attempts <- 0L
+  FailingOnceStore <- R6::R6Class(
+    "FailingOnceStore",
+    inherit = InMemoryConversationStore,
+    public = list(
+      put = function(partition, record) {
+        attempts <<- attempts + 1L
+        if (attempts == 1L) {
+          rlang::abort("disk full")
+        }
+        super$put(partition, record)
+      }
+    )
+  )
+  store <- FailingOnceStore$new()
   client <- mock_chat_client()
   session <- shiny::MockShinySession$new()
+  history_append_message(session, "user", "Hi")
 
   ctrl <- HistoryController$new(
     chat_id = "chat",
@@ -148,7 +215,6 @@ test_that("HistoryController suppresses saves during replay", {
     session = session
   )
   ctrl$partition <- conversation_partition("chat", "test-user")
-  ctrl$is_replaying <- TRUE
 
   turn1 <- list(
     class = "ellmer::UserTurn",
@@ -163,10 +229,97 @@ test_that("HistoryController suppresses saves during replay", {
       )
     )
   )
+
+  expect_error(ctrl$on_response(list(turn1)), "disk full", fixed = TRUE)
+  expect_null(ctrl$record)
+  expect_equal(ctrl$transcript_offset, 0L)
+
   ctrl$on_response(list(turn1))
 
-  expect_null(ctrl$record)
-  expect_length(store$list(conversation_partition("chat", "test-user")), 0)
+  expect_equal(attempts, 2L)
+  expect_equal(ctrl$record$response_count, 1L)
+  expect_equal(
+    history_record_messages(ctrl$record),
+    list(
+      list(
+        role = "user",
+        segments = list(list(content = "Hi", content_type = "markdown"))
+      )
+    )
+  )
+  expect_equal(ctrl$transcript_offset, 1L)
+})
+
+test_that("HistoryController retries failed switch persistence atomically", {
+  attempts <- 0L
+  failures <- 0L
+  ToggleStore <- R6::R6Class(
+    "ToggleStore",
+    inherit = InMemoryConversationStore,
+    public = list(
+      put = function(partition, record) {
+        attempts <<- attempts + 1L
+        if (failures > 0L) {
+          failures <<- failures - 1L
+          rlang::abort("disk full")
+        }
+        super$put(partition, record)
+      }
+    )
+  )
+  store <- ToggleStore$new()
+  client <- mock_chat_client()
+  session <- shiny::MockShinySession$new()
+  history_append_message(session, "user", "Hi")
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = session
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+  ctrl$on_response(
+    list(
+      list(
+        class = "ellmer::UserTurn",
+        version = 1,
+        props = list(
+          contents = list(
+            list(
+              class = "ellmer::ContentText",
+              version = 1,
+              props = list(text = "Hi")
+            )
+          )
+        )
+      )
+    )
+  )
+
+  original_record <- ctrl$record
+  original_value <- copy_value(original_record)
+  history_append_message(session, "assistant", "Out of band")
+  failures <- 1L
+
+  expect_error(ctrl$save_current(), "disk full", fixed = TRUE)
+  expect_identical(ctrl$record, original_record)
+  expect_identical(ctrl$record, original_value)
+  expect_equal(ctrl$transcript_offset, 1L)
+
+  ctrl$save_current()
+
+  expect_equal(attempts, 3L)
+  expect_equal(ctrl$record$response_count, 1L)
+  expect_equal(
+    vapply(
+      history_record_messages(ctrl$record),
+      function(message) message$segments[[1L]]$content,
+      character(1L)
+    ),
+    c("Hi", "Out of band")
+  )
+  expect_equal(ctrl$transcript_offset, 2L)
 })
 
 make_turns <- function(user_text = "Hi", asst_text = "Hello") {
@@ -512,12 +665,12 @@ test_that("delete_bookmark_state removes Shiny appDir server bookmark state", {
   expect_false(dir.exists(state_dir))
 })
 
-test_that("HistoryController$on_response() attaches client-reported messages to nodes", {
+test_that("HistoryController$on_response() attaches transcript messages to nodes", {
   store <- InMemoryConversationStore$new()
   client <- mock_chat_client()
   session <- shiny::MockShinySession$new()
-  session$setInputs(
-    chat_messages = list(
+  get_chat_transcript(session, "chat")$replace(
+    list(
       list(
         role = "user",
         segments = list(list(content = "Hello", content_type = "markdown"))
@@ -571,15 +724,15 @@ test_that("HistoryController$on_response() attaches client-reported messages to 
     ctrl$record$nodes$n_0002$ui[[1]]$segments[[1]]$content,
     "Hi there"
   )
-  expect_equal(ctrl$ui_offset, 2)
+  expect_equal(ctrl$transcript_offset, 2)
 })
 
-test_that("HistoryController$on_response() is idempotent when neither turns nor messages grew", {
+test_that("HistoryController$on_response() is idempotent without new state", {
   store <- InMemoryConversationStore$new()
   client <- mock_chat_client()
   session <- shiny::MockShinySession$new()
-  session$setInputs(
-    chat_messages = list(
+  get_chat_transcript(session, "chat")$replace(
+    list(
       list(
         role = "user",
         segments = list(list(content = "Hello", content_type = "markdown"))
@@ -618,7 +771,7 @@ test_that("HistoryController$on_response() is idempotent when neither turns nor 
   expect_identical(ctrl$record$updated_at, updated_at_before)
 })
 
-test_that("HistoryController$replay_ui() replays stored ui verbatim and seeds ui_offset from the restore count", {
+test_that("HistoryController$replay_ui() replays stored ui verbatim and seeds transcript_offset from the restore count", {
   store <- InMemoryConversationStore$new()
   client <- mock_chat_client()
   session <- shiny::MockShinySession$new()
@@ -663,7 +816,7 @@ test_that("HistoryController$replay_ui() replays stored ui verbatim and seeds ui
 
   ctrl$replay_ui(rec)
 
-  expect_equal(ctrl$ui_offset, 1)
+  expect_equal(ctrl$transcript_offset, 1)
 })
 
 test_that("HistoryController$replay_ui() falls back to turn-derived markdown when a node has no stored ui", {
@@ -717,15 +870,15 @@ test_that("HistoryController$replay_ui() falls back to turn-derived markdown whe
     message_actions[[1]]$message$action$message$segments[[1]]$content,
     "fallback text"
   )
-  expect_equal(ctrl$ui_offset, 1)
+  expect_equal(ctrl$transcript_offset, 1)
 })
 
 test_that("an out-of-band message survives a conversation switch and restore", {
   store <- InMemoryConversationStore$new()
   client <- mock_chat_client()
   session <- shiny::MockShinySession$new()
-  session$setInputs(
-    chat_messages = list(
+  get_chat_transcript(session, "chat")$replace(
+    list(
       list(
         role = "user",
         segments = list(list(content = "hi", content_type = "markdown"))
@@ -734,8 +887,6 @@ test_that("an out-of-band message survives a conversation switch and restore", {
         role = "assistant",
         segments = list(list(content = "hello", content_type = "markdown"))
       ),
-      # Reported by the client even though it isn't part of an LLM turn --
-      # e.g. injected via chat_append_message() outside the on_user_submit flow.
       list(
         role = "assistant",
         segments = list(
@@ -827,8 +978,8 @@ test_that("html_deps travel with a stored message and are resent on replay in a 
     name = "note.txt",
     size = 2
   )
-  session$setInputs(
-    chat_messages = list(
+  get_chat_transcript(session, "chat")$replace(
+    list(
       list(
         role = "assistant",
         segments = list(
@@ -938,13 +1089,10 @@ test_that("switching between two conversations repeatedly never duplicates or mi
     )
   }
 
-  # What a real client would report for `texts`: one ui message per text,
-  # alternating user/assistant starting with "user" -- i.e. exactly what
-  # replay_ui() would have just re-sent to the browser for this conversation.
-  report_client_messages <- function(texts) {
+  set_transcript <- function(texts) {
     roles <- rep(c("user", "assistant"), length.out = length(texts))
-    session$setInputs(
-      chat_messages = Map(make_ui_message, roles, texts)
+    get_chat_transcript(session, "chat")$replace(
+      Map(make_ui_message, roles, texts)
     )
   }
 
@@ -962,23 +1110,16 @@ test_that("switching between two conversations repeatedly never duplicates or mi
     )
   }
 
-  report_client_messages(c("A", "B"))
+  set_transcript(c("A", "B"))
   ctrl$on_response(list(make_turn("user", "A"), make_turn("assistant", "B")))
   conv1 <- ctrl$record
 
   ctrl$new_chat()
-  report_client_messages(c("C", "D"))
+  set_transcript(c("C", "D"))
   ctrl$on_response(list(make_turn("user", "C"), make_turn("assistant", "D")))
   conv2 <- ctrl$record
 
-  # Switch back and forth several times. Each switch_to() first calls
-  # save_current() against whatever the mock session currently reports for
-  # `chat_messages` -- so it must be refreshed to what *that* conversation's
-  # client would actually echo back after being restored, not left stale from
-  # the other conversation. This exercises the idempotency path in
-  # save_current()/extend_record_linear() for real (non-empty-diff) inputs.
   for (i in 1:3) {
-    report_client_messages(c("A", "B"))
     ctrl$switch_to(conv1$id)
     reloaded1 <- store$get(
       conversation_partition("chat", "test-user"),
@@ -987,7 +1128,6 @@ test_that("switching between two conversations repeatedly never duplicates or mi
     expect_equal(record_ui_count(reloaded1), 2)
     expect_equal(record_ui_texts(reloaded1), c("A", "B"))
 
-    report_client_messages(c("C", "D"))
     ctrl$switch_to(conv2$id)
     reloaded2 <- store$get(
       conversation_partition("chat", "test-user"),
@@ -999,17 +1139,7 @@ test_that("switching between two conversations repeatedly never duplicates or mi
 
   # Prove growth after a switch is attached exactly once, not duplicated: go
   # back to conv1 and add one genuinely new turn/message pair.
-  report_client_messages(c("A", "B"))
   ctrl$switch_to(conv1$id)
-
-  # switch_to()'s replay marks the *next* on_response() call as a suppressed
-  # echo of the replay itself (see suppress_next_save in chat_history.R), and
-  # only clears is_replaying once the mock session flushes. A real client's
-  # async echo of the replay -- and the flush it rides in on -- arrive before
-  # any genuinely new turn can, so simulate that here (as a no-op) before
-  # exercising real growth below.
-  report_client_messages(c("A", "B"))
-  ctrl$on_response(get_turns_recorded(client))
   expect_equal(record_ui_count(ctrl$record), 2)
 
   new_turns <- c(
@@ -1023,7 +1153,7 @@ test_that("switching between two conversations repeatedly never duplicates or mi
       tools = client$get_tools()
     )
   )
-  report_client_messages(c("A", "B", "E"))
+  get_chat_transcript(session, "chat")$append(make_ui_message("user", "E"))
   ctrl$on_response(get_turns_recorded(client))
 
   reloaded1_grown <- store$get(
@@ -1196,13 +1326,15 @@ test_that("handle_navigate() steps to the previous sibling branch and replays it
       segments = list(list(content = text, content_type = "markdown"))
     )
   }
-  report_client_messages <- function(texts) {
+  set_transcript <- function(texts) {
     roles <- rep(c("user", "assistant"), length.out = length(texts))
-    spy$session$setInputs(chat_messages = Map(make_ui_message, roles, texts))
+    get_chat_transcript(spy$session, "chat")$replace(
+      Map(make_ui_message, roles, texts)
+    )
   }
 
   # First branch: "Hi" / "Hello"
-  report_client_messages(c("Hi", "Hello"))
+  set_transcript(c("Hi", "Hello"))
   ctrl$on_response(
     list(
       make_turn("user", "Hi"),
@@ -1216,7 +1348,7 @@ test_that("handle_navigate() steps to the previous sibling branch and replays it
   # on_response with new turns "Hi again" / "New reply" -- this creates a
   # second root-level sibling.
   ctrl$handle_edit(0, "Hi again", NULL)
-  report_client_messages(c("Hi again", "New reply"))
+  set_transcript(c("Hi again", "New reply"))
   ctrl$on_response(
     list(
       make_turn("user", "Hi again"),
@@ -1328,8 +1460,8 @@ test_that("handle_edit() truncates current_leaf to the fork parent and resubmits
       segments = list(list(content = text, content_type = "markdown"))
     )
   }
-  spy$session$setInputs(
-    chat_messages = list(
+  get_chat_transcript(spy$session, "chat")$replace(
+    list(
       make_ui_message("user", "Hi"),
       make_ui_message("assistant", "Hello")
     )
@@ -1398,8 +1530,8 @@ test_that("handle_edit() revalidates and forwards attachments with attachment_mo
       segments = list(list(content = text, content_type = "markdown"))
     )
   }
-  spy$session$setInputs(
-    chat_messages = list(
+  get_chat_transcript(spy$session, "chat")$replace(
+    list(
       make_ui_message("user", "Hi"),
       make_ui_message("assistant", "Hello")
     )
@@ -1474,8 +1606,8 @@ test_that("handle_edit() forces attachment_mode = set for an empty-but-present a
       segments = list(list(content = text, content_type = "markdown"))
     )
   }
-  spy$session$setInputs(
-    chat_messages = list(
+  get_chat_transcript(spy$session, "chat")$replace(
+    list(
       make_ui_message("user", "Hi"),
       make_ui_message("assistant", "Hello")
     )
@@ -1541,8 +1673,8 @@ test_that("handle_edit() rejects unsupported attachment MIME types before resubm
       segments = list(list(content = text, content_type = "markdown"))
     )
   }
-  spy$session$setInputs(
-    chat_messages = list(
+  get_chat_transcript(spy$session, "chat")$replace(
+    list(
       make_ui_message("user", "Hi"),
       make_ui_message("assistant", "Hello")
     )

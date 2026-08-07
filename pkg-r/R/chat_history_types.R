@@ -1,28 +1,3 @@
-messages_input_value <- function(value) {
-  if (!is.list(value)) {
-    rlang::abort(paste0(
-      "Expected a list from shinychat.messages, got ",
-      class(value)[1]
-    ))
-  }
-  lapply(value, function(m) {
-    message <- list(
-      role = m$role,
-      segments = lapply(m$segments, function(s) {
-        list(content = s$content, content_type = s$content_type)
-      })
-    )
-    if (!is.null(m$htmlDeps)) {
-      message$htmlDeps <- m$htmlDeps
-    }
-    if (!is.null(m$attachments) && length(m$attachments) > 0) {
-      validate_attachments(m$attachments)
-      message$attachments <- m$attachments
-    }
-    message
-  })
-}
-
 int_to_hex <- function(n, width = 13L) {
   hex_chars <- c(0:9, letters[1:6])
   digits <- character(0)
@@ -141,11 +116,13 @@ record_turn_count <- function(record) {
 
 record_ui_count <- function(record) {
   ids <- record_path_node_ids(record)
-  sum(vapply(
-    ids,
-    function(id) length(record$nodes[[id]]$ui),
-    integer(1)
-  ))
+  sum(
+    vapply(
+      ids,
+      function(id) length(record$nodes[[id]]$ui),
+      integer(1)
+    )
+  )
 }
 
 record_children_of <- function(record, node_id) {
@@ -241,8 +218,8 @@ record_node_id_for_message_index <- function(record, index) {
 extend_record_linear <- function(
   record,
   recorded_turns,
-  ui_messages,
-  ui_offset,
+  transcript,
+  transcript_offset,
   tools
 ) {
   existing_turn_count <- record_turn_count(record)
@@ -306,7 +283,7 @@ extend_record_linear <- function(
   }
 
   if (!is.null(fallback)) {
-    new_messages <- ui_messages[seq_along(ui_messages) > ui_offset]
+    new_messages <- transcript[seq_along(transcript) > transcript_offset]
     for (message in new_messages) {
       if (identical(message$role, "user") && length(user_node_ids) > 0) {
         target <- user_node_ids[[1]]
