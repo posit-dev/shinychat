@@ -1206,6 +1206,7 @@ class Chat:
         settled: StoredMessage | None = None
         next_projection = self._current_stream_projection
         wire_message: StoredMessage | ChatMessage = msg
+        terminal_succeeded = False
         try:
             if self._needs_transform(msg):
                 chunk_content = msg.content
@@ -1263,9 +1264,10 @@ class Chat:
                 self._current_stream_segments = staged_segments
                 if self._needs_transform(msg):
                     self._current_stream_projection = next_projection
+            terminal_succeeded = True
             return True
         finally:
-            if chunk == "end":
+            if chunk == "end" and (terminal_succeeded or not from_pending):
                 self._current_stream_id = None
                 self._current_stream_segments = []
                 self._current_stream_projection = None
@@ -1508,6 +1510,7 @@ class Chat:
 
         result = ""
         primary_error: BaseException | None = None
+        secondary_warnings: list[str] = []
         try:
             async for msg in message:
                 await self._append_message_chunk(msg, chunk=True, stream_id=id)
@@ -1521,9 +1524,8 @@ class Chat:
             if primary_error is None:
                 primary_error = error
             else:
-                warnings.warn(
+                secondary_warnings.append(
                     f"Could not finish message stream: {error}",
-                    stacklevel=1,
                 )
 
         try:
@@ -1532,12 +1534,15 @@ class Chat:
             if primary_error is None:
                 primary_error = error
             else:
-                warnings.warn(
+                secondary_warnings.append(
                     f"Could not flush queued messages: {error}",
-                    stacklevel=1,
                 )
 
         if primary_error is not None:
+            with warnings.catch_warnings():
+                warnings.simplefilter("always", UserWarning)
+                for warning in secondary_warnings:
+                    warnings.warn(warning, stacklevel=1)
             raise primary_error
         return result
 

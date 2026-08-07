@@ -365,6 +365,69 @@ async def test_failed_queued_stream_chunk_blocks_later_chunks(
 
 
 @pytest.mark.anyio
+async def test_failed_queued_stream_end_retries_before_later_messages(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    with session_context(test_session):
+        chat = Chat("failed_queued_end", history=False)
+        fail_next_end = False
+        terminal_attempts = 0
+        sent_actions: list[str] = []
+
+        async def send_action(action: Any, deps: Any = None) -> None:
+            nonlocal fail_next_end, terminal_attempts
+            action_type = action["type"]
+            sent_actions.append(action_type)
+            if action_type == "chunk_end":
+                terminal_attempts += 1
+                if fail_next_end:
+                    fail_next_end = False
+                    raise RuntimeError("queued end failed")
+
+        monkeypatch.setattr(chat, "_send_action", send_action)
+        await chat._append_message_chunk("", chunk="start", stream_id="outer")
+        await chat._append_message_chunk("", chunk="start", stream_id="queued")
+        await chat._append_message_chunk(
+            "answer", chunk=True, stream_id="queued"
+        )
+        await chat._append_message_chunk("", chunk="end", stream_id="queued")
+        await chat._append_message_chunk("", chunk="end", stream_id="outer")
+        sent_actions.clear()
+        terminal_attempts = 0
+        fail_next_end = True
+
+        with pytest.raises(RuntimeError, match="queued end failed"):
+            await chat._flush_pending_messages()
+
+        assert chat._current_stream_id == "queued"
+        assert [message[1] for message in chat._pending_messages] == ["end"]
+
+        await chat.append_message("later")
+
+        assert [message[1] for message in chat._pending_messages] == [
+            "end",
+            False,
+        ]
+        await chat._flush_pending_messages()
+
+        assert terminal_attempts == 2
+        assert sent_actions == [
+            "chunk_start",
+            "chunk",
+            "chunk_end",
+            "chunk_end",
+            "message",
+        ]
+        assert chat._current_stream_id is None
+        assert chat._pending_messages == []
+        with reactive.isolate():
+            assert chat.messages()[-2:] == (
+                {"content": "answer", "role": "assistant"},
+                {"content": "later", "role": "assistant"},
+            )
+
+
+@pytest.mark.anyio
 async def test_pending_flush_finishes_stream_around_complete_messages(
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -440,6 +503,46 @@ async def test_stream_error_survives_terminal_and_queue_cleanup_failures(
         assert [str(warning.message) for warning in cleanup_warnings] == [
             "Could not finish message stream: terminal send failed",
             "Could not flush queued messages: queued send failed",
+        ]
+
+
+@pytest.mark.anyio
+async def test_stream_error_survives_cleanup_warning_escalation(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    class ModelError(RuntimeError):
+        pass
+
+    original_error = ModelError("model failed")
+
+    with session_context(test_session):
+        chat = Chat("cleanup_warning_escalation", history=False)
+        queue_attempts = 0
+
+        async def send_action(action: Any, deps: Any = None) -> None:
+            nonlocal queue_attempts
+            if action["type"] == "chunk_end":
+                raise RuntimeError("terminal send failed")
+            if action["type"] == "message":
+                queue_attempts += 1
+
+        monkeypatch.setattr(chat, "_send_action", send_action)
+
+        async def response() -> AsyncIterator[str]:
+            yield "partial"
+            await chat.append_message("queued")
+            raise original_error
+
+        with warnings.catch_warnings(record=True) as cleanup_warnings:
+            warnings.simplefilter("error", UserWarning)
+            with pytest.raises(ModelError) as raised:
+                await chat._append_message_stream(response())
+
+        assert raised.value is original_error
+        assert queue_attempts == 1
+        assert chat._pending_messages == []
+        assert [str(warning.message) for warning in cleanup_warnings] == [
+            "Could not finish message stream: terminal send failed"
         ]
 
 
