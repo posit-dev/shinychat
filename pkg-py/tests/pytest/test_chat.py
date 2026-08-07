@@ -438,6 +438,21 @@ class _ManagedStreamClient:
         return response()
 
 
+class _ConflictingManagedStreamClient:
+    def __init__(self) -> None:
+        self.chat: Chat | None = None
+
+    async def stream_async(
+        self, *args: object, **kwargs: object
+    ) -> AsyncIterator[str]:
+        async def response() -> AsyncIterator[str]:
+            yield "partial"
+            assert self.chat is not None
+            await self.chat.append_message("conflict")
+
+        return response()
+
+
 class _CreationErrorClient:
     def __init__(self, error: Exception) -> None:
         self.error = error
@@ -536,6 +551,62 @@ async def test_managed_response_settles_history_once_after_stream_cleanup(
         "assistant",
         "assistant",
     ]
+
+
+@pytest.mark.anyio
+async def test_managed_response_conflicting_append_settles_history_once_after_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    session = cast(Session, _MockSession())
+    client = _ConflictingManagedStreamClient()
+
+    with session_context(session):
+        chat = Chat(
+            "managed_response",
+            client=cast(Any, client),
+            history=False,
+        )
+        client.chat = chat
+        settled_transcripts: list[list[dict[str, Any]]] = []
+
+        async def response_settled() -> None:
+            assert chat._current_stream_id is None
+            assert chat._current_stream_segments == []
+            settled_transcripts.append(chat._messages_for_bookmark())
+
+        monkeypatch.setattr(
+            chat.history,
+            "_response_settled",
+            response_settled,
+        )
+
+        surfaced_errors: list[BaseException] = []
+
+        async def capture_error(error: BaseException) -> None:
+            surfaced_errors.append(error)
+
+        monkeypatch.setattr(chat, "_raise_exception", capture_error)
+
+        cast(Any, session.input[chat.user_input_id])._set(
+            {"text": "question", "attachments": []}
+        )
+        await reactive.flush()
+        with reactive.isolate():
+            stream = chat.latest_message_stream
+        assert await wait_for_stream(stream) == "error"
+
+        with reactive.isolate():
+            raised_error = stream.error()
+
+        assert chat._current_stream_id is None
+        assert chat._current_stream_segments == []
+
+    assert isinstance(raised_error, RuntimeError)
+    assert str(raised_error) == (
+        "Cannot append a complete message while a stream is active"
+    )
+    assert surfaced_errors == [raised_error]
+    assert len(settled_transcripts) == 1
 
 
 @pytest.mark.anyio
