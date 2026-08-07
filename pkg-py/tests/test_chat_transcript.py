@@ -229,6 +229,45 @@ async def test_chunk_replace_resets_to_the_checkpoint() -> None:
 
 
 @pytest.mark.anyio
+async def test_chunk_replace_rejects_a_checkpoint_spanning_mixed_content_types() -> (
+    None
+):
+    transcript = ChatTranscript()
+    await transcript.start(
+        chat_message("assistant", ""), stream_id="s1", send=noop_send
+    )
+    await transcript.chunk(
+        chat_message("assistant", "reasoning", content_type="thinking"),
+        stream_id="s1",
+        operation="append",
+        send=chunk_send,
+    )
+    await transcript.chunk(
+        chat_message("assistant", "answer", content_type="markdown"),
+        stream_id="s1",
+        operation="append",
+        send=chunk_send,
+    )
+    # Checkpoint the current (mixed thinking + markdown) segments, as
+    # `.message_stream_context()` would before yielding a nested context.
+    transcript.enter_context()
+    segments_before = transcript.active_segments
+
+    with pytest.raises(
+        ValueError,
+        match=r"Cannot `\.replace\(\)` a stream whose checkpoint spans multiple",
+    ):
+        await transcript.chunk(
+            chat_message("assistant", "final"),
+            stream_id="s1",
+            operation="replace",
+            send=chunk_send,
+        )
+
+    assert transcript.active_segments == segments_before
+
+
+@pytest.mark.anyio
 async def test_settle_commits_the_returned_message_and_clears_active_state() -> (
     None
 ):
