@@ -174,11 +174,12 @@ chat_restore <- function(
   cancel_on_restore_greeting <-
     session$onRestore(function(state) {
       g <- state$values[[paste0(id, "_greeting")]]
-      if (!is.null(g) && is.character(g$content)) {
-        shiny::withReactiveDomain(session, {
-          chat_set_greeting(id, g$content, session = session)
-        })
+      if (is.null(g)) {
+        return()
       }
+      shiny::withReactiveDomain(session, {
+        restore_greeting_snapshot(id, g, session = session)
+      })
     })
 
   # Update URL
@@ -237,6 +238,49 @@ chat_restore <- function(
   }
 
   invisible(cancel_all)
+}
+
+# Sends the exact recipe a greeting snapshot was built from (content,
+# content_type, options) and re-stores the snapshot as the session's current
+# greeting state. Rejects incomplete/legacy snapshots outright -- there is no
+# compatibility fallback for bookmarks written by an older shinychat version
+# that only captured greeting content.
+restore_greeting_snapshot <- function(id, snapshot, session) {
+  validate_greeting_snapshot(snapshot)
+  send_chat_action(
+    id,
+    action = list(
+      type = "greeting",
+      content = snapshot$content,
+      content_type = snapshot$content_type,
+      options = snapshot$options
+    ),
+    html_deps = snapshot$html_deps,
+    session = session
+  )
+  set_session_greeting_state(session, id, snapshot)
+  invisible(NULL)
+}
+
+validate_greeting_snapshot <- function(snapshot) {
+  required <- c("content", "content_type", "options", "html_deps")
+  valid <- is.list(snapshot) &&
+    all(required %in% names(snapshot)) &&
+    is.character(snapshot$content) &&
+    is.character(snapshot$content_type) &&
+    is.list(snapshot$options) &&
+    is.list(snapshot$html_deps)
+
+  if (!valid) {
+    rlang::abort(
+      paste0(
+        "Cannot restore bookmark greeting: invalid or missing fields ",
+        "(bookmark likely written by an incompatible shinychat version)."
+      )
+    )
+  }
+
+  invisible(snapshot)
 }
 
 # Method currently hooked into `chat_append_stream()` and `markdown_stream()`

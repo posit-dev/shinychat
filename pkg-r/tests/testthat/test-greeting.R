@@ -110,8 +110,8 @@ test_that("chat_ui() snapshot for plain string greeting", {
 test_that("chat_ui() snapshot for chat_greeting with persistent=TRUE", {
   expect_snapshot(
     chat_ui(
-    "chat",
-    greeting = chat_greeting("## Hi", persistent = TRUE)
+      "chat",
+      greeting = chat_greeting("## Hi", persistent = TRUE)
     )
   )
 })
@@ -198,6 +198,101 @@ test_that("chat_set_greeting() generator sends greeting_start, greeting_chunk(s)
     character(1)
   )
   expect_true(all(operations == "append"))
+
+  expect_identical(
+    get_session_greeting_state(spy$session, "chat"),
+    list(
+      content = "Hello",
+      content_type = "markdown",
+      options = list(persistent = FALSE),
+      html_deps = list()
+    )
+  )
+})
+
+test_that("chat_set_greeting() does not store a snapshot when the stream errors", {
+  spy <- mock_session_with_spy()
+  gen <- coro::async_generator(function() {
+    yield("He")
+    stop("boom")
+  })
+  shiny::withReactiveDomain(spy$session, {
+    p <- chat_set_greeting("chat", chat_greeting(gen()), session = spy$session)
+    done <- FALSE
+    promises::then(
+      p,
+      function(x) {
+        done <<- TRUE
+      },
+      function(e) {
+        done <<- TRUE
+      }
+    )
+    while (!done) {
+      later::run_now(0.1)
+    }
+  })
+  expect_null(get_session_greeting_state(spy$session, "chat"))
+})
+
+# ── Complete greeting snapshot state (content, content_type, options, html_deps) ──
+
+test_that("chat_set_greeting() static HTML persistent greeting stores complete four-field snapshot", {
+  spy <- mock_session_with_spy()
+  shiny::withReactiveDomain(spy$session, {
+    chat_set_greeting(
+      "chat",
+      chat_greeting(HTML("<strong>Welcome</strong>"), persistent = TRUE),
+      session = spy$session
+    )
+  })
+  expect_identical(
+    get_session_greeting_state(spy$session, "chat"),
+    list(
+      content = "<strong>Welcome</strong>",
+      content_type = "html",
+      options = list(persistent = TRUE),
+      html_deps = list()
+    )
+  )
+})
+
+test_that("restore_greeting_snapshot() sends the original recipe and passes html_deps", {
+  spy <- mock_session_with_spy()
+  snapshot <- list(
+    content = "<strong>Welcome</strong>",
+    content_type = "html",
+    options = list(persistent = TRUE),
+    html_deps = list(list(name = "greeting-style", version = "1.0.0"))
+  )
+  restore_greeting_snapshot("chat", snapshot, session = spy$session)
+
+  msgs <- spy_messages(spy)
+  expect_length(msgs, 1)
+  expect_identical(
+    msgs[[1]]$message$action,
+    list(
+      type = "greeting",
+      content = snapshot$content,
+      content_type = snapshot$content_type,
+      options = snapshot$options
+    )
+  )
+  expect_identical(msgs[[1]]$message$html_deps, snapshot$html_deps)
+  expect_identical(get_session_greeting_state(spy$session, "chat"), snapshot)
+})
+
+test_that("restore_greeting_snapshot() rejects content-only legacy state with no compatibility fallback", {
+  spy <- mock_session_with_spy()
+  expect_error(
+    restore_greeting_snapshot(
+      "chat",
+      list(content = "Hello"),
+      session = spy$session
+    ),
+    "invalid or missing"
+  )
+  expect_null(get_session_greeting_state(spy$session, "chat"))
 })
 
 test_that("chat_set_greeting() errors when given a function", {
@@ -503,4 +598,139 @@ test_that("chat_restore() excludes {id}_greeting_dismissed from bookmarking", {
     })
   )
   expect_true("chat_greeting_dismissed" %in% sess$getBookmarkExclude())
+})
+
+# ── chat_restore() bookmark save/restore round-trips the full snapshot ──────
+
+# MockShinySession$onBookmark()/onRestore() are no-ops, so intercept the
+# registered callbacks directly instead of driving a real bookmark cycle.
+# `chat_restore()` registers the client hook first and the greeting hook
+# second for both onBookmark() and onRestore(); index into that fixed order.
+mock_session_with_bookmark_hooks <- function() {
+  sess <- shiny::MockShinySession$new()
+  spy_env <- new.env(parent = emptyenv())
+  spy_env$messages <- list()
+  spy_env$on_bookmark <- list()
+  spy_env$on_restore <- list()
+  sess$sendCustomMessage <- function(type, msg) {
+    spy_env$messages[[length(spy_env$messages) + 1]] <- list(
+      type = type,
+      message = msg
+    )
+  }
+  sess$onBookmark <- function(fun) {
+    spy_env$on_bookmark[[length(spy_env$on_bookmark) + 1]] <- fun
+    function() invisible(NULL)
+  }
+  sess$onRestore <- function(fun) {
+    spy_env$on_restore[[length(spy_env$on_restore) + 1]] <- fun
+    function() invisible(NULL)
+  }
+  list(session = sess, spy_env = spy_env)
+}
+
+new_bookmark_state <- function(values = list()) {
+  state <- new.env(parent = emptyenv())
+  state$values <- values
+  state
+}
+
+test_that("chat_restore() bookmark save writes the full greeting snapshot", {
+  spy <- mock_session_with_bookmark_hooks()
+  sess <- spy$session
+  snapshot <- list(
+    content = "<strong>Welcome</strong>",
+    content_type = "html",
+    options = list(persistent = TRUE),
+    html_deps = list()
+  )
+  set_session_greeting_state(sess, "chat", snapshot)
+
+  suppress_restore_warnings(
+    shiny::withReactiveDomain(sess, {
+      chat_restore(
+        "chat",
+        mock_chat_client(),
+        bookmark_on_input = FALSE,
+        bookmark_on_response = FALSE,
+        session = sess
+      )
+    })
+  )
+
+  state <- new_bookmark_state()
+  spy$spy_env$on_bookmark[[2]](state)
+
+  expect_identical(state$values[["chat_greeting"]], snapshot)
+})
+
+test_that("chat_restore() bookmark restore sends the original recipe and passes html_deps", {
+  spy <- mock_session_with_bookmark_hooks()
+  sess <- spy$session
+  snapshot <- list(
+    content = "<strong>Welcome</strong>",
+    content_type = "html",
+    options = list(persistent = TRUE),
+    html_deps = list(list(name = "greeting-style", version = "1.0.0"))
+  )
+
+  suppress_restore_warnings(
+    shiny::withReactiveDomain(sess, {
+      chat_restore(
+        "chat",
+        mock_chat_client(),
+        bookmark_on_input = FALSE,
+        bookmark_on_response = FALSE,
+        session = sess
+      )
+    })
+  )
+
+  state <- new_bookmark_state(list(chat_greeting = snapshot))
+  shiny::withReactiveDomain(sess, {
+    spy$spy_env$on_restore[[2]](state)
+  })
+
+  msgs <- spy_messages(spy)
+  greeting_msgs <- Filter(
+    function(m) identical(m$message$action$type, "greeting"),
+    msgs
+  )
+  expect_length(greeting_msgs, 1)
+  expect_identical(
+    greeting_msgs[[1]]$message$action,
+    list(
+      type = "greeting",
+      content = snapshot$content,
+      content_type = snapshot$content_type,
+      options = snapshot$options
+    )
+  )
+  expect_identical(greeting_msgs[[1]]$message$html_deps, snapshot$html_deps)
+  expect_identical(get_session_greeting_state(sess, "chat"), snapshot)
+})
+
+test_that("chat_restore() bookmark restore rejects content-only legacy greeting state", {
+  spy <- mock_session_with_bookmark_hooks()
+  sess <- spy$session
+
+  suppress_restore_warnings(
+    shiny::withReactiveDomain(sess, {
+      chat_restore(
+        "chat",
+        mock_chat_client(),
+        bookmark_on_input = FALSE,
+        bookmark_on_response = FALSE,
+        session = sess
+      )
+    })
+  )
+
+  state <- new_bookmark_state(list(chat_greeting = list(content = "Hello")))
+  expect_error(
+    shiny::withReactiveDomain(sess, {
+      spy$spy_env$on_restore[[2]](state)
+    }),
+    "invalid or missing"
+  )
 })

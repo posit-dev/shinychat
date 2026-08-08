@@ -1397,10 +1397,16 @@ chat_set_greeting <- function(
     stream <- as_generator(content)
     result <- chat_set_greeting_stream(id, stream, options, session)
     result <- promises::then(result, function(streamed_content) {
+      # Mirrors `greeting_start`'s content_type: a streamed greeting is
+      # always markdown chunks, so the terminal snapshot is too.
       set_session_greeting_state(
         session,
         id,
-        value = list(content = streamed_content)
+        value = new_greeting_snapshot(
+          content = streamed_content,
+          content_type = "markdown",
+          options = options
+        )
       )
     })
     result <- promises::catch(result, function(reason) {
@@ -1467,7 +1473,12 @@ chat_set_greeting <- function(
   set_session_greeting_state(
     session,
     id,
-    value = list(content = greeting_content)
+    value = new_greeting_snapshot(
+      content = greeting_content,
+      content_type = greeting_content_type,
+      options = options,
+      html_deps = html_deps
+    )
   )
   invisible(NULL)
 }
@@ -1528,6 +1539,24 @@ rlang::on_load(
     paste(chunks, collapse = "")
   })
 )
+
+# The one canonical shape for greeting session state, always carrying all
+# four fields so bookmark restore can faithfully reproduce the original
+# greeting (content type, options like `persistent`, and HTML dependencies)
+# instead of falling back to markdown/default options.
+new_greeting_snapshot <- function(
+  content,
+  content_type,
+  options,
+  html_deps = list()
+) {
+  list(
+    content = content,
+    content_type = content_type,
+    options = options,
+    html_deps = html_deps %||% list()
+  )
+}
 
 #' Clear all messages from a chat control
 #'
