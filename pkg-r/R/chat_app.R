@@ -230,10 +230,10 @@ chat_mod_ui <- function(
 #' @describeIn chat_app Wire up batteries-included chat server logic in a Shiny
 #'   session. Pair with [chat_ui()] by passing it the same `id`; see *Pairing
 #'   with `chat_server()`* in [chat_ui()] for the top-level and module-based
-#'   patterns. Registers `id` for managed server transcript state (see
-#'   [chat_enable_history()]), which opts it in to history persistence,
-#'   bookmark restore, and the single-flight streaming rules described in
-#'   [chat_append()].
+#'   patterns. Every `id` already gets server transcript state and the
+#'   single-flight streaming rules described in [chat_append()], regardless
+#'   of how it was set up; `chat_server()` additionally configures history
+#'   persistence and bookmark restore for `id` (see [chat_enable_history()]).
 #' @inheritParams chat_restore
 #' @param history Conversation history configuration. `TRUE` (default) enables
 #'   history with default settings; `FALSE` disables it; pass a [history_options()]
@@ -317,7 +317,7 @@ chat_server <- function(
     bm_on_response <- isTRUE(bookmark_on_response)
   }
 
-  register_chat_transcript(session, id)
+  get_or_create_chat_transcript(session, id)
 
   append_stream_task <- shiny::ExtendedTask$new(
     function(client, ui_id, user_input, controller = NULL) {

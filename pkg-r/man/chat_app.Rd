@@ -149,10 +149,10 @@ app is suitable for interactive use by a single user; do not use
 \item \code{chat_server()}: Wire up batteries-included chat server logic in a Shiny
 session. Pair with \code{\link[=chat_ui]{chat_ui()}} by passing it the same \code{id}; see \emph{Pairing
 with \code{chat_server()}} in \code{\link[=chat_ui]{chat_ui()}} for the top-level and module-based
-patterns. Registers \code{id} for managed server transcript state (see
-\code{\link[=chat_enable_history]{chat_enable_history()}}), which opts it in to history persistence,
-bookmark restore, and the single-flight streaming rules described in
-\code{\link[=chat_append]{chat_append()}}.
+patterns. Every \code{id} already gets server transcript state and the
+single-flight streaming rules described in \code{\link[=chat_append]{chat_append()}}, regardless
+of how it was set up; \code{chat_server()} additionally configures history
+persistence and bookmark restore for \code{id} (see \code{\link[=chat_enable_history]{chat_enable_history()}}).
 
 }}
 \section{Greeting}{

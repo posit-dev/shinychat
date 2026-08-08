@@ -172,7 +172,7 @@ ChatTranscript <- R6::R6Class(
   )
 )
 
-register_chat_transcript <- function(session, id) {
+get_or_create_chat_transcript <- function(session, id) {
   transcript <- get_chat_transcript(session, id)
   if (is.null(transcript)) {
     transcript <- ChatTranscript$new()

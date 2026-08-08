@@ -27,17 +27,17 @@ test_that("get_chat_transcript returns NULL when nothing is registered", {
   expect_null(get_chat_transcript(session, "chat"))
 })
 
-test_that("register_chat_transcript scopes owners to a session and chat id", {
+test_that("get_or_create_chat_transcript scopes owners to a session and chat id", {
   session <- shiny::MockShinySession$new()
-  x <- register_chat_transcript(session, "chat")
+  x <- get_or_create_chat_transcript(session, "chat")
 
-  expect_identical(x, register_chat_transcript(session, "chat"))
+  expect_identical(x, get_or_create_chat_transcript(session, "chat"))
   expect_identical(x, get_chat_transcript(session, "chat"))
-  expect_false(identical(x, register_chat_transcript(session, "other")))
+  expect_false(identical(x, get_or_create_chat_transcript(session, "other")))
   expect_false(
     identical(
       x,
-      register_chat_transcript(shiny::MockShinySession$new(), "chat")
+      get_or_create_chat_transcript(shiny::MockShinySession$new(), "chat")
     )
   )
 })

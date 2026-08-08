@@ -92,7 +92,7 @@ HistoryController <- R6::R6Class(
       private$title_enabled <- !is.null(title)
       private$session <- session
       private$transcript <- transcript %||%
-        register_chat_transcript(session, chat_id)
+        get_or_create_chat_transcript(session, chat_id)
       private$max_store_bytes <- if (!is.null(options$max_store_mb)) {
         # Bytes must stay a double: as.integer() overflows R's 32-bit integer
         # range at max_store_mb >= 2048, yielding NA.
@@ -643,11 +643,11 @@ history_options <- function(
 #' Enable conversation history for a chat
 #'
 #' @description
-#' Registers `id` for managed server transcript state -- the same state
-#' [chat_server()] registers automatically -- so appended messages become
-#' available for history persistence, bookmark restore, and the
-#' single-flight streaming rules described in [chat_append()]. Safe to call
-#' even if `id` is already registered (e.g. by [chat_server()]).
+#' Attaches history persistence to `id`'s server transcript -- the same
+#' transcript any [chat_append()] call already creates -- so appended
+#' messages become available for history persistence, bookmark restore, and
+#' the single-flight streaming rules described in [chat_append()]. Safe to
+#' call even if `id` already has history enabled (e.g. by [chat_server()]).
 #'
 #' @param id The chat element ID.
 #' @param client An [ellmer::Chat] object.
@@ -700,7 +700,7 @@ chat_enable_history <- function(
     )
   }
   resolved_id <- resolve_id(id, session)
-  transcript <- register_chat_transcript(session, id)
+  transcript <- get_or_create_chat_transcript(session, id)
 
   controller <- HistoryController$new(
     chat_id = id,

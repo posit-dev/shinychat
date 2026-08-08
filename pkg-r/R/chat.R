@@ -661,15 +661,16 @@ resolve_aside_favicon <- function() {
 #
 #' # Concurrency
 #'
-#' For an `id` registered by [chat_server()] or [chat_enable_history()], only
-#' one stream may be active at a time. Calling `chat_append()` with a new
-#' stream while another is already streaming to the same `id` rejects
-#' immediately instead of interleaving output; appending a complete
-#' (non-streaming) message while a stream is active rejects the same way.
+#' For any `id`, only one stream may be active at a time. Calling
+#' `chat_append()` with a new stream while another is already streaming to
+#' the same `id` rejects immediately instead of interleaving output;
+#' appending a complete (non-streaming) message while a stream is active
+#' rejects the same way.
 #'
-#' Calls made for an `id` managed by [chat_server()] or
-#' [chat_enable_history()] enter server transcript state. Other calls only
-#' update the browser and are not available to history or bookmark restore.
+#' Every `chat_append()` call enters server transcript state, regardless of
+#' how `id` was set up. Only an `id` managed by [chat_server()] or
+#' [chat_enable_history()] persists that state to history or bookmark
+#' restore.
 #'
 #' @param id The ID of the chat element
 #' @param response The message or message stream to append to the chat element.
@@ -847,9 +848,8 @@ chat_append_message <- function(
 # the logical stream a `chunk`/`operation` transition belongs to, so callers
 # with their own stream identity (e.g. `chat_append_stream()`, once it moves
 # off the "direct" identity) can drive `ChatTranscript`'s admission checks
-# directly. When no transcript is registered for `id` (i.e. neither
-# `chat_server()` nor `chat_enable_history()` has claimed it), the message is
-# display-only: it's sent to the browser but never recorded server-side.
+# directly. Every call gets or creates the transcript for `id`, so message
+# state always lives server-side, regardless of how the chat was set up.
 chat_append_message_impl <- function(
   id,
   msg,
@@ -891,30 +891,7 @@ chat_append_message_impl <- function(
     icon = icon,
     session = session
   )
-  transcript <- get_chat_transcript(session, id)
-
-  if (is.null(transcript)) {
-    if (chunk_type == "end") {
-      segment <- normalized$message$segments[[1L]]
-      if (nzchar(segment$content)) {
-        send_chat_action(
-          id,
-          action = normalized$action,
-          html_deps = normalized$html_deps,
-          session = session
-        )
-      }
-      send_chat_action(id, action = list(type = "chunk_end"), session = session)
-    } else {
-      send_chat_action(
-        id,
-        action = normalized$action,
-        html_deps = normalized$html_deps,
-        session = session
-      )
-    }
-    return(invisible(NULL))
-  }
+  transcript <- get_or_create_chat_transcript(session, id)
 
   if (chunk_type == "start") {
     transcript$start(
@@ -1075,7 +1052,7 @@ restore_history_message <- function(chat_id, message, session) {
     message_payload$attachments <- message$attachments
   }
   action <- list(type = "message", message = message_payload)
-  transcript <- register_chat_transcript(session, chat_id)
+  transcript <- get_or_create_chat_transcript(session, chat_id)
   transcript$append(message, send = function() {
     send_chat_action(
       chat_id,
@@ -1100,18 +1077,13 @@ chat_append_stream <- function(
     class(reason) <- c("shiny.silent.error", class(reason))
     render_error <- NULL
     transcript <- get_chat_transcript(session, id)
-    # For managed chats, only settle a sanitized terminal message while this
-    # stream is still the transcript's active one -- a failed transport
-    # transition already aborted locally (see `chat_append_stream_impl()`)
-    # and must propagate as-is. Unmanaged (transcript-less) streams have no
-    # such state to consult, so fall back to whether this stream ever wrote
-    # its opening chunk.
-    can_render_terminal <- if (!is.null(transcript)) {
-      transcript$is_active(stream_id)
-    } else {
-      isTRUE(stream_id$started)
-    }
-    if (can_render_terminal) {
+    # Only settle a sanitized terminal message while this stream is still
+    # the transcript's active one -- a failed transport transition already
+    # aborted locally (see `chat_append_stream_impl()`) and must propagate
+    # as-is. `transcript` is only ever missing here when a test stubs out
+    # `chat_append_message_impl()` (the real code path always gets or
+    # creates it), so there is nothing to render or abort in that case.
+    if (!is.null(transcript) && transcript$is_active(stream_id)) {
       render_error <- tryCatch(
         {
           chat_append_message_impl(
@@ -1128,9 +1100,7 @@ chat_append_stream <- function(
           NULL
         },
         error = function(e) {
-          if (!is.null(transcript)) {
-            transcript$abort(stream_id)
-          }
+          transcript$abort(stream_id)
           e
         }
       )
@@ -1214,7 +1184,6 @@ rlang::on_load(
     }
 
     chat_append_("", chunk = "start", icon = icon)
-    stream_id$started <- TRUE
 
     res <- fastmap::fastqueue(200)
 
@@ -1636,17 +1605,13 @@ chat_clear <- function(
     action$greeting <- TRUE
     set_session_greeting_state(session, id, value = NULL)
   }
-  transcript <- get_chat_transcript(session, id)
-  if (is.null(transcript)) {
+  transcript <- get_or_create_chat_transcript(session, id)
+  # Invalidates any active stream mid-flight: `clear()` resets the
+  # transcript's active stream id, so the generator loop's next
+  # `transcript$is_active(stream_id)` check will fail and stop the stream.
+  transcript$clear(send = function() {
     send_chat_action(id, action = action, session = session)
-  } else {
-    # Invalidates any managed stream mid-flight: `clear()` resets the
-    # transcript's active stream id, so the generator loop's next
-    # `transcript$is_active(stream_id)` check will fail and stop the stream.
-    transcript$clear(send = function() {
-      send_chat_action(id, action = action, session = session)
-    })
-  }
+  })
 }
 
 #' Update the user input of a chat control
