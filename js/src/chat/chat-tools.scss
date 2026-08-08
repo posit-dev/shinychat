@@ -913,6 +913,7 @@ shinychat-raw-html {
   overflow-wrap: anywhere;
   word-break: break-word;
   background: var(--bs-body-bg, #fff);
+  color: var(--bs-body-color, inherit);
   border: 1px solid rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.12);
   border-radius: 0.6em;
   box-shadow: 0 0.4em 1.2em rgba(0, 0, 0, 0.12);

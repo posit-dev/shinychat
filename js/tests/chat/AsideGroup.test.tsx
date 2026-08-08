@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest"
+import type { CSSProperties } from "react"
 import {
   render,
   screen,
@@ -461,6 +462,27 @@ describe("AsideGroup popover", () => {
     expect(screen.getByRole("dialog")).toHaveTextContent("second")
   })
 
+  it("announces carousel source changes without repeating the body", async () => {
+    const user = userEvent.setup()
+    renderMarkdown(
+      [
+        'Claim one<shiny-aside label="eBicycles" url="https://ebicycles.example">first body</shiny-aside>.',
+        'Claim two<shiny-aside label="WIRED" url="https://wired.example">second body</shiny-aside>.',
+      ].join(" "),
+    )
+
+    await user.click(screen.getByRole("button", { name: /eBicycles/ }))
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Source 1 of 2: eBicycles",
+    )
+
+    await user.click(screen.getByRole("button", { name: "Next source" }))
+
+    expect(screen.getByRole("status")).toHaveTextContent("Source 2 of 2: WIRED")
+    expect(screen.getByRole("status")).not.toHaveTextContent("second body")
+    expect(screen.getByText("2 / 2")).toBeVisible()
+  })
+
   it("groups the prev/next arrows together, separate from the count", () => {
     renderMarkdown(
       [
@@ -502,6 +524,47 @@ describe("AsideGroup popover", () => {
     const portalRoot = dialog.closest("[data-floating-ui-portal]")
     expect(portalRoot?.parentElement).toBe(document.body)
     expect(dialog.style.position).toBe("fixed")
+  })
+
+  it("carries scoped Bootstrap theme context into the body portal", async () => {
+    const user = userEvent.setup()
+    const scopedTheme = {
+      "--bs-body-bg": "rgb(18, 18, 18)",
+      "--bs-body-color": "rgb(238, 238, 238)",
+    } as CSSProperties
+
+    render(
+      <div data-bs-theme="dark" style={scopedTheme}>
+        <AsideGroupView
+          entries={[
+            {
+              label: "Scoped source",
+              body: "<p>Scoped evidence</p>",
+            },
+          ]}
+        />
+      </div>,
+    )
+
+    const pill = screen.getByRole("button", { name: "Scoped source" })
+    // JSDOM does not resolve inherited custom properties. Mirror the values
+    // that a browser resolves on the reference; Playwright covers inheritance.
+    for (const [property, value] of Object.entries(scopedTheme)) {
+      pill.style.setProperty(property, value)
+    }
+    await user.click(pill)
+
+    const dialog = screen.getByRole("dialog")
+    expect(dialog.closest("[data-floating-ui-portal]")?.parentElement).toBe(
+      document.body,
+    )
+    expect(dialog).toHaveAttribute("data-bs-theme", "dark")
+    expect(dialog.style.getPropertyValue("--bs-body-bg")).toBe(
+      "rgb(18, 18, 18)",
+    )
+    expect(dialog.style.getPropertyValue("--bs-body-color")).toBe(
+      "rgb(238, 238, 238)",
+    )
   })
 
   it("keeps a pinned popover open when clicking inside the popover itself", () => {
