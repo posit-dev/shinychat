@@ -1396,16 +1396,19 @@ chat_set_greeting <- function(
   ) {
     stream <- as_generator(content)
     result <- chat_set_greeting_stream(id, stream, options, session)
-    result <- promises::then(result, function(streamed_content) {
-      # Mirrors `greeting_start`'s content_type: a streamed greeting is
-      # always markdown chunks, so the terminal snapshot is too.
+    result <- promises::then(result, function(streamed) {
+      # `content_type`/`html_deps` reflect what was actually streamed (a
+      # generator can yield a mix of markdown strings and HTML/tag chunks --
+      # see the `chunk_content_type` branch in `chat_set_greeting_stream()`),
+      # not a hardcoded assumption.
       set_session_greeting_state(
         session,
         id,
         value = new_greeting_snapshot(
-          content = streamed_content,
-          content_type = "markdown",
-          options = options
+          content = streamed$content,
+          content_type = streamed$content_type,
+          options = options,
+          html_deps = streamed$html_deps
         )
       )
     })
@@ -1505,6 +1508,8 @@ rlang::on_load(
     )
 
     chunks <- character(0)
+    chunk_deps <- list()
+    any_html_chunk <- FALSE
     for (msg in stream) {
       if (promises::is.promising(msg)) {
         msg <- await(msg)
@@ -1519,9 +1524,13 @@ rlang::on_load(
       } else {
         ui <- process_ui(pre_process_ui(msg), session)
         chunk_content_type <- "html"
+        any_html_chunk <- TRUE
       }
 
       chunks <- c(chunks, ui[["html"]])
+      if (length(ui[["deps"]]) > 0) {
+        chunk_deps <- c(chunk_deps, ui[["deps"]])
+      }
       send_chat_action(
         id,
         action = list(
@@ -1536,7 +1545,13 @@ rlang::on_load(
     }
 
     send_greeting_action(list(type = "greeting_end"))
-    paste(chunks, collapse = "")
+    list(
+      content = paste(chunks, collapse = ""),
+      # A generator can yield a mix of markdown strings and HTML/tag chunks;
+      # if any chunk was HTML, the concatenated content is HTML overall.
+      content_type = if (any_html_chunk) "html" else "markdown",
+      html_deps = chunk_deps
+    )
   })
 )
 

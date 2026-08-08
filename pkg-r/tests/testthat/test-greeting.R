@@ -235,6 +235,45 @@ test_that("chat_set_greeting() does not store a snapshot when the stream errors"
   expect_null(get_session_greeting_state(spy$session, "chat"))
 })
 
+test_that("chat_set_greeting() streamed HTML/tag chunks store content_type='html' and their html_deps", {
+  spy <- mock_session_with_spy()
+  tag_chunk <- tags$div("Hi", htmlDependency("my-greeting-dep", "1.0.0", "."))
+  gen <- coro::async_generator(function() {
+    yield(tag_chunk)
+  })
+  shiny::withReactiveDomain(spy$session, {
+    p <- chat_set_greeting("chat", chat_greeting(gen()), session = spy$session)
+    done <- FALSE
+    promises::then(
+      p,
+      function(x) {
+        done <<- TRUE
+      },
+      function(e) {
+        done <<- TRUE
+      }
+    )
+    while (!done) {
+      later::run_now(0.1)
+    }
+  })
+
+  state <- get_session_greeting_state(spy$session, "chat")
+  expect_equal(state$content_type, "html")
+  expect_true(length(state$html_deps) > 0)
+  dep_names <- vapply(state$html_deps, `[[`, character(1), "name")
+  expect_true("my-greeting-dep" %in% dep_names)
+
+  # The stored html_deps must match what was actually sent while streaming,
+  # not an empty placeholder based on a hardcoded "always markdown" assumption.
+  msgs <- spy_messages(spy)
+  chunk_msg <- Filter(
+    function(m) identical(m$message$action$type, "greeting_chunk"),
+    msgs
+  )[[1]]
+  expect_identical(chunk_msg$message$html_deps, state$html_deps)
+})
+
 # ── Complete greeting snapshot state (content, content_type, options, html_deps) ──
 
 test_that("chat_set_greeting() static HTML persistent greeting stores complete four-field snapshot", {
