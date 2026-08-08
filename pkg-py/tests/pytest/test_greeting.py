@@ -6,10 +6,10 @@ import threading
 from typing import Any, cast
 
 import pytest
-from htmltools import HTML, HTMLDependency, tags
+from htmltools import HTML, HTMLDependency, TagList, tags
 from shiny.session import session_context
 from shinychat import Chat, chat_greeting, chat_ui
-from shinychat._chat_types import ChatGreeting
+from shinychat._chat_types import ChatGreeting, GreetingSnapshot
 
 # ---------------------------------------------------------------------------
 # ChatGreeting / chat_greeting() tests
@@ -290,21 +290,26 @@ def test_set_greeting_persistent():
 
 
 # ---------------------------------------------------------------------------
-# Chat._greeting_content tracking
+# Chat._greeting_snapshot tracking
 # ---------------------------------------------------------------------------
 
 
-def test_greeting_content_set_after_set_greeting_string():
+def test_greeting_snapshot_set_after_set_greeting_string():
     chat, _ = _make_spy_chat()
 
     async def _run():
         await chat.set_greeting("Hello world")
 
     _run_async(_run)
-    assert chat._greeting_content == "Hello world"
+    assert chat._greeting_snapshot == {
+        "content": "Hello world",
+        "content_type": "markdown",
+        "options": {"persistent": False},
+        "html_deps": [],
+    }
 
 
-def test_greeting_content_cleared_after_set_greeting_none():
+def test_greeting_snapshot_cleared_after_set_greeting_none():
     chat, _ = _make_spy_chat()
 
     async def _run():
@@ -312,10 +317,10 @@ def test_greeting_content_cleared_after_set_greeting_none():
         await chat.set_greeting(None)
 
     _run_async(_run)
-    assert chat._greeting_content is None
+    assert chat._greeting_snapshot is None
 
 
-def test_greeting_content_cleared_after_clear_messages_with_greeting():
+def test_greeting_snapshot_cleared_after_clear_messages_with_greeting():
     chat, _ = _make_spy_chat()
 
     async def _run():
@@ -323,7 +328,75 @@ def test_greeting_content_cleared_after_clear_messages_with_greeting():
         await chat.clear_messages(greeting=True)
 
     _run_async(_run)
-    assert chat._greeting_content is None
+    assert chat._greeting_snapshot is None
+
+
+def test_greeting_snapshot_static_has_all_fields(monkeypatch: pytest.MonkeyPatch):
+    chat, _ = _make_spy_chat()
+
+    def serialize(deps: Any) -> Any:
+        if not deps:
+            return None
+        return [{"name": d.name, "version": str(d.version)} for d in deps]
+
+    monkeypatch.setattr(chat, "_serialize_html_deps", serialize)
+
+    dep = HTMLDependency(
+        "greeting-style", "1.0.0", source={"package": None, "subdir": "."}
+    )
+
+    async def _run():
+        await chat.set_greeting(
+            chat_greeting(TagList(tags.strong("Welcome"), dep), persistent=True)
+        )
+
+    _run_async(_run)
+
+    snapshot = chat._greeting_snapshot
+    assert snapshot is not None
+    expected: GreetingSnapshot = {
+        "content": snapshot["content"],
+        "content_type": "html",
+        "options": {"persistent": True},
+        "html_deps": [{"name": "greeting-style", "version": "1.0.0"}],
+    }
+    assert snapshot == expected
+    assert "Welcome" in snapshot["content"]
+
+
+def test_greeting_snapshot_streamed_stores_final_content_and_options():
+    chat, _ = _make_spy_chat()
+
+    async def _run():
+        async def stream():
+            yield "He"
+            yield "llo"
+
+        await chat.set_greeting(chat_greeting(stream(), persistent=True))
+
+    _run_async(_run)
+
+    assert chat._greeting_snapshot == {
+        "content": "Hello",
+        "content_type": "markdown",
+        "options": {"persistent": True},
+        "html_deps": [],
+    }
+
+
+def test_greeting_snapshot_not_stored_when_stream_raises():
+    chat, _ = _make_spy_chat()
+
+    async def _run():
+        async def stream():
+            yield "He"
+            raise RuntimeError("boom")
+
+        with pytest.raises(RuntimeError):
+            await chat.set_greeting(chat_greeting(stream()))
+
+    _run_async(_run)
+    assert chat._greeting_snapshot is None
 
 
 def test_get_greeting_returns_content_after_set():
@@ -357,11 +430,15 @@ class _MockBookmark:
 
     def __init__(self):
         self.exclude: list[str] = []
+        self.on_bookmark_fns: list[Any] = []
+        self.on_restore_fns: list[Any] = []
 
     def on_bookmark(self, fn: object) -> object:
+        self.on_bookmark_fns.append(fn)
         return fn
 
     def on_restore(self, fn: object) -> object:
+        self.on_restore_fns.append(fn)
         return fn
 
     def on_bookmarked(self, fn: object) -> object:
@@ -431,3 +508,118 @@ def test_enable_bookmarking_excludes_greeting_dismissed():
     with session_context(cast(Any, bm_sess)):
         chat.enable_bookmarking(_MockClient())
     assert "bm_chat_dis_greeting_dismissed" in bm_sess.bookmark.exclude
+
+
+# ---------------------------------------------------------------------------
+# Greeting bookmark save/restore
+# ---------------------------------------------------------------------------
+
+
+class _RecordingState:
+    def __init__(self, values: dict[str, Any] | None = None):
+        self.values: dict[str, Any] = values if values is not None else {}
+
+
+def _find_hook(fns: list[Any], name: str) -> Any:
+    return next(fn for fn in fns if fn.__name__ == name)
+
+
+def test_bookmark_save_writes_full_snapshot(monkeypatch: pytest.MonkeyPatch):
+    chat, bm_sess = _make_bookmark_chat("bm_greet_save")
+    with session_context(cast(Any, bm_sess)):
+        chat.enable_bookmarking(_MockClient())
+
+    def serialize(deps: Any) -> Any:
+        if not deps:
+            return None
+        return [{"name": d.name, "version": str(d.version)} for d in deps]
+
+    monkeypatch.setattr(chat, "_serialize_html_deps", serialize)
+
+    dep = HTMLDependency(
+        "greeting-style", "1.0.0", source={"package": None, "subdir": "."}
+    )
+
+    async def _run():
+        await chat.set_greeting(
+            chat_greeting(TagList(tags.strong("Welcome"), dep), persistent=True)
+        )
+
+    _run_async(_run)
+
+    on_bookmark_greeting = _find_hook(
+        bm_sess.bookmark.on_bookmark_fns, "_on_bookmark_greeting"
+    )
+    state = _RecordingState()
+    on_bookmark_greeting(state)
+
+    key = "bm_greet_save--greeting"
+    assert key in state.values
+    snapshot = state.values[key]
+    assert snapshot["content_type"] == "html"
+    assert snapshot["options"] == {"persistent": True}
+    assert snapshot["html_deps"] == [
+        {"name": "greeting-style", "version": "1.0.0"}
+    ]
+    assert "Welcome" in snapshot["content"]
+
+
+def test_bookmark_restore_sends_original_snapshot(monkeypatch: pytest.MonkeyPatch):
+    chat, bm_sess = _make_bookmark_chat("bm_greet_restore")
+    with session_context(cast(Any, bm_sess)):
+        chat.enable_bookmarking(_MockClient())
+
+    sent: list[tuple[dict[str, Any], Any]] = []
+
+    async def capture(action: dict[str, Any], deps: Any = None) -> None:
+        sent.append((action, deps))
+
+    monkeypatch.setattr(chat, "_send_action", capture)
+
+    on_restore_greeting = _find_hook(
+        bm_sess.bookmark.on_restore_fns, "_on_restore_greeting"
+    )
+
+    snapshot: GreetingSnapshot = {
+        "content": "<strong>Welcome</strong>",
+        "content_type": "html",
+        "options": {"persistent": True},
+        "html_deps": [{"name": "greeting-style", "version": "1.0.0"}],
+    }
+    state = _RecordingState({"bm_greet_restore--greeting": snapshot})
+
+    async def _run():
+        await on_restore_greeting(state)
+
+    _run_async(_run)
+
+    assert len(sent) == 1
+    action, deps = sent[0]
+    assert action == {
+        "type": "greeting",
+        "content": "<strong>Welcome</strong>",
+        "content_type": "html",
+        "options": {"persistent": True},
+    }
+    assert deps == [{"name": "greeting-style", "version": "1.0.0"}]
+    assert chat._greeting_snapshot == snapshot
+
+
+def test_bookmark_restore_rejects_legacy_content_only_snapshot():
+    chat, bm_sess = _make_bookmark_chat("bm_greet_legacy")
+    with session_context(cast(Any, bm_sess)):
+        chat.enable_bookmarking(_MockClient())
+
+    on_restore_greeting = _find_hook(
+        bm_sess.bookmark.on_restore_fns, "_on_restore_greeting"
+    )
+
+    state = _RecordingState({"bm_greet_legacy--greeting": {"content": "Hello"}})
+
+    async def _run():
+        await on_restore_greeting(state)
+
+    with pytest.raises(ValueError, match="Cannot restore bookmark greeting"):
+        _run_async(_run)
+
+    assert chat._greeting_snapshot is None

@@ -63,7 +63,10 @@ from ._chat_types import (
     ChatMessageDict,
     ClearAction,
     ContentSegment,
+    GreetingAction,
     GreetingOptions,
+    GreetingSnapshot,
+    GreetingSnapshotModel,
     MessagePayload,
     SerializedDep,
     SlashCommandDef,
@@ -340,7 +343,7 @@ class Chat:
         self._history_enabled: bool = history is not False
         self.history: ChatHistory = ChatHistory(self, config=history_config)
         self._cancel_bookmarking_callbacks: CancelCallback | None = None
-        self._greeting_content: str | None = None
+        self._greeting_snapshot: GreetingSnapshot | None = None
 
         # Initialize chat state and user input effect
         from shiny import reactive
@@ -1930,7 +1933,7 @@ class Chat:
         async with self._message_lock:
             action: ClearAction = {"type": "clear"}
             if greeting:
-                self._greeting_content = None
+                self._greeting_snapshot = None
                 action["greeting"] = True
 
             async def send() -> None:
@@ -1948,7 +1951,8 @@ class Chat:
             The current greeting content, or ``None`` if no greeting is set or
             has been cleared.
         """
-        return self._greeting_content
+        snapshot = self._greeting_snapshot
+        return None if snapshot is None else snapshot["content"]
 
     async def set_greeting(
         self,
@@ -2071,7 +2075,7 @@ class Chat:
         ```
         """
         if greeting is None:
-            self._greeting_content = None
+            self._greeting_snapshot = None
             await self._send_action({"type": "greeting_clear"})
             return
 
@@ -2104,9 +2108,16 @@ class Chat:
                         "operation": "append",
                     }
                     await self._send_action(chunk_action)
-                self._greeting_content = "".join(chunks)
             finally:
                 await self._send_action({"type": "greeting_end"})
+
+            snapshot: GreetingSnapshot = {
+                "content": "".join(chunks),
+                "content_type": greeting.content_type,
+                "options": options,
+                "html_deps": html_deps or [],
+            }
+            self._greeting_snapshot = snapshot
         else:
             action: ChatAction = {
                 "type": "greeting",
@@ -2114,8 +2125,27 @@ class Chat:
                 "content_type": greeting.content_type,
                 "options": options,
             }
-            self._greeting_content = str(content)
-            await self._send_action(action, html_deps)
+            snapshot: GreetingSnapshot = {
+                "content": str(content),
+                "content_type": greeting.content_type,
+                "options": options,
+                "html_deps": html_deps or [],
+            }
+            await self._send_action(action, snapshot["html_deps"])
+            self._greeting_snapshot = snapshot
+
+    async def _restore_greeting_snapshot(
+        self,
+        snapshot: GreetingSnapshot,
+    ) -> None:
+        action: GreetingAction = {
+            "type": "greeting",
+            "content": snapshot["content"],
+            "content_type": snapshot["content_type"],
+            "options": snapshot["options"],
+        }
+        await self._send_action(action, snapshot["html_deps"])
+        self._greeting_snapshot = snapshot
 
     def destroy(self):
         """
@@ -2313,10 +2343,8 @@ class Chat:
 
         @root_session.bookmark.on_bookmark
         def _on_bookmark_greeting(state: BookmarkState):
-            if self._greeting_content is not None:
-                state.values[resolved_greeting_key] = {
-                    "content": self._greeting_content
-                }
+            if self._greeting_snapshot is not None:
+                state.values[resolved_greeting_key] = self._greeting_snapshot
 
         # Attempt to stop the initialization of the `ui.Chat(messages=)` messages
         self._init_chat.destroy()
@@ -2350,9 +2378,16 @@ class Chat:
         async def _on_restore_greeting(state: RestoreState):
             if resolved_greeting_key not in state.values:
                 return
-            g = state.values[resolved_greeting_key]
-            if isinstance(g, dict) and isinstance(g.get("content"), str):
-                await self.set_greeting(g["content"])
+            try:
+                validated = GreetingSnapshotModel.model_validate(
+                    state.values[resolved_greeting_key]
+                )
+            except ValidationError as e:
+                raise ValueError(
+                    "Cannot restore bookmark greeting: invalid or missing fields "
+                    "(bookmark likely written by an incompatible shinychat version)."
+                ) from e
+            await self._restore_greeting_snapshot(validated.to_snapshot())
 
         def _cancel_bookmarking():
             if cancel_on_bookmarked is not None:

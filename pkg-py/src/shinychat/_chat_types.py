@@ -345,6 +345,35 @@ def chat_greeting(
     )
 
 
+class GreetingSnapshot(TypedDict):
+    content: str
+    content_type: ContentType
+    options: GreetingOptions
+    html_deps: list[SerializedDep]
+
+
+class GreetingSnapshotModel(BaseModel):
+    """Validates bookmark data before restoring it as a `GreetingSnapshot`.
+
+    Rejects legacy bookmarks that only captured greeting content (no
+    `content_type`, `options`, or `html_deps`) rather than silently
+    reinterpreting them with default options.
+    """
+
+    content: str
+    content_type: ContentType
+    options: GreetingOptions
+    html_deps: list[SerializedDep]
+
+    def to_snapshot(self) -> GreetingSnapshot:
+        return {
+            "content": self.content,
+            "content_type": self.content_type,
+            "options": self.options,
+            "html_deps": self.html_deps,
+        }
+
+
 class _SegmentBase(BaseModel):
     content: str
     content_type: ContentType
