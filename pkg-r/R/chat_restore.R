@@ -262,14 +262,18 @@ restore_greeting_snapshot <- function(id, snapshot, session) {
   invisible(NULL)
 }
 
+valid_greeting_content_types <- c("markdown", "html", "text", "thinking")
+
 validate_greeting_snapshot <- function(snapshot) {
   required <- c("content", "content_type", "options", "html_deps")
   valid <- is.list(snapshot) &&
     all(required %in% names(snapshot)) &&
     is.character(snapshot$content) &&
     is.character(snapshot$content_type) &&
+    isTRUE(snapshot$content_type %in% valid_greeting_content_types) &&
     is.list(snapshot$options) &&
-    is.list(snapshot$html_deps)
+    is.list(snapshot$html_deps) &&
+    all(vapply(snapshot$html_deps, is_valid_greeting_dep, logical(1)))
 
   if (!valid) {
     rlang::abort(
@@ -281,6 +285,14 @@ validate_greeting_snapshot <- function(snapshot) {
   }
 
   invisible(snapshot)
+}
+
+is_valid_greeting_dep <- function(dep) {
+  is.list(dep) &&
+    is.character(dep$name) &&
+    length(dep$name) == 1 &&
+    is.character(dep$version) &&
+    length(dep$version) == 1
 }
 
 # Method currently hooked into `chat_append_stream()` and `markdown_stream()`

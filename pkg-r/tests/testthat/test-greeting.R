@@ -274,6 +274,34 @@ test_that("chat_set_greeting() streamed HTML/tag chunks store content_type='html
   expect_identical(chunk_msg$message$html_deps, state$html_deps)
 })
 
+test_that("chat_set_greeting() dedupes html_deps repeated across streamed chunks", {
+  spy <- mock_session_with_spy()
+  gen <- coro::async_generator(function() {
+    yield(tags$div("One", htmlDependency("my-greeting-dep", "1.0.0", ".")))
+    yield(tags$div("Two", htmlDependency("my-greeting-dep", "1.0.0", ".")))
+  })
+  shiny::withReactiveDomain(spy$session, {
+    p <- chat_set_greeting("chat", chat_greeting(gen()), session = spy$session)
+    done <- FALSE
+    promises::then(
+      p,
+      function(x) {
+        done <<- TRUE
+      },
+      function(e) {
+        done <<- TRUE
+      }
+    )
+    while (!done) {
+      later::run_now(0.1)
+    }
+  })
+
+  state <- get_session_greeting_state(spy$session, "chat")
+  dep_names <- vapply(state$html_deps, `[[`, character(1), "name")
+  expect_equal(sum(dep_names == "my-greeting-dep"), 1)
+})
+
 # ── Complete greeting snapshot state (content, content_type, options, html_deps) ──
 
 test_that("chat_set_greeting() static HTML persistent greeting stores complete four-field snapshot", {
@@ -329,6 +357,36 @@ test_that("restore_greeting_snapshot() rejects content-only legacy state with no
       list(content = "Hello"),
       session = spy$session
     ),
+    "invalid or missing"
+  )
+  expect_null(get_session_greeting_state(spy$session, "chat"))
+})
+
+test_that("restore_greeting_snapshot() rejects an invalid content_type", {
+  spy <- mock_session_with_spy()
+  snapshot <- list(
+    content = "Hello",
+    content_type = "evil",
+    options = list(),
+    html_deps = list()
+  )
+  expect_error(
+    restore_greeting_snapshot("chat", snapshot, session = spy$session),
+    "invalid or missing"
+  )
+  expect_null(get_session_greeting_state(spy$session, "chat"))
+})
+
+test_that("restore_greeting_snapshot() rejects a malformed html_deps entry", {
+  spy <- mock_session_with_spy()
+  snapshot <- list(
+    content = "Hello",
+    content_type = "markdown",
+    options = list(),
+    html_deps = list(list(name = "greeting-style"))
+  )
+  expect_error(
+    restore_greeting_snapshot("chat", snapshot, session = spy$session),
     "invalid or missing"
   )
   expect_null(get_session_greeting_state(spy$session, "chat"))

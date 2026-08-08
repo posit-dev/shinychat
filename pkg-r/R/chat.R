@@ -1550,10 +1550,25 @@ rlang::on_load(
       # A generator can yield a mix of markdown strings and HTML/tag chunks;
       # if any chunk was HTML, the concatenated content is HTML overall.
       content_type = if (any_html_chunk) "html" else "markdown",
-      html_deps = chunk_deps
+      html_deps = dedupe_html_deps(chunk_deps)
     )
   })
 )
+
+# The same HTML dependency can be yielded by more than one streamed chunk
+# (e.g. a UI component that's re-rendered each chunk); collapse duplicates by
+# name+version so the final snapshot's `html_deps` doesn't repeat entries.
+dedupe_html_deps <- function(deps) {
+  if (length(deps) == 0) {
+    return(deps)
+  }
+  keys <- vapply(
+    deps,
+    function(dep) paste(dep$name, dep$version, sep = "@"),
+    character(1)
+  )
+  deps[!duplicated(keys)]
+}
 
 # The one canonical shape for greeting session state, always carrying all
 # four fields so bookmark restore can faithfully reproduce the original
