@@ -18,6 +18,12 @@ def test_bookmark_restore_preserves_user_messages(
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30_000)
 
+    greeting = chat.loc_greeting
+    expect(greeting).to_be_visible(timeout=10_000)
+    expect(
+        greeting.locator('[data-bookmark-greeting="html"]')
+    ).to_have_text("Welcome")
+
     # Send first message and wait for response
     chat.set_user_input("Hello")
     chat.send_user_input(method="enter")
@@ -50,6 +56,13 @@ def test_bookmark_restore_preserves_user_messages(
     # Wait for restored chat to be visible
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30_000)
+
+    # The persistent greeting must remain visible alongside restored messages.
+    greeting = chat.loc_greeting
+    expect(greeting).to_be_visible(timeout=10_000)
+    expect(
+        greeting.locator('[data-bookmark-greeting="html"]')
+    ).to_have_text("Welcome")
 
     messages_container = chat.loc_messages
 

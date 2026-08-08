@@ -8,7 +8,7 @@ import chatlas
 from chatlas import Turn
 from chatlas._turn import AssistantTurn
 from shiny import App, Inputs, Outputs, Session, reactive, render, ui
-from shinychat import Chat, chat_ui
+from shinychat import Chat, chat_greeting, chat_ui
 from shinychat.types import FileConversationStore, HistoryOptions
 
 
@@ -51,6 +51,7 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     chat = Chat(
         id="chat",
         client=EchoChatClient(),
+        greeting=chat_greeting("History welcome"),
         history=HistoryOptions(
             store=FileConversationStore(dir=store_dir),
             scope="test-user",
