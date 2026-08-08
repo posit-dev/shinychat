@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from "react"
+import { memo, useEffect, useState, type CSSProperties } from "react"
 import {
   useFloating,
   autoUpdate,
@@ -14,7 +14,7 @@ import {
   useRole,
   useInteractions,
 } from "@floating-ui/react"
-import type { Element } from "hast"
+import type { Element as HastElement } from "hast"
 import { toHtml } from "hast-util-to-html"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { ASIDE_PENDING_ATTR } from "../markdown/plugins/markTrailingAsides"
@@ -30,7 +30,7 @@ export interface AsideEntry {
 }
 
 interface AsideGroupProps {
-  node?: Element
+  node?: HastElement
 }
 
 interface AsideGroupViewProps {
@@ -38,21 +38,22 @@ interface AsideGroupViewProps {
   pending?: boolean
 }
 
-function prop(el: Element, name: string): string | undefined {
+function prop(el: HastElement, name: string): string | undefined {
   const v = el.properties?.[name]
   return typeof v === "string" ? v : undefined
 }
 
-function numProp(el: Element, name: string): number | undefined {
+function numProp(el: HastElement, name: string): number | undefined {
   const v = el.properties?.[name]
   return typeof v === "number" ? v : undefined
 }
 
-export function parseAsideEntries(node?: Element): AsideEntry[] {
+export function parseAsideEntries(node?: HastElement): AsideEntry[] {
   if (!node) return []
   return (node.children ?? [])
     .filter(
-      (c): c is Element => c.type === "element" && c.tagName === "shiny-aside",
+      (c): c is HastElement =>
+        c.type === "element" && c.tagName === "shiny-aside",
     )
     .map((el) => ({
       label: prop(el, "label"),
@@ -69,6 +70,29 @@ export function faviconUrl(url: string): string | undefined {
   } catch {
     return undefined
   }
+}
+
+interface PortalTheme {
+  theme?: string
+  style: CSSProperties & Record<`--${string}`, string>
+}
+
+function portalTheme(reference: globalThis.Element | null): PortalTheme {
+  const style: PortalTheme["style"] = {}
+  if (!(reference instanceof HTMLElement)) return { style }
+
+  const computed = getComputedStyle(reference)
+  for (let index = 0; index < computed.length; index += 1) {
+    const property = computed.item(index)
+    if (!property.startsWith("--bs-")) continue
+    const value = computed.getPropertyValue(property).trim()
+    if (value) style[property as `--${string}`] = value
+  }
+
+  const theme = reference
+    .closest<HTMLElement>("[data-bs-theme]")
+    ?.getAttribute("data-bs-theme")
+  return { theme: theme || undefined, style }
 }
 
 function EntryIcon({
@@ -188,6 +212,7 @@ export const AsideGroupView = memo(function AsideGroupView({
   const showOverflow = overflow > 0 && !allSameLabel
 
   const current = entries[index]!
+  const portal = portalTheme(refs.domReference.current)
   const pillLabel =
     faceIndex === -1
       ? `Aside ${entries[0]!.index}`
@@ -235,7 +260,8 @@ export const AsideGroupView = memo(function AsideGroupView({
             <div
               ref={refs.setFloating}
               className="shiny-aside-popover"
-              style={floatingStyles}
+              style={{ ...portal.style, ...floatingStyles }}
+              data-bs-theme={portal.theme}
               aria-label={pillLabel}
               {...getFloatingProps()}
             >
@@ -261,8 +287,20 @@ export const AsideGroupView = memo(function AsideGroupView({
                       <NavArrowIcon direction="next" />
                     </button>
                   </div>
-                  <span className="shiny-aside-popover__count">
+                  <span
+                    className="shiny-aside-popover__count"
+                    aria-hidden="true"
+                  >
                     {index + 1} / {entries.length}
+                  </span>
+                  <span
+                    className="visually-hidden"
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                  >
+                    Source {index + 1} of {entries.length}:{" "}
+                    {current.label ?? "Untitled source"}
                   </span>
                 </div>
               )}

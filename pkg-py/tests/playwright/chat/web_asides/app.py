@@ -4,7 +4,17 @@ from shinychat.express import Chat
 ui.page_opts(title="Web Asides Test")
 
 chat = Chat(id="chat")
-chat.ui()
+with ui.div(
+    {
+        "data-bs-theme": "dark",
+        "style": (
+            "--bs-body-bg: rgb(18, 18, 18);"
+            "--bs-body-color: rgb(238, 238, 238);"
+            "--bs-emphasis-color-rgb: 238, 238, 238;"
+        ),
+    }
+):
+    chat.ui()
 
 LONG_ASIDE_LABEL = "source" * 40
 LONG_ASIDE_BODY = " ".join(["A detailed source explanation."] * 100)

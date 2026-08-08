@@ -95,6 +95,33 @@ def test_web_aside_symmetric_padding_when_favicon_fails(
     )
 
 
+def test_web_aside_popover_inherits_scoped_theme(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.goto(local_app.url)
+
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30 * 1000)
+    chat.set_user_input("tell me about e-bike motors")
+    chat.send_user_input()
+
+    first = page.locator(".shiny-aside-group").first
+    expect(first).to_be_visible(timeout=30 * 1000)
+    first.locator(".shiny-aside-pill").click()
+
+    popover = page.locator(".shiny-aside-popover")
+    expect(popover).to_be_visible()
+    expect(popover).to_have_attribute("data-bs-theme", "dark")
+    assert popover.evaluate(
+        "el => el.closest('[data-floating-ui-portal]').parentElement === document.body"
+    )
+    colors = popover.evaluate(
+        "el => { const style = getComputedStyle(el);"
+        " return [style.backgroundColor, style.color]; }"
+    )
+    assert colors == ["rgb(18, 18, 18)", "rgb(238, 238, 238)"]
+
+
 def test_web_aside_popover_wraps_and_scrolls_in_a_narrow_viewport(
     page: Page, local_app: ShinyAppProc
 ) -> None:
