@@ -558,8 +558,8 @@ test_that("extend_record_linear() attaches a late-arriving message to the curren
     turns,
     transcript = list(
       list(
-      role = "user",
-      segments = list(list(content = "hi", content_type = "markdown"))
+        role = "user",
+        segments = list(list(content = "hi", content_type = "markdown"))
       )
     ),
     transcript_offset = 0,
@@ -597,6 +597,95 @@ test_that("extend_record_linear() attaches a late-arriving message to the curren
       late_message
     )
   )
+})
+
+test_that("validate_conversation_record() accepts a well-formed branched record", {
+  rec <- new_conversation_record("test")
+  rec$nodes <- list(
+    n_0001 = list(
+      parent = NULL,
+      children = list("n_0002", "n_0003"),
+      selected_child = "n_0003"
+    ),
+    n_0002 = list(parent = "n_0001", children = list()),
+    n_0003 = list(parent = "n_0001", children = list())
+  )
+  rec$current_leaf <- "n_0003"
+
+  expect_no_error(validate_conversation_record(rec))
+})
+
+test_that("validate_conversation_record rejects dangling current leaf", {
+  record <- new_conversation_record("invalid")
+  record$current_leaf <- "n_9999"
+
+  expect_error(
+    validate_conversation_record(record),
+    "Dangling",
+    fixed = TRUE
+  )
+})
+
+test_that("validate_conversation_record() rejects a dangling parent reference", {
+  rec <- new_conversation_record("test")
+  rec$nodes <- list(
+    n_0001 = list(parent = "n_missing", children = list())
+  )
+  rec$current_leaf <- "n_0001"
+
+  expect_error(validate_conversation_record(rec), "Dangling", fixed = TRUE)
+})
+
+test_that("validate_conversation_record() rejects a dangling child reference", {
+  rec <- new_conversation_record("test")
+  rec$nodes <- list(
+    n_0001 = list(parent = NULL, children = list("n_missing"))
+  )
+  rec$current_leaf <- "n_0001"
+
+  expect_error(validate_conversation_record(rec), "Dangling", fixed = TRUE)
+})
+
+test_that("validate_conversation_record() rejects a parent/child mismatch", {
+  rec <- new_conversation_record("test")
+  rec$nodes <- list(
+    n_0001 = list(parent = NULL, children = list()),
+    # n_0002 claims n_0001 as its parent, but n_0001 doesn't list it as a child.
+    n_0002 = list(parent = "n_0001", children = list())
+  )
+  rec$current_leaf <- "n_0002"
+
+  expect_error(validate_conversation_record(rec), "mismatch", fixed = TRUE)
+})
+
+test_that("validate_conversation_record() rejects an invalid selected_child", {
+  rec <- new_conversation_record("test")
+  rec$nodes <- list(
+    n_0001 = list(
+      parent = NULL,
+      children = list("n_0002"),
+      selected_child = "n_missing"
+    ),
+    n_0002 = list(parent = "n_0001", children = list())
+  )
+  rec$current_leaf <- "n_0002"
+
+  expect_error(
+    validate_conversation_record(rec),
+    "selected_child",
+    fixed = TRUE
+  )
+})
+
+test_that("validate_conversation_record() rejects a cycle in the active path", {
+  rec <- new_conversation_record("test")
+  rec$nodes <- list(
+    n_0001 = list(parent = "n_0002", children = list("n_0002")),
+    n_0002 = list(parent = "n_0001", children = list("n_0001"))
+  )
+  rec$current_leaf <- "n_0002"
+
+  expect_error(validate_conversation_record(rec), "Cycle", fixed = TRUE)
 })
 
 test_that("extend_record_linear() records children pointers", {

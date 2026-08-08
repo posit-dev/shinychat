@@ -1492,7 +1492,7 @@ test_that("set_client() seeds transcript_offset from the restored record so a po
   rec$nodes <- list(
     n_0001 = list(
       parent = NULL,
-      children = list(),
+      children = list("n_0002"),
       turns = list(make_turn("user", "hi")),
       ui = list(make_ui_message("user", "hi"))
     ),

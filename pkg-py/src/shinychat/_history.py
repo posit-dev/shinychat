@@ -396,6 +396,7 @@ class HistoryController:
         target = await self.store.get(self.partition, conv_id)
         if target is None:
             raise RuntimeError(f"Conversation {conv_id!r} no longer exists.")
+        target.validate_graph()
 
         await self.save_current()
         if self.on_pre_switch is not None:
@@ -927,6 +928,7 @@ class ChatHistory:
                     controller.partition, restored_conv_id
                 )
                 if target is not None:
+                    target.validate_graph()
                     adapter.set_turns_json(target.path_turns())
                     await controller.replay_ui(target)
                     if restore_mode != "bookmark":
@@ -958,6 +960,7 @@ class ChatHistory:
                     controller.partition, current_id
                 )
                 if pointed is not None:
+                    pointed.validate_graph()
                     adapter.set_turns_json(pointed.path_turns())
                     await controller.replay_ui(pointed)
                     controller._restore_app_state(pointed.values or {})

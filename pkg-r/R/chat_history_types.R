@@ -82,6 +82,90 @@ new_conversation_record <- function(title, client_info = list()) {
   )
 }
 
+# Reject a malformed node graph before it is applied to app state. Must run
+# before any switch or restore mutates model turns, transcript state, or
+# active-record state -- a corrupted stored record should never partially
+# apply. Checks the whole graph (not just the active path);
+# record_path_node_ids(), called last, additionally rejects a cycle in the
+# active path.
+validate_conversation_record <- function(record) {
+  if (
+    !is.null(record$current_leaf) &&
+      is.null(record$nodes[[record$current_leaf]])
+  ) {
+    rlang::abort(
+      paste0("Dangling current_leaf reference: ", record$current_leaf)
+    )
+  }
+
+  for (node_id in names(record$nodes)) {
+    node <- record$nodes[[node_id]]
+    parent <- node$parent
+    children <- unlist(node$children, use.names = FALSE)
+
+    if (!is.null(parent)) {
+      if (is.null(record$nodes[[parent]])) {
+        rlang::abort(
+          paste0("Dangling parent reference at ", node_id, ": ", parent)
+        )
+      }
+      parent_children <- unlist(
+        record$nodes[[parent]]$children,
+        use.names = FALSE
+      )
+      if (!(node_id %in% parent_children)) {
+        rlang::abort(
+          paste0(
+            "Parent/child mismatch: ",
+            node_id,
+            " has parent ",
+            parent,
+            ", but is not listed among its children"
+          )
+        )
+      }
+    }
+
+    for (child_id in children) {
+      if (is.null(record$nodes[[child_id]])) {
+        rlang::abort(
+          paste0("Dangling child reference at ", node_id, ": ", child_id)
+        )
+      }
+      child_parent <- record$nodes[[child_id]]$parent
+      if (!identical(child_parent, node_id)) {
+        rlang::abort(
+          paste0(
+            "Parent/child mismatch: ",
+            node_id,
+            " lists ",
+            child_id,
+            " as a child, but its parent is ",
+            child_parent %||% "NULL"
+          )
+        )
+      }
+    }
+
+    selected_child <- node$selected_child
+    if (!is.null(selected_child) && !(selected_child %in% children)) {
+      rlang::abort(
+        paste0(
+          "selected_child ",
+          selected_child,
+          " at ",
+          node_id,
+          " is not among its children"
+        )
+      )
+    }
+  }
+
+  record_path_node_ids(record)
+
+  invisible(record)
+}
+
 record_path_node_ids <- function(record) {
   if (is.null(record$current_leaf)) {
     return(character(0))
@@ -118,9 +202,9 @@ record_ui_count <- function(record) {
   ids <- record_path_node_ids(record)
   sum(
     vapply(
-    ids,
-    function(id) length(record$nodes[[id]]$ui),
-    integer(1)
+      ids,
+      function(id) length(record$nodes[[id]]$ui),
+      integer(1)
     )
   )
 }

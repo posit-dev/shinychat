@@ -608,6 +608,42 @@ test_that("switch_to() raises on a nonexistent conversation id", {
   expect_error(ctrl$switch_to("does-not-exist"), "Conversation not found")
 })
 
+test_that("switch_to() rejects an invalid target before any state mutation", {
+  # A malformed stored record (e.g. corrupted on disk) must be rejected
+  # before it touches model turns, transcript state, or the active record --
+  # never partially applied.
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+  session <- shiny::MockShinySession$new()
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = "fallback"),
+    session = session
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+
+  ctrl$on_response(make_turns("Hi", "Hello"))
+  active_id <- ctrl$record$id
+  active_snapshot <- copy_value(ctrl$record)
+  transcript_offset_before <- ctrl$transcript_offset
+  turns_before <- client$get_turns()
+  messages_before <- get_chat_transcript(session, "chat")$read()
+
+  invalid <- new_conversation_record("invalid")
+  invalid$current_leaf <- "n_9999"
+  store$put(ctrl$partition, invalid)
+
+  expect_error(ctrl$switch_to(invalid$id), "Dangling", fixed = TRUE)
+
+  expect_equal(ctrl$record$id, active_id)
+  expect_identical(ctrl$record, active_snapshot)
+  expect_equal(ctrl$transcript_offset, transcript_offset_before)
+  expect_identical(client$get_turns(), turns_before)
+  expect_identical(get_chat_transcript(session, "chat")$read(), messages_before)
+})
+
 test_that("bookmark mode pre-switch emits reload navigation", {
   spy <- history_mock_session_with_spy()
   client <- mock_chat_client()

@@ -637,6 +637,35 @@ async def test_switch_to_nonexistent_id_raises():
 
 
 @pytest.mark.anyio
+async def test_switch_to_rejects_invalid_target_before_any_mutation():
+    # A malformed stored record (e.g. corrupted on disk) must be rejected
+    # before it touches model turns, transcript state, or the active record --
+    # never partially applied.
+    controller, store, chat = _make_nav_controller()
+    active = new_conversation_record(title="active")
+    active.append_linear([{"role": "user", "content": "hi"}], ui=[msg("user")])
+    store.records[active.id] = active
+    controller.record = active
+    controller.transcript_offset = 1
+    chat.messages = [msg("user")]
+
+    invalid = new_conversation_record(title="invalid")
+    invalid.current_leaf = "n_9999"
+    store.records[invalid.id] = invalid
+
+    with pytest.raises(ValueError, match="Dangling"):
+        await controller.switch_to(invalid.id)
+
+    assert controller.record is active
+    assert controller.record.id == active.id
+    assert cast(_NavFakeAdapter, controller.adapter).set_calls == []
+    assert chat.cleared == 0
+    assert chat.messages == [msg("user")]
+    assert controller.transcript_offset == 1
+    assert store.put_calls == []
+
+
+@pytest.mark.anyio
 async def test_new_chat_url_mode_sends_navigate_null():
     controller, _store, chat = _make_nav_controller(with_url_mode=True)
 

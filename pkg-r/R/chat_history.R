@@ -179,6 +179,7 @@ HistoryController <- R6::R6Class(
       if (is.null(target)) {
         rlang::abort(paste0("Conversation not found: ", conv_id))
       }
+      validate_conversation_record(target)
 
       self$save_current()
 
@@ -904,6 +905,7 @@ chat_enable_history <- function(
       if (!is.null(restored_id) && nzchar(restored_id)) {
         target <- controller$get_record(controller$partition, restored_id)
         if (!is.null(target)) {
+          validate_conversation_record(target)
           set_turns_recorded(client, record_path_turns(target))
           if (restore_ui) {
             controller$replay_ui(target)
@@ -936,6 +938,7 @@ chat_enable_history <- function(
     if (!is.null(current_id) && nzchar(current_id)) {
       target <- controller$get_record(controller$partition, current_id)
       if (!is.null(target)) {
+        validate_conversation_record(target)
         set_turns_recorded(client, record_path_turns(target))
         if (restore_ui) {
           controller$replay_ui(target)

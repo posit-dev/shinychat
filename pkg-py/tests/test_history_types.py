@@ -352,3 +352,81 @@ def test_path_sibling_metadata_multiple_branches():
     # Active path is [n1, n2, n5, n6]; n5 has siblings [n3, n5] -> (1, 2)
     meta = rec.path_sibling_metadata()
     assert meta == {n5: (1, 2)}
+
+
+# --- validate_graph -----------------------------------------------------
+
+
+def test_validate_graph_accepts_a_well_formed_branched_record():
+    rec = new_conversation_record(title="t")
+    n1 = rec.append_linear(turn("user", "hi"))
+    rec.append_linear(turn("assistant", "v1"))
+    n3 = branch_from(rec, n1, turn("assistant", "v2"))
+    rec.set_current_leaf(n3)
+    assert rec.validate_graph() is None
+
+
+def test_validate_graph_rejects_dangling_current_leaf() -> None:
+    record = new_conversation_record(title="invalid")
+    record.current_leaf = "n_9999"
+
+    with pytest.raises(ValueError, match="Dangling"):
+        record.validate_graph()
+
+
+def test_validate_graph_rejects_dangling_parent_reference():
+    rec = new_conversation_record(title="t")
+    rec.nodes["n_a"] = ConversationNode(
+        parent="n_missing", turns=turn("user", "a")
+    )
+    rec.current_leaf = "n_a"
+    with pytest.raises(ValueError, match="Dangling"):
+        rec.validate_graph()
+
+
+def test_validate_graph_rejects_dangling_child_reference():
+    rec = new_conversation_record(title="t")
+    rec.nodes["n_a"] = ConversationNode(
+        parent=None, children=["n_missing"], turns=turn("user", "a")
+    )
+    rec.current_leaf = "n_a"
+    with pytest.raises(ValueError, match="Dangling"):
+        rec.validate_graph()
+
+
+def test_validate_graph_rejects_parent_child_mismatch():
+    rec = new_conversation_record(title="t")
+    rec.nodes["n_a"] = ConversationNode(parent=None, turns=turn("user", "a"))
+    # n_b claims n_a as its parent, but n_a doesn't list n_b as a child.
+    rec.nodes["n_b"] = ConversationNode(
+        parent="n_a", turns=turn("assistant", "b")
+    )
+    rec.current_leaf = "n_b"
+    with pytest.raises(ValueError, match="mismatch"):
+        rec.validate_graph()
+
+
+def test_validate_graph_rejects_invalid_selected_child():
+    rec = new_conversation_record(title="t")
+    n1 = rec.append_linear(turn("user", "hi"))
+    rec.append_linear(turn("assistant", "v1"))
+    rec.nodes[n1].selected_child = "n_missing"
+    with pytest.raises(ValueError, match="selected_child"):
+        rec.validate_graph()
+
+
+def test_validate_graph_rejects_cycle_in_active_path():
+    rec = new_conversation_record(title="t")
+    rec.nodes["n_a"] = ConversationNode(
+        parent="n_b",
+        children=["n_b"],
+        turns=turn("user", "a"),
+    )
+    rec.nodes["n_b"] = ConversationNode(
+        parent="n_a",
+        children=["n_a"],
+        turns=turn("assistant", "b"),
+    )
+    rec.current_leaf = "n_b"
+    with pytest.raises(ValueError, match="Cycle"):
+        rec.validate_graph()
