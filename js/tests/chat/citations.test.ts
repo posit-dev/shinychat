@@ -36,9 +36,9 @@ describe("citationEntriesFromAsides", () => {
         body: '<a href="https://a.example">Title A</a>',
         citation: {
           title: "Title A",
-          grounded_span: "Supported claim",
           cited_quote: "Source evidence",
         },
+        groundingId: "aside-grounding-1",
       },
       { body: "hand-authored aside" },
     ])

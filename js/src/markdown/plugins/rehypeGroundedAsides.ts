@@ -8,7 +8,7 @@ interface TextSegment {
   end: number
 }
 
-interface CitationMarker {
+interface AsideMarker {
   node: Element
   offset: number
   groundedSpan: string
@@ -18,14 +18,6 @@ interface GroundedRange {
   start: number
   end: number
   id: string
-}
-
-function isCitationAside(node: Element): boolean {
-  return (
-    node.tagName === "shiny-aside" &&
-    node.properties != null &&
-    "dataCitation" in node.properties
-  )
 }
 
 function stringProperty(node: Element, name: string): string | undefined {
@@ -47,11 +39,11 @@ function isGroundingContainer(node: Element): boolean {
 function collectGroundingContent(container: Element): {
   text: string
   segments: TextSegment[]
-  citations: CitationMarker[]
+  asides: AsideMarker[]
 } {
   let text = ""
   const segments: TextSegment[] = []
-  const citations: CitationMarker[] = []
+  const asides: AsideMarker[] = []
 
   const collect = (node: ElementContent): void => {
     if (node.type === "text") {
@@ -63,9 +55,7 @@ function collectGroundingContent(container: Element): {
     if (node.type !== "element") return
     if (node.tagName === "shiny-aside") {
       const groundedSpan = stringProperty(node, "grounded-span")
-      if (isCitationAside(node) && groundedSpan) {
-        citations.push({ node, offset: text.length, groundedSpan })
-      }
+      if (groundedSpan) asides.push({ node, offset: text.length, groundedSpan })
       return
     }
     if (node.tagName === "p" || node.tagName === "li") return
@@ -73,7 +63,7 @@ function collectGroundingContent(container: Element): {
   }
 
   for (const child of container.children) collect(child)
-  return { text, segments, citations }
+  return { text, segments, asides }
 }
 
 function groundedTextNodes(
@@ -111,8 +101,8 @@ function groundedTextNodes(
         type: "element",
         tagName: "span",
         properties: {
-          className: ["shiny-citation-grounded"],
-          dataCitationGrounding: ids.join(" "),
+          className: ["shiny-aside-grounded"],
+          dataAsideGrounding: ids.join(" "),
         },
         children: [textNode],
       })
@@ -139,24 +129,22 @@ function rewriteGroundedText(
   })
 }
 
-function groundCitations(container: Element, nextId: () => string): void {
-  const { text, segments, citations } = collectGroundingContent(container)
+function groundAsides(container: Element, nextId: () => string): void {
+  const { text, segments, asides } = collectGroundingContent(container)
   const ranges: GroundedRange[] = []
 
-  for (const citation of citations) {
-    const start = text
-      .slice(0, citation.offset)
-      .lastIndexOf(citation.groundedSpan)
+  for (const aside of asides) {
+    const start = text.slice(0, aside.offset).lastIndexOf(aside.groundedSpan)
     if (start === -1) continue
 
     const id = nextId()
-    citation.node.properties = {
-      ...citation.node.properties,
+    aside.node.properties = {
+      ...aside.node.properties,
       dataGroundingId: id,
     }
     ranges.push({
       start,
-      end: start + citation.groundedSpan.length,
+      end: start + aside.groundedSpan.length,
       id,
     })
   }
@@ -173,16 +161,16 @@ function transform(tree: Root): void {
   let groundingIndex = 0
   const nextId = () => {
     groundingIndex += 1
-    return `citation-grounding-${groundingIndex}`
+    return `aside-grounding-${groundingIndex}`
   }
 
   visit(tree, "element", (node: Element) => {
-    if (isGroundingContainer(node)) groundCitations(node, nextId)
+    if (isGroundingContainer(node)) groundAsides(node, nextId)
   })
 }
 
 /**
- * Connect explicit answer-side citation spans to their citation occurrences.
- * Matching is exact and limited to text before the citation in the same block.
+ * Connect an aside's grounded span to the most recent exact preceding match
+ * in the same paragraph or tight list item.
  */
-export const rehypeGroundedCitations: Plugin<[], Root> = () => transform
+export const rehypeGroundedAsides: Plugin<[], Root> = () => transform

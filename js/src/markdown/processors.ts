@@ -14,7 +14,7 @@ import { rehypeUncontrolledInputs } from "./plugins/rehypeUncontrolledInputs"
 import { rehypeUnwrapBlockCEs } from "./plugins/rehypeUnwrapBlockCEs"
 import { rehypeGroupWebActivity } from "./plugins/rehypeGroupWebActivity"
 import { rehypeGroupAsides } from "./plugins/rehypeGroupAsides"
-import { rehypeGroundedCitations } from "./plugins/rehypeGroundedCitations"
+import { rehypeGroundedAsides } from "./plugins/rehypeGroundedAsides"
 import { rehypeMarkTrailingAsides } from "./plugins/markTrailingAsides"
 import { rehypeLazyContinuation } from "./plugins/rehypeLazyContinuation"
 import {
@@ -40,7 +40,7 @@ export const markdownProcessor = unified()
   .use(rehypeLazyContinuation)
   .use(rehypeUnwrapBlockCEs)
   .use(rehypeGroupWebActivity)
-  .use(rehypeGroundedCitations)
+  .use(rehypeGroundedAsides)
   .use(rehypeGroupAsides)
   .use(rehypeMarkTrailingAsides)
   .use(rehypeUncontrolledInputs)
@@ -61,7 +61,7 @@ export const markdownProcessor = unified()
  */
 export const htmlProcessor = unified()
   .use(rehypeGroupWebActivity)
-  .use(rehypeGroundedCitations)
+  .use(rehypeGroundedAsides)
   .use(rehypeGroupAsides)
   .use(rehypeMarkTrailingAsides)
   .use(rehypeUncontrolledInputs)

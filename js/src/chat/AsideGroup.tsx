@@ -12,9 +12,7 @@ import { useDismissiblePopover } from "./useDismissiblePopover"
 
 export interface CitationMetadata {
   title?: string
-  grounded_span?: string
   cited_quote?: string
-  grounding_id?: string
 }
 
 export interface AsideEntry {
@@ -24,6 +22,7 @@ export interface AsideEntry {
   body?: string
   index?: number
   citation?: CitationMetadata
+  groundingId?: string
 }
 
 interface AsideGroupProps {
@@ -70,9 +69,7 @@ export function parseAsideEntries(node?: HastElement): AsideEntry[] {
           ? undefined
           : {
               title: text === "" || text === url ? undefined : text,
-              grounded_span: prop(el, "grounded-span"),
               cited_quote: prop(el, "cited-quote"),
-              grounding_id: prop(el, "dataGroundingId"),
             }
       return {
         label: prop(el, "label"),
@@ -81,6 +78,7 @@ export function parseAsideEntries(node?: HastElement): AsideEntry[] {
         body: el.children.length > 0 ? toHtml(el.children) : undefined,
         index: numProp(el, "index"),
         citation,
+        groundingId: prop(el, "dataGroundingId"),
       }
     })
 }
@@ -178,10 +176,10 @@ export const AsideGroupView = memo(function AsideGroupView({
   const citationSignature = !pending
     ? JSON.stringify(citationEntriesFromAsides(entries))
     : ""
+  const activeGroundingId = entries[index]?.groundingId
 
   const { refs, floatingStyles, context, getReferenceProps, getFloatingProps } =
     useDismissiblePopover(open, setOpen)
-  const activeGroundingId = entries[index]?.citation?.grounding_id
 
   useEffect(() => {
     if (!registry || citationSignature === "") return
@@ -205,9 +203,9 @@ export const AsideGroupView = memo(function AsideGroupView({
     if (!container) return
 
     const grounded = [
-      ...container.querySelectorAll<HTMLElement>("[data-citation-grounding]"),
+      ...container.querySelectorAll<HTMLElement>("[data-aside-grounding]"),
     ].filter((element) =>
-      element.dataset.citationGrounding?.split(" ").includes(activeGroundingId),
+      element.dataset.asideGrounding?.split(" ").includes(activeGroundingId),
     )
     for (const element of grounded) element.dataset.active = ""
     return () => {

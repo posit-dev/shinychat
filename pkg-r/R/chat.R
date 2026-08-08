@@ -556,17 +556,25 @@ resolve_aside_favicon <- function() {
 #'
 #' * `<shiny-aside label="a source name" url="https://...">markdown shown in the popover</shiny-aside>`
 #'
-#' `label` and `url` are optional but recommended together — an aside with a
-#' `label` renders as an identity chip (with a favicon derived from `url`,
-#' unless `icon` overrides it); without one, it falls back to a plain
-#' numbered/count marker. The body is ordinary markdown: inline for a
-#' one-liner, or — by separating it with blank lines — a rich block body
-#' (paragraphs, lists, code) shown in the popover. Labeled asides in the same
-#' paragraph or list item collapse into one pill, with each aside kept as a
-#' separate popover page. Each unlabeled aside remains a separate numbered
-#' pill. The grouped pill shows a `+N` overflow count only when its labeled
-#' asides have different labels. Asides that share one label use a single face
-#' with no count.
+#' `label` controls the text on the identity chip. A safe `url` makes the
+#' source heading in the popover a link. It also supplies a derived favicon
+#' unless `icon` overrides it. Without a `label`, the aside falls back to a
+#' plain numbered marker. The body is ordinary markdown: inline for a one-liner,
+#' or — by separating it with blank lines — a rich block body (paragraphs,
+#' lists, code) shown in the popover. Labeled asides in the same paragraph or
+#' list item collapse into one pill, with each aside kept as a separate popover
+#' page. Each unlabeled aside remains a separate numbered pill. The grouped
+#' pill shows a `+N` overflow count only when its labeled asides have different
+#' labels. Asides that share one label use a single face with no count.
+#'
+#' `grounded-span` identifies the answer text that is related to an aside.
+#' Its value must exactly match text before the tag in the same paragraph or
+#' list item. When the popover opens, shinychat highlights the most recent
+#' match. If the value does not match, no text is highlighted.
+#'
+#' Long content wraps and scrolls within the viewport. The popover keeps the
+#' nearest scoped Bootstrap theme. In a paged popover, page changes are
+#' announced to assistive technology without repeating the body.
 #'
 #' The favicon is fetched at render time from a third-party service
 #' (DuckDuckGo's icon service), which receives the cited site's hostname. To
@@ -575,14 +583,18 @@ resolve_aside_favicon <- function() {
 #' still set `icon` to a URL you control; an explicit `icon` bypasses the
 #' lookup entirely.
 #'
-#' **A labeled aside with a one-line body:**
+#' **A labeled aside with a grounded span and a one-line body:**
 #'
 #' ```r
 #' chat_append(
 #'   "chat",
 #'   paste0(
 #'     "Hub motors are cheaper",
-#'     '<shiny-aside label="eBicycles" url="https://ebicycles.example/hub-vs-mid-drive">',
+#'     paste0(
+#'       '<shiny-aside label="eBicycles" ',
+#'       'url="https://ebicycles.example/hub-vs-mid-drive" ',
+#'       'grounded-span="Hub motors are cheaper">'
+#'     ),
 #'     "[Hub Motor vs. Mid-Drive Motor Differences Explained]",
 #'     "(https://ebicycles.example/hub-vs-mid-drive)",
 #'     "</shiny-aside>",

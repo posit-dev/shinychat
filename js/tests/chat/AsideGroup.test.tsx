@@ -38,6 +38,37 @@ function renderMarkdownStreaming(md: string) {
 }
 
 describe("AsideGroup", () => {
+  it("normalizes grounding metadata from ordinary aside markup", () => {
+    const node: Element = {
+      type: "element",
+      tagName: "shiny-aside-group",
+      properties: {},
+      children: [
+        {
+          type: "element",
+          tagName: "shiny-aside",
+          properties: {
+            label: "Example",
+            "grounded-span": "Supported claim",
+            dataGroundingId: "aside-grounding-1",
+          },
+          children: [{ type: "text", value: "Details" }],
+        },
+      ],
+    }
+
+    expect(parseAsideEntries(node)).toEqual([
+      {
+        label: "Example",
+        url: undefined,
+        icon: undefined,
+        body: "Details",
+        index: undefined,
+        groundingId: "aside-grounding-1",
+      },
+    ])
+  })
+
   it("normalizes citation metadata from markup", () => {
     const node: Element = {
       type: "element",
@@ -53,7 +84,7 @@ describe("AsideGroup", () => {
             url: "https://example.com",
             "grounded-span": "Supported claim",
             "cited-quote": "Source evidence",
-            dataGroundingId: "citation-grounding-1",
+            dataGroundingId: "aside-grounding-1",
           },
           children: [
             {
@@ -76,10 +107,9 @@ describe("AsideGroup", () => {
         icon: undefined,
         citation: {
           title: "Example title",
-          grounded_span: "Supported claim",
           cited_quote: "Source evidence",
-          grounding_id: "citation-grounding-1",
         },
+        groundingId: "aside-grounding-1",
       },
     ])
   })
@@ -129,17 +159,19 @@ describe("AsideGroup", () => {
     expect(screen.getByRole("dialog")).toHaveTextContent("Evidence")
   })
 
-  it("highlights the active citation's grounded span", async () => {
+  it("highlights an ordinary aside's grounded span while open", async () => {
     const user = userEvent.setup()
     const { container } = renderMarkdown(
-      'A **supported** claim<shiny-aside data-citation label="Example" url="https://example.com" grounded-span="supported claim">Source</shiny-aside>.',
+      'A **supported** claim<shiny-aside label="Example" grounded-span="supported claim">Details</shiny-aside>.',
     )
-    const grounded = container.querySelectorAll(".shiny-citation-grounded")
+    const grounded = container.querySelectorAll(".shiny-aside-grounded")
 
     expect(grounded).toHaveLength(2)
     expect(grounded[0]).not.toHaveAttribute("data-active")
     expect(grounded[1]).not.toHaveAttribute("data-active")
+
     await user.click(screen.getByRole("button", { name: "Example" }))
+
     expect(grounded[0]).toHaveAttribute("data-active", "")
     expect(grounded[1]).toHaveAttribute("data-active", "")
   })
@@ -147,24 +179,24 @@ describe("AsideGroup", () => {
   it("clears the grounded highlight when the popover closes", async () => {
     const user = userEvent.setup()
     const { container } = renderMarkdown(
-      'A supported claim<shiny-aside data-citation label="Example" url="https://example.com" grounded-span="supported claim">Source</shiny-aside>.',
+      'A supported claim<shiny-aside label="Example" grounded-span="supported claim">Details</shiny-aside>.',
     )
-    const grounded = container.querySelector(".shiny-citation-grounded")
+    const grounded = container.querySelector(".shiny-aside-grounded")
 
     await user.click(screen.getByRole("button", { name: "Example" }))
     await user.click(screen.getByRole("button", { name: "Example" }))
     expect(grounded).not.toHaveAttribute("data-active")
   })
 
-  it("moves the grounded highlight with the citation carousel", async () => {
+  it("moves the grounded highlight with the aside carousel", async () => {
     const user = userEvent.setup()
     const { container } = renderMarkdown(
       [
-        'First claim<shiny-aside data-citation label="First" url="https://first.example" grounded-span="First claim">First source</shiny-aside>',
-        'and second claim<shiny-aside data-citation label="Second" url="https://second.example" grounded-span="second claim">Second source</shiny-aside>.',
+        'First claim<shiny-aside label="First" grounded-span="First claim">First details</shiny-aside>',
+        'and second claim<shiny-aside label="Second" grounded-span="second claim">Second details</shiny-aside>.',
       ].join(" "),
     )
-    const grounded = container.querySelectorAll(".shiny-citation-grounded")
+    const grounded = container.querySelectorAll(".shiny-aside-grounded")
 
     await user.click(screen.getByRole("button", { name: /First.*\+1/ }))
     expect(grounded[0]).toHaveAttribute("data-active", "")

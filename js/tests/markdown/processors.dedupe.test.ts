@@ -22,7 +22,7 @@ describe("markdownProcessor citation occurrences", () => {
       `First claim${cite(u, "Hub vs Mid", "First claim")} and second claim${cite(u, "Hub vs Mid", "second claim")}.`,
     )
     expect(html.match(/<shiny-aside\b(?!-group)/g)).toHaveLength(2)
-    expect(html).toContain('data-grounding-id="citation-grounding-1"')
-    expect(html).toContain('data-grounding-id="citation-grounding-2"')
+    expect(html).toContain('data-grounding-id="aside-grounding-1"')
+    expect(html).toContain('data-grounding-id="aside-grounding-2"')
   })
 })
