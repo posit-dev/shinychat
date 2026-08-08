@@ -912,7 +912,7 @@ chat_enable_history <- function(
             }
           } else {
             controller$transcript_offset <- length(
-              get_chat_transcript(session, id)$read()
+              get_or_create_chat_transcript(session, id)$read()
             )
           }
           controller$record <- target
@@ -942,7 +942,7 @@ chat_enable_history <- function(
           restore_after_first_flush(target$values)
         } else {
           controller$transcript_offset <- length(
-            get_chat_transcript(session, id)$read()
+            get_or_create_chat_transcript(session, id)$read()
           )
         }
         controller$record <- target
