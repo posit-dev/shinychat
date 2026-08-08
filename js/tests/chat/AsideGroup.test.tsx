@@ -13,7 +13,8 @@ import userEvent from "@testing-library/user-event"
 import { markdownProcessor } from "../../src/markdown/processors"
 import { parseMarkdown, hastToReact } from "../../src/markdown/markdownToReact"
 import { chatTagToComponentMap } from "../../src/chat/chatTagToComponentMap"
-import { AsideGroupView } from "../../src/chat/AsideGroup"
+import { AsideGroupView, parseAsideEntries } from "../../src/chat/AsideGroup"
+import type { Element } from "hast"
 
 afterEach(cleanup)
 
@@ -37,6 +38,37 @@ function renderMarkdownStreaming(md: string) {
 }
 
 describe("AsideGroup", () => {
+  it("normalizes grounding metadata from ordinary aside markup", () => {
+    const node: Element = {
+      type: "element",
+      tagName: "shiny-aside-group",
+      properties: {},
+      children: [
+        {
+          type: "element",
+          tagName: "shiny-aside",
+          properties: {
+            label: "Example",
+            "grounded-span": "Supported claim",
+            dataGroundingId: "aside-grounding-1",
+          },
+          children: [{ type: "text", value: "Details" }],
+        },
+      ],
+    }
+
+    expect(parseAsideEntries(node)).toEqual([
+      {
+        label: "Example",
+        url: undefined,
+        icon: undefined,
+        body: "Details",
+        index: undefined,
+        groundingId: "aside-grounding-1",
+      },
+    ])
+  })
+
   it("renders normalized entries without a HAST node", async () => {
     const user = userEvent.setup()
     render(
@@ -54,6 +86,42 @@ describe("AsideGroup", () => {
     await user.click(screen.getByRole("button", { name: "Example" }))
 
     expect(screen.getByRole("dialog")).toHaveTextContent("Evidence")
+  })
+
+  it("highlights an ordinary aside's grounded span while open", async () => {
+    const user = userEvent.setup()
+    const { container } = renderMarkdown(
+      'A **supported** claim<shiny-aside label="Example" grounded-span="supported claim">Details</shiny-aside>.',
+    )
+    const grounded = container.querySelectorAll(".shiny-aside-grounded")
+
+    expect(grounded).toHaveLength(2)
+    expect(grounded[0]).not.toHaveAttribute("data-active")
+    expect(grounded[1]).not.toHaveAttribute("data-active")
+
+    await user.click(screen.getByRole("button", { name: "Example" }))
+
+    expect(grounded[0]).toHaveAttribute("data-active", "")
+    expect(grounded[1]).toHaveAttribute("data-active", "")
+  })
+
+  it("moves the grounded highlight with the aside carousel", async () => {
+    const user = userEvent.setup()
+    const { container } = renderMarkdown(
+      [
+        'First claim<shiny-aside label="First" grounded-span="First claim">First details</shiny-aside>',
+        'and second claim<shiny-aside label="Second" grounded-span="second claim">Second details</shiny-aside>.',
+      ].join(" "),
+    )
+    const grounded = container.querySelectorAll(".shiny-aside-grounded")
+
+    await user.click(screen.getByRole("button", { name: /First.*\+1/ }))
+    expect(grounded[0]).toHaveAttribute("data-active", "")
+    expect(grounded[1]).not.toHaveAttribute("data-active")
+
+    await user.click(screen.getByRole("button", { name: "Next source" }))
+    expect(grounded[0]).not.toHaveAttribute("data-active")
+    expect(grounded[1]).toHaveAttribute("data-active", "")
   })
 
   it("renders a chip with the label for a single labeled aside", () => {

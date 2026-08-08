@@ -27,6 +27,7 @@ export interface AsideEntry {
   icon?: string
   body?: string
   index?: number
+  groundingId?: string
 }
 
 interface AsideGroupProps {
@@ -61,6 +62,7 @@ export function parseAsideEntries(node?: HastElement): AsideEntry[] {
       icon: prop(el, "icon"),
       body: el.children.length > 0 ? toHtml(el.children) : undefined,
       index: numProp(el, "index"),
+      groundingId: prop(el, "dataGroundingId"),
     }))
 }
 
@@ -162,6 +164,7 @@ export const AsideGroupView = memo(function AsideGroupView({
   const faceIndex = entries.findIndex((e) => e.label)
   const [open, setOpen] = useState(false)
   const [index, setIndex] = useState(0)
+  const activeGroundingId = entries[index]?.groundingId
 
   // strategy: "fixed" + the middleware below let the popover escape the
   // message list's `overflow: auto` (needed for scrolling, so it can't just
@@ -200,6 +203,24 @@ export const AsideGroupView = memo(function AsideGroupView({
   useEffect(() => {
     if (open) setIndex(faceIndex === -1 ? 0 : faceIndex)
   }, [open, faceIndex])
+
+  useEffect(() => {
+    if (!open || !activeGroundingId) return
+    const reference = refs.domReference.current
+    if (!(reference instanceof HTMLElement)) return
+    const container = reference.closest("p, li")
+    if (!container) return
+
+    const grounded = [
+      ...container.querySelectorAll<HTMLElement>("[data-aside-grounding]"),
+    ].filter((element) =>
+      element.dataset.asideGrounding?.split(" ").includes(activeGroundingId),
+    )
+    for (const element of grounded) element.dataset.active = ""
+    return () => {
+      for (const element of grounded) delete element.dataset.active
+    }
+  }, [open, activeGroundingId, refs.domReference])
 
   // Withheld while its surrounding block is still streaming (see
   // rehypeMarkTrailingAsides) so the pill doesn't flash in mid-sentence.

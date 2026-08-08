@@ -13,6 +13,7 @@ import { rehypeExternalLinks } from "./plugins/rehypeExternalLinks"
 import { rehypeUncontrolledInputs } from "./plugins/rehypeUncontrolledInputs"
 import { rehypeUnwrapBlockCEs } from "./plugins/rehypeUnwrapBlockCEs"
 import { rehypeGroupAsides } from "./plugins/rehypeGroupAsides"
+import { rehypeGroundedAsides } from "./plugins/rehypeGroundedAsides"
 import { rehypeMarkTrailingAsides } from "./plugins/markTrailingAsides"
 import { rehypeLazyContinuation } from "./plugins/rehypeLazyContinuation"
 import {
@@ -37,6 +38,7 @@ export const markdownProcessor = unified()
   .use(rehypeRewriteAsideFromTemplate)
   .use(rehypeLazyContinuation)
   .use(rehypeUnwrapBlockCEs)
+  .use(rehypeGroundedAsides)
   .use(rehypeGroupAsides)
   .use(rehypeMarkTrailingAsides)
   .use(rehypeUncontrolledInputs)
@@ -56,6 +58,7 @@ export const markdownProcessor = unified()
  * parse5-parsed HTML fragment.
  */
 export const htmlProcessor = unified()
+  .use(rehypeGroundedAsides)
   .use(rehypeGroupAsides)
   .use(rehypeMarkTrailingAsides)
   .use(rehypeUncontrolledInputs)
