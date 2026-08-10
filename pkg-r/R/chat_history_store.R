@@ -175,7 +175,7 @@ InMemoryConversationStore <- R6::R6Class(
 )
 
 record_json_size <- function(record) {
-  as.double(nchar(jsonlite::toJSON(record, auto_unbox = TRUE), type = "bytes"))
+  as.double(nchar(jsonlite::serializeJSON(record), type = "bytes"))
 }
 
 CONV_ID_RE <- "^[A-Za-z0-9_-]{1,80}$"
