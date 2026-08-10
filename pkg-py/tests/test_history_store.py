@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from htmltools import HTMLDependency, tags
 from shinychat._history_store import (
     ConversationPartition,
     FileConversationStore,
@@ -52,6 +53,35 @@ async def test_put_get_round_trip(store: FileConversationStore):
         assert got.nodes[nid].children == rec.nodes[nid].children
         assert got.nodes[nid].parent == rec.nodes[nid].parent
         assert got.nodes[nid].ui == rec.nodes[nid].ui
+
+
+@pytest.mark.anyio
+async def test_memory_store_lists_recorded_tool_result_with_html():
+    chatlas = pytest.importorskip("chatlas")
+    from shinychat.types import ToolResultDisplay
+
+    display = ToolResultDisplay(
+        html=tags.div(
+            "Widget output",
+            HTMLDependency("my-dep", "1.0", source={"subdir": "."}),
+        )
+    )
+    turn = chatlas.Turn(
+        role="user",
+        contents=[
+            chatlas.ContentToolResult(value="done", extra={"display": display})
+        ],
+    )
+    rec = new_conversation_record(title="Widget")
+    rec.append_linear([turn.model_dump(mode="json")])
+    store = InMemoryConversationStore()
+
+    await store.put(part(), rec)
+    metas = await store.list(part())
+
+    assert len(metas) == 1
+    assert metas[0].id == rec.id
+    assert metas[0].size_bytes > 0
 
 
 @pytest.mark.anyio
