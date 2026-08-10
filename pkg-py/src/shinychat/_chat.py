@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import os
 import re
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -938,6 +939,56 @@ class Chat:
         heading.
         :::
 
+        :::{.callout-note title="Asides"}
+        An aside is a small pill that appears at the end of the paragraph or
+        list item it's attached to, showing a popover on hover, click, or
+        keyboard focus. Create one by writing (or prompting an LLM to write) an
+        inline `<shiny-aside>` tag anywhere in a block's markdown; the tag's
+        content becomes the popover body:
+
+        * `<shiny-aside label="a source name" url="https://...">markdown shown in the popover</shiny-aside>`
+
+        `label` controls the text on the identity chip. A safe `url` makes the
+        source heading in the popover a link. It also supplies a derived favicon
+        unless `icon` overrides it. Without a `label`, the aside falls back to
+        a plain numbered marker. The body is ordinary markdown: inline for a
+        one-liner, or — by separating it with blank lines — a rich block body
+        (paragraphs, lists, code) shown in the popover. Labeled asides in the
+        same paragraph or list item collapse into one pill, with each aside kept
+        as a separate popover page. Each unlabeled aside remains a separate
+        numbered pill. The grouped pill shows a `+N` overflow count only when
+        its labeled asides have different labels. Asides that share one label
+        use a single face with no count.
+
+        `grounded-span` identifies the answer text that is related to an aside.
+        Its value must exactly match text before the tag in the same paragraph
+        or list item. When the popover opens, shinychat highlights the most
+        recent match. If the value does not match, no text is highlighted.
+
+        Long content wraps and scrolls within the viewport. The popover keeps
+        the nearest scoped Bootstrap theme. In a paged popover, page changes
+        are announced to assistive technology without repeating the body.
+
+        The favicon is fetched at render time from a third-party service
+        (DuckDuckGo's icon service), which receives the cited site's hostname.
+        To avoid that request — for privacy, or for offline/air-gapped
+        deployments — set the ``SHINYCHAT_ASIDE_FAVICON`` environment variable
+        to ``false``. You can still set `icon` to a URL you control; an
+        explicit `icon` bypasses the lookup entirely.
+
+        **Examples:**
+
+        * A labeled aside with a grounded span and a one-line body:
+          `Hub motors are cheaper<shiny-aside label="eBicycles" url="https://ebicycles.example/hub-vs-mid-drive" grounded-span="Hub motors are cheaper">[Hub Motor vs. Mid-Drive Motor Differences Explained](https://ebicycles.example/hub-vs-mid-drive)</shiny-aside>, and ideal for flatter terrain.`
+        * Two asides cited in the same sentence collapse into a single pill
+          — the first source's label becomes the face, with a "+1" overflow:
+          `...<shiny-aside label="eBicycles" url="https://ebicycles.example">...</shiny-aside><shiny-aside label="WIRED" url="https://wired.example">...</shiny-aside>...`
+        * A label-less aside with a rich block body (a blank line starts a
+          block body instead of an inline one), falling back to a plain
+          numbered pill:
+          `Battery quality matters more than raw power<shiny-aside>\n\n**Methodology**\n\n- 40 commuter e-bike models\n- released in 2024\n\n</shiny-aside>`
+        :::
+
         :::{.callout-note title="Streamed messages"}
         Use `.append_message_stream()` instead of this method when `stream=True` (or
         similar) is specified in model's completion method.
@@ -1203,6 +1254,56 @@ class Chat:
         text), which becomes the card heading; the suggestion's body becomes the card
         description. For ordered lists (`<ol>`), the list-item number is included in the
         heading.
+        ```
+
+        ```{.callout-note title="Asides"}
+        An aside is a small pill that appears at the end of the paragraph or
+        list item it's attached to, showing a popover on hover, click, or
+        keyboard focus. Create one by writing (or prompting an LLM to write) an
+        inline `<shiny-aside>` tag anywhere in a block's markdown; the tag's
+        content becomes the popover body:
+
+        * `<shiny-aside label="a source name" url="https://...">markdown shown in the popover</shiny-aside>`
+
+        `label` controls the text on the identity chip. A safe `url` makes the
+        source heading in the popover a link. It also supplies a derived favicon
+        unless `icon` overrides it. Without a `label`, the aside falls back to
+        a plain numbered marker. The body is ordinary markdown: inline for a
+        one-liner, or — by separating it with blank lines — a rich block body
+        (paragraphs, lists, code) shown in the popover. Labeled asides in the
+        same paragraph or list item collapse into one pill, with each aside kept
+        as a separate popover page. Each unlabeled aside remains a separate
+        numbered pill. The grouped pill shows a `+N` overflow count only when
+        its labeled asides have different labels. Asides that share one label
+        use a single face with no count.
+
+        `grounded-span` identifies the answer text that is related to an aside.
+        Its value must exactly match text before the tag in the same paragraph
+        or list item. When the popover opens, shinychat highlights the most
+        recent match. If the value does not match, no text is highlighted.
+
+        Long content wraps and scrolls within the viewport. The popover keeps
+        the nearest scoped Bootstrap theme. In a paged popover, page changes
+        are announced to assistive technology without repeating the body.
+
+        The favicon is fetched at render time from a third-party service
+        (DuckDuckGo's icon service), which receives the cited site's hostname.
+        To avoid that request — for privacy, or for offline/air-gapped
+        deployments — set the ``SHINYCHAT_ASIDE_FAVICON`` environment variable
+        to ``false``. You can still set `icon` to a URL you control; an
+        explicit `icon` bypasses the lookup entirely.
+
+        **Examples:**
+
+        * A labeled aside with a grounded span and a one-line body:
+          `Hub motors are cheaper<shiny-aside label="eBicycles" url="https://ebicycles.example/hub-vs-mid-drive" grounded-span="Hub motors are cheaper">[Hub Motor vs. Mid-Drive Motor Differences Explained](https://ebicycles.example/hub-vs-mid-drive)</shiny-aside>, and ideal for flatter terrain.`
+        * Two asides cited in the same sentence collapse into a single pill
+          — the first source's label becomes the face, with a "+1" overflow:
+          `...<shiny-aside label="eBicycles" url="https://ebicycles.example">...</shiny-aside><shiny-aside label="WIRED" url="https://wired.example">...</shiny-aside>...`
+        * A label-less aside with a rich block body (a blank line starts a
+          block body instead of an inline one), falling back to a plain
+          numbered pill:
+          `Battery quality matters more than raw power<shiny-aside>\n\n**Methodology**\n\n- 40 commuter e-bike models\n- released in 2024\n\n</shiny-aside>`
         ```
 
         ```{.callout-note title="Streamed messages"}
@@ -2514,6 +2615,7 @@ def chat_ui(
         allow_attachments
     )
     max_attachment_size_attr = str(resolve_max_attachment_size())
+    aside_favicon_attr = None if resolve_aside_favicon() else "false"
 
     greeting_attr: Optional[str] = None
     greeting_deps: list[HTMLDependency] = []
@@ -2552,6 +2654,7 @@ def chat_ui(
         placeholder=placeholder,
         fill=fill,
         greeting=greeting_attr,
+        aside_favicon=aside_favicon_attr,
         enable_cancel=enable_cancel_attr,
         allow_attachments=allow_attachments_attr,
         attachment_accept=attachment_accept_attr,
@@ -2568,6 +2671,20 @@ def chat_ui(
         res = as_fillable_container(as_fill_item(res))
 
     return res
+
+
+ASIDE_FAVICON_ENV_VAR = "SHINYCHAT_ASIDE_FAVICON"
+
+
+def resolve_aside_favicon() -> bool:
+    value = os.environ.get(ASIDE_FAVICON_ENV_VAR, "true").lower()
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    raise ValueError(
+        f'{ASIDE_FAVICON_ENV_VAR} must be "true" or "false", got {value!r}.'
+    )
 
 
 class MessageStream:

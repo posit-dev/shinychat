@@ -10,6 +10,11 @@ import type { Processor } from "unified"
 import { sanitizeUrls } from "./urlSanitize"
 import { withStreamingDot } from "./streamingDot"
 import { finalizePendingSuggestionLists } from "./plugins/rehypeSuggestionCards"
+import { finalizePendingAsides } from "./plugins/markTrailingAsides"
+import {
+  restoreAsideTemplates,
+  rewriteAsideToTemplateHtml,
+} from "./plugins/rewriteAsideTemplate"
 
 /** React prop names → HTML attribute names (where they differ). */
 const reactToHtmlAttr: Record<string, string> = {
@@ -105,7 +110,10 @@ export function parseHtml(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   processor: Processor<any, any, any, any, any>,
 ): Root {
-  const hast = fromParse5(parseFragment(content)) as Root
+  const hast = fromParse5(
+    parseFragment(rewriteAsideToTemplateHtml(content)),
+  ) as Root
+  restoreAsideTemplates(hast)
   processor.runSync(hast)
   sanitizeUrls(hast)
   return hast
@@ -129,7 +137,9 @@ export function hastToReact(
   },
 ): ReactElement {
   const { tagToComponentMap, streaming } = options
-  const finalized = streaming ? hast : finalizePendingSuggestionLists(hast)
+  const finalized = streaming
+    ? hast
+    : finalizePendingAsides(finalizePendingSuggestionLists(hast))
   const tree = streaming ? withStreamingDot(finalized) : finalized
 
   return toJsxRuntime(tree, {

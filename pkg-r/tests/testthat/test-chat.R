@@ -53,6 +53,24 @@ test_that("Chat component markup", {
   # TODO: it'd be nice to mock the shinyChatMessage custom messages
 })
 
+test_that("chat_ui configures derived aside favicons from the environment", {
+  withr::local_envvar(list(SHINYCHAT_ASIDE_FAVICON = NULL))
+  expect_no_match(as.character(chat_ui("chat")), "aside-favicon", fixed = TRUE)
+
+  Sys.setenv(SHINYCHAT_ASIDE_FAVICON = "false")
+  expect_match(
+    as.character(chat_ui("chat")),
+    'aside-favicon="false"',
+    fixed = TRUE
+  )
+
+  Sys.setenv(SHINYCHAT_ASIDE_FAVICON = "TrUe")
+  expect_no_match(as.character(chat_ui("chat")), "aside-favicon", fixed = TRUE)
+
+  Sys.setenv(SHINYCHAT_ASIDE_FAVICON = "sometimes")
+  expect_error(chat_ui("chat"), "SHINYCHAT_ASIDE_FAVICON")
+})
+
 test_that("chat_ui() emits tool-grouping only when non-default", {
   ui_default <- chat_ui("chat")
   expect_null(ui_default$attribs[["tool-grouping"]])

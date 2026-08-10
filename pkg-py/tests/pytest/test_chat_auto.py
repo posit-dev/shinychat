@@ -344,6 +344,37 @@ def test_chat_ui_enable_cancel_unset_omits_attribute():
     assert "enable-cancel" not in html
 
 
+def test_chat_ui_aside_favicon_env_unset_omits_attribute(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.delenv("SHINYCHAT_ASIDE_FAVICON", raising=False)
+    assert "aside-favicon" not in chat_ui("myid").get_html_string()
+
+
+def test_chat_ui_aside_favicon_env_false_disables_derived_icons(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("SHINYCHAT_ASIDE_FAVICON", "false")
+    assert 'aside-favicon="false"' in chat_ui("myid").get_html_string()
+
+
+@pytest.mark.parametrize("value", ["true", "TRUE", "TrUe"])
+def test_chat_ui_aside_favicon_env_true_is_case_insensitive(
+    monkeypatch: pytest.MonkeyPatch,
+    value: str,
+):
+    monkeypatch.setenv("SHINYCHAT_ASIDE_FAVICON", value)
+    assert "aside-favicon" not in chat_ui("myid").get_html_string()
+
+
+def test_chat_ui_aside_favicon_env_rejects_invalid_value(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("SHINYCHAT_ASIDE_FAVICON", "sometimes")
+    with pytest.raises(ValueError, match="SHINYCHAT_ASIDE_FAVICON"):
+        chat_ui("myid")
+
+
 def test_chat_ui_forwards_kwargs():
     icon = tags.span("🤖")
     tag = chat_ui(

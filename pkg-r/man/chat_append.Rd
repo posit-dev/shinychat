@@ -71,6 +71,93 @@ observer, shinychat will log the error message and show a message that the
 error occurred in the chat UI.
 }
 
+\section{Asides}{
+An aside is a small pill that appears at the end of the paragraph or list
+item it's attached to, showing a popover on hover, click, or keyboard
+focus. Create one by writing (or prompting an LLM to write) an inline
+\verb{<shiny-aside>} tag anywhere in a block's markdown; the tag's content
+becomes the popover body:
+\itemize{
+\item \verb{<shiny-aside label="a source name" url="https://...">markdown shown in the popover</shiny-aside>}
+}
+
+\code{label} controls the text on the identity chip. A safe \code{url} makes the
+source heading in the popover a link. It also supplies a derived favicon
+unless \code{icon} overrides it. Without a \code{label}, the aside falls back to a
+plain numbered marker. The body is ordinary markdown: inline for a one-liner,
+or — by separating it with blank lines — a rich block body (paragraphs,
+lists, code) shown in the popover. Labeled asides in the same paragraph or
+list item collapse into one pill, with each aside kept as a separate popover
+page. Each unlabeled aside remains a separate numbered pill. The grouped
+pill shows a \code{+N} overflow count only when its labeled asides have different
+labels. Asides that share one label use a single face with no count.
+
+\code{grounded-span} identifies the answer text that is related to an aside.
+Its value must exactly match text before the tag in the same paragraph or
+list item. When the popover opens, shinychat highlights the most recent
+match. If the value does not match, no text is highlighted.
+
+Long content wraps and scrolls within the viewport. The popover keeps the
+nearest scoped Bootstrap theme. In a paged popover, page changes are
+announced to assistive technology without repeating the body.
+
+The favicon is fetched at render time from a third-party service
+(DuckDuckGo's icon service), which receives the cited site's hostname. To
+avoid that request — for privacy, or for offline/air-gapped deployments —
+set the \code{SHINYCHAT_ASIDE_FAVICON} environment variable to \code{false}. You can
+still set \code{icon} to a URL you control; an explicit \code{icon} bypasses the
+lookup entirely.
+
+\strong{A labeled aside with a grounded span and a one-line body:}
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_append(
+  "chat",
+  paste0(
+    "Hub motors are cheaper",
+    paste0(
+      '<shiny-aside label="eBicycles" ',
+      'url="https://ebicycles.example/hub-vs-mid-drive" ',
+      'grounded-span="Hub motors are cheaper">'
+    ),
+    "[Hub Motor vs. Mid-Drive Motor Differences Explained]",
+    "(https://ebicycles.example/hub-vs-mid-drive)",
+    "</shiny-aside>",
+    ", and ideal for flatter terrain."
+  )
+)
+}\if{html}{\out{</div>}}
+
+\strong{Two asides cited in the same sentence} collapse into one pill (the
+first source's label becomes the face, with a "+1" overflow):
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_append(
+  "chat",
+  paste0(
+    "Hub motors are cheaper",
+    '<shiny-aside label="eBicycles" url="https://ebicycles.example">...</shiny-aside>',
+    '<shiny-aside label="WIRED" url="https://wired.example">...</shiny-aside>',
+    ", and ideal for flatter terrain."
+  )
+)
+}\if{html}{\out{</div>}}
+
+\strong{A label-less aside with a rich block body} (falls back to a plain
+numbered pill):
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_append(
+  "chat",
+  paste0(
+    "Battery quality matters more than raw power",
+    "<shiny-aside>\\n\\n",
+    "**Methodology**\\n\\n",
+    "- 40 commuter e-bike models\\n",
+    "- released in 2024\\n\\n",
+    "</shiny-aside>"
+  )
+)
+}\if{html}{\out{</div>}}
+}
+
 \examples{
 \dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
 library(shiny)

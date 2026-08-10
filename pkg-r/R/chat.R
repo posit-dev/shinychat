@@ -470,6 +470,7 @@ chat_ui <- function(
       ),
       placeholder = placeholder,
       fill = if (isTRUE(fill)) NA else NULL,
+      `aside-favicon` = if (!resolve_aside_favicon()) "false",
       `enable-cancel` = if (isTRUE(enable_cancel)) {
         NA
       } else if (isFALSE(enable_cancel)) {
@@ -506,6 +507,21 @@ chat_ui <- function(
   tag_require(res, version = 5, caller = "chat_ui")
 }
 
+resolve_aside_favicon <- function() {
+  value <- tolower(
+    Sys.getenv("SHINYCHAT_ASIDE_FAVICON", unset = "true")
+  )
+  if (identical(value, "true")) {
+    return(TRUE)
+  }
+  if (identical(value, "false")) {
+    return(FALSE)
+  }
+  cli::cli_abort(
+    "{.envvar SHINYCHAT_ASIDE_FAVICON} must be {.val true} or {.val false}, got {.val {value}}."
+  )
+}
+
 #' Append an assistant response (or user message) to a chat control
 #'
 #' @description
@@ -529,6 +545,95 @@ chat_ui <- function(
 #' the error. If the `chat_append` call is the last expression in a Shiny
 #' observer, shinychat will log the error message and show a message that the
 #' error occurred in the chat UI.
+#'
+#' # Asides
+#'
+#' An aside is a small pill that appears at the end of the paragraph or list
+#' item it's attached to, showing a popover on hover, click, or keyboard
+#' focus. Create one by writing (or prompting an LLM to write) an inline
+#' `<shiny-aside>` tag anywhere in a block's markdown; the tag's content
+#' becomes the popover body:
+#'
+#' * `<shiny-aside label="a source name" url="https://...">markdown shown in the popover</shiny-aside>`
+#'
+#' `label` controls the text on the identity chip. A safe `url` makes the
+#' source heading in the popover a link. It also supplies a derived favicon
+#' unless `icon` overrides it. Without a `label`, the aside falls back to a
+#' plain numbered marker. The body is ordinary markdown: inline for a one-liner,
+#' or — by separating it with blank lines — a rich block body (paragraphs,
+#' lists, code) shown in the popover. Labeled asides in the same paragraph or
+#' list item collapse into one pill, with each aside kept as a separate popover
+#' page. Each unlabeled aside remains a separate numbered pill. The grouped
+#' pill shows a `+N` overflow count only when its labeled asides have different
+#' labels. Asides that share one label use a single face with no count.
+#'
+#' `grounded-span` identifies the answer text that is related to an aside.
+#' Its value must exactly match text before the tag in the same paragraph or
+#' list item. When the popover opens, shinychat highlights the most recent
+#' match. If the value does not match, no text is highlighted.
+#'
+#' Long content wraps and scrolls within the viewport. The popover keeps the
+#' nearest scoped Bootstrap theme. In a paged popover, page changes are
+#' announced to assistive technology without repeating the body.
+#'
+#' The favicon is fetched at render time from a third-party service
+#' (DuckDuckGo's icon service), which receives the cited site's hostname. To
+#' avoid that request — for privacy, or for offline/air-gapped deployments —
+#' set the `SHINYCHAT_ASIDE_FAVICON` environment variable to `false`. You can
+#' still set `icon` to a URL you control; an explicit `icon` bypasses the
+#' lookup entirely.
+#'
+#' **A labeled aside with a grounded span and a one-line body:**
+#'
+#' ```r
+#' chat_append(
+#'   "chat",
+#'   paste0(
+#'     "Hub motors are cheaper",
+#'     paste0(
+#'       '<shiny-aside label="eBicycles" ',
+#'       'url="https://ebicycles.example/hub-vs-mid-drive" ',
+#'       'grounded-span="Hub motors are cheaper">'
+#'     ),
+#'     "[Hub Motor vs. Mid-Drive Motor Differences Explained]",
+#'     "(https://ebicycles.example/hub-vs-mid-drive)",
+#'     "</shiny-aside>",
+#'     ", and ideal for flatter terrain."
+#'   )
+#' )
+#' ```
+#'
+#' **Two asides cited in the same sentence** collapse into one pill (the
+#' first source's label becomes the face, with a "+1" overflow):
+#'
+#' ```r
+#' chat_append(
+#'   "chat",
+#'   paste0(
+#'     "Hub motors are cheaper",
+#'     '<shiny-aside label="eBicycles" url="https://ebicycles.example">...</shiny-aside>',
+#'     '<shiny-aside label="WIRED" url="https://wired.example">...</shiny-aside>',
+#'     ", and ideal for flatter terrain."
+#'   )
+#' )
+#' ```
+#'
+#' **A label-less aside with a rich block body** (falls back to a plain
+#' numbered pill):
+#'
+#' ```r
+#' chat_append(
+#'   "chat",
+#'   paste0(
+#'     "Battery quality matters more than raw power",
+#'     "<shiny-aside>\n\n",
+#'     "**Methodology**\n\n",
+#'     "- 40 commuter e-bike models\n",
+#'     "- released in 2024\n\n",
+#'     "</shiny-aside>"
+#'   )
+#' )
+#' ```
 #'
 #' @param id The ID of the chat element
 #' @param response The message or message stream to append to the chat element.
