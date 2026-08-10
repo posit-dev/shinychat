@@ -14,13 +14,12 @@ test_that("InMemoryConversationStore: put and get", {
 
 test_that("InMemoryConversationStore handles recorded HTML widgets", {
   skip_if_not_installed("ellmer")
-  skip_if_not_installed("leaflet")
 
   tool_result <- ellmer::ContentToolResult(
     value = "Map created.",
     extra = list(
       display = list(
-        html = leaflet::leaflet() |> leaflet::addTiles()
+        html = structure(list(), class = "htmlwidget")
       )
     )
   )
