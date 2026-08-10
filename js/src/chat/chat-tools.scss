@@ -837,3 +837,150 @@ shinychat-raw-html {
 .tool-status-note {
   font-size: 0.85em;
 }
+
+.shiny-aside-group {
+  display: inline-block;
+  margin-inline-start: 0.3em;
+  // Small empirically-tuned nudge above the default baseline position.
+  vertical-align: 0.1em;
+}
+
+.shiny-aside-grounded[data-active] {
+  background: rgba(var(--bs-primary-rgb, 13, 110, 253), 0.12);
+  border-radius: 0.12em;
+  text-decoration-line: underline;
+  text-decoration-color: rgba(var(--bs-primary-rgb, 13, 110, 253), 0.7);
+  text-decoration-thickness: 0.1em;
+  text-underline-offset: 0.14em;
+}
+
+.shiny-aside-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  border: none;
+  border-radius: 999px;
+  background: rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.06);
+  color: inherit;
+  font-size: 0.72em;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0.25em 0.6em;
+  cursor: pointer;
+  vertical-align: middle;
+  min-height: 1.6em;
+
+  &:has(img) {
+    padding-inline-start: 0.35em;
+  }
+
+  &.shiny-aside-pill--count {
+    padding-inline: 0.5em;
+    min-width: 1.4em;
+    justify-content: center;
+  }
+
+  img {
+    width: 1.1em;
+    height: 1.1em;
+    border-radius: 50%;
+  }
+
+  .shiny-aside-pill__overflow {
+    opacity: 0.65;
+  }
+
+  .shiny-aside-pill__label {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  &:hover,
+  &[aria-expanded="true"] {
+    background: rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.12);
+  }
+}
+
+.shiny-aside-popover {
+  // Position comes from Floating UI. The portal lets the popover escape the
+  // message list's scroll container while flip/shift keep it in the viewport.
+  z-index: 1040;
+  box-sizing: border-box;
+  width: min(22em, calc(100vw - 1rem));
+  max-height: min(32rem, calc(100vh - 1rem));
+  overflow: auto;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  background: var(--bs-body-bg, #fff);
+  color: var(--bs-body-color, inherit);
+  border: 1px solid rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.12);
+  border-radius: 0.6em;
+  box-shadow: 0 0.4em 1.2em rgba(0, 0, 0, 0.12);
+  padding: 0.7em 0.8em;
+  font-size: 0.8em;
+  font-weight: 400;
+  text-align: start;
+  white-space: normal;
+
+  .shiny-aside-popover__nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    opacity: 0.65;
+    margin-bottom: 0.5em;
+
+    .shiny-aside-popover__nav-arrows {
+      display: flex;
+      align-items: center;
+      gap: 0.6em;
+      margin-left: -0.55em;
+    }
+
+    .shiny-aside-popover__count {
+      font-size: 0.75em;
+    }
+
+    button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: none;
+      color: inherit;
+      cursor: pointer;
+      border-radius: 0.4em;
+      min-width: 24px;
+      min-height: 24px;
+      padding: 0.4em 0.55em;
+      margin: -0.4em 0;
+
+      &:hover {
+        background: rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.08);
+      }
+    }
+  }
+
+  .shiny-aside-popover__label {
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+    font-weight: 600;
+    margin-bottom: 0.4em;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+
+    img {
+      width: 1.1em;
+      height: 1.1em;
+      border-radius: 50%;
+    }
+  }
+
+  .shiny-aside-popover__body {
+    p:last-child {
+      margin-bottom: 0;
+    }
+  }
+}

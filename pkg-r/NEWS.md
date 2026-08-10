@@ -2,6 +2,8 @@
 
 ## New features and improvements
 
+* Assistant messages can now attach source details to specific claims with the `<shiny-aside>` markup convention. This convention powers shinychat's web citations and can also support custom RAG workflows. Add an inline `<shiny-aside>` tag with source details and an optional `grounded-span`. Shinychat shows a compact source pill and highlights the related text when the pill is open. See the `Asides` section in `?chat_append`.
+
 * Tool calls now render as a condensed activity row by default. Expand a group row to see each individual call, then drill into a call to see its full request/result card. Added `tool_result_display()`, a validated constructor for the `display` object passed as `extra = list(display = tool_result_display(...))` on an `ellmer::ContentToolResult` -- the recommended way to build it going forward. A bare named list with the same fields still works and is promoted internally. `tool_result_display()` gained `label` (a short per-call identifying value, e.g. a filename or query) and `value_preview` (a terse peek at the result, e.g. "1,204 rows"), both shown in the activity row.
 
 * Fully custom tool-result UI returned from a `contents_shinychat()` method is now paired with its tool request. While the tool runs, it appears in the activity row; after the custom result settles, that call leaves the row and the custom UI renders as standalone output. This also preserves custom results when preloading or restoring conversations.

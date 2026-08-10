@@ -23,6 +23,11 @@ const urlAttributes: Record<string, string[] | null> = {
   action: ["form"],
   formAction: ["button", "input"],
   cite: ["blockquote", "del", "ins", "q"],
+  // Defense-in-depth: also scrub the `url` and `icon` attributes on our
+  // custom elements in case they appear in the HAST tree before React
+  // rendering.
+  url: ["shiny-aside"],
+  icon: ["shiny-aside"],
 }
 
 const safeProtocol = /^(https?|ircs?|mailto|xmpp)$/i

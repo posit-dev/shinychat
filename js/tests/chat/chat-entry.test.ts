@@ -268,6 +268,59 @@ describe("chat-entry custom element boot", () => {
     expect(fileInput?.accept).toBe("application/pdf")
   })
 
+  it("does not render a derived aside favicon when aside-favicon is false", async () => {
+    const host = document.createElement("shiny-chat-container")
+    host.setAttribute("id", "aside-favicon-off")
+    host.setAttribute("aside-favicon", "false")
+    host.innerHTML = `
+      <shiny-chat-messages>
+        <shiny-chat-message
+          data-role="assistant"
+          content='A claim<shiny-aside label="Source" url="https://source.example"></shiny-aside>.'
+        ></shiny-chat-message>
+      </shiny-chat-messages>
+      <shiny-chat-input></shiny-chat-input>
+    `
+
+    await act(async () => {
+      document.body.appendChild(host)
+    })
+
+    await waitFor(() => {
+      expect(host.querySelector(".shiny-aside-pill")).not.toBeNull()
+    })
+
+    expect(host.querySelector(".shiny-aside-pill img")).toBeNull()
+    expect(host.innerHTML).not.toContain("icons.duckduckgo.com")
+  })
+
+  it("keeps an explicit aside icon when aside-favicon is false", async () => {
+    const host = document.createElement("shiny-chat-container")
+    host.setAttribute("id", "aside-explicit-icon")
+    host.setAttribute("aside-favicon", "false")
+    host.innerHTML = `
+      <shiny-chat-messages>
+        <shiny-chat-message
+          data-role="assistant"
+          content='A claim<shiny-aside label="Source" url="https://source.example" icon="https://assets.example/source.svg"></shiny-aside>.'
+        ></shiny-chat-message>
+      </shiny-chat-messages>
+      <shiny-chat-input></shiny-chat-input>
+    `
+
+    await act(async () => {
+      document.body.appendChild(host)
+    })
+
+    await waitFor(() => {
+      expect(host.querySelector(".shiny-aside-pill img")).not.toBeNull()
+    })
+
+    expect(
+      host.querySelector(".shiny-aside-pill img")?.getAttribute("src"),
+    ).toBe("https://assets.example/source.svg")
+  })
+
   it("preserves the rendered conversation when moved to another container", async () => {
     const left = document.createElement("div")
     const right = document.createElement("div")
