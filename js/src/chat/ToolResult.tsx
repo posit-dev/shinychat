@@ -16,12 +16,14 @@ interface ContentExtraItem {
 
 function PdfBadge({ filename }: { filename: string }) {
   return (
-    <div className="shinychat-pdf badge fs-6 text-bg-secondary">
+    <div className="shiny-chat-pdf badge fs-6 text-bg-secondary">
       <span
-        className="shinychat-pdf__icon me-1"
+        className="shiny-chat-pdf__icon me-1"
         dangerouslySetInnerHTML={{ __html: filePdfFill }}
       />
-      <span className="shinychat-pdf__filename font-monospace">{filename}</span>
+      <span className="shiny-chat-pdf__filename font-monospace">
+        {filename}
+      </span>
     </div>
   )
 }
@@ -184,11 +186,11 @@ export function ToolResultValue({
     try {
       const items = JSON.parse(value) as ContentExtraItem[]
       resultContent = (
-        <div className="shinychat-content-extra">
+        <div className="shiny-chat-content-extra">
           {items.map((item, i) => {
             if (item.type === "image") {
               return (
-                <img key={i} src={item.src} className="shinychat-tool-image" />
+                <img key={i} src={item.src} className="shiny-chat-tool-image" />
               )
             } else if (item.type === "pdf") {
               return <PdfBadge key={i} filename={item.filename ?? ""} />

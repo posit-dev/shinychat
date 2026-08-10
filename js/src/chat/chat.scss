@@ -547,7 +547,7 @@ shiny-chat-container:not([fill]) {
 }
 
 /* External link dialog styling */
-.shinychat-external-link-dialog {
+.shiny-chat-external-link-dialog {
   padding: 0;
   border: none;
   background: none;
@@ -560,17 +560,17 @@ shiny-chat-container:not([fill]) {
   }
 }
 
-.shinychat-external-link-dialog::backdrop {
+.shiny-chat-external-link-dialog::backdrop {
   background-color: rgba(0, 0, 0, 0.5);
 }
 
-.shinychat-external-link-dialog .link-url {
+.shiny-chat-external-link-dialog .link-url {
   word-break: break-all;
   font-weight: 500;
 }
 
 /* Thinking display */
-.shinychat-thinking {
+.shiny-chat-thinking {
   // `inherit`, not the muted secondary, so the header matches the tool rows'
   // `color: inherit` exactly — the shared --_activity-opacity below is what
   // quiets it, and muting the color on top of that made the header read dimmer
@@ -578,9 +578,9 @@ shiny-chat-container:not([fill]) {
   // 2.49:1 (light), below AA for what is real text; inherited body color at the
   // same opacity is 5.76:1. The thought *body* stays secondary — that prose is
   // genuinely subordinate, and it is not part of the row stack.
-  --shinychat-thinking-header-color: inherit;
-  --shinychat-thinking-border-color: var(--bs-border-color, #dee2e6);
-  --shinychat-thinking-content-color: var(--bs-secondary-color, #6c757d);
+  --shiny-chat-thinking-header-color: inherit;
+  --shiny-chat-thinking-border-color: var(--bs-border-color, #dee2e6);
+  --shiny-chat-thinking-content-color: var(--bs-secondary-color, #6c757d);
 
   // Row geometry shared with the condensed tool rows, which define the same
   // pseudo-private tokens (see `.shiny-chat-tool-group` in chat-tools.scss). A
@@ -593,7 +593,7 @@ shiny-chat-container:not([fill]) {
   font-size: 0.8em;
 }
 
-.shinychat-thinking-header {
+.shiny-chat-thinking-header {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -604,7 +604,7 @@ shiny-chat-container:not([fill]) {
   background: none;
   border: none;
   text-align: left;
-  color: var(--shinychat-thinking-header-color);
+  color: var(--shiny-chat-thinking-header-color);
   cursor: pointer;
   font: inherit;
   opacity: var(--_activity-opacity);
@@ -617,16 +617,16 @@ shiny-chat-container:not([fill]) {
 }
 
 // The leading identity glyph is sized and shaped alongside the generic tool dot
-// (see `.shinychat-thinking-glyph` in chat-tools.scss); it is static, and the
-// trailing `.shinychat-thinking-disclosure` is what rotates.
-.shinychat-thinking-disclosure {
+// (see `.shiny-chat-thinking-glyph` in chat-tools.scss); it is static, and the
+// trailing `.shiny-chat-thinking-disclosure` is what rotates.
+.shiny-chat-thinking-disclosure {
   margin-inline-start: auto;
 }
 
 // Crossfades between labels ("Thinking" → "Thought for 2s"); the duration is
 // kept in step with `FADE_DURATION_MS` in `useFadingText.ts`, which the tool
 // group's title shares.
-.shinychat-thinking-label {
+.shiny-chat-thinking-label {
   transition: opacity 0.2s ease;
   min-width: 0;
   overflow: hidden;
@@ -638,23 +638,23 @@ shiny-chat-container:not([fill]) {
   }
 }
 
-.shinychat-thinking-dot {
+.shiny-chat-thinking-dot {
   margin-left: 0;
   fill: currentColor;
   opacity: 0;
   transform-origin: center;
   animation:
-    shinychat-thinking-dot-appear 0.2s ease 500ms forwards,
-    shinychat-thinking-dot-pulse 1.75s infinite cubic-bezier(0.18, 0.89, 0.32, 1.28) 500ms;
+    shiny-chat-thinking-dot-appear 0.2s ease 500ms forwards,
+    shiny-chat-thinking-dot-pulse 1.75s infinite cubic-bezier(0.18, 0.89, 0.32, 1.28) 500ms;
 }
 
-@keyframes shinychat-thinking-dot-appear {
+@keyframes shiny-chat-thinking-dot-appear {
   to {
     opacity: 0.6;
   }
 }
 
-@keyframes shinychat-thinking-dot-pulse {
+@keyframes shiny-chat-thinking-dot-pulse {
   0% {
     transform: scale(1);
     opacity: 0.6;
@@ -669,14 +669,14 @@ shiny-chat-container:not([fill]) {
   }
 }
 
-.shinychat-thinking-content {
+.shiny-chat-thinking-content {
   display: grid;
   grid-template-rows: 0fr;
   transition: grid-template-rows 0.2s ease;
   // Land the left rule on the leading glyph, the same way a tool row's drill-in
   // rule does: past the row's inline padding, then half the glyph box.
   margin-left: calc(var(--_row-pad) + var(--_row-glyph-width) / 2 - 1px);
-  border-left: 2px solid var(--shinychat-thinking-border-color);
+  border-left: 2px solid var(--shiny-chat-thinking-border-color);
 
   &[data-expanded] {
     grid-template-rows: 1fr;
@@ -684,11 +684,11 @@ shiny-chat-container:not([fill]) {
   }
 }
 
-.shinychat-thinking-content-inner {
+.shiny-chat-thinking-content-inner {
   overflow: hidden;
   padding-left: 0.75rem;
   padding-block: 0;
-  color: var(--shinychat-thinking-content-color);
+  color: var(--shiny-chat-thinking-content-color);
   font-size: 0.9em;
   // No `padding-block` transition: the parent already animates the open/close
   // with `grid-template-rows` over the same duration, so this only added a
@@ -701,28 +701,28 @@ shiny-chat-container:not([fill]) {
   }
 }
 
-.shinychat-thinking-topic {
+.shiny-chat-thinking-topic {
   font-weight: 600;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .shinychat-thinking-dot {
-    animation: shinychat-thinking-dot-appear 0s ease 500ms forwards;
+  .shiny-chat-thinking-dot {
+    animation: shiny-chat-thinking-dot-appear 0s ease 500ms forwards;
   }
 
-  .shinychat-thinking-disclosure {
+  .shiny-chat-thinking-disclosure {
     transition: none;
   }
 
-  .shinychat-thinking-content {
+  .shiny-chat-thinking-content {
     transition: none;
   }
 
-  .shinychat-thinking-content-inner {
+  .shiny-chat-thinking-content-inner {
     transition: none;
   }
 
-  .shinychat-thinking-label {
+  .shiny-chat-thinking-label {
     transition: none;
   }
 }

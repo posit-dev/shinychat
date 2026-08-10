@@ -581,7 +581,7 @@ describe("Tool component bridge rendering", () => {
       />,
     )
 
-    expect(document.querySelector(".shinychat-thinking")).toBeTruthy()
+    expect(document.querySelector(".shiny-chat-thinking")).toBeTruthy()
     expect(document.body.textContent).toContain("Here you go.")
     vi.unstubAllGlobals()
   })
