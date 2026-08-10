@@ -146,14 +146,16 @@ describe("MarkdownContent (pure)", () => {
     }).not.toThrow()
   })
 
-  it("renders shinychat-raw-html block without throwing", () => {
-    const content =
-      '<shinychat-raw-html><div class="custom">Hello</div></shinychat-raw-html>'
+  it.each(["shiny-chat-raw-html", "shinychat-raw-html"])(
+    "renders %s block without throwing",
+    (tagName) => {
+      const content = `<${tagName}><div class="custom">Hello</div></${tagName}>`
 
-    expect(() => {
-      render(<MarkdownContent content={content} contentType="markdown" />)
-    }).not.toThrow()
-  })
+      expect(() => {
+        render(<MarkdownContent content={content} contentType="markdown" />)
+      }).not.toThrow()
+    },
+  )
 
   it("renders tool tags without requiring chat contexts", () => {
     const content =
@@ -169,7 +171,7 @@ describe("MarkdownContent (pure)", () => {
 
   it("renders tool tags as top-level React components (server splits content)", () => {
     // The server now splits HTML islands around data-shinychat-react elements,
-    // so tool tags arrive as top-level elements (not wrapped in shinychat-raw-html).
+    // so tool tags arrive as top-level elements (not wrapped in an HTML island).
     const content =
       '<shiny-tool-request data-shinychat-react request-id="req-1" tool-name="test" arguments="{}"></shiny-tool-request>'
 

@@ -18,12 +18,15 @@ import { CopyableCodeBlock } from "./components/CopyableCodeBlock"
 import { BootstrapTable } from "./components/BootstrapTable"
 import { RawHTML } from "../chat/RawHTML"
 
+const RawHtmlIsland = (({ node }: { node?: Element }) => (
+  <RawHTML html={node ? toHtml(node.children) : ""} displayContents />
+)) as ComponentType<unknown>
+
 const baseAssistantComponents: Record<string, ComponentType<unknown>> = {
   pre: CopyableCodeBlock as ComponentType<unknown>,
   table: BootstrapTable as ComponentType<unknown>,
-  "shinychat-raw-html": (({ node }: { node?: Element }) => (
-    <RawHTML html={node ? toHtml(node.children) : ""} displayContents />
-  )) as ComponentType<unknown>,
+  "shiny-chat-raw-html": RawHtmlIsland,
+  "shinychat-raw-html": RawHtmlIsland,
 }
 
 const baseUserComponents: Record<string, ComponentType<unknown>> = {

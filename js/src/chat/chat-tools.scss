@@ -299,7 +299,7 @@
   flex: none;
 }
 
-.shinychat-tool-image {
+.shiny-chat-tool-image {
   max-width: 100%;
   border-radius: var(--bs-border-radius);
 }
@@ -360,18 +360,18 @@ $shiny-chat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width,
 // assistant did, so it reads continuous with the calls around it. (A thinking
 // block always splits a loop in two, since it becomes its own message block, so
 // without this the split shows up as a 1em trench.)
-.shiny-chat-tool-loop:has(+ .shinychat-thinking) {
+.shiny-chat-tool-loop:has(+ .shiny-chat-thinking) {
   margin-bottom: 0;
 }
 
-.shinychat-thinking + .shiny-chat-tool-loop {
+.shiny-chat-thinking + .shiny-chat-tool-loop {
   margin-top: 0;
 }
 
 // Prose after an activity block needs the breathing room back: the answer is
 // not part of the stack.
 .shiny-chat-tool-loop + p,
-.shinychat-thinking + p {
+.shiny-chat-thinking + p {
   margin-top: 1rem;
 }
 
@@ -391,11 +391,14 @@ $shiny-chat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width,
 
 // Python's `ChatMessage.__init__` runs `split_html_islands` eagerly, so an
 // author's custom UI reaches the wire already wrapped in a real
-// `<shinychat-raw-html>` element. It lands here via `RawHTML`'s `innerHTML`,
+// `<shiny-chat-raw-html>` element. The legacy `<shinychat-raw-html>` tag is
+// also accepted while old serialized content remains in use. It lands here via
+// `RawHTML`'s `innerHTML`,
 // so no React tag map runs on it (`MarkdownContent.tsx`'s is the only place
 // that maps this tag away) — it hits the DOM as an unknown element, which
 // defaults to `display: inline` and wraps its block content in an inline box.
 // This is what the element already means: an island marker, not a box.
+shiny-chat-raw-html,
 shinychat-raw-html {
   display: contents;
 }
@@ -443,7 +446,7 @@ shinychat-raw-html {
 // subordinate activity row, the thinking header included, so they can't drift.
 .shiny-chat-tool-group__row:focus-visible,
 .shiny-chat-tool-call-row__summary:focus-visible,
-.shinychat-thinking-header:focus-visible {
+.shiny-chat-thinking-header:focus-visible {
   outline: 2px solid var(--bs-primary, #007bc2);
   outline-offset: 2px;
 }
@@ -486,7 +489,7 @@ shinychat-raw-html {
 // tool rows' labels. The mark is the same size as the dot, turned 45° into a
 // diamond, so a thinking row is distinguishable from an untitled tool row
 // without needing a glyph invented for it.
-.shinychat-thinking-glyph {
+.shiny-chat-thinking-glyph {
   display: grid;
   place-items: center;
   width: var(--_row-glyph-width);
@@ -656,12 +659,12 @@ shinychat-raw-html {
   color: var(--bs-danger);
 }
 
-// The trailing disclosure chevron. `.shinychat-thinking-disclosure` shares
+// The trailing disclosure chevron. `.shiny-chat-thinking-disclosure` shares
 // these rules because a collapsed thinking header is the same kind of
 // subordinate activity row as a tool call, and the two must not drift apart.
 .shiny-chat-tool-group__chevron,
 .shiny-chat-tool-call-row__chevron,
-.shinychat-thinking-disclosure {
+.shiny-chat-thinking-disclosure {
   display: grid;
   place-items: center;
   width: 0.9em;
@@ -687,7 +690,7 @@ shinychat-raw-html {
 
 .shiny-chat-tool-group__row[aria-expanded="true"] .shiny-chat-tool-group__chevron,
 .shiny-chat-tool-call-row__summary[aria-expanded="true"] .shiny-chat-tool-call-row__chevron,
-.shinychat-thinking-header[aria-expanded="true"] .shinychat-thinking-disclosure {
+.shiny-chat-thinking-header[aria-expanded="true"] .shiny-chat-thinking-disclosure {
   transform: rotate(0deg);
 }
 
@@ -773,7 +776,7 @@ shinychat-raw-html {
     }
 
     &:not([hidden]) {
-      animation: shinychat-tool-detail-reveal 0.2s ease-out;
+      animation: shiny-chat-tool-detail-reveal 0.2s ease-out;
     }
 
     // The row above already is the header (glyph + title + peek + chevron), so
@@ -816,7 +819,7 @@ shinychat-raw-html {
   padding-inline-start: calc(var(--_row-pad) + var(--_row-glyph-width) / 2);
 }
 
-@keyframes shinychat-tool-detail-reveal {
+@keyframes shiny-chat-tool-detail-reveal {
   from {
     opacity: 0;
   }

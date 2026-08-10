@@ -34,12 +34,12 @@ describe("ThinkingDisplay", () => {
     const { container } = render(
       <ThinkingDisplay thinking={thinking()} messageId="m1" />,
     )
-    const header = container.querySelector(".shinychat-thinking-header")!
+    const header = container.querySelector(".shiny-chat-thinking-header")!
     const children = Array.from(header.children).map((el) =>
       el.getAttribute("class"),
     )
-    expect(children[0]).toBe("shinychat-thinking-glyph")
-    expect(children[children.length - 1]).toBe("shinychat-thinking-disclosure")
+    expect(children[0]).toBe("shiny-chat-thinking-glyph")
+    expect(children[children.length - 1]).toBe("shiny-chat-thinking-disclosure")
   })
 
   it("keeps the leading glyph static and rotates only the trailing chevron", () => {
@@ -49,8 +49,8 @@ describe("ThinkingDisplay", () => {
     const { container } = render(
       <ThinkingDisplay thinking={thinking()} messageId="m1" />,
     )
-    const header = container.querySelector(".shinychat-thinking-header")!
-    const glyph = container.querySelector(".shinychat-thinking-glyph")!
+    const header = container.querySelector(".shiny-chat-thinking-header")!
+    const glyph = container.querySelector(".shiny-chat-thinking-glyph")!
     expect(header.getAttribute("aria-expanded")).toBe("false")
     expect(glyph.hasAttribute("data-expanded")).toBe(false)
 
@@ -70,7 +70,7 @@ describe("ThinkingDisplay", () => {
       />,
     )
     expect(
-      container.querySelector(".shinychat-thinking-label")?.textContent,
+      container.querySelector(".shiny-chat-thinking-label")?.textContent,
     ).toBe("Thought for less than a second")
   })
 
@@ -82,7 +82,7 @@ describe("ThinkingDisplay", () => {
       />,
     )
     expect(
-      container.querySelector(".shinychat-thinking-label")?.textContent,
+      container.querySelector(".shiny-chat-thinking-label")?.textContent,
     ).toBe("Thought for 1s")
   })
 
@@ -98,7 +98,7 @@ describe("ThinkingDisplay", () => {
       />,
     )
     expect(
-      container.querySelector(".shinychat-thinking-label")?.textContent,
+      container.querySelector(".shiny-chat-thinking-label")?.textContent,
     ).toBe("Thinking")
   })
 
@@ -109,14 +109,14 @@ describe("ThinkingDisplay", () => {
         messageId="m1"
       />,
     )
-    const header = container.querySelector(".shinychat-thinking-header")!
+    const header = container.querySelector(".shiny-chat-thinking-header")!
     expect(
       Array.from(header.children).map((el) => el.getAttribute("class")),
     ).toEqual([
-      "shinychat-thinking-glyph",
-      "shinychat-thinking-label",
-      "shinychat-thinking-dot",
-      "shinychat-thinking-disclosure",
+      "shiny-chat-thinking-glyph",
+      "shiny-chat-thinking-label",
+      "shiny-chat-thinking-dot",
+      "shiny-chat-thinking-disclosure",
     ])
   })
 })

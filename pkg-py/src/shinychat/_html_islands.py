@@ -35,7 +35,7 @@ def split_html_islands(content: TagChild | TagList) -> list[TagChild]:
 
     Elements WITH the attribute are emitted bare.
     Consecutive elements WITHOUT the attribute are grouped into
-    <shinychat-html> wrappers.
+    <shiny-chat-raw-html> wrappers.
 
     Returns a list of TagChild items ready to be serialized.
     """
@@ -44,21 +44,21 @@ def split_html_islands(content: TagChild | TagList) -> list[TagChild]:
     elif isinstance(content, (Tag, TagifiedTag)):
         if _has_react_attr(content):
             return [content]
-        return [Tag("shinychat-raw-html", content)]
+        return [Tag("shiny-chat-raw-html", content)]
     elif isinstance(content, Tagifiable):
         resolved = content.tagify()
         if isinstance(resolved, (Tag, TagifiedTag)) and _has_react_attr(
             resolved
         ):
             return [resolved]
-        return [Tag("shinychat-raw-html", content)]
+        return [Tag("shiny-chat-raw-html", content)]
     else:
-        return [Tag("shinychat-raw-html", content)]
+        return [Tag("shiny-chat-raw-html", content)]
 
     result: list[TagChild] = []
     for is_react, group in groupby(children, _has_react_attr):
         if is_react:
             result.extend(group)
         else:
-            result.append(Tag("shinychat-raw-html", *group))
+            result.append(Tag("shiny-chat-raw-html", *group))
     return result

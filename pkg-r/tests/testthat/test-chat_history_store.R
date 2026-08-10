@@ -12,6 +12,41 @@ test_that("InMemoryConversationStore: put and get", {
   expect_equal(result$id, rec$id)
 })
 
+test_that("InMemoryConversationStore handles recorded HTML widgets", {
+  skip_if_not_installed("ellmer")
+
+  tool_result <- ellmer::ContentToolResult(
+    value = "Map created.",
+    extra = list(
+      display = list(
+        html = structure(list(), class = "htmlwidget")
+      )
+    )
+  )
+  recorded_turn <- ellmer::contents_record(
+    ellmer::UserTurn(contents = list(tool_result))
+  )
+  rec <- new_conversation_record("Map")
+  rec$nodes <- list(
+    n_0001 = list(
+      parent = NULL,
+      children = list(),
+      turns = list(recorded_turn),
+      ui = NULL,
+      selected_child = NULL
+    )
+  )
+  rec$current_leaf <- "n_0001"
+
+  store <- InMemoryConversationStore$new()
+  store$put(part(), rec)
+
+  metas <- store$list(part())
+  expect_length(metas, 1)
+  expect_equal(metas[[1]]$id, rec$id)
+  expect_gt(metas[[1]]$size_bytes, 0)
+})
+
 test_that("InMemoryConversationStore: list returns newest first", {
   store <- InMemoryConversationStore$new()
   rec1 <- new_conversation_record("First")
@@ -121,7 +156,7 @@ test_that("InMemoryConversationStore: list does not reserialize on repeat calls"
     record_json_size = function(record) {
       call_count <<- call_count + 1
       as.double(
-        nchar(jsonlite::toJSON(record, auto_unbox = TRUE), type = "bytes")
+        nchar(jsonlite::serializeJSON(record), type = "bytes")
       )
     }
   )
