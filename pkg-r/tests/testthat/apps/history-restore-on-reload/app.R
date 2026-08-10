@@ -24,6 +24,7 @@ make_echo_client <- function() {
         model = "echo-test"
       )
     },
+    get_model = function() "echo-test",
     clone = function() make_echo_client()
   )
   class(client) <- c("Chat", "R6")
