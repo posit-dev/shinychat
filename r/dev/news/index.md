@@ -4,6 +4,14 @@
 
 ### New features and improvements
 
+- Assistant messages can now attach source details to specific claims
+  with the `<shiny-aside>` markup convention. This convention powers
+  shinychat’s web citations and can also support custom RAG workflows.
+  Add an inline `<shiny-aside>` tag with source details and an optional
+  `grounded-span`. Shinychat shows a compact source pill and highlights
+  the related text when the pill is open. See the `Asides` section in
+  [`?chat_append`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_append.md).
+
 - Tool calls now render as a condensed activity row by default. Expand a
   group row to see each individual call, then drill into a call to see
   its full request/result card. Added
@@ -39,13 +47,15 @@
 
 - Added
   [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
-  as the new primary way to wire up server-side chat logic. It does the
-  same job as
+  as the new primary way to wire up server-side chat logic. Pair it with
+  [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
+  by matching `id`, e.g. `chat_ui("chat")` with
+  `chat_server("chat", client)`. It does the same job as
   [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_mod_ui.md)
   but runs directly in the caller’s session scope rather than creating
   its own module scope. If you’re already inside a
   [`moduleServer()`](https://rdrr.io/pkg/shiny/man/moduleServer.html),
-  pass that session in — no extra nesting, no doubled namespaces.
+  pass that session in.
   [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_mod_ui.md)
   and
   [`chat_mod_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_mod_ui.md)
@@ -117,6 +127,16 @@
   ([\#251](https://github.com/posit-dev/shinychat/issues/251))
 
 ### Breaking changes
+
+- The CSS classes used by the external-link dialog, thinking display,
+  and tool-result images/PDFs now use the `.shiny-chat-*` prefix instead
+  of `.shinychat-*`. The thinking display’s custom properties and
+  animation names have likewise changed from `--shinychat-thinking-*` /
+  `shinychat-thinking-*` to `--shiny-chat-thinking-*` /
+  `shiny-chat-thinking-*`. Update any custom CSS that targets these
+  identifiers.
+  ([\#285](https://github.com/posit-dev/shinychat/issues/285),
+  [\#286](https://github.com/posit-dev/shinychat/issues/286))
 
 - A tool’s definition `title` (from its annotations) and its result
   `title` (from

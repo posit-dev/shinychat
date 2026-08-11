@@ -50,6 +50,9 @@ Create a new file-based conversation store.
 
 ### `FileConversationStore$list()`
 
+All conversations in `partition`, newest-first by `updated_at`, read
+from one `record.json` per conversation directory on disk.
+
 #### Usage
 
     FileConversationStore$list(partition)
@@ -60,9 +63,16 @@ Create a new file-based conversation store.
 
   A `conversation_partition()`.
 
+#### Returns
+
+A list of conversation meta lists.
+
 ------------------------------------------------------------------------
 
 ### `FileConversationStore$get()`
+
+The full conversation record for `id` in `partition`, reassembled from
+`record.json`, `turns.jsonl`, and `ui.jsonl`.
 
 #### Usage
 
@@ -79,9 +89,16 @@ Create a new file-based conversation store.
   A conversation id, as found in the `id` field of a conversation meta
   list.
 
+#### Returns
+
+The conversation record, or `NULL` if missing.
+
 ------------------------------------------------------------------------
 
 ### `FileConversationStore$put()`
+
+Upsert `record` into `partition`, appending new turns and UI data to
+`turns.jsonl`/`ui.jsonl` and rewriting `record.json`.
 
 #### Usage
 
@@ -98,9 +115,16 @@ Create a new file-based conversation store.
   A conversation record, in the same shape returned by
   [`get()`](https://rdrr.io/r/base/get.html).
 
+#### Returns
+
+`NULL`, invisibly.
+
 ------------------------------------------------------------------------
 
 ### `FileConversationStore$delete()`
+
+Remove the conversation `id` from `partition` by deleting its directory.
+Missing ids are a no-op.
 
 #### Usage
 
@@ -116,6 +140,10 @@ Create a new file-based conversation store.
 
   A conversation id, as found in the `id` field of a conversation meta
   list.
+
+#### Returns
+
+`NULL`, invisibly.
 
 ------------------------------------------------------------------------
 

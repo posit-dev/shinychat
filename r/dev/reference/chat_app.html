@@ -225,7 +225,10 @@ command with the same name is already registered unless
 <ul><li><p><code>chat_app()</code>: A simple Shiny app for live chatting. Note that this
 app is suitable for interactive use by a single user; do not use
 <code>chat_app()</code> in a multi-user Shiny app context.</p></li>
-<li><p><code>chat_server()</code>: Wire up batteries-included chat server logic in a Shiny session.</p></li>
+<li><p><code>chat_server()</code>: Wire up batteries-included chat server logic in a Shiny
+session. Pair with <code><a href="chat_ui.html">chat_ui()</a></code> by passing it the same <code>id</code>; see <em>Pairing
+with <code>chat_server()</code></em> in <code><a href="chat_ui.html">chat_ui()</a></code> for the top-level and module-based
+patterns.</p></li>
 </ul></div>
     <div class="section level2">
     <h2 id="greeting">Greeting<a class="anchor" aria-label="anchor" href="#greeting"></a></h2>

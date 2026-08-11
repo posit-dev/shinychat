@@ -94,7 +94,9 @@
 
 <p></p><hr><a id="method-FileConversationStore-list"></a><div class="section">
 <h3 id="fileconversationstore-list-"><code>FileConversationStore$list()</code><a class="anchor" aria-label="anchor" href="#fileconversationstore-list-"></a></h3>
-<p></p><div class="section">
+<p>All conversations in <code>partition</code>, newest-first by
+<code>updated_at</code>, read from one <code>record.json</code> per conversation directory
+on disk.</p><div class="section">
 <h4 id="usage-1">Usage<a class="anchor" aria-label="anchor" href="#usage-1"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileConversationStore</span><span class="op">$</span><span class="fu">list</span><span class="op">(</span><span class="va">partition</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div><p></p><div class="section">
@@ -104,13 +106,17 @@
 
 
 </dl><p></p></div>
+</div><p></p><div class="section">
+<h4 id="returns">Returns<a class="anchor" aria-label="anchor" href="#returns"></a></h4>
+<p>A list of conversation meta lists.</p>
 </div>
 
 </div>
 
 <p></p><hr><a id="method-FileConversationStore-get"></a><div class="section">
 <h3 id="fileconversationstore-get-"><code>FileConversationStore$get()</code><a class="anchor" aria-label="anchor" href="#fileconversationstore-get-"></a></h3>
-<p></p><div class="section">
+<p>The full conversation record for <code>id</code> in <code>partition</code>,
+reassembled from <code>record.json</code>, <code>turns.jsonl</code>, and <code>ui.jsonl</code>.</p><div class="section">
 <h4 id="usage-2">Usage<a class="anchor" aria-label="anchor" href="#usage-2"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileConversationStore</span><span class="op">$</span><span class="fu">get</span><span class="op">(</span><span class="va">partition</span>, <span class="va">id</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div><p></p><div class="section">
@@ -124,13 +130,17 @@ conversation meta list.</p></dd>
 
 
 </dl><p></p></div>
+</div><p></p><div class="section">
+<h4 id="returns-1">Returns<a class="anchor" aria-label="anchor" href="#returns-1"></a></h4>
+<p>The conversation record, or <code>NULL</code> if missing.</p>
 </div>
 
 </div>
 
 <p></p><hr><a id="method-FileConversationStore-put"></a><div class="section">
 <h3 id="fileconversationstore-put-"><code>FileConversationStore$put()</code><a class="anchor" aria-label="anchor" href="#fileconversationstore-put-"></a></h3>
-<p></p><div class="section">
+<p>Upsert <code>record</code> into <code>partition</code>, appending new turns and
+UI data to <code>turns.jsonl</code>/<code>ui.jsonl</code> and rewriting <code>record.json</code>.</p><div class="section">
 <h4 id="usage-3">Usage<a class="anchor" aria-label="anchor" href="#usage-3"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileConversationStore</span><span class="op">$</span><span class="fu">put</span><span class="op">(</span><span class="va">partition</span>, <span class="va">record</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div><p></p><div class="section">
@@ -144,13 +154,17 @@ conversation meta list.</p></dd>
 
 
 </dl><p></p></div>
+</div><p></p><div class="section">
+<h4 id="returns-2">Returns<a class="anchor" aria-label="anchor" href="#returns-2"></a></h4>
+<p><code>NULL</code>, invisibly.</p>
 </div>
 
 </div>
 
 <p></p><hr><a id="method-FileConversationStore-delete"></a><div class="section">
 <h3 id="fileconversationstore-delete-"><code>FileConversationStore$delete()</code><a class="anchor" aria-label="anchor" href="#fileconversationstore-delete-"></a></h3>
-<p></p><div class="section">
+<p>Remove the conversation <code>id</code> from <code>partition</code> by deleting
+its directory. Missing ids are a no-op.</p><div class="section">
 <h4 id="usage-4">Usage<a class="anchor" aria-label="anchor" href="#usage-4"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileConversationStore</span><span class="op">$</span><span class="fu">delete</span><span class="op">(</span><span class="va">partition</span>, <span class="va">id</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div><p></p><div class="section">
@@ -164,6 +178,9 @@ conversation meta list.</p></dd>
 
 
 </dl><p></p></div>
+</div><p></p><div class="section">
+<h4 id="returns-3">Returns<a class="anchor" aria-label="anchor" href="#returns-3"></a></h4>
+<p><code>NULL</code>, invisibly.</p>
 </div>
 
 </div>

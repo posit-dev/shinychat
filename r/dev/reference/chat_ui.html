@@ -260,6 +260,33 @@ grouping for the whole chat.</p></dd>
     <p>A Shiny tag object, suitable for inclusion in a Shiny UI</p>
     </div>
     <div class="section level2">
+    <h2 id="pairing-with-chat-server-">Pairing with <code><a href="chat_app.html">chat_server()</a></code><a class="anchor" aria-label="anchor" href="#pairing-with-chat-server-"></a></h2>
+
+
+
+<p><code>chat_ui(id)</code> and <code>chat_server(id, client)</code> pair by matching <code>id</code>. This
+works the same way at the top level of an app and inside your own Shiny
+module — <code><a href="chat_app.html">chat_server()</a></code> is not itself a module, so no <code>NS(id, "chat")</code>
+wrapping is required:</p>
+<p></p><div class="sourceCode r"><pre><code><span><span class="co"># Top-level app, no module</span></span>
+<span><span class="va">ui</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rstudio.github.io/bslib/reference/page_fillable.html" class="external-link">page_fillable</a></span><span class="op">(</span><span class="fu"><a href="../reference/chat_ui.html">chat_ui</a></span><span class="op">(</span><span class="st">"chat"</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">server</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">input</span>, <span class="va">output</span>, <span class="va">session</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="fu"><a href="../reference/chat_app.html">chat_server</a></span><span class="op">(</span><span class="st">"chat"</span>, <span class="va">client</span><span class="op">)</span></span>
+<span><span class="op">}</span></span></code></pre><p></p></div>
+<p></p><div class="sourceCode r"><pre><code><span><span class="co"># Inside your own module: pass the same literal id to both, and call</span></span>
+<span><span class="co"># chat_server() from inside moduleServer() so it inherits the module's</span></span>
+<span><span class="co"># already-namespaced `session`</span></span>
+<span><span class="va">mod_ui</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">id</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="va">ns</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/pkg/shiny/man/NS.html" class="external-link">NS</a></span><span class="op">(</span><span class="va">id</span><span class="op">)</span></span>
+<span>  <span class="fu"><a href="../reference/chat_ui.html">chat_ui</a></span><span class="op">(</span><span class="fu">ns</span><span class="op">(</span><span class="st">"chat"</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span><span class="va">mod_server</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">id</span>, <span class="va">client</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/pkg/shiny/man/moduleServer.html" class="external-link">moduleServer</a></span><span class="op">(</span><span class="va">id</span>, <span class="kw">function</span><span class="op">(</span><span class="va">input</span>, <span class="va">output</span>, <span class="va">session</span><span class="op">)</span> <span class="op">{</span></span>
+<span>    <span class="fu"><a href="../reference/chat_app.html">chat_server</a></span><span class="op">(</span><span class="st">"chat"</span>, <span class="va">client</span><span class="op">)</span></span>
+<span>  <span class="op">}</span><span class="op">)</span></span>
+<span><span class="op">}</span></span></code></pre><p></p></div>
+    </div>
+    <div class="section level2">
     <h2 id="greeting">Greeting<a class="anchor" aria-label="anchor" href="#greeting"></a></h2>
 
 

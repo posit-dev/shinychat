@@ -148,6 +148,77 @@ the error. If the <code>chat_append</code> call is the last expression in a Shin
 observer, shinychat will log the error message and show a message that the
 error occurred in the chat UI.</p>
     </div>
+    <div class="section level2">
+    <h2 id="asides">Asides<a class="anchor" aria-label="anchor" href="#asides"></a></h2>
+    <p>An aside is a small pill that appears at the end of the paragraph or list
+item it's attached to, showing a popover on hover, click, or keyboard
+focus. Create one by writing (or prompting an LLM to write) an inline
+<code>&lt;shiny-aside&gt;</code> tag anywhere in a block's markdown; the tag's content
+becomes the popover body:</p><ul><li><p><code>&lt;shiny-aside label="a source name" url="https://..."&gt;markdown shown in the popover&lt;/shiny-aside&gt;</code></p></li>
+</ul><p><code>label</code> controls the text on the identity chip. A safe <code>url</code> makes the
+source heading in the popover a link. It also supplies a derived favicon
+unless <code>icon</code> overrides it. Without a <code>label</code>, the aside falls back to a
+plain numbered marker. The body is ordinary markdown: inline for a one-liner,
+or — by separating it with blank lines — a rich block body (paragraphs,
+lists, code) shown in the popover. Labeled asides in the same paragraph or
+list item collapse into one pill, with each aside kept as a separate popover
+page. Each unlabeled aside remains a separate numbered pill. The grouped
+pill shows a <code>+N</code> overflow count only when its labeled asides have different
+labels. Asides that share one label use a single face with no count.</p>
+<p><code>grounded-span</code> identifies the answer text that is related to an aside.
+Its value must exactly match text before the tag in the same paragraph or
+list item. When the popover opens, shinychat highlights the most recent
+match. If the value does not match, no text is highlighted.</p>
+<p>Long content wraps and scrolls within the viewport. The popover keeps the
+nearest scoped Bootstrap theme. In a paged popover, page changes are
+announced to assistive technology without repeating the body.</p>
+<p>The favicon is fetched at render time from a third-party service
+(DuckDuckGo's icon service), which receives the cited site's hostname. To
+avoid that request — for privacy, or for offline/air-gapped deployments —
+set the <code>SHINYCHAT_ASIDE_FAVICON</code> environment variable to <code>false</code>. You can
+still set <code>icon</code> to a URL you control; an explicit <code>icon</code> bypasses the
+lookup entirely.</p>
+<p><strong>A labeled aside with a grounded span and a one-line body:</strong></p>
+<p></p><div class="sourceCode r"><pre><code><span><span class="fu"><a href="../reference/chat_append.html">chat_append</a></span><span class="op">(</span></span>
+<span>  <span class="st">"chat"</span>,</span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span></span>
+<span>    <span class="st">"Hub motors are cheaper"</span>,</span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span></span>
+<span>      <span class="st">'&lt;shiny-aside label="eBicycles" '</span>,</span>
+<span>      <span class="st">'url="https://ebicycles.example/hub-vs-mid-drive" '</span>,</span>
+<span>      <span class="st">'grounded-span="Hub motors are cheaper"&gt;'</span></span>
+<span>    <span class="op">)</span>,</span>
+<span>    <span class="st">"[Hub Motor vs. Mid-Drive Motor Differences Explained]"</span>,</span>
+<span>    <span class="st">"(https://ebicycles.example/hub-vs-mid-drive)"</span>,</span>
+<span>    <span class="st">"&lt;/shiny-aside&gt;"</span>,</span>
+<span>    <span class="st">", and ideal for flatter terrain."</span></span>
+<span>  <span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre><p></p></div>
+<p><strong>Two asides cited in the same sentence</strong> collapse into one pill (the
+first source's label becomes the face, with a "+1" overflow):</p>
+<p></p><div class="sourceCode r"><pre><code><span><span class="fu"><a href="../reference/chat_append.html">chat_append</a></span><span class="op">(</span></span>
+<span>  <span class="st">"chat"</span>,</span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span></span>
+<span>    <span class="st">"Hub motors are cheaper"</span>,</span>
+<span>    <span class="st">'&lt;shiny-aside label="eBicycles" url="https://ebicycles.example"&gt;...&lt;/shiny-aside&gt;'</span>,</span>
+<span>    <span class="st">'&lt;shiny-aside label="WIRED" url="https://wired.example"&gt;...&lt;/shiny-aside&gt;'</span>,</span>
+<span>    <span class="st">", and ideal for flatter terrain."</span></span>
+<span>  <span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre><p></p></div>
+<p><strong>A label-less aside with a rich block body</strong> (falls back to a plain
+numbered pill):</p>
+<p></p><div class="sourceCode r"><pre><code><span><span class="fu"><a href="../reference/chat_append.html">chat_append</a></span><span class="op">(</span></span>
+<span>  <span class="st">"chat"</span>,</span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span></span>
+<span>    <span class="st">"Battery quality matters more than raw power"</span>,</span>
+<span>    <span class="st">"&lt;shiny-aside&gt;\n\n"</span>,</span>
+<span>    <span class="st">"**Methodology**\n\n"</span>,</span>
+<span>    <span class="st">"- 40 commuter e-bike models\n"</span>,</span>
+<span>    <span class="st">"- released in 2024\n\n"</span>,</span>
+<span>    <span class="st">"&lt;/shiny-aside&gt;"</span></span>
+<span>  <span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre><p></p></div>
+    </div>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>

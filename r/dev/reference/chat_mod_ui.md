@@ -4,9 +4,12 @@
 
 These functions are deprecated as of shinychat 0.5.0. Use
 [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
-with `NS(id, "chat")` and
+and
 [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
-instead.
+instead, pairing them by `id` as described in *Pairing with
+[`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)*
+in
+[`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md).
 
 ## Usage
 

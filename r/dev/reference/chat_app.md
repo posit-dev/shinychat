@@ -202,7 +202,11 @@ chat_server(
   `chat_app()` in a multi-user Shiny app context.
 
 - `chat_server()`: Wire up batteries-included chat server logic in a
-  Shiny session.
+  Shiny session. Pair with
+  [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
+  by passing it the same `id`; see *Pairing with `chat_server()`* in
+  [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
+  for the top-level and module-based patterns.
 
 ## Greeting
 

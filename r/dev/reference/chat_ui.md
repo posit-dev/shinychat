@@ -203,6 +203,33 @@ chat_ui(
 
 A Shiny tag object, suitable for inclusion in a Shiny UI
 
+## Pairing with [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+
+`chat_ui(id)` and `chat_server(id, client)` pair by matching `id`. This
+works the same way at the top level of an app and inside your own Shiny
+module —
+[`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+is not itself a module, so no `NS(id, "chat")` wrapping is required:
+
+    # Top-level app, no module
+    ui <- page_fillable(chat_ui("chat"))
+    server <- function(input, output, session) {
+      chat_server("chat", client)
+    }
+
+    # Inside your own module: pass the same literal id to both, and call
+    # chat_server() from inside moduleServer() so it inherits the module's
+    # already-namespaced `session`
+    mod_ui <- function(id) {
+      ns <- NS(id)
+      chat_ui(ns("chat"))
+    }
+    mod_server <- function(id, client) {
+      moduleServer(id, function(input, output, session) {
+        chat_server("chat", client)
+      })
+    }
+
 ## Greeting
 
 A greeting is an optional welcome message shown before any conversation
