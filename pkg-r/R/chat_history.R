@@ -639,6 +639,11 @@ history_options <- function(
   max_store_mb = 100
 ) {
   restore_mode <- match.arg(restore_mode)
+  if (!is.function(title) && !is.null(title) && !identical(title, "auto")) {
+    rlang::abort(
+      '`title` must be "auto", a function(recorded_turns), or NULL.'
+    )
+  }
   structure(
     list(
       restore_mode = restore_mode,
