@@ -353,7 +353,7 @@ test_that("on_response_saved fires on every response", {
   ctrl <- HistoryController$new(
     chat_id = "chat",
     client = client,
-    options = history_options(store = store, title = "fallback"),
+    options = history_options(store = store, title = NULL),
     session = session
   )
   ctrl$partition <- conversation_partition("chat", "test-user")
@@ -380,7 +380,7 @@ test_that("on_pre_switch returning TRUE skips the in-session swap", {
   ctrl <- HistoryController$new(
     chat_id = "chat",
     client = client,
-    options = history_options(store = store, title = "fallback"),
+    options = history_options(store = store, title = NULL),
     session = session
   )
   ctrl$partition <- conversation_partition("chat", "test-user")
@@ -416,7 +416,7 @@ test_that("on_pre_switch returning FALSE allows the in-session swap", {
   ctrl <- HistoryController$new(
     chat_id = "chat",
     client = client,
-    options = history_options(store = store, title = "fallback"),
+    options = history_options(store = store, title = NULL),
     session = session
   )
   ctrl$partition <- conversation_partition("chat", "test-user")
@@ -443,7 +443,7 @@ test_that("switch_to() raises on a nonexistent conversation id", {
   ctrl <- HistoryController$new(
     chat_id = "chat",
     client = client,
-    options = history_options(store = store, title = "fallback"),
+    options = history_options(store = store, title = NULL),
     session = session
   )
   ctrl$partition <- conversation_partition("chat", "test-user")
@@ -1021,7 +1021,7 @@ test_that("on_evict fires before store$delete in evict_one and delete", {
   ctrl <- HistoryController$new(
     chat_id = "chat",
     client = client,
-    options = history_options(store = store, title = "fallback"),
+    options = history_options(store = store, title = NULL),
     session = session
   )
   ctrl$partition <- conversation_partition("chat", "test-user")
