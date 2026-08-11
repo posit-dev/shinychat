@@ -297,6 +297,11 @@ FileConversationStore <- R6::R6Class(
       private$write_state <- list()
     },
 
+    #' @description All conversations in `partition`, newest-first by
+    #'   `updated_at`, read from one `record.json` per conversation directory
+    #'   on disk.
+    #' @param partition A `conversation_partition()`.
+    #' @returns A list of conversation meta lists.
     list = function(partition) {
       key <- partition_key(partition)
       cached <- private$meta_cache[[key]]
@@ -346,6 +351,12 @@ FileConversationStore <- R6::R6Class(
       metas
     },
 
+    #' @description The full conversation record for `id` in `partition`,
+    #'   reassembled from `record.json`, `turns.jsonl`, and `ui.jsonl`.
+    #' @param partition A `conversation_partition()`.
+    #' @param id A conversation id, as found in the `id` field of a
+    #'   conversation meta list.
+    #' @returns The conversation record, or `NULL` if missing.
     get = function(partition, id) {
       cdir <- safe_conv_path(private$partition_dir(partition), id)
       record_file <- file.path(cdir, "record.json")
@@ -427,6 +438,12 @@ FileConversationStore <- R6::R6Class(
       )
     },
 
+    #' @description Upsert `record` into `partition`, appending new turns and
+    #'   UI data to `turns.jsonl`/`ui.jsonl` and rewriting `record.json`.
+    #' @param partition A `conversation_partition()`.
+    #' @param record A conversation record, in the same shape returned by
+    #'   `get()`.
+    #' @returns `NULL`, invisibly.
     put = function(partition, record) {
       key <- partition_key(partition)
       cdir <- safe_conv_path(private$partition_dir(partition), record$id)
@@ -551,6 +568,12 @@ FileConversationStore <- R6::R6Class(
       invisible(NULL)
     },
 
+    #' @description Remove the conversation `id` from `partition` by deleting
+    #'   its directory. Missing ids are a no-op.
+    #' @param partition A `conversation_partition()`.
+    #' @param id A conversation id, as found in the `id` field of a
+    #'   conversation meta list.
+    #' @returns `NULL`, invisibly.
     delete = function(partition, id) {
       key <- partition_key(partition)
       cdir <- safe_conv_path(private$partition_dir(partition), id)
