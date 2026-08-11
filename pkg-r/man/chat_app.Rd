@@ -146,7 +146,10 @@ sure to create a new chat client for each user session.
 app is suitable for interactive use by a single user; do not use
 \code{chat_app()} in a multi-user Shiny app context.
 
-\item \code{chat_server()}: Wire up batteries-included chat server logic in a Shiny session.
+\item \code{chat_server()}: Wire up batteries-included chat server logic in a Shiny
+session. Pair with \code{\link[=chat_ui]{chat_ui()}} by passing it the same \code{id}; see \emph{Pairing
+with \code{chat_server()}} in \code{\link[=chat_ui]{chat_ui()}} for the top-level and module-based
+patterns.
 
 }}
 \section{Greeting}{
