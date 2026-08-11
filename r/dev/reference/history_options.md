@@ -36,7 +36,10 @@ history_options(
   Storage backend: `"auto"` (default: memory in dev, file in
   production), `"memory"`, `"file"`, or a
   [ConversationStore](https://posit-dev.github.io/shinychat/r/dev/reference/ConversationStore.md)
-  R6 instance.
+  R6 instance. `"auto"` emits a once-per-session message announcing
+  which backend was chosen; set
+  `options(shinychat.history_options.store_auto.quiet = TRUE)` to
+  silence it.
 
 - scope:
 

@@ -88,7 +88,10 @@ conversation's bookmark URL if one exists.
 
 <dt id="arg-store">store<a class="anchor" aria-label="anchor" href="#arg-store"></a></dt>
 <dd><p>Storage backend: <code>"auto"</code> (default: memory in dev, file in
-production), <code>"memory"</code>, <code>"file"</code>, or a <a href="ConversationStore.html">ConversationStore</a> R6 instance.</p></dd>
+production), <code>"memory"</code>, <code>"file"</code>, or a <a href="ConversationStore.html">ConversationStore</a> R6 instance.
+<code>"auto"</code> emits a once-per-session message announcing which backend was
+chosen; set <code>options(shinychat.history_options.store_auto.quiet = TRUE)</code>
+to silence it.</p></dd>
 
 
 <dt id="arg-scope">scope<a class="anchor" aria-label="anchor" href="#arg-scope"></a></dt>
