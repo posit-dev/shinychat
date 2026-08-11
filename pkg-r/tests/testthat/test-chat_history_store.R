@@ -114,7 +114,10 @@ test_that("InMemoryConversationStore partition keys avoid delimiter collisions",
 })
 
 test_that("resolve_store('auto') in dev mode reuses one process memory store", {
-  withr::local_options(shiny.devmode = TRUE)
+  withr::local_options(
+    shiny.devmode = TRUE,
+    shinychat.history_options.store_auto.quiet = TRUE
+  )
   withr::local_envvar(TESTTHAT = "false")
 
   store1 <- resolve_store("auto")
@@ -122,6 +125,36 @@ test_that("resolve_store('auto') in dev mode reuses one process memory store", {
 
   expect_true(inherits(store1, "InMemoryConversationStore"))
   expect_true(identical(store1, store2))
+})
+
+test_that("resolve_store('auto') announces the dev-mode backend once per session", {
+  withr::local_options(
+    shiny.devmode = TRUE,
+    shinychat.history_options.store_auto.quiet = FALSE
+  )
+  withr::local_envvar(TESTTHAT = "false")
+  rlang::reset_message_verbosity("shinychat_store_auto_memory")
+
+  expect_snapshot(invisible(resolve_store("auto")))
+  expect_no_message(resolve_store("auto"))
+})
+
+test_that("resolve_store('auto') announces the file-based backend once per session", {
+  withr::local_options(
+    shiny.devmode = FALSE,
+    shinychat.history_options.store_auto.quiet = FALSE
+  )
+  rlang::reset_message_verbosity("shinychat_store_auto_file")
+
+  expect_snapshot(invisible(resolve_store("auto")))
+  expect_no_message(resolve_store("auto"))
+})
+
+test_that("resolve_store('auto') is quiet by default under testthat", {
+  withr::local_options(shiny.devmode = FALSE)
+  rlang::reset_message_verbosity("shinychat_store_auto_file")
+
+  expect_no_message(resolve_store("auto"))
 })
 
 test_that("resolve_store('memory') returns a fresh memory store", {

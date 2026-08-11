@@ -614,6 +614,9 @@ HistoryController <- R6::R6Class(
 #'   `"none"` disables automatic restore entirely.
 #' @param store Storage backend: `"auto"` (default: memory in dev, file in
 #'   production), `"memory"`, `"file"`, or a [ConversationStore] R6 instance.
+#'   `"auto"` emits a once-per-session message announcing which backend was
+#'   chosen; set `options(shinychat.history_options.store_auto.quiet = TRUE)`
+#'   to silence it.
 #' @param scope Storage namespace for conversations. A string, a
 #'   `function(session)` returning a string, or `NULL` (default: uses
 #'   `session$user` if authenticated, otherwise a per-browser token).
