@@ -608,22 +608,39 @@ resolve_store <- function(store) {
   }
 
   store <- match.arg(store, c("auto", "memory", "file"))
+  quiet <- getOption(
+    "shinychat.history_options.store_auto.quiet",
+    default = identical(Sys.getenv("TESTTHAT"), "true")
+  )
+  quiet_hint <- c(
+    i = "Set {.code options(shinychat.history_options.store_auto.quiet = TRUE)} to silence this message."
+  )
   switch(
     store,
     auto = {
       if (shiny::in_devmode()) {
-        cli::cli_inform(
-          "Chat history: using in-memory storage (dev mode). History is lost on restart. To persist across restarts, use {.code history_options(store = \"file\")}.",
-          .frequency = "once",
-          .frequency_id = "shinychat_store_auto_memory"
-        )
+        if (!quiet) {
+          cli::cli_inform(
+            c(
+              "Chat history: using in-memory storage (dev mode). History is lost on restart. To persist across restarts, use {.code history_options(store = \"file\")}.",
+              quiet_hint
+            ),
+            .frequency = "once",
+            .frequency_id = "shinychat_store_auto_memory"
+          )
+        }
         auto_dev_memory_store()
       } else {
-        cli::cli_inform(
-          "Chat history: using file-based storage. To use in-memory storage instead, use {.code history_options(store = \"memory\")}.",
-          .frequency = "once",
-          .frequency_id = "shinychat_store_auto_file"
-        )
+        if (!quiet) {
+          cli::cli_inform(
+            c(
+              "Chat history: using file-based storage. To use in-memory storage instead, use {.code history_options(store = \"memory\")}.",
+              quiet_hint
+            ),
+            .frequency = "once",
+            .frequency_id = "shinychat_store_auto_file"
+          )
+        }
         FileConversationStore$new()
       }
     },

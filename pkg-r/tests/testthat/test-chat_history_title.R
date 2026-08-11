@@ -55,3 +55,14 @@ test_that("fallback_title() truncates long messages", {
 test_that("fallback_title() returns 'New chat' for empty turns", {
   expect_equal(fallback_title(list()), "New chat")
 })
+
+test_that("history_options() accepts 'auto', a function, or NULL for title", {
+  expect_no_error(history_options(title = "auto"))
+  expect_no_error(history_options(title = function(recorded_turns) "Title"))
+  expect_no_error(history_options(title = NULL))
+})
+
+test_that("history_options() errors on unrecognized title values", {
+  expect_error(history_options(title = "fallback"), "auto")
+  expect_error(history_options(title = TRUE), "auto")
+})
