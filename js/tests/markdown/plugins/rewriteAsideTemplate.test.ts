@@ -5,10 +5,13 @@ import remarkGfm from "remark-gfm"
 import remarkRehype from "remark-rehype"
 import rehypeRaw from "rehype-raw"
 import rehypeStringify from "rehype-stringify"
+import type { Element, Root } from "hast"
 import {
   rehypeRewriteAsideToTemplate,
   rehypeRewriteAsideFromTemplate,
 } from "../../../src/markdown/plugins/rewriteAsideTemplate"
+import { markdownProcessor } from "../../../src/markdown/processors"
+import { parseMarkdown } from "../../../src/markdown/markdownToReact"
 
 function process(md: string): string {
   return String(
@@ -22,6 +25,16 @@ function process(md: string): string {
       .use(rehypeStringify)
       .processSync(md),
   )
+}
+
+function findElements(node: Root | Element, tagName: string): Element[] {
+  const found: Element[] = []
+  for (const child of node.children) {
+    if (child.type !== "element") continue
+    if (child.tagName === tagName) found.push(child)
+    found.push(...findElements(child, tagName))
+  }
+  return found
 }
 
 describe("rewriteAsideTemplate round-trip", () => {
@@ -88,5 +101,124 @@ describe("rewriteAsideTemplate round-trip", () => {
     expect(html).not.toContain("<template")
     // The literal text is escaped inside <code>, so no real element appears.
     expect(html).not.toContain("<shiny-aside")
+  })
+
+  it("leaves aside markup literal inside an inline code span", () => {
+    const tree = parseMarkdown(
+      "`<shiny-aside>literal</shiny-aside>`",
+      markdownProcessor,
+    )
+    expect(findElements(tree, "shiny-aside")).toHaveLength(0)
+    expect(findElements(tree, "code")).toHaveLength(1)
+  })
+
+  it("leaves aside markup literal inside a fenced code block", () => {
+    const tree = parseMarkdown(
+      "```\n<shiny-aside>literal</shiny-aside>\n```",
+      markdownProcessor,
+    )
+    expect(findElements(tree, "shiny-aside")).toHaveLength(0)
+    expect(findElements(tree, "code")).toHaveLength(1)
+  })
+
+  it("keeps rich asides attached to adjacent top-level list items", () => {
+    const markdown = [
+      "- First claim.",
+      '<shiny-aside label="Source A">',
+      "",
+      "**Reason A**",
+      "",
+      "> Exact supporting quote A.",
+      "",
+      "*Quoted verbatim; matched exactly.*",
+      "",
+      "</shiny-aside>",
+      "",
+      "- Second claim.",
+      '<shiny-aside label="Source B">',
+      "",
+      "**Reason B**",
+      "",
+      "> Exact supporting quote B.",
+      "",
+      "*Quoted verbatim; matched exactly.*",
+      "",
+      "</shiny-aside>",
+    ].join("\n")
+
+    const tree = parseMarkdown(markdown, markdownProcessor)
+    const topLevelLists = tree.children.filter(
+      (child): child is Element =>
+        child.type === "element" && child.tagName === "ul",
+    )
+    const topLevelItems = topLevelLists.flatMap((list) =>
+      list.children.filter(
+        (child): child is Element =>
+          child.type === "element" && child.tagName === "li",
+      ),
+    )
+    expect(topLevelItems).toHaveLength(2)
+    expect(findElements(topLevelItems[0]!, "li")).toHaveLength(0)
+    expect(findElements(topLevelItems[1]!, "li")).toHaveLength(0)
+    expect(findElements(topLevelItems[0]!, "shiny-aside-group")).toHaveLength(1)
+    expect(findElements(topLevelItems[0]!, "strong")).toHaveLength(1)
+    expect(findElements(topLevelItems[0]!, "blockquote")).toHaveLength(1)
+    expect(findElements(topLevelItems[0]!, "em")).toHaveLength(1)
+    expect(findElements(topLevelItems[1]!, "shiny-aside-group")).toHaveLength(1)
+    expect(findElements(topLevelItems[1]!, "strong")).toHaveLength(1)
+    expect(findElements(topLevelItems[1]!, "blockquote")).toHaveLength(1)
+    expect(findElements(topLevelItems[1]!, "em")).toHaveLength(1)
+  })
+
+  it("keeps a rich aside attached to its nested list item", () => {
+    const markdown = [
+      "- Outer item",
+      "  - Nested claim.",
+      '  <shiny-aside label="Nested">',
+      "",
+      "  **Nested reason**",
+      "",
+      "  > Nested quote.",
+      "",
+      "  *Nested note.*",
+      "",
+      "  </shiny-aside>",
+      "- Next outer item",
+    ].join("\n")
+
+    const tree = parseMarkdown(markdown, markdownProcessor)
+    const topLevelList = findElements(tree, "ul")[0]!
+    const topLevelItems = topLevelList.children.filter(
+      (child): child is Element =>
+        child.type === "element" && child.tagName === "li",
+    )
+    expect(topLevelItems).toHaveLength(2)
+
+    const nestedList = findElements(topLevelItems[0]!, "ul")[0]!
+    const nestedItems = nestedList.children.filter(
+      (child): child is Element =>
+        child.type === "element" && child.tagName === "li",
+    )
+    expect(nestedItems).toHaveLength(1)
+    expect(findElements(nestedItems[0]!, "shiny-aside-group")).toHaveLength(1)
+    expect(findElements(nestedItems[0]!, "strong")).toHaveLength(1)
+    expect(findElements(nestedItems[0]!, "blockquote")).toHaveLength(1)
+    expect(findElements(nestedItems[0]!, "em")).toHaveLength(1)
+  })
+
+  it("sanitizes URLs after restoring a protected list-item aside", () => {
+    const markdown = [
+      "- Claim.",
+      '<shiny-aside label="Source" url="javascript:alert(1)">',
+      "",
+      "**Reason**",
+      "",
+      "</shiny-aside>",
+    ].join("\n")
+
+    const tree = parseMarkdown(markdown, markdownProcessor)
+    const asides = findElements(tree, "shiny-aside")
+    expect(asides).toHaveLength(1)
+    expect(asides[0]!.properties.url).toBe("")
   })
 })
