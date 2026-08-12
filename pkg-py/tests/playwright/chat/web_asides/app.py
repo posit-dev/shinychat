@@ -57,7 +57,7 @@ async def fake_stream():
         f"{LONG_ASIDE_BODY}"
         "</shiny-aside>"
     )
-    yield "\n\n- A list claim with a rich citation\n"
+    yield "\n\n- A list claim with a rich citation  \n"
     yield (
         '<shiny-aside label="List source" url="https://example.com/list-source">'
         "\n\n"

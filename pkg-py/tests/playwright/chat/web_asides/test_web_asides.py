@@ -112,6 +112,7 @@ def test_rich_list_item_aside_renders_inline(
 
     group = list_item.locator(":scope > p > .shiny-aside-group")
     expect(group).to_have_count(1)
+    expect(list_item.locator(":scope > p > br")).to_have_count(0)
     assert group.evaluate(
         """group => {
           const previous = group.previousSibling;

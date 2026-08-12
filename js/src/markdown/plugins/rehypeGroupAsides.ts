@@ -121,7 +121,7 @@ function transform(tree: Root): void {
     if (!isAsideContainer(node)) return
     const found = collectAndRemoveAsides(node)
     if (found.length === 0) return
-    trimTrailingWhitespace(node.children)
+    trimTrailingAsideBreaks(node.children)
     node.children.push(...makeGroups(found))
   })
 
@@ -130,9 +130,13 @@ function transform(tree: Root): void {
   assignAnonymousAsideIndexes(tree)
 }
 
-function trimTrailingWhitespace(children: ElementContent[]): void {
+function trimTrailingAsideBreaks(children: ElementContent[]): void {
   while (children.length > 0) {
     const last = children[children.length - 1]!
+    if (last.type === "element" && last.tagName === "br") {
+      children.pop()
+      continue
+    }
     if (last.type !== "text") return
 
     const value = last.value.trimEnd()
