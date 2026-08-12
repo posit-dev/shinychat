@@ -17,9 +17,9 @@ def test_web_asides(page: Page, local_app: ShinyAppProc) -> None:
     chat.set_user_input("tell me about e-bike motors")
     chat.send_user_input()
 
-    # Wait for the stream to finish: three aside groups should appear.
+    # Wait for the stream to finish: four aside groups should appear.
     groups = page.locator(".shiny-aside-group")
-    expect(groups).to_have_count(3, timeout=30 * 1000)
+    expect(groups).to_have_count(4, timeout=30 * 1000)
 
     # First group: two asides sharing one sentence, different labels →
     # labeled chip (first source's label) with a "+1" overflow.
@@ -95,6 +95,50 @@ def test_web_aside_symmetric_padding_when_favicon_fails(
     )
 
 
+def test_rich_list_item_aside_renders_inline(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.goto(local_app.url)
+
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30 * 1000)
+    chat.set_user_input("tell me about e-bike motors")
+    chat.send_user_input()
+
+    list_item = page.locator("li").filter(
+        has_text="A list claim with a rich citation"
+    )
+    expect(list_item).to_have_count(1, timeout=30 * 1000)
+
+    group = list_item.locator(":scope > p > .shiny-aside-group")
+    expect(group).to_have_count(1)
+    shares_claim_line = group.evaluate(
+        """group => {
+          const paragraph = group.parentElement;
+          if (!paragraph) return false;
+          const claim = document.createRange();
+          claim.setStart(paragraph, 0);
+          claim.setEndBefore(group);
+          const claimRects = Array.from(claim.getClientRects());
+          const lastClaimRect = claimRects.at(-1);
+          const groupRect = group.getBoundingClientRect();
+          return Boolean(
+            lastClaimRect &&
+              groupRect.top < lastClaimRect.bottom &&
+              groupRect.bottom > lastClaimRect.top
+          );
+        }"""
+    )
+    assert shares_claim_line
+
+    group.locator(".shiny-aside-pill").click()
+    popover = page.locator(".shiny-aside-popover")
+    expect(popover).to_be_visible()
+    expect(popover).to_contain_text("List methodology")
+    expect(popover).to_contain_text("Evidence one")
+    expect(popover).to_contain_text("Evidence two")
+
+
 def test_web_aside_popover_inherits_scoped_theme(
     page: Page, local_app: ShinyAppProc
 ) -> None:
@@ -135,7 +179,7 @@ def test_web_aside_popover_wraps_and_scrolls_in_a_narrow_viewport(
     chat.send_user_input()
 
     groups = page.locator(".shiny-aside-group")
-    expect(groups).to_have_count(3, timeout=30 * 1000)
+    expect(groups).to_have_count(4, timeout=30 * 1000)
     groups.nth(2).locator(".shiny-aside-pill").click()
 
     popover = page.locator(".shiny-aside-popover")
@@ -145,7 +189,10 @@ def test_web_aside_popover_wraps_and_scrolls_in_a_narrow_viewport(
     assert box["width"] <= 304
     assert box["height"] <= 464
     assert popover.evaluate("el => getComputedStyle(el).overflowY") == "auto"
-    assert popover.evaluate("el => getComputedStyle(el).overflowWrap") == "anywhere"
+    assert (
+        popover.evaluate("el => getComputedStyle(el).overflowWrap")
+        == "anywhere"
+    )
     assert (
         popover.locator(".shiny-aside-popover__label").evaluate(
             "el => getComputedStyle(el).overflowWrap"

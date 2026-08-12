@@ -106,11 +106,19 @@ describe("rehypeGroupAsides", () => {
     expect(html).toContain("<li>Item text<shiny-aside-group>")
   })
 
-  it("keeps an aside after a loose list-item paragraph inline with that paragraph", () => {
+  it("keeps a rich aside after a loose list-item paragraph inline without flattening its body", () => {
     const html = process(
-      '<ul><li><p>Item text</p><shiny-aside label="Source" url="https://x.example"></shiny-aside></li></ul>',
+      [
+        "<ul><li><p>Item text</p>",
+        '<shiny-aside label="Source" url="https://x.example">',
+        "<p><strong>Reason</strong></p>",
+        "<ul><li>Evidence</li></ul>",
+        "</shiny-aside></li></ul>",
+      ].join(""),
     )
     expect(html).toContain("<li><p>Item text<shiny-aside-group><shiny-aside")
+    expect(html).toContain("<p><strong>Reason</strong></p>")
+    expect(html).toContain("<ul><li>Evidence</li></ul>")
   })
 
   it("attaches an aside inside a nested list item's own <li>, not the outer one", () => {

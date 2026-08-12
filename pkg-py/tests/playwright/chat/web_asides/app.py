@@ -57,6 +57,15 @@ async def fake_stream():
         f"{LONG_ASIDE_BODY}"
         "</shiny-aside>"
     )
+    yield "\n\n- A list claim with a rich citation\n"
+    yield (
+        '<shiny-aside label="List source" url="https://example.com/list-source">'
+        "\n\n"
+        "**List methodology**\n\n"
+        "- Evidence one\n"
+        "- Evidence two\n\n"
+        "</shiny-aside>"
+    )
 
 
 @chat.on_user_submit
