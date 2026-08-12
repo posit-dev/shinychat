@@ -182,6 +182,31 @@ test_that("chat_append_stream() returns the stream contents as list if not all t
   )
 })
 
+test_that("chat_append_stream() handles a stream that fails before it yields", {
+  local_mocked_bindings(
+    chat_append_message = coro::async(function(...) invisible())
+  )
+
+  shiny::withReactiveDomain(shiny::MockShinySession$new(), {
+    # A synchronous generator, the shape `ellmer::Chat$stream_async()` returns:
+    # the request runs on first advance, so a provider that rejects the turn
+    # outright throws before the coroutine reaches its first `await`.
+    stream <- coro::generator(function() {
+      stop("boom")
+      yield(1)
+    })
+
+    p <- chat_append_stream("chat", stream())
+    expect_warning(
+      res <- tryCatch(sync(p), error = identity),
+      regexp = "chat_append_stream"
+    )
+
+    expect_promise(p, "rejected")
+    expect_equal(conditionMessage(res), "boom")
+  })
+})
+
 test_that("chat_append_stream() handles errors in the stream", {
   local_mocked_bindings(
     chat_append_message = coro::async(function(...) invisible())
@@ -326,4 +351,42 @@ test_that("chat_append_message() emits segment payloads incl. thinking", {
 
   chunk <- captured[[2]]
   expect_equal(chunk$content_type, "thinking")
+})
+
+test_that("chat_server() exposes the condition from a failed response", {
+  local_mocked_bindings(
+    chat_restore = function(...) invisible(NULL),
+    send_chat_action = function(...) invisible(NULL)
+  )
+
+  session <- shiny::MockShinySession$new()
+
+  # A client with no `stream_async()` fails the task the same way a rejected
+  # turn does: the error is captured by the ExtendedTask, which nothing else
+  # reads. Driven against a session we keep open, since settling the task
+  # after `testServer()` tears its session down leaks an unhandled rejection.
+  mod <- shiny::withReactiveDomain(session, {
+    chat_server(
+      "chat",
+      structure(list(), class = "Chat"),
+      history = FALSE,
+      session = session
+    )
+  })
+
+  shiny::withReactiveDomain(session, {
+    expect_null(shiny::isolate(mod$last_error()))
+
+    suppressWarnings({
+      session$setInputs(chat_user_input = "hi")
+
+      while (is.null(shiny::isolate(mod$last_error()))) {
+        later::run_now(0.05)
+        session$flushReact()
+      }
+    })
+
+    expect_equal(shiny::isolate(mod$status()), "idle")
+    expect_s3_class(shiny::isolate(mod$last_error()), "condition")
+  })
 })
