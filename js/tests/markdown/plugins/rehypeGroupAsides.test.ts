@@ -110,9 +110,7 @@ describe("rehypeGroupAsides", () => {
     const html = process(
       '<ul><li><p>Item text</p><shiny-aside label="Source" url="https://x.example"></shiny-aside></li></ul>',
     )
-    expect(html).toContain(
-      "<li><p>Item text<shiny-aside-group><shiny-aside",
-    )
+    expect(html).toContain("<li><p>Item text<shiny-aside-group><shiny-aside")
   })
 
   it("attaches an aside inside a nested list item's own <li>, not the outer one", () => {

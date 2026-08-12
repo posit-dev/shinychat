@@ -204,7 +204,9 @@ function blockquotePrefixWidth(
   if (blockquoteDepth === 0) return 0
 
   const line = sourceLineAt(source, offset)
-  return indentationWidth(line.slice(0, blockquotePrefixLength(line, blockquoteDepth)))
+  return indentationWidth(
+    line.slice(0, blockquotePrefixLength(line, blockquoteDepth)),
+  )
 }
 
 function sourceLineAt(source: string, offset: number): string {
