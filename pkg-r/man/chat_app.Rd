@@ -105,6 +105,12 @@ updates the content but does not make it visible again; call
 \item \code{status}: A reactive value indicating the current chat interaction
 state. Returns \code{"idle"} when no response is in progress, or
 \code{"streaming"} while a response is actively being received.
+\item \code{last_error}: A reactive value holding the condition from the most
+recent response if it failed, and \code{NULL} otherwise. Both a finished
+and a failed response read as \code{"idle"} in \code{status}, so this is what
+tells them apart. Responses only: a greeting streams from its own
+task, and an error raised by a slash command handler is reported as
+a notification, so neither appears here.
 \item \code{client}: The current chat client object (an active binding that
 always reflects the latest client, even after \code{set_client()}
 is called).

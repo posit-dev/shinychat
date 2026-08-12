@@ -361,17 +361,14 @@ test_that("chat_server() exposes the condition from a failed response", {
 
   session <- shiny::MockShinySession$new()
 
-  # A client with no `stream_async()` fails the task the same way a rejected
-  # turn does: the error is captured by the ExtendedTask, which nothing else
-  # reads. Driven against a session we keep open, since settling the task
-  # after `testServer()` tears its session down leaks an unhandled rejection.
+  client <- mock_chat_client()
+  client$stream_async <- function(...) stop("boom")
+
+  # Driven against a session we keep open, since settling an ExtendedTask and
+  # then letting `testServer()` tear its session down leaks an unhandled
+  # rejection.
   mod <- shiny::withReactiveDomain(session, {
-    chat_server(
-      "chat",
-      structure(list(), class = "Chat"),
-      history = FALSE,
-      session = session
-    )
+    chat_server("chat", client, history = FALSE, session = session)
   })
 
   shiny::withReactiveDomain(session, {
@@ -387,6 +384,6 @@ test_that("chat_server() exposes the condition from a failed response", {
     })
 
     expect_equal(shiny::isolate(mod$status()), "idle")
-    expect_s3_class(shiny::isolate(mod$last_error()), "condition")
+    expect_equal(conditionMessage(shiny::isolate(mod$last_error())), "boom")
   })
 })
