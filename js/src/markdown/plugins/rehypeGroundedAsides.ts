@@ -28,6 +28,7 @@ const groundedSpanProcessor = unified()
   .use(remarkGfm)
   .use(remarkRehype)
   .freeze()
+const strongDelimiter = "**"
 
 function stringProperty(node: Element, name: string): string | undefined {
   const value = node.properties?.[name]
@@ -149,6 +150,14 @@ function visibleGroundedSpan(markdown: string): string {
   return text
 }
 
+function visibleGroundedSpanCandidates(markdown: string): string[] {
+  return [
+    visibleGroundedSpan(markdown),
+    visibleGroundedSpan(`${strongDelimiter}${markdown}`),
+    visibleGroundedSpan(`${markdown}${strongDelimiter}`),
+  ]
+}
+
 function groundAsides(container: Element, nextId: () => string): void {
   const { text, segments, asides } = collectGroundingContent(container)
   const ranges: GroundedRange[] = []
@@ -159,9 +168,15 @@ function groundAsides(container: Element, nextId: () => string): void {
     let start = precedingText.lastIndexOf(matchedSpan)
 
     if (start === -1) {
-      matchedSpan = visibleGroundedSpan(aside.groundedSpan)
-      if (matchedSpan === "") continue
-      start = precedingText.lastIndexOf(matchedSpan)
+      for (const candidate of visibleGroundedSpanCandidates(
+        aside.groundedSpan,
+      )) {
+        if (candidate === "") continue
+        start = precedingText.lastIndexOf(candidate)
+        if (start === -1) continue
+        matchedSpan = candidate
+        break
+      }
     }
     if (start === -1) continue
 

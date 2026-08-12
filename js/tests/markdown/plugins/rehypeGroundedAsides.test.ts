@@ -56,6 +56,16 @@ describe("rehypeGroundedAsides", () => {
       "A [supported claim](https://example.com)",
       "[supported claim](https://example.com)",
     ],
+    [
+      "an unmatched leading emphasis boundary",
+      "The current stable Python release is **Python 3.14.6**, which was released on **June 10, 2026**.",
+      "6**, which was released on **June 10, 2026**",
+    ],
+    [
+      "an unmatched trailing emphasis boundary",
+      "A **supported claim**",
+      "**supported claim",
+    ],
   ])("matches a grounded span with %s markup", (_name, answer, span) => {
     const html = render(`${answer}${aside(span)}.`)
 
