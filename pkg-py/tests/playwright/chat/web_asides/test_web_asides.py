@@ -17,9 +17,9 @@ def test_web_asides(page: Page, local_app: ShinyAppProc) -> None:
     chat.set_user_input("tell me about e-bike motors")
     chat.send_user_input()
 
-    # Wait for the stream to finish: four aside groups should appear.
+    # Wait for the stream to finish: five aside groups should appear.
     groups = page.locator(".shiny-aside-group")
-    expect(groups).to_have_count(4, timeout=30 * 1000)
+    expect(groups).to_have_count(5, timeout=30 * 1000)
 
     # First group: two asides sharing one sentence, different labels →
     # labeled chip (first source's label) with a "+1" overflow.
@@ -112,6 +112,15 @@ def test_rich_list_item_aside_renders_inline(
 
     group = list_item.locator(":scope > p > .shiny-aside-group")
     expect(group).to_have_count(1)
+    assert group.evaluate(
+        """group => {
+          const previous = group.previousSibling;
+          return !(
+            previous?.nodeType === Node.TEXT_NODE &&
+            /\\s$/.test(previous.nodeValue ?? "")
+          );
+        }"""
+    )
     shares_claim_line = group.evaluate(
         """group => {
           const paragraph = group.parentElement;
@@ -137,6 +146,28 @@ def test_rich_list_item_aside_renders_inline(
     expect(popover).to_contain_text("List methodology")
     expect(popover).to_contain_text("Evidence one")
     expect(popover).to_contain_text("Evidence two")
+
+
+def test_final_rich_aside_remains_visible_after_streaming(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.goto(local_app.url)
+
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30 * 1000)
+    chat.set_user_input("tell me about e-bike motors")
+    chat.send_user_input()
+
+    group = page.locator(".shiny-aside-group").filter(has_text="Final source")
+    expect(group).to_have_count(1, timeout=30 * 1000)
+    expect(group.locator(".shiny-aside-pill")).to_be_visible()
+    assert group.get_attribute("data-pending") is None
+
+    group.locator(".shiny-aside-pill").click()
+    popover = page.locator(".shiny-aside-popover")
+    expect(popover).to_be_visible()
+    expect(popover).to_contain_text("Final methodology")
+    expect(popover).to_contain_text("Final supporting evidence.")
 
 
 def test_web_aside_popover_inherits_scoped_theme(
@@ -179,7 +210,7 @@ def test_web_aside_popover_wraps_and_scrolls_in_a_narrow_viewport(
     chat.send_user_input()
 
     groups = page.locator(".shiny-aside-group")
-    expect(groups).to_have_count(4, timeout=30 * 1000)
+    expect(groups).to_have_count(5, timeout=30 * 1000)
     groups.nth(2).locator(".shiny-aside-pill").click()
 
     popover = page.locator(".shiny-aside-popover")

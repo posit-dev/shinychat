@@ -119,12 +119,29 @@ function transform(tree: Root): void {
 
   visit(tree, "element", (node: Element) => {
     if (!isAsideContainer(node)) return
-    node.children.push(...makeGroups(collectAndRemoveAsides(node)))
+    const found = collectAndRemoveAsides(node)
+    if (found.length === 0) return
+    trimTrailingWhitespace(node.children)
+    node.children.push(...makeGroups(found))
   })
 
   const rootGroups = makeGroups(collectAndRemoveRootAsides(tree))
   tree.children.push(...rootGroups)
   assignAnonymousAsideIndexes(tree)
+}
+
+function trimTrailingWhitespace(children: ElementContent[]): void {
+  while (children.length > 0) {
+    const last = children[children.length - 1]!
+    if (last.type !== "text") return
+
+    const value = last.value.trimEnd()
+    if (value) {
+      last.value = value
+      return
+    }
+    children.pop()
+  }
 }
 
 /**

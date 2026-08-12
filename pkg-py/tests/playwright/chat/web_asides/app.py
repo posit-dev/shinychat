@@ -66,6 +66,14 @@ async def fake_stream():
         "- Evidence two\n\n"
         "</shiny-aside>"
     )
+    yield (
+        "\n\n"
+        '<shiny-aside label="Final source" url="https://example.com/final-source">'
+        "\n\n"
+        "**Final methodology**\n\n"
+        "> Final supporting evidence.\n\n"
+        "</shiny-aside>"
+    )
 
 
 @chat.on_user_submit

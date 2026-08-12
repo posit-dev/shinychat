@@ -109,7 +109,7 @@ describe("rehypeGroupAsides", () => {
   it("keeps a rich aside after a loose list-item paragraph inline without flattening its body", () => {
     const html = process(
       [
-        "<ul><li><p>Item text</p>",
+        "<ul><li><p>Item text\n</p>",
         '<shiny-aside label="Source" url="https://x.example">',
         "<p><strong>Reason</strong></p>",
         "<ul><li>Evidence</li></ul>",
@@ -117,6 +117,7 @@ describe("rehypeGroupAsides", () => {
       ].join(""),
     )
     expect(html).toContain("<li><p>Item text<shiny-aside-group><shiny-aside")
+    expect(html).not.toContain("Item text\n<shiny-aside-group>")
     expect(html).toContain("<p><strong>Reason</strong></p>")
     expect(html).toContain("<ul><li>Evidence</li></ul>")
   })
