@@ -48,6 +48,21 @@ describe("rehypeGroundedAsides", () => {
     )
   })
 
+  it.each([
+    ["emphasis", "A ***supported claim***", "***supported claim***"],
+    ["inline code", "A `supported claim`", "`supported claim`"],
+    [
+      "link text",
+      "A [supported claim](https://example.com)",
+      "[supported claim](https://example.com)",
+    ],
+  ])("matches a grounded span with %s markup", (_name, answer, span) => {
+    const html = render(`${answer}${aside(span)}.`)
+
+    expect(html).toContain("shiny-aside-grounded")
+    expect(html).toContain('data-grounding-id="aside-grounding-1"')
+  })
+
   it("does nothing when the span is absent, unmatched, or after the aside", () => {
     const html = render(
       `Before${aside("supported claim")} supported claim, then another${aside("missing")}, and one${aside()}.`,

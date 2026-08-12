@@ -1,5 +1,8 @@
 import type { Element, ElementContent, Root, Text } from "hast"
-import type { Plugin } from "unified"
+import remarkGfm from "remark-gfm"
+import remarkParse from "remark-parse"
+import remarkRehype from "remark-rehype"
+import { unified, type Plugin } from "unified"
 import { visit } from "unist-util-visit"
 
 interface TextSegment {
@@ -19,6 +22,12 @@ interface GroundedRange {
   end: number
   id: string
 }
+
+const groundedSpanProcessor = unified()
+  .use(remarkParse)
+  .use(remarkGfm)
+  .use(remarkRehype)
+  .freeze()
 
 function stringProperty(node: Element, name: string): string | undefined {
   const value = node.properties?.[name]
@@ -129,12 +138,31 @@ function rewriteGroundedText(
   })
 }
 
+function visibleGroundedSpan(markdown: string): string {
+  const tree = groundedSpanProcessor.runSync(
+    groundedSpanProcessor.parse(markdown),
+  ) as Root
+  let text = ""
+  visit(tree, "text", (node: Text) => {
+    text += node.value
+  })
+  return text
+}
+
 function groundAsides(container: Element, nextId: () => string): void {
   const { text, segments, asides } = collectGroundingContent(container)
   const ranges: GroundedRange[] = []
 
   for (const aside of asides) {
-    const start = text.slice(0, aside.offset).lastIndexOf(aside.groundedSpan)
+    const precedingText = text.slice(0, aside.offset)
+    let matchedSpan = aside.groundedSpan
+    let start = precedingText.lastIndexOf(matchedSpan)
+
+    if (start === -1) {
+      matchedSpan = visibleGroundedSpan(aside.groundedSpan)
+      if (matchedSpan === "") continue
+      start = precedingText.lastIndexOf(matchedSpan)
+    }
     if (start === -1) continue
 
     const id = nextId()
@@ -144,7 +172,7 @@ function groundAsides(container: Element, nextId: () => string): void {
     }
     ranges.push({
       start,
-      end: start + aside.groundedSpan.length,
+      end: start + matchedSpan.length,
       id,
     })
   }
