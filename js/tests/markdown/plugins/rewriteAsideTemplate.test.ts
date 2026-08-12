@@ -170,6 +170,27 @@ describe("rewriteAsideTemplate round-trip", () => {
     expect(findElements(topLevelItems[1]!, "em")).toHaveLength(1)
   })
 
+  it("keeps a rich aside attached to a blockquoted list item", () => {
+    const markdown = [
+      "> - Claim.",
+      '> <shiny-aside label="Source">',
+      ">",
+      "> **Reason**",
+      ">",
+      "> </shiny-aside>",
+    ].join("\n")
+
+    const tree = parseMarkdown(markdown, markdownProcessor)
+    const blockquotes = findElements(tree, "blockquote")
+    expect(blockquotes).toHaveLength(1)
+
+    const listItems = findElements(blockquotes[0]!, "li")
+    expect(listItems).toHaveLength(1)
+    expect(findElements(listItems[0]!, "shiny-aside-group")).toHaveLength(1)
+    expect(findElements(listItems[0]!, "strong")).toHaveLength(1)
+    expect(findElements(listItems[0]!, "code")).toHaveLength(0)
+  })
+
   it("keeps a rich aside attached to its nested list item", () => {
     const markdown = [
       "- Outer item",

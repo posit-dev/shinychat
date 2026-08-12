@@ -21,6 +21,7 @@ interface AsideRegion {
   start: number
   end: number
   targetIndent: number
+  blockquoteDepth: number
 }
 
 interface AsideTag {
@@ -35,7 +36,7 @@ function normalizeListItemAsides(
   source: string,
   tree: MdastRoot,
 ): string | null {
-  const regions = findProtectedRegions(tree)
+  const regions = findProtectedRegions(source, tree)
   if (regions.length === 0) return null
 
   let normalized = source
@@ -48,7 +49,7 @@ function normalizeListItemAsides(
   return normalized === source ? null : normalized
 }
 
-function findProtectedRegions(tree: MdastRoot): AsideRegion[] {
+function findProtectedRegions(source: string, tree: MdastRoot): AsideRegion[] {
   const tags = collectAsideTags(tree)
   const stack: AsideTag[] = []
   const regions: AsideRegion[] = []
@@ -57,10 +58,14 @@ function findProtectedRegions(tree: MdastRoot): AsideRegion[] {
     if (tag.closing) {
       const opening = stack.pop()
       if (opening && opening.targetIndent !== null) {
+        const blockquoteDepth = blockquoteDepthAt(source, opening.start)
         regions.push({
           start: opening.start,
           end: tag.end,
-          targetIndent: opening.targetIndent,
+          targetIndent:
+            opening.targetIndent -
+            blockquotePrefixWidth(source, opening.start, blockquoteDepth),
+          blockquoteDepth,
         })
       }
       continue
@@ -147,24 +152,97 @@ function normalizeRegion(source: string, region: AsideRegion): string {
   if (rewriteStart >= region.end) return source
 
   const fragment = source.slice(rewriteStart, region.end)
-  const baseline = minimumIndent(fragment)
+  const baseline = minimumIndent(fragment, region.blockquoteDepth)
   if (baseline === null || baseline >= region.targetIndent) return source
 
   const indent = " ".repeat(region.targetIndent - baseline)
-  const normalized = fragment.replace(/^(?=[^\r\n])/gm, indent)
+  const normalized = indentLines(fragment, indent, region.blockquoteDepth)
   return source.slice(0, rewriteStart) + normalized + source.slice(region.end)
 }
 
-function minimumIndent(value: string): number | null {
+function minimumIndent(value: string, blockquoteDepth: number): number | null {
   let minimum: number | null = null
 
   for (const line of value.split(/\r?\n/)) {
-    if (line.trim() === "") continue
-    const indent = indentationWidth(line)
+    const content = line.slice(blockquotePrefixLength(line, blockquoteDepth))
+    if (content.trim() === "") continue
+    const indent = indentationWidth(content)
     minimum = minimum === null ? indent : Math.min(minimum, indent)
   }
 
   return minimum
+}
+
+function indentLines(
+  value: string,
+  indent: string,
+  blockquoteDepth: number,
+): string {
+  return value
+    .split(/(\r?\n)/)
+    .map((line, index) => {
+      if (index % 2 === 1) return line
+
+      const prefixLength = blockquotePrefixLength(line, blockquoteDepth)
+      const content = line.slice(prefixLength)
+      if (content.trim() === "") return line
+
+      return line.slice(0, prefixLength) + indent + content
+    })
+    .join("")
+}
+
+function blockquoteDepthAt(source: string, offset: number): number {
+  return blockquotePrefixDepth(sourceLineAt(source, offset))
+}
+
+function blockquotePrefixWidth(
+  source: string,
+  offset: number,
+  blockquoteDepth: number,
+): number {
+  if (blockquoteDepth === 0) return 0
+
+  const line = sourceLineAt(source, offset)
+  return indentationWidth(line.slice(0, blockquotePrefixLength(line, blockquoteDepth)))
+}
+
+function sourceLineAt(source: string, offset: number): string {
+  const lineStart = source.lastIndexOf("\n", offset - 1) + 1
+  const lineEnd = source.indexOf("\n", offset)
+  return source.slice(lineStart, lineEnd === -1 ? source.length : lineEnd)
+}
+
+function blockquotePrefixLength(line: string, depth: number): number {
+  let index = 0
+  let count = 0
+
+  while (count < depth) {
+    const start = index
+    while (index - start < 3 && line[index] === " ") index++
+    if (line[index] !== ">") return start
+
+    index++
+    if (line[index] === " " || line[index] === "\t") index++
+    count++
+  }
+
+  return index
+}
+
+function blockquotePrefixDepth(line: string): number {
+  let index = 0
+  let depth = 0
+
+  while (true) {
+    const start = index
+    while (index - start < 3 && line[index] === " ") index++
+    if (line[index] !== ">") return depth
+
+    index++
+    if (line[index] === " " || line[index] === "\t") index++
+    depth++
+  }
 }
 
 function indentationWidth(value: string): number {
