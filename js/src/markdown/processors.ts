@@ -20,10 +20,7 @@ import {
   rehypeRewriteAsideToTemplate,
   rehypeRewriteAsideFromTemplate,
 } from "./plugins/rewriteAsideTemplate"
-import {
-  remarkProtectListItemAsides,
-  rehypeRestoreListItemAsides,
-} from "./plugins/protectAsideMarkdown"
+import { remarkNormalizeListItemAsides } from "./plugins/normalizeAsideMarkdown"
 
 /**
  * Frozen processor for markdown content.
@@ -36,12 +33,11 @@ import {
 export const markdownProcessor = unified()
   .use(remarkParse)
   .use(remarkGfm)
-  .use(remarkProtectListItemAsides)
+  .use(remarkNormalizeListItemAsides)
   .use(remarkRehype, { allowDangerousHtml: true })
   .use(rehypeRewriteAsideToTemplate)
   .use(rehypeRaw)
   .use(rehypeRewriteAsideFromTemplate)
-  .use(rehypeRestoreListItemAsides)
   .use(rehypeLazyContinuation)
   .use(rehypeUnwrapBlockCEs)
   .use(rehypeGroundedAsides)

@@ -206,6 +206,144 @@ describe("rewriteAsideTemplate round-trip", () => {
     expect(findElements(nestedItems[0]!, "em")).toHaveLength(1)
   })
 
+  it("preserves Markdown in a deeply nested list-item aside", () => {
+    const markdown = [
+      "1. Outer item",
+      "   - Nested claim.",
+      '     <shiny-aside label="Source">',
+      "",
+      "     **Reason**",
+      "     </shiny-aside>",
+    ].join("\n")
+
+    const tree = parseMarkdown(markdown, markdownProcessor)
+    const asides = findElements(tree, "shiny-aside")
+    expect(asides).toHaveLength(1)
+    expect(findElements(asides[0]!, "strong")).toHaveLength(1)
+    expect(findElements(asides[0]!, "code")).toHaveLength(0)
+  })
+
+  it("preserves code inside an aside after a multi-digit list marker", () => {
+    const markdown = [
+      "10. Claim.",
+      '<shiny-aside label="Source">',
+      "",
+      "    indented code",
+      "</shiny-aside>",
+      "",
+      "11. Next.",
+    ].join("\n")
+
+    const tree = parseMarkdown(markdown, markdownProcessor)
+    const asides = findElements(tree, "shiny-aside")
+    expect(asides).toHaveLength(1)
+    expect(findElements(asides[0]!, "code")).toHaveLength(1)
+  })
+
+  it("keeps a rich inline opener attached to its list item", () => {
+    const markdown = [
+      '- Claim.<shiny-aside label="Source">',
+      "",
+      "**Reason**",
+      "</shiny-aside>",
+      "",
+      "- Next.",
+    ].join("\n")
+
+    const tree = parseMarkdown(markdown, markdownProcessor)
+    const lists = findElements(tree, "ul")
+    const items = lists[0]!.children.filter(
+      (child): child is Element =>
+        child.type === "element" && child.tagName === "li",
+    )
+    expect(items).toHaveLength(2)
+    expect(findElements(items[0]!, "shiny-aside")).toHaveLength(1)
+    expect(findElements(items[0]!, "strong")).toHaveLength(1)
+  })
+
+  it("resolves a reference definition outside a list-item aside", () => {
+    const markdown = [
+      "- Claim.",
+      '<shiny-aside label="Source">',
+      "",
+      "Read [the study][study].",
+      "</shiny-aside>",
+      "",
+      "[study]: https://example.com/study",
+    ].join("\n")
+
+    const tree = parseMarkdown(markdown, markdownProcessor)
+    const links = findElements(findElements(tree, "shiny-aside")[0]!, "a")
+    expect(links).toHaveLength(1)
+    expect(links[0]!.properties.href).toBe("https://example.com/study")
+  })
+
+  it("makes a definition inside a list-item aside available to the document", () => {
+    const markdown = [
+      "- Claim.",
+      '<shiny-aside label="Source">',
+      "",
+      "[study]: https://example.com/study",
+      "</shiny-aside>",
+      "",
+      "Outside [the study][study].",
+    ].join("\n")
+
+    const tree = parseMarkdown(markdown, markdownProcessor)
+    const links = findElements(tree, "a")
+    expect(links).toHaveLength(1)
+    expect(links[0]!.properties.href).toBe("https://example.com/study")
+  })
+
+  it("resolves a footnote definition outside a list-item aside", () => {
+    const markdown = [
+      "- Claim.",
+      '<shiny-aside label="Source">',
+      "",
+      "Read the note.[^note]",
+      "</shiny-aside>",
+      "",
+      "[^note]: Footnote text.",
+    ].join("\n")
+
+    const tree = parseMarkdown(markdown, markdownProcessor)
+    const asides = findElements(tree, "shiny-aside")
+    expect(
+      findElements(asides[0]!, "a").some(
+        (link) => link.properties.dataFootnoteRef !== undefined,
+      ),
+    ).toBe(true)
+    expect(
+      findElements(tree, "a").some(
+        (link) => link.properties.dataFootnoteBackref !== undefined,
+      ),
+    ).toBe(true)
+  })
+
+  it("preserves authored shiny-aside-placeholder elements", () => {
+    const markdown = [
+      "- Claim.",
+      '<shiny-aside label="Source">',
+      "",
+      "Aside content",
+      "</shiny-aside>",
+      "",
+      '<shiny-aside-placeholder data-shiny-aside-placeholder="0">',
+      "Authored content",
+      "</shiny-aside-placeholder>",
+    ].join("\n")
+
+    const tree = parseMarkdown(markdown, markdownProcessor)
+    expect(findElements(tree, "shiny-aside")).toHaveLength(1)
+    expect(findElements(tree, "shiny-aside-placeholder")).toHaveLength(1)
+  })
+
+  it("leaves an unmatched closing aside tag on the existing parser path", () => {
+    expect(() =>
+      parseMarkdown("- Claim.\n</shiny-aside>", markdownProcessor),
+    ).not.toThrow()
+  })
+
   it("sanitizes URLs after restoring a protected list-item aside", () => {
     const markdown = [
       "- Claim.",
