@@ -82,6 +82,29 @@ record_meta <- function(record, size_bytes) {
   )
 }
 
+MIN_SCHEMA_VERSION <- 1L
+MAX_SCHEMA_VERSION <- 1L
+
+# NULL means the record predates schema_version and is treated as version 1L.
+check_schema_version <- function(version) {
+  version <- if (is.null(version)) 1L else version
+  if (version < MIN_SCHEMA_VERSION || version > MAX_SCHEMA_VERSION) {
+    rlang::abort(
+      paste0(
+        "Unsupported conversation record schema version: ",
+        version,
+        " (supported: ",
+        MIN_SCHEMA_VERSION,
+        "-",
+        MAX_SCHEMA_VERSION,
+        ")"
+      ),
+      class = "shinychat_error_unsupported_schema_version"
+    )
+  }
+  version
+}
+
 new_conversation_record <- function(title, client_info = list()) {
   now <- utcnow_iso()
   list(

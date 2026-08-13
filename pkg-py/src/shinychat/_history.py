@@ -29,7 +29,12 @@ from ._history_title import (
     fallback_title,
     generate_title,
 )
-from ._history_types import ConversationRecord, new_conversation_record
+from ._history_types import (
+    ConversationMeta,
+    ConversationRecord,
+    check_schema_version,
+    new_conversation_record,
+)
 
 if TYPE_CHECKING:
     from shiny.module import ResolvedId
@@ -251,6 +256,28 @@ class HistoryController:
         self._title_task: asyncio.Task[None] | None = None
         self._over_budget_warned: bool = False
 
+    # -- store access -----------------------------------------------------
+    # Wrap store.get/list so every record/meta returned by ANY ConversationStore
+    # (including custom subclasses) is checked for schema_version compatibility
+    # before it reaches the chat UI or client state.
+
+    async def _get_record(
+        self, partition: ConversationPartition, conv_id: str
+    ) -> ConversationRecord | None:
+        record = await self.store.get(partition, conv_id)
+        if record is not None:
+            check_schema_version(record.schema_version)
+        return record
+
+    async def _list_records(
+        self, partition: ConversationPartition
+    ) -> list[ConversationMeta]:
+        # ConversationMeta has no schema_version field, so there is nothing
+        # to validate here yet; this still routes through the store's list()
+        # for consistency with _get_record.
+        metas = await self.store.list(partition)
+        return metas
+
     # -- save -----------------------------------------------------------
 
     async def on_response(self) -> None:
@@ -360,7 +387,7 @@ class HistoryController:
     async def _evict_if_needed(self) -> None:
         if self.max_store_bytes is None or self.partition is None:
             return
-        metas = await self.store.list(self.partition)
+        metas = await self._list_records(self.partition)
         total = sum(m.size_bytes for m in metas)
         if total <= self.max_store_bytes:
             return
@@ -413,7 +440,7 @@ class HistoryController:
             return
         # Load BEFORE mutating anything: a failed load must leave the
         # current conversation untouched.
-        target = await self.store.get(self.partition, conv_id)
+        target = await self._get_record(self.partition, conv_id)
         if target is None:
             raise RuntimeError(f"Conversation {conv_id!r} no longer exists.")
 
@@ -477,7 +504,7 @@ class HistoryController:
         record = (
             self.record
             if self.record is not None and self.record.id == conv_id
-            else await self.store.get(self.partition, conv_id)
+            else await self._get_record(self.partition, conv_id)
         )
         if record is None:
             return
@@ -624,7 +651,7 @@ class HistoryController:
     async def send_history_update(self) -> None:
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
-        metas = await self.store.list(self.partition)
+        metas = await self._list_records(self.partition)
         action: HistoryUpdateAction = {
             "type": "history_update",
             "enabled": True,
@@ -842,7 +869,7 @@ class ChatHistory:
                     if controller.partition is None:
                         rec = None
                     else:
-                        rec = await controller.store.get(
+                        rec = await controller._get_record(
                             controller.partition, conv_id
                         )
                     state_id = (
@@ -934,7 +961,7 @@ class ChatHistory:
                 restored_conv_id = str(raw_id) if raw_id else None
 
             if restored_conv_id is not None:
-                target = await controller.store.get(
+                target = await controller._get_record(
                     controller.partition, restored_conv_id
                 )
                 if target is not None:
@@ -965,7 +992,7 @@ class ChatHistory:
                 current_id = None
 
             if current_id:
-                pointed = await controller.store.get(
+                pointed = await controller._get_record(
                     controller.partition, current_id
                 )
                 if pointed is not None:

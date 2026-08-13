@@ -55,6 +55,26 @@ class ConversationNode(BaseModel):
         return len(self.ui) if self.ui else 1
 
 
+MIN_SCHEMA_VERSION = 1
+MAX_SCHEMA_VERSION = 1
+
+
+class UnsupportedSchemaVersionError(ValueError):
+    def __init__(self, version: int) -> None:
+        super().__init__(
+            f"Unsupported conversation record schema version: {version} "
+            f"(supported: {MIN_SCHEMA_VERSION}-{MAX_SCHEMA_VERSION})"
+        )
+
+
+def check_schema_version(version: int | None) -> int:
+    # None means the record predates schema_version entirely; treat as 1.
+    version = 1 if version is None else version
+    if MIN_SCHEMA_VERSION <= version <= MAX_SCHEMA_VERSION:
+        return version
+    raise UnsupportedSchemaVersionError(version)
+
+
 class ConversationRecord(BaseModel):
     schema_version: int = 1
     id: str

@@ -157,7 +157,7 @@ HistoryController <- R6::R6Class(
         return(invisible())
       }
 
-      target <- private$store$get(self$partition, conv_id)
+      target <- self$get_record(self$partition, conv_id)
       if (is.null(target)) {
         rlang::abort(paste0("Conversation not found: ", conv_id))
       }
@@ -204,7 +204,7 @@ HistoryController <- R6::R6Class(
         self$record$title_source <- "user"
         private$store$put(self$partition, self$record)
       } else {
-        target <- private$store$get(self$partition, conv_id)
+        target <- self$get_record(self$partition, conv_id)
         if (!is.null(target)) {
           target$title <- title
           target$title_source <- "user"
@@ -297,7 +297,11 @@ HistoryController <- R6::R6Class(
     },
 
     get_record = function(partition, id) {
-      private$store$get(partition, id)
+      record <- private$store$get(partition, id)
+      if (!is.null(record)) {
+        check_schema_version(record$schema_version)
+      }
+      record
     },
 
     save_current = function() {
@@ -368,7 +372,7 @@ HistoryController <- R6::R6Class(
 
     send_history_update = function() {
       metas <- if (!is.null(self$partition)) {
-        private$store$list(self$partition)
+        private$list_records(self$partition)
       } else {
         list()
       }
@@ -521,6 +525,13 @@ HistoryController <- R6::R6Class(
     on_restore = NULL,
     max_store_bytes = NULL,
 
+    # Conversation metas don't carry schema_version (record_meta() omits it),
+    # so there's nothing to validate here yet -- this indirection exists so
+    # any future meta-level version field is checked in one place.
+    list_records = function(partition) {
+      private$store$list(partition)
+    },
+
     capture_app_state = function() {
       values <- list()
       if (!is.null(private$on_save)) {
@@ -541,7 +552,7 @@ HistoryController <- R6::R6Class(
       if (is.null(max_bytes) || is.null(self$partition)) {
         return(invisible())
       }
-      metas <- private$store$list(self$partition)
+      metas <- private$list_records(self$partition)
       total <- sum(vapply(metas, function(m) m$size_bytes, double(1L)))
       if (total <= max_bytes) {
         return(invisible())
