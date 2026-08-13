@@ -55,6 +55,30 @@ describe("WebActivity", () => {
     ).toBeInTheDocument()
   })
 
+  it("does not imply zero results when only search activity was provided", () => {
+    renderMarkdown(
+      '<shiny-web-search query="Python current release"></shiny-web-search>',
+    )
+    fireEvent.click(screen.getByText("Searched the web"))
+
+    expect(screen.getByText("Python current release")).toBeInTheDocument()
+    expect(screen.queryByText("0 results")).not.toBeInTheDocument()
+  })
+
+  it("does not render a count for an empty result list", () => {
+    renderMarkdown(
+      [
+        '<shiny-web-search query="Python current release"></shiny-web-search>',
+        "",
+        '<shiny-web-search-results sources="[]"></shiny-web-search-results>',
+      ].join("\n"),
+    )
+    fireEvent.click(screen.getByText("Searched the web"))
+
+    expect(screen.getByText("Python current release")).toBeInTheDocument()
+    expect(screen.queryByText("0 results")).not.toBeInTheDocument()
+  })
+
   it("falls back to the domain when a source has no title", () => {
     const md = [
       '<shiny-web-search query="q"></shiny-web-search>',

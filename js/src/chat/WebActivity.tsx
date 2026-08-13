@@ -13,7 +13,7 @@ interface Source {
 interface SearchItem {
   kind: "search"
   query: string
-  sources: Source[]
+  sources: Source[] | null
 }
 
 interface FetchItem {
@@ -60,7 +60,7 @@ function parseItems(node?: Element): Item[] {
   for (let i = 0; i < kids.length; i++) {
     const el = kids[i]!
     if (el.tagName === "shiny-web-search") {
-      let sources: Source[] = []
+      let sources: Source[] | null = null
       const next = kids[i + 1]
       if (next && next.tagName === "shiny-web-search-results") {
         sources = parseSources(prop(next, "sources"))
@@ -127,12 +127,14 @@ export const WebActivity = memo(function WebActivity({
                   <span className="shiny-web-activity__query">
                     {item.query}
                   </span>
-                  <span className="shiny-web-activity__count">
-                    {item.sources.length} result
-                    {item.sources.length !== 1 ? "s" : ""}
-                  </span>
+                  {item.sources !== null && item.sources.length > 0 && (
+                    <span className="shiny-web-activity__count">
+                      {item.sources.length} result
+                      {item.sources.length !== 1 ? "s" : ""}
+                    </span>
+                  )}
                 </div>
-                {item.sources.length > 0 && (
+                {item.sources !== null && item.sources.length > 0 && (
                   <div className="shiny-web-activity__results">
                     {item.sources.map((s, j) => {
                       const domain = domainOf(s)
