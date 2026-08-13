@@ -8,7 +8,10 @@ function isAside(node: RootContent | ElementContent): node is Element {
 
 function isLabeled(aside: Element): boolean {
   const label = aside.properties?.label
-  return typeof label === "string" && label !== ""
+  return (
+    (typeof label === "string" && label !== "") ||
+    aside.properties?.dataCitation != null
+  )
 }
 
 function hasNestedParagraph(node: Element): boolean {
@@ -150,14 +153,14 @@ function trimTrailingAsideBreaks(children: ElementContent[]): void {
 
 /**
  * Rehype plugin that processes every <shiny-aside> found anywhere within
- * a paragraph or tight list item. Asides carrying a `label` collapse into
- * a single trailing <shiny-aside-group>, keeping every one in document
- * order (each stays a distinct popover entry — the pill decides whether to
- * show an overflow count). Label-less asides never bundle with anything:
- * each becomes its own single-entry <shiny-aside-group>, stamped with
- * `index`, a counter that runs across the *entire* tree passed to this
- * plugin (i.e. the whole message, since each message is parsed
- * independently) so pills can show a stable, message-scoped aside number
- * instead of a per-container count.
+ * a paragraph or tight list item. Asides carrying a `label` and native web
+ * citations collapse into a single trailing <shiny-aside-group>, keeping
+ * every one in document order (each stays a distinct popover entry — the
+ * pill decides whether to show an overflow count). Other label-less asides
+ * never bundle with anything: each becomes its own single-entry
+ * <shiny-aside-group>, stamped with `index`, a counter that runs across the
+ * *entire* tree passed to this plugin (i.e. the whole message, since each
+ * message is parsed independently) so pills can show a stable,
+ * message-scoped aside number instead of a per-container count.
  */
 export const rehypeGroupAsides: Plugin<[], Root> = () => transform

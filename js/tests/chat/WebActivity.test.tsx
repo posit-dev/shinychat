@@ -93,11 +93,11 @@ describe("WebActivity", () => {
   })
 
   it("shows an error status for a failed fetch", () => {
-    const md =
-      '<shiny-web-fetch url="https://blocked.example/page" status="error"></shiny-web-fetch>'
+    const md = '<shiny-web-fetch url="failed" status="error"></shiny-web-fetch>'
     const { container } = renderMarkdown(md)
     // A fetch-only burst is labeled "Read the web", not "Searched the web"
     fireEvent.click(screen.getByText("Read the web"))
+    expect(screen.getByText("failed")).not.toHaveAttribute("href")
     expect(screen.getByText("✗")).toBeInTheDocument()
     expect(
       container.querySelector(".shiny-web-activity__status--error"),

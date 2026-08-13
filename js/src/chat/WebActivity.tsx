@@ -179,7 +179,7 @@ export const WebActivity = memo(function WebActivity({
                 className="shiny-web-activity__node shiny-web-activity__fetch"
               >
                 <span className="shiny-web-activity__fetch-label">Read</span>
-                {isSafeUrl(item.url) ? (
+                {item.status !== "error" && isSafeUrl(item.url) ? (
                   <a href={item.url} target="_blank" rel="noopener noreferrer">
                     {item.url}
                   </a>
