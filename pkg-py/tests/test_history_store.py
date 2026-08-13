@@ -562,6 +562,24 @@ async def test_list_raises_on_unsupported_schema_version_on_disk(
 
 
 @pytest.mark.anyio
+async def test_list_checks_schema_version_before_decoding_record(
+    store: FileConversationStore,
+    tmp_path: Path,
+):
+    rec = new_conversation_record(title="future")
+    await store.put(part(scope="alice"), rec)
+    scope_dir = tmp_path / sanitize_scope("chat") / sanitize_scope("alice")
+    record_file = scope_dir / rec.id / "record.json"
+    data = json.loads(record_file.read_text())
+    data["schema_version"] = MAX_SCHEMA_VERSION + 1
+    data["nodes"] = []
+    record_file.write_text(json.dumps(data))
+
+    with pytest.raises(UnsupportedSchemaVersionError):
+        await store.list(part(scope="alice"))
+
+
+@pytest.mark.anyio
 async def test_put_rejects_unsupported_schema_version_into_empty_store(
     store: FileConversationStore,
     tmp_path: Path,

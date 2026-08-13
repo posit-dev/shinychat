@@ -372,7 +372,7 @@ HistoryController <- R6::R6Class(
 
     send_history_update = function() {
       metas <- if (!is.null(self$partition)) {
-        private$list_records(self$partition)
+        private$store$list(self$partition)
       } else {
         list()
       }
@@ -525,13 +525,6 @@ HistoryController <- R6::R6Class(
     on_restore = NULL,
     max_store_bytes = NULL,
 
-    # Conversation metas don't carry schema_version (record_meta() omits it),
-    # so there's nothing to validate here yet -- this indirection exists so
-    # any future meta-level version field is checked in one place.
-    list_records = function(partition) {
-      private$store$list(partition)
-    },
-
     capture_app_state = function() {
       values <- list()
       if (!is.null(private$on_save)) {
@@ -552,7 +545,7 @@ HistoryController <- R6::R6Class(
       if (is.null(max_bytes) || is.null(self$partition)) {
         return(invisible())
       }
-      metas <- private$list_records(self$partition)
+      metas <- private$store$list(self$partition)
       total <- sum(vapply(metas, function(m) m$size_bytes, double(1L)))
       if (total <= max_bytes) {
         return(invisible())

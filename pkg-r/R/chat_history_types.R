@@ -88,11 +88,19 @@ MAX_SCHEMA_VERSION <- 1L
 # NULL means the record predates schema_version and is treated as version 1L.
 check_schema_version <- function(version) {
   version <- if (is.null(version)) 1L else version
-  if (version < MIN_SCHEMA_VERSION || version > MAX_SCHEMA_VERSION) {
+  is_scalar_integer <- is.integer(version) &&
+    length(version) == 1L &&
+    !is.na(version)
+  if (
+    !is_scalar_integer ||
+      version < MIN_SCHEMA_VERSION ||
+      version > MAX_SCHEMA_VERSION
+  ) {
+    version_label <- paste(capture.output(dput(version)), collapse = " ")
     rlang::abort(
       paste0(
         "Unsupported conversation record schema version: ",
-        version,
+        version_label,
         " (supported: ",
         MIN_SCHEMA_VERSION,
         "-",
@@ -102,7 +110,7 @@ check_schema_version <- function(version) {
       class = "shinychat_error_unsupported_schema_version"
     )
   }
-  version
+  as.integer(version)
 }
 
 new_conversation_record <- function(title, client_info = list()) {

@@ -30,7 +30,6 @@ from ._history_title import (
     generate_title,
 )
 from ._history_types import (
-    ConversationMeta,
     ConversationRecord,
     check_schema_version,
     new_conversation_record,
@@ -256,11 +255,6 @@ class HistoryController:
         self._title_task: asyncio.Task[None] | None = None
         self._over_budget_warned: bool = False
 
-    # -- store access -----------------------------------------------------
-    # Wrap store.get/list so every record/meta returned by ANY ConversationStore
-    # (including custom subclasses) is checked for schema_version compatibility
-    # before it reaches the chat UI or client state.
-
     async def _get_record(
         self, partition: ConversationPartition, conv_id: str
     ) -> ConversationRecord | None:
@@ -268,15 +262,6 @@ class HistoryController:
         if record is not None:
             check_schema_version(record.schema_version)
         return record
-
-    async def _list_records(
-        self, partition: ConversationPartition
-    ) -> list[ConversationMeta]:
-        # ConversationMeta has no schema_version field, so there is nothing
-        # to validate here yet; this still routes through the store's list()
-        # for consistency with _get_record.
-        metas = await self.store.list(partition)
-        return metas
 
     # -- save -----------------------------------------------------------
 
@@ -387,7 +372,7 @@ class HistoryController:
     async def _evict_if_needed(self) -> None:
         if self.max_store_bytes is None or self.partition is None:
             return
-        metas = await self._list_records(self.partition)
+        metas = await self.store.list(self.partition)
         total = sum(m.size_bytes for m in metas)
         if total <= self.max_store_bytes:
             return
@@ -651,7 +636,7 @@ class HistoryController:
     async def send_history_update(self) -> None:
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
-        metas = await self._list_records(self.partition)
+        metas = await self.store.list(self.partition)
         action: HistoryUpdateAction = {
             "type": "history_update",
             "enabled": True,

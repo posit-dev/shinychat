@@ -173,6 +173,9 @@ class FileConversationStore(ConversationStore):
                     continue
                 try:
                     raw = json.loads(record_file.read_text(encoding="utf-8"))
+                    schema_version = check_schema_version(
+                        raw.get("schema_version")
+                    )
                     nodes_raw = raw.get("nodes", {})
                     nodes = {}
                     for nid, nd in nodes_raw.items():
@@ -182,9 +185,7 @@ class FileConversationStore(ConversationStore):
                             turns=[],
                         )
                     rec = ConversationRecord(
-                        schema_version=check_schema_version(
-                            raw.get("schema_version")
-                        ),
+                        schema_version=schema_version,
                         id=raw["id"],
                         title=raw["title"],
                         title_source=raw.get("title_source"),
