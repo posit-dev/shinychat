@@ -474,22 +474,19 @@ test_that("named-arg detection: 'client' in formals identifies one-arg greeting"
   expect_true(
     "client" %in%
       names(
-        formals(function(client) {
-        })
+        formals(function(client) {})
       )
   )
   expect_false(
     "client" %in%
       names(
-        formals(function() {
-        })
+        formals(function() {})
       )
   )
   expect_false(
     "client" %in%
       names(
-        formals(function(x) {
-        })
+        formals(function(x) {})
       )
   )
 })
@@ -624,8 +621,7 @@ test_that("chat_server() does not error with static string greeting", {
         function(input, output, session) {
           chat_server("chat", client, greeting = "## Static", session = session)
         },
-        {
-        }
+        {}
       )
     )
   )

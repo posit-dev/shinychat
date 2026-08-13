@@ -258,16 +258,16 @@ chat_attachment <- function(path, mime = NULL, name = NULL) {
     if (is.null(mime)) {
       cli::cli_abort(
         c(
-        "Cannot determine MIME type for {.path {path}}.",
-        "i" = "Specify the {.arg mime} argument explicitly."
+          "Cannot determine MIME type for {.path {path}}.",
+          "i" = "Specify the {.arg mime} argument explicitly."
         )
       )
     }
   } else if (!mime %in% attachment_types()$supported) {
     cli::cli_abort(
       c(
-      "Unsupported MIME type: {.val {mime}}.",
-      "i" = "Supported types: {.val {attachment_types()$supported}}"
+        "Unsupported MIME type: {.val {mime}}.",
+        "i" = "Supported types: {.val {attachment_types()$supported}}"
       )
     )
   }

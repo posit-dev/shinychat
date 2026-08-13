@@ -328,9 +328,9 @@ FileConversationStore <- R6::R6Class(
               raw <- jsonlite::fromJSON(record_file, simplifyVector = FALSE)
               size_bytes <- sum(
                 vapply(
-                list.files(d, full.names = TRUE),
-                function(f) as.double(file.size(f)),
-                double(1)
+                  list.files(d, full.names = TRUE),
+                  function(f) as.double(file.size(f)),
+                  double(1)
                 )
               )
               record_meta(raw, size_bytes = size_bytes)
@@ -338,10 +338,10 @@ FileConversationStore <- R6::R6Class(
             error = function(e) {
               rlang::warn(
                 paste0(
-                "Skipping unreadable conversation ",
-                basename(d),
-                ": ",
-                conditionMessage(e)
+                  "Skipping unreadable conversation ",
+                  basename(d),
+                  ": ",
+                  conditionMessage(e)
                 )
               )
               NULL
@@ -489,9 +489,9 @@ FileConversationStore <- R6::R6Class(
             new_ui_lines,
             as.character(
               jsonlite::toJSON(
-              list(node_id = nid, data = node$ui),
-              auto_unbox = TRUE,
-              null = "null"
+                list(node_id = nid, data = node$ui),
+                auto_unbox = TRUE,
+                null = "null"
               )
             )
           )
@@ -561,9 +561,9 @@ FileConversationStore <- R6::R6Class(
       if (!is.null(cache)) {
         size_bytes <- sum(
           vapply(
-          list.files(cdir, full.names = TRUE),
-          function(f) as.double(file.size(f)),
-          double(1)
+            list.files(cdir, full.names = TRUE),
+            function(f) as.double(file.size(f)),
+            double(1)
           )
         )
         cache <- Filter(function(m) m$id != record$id, cache)
