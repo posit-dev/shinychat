@@ -79,6 +79,32 @@ describe("WebActivity", () => {
     expect(screen.queryByText("0 results")).not.toBeInTheDocument()
   })
 
+  it("shows answer citations as sources when search results are unavailable", () => {
+    renderMarkdown(
+      [
+        '<shiny-web-search query="Python current release"></shiny-web-search>',
+        "",
+        "Python 3.14.7 is current.",
+        '<shiny-aside data-citation url="https://www.python.org/downloads/"><a href="https://www.python.org/downloads/">Download Python | Python.org</a></shiny-aside>',
+      ].join("\n"),
+    )
+    fireEvent.click(screen.getByText("Searched the web"))
+
+    expect(screen.getByText("Cited sources")).toBeInTheDocument()
+    const sourceLink = screen
+      .getByText("Download Python | Python.org")
+      .closest("a")
+    expect(sourceLink).toHaveAttribute(
+      "href",
+      "https://www.python.org/downloads/",
+    )
+    expect(
+      screen.getAllByText("www.python.org", {
+        selector: ".shiny-web-activity__domain",
+      }),
+    ).toHaveLength(1)
+  })
+
   it("falls back to the domain when a source has no title", () => {
     const md = [
       '<shiny-web-search query="q"></shiny-web-search>',

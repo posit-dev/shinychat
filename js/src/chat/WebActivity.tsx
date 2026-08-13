@@ -14,6 +14,7 @@ interface SearchItem {
   kind: "search"
   query: string
   sources: Source[] | null
+  citedSources: Source[]
 }
 
 interface FetchItem {
@@ -66,12 +67,18 @@ function parseItems(node?: Element): Item[] {
         sources = parseSources(prop(next, "sources"))
         i++
       }
-      items.push({ kind: "search", query: prop(el, "query") ?? "", sources })
+      items.push({
+        kind: "search",
+        query: prop(el, "query") ?? "",
+        sources,
+        citedSources: parseSources(prop(node, "citedSources")),
+      })
     } else if (el.tagName === "shiny-web-search-results") {
       items.push({
         kind: "search",
         query: "",
         sources: parseSources(prop(el, "sources")),
+        citedSources: [],
       })
     } else if (el.tagName === "shiny-web-fetch") {
       const url = prop(el, "url")
@@ -123,55 +130,73 @@ export const WebActivity = memo(function WebActivity({
                 key={`search-${idx}-${item.query}`}
                 className="shiny-web-activity__node shiny-web-activity__search"
               >
-                <div className="shiny-web-activity__qrow">
-                  <span className="shiny-web-activity__query">
-                    {item.query}
-                  </span>
-                  {item.sources !== null && item.sources.length > 0 && (
-                    <span className="shiny-web-activity__count">
-                      {item.sources.length} result
-                      {item.sources.length !== 1 ? "s" : ""}
-                    </span>
-                  )}
-                </div>
-                {item.sources !== null && item.sources.length > 0 && (
-                  <div className="shiny-web-activity__results">
-                    {item.sources.map((s, j) => {
-                      const domain = domainOf(s)
-                      const safe = isSafeUrl(s.url)
-                      const Row = safe ? "a" : "span"
-                      return (
-                        <Row
-                          key={s.url}
-                          className="shiny-web-activity__result"
-                          {...(safe
-                            ? {
-                                href: s.url,
-                                target: "_blank",
-                                rel: "noopener noreferrer",
-                              }
-                            : {})}
-                        >
-                          <img
-                            className="shiny-web-activity__fav"
-                            src={faviconUrl(domain)}
-                            alt=""
-                            loading="lazy"
-                            onError={(e) => {
-                              e.currentTarget.style.visibility = "hidden"
-                            }}
-                          />
-                          <span className="shiny-web-activity__title">
-                            {s.title || domain}
+                {/*
+                 * Provider result lists describe search results. Citation rows
+                 * are an answer-side fallback when that list is unavailable.
+                 */}
+                {(() => {
+                  const sources = item.sources ?? item.citedSources
+                  const isCitedFallback =
+                    item.sources === null && item.citedSources.length > 0
+                  return (
+                    <>
+                      <div className="shiny-web-activity__qrow">
+                        <span className="shiny-web-activity__query">
+                          {item.query}
+                        </span>
+                        {item.sources !== null && item.sources.length > 0 && (
+                          <span className="shiny-web-activity__count">
+                            {item.sources.length} result
+                            {item.sources.length !== 1 ? "s" : ""}
                           </span>
-                          <span className="shiny-web-activity__domain">
-                            {domain}
+                        )}
+                        {isCitedFallback && (
+                          <span className="shiny-web-activity__count">
+                            Cited sources
                           </span>
-                        </Row>
-                      )
-                    })}
-                  </div>
-                )}
+                        )}
+                      </div>
+                      {sources.length > 0 && (
+                        <div className="shiny-web-activity__results">
+                          {sources.map((s, j) => {
+                            const domain = domainOf(s)
+                            const safe = isSafeUrl(s.url)
+                            const Row = safe ? "a" : "span"
+                            return (
+                              <Row
+                                key={s.url}
+                                className="shiny-web-activity__result"
+                                {...(safe
+                                  ? {
+                                      href: s.url,
+                                      target: "_blank",
+                                      rel: "noopener noreferrer",
+                                    }
+                                  : {})}
+                              >
+                                <img
+                                  className="shiny-web-activity__fav"
+                                  src={faviconUrl(domain)}
+                                  alt=""
+                                  loading="lazy"
+                                  onError={(e) => {
+                                    e.currentTarget.style.visibility = "hidden"
+                                  }}
+                                />
+                                <span className="shiny-web-activity__title">
+                                  {s.title || domain}
+                                </span>
+                                <span className="shiny-web-activity__domain">
+                                  {domain}
+                                </span>
+                              </Row>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
             ) : (
               <div
