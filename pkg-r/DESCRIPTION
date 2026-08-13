@@ -24,7 +24,7 @@ Imports:
     bslib,
     cli,
     coro,
-    ellmer (> 0.4.2),
+    ellmer,
     fastmap,
     htmltools,
     jsonlite,
@@ -41,8 +41,6 @@ Suggests:
     shinytest2,
     testthat (>= 3.0.0),
     withr
-Remotes:
-    tidyverse/ellmer@d607bb263420643abdbaaf06e65b782b7a51574c
 Config/Needs/website: tidyverse/tidytemplate, rmarkdown, weathR, gt, glue,
     bsicons
 Config/roxygen2/version: 8.1.0

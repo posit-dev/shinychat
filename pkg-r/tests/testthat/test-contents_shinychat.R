@@ -464,6 +464,7 @@ test_that("tool_result_display rich format", {
 })
 
 test_that("web content renders as shinychat web activity and citations", {
+  skip_if_not(ellmer_web_content_available(ellmer_web_content_methods()))
   local_shinychat_tool_display(opt = "rich")
 
   request <- ellmer::ContentToolRequestSearch(
@@ -550,6 +551,8 @@ test_that("web content renders as shinychat web activity and citations", {
 })
 
 test_that("ContentCitation preserves optional metadata independently", {
+  skip_if_not(ellmer_web_content_available(ellmer_web_content_methods()))
+
   grounded_only <- contents_shinychat(
     ellmer::ContentCitation(
       source = ellmer::WebSource("https://x.example", "Example"),
@@ -574,18 +577,16 @@ test_that("ContentCitation preserves optional metadata independently", {
 })
 
 test_that("web content feature detection derives classes from registered methods", {
-  methods <- list(
-    ContentToolRequestSearch = contents_shinychat_search_request,
-    ContentCitation = contents_shinychat_citation
-  )
+  methods <- ellmer_web_content_methods()
   exports <- c("WebSource", names(methods))
 
   expect_true(ellmer_web_content_available(methods, exports))
   expect_false(ellmer_web_content_available(methods, exports[-1]))
-  expect_false(ellmer_web_content_available(methods, exports[-3]))
+  expect_false(ellmer_web_content_available(methods, exports[-2]))
 })
 
 test_that("web content renderers respect disabled tool display", {
+  skip_if_not(ellmer_web_content_available(ellmer_web_content_methods()))
   local_shinychat_tool_display(opt = "none")
 
   contents <- list(

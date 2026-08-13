@@ -248,14 +248,18 @@ contents_shinychat_citation <- function(content) {
   )
 }
 
-register_ellmer_web_content_methods <- function() {
-  methods <- list(
+ellmer_web_content_methods <- function() {
+  list(
     ContentToolRequestSearch = contents_shinychat_search_request,
     ContentToolResponseSearch = contents_shinychat_search_response,
     ContentToolRequestFetch = contents_shinychat_fetch_request,
     ContentToolResponseFetch = contents_shinychat_fetch_response,
     ContentCitation = contents_shinychat_citation
   )
+}
+
+register_ellmer_web_content_methods <- function() {
+  methods <- ellmer_web_content_methods()
 
   if (!ellmer_web_content_available(methods)) {
     return(invisible())
