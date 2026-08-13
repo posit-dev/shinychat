@@ -1,7 +1,9 @@
 import { memo, useState } from "react"
 import type { Element, ElementContent } from "hast"
+import { externalLinkAttributes } from "../markdown/plugins/rehypeExternalLinks"
 import { isSafeUrl } from "../markdown/urlSanitize"
 import { ChevronIcon } from "./ChevronIcon"
+import { useAsideFavicon } from "./context"
 import { domainFromUrl } from "./domain"
 
 interface Source {
@@ -112,6 +114,7 @@ export const WebActivity = memo(function WebActivity({
   node,
 }: WebActivityProps) {
   const [expanded, setExpanded] = useState(false)
+  const deriveFavicon = useAsideFavicon()
   const items = parseItems(node)
   if (items.length === 0) return null
 
@@ -179,20 +182,22 @@ export const WebActivity = memo(function WebActivity({
                                 {...(safe
                                   ? {
                                       href: s.url,
-                                      target: "_blank",
-                                      rel: "noopener noreferrer",
+                                      ...externalLinkAttributes,
                                     }
                                   : {})}
                               >
-                                <img
-                                  className="shiny-web-activity__fav"
-                                  src={faviconUrl(domain)}
-                                  alt=""
-                                  loading="lazy"
-                                  onError={(e) => {
-                                    e.currentTarget.style.visibility = "hidden"
-                                  }}
-                                />
+                                {deriveFavicon && (
+                                  <img
+                                    className="shiny-web-activity__fav"
+                                    src={faviconUrl(domain)}
+                                    alt=""
+                                    loading="lazy"
+                                    onError={(e) => {
+                                      e.currentTarget.style.visibility =
+                                        "hidden"
+                                    }}
+                                  />
+                                )}
                                 <span className="shiny-web-activity__title">
                                   {s.title || domain}
                                 </span>
@@ -215,7 +220,7 @@ export const WebActivity = memo(function WebActivity({
               >
                 <span className="shiny-web-activity__fetch-label">Read</span>
                 {item.status !== "error" && isSafeUrl(item.url) ? (
-                  <a href={item.url} target="_blank" rel="noopener noreferrer">
+                  <a href={item.url} {...externalLinkAttributes}>
                     {item.url}
                   </a>
                 ) : (

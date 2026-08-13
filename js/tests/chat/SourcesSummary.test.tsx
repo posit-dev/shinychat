@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from "vitest"
 import { render, screen, cleanup, fireEvent } from "@testing-library/react"
 import { SourcesSummaryView } from "../../src/chat/SourcesSummary"
+import { AsideFaviconContext } from "../../src/chat/context"
 
 afterEach(cleanup)
 
@@ -38,6 +39,7 @@ describe("SourcesSummaryView", () => {
     expect(dialog).toHaveTextContent("Hub vs Mid-Drive")
     const link = screen.getByRole("link", { name: /How Motors Work/ })
     expect(link).toHaveAttribute("href", "https://wired.example/y")
+    expect(link).toHaveAttribute("data-shinychat-link", "")
   })
 
   it("falls back to the domain as the title when a source has none", () => {
@@ -67,5 +69,19 @@ describe("SourcesSummaryView", () => {
     const { container } = render(<SourcesSummaryView sources={manySources} />)
     const stack = container.querySelector(".shiny-sources-pill__stack")
     expect(stack?.children.length).toBeLessThanOrEqual(3)
+  })
+
+  it("does not load derived favicons when the deployment disables them", () => {
+    const { container } = render(
+      <AsideFaviconContext.Provider value={false}>
+        <SourcesSummaryView sources={sources} />
+      </AsideFaviconContext.Provider>,
+    )
+
+    expect(container.querySelector(".shiny-sources-pill img")).toBeNull()
+
+    fireEvent.click(screen.getByRole("button", { name: /Sources/ }))
+
+    expect(document.querySelector(".shiny-sources-popover img")).toBeNull()
   })
 })

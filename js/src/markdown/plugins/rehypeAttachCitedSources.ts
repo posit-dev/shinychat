@@ -52,30 +52,32 @@ function mergeSources(sources: CitationSource[]): CitationSource[] {
 }
 
 function transform(tree: Root): void {
-  const activities: Element[] = []
-  const citations: CitationSource[] = []
+  let activeActivity: Element | null = null
+  const citationsByActivity = new Map<Element, CitationSource[]>()
 
   visit(tree, "element", (node: Element) => {
-    if (node.tagName === "shiny-web-activity") activities.push(node)
-    if (node.tagName !== "shiny-aside") return
+    if (node.tagName === "shiny-web-activity") {
+      activeActivity = hasSearchResults(node) ? null : node
+      return
+    }
+    if (!activeActivity || node.tagName !== "shiny-aside") return
     const source = citationSource(node)
-    if (source) citations.push(source)
+    if (!source) return
+    const citations = citationsByActivity.get(activeActivity) ?? []
+    citations.push(source)
+    citationsByActivity.set(activeActivity, citations)
   })
 
-  if (citations.length === 0) return
-  for (let index = activities.length - 1; index >= 0; index -= 1) {
-    const activity = activities[index]!
-    if (hasSearchResults(activity)) continue
+  for (const [activity, citations] of citationsByActivity) {
     activity.properties = {
       ...activity.properties,
       citedSources: JSON.stringify(mergeSources(citations)),
     }
-    return
   }
 }
 
 /**
- * Attach final-answer citations to the last web-activity burst without a
+ * Attach answer citations to the preceding web-activity burst without a
  * provider result list. These are cited sources, not a synthetic result set.
  */
 export const rehypeAttachCitedSources: Plugin<[], Root> = () => transform

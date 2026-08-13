@@ -1,16 +1,24 @@
 import { memo, useState } from "react"
 import { FloatingPortal, FloatingFocusManager } from "@floating-ui/react"
+import { externalLinkAttributes } from "../markdown/plugins/rehypeExternalLinks"
 import { faviconUrl } from "./AsideGroup"
 import { useCitations } from "./citationCollector"
 import type { CitationEntry } from "./citations"
+import { useAsideFavicon } from "./context"
 import { useDismissiblePopover } from "./useDismissiblePopover"
 
 const MAX_STACK = 3
 
-function Favicon({ url }: { url: string }) {
+function Favicon({
+  url,
+  deriveFavicon,
+}: {
+  url: string
+  deriveFavicon: boolean
+}) {
   const src = faviconUrl(url)
   const [failed, setFailed] = useState(false)
-  if (!src || failed)
+  if (!deriveFavicon || !src || failed)
     return (
       <span
         className="shiny-sources-favicon shiny-sources-favicon--blank"
@@ -29,6 +37,7 @@ function Favicon({ url }: { url: string }) {
 
 export function SourcesSummaryView({ sources }: { sources: CitationEntry[] }) {
   const [open, setOpen] = useState(false)
+  const deriveFavicon = useAsideFavicon()
   const { refs, floatingStyles, context, getReferenceProps, getFloatingProps } =
     useDismissiblePopover(open, setOpen)
 
@@ -44,11 +53,13 @@ export function SourcesSummaryView({ sources }: { sources: CitationEntry[] }) {
         aria-label={label}
         {...getReferenceProps()}
       >
-        <span className="shiny-sources-pill__stack">
-          {sources.slice(0, MAX_STACK).map((s) => (
-            <Favicon key={s.url} url={s.url} />
-          ))}
-        </span>
+        {deriveFavicon && (
+          <span className="shiny-sources-pill__stack">
+            {sources.slice(0, MAX_STACK).map((s) => (
+              <Favicon key={s.url} url={s.url} deriveFavicon={deriveFavicon} />
+            ))}
+          </span>
+        )}
         <span className="shiny-sources-pill__label">Sources</span>
       </button>
       {open && (
@@ -73,10 +84,9 @@ export function SourcesSummaryView({ sources }: { sources: CitationEntry[] }) {
                     <a
                       className="shiny-sources-item__link"
                       href={s.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      {...externalLinkAttributes}
                     >
-                      <Favicon url={s.url} />
+                      <Favicon url={s.url} deriveFavicon={deriveFavicon} />
                       <span className="shiny-sources-item__text">
                         {s.domain && (
                           <span className="shiny-sources-item__site">

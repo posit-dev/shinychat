@@ -3,13 +3,16 @@ import { render, screen, cleanup, fireEvent } from "@testing-library/react"
 import { markdownProcessor } from "../../src/markdown/processors"
 import { parseMarkdown, hastToReact } from "../../src/markdown/markdownToReact"
 import { chatTagToComponentMap } from "../../src/chat/chatTagToComponentMap"
+import { AsideFaviconContext } from "../../src/chat/context"
 
 afterEach(cleanup)
 
-function renderMarkdown(md: string) {
+function renderMarkdown(md: string, deriveFavicon = true) {
   const hast = parseMarkdown(md, markdownProcessor)
   return render(
-    <>{hastToReact(hast, { tagToComponentMap: chatTagToComponentMap })}</>,
+    <AsideFaviconContext.Provider value={deriveFavicon}>
+      {hastToReact(hast, { tagToComponentMap: chatTagToComponentMap })}
+    </AsideFaviconContext.Provider>,
   )
 }
 
@@ -53,6 +56,21 @@ describe("WebActivity", () => {
     expect(
       screen.getByText("https://en.wikipedia.org/wiki/Electric_bicycle"),
     ).toBeInTheDocument()
+  })
+
+  it("marks result and fetch links for external-link confirmation", () => {
+    renderMarkdown(MD)
+    fireEvent.click(screen.getByText("Searched the web"))
+
+    const resultLink = screen
+      .getByText("2025 Electric Bike Trends")
+      .closest("a")
+    const fetchLink = screen
+      .getByText("https://en.wikipedia.org/wiki/Electric_bicycle")
+      .closest("a")
+
+    expect(resultLink).toHaveAttribute("data-shinychat-link", "")
+    expect(fetchLink).toHaveAttribute("data-shinychat-link", "")
   })
 
   it("keeps batched result lists with their corresponding queries", () => {
@@ -173,6 +191,16 @@ describe("WebActivity", () => {
     expect(
       screen.getAllByText("only-domain.com").length,
     ).toBeGreaterThanOrEqual(1)
+  })
+
+  it("does not load derived favicons when the deployment disables them", () => {
+    const { container } = renderMarkdown(MD, false)
+
+    fireEvent.click(screen.getByText("Searched the web"))
+
+    expect(
+      container.querySelector(".shiny-web-activity__results img"),
+    ).toBeNull()
   })
 
   it("shows an error status for a failed fetch", () => {
