@@ -119,15 +119,15 @@ opt_shinychat_tool_display <- function() {
 #'   `chat_ui()`.
 #'
 #' @export
-contents_shinychat <- S7::new_generic(
+contents_shinychat <- new_generic(
   "contents_shinychat",
   "content",
   function(content) {
-    S7::S7_dispatch()
+    S7_dispatch()
   }
 )
 
-S7::method(contents_shinychat, ellmer::Content) <- function(content) {
+method(contents_shinychat, ellmer::Content) <- function(content) {
   # Fall back to html or markdown
   html <- ellmer::contents_html(content)
   if (!is.null(html)) {
@@ -137,15 +137,15 @@ S7::method(contents_shinychat, ellmer::Content) <- function(content) {
   }
 }
 
-S7::method(contents_shinychat, ContentSlashCommand) <- function(content) {
+method(contents_shinychat, ContentSlashCommand) <- function(content) {
   trimws(paste0("/", content@command, " ", content@user_text))
 }
 
-S7::method(contents_shinychat, ellmer::ContentText) <- function(content) {
+method(contents_shinychat, ellmer::ContentText) <- function(content) {
   content@text
 }
 
-S7::method(contents_shinychat, ellmer::ContentThinking) <- function(content) {
+method(contents_shinychat, ellmer::ContentThinking) <- function(content) {
   structure(content@thinking, class = "shinychat_thinking")
 }
 
@@ -318,7 +318,7 @@ shinychat_tool_annotations <- function(tool) {
 
 # A `contents_shinychat()` method on a `ContentToolResult` subclass may
 # return arbitrary tags instead of shinychat's own tool card (see the
-# `S7::method(contents_shinychat, ...)` examples above). That leaves no
+# `method(contents_shinychat, ...)` examples above). That leaves no
 # `<shiny-tool-result>` element in the transcript at all, so the condensed
 # tool view — which derives "this call finished" from that element's
 # presence — has nothing to key off of and the request row spins forever.
@@ -334,7 +334,7 @@ shinychat_tool_annotations <- function(tool) {
 # custom UI and gets wrapped.
 wrap_custom_tool_result <- function(content, msg) {
   if (
-    !S7::S7_inherits(content, ellmer::ContentToolResult) ||
+    !S7_inherits(content, ellmer::ContentToolResult) ||
       inherits(msg, "shinychat_tool_card") ||
       is.null(msg)
   ) {
@@ -393,7 +393,7 @@ wrap_custom_tool_result <- function(content, msg) {
 # idempotent, since a wrapped result *is* a `shinychat_tool_card` and so fails
 # the wrap's own guard on a second pass.
 contents_shinychat_wrapped <- function(content) {
-  if (!S7::S7_inherits(content, ellmer::Content)) {
+  if (!S7_inherits(content, ellmer::Content)) {
     return(content)
   }
 
@@ -463,7 +463,7 @@ knit_print.shinychat_tool_card <- function(x, ...) {
   knitr::knit_print(as.tags(x))
 }
 
-S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
+method(contents_shinychat, ellmer::ContentToolRequest) <- function(
   content
 ) {
   if (opt_shinychat_tool_display() == "none") {
@@ -488,7 +488,7 @@ S7::method(contents_shinychat, ellmer::ContentToolRequest) <- function(
   )
 }
 
-S7::method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
+method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
   if (opt_shinychat_tool_display() == "none") {
     return(NULL)
   }
@@ -619,21 +619,19 @@ tool_result_display <- function(
   value_preview = NULL
 ) {
   as_tool_result_display(
-    compact(
-      list(
-        title = title,
-        icon = icon,
-        html = html,
-        markdown = markdown,
-        text = text,
-        show_request = show_request,
-        open = open,
-        full_screen = full_screen,
-        footer = footer,
-        label = label,
-        value_preview = value_preview
-      )
-    )
+    compact(list(
+      title = title,
+      icon = icon,
+      html = html,
+      markdown = markdown,
+      text = text,
+      show_request = show_request,
+      open = open,
+      full_screen = full_screen,
+      footer = footer,
+      label = label,
+      value_preview = value_preview
+    ))
   )
 }
 
@@ -823,31 +821,31 @@ tool_string_value <- function(x) {
 }
 
 is_content_extra <- function(x) {
-  is_content_image(x) || S7::S7_inherits(x, ellmer::ContentPDF)
+  is_content_image(x) || S7_inherits(x, ellmer::ContentPDF)
 }
 
 is_content_image <- function(x) {
-  S7::S7_inherits(x, ellmer::ContentImage)
+  S7_inherits(x, ellmer::ContentImage)
 }
 
 as_content_extra_item <- function(x) {
-  if (S7::S7_inherits(x, ellmer::ContentImageRemote)) {
+  if (S7_inherits(x, ellmer::ContentImageRemote)) {
     list(type = "image", src = x@url)
-  } else if (S7::S7_inherits(x, ellmer::ContentImageInline)) {
+  } else if (S7_inherits(x, ellmer::ContentImageInline)) {
     list(type = "image", src = paste0("data:", x@type, ";base64,", x@data))
-  } else if (S7::S7_inherits(x, ellmer::ContentPDF)) {
+  } else if (S7_inherits(x, ellmer::ContentPDF)) {
     list(type = "pdf", filename = x@filename %||% "document.pdf")
   }
 }
 
 is_content <- function(x) {
-  S7::S7_inherits(x, ellmer::Content)
+  S7_inherits(x, ellmer::Content)
 }
 
 as_content_extra_item_or_text <- function(x) {
   if (is_content_extra(x)) {
     as_content_extra_item(x)
-  } else if (S7::S7_inherits(x, ellmer::ContentText)) {
+  } else if (S7_inherits(x, ellmer::ContentText)) {
     list(type = "text", value = x@text, value_type = "markdown")
   } else {
     list(type = "text", value = as.character(x), value_type = "markdown")
@@ -891,7 +889,7 @@ tool_default_display <- function(content) {
   list(value = tool_string_value(content), value_type = "code")
 }
 
-S7::method(contents_shinychat, ellmer::Turn) <- function(content) {
+method(contents_shinychat, ellmer::Turn) <- function(content) {
   # Process all contents in the turn, filtering out empty results.
   #
   # Wrapped, for the same reason as `merge_ellmer_turn_group()`: converting a
@@ -904,7 +902,7 @@ S7::method(contents_shinychat, ellmer::Turn) <- function(content) {
 ellmer_turn_effective_role <- function(turn) {
   contents <- turn@contents
   is_tool_result_only <- length(contents) > 0 &&
-    every(contents, S7::S7_inherits, ellmer::ContentToolResult)
+    every(contents, S7_inherits, ellmer::ContentToolResult)
   if (is_tool_result_only) "assistant" else turn@role
 }
 
@@ -931,7 +929,7 @@ merge_ellmer_turn_group <- function(group, tools) {
   contents <- unlist(
     lapply(group, function(turn) {
       turn_contents <- map(turn@contents, function(x) {
-        if (!S7::S7_inherits(x, ellmer::ContentToolResult)) {
+        if (!S7_inherits(x, ellmer::ContentToolResult)) {
           return(x)
         }
         if (!is.null(x@request@tool)) {
@@ -969,7 +967,7 @@ merge_ellmer_turn_group <- function(group, tools) {
   list(role = role, content = content)
 }
 
-S7::method(contents_shinychat, S7::new_S3_class(c("Chat", "R6"))) <- function(
+method(contents_shinychat, S7::new_S3_class(c("Chat", "R6"))) <- function(
   content
 ) {
   tools <- content$get_tools()
