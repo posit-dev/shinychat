@@ -84,4 +84,19 @@ describe("SourcesSummaryView", () => {
 
     expect(document.querySelector(".shiny-sources-popover img")).toBeNull()
   })
+
+  it("preserves a scoped Bootstrap theme in its portaled popover", () => {
+    render(
+      <div data-bs-theme="dark">
+        <SourcesSummaryView sources={sources} />
+      </div>,
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: /Sources/ }))
+
+    expect(document.querySelector(".shiny-sources-popover")).toHaveAttribute(
+      "data-bs-theme",
+      "dark",
+    )
+  })
 })

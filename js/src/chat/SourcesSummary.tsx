@@ -5,6 +5,7 @@ import { faviconUrl } from "./AsideGroup"
 import { useCitations } from "./citationCollector"
 import type { CitationEntry } from "./citations"
 import { useAsideFavicon } from "./context"
+import { portalTheme } from "./portalTheme"
 import { useDismissiblePopover } from "./useDismissiblePopover"
 
 const MAX_STACK = 3
@@ -40,6 +41,7 @@ export function SourcesSummaryView({ sources }: { sources: CitationEntry[] }) {
   const deriveFavicon = useAsideFavicon()
   const { refs, floatingStyles, context, getReferenceProps, getFloatingProps } =
     useDismissiblePopover(open, setOpen)
+  const portal = portalTheme(refs.domReference.current)
 
   if (sources.length === 0) return null
   const label = `Sources, ${sources.length} ${sources.length === 1 ? "source" : "sources"}`
@@ -73,7 +75,8 @@ export function SourcesSummaryView({ sources }: { sources: CitationEntry[] }) {
             <div
               ref={refs.setFloating}
               className="shiny-sources-popover"
-              style={floatingStyles}
+              style={{ ...portal.style, ...floatingStyles }}
+              data-bs-theme={portal.theme}
               aria-label={label}
               {...getFloatingProps()}
             >
