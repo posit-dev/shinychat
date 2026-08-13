@@ -325,7 +325,7 @@ FileConversationStore <- R6::R6Class(
           if (!file.exists(record_file)) {
             return(NULL)
           }
-          tryCatch(
+          result <- tryCatch(
             {
               raw <- jsonlite::fromJSON(record_file, simplifyVector = FALSE)
               check_schema_version(raw$schema_version)
@@ -336,9 +336,12 @@ FileConversationStore <- R6::R6Class(
               ))
               record_meta(raw, size_bytes = size_bytes)
             },
-            # Let an unsupported schema version escape uncaught -- only
-            # malformed JSON should be downgraded to a skip-with-warning.
-            shinychat_error_unsupported_schema_version = function(e) stop(e),
+            # Capture (rather than re-signal) an unsupported schema version
+            # here -- stop()ing from inside this handler would still be
+            # caught by the sibling `error` handler below, since both belong
+            # to this same tryCatch call. Re-raise it after tryCatch returns
+            # instead, so it escapes uncaught.
+            shinychat_error_unsupported_schema_version = function(e) e,
             error = function(e) {
               rlang::warn(paste0(
                 "Skipping unreadable conversation ",
@@ -349,6 +352,10 @@ FileConversationStore <- R6::R6Class(
               NULL
             }
           )
+          if (inherits(result, "shinychat_error_unsupported_schema_version")) {
+            stop(result)
+          }
+          result
         })
       )
       timestamps <- vapply(metas, function(m) m$updated_at, character(1))
@@ -460,7 +467,7 @@ FileConversationStore <- R6::R6Class(
       # Check the on-disk schema version before creating any directory or
       # touching any file -- a rejection here must leave the filesystem
       # untouched.
-      if (file.exists(record_file)) {
+      if (file.exists(record_file) && !dir.exists(record_file)) {
         existing_raw <- jsonlite::fromJSON(record_file, simplifyVector = FALSE)
         check_schema_version(existing_raw$schema_version)
       }
