@@ -843,6 +843,7 @@ shinychat-raw-html {
 
 .shiny-aside-group {
   display: inline-block;
+  max-inline-size: calc(100% - 0.3em);
   margin-inline-start: 0.3em;
   // Small empirically-tuned nudge above the default baseline position.
   vertical-align: 0.1em;
@@ -872,6 +873,7 @@ shinychat-raw-html {
   cursor: pointer;
   vertical-align: middle;
   min-height: 1.6em;
+  max-inline-size: min(18em, 100%);
 
   &:has(img) {
     padding-inline-start: 0.35em;
@@ -884,19 +886,22 @@ shinychat-raw-html {
   }
 
   img {
+    flex: 0 0 auto;
     width: 1.1em;
     height: 1.1em;
     border-radius: 50%;
   }
 
   .shiny-aside-pill__overflow {
+    flex: 0 0 auto;
     opacity: 0.65;
   }
 
   .shiny-aside-pill__label {
     min-width: 0;
-    overflow-wrap: anywhere;
-    word-break: break-word;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   &:hover,
@@ -908,11 +913,13 @@ shinychat-raw-html {
 .shiny-aside-popover {
   // Position comes from Floating UI. The portal lets the popover escape the
   // message list's scroll container while flip/shift keep it in the viewport.
+  display: flex;
+  flex-direction: column;
   z-index: 1040;
   box-sizing: border-box;
   width: min(22em, calc(100vw - 1rem));
   max-height: min(32rem, calc(100vh - 1rem));
-  overflow: auto;
+  overflow: hidden;
   overflow-wrap: anywhere;
   word-break: break-word;
   background: var(--bs-body-bg, #fff);
@@ -927,6 +934,7 @@ shinychat-raw-html {
   white-space: normal;
 
   .shiny-aside-popover__nav {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -965,6 +973,7 @@ shinychat-raw-html {
   }
 
   .shiny-aside-popover__label {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     gap: 0.4em;
@@ -975,13 +984,25 @@ shinychat-raw-html {
     word-break: break-word;
 
     img {
+      flex: 0 0 auto;
       width: 1.1em;
       height: 1.1em;
       border-radius: 50%;
     }
   }
 
+  .shiny-aside-popover__label-text {
+    display: -webkit-box;
+    min-width: 0;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
   .shiny-aside-popover__body {
+    min-height: 0;
+    overflow: auto;
+
     p:last-child {
       margin-bottom: 0;
     }
