@@ -47,6 +47,23 @@ describe("citationEntriesFromAsides", () => {
     ])
   })
 
+  it("derives a source domain when a citation has no explicit label", () => {
+    expect(
+      citationEntriesFromAsides([
+        {
+          url: "https://source.example/articles/one",
+          citation: { title: "Source title" },
+        },
+      ]),
+    ).toEqual([
+      {
+        url: "https://source.example/articles/one",
+        domain: "source.example",
+        title: "Source title",
+      },
+    ])
+  })
+
   it("ignores citation entries without a source URL", () => {
     expect(
       citationEntriesFromAsides([

@@ -222,7 +222,6 @@ try:
     # Import here to avoid hard dependency on pydantic
     from ._chat_normalize_chatlas import (
         citation_aside,
-        domain_from_url,
         tool_display_override,
         tool_request_contents,
         tool_result_contents,
@@ -331,7 +330,6 @@ try:
                 {
                     "url": s.url,
                     "title": s.title,
-                    "domain": domain_from_url(s.url),
                 }
                 for s in message.sources
             ]

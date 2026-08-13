@@ -36,6 +36,7 @@ def test_search_response_renders_results_element_with_sources():
     assert "https://a.com" in html
     assert "Alpha" in html
     assert "https://b.com" in html
+    assert "domain" not in html
 
 
 def test_fetch_request_renders_empty():
@@ -52,7 +53,7 @@ def test_fetch_response_renders_web_fetch_element_with_status():
     assert "success" in html
 
 
-def test_citation_renders_aside_element_with_auto_derived_label():
+def test_citation_renders_aside_element_without_server_derived_label():
     # Citations render as a markdown-typed string (not a Tag) so they merge
     # into the surrounding text segment instead of forcing their own block.
     msg = message_content(
@@ -66,7 +67,7 @@ def test_citation_renders_aside_element_with_auto_derived_label():
     assert msg.content_type == "markdown"
     assert "shiny-aside" in msg.content
     assert "data-citation" in msg.content
-    assert 'label="cran.r-project.org"' in msg.content
+    assert "label=" not in msg.content
     assert "https://cran.r-project.org/web/packages/ggplot2" in msg.content
     assert "ggplot2 on CRAN" in msg.content
 

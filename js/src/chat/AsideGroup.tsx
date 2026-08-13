@@ -8,6 +8,7 @@ import { externalLinkAttributes } from "../markdown/plugins/rehypeExternalLinks"
 import { useAsideFavicon } from "./context"
 import { useCitationRegister } from "./citationCollector"
 import { citationEntriesFromAsides, type CitationEntry } from "./citations"
+import { domainFromUrl } from "./domain"
 import { useDismissiblePopover } from "./useDismissiblePopover"
 
 export interface CitationMetadata {
@@ -63,6 +64,7 @@ export function parseAsideEntries(node?: HastElement): AsideEntry[] {
     )
     .map((el) => {
       const url = prop(el, "url")
+      const label = prop(el, "label")
       const text = textContent(el).trim()
       const citation =
         el.properties?.dataCitation == null
@@ -72,7 +74,7 @@ export function parseAsideEntries(node?: HastElement): AsideEntry[] {
               cited_quote: prop(el, "cited-quote"),
             }
       return {
-        label: prop(el, "label"),
+        label: label ?? (citation && url ? domainFromUrl(url) : undefined),
         url,
         icon: prop(el, "icon"),
         body: el.children.length > 0 ? toHtml(el.children) : undefined,

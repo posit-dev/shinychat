@@ -1,4 +1,5 @@
 import type { AsideEntry } from "./AsideGroup"
+import { domainFromUrl } from "./domain"
 
 export interface CitationEntry {
   url: string
@@ -17,7 +18,7 @@ export function citationEntriesFromAsides(
     .filter((entry) => entry.citation != null)
     .map((entry) => ({
       url: entry.url ?? "",
-      domain: entry.label,
+      domain: entry.label ?? domainFromUrl(entry.url ?? ""),
       title: entry.citation?.title,
     }))
     .filter((e) => e.url !== "")

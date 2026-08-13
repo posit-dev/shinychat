@@ -240,7 +240,6 @@ contents_shinychat_citation <- function(content) {
       "shiny-aside",
       list(
         `data-citation` = NA,
-        label = web_source_domain(source@url),
         url = source@url,
         `grounded-span` = content@grounded_span,
         `cited-quote` = content@cited_quote,
@@ -284,15 +283,7 @@ web_source_record <- function(source) {
 
   list(
     url = source@url,
-    title = source@title,
-    domain = web_source_domain(source@url)
-  )
-}
-
-web_source_domain <- function(url) {
-  tryCatch(
-    httr2::url_parse(url)$hostname %||% url,
-    error = function(...) url
+    title = source@title
   )
 }
 

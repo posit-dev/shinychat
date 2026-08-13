@@ -80,7 +80,6 @@ describe("AsideGroup", () => {
           tagName: "shiny-aside",
           properties: {
             dataCitation: "",
-            label: "example.com",
             url: "https://example.com",
             "grounded-span": "Supported claim",
             "cited-quote": "Source evidence",

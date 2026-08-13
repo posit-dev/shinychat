@@ -489,7 +489,7 @@ test_that("web content renders as shinychat web activity and citations", {
     simplifyVector = FALSE
   )
   expect_equal(length(sources), 1L)
-  expect_equal(sources[[1]]$domain, "cran.r-project.org")
+  expect_false("domain" %in% names(sources[[1]]))
 
   expect_null(
     contents_shinychat(
@@ -517,7 +517,7 @@ test_that("web content renders as shinychat web activity and citations", {
   citation_markup <- contents_shinychat(citation)
   expect_match(citation_markup, "<shiny-aside", fixed = TRUE)
   expect_match(citation_markup, "data-citation", fixed = TRUE)
-  expect_match(citation_markup, 'label="x.example"', fixed = TRUE)
+  expect_false(grepl("label=", citation_markup, fixed = TRUE))
   expect_match(citation_markup, "A &amp; B &lt;source&gt;", fixed = TRUE)
   expect_match(citation_markup, "a=1&amp;b=2", fixed = TRUE)
   expect_match(

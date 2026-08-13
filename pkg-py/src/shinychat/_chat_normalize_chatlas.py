@@ -5,7 +5,6 @@ import os
 import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Optional, Sequence, Union
-from urllib.parse import urlparse
 
 from htmltools import (
     HTML,
@@ -250,11 +249,6 @@ class ShinyToolCardMessage(ChatMessage):
     pass
 
 
-def domain_from_url(url: str) -> str:
-    "Best-effort hostname for use as a citation's display label."
-    return urlparse(url).hostname or url
-
-
 def citation_aside(
     url: str,
     title: Optional[str],
@@ -267,7 +261,6 @@ def citation_aside(
             "shiny-aside",
             Tag("a", title or url, href=url),
             data_citation="",
-            label=domain_from_url(url),
             url=url,
             grounded_span=grounded_span,
             cited_quote=cited_quote,

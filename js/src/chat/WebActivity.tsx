@@ -2,6 +2,7 @@ import { memo, useState } from "react"
 import type { Element, ElementContent } from "hast"
 import { isSafeUrl } from "../markdown/urlSanitize"
 import { ChevronIcon } from "./ChevronIcon"
+import { domainFromUrl } from "./domain"
 
 interface Source {
   url: string
@@ -81,12 +82,7 @@ function parseItems(node?: Element): Item[] {
 }
 
 function domainOf(s: Source): string {
-  if (s.domain) return s.domain
-  try {
-    return new URL(s.url).hostname
-  } catch {
-    return s.url
-  }
+  return s.domain || domainFromUrl(s.url)
 }
 
 // Fires one external request per unique domain (only when the panel is
