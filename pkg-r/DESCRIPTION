@@ -24,7 +24,7 @@ Imports:
     bslib,
     cli,
     coro,
-    ellmer,
+    ellmer (>= 0.4.1),
     fastmap,
     htmltools,
     jsonlite,
