@@ -49,6 +49,34 @@ function collectAndRemoveRootAsides(root: Root): Element[] {
   return collected
 }
 
+function moveLooseListItemAsidesIntoParagraphs(tree: Root): void {
+  visit(tree, "element", (node: Element) => {
+    if (node.tagName !== "li" || !hasNestedParagraph(node)) return
+
+    let precedingParagraph: Element | null = null
+    let index = 0
+    while (index < node.children.length) {
+      const child = node.children[index]!
+      if (child.type === "element" && child.tagName === "p") {
+        precedingParagraph = child
+        index += 1
+        continue
+      }
+
+      if (precedingParagraph && isAside(child)) {
+        precedingParagraph.children.push(child)
+        node.children.splice(index, 1)
+        continue
+      }
+
+      if (child.type !== "text" || child.value.trim() !== "") {
+        precedingParagraph = null
+      }
+      index += 1
+    }
+  })
+}
+
 function makeGroup(children: Element[]): Element {
   return {
     type: "element",
@@ -87,14 +115,37 @@ function assignAnonymousAsideIndexes(tree: Root): void {
 }
 
 function transform(tree: Root): void {
+  moveLooseListItemAsidesIntoParagraphs(tree)
+
   visit(tree, "element", (node: Element) => {
     if (!isAsideContainer(node)) return
-    node.children.push(...makeGroups(collectAndRemoveAsides(node)))
+    const found = collectAndRemoveAsides(node)
+    if (found.length === 0) return
+    trimTrailingAsideBreaks(node.children)
+    node.children.push(...makeGroups(found))
   })
 
   const rootGroups = makeGroups(collectAndRemoveRootAsides(tree))
   tree.children.push(...rootGroups)
   assignAnonymousAsideIndexes(tree)
+}
+
+function trimTrailingAsideBreaks(children: ElementContent[]): void {
+  while (children.length > 0) {
+    const last = children[children.length - 1]!
+    if (last.type === "element" && last.tagName === "br") {
+      children.pop()
+      continue
+    }
+    if (last.type !== "text") return
+
+    const value = last.value.trimEnd()
+    if (value) {
+      last.value = value
+      return
+    }
+    children.pop()
+  }
 }
 
 /**
