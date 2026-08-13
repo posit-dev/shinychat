@@ -55,6 +55,43 @@ describe("WebActivity", () => {
     ).toBeInTheDocument()
   })
 
+  it("keeps batched result lists with their corresponding queries", () => {
+    const rSources = JSON.stringify([
+      {
+        url: "https://cran.r-project.org/bin/windows/base/old/4.5.0/",
+        title: "Previous releases of R for Windows",
+        domain: "cran.r-project.org",
+      },
+    ])
+    const pythonSources = JSON.stringify([
+      {
+        url: "https://www.python.org/downloads/release/python-3140/",
+        title: "Python Release Python 3.14.0",
+        domain: "www.python.org",
+      },
+    ])
+    const md = [
+      '<shiny-web-search query="R 4.5.0 release date"></shiny-web-search>',
+      '<shiny-web-search query="Python 3.14.0 release date"></shiny-web-search>',
+      `<shiny-web-search-results sources='${rSources}'></shiny-web-search-results>`,
+      `<shiny-web-search-results sources='${pythonSources}'></shiny-web-search-results>`,
+    ].join("\n")
+
+    const { container } = renderMarkdown(md)
+    fireEvent.click(screen.getByText("Searched the web"))
+
+    const searches = container.querySelectorAll(".shiny-web-activity__search")
+    expect(searches).toHaveLength(2)
+    expect(searches[0]).toHaveTextContent("R 4.5.0 release date")
+    expect(searches[0]).toHaveTextContent("Previous releases of R for Windows")
+    expect(searches[0]).not.toHaveTextContent("Python Release Python 3.14.0")
+    expect(searches[1]).toHaveTextContent("Python 3.14.0 release date")
+    expect(searches[1]).toHaveTextContent("Python Release Python 3.14.0")
+    expect(searches[1]).not.toHaveTextContent(
+      "Previous releases of R for Windows",
+    )
+  })
+
   it("does not imply zero results when only search activity was provided", () => {
     renderMarkdown(
       '<shiny-web-search query="Python current release"></shiny-web-search>',

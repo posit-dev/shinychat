@@ -58,28 +58,30 @@ function parseItems(node?: Element): Item[] {
     (c: ElementContent): c is Element => c.type === "element",
   )
   const items: Item[] = []
-  for (let i = 0; i < kids.length; i++) {
-    const el = kids[i]!
+  const pendingSearches: SearchItem[] = []
+  for (const el of kids) {
     if (el.tagName === "shiny-web-search") {
-      let sources: Source[] | null = null
-      const next = kids[i + 1]
-      if (next && next.tagName === "shiny-web-search-results") {
-        sources = parseSources(prop(next, "sources"))
-        i++
-      }
-      items.push({
+      const search: SearchItem = {
         kind: "search",
         query: prop(el, "query") ?? "",
-        sources,
+        sources: null,
         citedSources: parseSources(prop(node, "citedSources")),
-      })
+      }
+      items.push(search)
+      pendingSearches.push(search)
     } else if (el.tagName === "shiny-web-search-results") {
-      items.push({
-        kind: "search",
-        query: "",
-        sources: parseSources(prop(el, "sources")),
-        citedSources: [],
-      })
+      const sources = parseSources(prop(el, "sources"))
+      const search = pendingSearches.shift()
+      if (search) {
+        search.sources = sources
+      } else {
+        items.push({
+          kind: "search",
+          query: "",
+          sources,
+          citedSources: [],
+        })
+      }
     } else if (el.tagName === "shiny-web-fetch") {
       const url = prop(el, "url")
       if (url) items.push({ kind: "fetch", url, status: prop(el, "status") })
