@@ -149,19 +149,11 @@ S7::method(contents_shinychat, ellmer::ContentThinking) <- function(content) {
   structure(content@thinking, class = "shinychat_thinking")
 }
 
-ellmer_web_content_classes <- c(
-  "WebSource",
-  "ContentToolRequestSearch",
-  "ContentToolResponseSearch",
-  "ContentToolRequestFetch",
-  "ContentToolResponseFetch",
-  "ContentCitation"
-)
-
 ellmer_web_content_available <- function(
+  methods,
   exports = getNamespaceExports("ellmer")
 ) {
-  all(ellmer_web_content_classes %in% exports)
+  all(c("WebSource", names(methods)) %in% exports)
 }
 
 contents_shinychat_search_request <- function(content) {
@@ -256,10 +248,6 @@ contents_shinychat_citation <- function(content) {
 }
 
 register_ellmer_web_content_methods <- function() {
-  if (!ellmer_web_content_available()) {
-    return(invisible())
-  }
-
   methods <- list(
     ContentToolRequestSearch = contents_shinychat_search_request,
     ContentToolResponseSearch = contents_shinychat_search_response,
@@ -267,6 +255,10 @@ register_ellmer_web_content_methods <- function() {
     ContentToolResponseFetch = contents_shinychat_fetch_response,
     ContentCitation = contents_shinychat_citation
   )
+
+  if (!ellmer_web_content_available(methods)) {
+    return(invisible())
+  }
 
   for (class_name in names(methods)) {
     class <- getExportedValue("ellmer", class_name)

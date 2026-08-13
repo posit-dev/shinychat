@@ -573,10 +573,16 @@ test_that("ContentCitation preserves optional metadata independently", {
   expect_false(grepl("grounded-span=", quote_only, fixed = TRUE))
 })
 
-test_that("web content feature detection requires every ellmer export", {
-  exports <- ellmer_web_content_classes
-  expect_true(ellmer_web_content_available(exports))
-  expect_false(ellmer_web_content_available(exports[-1]))
+test_that("web content feature detection derives classes from registered methods", {
+  methods <- list(
+    ContentToolRequestSearch = contents_shinychat_search_request,
+    ContentCitation = contents_shinychat_citation
+  )
+  exports <- c("WebSource", names(methods))
+
+  expect_true(ellmer_web_content_available(methods, exports))
+  expect_false(ellmer_web_content_available(methods, exports[-1]))
+  expect_false(ellmer_web_content_available(methods, exports[-3]))
 })
 
 test_that("web content renderers respect disabled tool display", {
