@@ -36,7 +36,7 @@ export function useDismissiblePopover(
     onOpenChange: setOpen,
     strategy: "fixed",
     placement: "bottom-start",
-    middleware: [offset(6), flip(), shift({ padding: 8 })],
+    middleware: [offset(6), flip(), shift({ padding: 8, crossAxis: true })],
     whileElementsMounted: autoUpdate,
   })
   const hover = useHover(context, { delay: { close: CLOSE_GRACE_PERIOD_MS } })

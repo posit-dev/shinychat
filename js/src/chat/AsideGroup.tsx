@@ -330,7 +330,9 @@ export const AsideGroupView = memo(function AsideGroupView({
                         entry={current}
                         deriveFavicon={deriveFavicon}
                       />
-                      {current.label}
+                      <span className="shiny-aside-popover__label-text">
+                        {current.label}
+                      </span>
                     </a>
                   ) : (
                     <div className="shiny-aside-popover__label">
@@ -338,7 +340,9 @@ export const AsideGroupView = memo(function AsideGroupView({
                         entry={current}
                         deriveFavicon={deriveFavicon}
                       />
-                      {current.label}
+                      <span className="shiny-aside-popover__label-text">
+                        {current.label}
+                      </span>
                     </div>
                   )}
                 </>
