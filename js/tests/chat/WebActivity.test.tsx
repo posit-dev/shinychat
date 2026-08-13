@@ -142,6 +142,26 @@ describe("WebActivity", () => {
     ).toHaveLength(1)
   })
 
+  it("shows answer citations once for multiple searches without results", () => {
+    renderMarkdown(
+      [
+        '<shiny-web-search query="Python current release"></shiny-web-search>',
+        '<shiny-web-search query="Python supported versions"></shiny-web-search>',
+        "",
+        "Python 3.14.7 is current.",
+        '<shiny-aside data-citation url="https://www.python.org/downloads/"><a href="https://www.python.org/downloads/">Download Python | Python.org</a></shiny-aside>',
+      ].join("\n"),
+    )
+    fireEvent.click(screen.getByText("Searched the web"))
+
+    expect(screen.getAllByText("Cited sources")).toHaveLength(1)
+    expect(
+      screen.getAllByText("www.python.org", {
+        selector: ".shiny-web-activity__domain",
+      }),
+    ).toHaveLength(1)
+  })
+
   it("falls back to the domain when a source has no title", () => {
     const md = [
       '<shiny-web-search query="q"></shiny-web-search>',

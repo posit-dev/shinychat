@@ -54,6 +54,7 @@ function parseSources(json?: string): Source[] {
 
 function parseItems(node?: Element): Item[] {
   if (!node) return []
+  const citedSources = parseSources(prop(node, "citedSources"))
   const kids = (node.children ?? []).filter(
     (c: ElementContent): c is Element => c.type === "element",
   )
@@ -65,7 +66,7 @@ function parseItems(node?: Element): Item[] {
         kind: "search",
         query: prop(el, "query") ?? "",
         sources: null,
-        citedSources: parseSources(prop(node, "citedSources")),
+        citedSources: [],
       }
       items.push(search)
       pendingSearches.push(search)
@@ -85,6 +86,13 @@ function parseItems(node?: Element): Item[] {
     } else if (el.tagName === "shiny-web-fetch") {
       const url = prop(el, "url")
       if (url) items.push({ kind: "fetch", url, status: prop(el, "status") })
+    }
+  }
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index]!
+    if (item.kind === "search" && item.sources === null) {
+      item.citedSources = citedSources
+      break
     }
   }
   return items
