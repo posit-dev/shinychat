@@ -175,7 +175,7 @@ export const AsideGroupView = memo(function AsideGroupView({
     onOpenChange: setOpen,
     strategy: "fixed",
     placement: "bottom-start",
-    middleware: [offset(6), flip(), shift({ padding: 8 })],
+    middleware: [offset(6), flip(), shift({ padding: 8, crossAxis: true })],
     whileElementsMounted: autoUpdate,
   })
 
@@ -337,7 +337,9 @@ export const AsideGroupView = memo(function AsideGroupView({
                         entry={current}
                         deriveFavicon={deriveFavicon}
                       />
-                      {current.label}
+                      <span className="shiny-aside-popover__label-text">
+                        {current.label}
+                      </span>
                     </a>
                   ) : (
                     <div className="shiny-aside-popover__label">
@@ -345,7 +347,9 @@ export const AsideGroupView = memo(function AsideGroupView({
                         entry={current}
                         deriveFavicon={deriveFavicon}
                       />
-                      {current.label}
+                      <span className="shiny-aside-popover__label-text">
+                        {current.label}
+                      </span>
                     </div>
                   )}
                 </>
