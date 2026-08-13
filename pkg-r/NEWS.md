@@ -45,6 +45,8 @@
 
 * Fixed the copy button on code blocks not working in some embedded contexts. (@thisisnic, #247)
 
+* `FileConversationStore` and `InMemoryConversationStore` now reject conversation records with an unsupported `schema_version` on read (`get()`/`list()`) and write (`put()`), instead of silently misinterpreting or overwriting them.
+
 # shinychat 0.4.0
 
 ## Experimental internal changes

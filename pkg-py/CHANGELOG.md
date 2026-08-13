@@ -33,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * Fixed `MarkdownStream` permanently stopping following new content after the user scrolled back to the bottom. Pinning was decided only from `scroll` events, which browsers dispatch asynchronously; if a chunk grew the container first, the user's at-bottom position no longer read as at-bottom and auto-scroll silently disengaged for good. (#282)
 
+* `FileConversationStore` and `InMemoryConversationStore` now reject conversation records with an unsupported `schema_version` on read (`get`/`list`) and write (`put`), instead of silently misinterpreting or overwriting them.
+
 ## [0.6.0] - 2026-07-06
 
 ### New features
