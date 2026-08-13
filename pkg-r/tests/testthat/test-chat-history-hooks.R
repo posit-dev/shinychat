@@ -112,22 +112,26 @@ test_that("on_restore does NOT fire on new_chat by default", {
     class = "ellmer::UserTurn",
     version = 1,
     props = list(
-      contents = list(list(
-        class = "ellmer::ContentText",
-        version = 1,
-        props = list(text = "Hi")
-      ))
+      contents = list(
+        list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = "Hi")
+        )
+      )
     )
   )
   asst_turn <- list(
     class = "ellmer::AssistantTurn",
     version = 1,
     props = list(
-      contents = list(list(
-        class = "ellmer::ContentText",
-        version = 1,
-        props = list(text = "Hello")
-      ))
+      contents = list(
+        list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = "Hello")
+        )
+      )
     )
   )
   ctrl$on_response(list(user_turn, asst_turn))
@@ -156,22 +160,26 @@ test_that("on_response with no new turns does not overwrite saved values", {
     class = "ellmer::UserTurn",
     version = 1,
     props = list(
-      contents = list(list(
-        class = "ellmer::ContentText",
-        version = 1,
-        props = list(text = "Hi")
-      ))
+      contents = list(
+        list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = "Hi")
+        )
+      )
     )
   )
   asst_turn <- list(
     class = "ellmer::AssistantTurn",
     version = 1,
     props = list(
-      contents = list(list(
-        class = "ellmer::ContentText",
-        version = 1,
-        props = list(text = "Hello")
-      ))
+      contents = list(
+        list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = "Hello")
+        )
+      )
     )
   )
 
@@ -181,4 +189,63 @@ test_that("on_response with no new turns does not overwrite saved values", {
   accent <- "danger"
   ctrl$on_response(list(user_turn, asst_turn))
   expect_equal(ctrl$record$values$accent, "info")
+})
+
+test_that("greeting session state is not wired into conversation record values", {
+  skip_if_not_installed("shiny")
+  store <- InMemoryConversationStore$new()
+  client <- .make_test_client()
+  sess <- shiny::MockShinySession$new()
+  ctrl <- HistoryController$new(
+    chat_id = "test",
+    client = client,
+    options = history_options(store = store),
+    session = sess
+  )
+
+  set_session_greeting_state(
+    sess,
+    "test",
+    new_greeting_snapshot(
+      content = "Hello",
+      content_type = "markdown",
+      options = list(persistent = FALSE)
+    )
+  )
+  ctrl$partition <- conversation_partition("test", "alice")
+
+  user_turn <- list(
+    class = "ellmer::UserTurn",
+    version = 1,
+    props = list(
+      contents = list(
+        list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = "Hi")
+        )
+      )
+    )
+  )
+  asst_turn <- list(
+    class = "ellmer::AssistantTurn",
+    version = 1,
+    props = list(
+      contents = list(
+        list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = "Hello")
+        )
+      )
+    )
+  )
+  ctrl$on_response(list(user_turn, asst_turn))
+
+  expect_false("greeting" %in% names(ctrl$record$values %||% list()))
+  # The greeting snapshot itself is untouched by history save/restore.
+  expect_equal(
+    get_session_greeting_state(sess, "test")$content,
+    "Hello"
+  )
 })

@@ -1,28 +1,3 @@
-messages_input_value <- function(value) {
-  if (!is.list(value)) {
-    rlang::abort(paste0(
-      "Expected a list from shinychat.messages, got ",
-      class(value)[1]
-    ))
-  }
-  lapply(value, function(m) {
-    message <- list(
-      role = m$role,
-      segments = lapply(m$segments, function(s) {
-        list(content = s$content, content_type = s$content_type)
-      })
-    )
-    if (!is.null(m$htmlDeps)) {
-      message$htmlDeps <- m$htmlDeps
-    }
-    if (!is.null(m$attachments) && length(m$attachments) > 0) {
-      validate_attachments(m$attachments)
-      message$attachments <- m$attachments
-    }
-    message
-  })
-}
-
 int_to_hex <- function(n, width = 13L) {
   hex_chars <- c(0:9, letters[1:6])
   digits <- character(0)
@@ -107,6 +82,90 @@ new_conversation_record <- function(title, client_info = list()) {
   )
 }
 
+# Reject a malformed node graph before it is applied to app state. Must run
+# before any switch or restore mutates model turns, transcript state, or
+# active-record state -- a corrupted stored record should never partially
+# apply. Checks the whole graph (not just the active path);
+# record_path_node_ids(), called last, additionally rejects a cycle in the
+# active path.
+validate_conversation_record <- function(record) {
+  if (
+    !is.null(record$current_leaf) &&
+      is.null(record$nodes[[record$current_leaf]])
+  ) {
+    rlang::abort(
+      paste0("Dangling current_leaf reference: ", record$current_leaf)
+    )
+  }
+
+  for (node_id in names(record$nodes)) {
+    node <- record$nodes[[node_id]]
+    parent <- node$parent
+    children <- unlist(node$children, use.names = FALSE)
+
+    if (!is.null(parent)) {
+      if (is.null(record$nodes[[parent]])) {
+        rlang::abort(
+          paste0("Dangling parent reference at ", node_id, ": ", parent)
+        )
+      }
+      parent_children <- unlist(
+        record$nodes[[parent]]$children,
+        use.names = FALSE
+      )
+      if (!(node_id %in% parent_children)) {
+        rlang::abort(
+          paste0(
+            "Parent/child mismatch: ",
+            node_id,
+            " has parent ",
+            parent,
+            ", but is not listed among its children"
+          )
+        )
+      }
+    }
+
+    for (child_id in children) {
+      if (is.null(record$nodes[[child_id]])) {
+        rlang::abort(
+          paste0("Dangling child reference at ", node_id, ": ", child_id)
+        )
+      }
+      child_parent <- record$nodes[[child_id]]$parent
+      if (!identical(child_parent, node_id)) {
+        rlang::abort(
+          paste0(
+            "Parent/child mismatch: ",
+            node_id,
+            " lists ",
+            child_id,
+            " as a child, but its parent is ",
+            child_parent %||% "NULL"
+          )
+        )
+      }
+    }
+
+    selected_child <- node$selected_child
+    if (!is.null(selected_child) && !(selected_child %in% children)) {
+      rlang::abort(
+        paste0(
+          "selected_child ",
+          selected_child,
+          " at ",
+          node_id,
+          " is not among its children"
+        )
+      )
+    }
+  }
+
+  record_path_node_ids(record)
+
+  invisible(record)
+}
+
 record_path_node_ids <- function(record) {
   if (is.null(record$current_leaf)) {
     return(character(0))
@@ -141,11 +200,13 @@ record_turn_count <- function(record) {
 
 record_ui_count <- function(record) {
   ids <- record_path_node_ids(record)
-  sum(vapply(
-    ids,
-    function(id) length(record$nodes[[id]]$ui),
-    integer(1)
-  ))
+  sum(
+    vapply(
+      ids,
+      function(id) length(record$nodes[[id]]$ui),
+      integer(1)
+    )
+  )
 }
 
 record_children_of <- function(record, node_id) {
@@ -215,10 +276,8 @@ record_path_sibling_metadata <- function(record) {
   result
 }
 
-# Client-facing message count for a node. Mirrors replay_ui()'s NULL-ui
-# fallback: a missing/empty `ui` still renders one fabricated message, so index
-# math (record_node_id_for_message_index, send_sibling_metadata) stays aligned
-# with what the client reports.
+# Message count for replay and navigation. A missing/empty `ui` still renders
+# one turn-derived fallback, so index math stays aligned with replayed state.
 record_ui_message_count <- function(node) {
   if (length(node$ui) > 0) length(node$ui) else 1L
 }
@@ -241,8 +300,8 @@ record_node_id_for_message_index <- function(record, index) {
 extend_record_linear <- function(
   record,
   recorded_turns,
-  ui_messages,
-  ui_offset,
+  transcript,
+  transcript_offset,
   tools
 ) {
   existing_turn_count <- record_turn_count(record)
@@ -306,7 +365,7 @@ extend_record_linear <- function(
   }
 
   if (!is.null(fallback)) {
-    new_messages <- ui_messages[seq_along(ui_messages) > ui_offset]
+    new_messages <- transcript[seq_along(transcript) > transcript_offset]
     for (message in new_messages) {
       if (identical(message$role, "user") && length(user_node_ids) > 0) {
         target <- user_node_ids[[1]]

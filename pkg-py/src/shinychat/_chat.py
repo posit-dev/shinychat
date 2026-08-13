@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 import os
 import re
+import warnings
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import (
@@ -17,7 +19,6 @@ from typing import (
     NamedTuple,
     Optional,
     Sequence,
-    Tuple,
     Union,
     cast,
     overload,
@@ -53,13 +54,8 @@ from ._chat_normalize import (
     normalize_message,
     normalize_message_chunk,
 )
-from ._chat_segments import (
-    append_to_segments,
-    copy_segments,
-    has_mixed_content_types,
-    segments_content,
-    segments_deps,
-)
+from ._chat_segments import segments_content, segments_deps
+from ._chat_transcript import ChatTranscript, StreamCandidate
 from ._chat_types import (
     ChatAction,
     ChatGreeting,
@@ -67,11 +63,15 @@ from ._chat_types import (
     ChatMessageDict,
     ClearAction,
     ContentSegment,
+    GreetingAction,
     GreetingOptions,
+    GreetingSnapshot,
+    GreetingSnapshotModel,
     MessagePayload,
     SerializedDep,
     SlashCommandDef,
     StoredMessage,
+    StoredSegment,
     chat_greeting,
 )
 from ._history import ChatHistory, HistoryOptions
@@ -158,13 +158,6 @@ class UserInput(NamedTuple):
 
 
 ChunkOption = Literal["start", "end", True, False]
-
-PendingMessage = Tuple[
-    Any,
-    ChunkOption,
-    Literal["append", "replace"],
-    Union[str, None],
-]
 
 
 class Chat:
@@ -323,7 +316,6 @@ class Chat:
 
         self.id = resolve_id(id)
         self.user_input_id = ResolvedId(f"{self.id}_user_input")
-        self.messages_input_id = ResolvedId(f"{self.id}_messages")
         self._slash_command_id = ResolvedId(f"{self.id}_slash_command")
         self._transform_user: TransformUserInputAsync | None = None
         self._transform_assistant: (
@@ -343,29 +335,32 @@ class Chat:
 
         self.on_error = on_error
 
-        # Chunked messages get accumulated (using this property) before changing state
-        self._current_stream_segments: list[ContentSegment] = []
-        self._current_stream_id: str | None = None
-        self._pending_messages: list[PendingMessage] = []
-
-        # For tracking message stream state when entering/exiting nested streams
-        self._message_stream_segments_checkpoint: list[ContentSegment] = []
+        self._message_lock = asyncio.Lock()
 
         # Keep track of effects so we can destroy them when the chat is destroyed
         self._effects: list["Effect_"] = []
-        history_config = (
-            history if isinstance(history, HistoryOptions) else None
-        )
+        history_config = history if isinstance(history, HistoryOptions) else None
         self._history_enabled: bool = history is not False
         self.history: ChatHistory = ChatHistory(self, config=history_config)
         self._cancel_bookmarking_callbacks: CancelCallback | None = None
-        self._greeting_content: str | None = None
+        self._greeting_snapshot: GreetingSnapshot | None = None
 
         # Initialize chat state and user input effect
         from shiny import reactive
         from shiny.session import session_context
 
         with session_context(self._session):
+            self._transcript_version: reactive.Value[int] = reactive.Value(0)
+
+            def notify_transcript_change() -> None:
+                with reactive.isolate():
+                    version = self._transcript_version()
+                self._transcript_version.set(version + 1)
+
+            self._transcript = ChatTranscript(
+                on_change=notify_transcript_change
+            )
+
             # `None` until the first registration, which lets us skip the
             # redundant initial sync (the client already initializes to `[]`).
             # An empty dict, by contrast, is sent so that removing the last
@@ -374,9 +369,9 @@ class Chat:
                 dict[str, SlashCommandRegistration] | None
             ] = reactive.Value(None)
 
-            self._latest_user_input: reactive.Value[StoredMessage | None] = (
-                reactive.Value(None)
-            )
+            self._latest_user_input: reactive.Value[
+                StoredMessage | None
+            ] = reactive.Value(None)
 
             @reactive.extended_task
             async def _mock_task() -> str:
@@ -399,10 +394,6 @@ class Chat:
             self._append_init_messages = _append_init_messages
             self._init_chat = _init_chat
 
-            # Record the latest submission into `_latest_user_input`, which
-            # backs the public `user_input()` method. priority=9999 ensures
-            # this runs before `on_user_submit`/other effects so `user_input()`
-            # reflects the latest submission.
             @reactive.effect(priority=9999)
             @reactive.event(self._user_input)
             async def _on_user_input():
@@ -413,7 +404,7 @@ class Chat:
                         role="user",
                         attachments=attachments,
                     )
-                    self._latest_user_input.set(self._as_stored_message(msg))
+                    await self._store_message(msg)
                 except Exception as e:
                     await self._raise_exception(e)
 
@@ -436,13 +427,13 @@ class Chat:
                 command = data.get("command", "")
                 user_text = data.get("userText", "")
                 echo = bool(data.get("echo", True))
-                if echo:
-                    full_text = f"/{command} {user_text}".rstrip()
-                    msg = ChatMessage(content=full_text, role="user")
-                    self._latest_user_input.set(self._as_stored_message(msg))
-                cmds = self._slash_commands()
-                reg = cmds.get(command) if cmds else None
                 try:
+                    if echo:
+                        full_text = f"/{command} {user_text}".rstrip()
+                        msg = ChatMessage(content=full_text, role="user")
+                        await self._store_message(msg)
+                    cmds = self._slash_commands()
+                    reg = cmds.get(command) if cmds else None
                     if reg is not None and reg.handler is not None:
                         if reg.takes_args:
                             await _utils.wrap_async(
@@ -504,17 +495,25 @@ class Chat:
         with session_context(self._session):
 
             @self.on_user_submit
-            async def _on_user_submit(
-                user_input: str, attachments: list[Attachment]
-            ) -> None:
+            async def _on_user_submit(user_input: str, attachments: list[Attachment]) -> None:
                 contents = [attachment_to_content(a) for a in attachments]
-                response = await chat_client.value.stream_async(
-                    user_input,
-                    *contents,
-                    content="all",
-                    controller=controller,
+                try:
+                    response = await chat_client.value.stream_async(
+                        user_input,
+                        *contents,
+                        content="all",
+                        controller=controller,
+                    )
+                except BaseException as error:
+                    await self._settle_response(
+                        self.history._response_settled,
+                        response_error=error,
+                    )
+                    raise
+                await self._start_message_stream(
+                    response,
+                    on_settled=self.history._response_settled,
                 )
-                await self.append_message_stream(response)
 
             # A `client=` wires up cancellation, so enable the stop button
             # without requiring `enable_cancel=True` in `chat_ui()`. It only
@@ -671,9 +670,7 @@ class Chat:
         *,
         echo: bool | None = None,
         force: bool = False,
-    ) -> (
-        Callable[[UserSubmitFunction], UserSubmitFunction] | Callable[[], None]
-    ):
+    ) -> Callable[[UserSubmitFunction], UserSubmitFunction] | Callable[[], None]:
         """
         Register a slash command and its handler.
 
@@ -817,16 +814,6 @@ class Chat:
         is called in a `.on_user_submit()` callback (as it most often is), the last
         message will be the most recent one submitted by the user.
 
-        Note
-        ----
-        This reflects the messages the browser has rendered and reported back,
-        so it is *eventually* consistent: it returns an empty tuple until the
-        client's first report, and a message passed to
-        :meth:`~shinychat.Chat.append_message` does not appear here until the
-        browser has rendered it and echoed its snapshot to the server. Read it
-        reactively (e.g. in an `.on_user_submit()` callback) rather than
-        expecting it to update synchronously right after appending.
-
         Returns
         -------
         tuple[ChatMessageDict, ...]
@@ -849,7 +836,8 @@ class Chat:
                 "Use your LLM provider (e.g., chatlas, LangChain) to manage conversation context instead."
             )
 
-        messages = self._reported_messages()
+        self._transcript_version()
+        messages = self._transcript.read()
 
         res: list[ChatMessageDict] = []
         for m in messages:
@@ -861,18 +849,6 @@ class Chat:
             res.append(chat_msg)
 
         return tuple(res)
-
-    def _reported_messages(self) -> tuple[StoredMessage, ...]:
-        # Client-authoritative UI state: the React client reports its settled-
-        # message snapshot as the `${id}_messages` input (see _input_handler.py).
-        # Returns () before the client has reported anything.
-        from shiny.types import SilentException
-
-        try:
-            val = self._session.input[self.messages_input_id]()
-        except SilentException:
-            return ()
-        return tuple(val) if val else ()
 
     async def append_message(
         self,
@@ -994,20 +970,32 @@ class Chat:
         similar) is specified in model's completion method.
         :::
         """
-        # If we're in a stream, queue the message
-        if self._current_stream_id:
-            self._pending_messages.append((message, False, "append", None))
-            return
+        async with self._message_lock:
+            await self._append_message_locked(message, icon=icon)
 
+    async def _append_message_locked(
+        self,
+        message: Any,
+        *,
+        icon: HTML | Tag | TagList | None = None,
+    ) -> bool:
         msg = normalize_message(message)
         msg = await self._transform_message(msg)
         if msg is None:
-            return
-        await self._send_append_message(
-            message=msg,
-            chunk=False,
-            icon=icon,
-        )
+            return True
+
+        stored = self._as_stored_message(msg)
+
+        async def send() -> None:
+            await self._send_append_message(
+                message=stored,
+                chunk=False,
+                icon=icon,
+            )
+
+        await self._transcript.append(stored, send=send)
+        self._note_latest_user_input(stored)
+        return True
 
     @asynccontextmanager
     async def message_stream_context(self):
@@ -1078,34 +1066,32 @@ class Chat:
         `.message_stream_context()` before the mixed content if you need a clean
         checkpoint to replace back to.
         """
-        # Checkpoint the current stream state so operation="replace" can return to it
-        old_checkpoint = self._message_stream_segments_checkpoint
-        self._message_stream_segments_checkpoint = copy_segments(
-            self._current_stream_segments
-        )
-
-        # No stream currently exists, start one
-        stream_id = self._current_stream_id
-        is_root_stream = stream_id is None
-        if is_root_stream:
-            stream_id = _utils.private_random_id()
-            await self._append_message_chunk(
-                "", chunk="start", stream_id=stream_id
-            )
+        async with self._message_lock:
+            context = self._transcript.enter_context()
+            stream_id = context.stream_id
+            is_root_stream = stream_id is None
+            try:
+                if is_root_stream:
+                    stream_id = _utils.private_random_id()
+                    await self._append_message_chunk_locked(
+                        "", chunk="start", stream_id=stream_id
+                    )
+            except BaseException:
+                self._transcript.exit_context(context)
+                raise
 
         try:
             yield MessageStream(self, stream_id)
         finally:
-            # Restore the checkpoint
-            self._message_stream_segments_checkpoint = old_checkpoint
-
-            # If this was the root stream, end it
-            if is_root_stream:
-                await self._append_message_chunk(
-                    "",
-                    chunk="end",
-                    stream_id=stream_id,
-                )
+            async with self._message_lock:
+                if self._transcript.generation == context.generation:
+                    self._transcript.exit_context(context)
+                    if is_root_stream:
+                        await self._append_message_chunk_locked(
+                            "",
+                            chunk="end",
+                            stream_id=stream_id,
+                        )
 
     async def _append_message_chunk(
         self,
@@ -1116,79 +1102,171 @@ class Chat:
         operation: Literal["append", "replace"] = "append",
         icon: HTML | Tag | TagList | bool | None = None,
     ) -> None:
-        # If currently we're in a *different* stream, queue the message chunk
-        if self._current_stream_id and self._current_stream_id != stream_id:
-            self._pending_messages.append(
-                (message, chunk, operation, stream_id)
-            )
-            return
-
-        self._current_stream_id = stream_id
-
-        # Normalize various message types into a ChatMessage()
-        msg = normalize_message_chunk(message)
-        chunk_deps = msg.html_deps or []
-
-        if operation == "replace":
-            if has_mixed_content_types(
-                self._message_stream_segments_checkpoint
-            ):
-                raise ValueError(
-                    "Cannot `.replace()` a stream whose checkpoint spans multiple "
-                    "content types (e.g. thinking followed by markdown). The replace "
-                    "wire action carries a single content type, so a mixed checkpoint "
-                    "cannot be restored. Open a `.message_stream_context()` before the "
-                    "mixed content to get a clean checkpoint, or use `.append()`."
-                )
-            self._current_stream_segments = copy_segments(
-                self._message_stream_segments_checkpoint
-            )
-
-        append_to_segments(
-            self._current_stream_segments,
-            msg.content,
-            msg.content_type,
-            chunk_deps or None,
-        )
-
-        stream_content = segments_content(self._current_stream_segments)
-
-        if operation == "replace":
-            msg.content = stream_content
-
-        try:
-            if self._needs_transform(msg):
-                # Transforming may change the meaning of msg.content to be a *replace*
-                # not *append*. So, update msg.content and the operation accordingly.
-                chunk_content = msg.content
-                msg.content = stream_content
-                operation = "replace"
-                msg = await self._transform_message(
-                    msg, chunk=chunk, chunk_content=chunk_content
-                )
-                # Act like nothing happened if transformed to None
-                if msg is None:
-                    return
-                if chunk == "end":
-                    stream_deps = segments_deps(self._current_stream_segments)
-                    serialized_deps = self._serialize_html_deps(stream_deps)
-                    # _transform_message returns a single-segment StoredMessage, so all stream
-                    # deps belong on segments[0].
-                    if serialized_deps and msg.segments:
-                        msg.segments[0].html_deps = serialized_deps
-
-            # Send the message to the client
-            await self._send_append_message(
-                message=msg,
+        async with self._message_lock:
+            await self._append_message_chunk_locked(
+                message,
                 chunk=chunk,
+                stream_id=stream_id,
                 operation=operation,
                 icon=icon,
             )
-        finally:
-            if chunk == "end":
-                self._current_stream_id = None
-                self._current_stream_segments = []
-                self._message_stream_segments_checkpoint = []
+
+    async def _append_message_chunk_locked(
+        self,
+        message: Any,
+        *,
+        chunk: Literal[True, "start", "end"] = True,
+        stream_id: str,
+        operation: Literal["append", "replace"] = "append",
+        icon: HTML | Tag | TagList | None = None,
+    ) -> bool:
+        # Normalize various message types into a ChatMessage()
+        msg = normalize_message_chunk(message)
+        if chunk == "start":
+
+            async def start_send() -> None:
+                await self._send_append_message(
+                    message=msg, chunk="start", icon=icon
+                )
+
+            await self._transcript.start(
+                msg, stream_id=stream_id, send=start_send
+            )
+            return True
+
+        if chunk == "end":
+            # A terminal chunk can still carry real content (e.g. a direct
+            # `.replace()` on the last chunk), so fold it into the active
+            # segments first -- respecting checkpoint/replace semantics the
+            # same way a regular chunk would -- before settling. The fold's
+            # own `send` is a no-op; the wire message and settled message are
+            # built once, from the folded segments, in `settle_send` below.
+            async def fold_send(
+                candidate: StreamCandidate,
+            ) -> StoredMessage | None:
+                return candidate.projection
+
+            await self._transcript.chunk(
+                msg, stream_id=stream_id, operation=operation, send=fold_send
+            )
+
+            settled_holder: list[StoredMessage] = []
+
+            async def settle_send(candidate: StreamCandidate) -> StoredMessage:
+                settled, _ = await self._resolve_stream_chunk(
+                    msg,
+                    segments=candidate.segments,
+                    projection=candidate.projection,
+                    operation=operation,
+                    is_end=True,
+                    icon=icon,
+                )
+                assert settled is not None
+                settled_holder.append(settled)
+                return settled
+
+            try:
+                await self._transcript.settle(
+                    stream_id=stream_id, send=settle_send
+                )
+            except BaseException:
+                self._transcript.abort(stream_id)
+                raise
+            self._note_latest_user_input(settled_holder[0])
+            return True
+
+        async def chunk_send(
+            candidate: StreamCandidate,
+        ) -> StoredMessage | None:
+            _, next_projection = await self._resolve_stream_chunk(
+                msg,
+                segments=candidate.segments,
+                projection=candidate.projection,
+                operation=operation,
+                is_end=False,
+                icon=icon,
+            )
+            return next_projection
+
+        await self._transcript.chunk(
+            msg, stream_id=stream_id, operation=operation, send=chunk_send
+        )
+        return True
+
+    async def _resolve_stream_chunk(
+        self,
+        msg: ChatMessage,
+        *,
+        segments: tuple[ContentSegment, ...],
+        projection: StoredMessage | None,
+        operation: Literal["append", "replace"],
+        is_end: bool,
+        icon: HTML | Tag | TagList | None,
+    ) -> tuple[StoredMessage | None, StoredMessage | None]:
+        """Transform, send, and resolve one stream chunk (or the terminal settle).
+
+        Returns ``(settled, next_projection)``; ``settled`` is non-``None`` only
+        when ``is_end`` is ``True``. When a mid-stream transform declines to
+        update (returns ``None``), no wire message is sent and the previous
+        projection is returned unchanged.
+        """
+        staged_segments = list(segments)
+        stream_content = segments_content(staged_segments)
+        if operation == "replace":
+            msg.content = stream_content
+
+        settled: StoredMessage | None = None
+        next_projection = projection
+        wire_message: StoredMessage | ChatMessage = msg
+        chunk_flag: Literal[True, "end"] = "end" if is_end else True
+
+        if self._needs_transform(msg):
+            chunk_content = msg.content
+            msg.content = stream_content
+            operation = "replace"
+            transformed = await self._transform_message(
+                msg, chunk=chunk_flag, chunk_content=chunk_content
+            )
+            if transformed is None:
+                if not is_end:
+                    return None, projection
+                settled = self._settled_stream_projection(
+                    projection, staged_segments
+                )
+                wire_message = StoredMessage(role=msg.role, segments=[])
+            else:
+                next_projection = transformed
+                wire_message = transformed
+                if is_end:
+                    settled = self._settled_stream_projection(
+                        transformed, staged_segments
+                    )
+                    assert settled is not None
+                    wire_message = settled
+        elif is_end:
+            settled = StoredMessage(
+                role=msg.role,
+                segments=[
+                    StoredSegment(
+                        content=segment.content,
+                        content_type=segment.content_type,
+                        html_deps=self._serialize_html_deps(segment.html_deps),
+                    )
+                    for segment in staged_segments
+                ],
+            )
+
+        await self._send_append_message(
+            message=wire_message,
+            chunk=chunk_flag,
+            operation=operation,
+            icon=icon,
+        )
+        return settled, next_projection
+
+    async def _abort_message_stream(self, stream_id: str) -> None:
+        async with self._message_lock:
+            self._transcript.abort(stream_id)
 
     async def append_message_stream(
         self,
@@ -1318,29 +1396,71 @@ class Chat:
             of the task can be called in a reactive context to get the final state of the
             stream.
         """
+        return await self._start_message_stream(message, icon=icon)
+
+    async def _start_message_stream(
+        self,
+        message: Iterable[Any] | AsyncIterable[Any],
+        *,
+        icon: HTML | Tag | None = None,
+        on_settled: Callable[[], Awaitable[None]] | None = None,
+    ) -> ExtendedTask[[], str]:
         from shiny import reactive
 
         message = _utils.wrap_async_iterable(message)
 
         # Run the stream in the background to get non-blocking behavior
         @reactive.extended_task
-        async def _stream_task():
+        async def _stream_task() -> str:
             return await self._append_message_stream(message, icon=icon)
 
         _stream_task()
 
         self._latest_stream.set(_stream_task)
 
-        # Since the task runs in the background (outside/beyond the current context,
-        # if any), we need to manually raise any exceptions that occur
-        @reactive.effect
-        async def _handle_error():
-            e = _stream_task.error()
-            if e:
-                await self._raise_exception(e)
-            _handle_error.destroy()  # type: ignore
+        settle_effect: Effect_ | None = None
 
+        @reactive.effect
+        async def _settle_stream():
+            status = _stream_task.status()
+            if status in ("initial", "running"):
+                return
+
+            response_error = _stream_task.error() if status == "error" else None
+            try:
+                await self._settle_response(
+                    on_settled,
+                    response_error=response_error,
+                )
+            finally:
+                try:
+                    if response_error is not None:
+                        await self._raise_exception(response_error)
+                finally:
+                    assert settle_effect is not None
+                    settle_effect.destroy()
+
+        settle_effect = _settle_stream
         return _stream_task
+
+    async def _settle_response(
+        self,
+        on_settled: Callable[[], Awaitable[None]] | None,
+        *,
+        response_error: BaseException | None,
+    ) -> None:
+        if on_settled is None:
+            return
+        try:
+            await on_settled()
+        except Exception as history_error:
+            if response_error is None:
+                await self.history._notify_save_error(history_error)
+            else:
+                warnings.warn(
+                    f"Could not save conversation: {history_error}",
+                    stacklevel=1,
+                )
 
     @property
     def latest_message_stream(self) -> ExtendedTask[[], str]:
@@ -1379,33 +1499,48 @@ class Chat:
         id = _utils.private_random_id()
 
         empty = ChatMessageDict(content="", role="assistant")
-        await self._append_message_chunk(
-            empty, chunk="start", stream_id=id, icon=icon
+        try:
+            await self._append_message_chunk(
+                empty, chunk="start", stream_id=id, icon=icon
+            )
+        except BaseException:
+            await self._abort_message_stream(id)
+            raise
+
+        primary_error: BaseException | None = None
+
+        iterator = message.__aiter__()
+        while True:
+            try:
+                msg = await iterator.__anext__()
+            except StopAsyncIteration:
+                break
+            except BaseException as error:
+                primary_error = error
+                break
+
+            try:
+                await self._append_message_chunk(msg, chunk=True, stream_id=id)
+            except BaseException:
+                await self._abort_message_stream(id)
+                raise
+
+        result = (
+            ""
+            if primary_error is not None
+            else "".join(str(s) for s in self._transcript.active_segments)
         )
 
         try:
-            async for msg in message:
-                await self._append_message_chunk(msg, chunk=True, stream_id=id)
-            # The string returned to the caller mirrors StoredMessage.content
-            # (thinking wrapped in <thinking> tags), not segments_content's bare join.
-            return "".join(str(s) for s in self._current_stream_segments)
-        finally:
             await self._append_message_chunk(empty, chunk="end", stream_id=id)
-            await self._flush_pending_messages()
+        except BaseException as error:
+            if primary_error is None:
+                primary_error = error
+            await self._abort_message_stream(id)
 
-    async def _flush_pending_messages(self):
-        pending = self._pending_messages
-        self._pending_messages = []
-        for msg, chunk, operation, stream_id in pending:
-            if chunk is False:
-                await self.append_message(msg)
-            else:
-                await self._append_message_chunk(
-                    msg,
-                    chunk=chunk,
-                    operation=operation,
-                    stream_id=cast(str, stream_id),
-                )
+        if primary_error is not None:
+            raise primary_error
+        return result
 
     # Send a message to the UI
     async def _send_append_message(
@@ -1469,10 +1604,7 @@ class Chat:
             await self._send_action(action, message.html_deps)
 
     def _messages_for_bookmark(self) -> list[dict[str, Any]]:
-        from shiny import reactive
-
-        with reactive.isolate():
-            messages = self._reported_messages()
+        messages = self._transcript.read()
 
         dumps: list[dict[str, Any]] = []
         for m in messages:
@@ -1490,7 +1622,12 @@ class Chat:
                 "Cannot restore bookmark message: invalid or missing fields "
                 "(bookmark likely written by an incompatible shinychat version)."
             ) from e
-        await self._send_append_message(stored)
+
+        async def send() -> None:
+            await self._send_append_message(stored)
+
+        await self._transcript.append(stored, send=send)
+        self._note_latest_user_input(stored)
 
     def transform_user_input(self, *args: object, **kwargs: object) -> object:
         raise TypeError(
@@ -1602,6 +1739,21 @@ class Chat:
             and self._transform_assistant is not None
         )
 
+    def _settled_stream_projection(
+        self,
+        projection: StoredMessage | None,
+        segments: list[ContentSegment],
+    ) -> StoredMessage | None:
+        if projection is None:
+            return None
+
+        settled = projection.model_copy(deep=True)
+        if settled.segments:
+            settled.segments[0].html_deps = self._serialize_html_deps(
+                segments_deps(segments)
+            )
+        return settled
+
     def _serialize_html_deps(
         self, deps: list[HTMLDependency] | None
     ) -> list[SerializedDep] | None:
@@ -1621,6 +1773,22 @@ class Chat:
 
         html_deps = self._serialize_html_deps(message.html_deps)
         return StoredMessage.from_chat_message(message, html_deps=html_deps)
+
+    async def _store_message(
+        self,
+        message: StoredMessage | ChatMessage,
+    ) -> None:
+        stored = self._as_stored_message(message)
+
+        async def noop() -> None:
+            return None
+
+        await self._transcript.append(stored, send=noop)
+        self._note_latest_user_input(stored)
+
+    def _note_latest_user_input(self, message: StoredMessage) -> None:
+        if message.role == "user":
+            self._latest_user_input.set(message)
 
     def user_input(self) -> "UserInput | None":
         """
@@ -1755,11 +1923,16 @@ class Chat:
             react to the request to generate a new one via
             :meth:`~shinychat.Chat.set_greeting`.
         """
-        action: ClearAction = {"type": "clear"}
-        if greeting:
-            self._greeting_content = None
-            action["greeting"] = True
-        await self._send_action(action)
+        async with self._message_lock:
+            action: ClearAction = {"type": "clear"}
+            if greeting:
+                self._greeting_snapshot = None
+                action["greeting"] = True
+
+            async def send() -> None:
+                await self._send_action(action)
+
+            await self._transcript.clear(send=send)
 
     def get_greeting(self) -> str | None:
         """
@@ -1771,7 +1944,8 @@ class Chat:
             The current greeting content, or ``None`` if no greeting is set or
             has been cleared.
         """
-        return self._greeting_content
+        snapshot = self._greeting_snapshot
+        return None if snapshot is None else snapshot["content"]
 
     async def set_greeting(
         self,
@@ -1894,7 +2068,7 @@ class Chat:
         ```
         """
         if greeting is None:
-            self._greeting_content = None
+            self._greeting_snapshot = None
             await self._send_action({"type": "greeting_clear"})
             return
 
@@ -1927,9 +2101,16 @@ class Chat:
                         "operation": "append",
                     }
                     await self._send_action(chunk_action)
-                self._greeting_content = "".join(chunks)
             finally:
                 await self._send_action({"type": "greeting_end"})
+
+            snapshot: GreetingSnapshot = {
+                "content": "".join(chunks),
+                "content_type": greeting.content_type,
+                "options": options,
+                "html_deps": html_deps or [],
+            }
+            self._greeting_snapshot = snapshot
         else:
             action: ChatAction = {
                 "type": "greeting",
@@ -1937,8 +2118,27 @@ class Chat:
                 "content_type": greeting.content_type,
                 "options": options,
             }
-            self._greeting_content = str(content)
-            await self._send_action(action, html_deps)
+            snapshot: GreetingSnapshot = {
+                "content": str(content),
+                "content_type": greeting.content_type,
+                "options": options,
+                "html_deps": html_deps or [],
+            }
+            await self._send_action(action, snapshot["html_deps"])
+            self._greeting_snapshot = snapshot
+
+    async def _restore_greeting_snapshot(
+        self,
+        snapshot: GreetingSnapshot,
+    ) -> None:
+        action: GreetingAction = {
+            "type": "greeting",
+            "content": snapshot["content"],
+            "content_type": snapshot["content_type"],
+            "options": snapshot["options"],
+        }
+        await self._send_action(action, snapshot["html_deps"])
+        self._greeting_snapshot = snapshot
 
     def destroy(self):
         """
@@ -2054,7 +2254,6 @@ class Chat:
         root_session = session.root_scope()
         for suffix in (
             "_user_input",
-            "_messages",
             "_cancel",
             "_slash_command",
             "_greeting_requested",
@@ -2137,10 +2336,8 @@ class Chat:
 
         @root_session.bookmark.on_bookmark
         def _on_bookmark_greeting(state: BookmarkState):
-            if self._greeting_content is not None:
-                state.values[resolved_greeting_key] = {
-                    "content": self._greeting_content
-                }
+            if self._greeting_snapshot is not None:
+                state.values[resolved_greeting_key] = self._greeting_snapshot
 
         # Attempt to stop the initialization of the `ui.Chat(messages=)` messages
         self._init_chat.destroy()
@@ -2166,6 +2363,7 @@ class Chat:
                     f"Bookmark value with id (`{resolved_bookmark_id_msgs_str}`) must be a list of messages."
                 )
 
+            await self._transcript.replace(())
             for message_dict in msgs:
                 await self._restore_bookmark_message(message_dict)
 
@@ -2173,9 +2371,16 @@ class Chat:
         async def _on_restore_greeting(state: RestoreState):
             if resolved_greeting_key not in state.values:
                 return
-            g = state.values[resolved_greeting_key]
-            if isinstance(g, dict) and isinstance(g.get("content"), str):
-                await self.set_greeting(g["content"])
+            try:
+                validated = GreetingSnapshotModel.model_validate(
+                    state.values[resolved_greeting_key]
+                )
+            except ValidationError as e:
+                raise ValueError(
+                    "Cannot restore bookmark greeting: invalid or missing fields "
+                    "(bookmark likely written by an incompatible shinychat version)."
+                ) from e
+            await self._restore_greeting_snapshot(validated.to_snapshot())
 
         def _cancel_bookmarking():
             if cancel_on_bookmarked is not None:

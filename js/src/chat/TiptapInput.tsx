@@ -296,7 +296,9 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
           }
         },
         focus() {
-          editor?.commands.focus("end")
+          if (!editor) return
+          editor.view.dom.focus()
+          editor.commands.setTextSelection(editor.state.doc.content.size)
         },
         serializeEditor() {
           return editor ? serializeEditor(editor) : ""

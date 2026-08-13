@@ -106,6 +106,7 @@ export function useAttachmentStaging({
       let overSize = false
       let downscaled = false
       let converted = false
+      focusEditor()
       setAttachments((prev) => {
         let bytes = totalBytes(prev)
         const fits: AttachedFile[] = []
@@ -124,7 +125,6 @@ export function useAttachmentStaging({
       if (overSize) setSizeNotice(true)
       if (downscaled) setDownscaleNotice(true)
       if (converted) setGifConvertedNotice(true)
-      focusEditor()
     },
     [uploadAccept, maxUploadSize, focusEditor],
   )

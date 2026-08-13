@@ -118,17 +118,11 @@ chat_greeting <- function(
 #' `id="my_chat"`, user input will be at `input$my_chat_user_input`), and use
 #' [chat_append()] to append messages to the chat.
 #'
-#' The chat also reports the client's current rendered message transcript as
-#' `input$ID_messages` (for example, `input$my_chat_messages`), tagged
-#' `shinychat.messages`. It updates every time a message finishes rendering
-#' or streaming (a "settle point"), and is a list of message objects:
-#' `list(role =, segments = list(list(content =, content_type =), ...))`,
-#' plus optional `htmlDeps` and `attachments` fields when present.
-#' [chat_enable_history()] reads this internally to persist and restore
-#' exactly what was rendered — including raw HTML and Shiny UI dependencies —
-#' across a conversation switch or reload. It's exposed for advanced,
-#' read-only use (for example, custom logging or export); it is not an input
-#' you write to.
+#' Message state emitted by server functions is maintained internally for
+#' history and replay. Applications that need a public transcript should keep
+#' application-owned state alongside calls to [chat_append()] or
+#' [chat_append_message()]. Static `messages` passed to `chat_ui()` are
+#' display-only.
 #'
 #' @section Pairing with `chat_server()`:
 #'
@@ -664,6 +658,19 @@ resolve_aside_favicon <- function() {
 #'   )
 #' )
 #' ```
+#
+#' # Concurrency
+#'
+#' For any `id`, only one stream may be active at a time. Calling
+#' `chat_append()` with a new stream while another is already streaming to
+#' the same `id` rejects immediately instead of interleaving output;
+#' appending a complete (non-streaming) message while a stream is active
+#' rejects the same way.
+#'
+#' Every `chat_append()` call enters server transcript state, regardless of
+#' how `id` was set up. Only an `id` managed by [chat_server()] or
+#' [chat_enable_history()] persists that state to history or bookmark
+#' restore.
 #'
 #' @param id The ID of the chat element
 #' @param response The message or message stream to append to the chat element.
@@ -826,6 +833,32 @@ chat_append_message <- function(
   icon = NULL,
   session = getDefaultReactiveDomain()
 ) {
+  chat_append_message_impl(
+    id = id,
+    msg = msg,
+    chunk = chunk,
+    operation = operation,
+    icon = icon,
+    session = session,
+    stream_id = "direct"
+  )
+}
+
+# The low-level engine behind `chat_append_message()`. `stream_id` identifies
+# the logical stream a `chunk`/`operation` transition belongs to, so callers
+# with their own stream identity (e.g. `chat_append_stream()`, once it moves
+# off the "direct" identity) can drive `ChatTranscript`'s admission checks
+# directly. Every call gets or creates the transcript for `id`, so message
+# state always lives server-side, regardless of how the chat was set up.
+chat_append_message_impl <- function(
+  id,
+  msg,
+  chunk = TRUE,
+  operation = c("append", "replace"),
+  icon = NULL,
+  session = getDefaultReactiveDomain(),
+  stream_id
+) {
   check_active_session(session)
 
   if (!is.list(msg)) {
@@ -850,6 +883,93 @@ chat_append_message <- function(
     chunk_type <- "complete"
   }
 
+  operation <- match.arg(operation)
+  normalized <- normalize_chat_append_message(
+    msg,
+    chunk_type = chunk_type,
+    operation = operation,
+    icon = icon,
+    session = session
+  )
+  transcript <- get_or_create_chat_transcript(session, id)
+
+  if (chunk_type == "start") {
+    transcript$start(
+      normalized$message,
+      stream_id = stream_id,
+      send = function() {
+        send_chat_action(
+          id,
+          action = normalized$action,
+          html_deps = normalized$html_deps,
+          session = session
+        )
+      }
+    )
+  } else if (chunk_type == "end") {
+    segment <- normalized$message$segments[[1L]]
+    if (nzchar(segment$content)) {
+      transcript$chunk(
+        content = segment$content,
+        content_type = segment$content_type,
+        stream_id = stream_id,
+        html_deps = normalized$html_deps,
+        operation = operation,
+        send = function() {
+          send_chat_action(
+            id,
+            action = normalized$action,
+            html_deps = normalized$html_deps,
+            session = session
+          )
+        }
+      )
+    }
+    transcript$settle(stream_id = stream_id, send = function() {
+      send_chat_action(
+        id,
+        action = list(type = "chunk_end"),
+        session = session
+      )
+    })
+  } else if (chunk_type == "intermediate") {
+    segment <- normalized$message$segments[[1L]]
+    transcript$chunk(
+      content = segment$content,
+      content_type = segment$content_type,
+      stream_id = stream_id,
+      html_deps = normalized$html_deps,
+      operation = operation,
+      send = function() {
+        send_chat_action(
+          id,
+          action = normalized$action,
+          html_deps = normalized$html_deps,
+          session = session
+        )
+      }
+    )
+  } else {
+    transcript$append(normalized$message, send = function() {
+      send_chat_action(
+        id,
+        action = normalized$action,
+        html_deps = normalized$html_deps,
+        session = session
+      )
+    })
+  }
+
+  invisible(NULL)
+}
+
+normalize_chat_append_message <- function(
+  msg,
+  chunk_type,
+  operation,
+  icon,
+  session
+) {
   content <- msg[["content"]]
   is_thinking <- inherits(content, "shinychat_thinking")
   if (is_thinking) {
@@ -873,93 +993,52 @@ chat_append_message <- function(
     "markdown"
   }
 
-  operation <- match.arg(operation)
-
   if (is.character(content) && !is_html) {
-    # content is most likely a string, so avoid overhead in that case
     ui <- list(html = content, deps = NULL)
   } else {
-    # process_ui() does *not* render markdown->HTML, but it does:
-    # 1. Extract and register HTMLdependency()s with the session.
-    # 2. Returns a HTML string representation of the TagChild
-    #    (i.e., `div()` -> `"<div>"`).
     ui <- process_ui(pre_process_ui(content), session)
   }
 
   msg_content <- ui[["html"]]
   if (is_html) {
-    # Surround with blank lines so the markdown parser treats
-    # block-level custom elements correctly.
     msg_content <- paste0("\n\n", msg_content, "\n\n")
   }
-
   html_deps <- ui[["deps"]]
 
   icon_str <- resolve_icon_attr(icon)
+  message <- list(
+    role = msg[["role"]],
+    segments = list(
+      list(content = msg_content, content_type = content_type)
+    ),
+    attachments = msg[["attachments"]],
+    htmlDeps = html_deps
+  )
+  message_payload <- list(
+    role = message$role,
+    segments = message$segments
+  )
+  if (!is.null(message$attachments) && length(message$attachments) > 0) {
+    message_payload$attachments <- message$attachments
+  }
+  if (!is.null(icon_str)) {
+    message_payload$icon <- icon_str
+  }
 
-  if (chunk_type == "start") {
-    message_payload <- list(
-      role = msg[["role"]],
-      segments = list(list(content = msg_content, content_type = content_type))
-    )
-    if (!is.null(icon_str)) {
-      message_payload$icon <- icon_str
-    }
-    action <- list(type = "chunk_start", message = message_payload)
-    send_chat_action(
-      id,
-      action = action,
-      html_deps = html_deps,
-      session = session
-    )
-  } else if (chunk_type == "end") {
-    if (nzchar(msg_content)) {
-      chunk_action <- list(
-        type = "chunk",
-        content = msg_content,
-        operation = operation,
-        content_type = content_type
-      )
-      send_chat_action(
-        id,
-        action = chunk_action,
-        html_deps = html_deps,
-        session = session
-      )
-    }
-    send_chat_action(id, action = list(type = "chunk_end"), session = session)
-  } else if (chunk_type == "intermediate") {
-    action <- list(
+  action <- if (chunk_type == "start") {
+    list(type = "chunk_start", message = message_payload)
+  } else if (chunk_type == "complete") {
+    list(type = "message", message = message_payload)
+  } else {
+    list(
       type = "chunk",
       content = msg_content,
       operation = operation,
       content_type = content_type
     )
-    send_chat_action(
-      id,
-      action = action,
-      html_deps = html_deps,
-      session = session
-    )
-  } else {
-    # chunk_type == "complete"
-    message_payload <- list(
-      role = msg[["role"]],
-      segments = list(list(content = msg_content, content_type = content_type))
-    )
-    if (!is.null(icon_str)) {
-      message_payload$icon <- icon_str
-    }
-    action <- list(type = "message", message = message_payload)
-    send_chat_action(
-      id,
-      action = action,
-      html_deps = html_deps,
-      session = session
-    )
   }
 
-  invisible(NULL)
+  list(message = message, action = action, html_deps = html_deps)
 }
 
 restore_history_message <- function(chat_id, message, session) {
@@ -973,12 +1052,15 @@ restore_history_message <- function(chat_id, message, session) {
     message_payload$attachments <- message$attachments
   }
   action <- list(type = "message", message = message_payload)
-  send_chat_action(
-    chat_id,
-    action = action,
-    html_deps = message$htmlDeps,
-    session = session
-  )
+  transcript <- get_or_create_chat_transcript(session, chat_id)
+  transcript$append(message, send = function() {
+    send_chat_action(
+      chat_id,
+      action = action,
+      html_deps = message$htmlDeps,
+      session = session
+    )
+  })
 }
 
 chat_append_stream <- function(
@@ -988,31 +1070,50 @@ chat_append_stream <- function(
   icon = NULL,
   session = getDefaultReactiveDomain()
 ) {
-  result <- chat_append_stream_impl(id, stream, role, icon, session)
+  stream_id <- new.env(parent = emptyenv())
+  result <- chat_append_stream_impl(id, stream, role, icon, session, stream_id)
   result <- chat_update_bookmark(id, result, session = session)
-  # History saves are triggered by the client's `_messages` echo (see the
-  # message_response_effect observer in chat_enable_history()), not chained
-  # here onto stream completion -- the browser only reports the finished
-  # assistant reply after a separate render/report round trip.
-  # Handle erroneous result...
   result <- promises::catch(result, function(reason) {
-    # ...but rethrow the error as a silent error, so the caller can also handle
-    # it if they want, but it won't bring down the app.
     class(reason) <- c("shiny.silent.error", class(reason))
-    cnd_signal(reason)
-  })
-
-  promises::catch(result, function(reason) {
-    chat_append_message(
-      id,
-      list(
-        role = role,
-        content = sanitized_chat_error(reason)
-      ),
-      chunk = "end",
-      operation = "append",
-      session = session
-    )
+    render_error <- NULL
+    transcript <- get_chat_transcript(session, id)
+    # Only settle a sanitized terminal message while this stream is still
+    # the transcript's active one -- a failed transport transition already
+    # aborted locally (see `chat_append_stream_impl()`) and must propagate
+    # as-is. `transcript` is only ever missing here when a test stubs out
+    # `chat_append_message_impl()` (the real code path always gets or
+    # creates it), so there is nothing to render or abort in that case.
+    if (!is.null(transcript) && transcript$is_active(stream_id)) {
+      render_error <- tryCatch(
+        {
+          chat_append_message_impl(
+            id,
+            msg = list(
+              role = role,
+              content = sanitized_chat_error(reason)
+            ),
+            chunk = "end",
+            operation = "append",
+            session = session,
+            stream_id = stream_id
+          )
+          NULL
+        },
+        error = function(e) {
+          transcript$abort(stream_id)
+          e
+        }
+      )
+    }
+    if (!is.null(render_error)) {
+      rlang::warn(
+        sprintf(
+          "ERROR: Could not display the error from `chat_append_stream(id=\"%s\")`",
+          session$ns(id)
+        ),
+        parent = render_error
+      )
+    }
     rlang::warn(
       sprintf(
         "ERROR: An error occurred in `chat_append_stream(id=\"%s\")`",
@@ -1020,13 +1121,12 @@ chat_append_stream <- function(
       ),
       parent = reason
     )
+    cnd_signal(reason)
   })
 
-  # Note that we're not returning the result of `promises::catch()`, because we
-  # want to return a rejected promise so the caller can see the error. But we
-  # use the `catch()` both to make the error visible to the user *and* to ensure
-  # there's no "unhandled promise error" warning if the caller chooses not to do
-  # anything with it.
+  # Keep the returned promise rejected while marking ignored rejections handled.
+  promises::catch(result, function(reason) NULL)
+
   result
 }
 
@@ -1039,16 +1139,47 @@ rlang::on_load(
     stream,
     role = "assistant",
     icon = NULL,
-    session = shiny::getDefaultReactiveDomain()
+    session = shiny::getDefaultReactiveDomain(),
+    stream_id
   ) {
+    # `start` is never wrapped: if its own transport send fails, `transition()`
+    # (see chat_transcript.R) raises before committing, so the stream never
+    # became the transcript's active one and there is nothing to abort.
+    # `chunk`/`end` transitions, once active, must be aborted explicitly on a
+    # transport failure -- a failed `send()` also raises before `transition()`
+    # commits, so the transcript would otherwise keep reporting this
+    # already-broken stream as active.
     chat_append_ <- function(content, chunk = TRUE, ...) {
-      chat_append_message(
-        id,
-        msg = list(role = role, content = content),
-        operation = "append",
-        chunk = chunk,
-        session = session,
-        ...
+      if (identical(chunk, "start")) {
+        return(
+          chat_append_message_impl(
+            id,
+            msg = list(role = role, content = content),
+            operation = "append",
+            chunk = chunk,
+            session = session,
+            stream_id = stream_id,
+            ...
+          )
+        )
+      }
+      tryCatch(
+        chat_append_message_impl(
+          id,
+          msg = list(role = role, content = content),
+          operation = "append",
+          chunk = chunk,
+          session = session,
+          stream_id = stream_id,
+          ...
+        ),
+        error = function(e) {
+          transcript <- get_chat_transcript(session, id)
+          if (!is.null(transcript)) {
+            transcript$abort(stream_id)
+          }
+          cnd_signal(e)
+        }
       )
     }
 
@@ -1063,6 +1194,10 @@ rlang::on_load(
       if (coro::is_exhausted(msg)) {
         break
       }
+      transcript <- get_chat_transcript(session, id)
+      if (!is.null(transcript) && !transcript$is_active(stream_id)) {
+        break
+      }
 
       res$add(msg)
 
@@ -1071,7 +1206,10 @@ rlang::on_load(
       chat_append_(msg)
     }
 
-    chat_append_("", chunk = "end")
+    transcript <- get_chat_transcript(session, id)
+    if (is.null(transcript) || transcript$is_active(stream_id)) {
+      chat_append_("", chunk = "end")
+    }
 
     res <- res$as_list()
     if (every(res, is.character)) {
@@ -1258,11 +1396,20 @@ chat_set_greeting <- function(
   ) {
     stream <- as_generator(content)
     result <- chat_set_greeting_stream(id, stream, options, session)
-    result <- promises::then(result, function(streamed_content) {
+    result <- promises::then(result, function(streamed) {
+      # `content_type`/`html_deps` reflect what was actually streamed (a
+      # generator can yield a mix of markdown strings and HTML/tag chunks --
+      # see the `chunk_content_type` branch in `chat_set_greeting_stream()`),
+      # not a hardcoded assumption.
       set_session_greeting_state(
         session,
         id,
-        value = list(content = streamed_content)
+        value = new_greeting_snapshot(
+          content = streamed$content,
+          content_type = streamed$content_type,
+          options = options,
+          html_deps = streamed$html_deps
+        )
       )
     })
     result <- promises::catch(result, function(reason) {
@@ -1329,7 +1476,12 @@ chat_set_greeting <- function(
   set_session_greeting_state(
     session,
     id,
-    value = list(content = greeting_content)
+    value = new_greeting_snapshot(
+      content = greeting_content,
+      content_type = greeting_content_type,
+      options = options,
+      html_deps = html_deps
+    )
   )
   invisible(NULL)
 }
@@ -1356,6 +1508,8 @@ rlang::on_load(
     )
 
     chunks <- character(0)
+    chunk_deps <- list()
+    any_html_chunk <- FALSE
     for (msg in stream) {
       if (promises::is.promising(msg)) {
         msg <- await(msg)
@@ -1370,9 +1524,13 @@ rlang::on_load(
       } else {
         ui <- process_ui(pre_process_ui(msg), session)
         chunk_content_type <- "html"
+        any_html_chunk <- TRUE
       }
 
       chunks <- c(chunks, ui[["html"]])
+      if (length(ui[["deps"]]) > 0) {
+        chunk_deps <- c(chunk_deps, ui[["deps"]])
+      }
       send_chat_action(
         id,
         action = list(
@@ -1387,9 +1545,48 @@ rlang::on_load(
     }
 
     send_greeting_action(list(type = "greeting_end"))
-    paste(chunks, collapse = "")
+    list(
+      content = paste(chunks, collapse = ""),
+      # A generator can yield a mix of markdown strings and HTML/tag chunks;
+      # if any chunk was HTML, the concatenated content is HTML overall.
+      content_type = if (any_html_chunk) "html" else "markdown",
+      html_deps = dedupe_html_deps(chunk_deps)
+    )
   })
 )
+
+# The same HTML dependency can be yielded by more than one streamed chunk
+# (e.g. a UI component that's re-rendered each chunk); collapse duplicates by
+# name+version so the final snapshot's `html_deps` doesn't repeat entries.
+dedupe_html_deps <- function(deps) {
+  if (length(deps) == 0) {
+    return(deps)
+  }
+  keys <- vapply(
+    deps,
+    function(dep) paste(dep$name, dep$version, sep = "@"),
+    character(1)
+  )
+  deps[!duplicated(keys)]
+}
+
+# The one canonical shape for greeting session state, always carrying all
+# four fields so bookmark restore can faithfully reproduce the original
+# greeting (content type, options like `persistent`, and HTML dependencies)
+# instead of falling back to markdown/default options.
+new_greeting_snapshot <- function(
+  content,
+  content_type,
+  options,
+  html_deps = list()
+) {
+  list(
+    content = content,
+    content_type = content_type,
+    options = options,
+    html_deps = html_deps %||% list()
+  )
+}
 
 #' Clear all messages from a chat control
 #'
@@ -1467,7 +1664,13 @@ chat_clear <- function(
     action$greeting <- TRUE
     set_session_greeting_state(session, id, value = NULL)
   }
-  send_chat_action(id, action = action, session = session)
+  transcript <- get_or_create_chat_transcript(session, id)
+  # Invalidates any active stream mid-flight: `clear()` resets the
+  # transcript's active stream id, so the generator loop's next
+  # `transcript$is_active(stream_id)` check will fail and stop the stream.
+  transcript$clear(send = function() {
+    send_chat_action(id, action = action, session = session)
+  })
 }
 
 #' Update the user input of a chat control

@@ -53,5 +53,9 @@ already reflects the conversation).}
 Invisibly, a function that cancels all history registrations.
 }
 \description{
-Enable conversation history for a chat
+Attaches history persistence to \code{id}'s server transcript -- the same
+transcript any \code{\link[=chat_append]{chat_append()}} call already creates -- so appended
+messages become available for history persistence, bookmark restore, and
+the single-flight streaming rules described in \code{\link[=chat_append]{chat_append()}}. Safe to
+call even if \code{id} already has history enabled (e.g. by \code{\link[=chat_server]{chat_server()}}).
 }

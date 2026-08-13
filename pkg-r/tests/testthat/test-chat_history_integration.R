@@ -42,6 +42,910 @@ test_that("chat_server() accepts history = FALSE", {
   )
 })
 
+test_that("chat_server(history = FALSE) registers a transcript", {
+  client <- mock_chat_client()
+
+  shiny::testServer(
+    function(input, output, session) {
+      chat_server("chat", client, history = FALSE, session = session)
+    },
+    {
+      expect_false(is.null(get_chat_transcript(session, "chat")))
+    }
+  )
+})
+
+test_that("chat_enable_history() registers a transcript", {
+  client <- mock_chat_client()
+  session <- shiny::MockShinySession$new()
+  store <- InMemoryConversationStore$new()
+
+  chat_enable_history(
+    "chat",
+    client,
+    options = history_options(
+      store = store,
+      restore_mode = "none",
+      title = NULL
+    ),
+    session = session
+  )
+
+  expect_false(is.null(get_chat_transcript(session, "chat")))
+})
+
+test_that("chat_server() followed by chat_enable_history() reuses one transcript", {
+  client <- mock_chat_client()
+  store <- InMemoryConversationStore$new()
+
+  shiny::testServer(
+    function(input, output, session) {
+      chat_server("chat", client, history = FALSE, session = session)
+    },
+    {
+      before <- get_chat_transcript(session, "chat")
+      chat_enable_history(
+        "chat",
+        client,
+        options = history_options(
+          store = store,
+          restore_mode = "none",
+          title = NULL
+        ),
+        session = session
+      )
+      expect_identical(get_chat_transcript(session, "chat"), before)
+    }
+  )
+})
+
+test_that("chat_server() stores raw user input before the stream reads it", {
+  local_mocked_bindings(
+    chat_append = function(...) invisible(NULL),
+    send_chat_action = function(...) invisible(NULL)
+  )
+  attachment <- list(
+    mime = "text/plain",
+    data_url = "data:text/plain;base64,bm90ZXM=",
+    name = "notes.txt",
+    size = 5
+  )
+  input_value <- user_input_contents(
+    list(text = "Summarize", attachments = list(attachment))
+  )
+  state_during_stream <- NULL
+  stream_args <- NULL
+  active_session <- NULL
+  mod_ref <- NULL
+  client <- structure(
+    list(
+      stream_async = function(...) {
+        state_during_stream <<- get_chat_transcript(
+          active_session,
+          "chat"
+        )$read()
+        stream_args <<- rlang::list2(...)
+        NULL
+      },
+      last_turn = function() NULL
+    ),
+    class = "Chat"
+  )
+
+  shiny::testServer(
+    function(input, output, session) {
+      active_session <<- session
+      mod_ref <<- chat_server(
+        "chat",
+        client,
+        history = FALSE,
+        session = session
+      )
+    },
+    {
+      session$setInputs(chat_user_input = input_value)
+      deadline <- Sys.time() + 2
+      while (
+        (is.null(stream_args) || identical(mod_ref$status(), "streaming")) &&
+          Sys.time() < deadline
+      ) {
+        later::run_now(0.05)
+        session$flushReact()
+      }
+
+      expect_identical(stream_args[[1]], input_value[[1]])
+      expect_identical(stream_args[[2]], input_value[[2]])
+      expect_identical(
+        state_during_stream,
+        list(
+          list(
+            role = "user",
+            segments = list(
+              list(content = "Summarize", content_type = "markdown")
+            ),
+            attachments = list(attachment)
+          )
+        )
+      )
+    }
+  )
+})
+
+test_that("chat_server() chains one history branch to each managed response", {
+  history_calls <- 0L
+  managed_promise <- NULL
+  history_promise <- NULL
+  local_mocked_bindings(
+    chat_append = function(...) {
+      managed_promise <<- promises::promise_resolve("complete")
+      managed_promise
+    },
+    chat_history_on_response = function(id, stream_promise, session) {
+      history_calls <<- history_calls + 1L
+      history_promise <<- stream_promise
+      expect_equal(id, "chat")
+      stream_promise
+    },
+    send_chat_action = function(...) invisible(NULL)
+  )
+  client <- structure(
+    list(
+      stream_async = function(...) "response",
+      last_turn = function() NULL
+    ),
+    class = "Chat"
+  )
+  mod_ref <- NULL
+
+  shiny::testServer(
+    function(input, output, session) {
+      mod_ref <<- chat_server(
+        "chat",
+        client,
+        history = FALSE,
+        session = session
+      )
+    },
+    {
+      session$setInputs(
+        chat_user_input = user_input_contents(list(text = "Hi"))
+      )
+      deadline <- Sys.time() + 2
+      while (
+        identical(mod_ref$status(), "streaming") &&
+          Sys.time() < deadline
+      ) {
+        later::run_now(0.05)
+        session$flushReact()
+      }
+      later::run_now(0.1)
+      session$flushReact()
+
+      expect_equal(history_calls, 1L)
+      expect_promise(history_promise)
+      expect_promise(managed_promise)
+      expect_equal(mod_ref$status(), "idle")
+    }
+  )
+})
+
+test_that("chat_history_on_response() saves fulfilled and rejected settlements", {
+  session <- shiny::MockShinySession$new()
+  saved <- 0L
+  client <- mock_chat_client()
+  controller <- new.env(parent = emptyenv())
+  controller$get_client <- function() client
+  controller$on_response <- function(recorded_turns) {
+    saved <<- saved + 1L
+    invisible(NULL)
+  }
+  set_session_chat_bookmark_info(
+    session,
+    "chat.history-controller",
+    controller
+  )
+
+  fulfilled <- promises::promise_resolve("complete")
+  expect_identical(
+    chat_history_on_response(
+      id = "chat",
+      stream_promise = fulfilled,
+      session = session
+    ),
+    fulfilled
+  )
+  expect_equal(sync(fulfilled), "complete")
+  later::run_now(0.1)
+
+  rejected <- promises::promise_reject(rlang::error_cnd("cancelled"))
+  expect_identical(
+    chat_history_on_response("chat", rejected, session),
+    rejected
+  )
+  promises::catch(rejected, function(reason) NULL)
+  later::run_now(0.1)
+
+  expect_equal(saved, 2L)
+})
+
+managed_stream_client <- function(stream_factory) {
+  client <- mock_chat_client()
+  client$stream_async <- function(..., stream, controller) {
+    input <- rlang::list2(...)[[1L]]
+    client$set_turns(list(ellmer::UserTurn(input)))
+    stream_factory(client, controller)
+  }
+  client
+}
+
+wait_for_condition <- function(condition, session) {
+  deadline <- Sys.time() + 2
+  while (!condition() && Sys.time() < deadline) {
+    later::run_now(0.05)
+    session$flushReact()
+  }
+  expect_true(condition())
+  later::run_now(0.1)
+  session$flushReact()
+}
+
+recorded_ui_messages <- function(record) {
+  unlist(
+    lapply(record_path_node_ids(record), function(node_id) {
+      record$nodes[[node_id]]$ui %||% list()
+    }),
+    recursive = FALSE
+  )
+}
+
+test_that("synchronous stream creation failure settles user history and preserves its error", {
+  put_calls <- 0L
+  attempted_record <- NULL
+  FailingStore <- R6::R6Class(
+    "SynchronousCreationFailingStore",
+    inherit = InMemoryConversationStore,
+    public = list(
+      put = function(partition, record) {
+        put_calls <<- put_calls + 1L
+        attempted_record <<- record
+        rlang::abort("history save failed", class = "history_save_error")
+      }
+    )
+  )
+  marker <- new.env(parent = emptyenv())
+  original <- structure(
+    list(message = "synchronous model failure", call = NULL, marker = marker),
+    class = c("creation_original_error", "error", "condition")
+  )
+  client <- mock_chat_client()
+  client$stream_async <- function(..., stream, controller) {
+    input <- rlang::list2(...)[[1L]]
+    client$set_turns(list(ellmer::UserTurn(input)))
+    stop(original)
+  }
+  warnings <- list()
+  store <- FailingStore$new()
+  local_mocked_bindings(
+    send_chat_action = function(...) invisible(NULL)
+  )
+
+  withCallingHandlers(
+    shiny::testServer(
+      function(input, output, session) {
+        chat_server(
+          "chat",
+          client,
+          history = history_options(
+            store = store,
+            scope = "test-user",
+            restore_mode = "none",
+            title = NULL
+          ),
+          session = session
+        )
+      },
+      {
+        session$setInputs(chat_user_input = "Hello")
+        wait_for_condition(function() put_calls == 1L, session)
+      }
+    ),
+    warning = function(warning) {
+      warnings[[length(warnings) + 1L]] <<- warning
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  expect_equal(put_calls, 1L)
+  expect_equal(attempted_record$response_count, 1L)
+  expect_identical(
+    recorded_ui_messages(attempted_record),
+    list(
+      list(
+        role = "user",
+        segments = list(list(content = "Hello", content_type = "markdown"))
+      )
+    )
+  )
+  expect_true(
+    any(
+      vapply(
+        warnings,
+        function(warning) {
+          grepl(
+            "Could not save conversation",
+            conditionMessage(warning),
+            fixed = TRUE
+          )
+        },
+        logical(1)
+      )
+    )
+  )
+  task_warnings <- Filter(
+    function(warning) {
+      grepl("ExtendedTask", conditionMessage(warning), fixed = TRUE)
+    },
+    warnings
+  )
+  expect_length(task_warnings, 1L)
+  task_error <- task_warnings[[1L]]$parent
+  expect_s3_class(task_error, "creation_original_error")
+  expect_identical(task_error$marker, marker)
+})
+
+test_that("rejected stream creation promise settles canonical user history once", {
+  put_calls <- 0L
+  RecordingStore <- R6::R6Class(
+    "RejectedCreationRecordingStore",
+    inherit = InMemoryConversationStore,
+    public = list(
+      put = function(partition, record) {
+        put_calls <<- put_calls + 1L
+        super$put(partition, record)
+      }
+    )
+  )
+  marker <- new.env(parent = emptyenv())
+  original <- structure(
+    list(message = "rejected model creation", call = NULL, marker = marker),
+    class = c("creation_original_error", "error", "condition")
+  )
+  client <- mock_chat_client()
+  client$stream_async <- function(..., stream, controller) {
+    input <- rlang::list2(...)[[1L]]
+    client$set_turns(list(ellmer::UserTurn(input)))
+    promises::promise_reject(original)
+  }
+  warnings <- list()
+  controller <- NULL
+  store <- RecordingStore$new()
+  local_mocked_bindings(
+    send_chat_action = function(...) invisible(NULL)
+  )
+
+  withCallingHandlers(
+    shiny::testServer(
+      function(input, output, session) {
+        chat_server(
+          "chat",
+          client,
+          history = history_options(
+            store = store,
+            scope = "test-user",
+            restore_mode = "none",
+            title = NULL
+          ),
+          session = session
+        )
+        controller <<- get_session_chat_bookmark_info(
+          session,
+          "chat.history-controller"
+        )
+      },
+      {
+        session$setInputs(chat_user_input = "Hello")
+        wait_for_condition(function() put_calls == 1L, session)
+      }
+    ),
+    warning = function(warning) {
+      warnings[[length(warnings) + 1L]] <<- warning
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  expect_equal(put_calls, 1L)
+  expect_equal(controller$record$response_count, 1L)
+  expect_identical(
+    recorded_ui_messages(controller$record),
+    list(
+      list(
+        role = "user",
+        segments = list(list(content = "Hello", content_type = "markdown"))
+      )
+    )
+  )
+  task_warnings <- Filter(
+    function(warning) {
+      grepl("ExtendedTask", conditionMessage(warning), fixed = TRUE)
+    },
+    warnings
+  )
+  expect_length(task_warnings, 1L)
+  task_error <- task_warnings[[1L]]$parent
+  expect_s3_class(task_error, "creation_original_error")
+  expect_identical(task_error$marker, marker)
+})
+
+test_that("cancelled managed streams save once after transcript settlement", {
+  release <- NULL
+  released <- promises::promise(function(resolve, reject) {
+    release <<- resolve
+  })
+  put_calls <- 0L
+  transcript_at_put <- NULL
+  active_session <- NULL
+  RecordingStore <- R6::R6Class(
+    "CancelledManagedRecordingStore",
+    inherit = InMemoryConversationStore,
+    public = list(
+      put = function(partition, record) {
+        put_calls <<- put_calls + 1L
+        transcript_at_put <<- get_chat_transcript(
+          active_session,
+          "chat"
+        )$read()
+        super$put(partition, record)
+      }
+    )
+  )
+  store <- RecordingStore$new()
+  client <- managed_stream_client(function(client, controller) {
+    coro::async_generator(function() {
+      yield("partial")
+      coro::await(released)
+      if (controller$cancelled) {
+        client$set_turns(
+          c(
+            client$get_turns(),
+            list(ellmer::AssistantPartialTurn("partial", reason = "cancelled"))
+          )
+        )
+        return(coro::exhausted())
+      }
+      yield("late")
+    })()
+  })
+  mod_ref <- NULL
+  local_mocked_bindings(
+    send_chat_action = function(...) invisible(NULL)
+  )
+
+  shiny::testServer(
+    function(input, output, session) {
+      active_session <<- session
+      mod_ref <<- chat_server(
+        "chat",
+        client,
+        history = history_options(
+          store = store,
+          scope = "test-user",
+          restore_mode = "none",
+          title = NULL
+        ),
+        session = session
+      )
+    },
+    {
+      session$setInputs(chat_user_input = "Hello")
+      wait_for_condition(
+        function() identical(mod_ref$status(), "streaming"),
+        session
+      )
+      session$setInputs(chat_cancel = 1)
+      release(NULL)
+      wait_for_condition(function() put_calls == 1L, session)
+
+      expect_equal(put_calls, 1L)
+      expect_identical(
+        transcript_at_put,
+        list(
+          list(
+            role = "user",
+            segments = list(
+              list(content = "Hello", content_type = "markdown")
+            )
+          ),
+          list(
+            role = "assistant",
+            segments = list(
+              list(content = "partial", content_type = "markdown")
+            )
+          )
+        )
+      )
+    }
+  )
+})
+
+test_that("errored managed streams save the sanitized settled transcript once", {
+  withr::local_options(shiny.sanitize.errors = TRUE)
+  put_calls <- 0L
+  saved_record <- NULL
+  transcript_at_put <- NULL
+  active_session <- NULL
+  RecordingStore <- R6::R6Class(
+    "ErroredManagedRecordingStore",
+    inherit = InMemoryConversationStore,
+    public = list(
+      put = function(partition, record) {
+        put_calls <<- put_calls + 1L
+        saved_record <<- rlang::duplicate(record, shallow = FALSE)
+        transcript_at_put <<- get_chat_transcript(
+          active_session,
+          "chat"
+        )$read()
+        super$put(partition, record)
+      }
+    )
+  )
+  store <- RecordingStore$new()
+  original <- rlang::error_cnd("secret model failure")
+  client <- managed_stream_client(function(client, controller) {
+    coro::async_generator(function() {
+      yield("partial")
+      client$set_turns(
+        c(
+          client$get_turns(),
+          list(ellmer::AssistantPartialTurn("partial", reason = "error"))
+        )
+      )
+      stop(original)
+    })()
+  })
+  mod_ref <- NULL
+  local_mocked_bindings(
+    send_chat_action = function(...) invisible(NULL)
+  )
+
+  withCallingHandlers(
+    shiny::testServer(
+      function(input, output, session) {
+        active_session <<- session
+        mod_ref <<- chat_server(
+          "chat",
+          client,
+          history = history_options(
+            store = store,
+            scope = "test-user",
+            restore_mode = "none",
+            title = NULL
+          ),
+          session = session
+        )
+      },
+      {
+        session$setInputs(chat_user_input = "Hello")
+        wait_for_condition(function() put_calls == 1L, session)
+      }
+    ),
+    warning = function(warning) {
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  sanitized <- paste0(
+    "partial\n\n**An error occurred. ",
+    "Please try again or contact the app author.**"
+  )
+  expect_equal(put_calls, 1L)
+  expect_identical(
+    transcript_at_put[[2L]]$segments[[1L]]$content,
+    sanitized
+  )
+  expect_identical(
+    recorded_ui_messages(saved_record)[[2L]]$segments[[1L]]$content,
+    sanitized
+  )
+})
+
+test_that("history failure cannot replace a managed stream error", {
+  put_calls <- 0L
+  FailingStore <- R6::R6Class(
+    "FailingManagedResponseStore",
+    inherit = InMemoryConversationStore,
+    public = list(
+      put = function(partition, record) {
+        put_calls <<- put_calls + 1L
+        rlang::abort("history save failed", class = "history_save_error")
+      }
+    )
+  )
+  marker <- new.env(parent = emptyenv())
+  original <- structure(
+    list(message = "original model failure", call = NULL, marker = marker),
+    class = c("model_original_error", "error", "condition")
+  )
+  client <- managed_stream_client(function(client, controller) {
+    coro::async_generator(function() {
+      yield("partial")
+      client$set_turns(
+        c(
+          client$get_turns(),
+          list(ellmer::AssistantPartialTurn("partial", reason = "error"))
+        )
+      )
+      stop(original)
+    })()
+  })
+  warnings <- list()
+  mod_ref <- NULL
+  store <- FailingStore$new()
+  local_mocked_bindings(
+    send_chat_action = function(...) invisible(NULL)
+  )
+
+  withCallingHandlers(
+    shiny::testServer(
+      function(input, output, session) {
+        mod_ref <<- chat_server(
+          "chat",
+          client,
+          history = history_options(
+            store = store,
+            scope = "test-user",
+            restore_mode = "none",
+            title = NULL
+          ),
+          session = session
+        )
+      },
+      {
+        session$setInputs(chat_user_input = "Hello")
+        wait_for_condition(function() put_calls == 1L, session)
+      }
+    ),
+    warning = function(warning) {
+      warnings[[length(warnings) + 1L]] <<- warning
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  expect_equal(put_calls, 1L)
+  task_warnings <- Filter(
+    function(warning) {
+      grepl("ExtendedTask", conditionMessage(warning), fixed = TRUE)
+    },
+    warnings
+  )
+  expect_length(task_warnings, 1L)
+  task_error <- task_warnings[[1L]]$parent
+  expect_s3_class(task_error, "model_original_error")
+  expect_s3_class(task_error, "shiny.silent.error")
+  expect_identical(task_error$marker, marker)
+  expect_identical(conditionMessage(task_error), "original model failure")
+})
+
+test_that("standalone streams update the transcript without history responses", {
+  session <- shiny::MockShinySession$new()
+  client <- mock_chat_client()
+  store <- InMemoryConversationStore$new()
+  chat_enable_history(
+    "chat",
+    client,
+    options = history_options(
+      store = store,
+      scope = "browser-1",
+      restore_mode = "none",
+      title = NULL
+    ),
+    session = session
+  )
+  stream <- coro::generator(function() {
+    yield("standalone")
+  })
+
+  sync(chat_append_stream("chat", stream(), session = session))
+
+  controller <- get_session_chat_bookmark_info(
+    session,
+    "chat.history-controller"
+  )
+  expect_null(controller$record)
+  expect_equal(
+    get_chat_transcript(session, "chat")$read()[[1L]]$segments[[1L]]$content,
+    "standalone"
+  )
+})
+
+test_that("standalone failed streams do not save a history response", {
+  put_calls <- 0L
+  CountingStore <- R6::R6Class(
+    "StandaloneFailedCountingStore",
+    inherit = InMemoryConversationStore,
+    public = list(
+      put = function(partition, record) {
+        put_calls <<- put_calls + 1L
+        super$put(partition, record)
+      }
+    )
+  )
+  session <- shiny::MockShinySession$new()
+  client <- mock_chat_client()
+  store <- CountingStore$new()
+  chat_enable_history(
+    "chat",
+    client,
+    options = history_options(
+      store = store,
+      scope = "test-user",
+      restore_mode = "none",
+      title = NULL
+    ),
+    session = session
+  )
+  session$flushReact()
+  stream <- coro::async_generator(function() {
+    yield("partial")
+    stop("standalone failure")
+  })
+
+  error <- withCallingHandlers(
+    tryCatch(
+      sync(chat_append_stream("chat", stream(), session = session)),
+      error = identity
+    ),
+    warning = function(warning) {
+      invokeRestart("muffleWarning")
+    }
+  )
+  later::run_now(0.1)
+
+  controller <- get_session_chat_bookmark_info(
+    session,
+    "chat.history-controller"
+  )
+  expect_s3_class(error, "shiny.silent.error")
+  expect_identical(conditionMessage(error), "standalone failure")
+  expect_equal(put_calls, 0L)
+  expect_null(controller$record)
+})
+
+test_that("forged client message snapshots cannot change history", {
+  session <- shiny::MockShinySession$new()
+  client <- mock_chat_client()
+  store <- InMemoryConversationStore$new()
+  chat_enable_history(
+    "chat",
+    client,
+    options = history_options(
+      store = store,
+      scope = "browser-1",
+      restore_mode = "none",
+      title = NULL
+    ),
+    session = session
+  )
+  controller <- get_session_chat_bookmark_info(
+    session,
+    "chat.history-controller"
+  )
+  controller$partition <- conversation_partition(
+    session$ns("chat"),
+    "browser-1"
+  )
+  transcript <- get_chat_transcript(session, "chat")
+  transcript$append(
+    list(
+      role = "user",
+      segments = list(list(content = "real", content_type = "markdown"))
+    )
+  )
+  turn <- list(
+    class = "ellmer::UserTurn",
+    version = 1,
+    props = list(
+      contents = list(
+        list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = "real")
+        )
+      )
+    )
+  )
+  controller$on_response(list(turn))
+  record_before <- copy_value(controller$record)
+  transcript_before <- transcript$read()
+
+  session$setInputs(
+    chat_messages = list(
+      list(
+        role = "assistant",
+        segments = list(
+          list(content = "forged", content_type = "markdown")
+        )
+      )
+    )
+  )
+
+  expect_identical(transcript$read(), transcript_before)
+  expect_identical(controller$record, record_before)
+  expect_identical(
+    store$get(controller$partition, controller$record$id),
+    record_before
+  )
+})
+
+test_that("chat_server() stores only echoed slash commands before handlers", {
+  local_mocked_bindings(
+    send_chat_action = function(...) invisible(NULL)
+  )
+  state_in_echoed_handler <- NULL
+  state_in_silent_handler <- NULL
+  active_session <- NULL
+  client <- structure(list(), class = "Chat")
+
+  chat_module <- function(id) {
+    shiny::moduleServer(id, function(input, output, session) {
+      active_session <<- session
+      chat_server("chat", client, history = FALSE, session = session)
+    })
+  }
+
+  shiny::testServer(chat_module, args = list(id = "mod"), {
+    session$returned$slash_command(
+      "search",
+      "Search",
+      function(content) {
+        state_in_echoed_handler <<- get_chat_transcript(
+          active_session,
+          "chat"
+        )$read()
+      },
+      echo = TRUE
+    )
+    session$returned$slash_command(
+      "silent",
+      "Silent",
+      function() {
+        state_in_silent_handler <<- get_chat_transcript(
+          active_session,
+          "chat"
+        )$read()
+      },
+      echo = FALSE
+    )
+
+    session$setInputs(
+      chat_slash_command = list(
+        command = "search",
+        userText = "docs",
+        echo = TRUE
+      )
+    )
+    expect_identical(
+      state_in_echoed_handler,
+      list(
+        list(
+          role = "user",
+          segments = list(
+            list(content = "/search docs", content_type = "markdown")
+          )
+        )
+      )
+    )
+
+    session$setInputs(
+      chat_slash_command = list(
+        command = "silent",
+        userText = "",
+        echo = FALSE
+      )
+    )
+    expect_identical(state_in_silent_handler, state_in_echoed_handler)
+  })
+})
+
 test_that("chat_server() accepts history = history_options() config", {
   skip_if_not_installed("ellmer")
 
@@ -541,9 +1445,9 @@ test_that("set_client() does not re-render the UI or double-fire on_restore (reg
   })
 })
 
-test_that("set_client() seeds ui_offset from the restored record so a post-swap turn does not duplicate prior UI (regression)", {
+test_that("set_client() seeds transcript_offset from the restored record so a post-swap turn does not duplicate prior UI (regression)", {
   # Regression: init_effect()'s restore_ui = FALSE branch (used by
-  # set_client() on every LLM-client/model swap) left ui_offset at its
+  # set_client() on every LLM-client/model swap) left transcript_offset at its
   # HistoryController$new() default of 0 instead of seeding it from the
   # record being restored. The browser still holds the full historical
   # transcript, so on the next real turn after a swap, extend_record_linear()
@@ -588,7 +1492,7 @@ test_that("set_client() seeds ui_offset from the restored record so a post-swap 
   rec$nodes <- list(
     n_0001 = list(
       parent = NULL,
-      children = list(),
+      children = list("n_0002"),
       turns = list(make_turn("user", "hi")),
       ui = list(make_ui_message("user", "hi"))
     ),
@@ -629,19 +1533,10 @@ test_that("set_client() seeds ui_offset from the restored record so a post-swap 
     session$setInputs(chat_history_browser_token = "tok-abc")
 
     ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
-    expect_equal(ctrl$ui_offset, 2)
+    expect_equal(ctrl$transcript_offset, 2)
 
-    # Simulate a new turn arriving after the swap: on_response() receives the
-    # FULL recorded-turns list (as chat_history_on_response() would derive
-    # from the live client), and the browser reports the FULL historical
-    # `chat_messages` transcript (as a real client would) plus the new
-    # message -- not just the new tail.
-    session$setInputs(
-      chat_messages = list(
-        make_ui_message("user", "hi"),
-        make_ui_message("assistant", "hello"),
-        make_ui_message("user", "again")
-      )
+    get_chat_transcript(session, "chat")$append(
+      make_ui_message("user", "again")
     )
 
     ctrl$on_response(
@@ -674,12 +1569,7 @@ test_that("set_client() seeds ui_offset from the restored record so a post-swap 
   })
 })
 
-test_that("the client's `_messages` echo drives the save and preserves the displayed assistant UI", {
-  # Regression for the save-timing bug: the save must be triggered by the
-  # browser echoing its rendered `_messages` snapshot, not by server-side
-  # stream completion. If it fired on completion, the just-finished assistant
-  # message would not yet be in the client's report, so its node would fall
-  # back to turn-derived markdown -- losing any display-only transformation.
+test_that("the settled transcript preserves transformed assistant UI", {
   skip_if_not_installed("ellmer")
 
   make_turn <- function(role, text) {
@@ -732,29 +1622,17 @@ test_that("the client's `_messages` echo drives the save and preserves the displ
     ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
     expect_false(is.null(ctrl$partition))
 
-    # A response has just completed server-side: the live client holds both
-    # turns, and the assistant reply as recorded is the plain "hello".
     set_turns_recorded(
       client,
       list(make_turn("user", "hi"), make_turn("assistant", "hello"))
     )
-
-    # The browser has not yet reported the finished assistant message -- its
-    # last reported message is still the user's -- so no save should fire.
-    session$setInputs(chat_messages = list(make_ui_message("user", "hi")))
-    expect_null(ctrl$record)
-
-    # The browser now echoes its rendered transcript, in which the displayed
-    # assistant message was transformed for display (differs from the turn
-    # text). The observer fires and the save records this displayed form.
-    session$setInputs(
-      chat_messages = list(
+    get_chat_transcript(session, "chat")$replace(
+      list(
         make_ui_message("user", "hi"),
         make_ui_message("assistant", "hello (displayed)")
       )
     )
-
-    expect_false(is.null(ctrl$record))
+    ctrl$on_response(get_turns_recorded(client))
 
     saved <- store$get(
       conversation_partition(session$ns("chat"), "browser-1"),
@@ -767,19 +1645,7 @@ test_that("the client's `_messages` echo drives the save and preserves the displ
   })
 })
 
-test_that("editing a message after the first forks at the correct node even when the client's UI echo lags the assistant turn (regression)", {
-  # Regression: the history save trigger used to fire as soon as the
-  # server-side stream finished (chained directly onto chat_append_stream()'s
-  # promise), before the browser had echoed the just-completed assistant
-  # reply back through `<chat_id>_messages`. Given that lag,
-  # extend_record_linear() attached the *previous* round's late-arriving
-  # assistant ui message to the *current* round's fallback node, permanently
-  # leaving one node's `ui` unset. record_node_id_for_message_index() counts
-  # by `length(node$ui)`, so that unset node silently undercounted by one --
-  # shifting every later handle_edit()/handle_navigate() message_index lookup
-  # one node too far. In particular, editing any message after the first
-  # forked one node too late, leaving the pre-edit message on the path
-  # alongside whatever got resubmitted in its place (a visible duplicate).
+test_that("editing a settled message forks at the correct transcript node", {
   skip_if_not_installed("ellmer")
 
   make_live_turn <- function(role, text) {
@@ -816,28 +1682,24 @@ test_that("editing a message after the first forks at the correct node even when
   }
 
   shiny::testServer(server, session = session, {
-    # Round 1: user "one" -> assistant "R1". The browser's echo of
-    # `chat_messages` necessarily lags the server-side stream completion by a
-    # round trip: it reports only "one" first, then catches up to include
-    # "R1" once the client has rendered and re-echoed it.
     client$set_turns(
       list(
         make_live_turn("user", "one"),
         make_live_turn("assistant", "R1")
       )
     )
-    session$setInputs(chat_messages = list(make_ui_message("user", "one")))
-    session$setInputs(
-      chat_messages = list(
+    get_chat_transcript(session, "chat")$replace(
+      list(
         make_ui_message("user", "one"),
         make_ui_message("assistant", "R1")
       )
     )
 
     ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
+    ctrl$partition <- conversation_partition(session$ns("chat"), "testuser")
+    ctrl$on_response(get_turns_recorded(client))
     expect_equal(length(ctrl$record$nodes), 2)
 
-    # Round 2: user "two" -> assistant "R2", same lag pattern.
     client$set_turns(
       list(
         make_live_turn("user", "one"),
@@ -846,21 +1708,15 @@ test_that("editing a message after the first forks at the correct node even when
         make_live_turn("assistant", "R2")
       )
     )
-    session$setInputs(
-      chat_messages = list(
-        make_ui_message("user", "one"),
-        make_ui_message("assistant", "R1"),
-        make_ui_message("user", "two")
-      )
-    )
-    session$setInputs(
-      chat_messages = list(
+    get_chat_transcript(session, "chat")$replace(
+      list(
         make_ui_message("user", "one"),
         make_ui_message("assistant", "R1"),
         make_ui_message("user", "two"),
         make_ui_message("assistant", "R2")
       )
     )
+    ctrl$on_response(get_turns_recorded(client))
     expect_equal(length(ctrl$record$nodes), 4)
 
     # Edit the second user message ("two", ui message index 2). The fork
@@ -926,14 +1782,15 @@ test_that("file-backed turns survive restore, continuation, and a second restore
         make_live_turn("assistant", "hello")
       )
     )
-    session$setInputs(
-      chat_messages = list(
+    get_chat_transcript(session, "chat")$replace(
+      list(
         make_ui_message("user", "hi"),
         make_ui_message("assistant", "hello")
       )
     )
 
     ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
+    ctrl$on_response(get_turns_recorded(client))
     saved_id <<- ctrl$record$id
   })
 
@@ -971,13 +1828,6 @@ test_that("file-backed turns survive restore, continuation, and a second restore
     expect_identical(restored_turns[[2]]@duration, NA_real_)
     expect_identical(restored_turns[[2]]@finish_reason, NA_character_)
 
-    session$setInputs(
-      chat_messages = list(
-        make_ui_message("user", "hi"),
-        make_ui_message("assistant", "hello")
-      )
-    )
-
     new_client$set_turns(
       c(
         restored_turns,
@@ -987,14 +1837,16 @@ test_that("file-backed turns survive restore, continuation, and a second restore
         )
       )
     )
-    session$setInputs(
-      chat_messages = list(
+    get_chat_transcript(session, "chat")$replace(
+      list(
         make_ui_message("user", "hi"),
         make_ui_message("assistant", "hello"),
         make_ui_message("user", "again"),
         make_ui_message("assistant", "welcome back")
       )
     )
+    ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
+    ctrl$on_response(get_turns_recorded(new_client))
   })
 
   final_client <- mock_chat_client()

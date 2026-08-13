@@ -26,6 +26,11 @@ def test_history_full_flow(page: Page, local_app: ShinyAppProc) -> None:
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30_000)
 
+    # The greeting is app-scoped, not conversation-scoped: it is visible
+    # before the first message of the first conversation.
+    greeting = chat.loc_greeting
+    expect(greeting).to_be_visible(timeout=10_000)
+
     # First conversation: mutate bridged app state, then send a message.
     controller.OutputText(page, "filter_state").expect_value("filter: none")
     controller.InputActionButton(page, "set_filter").click()
@@ -37,6 +42,9 @@ def test_history_full_flow(page: Page, local_app: ShinyAppProc) -> None:
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: first question", timeout=30_000)
 
+    # Nonpersistent greeting is hidden once the first conversation has messages.
+    expect(greeting).not_to_be_visible(timeout=10_000)
+
     # The drawer should list one conversation with the fallback title.
     open_drawer(page)
     items = page.locator(".shiny-chat-history-item")
@@ -47,10 +55,16 @@ def test_history_full_flow(page: Page, local_app: ShinyAppProc) -> None:
     page.locator(".shiny-chat-history-new").click()
     expect(page.locator(".shiny-chat-history-drawer")).not_to_be_visible()
 
+    # New conversation has no messages, so the greeting reappears.
+    expect(greeting).to_be_visible(timeout=10_000)
+
     # Send a message in the second conversation.
     chat.set_user_input("second question")
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: second question", timeout=30_000)
+
+    # Nonpersistent greeting is hidden once the second conversation has messages.
+    expect(greeting).not_to_be_visible(timeout=10_000)
 
     open_drawer(page)
     expect(page.locator(".shiny-chat-history-item")).to_have_count(
@@ -63,3 +77,6 @@ def test_history_full_flow(page: Page, local_app: ShinyAppProc) -> None:
     controller.OutputText(page, "filter_state").expect_value(
         re.compile(r"filter: penguins"), timeout=5_000
     )
+
+    # The restored conversation has messages, so the greeting stays hidden.
+    expect(greeting).not_to_be_visible(timeout=10_000)

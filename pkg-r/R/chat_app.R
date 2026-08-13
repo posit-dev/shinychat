@@ -230,7 +230,10 @@ chat_mod_ui <- function(
 #' @describeIn chat_app Wire up batteries-included chat server logic in a Shiny
 #'   session. Pair with [chat_ui()] by passing it the same `id`; see *Pairing
 #'   with `chat_server()`* in [chat_ui()] for the top-level and module-based
-#'   patterns.
+#'   patterns. Every `id` already gets server transcript state and the
+#'   single-flight streaming rules described in [chat_append()], regardless
+#'   of how it was set up; `chat_server()` additionally configures history
+#'   persistence and bookmark restore for `id` (see [chat_enable_history()]).
 #' @inheritParams chat_restore
 #' @param history Conversation history configuration. `TRUE` (default) enables
 #'   history with default settings; `FALSE` disables it; pass a [history_options()]
@@ -314,18 +317,24 @@ chat_server <- function(
     bm_on_response <- isTRUE(bookmark_on_response)
   }
 
+  get_or_create_chat_transcript(session, id)
+
   append_stream_task <- shiny::ExtendedTask$new(
     function(client, ui_id, user_input, controller = NULL) {
-      stream <- client$stream_async(
-        !!!user_input,
-        stream = "content",
-        controller = controller
+      stream_result <- promises::then(
+        promises::promise_resolve(NULL),
+        function(...) {
+          client$stream_async(
+            !!!user_input,
+            stream = "content",
+            controller = controller
+          )
+        }
       )
-
-      p <- promises::promise_resolve(stream)
-      promises::then(p, function(stream) {
-        chat_append(ui_id, stream)
+      stream_result <- promises::then(stream_result, function(stream) {
+        chat_append(ui_id, stream, session = session)
       })
+      chat_history_on_response(ui_id, stream_result, session)
     }
   )
 
@@ -431,12 +440,28 @@ chat_server <- function(
   shiny::observeEvent(
     session$input[[paste0(id, "_user_input")]],
     label = "on_chat_user_input",
+    priority = 9999,
     {
-      last_input(session$input[[paste0(id, "_user_input")]])
+      user_input <- session$input[[paste0(id, "_user_input")]]
+      submission <- user_input_submission(user_input)
+      transcript <- get_chat_transcript(session, id)
+      transcript$append(
+        list(
+          role = "user",
+          segments = list(
+            list(
+              content = submission$text,
+              content_type = "markdown"
+            )
+          ),
+          attachments = submission$attachments
+        )
+      )
+      last_input(user_input)
       append_stream_task$invoke(
         client,
         id,
-        session$input[[paste0(id, "_user_input")]],
+        user_input,
         controller = ctrl
       )
     }
@@ -542,6 +567,27 @@ chat_server <- function(
     {
       data <- session$input[[paste0(id, "_slash_command")]]
       reg <- isolate(slash_commands())[[data$command]]
+      if (isTRUE(data$echo)) {
+        get_chat_transcript(session, id)$append(
+          list(
+            role = "user",
+            segments = list(
+              list(
+                content = trimws(
+                  paste0(
+                    "/",
+                    data$command,
+                    " ",
+                    data$userText %||% ""
+                  ),
+                  which = "right"
+                ),
+                content_type = "markdown"
+              )
+            )
+          )
+        )
+      }
       if (!is.null(reg) && is.function(reg$handler)) {
         tryCatch(
           {

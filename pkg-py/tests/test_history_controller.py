@@ -4,7 +4,7 @@
 
 import warnings
 from datetime import timedelta
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -35,14 +35,17 @@ def part(
     return ConversationPartition(chat_id=chat_id, scope=scope)
 
 
-def test_extend_appends_only_new_groups_with_ui_by_role():
+def test_extend_appends_only_new_groups_with_transcript_by_role():
     rec = new_conversation_record(title="t")
     groups = [
         [{"role": "user", "content": "q1"}],
         [{"role": "assistant", "content": "a1"}],
     ]
     extend_record_linear(
-        rec, groups, [msg("user"), msg("assistant")], ui_offset=0
+        rec,
+        groups,
+        [msg("user"), msg("assistant")],
+        transcript_offset=0,
     )
     assert len(rec.nodes) == 2
     path = rec.path_node_ids()
@@ -55,7 +58,7 @@ def test_extend_appends_only_new_groups_with_ui_by_role():
         [{"role": "assistant", "content": "a2"}],
     ]
     all_msgs = [msg("user"), msg("assistant"), msg("user"), msg("assistant")]
-    extend_record_linear(rec, groups, all_msgs, ui_offset=2)
+    extend_record_linear(rec, groups, all_msgs, transcript_offset=2)
     assert len(rec.nodes) == 4
     assert rec.nodes[rec.path_node_ids()[2]].ui == [msg("user")]
 
@@ -93,7 +96,7 @@ def test_extend_groups_tool_exchange_into_single_node():
     ]
     msgs = [msg("user"), msg("assistant")]
     rec = new_conversation_record(title="t")
-    extend_record_linear(rec, groups, msgs, ui_offset=0)
+    extend_record_linear(rec, groups, msgs, transcript_offset=0)
 
     assert len(rec.nodes) == 2
     path = rec.path_node_ids()
@@ -121,17 +124,12 @@ def test_extend_attaches_extra_assistant_msgs_to_last_node():
         msg("assistant"),
         msg("assistant"),
     ]
-    extend_record_linear(rec, groups, msgs, ui_offset=0)
+    extend_record_linear(rec, groups, msgs, transcript_offset=0)
     path = rec.path_node_ids()
     assert rec.nodes[path[1]].ui == [msg("assistant"), msg("assistant")]
 
 
-def test_extend_attaches_late_ui_message_when_turn_groups_already_caught_up():
-    # Simulates: append_message() (non-streamed) followed by a streamed
-    # reply, both saved to history. Save #1 creates the user/assistant
-    # nodes from the turn groups. By save #2, chatlas turns have already
-    # caught up (streaming adds no *new* turn group), but a new UI message
-    # (the streamed reply) has arrived and must not be dropped.
+def test_extend_attaches_late_transcript_message_when_turn_groups_caught_up():
     rec = new_conversation_record(title="t")
     groups = [
         [{"role": "user", "content": "q"}],
@@ -142,13 +140,21 @@ def test_extend_attaches_late_ui_message_when_turn_groups_already_caught_up():
     streamed_ui = msg("assistant")
 
     # Save #1: two new turn groups, two UI messages.
-    extend_record_linear(rec, groups, [user_ui, oob_ui], ui_offset=0)
+    extend_record_linear(
+        rec,
+        groups,
+        [user_ui, oob_ui],
+        transcript_offset=0,
+    )
     assert len(rec.nodes) == 2
 
     # Save #2: same turn groups (streaming added no new turn), but one more
     # UI message has arrived since the last save.
     extend_record_linear(
-        rec, groups, [user_ui, oob_ui, streamed_ui], ui_offset=2
+        rec,
+        groups,
+        [user_ui, oob_ui, streamed_ui],
+        transcript_offset=2,
     )
 
     all_ui = [
@@ -162,39 +168,42 @@ def test_extend_attaches_late_ui_message_when_turn_groups_already_caught_up():
 def test_extend_noop_when_no_new_groups():
     rec = new_conversation_record(title="t")
     groups = [[{"role": "user", "content": "q"}]]
-    extend_record_linear(rec, groups, [msg("user")], ui_offset=0)
+    extend_record_linear(rec, groups, [msg("user")], transcript_offset=0)
     before = rec.model_dump()
-    extend_record_linear(rec, groups, [msg("user")], ui_offset=1)
+    extend_record_linear(rec, groups, [msg("user")], transcript_offset=1)
     assert rec.model_dump() == before
 
 
-def test_extend_with_no_new_ui_messages_leaves_ui_none():
+def test_extend_with_no_new_transcript_messages_leaves_ui_none():
     rec = new_conversation_record(title="t")
     groups = [
         [{"role": "user", "content": "q"}],
         [{"role": "assistant", "content": "a"}],
     ]
     msgs = [msg("user"), msg("assistant")]
-    extend_record_linear(rec, groups, msgs, ui_offset=2)
+    extend_record_linear(rec, groups, msgs, transcript_offset=2)
     assert len(rec.nodes) == 2
     assert all(node.ui is None for node in rec.nodes.values())
 
 
-# --- content-idempotent save guard (unit-level, no Shiny session needed) ----
+# --- server transcript settlement -------------------------------------------
 
 
 class _FakeChat:
+    def __init__(self) -> None:
+        self.messages: list[Any] = []
+
     def _messages_for_bookmark(self) -> list[Any]:
-        return []
+        return list(self.messages)
 
     async def _send_action(self, action: Any) -> None:
         pass
 
     async def clear_messages(self) -> None:
-        pass
+        self.messages = []
 
     async def _restore_bookmark_message(self, message_dict: Any) -> None:
-        pass
+        self.messages.append(message_dict)
 
 
 class _FakeAdapter:
@@ -240,6 +249,20 @@ class _FailingStore(_RecordingStore):
         raise OSError("disk full")
 
 
+class _ToggleFailStore(_RecordingStore):
+    def __init__(self, *, failures: int = 0) -> None:
+        super().__init__()
+        self.failures = failures
+        self.put_attempts = 0
+
+    async def put(self, partition: ConversationPartition, record: Any) -> None:
+        self.put_attempts += 1
+        if self.failures > 0:
+            self.failures -= 1
+            raise OSError("disk full")
+        await super().put(partition, record)
+
+
 class _PartitionCaptureStore(ConversationStore):
     def __init__(self) -> None:
         self.put_partitions: list[ConversationPartition] = []
@@ -267,10 +290,11 @@ class _PartitionCaptureStore(ConversationStore):
 
 def _make_controller(
     store: ConversationStore | None = None,
+    chat: _FakeChat | None = None,
 ) -> tuple[HistoryController, Any]:
     resolved_store = store if store is not None else _RecordingStore()
     controller = HistoryController(
-        chat=_FakeChat(),  # type: ignore[arg-type]
+        chat=cast(Any, chat if chat is not None else _FakeChat()),
         adapter=_FakeAdapter(),  # type: ignore[arg-type]
         store=resolved_store,
         title_fn=None,
@@ -336,59 +360,33 @@ async def test_namespaced_chat_ids_are_distinct_partitions():
 
 
 @pytest.mark.anyio
-async def test_on_response_no_new_data_does_not_overwrite_saved_values():
-    controller, store = _make_controller()
-    accent = "info"
-
-    controller._save_callbacks.append(
-        lambda values: values.update({"accent": accent})
-    )
+async def test_managed_response_persists_entire_server_transcript_once():
+    chat = _FakeChat()
+    chat.messages = [msg("user"), msg("assistant"), msg("assistant")]
+    controller, store = _make_controller(chat=chat)
 
     await controller.on_response()
+
+    assert len(store.put_calls) == 1
     assert controller.record is not None
-    assert controller.record.values["accent"] == "info"
-
-    accent = "danger"
-    await controller.on_response()
-
-    assert len(store.put_calls) == 1, "no-op flush should not persist again"
-    assert controller.record.values["accent"] == "info"
-
-
-class _ReplayFakeChat(_FakeChat):
-    """Fake chat whose `_messages_for_bookmark()` reflects whatever
-    `replay_ui` last restored, so `on_response` sees the same re-report a
-    real client would send after a restore."""
-
-    def __init__(self) -> None:
-        self.messages: list[Any] = []
-
-    def _messages_for_bookmark(self) -> list[Any]:
-        return self.messages
-
-    async def clear_messages(self) -> None:
-        self.messages = []
-
-    async def _restore_bookmark_message(self, message_dict: Any) -> None:
-        self.messages.append(message_dict)
+    assert controller.record.response_count == 1
+    assert controller.transcript_offset == 3
+    persisted = [
+        message
+        for node_id in controller.record.path_node_ids()
+        for message in (controller.record.nodes[node_id].ui or [])
+    ]
+    assert persisted == chat.messages
 
 
 @pytest.mark.anyio
-async def test_replay_rereport_does_not_resave_or_truncate():
-    # Simulates the real restore sequence: on_response() saves a
-    # conversation with per-node UI, replay_ui() restores it (re-rendering
-    # the stored UI into the fake chat), and the client's post-restore
-    # re-report of that identical snapshot must not trigger another save.
-    controller, store = _make_controller()
-    chat = _ReplayFakeChat()
-    controller.chat = chat  # type: ignore[assignment]
-
+async def test_replay_sets_server_transcript_and_transcript_offset():
+    chat = _FakeChat()
+    controller, _store = _make_controller(chat=chat)
     chat.messages = [msg("user"), msg("assistant")]
     await controller.on_response()
-    assert len(store.put_calls) == 1
     record = controller.record
     assert record is not None
-    saved_node_count = len(record.path_node_ids())
     saved_ui = [
         m
         for nid in record.path_node_ids()
@@ -396,21 +394,12 @@ async def test_replay_rereport_does_not_resave_or_truncate():
     ]
 
     await controller.replay_ui(record)
-    assert chat.messages == saved_ui, "replay must reconstruct the full UI"
 
-    # Client re-reports the exact restored snapshot (same length/content).
-    await controller.on_response()
-
-    assert len(store.put_calls) == 1, "re-report must not trigger another save"
-    assert controller.record is record, (
-        "restore re-report must not swap records"
-    )
-    assert len(record.path_node_ids()) == saved_node_count, (
-        "restored conversation must not be truncated"
-    )
+    assert chat.messages == saved_ui
+    assert controller.transcript_offset == len(chat.messages)
 
 
-# --- ui_offset atomicity (not advanced when store.put raises) ----------------
+# --- transcript_offset atomicity (not advanced when store.put raises) --------
 
 
 def _make_failing_controller() -> HistoryController:
@@ -428,30 +417,115 @@ def _make_failing_controller() -> HistoryController:
 
 
 @pytest.mark.anyio
-async def test_ui_offset_unchanged_when_on_response_store_put_raises():
+async def test_transcript_offset_unchanged_when_on_response_put_raises():
     controller = _make_failing_controller()
-    initial_offset = controller.ui_offset
+    initial_offset = controller.transcript_offset
 
     with pytest.raises(OSError):
         await controller.on_response()
 
-    assert controller.ui_offset == initial_offset, (
-        "ui_offset must not advance when store.put() raises"
+    assert controller.transcript_offset == initial_offset, (
+        "transcript_offset must not advance when store.put() raises"
     )
 
 
 @pytest.mark.anyio
-async def test_ui_offset_unchanged_when_save_current_store_put_raises():
+async def test_transcript_offset_unchanged_when_save_current_put_raises():
     controller = _make_failing_controller()
     controller.record = new_conversation_record(title="t")
-    initial_offset = controller.ui_offset
+    initial_offset = controller.transcript_offset
 
     with pytest.raises(OSError):
         await controller.save_current()
 
-    assert controller.ui_offset == initial_offset, (
-        "ui_offset must not advance when store.put() raises"
+    assert controller.transcript_offset == initial_offset, (
+        "transcript_offset must not advance when store.put() raises"
     )
+
+
+@pytest.mark.anyio
+async def test_on_response_persistence_retry_does_not_duplicate_transcript():
+    chat = _FakeChat()
+    chat.messages = [msg("user"), msg("assistant"), msg("assistant")]
+    store = _ToggleFailStore(failures=1)
+    controller, _store = _make_controller(store=store, chat=chat)
+
+    with pytest.raises(OSError, match="disk full"):
+        await controller.on_response()
+
+    assert controller.record is None
+    assert controller.transcript_offset == 0
+
+    await controller.on_response()
+
+    assert store.put_attempts == 2
+    record = cast(ConversationRecord | None, controller.record)
+    assert record is not None
+    assert record.response_count == 1
+    persisted = [
+        message
+        for node_id in record.path_node_ids()
+        for message in (record.nodes[node_id].ui or [])
+    ]
+    assert persisted == chat.messages
+    assert controller.transcript_offset == len(chat.messages)
+
+
+@pytest.mark.anyio
+async def test_save_current_persistence_retry_does_not_duplicate_transcript():
+    chat = _FakeChat()
+    chat.messages = [msg("user"), msg("assistant")]
+    store = _ToggleFailStore()
+    controller, _store = _make_controller(store=store, chat=chat)
+    await controller.on_response()
+    original_record = controller.record
+    assert original_record is not None
+    before_failure = original_record.model_dump()
+
+    chat.messages.append(msg("assistant"))
+    store.failures = 1
+    with pytest.raises(OSError, match="disk full"):
+        await controller.save_current()
+
+    assert controller.record is original_record
+    assert original_record.model_dump() == before_failure
+    assert controller.transcript_offset == 2
+
+    await controller.save_current()
+
+    assert store.put_attempts == 3
+    record = cast(ConversationRecord | None, controller.record)
+    assert record is not None
+    assert record.response_count == 1
+    persisted = [
+        message
+        for node_id in record.path_node_ids()
+        for message in (record.nodes[node_id].ui or [])
+    ]
+    assert persisted == chat.messages
+    assert controller.transcript_offset == len(chat.messages)
+
+
+@pytest.mark.anyio
+async def test_save_current_captures_out_of_band_transcript_before_switch():
+    chat = _FakeChat()
+    chat.messages = [msg("user"), msg("assistant")]
+    controller, store = _make_controller(chat=chat)
+    await controller.on_response()
+
+    out_of_band = msg("assistant")
+    chat.messages.append(out_of_band)
+    await controller.save_current()
+
+    assert len(store.put_calls) == 2
+    assert controller.record is not None
+    persisted = [
+        message
+        for node_id in controller.record.path_node_ids()
+        for message in (controller.record.nodes[node_id].ui or [])
+    ]
+    assert persisted == chat.messages
+    assert controller.transcript_offset == len(chat.messages)
 
 
 # --- on_url_change (URL-mode navigation) ------------------------------------
@@ -459,6 +533,7 @@ async def test_ui_offset_unchanged_when_save_current_store_put_raises():
 
 class _NavFakeChat(_FakeChat):
     def __init__(self) -> None:
+        super().__init__()
         self.actions: list[dict[str, Any]] = []
         self.cleared = 0
 
@@ -559,6 +634,35 @@ async def test_switch_to_nonexistent_id_raises():
 
     with pytest.raises(RuntimeError, match="no longer exists"):
         await controller.switch_to("does-not-exist")
+
+
+@pytest.mark.anyio
+async def test_switch_to_rejects_invalid_target_before_any_mutation():
+    # A malformed stored record (e.g. corrupted on disk) must be rejected
+    # before it touches model turns, transcript state, or the active record --
+    # never partially applied.
+    controller, store, chat = _make_nav_controller()
+    active = new_conversation_record(title="active")
+    active.append_linear([{"role": "user", "content": "hi"}], ui=[msg("user")])
+    store.records[active.id] = active
+    controller.record = active
+    controller.transcript_offset = 1
+    chat.messages = [msg("user")]
+
+    invalid = new_conversation_record(title="invalid")
+    invalid.current_leaf = "n_9999"
+    store.records[invalid.id] = invalid
+
+    with pytest.raises(ValueError, match="Dangling"):
+        await controller.switch_to(invalid.id)
+
+    assert controller.record is active
+    assert controller.record.id == active.id
+    assert cast(_NavFakeAdapter, controller.adapter).set_calls == []
+    assert chat.cleared == 0
+    assert chat.messages == [msg("user")]
+    assert controller.transcript_offset == 1
+    assert store.put_calls == []
 
 
 @pytest.mark.anyio

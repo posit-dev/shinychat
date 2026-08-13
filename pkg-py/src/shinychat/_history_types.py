@@ -90,6 +90,57 @@ class ConversationRecord(BaseModel):
             size_bytes=size_bytes,
         )
 
+    def validate_graph(self) -> None:
+        """Reject a malformed node graph before it is applied to app state.
+
+        Must run before any switch or restore mutates model turns, transcript
+        state, or active-record state — a corrupted stored record should
+        never partially apply. This checks the whole graph (not just the
+        active path); `path_node_ids()`, called last, additionally rejects a
+        cycle in the active path.
+        """
+        if (
+            self.current_leaf is not None
+            and self.current_leaf not in self.nodes
+        ):
+            raise ValueError(
+                f"Dangling current_leaf reference: {self.current_leaf!r}"
+            )
+
+        for node_id, node in self.nodes.items():
+            if node.parent is not None:
+                if node.parent not in self.nodes:
+                    raise ValueError(
+                        f"Dangling parent reference at {node_id!r}: "
+                        f"{node.parent!r}"
+                    )
+                if node_id not in self.nodes[node.parent].children:
+                    raise ValueError(
+                        f"Parent/child mismatch: {node_id!r} has parent "
+                        f"{node.parent!r}, but is not listed among its children"
+                    )
+            for child_id in node.children:
+                if child_id not in self.nodes:
+                    raise ValueError(
+                        f"Dangling child reference at {node_id!r}: {child_id!r}"
+                    )
+                if self.nodes[child_id].parent != node_id:
+                    raise ValueError(
+                        f"Parent/child mismatch: {node_id!r} lists {child_id!r} "
+                        f"as a child, but its parent is "
+                        f"{self.nodes[child_id].parent!r}"
+                    )
+            if (
+                node.selected_child is not None
+                and node.selected_child not in node.children
+            ):
+                raise ValueError(
+                    f"selected_child {node.selected_child!r} at {node_id!r} "
+                    "is not among its children"
+                )
+
+        self.path_node_ids()
+
     def path_node_ids(self) -> list[str]:
         ids: list[str] = []
         visited: set[str] = set()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 from typing import Any, AsyncGenerator
 from unittest.mock import MagicMock
@@ -7,17 +8,11 @@ from unittest.mock import MagicMock
 import chatlas
 from chatlas import Turn
 from chatlas._turn import AssistantTurn
-from shiny import App, Inputs, Outputs, Session
+from shiny import App, Inputs, Outputs, Session, reactive, render, ui
 from shiny.ui import HTML
 from shinychat import Chat, chat_ui
 from shinychat.types import FileConversationStore, HistoryOptions
 
-# Regression app for client-authoritative history + out-of-band content: a
-# message appended outside the normal request/response turn (e.g. a
-# side-channel notice) must be part of the client's `${id}_messages`
-# snapshot, so it round-trips through a history save/restore just like the
-# "real" assistant reply.
-#
 # `Chat(client=...)` auto-registers its own `on_user_submit` handler (see
 # `_setup_client` in `_chat.py`) that awaits `stream_async()` and appends the
 # result via `append_message_stream()`. Adding a second, app-defined
@@ -63,7 +58,11 @@ class EchoChatClient(chatlas.Chat):
 
 store_dir = tempfile.mkdtemp(prefix="shinychat-history-oob-")
 
-app_ui = chat_ui("chat")
+app_ui = ui.page_fluid(
+    chat_ui("chat"),
+    ui.output_text_verbatim("messages"),
+    ui.output_text_verbatim("record"),
+)
 
 
 def server(input: Inputs, output: Outputs, session: Session) -> None:
@@ -78,6 +77,30 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
         ),
     )
     client.shinychat_chat = chat
+    saves = reactive.value(0)
+    restores = reactive.value(0)
+
+    @chat.history.on_save
+    def on_history_save(_: dict[str, object]) -> None:
+        saves.set(saves() + 1)
+
+    @chat.history.on_restore
+    def on_history_restore(_: dict[str, object]) -> None:
+        restores.set(restores() + 1)
+
+    @render.text
+    def messages() -> str:
+        chat.messages()
+        return json.dumps(chat._messages_for_bookmark())
+
+    @render.text
+    def record() -> str:
+        saves()
+        restores()
+        controller = chat.history._controller
+        if controller is None or controller.record is None:
+            return "null"
+        return json.dumps(controller.record.model_dump(mode="json"))
 
 
 app = App(app_ui, server)

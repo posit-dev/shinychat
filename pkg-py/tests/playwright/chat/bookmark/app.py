@@ -1,7 +1,9 @@
 from typing import Any
 
+from htmltools import HTML
 from shiny.express import render
 from shiny.types import Jsonifiable
+from shinychat import chat_greeting
 from shinychat.express import Chat
 
 
@@ -24,7 +26,13 @@ class MockClient:
 
 client = MockClient()
 
-chat = Chat(id="chat")
+chat = Chat(
+    id="chat",
+    greeting=chat_greeting(
+        HTML('<strong data-bookmark-greeting="html">Welcome</strong>'),
+        persistent=True,
+    ),
+)
 chat.ui()
 chat.enable_bookmarking(client, bookmark_store="server")
 

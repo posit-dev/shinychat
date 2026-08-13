@@ -1,6 +1,5 @@
 import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 import type { AttachmentPayload } from "../chat/attachments"
-import type { SnapshotMessage } from "../chat/state"
 
 export type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 
@@ -60,14 +59,13 @@ export type MessagePayload = {
 }
 
 export type ChatAction =
-  | { type: "message"; message: MessagePayload; html_deps?: HtmlDep[] }
-  | { type: "chunk_start"; message: MessagePayload; html_deps?: HtmlDep[] }
+  | { type: "message"; message: MessagePayload }
+  | { type: "chunk_start"; message: MessagePayload }
   | {
       type: "chunk"
       content: string
       operation: "append" | "replace"
       content_type?: ContentType
-      html_deps?: HtmlDep[]
     }
   | { type: "chunk_end" }
   | { type: "clear"; greeting?: boolean }
@@ -170,8 +168,6 @@ export interface ChatTransport {
     userText: string,
     echo: boolean,
   ): void
-  /** Report the client's settled-message snapshot (regular-priority input). */
-  sendMessagesSnapshot(id: string, snapshot: SnapshotMessage[]): void
   onMessage(id: string, callback: (action: ChatAction) => void): () => void
   sendHistorySelect(id: string, convId: string): void
   sendHistoryNew(id: string): void

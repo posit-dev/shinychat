@@ -326,20 +326,24 @@ FileConversationStore <- R6::R6Class(
           tryCatch(
             {
               raw <- jsonlite::fromJSON(record_file, simplifyVector = FALSE)
-              size_bytes <- sum(vapply(
-                list.files(d, full.names = TRUE),
-                function(f) as.double(file.size(f)),
-                double(1)
-              ))
+              size_bytes <- sum(
+                vapply(
+                  list.files(d, full.names = TRUE),
+                  function(f) as.double(file.size(f)),
+                  double(1)
+                )
+              )
               record_meta(raw, size_bytes = size_bytes)
             },
             error = function(e) {
-              rlang::warn(paste0(
-                "Skipping unreadable conversation ",
-                basename(d),
-                ": ",
-                conditionMessage(e)
-              ))
+              rlang::warn(
+                paste0(
+                  "Skipping unreadable conversation ",
+                  basename(d),
+                  ": ",
+                  conditionMessage(e)
+                )
+              )
               NULL
             }
           )
@@ -483,11 +487,13 @@ FileConversationStore <- R6::R6Class(
         if (!is.null(node$ui) && !identical(ui_len, ws$ui_node_len[[nid]])) {
           new_ui_lines <- c(
             new_ui_lines,
-            as.character(jsonlite::toJSON(
-              list(node_id = nid, data = node$ui),
-              auto_unbox = TRUE,
-              null = "null"
-            ))
+            as.character(
+              jsonlite::toJSON(
+                list(node_id = nid, data = node$ui),
+                auto_unbox = TRUE,
+                null = "null"
+              )
+            )
           )
           ws$ui_node_len[[nid]] <- ui_len
         }
@@ -553,11 +559,13 @@ FileConversationStore <- R6::R6Class(
 
       cache <- private$meta_cache[[key]]
       if (!is.null(cache)) {
-        size_bytes <- sum(vapply(
-          list.files(cdir, full.names = TRUE),
-          function(f) as.double(file.size(f)),
-          double(1)
-        ))
+        size_bytes <- sum(
+          vapply(
+            list.files(cdir, full.names = TRUE),
+            function(f) as.double(file.size(f)),
+            double(1)
+          )
+        )
         cache <- Filter(function(m) m$id != record$id, cache)
         cache <- c(list(record_meta(record, size_bytes = size_bytes)), cache)
         timestamps <- vapply(cache, function(m) m$updated_at, character(1))

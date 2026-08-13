@@ -209,6 +209,10 @@ test_that("user_input_contents builds a splat-ready, text-first content list", {
   expect_length(out, 2)
   expect_identical(out[[1]], "hello")
   expect_true(S7::S7_inherits(out[[2]], ellmer::ContentImage))
+  expect_identical(
+    attr(out, "shinychat_submission", exact = TRUE),
+    value
+  )
 })
 
 test_that("user_input_contents drops empty text (attachment-only message)", {
@@ -233,14 +237,23 @@ test_that("user_input_contents returns a bare string in disabled mode", {
 test_that("user_input_contents wraps enabled text-only input in a list", {
   # Enabled uploads always send a {text, attachments} composite -> a list,
   # even with no attachments, so the contract is one predictable shape.
+  value <- user_input_contents(
+    list(text = "just text", attachments = list())
+  )
+  expect_equal(value, list("just text"), ignore_attr = TRUE)
   expect_identical(
-    user_input_contents(list(text = "just text", attachments = list())),
-    list("just text")
+    attr(value, "shinychat_submission", exact = TRUE),
+    list(text = "just text", attachments = list())
   )
 })
 
 test_that("user_input_contents tolerates a missing attachments key", {
-  expect_identical(user_input_contents(list(text = "hi")), list("hi"))
+  value <- user_input_contents(list(text = "hi"))
+  expect_equal(value, list("hi"), ignore_attr = TRUE)
+  expect_identical(
+    attr(value, "shinychat_submission", exact = TRUE),
+    list(text = "hi", attachments = NULL)
+  )
 })
 
 test_that("user_input_contents returns NULL for NULL value", {
@@ -286,6 +299,27 @@ test_that("user_input_contents rejects unsupported attachment MIME types", {
     )
   )
   expect_error(user_input_contents(value), "unsupported MIME type")
+})
+
+test_that("user_input_submission recovers raw input without changing its value", {
+  attachment <- list(
+    mime = "text/plain",
+    data_url = "data:text/plain;base64,aGk=",
+    name = "note.txt",
+    size = 2
+  )
+  value <- user_input_contents(
+    list(text = "hello", attachments = list(attachment))
+  )
+
+  expect_identical(
+    user_input_submission(value),
+    list(text = "hello", attachments = list(attachment))
+  )
+  expect_identical(
+    user_input_submission("plain"),
+    list(text = "plain", attachments = list())
+  )
 })
 
 test_that("chat_attachment creates correct structure from a PNG path", {
