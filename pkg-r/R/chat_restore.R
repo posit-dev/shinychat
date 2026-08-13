@@ -8,12 +8,14 @@
 #' App's bookmark will be automatically updated without showing a modal to the
 #' user.
 #'
-#' Note: The `client`'s chat state and the greeting content are both
-#' saved/restored automatically. If the `client`'s state doesn't properly
-#' capture the chat's UI (i.e., a transformation is applied in-between
-#' receiving and displaying the message), you may need to implement your own
-#' `session$onRestore()` (and possibly `session$onBookmark`) handler to restore
-#' any additional state.
+#' Note: The chat's displayed UI is restored from the browser's own message
+#' snapshot when `bookmarkStore = "server"`, so display-only transformations
+#' (rendering applied between receiving a message and showing it) are preserved.
+#' Under `bookmarkStore = "url"`, and for bookmarks saved before this snapshot
+#' existed, restoration falls back to re-deriving the UI from the `client`'s
+#' turns, which does not capture such transformations. The same fallback (with
+#' a warning) covers a snapshot that can't be read back. The greeting content is
+#' also saved/restored automatically.
 #'
 #' To avoid restoring chat history from the `client`, you can ensure that the
 #' history is empty by calling `client$set_turns(list())` before passing the
@@ -101,6 +103,7 @@ chat_restore <- function(
   # Exclude works with bookmark names
   excluded_names <- session$getBookmarkExclude()
   id_user_input <- paste0(id, "_user_input")
+  id_messages <- paste0(id, "_messages")
   to_exclude <- setdiff(
     paste0(
       id,
@@ -137,6 +140,7 @@ chat_restore <- function(
       client_state <- client_get_state(client)
 
       state$values[[id]] <- client_state
+      bookmark_save_ui(state, session, id)
     })
 
   cancel_on_bookmark_greeting <-
@@ -146,6 +150,10 @@ chat_restore <- function(
         state$values[[paste0(id, "_greeting")]] <- g
       }
     })
+
+  # A submission arms one response bookmark. Consuming it when the assistant
+  # snapshot arrives prevents later UI replays from minting another bookmark.
+  response_bookmark_pending <- FALSE
 
   cancel_set_ui <- NULL
   if (restore_ui) {
@@ -168,9 +176,9 @@ chat_restore <- function(
       }
       client_set_state(client, client_state)
 
-      # Set the UI
+      # Set the UI: prefer the browser's displayed snapshot, fall back to turns.
       shiny::withReactiveDomain(session, {
-        client_set_ui(client, id = id)
+        bookmark_restore_ui(state, client, id, session)
       })
     })
 
@@ -191,7 +199,7 @@ chat_restore <- function(
         session$input[[id_user_input]],
         label = "on_user_submit_do_bookmark",
         {
-          # On user submit
+          response_bookmark_pending <<- TRUE
           session$doBookmark()
         }
       )
@@ -199,7 +207,46 @@ chat_restore <- function(
       NULL
     }
 
-  # Enable (or disable) session auto bookmarking if at least one chat wants it
+  cancel_mark_response_pending <-
+    if (bookmark_on_response && !bookmark_on_input) {
+      shiny::observeEvent(
+        session$input[[id_user_input]],
+        label = "mark_response_bookmark_pending",
+        {
+          response_bookmark_pending <<- TRUE
+        }
+      )
+    } else {
+      NULL
+    }
+
+  # Bookmark once the browser has echoed a settled transcript ending in an
+  # assistant reply. This must NOT fire on stream completion: the client reports
+  # the finished assistant message in a later round trip, so bookmarking earlier
+  # would persist a snapshot missing that reply (mirrors the history feature's
+  # message_response_effect). It also must NOT fire on the browser's echo of
+  # messages we populated ourselves (initial turn replay, restore, or history
+  # navigation).
+  cancel_bookmark_on_response <-
+    if (bookmark_on_response) {
+      shiny::observeEvent(
+        session$input[[id_messages]],
+        label = "on_response_do_bookmark",
+        ignoreInit = TRUE,
+        {
+          if (!response_bookmark_pending) {
+            return()
+          }
+          if (messages_end_with_assistant(get_reported_messages(session, id))) {
+            response_bookmark_pending <<- FALSE
+            session$doBookmark()
+          }
+        }
+      )
+    } else {
+      NULL
+    }
+
   set_session_bookmark_on_response(
     session,
     id,
@@ -236,45 +283,71 @@ chat_restore <- function(
       cancel_update_bookmark()
     }
     # observeEvent() returns an Observer with $destroy()
-    if (!is.null(cancel_bookmark_on_input)) cancel_bookmark_on_input$destroy()
+    if (!is.null(cancel_bookmark_on_input)) {
+      cancel_bookmark_on_input$destroy()
+    }
+    if (!is.null(cancel_mark_response_pending)) {
+      cancel_mark_response_pending$destroy()
+    }
+    if (!is.null(cancel_bookmark_on_response)) {
+      cancel_bookmark_on_response$destroy()
+    }
+    set_session_bookmark_on_response(session, id, enable = FALSE)
   }
 
   invisible(cancel_all)
 }
 
-# Method currently hooked into `chat_append_stream()` and `markdown_stream()`
-# When the incoming stream ends, possibly update the URL given the `id`
+# Capture the browser's displayed-message snapshot into the bookmark state so
+# restore can reproduce the exact UI. Server store only: the base64 payload
+# would bloat a URL bookmark, and URL/old bookmarks fall back to turn-derived UI.
+bookmark_save_ui <- function(state, session, id) {
+  if (!is_server_bookmarkstore()) {
+    return(invisible())
+  }
+  state$values[[paste0(id, "_ui")]] <- encode_ui_snapshot(
+    get_reported_messages(session, id)
+  )
+  invisible()
+}
+
+bookmark_restore_ui <- function(state, client, id, session) {
+  ui_snapshot <- decode_ui_snapshot(state$values[[paste0(id, "_ui")]])
+  restore_chat_ui(client, id, ui_snapshot, session)
+  invisible()
+}
+
+messages_end_with_assistant <- function(messages) {
+  if (length(messages) == 0) {
+    return(FALSE)
+  }
+  identical(messages[[length(messages)]]$role, "assistant")
+}
+
 chat_update_bookmark <- function(
   id,
   stream_promise,
   session = shiny::getDefaultReactiveDomain()
 ) {
   if (!has_session_bookmark_on_response(session, id)) {
-    # No auto bookmark set. Return early!
     return(stream_promise)
   }
 
-  # Bookmark has been flagged for `id`.
-  # When the stream ends, update the URL.
-  prom <-
-    promises::then(stream_promise, function(stream) {
-      # Force a bookmark update when the stream ends!
-      shiny::isolate(session$doBookmark())
-    })
-
-  return(prom)
+  promises::then(stream_promise, function(stream) {
+    shiny::isolate(session$doBookmark())
+    stream
+  })
 }
 
-# These methods exist to set flags within the session.
-# These flags will determine if the session should be bookmarked when a response has completed.
-# `chat_update_bookmark()` will check if the flag is set and update the URL if it is.
 ON_RESPONSE_KEY <- ".bookmark-on-response"
+
 has_session_bookmark_on_response <- function(session, id) {
   has_session_chat_bookmark_info(
     session,
     paste0(id, ON_RESPONSE_KEY)
   )
 }
+
 set_session_bookmark_on_response <- function(session, id, enable) {
   set_session_chat_bookmark_info(
     session,

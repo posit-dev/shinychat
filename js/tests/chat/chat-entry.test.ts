@@ -498,4 +498,39 @@ describe("browser token delivery", () => {
     expect(tokenCallsAfter).toHaveLength(1)
     expect(typeof tokenCallsAfter[0]![1]).toBe("string")
   })
+
+  it("keeps page-markup messages out of the reported snapshot", async () => {
+    const host = document.createElement("shiny-chat-container")
+    host.setAttribute("id", "snapshot-scope")
+    host.innerHTML = `
+      <shiny-chat-messages>
+        <shiny-chat-message
+          data-role="assistant"
+          content-type="html"
+          content="&lt;shinychat-raw-html&gt;&lt;div&gt;STATIC&lt;/div&gt;&lt;/shinychat-raw-html&gt;"
+        ></shiny-chat-message>
+      </shiny-chat-messages>
+      <shiny-chat-input placeholder="p"></shiny-chat-input>
+    `
+
+    await act(async () => {
+      document.body.appendChild(host)
+    })
+
+    await waitFor(() => {
+      expect(host.querySelector('[role="textbox"]')).not.toBeNull()
+    })
+
+    const setInputValue = window.Shiny!.setInputValue as ReturnType<
+      typeof vi.fn
+    >
+    const snapshotCalls = setInputValue.mock.calls.filter(
+      ([name]) => name === "snapshot-scope_messages:shinychat.messages",
+    )
+
+    expect(snapshotCalls.length).toBeGreaterThan(0)
+    for (const [, value] of snapshotCalls) {
+      expect(value).toEqual([])
+    }
+  })
 })
