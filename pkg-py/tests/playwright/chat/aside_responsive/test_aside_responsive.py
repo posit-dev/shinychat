@@ -99,3 +99,41 @@ def test_long_aside_popover_keeps_body_in_view(
     )
     assert label_box["height"] <= font_size * 3
     assert body_box["y"] < popover_box["y"] + popover_box["height"]
+
+
+def test_long_aside_popover_scrolls_body_only(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    pill = submit_message(page, local_app)
+    pill.click()
+
+    popover = page.locator(".shiny-aside-popover")
+    label = popover.locator(".shiny-aside-popover__label")
+    body = popover.locator(".shiny-aside-popover__body")
+    expect(body).to_be_visible()
+
+    label_box_before = label.bounding_box()
+    assert label_box_before is not None
+
+    layout = popover.evaluate(
+        """(element) => {
+          const body = element.querySelector(".shiny-aside-popover__body");
+          return {
+            popoverOverflowY: getComputedStyle(element).overflowY,
+            bodyOverflowY: getComputedStyle(body).overflowY,
+            bodyClientHeight: body.clientHeight,
+            bodyScrollHeight: body.scrollHeight,
+          };
+        }"""
+    )
+    assert layout["popoverOverflowY"] == "hidden"
+    assert layout["bodyOverflowY"] == "auto"
+    assert layout["bodyScrollHeight"] > layout["bodyClientHeight"]
+
+    body.evaluate("(element) => { element.scrollTop = 200; }")
+
+    label_box_after = label.bounding_box()
+    assert label_box_after is not None
+    assert body.evaluate("(element) => element.scrollTop") > 0
+    assert popover.evaluate("(element) => element.scrollTop") == 0
+    assert label_box_after["y"] == label_box_before["y"]

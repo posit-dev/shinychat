@@ -913,11 +913,13 @@ shinychat-raw-html {
 .shiny-aside-popover {
   // Position comes from Floating UI. The portal lets the popover escape the
   // message list's scroll container while flip/shift keep it in the viewport.
+  display: flex;
+  flex-direction: column;
   z-index: 1040;
   box-sizing: border-box;
   width: min(22em, calc(100vw - 1rem));
   max-height: min(32rem, calc(100vh - 1rem));
-  overflow: auto;
+  overflow: hidden;
   overflow-wrap: anywhere;
   word-break: break-word;
   background: var(--bs-body-bg, #fff);
@@ -932,6 +934,7 @@ shinychat-raw-html {
   white-space: normal;
 
   .shiny-aside-popover__nav {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -970,6 +973,7 @@ shinychat-raw-html {
   }
 
   .shiny-aside-popover__label {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     gap: 0.4em;
@@ -996,6 +1000,9 @@ shinychat-raw-html {
   }
 
   .shiny-aside-popover__body {
+    min-height: 0;
+    overflow: auto;
+
     p:last-child {
       margin-bottom: 0;
     }
