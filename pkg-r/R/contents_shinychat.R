@@ -227,6 +227,7 @@ contents_shinychat_citation <- function(content) {
     return(NULL)
   }
 
+  # Keep citation asides in markdown so grounded-text processing can match them.
   as.character(
     htmltools::tag(
       "shiny-aside",
