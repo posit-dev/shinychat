@@ -395,6 +395,55 @@ describe("AsideGroup streaming", () => {
     )
     expect(screen.getByText("eBicycles")).toBeInTheDocument()
   })
+
+  it("finalizes rich asides attached to adjacent list items", () => {
+    const md = [
+      "- First claim.",
+      '<shiny-aside label="Source A">',
+      "",
+      "**Reason A**",
+      "",
+      "> Exact supporting quote A.",
+      "",
+      "*Quoted verbatim; matched exactly.*",
+      "",
+      "</shiny-aside>",
+      "",
+      "- Second claim.",
+      '<shiny-aside label="Source B">',
+      "",
+      "**Reason B**",
+      "",
+      "> Exact supporting quote B.",
+      "",
+      "*Quoted verbatim; matched exactly.*",
+      "",
+      "</shiny-aside>",
+    ].join("\n")
+    const hast = parseMarkdown(md, markdownProcessor)
+    const renderTree = (streaming: boolean) => (
+      <>
+        {hastToReact(hast, {
+          tagToComponentMap: chatTagToComponentMap,
+          streaming,
+        })}
+      </>
+    )
+
+    const { container, rerender } = render(renderTree(true))
+    expect(screen.getByRole("button", { name: "Source A" })).toBeInTheDocument()
+    expect(
+      screen.queryByRole("button", { name: "Source B" }),
+    ).not.toBeInTheDocument()
+
+    rerender(renderTree(false))
+    expect(screen.getByRole("button", { name: "Source A" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Source B" })).toBeInTheDocument()
+    expect(
+      container.querySelectorAll(":scope > ul > li, :scope > * > ul > li"),
+    ).toHaveLength(2)
+    expect(container.querySelectorAll("li li")).toHaveLength(0)
+  })
 })
 
 describe("AsideGroup popover", () => {

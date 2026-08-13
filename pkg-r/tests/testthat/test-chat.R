@@ -244,6 +244,56 @@ test_that("chat_server handles string user_input values", {
   )
 })
 
+test_that("chat_server warns when bookmark_on_input is used", {
+  local_mocked_bindings(
+    chat_restore = function(...) invisible(NULL),
+    send_chat_action = function(...) invisible(NULL)
+  )
+
+  client <- structure(list(), class = "Chat")
+
+  shiny::testServer(
+    function(input, output, session) {
+      lifecycle::expect_deprecated(
+        chat_server(
+          "chat",
+          client,
+          history = FALSE,
+          bookmark_on_input = TRUE,
+          session = session
+        ),
+        "bookmark_on_input"
+      )
+    },
+    {}
+  )
+})
+
+test_that("chat_server warns when bookmark_on_response is used", {
+  local_mocked_bindings(
+    chat_restore = function(...) invisible(NULL),
+    send_chat_action = function(...) invisible(NULL)
+  )
+
+  client <- structure(list(), class = "Chat")
+
+  shiny::testServer(
+    function(input, output, session) {
+      lifecycle::expect_deprecated(
+        chat_server(
+          "chat",
+          client,
+          history = FALSE,
+          bookmark_on_response = TRUE,
+          session = session
+        ),
+        "bookmark_on_response"
+      )
+    },
+    {}
+  )
+})
+
 test_that("chat_append_message() emits segment payloads incl. thinking", {
   captured <- list()
   local_mocked_bindings(

@@ -28,8 +28,15 @@ export(output_markdown_stream)
 export(tool_result_display)
 export(update_chat_user_input)
 if (getRversion() < "4.3.0") importFrom("S7", "@")
-import(S7)
 import(rlang)
+importFrom(S7,
+  "method<-",
+  S7_dispatch,
+  S7_inherits,
+  method,
+  new_generic,
+  new_property
+)
 importFrom(coro,async)
 importFrom(htmltools,
   HTML,

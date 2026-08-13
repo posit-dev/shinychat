@@ -130,6 +130,36 @@ chat_greeting <- function(
 #' read-only use (for example, custom logging or export); it is not an input
 #' you write to.
 #'
+#' @section Pairing with `chat_server()`:
+#'
+#' `chat_ui(id)` and `chat_server(id, client)` pair by matching `id`. This
+#' works the same way at the top level of an app and inside your own Shiny
+#' module — `chat_server()` is not itself a module, so no `NS(id, "chat")`
+#' wrapping is required:
+#'
+#' ```r
+#' # Top-level app, no module
+#' ui <- page_fillable(chat_ui("chat"))
+#' server <- function(input, output, session) {
+#'   chat_server("chat", client)
+#' }
+#' ```
+#'
+#' ```r
+#' # Inside your own module: pass the same literal id to both, and call
+#' # chat_server() from inside moduleServer() so it inherits the module's
+#' # already-namespaced `session`
+#' mod_ui <- function(id) {
+#'   ns <- NS(id)
+#'   chat_ui(ns("chat"))
+#' }
+#' mod_server <- function(id, client) {
+#'   moduleServer(id, function(input, output, session) {
+#'     chat_server("chat", client)
+#'   })
+#' }
+#' ```
+#'
 #' @section Greeting:
 #'
 #' A greeting is an optional welcome message shown before any conversation

@@ -71,8 +71,9 @@ would push the total over this cap are rejected in the browser with a notice.}
 \description{
 \ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}}
 
-These functions are deprecated as of shinychat 0.5.0.
-Use \code{\link[=chat_ui]{chat_ui()}} with \code{NS(id, "chat")} and \code{\link[=chat_server]{chat_server()}} instead.
+These functions are deprecated as of shinychat 0.5.0. Use \code{\link[=chat_ui]{chat_ui()}} and
+\code{\link[=chat_server]{chat_server()}} instead, pairing them by \code{id} as described in \emph{Pairing with
+\code{chat_server()}} in \code{\link[=chat_ui]{chat_ui()}}.
 }
 \section{Functions}{
 \itemize{

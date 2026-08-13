@@ -157,6 +157,36 @@ across a conversation switch or reload. It's exposed for advanced,
 read-only use (for example, custom logging or export); it is not an input
 you write to.
 }
+\section{Pairing with \code{chat_server()}}{
+
+
+\code{chat_ui(id)} and \code{chat_server(id, client)} pair by matching \code{id}. This
+works the same way at the top level of an app and inside your own Shiny
+module — \code{chat_server()} is not itself a module, so no \code{NS(id, "chat")}
+wrapping is required:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{# Top-level app, no module
+ui <- page_fillable(chat_ui("chat"))
+server <- function(input, output, session) \{
+  chat_server("chat", client)
+\}
+}\if{html}{\out{</div>}}
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{# Inside your own module: pass the same literal id to both, and call
+# chat_server() from inside moduleServer() so it inherits the module's
+# already-namespaced `session`
+mod_ui <- function(id) \{
+  ns <- NS(id)
+  chat_ui(ns("chat"))
+\}
+mod_server <- function(id, client) \{
+  moduleServer(id, function(input, output, session) \{
+    chat_server("chat", client)
+  \})
+\}
+}\if{html}{\out{</div>}}
+}
+
 \section{Greeting}{
 
 
