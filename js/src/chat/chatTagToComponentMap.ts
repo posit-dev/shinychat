@@ -3,6 +3,7 @@ import { ToolRequestBridge } from "./ToolRequestBridge"
 import { ToolResultBridge } from "./ToolResultBridge"
 import { Aside } from "./Aside"
 import { AsideGroup } from "./AsideGroup"
+import { WebActivity } from "./WebActivity"
 
 // Complete tool elements are routed by routeToolBlocks before Markdown
 // rendering. These bridges are fallback-only for incomplete or otherwise
@@ -16,4 +17,8 @@ export const chatTagToComponentMap: Record<string, ComponentType<unknown>> = {
   "shiny-tool-result": ToolResultBridge as ComponentType<unknown>,
   "shiny-aside": Aside as ComponentType<unknown>,
   "shiny-aside-group": AsideGroup as ComponentType<unknown>,
+  "shiny-web-activity": WebActivity as ComponentType<unknown>,
+  "shiny-web-search": Aside as ComponentType<unknown>,
+  "shiny-web-search-results": Aside as ComponentType<unknown>,
+  "shiny-web-fetch": Aside as ComponentType<unknown>,
 }

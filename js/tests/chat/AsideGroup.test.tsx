@@ -69,6 +69,76 @@ describe("AsideGroup", () => {
     ])
   })
 
+  it("normalizes citation metadata from markup", () => {
+    const node: Element = {
+      type: "element",
+      tagName: "shiny-aside-group",
+      properties: {},
+      children: [
+        {
+          type: "element",
+          tagName: "shiny-aside",
+          properties: {
+            dataCitation: "",
+            url: "https://example.com",
+            "grounded-span": "Supported claim",
+            "cited-quote": "Source evidence",
+            dataGroundingId: "aside-grounding-1",
+          },
+          children: [
+            {
+              type: "element",
+              tagName: "a",
+              properties: { href: "https://example.com" },
+              children: [{ type: "text", value: "Example title" }],
+            },
+          ],
+        },
+      ],
+    }
+
+    expect(parseAsideEntries(node)).toEqual([
+      {
+        label: "example.com",
+        url: "https://example.com",
+        body: '<a href="https://example.com">Example title</a>',
+        index: undefined,
+        icon: undefined,
+        citation: {
+          title: "Example title",
+          cited_quote: "Source evidence",
+        },
+        groundingId: "aside-grounding-1",
+      },
+    ])
+  })
+
+  it("treats a citation body containing only its URL as untitled", () => {
+    const url = "https://example.com"
+    const node: Element = {
+      type: "element",
+      tagName: "shiny-aside-group",
+      properties: {},
+      children: [
+        {
+          type: "element",
+          tagName: "shiny-aside",
+          properties: { dataCitation: "", label: "example.com", url },
+          children: [
+            {
+              type: "element",
+              tagName: "a",
+              properties: { href: url },
+              children: [{ type: "text", value: url }],
+            },
+          ],
+        },
+      ],
+    }
+
+    expect(parseAsideEntries(node)[0]?.citation?.title).toBeUndefined()
+  })
+
   it("renders normalized entries without a HAST node", async () => {
     const user = userEvent.setup()
     render(
@@ -103,6 +173,18 @@ describe("AsideGroup", () => {
 
     expect(grounded[0]).toHaveAttribute("data-active", "")
     expect(grounded[1]).toHaveAttribute("data-active", "")
+  })
+
+  it("clears the grounded highlight when the popover closes", async () => {
+    const user = userEvent.setup()
+    const { container } = renderMarkdown(
+      'A supported claim<shiny-aside label="Example" grounded-span="supported claim">Details</shiny-aside>.',
+    )
+    const grounded = container.querySelector(".shiny-aside-grounded")
+
+    await user.click(screen.getByRole("button", { name: "Example" }))
+    await user.click(screen.getByRole("button", { name: "Example" }))
+    expect(grounded).not.toHaveAttribute("data-active")
   })
 
   it("moves the grounded highlight with the aside carousel", async () => {

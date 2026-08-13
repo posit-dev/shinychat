@@ -149,6 +149,143 @@ method(contents_shinychat, ellmer::ContentThinking) <- function(content) {
   structure(content@thinking, class = "shinychat_thinking")
 }
 
+ellmer_web_content_available <- function(
+  methods,
+  exports = getNamespaceExports("ellmer")
+) {
+  all(c("WebSource", names(methods)) %in% exports)
+}
+
+contents_shinychat_search_request <- function(content) {
+  if (opt_shinychat_tool_display() == "none") {
+    return(NULL)
+  }
+
+  htmltools::tag(
+    "shiny-web-search",
+    list(
+      `data-shinychat-react` = NA,
+      query = content@query
+    )
+  )
+}
+
+contents_shinychat_search_response <- function(content) {
+  if (opt_shinychat_tool_display() == "none") {
+    return(NULL)
+  }
+
+  sources <- lapply(content@sources, web_source_record)
+  sources <- Filter(Negate(is.null), sources)
+
+  htmltools::tag(
+    "shiny-web-search-results",
+    list(
+      `data-shinychat-react` = NA,
+      sources = jsonlite::toJSON(
+        sources,
+        auto_unbox = TRUE,
+        null = "null"
+      )
+    )
+  )
+}
+
+contents_shinychat_fetch_request <- function(content) {
+  NULL
+}
+
+contents_shinychat_fetch_response <- function(content) {
+  if (
+    opt_shinychat_tool_display() == "none" ||
+      !identical(content@status, "success") ||
+      is.null(content@url)
+  ) {
+    return(NULL)
+  }
+
+  htmltools::tag(
+    "shiny-web-fetch",
+    list(
+      `data-shinychat-react` = NA,
+      url = content@url,
+      status = content@status
+    )
+  )
+}
+
+contents_shinychat_citation <- function(content) {
+  if (opt_shinychat_tool_display() == "none") {
+    return(NULL)
+  }
+
+  source <- content@source
+  if (!S7::S7_inherits(source, getExportedValue("ellmer", "WebSource"))) {
+    return(NULL)
+  }
+  if (is.null(source@url)) {
+    return(NULL)
+  }
+
+  # Keep citation asides in markdown so grounded-text processing can match them.
+  as.character(
+    htmltools::tag(
+      "shiny-aside",
+      list(
+        `data-citation` = NA,
+        url = source@url,
+        `grounded-span` = content@grounded_span,
+        `cited-quote` = content@cited_quote,
+        htmltools::tag(
+          "a",
+          list(
+            href = source@url,
+            source@title %||% source@url
+          )
+        )
+      )
+    )
+  )
+}
+
+ellmer_web_content_methods <- function() {
+  list(
+    ContentToolRequestSearch = contents_shinychat_search_request,
+    ContentToolResponseSearch = contents_shinychat_search_response,
+    ContentToolRequestFetch = contents_shinychat_fetch_request,
+    ContentToolResponseFetch = contents_shinychat_fetch_response,
+    ContentCitation = contents_shinychat_citation
+  )
+}
+
+register_ellmer_web_content_methods <- function() {
+  methods <- ellmer_web_content_methods()
+
+  if (!ellmer_web_content_available(methods)) {
+    return(invisible())
+  }
+
+  for (class_name in names(methods)) {
+    class <- getExportedValue("ellmer", class_name)
+    S7::method(contents_shinychat, class) <- methods[[class_name]]
+  }
+
+  invisible()
+}
+
+web_source_record <- function(source) {
+  if (is.null(source@url)) {
+    return(NULL)
+  }
+
+  list(
+    url = source@url,
+    title = source@title
+  )
+}
+
+rlang::on_load(register_ellmer_web_content_methods())
+
 new_tool_card <- function(type, request_id, tool_name, ...) {
   type <- arg_match(type, c("request", "result"))
 
