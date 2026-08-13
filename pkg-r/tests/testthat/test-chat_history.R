@@ -619,7 +619,7 @@ test_that("switch_to() rejects an invalid target before any state mutation", {
   ctrl <- HistoryController$new(
     chat_id = "chat",
     client = client,
-    options = history_options(store = store, title = "fallback"),
+    options = history_options(store = store, title = NULL),
     session = session
   )
   ctrl$partition <- conversation_partition("chat", "test-user")

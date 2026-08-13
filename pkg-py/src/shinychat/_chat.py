@@ -1125,7 +1125,6 @@ class Chat:
         if chunk == "start":
 
             async def start_send() -> None:
-                await self._maybe_hide_tool_request(message)
                 await self._send_append_message(
                     message=msg, chunk="start", icon=icon
                 )
@@ -1154,7 +1153,6 @@ class Chat:
             settled_holder: list[StoredMessage] = []
 
             async def settle_send(candidate: StreamCandidate) -> StoredMessage:
-                await self._maybe_hide_tool_request(message)
                 settled, _ = await self._resolve_stream_chunk(
                     msg,
                     segments=candidate.segments,
@@ -1180,7 +1178,6 @@ class Chat:
         async def chunk_send(
             candidate: StreamCandidate,
         ) -> StoredMessage | None:
-            await self._maybe_hide_tool_request(message)
             _, next_projection = await self._resolve_stream_chunk(
                 msg,
                 segments=candidate.segments,
@@ -1266,10 +1263,6 @@ class Chat:
             icon=icon,
         )
         return settled, next_projection
-
-    async def _maybe_hide_tool_request(self, message: Any) -> None:
-        if is_tool_result(message) and message.request is not None:
-            await self._hide_tool_request(message.request.id)  # type: ignore
 
     async def _abort_message_stream(self, stream_id: str) -> None:
         async with self._message_lock:

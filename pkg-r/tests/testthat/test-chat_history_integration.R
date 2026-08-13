@@ -1782,14 +1782,15 @@ test_that("file-backed turns survive restore, continuation, and a second restore
         make_live_turn("assistant", "hello")
       )
     )
-    session$setInputs(
-      chat_messages = list(
+    get_chat_transcript(session, "chat")$replace(
+      list(
         make_ui_message("user", "hi"),
         make_ui_message("assistant", "hello")
       )
     )
 
     ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
+    ctrl$on_response(get_turns_recorded(client))
     saved_id <<- ctrl$record$id
   })
 
@@ -1827,13 +1828,6 @@ test_that("file-backed turns survive restore, continuation, and a second restore
     expect_identical(restored_turns[[2]]@duration, NA_real_)
     expect_identical(restored_turns[[2]]@finish_reason, NA_character_)
 
-    session$setInputs(
-      chat_messages = list(
-        make_ui_message("user", "hi"),
-        make_ui_message("assistant", "hello")
-      )
-    )
-
     new_client$set_turns(
       c(
         restored_turns,
@@ -1843,14 +1837,16 @@ test_that("file-backed turns survive restore, continuation, and a second restore
         )
       )
     )
-    session$setInputs(
-      chat_messages = list(
+    get_chat_transcript(session, "chat")$replace(
+      list(
         make_ui_message("user", "hi"),
         make_ui_message("assistant", "hello"),
         make_ui_message("user", "again"),
         make_ui_message("assistant", "welcome back")
       )
     )
+    ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
+    ctrl$on_response(get_turns_recorded(new_client))
   })
 
   final_client <- mock_chat_client()
