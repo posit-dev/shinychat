@@ -207,10 +207,10 @@ class ToolResultComponent(ToolCardComponent):
         if self.value_type == "html":
             value_ui = TagList(self.value).render()
         else:
-            value_ui: "RenderedHTML" = {
-                "html": str(self.value),
-                "dependencies": [],
-            }
+            value_ui = RenderedHTML(
+                html=str(self.value),
+                dependencies=[],
+            )
 
         footer_ui = TagList(self.footer).render()
 
