@@ -187,6 +187,32 @@ def messages_to_turns(
     return turns
 
 
+async def resolve_greeting(
+    chat: "Chat",
+    greeting: "str | HTML | Tag | TagList | ChatGreeting | Callable[..., Any]",
+) -> None:
+    """Resolve `greeting` (static content or a callable) and set it on `chat`."""
+    from htmltools import HTML, Tag, TagList
+
+    from ._chat_types import ChatGreeting
+
+    if isinstance(greeting, (str, HTML, Tag, TagList, ChatGreeting)):
+        return await chat.set_greeting(greeting)
+
+    sig = inspect.signature(greeting)
+    if "client" in sig.parameters and chat.client is not None:
+        client_copy = copy.deepcopy(chat.client.value)
+        client_copy.set_turns([])
+        result = greeting(client=client_copy)
+    else:
+        result = greeting()
+
+    if inspect.isawaitable(result):
+        result = await result
+
+    await chat.set_greeting(result)  # type: ignore[arg-type]
+
+
 def setup_greeting(
     chat: "Chat",
     greeting: "str | HTML | Tag | TagList | ChatGreeting | Callable[..., Any] | None",
@@ -195,12 +221,9 @@ def setup_greeting(
     if greeting is None:
         return
 
-    from htmltools import HTML, Tag, TagList
     from shiny import reactive
     from shiny.module import ResolvedId
     from shiny.session import session_context
-
-    from ._chat_types import ChatGreeting
 
     with session_context(session):
         greeting_requested_id = ResolvedId(f"{chat.id}_greeting_requested")
@@ -208,20 +231,6 @@ def setup_greeting(
         @reactive.effect
         @reactive.event(session.input[greeting_requested_id])
         async def _on_greeting_requested() -> None:
-            if isinstance(greeting, (str, HTML, Tag, TagList, ChatGreeting)):
-                return await chat.set_greeting(greeting)
-
-            sig = inspect.signature(greeting)
-            if "client" in sig.parameters and chat.client is not None:
-                client_copy = copy.deepcopy(chat.client.value)
-                client_copy.set_turns([])
-                result = greeting(client=client_copy)
-            else:
-                result = greeting()
-
-            if inspect.isawaitable(result):
-                result = await result
-
-            await chat.set_greeting(result)  # type: ignore[arg-type]
+            await resolve_greeting(chat, greeting)
 
     chat._effects.append(_on_greeting_requested)

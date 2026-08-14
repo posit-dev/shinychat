@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* Fixed a race between the chat greeting and conversation history restore: reloading a page that restored a previous conversation could briefly flash the app's greeting, and starting a new chat after a session began with a restored conversation could fail to show any greeting at all. Greeting resolution now defers to history's own restore decision instead of racing the client's independent greeting request.
+
 * Restoring a bookmark that contains a malformed message (for instance one written by an incompatible shinychat version) now warns and skips just that message, instead of raising and dropping every message after it.
 
 * Fixed conversation history and bookmarks failing to serialize a chatlas `ContentToolResult` when its supported dictionary-form `extra["display"]` contains HTML. Dictionary displays are now normalized through `ToolResultDisplay` before JSON serialization. (Related to #295)
