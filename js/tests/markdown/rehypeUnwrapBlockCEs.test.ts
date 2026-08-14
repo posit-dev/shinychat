@@ -29,12 +29,15 @@ describe("rehypeUnwrapBlockCEs", () => {
     expect(html).toContain("<shiny-tool-request")
   })
 
-  it("unwraps shinychat-raw-html from a <p> parent", () => {
-    const md = "<shinychat-raw-html><div>hello</div></shinychat-raw-html>"
-    const html = process(md)
-    expect(html).not.toMatch(/<p>.*<shinychat-raw-html/)
-    expect(html).toContain("<shinychat-raw-html")
-  })
+  it.each(["shiny-chat-raw-html", "shinychat-raw-html"])(
+    "unwraps %s from a <p> parent",
+    (tagName) => {
+      const md = `<${tagName}><div>hello</div></${tagName}>`
+      const html = process(md)
+      expect(html).not.toMatch(new RegExp(`<p>.*<${tagName}`))
+      expect(html).toContain(`<${tagName}`)
+    },
+  )
 
   it("unwraps shiny-tool-result from a <p> parent", () => {
     const md =

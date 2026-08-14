@@ -12,7 +12,17 @@ import { remarkEscapeHtml } from "./plugins/remarkEscapeHtml"
 import { rehypeExternalLinks } from "./plugins/rehypeExternalLinks"
 import { rehypeUncontrolledInputs } from "./plugins/rehypeUncontrolledInputs"
 import { rehypeUnwrapBlockCEs } from "./plugins/rehypeUnwrapBlockCEs"
+import { rehypeGroupWebActivity } from "./plugins/rehypeGroupWebActivity"
+import { rehypeGroupAsides } from "./plugins/rehypeGroupAsides"
+import { rehypeGroundedAsides } from "./plugins/rehypeGroundedAsides"
+import { rehypeAttachCitedSources } from "./plugins/rehypeAttachCitedSources"
+import { rehypeMarkTrailingAsides } from "./plugins/markTrailingAsides"
 import { rehypeLazyContinuation } from "./plugins/rehypeLazyContinuation"
+import {
+  rehypeRewriteAsideToTemplate,
+  rehypeRewriteAsideFromTemplate,
+} from "./plugins/rewriteAsideTemplate"
+import { remarkNormalizeListItemAsides } from "./plugins/normalizeAsideMarkdown"
 
 /**
  * Frozen processor for markdown content.
@@ -25,10 +35,18 @@ import { rehypeLazyContinuation } from "./plugins/rehypeLazyContinuation"
 export const markdownProcessor = unified()
   .use(remarkParse)
   .use(remarkGfm)
+  .use(remarkNormalizeListItemAsides)
   .use(remarkRehype, { allowDangerousHtml: true })
+  .use(rehypeRewriteAsideToTemplate)
   .use(rehypeRaw)
+  .use(rehypeRewriteAsideFromTemplate)
   .use(rehypeLazyContinuation)
   .use(rehypeUnwrapBlockCEs)
+  .use(rehypeGroupWebActivity)
+  .use(rehypeGroundedAsides)
+  .use(rehypeGroupAsides)
+  .use(rehypeAttachCitedSources)
+  .use(rehypeMarkTrailingAsides)
   .use(rehypeUncontrolledInputs)
   .use(rehypeAccessibleSuggestions)
   .use(rehypeSuggestionCards)
@@ -39,9 +57,18 @@ export const markdownProcessor = unified()
 /**
  * Frozen processor for raw HTML content.
  * Preserves HTML fragment structure while still normalizing uncontrolled form
- * inputs and external link attributes.
+ * inputs, external link attributes, and <shiny-aside> grouping.
+ *
+ * No rehypeLazyContinuation/rehypeUnwrapBlockCEs: those work around quirks of
+ * markdown parsers wrapping inline HTML in <p> tags, which doesn't apply to a
+ * parse5-parsed HTML fragment.
  */
 export const htmlProcessor = unified()
+  .use(rehypeGroupWebActivity)
+  .use(rehypeGroundedAsides)
+  .use(rehypeGroupAsides)
+  .use(rehypeAttachCitedSources)
+  .use(rehypeMarkTrailingAsides)
   .use(rehypeUncontrolledInputs)
   .use(rehypeAccessibleSuggestions)
   .use(rehypeSuggestionCards)

@@ -9,21 +9,25 @@ def _assert_all_three(page: Page) -> None:
     content = page.locator(".shiny-chat-message-content")
     # Thinking panel: the header button is always visible (even when the panel
     # is collapsed after streaming ends). Its label text confirms it rendered.
-    thinking_header = content.locator("button.shinychat-thinking-header").first
+    thinking_header = content.locator("button.shiny-chat-thinking-header").first
     expect(thinking_header).to_be_visible(timeout=10_000)
     # The label inside the header confirms the thinking panel identity
     expect(
-        thinking_header.locator("span.shinychat-thinking-label")
+        thinking_header.locator("span.shiny-chat-thinking-label")
     ).to_be_visible(timeout=5_000)
     # markdown segment rendered as <strong>
-    expect(content.locator("strong", has_text="hello")).to_be_visible(timeout=10_000)
+    expect(content.locator("strong", has_text="hello")).to_be_visible(
+        timeout=10_000
+    )
     # html segment with its CSS dep
     card = page.locator(".custom-styled-card")
     expect(card).to_be_visible(timeout=10_000)
     expect(card).to_have_css("border-color", "rgb(255, 0, 0)", timeout=5_000)
 
 
-def test_mixed_thinking_survives_bookmark(page: Page, local_app: ShinyAppProc) -> None:
+def test_mixed_thinking_survives_bookmark(
+    page: Page, local_app: ShinyAppProc
+) -> None:
     page.goto(local_app.url)
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30_000)

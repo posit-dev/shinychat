@@ -8,6 +8,7 @@ import { toHtml } from "hast-util-to-html"
 import type { Element } from "hast"
 import type { ContentType } from "../transport/types"
 import { parseMarkdown, parseHtml, hastToReact } from "./markdownToReact"
+import { hideTrailingPartialAsideTag } from "./hideTrailingPartialTag"
 import {
   markdownProcessor,
   htmlProcessor,
@@ -17,12 +18,15 @@ import { CopyableCodeBlock } from "./components/CopyableCodeBlock"
 import { BootstrapTable } from "./components/BootstrapTable"
 import { RawHTML } from "../chat/RawHTML"
 
+const RawHtmlIsland = (({ node }: { node?: Element }) => (
+  <RawHTML html={node ? toHtml(node.children) : ""} displayContents />
+)) as ComponentType<unknown>
+
 const baseAssistantComponents: Record<string, ComponentType<unknown>> = {
   pre: CopyableCodeBlock as ComponentType<unknown>,
   table: BootstrapTable as ComponentType<unknown>,
-  "shinychat-raw-html": (({ node }: { node?: Element }) => (
-    <RawHTML html={node ? toHtml(node.children) : ""} displayContents />
-  )) as ComponentType<unknown>,
+  "shiny-chat-raw-html": RawHtmlIsland,
+  "shinychat-raw-html": RawHtmlIsland,
 }
 
 const baseUserComponents: Record<string, ComponentType<unknown>> = {
@@ -63,15 +67,18 @@ export function MarkdownContent({
     [isUser, tagToComponentMap],
   )
 
+  const parseSource =
+    streaming && !isText ? hideTrailingPartialAsideTag(content) : content
+
   // Stage 1 (expensive): parse markdown string → HAST. Cached by content+processor.
   const hast = useMemo(
     () =>
       isText
         ? null
         : isHtml
-          ? parseHtml(content, processor)
-          : parseMarkdown(content, processor),
-    [content, isText, isHtml, processor],
+          ? parseHtml(parseSource, processor)
+          : parseMarkdown(parseSource, processor),
+    [parseSource, isText, isHtml, processor],
   )
 
   // Stage 2 (cheap): convert HAST → React elements. Re-runs when streaming toggles.

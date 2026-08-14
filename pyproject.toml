@@ -7,7 +7,7 @@ license = { text = "MIT" }
 dependencies = [
     "htmltools>=0.7.0",
     "shiny>=1.4.0",
-    "pydantic"
+    "pydantic>=2.11"
 ]
 dynamic = ["version"]
 authors = [
@@ -26,7 +26,7 @@ Changelog = "https://github.com/posit-dev/shinychat/blob/main/pkg-py/CHANGELOG.m
 [project.optional-dependencies]
 providers = [
     "anthropic;python_version>='3.11'",
-    "chatlas[mcp]>=0.18.1",
+    "chatlas[mcp]>=0.20.0",
     "google-genai",
     "langchain-core>=1.0.0",
     "ollama>=0.4.0",

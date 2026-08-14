@@ -96,6 +96,30 @@ validate_attachment_payload_size <- function(
   invisible(total)
 }
 
+# Validate attachment MIME types against the supported server allowlist.
+validate_attachment_types <- function(attachments) {
+  if (is.null(attachments) || length(attachments) == 0) {
+    return(invisible(NULL))
+  }
+  mimes <- vapply(attachments, function(a) a[["mime"]] %||% "", character(1))
+  invalid <- sort(unique(setdiff(mimes, attachment_types()$supported)))
+  if (length(invalid) > 0) {
+    cli::cli_abort(
+      c(
+        "Attachments contain unsupported MIME type{?s}: {.val {invalid}}.",
+        i = "Supported types: {.val {attachment_types()$supported}}"
+      )
+    )
+  }
+  invisible(NULL)
+}
+
+# Validate incoming attachments accepted from a client payload.
+validate_attachments <- function(attachments) {
+  validate_attachment_types(attachments)
+  validate_attachment_payload_size(attachments)
+}
+
 # Resolve `allow_attachments` into the allow/accept attribute pair.
 # `allow` is NA (bare), "false" (explicit disable), or NULL (omit/defer); `accept` is a CSV or NULL.
 resolve_attachment_attrs <- function(allow_attachments) {
@@ -185,7 +209,7 @@ user_input_contents <- function(value) {
   }
   text <- value[["text"]] %||% ""
   attachments <- value[["attachments"]]
-  validate_attachment_payload_size(attachments)
+  validate_attachments(attachments)
   contents <- contents_from_attachments(attachments)
   if (nzchar(text)) {
     contents <- c(list(text), contents)

@@ -179,8 +179,9 @@ check_ellmer_chat <- function(client) {
 #' @description
 #' `r lifecycle::badge("deprecated")`
 #'
-#' These functions are deprecated as of shinychat 0.5.0.
-#' Use [chat_ui()] with `NS(id, "chat")` and [chat_server()] instead.
+#' These functions are deprecated as of shinychat 0.5.0. Use [chat_ui()] and
+#' [chat_server()] instead, pairing them by `id` as described in *Pairing with
+#' `chat_server()`* in [chat_ui()].
 #'
 #' @param id The chat module ID.
 #' @param client Deprecated. The client state is now managed by [chat_server()].
@@ -226,7 +227,10 @@ chat_mod_ui <- function(
   )
 }
 
-#' @describeIn chat_app Wire up batteries-included chat server logic in a Shiny session.
+#' @describeIn chat_app Wire up batteries-included chat server logic in a Shiny
+#'   session. Pair with [chat_ui()] by passing it the same `id`; see *Pairing
+#'   with `chat_server()`* in [chat_ui()] for the top-level and module-based
+#'   patterns.
 #' @inheritParams chat_restore
 #' @param history Conversation history configuration. `TRUE` (default) enables
 #'   history with default settings; `FALSE` disables it; pass a [history_options()]

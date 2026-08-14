@@ -1,17 +1,13 @@
-import {
-  useState,
-  useEffect,
-  useRef,
-  memo,
-  useCallback,
-  useLayoutEffect,
-} from "react"
+import { useState, useEffect, useRef, memo, useCallback } from "react"
 import { useStickToBottom } from "use-stick-to-bottom"
 import type { ThinkingBlock } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
 import { useChatStopScroll } from "./context"
-import { usePrefersReducedMotion } from "./usePrefersReducedMotion"
+import { useFadingText } from "./useFadingText"
+import { chevronDown } from "../utils/icons"
+
+const chevronDSIH = { __html: chevronDown }
 
 interface ThinkingDisplayProps {
   thinking: ThinkingBlock
@@ -62,56 +58,13 @@ function useDisplayedTopic(topic: string | null | undefined): string | null {
   return displayed
 }
 
-const FADE_DURATION_MS = 200
-
-function useFadingText(text: string): { visible: string; fading: boolean } {
-  const reducedMotion = usePrefersReducedMotion()
-  const [visible, setVisible] = useState(text)
-  const [fading, setFading] = useState(false)
-  const pendingText = useRef(text)
-
-  useLayoutEffect(() => {
-    if (text === visible) return
-    pendingText.current = text
-
-    if (reducedMotion) {
-      setVisible(text)
-      setFading(false)
-      return
-    }
-
-    setFading(true)
-    const timer = setTimeout(() => {
-      setVisible(pendingText.current)
-      setFading(false)
-    }, FADE_DURATION_MS)
-
-    return () => clearTimeout(timer)
-  }, [text, visible, reducedMotion])
-
-  return { visible, fading }
-}
-
-function ChevronIcon({ expanded }: { expanded: boolean }) {
-  return (
-    <svg
-      className="shinychat-thinking-chevron"
-      width="12"
-      height="12"
-      viewBox="0 0 12 12"
-      fill="none"
-      aria-hidden="true"
-      {...(expanded ? { "data-expanded": "" } : {})}
-    >
-      <path
-        d="M4.5 2.5L8 6L4.5 9.5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
+// The thinking header's identity glyph, in the same reserved slot a tool row
+// gives its identity/status glyph. Static — the trailing chevron is the
+// disclosure affordance. Built like the generic `bareDot`: a styled span, the
+// same size, turned 45° into a diamond so a thinking row is distinguishable
+// from an untitled tool row.
+function ThinkingGlyph() {
+  return <span className="shiny-chat-thinking-glyph" aria-hidden="true" />
 }
 
 export const ThinkingDisplay = memo(function ThinkingDisplay({
@@ -188,26 +141,26 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
 
   return (
     <div
-      className="shinychat-thinking"
+      className="shiny-chat-thinking"
       data-streaming={thinking.streaming || undefined}
     >
       <button
         id={`thinking-header-${messageId}`}
-        className="shinychat-thinking-header"
+        className="shiny-chat-thinking-header"
         onClick={handleToggle}
         aria-expanded={expanded}
         aria-controls={`thinking-content-${messageId}`}
       >
-        <ChevronIcon expanded={expanded} />
+        <ThinkingGlyph />
         <span
-          className="shinychat-thinking-label"
+          className="shiny-chat-thinking-label"
           data-fading={labelFading || undefined}
         >
           {labelText}
         </span>
         {thinking.streaming && (
           <svg
-            className="shinychat-thinking-dot"
+            className="shiny-chat-thinking-dot"
             width="8"
             height="8"
             xmlns="http://www.w3.org/2000/svg"
@@ -216,9 +169,13 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
             <circle cx="4" cy="4" r="4" />
           </svg>
         )}
+        <span
+          className="shiny-chat-thinking-disclosure"
+          dangerouslySetInnerHTML={chevronDSIH}
+        />
       </button>
       <div
-        className="shinychat-thinking-content"
+        className="shiny-chat-thinking-content"
         id={`thinking-content-${messageId}`}
         role="region"
         aria-labelledby={`thinking-header-${messageId}`}
@@ -226,7 +183,7 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
         inert={!expanded || undefined}
         data-expanded={expanded || undefined}
       >
-        <div className="shinychat-thinking-content-inner" ref={innerScrollRef}>
+        <div className="shiny-chat-thinking-content-inner" ref={innerScrollRef}>
           <div ref={innerContentRef}>
             <MarkdownContent
               content={thinking.content}
@@ -249,10 +206,19 @@ function getHeaderText(
   if (thinking.streaming) {
     return displayedTopic ?? "Thinking"
   }
-  if (thinking.durationMs != null && thinking.durationMs >= 500) {
+  if (thinking.durationMs != null) {
     const seconds = Math.round(thinking.durationMs / 1000)
+    // Sub-second thinking is common (a short reasoning burst between two tool
+    // calls). It used to be excluded by a `>= 500` gate and fall through to the
+    // in-progress label below, so a finished block read as if it were still
+    // running — and the branch written to handle it was unreachable, since
+    // anything past that gate rounds to at least 1s.
     if (seconds < 1) return "Thought for less than a second"
     return `Thought for ${seconds}s`
   }
+  // No duration to report. `durationMs` is computed client-side and never
+  // serialized, so a restored transcript's thinking blocks always land here.
+  // Reusing the in-progress label is a deliberate tradeoff (user, 2026-07-30):
+  // the alternative is copy that claims something we don't know.
   return "Thinking"
 }

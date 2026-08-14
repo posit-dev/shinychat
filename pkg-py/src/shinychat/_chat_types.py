@@ -85,11 +85,6 @@ class UpdateUploadAction(TypedDict):
     enable_upload: bool
 
 
-class HideToolRequestAction(TypedDict):
-    type: Literal["hide_tool_request"]
-    requestId: str
-
-
 class GreetingOptions(TypedDict):
     persistent: NotRequired[bool]
 
@@ -148,6 +143,11 @@ class HistoryNavigateAction(TypedDict):
     reload: NotRequired[bool]
 
 
+class UpdateSiblingsAction(TypedDict):
+    type: Literal["update_siblings"]
+    data: dict[int, dict[str, int]]
+
+
 ChatAction = Union[
     MessageAction,
     ChunkStartAction,
@@ -158,7 +158,6 @@ ChatAction = Union[
     RemoveLoadingAction,
     UpdateCancelAction,
     UpdateUploadAction,
-    HideToolRequestAction,
     GreetingAction,
     GreetingStartAction,
     GreetingChunkAction,
@@ -167,6 +166,7 @@ ChatAction = Union[
     UpdateSlashCommandsAction,
     HistoryUpdateAction,
     HistoryNavigateAction,
+    UpdateSiblingsAction,
 ]
 
 

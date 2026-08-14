@@ -1,8 +1,9 @@
 import { createContext, useContext, type Dispatch } from "react"
 import type { ShinyLifecycle, SlashCommandDef } from "../transport/types"
-import type { ChatToolState, AnyAction } from "./state"
+import type { ChatToolState, AnyAction, ToolGrouping } from "./state"
 import { initialState } from "./state"
 import type { StopScroll } from "use-stick-to-bottom"
+import type { AttachmentPayload } from "./attachments"
 
 export const ShinyLifecycleContext = createContext<ShinyLifecycle | null>(null)
 
@@ -12,17 +13,35 @@ export function useChatStopScroll(): StopScroll | null {
   return useContext(ChatScrollContext)
 }
 
+// Nothing is superseded until a transcript exists to derive it from.
 const initialToolState: ChatToolState = {
-  hiddenToolRequests: initialState.hiddenToolRequests,
+  supersededRequests: new Set(),
 }
 
 export const ChatToolContext = createContext<ChatToolState>(initialToolState)
+
+export const ToolGroupingContext = createContext<ToolGrouping>(
+  initialState.toolGrouping,
+)
+
+export function useToolGrouping(): ToolGrouping {
+  return useContext(ToolGroupingContext)
+}
 
 export const ChatDispatchContext = createContext<Dispatch<AnyAction> | null>(
   null,
 )
 
+export type SubmitUserInput = (
+  content: string,
+  attachments: AttachmentPayload[],
+) => void
+
+export const ChatSubmitContext = createContext<SubmitUserInput | null>(null)
+
 export const SlashCommandsContext = createContext<SlashCommandDef[]>([])
+
+export const AsideFaviconContext = createContext(true)
 
 export function useShinyLifecycle(): ShinyLifecycle {
   const ctx = useContext(ShinyLifecycleContext)
@@ -46,6 +65,20 @@ export function useChatDispatch(): Dispatch<AnyAction> {
     )
   }
   return ctx
+}
+
+export function useChatSubmit(): SubmitUserInput {
+  const ctx = useContext(ChatSubmitContext)
+  if (ctx === null) {
+    throw new Error(
+      "useChatSubmit must be used within a ChatSubmitContext.Provider",
+    )
+  }
+  return ctx
+}
+
+export function useAsideFavicon(): boolean {
+  return useContext(AsideFaviconContext)
 }
 
 export function useSlashCommands(): SlashCommandDef[] {

@@ -139,6 +139,8 @@ InMemoryConversationStore <- R6::R6Class(
       private$data[[key]][[id]]
     },
     put = function(partition, record) {
+      check_schema_version(record$schema_version)
+
       key <- partition_key(partition)
       if (is.null(private$data[[key]])) {
         private$data[[key]] <- list()
@@ -175,7 +177,7 @@ InMemoryConversationStore <- R6::R6Class(
 )
 
 record_json_size <- function(record) {
-  as.double(nchar(jsonlite::toJSON(record, auto_unbox = TRUE), type = "bytes"))
+  as.double(nchar(jsonlite::serializeJSON(record), type = "bytes"))
 }
 
 CONV_ID_RE <- "^[A-Za-z0-9_-]{1,80}$"
@@ -191,7 +193,7 @@ safe_conv_path <- function(scope_dir, conv_id) {
   if (!grepl(CONV_ID_RE, conv_id)) {
     rlang::abort(paste0("Invalid conversation ID: ", conv_id))
   }
-  file.path(scope_dir, paste0(conv_id, ".json"))
+  file.path(scope_dir, conv_id)
 }
 
 resolve_history_dir <- function() {
@@ -221,6 +223,7 @@ FileConversationStore <- R6::R6Class(
   private = list(
     dir = NULL,
     meta_cache = NULL,
+    write_state = NULL,
 
     partition_dir = function(partition) {
       if (is.null(private$dir)) {
@@ -231,6 +234,58 @@ FileConversationStore <- R6::R6Class(
         sanitize_scope(partition$chat_id),
         sanitize_scope(partition$scope)
       )
+    },
+
+    ws_key = function(partition, id) paste0(partition_key(partition), ":", id),
+
+    get_or_init_write_state = function(partition, id, cdir) {
+      key <- private$ws_key(partition, id)
+      cached <- private$write_state[[key]]
+      if (!is.null(cached)) {
+        return(cached)
+      }
+
+      ws <- list(
+        turn_seq_map = list(),
+        ui_node_len = list(),
+        next_turn_seq = 0L
+      )
+
+      turns_file <- file.path(cdir, "turns.jsonl")
+      if (file.exists(turns_file)) {
+        lines <- readLines(turns_file, warn = FALSE)
+        ws$next_turn_seq <- length(lines[nzchar(lines)])
+      }
+
+      record_file <- file.path(cdir, "record.json")
+      if (file.exists(record_file)) {
+        raw <- jsonlite::fromJSON(record_file, simplifyVector = FALSE)
+        for (nid in names(raw$nodes)) {
+          turn_ids <- raw$nodes[[nid]]$turn_ids
+          if (length(turn_ids) > 0) {
+            ws$turn_seq_map[[nid]] <- turn_ids
+          }
+        }
+      }
+
+      ui_file <- file.path(cdir, "ui.jsonl")
+      if (file.exists(ui_file)) {
+        for (line in readLines(ui_file, warn = FALSE)) {
+          if (!nzchar(line)) {
+            next
+          }
+          entry <- tryCatch(
+            jsonlite::fromJSON(line, simplifyVector = FALSE),
+            error = function(e) NULL
+          )
+          if (!is.null(entry)) {
+            ws$ui_node_len[[entry$node_id]] <- length(entry$data)
+          }
+        }
+      }
+
+      private$write_state[[key]] <- ws
+      ws
     }
   ),
   public = list(
@@ -241,8 +296,14 @@ FileConversationStore <- R6::R6Class(
     initialize = function(dir = NULL) {
       private$dir <- dir
       private$meta_cache <- list()
+      private$write_state <- list()
     },
 
+    #' @description All conversations in `partition`, newest-first by
+    #'   `updated_at`, read from one `record.json` per conversation directory
+    #'   on disk.
+    #' @param partition A `conversation_partition()`.
+    #' @returns A list of conversation meta lists.
     list = function(partition) {
       key <- partition_key(partition)
       cached <- private$meta_cache[[key]]
@@ -256,27 +317,45 @@ FileConversationStore <- R6::R6Class(
         return(list())
       }
 
-      files <- list.files(pdir, pattern = "\\.json$", full.names = TRUE)
+      conv_dirs <- list.dirs(pdir, full.names = TRUE, recursive = FALSE)
       metas <- Filter(
         Negate(is.null),
-        lapply(files, function(f) {
-          tryCatch(
-            record_meta(
-              jsonlite::fromJSON(f, simplifyVector = FALSE),
-              size_bytes = as.double(file.size(f))
-            ),
+        lapply(conv_dirs, function(d) {
+          record_file <- file.path(d, "record.json")
+          if (!file.exists(record_file)) {
+            return(NULL)
+          }
+          result <- tryCatch(
+            {
+              raw <- jsonlite::fromJSON(record_file, simplifyVector = FALSE)
+              check_schema_version(raw$schema_version)
+              size_bytes <- sum(vapply(
+                list.files(d, full.names = TRUE),
+                function(f) as.double(file.size(f)),
+                double(1)
+              ))
+              record_meta(raw, size_bytes = size_bytes)
+            },
+            # Capture (rather than re-signal) an unsupported schema version
+            # here -- stop()ing from inside this handler would still be
+            # caught by the sibling `error` handler below, since both belong
+            # to this same tryCatch call. Re-raise it after tryCatch returns
+            # instead, so it escapes uncaught.
+            shinychat_error_unsupported_schema_version = function(e) e,
             error = function(e) {
-              rlang::warn(
-                paste0(
-                  "Skipping unreadable conversation file ",
-                  basename(f),
-                  ": ",
-                  conditionMessage(e)
-                )
-              )
+              rlang::warn(paste0(
+                "Skipping unreadable conversation ",
+                basename(d),
+                ": ",
+                conditionMessage(e)
+              ))
               NULL
             }
           )
+          if (inherits(result, "shinychat_error_unsupported_schema_version")) {
+            stop(result)
+          }
+          result
         })
       )
       timestamps <- vapply(metas, function(m) m$updated_at, character(1))
@@ -285,36 +364,226 @@ FileConversationStore <- R6::R6Class(
       metas
     },
 
+    #' @description The full conversation record for `id` in `partition`,
+    #'   reassembled from `record.json`, `turns.jsonl`, and `ui.jsonl`.
+    #' @param partition A `conversation_partition()`.
+    #' @param id A conversation id, as found in the `id` field of a
+    #'   conversation meta list.
+    #' @returns The conversation record, or `NULL` if missing.
     get = function(partition, id) {
-      path <- safe_conv_path(private$partition_dir(partition), id)
-      if (!file.exists(path)) {
+      cdir <- safe_conv_path(private$partition_dir(partition), id)
+      record_file <- file.path(cdir, "record.json")
+      if (!file.exists(record_file)) {
         return(NULL)
       }
-      jsonlite::fromJSON(path, simplifyVector = FALSE)
+      raw <- jsonlite::fromJSON(record_file, simplifyVector = FALSE)
+      schema_version <- check_schema_version(raw$schema_version)
+
+      turns_map <- list()
+      turns_file <- file.path(cdir, "turns.jsonl")
+      if (file.exists(turns_file)) {
+        for (line in readLines(turns_file, warn = FALSE)) {
+          if (!nzchar(line)) {
+            next
+          }
+          entry <- tryCatch(
+            {
+              entry <- jsonlite::fromJSON(line, simplifyVector = FALSE)
+              entry$data <- jsonlite::unserializeJSON(entry$data)
+              entry
+            },
+            error = function(e) NULL
+          )
+          if (!is.null(entry)) {
+            turns_map[[as.character(entry$seq)]] <- entry$data
+          }
+        }
+      }
+
+      ui_map <- list()
+      ui_file <- file.path(cdir, "ui.jsonl")
+      if (file.exists(ui_file)) {
+        for (line in readLines(ui_file, warn = FALSE)) {
+          if (!nzchar(line)) {
+            next
+          }
+          entry <- tryCatch(
+            jsonlite::fromJSON(line, simplifyVector = FALSE),
+            error = function(e) NULL
+          )
+          if (!is.null(entry)) {
+            ui_map[[entry$node_id]] <- entry$data
+          }
+        }
+      }
+
+      nodes <- list()
+      for (nid in names(raw$nodes)) {
+        node_data <- raw$nodes[[nid]]
+        turn_ids_present <- Filter(
+          function(tid) !is.null(turns_map[[as.character(tid)]]),
+          node_data$turn_ids
+        )
+        turns <- lapply(turn_ids_present, function(tid) {
+          turns_map[[as.character(tid)]]
+        })
+        nodes[[nid]] <- list(
+          parent = node_data$parent,
+          children = node_data$children,
+          turns = turns,
+          ui = ui_map[[nid]],
+          selected_child = node_data$selected_child
+        )
+      }
+
+      list(
+        schema_version = schema_version,
+        id = raw$id,
+        title = raw$title,
+        title_source = raw$title_source,
+        response_count = raw$response_count,
+        created_at = raw$created_at,
+        updated_at = raw$updated_at,
+        client_info = raw$client_info,
+        current_leaf = raw$current_leaf,
+        nodes = nodes,
+        values = raw$values,
+        bookmark_state_id = raw$bookmark_state_id
+      )
     },
 
+    #' @description Upsert `record` into `partition`, appending new turns and
+    #'   UI data to `turns.jsonl`/`ui.jsonl` and rewriting `record.json`.
+    #' @param partition A `conversation_partition()`.
+    #' @param record A conversation record, in the same shape returned by
+    #'   `get()`.
+    #' @returns `NULL`, invisibly.
     put = function(partition, record) {
-      key <- partition_key(partition)
-      pdir <- private$partition_dir(partition)
-      dir.create(pdir, recursive = TRUE, showWarnings = FALSE)
+      check_schema_version(record$schema_version)
 
-      path <- safe_conv_path(pdir, record$id)
-      json <- jsonlite::toJSON(record, auto_unbox = TRUE, null = "null")
-      tmp <- tempfile(tmpdir = pdir, fileext = ".json.tmp")
+      key <- partition_key(partition)
+      cdir <- safe_conv_path(private$partition_dir(partition), record$id)
+      record_file <- file.path(cdir, "record.json")
+      # Check the on-disk schema version before creating any directory or
+      # touching any file -- a rejection here must leave the filesystem
+      # untouched.
+      if (file.exists(record_file) && !dir.exists(record_file)) {
+        existing_raw <- jsonlite::fromJSON(record_file, simplifyVector = FALSE)
+        check_schema_version(existing_raw$schema_version)
+      }
+      dir.create(cdir, recursive = TRUE, showWarnings = FALSE)
+
+      ws <- private$get_or_init_write_state(partition, record$id, cdir)
+
+      new_turns_lines <- character(0)
+      new_ui_lines <- character(0)
+      record_nodes <- list()
+
+      for (nid in names(record$nodes)) {
+        node <- record$nodes[[nid]]
+
+        if (is.null(ws$turn_seq_map[[nid]])) {
+          turn_ids <- list()
+          for (turn_data in node$turns) {
+            seq <- ws$next_turn_seq
+            ws$next_turn_seq <- ws$next_turn_seq + 1L
+            turn_ids <- c(turn_ids, seq)
+            new_turns_lines <- c(
+              new_turns_lines,
+              as.character(jsonlite::toJSON(
+                list(
+                  seq = seq,
+                  data = jsonlite::serializeJSON(turn_data)
+                ),
+                auto_unbox = TRUE,
+                null = "null"
+              ))
+            )
+          }
+          ws$turn_seq_map[[nid]] <- turn_ids
+        }
+
+        ui_len <- length(node$ui)
+        if (!is.null(node$ui) && !identical(ui_len, ws$ui_node_len[[nid]])) {
+          new_ui_lines <- c(
+            new_ui_lines,
+            as.character(jsonlite::toJSON(
+              list(node_id = nid, data = node$ui),
+              auto_unbox = TRUE,
+              null = "null"
+            ))
+          )
+          ws$ui_node_len[[nid]] <- ui_len
+        }
+
+        record_nodes[[nid]] <- list(
+          parent = node$parent,
+          children = node$children,
+          turn_ids = ws$turn_seq_map[[nid]],
+          selected_child = node$selected_child
+        )
+      }
+
+      turns_file <- file.path(cdir, "turns.jsonl")
+      if (length(new_turns_lines) > 0) {
+        cat(
+          paste0(new_turns_lines, collapse = "\n"),
+          "\n",
+          file = turns_file,
+          sep = "",
+          append = TRUE
+        )
+      } else if (!file.exists(turns_file)) {
+        file.create(turns_file)
+      }
+
+      ui_file <- file.path(cdir, "ui.jsonl")
+      if (length(new_ui_lines) > 0) {
+        cat(
+          paste0(new_ui_lines, collapse = "\n"),
+          "\n",
+          file = ui_file,
+          sep = "",
+          append = TRUE
+        )
+      } else if (!file.exists(ui_file)) {
+        file.create(ui_file)
+      }
+
+      private$write_state[[private$ws_key(partition, record$id)]] <- ws
+
+      record_data <- list(
+        schema_version = record$schema_version,
+        id = record$id,
+        title = record$title,
+        title_source = record$title_source,
+        response_count = record$response_count,
+        created_at = record$created_at,
+        updated_at = record$updated_at,
+        client_info = record$client_info,
+        current_leaf = record$current_leaf,
+        nodes = record_nodes,
+        values = record$values,
+        bookmark_state_id = record$bookmark_state_id
+      )
+      json <- jsonlite::toJSON(record_data, auto_unbox = TRUE, null = "null")
+      tmp <- tempfile(tmpdir = cdir, fileext = ".json.tmp")
       on.exit(unlink(tmp), add = TRUE)
       writeLines(json, tmp)
-      ok <- file_move(tmp, path)
+      ok <- file_move(tmp, record_file)
       if (!isTRUE(ok)) {
-        rlang::abort(paste0("Failed to write conversation: ", path))
+        rlang::abort(paste0("Failed to write conversation: ", cdir))
       }
 
       cache <- private$meta_cache[[key]]
       if (!is.null(cache)) {
+        size_bytes <- sum(vapply(
+          list.files(cdir, full.names = TRUE),
+          function(f) as.double(file.size(f)),
+          double(1)
+        ))
         cache <- Filter(function(m) m$id != record$id, cache)
-        cache <- c(
-          list(record_meta(record, size_bytes = as.double(file.size(path)))),
-          cache
-        )
+        cache <- c(list(record_meta(record, size_bytes = size_bytes)), cache)
         timestamps <- vapply(cache, function(m) m$updated_at, character(1))
         cache <- cache[order(timestamps, decreasing = TRUE)]
         private$meta_cache[[key]] <- cache
@@ -323,10 +592,19 @@ FileConversationStore <- R6::R6Class(
       invisible(NULL)
     },
 
+    #' @description Remove the conversation `id` from `partition` by deleting
+    #'   its directory. Missing ids are a no-op.
+    #' @param partition A `conversation_partition()`.
+    #' @param id A conversation id, as found in the `id` field of a
+    #'   conversation meta list.
+    #' @returns `NULL`, invisibly.
     delete = function(partition, id) {
       key <- partition_key(partition)
-      path <- safe_conv_path(private$partition_dir(partition), id)
-      unlink(path)
+      cdir <- safe_conv_path(private$partition_dir(partition), id)
+      if (dir.exists(cdir)) {
+        unlink(cdir, recursive = TRUE)
+      }
+      private$write_state[[private$ws_key(partition, id)]] <- NULL
 
       cache <- private$meta_cache[[key]]
       if (!is.null(cache)) {
@@ -354,22 +632,39 @@ resolve_store <- function(store) {
   }
 
   store <- match.arg(store, c("auto", "memory", "file"))
+  quiet <- getOption(
+    "shinychat.history_options.store_auto.quiet",
+    default = identical(Sys.getenv("TESTTHAT"), "true")
+  )
+  quiet_hint <- c(
+    i = "Set {.code options(shinychat.history_options.store_auto.quiet = TRUE)} to silence this message."
+  )
   switch(
     store,
     auto = {
       if (shiny::in_devmode()) {
-        cli::cli_inform(
-          "Chat history: using in-memory storage (dev mode). History is lost on restart. To persist across restarts, use {.code history_options(store = \"file\")}.",
-          .frequency = "once",
-          .frequency_id = "shinychat_store_auto_memory"
-        )
+        if (!quiet) {
+          cli::cli_inform(
+            c(
+              "Chat history: using in-memory storage (dev mode). History is lost on restart. To persist across restarts, use {.code history_options(store = \"file\")}.",
+              quiet_hint
+            ),
+            .frequency = "once",
+            .frequency_id = "shinychat_store_auto_memory"
+          )
+        }
         auto_dev_memory_store()
       } else {
-        cli::cli_inform(
-          "Chat history: using file-based storage. To use in-memory storage instead, use {.code history_options(store = \"memory\")}.",
-          .frequency = "once",
-          .frequency_id = "shinychat_store_auto_file"
-        )
+        if (!quiet) {
+          cli::cli_inform(
+            c(
+              "Chat history: using file-based storage. To use in-memory storage instead, use {.code history_options(store = \"memory\")}.",
+              quiet_hint
+            ),
+            .frequency = "once",
+            .frequency_id = "shinychat_store_auto_file"
+          )
+        }
         FileConversationStore$new()
       }
     },

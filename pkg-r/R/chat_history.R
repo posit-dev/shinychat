@@ -21,6 +21,11 @@ delete_bookmark_state <- function(state_id) {
   invisible()
 }
 
+get_reported_messages <- function(session, chat_id) {
+  value <- shiny::isolate(session$input[[paste0(chat_id, "_messages")]])
+  if (is.null(value)) list() else value
+}
+
 bookmark_state_paths <- function(state_id) {
   app_dir <- shiny::getShinyOption("appDir", default = getwd())
   paths <- file.path(app_dir, "shiny_bookmarks", state_id)
@@ -38,6 +43,7 @@ HistoryController <- R6::R6Class(
   public = list(
     partition = NULL,
     record = NULL,
+    ui_offset = 0,
     is_replaying = FALSE,
     suppress_next_save = FALSE,
     on_active_id_change = NULL,
@@ -81,6 +87,13 @@ HistoryController <- R6::R6Class(
     },
 
     on_response = function(recorded_turns) {
+      # These two flags guard the *restore* transaction, which the count-based
+      # check below does not: replay_ui() clears the client and re-sends the
+      # stored messages, and the client's echo of that replay would otherwise
+      # trigger a save. is_replaying suppresses saves during the replay window;
+      # suppress_next_save swallows the first post-replay echo. (Python drops
+      # these and relies on its count guard alone, but R's replay re-sends UI
+      # to the client, so it suppresses the resulting echo explicitly.)
       if (self$is_replaying) {
         return(invisible())
       }
@@ -92,10 +105,14 @@ HistoryController <- R6::R6Class(
         rlang::abort("History controller partition not set")
       }
 
+      messages <- get_reported_messages(private$session, private$chat_id)
+
       first_save <- is.null(self$record)
       if (!first_save) {
-        existing_count <- length(record_path_node_ids(self$record))
-        if (length(recorded_turns) <= existing_count) {
+        if (
+          length(recorded_turns) <= record_turn_count(self$record) &&
+            length(messages) <= record_ui_count(self$record)
+        ) {
           return(invisible())
         }
       }
@@ -107,7 +124,14 @@ HistoryController <- R6::R6Class(
         )
       }
 
-      self$record <- extend_record_linear(self$record, recorded_turns)
+      self$record <- extend_record_linear(
+        self$record,
+        recorded_turns,
+        ui_messages = messages,
+        ui_offset = self$ui_offset,
+        tools = private$client$get_tools()
+      )
+      self$ui_offset <- length(messages)
       self$record$response_count <- (self$record$response_count %||% 0L) + 1L
       self$record$values <- private$capture_app_state()
 
@@ -125,6 +149,7 @@ HistoryController <- R6::R6Class(
       }
 
       self$send_history_update()
+      self$send_sibling_metadata()
 
       # Wait for the second response before titling: gives the LLM/custom
       # title_fn more context than a single exchange, and avoids spending a
@@ -145,7 +170,7 @@ HistoryController <- R6::R6Class(
         return(invisible())
       }
 
-      target <- private$store$get(self$partition, conv_id)
+      target <- self$get_record(self$partition, conv_id)
       if (is.null(target)) {
         rlang::abort(paste0("Conversation not found: ", conv_id))
       }
@@ -161,6 +186,7 @@ HistoryController <- R6::R6Class(
       self$replay_ui(target)
       self$restore_app_state(target$values %||% list())
       self$record <- target
+      self$send_sibling_metadata()
       if (!is.null(self$on_active_id_change)) {
         self$on_active_id_change(target$id)
       }
@@ -172,6 +198,7 @@ HistoryController <- R6::R6Class(
       private$client$set_turns(list())
       chat_clear(private$chat_id, session = private$session)
       self$record <- NULL
+      self$ui_offset <- 0
       if (!is.null(self$on_active_id_change)) {
         self$on_active_id_change(NULL)
       }
@@ -194,7 +221,7 @@ HistoryController <- R6::R6Class(
         self$record$title_source <- "user"
         private$store$put(self$partition, self$record)
       } else {
-        target <- private$store$get(self$partition, conv_id)
+        target <- self$get_record(self$partition, conv_id)
         if (!is.null(target)) {
           target$title <- title
           target$title_source <- "user"
@@ -212,6 +239,7 @@ HistoryController <- R6::R6Class(
 
       if (!is.null(self$record) && identical(conv_id, self$record$id)) {
         self$record <- NULL
+        self$ui_offset <- 0
         if (!is.null(self$on_active_id_change)) {
           self$on_active_id_change(NULL)
         }
@@ -239,15 +267,45 @@ HistoryController <- R6::R6Class(
       # doesn't belong here, regardless of `persistent`.
       chat_set_greeting(private$chat_id, NULL, session = private$session)
 
-      turns <- record_path_turns(record)
-      if (length(turns) > 0) {
-        set_turns_recorded(private$client, turns)
-        # Turn content round-trips losslessly via ellmer's contents_record()/
-        # contents_replay(); the UI below is then re-rendered from those turns.
-        shiny::withReactiveDomain(private$session, {
-          client_set_ui(private$client, id = private$chat_id)
-        })
-      }
+      restored_count <- 0L
+      shiny::withReactiveDomain(private$session, {
+        for (node_id in record_path_node_ids(record)) {
+          node <- record$nodes[[node_id]]
+          stored <- node$ui
+          if (is.null(stored)) {
+            last_turn <- node$turns[[length(node$turns)]]
+            last_turn_live <- ellmer::contents_replay(
+              last_turn,
+              tools = private$client$get_tools()
+            )
+            stored <- list(
+              list(
+                role = ellmer_turn_effective_role(last_turn_live),
+                segments = list(
+                  list(
+                    content = turn_fallback_markdown(last_turn),
+                    content_type = "markdown"
+                  )
+                )
+              )
+            )
+          }
+          for (message in stored) {
+            restore_history_message(
+              private$chat_id,
+              message,
+              session = private$session
+            )
+            restored_count <- restored_count + 1L
+          }
+        }
+      })
+
+      # ui_offset must reflect the messages the client will report for the
+      # restored conversation. The client's echo of this replay is async and
+      # hasn't arrived yet at this synchronous point, so count what was
+      # actually just sent instead of reading session$input.
+      self$ui_offset <- restored_count
 
       private$session$onFlushed(
         function() {
@@ -259,7 +317,11 @@ HistoryController <- R6::R6Class(
     },
 
     get_record = function(partition, id) {
-      private$store$get(partition, id)
+      record <- private$store$get(partition, id)
+      if (!is.null(record)) {
+        check_schema_version(record$schema_version)
+      }
+      record
     },
 
     save_current = function() {
@@ -268,7 +330,15 @@ HistoryController <- R6::R6Class(
       }
 
       recorded_turns <- get_turns_recorded(private$client)
-      self$record <- extend_record_linear(self$record, recorded_turns)
+      messages <- get_reported_messages(private$session, private$chat_id)
+      self$record <- extend_record_linear(
+        self$record,
+        recorded_turns,
+        ui_messages = messages,
+        ui_offset = self$ui_offset,
+        tools = private$client$get_tools()
+      )
+      self$ui_offset <- length(messages)
       self$record$values <- private$capture_app_state()
       private$store$put(self$partition, self$record)
     },
@@ -337,6 +407,129 @@ HistoryController <- R6::R6Class(
         ),
         session = private$session
       )
+    },
+
+    send_sibling_metadata = function() {
+      if (is.null(self$record)) {
+        return(invisible())
+      }
+      sibling_meta <- record_path_sibling_metadata(self$record)
+      if (length(sibling_meta) == 0) {
+        return(invisible())
+      }
+      data <- list()
+      msg_idx <- 0L
+      for (nid in record_path_node_ids(self$record)) {
+        n_ui <- record_ui_message_count(self$record$nodes[[nid]])
+        if (!is.null(sibling_meta[[nid]])) {
+          data[[as.character(msg_idx)]] <- sibling_meta[[nid]]
+        }
+        msg_idx <- msg_idx + n_ui
+      }
+      if (length(data) > 0) {
+        send_chat_action(
+          private$chat_id,
+          list(type = "update_siblings", data = data),
+          session = private$session
+        )
+      }
+    },
+
+    handle_navigate = function(message_index, direction) {
+      if (!direction %in% c("prev", "next")) {
+        return(invisible())
+      }
+      if (is.null(self$record)) {
+        return(invisible())
+      }
+
+      node_id <- record_node_id_for_message_index(self$record, message_index)
+      siblings <- record_siblings_of(self$record, node_id)
+      current_pos <- match(node_id, siblings)
+
+      if (identical(direction, "prev")) {
+        if (current_pos == 1L) {
+          return(invisible())
+        }
+        target <- siblings[[current_pos - 1L]]
+      } else {
+        if (current_pos == length(siblings)) {
+          return(invisible())
+        }
+        target <- siblings[[current_pos + 1L]]
+      }
+
+      leaf <- record_subtree_leaf(self$record, target)
+      self$record <- record_set_current_leaf(self$record, leaf)
+      set_turns_recorded(private$client, record_path_turns(self$record))
+      self$replay_ui(self$record)
+      # Unlike switch_to()'s replay_ui() call (which leaves suppress_next_save
+      # set so the next on_response() swallows a stale in-flight response from
+      # before the switch), handle_navigate() clears it immediately: there's
+      # no new completion in flight here, and leaving it set would silently
+      # drop the save of the next real response the user gets after
+      # navigating -- a more likely and severe failure than the narrow race
+      # this guards against in switch_to().
+      self$suppress_next_save <- FALSE
+      self$send_sibling_metadata()
+      private$store$put(self$partition, self$record)
+      self$send_history_update()
+    },
+
+    handle_edit = function(message_index, content, attachments = NULL) {
+      if (is.null(self$record)) {
+        return(invisible())
+      }
+
+      node_id <- record_node_id_for_message_index(self$record, message_index)
+      fork_parent <- self$record$nodes[[node_id]]$parent
+
+      # Branching happens implicitly: truncating current_leaf here means the
+      # next extend_record_linear() (from the resubmit's on_response) creates
+      # a sibling under fork_parent, not a child of the old leaf.
+      self$record <- record_set_current_leaf(self$record, fork_parent)
+      set_turns_recorded(private$client, record_path_turns(self$record))
+      self$replay_ui(self$record)
+      # See handle_navigate()'s identical reset for why this is required.
+      self$suppress_next_save <- FALSE
+      self$send_sibling_metadata()
+
+      if (!is.null(attachments)) {
+        # sendMessageEdit() always sends `attachments` (defaulting to `[]`),
+        # which jsonlite deserializes to a non-NULL, length-0 list() -- so an
+        # empty-but-present list must still force attachment_mode = "set"
+        # below, rather than falling to the else branch and leaving whatever
+        # happens to be staged in the main compose box untouched.
+        #
+        # Same validate-then-normalize pattern as Python's handle_edit --
+        # never trust client-side validation alone, and reconstruct a
+        # canonical record per attachment so any extra client-sent fields are
+        # dropped before echoing them back through update_input.
+        validate_attachments(attachments)
+        attachments <- lapply(attachments, function(a) {
+          list(
+            mime = a[["mime"]],
+            data_url = a[["data_url"]],
+            name = a[["name"]],
+            size = a[["size"]]
+          )
+        })
+        update_chat_user_input(
+          private$chat_id,
+          value = content,
+          submit = TRUE,
+          attachments = attachments,
+          attachment_mode = "set",
+          session = private$session
+        )
+      } else {
+        update_chat_user_input(
+          private$chat_id,
+          value = content,
+          submit = TRUE,
+          session = private$session
+        )
+      }
     }
   ),
 
@@ -445,6 +638,9 @@ HistoryController <- R6::R6Class(
 #'   `"none"` disables automatic restore entirely.
 #' @param store Storage backend: `"auto"` (default: memory in dev, file in
 #'   production), `"memory"`, `"file"`, or a [ConversationStore] R6 instance.
+#'   `"auto"` emits a once-per-session message announcing which backend was
+#'   chosen; set `options(shinychat.history_options.store_auto.quiet = TRUE)`
+#'   to silence it.
 #' @param scope Storage namespace for conversations. A string, a
 #'   `function(session)` returning a string, or `NULL` (default: uses
 #'   `session$user` if authenticated, otherwise a per-browser token).
@@ -467,6 +663,11 @@ history_options <- function(
   max_store_mb = 100
 ) {
   restore_mode <- match.arg(restore_mode)
+  if (!is.function(title) && !is.null(title) && !identical(title, "auto")) {
+    rlang::abort(
+      '`title` must be "auto", a function(recorded_turns), or NULL.'
+    )
+  }
   structure(
     list(
       restore_mode = restore_mode,
@@ -547,7 +748,7 @@ chat_enable_history <- function(
     controller$add_restore_callback(on_restore)
   }
 
-  # Read back via session by chat_history_on_response() and the
+  # Read back via session by the message_response_effect observer and the
   # on_save/on_restore hooks in chat_app().
   set_session_chat_bookmark_info(
     session,
@@ -564,7 +765,12 @@ chat_enable_history <- function(
       "_history_select",
       "_history_new",
       "_history_rename",
-      "_history_delete"
+      "_history_delete",
+      "_message_edit",
+      "_message_navigate",
+      # Carries StoredMessage-like list objects, which aren't
+      # JSON-serializable for Shiny's bookmark input.json.
+      "_messages"
     )
   )
   excluded <- session$getBookmarkExclude()
@@ -746,8 +952,11 @@ chat_enable_history <- function(
             if (!identical(restore_mode, "bookmark")) {
               restore_after_first_flush(target$values)
             }
+          } else {
+            controller$ui_offset <- record_ui_count(target)
           }
           controller$record <- target
+          controller$send_sibling_metadata()
           controller$send_history_update()
           initialized <<- TRUE
           controller$notify_settled(TRUE)
@@ -778,8 +987,11 @@ chat_enable_history <- function(
         if (restore_ui) {
           controller$replay_ui(target)
           restore_after_first_flush(target$values)
+        } else {
+          controller$ui_offset <- record_ui_count(target)
         }
         controller$record <- target
+        controller$send_sibling_metadata()
       }
     }
 
@@ -867,12 +1079,90 @@ chat_enable_history <- function(
     }
   )
 
+  message_edit_effect <- shiny::observeEvent(
+    session$input[[paste0(id, "_message_edit")]],
+    label = "message_edit",
+    {
+      if (is.null(controller$partition)) {
+        return()
+      }
+      payload <- session$input[[paste0(id, "_message_edit")]]
+      tryCatch(
+        controller$handle_edit(
+          as.integer(payload$index)[[1L]],
+          as.character(payload$content)[[1L]],
+          payload$attachments
+        ),
+        error = function(e) {
+          history_notify_error("Could not edit message", e)
+        }
+      )
+    }
+  )
+
+  message_navigate_effect <- shiny::observeEvent(
+    session$input[[paste0(id, "_message_navigate")]],
+    label = "message_navigate",
+    {
+      if (is.null(controller$partition)) {
+        return()
+      }
+      payload <- session$input[[paste0(id, "_message_navigate")]]
+      tryCatch(
+        controller$handle_navigate(
+          as.integer(payload$index)[[1L]],
+          as.character(payload$direction)[[1L]]
+        ),
+        error = function(e) {
+          history_notify_error("Could not navigate messages", e)
+        }
+      )
+    }
+  )
+
+  # The save trigger: fires once the browser echoes an updated `_messages`
+  # snapshot back to the server. This must be event-driven (not chained
+  # directly onto the streaming response's promise) because the echo is a
+  # separate round trip -- the browser only reports a finished assistant
+  # reply *after* it has rendered it and sent it back over the websocket.
+  # Triggering on stream completion instead would run on_response() one
+  # message ahead of what the client has actually reported, and
+  # extend_record_linear() would misattach the still-unreported assistant
+  # reply to the wrong (next round's) node.
+  message_response_effect <- shiny::observeEvent(
+    session$input[[paste0(id, "_messages")]],
+    label = "history_on_response",
+    ignoreInit = TRUE,
+    {
+      if (is.null(controller$partition)) {
+        return()
+      }
+      messages <- get_reported_messages(session, id)
+      if (length(messages) == 0) {
+        return()
+      }
+      last_role <- messages[[length(messages)]]$role
+      if (!identical(last_role, "assistant")) {
+        return()
+      }
+      tryCatch(
+        controller$on_response(get_turns_recorded(controller$get_client())),
+        error = function(e) {
+          history_notify_error("Could not save conversation", e)
+        }
+      )
+    }
+  )
+
   cancel <- function() {
     init_effect$destroy()
     select_effect$destroy()
     new_effect$destroy()
     rename_effect$destroy()
     delete_effect$destroy()
+    message_response_effect$destroy()
+    message_edit_effect$destroy()
+    message_navigate_effect$destroy()
     if (!is.null(stamp_cancel)) {
       stamp_cancel()
     }
@@ -894,39 +1184,6 @@ chat_enable_history <- function(
   }
 
   invisible(cancel)
-}
-
-chat_history_on_response <- function(
-  id,
-  stream_promise,
-  session = shiny::getDefaultReactiveDomain()
-) {
-  controller <- get_session_chat_bookmark_info(
-    session,
-    paste0(id, ".history-controller")
-  )
-  if (is.null(controller)) {
-    return(stream_promise)
-  }
-
-  result <- promises::then(stream_promise, function(value) {
-    if (!controller$is_replaying) {
-      recorded_turns <- get_turns_recorded(controller$get_client())
-      controller$on_response(recorded_turns)
-    }
-    value
-  })
-
-  promises::catch(result, function(e) {
-    shiny::showNotification(
-      sanitized_error_message(e),
-      type = "error",
-      duration = NULL
-    )
-    rlang::warn("Could not save conversation", parent = e)
-  })
-
-  result
 }
 
 call_on_save <- function(fn, values) {

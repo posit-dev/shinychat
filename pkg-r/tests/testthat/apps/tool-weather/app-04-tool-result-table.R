@@ -14,10 +14,15 @@ get_weather_forecast <- tool(
     ContentToolResult(
       forecast_data,
       extra = list(
-        display = list(
+        display = tool_result_display(
           html = forecast_table,
-          title = paste("Weather Forecast for", location_name),
-          full_screen = TRUE
+          title = paste("Got weather forecast for", location_name),
+          label = location_name,
+          value_preview = paste(nrow(forecast_data), "hourly readings"),
+          show_request = FALSE,
+          open = TRUE,
+          full_screen = TRUE,
+          footer = tags$small("Forecast data from weather.gov")
         )
       )
     )
@@ -30,7 +35,7 @@ get_weather_forecast <- tool(
     location_name = type_string("Name of the location for display to the user")
   ),
   annotations = tool_annotations(
-    title = "Weather Forecast",
+    title = "Getting weather forecast",
     icon = bsicons::bs_icon("cloud-sun")
   )
 )

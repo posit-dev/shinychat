@@ -148,7 +148,9 @@ def test_chat_ui_async_iterator_raises():
 
 
 def test_chat_greeting_tag_with_dependency_has_html_deps():
-    dep = HTMLDependency("my-dep", "1.0.0", source={"package": None, "subdir": "."})
+    dep = HTMLDependency(
+        "my-dep", "1.0.0", source={"package": None, "subdir": "."}
+    )
     g = chat_greeting(tags.div("hello", dep))
     assert g.content_type == "html"
     dep_names = [d.name for d in g.html_deps]
@@ -480,5 +482,3 @@ def test_resolve_greeting_awaitable_callable():
     _run_async(_run)
     actions = _spy_actions(spy)
     assert actions[0]["content"] == "## Async Generated"
-
-

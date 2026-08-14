@@ -16,6 +16,8 @@ from ._history_types import (
     ConversationMeta,
     ConversationNode,
     ConversationRecord,
+    UnsupportedSchemaVersionError,
+    check_schema_version,
 )
 
 logger = logging.getLogger(__name__)
@@ -87,7 +89,12 @@ class ConversationStore(ABC):
 @dataclasses.dataclass
 class _WriteState:
     turn_seq_map: dict[str, list[int]] = dataclasses.field(default_factory=dict)
-    ui_node_set: set[str] = dataclasses.field(default_factory=set)
+    # node_id -> count of UI messages last persisted for that node. A node's
+    # `ui` is append-only, so a change in length is a sufficient dirty-check;
+    # on change we re-append the node's full current UI. get() reads
+    # ui.jsonl last-write-wins, so the newest (longest) line for a node id
+    # is always what's returned.
+    ui_node_len: dict[str, int] = dataclasses.field(default_factory=dict)
     next_turn_seq: int = 0
 
 
@@ -146,8 +153,8 @@ class FileConversationStore(ConversationStore):
             ):
                 try:
                     entry = json.loads(line)
-                    ws.ui_node_set.add(entry["node_id"])
-                except (json.JSONDecodeError, KeyError):
+                    ws.ui_node_len[entry["node_id"]] = len(entry["data"])
+                except (json.JSONDecodeError, KeyError, TypeError):
                     continue
         self._write_state[key] = ws
         return ws
@@ -166,6 +173,9 @@ class FileConversationStore(ConversationStore):
                     continue
                 try:
                     raw = json.loads(record_file.read_text(encoding="utf-8"))
+                    schema_version = check_schema_version(
+                        raw.get("schema_version")
+                    )
                     nodes_raw = raw.get("nodes", {})
                     nodes = {}
                     for nid, nd in nodes_raw.items():
@@ -175,7 +185,7 @@ class FileConversationStore(ConversationStore):
                             turns=[],
                         )
                     rec = ConversationRecord(
-                        schema_version=raw.get("schema_version", 1),
+                        schema_version=schema_version,
                         id=raw["id"],
                         title=raw["title"],
                         title_source=raw.get("title_source"),
@@ -192,6 +202,8 @@ class FileConversationStore(ConversationStore):
                         f.stat().st_size for f in d.iterdir() if f.is_file()
                     )
                     metas.append(rec.meta(size_bytes=size_bytes))
+                except UnsupportedSchemaVersionError:
+                    raise
                 except Exception as e:
                     logger.warning("Unreadable conversation %s: %s", d.name, e)
                     continue
@@ -211,6 +223,7 @@ class FileConversationStore(ConversationStore):
             return None
 
         raw = json.loads(record_file.read_text(encoding="utf-8"))
+        schema_version = check_schema_version(raw.get("schema_version"))
 
         turns_map: dict[int, dict[str, Any]] = {}
         turns_file = conv_dir / "turns.jsonl"
@@ -245,10 +258,11 @@ class FileConversationStore(ConversationStore):
                 children=node_data.get("children", []),
                 turns=turns,
                 ui=ui_map.get(nid),
+                selected_child=node_data.get("selected_child"),
             )
 
         return ConversationRecord(
-            schema_version=raw.get("schema_version", 1),
+            schema_version=schema_version,
             id=raw["id"],
             title=raw["title"],
             title_source=raw.get("title_source"),
@@ -266,8 +280,18 @@ class FileConversationStore(ConversationStore):
     async def put(
         self, partition: ConversationPartition, record: ConversationRecord
     ) -> None:
+        check_schema_version(record.schema_version)
+
         partition_dir = await self._partition_dir(partition)
         conv_dir = safe_conv_path(partition_dir, record.id)
+        # Validate the on-disk schema version before creating/modifying
+        # anything, so an unsupported existing record is rejected fail-closed
+        # rather than partially overwritten.
+        record_file = conv_dir / "record.json"
+        if record_file.is_file():
+            raw = json.loads(record_file.read_text(encoding="utf-8"))
+            check_schema_version(raw.get("schema_version"))
+
         conv_dir.mkdir(parents=True, exist_ok=True)
 
         ws = self._get_or_init_write_state(partition, record.id, conv_dir)
@@ -290,18 +314,19 @@ class FileConversationStore(ConversationStore):
                         )
                     )
                 ws.turn_seq_map[nid] = turn_ids
-            if node.ui is not None and nid not in ws.ui_node_set:
+            if node.ui is not None and len(node.ui) != ws.ui_node_len.get(nid):
                 new_ui_lines.append(
                     json.dumps(
                         {"node_id": nid, "data": node.ui},
                         ensure_ascii=False,
                     )
                 )
-                ws.ui_node_set.add(nid)
+                ws.ui_node_len[nid] = len(node.ui)
             record_nodes[nid] = {
                 "parent": node.parent,
                 "children": node.children,
                 "turn_ids": ws.turn_seq_map.get(nid, []),
+                "selected_child": node.selected_child,
             }
 
         turns_file = conv_dir / "turns.jsonl"
@@ -411,6 +436,8 @@ class InMemoryConversationStore(ConversationStore):
     async def put(
         self, partition: ConversationPartition, record: ConversationRecord
     ) -> None:
+        check_schema_version(record.schema_version)
+
         if partition not in self._data:
             self._data[partition] = {}
         self._data[partition][record.id] = record
