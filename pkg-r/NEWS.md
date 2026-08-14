@@ -37,6 +37,13 @@
 
 ## Bug fixes
 
+* `chat_restore()` now restores the chat's displayed UI from the browser's
+  message snapshot (server bookmark store), preserving display-only
+  transformations. The bookmark on a completed response now fires once the
+  browser reports the finished reply, so the persisted UI includes it (#272 follow-up).
+
+* Messages passed to `chat_ui(messages = )` are no longer captured in the chat's persisted transcript. Because the page markup re-renders them on every load, restoring a bookmark previously showed each of them twice.
+
 * Fixed `output_markdown_stream()` permanently stopping following new content after the user scrolled back to the bottom. Pinning was decided only from `scroll` events, which browsers dispatch asynchronously; if a chunk grew the container first, the user's at-bottom position no longer read as at-bottom and auto-scroll silently disengaged for good. (#282)
 
 * `chat_app()` no longer renders a close button or registers a `stopApp()` observer when deployed to a server. Both are now gated on `rlang::is_interactive()`, preventing session crashes in multi-user deployments. (#265)

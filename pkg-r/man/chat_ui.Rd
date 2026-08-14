@@ -43,7 +43,14 @@ interpreted as markdown as long as they're not inside HTML.
 }
 \item A named list of \code{content} and \code{role}. The \code{content} can contain content
 as described above, and the \code{role} can be "assistant" or "user".
-}}
+}
+
+These messages are page markup: they re-render on every page load,
+including a bookmark-restored one, so they are not captured in the chat's
+persisted transcript. They are also cleared by \code{\link[=chat_enable_history]{chat_enable_history()}}'s
+replay, so a history-enabled app loses them at the first conversation
+switch -- send startup content with \code{\link[=chat_append]{chat_append()}} instead if it needs to
+survive either.}
 
 \item{greeting}{An optional greeting to display when the chat first loads.
 Can be a \code{\link[=chat_greeting]{chat_greeting()}} object, or a plain string (which is

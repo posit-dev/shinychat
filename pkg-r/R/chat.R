@@ -218,6 +218,13 @@ chat_greeting <- function(
 #'   * A named list of `content` and `role`. The `content` can contain content
 #'     as described above, and the `role` can be "assistant" or "user".
 #'
+#'   These messages are page markup: they re-render on every page load,
+#'   including a bookmark-restored one, so they are not captured in the chat's
+#'   persisted transcript. They are also cleared by [chat_enable_history()]'s
+#'   replay, so a history-enabled app loses them at the first conversation
+#'   switch -- send startup content with [chat_append()] instead if it needs to
+#'   survive either.
+#'
 #' @param greeting An optional greeting to display when the chat first loads.
 #'   Can be a [chat_greeting()] object, or a plain string (which is
 #'   auto-wrapped with default options). The greeting is dismissed when the
@@ -989,7 +996,6 @@ chat_append_stream <- function(
   session = getDefaultReactiveDomain()
 ) {
   result <- chat_append_stream_impl(id, stream, role, icon, session)
-  result <- chat_update_bookmark(id, result, session = session)
   # History saves are triggered by the client's `_messages` echo (see the
   # message_response_effect observer in chat_enable_history()), not chained
   # here onto stream completion -- the browser only reports the finished

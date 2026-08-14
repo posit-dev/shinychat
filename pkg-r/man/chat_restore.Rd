@@ -46,12 +46,14 @@ If either \code{bookmark_on_input} or \code{bookmark_on_response} is \code{TRUE}
 App's bookmark will be automatically updated without showing a modal to the
 user.
 
-Note: The \code{client}'s chat state and the greeting content are both
-saved/restored automatically. If the \code{client}'s state doesn't properly
-capture the chat's UI (i.e., a transformation is applied in-between
-receiving and displaying the message), you may need to implement your own
-\code{session$onRestore()} (and possibly \code{session$onBookmark}) handler to restore
-any additional state.
+Note: The chat's displayed UI is restored from the browser's own message
+snapshot when \code{bookmarkStore = "server"}, so display-only transformations
+(rendering applied between receiving a message and showing it) are preserved.
+Under \code{bookmarkStore = "url"}, and for bookmarks saved before this snapshot
+existed, restoration falls back to re-deriving the UI from the \code{client}'s
+turns, which does not capture such transformations. The same fallback (with
+a warning) covers a snapshot that can't be read back. The greeting content is
+also saved/restored automatically.
 
 To avoid restoring chat history from the \code{client}, you can ensure that the
 history is empty by calling \code{client$set_turns(list())} before passing the

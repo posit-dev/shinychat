@@ -67,6 +67,13 @@ export interface ChatMessageData {
   fenceMarker?: string
   /** True when the stream was cancelled by the user before it completed. */
   cancelled?: boolean
+  /**
+   * True for messages parsed out of the server-rendered page markup
+   * (`chat_ui(messages =)`). Excluded from the reported snapshot: the markup
+   * re-renders them on every page load, so persisting them duplicates them on
+   * restore, and the server has no record of having sent them.
+   */
+  fromMarkup?: boolean
   /** Sibling navigation metadata (index within a set of edited variants, total variants). */
   siblings?: { index: number; total: number }
 }
@@ -1141,7 +1148,7 @@ function blockToSegment(block: MessageBlock): SnapshotSegment {
 
 export function buildMessagesSnapshot(state: ChatState): SnapshotMessage[] {
   return state.messages
-    .filter((m) => !m.isPlaceholder && !m.streaming)
+    .filter((m) => !m.isPlaceholder && !m.streaming && !m.fromMarkup)
     .map((m) => {
       const msg: SnapshotMessage = {
         role: m.role,

@@ -61,6 +61,7 @@ function parseInitialMessages(container: HTMLElement): ChatMessageData[] {
       streaming: false,
       icon,
       blocks: [{ type: "content", content, contentType }],
+      fromMarkup: true,
     })
   })
 
