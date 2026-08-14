@@ -33,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* Fixed a cross-site scripting vulnerability in bookmark and chat-history restoration. The browser's message snapshot was persisted verbatim and replayed through sinks that render raw HTML, so a forged snapshot minted into a shareable server bookmark could execute script against whoever opened that URL. HTML content in a reported snapshot is now accepted only when it matches content the server actually sent; anything else renders as literal text.
+
+* HTML dependencies reported back by the browser in `input[f"{id}_messages"]` are now matched against the dependencies the server actually sent, and the server's own copy is used in their place. Previously the client's dependency objects were carried through verbatim into saved history and bookmark state, so a forged report could have been replayed as scripts into anyone opening the resulting bookmark URL.
+
 * Fixed `MarkdownStream` permanently stopping following new content after the user scrolled back to the bottom. Pinning was decided only from `scroll` events, which browsers dispatch asynchronously; if a chunk grew the container first, the user's at-bottom position no longer read as at-bottom and auto-scroll silently disengaged for good. (#282)
 
 ## [0.6.0] - 2026-07-06

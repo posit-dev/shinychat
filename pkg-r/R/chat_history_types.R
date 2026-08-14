@@ -1,26 +1,54 @@
-messages_input_value <- function(value) {
+messages_input_value <- function(value, session = NULL) {
   if (!is.list(value)) {
-    rlang::abort(paste0(
-      "Expected a list from shinychat.messages, got ",
-      class(value)[1]
-    ))
+    rlang::abort(
+      paste0(
+        "Expected a list from shinychat.messages, got ",
+        class(value)[1]
+      )
+    )
   }
-  lapply(value, function(m) {
+  untrusted <- 0L
+  out <- lapply(value, function(m) {
     message <- list(
-      role = m$role,
-      segments = lapply(m$segments, function(s) {
-        list(content = s$content, content_type = s$content_type)
+      role = m[["role"]],
+      segments = lapply(m[["segments"]], function(s) {
+        # Never carry the client's own html forward -- see
+        # is_trusted_html_content() for why the report is only a lookup. A miss
+        # degrades to markdown, where the client escapes shinychat's raw-HTML
+        # element names, so forged content renders as literal text.
+        if (
+          identical(s[["content_type"]], "html") &&
+            !is_trusted_html_content(session, s[["content"]])
+        ) {
+          untrusted <<- untrusted + 1L
+          return(list(content = s[["content"]], content_type = "markdown"))
+        }
+        list(content = s[["content"]], content_type = s[["content_type"]])
       })
     )
-    if (!is.null(m$htmlDeps)) {
-      message$htmlDeps <- m$htmlDeps
+    # Never carry the client's own dependency objects forward -- see
+    # trusted_html_deps() for why the report is only an identity lookup.
+    deps <- trusted_html_deps(session, m[["htmlDeps"]])
+    if (!is.null(deps)) {
+      message$htmlDeps <- deps
     }
-    if (!is.null(m$attachments) && length(m$attachments) > 0) {
-      validate_attachments(m$attachments)
-      message$attachments <- m$attachments
+    if (!is.null(m[["attachments"]]) && length(m[["attachments"]]) > 0) {
+      validate_attachments(m[["attachments"]])
+      message$attachments <- m[["attachments"]]
     }
     message
   })
+  if (untrusted > 0) {
+    rlang::warn(
+      paste0(
+        "Ignored the html content type on ",
+        untrusted,
+        " reported chat segment(s) the server did not send; ",
+        "they will render as literal text."
+      )
+    )
+  }
+  out
 }
 
 int_to_hex <- function(n, width = 13L) {

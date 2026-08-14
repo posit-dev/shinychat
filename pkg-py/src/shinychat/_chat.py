@@ -76,6 +76,7 @@ from ._chat_types import (
 )
 from ._history import ChatHistory, HistoryOptions
 from ._html_deps_py_shiny import shinychat_dependency
+from ._html_trust import record_sent_action
 from ._utils_types import DEPRECATED, DEPRECATED_TYPE, MISSING, MISSING_TYPE
 
 if TYPE_CHECKING:
@@ -1971,6 +1972,7 @@ class Chat:
             "id": self.id,
             "action": action,
         }
+        record_sent_action(self._session, self.id, action, html_deps)
         if html_deps:
             envelope["html_deps"] = html_deps
         await self._session.send_custom_message("shinyChatMessage", envelope)
