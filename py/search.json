@@ -1,128 +1,98 @@
 [
   {
-    "objectID": "api/types.ToolResultDisplay.html",
-    "href": "api/types.ToolResultDisplay.html",
-    "title": "types.ToolResultDisplay",
+    "objectID": "api/types.ConversationStore.html",
+    "href": "api/types.ConversationStore.html",
+    "title": "types.ConversationStore",
     "section": "",
-    "text": "types.ToolResultDisplay()\nCustomize the condensed display for a tool result.\nAssign a ToolResultDisplay instance to a chatlas.ContentToolResult in its extra={\"display\": ...} metadata. Tool calls normally appear as a compact activity row, optionally expand into a grouped call list, and drill into a full request/result card. ToolResultDisplay customizes that row and card without replacing either.\nUse a present-tense definition title while the tool is running, then a settled result title here when that improves the wording. For example, register a tool with annotations={\"title\": \"Looking up weather\"} and return title=\"Looked up weather for Duluth\". In a single-call row, the result title replaces the definition title when the result arrives. A multi-call group keeps the shared definition title in its group row and can use distinct result titles to identify calls in the expanded list. shinychat does not conjugate titles automatically.\nlabel and value_preview are compact, per-call metadata shown in the activity row and grouped call list. Use them to distinguish repeated calls without opening the card. html, markdown, and text customize the result body inside the drill-down card. To replace the card with standalone UI instead, register a custom message_content or message_content_chunk handler for a ContentToolResult subclass.\nSee the Tool calling guide for complete tool-display examples.\n\n\nimport chatlas as ctl\nfrom shinychat.types import ToolResultDisplay\n\n\ndef my_tool():\n    display = ToolResultDisplay(\n        title=\"Looked up weather for Duluth\",\n        label=\"Duluth, MN\",\n        value_preview=\"18 C, clear\",\n        markdown=\"A _markdown_ message shown to user.\",\n    )\n    return ctl.ContentToolResult(\n        value=\"Value the model sees\",\n        extra={\"display\": display},\n    )\n\n\nchat_client = ctl.ChatAuto()\nchat_client.register_tool(my_tool)\n\n\n\n\ntitle: The settled title for this result and its drill-down card. It replaces the definition title in a single-call row. In a multi-call group, a distinct result title can identify the call in the expanded call list.\nlabel: A short, per-call identifying value shown alongside the title (e.g. a filename or query). Distinguishes this call from other calls to the same tool. Without one, shinychat falls back to the call’s own title (when it differs from the group’s), then a short preview of the call’s arguments, then the tool name.\nvalue_preview: A terse, per-call preview of the tool result, shown in the condensed activity row and grouped call list before the full result is expanded.\nicon: An icon to display alongside the title in the activity row and drill-down card.\nshow_request: Whether to show the tool request inside the drill-down card.\nopen: Whether the drill-down card is expanded by default.\nfull_screen: Whether to display a fullscreen toggle button on the drill-down card.\nhtml: Custom HTML content inside the drill-down card, in place of the default result display.\nmarkdown: Custom Markdown string inside the drill-down card, in place of the default result display.\ntext: Custom plain text string inside the drill-down card, in place of the default result display.\nfooter: Optional HTML content to display in the drill-down card footer.",
-    "crumbs": [
-      "API Reference",
-      "Tool display",
-      "types.ToolResultDisplay"
-    ]
-  },
-  {
-    "objectID": "api/types.ToolResultDisplay.html#examples",
-    "href": "api/types.ToolResultDisplay.html#examples",
-    "title": "types.ToolResultDisplay",
-    "section": "",
-    "text": "import chatlas as ctl\nfrom shinychat.types import ToolResultDisplay\n\n\ndef my_tool():\n    display = ToolResultDisplay(\n        title=\"Looked up weather for Duluth\",\n        label=\"Duluth, MN\",\n        value_preview=\"18 C, clear\",\n        markdown=\"A _markdown_ message shown to user.\",\n    )\n    return ctl.ContentToolResult(\n        value=\"Value the model sees\",\n        extra={\"display\": display},\n    )\n\n\nchat_client = ctl.ChatAuto()\nchat_client.register_tool(my_tool)",
-    "crumbs": [
-      "API Reference",
-      "Tool display",
-      "types.ToolResultDisplay"
-    ]
-  },
-  {
-    "objectID": "api/types.ToolResultDisplay.html#display-fields",
-    "href": "api/types.ToolResultDisplay.html#display-fields",
-    "title": "types.ToolResultDisplay",
-    "section": "",
-    "text": "title: The settled title for this result and its drill-down card. It replaces the definition title in a single-call row. In a multi-call group, a distinct result title can identify the call in the expanded call list.\nlabel: A short, per-call identifying value shown alongside the title (e.g. a filename or query). Distinguishes this call from other calls to the same tool. Without one, shinychat falls back to the call’s own title (when it differs from the group’s), then a short preview of the call’s arguments, then the tool name.\nvalue_preview: A terse, per-call preview of the tool result, shown in the condensed activity row and grouped call list before the full result is expanded.\nicon: An icon to display alongside the title in the activity row and drill-down card.\nshow_request: Whether to show the tool request inside the drill-down card.\nopen: Whether the drill-down card is expanded by default.\nfull_screen: Whether to display a fullscreen toggle button on the drill-down card.\nhtml: Custom HTML content inside the drill-down card, in place of the default result display.\nmarkdown: Custom Markdown string inside the drill-down card, in place of the default result display.\ntext: Custom plain text string inside the drill-down card, in place of the default result display.\nfooter: Optional HTML content to display in the drill-down card footer.",
-    "crumbs": [
-      "API Reference",
-      "Tool display",
-      "types.ToolResultDisplay"
-    ]
-  },
-  {
-    "objectID": "api/types.ConversationPartition.html",
-    "href": "api/types.ConversationPartition.html",
-    "title": "types.ConversationPartition",
-    "section": "",
-    "text": "types.ConversationPartition\ntypes.ConversationPartition(chat_id, scope)\nStorage partition for a chat history collection.\nchat_id is the resolved/namespaced chat id. scope is the owner namespace: explicit scope, authenticated user, or browser token.",
+    "text": "types.ConversationStore()\nStorage interface for chat conversation history.\nConversations are partitioned by ConversationPartition. Implement the four abstract methods to plug any backend into Chat.enable_history().\n\n\n\n\n\nName\nDescription\n\n\n\n\ndelete\nRemove a conversation. Missing ids are a no-op.\n\n\nget\nFull record, or None if missing.\n\n\nlist\nAll conversations in partition, newest-first (by updated_at).\n\n\nput\nUpsert. Rename = mutate record.title and put().\n\n\ntotal_size\nTotal bytes used by all conversations in partition.\n\n\n\n\n\ntypes.ConversationStore.delete(partition, conv_id)\nRemove a conversation. Missing ids are a no-op.\n\n\n\ntypes.ConversationStore.get(partition, conv_id)\nFull record, or None if missing.\n\n\n\ntypes.ConversationStore.list(partition)\nAll conversations in partition, newest-first (by updated_at).\n\n\n\ntypes.ConversationStore.put(partition, record)\nUpsert. Rename = mutate record.title and put().\n\n\n\ntypes.ConversationStore.total_size(partition)\nTotal bytes used by all conversations in partition.\nDerived from list()’s per-record size_bytes — backends don’t need to override this unless they have a cheaper way to compute it.",
     "crumbs": [
       "API Reference",
       "Conversation history",
-      "types.ConversationPartition"
+      "types.ConversationStore"
     ]
   },
   {
-    "objectID": "api/types.ConversationMeta.html",
-    "href": "api/types.ConversationMeta.html",
-    "title": "types.ConversationMeta",
+    "objectID": "api/types.ConversationStore.html#methods",
+    "href": "api/types.ConversationStore.html#methods",
+    "title": "types.ConversationStore",
     "section": "",
-    "text": "types.ConversationMeta\ntypes.ConversationMeta()",
+    "text": "Name\nDescription\n\n\n\n\ndelete\nRemove a conversation. Missing ids are a no-op.\n\n\nget\nFull record, or None if missing.\n\n\nlist\nAll conversations in partition, newest-first (by updated_at).\n\n\nput\nUpsert. Rename = mutate record.title and put().\n\n\ntotal_size\nTotal bytes used by all conversations in partition.\n\n\n\n\n\ntypes.ConversationStore.delete(partition, conv_id)\nRemove a conversation. Missing ids are a no-op.\n\n\n\ntypes.ConversationStore.get(partition, conv_id)\nFull record, or None if missing.\n\n\n\ntypes.ConversationStore.list(partition)\nAll conversations in partition, newest-first (by updated_at).\n\n\n\ntypes.ConversationStore.put(partition, record)\nUpsert. Rename = mutate record.title and put().\n\n\n\ntypes.ConversationStore.total_size(partition)\nTotal bytes used by all conversations in partition.\nDerived from list()’s per-record size_bytes — backends don’t need to override this unless they have a cheaper way to compute it.",
     "crumbs": [
       "API Reference",
       "Conversation history",
-      "types.ConversationMeta"
+      "types.ConversationStore"
     ]
   },
   {
-    "objectID": "api/index.html",
-    "href": "api/index.html",
-    "title": "shinychat Reference",
+    "objectID": "api/message_content_chunk.html",
+    "href": "api/message_content_chunk.html",
+    "title": "message_content_chunk",
     "section": "",
-    "text": "Chat\nCreate a chat interface.\n\n\ntypes.ChatClient\nWraps a chatlas client bound to a :class:~shinychat.Chat instance.\n\n\ntypes.ChatMessage\n\n\n\ntypes.Attachment\nAn image, PDF, or text file to attach to a chat message.\n\n\nchat_ui\nUI container for a chat component (Shiny Core).\n\n\nchat_greeting\nCreate a greeting for a chat UI.\n\n\n\n\n\n\n\n\n\ntypes.ToolResultDisplay\nCustomize the condensed display for a tool result.\n\n\nmessage_content\nExtract content from various message types into a ChatMessage.\n\n\nmessage_content_chunk\nExtract content from various message chunk types into a ChatMessage.\n\n\n\n\n\n\n\n\n\nexpress.Chat\n\n\n\n\n\n\n\n\n\n\ntypes.HistoryOptions\nConfiguration for :class:~shinychat.Chat conversation history.\n\n\ntypes.ConversationPartition\nStorage partition for a chat history collection.\n\n\ntypes.ConversationStore\nStorage interface for chat conversation history.\n\n\ntypes.FileConversationStore\nDefault store: each conversation is a directory at\n\n\ntypes.ConversationRecord\n\n\n\ntypes.ConversationMeta\n\n\n\n\n\n\n\n\n\n\nplaywright.ChatController\nController for :func:shiny.ui.chat.",
+    "text": "message_content_chunk(chunk)\nExtract content from various message chunk types into a ChatMessage.\nThis function uses singledispatch to allow for easy extension to support new chunk types. To add support for a new type, register a new function using the @message_content_chunk.register decorator.\nTo render a chatlas.ContentToolResult subclass as fully custom, standalone UI after a tool call settles, register complete and streaming handlers for it here and in message_content(). The pending condensed activity row remains while the tool runs, then shinychat pairs the custom result with that call and renders the returned UI outside the default drill-down card.\n\n\nfrom chatlas import ContentToolResult\nfrom shiny import ui\nfrom shinychat import message_content, message_content_chunk\nfrom shinychat.types import ChatMessage\n\n\nclass WeatherResult(ContentToolResult):\n    location_name: str\n\n\ndef weather_result_ui(result: WeatherResult) -&gt; ChatMessage:\n    temperature = result.value[\"temperature_2m\"]\n    return ChatMessage(\n        content=ui.div(\n            ui.h4(result.location_name),\n            f\"{temperature} C\",\n            class_=\"weather-result\",\n        )\n    )\n\n\n@message_content.register\ndef _(result: WeatherResult) -&gt; ChatMessage:\n    return weather_result_ui(result)\n\n\n@message_content_chunk.register\ndef _(result: WeatherResult) -&gt; ChatMessage:\n    return weather_result_ui(result)\n\n\n\n\n\n\n\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nchunk\n\nThe message chunk object to extract content from (e.g., ChatCompletionChunk, BaseMessageChunk, etc.).\nrequired\n\n\n\n\n\n\nThis function is implicitly called by Chat.append_message_stream() (on every chunk of a message stream). It is not intended to be called directly by users, but may be useful for debugging or advanced use cases.\n\n\n\n\n\n\nName\nType\nDescription\n\n\n\n\n\nChatMessage\nA ChatMessage object containing the extracted content and role.\n\n\n\n\n\n\n\n\n\nName\nType\nDescription\n\n\n\n\n\nValueError\nIf the chunk type is unsupported.",
     "crumbs": [
       "API Reference",
-      "shinychat Reference"
+      "Tool display",
+      "message_content_chunk"
     ]
   },
   {
-    "objectID": "api/index.html#shiny-core",
-    "href": "api/index.html#shiny-core",
-    "title": "shinychat Reference",
+    "objectID": "api/message_content_chunk.html#examples",
+    "href": "api/message_content_chunk.html#examples",
+    "title": "message_content_chunk",
     "section": "",
-    "text": "Chat\nCreate a chat interface.\n\n\ntypes.ChatClient\nWraps a chatlas client bound to a :class:~shinychat.Chat instance.\n\n\ntypes.ChatMessage\n\n\n\ntypes.Attachment\nAn image, PDF, or text file to attach to a chat message.\n\n\nchat_ui\nUI container for a chat component (Shiny Core).\n\n\nchat_greeting\nCreate a greeting for a chat UI.",
+    "text": "from chatlas import ContentToolResult\nfrom shiny import ui\nfrom shinychat import message_content, message_content_chunk\nfrom shinychat.types import ChatMessage\n\n\nclass WeatherResult(ContentToolResult):\n    location_name: str\n\n\ndef weather_result_ui(result: WeatherResult) -&gt; ChatMessage:\n    temperature = result.value[\"temperature_2m\"]\n    return ChatMessage(\n        content=ui.div(\n            ui.h4(result.location_name),\n            f\"{temperature} C\",\n            class_=\"weather-result\",\n        )\n    )\n\n\n@message_content.register\ndef _(result: WeatherResult) -&gt; ChatMessage:\n    return weather_result_ui(result)\n\n\n@message_content_chunk.register\ndef _(result: WeatherResult) -&gt; ChatMessage:\n    return weather_result_ui(result)",
     "crumbs": [
       "API Reference",
-      "shinychat Reference"
+      "Tool display",
+      "message_content_chunk"
     ]
   },
   {
-    "objectID": "api/index.html#tool-display",
-    "href": "api/index.html#tool-display",
-    "title": "shinychat Reference",
+    "objectID": "api/message_content_chunk.html#parameters",
+    "href": "api/message_content_chunk.html#parameters",
+    "title": "message_content_chunk",
     "section": "",
-    "text": "types.ToolResultDisplay\nCustomize the condensed display for a tool result.\n\n\nmessage_content\nExtract content from various message types into a ChatMessage.\n\n\nmessage_content_chunk\nExtract content from various message chunk types into a ChatMessage.",
+    "text": "Name\nType\nDescription\nDefault\n\n\n\n\nchunk\n\nThe message chunk object to extract content from (e.g., ChatCompletionChunk, BaseMessageChunk, etc.).\nrequired",
     "crumbs": [
       "API Reference",
-      "shinychat Reference"
+      "Tool display",
+      "message_content_chunk"
     ]
   },
   {
-    "objectID": "api/index.html#shiny-express",
-    "href": "api/index.html#shiny-express",
-    "title": "shinychat Reference",
+    "objectID": "api/message_content_chunk.html#note",
+    "href": "api/message_content_chunk.html#note",
+    "title": "message_content_chunk",
     "section": "",
-    "text": "express.Chat",
+    "text": "This function is implicitly called by Chat.append_message_stream() (on every chunk of a message stream). It is not intended to be called directly by users, but may be useful for debugging or advanced use cases.",
     "crumbs": [
       "API Reference",
-      "shinychat Reference"
+      "Tool display",
+      "message_content_chunk"
     ]
   },
   {
-    "objectID": "api/index.html#conversation-history",
-    "href": "api/index.html#conversation-history",
-    "title": "shinychat Reference",
+    "objectID": "api/message_content_chunk.html#returns",
+    "href": "api/message_content_chunk.html#returns",
+    "title": "message_content_chunk",
     "section": "",
-    "text": "types.HistoryOptions\nConfiguration for :class:~shinychat.Chat conversation history.\n\n\ntypes.ConversationPartition\nStorage partition for a chat history collection.\n\n\ntypes.ConversationStore\nStorage interface for chat conversation history.\n\n\ntypes.FileConversationStore\nDefault store: each conversation is a directory at\n\n\ntypes.ConversationRecord\n\n\n\ntypes.ConversationMeta",
+    "text": "Name\nType\nDescription\n\n\n\n\n\nChatMessage\nA ChatMessage object containing the extracted content and role.",
     "crumbs": [
       "API Reference",
-      "shinychat Reference"
+      "Tool display",
+      "message_content_chunk"
     ]
   },
   {
-    "objectID": "api/index.html#testing",
-    "href": "api/index.html#testing",
-    "title": "shinychat Reference",
+    "objectID": "api/message_content_chunk.html#raises",
+    "href": "api/message_content_chunk.html#raises",
+    "title": "message_content_chunk",
     "section": "",
-    "text": "playwright.ChatController\nController for :func:shiny.ui.chat.",
+    "text": "Name\nType\nDescription\n\n\n\n\n\nValueError\nIf the chunk type is unsupported.",
     "crumbs": [
       "API Reference",
-      "shinychat Reference"
+      "Tool display",
+      "message_content_chunk"
     ]
   },
   {
@@ -174,187 +144,6 @@
     ]
   },
   {
-    "objectID": "api/types.ConversationRecord.html",
-    "href": "api/types.ConversationRecord.html",
-    "title": "types.ConversationRecord",
-    "section": "",
-    "text": "types.ConversationRecord()\n\n\n\n\n\nName\nDescription\n\n\n\n\nmeta\nLightweight summary for ConversationStore.list().\n\n\n\n\n\ntypes.ConversationRecord.meta(size_bytes)\nLightweight summary for ConversationStore.list().\nSee ConversationMeta.size_bytes for why the caller must supply it.",
-    "crumbs": [
-      "API Reference",
-      "Conversation history",
-      "types.ConversationRecord"
-    ]
-  },
-  {
-    "objectID": "api/types.ConversationRecord.html#methods",
-    "href": "api/types.ConversationRecord.html#methods",
-    "title": "types.ConversationRecord",
-    "section": "",
-    "text": "Name\nDescription\n\n\n\n\nmeta\nLightweight summary for ConversationStore.list().\n\n\n\n\n\ntypes.ConversationRecord.meta(size_bytes)\nLightweight summary for ConversationStore.list().\nSee ConversationMeta.size_bytes for why the caller must supply it.",
-    "crumbs": [
-      "API Reference",
-      "Conversation history",
-      "types.ConversationRecord"
-    ]
-  },
-  {
-    "objectID": "api/message_content.html",
-    "href": "api/message_content.html",
-    "title": "message_content",
-    "section": "",
-    "text": "message_content(message)\nExtract content from various message types into a ChatMessage.\nThis function uses singledispatch to allow for easy extension to support new message types. To add support for a new type, register a new function using the @message_content.register decorator.\nTo render a chatlas.ContentToolResult subclass as fully custom, standalone UI after a tool call settles, register complete and streaming handlers for it here and in message_content_chunk(). The pending condensed activity row remains while the tool runs, then shinychat pairs the custom result with that call and renders the returned UI outside the default drill-down card.\n\n\nfrom chatlas import ContentToolResult\nfrom shiny import ui\nfrom shinychat import message_content, message_content_chunk\nfrom shinychat.types import ChatMessage\n\n\nclass WeatherResult(ContentToolResult):\n    location_name: str\n\n\ndef weather_result_ui(result: WeatherResult) -&gt; ChatMessage:\n    temperature = result.value[\"temperature_2m\"]\n    return ChatMessage(\n        content=ui.div(\n            ui.h4(result.location_name),\n            f\"{temperature} C\",\n            class_=\"weather-result\",\n        )\n    )\n\n\n@message_content.register\ndef _(result: WeatherResult) -&gt; ChatMessage:\n    return weather_result_ui(result)\n\n\n@message_content_chunk.register\ndef _(result: WeatherResult) -&gt; ChatMessage:\n    return weather_result_ui(result)\n\n\n\n\n\n\n\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nmessage\n\nThe message object to extract content from (e.g., ChatCompletion, BaseMessage, etc.).\nrequired\n\n\n\n\n\n\nThis function is implicitly called by Chat.append_message() to support handling of various message types. It is not intended to be called directly by users, but may be useful for debugging or advanced use cases.\n\n\n\n\n\n\nName\nType\nDescription\n\n\n\n\n\nChatMessage\nA ChatMessage object containing the extracted content and role.\n\n\n\n\n\n\n\n\n\nName\nType\nDescription\n\n\n\n\n\nValueError\nIf the message type is unsupported.",
-    "crumbs": [
-      "API Reference",
-      "Tool display",
-      "message_content"
-    ]
-  },
-  {
-    "objectID": "api/message_content.html#examples",
-    "href": "api/message_content.html#examples",
-    "title": "message_content",
-    "section": "",
-    "text": "from chatlas import ContentToolResult\nfrom shiny import ui\nfrom shinychat import message_content, message_content_chunk\nfrom shinychat.types import ChatMessage\n\n\nclass WeatherResult(ContentToolResult):\n    location_name: str\n\n\ndef weather_result_ui(result: WeatherResult) -&gt; ChatMessage:\n    temperature = result.value[\"temperature_2m\"]\n    return ChatMessage(\n        content=ui.div(\n            ui.h4(result.location_name),\n            f\"{temperature} C\",\n            class_=\"weather-result\",\n        )\n    )\n\n\n@message_content.register\ndef _(result: WeatherResult) -&gt; ChatMessage:\n    return weather_result_ui(result)\n\n\n@message_content_chunk.register\ndef _(result: WeatherResult) -&gt; ChatMessage:\n    return weather_result_ui(result)",
-    "crumbs": [
-      "API Reference",
-      "Tool display",
-      "message_content"
-    ]
-  },
-  {
-    "objectID": "api/message_content.html#parameters",
-    "href": "api/message_content.html#parameters",
-    "title": "message_content",
-    "section": "",
-    "text": "Name\nType\nDescription\nDefault\n\n\n\n\nmessage\n\nThe message object to extract content from (e.g., ChatCompletion, BaseMessage, etc.).\nrequired",
-    "crumbs": [
-      "API Reference",
-      "Tool display",
-      "message_content"
-    ]
-  },
-  {
-    "objectID": "api/message_content.html#note",
-    "href": "api/message_content.html#note",
-    "title": "message_content",
-    "section": "",
-    "text": "This function is implicitly called by Chat.append_message() to support handling of various message types. It is not intended to be called directly by users, but may be useful for debugging or advanced use cases.",
-    "crumbs": [
-      "API Reference",
-      "Tool display",
-      "message_content"
-    ]
-  },
-  {
-    "objectID": "api/message_content.html#returns",
-    "href": "api/message_content.html#returns",
-    "title": "message_content",
-    "section": "",
-    "text": "Name\nType\nDescription\n\n\n\n\n\nChatMessage\nA ChatMessage object containing the extracted content and role.",
-    "crumbs": [
-      "API Reference",
-      "Tool display",
-      "message_content"
-    ]
-  },
-  {
-    "objectID": "api/message_content.html#raises",
-    "href": "api/message_content.html#raises",
-    "title": "message_content",
-    "section": "",
-    "text": "Name\nType\nDescription\n\n\n\n\n\nValueError\nIf the message type is unsupported.",
-    "crumbs": [
-      "API Reference",
-      "Tool display",
-      "message_content"
-    ]
-  },
-  {
-    "objectID": "api/types.ConversationStore.html",
-    "href": "api/types.ConversationStore.html",
-    "title": "types.ConversationStore",
-    "section": "",
-    "text": "types.ConversationStore()\nStorage interface for chat conversation history.\nConversations are partitioned by ConversationPartition. Implement the four abstract methods to plug any backend into Chat.enable_history().\n\n\n\n\n\nName\nDescription\n\n\n\n\ndelete\nRemove a conversation. Missing ids are a no-op.\n\n\nget\nFull record, or None if missing.\n\n\nlist\nAll conversations in partition, newest-first (by updated_at).\n\n\nput\nUpsert. Rename = mutate record.title and put().\n\n\ntotal_size\nTotal bytes used by all conversations in partition.\n\n\n\n\n\ntypes.ConversationStore.delete(partition, conv_id)\nRemove a conversation. Missing ids are a no-op.\n\n\n\ntypes.ConversationStore.get(partition, conv_id)\nFull record, or None if missing.\n\n\n\ntypes.ConversationStore.list(partition)\nAll conversations in partition, newest-first (by updated_at).\n\n\n\ntypes.ConversationStore.put(partition, record)\nUpsert. Rename = mutate record.title and put().\n\n\n\ntypes.ConversationStore.total_size(partition)\nTotal bytes used by all conversations in partition.\nDerived from list()’s per-record size_bytes — backends don’t need to override this unless they have a cheaper way to compute it.",
-    "crumbs": [
-      "API Reference",
-      "Conversation history",
-      "types.ConversationStore"
-    ]
-  },
-  {
-    "objectID": "api/types.ConversationStore.html#methods",
-    "href": "api/types.ConversationStore.html#methods",
-    "title": "types.ConversationStore",
-    "section": "",
-    "text": "Name\nDescription\n\n\n\n\ndelete\nRemove a conversation. Missing ids are a no-op.\n\n\nget\nFull record, or None if missing.\n\n\nlist\nAll conversations in partition, newest-first (by updated_at).\n\n\nput\nUpsert. Rename = mutate record.title and put().\n\n\ntotal_size\nTotal bytes used by all conversations in partition.\n\n\n\n\n\ntypes.ConversationStore.delete(partition, conv_id)\nRemove a conversation. Missing ids are a no-op.\n\n\n\ntypes.ConversationStore.get(partition, conv_id)\nFull record, or None if missing.\n\n\n\ntypes.ConversationStore.list(partition)\nAll conversations in partition, newest-first (by updated_at).\n\n\n\ntypes.ConversationStore.put(partition, record)\nUpsert. Rename = mutate record.title and put().\n\n\n\ntypes.ConversationStore.total_size(partition)\nTotal bytes used by all conversations in partition.\nDerived from list()’s per-record size_bytes — backends don’t need to override this unless they have a cheaper way to compute it.",
-    "crumbs": [
-      "API Reference",
-      "Conversation history",
-      "types.ConversationStore"
-    ]
-  },
-  {
-    "objectID": "api/types.FileConversationStore.html",
-    "href": "api/types.FileConversationStore.html",
-    "title": "types.FileConversationStore",
-    "section": "",
-    "text": "types.FileConversationStore\ntypes.FileConversationStore(dir=None)\nDefault store: each conversation is a directory at &lt;dir&gt;/&lt;chat_id&gt;/&lt;scope&gt;/&lt;id&gt;/ containing record.json, turns.jsonl, and ui.jsonl.\nrecord.json holds tree structure and metadata (small, rewritten atomically on every save). turns.jsonl and ui.jsonl are append-only — new turns and UI entries are appended, never rewritten.\nOn get(), the three files are read and merged into a full ConversationRecord with inline turns and UI on each node. Callers never see the split.",
-    "crumbs": [
-      "API Reference",
-      "Conversation history",
-      "types.FileConversationStore"
-    ]
-  },
-  {
-    "objectID": "index.html",
-    "href": "index.html",
-    "title": "shinychat",
-    "section": "",
-    "text": "shinychat provides a Shiny toolkit for building generative AI applications like chatbots and streaming content. It works best with chatlas, but also works great with other LLM frameworks such as LangChain, Pydantic AI, and more."
-  },
-  {
-    "objectID": "index.html#installation",
-    "href": "index.html#installation",
-    "title": "shinychat",
-    "section": "Installation",
-    "text": "Installation\nshinychat is a dependency of the shiny package, so in most cases, you’ll want to just install shiny with:\nuv pip install shiny\nHowever, you can also install shinychat separately with:\nuv pip install shinychat\nOr, install the development version of shinychat from GitHub with:\nuv pip install git+https://github.com/posit-dev/shinychat.git"
-  },
-  {
-    "objectID": "index.html#quick-start",
-    "href": "index.html#quick-start",
-    "title": "shinychat",
-    "section": "Quick start",
-    "text": "Quick start\nThe fastest way to build a chatbot with shinychat is to pass a chatlas client to Chat(client=). This gives you streaming, file attachments, bookmarking, cancellation, and more out of the box — no manual wiring required.\nShiny Express\nfrom chatlas import ChatAnthropic\nfrom shiny.express import app_opts, ui\nfrom shinychat.express import Chat\n\nclient = ChatAnthropic(system_prompt=\"You are a helpful assistant.\")\nchat = Chat(id=\"chat\", client=client)\nchat.ui()\n\nui.page_opts(fillable=True)\napp_opts(bookmark_store=\"url\")\nShiny Core\nfrom shiny import App, ui\nfrom chatlas import ChatAnthropic\nfrom shinychat import Chat, chat_ui\n\napp_ui = ui.page_fillable(\n    chat_ui(\"chat\"),\n)\n\ndef server(input, output, session):\n    client = ChatAnthropic(system_prompt=\"You are a helpful assistant.\")\n    chat = Chat(\"chat\", client=client)\n\napp = App(app_ui, server, bookmark_store=\"url\")\nThe chat.client property provides a .set() method for swapping models mid-session and .clear() for resetting the conversation. For lower-level chat methods such as appending messages, updating the input, or inspecting stream state, call them directly on chat. See the API reference for the full interface."
-  },
-  {
-    "objectID": "index.html#slash-commands",
-    "href": "index.html#slash-commands",
-    "title": "shinychat",
-    "section": "Slash commands",
-    "text": "Slash commands\nSlash commands give users discoverable shortcuts — like /search, /clear, or /help — that run a server-side handler you define. Register a command with @chat.slash_command(name, description). When a user runs it, the matching handler fires instead of @chat.on_user_submit, and what happens next is entirely up to the handler.\nThe two most common patterns are prompt expansion — where the command transforms the user’s input before sending it to the LLM — and side effects — where the command performs an action without involving the LLM at all.\n\nPrompt expansion\nThe most common use of slash commands is giving users a shortcut that sends a prompt to the model on their behalf. A handler taking one argument receives the text typed after the command name — for /search shiny modules, that’s \"shiny modules\".\nFor example, a /search command could enrich the user’s query with retrieved context before streaming the model’s answer. In a real app the retrieval step would query a vector store or search index (i.e., a RAG workflow), but the core pattern is the same:\nfrom chatlas import ChatAnthropic\nfrom shiny.express import app_opts, ui\nfrom shinychat.express import Chat\n\nclient = ChatAnthropic(system_prompt=\"You are a helpful assistant.\")\nchat = Chat(id=\"chat\", client=client)\nchat.ui(placeholder=\"Type / for commands, or chat away...\")\n\n@chat.slash_command(\"search\", \"Search the docs\")\nasync def _(user_input: str):\n    # In practice, retrieve relevant documents here (e.g., via a vector DB)\n    prompt = f\"Search the documentation for the following topic and provide a concise summary: {user_input}\"\n    response = await chat.client.value.stream_async(prompt, content=\"all\")\n    await chat.append_message_stream(response)\n\nui.page_opts(fillable=True)\napp_opts(bookmark_store=\"url\")\nWhen the user types /search shiny modules, the handler expands the input into a richer prompt and streams the model’s response. The user sees /search shiny modules as their message; the LLM receives the expanded prompt. In Shiny Core, register commands inside your server function in exactly the same way (slash_command is a method on Chat).\n\n\nSide effects\nSome commands perform an action without involving the LLM — clearing the conversation, opening a help modal, exporting a transcript. Pass echo=False so the command doesn’t appear as a user message:\n@chat.slash_command(\"clear\", \"Clear the conversation\", echo=False)\nasync def _():\n    await chat.clear_messages()\n\n\nClient-side handlers\nRegister a command with fn=None so it appears in the palette without a server handler, then handle it in the browser via the shiny:chat-slash-command DOM event:\nfrom shiny.express import ui\nfrom shinychat.express import Chat\n\nchat = Chat(\"chat\")\nchat.ui()\n\nchat.slash_command(\"clear\", \"Clear the input\", fn=None)\n\nui.tags.script(\n    \"\"\"\n    document.addEventListener('shiny:chat-slash-command', (e) =&gt; {\n      if (e.detail.id !== 'chat' || e.detail.command !== 'clear') return;\n      e.preventDefault();\n      document.querySelector('#chat textarea').value = '';\n    });\n    \"\"\"\n)\nThe event is cancelable and bubbles. Use e.detail.id to target a specific chat. preventDefault() skips the server round-trip; set e.detail.echo to control whether the command appears as a user message.\n\n\nKey points\n\nUsers type / to open a palette of registered commands; arrow keys navigate, Enter or Tab selects, Escape dismisses.\nA slash command’s handler fires instead of @chat.on_user_submit. What happens next — including whether anything reaches the LLM — is entirely up to your handler.\nA / message that doesn’t match any registered command is sent as an ordinary message.\nHandlers take 0 or 1 argument (the text after the command name). They’re just app code — they can stream LLM responses, show modals, trigger downloads, or do nothing visible at all.\nThe echo argument controls whether invoking the command appears as a user message. Defaults to True with a handler. Pass echo=False for side-effect-only handlers.\nRegistering returns a function that removes the command when called; you can also call chat.remove_slash_command(name). Re-registering an existing name raises an error unless you pass force=True.\nSlash command messages are restored faithfully when a bookmarked app is reopened."
-  },
-  {
-    "objectID": "index.html#lower-level-interface",
-    "href": "index.html#lower-level-interface",
-    "title": "shinychat",
-    "section": "Lower-level interface",
-    "text": "Lower-level interface\nWhen you need full control over the server-side logic — or you’re using an LLM framework other than chatlas — omit the client= argument and wire things up manually. This means handling streaming, file attachments, bookmarking, and cancellation yourself, but gives you complete flexibility over how messages are generated and displayed.\nShiny Express\nfrom shiny import reactive\nfrom shiny.express import input\nfrom chatlas import ChatAnthropic, StreamController\nfrom shinychat.express import Chat\n\nchat = Chat(id=\"chat\")\nchat.ui(enable_cancel=True)\n\nclient = ChatAnthropic(system_prompt=\"You are a helpful assistant.\")\nctrl = StreamController()\n\n@chat.on_user_submit\nasync def handle_user_input(user_input: str):\n    response = await client.stream_async(user_input, controller=ctrl)\n    await chat.append_message_stream(response)\n\n@reactive.effect\n@reactive.event(input.chat_cancel)\ndef handle_cancel():\n    ctrl.cancel()\nShiny Core\nfrom shiny import App, reactive, ui\nfrom chatlas import ChatAnthropic, StreamController\nfrom shinychat import Chat, chat_ui\n\napp_ui = ui.page_fillable(\n    chat_ui(\"chat\", enable_cancel=True),\n)\n\ndef server(input, output, session):\n    client = ChatAnthropic(system_prompt=\"You are a helpful assistant.\")\n    chat = Chat(\"chat\")\n    ctrl = StreamController()\n\n    @chat.on_user_submit\n    async def handle_user_input(user_input: str):\n        response = await client.stream_async(user_input, controller=ctrl)\n        await chat.append_message_stream(response)\n\n    @reactive.effect\n    @reactive.event(input.chat_cancel)\n    def handle_cancel():\n        ctrl.cancel()\n\napp = App(app_ui, server)\nKey points:\n\nenable_cancel=True shows the stop button while a response is streaming.\nStreamController() is created once and reused — it automatically resets between streams.\nPass the controller to stream_async(controller=ctrl) so chatlas can honour the cancellation signal.\nThe cancel input fires as input.&lt;id&gt;_cancel (e.g. input.chat_cancel). Observe it with @reactive.event to call ctrl.cancel(). This is needed in both Express and Core apps.\nPartial responses are automatically preserved in chat history by chatlas when a stream is cancelled."
-  },
-  {
-    "objectID": "index.html#file-attachments",
-    "href": "index.html#file-attachments",
-    "title": "shinychat",
-    "section": "File attachments",
-    "text": "File attachments\nshinychat supports file attachments, allowing users to upload images, PDFs, and text files alongside their messages. When attachments are enabled, the chat input shows a file picker button and also accepts drag-and-drop or clipboard paste.\n\nUsing client= (recommended)\nWhen you pass a chatlas client to Chat(client=), file attachments are enabled automatically. The attachment button appears in the chat input, and uploaded files are converted to the appropriate chatlas content types and sent to the model — no extra code needed.\n\n\nManual approach\nIf you’re wiring things up manually, enable attachments in the UI and accept them in your submit handler.\nShiny Express\nfrom chatlas import ChatAnthropic\nfrom shinychat.express import Chat\nfrom shinychat import Attachment, attachment_to_content\n\nchat = Chat(id=\"chat\")\nchat.ui(allow_attachments=True)\n\nclient = ChatAnthropic(system_prompt=\"You are a helpful assistant.\")\n\n@chat.on_user_submit\nasync def handle_user_input(user_input: str, attachments: list[Attachment]):\n    contents = [attachment_to_content(a) for a in attachments]\n    response = await client.stream_async(user_input, *contents)\n    await chat.append_message_stream(response)\nShiny Core\nfrom shiny import App, ui\nfrom chatlas import ChatAnthropic\nfrom shinychat import Chat, chat_ui, Attachment, attachment_to_content\n\napp_ui = ui.page_fillable(\n    chat_ui(\"chat\", allow_attachments=True),\n)\n\ndef server(input, output, session):\n    client = ChatAnthropic(system_prompt=\"You are a helpful assistant.\")\n    chat = Chat(\"chat\")\n\n    @chat.on_user_submit\n    async def handle_user_input(user_input: str, attachments: list[Attachment]):\n        contents = [attachment_to_content(a) for a in attachments]\n        response = await client.stream_async(user_input, *contents)\n        await chat.append_message_stream(response)\n\napp = App(app_ui, server)\nKey points:\n\nPass allow_attachments=True to chat_ui() to show the file picker button. You can also pass a list of MIME types (e.g. [\"image/png\", \"image/jpeg\"]) to restrict accepted file types.\nDeclare two parameters on your @chat.on_user_submit handler to receive both the text and attachments. With one parameter, you only receive the text.\nUse attachment_to_content() to convert each Attachment into a chatlas content object (image, PDF, or text).\nThe maximum combined attachment size defaults to approximately 30 MB and can be configured via the SHINYCHAT_MAX_ATTACHMENT_SIZE environment variable."
-  },
-  {
-    "objectID": "index.html#learn-more",
-    "href": "index.html#learn-more",
-    "title": "shinychat",
-    "section": "Learn more",
-    "text": "Learn more\nThe official shiny website offers the best starting point for learning about shinychat:\n\nGet inspired\nChatbots\nStreaming markdown\nTool calling\nStructured data"
-  },
-  {
     "objectID": "api/types.HistoryOptions.html",
     "href": "api/types.HistoryOptions.html",
     "title": "types.HistoryOptions",
@@ -376,42 +165,6 @@
       "API Reference",
       "Conversation history",
       "types.HistoryOptions"
-    ]
-  },
-  {
-    "objectID": "api/types.ChatMessage.html",
-    "href": "api/types.ChatMessage.html",
-    "title": "types.ChatMessage",
-    "section": "",
-    "text": "types.ChatMessage\ntypes.ChatMessage(\n    content,\n    role='assistant',\n    content_type=None,\n    attachments=None,\n)",
-    "crumbs": [
-      "API Reference",
-      "Shiny Core",
-      "types.ChatMessage"
-    ]
-  },
-  {
-    "objectID": "api/chat_ui.html",
-    "href": "api/chat_ui.html",
-    "title": "chat_ui",
-    "section": "",
-    "text": "chat_ui(\n    id,\n    *,\n    messages=None,\n    greeting=None,\n    placeholder='Enter a message...',\n    width='min(680px, 100%)',\n    height='auto',\n    fill=True,\n    icon_assistant=None,\n    enable_cancel=MISSING,\n    submit_key='enter',\n    allow_attachments=MISSING,\n    footer=None,\n    tool_grouping='tool',\n    **kwargs,\n)\nUI container for a chat component (Shiny Core).\nThis function is for locating a :class:~shiny.ui.Chat instance in a Shiny Core app. If you are using Shiny Express, use the :method:~shiny.ui.Chat.ui method instead.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nid\nstr\nA unique identifier for the chat UI.\nrequired\n\n\nmessages\nOptional[Iterable[str | TagChild | ChatMessageDict | ChatMessage | Any]]\nA sequence of messages to display in the chat. A given message can be one of the following: * A string, which is interpreted as markdown and rendered to HTML on the client. * To prevent interpreting as markdown, mark the string as :class:~shiny.ui.HTML. * A UI element (specifically, a :class:~shiny.ui.TagChild). * This includes :class:~shiny.ui.TagList, which take UI elements (including strings) as children. In this case, strings are still interpreted as markdown as long as they’re not inside HTML. * A dictionary with content and role keys. The content key can contain a content as described above, and the role key can be “assistant” or “user”. * More generally, any type registered with :func:shinychat.message_content. NOTE: content may include specially formatted input suggestion links (see :method:~shiny.ui.Chat.append_message for more info).\nNone\n\n\ngreeting\nOptional[Union[str, HTML, Tag, TagList, ChatGreeting]]\nAn optional greeting to display at the top of the chat before any conversation messages. Can be a markdown string or a :func:~shinychat.chat_greeting object. For a dynamic or streaming greeting, use :meth:~shinychat.Chat.set_greeting from the server instead. When no greeting is set and the chat is visible with no messages, an input named {id}_greeting_requested fires. Use this input with @reactive.event(input.{id}_greeting_requested) to generate a greeting on demand from the server. It fires again after :meth:~shinychat.Chat.clear_messages is called with greeting=True.\nNone\n\n\nplaceholder\nstr\nPlaceholder text for the chat input.\n'Enter a message...'\n\n\nwidth\n'CssUnit'\nThe width of the chat container.\n'min(680px, 100%)'\n\n\nheight\n'CssUnit'\nThe height of the chat container.\n'auto'\n\n\nfill\nbool\nWhether the chat should vertically take available space inside a fillable container.\nTrue\n\n\nicon_assistant\nOptional[HTML | Tag | TagList | bool]\nThe icon to use for the assistant chat messages. Can be a HTML or a tag in the form of :class:~htmltools.HTML or :class:~htmltools.Tag. If None (or True), a default robot icon is used. Pass False to remove the assistant icon entirely (individual messages can still opt back in via the icon argument of .append_message()).\nNone\n\n\nenable_cancel\n'bool | MISSING_TYPE'\nWhether to show a stop button during streaming that allows the user to cancel the in-progress response. When True, the chat UI shows a stop button in place of the send button while streaming. You must observe input.&lt;id&gt;_cancel on the server and call ctrl.cancel() on a chatlas StreamController to actually stop the stream. When left unset (the default), a chat driven by a client= enables the stop button automatically; otherwise it stays hidden. Passing an explicit True/False always wins over that automatic behavior.\nMISSING\n\n\nsubmit_key\n'Literal[\"enter\", \"enter+modifier\"]'\nControls which key combination submits the chat message: - \"enter\" (default): Enter submits, Shift+Enter adds a newline. - \"enter+modifier\": Ctrl+Enter (Cmd+Enter on Mac) submits, plain Enter adds a newline.\n'enter'\n\n\nallow_attachments\n'bool | list[str] | MISSING_TYPE'\nControls the file-attachment affordance (an attach button, plus clipboard paste and drag-and-drop) in the chat input. Pass True to accept all supported types (PNG, JPEG, GIF, WebP, PDF, and common text/code files such as Markdown, plain text, CSV, JSON, and source files), False to disable, or a list of MIME types to restrict what is accepted (each must be one of the supported types). Attachments are delivered to your .on_user_submit() handler’s second argument as a list[Attachment], where each item exposes mime, name, size, and data_url attributes (and forwarded to a client= automatically). When left unset (the default), a chat driven by a client= enables attachments automatically; otherwise it stays hidden. The maximum combined size of all attachments in a single message is controlled globally by the SHINYCHAT_MAX_ATTACHMENT_SIZE environment variable (a raw byte count; defaults to approximately 30 MB). Files that would push the total over this cap are rejected in the browser with a notice. When bookmarking is enabled, prefer bookmark_store=\"server\": attachment data is saved in the bookmark and can exceed URL length limits with bookmark_store=\"url\".\nMISSING\n\n\nfooter\nOptional[TagChild]\nOptional HTML content to display below the chat input. This can be any HTML content (tags, tag lists, or strings). Useful for adding disclaimers, attribution, or other information. The footer text is styled slightly smaller and lighter than body text by default. Customize with CSS properties --shiny-chat-footer-font-size and --shiny-chat-footer-color on the chat container or footer element.\nNone\n\n\ntool_grouping\n'Literal[\"none\", \"tool\", \"all\"]'\nControls how tool calls are grouped together in the UI: - \"tool\" (default): calls to the same tool within a tool-calling loop are grouped into a single activity row. This groups by tool name across the whole loop, not just consecutive calls – e.g. calls to tools X, Y, Z, X, Y (in that order) are grouped into X (2 calls), Y (2 calls), and Z (1 call). - \"all\": every tool call within a tool-calling loop is grouped into a single activity row, regardless of tool name. - \"none\": each tool call is shown in its own activity row. Prose or thinking between calls starts a new tool-calling loop, so grouping never crosses those transcript boundaries. Individual tools can override this via a grouping tool annotation. For chatlas tools, prefer annotations={\"extra\": {\"grouping\": ...}}: a top-level grouping key is also read, but it isn’t part of chatlas’ ToolAnnotations, so type checkers reject it. Chat-level \"none\" always disables grouping, even when a tool annotation requests \"tool\" or \"all\".\n'tool'\n\n\nkwargs\nTagAttrValue\nAdditional attributes for the chat container element.\n{}",
-    "crumbs": [
-      "API Reference",
-      "Shiny Core",
-      "chat_ui"
-    ]
-  },
-  {
-    "objectID": "api/chat_ui.html#parameters",
-    "href": "api/chat_ui.html#parameters",
-    "title": "chat_ui",
-    "section": "",
-    "text": "Name\nType\nDescription\nDefault\n\n\n\n\nid\nstr\nA unique identifier for the chat UI.\nrequired\n\n\nmessages\nOptional[Iterable[str | TagChild | ChatMessageDict | ChatMessage | Any]]\nA sequence of messages to display in the chat. A given message can be one of the following: * A string, which is interpreted as markdown and rendered to HTML on the client. * To prevent interpreting as markdown, mark the string as :class:~shiny.ui.HTML. * A UI element (specifically, a :class:~shiny.ui.TagChild). * This includes :class:~shiny.ui.TagList, which take UI elements (including strings) as children. In this case, strings are still interpreted as markdown as long as they’re not inside HTML. * A dictionary with content and role keys. The content key can contain a content as described above, and the role key can be “assistant” or “user”. * More generally, any type registered with :func:shinychat.message_content. NOTE: content may include specially formatted input suggestion links (see :method:~shiny.ui.Chat.append_message for more info).\nNone\n\n\ngreeting\nOptional[Union[str, HTML, Tag, TagList, ChatGreeting]]\nAn optional greeting to display at the top of the chat before any conversation messages. Can be a markdown string or a :func:~shinychat.chat_greeting object. For a dynamic or streaming greeting, use :meth:~shinychat.Chat.set_greeting from the server instead. When no greeting is set and the chat is visible with no messages, an input named {id}_greeting_requested fires. Use this input with @reactive.event(input.{id}_greeting_requested) to generate a greeting on demand from the server. It fires again after :meth:~shinychat.Chat.clear_messages is called with greeting=True.\nNone\n\n\nplaceholder\nstr\nPlaceholder text for the chat input.\n'Enter a message...'\n\n\nwidth\n'CssUnit'\nThe width of the chat container.\n'min(680px, 100%)'\n\n\nheight\n'CssUnit'\nThe height of the chat container.\n'auto'\n\n\nfill\nbool\nWhether the chat should vertically take available space inside a fillable container.\nTrue\n\n\nicon_assistant\nOptional[HTML | Tag | TagList | bool]\nThe icon to use for the assistant chat messages. Can be a HTML or a tag in the form of :class:~htmltools.HTML or :class:~htmltools.Tag. If None (or True), a default robot icon is used. Pass False to remove the assistant icon entirely (individual messages can still opt back in via the icon argument of .append_message()).\nNone\n\n\nenable_cancel\n'bool | MISSING_TYPE'\nWhether to show a stop button during streaming that allows the user to cancel the in-progress response. When True, the chat UI shows a stop button in place of the send button while streaming. You must observe input.&lt;id&gt;_cancel on the server and call ctrl.cancel() on a chatlas StreamController to actually stop the stream. When left unset (the default), a chat driven by a client= enables the stop button automatically; otherwise it stays hidden. Passing an explicit True/False always wins over that automatic behavior.\nMISSING\n\n\nsubmit_key\n'Literal[\"enter\", \"enter+modifier\"]'\nControls which key combination submits the chat message: - \"enter\" (default): Enter submits, Shift+Enter adds a newline. - \"enter+modifier\": Ctrl+Enter (Cmd+Enter on Mac) submits, plain Enter adds a newline.\n'enter'\n\n\nallow_attachments\n'bool | list[str] | MISSING_TYPE'\nControls the file-attachment affordance (an attach button, plus clipboard paste and drag-and-drop) in the chat input. Pass True to accept all supported types (PNG, JPEG, GIF, WebP, PDF, and common text/code files such as Markdown, plain text, CSV, JSON, and source files), False to disable, or a list of MIME types to restrict what is accepted (each must be one of the supported types). Attachments are delivered to your .on_user_submit() handler’s second argument as a list[Attachment], where each item exposes mime, name, size, and data_url attributes (and forwarded to a client= automatically). When left unset (the default), a chat driven by a client= enables attachments automatically; otherwise it stays hidden. The maximum combined size of all attachments in a single message is controlled globally by the SHINYCHAT_MAX_ATTACHMENT_SIZE environment variable (a raw byte count; defaults to approximately 30 MB). Files that would push the total over this cap are rejected in the browser with a notice. When bookmarking is enabled, prefer bookmark_store=\"server\": attachment data is saved in the bookmark and can exceed URL length limits with bookmark_store=\"url\".\nMISSING\n\n\nfooter\nOptional[TagChild]\nOptional HTML content to display below the chat input. This can be any HTML content (tags, tag lists, or strings). Useful for adding disclaimers, attribution, or other information. The footer text is styled slightly smaller and lighter than body text by default. Customize with CSS properties --shiny-chat-footer-font-size and --shiny-chat-footer-color on the chat container or footer element.\nNone\n\n\ntool_grouping\n'Literal[\"none\", \"tool\", \"all\"]'\nControls how tool calls are grouped together in the UI: - \"tool\" (default): calls to the same tool within a tool-calling loop are grouped into a single activity row. This groups by tool name across the whole loop, not just consecutive calls – e.g. calls to tools X, Y, Z, X, Y (in that order) are grouped into X (2 calls), Y (2 calls), and Z (1 call). - \"all\": every tool call within a tool-calling loop is grouped into a single activity row, regardless of tool name. - \"none\": each tool call is shown in its own activity row. Prose or thinking between calls starts a new tool-calling loop, so grouping never crosses those transcript boundaries. Individual tools can override this via a grouping tool annotation. For chatlas tools, prefer annotations={\"extra\": {\"grouping\": ...}}: a top-level grouping key is also read, but it isn’t part of chatlas’ ToolAnnotations, so type checkers reject it. Chat-level \"none\" always disables grouping, even when a tool annotation requests \"tool\" or \"all\".\n'tool'\n\n\nkwargs\nTagAttrValue\nAdditional attributes for the chat container element.\n{}",
-    "crumbs": [
-      "API Reference",
-      "Shiny Core",
-      "chat_ui"
     ]
   },
   {
@@ -511,6 +264,223 @@
     ]
   },
   {
+    "objectID": "api/message_content.html",
+    "href": "api/message_content.html",
+    "title": "message_content",
+    "section": "",
+    "text": "message_content(message)\nExtract content from various message types into a ChatMessage.\nThis function uses singledispatch to allow for easy extension to support new message types. To add support for a new type, register a new function using the @message_content.register decorator.\nTo render a chatlas.ContentToolResult subclass as fully custom, standalone UI after a tool call settles, register complete and streaming handlers for it here and in message_content_chunk(). The pending condensed activity row remains while the tool runs, then shinychat pairs the custom result with that call and renders the returned UI outside the default drill-down card.\n\n\nfrom chatlas import ContentToolResult\nfrom shiny import ui\nfrom shinychat import message_content, message_content_chunk\nfrom shinychat.types import ChatMessage\n\n\nclass WeatherResult(ContentToolResult):\n    location_name: str\n\n\ndef weather_result_ui(result: WeatherResult) -&gt; ChatMessage:\n    temperature = result.value[\"temperature_2m\"]\n    return ChatMessage(\n        content=ui.div(\n            ui.h4(result.location_name),\n            f\"{temperature} C\",\n            class_=\"weather-result\",\n        )\n    )\n\n\n@message_content.register\ndef _(result: WeatherResult) -&gt; ChatMessage:\n    return weather_result_ui(result)\n\n\n@message_content_chunk.register\ndef _(result: WeatherResult) -&gt; ChatMessage:\n    return weather_result_ui(result)\n\n\n\n\n\n\n\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nmessage\n\nThe message object to extract content from (e.g., ChatCompletion, BaseMessage, etc.).\nrequired\n\n\n\n\n\n\nThis function is implicitly called by Chat.append_message() to support handling of various message types. It is not intended to be called directly by users, but may be useful for debugging or advanced use cases.\n\n\n\n\n\n\nName\nType\nDescription\n\n\n\n\n\nChatMessage\nA ChatMessage object containing the extracted content and role.\n\n\n\n\n\n\n\n\n\nName\nType\nDescription\n\n\n\n\n\nValueError\nIf the message type is unsupported.",
+    "crumbs": [
+      "API Reference",
+      "Tool display",
+      "message_content"
+    ]
+  },
+  {
+    "objectID": "api/message_content.html#examples",
+    "href": "api/message_content.html#examples",
+    "title": "message_content",
+    "section": "",
+    "text": "from chatlas import ContentToolResult\nfrom shiny import ui\nfrom shinychat import message_content, message_content_chunk\nfrom shinychat.types import ChatMessage\n\n\nclass WeatherResult(ContentToolResult):\n    location_name: str\n\n\ndef weather_result_ui(result: WeatherResult) -&gt; ChatMessage:\n    temperature = result.value[\"temperature_2m\"]\n    return ChatMessage(\n        content=ui.div(\n            ui.h4(result.location_name),\n            f\"{temperature} C\",\n            class_=\"weather-result\",\n        )\n    )\n\n\n@message_content.register\ndef _(result: WeatherResult) -&gt; ChatMessage:\n    return weather_result_ui(result)\n\n\n@message_content_chunk.register\ndef _(result: WeatherResult) -&gt; ChatMessage:\n    return weather_result_ui(result)",
+    "crumbs": [
+      "API Reference",
+      "Tool display",
+      "message_content"
+    ]
+  },
+  {
+    "objectID": "api/message_content.html#parameters",
+    "href": "api/message_content.html#parameters",
+    "title": "message_content",
+    "section": "",
+    "text": "Name\nType\nDescription\nDefault\n\n\n\n\nmessage\n\nThe message object to extract content from (e.g., ChatCompletion, BaseMessage, etc.).\nrequired",
+    "crumbs": [
+      "API Reference",
+      "Tool display",
+      "message_content"
+    ]
+  },
+  {
+    "objectID": "api/message_content.html#note",
+    "href": "api/message_content.html#note",
+    "title": "message_content",
+    "section": "",
+    "text": "This function is implicitly called by Chat.append_message() to support handling of various message types. It is not intended to be called directly by users, but may be useful for debugging or advanced use cases.",
+    "crumbs": [
+      "API Reference",
+      "Tool display",
+      "message_content"
+    ]
+  },
+  {
+    "objectID": "api/message_content.html#returns",
+    "href": "api/message_content.html#returns",
+    "title": "message_content",
+    "section": "",
+    "text": "Name\nType\nDescription\n\n\n\n\n\nChatMessage\nA ChatMessage object containing the extracted content and role.",
+    "crumbs": [
+      "API Reference",
+      "Tool display",
+      "message_content"
+    ]
+  },
+  {
+    "objectID": "api/message_content.html#raises",
+    "href": "api/message_content.html#raises",
+    "title": "message_content",
+    "section": "",
+    "text": "Name\nType\nDescription\n\n\n\n\n\nValueError\nIf the message type is unsupported.",
+    "crumbs": [
+      "API Reference",
+      "Tool display",
+      "message_content"
+    ]
+  },
+  {
+    "objectID": "api/types.ToolResultDisplay.html",
+    "href": "api/types.ToolResultDisplay.html",
+    "title": "types.ToolResultDisplay",
+    "section": "",
+    "text": "types.ToolResultDisplay()\nCustomize the condensed display for a tool result.\nAssign a ToolResultDisplay instance to a chatlas.ContentToolResult in its extra={\"display\": ...} metadata. Tool calls normally appear as a compact activity row, optionally expand into a grouped call list, and drill into a full request/result card. ToolResultDisplay customizes that row and card without replacing either.\nUse a present-tense definition title while the tool is running, then a settled result title here when that improves the wording. For example, register a tool with annotations={\"title\": \"Looking up weather\"} and return title=\"Looked up weather for Duluth\". In a single-call row, the result title replaces the definition title when the result arrives. A multi-call group keeps the shared definition title in its group row and can use distinct result titles to identify calls in the expanded list. shinychat does not conjugate titles automatically.\nlabel and value_preview are compact, per-call metadata shown in the activity row and grouped call list. Use them to distinguish repeated calls without opening the card. html, markdown, and text customize the result body inside the drill-down card. To replace the card with standalone UI instead, register a custom message_content or message_content_chunk handler for a ContentToolResult subclass.\nSee the Tool calling guide for complete tool-display examples.\n\n\nimport chatlas as ctl\nfrom shinychat.types import ToolResultDisplay\n\n\ndef my_tool():\n    display = ToolResultDisplay(\n        title=\"Looked up weather for Duluth\",\n        label=\"Duluth, MN\",\n        value_preview=\"18 C, clear\",\n        markdown=\"A _markdown_ message shown to user.\",\n    )\n    return ctl.ContentToolResult(\n        value=\"Value the model sees\",\n        extra={\"display\": display},\n    )\n\n\nchat_client = ctl.ChatAuto()\nchat_client.register_tool(my_tool)\n\n\n\n\ntitle: The settled title for this result and its drill-down card. It replaces the definition title in a single-call row. In a multi-call group, a distinct result title can identify the call in the expanded call list.\nlabel: A short, per-call identifying value shown alongside the title (e.g. a filename or query). Distinguishes this call from other calls to the same tool. Without one, shinychat falls back to the call’s own title (when it differs from the group’s), then a short preview of the call’s arguments, then the tool name.\nvalue_preview: A terse, per-call preview of the tool result, shown in the condensed activity row and grouped call list before the full result is expanded.\nicon: An icon to display alongside the title in the activity row and drill-down card.\nshow_request: Whether to show the tool request inside the drill-down card.\nopen: Whether the drill-down card is expanded by default.\nfull_screen: Whether to display a fullscreen toggle button on the drill-down card.\nhtml: Custom HTML content inside the drill-down card, in place of the default result display.\nmarkdown: Custom Markdown string inside the drill-down card, in place of the default result display.\ntext: Custom plain text string inside the drill-down card, in place of the default result display.\nfooter: Optional HTML content to display in the drill-down card footer.",
+    "crumbs": [
+      "API Reference",
+      "Tool display",
+      "types.ToolResultDisplay"
+    ]
+  },
+  {
+    "objectID": "api/types.ToolResultDisplay.html#examples",
+    "href": "api/types.ToolResultDisplay.html#examples",
+    "title": "types.ToolResultDisplay",
+    "section": "",
+    "text": "import chatlas as ctl\nfrom shinychat.types import ToolResultDisplay\n\n\ndef my_tool():\n    display = ToolResultDisplay(\n        title=\"Looked up weather for Duluth\",\n        label=\"Duluth, MN\",\n        value_preview=\"18 C, clear\",\n        markdown=\"A _markdown_ message shown to user.\",\n    )\n    return ctl.ContentToolResult(\n        value=\"Value the model sees\",\n        extra={\"display\": display},\n    )\n\n\nchat_client = ctl.ChatAuto()\nchat_client.register_tool(my_tool)",
+    "crumbs": [
+      "API Reference",
+      "Tool display",
+      "types.ToolResultDisplay"
+    ]
+  },
+  {
+    "objectID": "api/types.ToolResultDisplay.html#display-fields",
+    "href": "api/types.ToolResultDisplay.html#display-fields",
+    "title": "types.ToolResultDisplay",
+    "section": "",
+    "text": "title: The settled title for this result and its drill-down card. It replaces the definition title in a single-call row. In a multi-call group, a distinct result title can identify the call in the expanded call list.\nlabel: A short, per-call identifying value shown alongside the title (e.g. a filename or query). Distinguishes this call from other calls to the same tool. Without one, shinychat falls back to the call’s own title (when it differs from the group’s), then a short preview of the call’s arguments, then the tool name.\nvalue_preview: A terse, per-call preview of the tool result, shown in the condensed activity row and grouped call list before the full result is expanded.\nicon: An icon to display alongside the title in the activity row and drill-down card.\nshow_request: Whether to show the tool request inside the drill-down card.\nopen: Whether the drill-down card is expanded by default.\nfull_screen: Whether to display a fullscreen toggle button on the drill-down card.\nhtml: Custom HTML content inside the drill-down card, in place of the default result display.\nmarkdown: Custom Markdown string inside the drill-down card, in place of the default result display.\ntext: Custom plain text string inside the drill-down card, in place of the default result display.\nfooter: Optional HTML content to display in the drill-down card footer.",
+    "crumbs": [
+      "API Reference",
+      "Tool display",
+      "types.ToolResultDisplay"
+    ]
+  },
+  {
+    "objectID": "api/types.ConversationRecord.html",
+    "href": "api/types.ConversationRecord.html",
+    "title": "types.ConversationRecord",
+    "section": "",
+    "text": "types.ConversationRecord()\n\n\n\n\n\nName\nDescription\n\n\n\n\nmeta\nLightweight summary for ConversationStore.list().\n\n\n\n\n\ntypes.ConversationRecord.meta(size_bytes)\nLightweight summary for ConversationStore.list().\nSee ConversationMeta.size_bytes for why the caller must supply it.",
+    "crumbs": [
+      "API Reference",
+      "Conversation history",
+      "types.ConversationRecord"
+    ]
+  },
+  {
+    "objectID": "api/types.ConversationRecord.html#methods",
+    "href": "api/types.ConversationRecord.html#methods",
+    "title": "types.ConversationRecord",
+    "section": "",
+    "text": "Name\nDescription\n\n\n\n\nmeta\nLightweight summary for ConversationStore.list().\n\n\n\n\n\ntypes.ConversationRecord.meta(size_bytes)\nLightweight summary for ConversationStore.list().\nSee ConversationMeta.size_bytes for why the caller must supply it.",
+    "crumbs": [
+      "API Reference",
+      "Conversation history",
+      "types.ConversationRecord"
+    ]
+  },
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "shinychat",
+    "section": "",
+    "text": "shinychat provides a Shiny toolkit for building generative AI applications like chatbots and streaming content. It works best with chatlas, but also works great with other LLM frameworks such as LangChain, Pydantic AI, and more."
+  },
+  {
+    "objectID": "index.html#installation",
+    "href": "index.html#installation",
+    "title": "shinychat",
+    "section": "Installation",
+    "text": "Installation\nshinychat is a dependency of the shiny package, so in most cases, you’ll want to just install shiny with:\nuv pip install shiny\nHowever, you can also install shinychat separately with:\nuv pip install shinychat\nOr, install the development version of shinychat from GitHub with:\nuv pip install git+https://github.com/posit-dev/shinychat.git"
+  },
+  {
+    "objectID": "index.html#quick-start",
+    "href": "index.html#quick-start",
+    "title": "shinychat",
+    "section": "Quick start",
+    "text": "Quick start\nThe fastest way to build a chatbot with shinychat is to pass a chatlas client to Chat(client=). This gives you streaming, file attachments, bookmarking, cancellation, and more out of the box — no manual wiring required.\nShiny Express\nfrom chatlas import ChatAnthropic\nfrom shiny.express import app_opts, ui\nfrom shinychat.express import Chat\n\nclient = ChatAnthropic(system_prompt=\"You are a helpful assistant.\")\nchat = Chat(id=\"chat\", client=client)\nchat.ui()\n\nui.page_opts(fillable=True)\napp_opts(bookmark_store=\"url\")\nShiny Core\nfrom shiny import App, ui\nfrom chatlas import ChatAnthropic\nfrom shinychat import Chat, chat_ui\n\napp_ui = ui.page_fillable(\n    chat_ui(\"chat\"),\n)\n\ndef server(input, output, session):\n    client = ChatAnthropic(system_prompt=\"You are a helpful assistant.\")\n    chat = Chat(\"chat\", client=client)\n\napp = App(app_ui, server, bookmark_store=\"url\")\nThe chat.client property provides a .set() method for swapping models mid-session and .clear() for resetting the conversation. For lower-level chat methods such as appending messages, updating the input, or inspecting stream state, call them directly on chat. See the API reference for the full interface."
+  },
+  {
+    "objectID": "index.html#slash-commands",
+    "href": "index.html#slash-commands",
+    "title": "shinychat",
+    "section": "Slash commands",
+    "text": "Slash commands\nSlash commands give users discoverable shortcuts — like /search, /clear, or /help — that run a server-side handler you define. Register a command with @chat.slash_command(name, description). When a user runs it, the matching handler fires instead of @chat.on_user_submit, and what happens next is entirely up to the handler.\nThe two most common patterns are prompt expansion — where the command transforms the user’s input before sending it to the LLM — and side effects — where the command performs an action without involving the LLM at all.\n\nPrompt expansion\nThe most common use of slash commands is giving users a shortcut that sends a prompt to the model on their behalf. A handler taking one argument receives the text typed after the command name — for /search shiny modules, that’s \"shiny modules\".\nFor example, a /search command could enrich the user’s query with retrieved context before streaming the model’s answer. In a real app the retrieval step would query a vector store or search index (i.e., a RAG workflow), but the core pattern is the same:\nfrom chatlas import ChatAnthropic\nfrom shiny.express import app_opts, ui\nfrom shinychat.express import Chat\n\nclient = ChatAnthropic(system_prompt=\"You are a helpful assistant.\")\nchat = Chat(id=\"chat\", client=client)\nchat.ui(placeholder=\"Type / for commands, or chat away...\")\n\n@chat.slash_command(\"search\", \"Search the docs\")\nasync def _(user_input: str):\n    # In practice, retrieve relevant documents here (e.g., via a vector DB)\n    prompt = f\"Search the documentation for the following topic and provide a concise summary: {user_input}\"\n    response = await chat.client.value.stream_async(prompt, content=\"all\")\n    await chat.append_message_stream(response)\n\nui.page_opts(fillable=True)\napp_opts(bookmark_store=\"url\")\nWhen the user types /search shiny modules, the handler expands the input into a richer prompt and streams the model’s response. The user sees /search shiny modules as their message; the LLM receives the expanded prompt. In Shiny Core, register commands inside your server function in exactly the same way (slash_command is a method on Chat).\n\n\nSide effects\nSome commands perform an action without involving the LLM — clearing the conversation, opening a help modal, exporting a transcript. Pass echo=False so the command doesn’t appear as a user message:\n@chat.slash_command(\"clear\", \"Clear the conversation\", echo=False)\nasync def _():\n    await chat.clear_messages()\n\n\nClient-side handlers\nRegister a command with fn=None so it appears in the palette without a server handler, then handle it in the browser via the shiny:chat-slash-command DOM event:\nfrom shiny.express import ui\nfrom shinychat.express import Chat\n\nchat = Chat(\"chat\")\nchat.ui()\n\nchat.slash_command(\"clear\", \"Clear the input\", fn=None)\n\nui.tags.script(\n    \"\"\"\n    document.addEventListener('shiny:chat-slash-command', (e) =&gt; {\n      if (e.detail.id !== 'chat' || e.detail.command !== 'clear') return;\n      e.preventDefault();\n      document.querySelector('#chat textarea').value = '';\n    });\n    \"\"\"\n)\nThe event is cancelable and bubbles. Use e.detail.id to target a specific chat. preventDefault() skips the server round-trip; set e.detail.echo to control whether the command appears as a user message.\n\n\nKey points\n\nUsers type / to open a palette of registered commands; arrow keys navigate, Enter or Tab selects, Escape dismisses.\nA slash command’s handler fires instead of @chat.on_user_submit. What happens next — including whether anything reaches the LLM — is entirely up to your handler.\nA / message that doesn’t match any registered command is sent as an ordinary message.\nHandlers take 0 or 1 argument (the text after the command name). They’re just app code — they can stream LLM responses, show modals, trigger downloads, or do nothing visible at all.\nThe echo argument controls whether invoking the command appears as a user message. Defaults to True with a handler. Pass echo=False for side-effect-only handlers.\nRegistering returns a function that removes the command when called; you can also call chat.remove_slash_command(name). Re-registering an existing name raises an error unless you pass force=True.\nSlash command messages are restored faithfully when a bookmarked app is reopened."
+  },
+  {
+    "objectID": "index.html#lower-level-interface",
+    "href": "index.html#lower-level-interface",
+    "title": "shinychat",
+    "section": "Lower-level interface",
+    "text": "Lower-level interface\nWhen you need full control over the server-side logic — or you’re using an LLM framework other than chatlas — omit the client= argument and wire things up manually. This means handling streaming, file attachments, bookmarking, and cancellation yourself, but gives you complete flexibility over how messages are generated and displayed.\nShiny Express\nfrom shiny import reactive\nfrom shiny.express import input\nfrom chatlas import ChatAnthropic, StreamController\nfrom shinychat.express import Chat\n\nchat = Chat(id=\"chat\")\nchat.ui(enable_cancel=True)\n\nclient = ChatAnthropic(system_prompt=\"You are a helpful assistant.\")\nctrl = StreamController()\n\n@chat.on_user_submit\nasync def handle_user_input(user_input: str):\n    response = await client.stream_async(user_input, controller=ctrl)\n    await chat.append_message_stream(response)\n\n@reactive.effect\n@reactive.event(input.chat_cancel)\ndef handle_cancel():\n    ctrl.cancel()\nShiny Core\nfrom shiny import App, reactive, ui\nfrom chatlas import ChatAnthropic, StreamController\nfrom shinychat import Chat, chat_ui\n\napp_ui = ui.page_fillable(\n    chat_ui(\"chat\", enable_cancel=True),\n)\n\ndef server(input, output, session):\n    client = ChatAnthropic(system_prompt=\"You are a helpful assistant.\")\n    chat = Chat(\"chat\")\n    ctrl = StreamController()\n\n    @chat.on_user_submit\n    async def handle_user_input(user_input: str):\n        response = await client.stream_async(user_input, controller=ctrl)\n        await chat.append_message_stream(response)\n\n    @reactive.effect\n    @reactive.event(input.chat_cancel)\n    def handle_cancel():\n        ctrl.cancel()\n\napp = App(app_ui, server)\nKey points:\n\nenable_cancel=True shows the stop button while a response is streaming.\nStreamController() is created once and reused — it automatically resets between streams.\nPass the controller to stream_async(controller=ctrl) so chatlas can honour the cancellation signal.\nThe cancel input fires as input.&lt;id&gt;_cancel (e.g. input.chat_cancel). Observe it with @reactive.event to call ctrl.cancel(). This is needed in both Express and Core apps.\nPartial responses are automatically preserved in chat history by chatlas when a stream is cancelled."
+  },
+  {
+    "objectID": "index.html#file-attachments",
+    "href": "index.html#file-attachments",
+    "title": "shinychat",
+    "section": "File attachments",
+    "text": "File attachments\nshinychat supports file attachments, allowing users to upload images, PDFs, and text files alongside their messages. When attachments are enabled, the chat input shows a file picker button and also accepts drag-and-drop or clipboard paste.\n\nUsing client= (recommended)\nWhen you pass a chatlas client to Chat(client=), file attachments are enabled automatically. The attachment button appears in the chat input, and uploaded files are converted to the appropriate chatlas content types and sent to the model — no extra code needed.\n\n\nManual approach\nIf you’re wiring things up manually, enable attachments in the UI and accept them in your submit handler.\nShiny Express\nfrom chatlas import ChatAnthropic\nfrom shinychat.express import Chat\nfrom shinychat import Attachment, attachment_to_content\n\nchat = Chat(id=\"chat\")\nchat.ui(allow_attachments=True)\n\nclient = ChatAnthropic(system_prompt=\"You are a helpful assistant.\")\n\n@chat.on_user_submit\nasync def handle_user_input(user_input: str, attachments: list[Attachment]):\n    contents = [attachment_to_content(a) for a in attachments]\n    response = await client.stream_async(user_input, *contents)\n    await chat.append_message_stream(response)\nShiny Core\nfrom shiny import App, ui\nfrom chatlas import ChatAnthropic\nfrom shinychat import Chat, chat_ui, Attachment, attachment_to_content\n\napp_ui = ui.page_fillable(\n    chat_ui(\"chat\", allow_attachments=True),\n)\n\ndef server(input, output, session):\n    client = ChatAnthropic(system_prompt=\"You are a helpful assistant.\")\n    chat = Chat(\"chat\")\n\n    @chat.on_user_submit\n    async def handle_user_input(user_input: str, attachments: list[Attachment]):\n        contents = [attachment_to_content(a) for a in attachments]\n        response = await client.stream_async(user_input, *contents)\n        await chat.append_message_stream(response)\n\napp = App(app_ui, server)\nKey points:\n\nPass allow_attachments=True to chat_ui() to show the file picker button. You can also pass a list of MIME types (e.g. [\"image/png\", \"image/jpeg\"]) to restrict accepted file types.\nDeclare two parameters on your @chat.on_user_submit handler to receive both the text and attachments. With one parameter, you only receive the text.\nUse attachment_to_content() to convert each Attachment into a chatlas content object (image, PDF, or text).\nThe maximum combined attachment size defaults to approximately 30 MB and can be configured via the SHINYCHAT_MAX_ATTACHMENT_SIZE environment variable."
+  },
+  {
+    "objectID": "index.html#learn-more",
+    "href": "index.html#learn-more",
+    "title": "shinychat",
+    "section": "Learn more",
+    "text": "Learn more\nThe official shiny website offers the best starting point for learning about shinychat:\n\nGet inspired\nChatbots\nStreaming markdown\nTool calling\nStructured data"
+  },
+  {
+    "objectID": "api/types.Attachment.html",
+    "href": "api/types.Attachment.html",
+    "title": "types.Attachment",
+    "section": "",
+    "text": "types.Attachment()\nAn image, PDF, or text file to attach to a chat message.\nConstruct via :meth:from_path, :meth:from_data, or :meth:from_url.\n\n\n\n\n\nName\nDescription\n\n\n\n\nfrom_data\nCreate an attachment from raw bytes.\n\n\nfrom_path\nCreate an attachment from a filesystem path.\n\n\nfrom_url\nCreate an attachment from a data URL or remote http(s) URL.\n\n\n\n\n\ntypes.Attachment.from_data(data, mime, *, name=None)\nCreate an attachment from raw bytes.\n\n\n\ntypes.Attachment.from_path(path, *, mime=None, name=None)\nCreate an attachment from a filesystem path.\n\n\n\ntypes.Attachment.from_url(url, *, mime=None, name=None)\nCreate an attachment from a data URL or remote http(s) URL.\nFor data: URLs, the binary payload is decoded immediately to compute size. Remote http(s) URLs are stored as-is (no network request is made), so size will be 0.",
+    "crumbs": [
+      "API Reference",
+      "Shiny Core",
+      "types.Attachment"
+    ]
+  },
+  {
+    "objectID": "api/types.Attachment.html#methods",
+    "href": "api/types.Attachment.html#methods",
+    "title": "types.Attachment",
+    "section": "",
+    "text": "Name\nDescription\n\n\n\n\nfrom_data\nCreate an attachment from raw bytes.\n\n\nfrom_path\nCreate an attachment from a filesystem path.\n\n\nfrom_url\nCreate an attachment from a data URL or remote http(s) URL.\n\n\n\n\n\ntypes.Attachment.from_data(data, mime, *, name=None)\nCreate an attachment from raw bytes.\n\n\n\ntypes.Attachment.from_path(path, *, mime=None, name=None)\nCreate an attachment from a filesystem path.\n\n\n\ntypes.Attachment.from_url(url, *, mime=None, name=None)\nCreate an attachment from a data URL or remote http(s) URL.\nFor data: URLs, the binary payload is decoded immediately to compute size. Remote http(s) URLs are stored as-is (no network request is made), so size will be 0.",
+    "crumbs": [
+      "API Reference",
+      "Shiny Core",
+      "types.Attachment"
+    ]
+  },
+  {
+    "objectID": "api/types.ConversationPartition.html",
+    "href": "api/types.ConversationPartition.html",
+    "title": "types.ConversationPartition",
+    "section": "",
+    "text": "types.ConversationPartition\ntypes.ConversationPartition(chat_id, scope)\nStorage partition for a chat history collection.\nchat_id is the resolved/namespaced chat id. scope is the owner namespace: explicit scope, authenticated user, or browser token.",
+    "crumbs": [
+      "API Reference",
+      "Conversation history",
+      "types.ConversationPartition"
+    ]
+  },
+  {
     "objectID": "api/playwright.ChatController.html",
     "href": "api/playwright.ChatController.html",
     "title": "playwright.ChatController",
@@ -547,99 +517,15 @@
     ]
   },
   {
-    "objectID": "api/types.Attachment.html",
-    "href": "api/types.Attachment.html",
-    "title": "types.Attachment",
+    "objectID": "api/types.FileConversationStore.html",
+    "href": "api/types.FileConversationStore.html",
+    "title": "types.FileConversationStore",
     "section": "",
-    "text": "types.Attachment()\nAn image, PDF, or text file to attach to a chat message.\nConstruct via :meth:from_path, :meth:from_data, or :meth:from_url.\n\n\n\n\n\nName\nDescription\n\n\n\n\nfrom_data\nCreate an attachment from raw bytes.\n\n\nfrom_path\nCreate an attachment from a filesystem path.\n\n\nfrom_url\nCreate an attachment from a data URL or remote http(s) URL.\n\n\n\n\n\ntypes.Attachment.from_data(data, mime, *, name=None)\nCreate an attachment from raw bytes.\n\n\n\ntypes.Attachment.from_path(path, *, mime=None, name=None)\nCreate an attachment from a filesystem path.\n\n\n\ntypes.Attachment.from_url(url, *, mime=None, name=None)\nCreate an attachment from a data URL or remote http(s) URL.\nFor data: URLs, the binary payload is decoded immediately to compute size. Remote http(s) URLs are stored as-is (no network request is made), so size will be 0.",
+    "text": "types.FileConversationStore\ntypes.FileConversationStore(dir=None)\nDefault store: each conversation is a directory at &lt;dir&gt;/&lt;chat_id&gt;/&lt;scope&gt;/&lt;id&gt;/ containing record.json, turns.jsonl, and ui.jsonl.\nrecord.json holds tree structure and metadata (small, rewritten atomically on every save). turns.jsonl and ui.jsonl are append-only — new turns and UI entries are appended, never rewritten.\nOn get(), the three files are read and merged into a full ConversationRecord with inline turns and UI on each node. Callers never see the split.",
     "crumbs": [
       "API Reference",
-      "Shiny Core",
-      "types.Attachment"
-    ]
-  },
-  {
-    "objectID": "api/types.Attachment.html#methods",
-    "href": "api/types.Attachment.html#methods",
-    "title": "types.Attachment",
-    "section": "",
-    "text": "Name\nDescription\n\n\n\n\nfrom_data\nCreate an attachment from raw bytes.\n\n\nfrom_path\nCreate an attachment from a filesystem path.\n\n\nfrom_url\nCreate an attachment from a data URL or remote http(s) URL.\n\n\n\n\n\ntypes.Attachment.from_data(data, mime, *, name=None)\nCreate an attachment from raw bytes.\n\n\n\ntypes.Attachment.from_path(path, *, mime=None, name=None)\nCreate an attachment from a filesystem path.\n\n\n\ntypes.Attachment.from_url(url, *, mime=None, name=None)\nCreate an attachment from a data URL or remote http(s) URL.\nFor data: URLs, the binary payload is decoded immediately to compute size. Remote http(s) URLs are stored as-is (no network request is made), so size will be 0.",
-    "crumbs": [
-      "API Reference",
-      "Shiny Core",
-      "types.Attachment"
-    ]
-  },
-  {
-    "objectID": "api/message_content_chunk.html",
-    "href": "api/message_content_chunk.html",
-    "title": "message_content_chunk",
-    "section": "",
-    "text": "message_content_chunk(chunk)\nExtract content from various message chunk types into a ChatMessage.\nThis function uses singledispatch to allow for easy extension to support new chunk types. To add support for a new type, register a new function using the @message_content_chunk.register decorator.\nTo render a chatlas.ContentToolResult subclass as fully custom, standalone UI after a tool call settles, register complete and streaming handlers for it here and in message_content(). The pending condensed activity row remains while the tool runs, then shinychat pairs the custom result with that call and renders the returned UI outside the default drill-down card.\n\n\nfrom chatlas import ContentToolResult\nfrom shiny import ui\nfrom shinychat import message_content, message_content_chunk\nfrom shinychat.types import ChatMessage\n\n\nclass WeatherResult(ContentToolResult):\n    location_name: str\n\n\ndef weather_result_ui(result: WeatherResult) -&gt; ChatMessage:\n    temperature = result.value[\"temperature_2m\"]\n    return ChatMessage(\n        content=ui.div(\n            ui.h4(result.location_name),\n            f\"{temperature} C\",\n            class_=\"weather-result\",\n        )\n    )\n\n\n@message_content.register\ndef _(result: WeatherResult) -&gt; ChatMessage:\n    return weather_result_ui(result)\n\n\n@message_content_chunk.register\ndef _(result: WeatherResult) -&gt; ChatMessage:\n    return weather_result_ui(result)\n\n\n\n\n\n\n\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nchunk\n\nThe message chunk object to extract content from (e.g., ChatCompletionChunk, BaseMessageChunk, etc.).\nrequired\n\n\n\n\n\n\nThis function is implicitly called by Chat.append_message_stream() (on every chunk of a message stream). It is not intended to be called directly by users, but may be useful for debugging or advanced use cases.\n\n\n\n\n\n\nName\nType\nDescription\n\n\n\n\n\nChatMessage\nA ChatMessage object containing the extracted content and role.\n\n\n\n\n\n\n\n\n\nName\nType\nDescription\n\n\n\n\n\nValueError\nIf the chunk type is unsupported.",
-    "crumbs": [
-      "API Reference",
-      "Tool display",
-      "message_content_chunk"
-    ]
-  },
-  {
-    "objectID": "api/message_content_chunk.html#examples",
-    "href": "api/message_content_chunk.html#examples",
-    "title": "message_content_chunk",
-    "section": "",
-    "text": "from chatlas import ContentToolResult\nfrom shiny import ui\nfrom shinychat import message_content, message_content_chunk\nfrom shinychat.types import ChatMessage\n\n\nclass WeatherResult(ContentToolResult):\n    location_name: str\n\n\ndef weather_result_ui(result: WeatherResult) -&gt; ChatMessage:\n    temperature = result.value[\"temperature_2m\"]\n    return ChatMessage(\n        content=ui.div(\n            ui.h4(result.location_name),\n            f\"{temperature} C\",\n            class_=\"weather-result\",\n        )\n    )\n\n\n@message_content.register\ndef _(result: WeatherResult) -&gt; ChatMessage:\n    return weather_result_ui(result)\n\n\n@message_content_chunk.register\ndef _(result: WeatherResult) -&gt; ChatMessage:\n    return weather_result_ui(result)",
-    "crumbs": [
-      "API Reference",
-      "Tool display",
-      "message_content_chunk"
-    ]
-  },
-  {
-    "objectID": "api/message_content_chunk.html#parameters",
-    "href": "api/message_content_chunk.html#parameters",
-    "title": "message_content_chunk",
-    "section": "",
-    "text": "Name\nType\nDescription\nDefault\n\n\n\n\nchunk\n\nThe message chunk object to extract content from (e.g., ChatCompletionChunk, BaseMessageChunk, etc.).\nrequired",
-    "crumbs": [
-      "API Reference",
-      "Tool display",
-      "message_content_chunk"
-    ]
-  },
-  {
-    "objectID": "api/message_content_chunk.html#note",
-    "href": "api/message_content_chunk.html#note",
-    "title": "message_content_chunk",
-    "section": "",
-    "text": "This function is implicitly called by Chat.append_message_stream() (on every chunk of a message stream). It is not intended to be called directly by users, but may be useful for debugging or advanced use cases.",
-    "crumbs": [
-      "API Reference",
-      "Tool display",
-      "message_content_chunk"
-    ]
-  },
-  {
-    "objectID": "api/message_content_chunk.html#returns",
-    "href": "api/message_content_chunk.html#returns",
-    "title": "message_content_chunk",
-    "section": "",
-    "text": "Name\nType\nDescription\n\n\n\n\n\nChatMessage\nA ChatMessage object containing the extracted content and role.",
-    "crumbs": [
-      "API Reference",
-      "Tool display",
-      "message_content_chunk"
-    ]
-  },
-  {
-    "objectID": "api/message_content_chunk.html#raises",
-    "href": "api/message_content_chunk.html#raises",
-    "title": "message_content_chunk",
-    "section": "",
-    "text": "Name\nType\nDescription\n\n\n\n\n\nValueError\nIf the chunk type is unsupported.",
-    "crumbs": [
-      "API Reference",
-      "Tool display",
-      "message_content_chunk"
+      "Conversation history",
+      "types.FileConversationStore"
     ]
   },
   {
@@ -676,6 +562,120 @@
       "API Reference",
       "Shiny Express",
       "express.Chat"
+    ]
+  },
+  {
+    "objectID": "api/index.html",
+    "href": "api/index.html",
+    "title": "shinychat Reference",
+    "section": "",
+    "text": "Chat\nCreate a chat interface.\n\n\ntypes.ChatClient\nWraps a chatlas client bound to a :class:~shinychat.Chat instance.\n\n\ntypes.ChatMessage\n\n\n\ntypes.Attachment\nAn image, PDF, or text file to attach to a chat message.\n\n\nchat_ui\nUI container for a chat component (Shiny Core).\n\n\nchat_greeting\nCreate a greeting for a chat UI.\n\n\n\n\n\n\n\n\n\ntypes.ToolResultDisplay\nCustomize the condensed display for a tool result.\n\n\nmessage_content\nExtract content from various message types into a ChatMessage.\n\n\nmessage_content_chunk\nExtract content from various message chunk types into a ChatMessage.\n\n\n\n\n\n\n\n\n\nexpress.Chat\n\n\n\n\n\n\n\n\n\n\ntypes.HistoryOptions\nConfiguration for :class:~shinychat.Chat conversation history.\n\n\ntypes.ConversationPartition\nStorage partition for a chat history collection.\n\n\ntypes.ConversationStore\nStorage interface for chat conversation history.\n\n\ntypes.FileConversationStore\nDefault store: each conversation is a directory at\n\n\ntypes.ConversationRecord\n\n\n\ntypes.ConversationMeta\n\n\n\n\n\n\n\n\n\n\nplaywright.ChatController\nController for :func:shiny.ui.chat.",
+    "crumbs": [
+      "API Reference",
+      "shinychat Reference"
+    ]
+  },
+  {
+    "objectID": "api/index.html#shiny-core",
+    "href": "api/index.html#shiny-core",
+    "title": "shinychat Reference",
+    "section": "",
+    "text": "Chat\nCreate a chat interface.\n\n\ntypes.ChatClient\nWraps a chatlas client bound to a :class:~shinychat.Chat instance.\n\n\ntypes.ChatMessage\n\n\n\ntypes.Attachment\nAn image, PDF, or text file to attach to a chat message.\n\n\nchat_ui\nUI container for a chat component (Shiny Core).\n\n\nchat_greeting\nCreate a greeting for a chat UI.",
+    "crumbs": [
+      "API Reference",
+      "shinychat Reference"
+    ]
+  },
+  {
+    "objectID": "api/index.html#tool-display",
+    "href": "api/index.html#tool-display",
+    "title": "shinychat Reference",
+    "section": "",
+    "text": "types.ToolResultDisplay\nCustomize the condensed display for a tool result.\n\n\nmessage_content\nExtract content from various message types into a ChatMessage.\n\n\nmessage_content_chunk\nExtract content from various message chunk types into a ChatMessage.",
+    "crumbs": [
+      "API Reference",
+      "shinychat Reference"
+    ]
+  },
+  {
+    "objectID": "api/index.html#shiny-express",
+    "href": "api/index.html#shiny-express",
+    "title": "shinychat Reference",
+    "section": "",
+    "text": "express.Chat",
+    "crumbs": [
+      "API Reference",
+      "shinychat Reference"
+    ]
+  },
+  {
+    "objectID": "api/index.html#conversation-history",
+    "href": "api/index.html#conversation-history",
+    "title": "shinychat Reference",
+    "section": "",
+    "text": "types.HistoryOptions\nConfiguration for :class:~shinychat.Chat conversation history.\n\n\ntypes.ConversationPartition\nStorage partition for a chat history collection.\n\n\ntypes.ConversationStore\nStorage interface for chat conversation history.\n\n\ntypes.FileConversationStore\nDefault store: each conversation is a directory at\n\n\ntypes.ConversationRecord\n\n\n\ntypes.ConversationMeta",
+    "crumbs": [
+      "API Reference",
+      "shinychat Reference"
+    ]
+  },
+  {
+    "objectID": "api/index.html#testing",
+    "href": "api/index.html#testing",
+    "title": "shinychat Reference",
+    "section": "",
+    "text": "playwright.ChatController\nController for :func:shiny.ui.chat.",
+    "crumbs": [
+      "API Reference",
+      "shinychat Reference"
+    ]
+  },
+  {
+    "objectID": "api/types.ConversationMeta.html",
+    "href": "api/types.ConversationMeta.html",
+    "title": "types.ConversationMeta",
+    "section": "",
+    "text": "types.ConversationMeta\ntypes.ConversationMeta()",
+    "crumbs": [
+      "API Reference",
+      "Conversation history",
+      "types.ConversationMeta"
+    ]
+  },
+  {
+    "objectID": "api/chat_ui.html",
+    "href": "api/chat_ui.html",
+    "title": "chat_ui",
+    "section": "",
+    "text": "chat_ui(\n    id,\n    *,\n    messages=None,\n    greeting=None,\n    placeholder='Enter a message...',\n    width='min(680px, 100%)',\n    height='auto',\n    fill=True,\n    icon_assistant=None,\n    enable_cancel=MISSING,\n    submit_key='enter',\n    allow_attachments=MISSING,\n    footer=None,\n    tool_grouping='tool',\n    **kwargs,\n)\nUI container for a chat component (Shiny Core).\nThis function is for locating a :class:~shiny.ui.Chat instance in a Shiny Core app. If you are using Shiny Express, use the :method:~shiny.ui.Chat.ui method instead.\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\nid\nstr\nA unique identifier for the chat UI.\nrequired\n\n\nmessages\nOptional[Iterable[str | TagChild | ChatMessageDict | ChatMessage | Any]]\nA sequence of messages to display in the chat. A given message can be one of the following: * A string, which is interpreted as markdown and rendered to HTML on the client. * To prevent interpreting as markdown, mark the string as :class:~shiny.ui.HTML. * A UI element (specifically, a :class:~shiny.ui.TagChild). * This includes :class:~shiny.ui.TagList, which take UI elements (including strings) as children. In this case, strings are still interpreted as markdown as long as they’re not inside HTML. * A dictionary with content and role keys. The content key can contain a content as described above, and the role key can be “assistant” or “user”. * More generally, any type registered with :func:shinychat.message_content. NOTE: content may include specially formatted input suggestion links (see :method:~shiny.ui.Chat.append_message for more info).\nNone\n\n\ngreeting\nOptional[Union[str, HTML, Tag, TagList, ChatGreeting]]\nAn optional greeting to display at the top of the chat before any conversation messages. Can be a markdown string or a :func:~shinychat.chat_greeting object. For a dynamic or streaming greeting, use :meth:~shinychat.Chat.set_greeting from the server instead. When no greeting is set and the chat is visible with no messages, an input named {id}_greeting_requested fires. Use this input with @reactive.event(input.{id}_greeting_requested) to generate a greeting on demand from the server. It fires again after :meth:~shinychat.Chat.clear_messages is called with greeting=True.\nNone\n\n\nplaceholder\nstr\nPlaceholder text for the chat input.\n'Enter a message...'\n\n\nwidth\n'CssUnit'\nThe width of the chat container.\n'min(680px, 100%)'\n\n\nheight\n'CssUnit'\nThe height of the chat container.\n'auto'\n\n\nfill\nbool\nWhether the chat should vertically take available space inside a fillable container.\nTrue\n\n\nicon_assistant\nOptional[HTML | Tag | TagList | bool]\nThe icon to use for the assistant chat messages. Can be a HTML or a tag in the form of :class:~htmltools.HTML or :class:~htmltools.Tag. If None (or True), a default robot icon is used. Pass False to remove the assistant icon entirely (individual messages can still opt back in via the icon argument of .append_message()).\nNone\n\n\nenable_cancel\n'bool | MISSING_TYPE'\nWhether to show a stop button during streaming that allows the user to cancel the in-progress response. When True, the chat UI shows a stop button in place of the send button while streaming. You must observe input.&lt;id&gt;_cancel on the server and call ctrl.cancel() on a chatlas StreamController to actually stop the stream. When left unset (the default), a chat driven by a client= enables the stop button automatically; otherwise it stays hidden. Passing an explicit True/False always wins over that automatic behavior.\nMISSING\n\n\nsubmit_key\n'Literal[\"enter\", \"enter+modifier\"]'\nControls which key combination submits the chat message: - \"enter\" (default): Enter submits, Shift+Enter adds a newline. - \"enter+modifier\": Ctrl+Enter (Cmd+Enter on Mac) submits, plain Enter adds a newline.\n'enter'\n\n\nallow_attachments\n'bool | list[str] | MISSING_TYPE'\nControls the file-attachment affordance (an attach button, plus clipboard paste and drag-and-drop) in the chat input. Pass True to accept all supported types (PNG, JPEG, GIF, WebP, PDF, and common text/code files such as Markdown, plain text, CSV, JSON, and source files), False to disable, or a list of MIME types to restrict what is accepted (each must be one of the supported types). Attachments are delivered to your .on_user_submit() handler’s second argument as a list[Attachment], where each item exposes mime, name, size, and data_url attributes (and forwarded to a client= automatically). When left unset (the default), a chat driven by a client= enables attachments automatically; otherwise it stays hidden. The maximum combined size of all attachments in a single message is controlled globally by the SHINYCHAT_MAX_ATTACHMENT_SIZE environment variable (a raw byte count; defaults to approximately 30 MB). Files that would push the total over this cap are rejected in the browser with a notice. When bookmarking is enabled, prefer bookmark_store=\"server\": attachment data is saved in the bookmark and can exceed URL length limits with bookmark_store=\"url\".\nMISSING\n\n\nfooter\nOptional[TagChild]\nOptional HTML content to display below the chat input. This can be any HTML content (tags, tag lists, or strings). Useful for adding disclaimers, attribution, or other information. The footer text is styled slightly smaller and lighter than body text by default. Customize with CSS properties --shiny-chat-footer-font-size and --shiny-chat-footer-color on the chat container or footer element.\nNone\n\n\ntool_grouping\n'Literal[\"none\", \"tool\", \"all\"]'\nControls how tool calls are grouped together in the UI: - \"tool\" (default): calls to the same tool within a tool-calling loop are grouped into a single activity row. This groups by tool name across the whole loop, not just consecutive calls – e.g. calls to tools X, Y, Z, X, Y (in that order) are grouped into X (2 calls), Y (2 calls), and Z (1 call). - \"all\": every tool call within a tool-calling loop is grouped into a single activity row, regardless of tool name. - \"none\": each tool call is shown in its own activity row. Prose or thinking between calls starts a new tool-calling loop, so grouping never crosses those transcript boundaries. Individual tools can override this via a grouping tool annotation. For chatlas tools, prefer annotations={\"extra\": {\"grouping\": ...}}: a top-level grouping key is also read, but it isn’t part of chatlas’ ToolAnnotations, so type checkers reject it. Chat-level \"none\" always disables grouping, even when a tool annotation requests \"tool\" or \"all\".\n'tool'\n\n\nkwargs\nTagAttrValue\nAdditional attributes for the chat container element.\n{}",
+    "crumbs": [
+      "API Reference",
+      "Shiny Core",
+      "chat_ui"
+    ]
+  },
+  {
+    "objectID": "api/chat_ui.html#parameters",
+    "href": "api/chat_ui.html#parameters",
+    "title": "chat_ui",
+    "section": "",
+    "text": "Name\nType\nDescription\nDefault\n\n\n\n\nid\nstr\nA unique identifier for the chat UI.\nrequired\n\n\nmessages\nOptional[Iterable[str | TagChild | ChatMessageDict | ChatMessage | Any]]\nA sequence of messages to display in the chat. A given message can be one of the following: * A string, which is interpreted as markdown and rendered to HTML on the client. * To prevent interpreting as markdown, mark the string as :class:~shiny.ui.HTML. * A UI element (specifically, a :class:~shiny.ui.TagChild). * This includes :class:~shiny.ui.TagList, which take UI elements (including strings) as children. In this case, strings are still interpreted as markdown as long as they’re not inside HTML. * A dictionary with content and role keys. The content key can contain a content as described above, and the role key can be “assistant” or “user”. * More generally, any type registered with :func:shinychat.message_content. NOTE: content may include specially formatted input suggestion links (see :method:~shiny.ui.Chat.append_message for more info).\nNone\n\n\ngreeting\nOptional[Union[str, HTML, Tag, TagList, ChatGreeting]]\nAn optional greeting to display at the top of the chat before any conversation messages. Can be a markdown string or a :func:~shinychat.chat_greeting object. For a dynamic or streaming greeting, use :meth:~shinychat.Chat.set_greeting from the server instead. When no greeting is set and the chat is visible with no messages, an input named {id}_greeting_requested fires. Use this input with @reactive.event(input.{id}_greeting_requested) to generate a greeting on demand from the server. It fires again after :meth:~shinychat.Chat.clear_messages is called with greeting=True.\nNone\n\n\nplaceholder\nstr\nPlaceholder text for the chat input.\n'Enter a message...'\n\n\nwidth\n'CssUnit'\nThe width of the chat container.\n'min(680px, 100%)'\n\n\nheight\n'CssUnit'\nThe height of the chat container.\n'auto'\n\n\nfill\nbool\nWhether the chat should vertically take available space inside a fillable container.\nTrue\n\n\nicon_assistant\nOptional[HTML | Tag | TagList | bool]\nThe icon to use for the assistant chat messages. Can be a HTML or a tag in the form of :class:~htmltools.HTML or :class:~htmltools.Tag. If None (or True), a default robot icon is used. Pass False to remove the assistant icon entirely (individual messages can still opt back in via the icon argument of .append_message()).\nNone\n\n\nenable_cancel\n'bool | MISSING_TYPE'\nWhether to show a stop button during streaming that allows the user to cancel the in-progress response. When True, the chat UI shows a stop button in place of the send button while streaming. You must observe input.&lt;id&gt;_cancel on the server and call ctrl.cancel() on a chatlas StreamController to actually stop the stream. When left unset (the default), a chat driven by a client= enables the stop button automatically; otherwise it stays hidden. Passing an explicit True/False always wins over that automatic behavior.\nMISSING\n\n\nsubmit_key\n'Literal[\"enter\", \"enter+modifier\"]'\nControls which key combination submits the chat message: - \"enter\" (default): Enter submits, Shift+Enter adds a newline. - \"enter+modifier\": Ctrl+Enter (Cmd+Enter on Mac) submits, plain Enter adds a newline.\n'enter'\n\n\nallow_attachments\n'bool | list[str] | MISSING_TYPE'\nControls the file-attachment affordance (an attach button, plus clipboard paste and drag-and-drop) in the chat input. Pass True to accept all supported types (PNG, JPEG, GIF, WebP, PDF, and common text/code files such as Markdown, plain text, CSV, JSON, and source files), False to disable, or a list of MIME types to restrict what is accepted (each must be one of the supported types). Attachments are delivered to your .on_user_submit() handler’s second argument as a list[Attachment], where each item exposes mime, name, size, and data_url attributes (and forwarded to a client= automatically). When left unset (the default), a chat driven by a client= enables attachments automatically; otherwise it stays hidden. The maximum combined size of all attachments in a single message is controlled globally by the SHINYCHAT_MAX_ATTACHMENT_SIZE environment variable (a raw byte count; defaults to approximately 30 MB). Files that would push the total over this cap are rejected in the browser with a notice. When bookmarking is enabled, prefer bookmark_store=\"server\": attachment data is saved in the bookmark and can exceed URL length limits with bookmark_store=\"url\".\nMISSING\n\n\nfooter\nOptional[TagChild]\nOptional HTML content to display below the chat input. This can be any HTML content (tags, tag lists, or strings). Useful for adding disclaimers, attribution, or other information. The footer text is styled slightly smaller and lighter than body text by default. Customize with CSS properties --shiny-chat-footer-font-size and --shiny-chat-footer-color on the chat container or footer element.\nNone\n\n\ntool_grouping\n'Literal[\"none\", \"tool\", \"all\"]'\nControls how tool calls are grouped together in the UI: - \"tool\" (default): calls to the same tool within a tool-calling loop are grouped into a single activity row. This groups by tool name across the whole loop, not just consecutive calls – e.g. calls to tools X, Y, Z, X, Y (in that order) are grouped into X (2 calls), Y (2 calls), and Z (1 call). - \"all\": every tool call within a tool-calling loop is grouped into a single activity row, regardless of tool name. - \"none\": each tool call is shown in its own activity row. Prose or thinking between calls starts a new tool-calling loop, so grouping never crosses those transcript boundaries. Individual tools can override this via a grouping tool annotation. For chatlas tools, prefer annotations={\"extra\": {\"grouping\": ...}}: a top-level grouping key is also read, but it isn’t part of chatlas’ ToolAnnotations, so type checkers reject it. Chat-level \"none\" always disables grouping, even when a tool annotation requests \"tool\" or \"all\".\n'tool'\n\n\nkwargs\nTagAttrValue\nAdditional attributes for the chat container element.\n{}",
+    "crumbs": [
+      "API Reference",
+      "Shiny Core",
+      "chat_ui"
+    ]
+  },
+  {
+    "objectID": "api/types.ChatMessage.html",
+    "href": "api/types.ChatMessage.html",
+    "title": "types.ChatMessage",
+    "section": "",
+    "text": "types.ChatMessage\ntypes.ChatMessage(\n    content,\n    role='assistant',\n    content_type=None,\n    attachments=None,\n)",
+    "crumbs": [
+      "API Reference",
+      "Shiny Core",
+      "types.ChatMessage"
     ]
   }
 ]
