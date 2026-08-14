@@ -4,6 +4,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from ._chat_bookmark import is_chatlas_chat_client
 from ._chat_client import ChatClient
+from ._chatlas_serialization import serialize_chatlas_turn
 
 
 @runtime_checkable
@@ -36,7 +37,7 @@ class TurnsAdapter:
         raw = self._turns_client()
         turns = raw.get_turns()
         if is_chatlas_chat_client(raw):
-            return [t.model_dump(mode="json") for t in turns]
+            return [serialize_chatlas_turn(t) for t in turns]
         return list(turns)
 
     def get_turns_grouped(self) -> list[list[dict[str, Any]]]:
