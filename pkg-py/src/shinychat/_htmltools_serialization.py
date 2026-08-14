@@ -1,35 +1,73 @@
-"""Temporary JSON adapter for htmltools values.
+"""Persistence adapters for htmltools values.
 
-Keep shinychat serialization behind this module until htmltools exposes a
-source-preserving rendered-HTML codec; migration should then be confined to
-this boundary.
+New values use htmltools' source-preserving codec. The legacy reader remains
+here because shinychat versions before the htmltools 0.8.0 migration persisted
+browser-oriented dependency dictionaries.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
-from htmltools import TagList, is_tag_child
+from htmltools import (
+    HTML,
+    HTMLDependency,
+    SerializedHTML,
+    TagChild,
+    TagList,
+    deserialize_html,
+    is_tag_child,
+    serialize_html,
+)
 from pydantic_core import PydanticSerializationError
-from typing_extensions import TypedDict
-
-
-class SerializedHTML(TypedDict):
-    html: str
-    dependencies: list[dict[str, Any]]
 
 
 def serialize_htmltools(value: object) -> SerializedHTML:
-    """Convert an htmltools node to shinychat's current JSON wire format."""
+    """Serialize an htmltools value for durable persistence."""
     if not is_tag_child(value):
         raise PydanticSerializationError(
             f"Unable to serialize unknown type: {type(value)}"
         )
+    return serialize_html(value)
 
-    rendered = TagList(value).render()
-    return {
-        "html": rendered["html"],
-        "dependencies": [
-            dependency.as_dict() for dependency in rendered["dependencies"]
-        ],
-    }
+
+def deserialize_htmltools(value: object) -> TagChild:
+    if not isinstance(value, dict):
+        if is_tag_child(value):
+            return value
+        raise TypeError(f"Expected an htmltools value, got {type(value)}")
+
+    if "html" not in value or "dependencies" not in value:
+        raise ValueError(f"Don't know how to restore HTML from {value}")
+
+    dependencies = value["dependencies"]
+    if not isinstance(dependencies, list):
+        raise ValueError(f"Don't know how to restore HTML from {value}")
+
+    if all(is_durable_dependency(dependency) for dependency in dependencies):
+        return deserialize_html(cast(SerializedHTML, value))
+
+    return deserialize_legacy_html(value)
+
+
+def is_durable_dependency(value: object) -> bool:
+    return (
+        isinstance(value, dict) and "source" in value and "all_files" in value
+    )
+
+
+def deserialize_legacy_html(value: dict[str, Any]) -> TagList:
+    dependencies: list[HTMLDependency] = []
+    for dependency in value["dependencies"]:
+        if not isinstance(dependency, dict):
+            continue
+        name = dependency["name"]
+        version = dependency["version"]
+        other = {
+            key: item
+            for key, item in dependency.items()
+            if key not in ("name", "version")
+        }
+        dependencies.append(HTMLDependency(name=name, version=version, **other))
+
+    return TagList(HTML(value["html"]), *dependencies)

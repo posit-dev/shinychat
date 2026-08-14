@@ -94,10 +94,12 @@ async def test_turn_serialization_with_htmldep_in_tool_result(as_dict: bool):
     assert restored.role == "user"
     assert len(restored.contents) == 1
     assert isinstance(restored.contents[0], ContentToolResult)
-    restored_display = ToolResultDisplay(**restored.contents[0].extra["display"])
-    restored_dependency = TagList(restored_display.html).render()["dependencies"][
-        0
-    ]
+    restored_display = ToolResultDisplay.model_validate(
+        restored.contents[0].extra["display"]
+    )
+    restored_dependency = TagList(restored_display.html).render()[
+        "dependencies"
+    ][0]
 
     assert restored_dependency.source == {"subdir": "."}
     assert restored_dependency.script == [{"src": "widget.js"}]
@@ -129,7 +131,7 @@ def test_tool_result_display_restores_legacy_dependency_payload():
         }
     }
 
-    display = ToolResultDisplay(**legacy_display)
+    display = ToolResultDisplay.model_validate(legacy_display)
     rendered = TagList(display.html).render()
     dependency = rendered["dependencies"][0]
 
