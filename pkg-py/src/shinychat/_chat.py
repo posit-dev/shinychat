@@ -475,9 +475,12 @@ class Chat:
             self._setup_client(client)
 
         if greeting is not None:
-            from ._chat_client import setup_greeting
+            if self.history._controller is not None:
+                self.history.setup_greeting(greeting)
+            else:
+                from ._chat_client import setup_greeting
 
-            setup_greeting(self, greeting, self._session)
+                setup_greeting(self, greeting, self._session)
 
     def _setup_client(
         self,

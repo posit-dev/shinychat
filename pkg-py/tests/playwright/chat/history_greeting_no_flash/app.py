@@ -1,0 +1,71 @@
+from __future__ import annotations
+
+import os
+import tempfile
+from typing import Any, AsyncGenerator
+from unittest.mock import MagicMock
+
+import chatlas
+from chatlas import Turn
+from chatlas._turn import AssistantTurn
+from shiny import App, Inputs, Outputs, Session, ui
+from shinychat import Chat, chat_greeting, chat_ui
+from shinychat.types import FileConversationStore, HistoryOptions
+
+
+class EchoChatClient(chatlas.Chat):
+    def __init__(self) -> None:
+        provider = MagicMock()
+        provider.name = "echo"
+        provider.model = "echo"
+        super().__init__(provider)
+
+    async def stream_async(
+        self, *args: Any, **kwargs: Any
+    ) -> AsyncGenerator[str, None]:  # type: ignore[override]
+        user_input = str(args[0]) if args else ""
+        self._turns.extend(
+            [
+                Turn(role="user", contents=user_input),
+                AssistantTurn(contents=f"echo: {user_input}"),
+            ]
+        )
+
+        async def _gen() -> AsyncGenerator[str, None]:
+            yield f"echo: {user_input}"
+
+        return _gen()
+
+
+_store_dir_cache: dict[int, str] = {}
+
+
+def _get_store_dir() -> str:
+    pid = os.getpid()
+    if pid not in _store_dir_cache:
+        _store_dir_cache[pid] = tempfile.mkdtemp(
+            prefix="shinychat-greeting-history-"
+        )
+    return _store_dir_cache[pid]
+
+
+def app_ui(request: object) -> ui.Tag:
+    return chat_ui("chat", greeting=chat_greeting("## Welcome!", persistent=True))
+
+
+def server(input: Inputs, output: Outputs, session: Session) -> None:
+    store_dir = _get_store_dir()
+
+    Chat(
+        id="chat",
+        client=EchoChatClient(),
+        greeting=chat_greeting("## Welcome!", persistent=True),
+        history=HistoryOptions(
+            store=FileConversationStore(dir=store_dir),
+            scope="test-user",
+            title=None,
+        ),
+    )
+
+
+app = App(app_ui, server, bookmark_store="server")

@@ -50,6 +50,19 @@ HistoryController <- R6::R6Class(
     on_response_saved = NULL,
     on_pre_switch = NULL,
     on_evict = NULL,
+    # Fired whenever it's known whether the active conversation is a restore
+    # (TRUE) or a fresh/new one (FALSE) -- at the initial restore decision,
+    # and again on every new_chat(). Lets greeting generation defer to this
+    # instead of racing the client's independent `{id}_greeting_requested`
+    # request.
+    on_settled = NULL,
+
+    notify_settled = function(restored) {
+      if (!is.null(self$on_settled)) {
+        self$on_settled(restored)
+      }
+      invisible()
+    },
 
     initialize = function(
       chat_id,
@@ -189,6 +202,10 @@ HistoryController <- R6::R6Class(
       if (!is.null(self$on_active_id_change)) {
         self$on_active_id_change(NULL)
       }
+      # A fresh chat is never a restore: resolve the greeting the same way
+      # the initial settle does, so it doesn't just rely on a stale/absent
+      # cached value from that first resolution.
+      self$notify_settled(FALSE)
       self$send_history_update()
     },
 
@@ -246,6 +263,9 @@ HistoryController <- R6::R6Class(
       )
 
       chat_clear(private$chat_id, session = private$session)
+      # A restored conversation is never a "new chat" -- the app's greeting
+      # doesn't belong here, regardless of `persistent`.
+      chat_set_greeting(private$chat_id, NULL, session = private$session)
 
       restored_count <- 0L
       shiny::withReactiveDomain(private$session, {
@@ -918,7 +938,13 @@ chat_enable_history <- function(
     if (!is.null(rc) && isTRUE(rc$active)) {
       restored_id <- rc$values[[stamp_key]]
       if (!is.null(restored_id) && nzchar(restored_id)) {
-        target <- controller$get_record(controller$partition, restored_id)
+        target <- tryCatch(
+          controller$get_record(controller$partition, restored_id),
+          error = function(e) {
+            history_notify_error("Could not load conversation", e)
+            NULL
+          }
+        )
         if (!is.null(target)) {
           set_turns_recorded(client, record_path_turns(target))
           if (restore_ui) {
@@ -933,6 +959,7 @@ chat_enable_history <- function(
           controller$send_sibling_metadata()
           controller$send_history_update()
           initialized <<- TRUE
+          controller$notify_settled(TRUE)
           return()
         }
       }
@@ -948,7 +975,13 @@ chat_enable_history <- function(
     }
 
     if (!is.null(current_id) && nzchar(current_id)) {
-      target <- controller$get_record(controller$partition, current_id)
+      target <- tryCatch(
+        controller$get_record(controller$partition, current_id),
+        error = function(e) {
+          history_notify_error("Could not load conversation", e)
+          NULL
+        }
+      )
       if (!is.null(target)) {
         set_turns_recorded(client, record_path_turns(target))
         if (restore_ui) {
@@ -964,6 +997,7 @@ chat_enable_history <- function(
 
     controller$send_history_update()
     initialized <<- TRUE
+    controller$notify_settled(!is.null(controller$record))
   })
 
   history_notify_error <- function(prefix, e) {
