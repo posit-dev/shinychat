@@ -16,6 +16,8 @@ from ._history_types import (
     ConversationMeta,
     ConversationNode,
     ConversationRecord,
+    UnsupportedSchemaVersionError,
+    check_schema_version,
 )
 
 logger = logging.getLogger(__name__)
@@ -171,6 +173,9 @@ class FileConversationStore(ConversationStore):
                     continue
                 try:
                     raw = json.loads(record_file.read_text(encoding="utf-8"))
+                    schema_version = check_schema_version(
+                        raw.get("schema_version")
+                    )
                     nodes_raw = raw.get("nodes", {})
                     nodes = {}
                     for nid, nd in nodes_raw.items():
@@ -180,7 +185,7 @@ class FileConversationStore(ConversationStore):
                             turns=[],
                         )
                     rec = ConversationRecord(
-                        schema_version=raw.get("schema_version", 1),
+                        schema_version=schema_version,
                         id=raw["id"],
                         title=raw["title"],
                         title_source=raw.get("title_source"),
@@ -197,6 +202,8 @@ class FileConversationStore(ConversationStore):
                         f.stat().st_size for f in d.iterdir() if f.is_file()
                     )
                     metas.append(rec.meta(size_bytes=size_bytes))
+                except UnsupportedSchemaVersionError:
+                    raise
                 except Exception as e:
                     logger.warning("Unreadable conversation %s: %s", d.name, e)
                     continue
@@ -216,6 +223,7 @@ class FileConversationStore(ConversationStore):
             return None
 
         raw = json.loads(record_file.read_text(encoding="utf-8"))
+        schema_version = check_schema_version(raw.get("schema_version"))
 
         turns_map: dict[int, dict[str, Any]] = {}
         turns_file = conv_dir / "turns.jsonl"
@@ -254,7 +262,7 @@ class FileConversationStore(ConversationStore):
             )
 
         return ConversationRecord(
-            schema_version=raw.get("schema_version", 1),
+            schema_version=schema_version,
             id=raw["id"],
             title=raw["title"],
             title_source=raw.get("title_source"),
@@ -272,8 +280,18 @@ class FileConversationStore(ConversationStore):
     async def put(
         self, partition: ConversationPartition, record: ConversationRecord
     ) -> None:
+        check_schema_version(record.schema_version)
+
         partition_dir = await self._partition_dir(partition)
         conv_dir = safe_conv_path(partition_dir, record.id)
+        # Validate the on-disk schema version before creating/modifying
+        # anything, so an unsupported existing record is rejected fail-closed
+        # rather than partially overwritten.
+        record_file = conv_dir / "record.json"
+        if record_file.is_file():
+            raw = json.loads(record_file.read_text(encoding="utf-8"))
+            check_schema_version(raw.get("schema_version"))
+
         conv_dir.mkdir(parents=True, exist_ok=True)
 
         ws = self._get_or_init_write_state(partition, record.id, conv_dir)
@@ -418,6 +436,8 @@ class InMemoryConversationStore(ConversationStore):
     async def put(
         self, partition: ConversationPartition, record: ConversationRecord
     ) -> None:
+        check_schema_version(record.schema_version)
+
         if partition not in self._data:
             self._data[partition] = {}
         self._data[partition][record.id] = record

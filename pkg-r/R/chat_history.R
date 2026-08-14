@@ -157,7 +157,7 @@ HistoryController <- R6::R6Class(
         return(invisible())
       }
 
-      target <- private$store$get(self$partition, conv_id)
+      target <- self$get_record(self$partition, conv_id)
       if (is.null(target)) {
         rlang::abort(paste0("Conversation not found: ", conv_id))
       }
@@ -204,7 +204,7 @@ HistoryController <- R6::R6Class(
         self$record$title_source <- "user"
         private$store$put(self$partition, self$record)
       } else {
-        target <- private$store$get(self$partition, conv_id)
+        target <- self$get_record(self$partition, conv_id)
         if (!is.null(target)) {
           target$title <- title
           target$title_source <- "user"
@@ -297,7 +297,11 @@ HistoryController <- R6::R6Class(
     },
 
     get_record = function(partition, id) {
-      private$store$get(partition, id)
+      record <- private$store$get(partition, id)
+      if (!is.null(record)) {
+        check_schema_version(record$schema_version)
+      }
+      record
     },
 
     save_current = function() {

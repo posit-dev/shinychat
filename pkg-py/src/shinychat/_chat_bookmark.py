@@ -11,8 +11,10 @@ from typing import (
     runtime_checkable,
 )
 
+from ._htmltools_serialization import serialize_htmltools
+
 if TYPE_CHECKING:
-    from chatlas import Chat
+    from chatlas import Chat, Turn
     from htmltools import Tagified
     from shiny.types import Jsonifiable
 
@@ -25,6 +27,10 @@ def is_chatlas_chat_client(client: Any) -> TypeGuard["Chat"]:
     import chatlas
 
     return isinstance(client, chatlas.Chat)
+
+
+def serialize_chatlas_turn(turn: Turn[Any]) -> dict[str, Any]:
+    return turn.model_dump(mode="json", fallback=serialize_htmltools)
 
 
 @runtime_checkable
@@ -77,7 +83,7 @@ class BookmarkCancelCallback:
 def get_chatlas_state(
     client: "Chat",
 ) -> Callable[[], Awaitable[Jsonifiable]]:
-    from chatlas import Chat, Turn
+    from chatlas import Chat
 
     assert isinstance(client, Chat)
 
@@ -85,7 +91,7 @@ def get_chatlas_state(
         turns: list[Turn[Any]] = client.get_turns()
         return {
             "version": 1,
-            "turns": [turn.model_dump(mode="json") for turn in turns],
+            "turns": [serialize_chatlas_turn(turn) for turn in turns],
         }
 
     return get_state

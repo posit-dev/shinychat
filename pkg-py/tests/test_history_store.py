@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from htmltools import HTMLDependency, tags
+from shinychat._history_client import as_turns_adapter
 from shinychat._history_store import (
     ConversationPartition,
     FileConversationStore,
@@ -15,7 +17,12 @@ from shinychat._history_store import (
     safe_conv_path,
     sanitize_scope,
 )
-from shinychat._history_types import ConversationRecord, new_conversation_record
+from shinychat._history_types import (
+    MAX_SCHEMA_VERSION,
+    ConversationRecord,
+    UnsupportedSchemaVersionError,
+    new_conversation_record,
+)
 
 
 @pytest.fixture
@@ -55,6 +62,40 @@ async def test_put_get_round_trip(store: FileConversationStore):
 
 
 @pytest.mark.anyio
+async def test_file_store_round_trips_dict_tool_result_display(
+    store: FileConversationStore,
+):
+    chatlas = pytest.importorskip("chatlas")
+
+    result = chatlas.ContentToolResult(
+        value="done",
+        extra={
+            "display": {
+                "html": tags.div(
+                    "Widget output",
+                    HTMLDependency("my-dep", "1.0", source={"subdir": "."}),
+                ),
+            }
+        },
+    )
+    client = chatlas.ChatOpenAI(api_key="fake")
+    client.set_turns([chatlas.Turn(role="user", contents=[result])])
+    adapter = as_turns_adapter(client)
+
+    rec = new_conversation_record(title="Widget")
+    rec.append_linear(adapter.get_turns_json())
+
+    await store.put(part(), rec)
+    restored = await store.get(part(), rec.id)
+
+    assert restored is not None
+    adapter.set_turns_json(restored.path_turns())
+    display = adapter.get_turns_json()[0]["contents"][0]["extra"]["display"]
+    assert display["html"]["html"] == "<div>Widget output</div>"
+    assert display["html"]["dependencies"][0]["name"] == "my-dep"
+
+
+@pytest.mark.anyio
 async def test_put_get_round_trip_preserves_response_count(
     store: FileConversationStore,
 ):
@@ -82,6 +123,24 @@ async def test_get_defaults_response_count_when_missing_from_disk(
     got = await store.get(part(scope="alice"), rec.id)
     assert got is not None
     assert got.response_count == 0
+
+
+@pytest.mark.anyio
+async def test_get_defaults_schema_version_when_missing_from_disk(
+    store: FileConversationStore,
+    tmp_path: Path,
+):
+    rec = new_conversation_record(title="t")
+    await store.put(part(scope="alice"), rec)
+    scope_dir = tmp_path / sanitize_scope("chat") / sanitize_scope("alice")
+    record_file = scope_dir / rec.id / "record.json"
+    data = json.loads(record_file.read_text())
+    del data["schema_version"]
+    record_file.write_text(json.dumps(data))
+
+    got = await store.get(part(scope="alice"), rec.id)
+    assert got is not None
+    assert got.schema_version == 1
 
 
 @pytest.mark.anyio
@@ -489,6 +548,126 @@ async def test_list_returns_independent_copy(store: FileConversationStore):
     result = await store.list(part(scope="alice"))
     result.clear()
     assert len(store._meta_cache[part(scope="alice")]) == 1
+
+
+# ---------------------------------------------------------------------------
+# schema_version rejection (issue #312)
+# ---------------------------------------------------------------------------
+
+
+def _corrupt_schema_version_on_disk(
+    tmp_path: Path, chat_id: str, scope: str, conv_id: str, version: int
+) -> None:
+    scope_dir = tmp_path / sanitize_scope(chat_id) / sanitize_scope(scope)
+    record_file = scope_dir / conv_id / "record.json"
+    data = json.loads(record_file.read_text())
+    data["schema_version"] = version
+    record_file.write_text(json.dumps(data))
+
+
+@pytest.mark.anyio
+async def test_get_raises_on_unsupported_schema_version_on_disk(
+    store: FileConversationStore,
+    tmp_path: Path,
+):
+    rec = new_conversation_record(title="t")
+    await store.put(part(scope="alice"), rec)
+    _corrupt_schema_version_on_disk(
+        tmp_path, "chat", "alice", rec.id, MAX_SCHEMA_VERSION + 1
+    )
+
+    with pytest.raises(UnsupportedSchemaVersionError):
+        await store.get(part(scope="alice"), rec.id)
+
+
+@pytest.mark.anyio
+async def test_list_raises_on_unsupported_schema_version_on_disk(
+    store: FileConversationStore,
+    tmp_path: Path,
+):
+    good = new_conversation_record(title="good")
+    bad = new_conversation_record(title="bad")
+    await store.put(part(scope="alice"), good)
+    await store.put(part(scope="alice"), bad)
+    _corrupt_schema_version_on_disk(
+        tmp_path, "chat", "alice", bad.id, MAX_SCHEMA_VERSION + 1
+    )
+
+    with pytest.raises(UnsupportedSchemaVersionError):
+        await store.list(part(scope="alice"))
+
+
+@pytest.mark.anyio
+async def test_list_checks_schema_version_before_decoding_record(
+    store: FileConversationStore,
+    tmp_path: Path,
+):
+    rec = new_conversation_record(title="future")
+    await store.put(part(scope="alice"), rec)
+    scope_dir = tmp_path / sanitize_scope("chat") / sanitize_scope("alice")
+    record_file = scope_dir / rec.id / "record.json"
+    data = json.loads(record_file.read_text())
+    data["schema_version"] = MAX_SCHEMA_VERSION + 1
+    data["nodes"] = []
+    record_file.write_text(json.dumps(data))
+
+    with pytest.raises(UnsupportedSchemaVersionError):
+        await store.list(part(scope="alice"))
+
+
+@pytest.mark.anyio
+async def test_put_rejects_unsupported_schema_version_into_empty_store(
+    store: FileConversationStore,
+    tmp_path: Path,
+):
+    rec = new_conversation_record(title="t")
+    rec.schema_version = MAX_SCHEMA_VERSION + 1
+
+    with pytest.raises(UnsupportedSchemaVersionError):
+        await store.put(part(scope="alice"), rec)
+
+    scope_dir = tmp_path / sanitize_scope("chat") / sanitize_scope("alice")
+    assert not (scope_dir / rec.id).exists()
+
+
+@pytest.mark.anyio
+async def test_put_rejects_valid_record_over_unsupported_on_disk_record(
+    store: FileConversationStore,
+    tmp_path: Path,
+):
+    rec = new_conversation_record(title="t")
+    rec.append_linear(
+        [{"role": "user", "content": "hi"}],
+        ui=[{"role": "user", "segments": []}],
+    )
+    await store.put(part(scope="alice"), rec)
+    _corrupt_schema_version_on_disk(
+        tmp_path, "chat", "alice", rec.id, MAX_SCHEMA_VERSION + 1
+    )
+
+    scope_dir = tmp_path / sanitize_scope("chat") / sanitize_scope("alice")
+    conv_dir = scope_dir / rec.id
+    before = {f.name: f.read_bytes() for f in conv_dir.iterdir() if f.is_file()}
+
+    rec.append_linear([{"role": "assistant", "content": "hello"}])
+    with pytest.raises(UnsupportedSchemaVersionError):
+        await store.put(part(scope="alice"), rec)
+
+    after = {f.name: f.read_bytes() for f in conv_dir.iterdir() if f.is_file()}
+    assert after == before
+
+
+@pytest.mark.anyio
+async def test_memory_put_rejects_unsupported_schema_version(
+    mem_store: InMemoryConversationStore,
+):
+    rec = new_conversation_record(title="t")
+    rec.schema_version = MAX_SCHEMA_VERSION + 1
+
+    with pytest.raises(UnsupportedSchemaVersionError):
+        await mem_store.put(part(scope="alice"), rec)
+
+    assert await mem_store.get(part(scope="alice"), rec.id) is None
 
 
 # ---------------------------------------------------------------------------
