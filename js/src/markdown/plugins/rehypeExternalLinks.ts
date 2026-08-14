@@ -2,6 +2,12 @@ import { visit } from "unist-util-visit"
 import type { Root, Element } from "hast"
 import type { Plugin } from "unified"
 
+export const externalLinkAttributes = {
+  "data-shinychat-link": "",
+  target: "_blank",
+  rel: "noopener noreferrer",
+} as const
+
 /**
  * Rehype plugin that marks navigating links for click interception.
  * Must run AFTER rehype-sanitize (or the attributes get stripped).
@@ -16,9 +22,9 @@ export const rehypeExternalLinks: Plugin<[], Root> = () => (tree) => {
 
     node.properties = {
       ...node.properties,
-      dataShinychatLink: "",
-      target: "_blank",
-      rel: "noopener noreferrer",
+      dataShinychatLink: externalLinkAttributes["data-shinychat-link"],
+      target: externalLinkAttributes.target,
+      rel: externalLinkAttributes.rel,
     }
   })
 }

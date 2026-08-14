@@ -1,11 +1,11 @@
-import { useContext, useEffect } from "react"
 import { ToolResult } from "./ToolResult"
-import { ChatDispatchContext } from "./context"
+import { isTruthyAttribute } from "./tool-protocol"
 
 interface ToolResultBridgeProps {
   "request-id"?: string
   "tool-name"?: string
   "tool-title"?: string
+  label?: string
   intent?: string
   status?: string
   value?: string
@@ -14,20 +14,18 @@ interface ToolResultBridgeProps {
   "show-request"?: string | boolean
   "full-screen"?: string | boolean
   expanded?: string | boolean
+  "custom-display"?: string | boolean
   icon?: string
   footer?: string
   node?: unknown
   children?: React.ReactNode
 }
 
-function isTruthy(val: string | boolean | undefined): boolean {
-  return val === true || val === "" || val === "true"
-}
-
 export function ToolResultBridge({
   "request-id": requestId,
   "tool-name": toolName,
   "tool-title": toolTitle,
+  label,
   intent,
   status,
   value,
@@ -36,33 +34,35 @@ export function ToolResultBridge({
   "show-request": showRequest,
   "full-screen": fullScreen,
   expanded,
+  "custom-display": customDisplay,
   icon,
   footer,
 }: ToolResultBridgeProps) {
-  const dispatch = useContext(ChatDispatchContext)
+  // Complete tool elements are consumed by routeToolBlocks before Markdown
+  // rendering. This bridge is fallback-only for incomplete or otherwise
+  // unrouted assistant content, so a custom payload must wait for that router
+  // path rather than becoming a subtly incorrect ordinary card.
+  if (isTruthyAttribute(customDisplay)) return null
 
-  useEffect(() => {
-    if (!dispatch || !requestId) return
-    // Keep tool-request hiding tied to rendered results, matching Lit behavior.
-    dispatch({ type: "hide_tool_request", requestId })
-  }, [dispatch, requestId])
-
+  // No longer announces that it supersedes its request: ChatApp derives that
+  // from the same content this bridge renders (`supersededRequestIds`), under
+  // the same gates the router uses. Announcing it here could only disagree.
   if (!requestId || !toolName) return null
 
   return (
     <div className="shiny-tool-result">
       <ToolResult
-        requestId={requestId}
         toolName={toolName}
         toolTitle={toolTitle}
+        label={label}
         intent={intent}
         status={status ?? "success"}
         value={value ?? ""}
         valueType={valueType ?? "markdown"}
         requestCall={requestCall}
-        showRequest={isTruthy(showRequest)}
-        fullScreen={isTruthy(fullScreen)}
-        expanded={isTruthy(expanded)}
+        showRequest={isTruthyAttribute(showRequest)}
+        fullScreen={isTruthyAttribute(fullScreen)}
+        expanded={isTruthyAttribute(expanded)}
         icon={icon}
         footer={footer}
       />

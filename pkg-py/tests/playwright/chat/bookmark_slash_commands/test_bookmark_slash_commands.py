@@ -55,7 +55,9 @@ def test_bookmark_restores_echoed_slash_command_but_not_side_effects(
 
     user_messages = messages_container.locator("> .shiny-chat-user-message")
     expect(user_messages).to_have_count(1)
-    expect(user_messages.nth(0)).to_have_text("/greet world", use_inner_text=True)
+    expect(user_messages.nth(0)).to_have_text(
+        "/greet world", use_inner_text=True
+    )
 
     assistant_messages = messages_container.locator("> .shiny-chat-message")
     expect(assistant_messages).to_have_count(1)

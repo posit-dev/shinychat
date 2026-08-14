@@ -222,7 +222,7 @@ def test_tagifiable_normalization():
     m = message_content(HTML("Hello <span>world</span>!"))
     assert (
         m.content
-        == "\n\n<shinychat-raw-html>Hello <span>world</span>!</shinychat-raw-html>\n\n"
+        == "\n\n<shiny-chat-raw-html>Hello <span>world</span>!</shiny-chat-raw-html>\n\n"
     )
     assert m.role == "assistant"
 
@@ -230,7 +230,7 @@ def test_tagifiable_normalization():
     m = message_content(div("Hello <span>world</span>!"))
     assert (
         m.content
-        == "\n\n<shinychat-raw-html>\n  <div>Hello &lt;span&gt;world&lt;/span&gt;!</div>\n</shinychat-raw-html>\n\n"
+        == "\n\n<shiny-chat-raw-html>\n  <div>Hello &lt;span&gt;world&lt;/span&gt;!</div>\n</shiny-chat-raw-html>\n\n"
     )
     assert m.role == "assistant"
 
@@ -586,8 +586,7 @@ def test_slash_command_echo_defaults_to_handler_presence():
         chat = Chat(id="chat")
 
         @chat.slash_command("withhandler", "Has a handler")
-        async def _():
-            ...
+        async def _(): ...
 
         chat.slash_command("nohandler", "No handler", fn=None)
 
@@ -604,8 +603,7 @@ def test_slash_command_echo_explicit_override():
         chat = Chat(id="chat")
 
         @chat.slash_command("sideeffect", "Side effect only", echo=False)
-        async def _():
-            ...
+        async def _(): ...
 
         with reactive.isolate():
             cmds = chat._slash_commands()
@@ -632,7 +630,9 @@ def test_slash_command_fn_none_with_explicit_echo_true():
     with session_context(test_session):
         chat = Chat(id="chat")
 
-        chat.slash_command("clientecho", "Client-side but echoed", fn=None, echo=True)
+        chat.slash_command(
+            "clientecho", "Client-side but echoed", fn=None, echo=True
+        )
 
         with reactive.isolate():
             cmds = chat._slash_commands()
@@ -652,7 +652,9 @@ def test_bookmark_round_trips_echoed_slash_command():
         # `_messages_for_bookmark()` reads the client-reported snapshot input,
         # not the server-side append log, so seed that input directly.
         reported = (
-            chat._as_stored_message(ChatMessage(content="/greet world", role="user")),
+            chat._as_stored_message(
+                ChatMessage(content="/greet world", role="user")
+            ),
             chat._as_stored_message(
                 ChatMessage(content="Hello! You said: world", role="assistant")
             ),
@@ -662,8 +664,21 @@ def test_bookmark_round_trips_echoed_slash_command():
             saved = chat._messages_for_bookmark()
 
     assert saved == [
-        {"role": "user", "segments": [{"content": "/greet world", "content_type": "markdown"}]},
-        {"role": "assistant", "segments": [{"content": "Hello! You said: world", "content_type": "markdown"}]},
+        {
+            "role": "user",
+            "segments": [
+                {"content": "/greet world", "content_type": "markdown"}
+            ],
+        },
+        {
+            "role": "assistant",
+            "segments": [
+                {
+                    "content": "Hello! You said: world",
+                    "content_type": "markdown",
+                }
+            ],
+        },
     ]
 
     async def restore() -> list[tuple[Role, str]]:
@@ -683,7 +698,10 @@ def test_bookmark_round_trips_echoed_slash_command():
             # (which re-reports it into the messages snapshot on render); the
             # server no longer keeps its own append log to read back from.
             return [
-                (cast(Role, a["message"]["role"]), a["message"]["segments"][0]["content"])
+                (
+                    cast(Role, a["message"]["role"]),
+                    a["message"]["segments"][0]["content"],
+                )
                 for a in sent
                 if a["type"] == "message"
             ]
@@ -714,13 +732,22 @@ def test_bookmark_omits_side_effect_only_slash_command():
         # input, not the server-side append log, so seed that input
         # directly with only the explicit message (the echo=False command
         # reports nothing).
-        reported = (chat._as_stored_message(ChatMessage(content="real message", role="user")),)
+        reported = (
+            chat._as_stored_message(
+                ChatMessage(content="real message", role="user")
+            ),
+        )
         test_session.input[chat.messages_input_id]._set(reported)
         with reactive.isolate():
             saved = chat._messages_for_bookmark()
 
     assert saved == [
-        {"role": "user", "segments": [{"content": "real message", "content_type": "markdown"}]},
+        {
+            "role": "user",
+            "segments": [
+                {"content": "real message", "content_type": "markdown"}
+            ],
+        },
     ]
 
 
@@ -1039,10 +1066,14 @@ def test_send_append_message_serializes_attachments():
 
         chat._send_action = _capture  # type: ignore[method-assign]
 
-        att = Attachment.from_data(b"hello", mime="text/plain", name="hello.txt")
+        att = Attachment.from_data(
+            b"hello", mime="text/plain", name="hello.txt"
+        )
         stored = StoredMessage(
             role="assistant",
-            segments=[StoredSegment(content="here you go", content_type="markdown")],
+            segments=[
+                StoredSegment(content="here you go", content_type="markdown")
+            ],
             attachments=[att],
         )
 
@@ -1054,7 +1085,12 @@ def test_send_append_message_serializes_attachments():
 
         # Attachments must arrive as plain dicts with the expected keys.
         assert payload["attachments"] == [
-            {"mime": "text/plain", "name": "hello.txt", "size": 5, "data_url": att.data_url}
+            {
+                "mime": "text/plain",
+                "name": "hello.txt",
+                "size": 5,
+                "data_url": att.data_url,
+            }
         ]
 
 
@@ -1218,7 +1254,9 @@ def test_chat_message_attachments_become_stored_attachments():
         ChatMessage(
             content="here",
             role="assistant",
-            attachments=[Attachment.from_data(b"x", mime="image/png", name="c.png")],
+            attachments=[
+                Attachment.from_data(b"x", mime="image/png", name="c.png")
+            ],
         )
     )
     assert len(sm.segments) == 1
@@ -1234,7 +1272,9 @@ def test_user_message_with_attachments_stores_correctly():
         ChatMessage(
             content="look",
             role="user",
-            attachments=[Attachment.from_data(b"x", mime="image/png", name="c.png")],
+            attachments=[
+                Attachment.from_data(b"x", mime="image/png", name="c.png")
+            ],
         )
     )
     assert len(sm.segments) == 1
@@ -1310,7 +1350,9 @@ def test_messages_surfaces_attachments():
                     ],
                 )
             ),
-            StoredMessage.from_chat_message(ChatMessage("plain text", role="assistant")),
+            StoredMessage.from_chat_message(
+                ChatMessage("plain text", role="assistant")
+            ),
         )
         # Input values are read-only from application code; `_set()` is the
         # same mechanism Shiny itself uses to deliver client-reported values.

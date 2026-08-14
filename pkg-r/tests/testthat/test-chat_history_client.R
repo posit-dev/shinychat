@@ -33,6 +33,28 @@ test_that("set_turns_recorded() round-trips through record/replay", {
   expect_equal(turns_set[[1]]@contents[[1]]@text, "hello")
 })
 
+test_that("set_turns_recorded() preserves list-valued turn properties", {
+  skip_if_not_installed("ellmer")
+  turn <- ellmer::AssistantTurn(
+    contents = list(ellmer::ContentText("hello")),
+    json = list(1, "two")
+  )
+  recorded <- ellmer::contents_record(turn)
+
+  turns_set <- NULL
+  client <- list(
+    get_tools = function() list(),
+    set_turns = function(value) {
+      turns_set <<- value
+    }
+  )
+  class(client) <- c("Chat", "R6")
+
+  set_turns_recorded(client, list(recorded))
+
+  expect_identical(turns_set[[1]]@json, list(1, "two"))
+})
+
 test_that("get_client_info() reads provider name and model via public ellmer API", {
   skip_if_not_installed("ellmer")
   withr::local_envvar(OPENAI_API_KEY = NA)

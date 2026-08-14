@@ -7,7 +7,7 @@
   }
 
   .tool-intent {
-    opacity: 0.66;
+    opacity: var(--_activity-opacity-muted);
     font-style: italic;
     font-weight: normal;
     text-align: end;
@@ -85,7 +85,7 @@
       place-items: center;
       width: 1em;
       height: 1em;
-      opacity: 0.66;
+      opacity: var(--_activity-opacity-muted);
 
       &,
       >.horizontal {
@@ -107,7 +107,9 @@
 
   >.card-body {
     position: relative;
-    transition: max-height 0.3s ease-out, opacity 0.2s ease-out;
+    // No `max-height` transition: the expanded state leaves it at `none`, which
+    // is not interpolable with the collapsed `0`, so it never animated anyway.
+    transition: opacity 0.2s ease-out;
     opacity: 1;
     overflow: auto;
 
@@ -285,7 +287,1008 @@
   }
 }
 
-.shinychat-tool-image {
+// The "Tool call" / "Tool result" labels above each half of an expanded card.
+// They are inline <strong>s, which worked only because every payload used to be
+// block-level (a markdown stream, or a <p>). A custom `html` result can be
+// inline — a bare <svg>, <img>, or <span> — and would then share the label's
+// line box instead of starting below it. `flex: none` keeps the label at its
+// own height if the wrapper is ever laid out as a flex container.
+.shiny-tool-result__request > strong,
+.shiny-tool-result__result > strong {
+  display: block;
+  flex: none;
+}
+
+.shiny-chat-tool-image {
   max-width: 100%;
   border-radius: var(--bs-border-radius);
+}
+
+// Condensed tool view (Tier-1 group row / Tier-2 call rows / Tier-3 leaf
+// card). The whole activity block reads as a single dimmed unit whether it's
+// still running or finished — never full-strength while streaming.
+$shiny-chat-tool-row-min-height: 2em;
+// Size of a bare identity mark — the generic dot, and thinking's diamond. Shared
+// so the two stay the same size.
+$shiny-chat-tool-glyph-mark: 0.4em;
+// Width of the drill-in blockquote left rule (matches the card border width).
+$shiny-chat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width, 1px));
+
+// Dim the inline row surfaces and the leaf cards directly (not the wrappers):
+// ancestor opacity can't be undone by a descendant, so dimming a wrapper would
+// also wash out a fullscreen card, which escapes the block visually. Scoping
+// the leaf card with :not([fullscreen]) keeps a fullscreen card at full
+// strength while everything at rest reads at the shared activity opacity.
+.shiny-chat-tool-group__row,
+.shiny-chat-tool-call-row__summary,
+.shiny-tool-card:not([fullscreen]) {
+  // Shared with the thinking header via --_activity-opacity on
+  // shiny-chat-container; high contrast resets it to 1 (see chat.scss).
+  opacity: var(--_activity-opacity);
+}
+
+// The leaf card keeps bslib's `.bslib-card` class, so a fullscreen card gets the
+// same chrome it has on main: the card shadow, a transparent border, and the
+// `--bs-card-cap-bg` reset that keeps the header untinted. At rest the row above
+// is already the card's box, so the leaf sheds the shadow and shows a plain
+// border for the drill-in rule to sit on. Done through bslib's own custom
+// properties rather than by overriding its rules.
+.shiny-tool-card:not([fullscreen]) {
+  --bslib-card-box-shadow: none;
+  --bslib-card-border-color: var(--bs-card-border-color);
+}
+
+// Block spacing lives on the loop wrapper now (finalized cards render inside
+// .shiny-chat-tool-loop, not the standalone .shiny-tool-result/-request
+// wrappers those rules were written for — see the block above, still needed
+// for the streaming raw-HTML path and kept as-is).
+.shiny-chat-tool-loop {
+  display: block;
+  margin: 1em 0;
+
+  &:first-child {
+    margin-top: 0;
+  }
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+// A thinking block between two tool loops is another activity row in the same
+// stack, not a separate section — thinking is part of the flow of what the
+// assistant did, so it reads continuous with the calls around it. (A thinking
+// block always splits a loop in two, since it becomes its own message block, so
+// without this the split shows up as a 1em trench.)
+.shiny-chat-tool-loop:has(+ .shiny-chat-thinking) {
+  margin-bottom: 0;
+}
+
+.shiny-chat-thinking + .shiny-chat-tool-loop {
+  margin-top: 0;
+}
+
+// Prose after an activity block needs the breathing room back: the answer is
+// not part of the stack.
+.shiny-chat-tool-loop + p,
+.shiny-chat-thinking + p {
+  margin-top: 1rem;
+}
+
+// A migrated custom-display payload sits outside `.shiny-chat-tool-group`, as
+// a sibling in `.shiny-chat-tool-loop`, so it renders at normal font size, not
+// the row's 0.8em. `.shiny-chat-tool-loop` is `display: block` with no gap, so
+// without this the payload would butt straight against the row above it. The
+// trailing margin collapses on the last child so the loop's own
+// `margin-bottom` (not this one) governs the boundary after the loop.
+.shiny-chat-tool-custom-display {
+  margin: 1em 0;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+// Python's `ChatMessage.__init__` runs `split_html_islands` eagerly, so an
+// author's custom UI reaches the wire already wrapped in a real
+// `<shiny-chat-raw-html>` element. The legacy `<shinychat-raw-html>` tag is
+// also accepted while old serialized content remains in use. It lands here via
+// `RawHTML`'s `innerHTML`,
+// so no React tag map runs on it (`MarkdownContent.tsx`'s is the only place
+// that maps this tag away) — it hits the DOM as an unknown element, which
+// defaults to `display: inline` and wraps its block content in an inline box.
+// This is what the element already means: an island marker, not a box.
+shiny-chat-raw-html,
+shinychat-raw-html {
+  display: contents;
+}
+
+.shiny-chat-tool-group {
+  font-size: 0.8em;
+
+  // Pseudo-private geometry tokens shared by the nested row and its drill-in
+  // rule. Deliberately `rem`, not `em`: the row's margin and the drill-in's
+  // padding resolve in different font contexts (the leaf card renders at a
+  // smaller size), so an `em` value would land at two different pixel lengths
+  // and the rule would miss the glyph. A fixed length keeps them locked.
+  --_row-indent: 1.125rem; // nesting step of a call row under the group header
+  --_row-pad: 0.4rem; // pill inner padding — also the glyph's offset from the edge
+  --_row-glyph-width: 0.9em; // status / identity glyph box size
+}
+
+.shiny-chat-tool-spacer {
+  margin-inline-start: auto;
+}
+
+.shiny-chat-tool-group__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: $shiny-chat-tool-row-min-height;
+  padding: 0.25rem var(--_row-pad);
+  border-radius: 6px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+
+  &:hover,
+  &:focus-visible {
+    background-color: rgba(var(--bs-emphasis-color-rgb), 0.05);
+  }
+}
+
+// Keyboard focus needs more than the hover pill: a 5%-opacity background tint is
+// too low-contrast to stand alone as a focus indicator. Shared by every
+// subordinate activity row, the thinking header included, so they can't drift.
+.shiny-chat-tool-group__row:focus-visible,
+.shiny-chat-tool-call-row__summary:focus-visible,
+.shiny-chat-thinking-header:focus-visible {
+  outline: 2px solid var(--bs-primary, #007bc2);
+  outline-offset: 2px;
+}
+
+.shiny-chat-tool-group__glyph {
+  --_size: var(--_row-glyph-width);
+  width: var(--_size);
+  height: var(--_size);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  color: var(--bs-secondary-color);
+
+  svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  &.running [class^=spinner] {
+    --bs-spinner-width: var(--_size);
+    --bs-spinner-height: var(--_size);
+    --bs-spinner-border-width: 0.2em;
+  }
+}
+
+// The generic identity glyph: a tool with no icon of its own, or a mixed group.
+.shiny-chat-tool-glyph-dot {
+  display: inline-block;
+  width: $shiny-chat-tool-glyph-mark;
+  height: $shiny-chat-tool-glyph-mark;
+  margin: auto;
+  border-radius: 50%;
+  background-color: var(--bs-secondary-color);
+}
+
+// Thinking's identity glyph. Unlike the dot it is a direct child of its row
+// rather than sitting inside a glyph box, so it spans the reserved slot itself
+// and centers the mark — which is what keeps the thinking label aligned with the
+// tool rows' labels. The mark is the same size as the dot, turned 45° into a
+// diamond, so a thinking row is distinguishable from an untitled tool row
+// without needing a glyph invented for it.
+.shiny-chat-thinking-glyph {
+  display: grid;
+  place-items: center;
+  width: var(--_row-glyph-width);
+  height: var(--_row-glyph-width);
+  flex: none;
+
+  &::before {
+    content: "";
+    width: $shiny-chat-tool-glyph-mark;
+    height: $shiny-chat-tool-glyph-mark;
+    background-color: var(--bs-secondary-color);
+    transform: rotate(45deg);
+  }
+}
+
+// Always nested inside `.shiny-chat-tool-group__title`, which is the element
+// that participates in the row's layout — this only sets the typeface.
+.shiny-chat-tool-group__toolname {
+  font-family: var(--bs-font-monospace);
+}
+
+// The group/tool title never wraps; if the row is squeezed it truncates with
+// an ellipsis rather than pushing onto a second line.
+.shiny-chat-tool-group__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  // A title changes under the reader as the call settles ("Inspecting schema"
+  // → "Inspected schema", "Using run_sql" → "Used run_sql"). It crossfades
+  // rather than flipping, matching the thinking header. Kept in step with
+  // `FADE_DURATION_MS` in `useFadingText.ts`; `[data-fading]` is never set
+  // under `prefers-reduced-motion`, so no reduced-motion rule is needed.
+  transition: opacity 0.2s ease;
+
+  &[data-fading] {
+    opacity: 0;
+  }
+}
+
+// A heterogeneous group names every tool it ran, joined by commas. The list
+// gets its own box so the row's flex gap doesn't open up around each comma;
+// inside a segment the title and its ×N keep that same gap, and the comma sits
+// tight against the segment it follows.
+//
+// A block container, not an inline flex box, so `text-overflow` applies:
+// overflow is the *joined list's* problem. `GroupTitle` drops whole segments
+// into "and N others" rather than letting each one ellipsize on its own, and
+// this box catches only what that can't — a single segment too long to fit,
+// which is always shown whole rather than replaced by the overflow copy.
+.shiny-chat-tool-group__segments {
+  display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  // A segment title is shown whole or not at all: an independently ellipsized
+  // title is illegible, and a header of several of them is unreadable.
+  .shiny-chat-tool-group__title {
+    overflow: visible;
+    text-overflow: clip;
+  }
+}
+
+// Stands in for the segments that didn't fit. Metadata about the list, like the
+// per-tool count, so it takes the same muted treatment.
+.shiny-chat-tool-group__overflow {
+  color: var(--bs-secondary-color);
+}
+
+.shiny-chat-tool-group__segment {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+
+  + .shiny-chat-tool-group__segment {
+    margin-inline-start: 0.25em;
+  }
+}
+
+// The row's identity box: the title, its ×N, and — on a single-call row — the
+// per-call label glued to it in colon form, so the flex row gap doesn't push
+// them apart into "title : label". Every row shape uses it, single- and
+// multi-call alike: the title has to sit at the same depth in both or React
+// remounts it when a group grows from one call to two, and the crossfade at
+// that boundary never runs.
+.shiny-chat-tool-group__titlewrap {
+  display: inline-flex;
+  align-items: baseline;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+
+  // Keep the identity title whole when a label sits beside it: the label
+  // truncates instead of wrapping the title onto a second line. With no label
+  // (a multi-call header) the title is the only thing that can ellipsize, so it
+  // has to stay shrinkable.
+  &:has(> .shiny-chat-tool-group__label) > .shiny-chat-tool-group__title {
+    flex: none;
+  }
+
+  // A homogeneous header's ×N is a direct child here; a heterogeneous group's
+  // sits inside its segment, which sets its own gap. This box has none of its
+  // own — the label glues to the title deliberately — so the badge carries its
+  // own separation, matching the row gap it used to inherit. Centered rather
+  // than baseline-aligned because the title is an `overflow: hidden` flex item
+  // and so has no real baseline to align against.
+  > .shiny-chat-tool-group__count {
+    align-self: center;
+    margin-inline-start: 0.5rem;
+  }
+}
+
+.shiny-chat-tool-group__label {
+  flex: 1 1 auto;
+  font-weight: normal;
+  opacity: 0.85;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  code {
+    font-size: 0.9em;
+  }
+}
+
+// Argument-preview / label code reads as monospace but drops the code
+// background, padding, and color tint so it sits inline in the row.
+.shiny-chat-tool-group__label code,
+.shiny-chat-tool-call-row__label code {
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+
+// The tool's `_intent`, surfaced only on drill-in (when the row is expanded),
+// trailing before the chevron — the row is the card header now, so intent
+// rides the row rather than a hidden card header.
+.shiny-chat-tool-row__intent {
+  font-style: italic;
+  opacity: var(--_activity-opacity-muted);
+  text-align: end;
+  flex-shrink: 3;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shiny-chat-tool-group__count {
+  font-size: 0.85em;
+  font-weight: 400;
+  color: var(--bs-secondary-color);
+}
+
+// The failure note, shared by the group header, the single-call row and the
+// Tier-2 rows. It stays small and unadorned — no badge, no icon — but carries
+// the danger token rather than the muted one: it is the only text cue a screen
+// reader gets, and the decorative glyph beside it is already tinted.
+.shiny-chat-tool-group__failed {
+  font-size: 0.85em;
+  color: var(--bs-danger);
+}
+
+// The trailing disclosure chevron. `.shiny-chat-thinking-disclosure` shares
+// these rules because a collapsed thinking header is the same kind of
+// subordinate activity row as a tool call, and the two must not drift apart.
+.shiny-chat-tool-group__chevron,
+.shiny-chat-tool-call-row__chevron,
+.shiny-chat-thinking-disclosure {
+  display: grid;
+  place-items: center;
+  width: 0.9em;
+  height: 0.9em;
+  flex: none;
+  opacity: var(--_activity-opacity-muted);
+  transition: transform 0.3s ease-in-out;
+
+  // Collapsed points right, expanded points down — the disclosure convention
+  // `<details>` established. The shared icon ships pointing down (it is also the
+  // scroll-to-bottom arrow, where down is the meaning), so rest is -90°.
+  transform: rotate(-90deg);
+
+  // The SVG ships at an intrinsic 16px; pin it to the box so it scales with the
+  // row text and stays centered (an overflowing SVG shifts off-center when the
+  // box is rotated, misaligning expanded vs. collapsed chevrons).
+  svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+}
+
+.shiny-chat-tool-group__row[aria-expanded="true"] .shiny-chat-tool-group__chevron,
+.shiny-chat-tool-call-row__summary[aria-expanded="true"] .shiny-chat-tool-call-row__chevron,
+.shiny-chat-thinking-header[aria-expanded="true"] .shiny-chat-thinking-disclosure {
+  transform: rotate(0deg);
+}
+
+.shiny-chat-tool-group__calls {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+
+  &[hidden] {
+    display: none;
+  }
+}
+
+.shiny-chat-tool-call-row {
+  &__summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    // Indent the row (pill and all) rather than just its content, so the hover
+    // area nests under the group header; the right edge still lines up.
+    margin-left: var(--_row-indent);
+    width: calc(100% - var(--_row-indent));
+    min-height: $shiny-chat-tool-row-min-height;
+    padding: 0.25rem var(--_row-pad);
+    border-radius: 6px;
+    background: none;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+
+    &:hover,
+    &:focus-visible {
+      background-color: rgba(var(--bs-emphasis-color-rgb), 0.05);
+    }
+  }
+
+  &__status {
+    --_size: var(--_row-glyph-width);
+    width: var(--_size);
+    height: var(--_size);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    color: var(--bs-secondary-color);
+
+    &.running [class^=spinner] {
+      --bs-spinner-width: var(--_size);
+      --bs-spinner-height: var(--_size);
+      --bs-spinner-border-width: 0.2em;
+    }
+
+    &.text-danger {
+      color: var(--bs-danger, #dc3545);
+    }
+  }
+
+  &__label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__preview {
+    opacity: var(--_activity-opacity-muted);
+    font-style: italic;
+    flex-shrink: 3;
+    min-width: 0;
+    text-align: end;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__detail {
+    overflow: hidden;
+
+    &[hidden] {
+      display: none;
+    }
+
+    &:not([hidden]) {
+      animation: shiny-chat-tool-detail-reveal 0.2s ease-out;
+    }
+
+    // The row above already is the header (glyph + title + peek + chevron), so
+    // the leaf card drops its own box and reads as a blockquote: a single
+    // straight left rule (no corner curl) with the request/result body beside
+    // it. A fullscreen card keeps its full chrome (it escapes into an overlay).
+    > .shiny-tool-card:not([fullscreen]) {
+      margin: 0;
+      border: none;
+      border-inline-start: $shiny-chat-tool-detail-rule solid var(--bs-border-color);
+      border-radius: 0;
+
+      > .card-header {
+        display: none;
+      }
+
+      // Line the body text up with the header label. The rule is centered on
+      // the glyph, so the body sits a half-glyph + the row's gap past it (the
+      // header label is a full glyph + gap past the glyph's left edge).
+      > .card-body {
+        padding-inline-start: calc(
+          var(--_row-glyph-width) / 2 + 0.5rem - #{$shiny-chat-tool-detail-rule}
+        );
+      }
+    }
+  }
+}
+
+// Land the drill-in left rule on the glyph (not the pill edge): indent the
+// detail by the row's inline padding on top of the row indent, so the card's
+// border-inline-start sits under the status glyph. A single-call row sits at
+// the loop's base indent, so it only needs the inline-padding offset.
+.shiny-chat-tool-call-row > .shiny-chat-tool-call-row__detail {
+  padding-inline-start: calc(
+    var(--_row-indent) + var(--_row-pad) + var(--_row-glyph-width) / 2
+  );
+}
+
+.shiny-chat-tool-group--single > .shiny-chat-tool-call-row__detail {
+  padding-inline-start: calc(var(--_row-pad) + var(--_row-glyph-width) / 2);
+}
+
+@keyframes shiny-chat-tool-detail-reveal {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.tool-title-label {
+  font-weight: normal;
+  opacity: 0.85;
+}
+
+// Short textual status cue (e.g. "failed") in a leaf card header, so status is
+// legible without relying on icon/color alone. Color comes from the applied
+// status class (e.g. .text-danger) when present.
+.tool-status-note {
+  font-size: 0.85em;
+}
+
+.shiny-aside-group {
+  display: inline-block;
+  max-inline-size: calc(100% - 0.3em);
+  margin-inline-start: 0.3em;
+  // Small empirically-tuned nudge above the default baseline position.
+  vertical-align: 0.1em;
+}
+
+.shiny-aside-grounded[data-active] {
+  background: rgba(var(--bs-primary-rgb, 13, 110, 253), 0.12);
+  border-radius: 0.12em;
+  text-decoration-line: underline;
+  text-decoration-color: rgba(var(--bs-primary-rgb, 13, 110, 253), 0.7);
+  text-decoration-thickness: 0.1em;
+  text-underline-offset: 0.14em;
+}
+
+.shiny-aside-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  border: none;
+  border-radius: 999px;
+  background: rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.06);
+  color: inherit;
+  font-size: 0.72em;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0.25em 0.6em;
+  cursor: pointer;
+  vertical-align: middle;
+  min-height: 1.6em;
+  max-inline-size: min(18em, 100%);
+
+  &:has(img) {
+    padding-inline-start: 0.35em;
+  }
+
+  &.shiny-aside-pill--count {
+    padding-inline: 0.5em;
+    min-width: 1.4em;
+    justify-content: center;
+  }
+
+  img {
+    flex: 0 0 auto;
+    width: 1.1em;
+    height: 1.1em;
+    border-radius: 50%;
+  }
+
+  .shiny-aside-pill__overflow {
+    flex: 0 0 auto;
+    opacity: 0.65;
+  }
+
+  .shiny-aside-pill__label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &:hover,
+  &[aria-expanded="true"] {
+    background: rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.12);
+  }
+}
+
+.shiny-aside-popover {
+  // Position comes from Floating UI. The portal lets the popover escape the
+  // message list's scroll container while flip/shift keep it in the viewport.
+  display: flex;
+  flex-direction: column;
+  z-index: 1040;
+  box-sizing: border-box;
+  width: min(22em, calc(100vw - 1rem));
+  max-height: min(32rem, calc(100vh - 1rem));
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  background: var(--bs-body-bg, #fff);
+  color: var(--bs-body-color, inherit);
+  border: 1px solid rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.12);
+  border-radius: 0.6em;
+  box-shadow: 0 0.4em 1.2em rgba(0, 0, 0, 0.12);
+  padding: 0.7em 0.8em;
+  font-size: 0.8em;
+  font-weight: 400;
+  text-align: start;
+  white-space: normal;
+
+  .shiny-aside-popover__nav {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    opacity: 0.65;
+    margin-bottom: 0.5em;
+
+    .shiny-aside-popover__nav-arrows {
+      display: flex;
+      align-items: center;
+      gap: 0.6em;
+      margin-left: -0.55em;
+    }
+
+    .shiny-aside-popover__count {
+      font-size: 0.75em;
+    }
+
+    button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: none;
+      color: inherit;
+      cursor: pointer;
+      border-radius: 0.4em;
+      min-width: 24px;
+      min-height: 24px;
+      padding: 0.4em 0.55em;
+      margin: -0.4em 0;
+
+      &:hover {
+        background: rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.08);
+      }
+    }
+  }
+
+  .shiny-aside-popover__label {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+    font-weight: 600;
+    margin-bottom: 0.4em;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+
+    img {
+      flex: 0 0 auto;
+      width: 1.1em;
+      height: 1.1em;
+      border-radius: 50%;
+    }
+  }
+
+  .shiny-aside-popover__label-text {
+    display: -webkit-box;
+    min-width: 0;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .shiny-aside-popover__body {
+    min-height: 0;
+    overflow: auto;
+
+    p:last-child {
+      margin-bottom: 0;
+    }
+  }
+}
+
+.shiny-web-activity {
+  // Must match the box drawn by <ChevronIcon>.
+  --_chevron-size: 12px;
+  --_header-gap: 0.35em;
+  // The rail and every dot are derived from the chevron's center so all three
+  // stay on one column; the nested rows are indented past the chevron so they
+  // share the header label's column.
+  --_chevron-center: calc(var(--_chevron-size) / 2);
+  --_rail-indent: calc(var(--_chevron-size) + var(--_header-gap));
+  --_dot-size: 0.5em;
+  // Vertical center of a dot within its row, and the space between rows.
+  --_dot-center: 0.7em;
+  --_node-gap: 0.7em;
+
+  margin: 0.5em 0;
+  font-size: 0.9em;
+
+  .shiny-web-activity__header {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--_header-gap);
+    background: none;
+    border: none;
+    padding: 0.15em 0;
+    cursor: pointer;
+    color: rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.6);
+    font: inherit;
+
+    &:hover,
+    &:focus-visible {
+      color: rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.85);
+      outline: none;
+    }
+  }
+
+  .shiny-web-activity__chevron {
+    display: block;
+    flex: none;
+    transition: transform 0.2s ease;
+
+    &[data-expanded] {
+      transform: rotate(90deg);
+    }
+  }
+
+  .shiny-web-activity__timeline {
+    position: relative;
+    margin: 0.3em 0 0.2em;
+    padding-left: var(--_rail-indent);
+  }
+
+  .shiny-web-activity__node {
+    position: relative;
+    margin-bottom: var(--_node-gap);
+
+    &::before {
+      content: "";
+      position: absolute;
+      // Offsets from the node's own left edge, which the timeline has already
+      // pushed in by --_rail-indent, back out onto the rail column.
+      left: calc(
+        var(--_chevron-center) - var(--_rail-indent) - var(--_dot-size) / 2
+      );
+      top: calc(var(--_dot-center) - var(--_dot-size) / 2);
+      width: var(--_dot-size);
+      height: var(--_dot-size);
+      border-radius: 50%;
+      background: var(--bs-body-bg, #fff);
+      box-shadow: 0 0 0 1px rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.3);
+    }
+  }
+
+  // The connector rail is drawn per node rather than across the whole timeline,
+  // so it always terminates on something instead of overshooting the last dot.
+  .shiny-web-activity__node::after {
+    content: "";
+    position: absolute;
+    left: calc(var(--_chevron-center) - var(--_rail-indent) - 0.5px);
+    top: var(--_dot-center);
+    width: 1px;
+    background: rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.15);
+  }
+
+  // Reach the next node's dot: the rest of this node, the gap between them,
+  // and the next dot's own offset within its row.
+  .shiny-web-activity__node:not(:last-child)::after {
+    height: calc(100% + var(--_node-gap));
+  }
+
+  .shiny-web-activity__node:last-child::after {
+    // No dot follows, so a rail here would just be a stub below the last dot.
+    content: none;
+  }
+
+  // ...unless it can serve as a bracket alongside this node's own results.
+  .shiny-web-activity__node:last-child:has(.shiny-web-activity__results)::after {
+    content: "";
+    bottom: 0;
+  }
+
+  .shiny-web-activity__qrow {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6em;
+  }
+
+  .shiny-web-activity__query {
+    flex: 1;
+    font-weight: 500;
+  }
+
+  .shiny-web-activity__count {
+    white-space: nowrap;
+    opacity: 0.6;
+    font-size: 0.9em;
+  }
+
+  .shiny-web-activity__results {
+    margin-top: 0.4em;
+    border: 1px solid rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.12);
+    border-radius: var(--bs-border-radius, 0.5rem);
+    max-height: 11em;
+    overflow: auto;
+  }
+
+  .shiny-web-activity__result {
+    display: flex;
+    align-items: center;
+    gap: 0.6em;
+    padding: 0.4em 0.6em;
+    color: inherit;
+    text-decoration: none;
+    border-radius: var(--bs-border-radius, 0.4rem);
+
+    &:hover {
+      background: rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.05);
+    }
+  }
+
+  .shiny-web-activity__fav {
+    width: 1.1em;
+    height: 1.1em;
+    border-radius: 3px;
+    flex: none;
+  }
+
+  .shiny-web-activity__title {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .shiny-web-activity__domain {
+    white-space: nowrap;
+    opacity: 0.55;
+    font-size: 0.9em;
+  }
+
+  .shiny-web-activity__fetch {
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+
+    .shiny-web-activity__fetch-label {
+      opacity: 0.6;
+    }
+
+    a {
+      word-break: break-all;
+    }
+  }
+
+  .shiny-web-activity__status--error {
+    color: var(--bs-danger, #dc3545);
+  }
+
+  .shiny-web-activity__status--ok {
+    color: var(--bs-success, #2a9d4a);
+  }
+}
+
+.shiny-sources {
+  display: inline-block;
+  margin-top: 0.5rem;
+}
+
+.shiny-sources-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--bs-border-color, #d5d7db);
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem 0.25rem 0.5rem;
+  background: var(--bs-tertiary-bg, #f6f7f9);
+  color: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.shiny-sources-pill__stack {
+  display: inline-flex;
+
+  .shiny-sources-favicon {
+    margin-left: -0.4375rem;
+    border: 2px solid var(--bs-tertiary-bg, #f6f7f9);
+    border-radius: 50%;
+
+    &:first-child {
+      margin-left: 0;
+    }
+  }
+}
+
+.shiny-sources-favicon {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 0.25rem;
+  flex: 0 0 auto;
+}
+
+.shiny-sources-favicon--blank {
+  background: var(--bs-secondary-bg, #e3e3e6);
+}
+
+.shiny-sources-popover {
+  width: 21rem;
+  max-height: 18rem;
+  overflow-y: auto;
+  background: var(--bs-body-bg, #fff);
+  border: 1px solid var(--bs-border-color, #d5d7db);
+  border-radius: 0.75rem;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14);
+  padding: 0.375rem 0;
+  // Same layer as .shiny-aside-popover — both render through a Floating-UI
+  // portal and should stack consistently with each other.
+  z-index: 1040;
+}
+
+.shiny-sources-popover__title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.5rem 0.875rem 0.375rem;
+}
+
+.shiny-sources-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.shiny-sources-item__link {
+  display: flex;
+  gap: 0.625rem;
+  padding: 0.5625rem 0.875rem;
+  text-decoration: none;
+  color: inherit;
+
+  &:hover {
+    background: var(--bs-tertiary-bg, #f6f7f9);
+  }
+
+  .shiny-sources-favicon {
+    margin-top: 0.125rem;
+  }
+}
+
+.shiny-sources-item__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.shiny-sources-item__site {
+  font-size: 0.71875rem;
+  color: var(--bs-secondary-color, #8a8a8e);
+}
+
+.shiny-sources-item__title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.35;
 }

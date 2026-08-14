@@ -18,10 +18,14 @@ def test_greeting_appears_on_load(page: Page, local_app: ShinyAppProc) -> None:
 
     greeting = chat.loc_greeting
     expect(greeting).to_be_visible(timeout=10_000)
-    expect(_loc_greeting_content(chat)).to_contain_text("Welcome to the Explainer")
+    expect(_loc_greeting_content(chat)).to_contain_text(
+        "Welcome to the Explainer"
+    )
 
 
-def test_greeting_has_suggestion_cards(page: Page, local_app: ShinyAppProc) -> None:
+def test_greeting_has_suggestion_cards(
+    page: Page, local_app: ShinyAppProc
+) -> None:
     page.goto(local_app.url)
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30_000)
@@ -36,7 +40,9 @@ def test_greeting_has_suggestion_cards(page: Page, local_app: ShinyAppProc) -> N
     expect(suggestions.nth(2)).to_have_text("How does gradient descent work?")
 
 
-def test_suggestion_click_fills_input(page: Page, local_app: ShinyAppProc) -> None:
+def test_suggestion_click_fills_input(
+    page: Page, local_app: ShinyAppProc
+) -> None:
     page.goto(local_app.url)
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30_000)
@@ -78,7 +84,9 @@ def test_greeting_reappears_after_clear_chat(
     # Clear chat (not greeting) — greeting should reappear
     page.locator("#clear_chat").click()
     expect(chat.loc_greeting).to_be_visible(timeout=10_000)
-    expect(_loc_greeting_content(chat)).to_contain_text("Welcome to the Explainer")
+    expect(_loc_greeting_content(chat)).to_contain_text(
+        "Welcome to the Explainer"
+    )
 
 
 def test_clear_chat_and_greeting_regenerates(
@@ -88,7 +96,9 @@ def test_clear_chat_and_greeting_regenerates(
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30_000)
     expect(chat.loc_greeting).to_be_visible(timeout=10_000)
-    expect(_loc_greeting_content(chat)).to_contain_text("Welcome to the Explainer")
+    expect(_loc_greeting_content(chat)).to_contain_text(
+        "Welcome to the Explainer"
+    )
 
     # Send a message to dismiss
     chat.set_user_input("Hello")
@@ -122,4 +132,6 @@ def test_messages_gone_after_clear(page: Page, local_app: ShinyAppProc) -> None:
     expect(chat.loc_greeting).to_be_visible(timeout=10_000)
 
     # No chat messages should be visible
-    expect(chat.loc_messages.locator(".shiny-chat-message")).to_have_count(0, timeout=10_000)
+    expect(chat.loc_messages.locator(".shiny-chat-message")).to_have_count(
+        0, timeout=10_000
+    )

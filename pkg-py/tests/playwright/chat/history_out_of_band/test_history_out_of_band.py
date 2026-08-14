@@ -40,7 +40,9 @@ def test_out_of_band_message_survives_history_restore(
     expect(marker).to_be_visible(timeout=10_000)
     expect(marker).to_have_text("out-of-band notice")
     expect(
-        page.locator(".shiny-chat-message-content", has_text="echo: first question")
+        page.locator(
+            ".shiny-chat-message-content", has_text="echo: first question"
+        )
     ).to_be_visible(timeout=10_000)
     expect(message_count(page)).to_have_count(3, timeout=10_000)
 
@@ -63,6 +65,8 @@ def test_out_of_band_message_survives_history_restore(
     expect(marker).to_be_visible(timeout=10_000)
     expect(marker).to_have_text("out-of-band notice")
     expect(
-        page.locator(".shiny-chat-message-content", has_text="echo: first question")
+        page.locator(
+            ".shiny-chat-message-content", has_text="echo: first question"
+        )
     ).to_be_visible(timeout=10_000)
     expect(message_count(page)).to_have_count(3, timeout=10_000)

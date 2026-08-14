@@ -217,18 +217,27 @@ async def test_node_with_no_ui_has_no_entry_in_ui_jsonl(
 
 @pytest.mark.anyio
 async def test_ui_growth_across_saves_is_repersisted(
-    store: FileConversationStore, tmp_path: Path,
+    store: FileConversationStore,
+    tmp_path: Path,
 ):
     # A node's `ui` can grow across saves (a streamed reply arriving after
     # a synchronous side-channel append attaches to an already-persisted
     # node). The store must re-persist the node's full UI when it grows,
     # not just the first time it sees the node.
     rec = new_conversation_record(title="t")
-    msg1 = {"role": "assistant", "segments": [{"content": "hello", "content_type": "markdown"}]}
-    nid = rec.append_linear([{"role": "assistant", "content": "hello"}], ui=[msg1])
+    msg1 = {
+        "role": "assistant",
+        "segments": [{"content": "hello", "content_type": "markdown"}],
+    }
+    nid = rec.append_linear(
+        [{"role": "assistant", "content": "hello"}], ui=[msg1]
+    )
     await store.put(part(), rec)
 
-    msg2 = {"role": "assistant", "segments": [{"content": "world", "content_type": "markdown"}]}
+    msg2 = {
+        "role": "assistant",
+        "segments": [{"content": "world", "content_type": "markdown"}],
+    }
     rec.nodes[nid].ui = [msg1, msg2]
     await store.put(part(), rec)
 

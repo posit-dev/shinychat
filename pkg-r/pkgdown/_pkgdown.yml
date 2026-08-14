@@ -85,6 +85,7 @@ reference:
 - title: Integration with ellmer
   contents:
   - contents_shinychat
+  - tool_result_display
 
 news:
   releases:

@@ -83,6 +83,29 @@ describe("RawHTML", () => {
     expect(div.classList.contains("html-fill-item")).toBe(false)
   })
 
+  it("does not add fill carrier classes when fillable is false", () => {
+    const { container } = render(
+      <div className="html-fill-container">
+        <RawHTML html="hello" className="card-footer" fillable={false} />
+      </div>,
+    )
+    const div = container.querySelector(".card-footer") as HTMLElement
+    expect(div).not.toBeNull()
+    expect(div.classList.contains("html-fill-item")).toBe(false)
+    expect(div.classList.contains("html-fill-container")).toBe(false)
+  })
+
+  it("still promotes a boxed island when fillable is left default", () => {
+    const { container } = render(
+      <div className="html-fill-container">
+        <RawHTML html="hello" className="payload" displayContents={false} />
+      </div>,
+    )
+    const div = container.querySelector(".payload") as HTMLElement
+    expect(div.classList.contains("html-fill-item")).toBe(true)
+    expect(div.classList.contains("html-fill-container")).toBe(true)
+  })
+
   it("combines fill carrier classes with className", () => {
     const { container } = render(
       <div className="html-fill-container">
