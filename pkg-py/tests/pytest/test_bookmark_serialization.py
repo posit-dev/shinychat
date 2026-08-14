@@ -12,15 +12,28 @@ import json
 from typing import Any
 
 import pytest
-from chatlas import ContentToolResult, Turn
+from chatlas import ChatOpenAI, ContentToolResult, Turn
 from htmltools import HTMLDependency, tags
 from pydantic_core import PydanticSerializationError
-from shinychat._chatlas_serialization import serialize_chatlas_turn
+from shinychat._chat_bookmark import get_chatlas_state
 from shinychat.types import ToolResultDisplay
 
 
+async def serialize_bookmark_turn(turn: Turn[Any]) -> dict[str, Any]:
+    client = ChatOpenAI(api_key="fake")
+    client.set_turns([turn])
+    state = await get_chatlas_state(client)()
+    assert isinstance(state, dict)
+    turns = state["turns"]
+    assert isinstance(turns, list)
+    dumped = turns[0]
+    assert isinstance(dumped, dict)
+    return dumped
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize("as_dict", [False, True])
-def test_turn_serialization_with_htmldep_in_tool_result(as_dict: bool):
+async def test_turn_serialization_with_htmldep_in_tool_result(as_dict: bool):
     """Turn containing ToolResultDisplay with HTMLDependency round-trips through JSON."""
     typed_display = ToolResultDisplay(
         html=tags.div(
@@ -39,7 +52,7 @@ def test_turn_serialization_with_htmldep_in_tool_result(as_dict: bool):
     result = ContentToolResult(value="done", extra={"display": display})
     turn = Turn(role="user", contents=[result])
 
-    dumped = serialize_chatlas_turn(turn)
+    dumped = await serialize_bookmark_turn(turn)
 
     assert turn.contents[0] is result
     assert result.extra["display"] is display
@@ -68,7 +81,8 @@ def test_turn_serialization_with_htmldep_in_tool_result(as_dict: bool):
     assert isinstance(restored.contents[0], ContentToolResult)
 
 
-def test_turn_serialization_handles_htmltools_outside_tool_display():
+@pytest.mark.anyio
+async def test_turn_serialization_handles_htmltools_outside_tool_display():
     turn = Turn(
         role="user",
         contents=[
@@ -79,7 +93,7 @@ def test_turn_serialization_handles_htmltools_outside_tool_display():
         ],
     )
 
-    dumped = serialize_chatlas_turn(turn)
+    dumped = await serialize_bookmark_turn(turn)
 
     assert dumped["contents"][0]["extra"]["application_metadata"] == {
         "html": "<span>metadata</span>",
@@ -87,7 +101,8 @@ def test_turn_serialization_handles_htmltools_outside_tool_display():
     }
 
 
-def test_turn_serialization_rejects_unknown_objects():
+@pytest.mark.anyio
+async def test_turn_serialization_rejects_unknown_objects():
     turn = Turn(
         role="user",
         contents=[
@@ -99,4 +114,4 @@ def test_turn_serialization_rejects_unknown_objects():
     )
 
     with pytest.raises(PydanticSerializationError, match="unknown type"):
-        serialize_chatlas_turn(turn)
+        await serialize_bookmark_turn(turn)
