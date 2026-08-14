@@ -33,6 +33,7 @@ def test_turn_serialization_with_htmldep_in_tool_result(as_dict: bool):
         display = {
             "html": typed_display.html,
             "title": typed_display.title,
+            "application_metadata": {"widget_id": "my-widget"},
         }
     result = ContentToolResult(value="done", extra={"display": display})
     turn = Turn(role="user", contents=[result])
@@ -44,6 +45,10 @@ def test_turn_serialization_with_htmldep_in_tool_result(as_dict: bool):
 
     # Verify the serialized dependencies are JSON dicts (not live HTMLDependency objects)
     display_data = dumped["contents"][0]["extra"]["display"]
+    if as_dict:
+        assert display_data["application_metadata"] == {
+            "widget_id": "my-widget"
+        }
     deps = display_data["html"]["dependencies"]
     assert len(deps) == 1
     assert deps[0]["name"] == "my-dep"

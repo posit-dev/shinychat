@@ -23,8 +23,10 @@ def serialize_chatlas_turn(turn: Any) -> dict[str, Any]:
             normalized = turn.model_copy(deep=True)
         normalized_content = normalized.contents[index]
         normalized_content.extra = dict(normalized_content.extra)
-        normalized_content.extra["display"] = ToolResultDisplay(
-            **normalized_content.extra["display"]
-        )
+        display = normalized_content.extra["display"]
+        normalized_content.extra["display"] = {
+            **display,
+            **ToolResultDisplay(**display).model_dump(mode="json"),
+        }
 
     return normalized.model_dump(mode="json")
