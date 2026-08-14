@@ -395,21 +395,10 @@ chat_ui <- function(
       role <- x[["role"]] %||% role
     }
 
-    # `content` is most likely a string, so avoid overhead in that case
-    # (it's also important that we *don't escape HTML* here). Mirrors the
-    # greeting's three-way branch below: htmltools::HTML() is a character
-    # vector too (class c("html", "character")), so it must be checked before
-    # the plain is.character() case -- otherwise it's treated as markdown and
-    # (as of the escaping fix) has no reserved element names to protect it.
+    # htmltools::HTML() is also is.character(), so exclude it explicitly.
     if (is.character(content) && !inherits(content, "html")) {
       ui <- list(html = paste(content, collapse = "\n"))
       content_type <- NULL
-    } else if (
-      inherits(content, "html") &&
-        !inherits(content, c("shiny.tag", "shiny.tag.list"))
-    ) {
-      ui <- list(html = paste(as.character(content), collapse = "\n"))
-      content_type <- "html"
     } else {
       ui <- with_current_theme({
         htmltools::renderTags(pre_process_ui(content))
@@ -464,19 +453,11 @@ chat_ui <- function(
       )
     }
 
+    # htmltools::HTML() is also is.character(), so exclude it explicitly.
     if (is.character(content) && !inherits(content, "html")) {
-      # Plain markdown string
       greeting_content <- content
       greeting_content_type <- "markdown"
-    } else if (
-      inherits(content, "html") &&
-        !inherits(content, c("shiny.tag", "shiny.tag.list"))
-    ) {
-      # htmltools::HTML() - raw HTML string
-      greeting_content <- as.character(content)
-      greeting_content_type <- "html"
     } else {
-      # htmltools tag or tagList - render to HTML and collect deps
       rendered <- with_current_theme({
         htmltools::renderTags(pre_process_ui(content))
       })
@@ -871,27 +852,19 @@ chat_append_message <- function(
   if (is_thinking) {
     content <- unclass(content)
   }
-  is_html <- inherits(
-    content,
-    c(
-      "shiny.tag",
-      "shiny.tag.list",
-      "html",
-      "htmlwidget",
-      "shinychat_tool_card"
-    )
-  )
+  # htmltools::HTML() is also is.character(), so exclude it explicitly.
+  is_plain_string <- is.character(content) && !inherits(content, "html")
   content_type <- if (is_thinking) {
     "thinking"
-  } else if (is_html) {
-    "html"
-  } else {
+  } else if (is_plain_string) {
     "markdown"
+  } else {
+    "html"
   }
 
   operation <- match.arg(operation)
 
-  if (is.character(content) && !is_html) {
+  if (is_plain_string) {
     # content is most likely a string, so avoid overhead in that case
     ui <- list(html = content, deps = NULL)
   } else {
@@ -903,7 +876,7 @@ chat_append_message <- function(
   }
 
   msg_content <- ui[["html"]]
-  if (is_html) {
+  if (content_type == "html") {
     # Surround with blank lines so the markdown parser treats
     # block-level custom elements correctly.
     msg_content <- paste0("\n\n", msg_content, "\n\n")
@@ -1312,16 +1285,10 @@ chat_set_greeting <- function(
     )
   }
 
+  # htmltools::HTML() is also is.character(), so exclude it explicitly.
   if (is.character(content) && !inherits(content, "html")) {
     greeting_content <- content
     greeting_content_type <- "markdown"
-    html_deps <- NULL
-  } else if (
-    inherits(content, "html") &&
-      !inherits(content, c("shiny.tag", "shiny.tag.list"))
-  ) {
-    greeting_content <- as.character(content)
-    greeting_content_type <- "html"
     html_deps <- NULL
   } else {
     ui <- process_ui(pre_process_ui(content), session)
