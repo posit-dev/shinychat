@@ -175,7 +175,7 @@ InMemoryConversationStore <- R6::R6Class(
 )
 
 record_json_size <- function(record) {
-  as.double(nchar(jsonlite::toJSON(record, auto_unbox = TRUE), type = "bytes"))
+  as.double(nchar(jsonlite::serializeJSON(record), type = "bytes"))
 }
 
 CONV_ID_RE <- "^[A-Za-z0-9_-]{1,80}$"
@@ -297,6 +297,11 @@ FileConversationStore <- R6::R6Class(
       private$write_state <- list()
     },
 
+    #' @description All conversations in `partition`, newest-first by
+    #'   `updated_at`, read from one `record.json` per conversation directory
+    #'   on disk.
+    #' @param partition A `conversation_partition()`.
+    #' @returns A list of conversation meta lists.
     list = function(partition) {
       key <- partition_key(partition)
       cached <- private$meta_cache[[key]]
@@ -346,6 +351,12 @@ FileConversationStore <- R6::R6Class(
       metas
     },
 
+    #' @description The full conversation record for `id` in `partition`,
+    #'   reassembled from `record.json`, `turns.jsonl`, and `ui.jsonl`.
+    #' @param partition A `conversation_partition()`.
+    #' @param id A conversation id, as found in the `id` field of a
+    #'   conversation meta list.
+    #' @returns The conversation record, or `NULL` if missing.
     get = function(partition, id) {
       cdir <- safe_conv_path(private$partition_dir(partition), id)
       record_file <- file.path(cdir, "record.json")
@@ -362,7 +373,11 @@ FileConversationStore <- R6::R6Class(
             next
           }
           entry <- tryCatch(
-            jsonlite::fromJSON(line, simplifyVector = FALSE),
+            {
+              entry <- jsonlite::fromJSON(line, simplifyVector = FALSE)
+              entry$data <- jsonlite::unserializeJSON(entry$data)
+              entry
+            },
             error = function(e) NULL
           )
           if (!is.null(entry)) {
@@ -423,6 +438,12 @@ FileConversationStore <- R6::R6Class(
       )
     },
 
+    #' @description Upsert `record` into `partition`, appending new turns and
+    #'   UI data to `turns.jsonl`/`ui.jsonl` and rewriting `record.json`.
+    #' @param partition A `conversation_partition()`.
+    #' @param record A conversation record, in the same shape returned by
+    #'   `get()`.
+    #' @returns `NULL`, invisibly.
     put = function(partition, record) {
       key <- partition_key(partition)
       cdir <- safe_conv_path(private$partition_dir(partition), record$id)
@@ -446,7 +467,10 @@ FileConversationStore <- R6::R6Class(
             new_turns_lines <- c(
               new_turns_lines,
               as.character(jsonlite::toJSON(
-                list(seq = seq, data = turn_data),
+                list(
+                  seq = seq,
+                  data = jsonlite::serializeJSON(turn_data)
+                ),
                 auto_unbox = TRUE,
                 null = "null"
               ))
@@ -544,6 +568,12 @@ FileConversationStore <- R6::R6Class(
       invisible(NULL)
     },
 
+    #' @description Remove the conversation `id` from `partition` by deleting
+    #'   its directory. Missing ids are a no-op.
+    #' @param partition A `conversation_partition()`.
+    #' @param id A conversation id, as found in the `id` field of a
+    #'   conversation meta list.
+    #' @returns `NULL`, invisibly.
     delete = function(partition, id) {
       key <- partition_key(partition)
       cdir <- safe_conv_path(private$partition_dir(partition), id)
@@ -578,22 +608,39 @@ resolve_store <- function(store) {
   }
 
   store <- match.arg(store, c("auto", "memory", "file"))
+  quiet <- getOption(
+    "shinychat.history_options.store_auto.quiet",
+    default = identical(Sys.getenv("TESTTHAT"), "true")
+  )
+  quiet_hint <- c(
+    i = "Set {.code options(shinychat.history_options.store_auto.quiet = TRUE)} to silence this message."
+  )
   switch(
     store,
     auto = {
       if (shiny::in_devmode()) {
-        cli::cli_inform(
-          "Chat history: using in-memory storage (dev mode). History is lost on restart. To persist across restarts, use {.code history_options(store = \"file\")}.",
-          .frequency = "once",
-          .frequency_id = "shinychat_store_auto_memory"
-        )
+        if (!quiet) {
+          cli::cli_inform(
+            c(
+              "Chat history: using in-memory storage (dev mode). History is lost on restart. To persist across restarts, use {.code history_options(store = \"file\")}.",
+              quiet_hint
+            ),
+            .frequency = "once",
+            .frequency_id = "shinychat_store_auto_memory"
+          )
+        }
         auto_dev_memory_store()
       } else {
-        cli::cli_inform(
-          "Chat history: using file-based storage. To use in-memory storage instead, use {.code history_options(store = \"memory\")}.",
-          .frequency = "once",
-          .frequency_id = "shinychat_store_auto_file"
-        )
+        if (!quiet) {
+          cli::cli_inform(
+            c(
+              "Chat history: using file-based storage. To use in-memory storage instead, use {.code history_options(store = \"memory\")}.",
+              quiet_hint
+            ),
+            .frequency = "once",
+            .frequency_id = "shinychat_store_auto_file"
+          )
+        }
         FileConversationStore$new()
       }
     },

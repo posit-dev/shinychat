@@ -51,6 +51,9 @@ File-based conversation storage backend
 \if{html}{\out{<a id="method-FileConversationStore-list"></a>}}
 \if{latex}{\out{\hypertarget{method-FileConversationStore-list}{}}}
 \subsection{\code{FileConversationStore$list()}}{
+  All conversations in \code{partition}, newest-first by
+\code{updated_at}, read from one \code{record.json} per conversation directory
+on disk.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{FileConversationStore$list(partition)}
@@ -63,12 +66,17 @@ File-based conversation storage backend
     }
     \if{html}{\out{</div>}}
   }
+  \subsection{Returns}{
+    A list of conversation meta lists.
+  }
 }
 
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-FileConversationStore-get"></a>}}
 \if{latex}{\out{\hypertarget{method-FileConversationStore-get}{}}}
 \subsection{\code{FileConversationStore$get()}}{
+  The full conversation record for \code{id} in \code{partition},
+reassembled from \code{record.json}, \code{turns.jsonl}, and \code{ui.jsonl}.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{FileConversationStore$get(partition, id)}
@@ -83,12 +91,17 @@ conversation meta list.}
     }
     \if{html}{\out{</div>}}
   }
+  \subsection{Returns}{
+    The conversation record, or \code{NULL} if missing.
+  }
 }
 
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-FileConversationStore-put"></a>}}
 \if{latex}{\out{\hypertarget{method-FileConversationStore-put}{}}}
 \subsection{\code{FileConversationStore$put()}}{
+  Upsert \code{record} into \code{partition}, appending new turns and
+UI data to \code{turns.jsonl}/\code{ui.jsonl} and rewriting \code{record.json}.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{FileConversationStore$put(partition, record)}
@@ -103,12 +116,17 @@ conversation meta list.}
     }
     \if{html}{\out{</div>}}
   }
+  \subsection{Returns}{
+    \code{NULL}, invisibly.
+  }
 }
 
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-FileConversationStore-delete"></a>}}
 \if{latex}{\out{\hypertarget{method-FileConversationStore-delete}{}}}
 \subsection{\code{FileConversationStore$delete()}}{
+  Remove the conversation \code{id} from \code{partition} by deleting
+its directory. Missing ids are a no-op.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{FileConversationStore$delete(partition, id)}
@@ -122,6 +140,9 @@ conversation meta list.}
 conversation meta list.}
     }
     \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    \code{NULL}, invisibly.
   }
 }
 

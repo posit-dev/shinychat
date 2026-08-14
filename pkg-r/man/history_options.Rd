@@ -27,7 +27,10 @@ conversation's bookmark URL if one exists.
 \code{"none"} disables automatic restore entirely.}
 
 \item{store}{Storage backend: \code{"auto"} (default: memory in dev, file in
-production), \code{"memory"}, \code{"file"}, or a \link{ConversationStore} R6 instance.}
+production), \code{"memory"}, \code{"file"}, or a \link{ConversationStore} R6 instance.
+\code{"auto"} emits a once-per-session message announcing which backend was
+chosen; set \code{options(shinychat.history_options.store_auto.quiet = TRUE)}
+to silence it.}
 
 \item{scope}{Storage namespace for conversations. A string, a
 \verb{function(session)} returning a string, or \code{NULL} (default: uses

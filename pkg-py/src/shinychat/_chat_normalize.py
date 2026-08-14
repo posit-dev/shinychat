@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import json
 import sys
 from functools import singledispatch
+from typing import TYPE_CHECKING, Any, TypeGuard
 
-from htmltools import HTML, Tag, Tagifiable
+from htmltools import HTML, HTMLDependency, Tag, Tagifiable, TagList
 
 from ._chat_types import ChatMessage
+
+if TYPE_CHECKING:
+    from chatlas.types import ContentToolResult
 
 __all__ = ["message_content", "message_content_chunk"]
 
@@ -18,6 +23,48 @@ def message_content(message):
     This function uses `singledispatch` to allow for easy extension to support
     new message types. To add support for a new type, register a new function
     using the `@message_content.register` decorator.
+
+    To render a `chatlas.ContentToolResult` subclass as fully custom,
+    standalone UI after a tool call settles, register complete and streaming
+    handlers for it here and in `message_content_chunk()`. The pending
+    condensed activity row remains while the tool runs, then shinychat pairs
+    the custom result with that call and renders the returned UI outside the
+    default drill-down card.
+
+    Examples
+    --------
+
+    ```python
+    from chatlas import ContentToolResult
+    from shiny import ui
+    from shinychat import message_content, message_content_chunk
+    from shinychat.types import ChatMessage
+
+
+    class WeatherResult(ContentToolResult):
+        location_name: str
+
+
+    def weather_result_ui(result: WeatherResult) -> ChatMessage:
+        temperature = result.value["temperature_2m"]
+        return ChatMessage(
+            content=ui.div(
+                ui.h4(result.location_name),
+                f"{temperature} C",
+                class_="weather-result",
+            )
+        )
+
+
+    @message_content.register
+    def _(result: WeatherResult) -> ChatMessage:
+        return weather_result_ui(result)
+
+
+    @message_content_chunk.register
+    def _(result: WeatherResult) -> ChatMessage:
+        return weather_result_ui(result)
+    ```
 
     Parameters
     ----------
@@ -67,6 +114,48 @@ def message_content_chunk(chunk):
     This function uses `singledispatch` to allow for easy extension to support
     new chunk types. To add support for a new type, register a new function
     using the `@message_content_chunk.register` decorator.
+
+    To render a `chatlas.ContentToolResult` subclass as fully custom,
+    standalone UI after a tool call settles, register complete and streaming
+    handlers for it here and in `message_content()`. The pending condensed
+    activity row remains while the tool runs, then shinychat pairs the custom
+    result with that call and renders the returned UI outside the default
+    drill-down card.
+
+    Examples
+    --------
+
+    ```python
+    from chatlas import ContentToolResult
+    from shiny import ui
+    from shinychat import message_content, message_content_chunk
+    from shinychat.types import ChatMessage
+
+
+    class WeatherResult(ContentToolResult):
+        location_name: str
+
+
+    def weather_result_ui(result: WeatherResult) -> ChatMessage:
+        temperature = result.value["temperature_2m"]
+        return ChatMessage(
+            content=ui.div(
+                ui.h4(result.location_name),
+                f"{temperature} C",
+                class_="weather-result",
+            )
+        )
+
+
+    @message_content.register
+    def _(result: WeatherResult) -> ChatMessage:
+        return weather_result_ui(result)
+
+
+    @message_content_chunk.register
+    def _(result: WeatherResult) -> ChatMessage:
+        return weather_result_ui(result)
+    ```
 
     Parameters
     ----------
@@ -132,8 +221,11 @@ try:
 
     # Import here to avoid hard dependency on pydantic
     from ._chat_normalize_chatlas import (
+        citation_aside,
+        tool_display_override,
         tool_request_contents,
         tool_result_contents,
+        tool_result_message,
     )
 
     @message_content.register
@@ -197,11 +289,109 @@ try:
 
     @message_content.register
     def _(chunk: ContentToolResult):
-        return ChatMessage(content=tool_result_contents(chunk))
+        result = tool_result_contents(chunk)
+        return tool_result_message(result)
 
     @message_content_chunk.register
     def _(chunk: ContentToolResult):
         return message_content(chunk)
+
+    try:
+        from chatlas.types import (
+            ContentCitation,
+            ContentToolRequestFetch,
+            ContentToolRequestSearch,
+            ContentToolResponseFetch,
+            ContentToolResponseSearch,
+            WebSource,
+        )
+
+        @message_content.register
+        def _(message: ContentToolRequestSearch):
+            if tool_display_override() == "none":
+                return ChatMessage(content="")
+            return ChatMessage(
+                content=Tag(
+                    "shiny-web-search",
+                    data_shinychat_react=True,
+                    query=message.query,
+                )
+            )
+
+        @message_content_chunk.register
+        def _(chunk: ContentToolRequestSearch):
+            return message_content(chunk)
+
+        @message_content.register
+        def _(message: ContentToolResponseSearch):
+            if tool_display_override() == "none":
+                return ChatMessage(content="")
+            sources = [
+                {
+                    "url": s.url,
+                    "title": s.title,
+                }
+                for s in message.sources
+            ]
+            return ChatMessage(
+                content=Tag(
+                    "shiny-web-search-results",
+                    data_shinychat_react=True,
+                    sources=json.dumps(sources),
+                )
+            )
+
+        @message_content_chunk.register
+        def _(chunk: ContentToolResponseSearch):
+            return message_content(chunk)
+
+        @message_content.register
+        def _(message: ContentToolRequestFetch):
+            return ChatMessage(content="")
+
+        @message_content_chunk.register
+        def _(chunk: ContentToolRequestFetch):
+            return message_content(chunk)
+
+        @message_content.register
+        def _(message: ContentToolResponseFetch):
+            if tool_display_override() == "none":
+                return ChatMessage(content="")
+            return ChatMessage(
+                content=Tag(
+                    "shiny-web-fetch",
+                    data_shinychat_react=True,
+                    url=message.url,
+                    status=message.status,
+                )
+            )
+
+        @message_content_chunk.register
+        def _(chunk: ContentToolResponseFetch):
+            return message_content(chunk)
+
+        @message_content.register
+        def _(message: ContentCitation):
+            if tool_display_override() == "none" or not isinstance(
+                message.source, WebSource
+            ):
+                return ChatMessage(content="")
+            return ChatMessage(
+                content=citation_aside(
+                    message.source.url,
+                    message.source.title,
+                    grounded_span=message.grounded_span,
+                    cited_quote=message.cited_quote,
+                ),
+                content_type="markdown",
+            )
+
+        @message_content_chunk.register
+        def _(chunk: ContentCitation):
+            return message_content(chunk)
+
+    except ImportError:
+        pass
 
     # ContentThinking is a complete thought stored in a turn, ContentThinkingDelta is
     # a thinking chunk from .stream(content="all")
@@ -228,16 +418,28 @@ try:
 
     @message_content.register
     def _(message: Turn):
-        from chatlas import ContentToolResult
-
         content = ""
+        deps: list[HTMLDependency] = []
         for x in message.contents:
-            content += message_content(x).content
+            # Normalize and wrap per item, mirroring R's
+            # `contents_shinychat_wrapped()`.
+            # Converting a turn discards each `ContentToolResult` before any
+            # caller could wrap it, so a turn carrying a custom tool result
+            # would otherwise emit bare UI with no `<shiny-tool-result>` for
+            # the client to pair its request against.
+            item = normalize_message(x)
+            content += item.content
+            # Collected separately from the content: only the rendered *string*
+            # is concatenated, so per-item dependencies would otherwise be
+            # dropped and the item's UI would arrive unstyled and unscripted.
+            deps += item.html_deps
         if all(isinstance(x, ContentToolResult) for x in message.contents):
             role = "assistant"
         else:
             role = message.role
-        return ChatMessage(content=content, role=role)
+        result = ChatMessage(content=content, role=role)
+        result.html_deps = deps + result.html_deps
+        return result
 
     @message_content_chunk.register
     def _(chunk: Turn):
@@ -248,6 +450,83 @@ try:
     # shinychat_contents() method for Chat, but Python doesn't.
 except ImportError:
     pass
+
+
+def normalize_message(message: Any) -> ChatMessage:
+    """Normalize a complete message and apply shared postprocessing."""
+    return _wrap_custom_tool_result(message, message_content(message))
+
+
+def normalize_message_chunk(chunk: Any) -> ChatMessage:
+    """Normalize a message chunk and apply shared postprocessing."""
+    return _wrap_custom_tool_result(chunk, message_content_chunk(chunk))
+
+
+def _is_tool_result(value: object) -> TypeGuard["ContentToolResult"]:
+    try:
+        from chatlas.types import ContentToolResult
+
+        return isinstance(value, ContentToolResult)
+    except ImportError:
+        return False
+
+
+def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
+    """Wrap custom tool-result UI in a routable result element."""
+    if not _is_tool_result(message):
+        return msg
+
+    if message.request is None:
+        return msg
+
+    try:
+        from ._chat_normalize_chatlas import (
+            ShinyToolCardMessage,
+            ValueType,
+            is_legacy,
+            resolve_tool_annotations,
+            tool_display_override,
+            wrap_custom_tool_result,
+        )
+    except ImportError:
+        return msg
+
+    if isinstance(msg, ShinyToolCardMessage):
+        return msg
+
+    # These are shinychat's own early returns, not an author's bypass.
+    if tool_display_override() == "none" or is_legacy():
+        return msg
+
+    # Mirror the author's payload mode, while keeping the wrapper itself
+    # routable as HTML.
+    value_type: ValueType = (
+        msg.content_type
+        if msg.content_type in ("html", "markdown", "text")
+        else "markdown"
+    )
+    annotations = resolve_tool_annotations(message.request.tool)
+    wrapped = wrap_custom_tool_result(
+        request_id=message.request.id,
+        tool_name=message.request.name,
+        # A custom renderer owns its error presentation; the wrapper only
+        # carries the lifecycle signal needed by the client.
+        status="success" if message.error is None else "error",
+        value=TagList(HTML(msg.content))
+        if value_type == "html"
+        else msg.content,
+        value_type=value_type,
+        grouping=annotations.grouping,
+    )
+
+    result = ChatMessage(
+        content=wrapped,
+        role=msg.role,
+        attachments=msg.attachments,
+    )
+    result.html_deps = list(msg.html_deps) + list(result.html_deps)
+    return result
+
 
 # ------------------------------------------------------------------
 # LangChain content extractor

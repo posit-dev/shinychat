@@ -3,7 +3,7 @@
 
 ## usethis namespace: start
 #' @import rlang
-#' @import S7
+#' @importFrom S7 new_generic method "method<-" new_property S7_dispatch S7_inherits
 #' @importFrom coro async
 #' @importFrom htmltools as.tags
 #' @importFrom htmltools tag css HTML

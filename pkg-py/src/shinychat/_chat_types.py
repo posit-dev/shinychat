@@ -85,11 +85,6 @@ class UpdateUploadAction(TypedDict):
     enable_upload: bool
 
 
-class HideToolRequestAction(TypedDict):
-    type: Literal["hide_tool_request"]
-    requestId: str
-
-
 class GreetingOptions(TypedDict):
     persistent: NotRequired[bool]
 
@@ -163,7 +158,6 @@ ChatAction = Union[
     RemoveLoadingAction,
     UpdateCancelAction,
     UpdateUploadAction,
-    HideToolRequestAction,
     GreetingAction,
     GreetingStartAction,
     GreetingChunkAction,

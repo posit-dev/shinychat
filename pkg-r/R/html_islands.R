@@ -2,7 +2,7 @@
 #'
 #' Elements WITH the attribute are emitted bare.
 #' Consecutive elements WITHOUT the attribute are grouped into
-#' <shinychat-html> wrappers.
+#' <shiny-chat-raw-html> wrappers.
 #'
 #' @param content A tag, tagList, or other HTML content.
 #' @return A list of tag children ready to be serialized.
@@ -16,13 +16,13 @@ split_html_islands <- function(content) {
     if (has_react_attr(content)) {
       return(list(content))
     }
-    return(list(htmltools::tag("shinychat-raw-html", list(content))))
+    return(list(htmltools::tag("shiny-chat-raw-html", list(content))))
   }
 
   if (inherits(content, "shiny.tag.list")) {
     children <- as.list(content)
   } else {
-    return(list(htmltools::tag("shinychat-raw-html", list(content))))
+    return(list(htmltools::tag("shiny-chat-raw-html", list(content))))
   }
 
   if (length(children) == 0) {
@@ -38,7 +38,7 @@ split_html_islands <- function(content) {
     if (has_react_attr(group[[1]])) {
       result <- c(result, group)
     } else {
-      result <- c(result, list(htmltools::tag("shinychat-raw-html", group)))
+      result <- c(result, list(htmltools::tag("shiny-chat-raw-html", group)))
     }
   }
   result

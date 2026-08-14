@@ -43,12 +43,16 @@ def _(value: Any, _name: "ResolvedId", _session: "Session") -> UserInputValue:
     if isinstance(value, str):
         return UserInputValue(text=value, attachments=[])
     if not isinstance(value, dict):
-        raise TypeError(f"Expected str or dict from shinychat.userInput, got {type(value)!r}")
+        raise TypeError(
+            f"Expected str or dict from shinychat.userInput, got {type(value)!r}"
+        )
     attachments = [
         Attachment.model_validate(a) for a in (value.get("attachments") or [])
     ]
     validate_attachments(attachments)
-    return UserInputValue(text=str(value.get("text", "")), attachments=attachments)
+    return UserInputValue(
+        text=str(value.get("text", "")), attachments=attachments
+    )
 
 
 def messages_input_value(
@@ -93,7 +97,9 @@ def messages_input_value(
         ]
         validate_attachments(attachments)
         messages.append(
-            StoredMessage(role=m["role"], segments=segments, attachments=attachments)
+            StoredMessage(
+                role=m["role"], segments=segments, attachments=attachments
+            )
         )
     if untrusted > 0:
         warnings.warn(

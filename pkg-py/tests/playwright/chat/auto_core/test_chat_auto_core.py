@@ -4,7 +4,9 @@ from shiny.run import ShinyAppProc
 from shinychat.playwright import ChatController
 
 
-def test_app_loads_and_chat_is_visible(page: Page, local_app: ShinyAppProc) -> None:
+def test_app_loads_and_chat_is_visible(
+    page: Page, local_app: ShinyAppProc
+) -> None:
     page.goto(local_app.url)
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30_000)
@@ -20,7 +22,9 @@ def test_greeting_is_displayed(page: Page, local_app: ShinyAppProc) -> None:
     expect(greeting).to_contain_text("Welcome!", timeout=10_000)
 
 
-def test_sending_message_gets_response(page: Page, local_app: ShinyAppProc) -> None:
+def test_sending_message_gets_response(
+    page: Page, local_app: ShinyAppProc
+) -> None:
     page.goto(local_app.url)
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30_000)

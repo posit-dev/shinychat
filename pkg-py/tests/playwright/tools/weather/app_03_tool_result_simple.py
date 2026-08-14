@@ -26,7 +26,9 @@ def get_weather_forecast(
         value=forecast_data,
         extra={
             "display": ToolResultDisplay(
-                title=f"Weather Forecast for {location_name}",
+                title=f"Looked up weather for {location_name}",
+                label=location_name,
+                value_preview=f"{forecast_data['temperature_2m']:.0f} C",
                 icon=faicons.icon_svg(icon),
             )
         },
@@ -37,7 +39,7 @@ def get_weather_forecast(
 chat_client = ChatOpenAI(model="gpt-4.1-nano")
 chat_client.register_tool(
     get_weather_forecast,
-    annotations={"title": "Weather Forecast"},
+    annotations={"title": "Looking up weather"},
 )
 
 

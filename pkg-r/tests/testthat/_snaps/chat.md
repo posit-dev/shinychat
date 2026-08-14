@@ -42,8 +42,8 @@
     Output
       <shiny-chat-container class="html-fill-item html-fill-container" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill id="chat" max-attachment-size="31457280" placeholder="Enter a message..." style="--_chat-width:min(680px, 100%);height:auto;">
         <shiny-chat-messages>
-          <shiny-chat-message data-role="assistant" content="&lt;shinychat-raw-html&gt;&#10;  &lt;div&gt;Hello&lt;/div&gt;&#10;&lt;/shinychat-raw-html&gt;"></shiny-chat-message>
-          <shiny-chat-message data-role="assistant" content="&lt;shinychat-raw-html&gt;&#10;  &lt;span&gt;world&lt;/span&gt;&#10;&lt;/shinychat-raw-html&gt;"></shiny-chat-message>
+          <shiny-chat-message data-role="assistant" content="&lt;shiny-chat-raw-html&gt;&#10;  &lt;div&gt;Hello&lt;/div&gt;&#10;&lt;/shiny-chat-raw-html&gt;"></shiny-chat-message>
+          <shiny-chat-message data-role="assistant" content="&lt;shiny-chat-raw-html&gt;&#10;  &lt;span&gt;world&lt;/span&gt;&#10;&lt;/shiny-chat-raw-html&gt;"></shiny-chat-message>
         </shiny-chat-messages>
         <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
       </shiny-chat-container>
@@ -60,8 +60,8 @@
       $html
       <shiny-chat-container class="html-fill-item html-fill-container" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill id="chat" max-attachment-size="31457280" placeholder="Enter a message..." style="--_chat-width:min(680px, 100%);height:auto;">
         <shiny-chat-messages>
-          <shiny-chat-message data-role="assistant" content="&lt;shinychat-raw-html&gt;&#10;  &lt;div&gt;Hello&lt;/div&gt;&#10;&lt;/shinychat-raw-html&gt;"></shiny-chat-message>
-          <shiny-chat-message data-role="assistant" content="&lt;shinychat-raw-html&gt;&#10;  &lt;span&gt;world&lt;/span&gt;&#10;&lt;/shinychat-raw-html&gt;"></shiny-chat-message>
+          <shiny-chat-message data-role="assistant" content="&lt;shiny-chat-raw-html&gt;&#10;  &lt;div&gt;Hello&lt;/div&gt;&#10;&lt;/shiny-chat-raw-html&gt;"></shiny-chat-message>
+          <shiny-chat-message data-role="assistant" content="&lt;shiny-chat-raw-html&gt;&#10;  &lt;span&gt;world&lt;/span&gt;&#10;&lt;/shiny-chat-raw-html&gt;"></shiny-chat-message>
         </shiny-chat-messages>
         <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
       </shiny-chat-container>
@@ -76,8 +76,26 @@
     Output
       <shiny-chat-container class="html-fill-item html-fill-container" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill id="chat" max-attachment-size="31457280" placeholder="Enter a message..." style="--_chat-width:min(680px, 100%);height:auto;">
         <shiny-chat-messages>
-          <shiny-chat-message data-role="assistant" content="&lt;shinychat-raw-html&gt;&#10;  &lt;div&gt;before&lt;/div&gt;&#10;&lt;/shinychat-raw-html&gt;&#10;&lt;div data-shinychat-react&gt;react&lt;/div&gt;&#10;&lt;shinychat-raw-html&gt;&#10;  &lt;div&gt;after&lt;/div&gt;&#10;&lt;/shinychat-raw-html&gt;"></shiny-chat-message>
+          <shiny-chat-message data-role="assistant" content="&lt;shiny-chat-raw-html&gt;&#10;  &lt;div&gt;before&lt;/div&gt;&#10;&lt;/shiny-chat-raw-html&gt;&#10;&lt;div data-shinychat-react&gt;react&lt;/div&gt;&#10;&lt;shiny-chat-raw-html&gt;&#10;  &lt;div&gt;after&lt;/div&gt;&#10;&lt;/shiny-chat-raw-html&gt;"></shiny-chat-message>
         </shiny-chat-messages>
         <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
       </shiny-chat-container>
+
+# chat_ui() emits tool-grouping only when non-default
+
+    Code
+      chat_ui("chat", tool_grouping = "all")
+    Output
+      <shiny-chat-container class="html-fill-item html-fill-container" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill id="chat" max-attachment-size="31457280" placeholder="Enter a message..." style="--_chat-width:min(680px, 100%);height:auto;" tool-grouping="all">
+        <shiny-chat-messages></shiny-chat-messages>
+        <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
+      </shiny-chat-container>
+
+# chat_ui() errors for an invalid tool_grouping value
+
+    Code
+      chat_ui("chat", tool_grouping = "invalid")
+    Condition
+      Error in `chat_ui()`:
+      ! `tool_grouping` must be one of "tool", "none", or "all", not "invalid".
 

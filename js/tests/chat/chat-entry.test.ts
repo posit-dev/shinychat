@@ -22,6 +22,10 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => {
     document.body.replaceChildren()
+    // ChatContainerElement defers React unmount to distinguish removal from a
+    // DOM move, then Tiptap defers Editor.destroy() by another timer tick.
+    // Keep jsdom alive until both teardown stages have completed.
+    await new Promise((resolve) => setTimeout(resolve, 5))
   })
 })
 
@@ -75,6 +79,81 @@ describe("chat-entry custom element boot", () => {
     expect(host.querySelector(".assistant-icon")).not.toBeNull()
 
     expect(window.Shiny?.unbindAll).toHaveBeenCalledWith(host)
+  })
+
+  it("routes preloaded tool calls through the content router (tool-grouping attr)", async () => {
+    const host = document.createElement("shiny-chat-container")
+    host.setAttribute("id", "preloaded-tools")
+    host.setAttribute("tool-grouping", "all")
+    host.innerHTML = `
+      <shiny-chat-messages>
+        <shiny-chat-message
+          data-role="assistant"
+          content-type="markdown"
+          content='<shiny-tool-result data-shinychat-react request-id="r1" tool-name="foo" status="success" value="done" value-type="text"></shiny-tool-result>'
+        ></shiny-chat-message>
+      </shiny-chat-messages>
+      <shiny-chat-input placeholder="p"></shiny-chat-input>
+    `
+
+    await act(async () => {
+      document.body.appendChild(host)
+    })
+
+    // Preloaded tool HTML is routed into a tool_loop block and rendered as a
+    // condensed tool group — a quiet Tier-1 row (the tool name in code font,
+    // since this call has no title) that morphs into the leaf card on expand.
+    await waitFor(() => {
+      expect(host.querySelector(".shiny-chat-tool-group__row")).not.toBeNull()
+      expect(
+        host.querySelector(".shiny-chat-tool-group__toolname")?.textContent,
+      ).toBe("foo")
+    })
+
+    const row = host.querySelector(".shiny-chat-tool-group__row") as HTMLElement
+    await act(async () => {
+      row.click()
+    })
+
+    expect(host.querySelector(".shiny-tool-card")).not.toBeNull()
+    expect(host.textContent).toContain("done")
+  })
+
+  it("re-routes the existing transcript when tool-grouping changes", async () => {
+    // `tool-grouping` is observed, so switching it regroups the conversation
+    // already on screen instead of only future messages.
+    const call = (id: string, name: string) =>
+      `<shiny-tool-result data-shinychat-react request-id="${id}" tool-name="${name}" status="success" value="v" value-type="text"></shiny-tool-result>`
+
+    const host = document.createElement("shiny-chat-container")
+    host.setAttribute("id", "live-grouping")
+    host.setAttribute("tool-grouping", "none")
+    host.innerHTML = `
+      <shiny-chat-messages>
+        <shiny-chat-message
+          data-role="assistant"
+          content-type="markdown"
+          content='${call("r1", "foo")}${call("r2", "foo")}'
+        ></shiny-chat-message>
+      </shiny-chat-messages>
+      <shiny-chat-input placeholder="p"></shiny-chat-input>
+    `
+
+    await act(async () => {
+      document.body.appendChild(host)
+    })
+
+    const rows = () => host.querySelectorAll(".shiny-chat-tool-group__row")
+    await waitFor(() => expect(rows()).toHaveLength(2))
+
+    await act(async () => {
+      host.setAttribute("tool-grouping", "tool")
+    })
+
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    expect(
+      host.querySelector(".shiny-chat-tool-group__count")?.textContent,
+    ).toBe("×2")
   })
 
   it("falls back to the conventional input id when no child input id is provided", async () => {
@@ -187,6 +266,59 @@ describe("chat-entry custom element boot", () => {
     ) as HTMLInputElement | null
     expect(fileInput).not.toBeNull()
     expect(fileInput?.accept).toBe("application/pdf")
+  })
+
+  it("does not render a derived aside favicon when aside-favicon is false", async () => {
+    const host = document.createElement("shiny-chat-container")
+    host.setAttribute("id", "aside-favicon-off")
+    host.setAttribute("aside-favicon", "false")
+    host.innerHTML = `
+      <shiny-chat-messages>
+        <shiny-chat-message
+          data-role="assistant"
+          content='A claim<shiny-aside label="Source" url="https://source.example"></shiny-aside>.'
+        ></shiny-chat-message>
+      </shiny-chat-messages>
+      <shiny-chat-input></shiny-chat-input>
+    `
+
+    await act(async () => {
+      document.body.appendChild(host)
+    })
+
+    await waitFor(() => {
+      expect(host.querySelector(".shiny-aside-pill")).not.toBeNull()
+    })
+
+    expect(host.querySelector(".shiny-aside-pill img")).toBeNull()
+    expect(host.innerHTML).not.toContain("icons.duckduckgo.com")
+  })
+
+  it("keeps an explicit aside icon when aside-favicon is false", async () => {
+    const host = document.createElement("shiny-chat-container")
+    host.setAttribute("id", "aside-explicit-icon")
+    host.setAttribute("aside-favicon", "false")
+    host.innerHTML = `
+      <shiny-chat-messages>
+        <shiny-chat-message
+          data-role="assistant"
+          content='A claim<shiny-aside label="Source" url="https://source.example" icon="https://assets.example/source.svg"></shiny-aside>.'
+        ></shiny-chat-message>
+      </shiny-chat-messages>
+      <shiny-chat-input></shiny-chat-input>
+    `
+
+    await act(async () => {
+      document.body.appendChild(host)
+    })
+
+    await waitFor(() => {
+      expect(host.querySelector(".shiny-aside-pill img")).not.toBeNull()
+    })
+
+    expect(
+      host.querySelector(".shiny-aside-pill img")?.getAttribute("src"),
+    ).toBe("https://assets.example/source.svg")
   })
 
   it("preserves the rendered conversation when moved to another container", async () => {

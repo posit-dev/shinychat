@@ -36,7 +36,7 @@ def test_validate_chat_transform_assistant(
             {"content": "Transformed response: `hello`", "role": "assistant"},
             {"content": "return HTML", "role": "user"},
             {
-                "content": "\n\n<shinychat-raw-html><b>Transformed response</b>: return HTML</shinychat-raw-html>\n\n",
+                "content": "\n\n<shiny-chat-raw-html><b>Transformed response</b>: return HTML</shiny-chat-raw-html>\n\n",
                 "role": "assistant",
             },
         ]

@@ -6,7 +6,7 @@ client_set_ui <- new_generic(
   "client_set_ui",
   "client",
   function(client, ..., id) {
-    S7::S7_dispatch()
+    S7_dispatch()
   }
 )
 

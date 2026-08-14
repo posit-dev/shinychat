@@ -4,11 +4,9 @@ library(ellmer)
 library(shinychat)
 library(weathR)
 
-# This example shows how to use a custom tool result class. It extends the
-# contents_shinychat() generic to compute the HTML table on the fly when we
-# render the result in the chat interface. This allows the tool result object to
-# be lighter-weight and to only hold the raw data and metadata, without needing
-# to also pre-compute the HTML table.
+# This example replaces shinychat's default tool-result card with standalone UI.
+# The activity row remains while the tool runs; when the result settles, the
+# call leaves the row and the returned value box renders below it.
 
 WeatherToolResult <- S7::new_class(
   "WeatherToolResult",
@@ -56,7 +54,7 @@ get_weather_forecast <- tool(
     location_name = type_string("Name of the location for display to the user")
   ),
   annotations = tool_annotations(
-    title = "Weather Forecast",
+    title = "Getting weather forecast",
     icon = bsicons::bs_icon("cloud-sun")
   )
 )

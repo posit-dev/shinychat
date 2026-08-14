@@ -24,6 +24,12 @@ application. \code{contents_shinychat()} is \link[S7:new_generic]{an S7 generic}
 you haven't worked with S7 before, you can learn more about S7 classes,
 generics and methods in the \href{https://rconsortium.github.io/S7/articles/S7.html}{S7 documentation}.
 
+For most tool-result customization, use \code{\link[=tool_result_display]{tool_result_display()}} in the
+result's \code{extra = list(display = ...)}. It keeps shinychat's compact activity
+row and drill-down card while letting you set a title, label, result preview,
+and rich card content. The \href{https://posit-dev.github.io/shinychat/r/articles/tool-ui.html}{Tool Calling UI article}
+describes that recommended path.
+
 We'll work through a short example creating a custom display for the results
 of a tool that gets local weather forecasts. We first need to create a custom
 class that extends \link[ellmer:ContentToolResult]{ellmer::ContentToolResult}.
@@ -61,10 +67,8 @@ class works just like a regular \code{ContentToolResult}, but it has an addition
 )
 }\if{html}{\out{</div>}}
 
-Finally, we can extend \code{contents_shinychat()} to render our custom content
-class for display in the chat interface. The basic process is to define a
-\code{contents_shinychat()} external generic and then implement a method for your
-custom class.
+Finally, define the external generic and implement a method for your custom
+class:
 
 \if{html}{\out{<div class="sourceCode r">}}\preformatted{contents_shinychat <- S7::new_external_generic(
   package = "shinychat",
@@ -77,13 +81,9 @@ S7::method(contents_shinychat, WeatherToolResult) <- function(content) \{
 \}
 }\if{html}{\out{</div>}}
 
-You can use this pattern to completely customize how the content is displayed
-inside shinychat by returning HTML objects directly from this method.
-
-You can also use this pattern to build upon the default shinychat display for
-tool requests and results. By using \code{\link[S7:super]{S7::super()}}, you can create the
-object shinychat uses for tool results (or tool requests), and then modify it
-to suit your needs.
+Use \code{\link[S7:super]{S7::super()}} when you want to extend shinychat's default card. The
+resulting output still participates in the normal compact activity row and
+drill-down card:
 
 \if{html}{\out{<div class="sourceCode r">}}\preformatted{S7::method(contents_shinychat, WeatherToolResult) <- function(content) \{
   # Call the super method for ContentToolResult to get shinychat's defaults
@@ -94,16 +94,21 @@ to suit your needs.
   res$value <- gt::as_raw_html(gt::gt(content@value))
   res$value_type <- "html"
   # ...and update the tool result title to include the location name
-  res$title <- paste("Weather Forecast for", content@location_name)
+  res$tool_title <- paste("Got weather forecast for", content@location_name)
+  res$label <- content@location_name
+  res$value_preview <- paste(nrow(content@value), "hourly readings")
 
   res
 \}
 }\if{html}{\out{</div>}}
 
-Note that you do \strong{not} need to create a new class or extend
-\code{contents_shinychat()} to customize the tool display. Rather, you can use the
-strategies discussed in the \href{https://posit-dev.github.io/shinychat/r/articles/tool-ui.html}{Tool Calling UI article} to
-customize the tool request and result display by providing a \code{display} list
-in the \code{extra} argument of the tool result.
+Alternatively, return arbitrary HTML or Shiny UI directly from the method to
+replace the default card completely. While the tool runs, shinychat still
+shows its activity row. When the custom result settles, shinychat renders that
+UI as standalone output and removes the call from the activity row.
+
+This extension point is for fully custom standalone output. To customize the
+default card, use \code{\link[=tool_result_display]{tool_result_display()}} instead of constructing a generic
+\code{display} list yourself.
 }
 

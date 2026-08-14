@@ -9,6 +9,23 @@ import type {
 } from "../transport/types"
 import type { AttachmentPayload } from "./attachments"
 import { uuid } from "../utils/uuid"
+import { codeRanges } from "./markdown-code-ranges"
+import { routeToolBlocks, supersededRequestIds } from "./tool-model"
+import type { ToolLoopBlock, ToolGrouping } from "./tool-model"
+
+export {
+  deriveToolGroupIdentity,
+  routeToolBlocks,
+  supersededRequestIds,
+} from "./tool-model"
+export type {
+  ToolCallGroup,
+  ToolCallItem,
+  ToolCallSegment,
+  ToolGroupIdentity,
+  ToolGrouping,
+  ToolLoopBlock,
+} from "./tool-model"
 
 export interface ContentBlock {
   type: "content"
@@ -25,8 +42,7 @@ export interface ThinkingBlock {
   durationMs?: number
   streaming: boolean
 }
-
-export type MessageBlock = ContentBlock | ThinkingBlock
+export type MessageBlock = ContentBlock | ThinkingBlock | ToolLoopBlock
 
 export interface ChatMessageData {
   id: string
@@ -69,8 +85,14 @@ export interface ChatInputState {
   inputPlaceholder: string
 }
 
+/**
+ * Tool state shared with every message through context.
+ *
+ * `supersededRequests` is `supersededRequestIds`, derived from the
+ * transcript — see there for how it decides a request is done.
+ */
 export interface ChatToolState {
-  hiddenToolRequests: Set<string>
+  supersededRequests: Set<string>
 }
 
 export interface ChatHistoryState {
@@ -79,7 +101,7 @@ export interface ChatHistoryState {
   activeId: string | null
 }
 
-export interface ChatState extends ChatInputState, ChatToolState {
+export interface ChatState extends ChatInputState {
   messages: ChatMessageData[]
   streamingMessage: ChatMessageData | null
   greeting: GreetingData | null
@@ -101,11 +123,14 @@ export interface ChatState extends ChatInputState, ChatToolState {
    * explicit user choice always wins over the `client=` auto-default.
    */
   enableUploadExplicit: boolean
+  /** How tool calls are aggregated in the condensed view. Client-reflected. */
+  toolGrouping: ToolGrouping
   history: ChatHistoryState
 }
 
 // Actions that originate from the UI (not from the server)
 export type UIAction =
+  | { type: "SET_TOOL_GROUPING"; grouping: ToolGrouping }
   | {
       type: "INPUT_SENT"
       content: string
@@ -130,21 +155,22 @@ export const initialState: ChatState = {
   enableCancelExplicit: false,
   enableUpload: false,
   enableUploadExplicit: false,
-  hiddenToolRequests: new Set(),
+  toolGrouping: "tool",
   slashCommands: [],
   history: { enabled: false, conversations: [], activeId: null },
 }
 
-function messagePayloadToData(msg: MessagePayload): ChatMessageData {
-  const blocks: MessageBlock[] = []
+function messagePayloadToData(
+  msg: MessagePayload,
+  grouping: ToolGrouping = "tool",
+): ChatMessageData {
+  const rawBlocks: MessageBlock[] = []
   for (const seg of msg.segments) {
-    blocks.push(...splitThinkingBlocks(seg.content, seg.content_type))
+    rawBlocks.push(...splitThinkingBlocks(seg.content, seg.content_type))
   }
+  const blocks = routeToolBlocks(rawBlocks, grouping, msg.role)
   const attachments: AttachmentPayload[] = msg.attachments ?? []
-  const contentOnly = blocks
-    .filter((b): b is ContentBlock => b.type === "content")
-    .map((b) => b.content)
-    .join("")
+  const contentOnly = contentFromBlocks(blocks)
 
   return {
     id: msg.id ?? uuid(),
@@ -188,7 +214,7 @@ function computeGreetingVisibility(
 
 const THINKING_TAG_RE = /<thinking>\n?([\s\S]*?)\n?<\/thinking>\n*/g
 
-function splitThinkingBlocks(
+export function splitThinkingBlocks(
   content: string,
   contentType: ContentType,
 ): MessageBlock[] {
@@ -202,20 +228,7 @@ function splitThinkingBlocks(
     return [{ type: "content", content, contentType }]
   }
 
-  // Find code fence regions and inline code spans to exclude from thinking tag detection
-  const fenceRanges: Array<[number, number]> = []
-  const fenceRe = /^(`{3,}|~{3,}).*\n([\s\S]*?)^\1\s*$/gm
-  for (const m of content.matchAll(fenceRe)) {
-    fenceRanges.push([m.index, m.index + m[0].length])
-  }
-  const inlineCodeRe = /`[^`\n]+`/g
-  for (const m of content.matchAll(inlineCodeRe)) {
-    fenceRanges.push([m.index, m.index + m[0].length])
-  }
-
-  function isInsideFence(idx: number): boolean {
-    return fenceRanges.some(([start, end]) => idx >= start && idx < end)
-  }
+  const isInsideFence = codeRanges(content)
 
   const blocks: MessageBlock[] = []
   let lastIndex = 0
@@ -246,6 +259,13 @@ function splitThinkingBlocks(
   return blocks
 }
 
+export function contentFromBlocks(blocks: MessageBlock[]): string {
+  return blocks
+    .filter((b): b is ContentBlock => b.type === "content")
+    .map((b) => b.content)
+    .join("")
+}
+
 function extractTopicsComplete(text: string): {
   cleaned: string
   topic: string | null
@@ -253,7 +273,7 @@ function extractTopicsComplete(text: string): {
   let topic: string | null = null
   const cleaned = text.replace(TOPIC_TAG_RE, (_match, captured: string) => {
     topic = captured
-    return `\n\n<div class="shinychat-thinking-topic">${captured}</div>\n\n`
+    return `\n\n<div class="shiny-chat-thinking-topic">${captured}</div>\n\n`
   })
   return { cleaned, topic }
 }
@@ -479,7 +499,7 @@ function extractTopics(text: string, buffer: string): TopicResult {
   // Replace complete <topic>...</topic> tags with bold markdown labels
   combined = combined.replace(TOPIC_TAG_RE, (_match, captured: string) => {
     topic = captured
-    return `\n\n<div class="shinychat-thinking-topic">${captured}</div>\n\n`
+    return `\n\n<div class="shiny-chat-thinking-topic">${captured}</div>\n\n`
   })
 
   // Check for partial opening or closing tag at the end
@@ -542,7 +562,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
 
     case "message": {
       const messages = removeLoadingMessage(state.messages)
-      const data = messagePayloadToData(action.message)
+      const data = messagePayloadToData(action.message, state.toolGrouping)
       if (action.html_deps) data.htmlDeps = action.html_deps
       return {
         ...state,
@@ -555,7 +575,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
 
     case "chunk_start": {
       const messages = removeLoadingMessage(state.messages)
-      const newMsg = messagePayloadToData(action.message)
+      const newMsg = messagePayloadToData(action.message, state.toolGrouping)
       newMsg.streaming = true
       newMsg.blocks = newMsg.blocks.map((b) =>
         b.type === "thinking" ? { ...b, streaming: true } : b,
@@ -852,7 +872,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         return state
       }
 
-      const finalized = finalizeMessage(last)
+      const finalized = finalizeMessage(last, state.toolGrouping)
       const withCancel = state.cancelRequested
         ? { ...finalized, cancelled: true }
         : finalized
@@ -880,6 +900,24 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       return { ...state, enableUpload: action.enable_upload }
     }
 
+    case "SET_TOOL_GROUPING": {
+      // Re-routing the settled transcript is what makes `tool-grouping` a live
+      // attribute rather than one that only governs future messages: the router
+      // is a pure function of (blocks, grouping, role), so the same content
+      // regroups at the new mode. The streaming message needs nothing —
+      // ChatMessage routes it at render time off the context value.
+      //
+      // The no-op guard is load-bearing: ChatApp dispatches once on mount to
+      // adopt the prop, and re-routing there would throw away every group's
+      // expand state for no change in output.
+      if (action.grouping === state.toolGrouping) return state
+      return {
+        ...state,
+        toolGrouping: action.grouping,
+        messages: state.messages.map((m) => rerouteMessage(m, action.grouping)),
+      }
+    }
+
     case "clear": {
       // action.greeting=true means "also clear the greeting"; otherwise restore it as visible
       const greetingAfterClear = action.greeting
@@ -899,6 +937,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         slashCommands: state.slashCommands,
         enableUpload: state.enableUpload,
         enableUploadExplicit: state.enableUploadExplicit,
+        toolGrouping: state.toolGrouping,
         history: state.history,
       }
     }
@@ -912,7 +951,10 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     case "remove_loading": {
       const messages = removeLoadingMessage(state.messages)
       if (state.streamingMessage) {
-        const finalized = finalizeMessage(state.streamingMessage)
+        const finalized = finalizeMessage(
+          state.streamingMessage,
+          state.toolGrouping,
+        )
         const withCancel = state.cancelRequested
           ? { ...finalized, cancelled: true }
           : finalized
@@ -925,13 +967,6 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         inputDisabled: false,
         cancelRequested: false,
       }
-    }
-
-    case "hide_tool_request": {
-      if (state.hiddenToolRequests.has(action.requestId)) return state
-      const newSet = new Set(state.hiddenToolRequests)
-      newSet.add(action.requestId)
-      return { ...state, hiddenToolRequests: newSet }
     }
 
     case "greeting": {
@@ -1119,11 +1154,41 @@ export function buildMessagesSnapshot(state: ChatState): SnapshotMessage[] {
     })
 }
 
-function finalizeMessage(msg: ChatMessageData): ChatMessageData {
-  const blocks: MessageBlock[] = []
+/**
+ * Re-route one settled message at a new grouping mode.
+ *
+ * A `tool_loop` carries the raw content slice it was parsed from, so unwinding
+ * it back into a content block recovers the router's own input — no reparse of
+ * the message, no server round-trip. Thinking blocks pass straight through
+ * unchanged — they render in place at every mode and break the run either way.
+ */
+function rerouteMessage(
+  msg: ChatMessageData,
+  grouping: ToolGrouping,
+): ChatMessageData {
+  if (!msg.blocks.some((b) => b.type === "tool_loop")) return msg
+  const raw: MessageBlock[] = msg.blocks.map((b) =>
+    b.type === "tool_loop"
+      ? { type: "content", content: b.content, contentType: b.contentType }
+      : b,
+  )
+  const blocks = routeToolBlocks(
+    raw,
+    grouping,
+    msg.role,
+    msg.insideFence ?? false,
+  )
+  return { ...msg, blocks, content: contentFromBlocks(blocks) }
+}
+
+function finalizeMessage(
+  msg: ChatMessageData,
+  grouping: ToolGrouping = "tool",
+): ChatMessageData {
+  const rebuilt: MessageBlock[] = []
   for (const block of msg.blocks) {
     if (block.type === "thinking" && block.streaming) {
-      blocks.push({
+      rebuilt.push({
         ...block,
         content: block.content + (block.topicBuffer ?? ""),
         topicBuffer: "",
@@ -1135,16 +1200,26 @@ function finalizeMessage(msg: ChatMessageData): ChatMessageData {
       THINKING_TAG_RE.test(block.content)
     ) {
       THINKING_TAG_RE.lastIndex = 0
-      blocks.push(...splitThinkingBlocks(block.content, block.contentType))
+      rebuilt.push(...splitThinkingBlocks(block.content, block.contentType))
     } else {
-      blocks.push(block)
+      rebuilt.push(block)
     }
   }
 
-  const content = blocks
-    .filter((b): b is ContentBlock => b.type === "content")
-    .map((b) => b.content)
-    .join("")
+  // `msg.insideFence` is the streaming tag state machine's own flag, mirrored
+  // onto the message as chunks arrive. Still set here means the stream ended
+  // (cancelled, truncated, errored) with a code fence open, so keep shielding
+  // what follows that fence: a documented tool-tag example must not pop into
+  // live tool UI at the instant of finalization. Messages that never streamed
+  // — preloaded/restored transcripts — never have the flag, so they keep
+  // routing real tool elements even past a stray ``` (see `codeRanges`).
+  const blocks = routeToolBlocks(
+    rebuilt,
+    grouping,
+    msg.role,
+    msg.insideFence ?? false,
+  )
+  const content = contentFromBlocks(blocks)
 
   return { ...msg, content, streaming: false, blocks }
 }

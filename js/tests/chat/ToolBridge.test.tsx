@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest"
-import { render, act } from "@testing-library/react"
+import { describe, it, expect, beforeEach, vi } from "vitest"
+import { render, act, fireEvent } from "@testing-library/react"
 import { ChatApp } from "../../src/chat/ChatApp"
 import {
   createMockTransport,
@@ -10,6 +10,13 @@ import {
 beforeEach(() => {
   installShinyWindowStub()
 })
+
+// A completed single tool call now rests as a quiet Tier-1 row that morphs into
+// the full card on expand; open it to assert on the leaf card / result body.
+function expandToolRow() {
+  const row = document.querySelector(".shiny-chat-tool-group__row")
+  if (row) act(() => fireEvent.click(row))
+}
 
 describe("Tool component bridge rendering", () => {
   it("renders a tool request card from server HTML", () => {
@@ -49,12 +56,16 @@ describe("Tool component bridge rendering", () => {
       })
     })
 
-    // The React ToolRequest renders a ToolCard with class shiny-tool-card
+    // A running single call rests as a Tier-1 row (with a spinner) carrying the
+    // tool title; the full card appears only on expand.
+    expect(document.querySelector(".shiny-chat-tool-group__row")).toBeTruthy()
+    expect(document.querySelector(".spinner-border")).toBeTruthy()
+    expect(
+      document.querySelector(".shiny-chat-tool-group__title")?.textContent,
+    ).toContain("Get Weather")
+
+    expandToolRow()
     expect(document.querySelector(".shiny-tool-card")).toBeTruthy()
-    // The title should contain the tool title
-    expect(document.querySelector(".tool-title")?.textContent).toContain(
-      "Get Weather",
-    )
   })
 
   it("renders a tool result card and hides the corresponding request", () => {
@@ -95,14 +106,6 @@ describe("Tool component bridge rendering", () => {
       })
     })
 
-    // Server sends hide action (arrives before result HTML in real flow)
-    act(() => {
-      transport.fire("test-chat", {
-        type: "hide_tool_request",
-        requestId: "req-2",
-      })
-    })
-
     // Then send the result
     act(() => {
       transport.fire("test-chat", {
@@ -120,7 +123,8 @@ describe("Tool component bridge rendering", () => {
       })
     })
 
-    // The result card should be visible with the text value
+    // The result rests as a row; expand it to reveal the leaf card body.
+    expandToolRow()
     const resultDiv = document.querySelector(".shiny-tool-result__result")
     expect(resultDiv).toBeTruthy()
     expect(resultDiv?.textContent).toContain("Sunny, 72°F")
@@ -163,7 +167,8 @@ describe("Tool component bridge rendering", () => {
       })
     })
 
-    expect(document.querySelector(".shiny-tool-request")).toBeTruthy()
+    // A running request renders with a spinner glyph.
+    expect(document.querySelector(".spinner-border")).toBeTruthy()
 
     act(() => {
       transport.fire("test-chat", {
@@ -181,8 +186,11 @@ describe("Tool component bridge rendering", () => {
       })
     })
 
-    expect(document.querySelector(".shiny-tool-request")).toBeNull()
-    expect(document.querySelector(".shiny-tool-result")).toBeTruthy()
+    // The result supersedes the request: the running (spinner) glyph is gone,
+    // and the result value is shown once the row is expanded.
+    expect(document.querySelector(".spinner-border")).toBeNull()
+    expandToolRow()
+    expect(document.body.textContent).toContain("Sunny, 72°F")
   })
 
   it("hides an existing tool request when a matching streamed tool result replaces chunk content", () => {
@@ -222,7 +230,7 @@ describe("Tool component bridge rendering", () => {
       })
     })
 
-    expect(document.querySelector(".shiny-tool-request")).toBeTruthy()
+    expect(document.querySelector(".spinner-border")).toBeTruthy()
 
     act(() => {
       transport.fire("test-chat", {
@@ -247,11 +255,17 @@ describe("Tool component bridge rendering", () => {
       transport.fire("test-chat", { type: "chunk_end" })
     })
 
-    expect(document.querySelector(".shiny-tool-request")).toBeNull()
-    expect(document.querySelector(".shiny-tool-result")).toBeTruthy()
+    expect(document.querySelector(".spinner-border")).toBeNull()
+    expandToolRow()
+    expect(document.body.textContent).toContain("Done")
   })
 
-  it("hide_tool_request action hides a rendered tool request", () => {
+  // Supersession is derived from the result's own content, so a call whose
+  // result never arrives — a cancelled stream, a dropped connection, a server
+  // that errored after dispatching — keeps its request row. The former
+  // `hide_tool_request` action was sent *before* the result and could never be
+  // withdrawn, so this case lost the tool call permanently.
+  it("keeps a request row when no result ever arrives", () => {
     const transport = createMockTransport()
     const shinyLifecycle = createMockShinyLifecycle()
 
@@ -288,19 +302,25 @@ describe("Tool component bridge rendering", () => {
       })
     })
 
-    // Tool request card should be visible
-    expect(document.querySelector(".shiny-tool-card")).toBeTruthy()
+    // The running request rests as a Tier-1 row.
+    expect(document.querySelector(".shiny-chat-tool-group__row")).toBeTruthy()
 
-    // Server sends hide action
+    // The conversation moves on without a result for req-3 ever arriving.
     act(() => {
       transport.fire("test-chat", {
-        type: "hide_tool_request",
-        requestId: "req-3",
+        type: "message",
+        message: {
+          role: "assistant",
+          segments: [
+            { content: "Sorry, that was cut short.", content_type: "markdown" },
+          ],
+        },
       })
     })
 
-    // Card should be gone (ToolRequest returns null when hidden)
-    expect(document.querySelector(".shiny-tool-card")).toBeNull()
+    // The row is still there — the call is visibly stuck, not silently gone.
+    expect(document.querySelector(".shiny-chat-tool-group__row")).toBeTruthy()
+    expect(document.body.textContent).toContain("Sorry, that was cut short.")
   })
 
   it("hides a preloaded tool request when a matching preloaded tool result is rendered", () => {
@@ -356,8 +376,10 @@ describe("Tool component bridge rendering", () => {
       />,
     )
 
-    expect(document.querySelector(".shiny-tool-request")).toBeNull()
-    expect(document.querySelector(".shiny-tool-result")).toBeTruthy()
+    // The preloaded result supersedes the preloaded request (no spinner card).
+    expect(document.querySelector(".spinner-border")).toBeNull()
+    expandToolRow()
+    expect(document.body.textContent).toContain("Done")
   })
 
   it("renders a user-specified icon on a successful tool result", () => {
@@ -398,12 +420,13 @@ describe("Tool component bridge rendering", () => {
       })
     })
 
-    const toolIcon = document.querySelector(".tool-icon")
-    expect(toolIcon).toBeTruthy()
-    expect(toolIcon!.innerHTML).toContain("bi-folder2-open")
+    // The tool's identity icon leads the resting Tier-1 row.
+    const glyph = document.querySelector(".shiny-chat-tool-group__glyph")
+    expect(glyph).toBeTruthy()
+    expect(glyph!.innerHTML).toContain("bi-folder2-open")
   })
 
-  it("falls back to wrench icon when no icon is specified on a successful tool result", () => {
+  it("falls back to a bare dot glyph when no icon is specified on a successful tool result", () => {
     const transport = createMockTransport()
     const shinyLifecycle = createMockShinyLifecycle()
 
@@ -440,10 +463,11 @@ describe("Tool component bridge rendering", () => {
       })
     })
 
-    const toolIcon = document.querySelector(".tool-icon")
-    expect(toolIcon).toBeTruthy()
-    // Should contain the default wrench SVG
-    expect(toolIcon!.innerHTML).toContain("bi-wrench-adjustable")
+    // Should lead with the muted identity dot (never a wrench).
+    const glyph = document.querySelector(".shiny-chat-tool-group__glyph")
+    expect(glyph).toBeTruthy()
+    expect(glyph!.innerHTML).toContain("shiny-chat-tool-glyph-dot")
+    expect(glyph!.innerHTML).not.toContain("bi-wrench-adjustable")
   })
 
   it("renders the empty-result placeholder when a tool result value is an empty string", () => {
@@ -483,7 +507,82 @@ describe("Tool component bridge rendering", () => {
       })
     })
 
-    expect(document.querySelector(".shiny-tool-result")).toBeTruthy()
+    expect(document.querySelector(".shiny-tool-card")).toBeTruthy()
     expect(document.body.textContent).toContain("[Empty result]")
+  })
+
+  it("does not route tool markup in a preloaded user message", () => {
+    // Preloaded/restored transcripts go through the same router; a user turn
+    // that literally contains a tool tag must stay text, not become tool UI.
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+    const typed =
+      '<shiny-tool-result data-shinychat-react request-id="req-typed" tool-name="get_weather" status="success" value="Sunny" value-type="text"></shiny-tool-result>'
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+        uploadAccept={[]}
+        maxUploadSize={30000000}
+        initialMessages={[
+          {
+            id: "msg-user",
+            role: "user",
+            content: typed,
+            streaming: false,
+            blocks: [
+              { type: "content", content: typed, contentType: "markdown" },
+            ],
+          },
+        ]}
+      />,
+    )
+
+    expect(document.querySelector(".shiny-chat-tool-group__row")).toBeNull()
+    expect(document.querySelector(".shiny-tool-card")).toBeNull()
+  })
+
+  it("splits thinking out of a preloaded message", () => {
+    // Preloaded/restored transcripts get the same block construction as live
+    // ones, so reasoning keeps its collapsible UI across a reload.
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+    const content = "<thinking>Weighing options</thinking>Here you go."
+    // ThinkingDisplay animates its label, which reads prefers-reduced-motion.
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn().mockReturnValue({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }),
+    )
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+        uploadAccept={[]}
+        maxUploadSize={30000000}
+        initialMessages={[
+          {
+            id: "msg-thinking",
+            role: "assistant",
+            content,
+            streaming: false,
+            blocks: [{ type: "content", content, contentType: "markdown" }],
+          },
+        ]}
+      />,
+    )
+
+    expect(document.querySelector(".shiny-chat-thinking")).toBeTruthy()
+    expect(document.body.textContent).toContain("Here you go.")
+    vi.unstubAllGlobals()
   })
 })
