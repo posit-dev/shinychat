@@ -92,7 +92,12 @@ async def test_file_store_round_trips_dict_tool_result_display(
     adapter.set_turns_json(restored.path_turns())
     display = adapter.get_turns_json()[0]["contents"][0]["extra"]["display"]
     assert display["html"]["html"] == "<div>Widget output</div>"
-    assert display["html"]["dependencies"][0]["name"] == "my-dep"
+    dependency = display["html"]["dependencies"][0]
+    assert dependency["name"] == "my-dep"
+    assert dependency["source"] == {"subdir": "."}
+    assert dependency["script"] == []
+    assert dependency["stylesheet"] == []
+    assert dependency["all_files"] is False
 
 
 @pytest.mark.anyio

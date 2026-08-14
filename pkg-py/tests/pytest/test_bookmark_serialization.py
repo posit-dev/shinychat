@@ -9,12 +9,14 @@ field serializer produced non-JSON-serializable output.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
 from chatlas import ChatOpenAI, ContentToolResult, Turn
-from htmltools import HTMLDependency, tags
+from htmltools import HTMLDependency, TagList, tags
 from pydantic_core import PydanticSerializationError
+from shiny import App
 from shinychat._chat_bookmark import get_chatlas_state
 from shinychat.types import ToolResultDisplay
 
@@ -38,7 +40,14 @@ async def test_turn_serialization_with_htmldep_in_tool_result(as_dict: bool):
     typed_display = ToolResultDisplay(
         html=tags.div(
             "Widget output",
-            HTMLDependency("my-dep", "1.0", source={"subdir": "."}),
+            HTMLDependency(
+                "my-dep",
+                "1.0",
+                source={"subdir": "."},
+                script={"src": "widget.js"},
+                stylesheet={"href": "widget.css"},
+                all_files=True,
+            ),
         ),
         title="My Widget",
     )
@@ -69,16 +78,118 @@ async def test_turn_serialization_with_htmldep_in_tool_result(as_dict: bool):
         assert display_data["application_metadata"] == {
             "widget_id": "my-widget"
         }
-    deps = display_data["html"]["dependencies"]
-    assert len(deps) == 1
-    assert deps[0]["name"] == "my-dep"
-    assert deps[0]["version"] == "1.0"
+    dependencies = display_data["html"]["dependencies"]
+    assert len(dependencies) == 1
+    assert dependencies[0] == {
+        "name": "my-dep",
+        "version": "1.0",
+        "source": {"subdir": "."},
+        "script": [{"src": "widget.js"}],
+        "stylesheet": [{"href": "widget.css", "rel": "stylesheet"}],
+        "meta": [],
+        "all_files": True,
+        "head": None,
+    }
 
     # Must round-trip back to a valid Turn
     restored = Turn.model_validate(json.loads(json_str))
     assert restored.role == "user"
     assert len(restored.contents) == 1
     assert isinstance(restored.contents[0], ContentToolResult)
+    restored_display = ToolResultDisplay.model_validate(
+        restored.contents[0].extra["display"]
+    )
+    restored_dependency = TagList(restored_display.html).render()[
+        "dependencies"
+    ][0]
+
+    assert restored_dependency.source == {"subdir": "."}
+    assert restored_dependency.script == [{"src": "widget.js"}]
+    assert restored_dependency.stylesheet == [
+        {"href": "widget.css", "rel": "stylesheet"}
+    ]
+    assert restored_dependency.all_files is True
+
+
+def test_tool_result_display_restores_legacy_dependency_payload():
+    legacy_display = {
+        "html": {
+            "html": '<div class="widget">Widget output</div>',
+            "dependencies": [
+                {
+                    "name": "my-dep",
+                    "version": "1.0",
+                    "script": [{"src": "lib/my-dep-1.0/widget.js"}],
+                    "stylesheet": [
+                        {
+                            "href": "lib/my-dep-1.0/widget.css",
+                            "rel": "stylesheet",
+                        }
+                    ],
+                    "meta": [],
+                    "head": None,
+                }
+            ],
+        }
+    }
+
+    display = ToolResultDisplay.model_validate(legacy_display)
+    rendered = TagList(display.html).render()
+    dependency = rendered["dependencies"][0]
+
+    assert rendered["html"] == '<div class="widget">Widget output</div>'
+    assert dependency.name == "my-dep"
+    assert str(dependency.version) == "1.0"
+    assert dependency.source is None
+    assert dependency.script == [{"src": "lib/my-dep-1.0/widget.js"}]
+    assert dependency.stylesheet == [
+        {
+            "href": "lib/my-dep-1.0/widget.css",
+            "rel": "stylesheet",
+        }
+    ]
+
+    new_value = display.model_dump(mode="json")
+    new_dependency = new_value["html"]["dependencies"][0]
+
+    assert "source" in new_dependency
+    assert new_dependency["source"] is None
+    assert new_dependency["all_files"] is False
+
+
+def test_restored_dependency_can_register_with_new_shiny_app(tmp_path: Path):
+    (tmp_path / "widget.css").write_text(
+        ".widget { color: red; }",
+        encoding="utf-8",
+    )
+    display = ToolResultDisplay(
+        html=tags.div(
+            {"class": "widget"},
+            "Widget",
+            HTMLDependency(
+                "my-dep",
+                "1.0",
+                source={"subdir": str(tmp_path)},
+                stylesheet={"href": "widget.css"},
+            ),
+        )
+    )
+
+    restored = ToolResultDisplay.model_validate(
+        json.loads(display.model_dump_json())
+    )
+    dependency = TagList(restored.html).render()["dependencies"][0]
+
+    app = App(
+        tags.div(),
+        lambda input_, output, session: None,
+    )
+    app._register_web_dependency(dependency)
+
+    assert any(
+        getattr(route, "path", None) == "/lib/my-dep-1.0"
+        for route in app._dependency_handler.routes
+    )
 
 
 @pytest.mark.anyio

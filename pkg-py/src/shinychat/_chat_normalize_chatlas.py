@@ -11,6 +11,7 @@ from htmltools import (
     MetadataNode,
     RenderedHTML,
     ReprHtml,
+    SerializedHTML,
     Tag,
     Tagifiable,
     TagList,
@@ -20,7 +21,10 @@ from pydantic import BaseModel, field_serializer, field_validator
 from typing_extensions import TypeAliasType
 
 from ._chat_types import ChatMessage
-from ._htmltools_serialization import SerializedHTML, serialize_htmltools
+from ._htmltools_serialization import (
+    deserialize_htmltools,
+    serialize_htmltools,
+)
 
 if TYPE_CHECKING:
     from chatlas.types import ContentToolRequest, ContentToolResult
@@ -77,7 +81,7 @@ class ToolCardComponent(BaseModel):
     @classmethod
     def _validate_icon(cls, value: TagChild) -> TagChild:
         if isinstance(value, dict):
-            return restore_rendered_html(value)
+            return deserialize_htmltools(value)
         else:
             return value
 
@@ -379,7 +383,7 @@ class ToolResultDisplay(BaseModel):
     @classmethod
     def _validate_html_icon(cls, value: TagChild) -> TagChild:
         if isinstance(value, dict):
-            return restore_rendered_html(value)
+            return deserialize_htmltools(value)
         else:
             return value
 
@@ -644,38 +648,3 @@ def tool_display_override() -> Literal["none", "basic", "rich"]:
         raise ValueError(
             'The `SHINYCHAT_TOOL_DISPLAY` env var must be one of: "none", "basic", or "rich"'
         )
-
-
-def restore_rendered_html(x: dict[str, Any]):
-    from htmltools import HTMLDependency
-
-    if "html" not in x or "dependencies" not in x:
-        raise ValueError(f"Don't know how to restore HTML from {x}")
-
-    deps: list[HTMLDependency] = []
-    for d in x["dependencies"]:
-        if not isinstance(d, dict):
-            continue
-        name = d["name"]
-        version = d["version"]
-        other = {k: v for k, v in d.items() if k not in ("name", "version")}
-        # TODO: warn if the source is a tempdir?
-        deps.append(HTMLDependency(name=name, version=version, **other))
-
-    res = TagList(HTML(x["html"]), *deps)
-    if not deps:
-        return res
-
-    session = None
-    try:
-        from shiny.session import get_current_session
-
-        session = get_current_session()
-    except Exception:
-        pass
-
-    # De-dupe dependencies for the current Shiny session
-    if session:
-        session._process_ui(res)
-
-    return res
