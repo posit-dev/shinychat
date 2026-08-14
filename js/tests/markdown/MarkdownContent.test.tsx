@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render } from "@testing-library/react"
+import { fireEvent, render, screen, within } from "@testing-library/react"
 import * as markdownToReactModule from "../../src/markdown/markdownToReact"
 import { MarkdownContent } from "../../src/markdown/MarkdownContent"
 import { chatTagToComponentMap } from "../../src/chat/chatTagToComponentMap"
@@ -52,6 +52,83 @@ describe("MarkdownContent (pure)", () => {
     expect(container.querySelector(".shiny-tool-card")).not.toBeNull()
   })
 
+  it("renders an ordinary tool result through the fallback bridge", () => {
+    const { container } = render(
+      <MarkdownContent
+        content={
+          '<shiny-tool-result request-id="req-html-result" tool-name="test" value="done" value-type="text"></shiny-tool-result>'
+        }
+        contentType="html"
+        tagToComponentMap={chatTagToComponentMap}
+      />,
+    )
+
+    expect(container.querySelector(".shiny-tool-card")).not.toBeNull()
+    expect(container.textContent).toContain("done")
+  })
+
+  it("renders no card for custom-display through the fallback bridge", () => {
+    const { container } = render(
+      <MarkdownContent
+        content={
+          '<shiny-tool-result request-id="req-custom" tool-name="test" value="&lt;p&gt;custom&lt;/p&gt;" value-type="html" custom-display></shiny-tool-result>'
+        }
+        contentType="html"
+        tagToComponentMap={chatTagToComponentMap}
+      />,
+    )
+
+    expect(container.querySelector(".shiny-tool-card")).toBeNull()
+    expect(container.textContent).not.toContain("custom")
+  })
+
+  it("groups a <shiny-aside> tag in html content into an aside pill", () => {
+    const { container } = render(
+      <MarkdownContent
+        content={
+          '<p>A claim<shiny-aside label="Source" url="https://x.example"></shiny-aside>.</p>'
+        }
+        contentType="html"
+        tagToComponentMap={chatTagToComponentMap}
+      />,
+    )
+
+    expect(container.querySelector(".shiny-aside-pill")).not.toBeNull()
+    expect(container.querySelector("shiny-aside")).toBeNull()
+  })
+
+  it("groups a root-level <shiny-aside> tag in html content", () => {
+    const { container } = render(
+      <MarkdownContent
+        content={
+          'A claim<shiny-aside label="Source">source body</shiny-aside>.'
+        }
+        contentType="html"
+        tagToComponentMap={chatTagToComponentMap}
+      />,
+    )
+
+    expect(container.querySelector(".shiny-aside-pill")).not.toBeNull()
+    expect(container.textContent).toContain("A claim")
+  })
+
+  it("preserves rich html content inside a <shiny-aside> popover", () => {
+    const { container } = render(
+      <MarkdownContent
+        content={
+          '<p>A claim<shiny-aside label="Source"><p><strong>Details</strong></p><ul><li>one</li></ul></shiny-aside>.</p>'
+        }
+        contentType="html"
+        tagToComponentMap={chatTagToComponentMap}
+      />,
+    )
+
+    fireEvent.click(within(container).getByRole("button", { name: /Source/ }))
+    const popover = screen.getByRole("dialog")
+    expect(within(popover).getByText("Details")).toBeInTheDocument()
+    expect(within(popover).getByText("one")).toBeInTheDocument()
+  })
+
   it("renders empty content without errors", () => {
     const { container } = render(
       <MarkdownContent content="" contentType="markdown" />,
@@ -69,14 +146,16 @@ describe("MarkdownContent (pure)", () => {
     }).not.toThrow()
   })
 
-  it("renders shinychat-raw-html block without throwing", () => {
-    const content =
-      '<shinychat-raw-html><div class="custom">Hello</div></shinychat-raw-html>'
+  it.each(["shiny-chat-raw-html", "shinychat-raw-html"])(
+    "renders %s block without throwing",
+    (tagName) => {
+      const content = `<${tagName}><div class="custom">Hello</div></${tagName}>`
 
-    expect(() => {
-      render(<MarkdownContent content={content} contentType="markdown" />)
-    }).not.toThrow()
-  })
+      expect(() => {
+        render(<MarkdownContent content={content} contentType="markdown" />)
+      }).not.toThrow()
+    },
+  )
 
   it("renders tool tags without requiring chat contexts", () => {
     const content =
@@ -96,7 +175,7 @@ describe("MarkdownContent (pure)", () => {
 
   it("renders tool tags as top-level React components (server splits content)", () => {
     // The server now splits HTML islands around data-shinychat-react elements,
-    // so tool tags arrive as top-level elements (not wrapped in shinychat-raw-html).
+    // so tool tags arrive as top-level elements (not wrapped in an HTML island).
     const content =
       '<shiny-tool-request data-shinychat-react request-id="req-1" tool-name="test" arguments="{}"></shiny-tool-request>'
 

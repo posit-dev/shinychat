@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest"
 import { render, screen, fireEvent, act } from "@testing-library/react"
 import { ChatMessage } from "../../src/chat/ChatMessage"
 import type { ChatMessageData } from "../../src/chat/state"
+import { ChatToolContext } from "../../src/chat/context"
 
 vi.mock("../../src/chat/TiptapInput", async () => {
   const { FakeTiptapInput } = await import("../helpers/fakeTiptapInput")
@@ -248,11 +249,197 @@ describe("ChatMessage attachments", () => {
         message={{
           ...userMessage({ content: "", blocks: [] }),
           role: "assistant",
+          isPlaceholder: true,
         }}
       />,
     )
     const icon = container.querySelector(".message-icon")
     expect(icon!.querySelector(".spinner_S1WN")).not.toBeNull()
+  })
+
+  it("still shows the loading dots for an empty streaming message", () => {
+    const { container } = render(
+      <ChatMessage
+        index={0}
+        message={{
+          ...userMessage({ content: "", blocks: [] }),
+          role: "assistant",
+          streaming: true,
+        }}
+      />,
+    )
+    const icon = container.querySelector(".message-icon")
+    expect(icon!.querySelector(".spinner_S1WN")).not.toBeNull()
+  })
+
+  it("renders no row for a settled message with nothing to show", () => {
+    const { container } = render(
+      <ChatMessage
+        index={0}
+        message={{
+          ...userMessage({ content: "", blocks: [] }),
+          role: "assistant",
+        }}
+      />,
+    )
+    expect(container.firstChild).toBeNull()
+  })
+
+  it("renders no row when every tool call was superseded by a result elsewhere", () => {
+    // A request-only message whose result rendered in a later message, so the
+    // transcript-derived superseded set empties the only group. The row must
+    // vanish entirely rather than linger as a bare icon or dots.
+    const message: ChatMessageData = {
+      ...userMessage({ content: "", blocks: [] }),
+      role: "assistant",
+      blocks: [
+        {
+          type: "tool_loop",
+          content: "",
+          contentType: "markdown",
+          grouping: "tool",
+          groups: [
+            {
+              key: "tool:search",
+              toolName: "search",
+              titleSettled: false,
+              count: 1,
+              segments: [{ toolName: "search", count: 1, settled: false }],
+              calls: [
+                {
+                  requestId: "req-1",
+                  localId: "req-1",
+                  toolName: "search",
+                  status: "running",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }
+    const { container } = render(
+      <ChatToolContext.Provider
+        value={{ supersededRequests: new Set(["req-1"]) }}
+      >
+        <ChatMessage index={0} message={message} />
+      </ChatToolContext.Provider>,
+    )
+    expect(container.firstChild).toBeNull()
+  })
+
+  it("rebuilds a heterogeneous group's header when supersession thins it to one call", () => {
+    // Two different tools bucketed under "all" grouping. The "search" request
+    // is superseded by a result rendered elsewhere, leaving only the "email"
+    // call visible. The header must describe just that call -- not the ×2 the
+    // unfiltered group carries, and not the "search" tool it no longer shows.
+    const message: ChatMessageData = {
+      ...userMessage({ content: "", blocks: [] }),
+      role: "assistant",
+      blocks: [
+        {
+          type: "tool_loop",
+          content: "",
+          contentType: "markdown",
+          grouping: "all",
+          groups: [
+            {
+              key: "all",
+              toolName: "search",
+              titleSettled: false,
+              count: 2,
+              segments: [
+                { toolName: "search", count: 1, settled: false },
+                { toolName: "email", count: 1, settled: false },
+              ],
+              calls: [
+                {
+                  requestId: "req-1",
+                  localId: "req-1",
+                  toolName: "search",
+                  status: "running",
+                },
+                {
+                  requestId: "req-2",
+                  localId: "req-2",
+                  toolName: "email",
+                  status: "running",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }
+    const { container } = render(
+      <ChatToolContext.Provider
+        value={{ supersededRequests: new Set(["req-1"]) }}
+      >
+        <ChatMessage index={0} message={message} />
+      </ChatToolContext.Provider>,
+    )
+    expect(container.textContent).toContain("email")
+    expect(container.textContent).not.toContain("search")
+    expect(container.textContent).not.toContain("×2")
+  })
+
+  it('removes the icon entirely when the assistant icon is "" (icon_assistant=False)', () => {
+    const { container } = render(
+      <ChatMessage
+        index={0}
+        message={{
+          ...userMessage({ content: "hello" }),
+          role: "assistant",
+          icon: "",
+        }}
+      />,
+    )
+    expect(container.querySelector(".message-icon")).toBeNull()
+  })
+
+  it('removes the icon via the container default (iconAssistant="")', () => {
+    const { container } = render(
+      <ChatMessage
+        index={0}
+        message={{
+          ...userMessage({ content: "hello" }),
+          role: "assistant",
+        }}
+        iconAssistant=""
+      />,
+    )
+    expect(container.querySelector(".message-icon")).toBeNull()
+  })
+
+  it("suppresses the loading dots too when the icon is removed", () => {
+    const { container } = render(
+      <ChatMessage
+        index={0}
+        message={{
+          ...userMessage({ content: "", blocks: [] }),
+          role: "assistant",
+          icon: "",
+        }}
+      />,
+    )
+    expect(container.querySelector(".message-icon")).toBeNull()
+  })
+
+  it("lets a per-message icon override a suppressed container default", () => {
+    const { container } = render(
+      <ChatMessage
+        index={0}
+        message={{
+          ...userMessage({ content: "hello" }),
+          role: "assistant",
+          icon: "<span class='custom-icon'>x</span>",
+        }}
+        iconAssistant=""
+      />,
+    )
+    const icon = container.querySelector(".message-icon")
+    expect(icon).not.toBeNull()
+    expect(icon!.querySelector(".custom-icon")).not.toBeNull()
   })
 
   it("traps focus inside the lightbox", () => {
@@ -372,6 +559,182 @@ describe("ChatMessage attachments", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /close preview/i }))
     expect(screen.queryByRole("dialog")).toBeNull()
+  })
+})
+
+describe("ChatMessage streaming tool routing", () => {
+  const typed =
+    '<shiny-tool-result data-shinychat-react request-id="req-1" tool-name="get_weather" status="success" value="Sunny" value-type="text"></shiny-tool-result>'
+
+  function streamingMessage(role: ChatMessageData["role"]): ChatMessageData {
+    return userMessage({
+      role,
+      content: typed,
+      streaming: true,
+      blocks: [{ type: "content", content: typed, contentType: "markdown" }],
+    })
+  }
+
+  it("does not route tool markup typed in a streaming user message", () => {
+    const { container } = render(
+      <ChatMessage index={0} message={streamingMessage("user")} />,
+    )
+    expect(container.querySelector(".shiny-chat-tool-loop")).toBeNull()
+  })
+
+  it("routes the same markup in a streaming assistant message", () => {
+    const { container } = render(
+      <ChatMessage index={0} message={streamingMessage("assistant")} />,
+    )
+    expect(container.querySelector(".shiny-chat-tool-loop")).not.toBeNull()
+  })
+
+  it('routes the same markup in a streaming "system" message', () => {
+    // Python's server-side Role allows "system", which the client's
+    // "user" | "assistant" union does not name — hence the cast. Pins the
+    // router's `role !== "user"` gate against being narrowed to `=== "assistant"`.
+    const message = {
+      ...streamingMessage("assistant"),
+      role: "system" as ChatMessageData["role"],
+    }
+    const { container } = render(<ChatMessage index={0} message={message} />)
+    expect(container.querySelector(".shiny-chat-tool-loop")).not.toBeNull()
+  })
+})
+
+describe("ChatMessage tool custom-display migration (through the real router)", () => {
+  // These content strings go through routeToolBlocks -> groupCalls ->
+  // deriveToolGroupIdentity for real (via the streaming render path exercised
+  // above), not a hand-built ToolCallGroup -- the seam neither state.test.ts
+  // nor ToolGroup.test.tsx covers alone.
+  function toolMessage(content: string): ChatMessageData {
+    return userMessage({
+      role: "assistant",
+      content,
+      streaming: true,
+      blocks: [{ type: "content", content, contentType: "markdown" }],
+    })
+  }
+
+  it("renders a lone custom-display call as a payload with no row and no spinner", () => {
+    const content =
+      '<shiny-tool-request data-shinychat-react request-id="w1" tool-name="weather" arguments="{}"></shiny-tool-request>' +
+      '<shiny-tool-result data-shinychat-react request-id="w1" tool-name="weather" status="success" value="&lt;p&gt;Portland&lt;/p&gt;" value-type="html" custom-display></shiny-tool-result>'
+    const { container } = render(
+      <ChatMessage index={0} message={toolMessage(content)} />,
+    )
+    const payload = container.querySelector(".shiny-chat-tool-custom-display")
+    expect(payload).not.toBeNull()
+    expect(payload!.textContent).toContain("Portland")
+    expect(container.querySelector(".shiny-chat-tool-group")).toBeNull()
+    expect(container.querySelector(".spinner-border")).toBeNull()
+  })
+
+  it("renders one row plus one payload when only one of two same-tool calls migrates", () => {
+    const content =
+      '<shiny-tool-request data-shinychat-react request-id="w1" tool-name="weather" tool-title="Weather Forecast" arguments="{}"></shiny-tool-request>' +
+      '<shiny-tool-request data-shinychat-react request-id="w2" tool-name="weather" tool-title="Weather Forecast" arguments="{}"></shiny-tool-request>' +
+      '<shiny-tool-result data-shinychat-react request-id="w1" tool-name="weather" status="success" value="&lt;p&gt;Seattle&lt;/p&gt;" value-type="html" custom-display></shiny-tool-result>' +
+      '<shiny-tool-result data-shinychat-react request-id="w2" tool-name="weather" status="success" value="Rainy" value-type="text"></shiny-tool-result>'
+    const { container } = render(
+      <ChatMessage index={0} message={toolMessage(content)} />,
+    )
+    expect(container.querySelectorAll(".shiny-chat-tool-group")).toHaveLength(1)
+    expect(
+      container.querySelectorAll(".shiny-chat-tool-custom-display"),
+    ).toHaveLength(1)
+    expect(container.textContent).toContain("Weather Forecast")
+    // The visible subset is one call -- the header must not carry the
+    // unfiltered group's ×2, which the two-tool identity would produce.
+    expect(container.textContent).not.toContain("×2")
+  })
+
+  it("orders migrated payloads by resolveIndex when results settle out of request order", () => {
+    const content =
+      '<shiny-tool-request data-shinychat-react request-id="w1" tool-name="weather" arguments="{}"></shiny-tool-request>' +
+      '<shiny-tool-request data-shinychat-react request-id="w2" tool-name="weather" arguments="{}"></shiny-tool-request>' +
+      '<shiny-tool-result data-shinychat-react request-id="w2" tool-name="weather" status="success" value="&lt;p&gt;Boston&lt;/p&gt;" value-type="html" custom-display></shiny-tool-result>' +
+      '<shiny-tool-result data-shinychat-react request-id="w1" tool-name="weather" status="success" value="&lt;p&gt;Seattle&lt;/p&gt;" value-type="html" custom-display></shiny-tool-result>'
+    const { container } = render(
+      <ChatMessage index={0} message={toolMessage(content)} />,
+    )
+    const payloads = Array.from(
+      container.querySelectorAll(".shiny-chat-tool-custom-display"),
+    )
+    expect(payloads).toHaveLength(2)
+    // w2's result appears first in the content string, so its payload leads --
+    // resolveIndex tracks the result element's offset, not request order.
+    expect(payloads[0]!.textContent).toContain("Boston")
+    expect(payloads[1]!.textContent).toContain("Seattle")
+  })
+
+  it("orders migrated payloads across merged source blocks, not by raw offset", () => {
+    // `mergeAdjacentLoops` coalesces these two blocks into one group, but
+    // `el.start` restarts from 0 in each. The first block is padded so its
+    // result sits at a *larger* offset than the second block's, which is the
+    // case where sorting on the offset alone inverts the transcript order.
+    const padding = "x".repeat(300)
+    const first =
+      `<shiny-tool-request data-shinychat-react request-id="w1" tool-name="weather" arguments="{&quot;pad&quot;:&quot;${padding}&quot;}"></shiny-tool-request>` +
+      '<shiny-tool-result data-shinychat-react request-id="w1" tool-name="weather" status="success" value="&lt;p&gt;Seattle&lt;/p&gt;" value-type="html" custom-display></shiny-tool-result>'
+    const second =
+      '<shiny-tool-request data-shinychat-react request-id="w2" tool-name="weather" arguments="{}"></shiny-tool-request>' +
+      '<shiny-tool-result data-shinychat-react request-id="w2" tool-name="weather" status="success" value="&lt;p&gt;Boston&lt;/p&gt;" value-type="html" custom-display></shiny-tool-result>'
+
+    const { container } = render(
+      <ChatMessage
+        index={0}
+        message={userMessage({
+          role: "assistant",
+          content: first + second,
+          streaming: true,
+          blocks: [
+            { type: "content", content: first, contentType: "markdown" },
+            { type: "content", content: second, contentType: "markdown" },
+          ],
+        })}
+      />,
+    )
+
+    const payloads = Array.from(
+      container.querySelectorAll(".shiny-chat-tool-custom-display"),
+    )
+    expect(payloads).toHaveLength(2)
+    // Transcript order: Seattle (block 0) then Boston (block 1), even though
+    // Boston's offset within its own block is the smaller of the two.
+    expect(payloads[0]!.textContent).toContain("Seattle")
+    expect(payloads[1]!.textContent).toContain("Boston")
+  })
+})
+
+describe("ChatMessage html-typed tool markup", () => {
+  const typed =
+    '<shiny-tool-result data-shinychat-react request-id="req-1" tool-name="get_weather" status="success" value="Sunny" value-type="text"></shiny-tool-result>'
+
+  function htmlMessage(role: ChatMessageData["role"]): ChatMessageData {
+    return userMessage({
+      role,
+      content: typed,
+      blocks: [{ type: "content", content: typed, contentType: "html" }],
+    })
+  }
+
+  it("renders no tool UI for html-typed tool markup in a user message", () => {
+    // The router's role gate leaves the tags as text but cannot stop them from
+    // reaching the bridges: html content skips remarkEscapeHtml/rehypeSanitize.
+    // ChatMessage withholds the tag map for user messages instead.
+    const { container } = render(
+      <ChatMessage index={0} message={htmlMessage("user")} />,
+    )
+    expect(container.querySelector(".shiny-tool-result")).toBeNull()
+    expect(container.querySelector(".shiny-chat-tool-group")).toBeNull()
+  })
+
+  it("still renders tool UI for html-typed tool markup in an assistant message", () => {
+    const { container } = render(
+      <ChatMessage index={0} message={htmlMessage("assistant")} />,
+    )
+    expect(container.querySelector(".shiny-tool-result")).not.toBeNull()
   })
 })
 

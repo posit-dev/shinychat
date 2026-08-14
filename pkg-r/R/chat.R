@@ -130,6 +130,36 @@ chat_greeting <- function(
 #' read-only use (for example, custom logging or export); it is not an input
 #' you write to.
 #'
+#' @section Pairing with `chat_server()`:
+#'
+#' `chat_ui(id)` and `chat_server(id, client)` pair by matching `id`. This
+#' works the same way at the top level of an app and inside your own Shiny
+#' module — `chat_server()` is not itself a module, so no `NS(id, "chat")`
+#' wrapping is required:
+#'
+#' ```r
+#' # Top-level app, no module
+#' ui <- page_fillable(chat_ui("chat"))
+#' server <- function(input, output, session) {
+#'   chat_server("chat", client)
+#' }
+#' ```
+#'
+#' ```r
+#' # Inside your own module: pass the same literal id to both, and call
+#' # chat_server() from inside moduleServer() so it inherits the module's
+#' # already-namespaced `session`
+#' mod_ui <- function(id) {
+#'   ns <- NS(id)
+#'   chat_ui(ns("chat"))
+#' }
+#' mod_server <- function(id, client) {
+#'   moduleServer(id, function(input, output, session) {
+#'     chat_server("chat", client)
+#'   })
+#' }
+#' ```
+#'
 #' @section Greeting:
 #'
 #' A greeting is an optional welcome message shown before any conversation
@@ -201,7 +231,9 @@ chat_greeting <- function(
 #'   [fillable](https://rstudio.github.io/bslib/articles/filling/index.html)
 #' @param icon_assistant The icon to use for the assistant chat messages.
 #'   Can be HTML or a tag in the form of [htmltools::HTML()] or
-#'   [htmltools::tags()]. If `None`, a default robot icon is used.
+#'   [htmltools::tags()]. If `NULL` (or `TRUE`), a default robot icon is used.
+#'   Pass `FALSE` to remove the assistant icon entirely (individual messages
+#'   can still opt back in via the `icon` argument of [chat_append()]).
 #' @param enable_cancel Whether to show a stop button during streaming that
 #'   allows the user to cancel the in-progress response. When using
 #'   [chat_server()], cancellation is wired up automatically and this defaults
@@ -242,6 +274,25 @@ chat_greeting <- function(
 #'   The footer text is styled slightly smaller and lighter than body text
 #'   by default. Customize with CSS properties `--shiny-chat-footer-font-size`
 #'   and `--shiny-chat-footer-color` on the chat container or footer element.
+#' @param tool_grouping Controls how tool calls are grouped together in the
+#'   compact activity rows:
+#'   * `"tool"` (default): calls to the *same* tool within a turn's
+#'     contiguous tool loop are grouped into one activity row. This groups by
+#'     tool name across the whole loop, not just consecutive
+#'     calls -- e.g. calls to tools `X`, `Y`, `Z`, `X`, `Y` (in that order)
+#'     are grouped into `X` (2 calls), `Y` (2 calls), and `Z` (1 call).
+#'   * `"all"`: every tool call within a contiguous tool loop is summarized in
+#'     one activity row, regardless of tool name.
+#'   * `"none"`: each tool call is shown in its own activity row. Its request
+#'     and result remain available by drilling into that row; this does not
+#'     restore an always-visible card stack.
+#'
+#'   Prose or thinking between tool calls starts a new tool loop, so calls on
+#'   opposite sides of either boundary never group together. Individual tools can
+#'   override `"tool"` or `"all"` via a top-level `grouping` tool annotation,
+#'   e.g. `ellmer::tool(..., annotations = ellmer::tool_annotations(grouping = "all"))`.
+#'   `tool_grouping = "none"` takes precedence over every annotation and disables
+#'   grouping for the whole chat.
 #' @section Thinking display:
 #'
 #' When a model produces reasoning or "thinking" tokens, shinychat renders them
@@ -323,14 +374,18 @@ chat_ui <- function(
   enable_cancel = NULL,
   submit_key = c("enter", "enter+modifier"),
   allow_attachments = NULL,
-  footer = NULL
+  footer = NULL,
+  tool_grouping = c("tool", "none", "all")
 ) {
   submit_key <- rlang::arg_match(submit_key)
+  tool_grouping <- rlang::arg_match(tool_grouping)
 
   attrs <- rlang::list2(...)
   if (!all(nzchar(rlang::names2(attrs)))) {
     rlang::abort("All arguments in ... must be named.")
   }
+
+  icon_attr <- resolve_icon_attr(icon_assistant)
 
   message_tags <- lapply(messages, function(x) {
     role <- "assistant"
@@ -359,7 +414,7 @@ chat_ui <- function(
       ui <- with_current_theme({
         htmltools::renderTags(pre_process_ui(content))
       })
-      # pre_process_ui() emits <shinychat-raw-html> islands, which only reach a
+      # pre_process_ui() emits <shiny-chat-raw-html> islands, which only reach a
       # raw-HTML sink on the client's html branch. Without this the client
       # defaults to markdown and escapes the island name into visible text.
       content_type <- "html"
@@ -371,7 +426,9 @@ chat_ui <- function(
         `data-role` = role,
         content = ui[["html"]],
         `content-type` = content_type,
-        icon = if (!is.null(icon_assistant)) as.character(icon_assistant),
+        # The assistant default must not leak onto user messages, which render
+        # `message.icon` directly (no assistant fallback chain).
+        icon = if (!identical(role, "user")) icon_attr,
         ui[["dependencies"]],
       )
     )
@@ -459,6 +516,7 @@ chat_ui <- function(
       ),
       placeholder = placeholder,
       fill = if (isTRUE(fill)) NA else NULL,
+      `aside-favicon` = if (!resolve_aside_favicon()) "false",
       `enable-cancel` = if (isTRUE(enable_cancel)) {
         NA
       } else if (isFALSE(enable_cancel)) {
@@ -467,14 +525,13 @@ chat_ui <- function(
         NULL
       },
       `submit-key` = if (submit_key != "enter") submit_key,
+      `tool-grouping` = if (tool_grouping != "tool") tool_grouping,
       `allow-attachments` = attachment_attrs$allow,
       `attachment-accept` = attachment_attrs$accept,
       `max-attachment-size` = max_attachment_size,
       # Also include icon on the parent so that when messages are dynamically added,
       # we know the default icon has changed
-      `icon-assistant` = if (!is.null(icon_assistant)) {
-        as.character(icon_assistant)
-      },
+      `icon-assistant` = resolve_icon_attr(icon_assistant),
       greeting = greeting_attr,
       ...,
       tag("shiny-chat-messages", message_tags),
@@ -494,6 +551,21 @@ chat_ui <- function(
   }
 
   tag_require(res, version = 5, caller = "chat_ui")
+}
+
+resolve_aside_favicon <- function() {
+  value <- tolower(
+    Sys.getenv("SHINYCHAT_ASIDE_FAVICON", unset = "true")
+  )
+  if (identical(value, "true")) {
+    return(TRUE)
+  }
+  if (identical(value, "false")) {
+    return(FALSE)
+  }
+  cli::cli_abort(
+    "{.envvar SHINYCHAT_ASIDE_FAVICON} must be {.val true} or {.val false}, got {.val {value}}."
+  )
 }
 
 #' Append an assistant response (or user message) to a chat control
@@ -520,6 +592,95 @@ chat_ui <- function(
 #' observer, shinychat will log the error message and show a message that the
 #' error occurred in the chat UI.
 #'
+#' # Asides
+#'
+#' An aside is a small pill that appears at the end of the paragraph or list
+#' item it's attached to, showing a popover on hover, click, or keyboard
+#' focus. Create one by writing (or prompting an LLM to write) an inline
+#' `<shiny-aside>` tag anywhere in a block's markdown; the tag's content
+#' becomes the popover body:
+#'
+#' * `<shiny-aside label="a source name" url="https://...">markdown shown in the popover</shiny-aside>`
+#'
+#' `label` controls the text on the identity chip. A safe `url` makes the
+#' source heading in the popover a link. It also supplies a derived favicon
+#' unless `icon` overrides it. Without a `label`, the aside falls back to a
+#' plain numbered marker. The body is ordinary markdown: inline for a one-liner,
+#' or — by separating it with blank lines — a rich block body (paragraphs,
+#' lists, code) shown in the popover. Labeled asides in the same paragraph or
+#' list item collapse into one pill, with each aside kept as a separate popover
+#' page. Each unlabeled aside remains a separate numbered pill. The grouped
+#' pill shows a `+N` overflow count only when its labeled asides have different
+#' labels. Asides that share one label use a single face with no count.
+#'
+#' `grounded-span` identifies the answer text that is related to an aside.
+#' Its value must exactly match text before the tag in the same paragraph or
+#' list item. When the popover opens, shinychat highlights the most recent
+#' match. If the value does not match, no text is highlighted.
+#'
+#' Long content wraps and scrolls within the viewport. The popover keeps the
+#' nearest scoped Bootstrap theme. In a paged popover, page changes are
+#' announced to assistive technology without repeating the body.
+#'
+#' The favicon is fetched at render time from a third-party service
+#' (DuckDuckGo's icon service), which receives the cited site's hostname. To
+#' avoid that request — for privacy, or for offline/air-gapped deployments —
+#' set the `SHINYCHAT_ASIDE_FAVICON` environment variable to `false`. You can
+#' still set `icon` to a URL you control; an explicit `icon` bypasses the
+#' lookup entirely.
+#'
+#' **A labeled aside with a grounded span and a one-line body:**
+#'
+#' ```r
+#' chat_append(
+#'   "chat",
+#'   paste0(
+#'     "Hub motors are cheaper",
+#'     paste0(
+#'       '<shiny-aside label="eBicycles" ',
+#'       'url="https://ebicycles.example/hub-vs-mid-drive" ',
+#'       'grounded-span="Hub motors are cheaper">'
+#'     ),
+#'     "[Hub Motor vs. Mid-Drive Motor Differences Explained]",
+#'     "(https://ebicycles.example/hub-vs-mid-drive)",
+#'     "</shiny-aside>",
+#'     ", and ideal for flatter terrain."
+#'   )
+#' )
+#' ```
+#'
+#' **Two asides cited in the same sentence** collapse into one pill (the
+#' first source's label becomes the face, with a "+1" overflow):
+#'
+#' ```r
+#' chat_append(
+#'   "chat",
+#'   paste0(
+#'     "Hub motors are cheaper",
+#'     '<shiny-aside label="eBicycles" url="https://ebicycles.example">...</shiny-aside>',
+#'     '<shiny-aside label="WIRED" url="https://wired.example">...</shiny-aside>',
+#'     ", and ideal for flatter terrain."
+#'   )
+#' )
+#' ```
+#'
+#' **A label-less aside with a rich block body** (falls back to a plain
+#' numbered pill):
+#'
+#' ```r
+#' chat_append(
+#'   "chat",
+#'   paste0(
+#'     "Battery quality matters more than raw power",
+#'     "<shiny-aside>\n\n",
+#'     "**Methodology**\n\n",
+#'     "- 40 commuter e-bike models\n",
+#'     "- released in 2024\n\n",
+#'     "</shiny-aside>"
+#'   )
+#' )
+#' ```
+#'
 #' @param id The ID of the chat element
 #' @param response The message or message stream to append to the chat element.
 #'   The actual message content can one of the following:
@@ -537,7 +698,8 @@ chat_ui <- function(
 #'   to "assistant".
 #' @param icon An optional icon to display next to the message, currently only
 #'   used for assistant messages. The icon can be any HTML element (e.g., an
-#'   [htmltools::img()] tag) or a string of HTML.
+#'   [htmltools::img()] tag) or a string of HTML. Pass `FALSE` to remove the
+#'   icon for this message, or `TRUE` to use the default icon.
 #' @param session The Shiny session object
 #'
 #' @returns Returns a promise that resolves to the contents of the stream, or an
@@ -620,7 +782,8 @@ chat_append <- function(
 #'   content. Ignored if `chunk` is `FALSE`.
 #' @param icon An optional icon to display next to the message, currently only
 #'   used for assistant messages. The icon can be any HTML element (e.g.,
-#'   [htmltools::img()] tag) or a string of HTML.
+#'   [htmltools::img()] tag) or a string of HTML. Pass `FALSE` to remove the
+#'   icon for this message, or `TRUE` to use the default icon.
 #' @param session The Shiny session object
 #'
 #' @returns Returns nothing (\code{invisible(NULL)}).
@@ -748,7 +911,7 @@ chat_append_message <- function(
 
   html_deps <- ui[["deps"]]
 
-  icon_str <- if (!is.null(icon)) as.character(icon) else NULL
+  icon_str <- resolve_icon_attr(icon)
 
   if (chunk_type == "start") {
     message_payload <- list(
@@ -919,22 +1082,7 @@ rlang::on_load(
 
       res$add(msg)
 
-      if (S7::S7_inherits(msg, ellmer::ContentToolResult)) {
-        if (!is.null(msg@request)) {
-          send_chat_action(
-            id,
-            action = list(
-              type = "hide_tool_request",
-              requestId = msg@request@id
-            ),
-            session = session
-          )
-        }
-      }
-
-      if (S7::S7_inherits(msg, ellmer::Content)) {
-        msg <- contents_shinychat(msg)
-      }
+      msg <- contents_shinychat_wrapped(msg)
 
       chat_append_(msg)
     }

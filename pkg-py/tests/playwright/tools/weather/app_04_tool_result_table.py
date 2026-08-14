@@ -1,13 +1,8 @@
-import os
-
 import pandas as pd
 from chatlas import ChatOpenAI, ContentToolResult
 from shiny.express import ui
 from shinychat.express import Chat
 from shinychat.types import ToolResultDisplay
-
-# Set environment variable for tool display
-os.environ["SHINYCHAT_TOOL_DISPLAY"] = "rich"
 
 
 def get_weather_forecast(
@@ -36,7 +31,9 @@ def get_weather_forecast(
         extra={
             "display": ToolResultDisplay(
                 html=ui.HTML(forecast_table),
-                title=f"Weather Forecast for {location_name}",
+                title=f"Looked up weather for {location_name}",
+                label=location_name,
+                value_preview=f"{len(forecast_data)} forecast periods",
             )
         },
     )
@@ -45,7 +42,7 @@ def get_weather_forecast(
 client = ChatOpenAI(model="gpt-4.1-nano")
 client.register_tool(
     get_weather_forecast,
-    annotations={"title": "Weather Forecast"},
+    annotations={"title": "Looking up weather"},
 )
 
 ui.page_opts(title="Weather Tool - Tool Result Table")

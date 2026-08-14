@@ -83,7 +83,6 @@ export type ChatAction =
   | { type: "remove_loading" }
   | { type: "update_cancel"; enable_cancel: boolean }
   | { type: "update_upload"; enable_upload: boolean }
-  | { type: "hide_tool_request"; requestId: string }
   | {
       type: "greeting"
       content: string

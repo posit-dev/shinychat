@@ -43,7 +43,7 @@ output_markdown_stream <- function(
     ui <- with_current_theme({
       htmltools::renderTags(pre_process_ui(content))
     })
-    # pre_process_ui() emits <shinychat-raw-html> islands, which only reach a
+    # pre_process_ui() emits <shiny-chat-raw-html> islands, which only reach a
     # raw-HTML sink on the client's html branch; a caller-supplied
     # content_type of "markdown" (the default) would otherwise escape the
     # island's own wrapper into visible text.

@@ -168,6 +168,50 @@ describe("ChatApp integration: full message flow", () => {
     expect(document.querySelector(".markdown-stream-dot")).toBeNull()
   })
 
+  it("keeps web activity expanded when a streaming message settles", async () => {
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+        uploadAccept={[]}
+        maxUploadSize={null}
+      />,
+    )
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "chunk_start",
+        message: {
+          role: "assistant",
+          segments: [
+            {
+              content:
+                '<shiny-web-search query="R 4.5.0 release date"></shiny-web-search>',
+              content_type: "markdown",
+            },
+          ],
+        },
+      })
+    })
+
+    const header = screen.getByRole("button", { name: "Searched the web" })
+    fireEvent.click(header)
+    expect(header).toHaveAttribute("aria-expanded", "true")
+
+    await act(async () => {
+      transport.fire("test-chat", { type: "chunk_end" })
+    })
+
+    expect(
+      screen.getByRole("button", { name: "Searched the web" }),
+    ).toHaveAttribute("aria-expanded", "true")
+  })
+
   it("renders a non-streaming assistant reply", async () => {
     const transport = createMockTransport()
     const shinyLifecycle = createMockShinyLifecycle()
@@ -346,5 +390,54 @@ describe("ChatApp integration: editable messages gated by history state", () => 
       0,
       "next",
     )
+  })
+
+  it("disables sibling navigation until the server acknowledges it", async () => {
+    mockMatchMedia(false)
+    const transport = createMockTransport()
+    renderChatApp(transport)
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+      })
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "user",
+          segments: [{ content: "hello", content_type: "markdown" }],
+        },
+      })
+      transport.fire("test-chat", {
+        type: "update_siblings",
+        data: { 0: { index: 0, total: 2 } },
+      })
+    })
+
+    const previous = screen.getByRole("button", {
+      name: /previous version/i,
+    })
+    const next = screen.getByRole("button", { name: /next version/i })
+    expect(previous).toHaveProperty("disabled", true)
+    expect(next).toHaveProperty("disabled", false)
+
+    fireEvent.click(next)
+
+    expect(previous).toHaveProperty("disabled", true)
+    expect(next).toHaveProperty("disabled", true)
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+      })
+    })
+
+    expect(next).toHaveProperty("disabled", false)
   })
 })

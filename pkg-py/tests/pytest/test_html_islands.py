@@ -5,14 +5,14 @@ from shinychat._html_islands import split_html_islands
 
 
 def test_plain_html_wrapped_in_single_island():
-    """Non-react content gets a single <shinychat-raw-html> wrapper."""
+    """Non-react content gets a single <shiny-chat-raw-html> wrapper."""
     tl = TagList(div("hello"), span("world"))
     result = split_html_islands(tl)
     rendered = TagList(result).render()["html"]
-    assert "<shinychat-raw-html>" in rendered
+    assert "<shiny-chat-raw-html>" in rendered
     assert "<div>hello</div>" in rendered
     assert "<span>world</span>" in rendered
-    assert rendered.count("<shinychat-raw-html>") == 1
+    assert rendered.count("<shiny-chat-raw-html>") == 1
 
 
 def test_react_element_emitted_bare():
@@ -22,7 +22,7 @@ def test_react_element_emitted_bare():
     )
     result = split_html_islands(tl)
     rendered = TagList(result).render()["html"]
-    assert "<shinychat-raw-html>" not in rendered
+    assert "<shiny-chat-raw-html>" not in rendered
     assert "shiny-tool-result" in rendered
     assert "data-shinychat-react" in rendered
 
@@ -36,12 +36,12 @@ def test_mixed_content_splits_around_react():
     )
     result = split_html_islands(tl)
     rendered = TagList(result).render()["html"]
-    assert rendered.count("<shinychat-raw-html>") == 2
+    assert rendered.count("<shiny-chat-raw-html>") == 2
     assert "shiny-tool-result" in rendered
     lines = rendered.split("\n")
     for line in lines:
         if "shiny-tool-result" in line:
-            assert "shinychat-raw-html" not in line
+            assert "shiny-chat-raw-html" not in line
 
 
 def test_adjacent_react_elements_no_empty_islands():
@@ -52,7 +52,7 @@ def test_adjacent_react_elements_no_empty_islands():
     )
     result = split_html_islands(tl)
     rendered = TagList(result).render()["html"]
-    assert "<shinychat-raw-html>" not in rendered
+    assert "<shiny-chat-raw-html>" not in rendered
     assert "shiny-tool-request" in rendered
     assert "shiny-tool-result" in rendered
 
@@ -62,7 +62,7 @@ def test_single_tag_with_react_attr():
     tag = Tag("shiny-tool-request", data_shinychat_react=True)
     result = split_html_islands(tag)
     rendered = TagList(result).render()["html"]
-    assert "<shinychat-raw-html>" not in rendered
+    assert "<shiny-chat-raw-html>" not in rendered
 
 
 def test_single_tag_without_react_attr():
@@ -70,7 +70,7 @@ def test_single_tag_without_react_attr():
     tag = div("hello")
     result = split_html_islands(tag)
     rendered = TagList(result).render()["html"]
-    assert "<shinychat-raw-html>" in rendered
+    assert "<shiny-chat-raw-html>" in rendered
 
 
 def test_string_content_in_taglist_wrapped():
@@ -78,7 +78,7 @@ def test_string_content_in_taglist_wrapped():
     tl = TagList("hello world")
     result = split_html_islands(tl)
     rendered = TagList(result).render()["html"]
-    assert "<shinychat-raw-html>" in rendered
+    assert "<shiny-chat-raw-html>" in rendered
     assert "hello world" in rendered
 
 
@@ -86,7 +86,7 @@ def test_bare_string_content_wrapped():
     """A bare string passed directly is wrapped in an island."""
     result = split_html_islands("hello world")
     rendered = TagList(result).render()["html"]
-    assert "<shinychat-raw-html>" in rendered
+    assert "<shiny-chat-raw-html>" in rendered
     assert "hello world" in rendered
 
 
@@ -105,7 +105,7 @@ def test_tagifiable_with_react_attr_emitted_bare():
 
     result = split_html_islands(FakeToolResult())
     rendered = TagList(result).render()["html"]
-    assert "<shinychat-raw-html>" not in rendered
+    assert "<shiny-chat-raw-html>" not in rendered
     assert "shiny-tool-result" in rendered
     assert "data-shinychat-react" in rendered
 
@@ -120,7 +120,7 @@ def test_tagifiable_without_react_attr_wrapped():
 
     result = split_html_islands(FakeWidget())
     rendered = TagList(result).render()["html"]
-    assert "<shinychat-raw-html>" in rendered
+    assert "<shiny-chat-raw-html>" in rendered
     assert "widget content" in rendered
 
 
@@ -139,8 +139,8 @@ def test_tagifiable_in_taglist_splits_correctly():
     tl = TagList(div("before"), FakeToolResult(), div("after"))
     result = split_html_islands(tl)
     rendered = TagList(result).render()["html"]
-    assert rendered.count("<shinychat-raw-html>") == 2
+    assert rendered.count("<shiny-chat-raw-html>") == 2
     assert "shiny-tool-result" in rendered
     for line in rendered.split("\n"):
         if "shiny-tool-result" in line:
-            assert "shinychat-raw-html" not in line
+            assert "shiny-chat-raw-html" not in line

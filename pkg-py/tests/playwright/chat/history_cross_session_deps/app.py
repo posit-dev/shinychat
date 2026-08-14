@@ -44,7 +44,9 @@ class EchoChatClient(chatlas.Chat):
         provider.name = "echo"
         provider.model = "echo"
         super().__init__(provider)
-        self.shinychat_chat: Chat | None = None  # set once the Chat is constructed
+        self.shinychat_chat: Chat | None = (
+            None  # set once the Chat is constructed
+        )
 
     async def stream_async(
         self, *args: Any, **kwargs: Any

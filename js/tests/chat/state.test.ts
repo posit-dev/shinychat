@@ -1,13 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import {
   chatReducer,
+  contentFromBlocks,
   initialState,
+  routeToolBlocks,
+  supersededRequestIds,
   buildMessagesSnapshot,
   type ChatState,
   type ChatMessageData,
   type GreetingData,
+  type MessageBlock,
+  type ToolLoopBlock,
+  type ToolGrouping,
 } from "../../src/chat/state"
-import type { HtmlDep } from "../../src/transport/types"
+import type { ContentType, HtmlDep } from "../../src/transport/types"
 import { uuid } from "../../src/utils/uuid"
 
 vi.mock("../../src/utils/uuid")
@@ -642,15 +648,6 @@ describe("chatReducer", () => {
       expect(next.messages).toEqual([])
     })
 
-    it("resets hiddenToolRequests", () => {
-      const state = makeState({
-        messages: [makeAssistantMsg()],
-        hiddenToolRequests: new Set(["req-1", "req-2"]),
-      })
-      const next = chatReducer(state, { type: "clear" })
-      expect(next.hiddenToolRequests.size).toBe(0)
-    })
-
     it("resets inputDisabled when cleared during streaming", () => {
       const msg = makeAssistantMsg({ streaming: true })
       const state = makeState({
@@ -778,42 +775,6 @@ describe("chatReducer", () => {
       const state = makeState({ cancelRequested: true })
       const next = chatReducer(state, { type: "remove_loading" })
       expect(next.cancelRequested).toBe(false)
-    })
-  })
-
-  describe("chunk hiddenToolRequests handling", () => {
-    it("does not derive hidden tool requests from rendered chunk HTML", () => {
-      const msg = makeAssistantMsg({ streaming: true, content: "" })
-      const state = makeState({ streamingMessage: msg })
-      const next = chatReducer(state, {
-        type: "chunk",
-        content:
-          '<shiny-tool-result request-id="req-from-html" tool-name="foo" status="success" value="ok" value-type="text"></shiny-tool-result>',
-        operation: "replace",
-      })
-      expect(next.hiddenToolRequests).toBe(state.hiddenToolRequests)
-    })
-  })
-
-  describe("hide_tool_request", () => {
-    it("adds requestId to hiddenToolRequests", () => {
-      const state = makeState()
-      const next = chatReducer(state, {
-        type: "hide_tool_request",
-        requestId: "req-1",
-      })
-      expect(next.hiddenToolRequests.has("req-1")).toBe(true)
-    })
-
-    it("returns state unchanged for duplicate IDs (no re-render)", () => {
-      const state = makeState({
-        hiddenToolRequests: new Set(["req-1"]),
-      })
-      const next = chatReducer(state, {
-        type: "hide_tool_request",
-        requestId: "req-1",
-      })
-      expect(next).toBe(state)
     })
   })
 
@@ -950,7 +911,7 @@ describe("chatReducer", () => {
         topic: string | null
       }
       expect(block.topic).toBe("analyzing")
-      expect(block.content).toContain("shinychat-thinking-topic")
+      expect(block.content).toContain("shiny-chat-thinking-topic")
       expect(block.content).not.toContain("<topic>")
     })
 
@@ -994,7 +955,7 @@ describe("chatReducer", () => {
       }
       expect(block2.topic).toBe("hello")
       expect(block2.topicBuffer).toBe("")
-      expect(block2.content).toContain("shinychat-thinking-topic")
+      expect(block2.content).toContain("shiny-chat-thinking-topic")
     })
 
     it("topicBuffer is flushed on finalization (chunk_end)", () => {
@@ -1754,6 +1715,954 @@ describe("INPUT_SENT attachments", () => {
     })
     const userMsg = next.messages.find((m) => m.role === "user")!
     expect(userMsg.attachments).toBeUndefined()
+  })
+})
+
+describe("routeToolBlocks (tool content router)", () => {
+  function req(id: string, name: string, extra = ""): string {
+    return `<shiny-tool-request data-shinychat-react request-id="${id}" tool-name="${name}" ${extra}></shiny-tool-request>`
+  }
+  function res(id: string, name: string, extra = ""): string {
+    return `<shiny-tool-result data-shinychat-react request-id="${id}" tool-name="${name}" status="success" ${extra}></shiny-tool-result>`
+  }
+  function route(
+    content: string,
+    grouping: ToolGrouping = "tool",
+  ): MessageBlock[] {
+    return routeToolBlocks(
+      [{ type: "content", content, contentType: "markdown" }],
+      grouping,
+      "assistant",
+    )
+  }
+  function routeStreaming(
+    content: string,
+    grouping: ToolGrouping = "tool",
+  ): MessageBlock[] {
+    return routeToolBlocks(
+      [{ type: "content", content, contentType: "markdown" }],
+      grouping,
+      "assistant",
+      true,
+    )
+  }
+  function loops(blocks: MessageBlock[]): ToolLoopBlock[] {
+    return blocks.filter((b): b is ToolLoopBlock => b.type === "tool_loop")
+  }
+
+  it("leaves non-tool content untouched (fast path)", () => {
+    const input: MessageBlock[] = [
+      { type: "content", content: "just prose", contentType: "markdown" },
+    ]
+    const out = routeToolBlocks(input, "tool", "assistant")
+    expect(out).toEqual(input)
+  })
+
+  it("passes thinking blocks through unchanged and as loop boundaries", () => {
+    const input: MessageBlock[] = [
+      { type: "content", content: res("1", "a"), contentType: "markdown" },
+      { type: "thinking", content: "hmm", streaming: false },
+      { type: "content", content: res("2", "a"), contentType: "markdown" },
+    ]
+    const out = routeToolBlocks(input, "tool", "assistant")
+    expect(out.map((b) => b.type)).toEqual([
+      "tool_loop",
+      "thinking",
+      "tool_loop",
+    ])
+  })
+
+  const anonRes =
+    '<shiny-tool-result data-shinychat-react tool-name="a" status="success"></shiny-tool-result>'
+
+  it("keeps synthetic localIds distinct when adjacent loops from separate blocks merge", () => {
+    // Anonymous calls in different source blocks used to both become
+    // `__anon-0`; once merged, "none" grouping collapsed them into one group.
+    const out = routeToolBlocks(
+      [
+        { type: "content", content: anonRes, contentType: "markdown" },
+        { type: "content", content: anonRes, contentType: "markdown" },
+      ],
+      "none",
+      "assistant",
+    )
+    const l = loops(out)
+    expect(l).toHaveLength(1)
+    expect(l[0]!.groups).toHaveLength(2)
+    const ids = l[0]!.groups.flatMap((g) => g.calls).map((c) => c.localId)
+    expect(new Set(ids).size).toBe(2)
+  })
+
+  it("leaves tool tags inside a code fence or inline code as literal prose", () => {
+    const fenced =
+      "Here is the protocol:\n\n```html\n" + res("1", "a") + "\n```\n"
+    expect(loops(route(fenced))).toHaveLength(0)
+    expect(route(fenced)).toEqual([
+      { type: "content", content: fenced, contentType: "markdown" },
+    ])
+
+    const inline = "Use `" + res("1", "a") + "` to render a result."
+    expect(loops(route(inline))).toHaveLength(0)
+  })
+
+  it("leaves tool tags inside a multi-backtick code span as literal prose", () => {
+    // A span quoting a sample that itself contains a backtick needs ``…``.
+    const doubled = "Write ``" + res("1", "a") + "`` verbatim."
+    expect(loops(route(doubled))).toHaveLength(0)
+  })
+
+  it("does not let stray single backticks on separate lines swallow an element", () => {
+    // Unbalanced backticks are common in prose; a code span must not pair
+    // across lines, or it would suppress a real tool element between them.
+    const strays = "don`t\n" + res("1", "a") + "\nit`s fine"
+    const l = loops(route(strays))
+    expect(l).toHaveLength(1)
+    expect(l[0]!.groups[0]!.calls[0]!.requestId).toBe("1")
+  })
+
+  it("leaves tool tags inside a fence indented up to 3 spaces as literal prose", () => {
+    // CommonMark allows 3 leading spaces on either fence, which is how an
+    // example nested in a list item or blockquote is written.
+    for (const pad of [" ", "  ", "   "]) {
+      const fenced = `- Example:\n\n${pad}\`\`\`html\n${pad}${res("1", "a")}\n${pad}\`\`\`\n`
+      expect(loops(route(fenced))).toHaveLength(0)
+    }
+  })
+
+  it("treats a fence indented 4+ spaces as an indented code block, not a fence", () => {
+    // Four spaces is an indented code block per CommonMark, and detecting one
+    // needs block context this raw-string pass lacks — so no range is produced
+    // and the sample still routes. Documented here so the behavior is a choice.
+    const fenced = "    ```html\n    " + res("1", "a") + "\n    ```\n"
+    expect(loops(route(fenced))).toHaveLength(1)
+  })
+
+  it("closes a fence with a longer run of backticks", () => {
+    // The closer only has to be at least as long as the opener.
+    const fenced = "```html\n" + res("1", "a") + "\n````\n"
+    expect(loops(route(fenced))).toHaveLength(0)
+  })
+
+  it("leaves tool tags inside a tilde fence as literal prose", () => {
+    const fenced = "~~~html\n" + res("1", "a") + "\n~~~\n"
+    expect(loops(route(fenced))).toHaveLength(0)
+  })
+
+  it("still routes a real tool element alongside a fenced example", () => {
+    const mixed = "```html\n" + res("1", "a") + "\n```\n\n" + res("2", "a")
+    const l = loops(route(mixed))
+    expect(l).toHaveLength(1)
+    expect(l[0]!.groups[0]!.calls.map((c) => c.requestId)).toEqual(["2"])
+  })
+
+  it("leaves a tool tag under a not-yet-closed fence as prose while streaming", () => {
+    // Mid-stream the opening fence has arrived but its closer has not, so the
+    // sample would otherwise flash into live tool UI for a few chunks.
+    const partial = "Example:\n\n```html\n" + res("1", "a") + "\n"
+    expect(loops(routeStreaming(partial))).toHaveLength(0)
+  })
+
+  it("keeps the example as prose once its fence closes", () => {
+    const complete = "Example:\n\n```html\n" + res("1", "a") + "\n```\n"
+    expect(loops(routeStreaming(complete))).toHaveLength(0)
+  })
+
+  it("still routes a real element outside any fence while streaming", () => {
+    // The to-EOF rule must only shield text after an *unmatched* opener.
+    const mixed = "```html\n" + res("1", "a") + "\n```\n\n" + res("2", "a")
+    const l = loops(routeStreaming(mixed))
+    expect(l).toHaveLength(1)
+    expect(l[0]!.groups[0]!.calls.map((c) => c.requestId)).toEqual(["2"])
+  })
+
+  it("routes a tool tag under an unclosed fence when the content never streamed", () => {
+    // Without the shield flag the to-EOF rule is off, so an unclosed fence in
+    // content that never came off a stream does not hide what follows it. This
+    // is the un-shielded default; `finalizeMessage` opts in only when the
+    // message it finalizes still has `insideFence` set.
+    const partial = "Example:\n\n```html\n" + res("1", "a") + "\n"
+    expect(loops(route(partial))).toHaveLength(1)
+  })
+
+  it("does not let a stray fence suppress a later real element when final", () => {
+    // Preloaded/restored transcripts arrive as one markdown block and never
+    // touch the streaming tag state machine, so they finalize (and route)
+    // unshielded: one unbalanced ``` in prose must not hide the real tool
+    // calls after it.
+    const mixed = "Prose with a stray ```\n\nmore prose\n\n" + res("1", "a")
+    const l = loops(route(mixed))
+    expect(l).toHaveLength(1)
+    expect(l[0]!.groups[0]!.calls.map((c) => c.requestId)).toEqual(["1"])
+  })
+
+  it("keeps a fenced example as prose when the stream ends mid-fence", () => {
+    // A cancelled/truncated stream finalizes with `insideFence` still set, so
+    // the shield stays on and the documented example must not pop into live
+    // tool UI at the moment of finalization.
+    const partial = "Example:\n\n```html\n" + res("1", "a") + "\n"
+    const msg = makeAssistantMsg({
+      streaming: true,
+      content: partial,
+      blocks: [{ type: "content", content: partial, contentType: "markdown" }],
+      insideFence: true,
+      fenceMarker: "```",
+    })
+    const next = chatReducer(makeState({ streamingMessage: msg }), {
+      type: "remove_loading",
+    })
+    const finalized = next.messages[next.messages.length - 1]!
+    expect(loops(finalized.blocks)).toHaveLength(0)
+  })
+
+  it("routes normally when the stream ends with no fence open", () => {
+    // Same finalize path, flag clear: the element is real and must render.
+    const content = "Result:\n\n" + res("1", "a")
+    const msg = makeAssistantMsg({
+      streaming: true,
+      content,
+      blocks: [{ type: "content", content, contentType: "markdown" }],
+    })
+    const next = chatReducer(makeState({ streamingMessage: msg }), {
+      type: "remove_loading",
+    })
+    const finalized = next.messages[next.messages.length - 1]!
+    expect(loops(finalized.blocks)).toHaveLength(1)
+  })
+
+  it("gives each call a loop-local unique localId, synthesizing one when request-id is absent", () => {
+    // `localId` is what React keys and card DOM ids hang off, so it must stay
+    // distinct even when the server omits `request-id`.
+    const anon =
+      '<shiny-tool-result data-shinychat-react tool-name="a" status="success"></shiny-tool-result>'
+    const l = loops(route(anon + anon + res("1", "a"), "none"))
+    const ids = l
+      .flatMap((b) => b.groups.flatMap((g) => g.calls))
+      .map((c) => c.localId)
+    expect(ids).toHaveLength(3)
+    expect(new Set(ids).size).toBe(3)
+    expect(ids).toContain("1")
+  })
+
+  it("emits a single-call loop that morphs straight to a leaf", () => {
+    const blocks = route(res("1", "get_weather", 'tool-title="Got weather"'))
+    const l = loops(blocks)
+    expect(l).toHaveLength(1)
+    expect(l[0]!.groups).toHaveLength(1)
+    expect(l[0]!.groups[0]!.count).toBe(1)
+    expect(l[0]!.groups[0]!.calls[0]!.status).toBe("success")
+  })
+
+  it("pairs a request and result with the same id into one call", () => {
+    const blocks = route(req("1", "search") + res("1", "search"))
+    const l = loops(blocks)
+    expect(l).toHaveLength(1)
+    const calls = l[0]!.groups.flatMap((g) => g.calls)
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.status).toBe("success")
+  })
+
+  it("groups by tool name (default), order-independent, at first position", () => {
+    const content = [
+      res("1", "X"),
+      res("2", "Y"),
+      res("3", "Z"),
+      res("4", "X"),
+      res("5", "Y"),
+    ].join("")
+    const groups = loops(route(content, "tool"))[0]!.groups
+    expect(groups.map((g) => g.toolName)).toEqual(["X", "Y", "Z"])
+    expect(groups.map((g) => g.count)).toEqual([2, 2, 1])
+  })
+
+  it("grouping=none yields one group per call in order", () => {
+    const content = [res("1", "X"), res("2", "Y"), res("3", "X")].join("")
+    const groups = loops(route(content, "none"))[0]!.groups
+    expect(groups).toHaveLength(3)
+    expect(groups.every((g) => g.count === 1)).toBe(true)
+  })
+
+  it("grouping=all collapses the whole loop into one group", () => {
+    const content = [res("1", "X"), res("2", "Y"), res("3", "Z")].join("")
+    const groups = loops(route(content, "all"))[0]!.groups
+    expect(groups).toHaveLength(1)
+    expect(groups[0]!.count).toBe(3)
+  })
+
+  it("per-tool grouping override wins over the chat-level value", () => {
+    const content = [
+      res("1", "X", 'grouping="none"'),
+      res("2", "Y"),
+      res("3", "X", 'grouping="none"'),
+      res("4", "Y"),
+    ].join("")
+    const groups = loops(route(content, "tool"))[0]!.groups
+    // X is forced to none (two standalone groups); Y stays grouped (count 2)
+    const xGroups = groups.filter((g) => g.toolName === "X")
+    const yGroups = groups.filter((g) => g.toolName === "Y")
+    expect(xGroups).toHaveLength(2)
+    expect(yGroups).toHaveLength(1)
+    expect(yGroups[0]!.count).toBe(2)
+  })
+
+  it("shows the definition (static) title while a single call is running", () => {
+    const groups = loops(
+      route(req("1", "search", 'tool-title="Searching"')),
+    )[0]!.groups
+    expect(groups[0]!.title).toBe("Searching")
+    expect(groups[0]!.calls[0]!.status).toBe("running")
+  })
+
+  it("a single call shows its dynamic (result) title once a result arrives", () => {
+    const content =
+      req("1", "search", 'tool-title="Searching"') +
+      res("1", "search", 'tool-title="Searched"')
+    const groups = loops(route(content))[0]!.groups
+    expect(groups[0]!.title).toBe("Searched")
+    // The static (definition) title is retained separately on the call.
+    expect(groups[0]!.calls[0]!.definitionTitle).toBe("Searching")
+  })
+
+  it("an aggregated group keeps the static header; calls carry their dynamic titles", () => {
+    const content =
+      req("1", "weather", 'tool-title="Weather Forecast"') +
+      res("1", "weather", 'tool-title="Weather Forecast for Portland"') +
+      req("2", "weather", 'tool-title="Weather Forecast"') +
+      res("2", "weather", 'tool-title="Weather Forecast for San Francisco"')
+    const groups = loops(route(content, "tool"))[0]!.groups
+    expect(groups[0]!.count).toBe(2)
+    // Header is the static definition title, not the first result's title.
+    expect(groups[0]!.title).toBe("Weather Forecast")
+    expect(groups[0]!.calls.map((c) => c.title)).toEqual([
+      "Weather Forecast for Portland",
+      "Weather Forecast for San Francisco",
+    ])
+  })
+
+  it("aggregated group falls back to a result title when no request/definition title exists", () => {
+    const content =
+      res("1", "search", 'tool-title="Found A"') +
+      res("2", "search", 'tool-title="Found B"')
+    const groups = loops(route(content, "tool"))[0]!.groups
+    expect(groups[0]!.title).toBe("Found A")
+    expect(groups[0]!.count).toBe(2)
+  })
+
+  // Icons follow the same static/dynamic split as titles: the request carries
+  // the tool's definition icon, the result carries its own (which the servers
+  // default to the definition icon when the result sets none).
+  const webIcon = '<svg class="icon-web"></svg>'
+  const pinIcon = '<svg class="icon-pin"></svg>'
+
+  it("keeps the request's definition icon separate from the result's icon", () => {
+    const content =
+      req("1", "search", `icon='${webIcon}'`) +
+      res("1", "search", `icon='${pinIcon}'`)
+    const call = loops(route(content))[0]!.groups[0]!.calls[0]!
+    expect(call.definitionIcon).toBe(webIcon)
+    expect(call.icon).toBe(pinIcon)
+  })
+
+  it("a single call's result icon wins over its definition icon", () => {
+    const content =
+      req("1", "search", `icon='${webIcon}'`) +
+      res("1", "search", `icon='${pinIcon}'`)
+    expect(loops(route(content))[0]!.groups[0]!.icon).toBe(pinIcon)
+  })
+
+  it("falls back to the definition icon for a single call with no result yet", () => {
+    const content = req("1", "search", `icon='${webIcon}'`)
+    expect(loops(route(content))[0]!.groups[0]!.icon).toBe(webIcon)
+  })
+
+  it("an aggregated group keeps the definition icon, never a call's result icon", () => {
+    const content =
+      req("1", "search", `icon='${webIcon}'`) +
+      res("1", "search", `icon='${pinIcon}'`) +
+      req("2", "search", `icon='${webIcon}'`) +
+      res("2", "search", `icon='${webIcon}'`)
+    const g = loops(route(content, "tool"))[0]!.groups[0]!
+    expect(g.count).toBe(2)
+    // The result-specific icon belongs to call 1 alone, so it must not stand in
+    // as the identity of both calls; it shows on that call's own row instead.
+    expect(g.icon).toBe(webIcon)
+  })
+
+  it("leaves an aggregated group iconless when only its results carry icons", () => {
+    const content =
+      res("1", "search", `icon='${webIcon}'`) +
+      res("2", "search", `icon='${pinIcon}'`)
+    const g = loops(route(content, "tool"))[0]!.groups[0]!
+    expect(g.count).toBe(2)
+    // No definition icon to share, and neither result's icon speaks for the
+    // other, so the header falls through to the generic dot at render time.
+    expect(g.icon).toBeUndefined()
+  })
+
+  it("gives a homogeneous group exactly one segment carrying its own identity", () => {
+    const content =
+      req("1", "search", 'tool-title="Searching"') +
+      res("1", "search", 'tool-title="Searched A"') +
+      req("2", "search", 'tool-title="Searching"') +
+      res("2", "search", 'tool-title="Searched B"')
+    const g = loops(route(content, "tool"))[0]!.groups[0]!
+    expect(g.segments).toEqual([
+      { toolName: "search", title: "Searching", count: 2, settled: true },
+    ])
+    expect(g.title).toBe("Searching")
+  })
+
+  it("splits a loop-wide group into one segment per tool, in first-appearance order", () => {
+    const content =
+      req("1", "search", 'tool-title="Searching"') +
+      res("1", "search", 'tool-title="Searched A"') +
+      req("2", "search", 'tool-title="Searching"') +
+      res("2", "search", 'tool-title="Searched B"') +
+      res("3", "read_page", 'tool-title="Read page"')
+    const g = loops(route(content, "all"))[0]!.groups[0]!
+    // Each segment resolves its title by the same rule the group uses, scoped
+    // to that tool: the aggregated `search` keeps its definition title, while
+    // the lone `read_page` call shows its own result title.
+    expect(g.segments).toEqual([
+      { toolName: "search", title: "Searching", count: 2, settled: true },
+      { toolName: "read_page", title: "Read page", count: 1, settled: true },
+    ])
+    // The group-level identity fields are unchanged (the first tool's).
+    expect(g.toolName).toBe("search")
+    expect(g.count).toBe(3)
+  })
+
+  it("settles each segment on its own tool's first result", () => {
+    const content =
+      res("1", "search", 'tool-title="Searched"') +
+      req("2", "read_page", 'tool-title="Reading page"')
+    const g = loops(route(content, "all"))[0]!.groups[0]!
+    expect(g.segments.map((s) => [s.toolName, s.settled])).toEqual([
+      ["search", true],
+      ["read_page", false],
+    ])
+  })
+
+  it("two tools annotated grouping=all share one heterogeneous bucket", () => {
+    // Reachable at default chat settings: the mode is resolved per tool but the
+    // bucket key is the literal string "all", so both tools land together.
+    const content =
+      res("1", "search", 'grouping="all"') +
+      res("2", "read_page", 'grouping="all"')
+    const groups = loops(route(content, "tool"))[0]!.groups
+    expect(groups).toHaveLength(1)
+    expect(groups[0]!.segments.map((s) => s.toolName)).toEqual([
+      "search",
+      "read_page",
+    ])
+  })
+
+  it("chat-level none overrides a per-tool grouping=all annotation", () => {
+    // "none" means grouping is off. The annotation opts a tool out of the chat's
+    // *choice* of how to group, not back into grouping the app switched off.
+    const content =
+      res("1", "search", 'grouping="all"') +
+      res("2", "search", 'grouping="all"') +
+      res("3", "read_page", 'grouping="all"')
+    const groups = loops(route(content, "none"))[0]!.groups
+    expect(groups).toHaveLength(3)
+    expect(groups.every((g) => g.count === 1)).toBe(true)
+  })
+
+  it("resets the loop when prose interrupts a run of tools", () => {
+    const content = res("1", "X") + "\n\nSome prose here.\n\n" + res("2", "X")
+    const blocks = route(content, "tool")
+    expect(blocks.map((b) => b.type)).toEqual([
+      "tool_loop",
+      "content",
+      "tool_loop",
+    ])
+  })
+
+  it("parses per-call label, value_preview, value and error status", () => {
+    const content = res(
+      "1",
+      "run_sql",
+      'label="glucose" value-preview="1,204 rows" value="ok" value-type="text" status="error"',
+    )
+    const call = loops(route(content))[0]!.groups[0]!.calls[0]!
+    // status attr on res() helper defaults success but our extra overrides it
+    expect(call.label).toBe("glucose")
+    expect(call.valuePreview).toBe("1,204 rows")
+    expect(call.value).toBe("ok")
+    expect(call.status).toBe("error")
+  })
+
+  it("pairs a request's arguments onto the result within one content string", () => {
+    const content =
+      req("1", "weather", 'arguments="{&quot;lat&quot;:45.5}"') +
+      res("1", "weather", 'tool-title="Weather Forecast for Portland"')
+    const call = loops(route(content))[0]!.groups[0]!.calls[0]!
+    expect(call.arguments).toBe('{"lat":45.5}')
+    expect(call.title).toBe("Weather Forecast for Portland")
+  })
+
+  it("decodes numeric character references in attribute values", () => {
+    // htmltools escapes a newline in an attribute value as `&#10;` -- in *both*
+    // languages -- so every multi-line tool value and every pretty-printed
+    // arguments JSON arrives carrying them. The browser would decode them while
+    // parsing the attribute, but this router parses attributes out of the raw
+    // string itself, so it has to do the decoding.
+    const content =
+      req(
+        "1",
+        "list_tables",
+        'arguments="{&#10;  &quot;db&quot;: &quot;prod&quot;&#10;}"',
+      ) +
+      res(
+        "1",
+        "list_tables",
+        'value="customers&#10;orders&#9;refunds&#x0A;shipments"',
+      )
+    const call = loops(route(content))[0]!.groups[0]!.calls[0]!
+    expect(call.value).toBe("customers\norders\trefunds\nshipments")
+    expect(call.arguments).toBe('{\n  "db": "prod"\n}')
+  })
+
+  it("leaves an escaped ampersand alone rather than double-decoding it", () => {
+    // `&amp;#10;` is an author writing the literal text "&#10;", not a newline.
+    const content = res("1", "echo", 'value="a &amp;#10; b &amp;amp; c"')
+    const call = loops(route(content))[0]!.groups[0]!.calls[0]!
+    expect(call.value).toBe("a &#10; b &amp; c")
+  })
+
+  it("parses attribute values containing '>' inside quotes (e.g. an icon)", () => {
+    const icon =
+      "&lt;svg&gt;&lt;path d=&quot;M0 0&gt;L1 1&quot;/&gt;&lt;/svg&gt;"
+    const content = res("1", "list_files", `icon="${icon}"`)
+    const l = loops(route(content))
+    expect(l).toHaveLength(1)
+    expect(l[0]!.groups[0]!.icon).toContain("<svg>")
+    expect(l[0]!.groups[0]!.icon).toContain('d="M0 0>L1 1"')
+  })
+
+  it("preserves surrounding prose as content blocks", () => {
+    const content = "Before. " + res("1", "X") + " After."
+    const types = route(content).map((b) => b.type)
+    expect(types).toEqual(["content", "tool_loop", "content"])
+  })
+
+  it("is a pure function of content — same input, deep-equal blocks (replay gate)", () => {
+    const content =
+      "intro\n\n" +
+      req("1", "X", 'tool-title="Running X"') +
+      res("1", "X", 'tool-title="Ran X"') +
+      res("2", "Y") +
+      "\n\noutro"
+    const a = route(content, "tool")
+    const b = route(content, "tool")
+    expect(a).toEqual(b)
+  })
+
+  it("leaves a trailing incomplete tool element as prose (streaming safety)", () => {
+    const content = res("1", "X") + '<shiny-tool-request request-id="2" tool-'
+    const blocks = route(content)
+    expect(loops(blocks)).toHaveLength(1)
+    const tail = blocks[blocks.length - 1]!
+    expect(tail.type).toBe("content")
+  })
+
+  it("merges adjacent tool loops that share a content type into one loop", () => {
+    const input: MessageBlock[] = [
+      { type: "content", content: res("1", "X"), contentType: "markdown" },
+      { type: "content", content: res("2", "X"), contentType: "markdown" },
+    ]
+    const blocks = routeToolBlocks(input, "tool", "assistant")
+    expect(blocks.map((b) => b.type)).toEqual(["tool_loop"])
+    const calls = (blocks[0] as ToolLoopBlock).groups.flatMap((g) => g.calls)
+    expect(calls).toHaveLength(2)
+  })
+
+  it("does NOT merge adjacent tool loops from segments with different content types", () => {
+    const input: MessageBlock[] = [
+      { type: "content", content: res("1", "X"), contentType: "markdown" },
+      { type: "content", content: res("2", "X"), contentType: "html" },
+    ]
+    const blocks = routeToolBlocks(input, "tool", "assistant")
+    expect(blocks.map((b) => b.type)).toEqual(["tool_loop", "tool_loop"])
+    expect((blocks[0] as ToolLoopBlock).contentType).toBe("markdown")
+    expect((blocks[1] as ToolLoopBlock).contentType).toBe("html")
+    // Each loop keeps only its own call, rather than the two being combined.
+    expect(
+      (blocks[0] as ToolLoopBlock).groups.flatMap((g) => g.calls),
+    ).toHaveLength(1)
+    expect(
+      (blocks[1] as ToolLoopBlock).groups.flatMap((g) => g.calls),
+    ).toHaveLength(1)
+  })
+
+  it("a thinking block between loops keeps them separate, at every mode", () => {
+    const input: MessageBlock[] = [
+      { type: "content", content: res("1", "X"), contentType: "markdown" },
+      { type: "thinking", content: "hmm", streaming: false },
+      { type: "content", content: res("2", "X"), contentType: "markdown" },
+    ]
+    for (const grouping of ["tool", "all"] as const) {
+      const blocks = routeToolBlocks(input, grouping, "assistant")
+      expect(blocks.map((b) => b.type)).toEqual([
+        "tool_loop",
+        "thinking",
+        "tool_loop",
+      ])
+      expect(
+        (blocks[0] as ToolLoopBlock).groups.flatMap((g) => g.calls),
+      ).toHaveLength(1)
+      expect(
+        (blocks[2] as ToolLoopBlock).groups.flatMap((g) => g.calls),
+      ).toHaveLength(1)
+    }
+  })
+
+  describe("custom-display and resolveIndex", () => {
+    it("parses custom-display into customDisplay: true", () => {
+      const l = loops(route(res("1", "weather", 'custom-display="true"')))
+      expect(l[0]!.groups[0]!.calls[0]!.customDisplay).toBe(true)
+    })
+
+    it("leaves customDisplay falsy when the attribute is absent", () => {
+      const l = loops(route(res("1", "weather")))
+      expect(l[0]!.groups[0]!.calls[0]!.customDisplay).toBeFalsy()
+    })
+
+    it("sets resolveIndex from the result element's character offset", () => {
+      const content = res("1", "weather")
+      const l = loops(route(content))
+      const call = l[0]!.groups[0]!.calls[0]!
+      expect(call.resolveIndex).toBe(content.indexOf("<shiny-tool-result"))
+    })
+
+    it("orders two out-of-order parallel results by resolveIndex, not call order", () => {
+      // weather2's element appears first in the content, but its resolveIndex
+      // must still reflect its own (earlier) offset rather than weather1's —
+      // ordering migrated payloads depends on this being per-element, not
+      // per-call-position.
+      const r2 = res("2", "weather", 'custom-display="true"')
+      const r1 = res("1", "weather", 'custom-display="true"')
+      const content = r2 + r1
+      const l = loops(route(content, "none"))
+      const byRequestId = new Map(
+        l[0]!.groups.flatMap((g) => g.calls).map((c) => [c.requestId, c]),
+      )
+      const idx2 = byRequestId.get("2")!.resolveIndex!
+      const idx1 = byRequestId.get("1")!.resolveIndex!
+      expect(idx2).toBe(0)
+      expect(idx1).toBeGreaterThan(idx2)
+      expect(idx1).toBe(content.indexOf(r1))
+    })
+  })
+
+  describe("migrated (custom-display) calls stay in group.calls", () => {
+    // `collectResultIds` (via `supersededRequestIds`) reads `group.calls`
+    // directly to suppress a paired request row — see the comment at
+    // `state.ts:963-983`. A custom result leaving `group.calls` at the routing
+    // layer would silently break that suppression, so this is asserted
+    // explicitly rather than left as an implication of other tests.
+    it("keeps a custom-display call in group.calls after routing", () => {
+      const content = res("1", "weather", 'custom-display="true"')
+      const l = loops(route(content))
+      const calls = l[0]!.groups.flatMap((g) => g.calls)
+      expect(calls.map((c) => c.requestId)).toContain("1")
+      expect(calls[0]!.customDisplay).toBe(true)
+    })
+
+    it("still reports a migrated call's requestId as superseded", () => {
+      const requestThenResult =
+        req("1", "weather") + res("1", "weather", 'custom-display="true"')
+      const msg: ChatMessageData = {
+        id: "m",
+        role: "assistant",
+        content: requestThenResult,
+        streaming: false,
+        blocks: routeToolBlocks(
+          [
+            {
+              type: "content",
+              content: requestThenResult,
+              contentType: "markdown",
+            },
+          ],
+          "tool",
+          "assistant",
+        ),
+      }
+      const ids = supersededRequestIds([msg], null)
+      expect(ids.has("1")).toBe(true)
+    })
+  })
+
+  describe("role gate", () => {
+    const typed = `${req("1", "search")}${res("1", "search")}`
+    const userBlocks: MessageBlock[] = [
+      { type: "content", content: typed, contentType: "markdown" },
+    ]
+
+    it("does not route tool elements a user typed", () => {
+      const out = routeToolBlocks(userBlocks, "tool", "user")
+      expect(out).toEqual(userBlocks)
+      expect(loops(out)).toHaveLength(0)
+      expect(contentFromBlocks(out)).toBe(typed)
+    })
+
+    it("still routes the same content in an assistant message", () => {
+      const out = routeToolBlocks(userBlocks, "tool", "assistant")
+      expect(loops(out)).toHaveLength(1)
+    })
+
+    it('still routes the same content in a "system" message', () => {
+      // The client model names only "user" | "assistant", but Python's
+      // server-side Role is Literal["assistant", "user", "system"], so a
+      // system role really does arrive here. This pins the gate to
+      // `role !== "user"` so it can't be narrowed to `role === "assistant"`.
+      const out = routeToolBlocks(userBlocks, "tool", "system")
+      expect(loops(out)).toHaveLength(1)
+    })
+  })
+
+  describe("content-type allow-list", () => {
+    const markup = `${req("1", "search")}${res("1", "search")}`
+    const blocksOfType = (contentType: ContentType): MessageBlock[] => [
+      { type: "content", content: markup, contentType },
+    ]
+
+    it('does not route a "text"-typed block', () => {
+      // "text" means "display literally", so tool markup in it is a sample.
+      const input = blocksOfType("text")
+      const out = routeToolBlocks(input, "tool", "assistant")
+      expect(out).toEqual(input)
+      expect(loops(out)).toHaveLength(0)
+    })
+
+    it.each(["markdown", "html"] as const)(
+      'still routes a "%s"-typed block',
+      (contentType) => {
+        const out = routeToolBlocks(
+          blocksOfType(contentType),
+          "tool",
+          "assistant",
+        )
+        expect(loops(out)).toHaveLength(1)
+      },
+    )
+  })
+})
+
+describe("supersededRequestIds", () => {
+  const request = (id: string) =>
+    `<shiny-tool-request data-shinychat-react request-id="${id}" tool-name="search" arguments="{}"></shiny-tool-request>`
+  const result = (id: string) =>
+    `<shiny-tool-result data-shinychat-react request-id="${id}" tool-name="search" status="success" value="ok" value-type="text"></shiny-tool-result>`
+
+  // Routed the way the reducer routes a finalized message.
+  function routed(
+    content: string,
+    overrides: Partial<ChatMessageData> = {},
+  ): ChatMessageData {
+    const role = overrides.role ?? "assistant"
+    return {
+      id: "m",
+      role: "assistant",
+      content,
+      streaming: false,
+      ...overrides,
+      blocks: routeToolBlocks(
+        [{ type: "content", content, contentType: "markdown" }],
+        "tool",
+        role,
+      ),
+    }
+  }
+
+  // Raw, the way a streaming message's blocks look until ChatMessage routes
+  // them at render time.
+  function unrouted(
+    content: string,
+    overrides: Partial<ChatMessageData> = {},
+  ): ChatMessageData {
+    return {
+      id: "m",
+      role: "assistant",
+      content,
+      streaming: true,
+      blocks: [{ type: "content", content, contentType: "markdown" }],
+      ...overrides,
+    }
+  }
+
+  it("collects the id of a result paired in a finalized message", () => {
+    const ids = supersededRequestIds(
+      [routed(request("req-1") + result("req-1"))],
+      null,
+    )
+    expect([...ids]).toEqual(["req-1"])
+  })
+
+  it("collects across messages, so a result supersedes a request in an earlier one", () => {
+    const ids = supersededRequestIds(
+      [routed(request("req-1")), routed(result("req-1"))],
+      null,
+    )
+    expect(ids.has("req-1")).toBe(true)
+  })
+
+  it("collects from the streaming message, whose blocks are not routed yet", () => {
+    const ids = supersededRequestIds(
+      [routed(request("req-1"))],
+      unrouted(result("req-1")),
+    )
+    expect(ids.has("req-1")).toBe(true)
+  })
+
+  it("omits a request that has no result — nothing supersedes it", () => {
+    const ids = supersededRequestIds([routed(request("req-1"))], null)
+    expect(ids.size).toBe(0)
+  })
+
+  it("ignores a result in a user message, which must not blank a real call", () => {
+    const ids = supersededRequestIds(
+      [
+        routed(request("req-1")),
+        routed(result("req-1"), { id: "u", role: "user" }),
+      ],
+      null,
+    )
+    expect(ids.size).toBe(0)
+  })
+
+  it("ignores a result inside a code fence, matching what the router routes", () => {
+    const ids = supersededRequestIds(
+      [
+        routed(request("req-1")),
+        routed("```html\n" + result("req-1") + "\n```"),
+      ],
+      null,
+    )
+    expect(ids.size).toBe(0)
+  })
+
+  it("never collects the empty id an element without request-id yields", () => {
+    const bare =
+      '<shiny-tool-result data-shinychat-react tool-name="search" status="success" value="ok" value-type="text"></shiny-tool-result>'
+    const ids = supersededRequestIds([routed(bare)], null)
+    expect(ids.has("")).toBe(false)
+    expect(ids.size).toBe(0)
+  })
+})
+
+describe("toolGrouping state wiring (Phase 1)", () => {
+  function res(id: string, name: string): string {
+    return `<shiny-tool-result data-shinychat-react request-id="${id}" tool-name="${name}" status="success"></shiny-tool-result>`
+  }
+  const twoTools = res("1", "X") + res("2", "Y")
+
+  function loopGroups(msg: ChatMessageData) {
+    const loop = msg.blocks.find((b) => b.type === "tool_loop") as
+      | ToolLoopBlock
+      | undefined
+    return loop?.groups ?? []
+  }
+
+  it('defaults toolGrouping to "tool"', () => {
+    expect(initialState.toolGrouping).toBe("tool")
+  })
+
+  it("routes a dispatched message with the state's toolGrouping (all)", () => {
+    const state = makeState({ toolGrouping: "all" })
+    const next = chatReducer(state, {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [{ content: twoTools, content_type: "markdown" }],
+      },
+    })
+    const groups = loopGroups(next.messages[0]!)
+    expect(groups).toHaveLength(1)
+    expect(groups[0]!.count).toBe(2)
+  })
+
+  it('groups by tool name when toolGrouping is "tool"', () => {
+    const state = makeState({ toolGrouping: "tool" })
+    const next = chatReducer(state, {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [{ content: twoTools, content_type: "markdown" }],
+      },
+    })
+    const groups = loopGroups(next.messages[0]!)
+    expect(groups.map((g) => g.toolName)).toEqual(["X", "Y"])
+  })
+
+  it("preserves toolGrouping across a clear", () => {
+    const state = makeState({ toolGrouping: "all" })
+    const next = chatReducer(state, { type: "clear" })
+    expect(next.toolGrouping).toBe("all")
+  })
+
+  describe("SET_TOOL_GROUPING", () => {
+    function stateWithTranscript(grouping: ToolGrouping): ChatState {
+      return chatReducer(makeState({ toolGrouping: grouping }), {
+        type: "message",
+        message: {
+          role: "assistant",
+          segments: [{ content: twoTools, content_type: "markdown" }],
+        },
+      })
+    }
+
+    it("re-routes the settled transcript at the new mode", () => {
+      // What makes the attribute live: the router is pure, and a loop keeps the
+      // raw slice it was parsed from, so the same content regroups in place.
+      const next = chatReducer(stateWithTranscript("tool"), {
+        type: "SET_TOOL_GROUPING",
+        grouping: "all",
+      })
+      expect(next.toolGrouping).toBe("all")
+      const groups = loopGroups(next.messages[0]!)
+      expect(groups).toHaveLength(1)
+      expect(groups[0]!.count).toBe(2)
+    })
+
+    it("keeps message identity so nothing remounts", () => {
+      const before = stateWithTranscript("tool")
+      const after = chatReducer(before, {
+        type: "SET_TOOL_GROUPING",
+        grouping: "none",
+      })
+      expect(after.messages.map((m) => m.id)).toEqual(
+        before.messages.map((m) => m.id),
+      )
+      expect(loopGroups(after.messages[0]!)).toHaveLength(2)
+    })
+
+    it("is a no-op for the mode already in effect", () => {
+      // ChatApp dispatches once on mount to adopt the prop; re-routing there
+      // would discard every group's expand state for no change in output.
+      const before = stateWithTranscript("all")
+      const after = chatReducer(before, {
+        type: "SET_TOOL_GROUPING",
+        grouping: "all",
+      })
+      expect(after).toBe(before)
+    })
+
+    it("leaves a message with no tool calls untouched", () => {
+      const before = chatReducer(makeState({ toolGrouping: "tool" }), {
+        type: "message",
+        message: {
+          role: "assistant",
+          segments: [{ content: "just prose", content_type: "markdown" }],
+        },
+      })
+      const after = chatReducer(before, {
+        type: "SET_TOOL_GROUPING",
+        grouping: "all",
+      })
+      expect(after.messages[0]).toBe(before.messages[0])
+    })
   })
 })
 

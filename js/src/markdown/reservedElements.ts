@@ -1,10 +1,11 @@
 /**
  * Element names that take content out of React and into raw HTML.
  *
- * `shinychat-raw-html` is assigned to `innerHTML` by `RawHTML`; the two tool
- * elements carry attributes (`icon`, `footer`, `tool-name`, `value` with
- * `value-type="html"`) that reach `dangerouslySetInnerHTML`. Every other
- * component in the tag maps renders through React and is inert.
+ * `shiny-chat-raw-html` (and its legacy alias `shinychat-raw-html`) is
+ * assigned to `innerHTML` by `RawHTML`; the two tool elements carry
+ * attributes (`icon`, `footer`, `tool-name`, `value` with `value-type="html"`)
+ * that reach `dangerouslySetInnerHTML`. Every other component in the tag maps
+ * renders through React and is inert.
  *
  * The server only ever emits these from `split_html_islands()` and the
  * tool-card tagifier, which run when an app passes htmltools/Shiny UI rather
@@ -13,6 +14,7 @@
  * that names them there is model output trying to reach a raw-HTML sink.
  */
 export const RESERVED_ELEMENTS = [
+  "shiny-chat-raw-html",
   "shinychat-raw-html",
   "shiny-tool-request",
   "shiny-tool-result",

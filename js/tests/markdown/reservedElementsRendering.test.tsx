@@ -25,6 +25,21 @@ describe("reserved elements in markdown content are inert", () => {
     expect(container.textContent).toContain("shinychat-raw-html")
   })
 
+  it("escapes the current island name, not just its legacy alias", () => {
+    const { container } = render(
+      <MarkdownContent
+        content={
+          "<shiny-chat-raw-html><img src=x onerror=alert(1)></shiny-chat-raw-html>"
+        }
+        contentType="markdown"
+      />,
+    )
+
+    expect(container.querySelector("[onerror]")).toBeNull()
+    expect(container.innerHTML).not.toContain("onerror")
+    expect(container.textContent).toContain("shiny-chat-raw-html")
+  })
+
   it("escapes the island regardless of tag case", () => {
     const { container } = render(
       <MarkdownContent

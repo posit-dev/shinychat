@@ -365,7 +365,7 @@ def output_markdown_stream(
         ui: RenderedHTML = {"html": content, "dependencies": []}
     else:
         ui = TagList(*split_html_islands(content)).render()
-        # split_html_islands() emits <shinychat-raw-html> islands, which only
+        # split_html_islands() emits <shiny-chat-raw-html> islands, which only
         # reach a raw-HTML sink on the client's html branch; a caller-supplied
         # content_type of "markdown" (the default) would otherwise escape the
         # island's own wrapper into visible text.

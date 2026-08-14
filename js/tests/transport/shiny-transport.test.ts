@@ -512,7 +512,7 @@ describe("ShinyTransport", () => {
       expect(order).toEqual(["deps", "listener"])
     })
 
-    it("routes tool-request-hide to the correct listener by ID", async () => {
+    it("routes an action to the correct listener by ID", async () => {
       const transport = new ShinyTransport()
       const receivedA: unknown[] = []
       const receivedB: unknown[] = []
@@ -520,14 +520,9 @@ describe("ShinyTransport", () => {
       transport.onMessage("chatA", (action) => receivedA.push(action))
       transport.onMessage("chatB", (action) => receivedB.push(action))
 
-      await fire({
-        id: "chatA",
-        action: { type: "hide_tool_request", requestId: "req-42" },
-      })
+      await fire({ id: "chatA", action: { type: "remove_loading" } })
 
-      expect(receivedA).toEqual([
-        { type: "hide_tool_request", requestId: "req-42" },
-      ])
+      expect(receivedA).toEqual([{ type: "remove_loading" }])
       expect(receivedB).toHaveLength(0)
     })
   })

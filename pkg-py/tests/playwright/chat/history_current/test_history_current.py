@@ -6,7 +6,9 @@ from shinychat.playwright import ChatController
 
 
 def open_drawer(page: Page) -> None:
-    expect(page.locator(".shiny-chat-history-trigger")).to_be_visible(timeout=30_000)
+    expect(page.locator(".shiny-chat-history-trigger")).to_be_visible(
+        timeout=30_000
+    )
     page.locator(".shiny-chat-history-trigger").click()
     expect(page.locator(".shiny-chat-history-drawer")).to_be_visible()
 
@@ -67,9 +69,7 @@ def test_current_restores_active_not_most_recent(
 
     # --- Switch back to A ---
     open_drawer(page)
-    conv_a = page.locator(".shiny-chat-history-item").filter(
-        has_text="hello A"
-    )
+    conv_a = page.locator(".shiny-chat-history-item").filter(has_text="hello A")
     conv_a.click()
     page.locator(".shiny-chat-history-drawer").wait_for(state="hidden")
     chat.expect_latest_message("echo: hello A", timeout=30_000)
@@ -79,7 +79,9 @@ def test_current_restores_active_not_most_recent(
     # reloading.
     open_drawer(page)
     expect(
-        page.locator(".shiny-chat-history-item.active").filter(has_text="hello A")
+        page.locator(".shiny-chat-history-item.active").filter(
+            has_text="hello A"
+        )
     ).to_be_visible(timeout=10_000)
     page.keyboard.press("Escape")
     page.locator(".shiny-chat-history-drawer").wait_for(state="hidden")
@@ -108,7 +110,9 @@ def test_current_falls_back_to_fresh_when_stored_id_is_stale(
 
     # Overwrite localStorage with a non-existent ID (simulates a store that
     # was wiped while the browser retained the old pointer).
-    page.evaluate('localStorage.setItem("shinychat-current:chat", "nonexistent-id-xyz")')
+    page.evaluate(
+        'localStorage.setItem("shinychat-current:chat", "nonexistent-id-xyz")'
+    )
 
     # Reload — server looks up "nonexistent-id-xyz", gets None, falls back.
     page.reload()

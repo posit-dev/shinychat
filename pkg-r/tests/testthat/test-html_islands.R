@@ -1,4 +1,4 @@
-test_that("plain HTML gets a single shinychat-raw-html wrapper", {
+test_that("plain HTML gets a single shiny-chat-raw-html wrapper", {
   content <- htmltools::tagList(
     htmltools::div("hello"),
     htmltools::span("world")
@@ -6,7 +6,7 @@ test_that("plain HTML gets a single shinychat-raw-html wrapper", {
   result <- split_html_islands(content)
   rendered <- as.character(htmltools::tagList(result))
   expect_equal(
-    length(grep("<shinychat-raw-html>", strsplit(rendered, "\n")[[1]])),
+    length(grep("<shiny-chat-raw-html>", strsplit(rendered, "\n")[[1]])),
     1
   )
   expect_match(rendered, "<div>hello</div>")
@@ -20,7 +20,7 @@ test_that("react element is emitted bare", {
   )
   result <- split_html_islands(content)
   rendered <- as.character(htmltools::tagList(result))
-  expect_no_match(rendered, "shinychat-raw-html")
+  expect_no_match(rendered, "shiny-chat-raw-html")
   expect_match(rendered, "shiny-tool-result")
 })
 
@@ -35,7 +35,7 @@ test_that("mixed content splits around react elements", {
   )
   result <- split_html_islands(content)
   rendered <- as.character(htmltools::tagList(result))
-  matches <- gregexpr("<shinychat-raw-html>", rendered)[[1]]
+  matches <- gregexpr("<shiny-chat-raw-html>", rendered)[[1]]
   expect_equal(sum(matches > 0), 2)
   expect_match(rendered, "shiny-tool-result")
 })
@@ -47,14 +47,14 @@ test_that("adjacent react elements produce no empty islands", {
   )
   result <- split_html_islands(content)
   rendered <- as.character(htmltools::tagList(result))
-  expect_no_match(rendered, "shinychat-raw-html")
+  expect_no_match(rendered, "shiny-chat-raw-html")
 })
 
 test_that("single tag without react attr gets wrapped", {
   content <- htmltools::div("hello")
   result <- split_html_islands(content)
   rendered <- as.character(htmltools::tagList(result))
-  expect_match(rendered, "shinychat-raw-html")
+  expect_match(rendered, "shiny-chat-raw-html")
 })
 
 test_that("empty tagList returns empty list without error", {
