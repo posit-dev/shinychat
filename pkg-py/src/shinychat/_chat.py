@@ -4,6 +4,7 @@ import inspect
 import json
 import os
 import re
+import warnings
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import (
@@ -1486,10 +1487,26 @@ class Chat:
         try:
             stored = StoredMessage.model_validate(message_dict)
         except ValidationError as e:
-            raise ValueError(
-                "Cannot restore bookmark message: invalid or missing fields "
-                "(bookmark likely written by an incompatible shinychat version)."
-            ) from e
+            # Skip rather than raise: raising here would abort the caller's
+            # restore loop, silently dropping every message after this one
+            # too (Shiny's on_restore error handling only shows a banner, it
+            # doesn't resume the loop).
+            #
+            # include_input=False: the default error string embeds the
+            # offending value, which for a chat message is arbitrary (and
+            # possibly sensitive) message content -- keep the warning to
+            # locations/reasons only.
+            details = "; ".join(
+                f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}"
+                for err in e.errors(include_input=False)
+            )
+            warnings.warn(
+                "Skipping malformed bookmarked chat message: invalid or "
+                "missing fields (bookmark likely written by an incompatible "
+                f"shinychat version). {details}",
+                stacklevel=2,
+            )
+            return
         await self._send_append_message(stored)
 
     def transform_user_input(self, *args: object, **kwargs: object) -> object:
