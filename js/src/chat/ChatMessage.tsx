@@ -25,6 +25,8 @@ import { TiptapInput, type TiptapInputHandle } from "./TiptapInput"
 import type { SubmitKey } from "./tiptap/submitShortcut"
 import { useAttachmentStaging } from "./useAttachmentStaging"
 import { AttachmentTray } from "./AttachmentTray"
+import { CitationCollectorProvider } from "./citationCollector"
+import { SourcesSummary } from "./SourcesSummary"
 
 const TOUCH_HOLD_MS = 500
 const TOUCH_MOVE_CANCEL_PX = 10
@@ -531,7 +533,10 @@ export const ChatMessage = memo(function ChatMessage({
             {/* User attachments sit above their text (mirroring the input tray);
                 assistant attachments come after the prose that introduces them. */}
             {isUser && attachmentsEl}
-            {messageBlocks}
+            <CitationCollectorProvider>
+              {messageBlocks}
+              {!isUser && <SourcesSummary />}
+            </CitationCollectorProvider>
             {!isUser && attachmentsEl}
             {message.cancelled && (
               <div className="shiny-chat-message-cancelled">

@@ -249,6 +249,25 @@ class ShinyToolCardMessage(ChatMessage):
     pass
 
 
+def citation_aside(
+    url: str,
+    title: Optional[str],
+    grounded_span: Optional[str] = None,
+    cited_quote: Optional[str] = None,
+) -> str:
+    "Render a chatlas web citation as <shiny-aside> markup."
+    return str(
+        Tag(
+            "shiny-aside",
+            Tag("a", title or url, href=url),
+            data_citation="",
+            url=url,
+            grounded_span=grounded_span,
+            cited_quote=cited_quote,
+        )
+    )
+
+
 class ToolResultDisplay(BaseModel):
     """
     Customize the condensed display for a tool result.

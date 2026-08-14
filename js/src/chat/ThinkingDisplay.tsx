@@ -64,7 +64,7 @@ function useDisplayedTopic(topic: string | null | undefined): string | null {
 // same size, turned 45° into a diamond so a thinking row is distinguishable
 // from an untitled tool row.
 function ThinkingGlyph() {
-  return <span className="shinychat-thinking-glyph" aria-hidden="true" />
+  return <span className="shiny-chat-thinking-glyph" aria-hidden="true" />
 }
 
 export const ThinkingDisplay = memo(function ThinkingDisplay({
@@ -141,26 +141,26 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
 
   return (
     <div
-      className="shinychat-thinking"
+      className="shiny-chat-thinking"
       data-streaming={thinking.streaming || undefined}
     >
       <button
         id={`thinking-header-${messageId}`}
-        className="shinychat-thinking-header"
+        className="shiny-chat-thinking-header"
         onClick={handleToggle}
         aria-expanded={expanded}
         aria-controls={`thinking-content-${messageId}`}
       >
         <ThinkingGlyph />
         <span
-          className="shinychat-thinking-label"
+          className="shiny-chat-thinking-label"
           data-fading={labelFading || undefined}
         >
           {labelText}
         </span>
         {thinking.streaming && (
           <svg
-            className="shinychat-thinking-dot"
+            className="shiny-chat-thinking-dot"
             width="8"
             height="8"
             xmlns="http://www.w3.org/2000/svg"
@@ -170,12 +170,12 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
           </svg>
         )}
         <span
-          className="shinychat-thinking-disclosure"
+          className="shiny-chat-thinking-disclosure"
           dangerouslySetInnerHTML={chevronDSIH}
         />
       </button>
       <div
-        className="shinychat-thinking-content"
+        className="shiny-chat-thinking-content"
         id={`thinking-content-${messageId}`}
         role="region"
         aria-labelledby={`thinking-header-${messageId}`}
@@ -183,7 +183,7 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
         inert={!expanded || undefined}
         data-expanded={expanded || undefined}
       >
-        <div className="shinychat-thinking-content-inner" ref={innerScrollRef}>
+        <div className="shiny-chat-thinking-content-inner" ref={innerScrollRef}>
           <div ref={innerContentRef}>
             <MarkdownContent
               content={thinking.content}

@@ -157,7 +157,7 @@ HistoryController <- R6::R6Class(
         return(invisible())
       }
 
-      target <- private$store$get(self$partition, conv_id)
+      target <- self$get_record(self$partition, conv_id)
       if (is.null(target)) {
         rlang::abort(paste0("Conversation not found: ", conv_id))
       }
@@ -204,7 +204,7 @@ HistoryController <- R6::R6Class(
         self$record$title_source <- "user"
         private$store$put(self$partition, self$record)
       } else {
-        target <- private$store$get(self$partition, conv_id)
+        target <- self$get_record(self$partition, conv_id)
         if (!is.null(target)) {
           target$title <- title
           target$title_source <- "user"
@@ -297,7 +297,11 @@ HistoryController <- R6::R6Class(
     },
 
     get_record = function(partition, id) {
-      private$store$get(partition, id)
+      record <- private$store$get(partition, id)
+      if (!is.null(record)) {
+        check_schema_version(record$schema_version)
+      }
+      record
     },
 
     save_current = function() {
@@ -614,6 +618,9 @@ HistoryController <- R6::R6Class(
 #'   `"none"` disables automatic restore entirely.
 #' @param store Storage backend: `"auto"` (default: memory in dev, file in
 #'   production), `"memory"`, `"file"`, or a [ConversationStore] R6 instance.
+#'   `"auto"` emits a once-per-session message announcing which backend was
+#'   chosen; set `options(shinychat.history_options.store_auto.quiet = TRUE)`
+#'   to silence it.
 #' @param scope Storage namespace for conversations. A string, a
 #'   `function(session)` returning a string, or `NULL` (default: uses
 #'   `session$user` if authenticated, otherwise a per-browser token).
@@ -636,6 +643,11 @@ history_options <- function(
   max_store_mb = 100
 ) {
   restore_mode <- match.arg(restore_mode)
+  if (!is.function(title) && !is.null(title) && !identical(title, "auto")) {
+    rlang::abort(
+      '`title` must be "auto", a function(recorded_turns), or NULL.'
+    )
+  }
   structure(
     list(
       restore_mode = restore_mode,

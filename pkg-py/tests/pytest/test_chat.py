@@ -222,7 +222,7 @@ def test_tagifiable_normalization():
     m = message_content(HTML("Hello <span>world</span>!"))
     assert (
         m.content
-        == "\n\n<shinychat-raw-html>Hello <span>world</span>!</shinychat-raw-html>\n\n"
+        == "\n\n<shiny-chat-raw-html>Hello <span>world</span>!</shiny-chat-raw-html>\n\n"
     )
     assert m.role == "assistant"
 
@@ -230,7 +230,7 @@ def test_tagifiable_normalization():
     m = message_content(div("Hello <span>world</span>!"))
     assert (
         m.content
-        == "\n\n<shinychat-raw-html>\n  <div>Hello &lt;span&gt;world&lt;/span&gt;!</div>\n</shinychat-raw-html>\n\n"
+        == "\n\n<shiny-chat-raw-html>\n  <div>Hello &lt;span&gt;world&lt;/span&gt;!</div>\n</shiny-chat-raw-html>\n\n"
     )
     assert m.role == "assistant"
 

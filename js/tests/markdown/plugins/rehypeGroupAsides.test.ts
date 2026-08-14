@@ -56,6 +56,17 @@ describe("rehypeGroupAsides", () => {
     expect(html).toContain("https://ebicycles.example/b")
   })
 
+  it("groups label-less web citations by their inferred domain label", () => {
+    const md = [
+      'First claim<shiny-aside data-citation url="https://www.python.org/downloads/"></shiny-aside>.',
+      'Second claim<shiny-aside data-citation url="https://www.python.org/doc/versions/"></shiny-aside>.',
+    ].join(" ")
+    const html = process(md)
+
+    expect(html.match(/<shiny-aside-group\b/g)).toHaveLength(1)
+    expect(html.match(/<shiny-aside(?!-group)\b/g)).toHaveLength(2)
+  })
+
   it("splits every label-less aside into its own single-entry group", () => {
     const md = [
       "A number<shiny-aside>note one</shiny-aside>",
@@ -104,6 +115,22 @@ describe("rehypeGroupAsides", () => {
       '- Item text<shiny-aside label="Source" url="https://x.example"></shiny-aside>'
     const html = process(md)
     expect(html).toContain("<li>Item text<shiny-aside-group>")
+  })
+
+  it("keeps a rich aside after a loose list-item paragraph inline without flattening its body", () => {
+    const html = process(
+      [
+        "<ul><li><p>Item text<br>\n</p>",
+        '<shiny-aside label="Source" url="https://x.example">',
+        "<p><strong>Reason</strong></p>",
+        "<ul><li>Evidence</li></ul>",
+        "</shiny-aside></li></ul>",
+      ].join(""),
+    )
+    expect(html).toContain("<li><p>Item text<shiny-aside-group><shiny-aside")
+    expect(html).not.toContain("<br>")
+    expect(html).toContain("<p><strong>Reason</strong></p>")
+    expect(html).toContain("<ul><li>Evidence</li></ul>")
   })
 
   it("attaches an aside inside a nested list item's own <li>, not the outer one", () => {

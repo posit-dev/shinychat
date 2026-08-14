@@ -911,7 +911,7 @@ describe("chatReducer", () => {
         topic: string | null
       }
       expect(block.topic).toBe("analyzing")
-      expect(block.content).toContain("shinychat-thinking-topic")
+      expect(block.content).toContain("shiny-chat-thinking-topic")
       expect(block.content).not.toContain("<topic>")
     })
 
@@ -955,7 +955,7 @@ describe("chatReducer", () => {
       }
       expect(block2.topic).toBe("hello")
       expect(block2.topicBuffer).toBe("")
-      expect(block2.content).toContain("shinychat-thinking-topic")
+      expect(block2.content).toContain("shiny-chat-thinking-topic")
     })
 
     it("topicBuffer is flushed on finalization (chunk_end)", () => {

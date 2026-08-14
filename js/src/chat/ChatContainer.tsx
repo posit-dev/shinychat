@@ -10,9 +10,7 @@ import {
 import { createPortal } from "react-dom"
 import { useStickToBottom } from "use-stick-to-bottom"
 import { ChatMessages } from "./ChatMessages"
-import { ChatMessage } from "./ChatMessage"
 import { ChatGreeting } from "./ChatGreeting"
-import { MessageErrorBoundary } from "./MessageErrorBoundary"
 import { ChatInput, type ChatInputHandle } from "./ChatInput"
 import { ScrollToBottomButton } from "./ScrollToBottomButton"
 import { ExternalLinkDialogComponent } from "./ExternalLinkDialog"
@@ -117,6 +115,10 @@ export const ChatContainer = forwardRef<
   const userMessages = useMemo(
     () => messages.filter((m) => m.role === "user").map((m) => m.content),
     [messages],
+  )
+  const displayedMessages = useMemo(
+    () => (streamingMessage ? [...messages, streamingMessage] : messages),
+    [messages, streamingMessage],
   )
 
   const chatInputRef = useRef<ChatInputHandle>(null)
@@ -497,7 +499,7 @@ export const ChatContainer = forwardRef<
                   : {})}
               >
                 <ChatMessages
-                  messages={messages}
+                  messages={displayedMessages}
                   iconAssistant={iconAssistant}
                   // Editing/navigating requires the server-side history
                   // controller, which only registers its input listeners
@@ -513,15 +515,6 @@ export const ChatContainer = forwardRef<
                   maxUploadSize={maxUploadSize}
                   enableUpload={enableUpload}
                 />
-                {streamingMessage && (
-                  <MessageErrorBoundary key={streamingMessage.id}>
-                    <ChatMessage
-                      message={streamingMessage}
-                      index={messages.length}
-                      iconAssistant={iconAssistant}
-                    />
-                  </MessageErrorBoundary>
-                )}
               </div>
             </ChatScrollContext.Provider>
           </div>

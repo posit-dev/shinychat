@@ -20,6 +20,7 @@ mock_chat_client <- function(turns = list()) {
     },
     get_tools = function() list(),
     get_provider = function() mock_provider(),
+    get_model = function() "mock-model",
     clone = function() mock_chat_client(stored_turns),
     set_system_prompt = function(prompt) invisible(NULL),
     set_tools = function(tools) invisible(NULL),
@@ -48,6 +49,7 @@ mock_chat_client <- function(turns = list()) {
   client$get_tools <- function() list()
   client$set_tools <- function(t) invisible(NULL)
   client$get_provider <- function() mock_provider()
+  client$get_model <- function() "mock-model"
   client
 }
 

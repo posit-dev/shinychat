@@ -24,8 +24,7 @@ test_that("chat_server slash_command supports zero-argument handlers", {
     chat_server_module,
     args = list(
       client = structure(list(), class = "Chat"),
-      bookmark_on_input = FALSE,
-      bookmark_on_response = FALSE
+      history = FALSE
     ),
     {
       session$returned$slash_command(
@@ -55,8 +54,7 @@ test_that("chat_server slash_command rejects handlers with more than one paramet
     chat_server_module,
     args = list(
       client = structure(list(), class = "Chat"),
-      bookmark_on_input = FALSE,
-      bookmark_on_response = FALSE
+      history = FALSE
     ),
     {
       expect_error(
@@ -81,8 +79,7 @@ test_that("chat_server slash_command errors on duplicate name by default", {
     chat_server_module,
     args = list(
       client = structure(list(), class = "Chat"),
-      bookmark_on_input = FALSE,
-      bookmark_on_response = FALSE
+      history = FALSE
     ),
     {
       session$returned$slash_command("greet", "Say hello", function() NULL)
@@ -106,8 +103,7 @@ test_that("chat_server slash_command removal unregisters the command", {
     chat_server_module,
     args = list(
       client = structure(list(), class = "Chat"),
-      bookmark_on_input = FALSE,
-      bookmark_on_response = FALSE
+      history = FALSE
     ),
     {
       remove <- session$returned$slash_command(
@@ -155,8 +151,7 @@ test_that("chat_server slash_command allows overwrite with force = TRUE", {
     chat_server_module,
     args = list(
       client = structure(list(), class = "Chat"),
-      bookmark_on_input = FALSE,
-      bookmark_on_response = FALSE
+      history = FALSE
     ),
     {
       session$returned$slash_command(
@@ -190,8 +185,7 @@ test_that("chat_server slash_command echo defaults to handler presence", {
     chat_server_module,
     args = list(
       client = structure(list(), class = "Chat"),
-      bookmark_on_input = FALSE,
-      bookmark_on_response = FALSE
+      history = FALSE
     ),
     {
       session$returned$slash_command(
@@ -223,8 +217,7 @@ test_that("chat_server slash_command echo can be set explicitly", {
     chat_server_module,
     args = list(
       client = structure(list(), class = "Chat"),
-      bookmark_on_input = FALSE,
-      bookmark_on_response = FALSE
+      history = FALSE
     ),
     {
       session$returned$slash_command(
@@ -252,8 +245,7 @@ test_that("chat_server slash_command rejects a non-function, non-NULL handler", 
     chat_server_module,
     args = list(
       client = structure(list(), class = "Chat"),
-      bookmark_on_input = FALSE,
-      bookmark_on_response = FALSE
+      history = FALSE
     ),
     {
       expect_error(
@@ -276,8 +268,7 @@ test_that("chat_server slash_command with NULL handler does not run server-side"
     chat_server_module,
     args = list(
       client = structure(list(), class = "Chat"),
-      bookmark_on_input = FALSE,
-      bookmark_on_response = FALSE
+      history = FALSE
     ),
     {
       # A real handler on a different command, to prove the NULL command does not

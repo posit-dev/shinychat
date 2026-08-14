@@ -273,7 +273,7 @@ function extractTopicsComplete(text: string): {
   let topic: string | null = null
   const cleaned = text.replace(TOPIC_TAG_RE, (_match, captured: string) => {
     topic = captured
-    return `\n\n<div class="shinychat-thinking-topic">${captured}</div>\n\n`
+    return `\n\n<div class="shiny-chat-thinking-topic">${captured}</div>\n\n`
   })
   return { cleaned, topic }
 }
@@ -499,7 +499,7 @@ function extractTopics(text: string, buffer: string): TopicResult {
   // Replace complete <topic>...</topic> tags with bold markdown labels
   combined = combined.replace(TOPIC_TAG_RE, (_match, captured: string) => {
     topic = captured
-    return `\n\n<div class="shinychat-thinking-topic">${captured}</div>\n\n`
+    return `\n\n<div class="shiny-chat-thinking-topic">${captured}</div>\n\n`
   })
 
   // Check for partial opening or closing tag at the end

@@ -139,6 +139,8 @@ InMemoryConversationStore <- R6::R6Class(
       private$data[[key]][[id]]
     },
     put = function(partition, record) {
+      check_schema_version(record$schema_version)
+
       key <- partition_key(partition)
       if (is.null(private$data[[key]])) {
         private$data[[key]] <- list()
@@ -175,7 +177,7 @@ InMemoryConversationStore <- R6::R6Class(
 )
 
 record_json_size <- function(record) {
-  as.double(nchar(jsonlite::toJSON(record, auto_unbox = TRUE), type = "bytes"))
+  as.double(nchar(jsonlite::serializeJSON(record), type = "bytes"))
 }
 
 CONV_ID_RE <- "^[A-Za-z0-9_-]{1,80}$"
@@ -297,6 +299,11 @@ FileConversationStore <- R6::R6Class(
       private$write_state <- list()
     },
 
+    #' @description All conversations in `partition`, newest-first by
+    #'   `updated_at`, read from one `record.json` per conversation directory
+    #'   on disk.
+    #' @param partition A `conversation_partition()`.
+    #' @returns A list of conversation meta lists.
     list = function(partition) {
       key <- partition_key(partition)
       cached <- private$meta_cache[[key]]
@@ -318,9 +325,10 @@ FileConversationStore <- R6::R6Class(
           if (!file.exists(record_file)) {
             return(NULL)
           }
-          tryCatch(
+          result <- tryCatch(
             {
               raw <- jsonlite::fromJSON(record_file, simplifyVector = FALSE)
+              check_schema_version(raw$schema_version)
               size_bytes <- sum(vapply(
                 list.files(d, full.names = TRUE),
                 function(f) as.double(file.size(f)),
@@ -328,6 +336,12 @@ FileConversationStore <- R6::R6Class(
               ))
               record_meta(raw, size_bytes = size_bytes)
             },
+            # Capture (rather than re-signal) an unsupported schema version
+            # here -- stop()ing from inside this handler would still be
+            # caught by the sibling `error` handler below, since both belong
+            # to this same tryCatch call. Re-raise it after tryCatch returns
+            # instead, so it escapes uncaught.
+            shinychat_error_unsupported_schema_version = function(e) e,
             error = function(e) {
               rlang::warn(paste0(
                 "Skipping unreadable conversation ",
@@ -338,6 +352,10 @@ FileConversationStore <- R6::R6Class(
               NULL
             }
           )
+          if (inherits(result, "shinychat_error_unsupported_schema_version")) {
+            stop(result)
+          }
+          result
         })
       )
       timestamps <- vapply(metas, function(m) m$updated_at, character(1))
@@ -346,6 +364,12 @@ FileConversationStore <- R6::R6Class(
       metas
     },
 
+    #' @description The full conversation record for `id` in `partition`,
+    #'   reassembled from `record.json`, `turns.jsonl`, and `ui.jsonl`.
+    #' @param partition A `conversation_partition()`.
+    #' @param id A conversation id, as found in the `id` field of a
+    #'   conversation meta list.
+    #' @returns The conversation record, or `NULL` if missing.
     get = function(partition, id) {
       cdir <- safe_conv_path(private$partition_dir(partition), id)
       record_file <- file.path(cdir, "record.json")
@@ -353,6 +377,7 @@ FileConversationStore <- R6::R6Class(
         return(NULL)
       }
       raw <- jsonlite::fromJSON(record_file, simplifyVector = FALSE)
+      schema_version <- check_schema_version(raw$schema_version)
 
       turns_map <- list()
       turns_file <- file.path(cdir, "turns.jsonl")
@@ -412,7 +437,7 @@ FileConversationStore <- R6::R6Class(
       }
 
       list(
-        schema_version = raw$schema_version,
+        schema_version = schema_version,
         id = raw$id,
         title = raw$title,
         title_source = raw$title_source,
@@ -427,9 +452,25 @@ FileConversationStore <- R6::R6Class(
       )
     },
 
+    #' @description Upsert `record` into `partition`, appending new turns and
+    #'   UI data to `turns.jsonl`/`ui.jsonl` and rewriting `record.json`.
+    #' @param partition A `conversation_partition()`.
+    #' @param record A conversation record, in the same shape returned by
+    #'   `get()`.
+    #' @returns `NULL`, invisibly.
     put = function(partition, record) {
+      check_schema_version(record$schema_version)
+
       key <- partition_key(partition)
       cdir <- safe_conv_path(private$partition_dir(partition), record$id)
+      record_file <- file.path(cdir, "record.json")
+      # Check the on-disk schema version before creating any directory or
+      # touching any file -- a rejection here must leave the filesystem
+      # untouched.
+      if (file.exists(record_file) && !dir.exists(record_file)) {
+        existing_raw <- jsonlite::fromJSON(record_file, simplifyVector = FALSE)
+        check_schema_version(existing_raw$schema_version)
+      }
       dir.create(cdir, recursive = TRUE, showWarnings = FALSE)
 
       ws <- private$get_or_init_write_state(partition, record$id, cdir)
@@ -529,7 +570,7 @@ FileConversationStore <- R6::R6Class(
       tmp <- tempfile(tmpdir = cdir, fileext = ".json.tmp")
       on.exit(unlink(tmp), add = TRUE)
       writeLines(json, tmp)
-      ok <- file_move(tmp, file.path(cdir, "record.json"))
+      ok <- file_move(tmp, record_file)
       if (!isTRUE(ok)) {
         rlang::abort(paste0("Failed to write conversation: ", cdir))
       }
@@ -551,6 +592,12 @@ FileConversationStore <- R6::R6Class(
       invisible(NULL)
     },
 
+    #' @description Remove the conversation `id` from `partition` by deleting
+    #'   its directory. Missing ids are a no-op.
+    #' @param partition A `conversation_partition()`.
+    #' @param id A conversation id, as found in the `id` field of a
+    #'   conversation meta list.
+    #' @returns `NULL`, invisibly.
     delete = function(partition, id) {
       key <- partition_key(partition)
       cdir <- safe_conv_path(private$partition_dir(partition), id)
@@ -585,22 +632,39 @@ resolve_store <- function(store) {
   }
 
   store <- match.arg(store, c("auto", "memory", "file"))
+  quiet <- getOption(
+    "shinychat.history_options.store_auto.quiet",
+    default = identical(Sys.getenv("TESTTHAT"), "true")
+  )
+  quiet_hint <- c(
+    i = "Set {.code options(shinychat.history_options.store_auto.quiet = TRUE)} to silence this message."
+  )
   switch(
     store,
     auto = {
       if (shiny::in_devmode()) {
-        cli::cli_inform(
-          "Chat history: using in-memory storage (dev mode). History is lost on restart. To persist across restarts, use {.code history_options(store = \"file\")}.",
-          .frequency = "once",
-          .frequency_id = "shinychat_store_auto_memory"
-        )
+        if (!quiet) {
+          cli::cli_inform(
+            c(
+              "Chat history: using in-memory storage (dev mode). History is lost on restart. To persist across restarts, use {.code history_options(store = \"file\")}.",
+              quiet_hint
+            ),
+            .frequency = "once",
+            .frequency_id = "shinychat_store_auto_memory"
+          )
+        }
         auto_dev_memory_store()
       } else {
-        cli::cli_inform(
-          "Chat history: using file-based storage. To use in-memory storage instead, use {.code history_options(store = \"memory\")}.",
-          .frequency = "once",
-          .frequency_id = "shinychat_store_auto_file"
-        )
+        if (!quiet) {
+          cli::cli_inform(
+            c(
+              "Chat history: using file-based storage. To use in-memory storage instead, use {.code history_options(store = \"memory\")}.",
+              quiet_hint
+            ),
+            .frequency = "once",
+            .frequency_id = "shinychat_store_auto_file"
+          )
+        }
         FileConversationStore$new()
       }
     },

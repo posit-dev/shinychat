@@ -47,13 +47,13 @@ export function ExternalLinkDialogComponent({
   }, [])
 
   return (
-    <dialog ref={dialogRef} className="shinychat-external-link-dialog">
+    <dialog ref={dialogRef} className="shiny-chat-external-link-dialog">
       <div className="modal position-relative d-block fade show">
         <div className="modal-content">
           <div className="modal-header">
             <h5 className="modal-title">External Link</h5>
             <button
-              className="btn-close shinychat-btn-close"
+              className="btn-close shiny-chat-btn-close"
               data-bs-dismiss="modal"
               aria-label="Close"
               onClick={onCancel}
@@ -65,7 +65,7 @@ export function ExternalLinkDialogComponent({
           </div>
           <div className="modal-footer flex-wrap-reverse">
             <button
-              className="btn btn-sm btn-link shinychat-btn-always ps-0 me-auto"
+              className="btn btn-sm btn-link shiny-chat-btn-always ps-0 me-auto"
               onClick={onAlways}
             >
               Always open external links
@@ -73,13 +73,13 @@ export function ExternalLinkDialogComponent({
             <div className="d-flex gap-2 justify-content-end">
               <button
                 autoFocus
-                className="btn btn-sm btn-primary shinychat-btn-proceed"
+                className="btn btn-sm btn-primary shiny-chat-btn-proceed"
                 onClick={onProceed}
               >
                 Open Link
               </button>
               <button
-                className="btn btn-sm btn-outline-danger shinychat-btn-cancel"
+                className="btn btn-sm btn-outline-danger shiny-chat-btn-cancel"
                 onClick={onCancel}
               >
                 Cancel
