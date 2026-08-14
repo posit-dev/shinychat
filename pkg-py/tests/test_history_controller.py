@@ -4,7 +4,7 @@
 
 import warnings
 from datetime import timedelta
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -18,7 +18,12 @@ from shinychat._history_store import (
     ConversationStore,
     InMemoryConversationStore,
 )
-from shinychat._history_types import ConversationRecord, new_conversation_record
+from shinychat._history_types import (
+    MAX_SCHEMA_VERSION,
+    ConversationRecord,
+    UnsupportedSchemaVersionError,
+    new_conversation_record,
+)
 
 
 def msg(role: str) -> dict[str, object]:
@@ -150,6 +155,9 @@ def test_extend_with_no_new_ui_messages_leaves_ui_none():
 
 
 class _FakeChat:
+    def __init__(self) -> None:
+        self.set_greeting_calls: list[Any] = []
+
     def _messages_for_bookmark(self) -> list[Any]:
         return []
 
@@ -161,6 +169,9 @@ class _FakeChat:
 
     async def _restore_bookmark_message(self, message_dict: Any) -> None:
         pass
+
+    async def set_greeting(self, greeting: Any) -> None:
+        self.set_greeting_calls.append(greeting)
 
 
 class _FakeAdapter:
@@ -245,6 +256,52 @@ def _make_controller(
     )
     controller.partition = part()
     return controller, resolved_store
+
+
+@pytest.mark.anyio
+async def test_replay_ui_clears_greeting():
+    controller, _store = _make_controller()
+    record = new_conversation_record(title="t")
+
+    await controller.replay_ui(record)
+
+    fake_chat = cast(Any, controller.chat)
+    assert fake_chat.set_greeting_calls == [None]
+
+
+@pytest.mark.anyio
+async def test_notify_settled_calls_on_settled_hook():
+    controller, _store = _make_controller()
+    calls: list[bool] = []
+
+    async def _on_settled(restored: bool) -> None:
+        calls.append(restored)
+
+    controller.on_settled = _on_settled
+    await controller.notify_settled(True)
+    await controller.notify_settled(False)
+
+    assert calls == [True, False]
+
+
+@pytest.mark.anyio
+async def test_notify_settled_no_op_when_hook_unset():
+    controller, _store = _make_controller()
+    await controller.notify_settled(True)
+
+
+@pytest.mark.anyio
+async def test_new_chat_notifies_settled_false():
+    controller, _store = _make_controller()
+    calls: list[bool] = []
+
+    async def _on_settled(restored: bool) -> None:
+        calls.append(restored)
+
+    controller.on_settled = _on_settled
+    await controller.new_chat()
+
+    assert calls == [False]
 
 
 @pytest.mark.anyio
@@ -451,6 +508,7 @@ async def test_ui_offset_unchanged_when_save_current_store_put_raises():
 
 class _NavFakeChat(_FakeChat):
     def __init__(self) -> None:
+        super().__init__()
         self.actions: list[dict[str, Any]] = []
         self.cleared = 0
 
@@ -551,6 +609,42 @@ async def test_switch_to_nonexistent_id_raises():
 
     with pytest.raises(RuntimeError, match="no longer exists"):
         await controller.switch_to("does-not-exist")
+
+
+class _UnsupportedSchemaVersionStore(ConversationStore):
+    """Custom store whose get() returns a record from a newer, unsupported
+    schema version -- simulates a downgrade against a store written by a
+    future version of shinychat."""
+
+    async def list(self, partition: ConversationPartition) -> list[Any]:
+        return []
+
+    async def get(
+        self, partition: ConversationPartition, conv_id: str
+    ) -> ConversationRecord | None:
+        rec = new_conversation_record(title="from the future")
+        rec.id = conv_id
+        rec.schema_version = MAX_SCHEMA_VERSION + 1
+        return rec
+
+    async def put(self, partition: ConversationPartition, record: Any) -> None:
+        pass
+
+    async def delete(
+        self, partition: ConversationPartition, conv_id: str
+    ) -> None:
+        pass
+
+
+@pytest.mark.anyio
+async def test_switch_to_rejects_record_with_unsupported_schema_version():
+    store = _UnsupportedSchemaVersionStore()
+    controller, _store = _make_controller(store=store)
+
+    with pytest.raises(UnsupportedSchemaVersionError):
+        await controller.switch_to("c_future")
+
+    assert controller.record is None
 
 
 @pytest.mark.anyio

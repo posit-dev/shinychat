@@ -23,12 +23,18 @@ from ._history_title import (
     fallback_title,
     generate_title,
 )
-from ._history_types import ConversationRecord, new_conversation_record
+from ._history_types import (
+    ConversationRecord,
+    check_schema_version,
+    new_conversation_record,
+)
 
 if TYPE_CHECKING:
+    from htmltools import HTML, Tag, TagList
     from shiny.module import ResolvedId
 
     from ._chat import Chat
+    from ._chat_types import ChatGreeting
 
 
 @dataclasses.dataclass(frozen=True)
@@ -232,6 +238,9 @@ class HistoryController:
         ) = None
         # Internal hook: fired before a conversation is removed from the store.
         self.on_evict: Callable[[str], Awaitable[None]] | None = None
+        # Internal hook: fired whenever it is known whether the active
+        # conversation is a restore (True) or a fresh/new one (False).
+        self.on_settled: Callable[[bool], Awaitable[None]] | None = None
         self.max_store_bytes: int | None = max_store_bytes
         self._title_task: asyncio.Task[None] | None = None
         # replay_ui awaits per message, so on_response can fire mid-replay;
@@ -241,6 +250,14 @@ class HistoryController:
         self._is_replaying: bool = False
         self._suppress_next_save: bool = False
         self._over_budget_warned: bool = False
+
+    async def _get_record(
+        self, partition: ConversationPartition, conv_id: str
+    ) -> ConversationRecord | None:
+        record = await self.store.get(partition, conv_id)
+        if record is not None:
+            check_schema_version(record.schema_version)
+        return record
 
     # -- save -----------------------------------------------------------
 
@@ -340,6 +357,11 @@ class HistoryController:
         if self._title_task is not None and not self._title_task.done():
             self._title_task.cancel()
 
+    async def notify_settled(self, restored: bool) -> None:
+        """Called whenever the active conversation's restore state is known."""
+        if self.on_settled is not None:
+            await self.on_settled(restored)
+
     async def _evict_one(self, conv_id: str) -> None:
         assert self.partition is not None
         if self.on_evict is not None:
@@ -402,7 +424,7 @@ class HistoryController:
             return
         # Load BEFORE mutating anything: a failed load must leave the
         # current conversation untouched.
-        target = await self.store.get(self.partition, conv_id)
+        target = await self._get_record(self.partition, conv_id)
         if target is None:
             raise RuntimeError(f"Conversation {conv_id!r} no longer exists.")
 
@@ -427,6 +449,7 @@ class HistoryController:
         self.record = None
         if self.on_active_id_change is not None:
             await self.on_active_id_change(None)
+        await self.notify_settled(False)
         await self.send_history_update()
 
     async def replay_ui(self, record: ConversationRecord) -> None:
@@ -434,6 +457,7 @@ class HistoryController:
         self._suppress_next_save = True
         try:
             await self.chat.clear_messages()
+            await self.chat.set_greeting(None)
             for node_id in record.path_node_ids():
                 node = record.nodes[node_id]
                 stored = node.ui or [
@@ -466,7 +490,7 @@ class HistoryController:
         record = (
             self.record
             if self.record is not None and self.record.id == conv_id
-            else await self.store.get(self.partition, conv_id)
+            else await self._get_record(self.partition, conv_id)
         )
         if record is None:
             return
@@ -547,6 +571,7 @@ class ChatHistory:
     ) -> None:
         self._chat = chat
         self._started: bool = False
+        self._controller: HistoryController | None = None
         self._save_callbacks: "list[Callable[[dict[str, Any]], None]]" = []
         self._restore_callbacks: "list[Callable[[dict[str, Any]], None]]" = []
         cfg = config if config is not None else HistoryOptions()
@@ -616,6 +641,23 @@ class ChatHistory:
         self._restore_callbacks.append(fn)
         return fn
 
+    def setup_greeting(
+        self,
+        greeting: "str | HTML | Tag | TagList | ChatGreeting | Callable[..., Any]",
+    ) -> None:
+        """Resolve a greeting after history determines whether it restored."""
+        from ._chat_client import resolve_greeting
+
+        chat = self._chat
+        controller = self._controller
+        assert controller is not None
+
+        async def _on_settled(restored: bool) -> None:
+            if not restored:
+                await resolve_greeting(chat, greeting)
+
+        controller.on_settled = _on_settled
+
     def _start(self) -> None:
         chat = self._chat
         chat_client = chat.client
@@ -657,6 +699,7 @@ class ChatHistory:
             restore_callbacks=self._restore_callbacks,
             max_store_bytes=max_store_bytes,
         )
+        self._controller = controller
 
         if restore_mode == "url":
 
@@ -726,7 +769,7 @@ class ChatHistory:
                     if controller.partition is None:
                         rec = None
                     else:
-                        rec = await controller.store.get(
+                        rec = await controller._get_record(
                             controller.partition, conv_id
                         )
                     state_id = (
@@ -818,9 +861,13 @@ class ChatHistory:
                 restored_conv_id = str(raw_id) if raw_id else None
 
             if restored_conv_id is not None:
-                target = await controller.store.get(
-                    controller.partition, restored_conv_id
-                )
+                try:
+                    target = await controller._get_record(
+                        controller.partition, restored_conv_id
+                    )
+                except Exception as e:
+                    await notify_error("Could not load conversation", e)
+                    target = None
                 if target is not None:
                     adapter.set_turns_json(target.path_turns())
                     await controller.replay_ui(target)
@@ -829,6 +876,7 @@ class ChatHistory:
                     controller.record = target
                     await controller.send_history_update()
                     initialized = True
+                    await controller.notify_settled(True)
                     return
 
             # Priority 2: restore from the mode-specific ID source.
@@ -848,9 +896,13 @@ class ChatHistory:
                 current_id = None
 
             if current_id:
-                pointed = await controller.store.get(
-                    controller.partition, current_id
-                )
+                try:
+                    pointed = await controller._get_record(
+                        controller.partition, current_id
+                    )
+                except Exception as e:
+                    await notify_error("Could not load conversation", e)
+                    pointed = None
                 if pointed is not None:
                     adapter.set_turns_json(pointed.path_turns())
                     await controller.replay_ui(pointed)
@@ -858,6 +910,7 @@ class ChatHistory:
                     controller.record = pointed
             await controller.send_history_update()
             initialized = True
+            await controller.notify_settled(controller.record is not None)
 
         @reactive.effect
         @reactive.event(chat.messages, ignore_init=True)

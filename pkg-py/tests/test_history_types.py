@@ -3,6 +3,8 @@ from shinychat._history_types import (
     ConversationMeta,
     ConversationNode,
     ConversationRecord,
+    UnsupportedSchemaVersionError,
+    check_schema_version,
     new_conversation_record,
 )
 
@@ -21,6 +23,12 @@ def test_new_record_is_empty_draft():
     assert rec.title == "hello world"
     assert rec.title_source is None
     assert rec.response_count == 0
+
+
+@pytest.mark.parametrize("version", [True, 1.0, "1", [], [1], float("nan")])
+def test_check_schema_version_rejects_non_integer_values(version: object):
+    with pytest.raises(UnsupportedSchemaVersionError):
+        check_schema_version(version)
 
 
 def test_append_linear_builds_chain():

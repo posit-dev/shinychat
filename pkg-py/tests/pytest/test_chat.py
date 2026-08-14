@@ -700,6 +700,63 @@ def test_bookmark_omits_side_effect_only_slash_command():
     ]
 
 
+def test_restore_bookmark_message_warns_and_skips_malformed():
+    # A malformed stored message (e.g. a bookmark written by an incompatible
+    # shinychat version) must not abort the whole restore loop -- letting it
+    # raise would hit Shiny's generic on_restore error handling, which shows
+    # a banner and silently drops every message after the bad one.
+    with session_context(test_session):
+        chat = Chat(id="chat_restore_malformed")
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        saved: list[Any] = [
+            {"role": "user", "segments": [{"content": "before", "content_type": "markdown"}]},
+            {"role": "user"},  # missing required `segments`
+            {"role": "assistant", "segments": [{"content": "after", "content_type": "markdown"}]},
+        ]
+
+        async def _exercise() -> None:
+            with pytest.warns(UserWarning, match="incompatible shinychat version"):
+                for message_dict in saved:
+                    await chat._restore_bookmark_message(message_dict)
+
+        run_async(_exercise)
+
+    contents = [
+        a["message"]["segments"][0]["content"] for a in sent if a["type"] == "message"
+    ]
+    assert contents == ["before", "after"]
+
+
+def test_restore_bookmark_message_warning_omits_the_offending_value():
+    # pydantic's default ValidationError string embeds the invalid input
+    # value, which for a chat message is arbitrary (and possibly sensitive)
+    # content -- the warning must not repeat it.
+    with session_context(test_session):
+        chat = Chat(id="chat_restore_malformed_no_leak")
+        secret = "sk-super-secret-token-do-not-log-me"
+
+        async def _exercise() -> None:
+            with pytest.warns(UserWarning) as record:
+                # The invalid *value* here is the secret itself: content_type
+                # only accepts a fixed set of literals, so a bogus string
+                # fails validation with that string as the reported input.
+                await chat._restore_bookmark_message(
+                    {
+                        "role": "user",
+                        "segments": [{"content": "hi", "content_type": secret}],
+                    }
+                )
+            assert secret not in str(record[0].message)
+
+        run_async(_exercise)
+
+
 def test_user_input_reads_latest_stored():
     from shiny import reactive
     from shinychat._chat import UserInput
