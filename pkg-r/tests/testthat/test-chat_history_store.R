@@ -642,6 +642,174 @@ test_that("FileConversationStore preserves schema_version and children on round 
   expect_null(fetched$nodes$n_0001$ui)
 })
 
+test_that("FileConversationStore$get() treats a record.json missing schema_version as version 1", {
+  dir <- withr::local_tempdir()
+  store <- FileConversationStore$new(dir = dir)
+  rec <- new_conversation_record("test")
+  store$put(part(), rec)
+
+  cdir <- file.path(
+    dir,
+    sanitize_scope(part()$chat_id),
+    sanitize_scope(part()$scope),
+    rec$id
+  )
+  record_file <- file.path(cdir, "record.json")
+  raw <- jsonlite::fromJSON(record_file, simplifyVector = FALSE)
+  raw$schema_version <- NULL
+  writeLines(
+    jsonlite::toJSON(raw, auto_unbox = TRUE, null = "null"),
+    record_file
+  )
+
+  result <- store$get(part(), rec$id)
+  expect_equal(result$schema_version, 1L)
+})
+
+test_that("FileConversationStore$get() aborts on an unsupported schema_version", {
+  dir <- withr::local_tempdir()
+  store <- FileConversationStore$new(dir = dir)
+  rec <- new_conversation_record("test")
+  store$put(part(), rec)
+
+  cdir <- file.path(
+    dir,
+    sanitize_scope(part()$chat_id),
+    sanitize_scope(part()$scope),
+    rec$id
+  )
+  record_file <- file.path(cdir, "record.json")
+  raw <- jsonlite::fromJSON(record_file, simplifyVector = FALSE)
+  raw$schema_version <- 99L
+  writeLines(
+    jsonlite::toJSON(raw, auto_unbox = TRUE, null = "null"),
+    record_file
+  )
+
+  expect_error(
+    store$get(part(), rec$id),
+    class = "shinychat_error_unsupported_schema_version"
+  )
+})
+
+test_that("FileConversationStore$list() aborts when a conversation has an unsupported schema_version", {
+  dir <- withr::local_tempdir()
+  store <- FileConversationStore$new(dir = dir)
+  good <- new_conversation_record("good")
+  bad <- new_conversation_record("bad")
+  store$put(part(), good)
+  store$put(part(), bad)
+
+  cdir <- file.path(
+    dir,
+    sanitize_scope(part()$chat_id),
+    sanitize_scope(part()$scope),
+    bad$id
+  )
+  record_file <- file.path(cdir, "record.json")
+  raw <- jsonlite::fromJSON(record_file, simplifyVector = FALSE)
+  raw$schema_version <- 99L
+  writeLines(
+    jsonlite::toJSON(raw, auto_unbox = TRUE, null = "null"),
+    record_file
+  )
+
+  expect_error(
+    store$list(part()),
+    class = "shinychat_error_unsupported_schema_version"
+  )
+})
+
+test_that("FileConversationStore$put() rejects an unsupported schema_version and creates no directory", {
+  dir <- withr::local_tempdir()
+  store <- FileConversationStore$new(dir = dir)
+  rec <- new_conversation_record("test")
+  rec$schema_version <- 99L
+
+  expect_error(
+    store$put(part(), rec),
+    class = "shinychat_error_unsupported_schema_version"
+  )
+
+  pdir <- file.path(
+    dir,
+    sanitize_scope(part()$chat_id),
+    sanitize_scope(part()$scope)
+  )
+  expect_false(dir.exists(file.path(pdir, rec$id)))
+})
+
+test_that("FileConversationStore$put() rejects overwriting an on-disk unsupported schema_version and leaves files untouched", {
+  dir <- withr::local_tempdir()
+  store <- FileConversationStore$new(dir = dir)
+  rec <- new_conversation_record("test")
+  rec$nodes <- list(
+    n_0001 = list(
+      parent = NULL,
+      children = list(),
+      turns = list(
+        list(
+          class = "ellmer::UserTurn",
+          version = 1,
+          props = list(contents = list())
+        )
+      ),
+      ui = list(
+        list(
+          role = "user",
+          segments = list(list(content = "hi", content_type = "markdown"))
+        )
+      )
+    )
+  )
+  rec$current_leaf <- "n_0001"
+  store$put(part(), rec)
+
+  cdir <- file.path(
+    dir,
+    sanitize_scope(part()$chat_id),
+    sanitize_scope(part()$scope),
+    rec$id
+  )
+  record_file <- file.path(cdir, "record.json")
+  raw <- jsonlite::fromJSON(record_file, simplifyVector = FALSE)
+  raw$schema_version <- 99L
+  writeLines(
+    jsonlite::toJSON(raw, auto_unbox = TRUE, null = "null"),
+    record_file
+  )
+
+  files <- list.files(cdir, full.names = TRUE)
+  before <- lapply(files, function(f) readBin(f, "raw", file.size(f)))
+  names(before) <- basename(files)
+
+  new_rec <- new_conversation_record("attempted overwrite")
+  new_rec$id <- rec$id
+
+  expect_error(
+    store$put(part(), new_rec),
+    class = "shinychat_error_unsupported_schema_version"
+  )
+
+  after_files <- list.files(cdir, full.names = TRUE)
+  expect_setequal(basename(after_files), names(before))
+  for (f in after_files) {
+    expect_identical(readBin(f, "raw", file.size(f)), before[[basename(f)]])
+  }
+})
+
+test_that("InMemoryConversationStore$put() rejects an unsupported schema_version", {
+  store <- InMemoryConversationStore$new()
+  rec <- new_conversation_record("test")
+  rec$schema_version <- 99L
+
+  expect_error(
+    store$put(part(), rec),
+    class = "shinychat_error_unsupported_schema_version"
+  )
+  expect_null(store$get(part(), rec$id))
+})
+
 test_that("sanitize_scope() is safe for filesystem", {
   scope <- sanitize_scope("user@example.com/admin")
   expect_false(grepl("[^A-Za-z0-9_-]", scope))

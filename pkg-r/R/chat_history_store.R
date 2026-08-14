@@ -139,6 +139,8 @@ InMemoryConversationStore <- R6::R6Class(
       private$data[[key]][[id]]
     },
     put = function(partition, record) {
+      check_schema_version(record$schema_version)
+
       key <- partition_key(partition)
       if (is.null(private$data[[key]])) {
         private$data[[key]] <- list()
@@ -323,9 +325,10 @@ FileConversationStore <- R6::R6Class(
           if (!file.exists(record_file)) {
             return(NULL)
           }
-          tryCatch(
+          result <- tryCatch(
             {
               raw <- jsonlite::fromJSON(record_file, simplifyVector = FALSE)
+              check_schema_version(raw$schema_version)
               size_bytes <- sum(vapply(
                 list.files(d, full.names = TRUE),
                 function(f) as.double(file.size(f)),
@@ -333,6 +336,12 @@ FileConversationStore <- R6::R6Class(
               ))
               record_meta(raw, size_bytes = size_bytes)
             },
+            # Capture (rather than re-signal) an unsupported schema version
+            # here -- stop()ing from inside this handler would still be
+            # caught by the sibling `error` handler below, since both belong
+            # to this same tryCatch call. Re-raise it after tryCatch returns
+            # instead, so it escapes uncaught.
+            shinychat_error_unsupported_schema_version = function(e) e,
             error = function(e) {
               rlang::warn(paste0(
                 "Skipping unreadable conversation ",
@@ -343,6 +352,10 @@ FileConversationStore <- R6::R6Class(
               NULL
             }
           )
+          if (inherits(result, "shinychat_error_unsupported_schema_version")) {
+            stop(result)
+          }
+          result
         })
       )
       timestamps <- vapply(metas, function(m) m$updated_at, character(1))
@@ -364,6 +377,7 @@ FileConversationStore <- R6::R6Class(
         return(NULL)
       }
       raw <- jsonlite::fromJSON(record_file, simplifyVector = FALSE)
+      schema_version <- check_schema_version(raw$schema_version)
 
       turns_map <- list()
       turns_file <- file.path(cdir, "turns.jsonl")
@@ -423,7 +437,7 @@ FileConversationStore <- R6::R6Class(
       }
 
       list(
-        schema_version = raw$schema_version,
+        schema_version = schema_version,
         id = raw$id,
         title = raw$title,
         title_source = raw$title_source,
@@ -445,8 +459,18 @@ FileConversationStore <- R6::R6Class(
     #'   `get()`.
     #' @returns `NULL`, invisibly.
     put = function(partition, record) {
+      check_schema_version(record$schema_version)
+
       key <- partition_key(partition)
       cdir <- safe_conv_path(private$partition_dir(partition), record$id)
+      record_file <- file.path(cdir, "record.json")
+      # Check the on-disk schema version before creating any directory or
+      # touching any file -- a rejection here must leave the filesystem
+      # untouched.
+      if (file.exists(record_file) && !dir.exists(record_file)) {
+        existing_raw <- jsonlite::fromJSON(record_file, simplifyVector = FALSE)
+        check_schema_version(existing_raw$schema_version)
+      }
       dir.create(cdir, recursive = TRUE, showWarnings = FALSE)
 
       ws <- private$get_or_init_write_state(partition, record$id, cdir)
@@ -546,7 +570,7 @@ FileConversationStore <- R6::R6Class(
       tmp <- tempfile(tmpdir = cdir, fileext = ".json.tmp")
       on.exit(unlink(tmp), add = TRUE)
       writeLines(json, tmp)
-      ok <- file_move(tmp, file.path(cdir, "record.json"))
+      ok <- file_move(tmp, record_file)
       if (!isTRUE(ok)) {
         rlang::abort(paste0("Failed to write conversation: ", cdir))
       }

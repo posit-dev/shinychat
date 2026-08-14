@@ -30,6 +30,25 @@ test_that("new_conversation_record() accepts client_info", {
   expect_equal(rec$client_info$provider, "openai")
 })
 
+test_that("check_schema_version() rejects non-scalar integer values", {
+  invalid_versions <- list(
+    TRUE,
+    1,
+    "1",
+    list(),
+    list(1L),
+    c(1L, 2L),
+    NA,
+    NaN
+  )
+  for (version in invalid_versions) {
+    expect_error(
+      check_schema_version(version),
+      class = "shinychat_error_unsupported_schema_version"
+    )
+  }
+})
+
 test_that("messages_input_value() parses a decoded JSON payload into message lists", {
   # Shape mirrors what shiny:::decodeMessage(simplifyVector = FALSE) produces
   # for the client's `${id}_messages:shinychat.messages` payload.
