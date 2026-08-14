@@ -12,8 +12,10 @@ import { remarkEscapeHtml } from "./plugins/remarkEscapeHtml"
 import { rehypeExternalLinks } from "./plugins/rehypeExternalLinks"
 import { rehypeUncontrolledInputs } from "./plugins/rehypeUncontrolledInputs"
 import { rehypeUnwrapBlockCEs } from "./plugins/rehypeUnwrapBlockCEs"
+import { rehypeGroupWebActivity } from "./plugins/rehypeGroupWebActivity"
 import { rehypeGroupAsides } from "./plugins/rehypeGroupAsides"
 import { rehypeGroundedAsides } from "./plugins/rehypeGroundedAsides"
+import { rehypeAttachCitedSources } from "./plugins/rehypeAttachCitedSources"
 import { rehypeMarkTrailingAsides } from "./plugins/markTrailingAsides"
 import { rehypeLazyContinuation } from "./plugins/rehypeLazyContinuation"
 import {
@@ -40,8 +42,10 @@ export const markdownProcessor = unified()
   .use(rehypeRewriteAsideFromTemplate)
   .use(rehypeLazyContinuation)
   .use(rehypeUnwrapBlockCEs)
+  .use(rehypeGroupWebActivity)
   .use(rehypeGroundedAsides)
   .use(rehypeGroupAsides)
+  .use(rehypeAttachCitedSources)
   .use(rehypeMarkTrailingAsides)
   .use(rehypeUncontrolledInputs)
   .use(rehypeAccessibleSuggestions)
@@ -60,8 +64,10 @@ export const markdownProcessor = unified()
  * parse5-parsed HTML fragment.
  */
 export const htmlProcessor = unified()
+  .use(rehypeGroupWebActivity)
   .use(rehypeGroundedAsides)
   .use(rehypeGroupAsides)
+  .use(rehypeAttachCitedSources)
   .use(rehypeMarkTrailingAsides)
   .use(rehypeUncontrolledInputs)
   .use(rehypeAccessibleSuggestions)

@@ -8,6 +8,9 @@ const blockCEs = new Set([
   "shiny-tool-result",
   "shiny-chat-raw-html",
   "shinychat-raw-html",
+  "shiny-web-search",
+  "shiny-web-search-results",
+  "shiny-web-fetch",
 ])
 
 function isBlockCE(node: ElementContent): node is Element {

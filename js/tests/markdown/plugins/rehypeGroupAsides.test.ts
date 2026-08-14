@@ -56,6 +56,17 @@ describe("rehypeGroupAsides", () => {
     expect(html).toContain("https://ebicycles.example/b")
   })
 
+  it("groups label-less web citations by their inferred domain label", () => {
+    const md = [
+      'First claim<shiny-aside data-citation url="https://www.python.org/downloads/"></shiny-aside>.',
+      'Second claim<shiny-aside data-citation url="https://www.python.org/doc/versions/"></shiny-aside>.',
+    ].join(" ")
+    const html = process(md)
+
+    expect(html.match(/<shiny-aside-group\b/g)).toHaveLength(1)
+    expect(html.match(/<shiny-aside(?!-group)\b/g)).toHaveLength(2)
+  })
+
   it("splits every label-less aside into its own single-entry group", () => {
     const md = [
       "A number<shiny-aside>note one</shiny-aside>",

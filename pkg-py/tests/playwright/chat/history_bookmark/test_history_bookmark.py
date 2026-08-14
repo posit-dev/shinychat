@@ -19,6 +19,12 @@ def start_conversation(page: Page, text: str) -> None:
     chat.expect_latest_message(f"echo: {text}", timeout=30_000)
 
 
+def expect_filter_state(page: Page, value: str) -> None:
+    expect(page.locator("#filter_state")).to_have_text(
+        f"filter: {value}", timeout=30_000
+    )
+
+
 def test_bookmark_mode_switch_restores_inputs(
     page: Page, local_app: ShinyAppProc
 ) -> None:
@@ -29,7 +35,9 @@ def test_bookmark_mode_switch_restores_inputs(
     # Conversation A: set the input, then chat (the save mints a bookmark
     # capturing the input value).
     controller.InputText(page, "filter_text").set("penguins")
+    expect_filter_state(page, "penguins")
     start_conversation(page, "first question")
+    page.wait_for_url(lambda url: "_state_id_=" in url, timeout=30_000)
 
     # New chat navigates to the bare URL: input back to its default.
     open_drawer(page)
