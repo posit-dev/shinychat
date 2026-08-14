@@ -362,7 +362,7 @@ def output_markdown_stream(
     # `content` is most likely a string, so avoid overhead in that case
     # (it's also important that we *don't escape HTML* here).
     if isinstance(content, str):
-        ui: RenderedHTML = {"html": content, "dependencies": []}
+        ui = RenderedHTML(html=content, dependencies=[])
     else:
         ui = TagList(*split_html_islands(content)).render()
 

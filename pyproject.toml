@@ -7,7 +7,7 @@ license = { text = "MIT" }
 dependencies = [
     "htmltools>=0.7.0",
     "shiny>=1.4.0",
-    "pydantic"
+    "pydantic>=2.11"
 ]
 dynamic = ["version"]
 authors = [
