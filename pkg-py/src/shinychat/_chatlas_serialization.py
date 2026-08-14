@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from chatlas import Turn
 
 
-def serialize_chatlas_turn(turn: Any) -> dict[str, Any]:
+def serialize_chatlas_turn(turn: Turn[Any]) -> dict[str, Any]:
     """Serialize a chatlas turn after normalizing supported rich displays."""
     from chatlas import ContentToolResult
 
@@ -22,6 +25,7 @@ def serialize_chatlas_turn(turn: Any) -> dict[str, Any]:
         if normalized is turn:
             normalized = turn.model_copy(deep=True)
         normalized_content = normalized.contents[index]
+        assert isinstance(normalized_content, ContentToolResult)
         normalized_content.extra = dict(normalized_content.extra)
         display = normalized_content.extra["display"]
         normalized_content.extra["display"] = {
