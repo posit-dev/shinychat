@@ -490,51 +490,28 @@ chat_server <- function(
     greeting_stream_task$invoke(id, greeting, session)
   }
 
-  resolve_greeting_mod <- function() {
-    if (is.function(greeting)) {
-      greeting_fmls <- names(formals(greeting))
-      args <- list()
-      if ("client" %in% greeting_fmls) {
-        greeter <- client$clone()
-        greeter$set_turns(list())
-        args$client <- greeter
-      }
-      greeting_stream_task$invoke(id, do.call(greeting, args), session)
-    } else {
-      set_greeting_mod(greeting)
-    }
-  }
+  if (is.function(greeting)) {
+    greeting_fmls <- names(formals(greeting))
 
-  if (!is.null(greeting)) {
-    history_enabled <- !isFALSE(history)
-    history_controller <- if (history_enabled) {
-      get_session_chat_bookmark_info(
-        session,
-        paste0(id, ".history-controller")
-      )
-    } else {
-      NULL
-    }
-
-    if (!is.null(history_controller)) {
-      # Defer to history's own restore-decision instead of racing the
-      # client's independent `_greeting_requested` request.
-      history_controller$on_settled <- function(restored) {
-        if (!restored) {
-          resolve_greeting_mod()
+    shiny::observeEvent(
+      session$input[[paste0(id, "_greeting_requested")]],
+      label = "on_greeting_requested",
+      {
+        args <- list()
+        if ("client" %in% greeting_fmls) {
+          greeter <- client$clone()
+          greeter$set_turns(list())
+          args$client <- greeter
         }
+        greeting_stream_task$invoke(
+          id,
+          do.call(greeting, args),
+          session
+        )
       }
-    } else if (is.function(greeting)) {
-      shiny::observeEvent(
-        session$input[[paste0(id, "_greeting_requested")]],
-        label = "on_greeting_requested",
-        {
-          resolve_greeting_mod()
-        }
-      )
-    } else {
-      resolve_greeting_mod()
-    }
+    )
+  } else if (!is.null(greeting)) {
+    set_greeting_mod(greeting)
   }
 
   send_chat_action(
