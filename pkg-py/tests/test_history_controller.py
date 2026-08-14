@@ -18,7 +18,12 @@ from shinychat._history_store import (
     ConversationStore,
     InMemoryConversationStore,
 )
-from shinychat._history_types import ConversationRecord, new_conversation_record
+from shinychat._history_types import (
+    MAX_SCHEMA_VERSION,
+    ConversationRecord,
+    UnsupportedSchemaVersionError,
+    new_conversation_record,
+)
 
 
 def msg(role: str) -> dict[str, object]:
@@ -551,6 +556,42 @@ async def test_switch_to_nonexistent_id_raises():
 
     with pytest.raises(RuntimeError, match="no longer exists"):
         await controller.switch_to("does-not-exist")
+
+
+class _UnsupportedSchemaVersionStore(ConversationStore):
+    """Custom store whose get() returns a record from a newer, unsupported
+    schema version -- simulates a downgrade against a store written by a
+    future version of shinychat."""
+
+    async def list(self, partition: ConversationPartition) -> list[Any]:
+        return []
+
+    async def get(
+        self, partition: ConversationPartition, conv_id: str
+    ) -> ConversationRecord | None:
+        rec = new_conversation_record(title="from the future")
+        rec.id = conv_id
+        rec.schema_version = MAX_SCHEMA_VERSION + 1
+        return rec
+
+    async def put(self, partition: ConversationPartition, record: Any) -> None:
+        pass
+
+    async def delete(
+        self, partition: ConversationPartition, conv_id: str
+    ) -> None:
+        pass
+
+
+@pytest.mark.anyio
+async def test_switch_to_rejects_record_with_unsupported_schema_version():
+    store = _UnsupportedSchemaVersionStore()
+    controller, _store = _make_controller(store=store)
+
+    with pytest.raises(UnsupportedSchemaVersionError):
+        await controller.switch_to("c_future")
+
+    assert controller.record is None
 
 
 @pytest.mark.anyio

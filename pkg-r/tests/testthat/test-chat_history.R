@@ -451,6 +451,49 @@ test_that("switch_to() raises on a nonexistent conversation id", {
   expect_error(ctrl$switch_to("does-not-exist"), "Conversation not found")
 })
 
+test_that("HistoryController$switch_to() rejects an unsupported schema_version from a custom store", {
+  BadSchemaStore <- R6::R6Class(
+    "BadSchemaStore",
+    inherit = ConversationStore,
+    public = list(
+      list = function(partition) {
+        list(new_conversation_meta(
+          id = "bad-id",
+          title = "bad",
+          created_at = "2026-01-01T00:00:00Z",
+          updated_at = "2026-01-01T00:00:00Z",
+          size_bytes = 0
+        ))
+      },
+      get = function(partition, id) {
+        rec <- new_conversation_record("bad")
+        rec$id <- id
+        rec$schema_version <- 99L
+        rec
+      },
+      put = function(partition, record) invisible(NULL),
+      delete = function(partition, id) invisible(NULL)
+    )
+  )
+
+  store <- BadSchemaStore$new()
+  client <- mock_chat_client()
+  session <- shiny::MockShinySession$new()
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = session
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+
+  expect_error(
+    ctrl$switch_to("bad-id"),
+    class = "shinychat_error_unsupported_schema_version"
+  )
+})
+
 test_that("bookmark mode pre-switch emits reload navigation", {
   spy <- history_mock_session_with_spy()
   client <- mock_chat_client()
