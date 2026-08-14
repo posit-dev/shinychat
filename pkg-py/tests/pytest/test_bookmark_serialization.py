@@ -9,12 +9,14 @@ field serializer produced non-JSON-serializable output.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
 from chatlas import ChatOpenAI, ContentToolResult, Turn
 from htmltools import HTMLDependency, TagList, tags
 from pydantic_core import PydanticSerializationError
+from shiny import App
 from shinychat._chat_bookmark import get_chatlas_state
 from shinychat.types import ToolResultDisplay
 
@@ -153,6 +155,41 @@ def test_tool_result_display_restores_legacy_dependency_payload():
     assert "source" in new_dependency
     assert new_dependency["source"] is None
     assert new_dependency["all_files"] is False
+
+
+def test_restored_dependency_can_register_with_new_shiny_app(tmp_path: Path):
+    (tmp_path / "widget.css").write_text(
+        ".widget { color: red; }",
+        encoding="utf-8",
+    )
+    display = ToolResultDisplay(
+        html=tags.div(
+            {"class": "widget"},
+            "Widget",
+            HTMLDependency(
+                "my-dep",
+                "1.0",
+                source={"subdir": str(tmp_path)},
+                stylesheet={"href": "widget.css"},
+            ),
+        )
+    )
+
+    restored = ToolResultDisplay.model_validate(
+        json.loads(display.model_dump_json())
+    )
+    dependency = TagList(restored.html).render()["dependencies"][0]
+
+    app = App(
+        tags.div(),
+        lambda input_, output, session: None,
+    )
+    app._register_web_dependency(dependency)
+
+    assert any(
+        getattr(route, "path", None) == "/lib/my-dep-1.0"
+        for route in app._dependency_handler.routes
+    )
 
 
 @pytest.mark.anyio

@@ -33,6 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* Rich tool-display HTML now uses htmltools' source-preserving persistence
+  codec. Local dependency definitions can be registered again after restoring
+  a conversation in a new session. Persisted dependency dictionaries written
+  by earlier shinychat versions remain readable on a best-effort basis.
+
 * Fixed conversation history and bookmarks failing to serialize a chatlas `ContentToolResult` when its supported dictionary-form `extra["display"]` contains HTML. Dictionary displays are now normalized through `ToolResultDisplay` before JSON serialization. (Related to #295)
 
 * Fixed `MarkdownStream` permanently stopping following new content after the user scrolled back to the bottom. Pinning was decided only from `scroll` events, which browsers dispatch asynchronously; if a chunk grew the container first, the user's at-bottom position no longer read as at-bottom and auto-scroll silently disengaged for good. (#282)
