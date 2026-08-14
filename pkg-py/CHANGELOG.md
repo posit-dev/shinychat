@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* Restoring a bookmark that contains a malformed message (for instance one written by an incompatible shinychat version) now warns and skips just that message, instead of raising and dropping every message after it.
+
 * Fixed conversation history and bookmarks failing to serialize a chatlas `ContentToolResult` when its supported dictionary-form `extra["display"]` contains HTML. Dictionary displays are now normalized through `ToolResultDisplay` before JSON serialization. (Related to #295)
 
 ## [0.6.0] - 2026-07-06
