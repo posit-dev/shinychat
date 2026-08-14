@@ -419,6 +419,7 @@ class _ReplayFakeChat(_FakeChat):
     real client would send after a restore."""
 
     def __init__(self) -> None:
+        super().__init__()
         self.messages: list[Any] = []
 
     def _messages_for_bookmark(self) -> list[Any]:
@@ -1467,6 +1468,7 @@ class _TrackingChat:
         self.messages_: list[dict[str, Any]] = []
         self.actions: list[dict[str, Any]] = []
         self.cleared: bool = False
+        self.set_greeting_calls: list[Any] = []
 
     def _messages_for_bookmark(self) -> list[dict[str, Any]]:
         return list(self.messages_)
@@ -1480,6 +1482,9 @@ class _TrackingChat:
 
     async def _restore_bookmark_message(self, message_dict: Any) -> None:
         self.messages_.append(message_dict)
+
+    async def set_greeting(self, greeting: Any) -> None:
+        self.set_greeting_calls.append(greeting)
 
 
 class _TrackingAdapter:
