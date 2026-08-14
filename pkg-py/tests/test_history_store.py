@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 from htmltools import HTMLDependency, tags
+from shinychat._history_client import as_turns_adapter
 from shinychat._history_store import (
     ConversationPartition,
     FileConversationStore,
@@ -61,32 +62,37 @@ async def test_put_get_round_trip(store: FileConversationStore):
 
 
 @pytest.mark.anyio
-async def test_memory_store_lists_recorded_tool_result_with_html():
+async def test_file_store_round_trips_dict_tool_result_display(
+    store: FileConversationStore,
+):
     chatlas = pytest.importorskip("chatlas")
-    from shinychat.types import ToolResultDisplay
 
-    display = ToolResultDisplay(
-        html=tags.div(
-            "Widget output",
-            HTMLDependency("my-dep", "1.0", source={"subdir": "."}),
-        )
+    result = chatlas.ContentToolResult(
+        value="done",
+        extra={
+            "display": {
+                "html": tags.div(
+                    "Widget output",
+                    HTMLDependency("my-dep", "1.0", source={"subdir": "."}),
+                ),
+            }
+        },
     )
-    turn = chatlas.Turn(
-        role="user",
-        contents=[
-            chatlas.ContentToolResult(value="done", extra={"display": display})
-        ],
-    )
+    client = chatlas.ChatOpenAI(api_key="fake")
+    client.set_turns([chatlas.Turn(role="user", contents=[result])])
+    adapter = as_turns_adapter(client)
+
     rec = new_conversation_record(title="Widget")
-    rec.append_linear([turn.model_dump(mode="json")])
-    store = InMemoryConversationStore()
+    rec.append_linear(adapter.get_turns_json())
 
     await store.put(part(), rec)
-    metas = await store.list(part())
+    restored = await store.get(part(), rec.id)
 
-    assert len(metas) == 1
-    assert metas[0].id == rec.id
-    assert metas[0].size_bytes > 0
+    assert restored is not None
+    adapter.set_turns_json(restored.path_turns())
+    display = adapter.get_turns_json()[0]["contents"][0]["extra"]["display"]
+    assert display["html"]["html"] == "<div>Widget output</div>"
+    assert display["html"]["dependencies"][0]["name"] == "my-dep"
 
 
 @pytest.mark.anyio
