@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from htmltools import tags
 from shinychat._history_client import (
     TurnsAdapter,
     as_turns_adapter,
@@ -42,6 +43,22 @@ def test_chatlas_adapter_round_trip():
     assert client.get_turns() == []
     adapter.set_turns_json(dumped)
     assert [t.role for t in client.get_turns()] == ["user", "assistant"]
+
+
+def test_chatlas_adapter_serializes_dict_tool_result_display():
+    chatlas = pytest.importorskip("chatlas")
+    result = chatlas.ContentToolResult(
+        value="done",
+        extra={"display": {"html": tags.div("Widget output")}},
+    )
+    client = chatlas.ChatOpenAI(api_key="fake")
+    client.set_turns([chatlas.Turn(role="user", contents=[result])])
+
+    dumped = as_turns_adapter(client).get_turns_json()
+
+    display = dumped[0]["contents"][0]["extra"]["display"]
+    assert display["html"]["html"] == "<div>Widget output</div>"
+    assert isinstance(result.extra["display"], dict)
 
 
 def test_client_info_for_chatlas():

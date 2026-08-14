@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from htmltools import HTMLDependency, tags
+from shinychat._history_client import as_turns_adapter
 from shinychat._history_store import (
     ConversationPartition,
     FileConversationStore,
@@ -57,6 +59,40 @@ async def test_put_get_round_trip(store: FileConversationStore):
         assert got.nodes[nid].children == rec.nodes[nid].children
         assert got.nodes[nid].parent == rec.nodes[nid].parent
         assert got.nodes[nid].ui == rec.nodes[nid].ui
+
+
+@pytest.mark.anyio
+async def test_file_store_round_trips_dict_tool_result_display(
+    store: FileConversationStore,
+):
+    chatlas = pytest.importorskip("chatlas")
+
+    result = chatlas.ContentToolResult(
+        value="done",
+        extra={
+            "display": {
+                "html": tags.div(
+                    "Widget output",
+                    HTMLDependency("my-dep", "1.0", source={"subdir": "."}),
+                ),
+            }
+        },
+    )
+    client = chatlas.ChatOpenAI(api_key="fake")
+    client.set_turns([chatlas.Turn(role="user", contents=[result])])
+    adapter = as_turns_adapter(client)
+
+    rec = new_conversation_record(title="Widget")
+    rec.append_linear(adapter.get_turns_json())
+
+    await store.put(part(), rec)
+    restored = await store.get(part(), rec.id)
+
+    assert restored is not None
+    adapter.set_turns_json(restored.path_turns())
+    display = adapter.get_turns_json()[0]["contents"][0]["extra"]["display"]
+    assert display["html"]["html"] == "<div>Widget output</div>"
+    assert display["html"]["dependencies"][0]["name"] == "my-dep"
 
 
 @pytest.mark.anyio
