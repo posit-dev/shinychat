@@ -220,7 +220,10 @@ def test_web_aside_popover_wraps_and_scrolls_in_a_narrow_viewport(
     assert box is not None
     assert box["width"] <= 304
     assert box["height"] <= 464
-    assert popover.evaluate("el => getComputedStyle(el).overflowY") == "auto"
+    assert popover.evaluate("el => getComputedStyle(el).overflowY") == "hidden"
+    body = popover.locator(".shiny-aside-popover__body")
+    assert body.evaluate("el => getComputedStyle(el).overflowY") == "auto"
+    assert body.evaluate("el => el.scrollHeight > el.clientHeight")
     assert (
         popover.evaluate("el => getComputedStyle(el).overflowWrap")
         == "anywhere"

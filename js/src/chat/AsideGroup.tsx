@@ -1,25 +1,21 @@
-import { memo, useEffect, useState, type CSSProperties } from "react"
-import {
-  useFloating,
-  autoUpdate,
-  offset,
-  flip,
-  shift,
-  FloatingPortal,
-  FloatingFocusManager,
-  useHover,
-  useFocus,
-  useClick,
-  useDismiss,
-  useRole,
-  useInteractions,
-} from "@floating-ui/react"
+import { memo, useEffect, useId, useState } from "react"
+import { FloatingPortal, FloatingFocusManager } from "@floating-ui/react"
 import type { Element as HastElement } from "hast"
 import { toHtml } from "hast-util-to-html"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { ASIDE_PENDING_ATTR } from "../markdown/plugins/markTrailingAsides"
 import { externalLinkAttributes } from "../markdown/plugins/rehypeExternalLinks"
 import { useAsideFavicon } from "./context"
+import { useCitationRegister } from "./citationCollector"
+import { citationEntriesFromAsides, type CitationEntry } from "./citations"
+import { domainFromUrl } from "./domain"
+import { portalTheme } from "./portalTheme"
+import { useDismissiblePopover } from "./useDismissiblePopover"
+
+export interface CitationMetadata {
+  title?: string
+  cited_quote?: string
+}
 
 export interface AsideEntry {
   label?: string
@@ -27,6 +23,7 @@ export interface AsideEntry {
   icon?: string
   body?: string
   index?: number
+  citation?: CitationMetadata
   groundingId?: string
 }
 
@@ -49,6 +46,16 @@ function numProp(el: HastElement, name: string): number | undefined {
   return typeof v === "number" ? v : undefined
 }
 
+function textContent(node: HastElement): string {
+  return node.children
+    .map((child) => {
+      if (child.type === "text") return child.value
+      if (child.type === "element") return textContent(child)
+      return ""
+    })
+    .join("")
+}
+
 export function parseAsideEntries(node?: HastElement): AsideEntry[] {
   if (!node) return []
   return (node.children ?? [])
@@ -56,14 +63,27 @@ export function parseAsideEntries(node?: HastElement): AsideEntry[] {
       (c): c is HastElement =>
         c.type === "element" && c.tagName === "shiny-aside",
     )
-    .map((el) => ({
-      label: prop(el, "label"),
-      url: prop(el, "url"),
-      icon: prop(el, "icon"),
-      body: el.children.length > 0 ? toHtml(el.children) : undefined,
-      index: numProp(el, "index"),
-      groundingId: prop(el, "dataGroundingId"),
-    }))
+    .map((el) => {
+      const url = prop(el, "url")
+      const label = prop(el, "label")
+      const text = textContent(el).trim()
+      const citation =
+        el.properties?.dataCitation == null
+          ? undefined
+          : {
+              title: text === "" || text === url ? undefined : text,
+              cited_quote: prop(el, "cited-quote"),
+            }
+      return {
+        label: label ?? (citation && url ? domainFromUrl(url) : undefined),
+        url,
+        icon: prop(el, "icon"),
+        body: el.children.length > 0 ? toHtml(el.children) : undefined,
+        index: numProp(el, "index"),
+        citation,
+        groundingId: prop(el, "dataGroundingId"),
+      }
+    })
 }
 
 export function faviconUrl(url: string): string | undefined {
@@ -72,29 +92,6 @@ export function faviconUrl(url: string): string | undefined {
   } catch {
     return undefined
   }
-}
-
-interface PortalTheme {
-  theme?: string
-  style: CSSProperties & Record<`--${string}`, string>
-}
-
-function portalTheme(reference: globalThis.Element | null): PortalTheme {
-  const style: PortalTheme["style"] = {}
-  if (!(reference instanceof HTMLElement)) return { style }
-
-  const computed = getComputedStyle(reference)
-  for (let index = 0; index < computed.length; index += 1) {
-    const property = computed.item(index)
-    if (!property.startsWith("--bs-")) continue
-    const value = computed.getPropertyValue(property).trim()
-    if (value) style[property as `--${string}`] = value
-  }
-
-  const theme = reference
-    .closest<HTMLElement>("[data-bs-theme]")
-    ?.getAttribute("data-bs-theme")
-  return { theme: theme || undefined, style }
 }
 
 function EntryIcon({
@@ -140,20 +137,10 @@ function NavArrowIcon({ direction }: { direction: "prev" | "next" }) {
   )
 }
 
-// Gap between the pill and the popover (see .shiny-aside-popover's `top`
-// offset) is a dead zone the pointer must cross when moving from one to the
-// other. useHover's `delay.close` keeps the popover alive long enough to
-// reach it, and is canceled automatically if the pointer lands back on the
-// pill or the popover before it elapses.
-const CLOSE_GRACE_PERIOD_MS = 150
-
 export const AsideGroup = memo(function AsideGroup({ node }: AsideGroupProps) {
-  return (
-    <AsideGroupView
-      entries={parseAsideEntries(node)}
-      pending={node?.properties?.[ASIDE_PENDING_ATTR] != null}
-    />
-  )
+  const entries = parseAsideEntries(node)
+  const pending = node?.properties?.[ASIDE_PENDING_ATTR] != null
+  return <AsideGroupView entries={entries} pending={pending} />
 })
 
 export const AsideGroupView = memo(function AsideGroupView({
@@ -164,39 +151,23 @@ export const AsideGroupView = memo(function AsideGroupView({
   const faceIndex = entries.findIndex((e) => e.label)
   const [open, setOpen] = useState(false)
   const [index, setIndex] = useState(0)
+  const registry = useCitationRegister()
+  const instanceId = useId()
+  const citationSignature = !pending
+    ? JSON.stringify(citationEntriesFromAsides(entries))
+    : ""
   const activeGroundingId = entries[index]?.groundingId
 
-  // strategy: "fixed" + the middleware below let the popover escape the
-  // message list's `overflow: auto` (needed for scrolling, so it can't just
-  // be set to visible) and reposition itself (flip above the pill, shift
-  // within the viewport) when there isn't room where it'd normally go.
-  const { refs, floatingStyles, context } = useFloating({
-    open,
-    onOpenChange: setOpen,
-    strategy: "fixed",
-    placement: "bottom-start",
-    middleware: [offset(6), flip(), shift({ padding: 8 })],
-    whileElementsMounted: autoUpdate,
-  })
+  const { refs, floatingStyles, context, getReferenceProps, getFloatingProps } =
+    useDismissiblePopover(open, setOpen)
 
-  // Composed rather than hand-rolled: useHover already tracks pointer entry
-  // on both the pill and the popover (canceling the close delay if the
-  // pointer lands on either), and useClick's open event marks the popover as
-  // "click-opened" so useHover no longer auto-closes it on mouse-leave —
-  // i.e. clicking pins it, clicking again un-pins and closes it.
-  const hover = useHover(context, { delay: { close: CLOSE_GRACE_PERIOD_MS } })
-  const focus = useFocus(context)
-  const click = useClick(context)
-  const dismiss = useDismiss(context, { outsidePressEvent: "mousedown" })
-  const role = useRole(context)
-
-  const { getReferenceProps, getFloatingProps } = useInteractions([
-    hover,
-    focus,
-    click,
-    dismiss,
-    role,
-  ])
+  useEffect(() => {
+    if (!registry || citationSignature === "") return
+    const citations = JSON.parse(citationSignature) as CitationEntry[]
+    if (citations.length === 0) return
+    registry.register(instanceId, citations)
+    return () => registry.unregister(instanceId)
+  }, [registry, instanceId, citationSignature])
 
   // Reset paging to the face entry whenever the popover opens, regardless of
   // which interaction (hover, focus, click) opened it.
@@ -337,7 +308,9 @@ export const AsideGroupView = memo(function AsideGroupView({
                         entry={current}
                         deriveFavicon={deriveFavicon}
                       />
-                      {current.label}
+                      <span className="shiny-aside-popover__label-text">
+                        {current.label}
+                      </span>
                     </a>
                   ) : (
                     <div className="shiny-aside-popover__label">
@@ -345,7 +318,9 @@ export const AsideGroupView = memo(function AsideGroupView({
                         entry={current}
                         deriveFavicon={deriveFavicon}
                       />
-                      {current.label}
+                      <span className="shiny-aside-popover__label-text">
+                        {current.label}
+                      </span>
                     </div>
                   )}
                 </>

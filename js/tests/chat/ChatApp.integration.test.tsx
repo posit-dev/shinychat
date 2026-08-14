@@ -168,6 +168,50 @@ describe("ChatApp integration: full message flow", () => {
     expect(document.querySelector(".markdown-stream-dot")).toBeNull()
   })
 
+  it("keeps web activity expanded when a streaming message settles", async () => {
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+        uploadAccept={[]}
+        maxUploadSize={null}
+      />,
+    )
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "chunk_start",
+        message: {
+          role: "assistant",
+          segments: [
+            {
+              content:
+                '<shiny-web-search query="R 4.5.0 release date"></shiny-web-search>',
+              content_type: "markdown",
+            },
+          ],
+        },
+      })
+    })
+
+    const header = screen.getByRole("button", { name: "Searched the web" })
+    fireEvent.click(header)
+    expect(header).toHaveAttribute("aria-expanded", "true")
+
+    await act(async () => {
+      transport.fire("test-chat", { type: "chunk_end" })
+    })
+
+    expect(
+      screen.getByRole("button", { name: "Searched the web" }),
+    ).toHaveAttribute("aria-expanded", "true")
+  })
+
   it("renders a non-streaming assistant reply", async () => {
     const transport = createMockTransport()
     const shinyLifecycle = createMockShinyLifecycle()

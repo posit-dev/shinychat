@@ -463,6 +463,157 @@ test_that("tool_result_display rich format", {
   )
 })
 
+test_that("web content renders as shinychat web activity and citations", {
+  skip_if_not(ellmer_web_content_available(ellmer_web_content_methods()))
+  local_shinychat_tool_display(opt = "rich")
+
+  request <- ellmer::ContentToolRequestSearch(
+    query = "ggplot2 release date"
+  )
+  request_tag <- contents_shinychat(request)
+  expect_equal(request_tag$name, "shiny-web-search")
+  expect_equal(request_tag$attribs$query, "ggplot2 release date")
+  expect_true("data-shinychat-react" %in% names(request_tag$attribs))
+
+  response <- ellmer::ContentToolResponseSearch(
+    sources = list(
+      ellmer::WebSource(
+        "https://cran.r-project.org/package=ggplot2",
+        "ggplot2"
+      ),
+      ellmer::WebSource(title = "No URL")
+    )
+  )
+  response_tag <- contents_shinychat(response)
+  sources <- jsonlite::fromJSON(
+    response_tag$attribs$sources,
+    simplifyVector = FALSE
+  )
+  expect_equal(length(sources), 1L)
+  expect_false("domain" %in% names(sources[[1]]))
+
+  expect_null(
+    contents_shinychat(
+      ellmer::ContentToolRequestFetch("https://example.com")
+    )
+  )
+
+  fetch_tag <- contents_shinychat(
+    ellmer::ContentToolResponseFetch(
+      url = "https://example.com",
+      status = "success"
+    )
+  )
+  expect_equal(fetch_tag$name, "shiny-web-fetch")
+  expect_equal(fetch_tag$attribs$status, "success")
+
+  citation <- ellmer::ContentCitation(
+    source = ellmer::WebSource(
+      "https://x.example/?a=1&b=2",
+      "A & B <source>"
+    ),
+    grounded_span = 'Supported answer "text"',
+    cited_quote = "Source evidence <verbatim>"
+  )
+  citation_markup <- contents_shinychat(citation)
+  expect_match(citation_markup, "<shiny-aside", fixed = TRUE)
+  expect_match(citation_markup, "data-citation", fixed = TRUE)
+  expect_false(grepl("label=", citation_markup, fixed = TRUE))
+  expect_match(citation_markup, "A &amp; B &lt;source&gt;", fixed = TRUE)
+  expect_match(citation_markup, "a=1&amp;b=2", fixed = TRUE)
+  expect_match(
+    citation_markup,
+    'grounded-span="Supported answer &quot;text&quot;"',
+    fixed = TRUE
+  )
+  expect_match(
+    citation_markup,
+    'cited-quote="Source evidence &lt;verbatim&gt;"',
+    fixed = TRUE
+  )
+
+  citation_without_grounding <- contents_shinychat(
+    ellmer::ContentCitation(
+      source = ellmer::WebSource("https://x.example", "Example")
+    )
+  )
+  expect_false(
+    grepl("grounded-span=", citation_without_grounding, fixed = TRUE)
+  )
+  expect_false(grepl("cited-quote=", citation_without_grounding, fixed = TRUE))
+
+  expect_null(contents_shinychat(ellmer::ContentCitation()))
+  expect_null(
+    contents_shinychat(
+      ellmer::ContentToolResponseFetch(status = "error")
+    )
+  )
+})
+
+test_that("ContentCitation preserves optional metadata independently", {
+  skip_if_not(ellmer_web_content_available(ellmer_web_content_methods()))
+
+  grounded_only <- contents_shinychat(
+    ellmer::ContentCitation(
+      source = ellmer::WebSource("https://x.example", "Example"),
+      grounded_span = "Supported answer"
+    )
+  )
+  expect_match(
+    grounded_only,
+    'grounded-span="Supported answer"',
+    fixed = TRUE
+  )
+  expect_false(grepl("cited-quote=", grounded_only, fixed = TRUE))
+
+  quote_only <- contents_shinychat(
+    ellmer::ContentCitation(
+      source = ellmer::WebSource("https://x.example", "Example"),
+      cited_quote = "Source evidence"
+    )
+  )
+  expect_match(quote_only, 'cited-quote="Source evidence"', fixed = TRUE)
+  expect_false(grepl("grounded-span=", quote_only, fixed = TRUE))
+})
+
+test_that("web content feature detection derives classes from registered methods", {
+  methods <- ellmer_web_content_methods()
+  exports <- c("WebSource", names(methods))
+
+  expect_true(ellmer_web_content_available(methods, exports))
+  expect_false(ellmer_web_content_available(methods, exports[-1]))
+  expect_false(ellmer_web_content_available(methods, exports[-2]))
+})
+
+test_that("web content renderers respect disabled tool display", {
+  skip_if_not(ellmer_web_content_available(ellmer_web_content_methods()))
+  local_shinychat_tool_display(opt = "none")
+
+  contents <- list(
+    ellmer::ContentToolRequestSearch("ggplot2 release date"),
+    ellmer::ContentToolResponseSearch(
+      list(ellmer::WebSource("https://cran.r-project.org", "CRAN"))
+    ),
+    ellmer::ContentToolRequestFetch("https://example.com"),
+    ellmer::ContentToolResponseFetch("https://example.com", "success"),
+    ellmer::ContentCitation(
+      ellmer::WebSource("https://example.com", "Example")
+    )
+  )
+
+  expect_true(
+    all(
+      vapply(
+        contents,
+        function(content) {
+          is.null(contents_shinychat(content))
+        },
+        logical(1)
+      )
+    )
+  )
+})
+
 test_that("processes a Turn object", {
   # Create a turn with multiple content items
   turn <- ellmer::AssistantTurn(
