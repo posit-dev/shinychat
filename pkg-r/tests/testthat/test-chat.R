@@ -204,6 +204,7 @@ test_that("chat_append_stream() handles a stream that fails before it yields", {
 
     expect_promise(p, "rejected")
     expect_equal(conditionMessage(res), "boom")
+    expect_s3_class(res, "shiny.silent.error")
   })
 })
 
@@ -377,12 +378,16 @@ test_that("chat_server() exposes the condition from a failed response", {
     suppressWarnings({
       session$setInputs(chat_user_input = "hi")
 
-      while (is.null(shiny::isolate(mod$last_error()))) {
+      deadline <- Sys.time() + 5
+      while (
+        is.null(shiny::isolate(mod$last_error())) && Sys.time() < deadline
+      ) {
         later::run_now(0.05)
         session$flushReact()
       }
     })
 
+    expect_false(is.null(shiny::isolate(mod$last_error())))
     expect_equal(shiny::isolate(mod$status()), "idle")
     expect_equal(conditionMessage(shiny::isolate(mod$last_error())), "boom")
   })
