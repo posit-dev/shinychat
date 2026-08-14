@@ -1,9 +1,9 @@
 import { createRoot, type Root } from "react-dom/client"
 import { createElement } from "react"
 import { ChatApp } from "./ChatApp"
-import type { InitialGreeting } from "./ChatApp"
+import type { ChatAppProps, InitialGreeting } from "./ChatApp"
 import { getShinyTransport } from "../transport/shiny-transport"
-import type { ChatMessageData } from "./state"
+import type { ChatMessageData, ToolGrouping } from "./state"
 import type { ContentType, GreetingOptions } from "../transport/types"
 import { uuid } from "../utils/uuid"
 import { DEFAULT_UPLOAD_ACCEPT } from "./attachments"
@@ -89,10 +89,24 @@ function parseInitialGreeting(
   }
 }
 
+// `tool-grouping` is an enum, not a tri-state: a recognized value wins, and
+// anything else (including absent) defers to the client default in ChatApp.
+function parseToolGrouping(value: string | null): ToolGrouping | undefined {
+  return value === "none" || value === "tool" || value === "all"
+    ? value
+    : undefined
+}
+
 class ChatContainerElement extends HTMLElement {
   private reactRoot: Root | null = null
   private footerEl: Element | null = null
   private pendingUnmount: ReturnType<typeof setTimeout> | null = null
+  // Retained so an observed attribute can re-render with one field replaced
+  // instead of rebuilding every prop (and re-parsing the initial messages,
+  // which by then have been superseded by live reducer state).
+  private appProps: ChatAppProps | null = null
+
+  static observedAttributes = ["tool-grouping"]
 
   connectedCallback() {
     // Moving the element in the DOM fires disconnectedCallback then
@@ -108,6 +122,7 @@ class ChatContainerElement extends HTMLElement {
 
     const elementId = this.getAttribute("id") ?? ""
     const iconAssistant = this.getAttribute("icon-assistant") ?? undefined
+    const asideFavicon = this.getAttribute("aside-favicon") !== "false"
     // Any present value other than "false" counts as enabled, which keeps the
     // R package's bare `enable-cancel` boolean attribute working. Absent (null)
     // defers the choice to the server (`client=`) via `update_cancel`.
@@ -120,6 +135,8 @@ class ChatContainerElement extends HTMLElement {
     const enableUploadAttr = this.getAttribute("allow-attachments")
     const enableUpload =
       enableUploadAttr === null ? undefined : enableUploadAttr !== "false"
+
+    const toolGrouping = parseToolGrouping(this.getAttribute("tool-grouping"))
 
     const inputEl = this.querySelector(CHAT_INPUT_TAG)
     const placeholder = inputEl?.getAttribute("placeholder") ?? undefined
@@ -192,27 +209,42 @@ class ChatContainerElement extends HTMLElement {
       )
     })
 
+    this.appProps = {
+      transport,
+      shinyLifecycle: transport,
+      elementId,
+      iconAssistant,
+      inputId,
+      cancelId,
+      uploadAccept,
+      maxUploadSize,
+      placeholder,
+      initialMessages,
+      initialGreeting,
+      enableCancel,
+      enableUpload,
+      asideFavicon,
+      toolGrouping,
+      footerEl: this.footerEl ?? undefined,
+      slashCommandId,
+      submitKey,
+    }
     this.reactRoot = createRoot(this)
-    this.reactRoot.render(
-      createElement(ChatApp, {
-        transport,
-        shinyLifecycle: transport,
-        elementId,
-        iconAssistant,
-        inputId,
-        cancelId,
-        uploadAccept,
-        maxUploadSize,
-        placeholder,
-        initialMessages,
-        initialGreeting,
-        enableCancel,
-        enableUpload,
-        footerEl: this.footerEl ?? undefined,
-        slashCommandId,
-        submitKey,
-      }),
-    )
+    this.reactRoot.render(createElement(ChatApp, this.appProps))
+  }
+
+  // Changing the mode re-routes the transcript in place rather than rebuilding
+  // the chat, so an app can offer it as a display setting without discarding the
+  // conversation. Attribute changes before connect are picked up by
+  // connectedCallback's own read, hence the guard rather than a queue.
+  attributeChangedCallback(
+    name: string,
+    _old: string | null,
+    next: string | null,
+  ) {
+    if (name !== "tool-grouping" || !this.reactRoot || !this.appProps) return
+    this.appProps = { ...this.appProps, toolGrouping: parseToolGrouping(next) }
+    this.reactRoot.render(createElement(ChatApp, this.appProps))
   }
 
   disconnectedCallback() {

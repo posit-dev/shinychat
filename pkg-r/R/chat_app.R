@@ -179,8 +179,9 @@ check_ellmer_chat <- function(client) {
 #' @description
 #' `r lifecycle::badge("deprecated")`
 #'
-#' These functions are deprecated as of shinychat 0.5.0.
-#' Use [chat_ui()] with `NS(id, "chat")` and [chat_server()] instead.
+#' These functions are deprecated as of shinychat 0.5.0. Use [chat_ui()] and
+#' [chat_server()] instead, pairing them by `id` as described in *Pairing with
+#' `chat_server()`* in [chat_ui()].
 #'
 #' @param id The chat module ID.
 #' @param client Deprecated. The client state is now managed by [chat_server()].
@@ -226,7 +227,10 @@ chat_mod_ui <- function(
   )
 }
 
-#' @describeIn chat_app Wire up batteries-included chat server logic in a Shiny session.
+#' @describeIn chat_app Wire up batteries-included chat server logic in a Shiny
+#'   session. Pair with [chat_ui()] by passing it the same `id`; see *Pairing
+#'   with `chat_server()`* in [chat_ui()] for the top-level and module-based
+#'   patterns.
 #' @inheritParams chat_restore
 #' @param history Conversation history configuration. `TRUE` (default) enables
 #'   history with default settings; `FALSE` disables it; pass a [history_options()]
@@ -490,28 +494,51 @@ chat_server <- function(
     greeting_stream_task$invoke(id, greeting, session)
   }
 
-  if (is.function(greeting)) {
-    greeting_fmls <- names(formals(greeting))
-
-    shiny::observeEvent(
-      session$input[[paste0(id, "_greeting_requested")]],
-      label = "on_greeting_requested",
-      {
-        args <- list()
-        if ("client" %in% greeting_fmls) {
-          greeter <- client$clone()
-          greeter$set_turns(list())
-          args$client <- greeter
-        }
-        greeting_stream_task$invoke(
-          id,
-          do.call(greeting, args),
-          session
-        )
+  resolve_greeting_mod <- function() {
+    if (is.function(greeting)) {
+      greeting_fmls <- names(formals(greeting))
+      args <- list()
+      if ("client" %in% greeting_fmls) {
+        greeter <- client$clone()
+        greeter$set_turns(list())
+        args$client <- greeter
       }
-    )
-  } else if (!is.null(greeting)) {
-    set_greeting_mod(greeting)
+      greeting_stream_task$invoke(id, do.call(greeting, args), session)
+    } else {
+      set_greeting_mod(greeting)
+    }
+  }
+
+  if (!is.null(greeting)) {
+    history_enabled <- !isFALSE(history)
+    history_controller <- if (history_enabled) {
+      get_session_chat_bookmark_info(
+        session,
+        paste0(id, ".history-controller")
+      )
+    } else {
+      NULL
+    }
+
+    if (!is.null(history_controller)) {
+      # Defer to history's own restore-decision instead of racing the
+      # client's independent `_greeting_requested` request.
+      history_controller$on_settled <- function(restored) {
+        if (!restored) {
+          resolve_greeting_mod()
+        }
+      }
+    } else if (is.function(greeting)) {
+      shiny::observeEvent(
+        session$input[[paste0(id, "_greeting_requested")]],
+        label = "on_greeting_requested",
+        {
+          resolve_greeting_mod()
+        }
+      )
+    } else {
+      resolve_greeting_mod()
+    }
   }
 
   send_chat_action(

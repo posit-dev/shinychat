@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from ._chat_bookmark import is_chatlas_chat_client
+from ._chat_bookmark import is_chatlas_chat_client, serialize_chatlas_turn
 from ._chat_client import ChatClient
-from ._chatlas_serialization import serialize_chatlas_turn
 
 
 @runtime_checkable

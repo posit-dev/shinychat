@@ -72,3 +72,17 @@ shinychat_deps <- function() {
 drop_nulls <- function(x) {
   x[!vapply(x, is.null, FUN.VALUE = logical(1))]
 }
+
+# Translate an icon value into its wire attribute. `FALSE` removes the icon
+# (wire `""`, which the client reads as "no icon"); `TRUE`/`NULL` defer to the
+# default (attribute omitted, returned as `NULL`); anything else is coerced to
+# an HTML string.
+resolve_icon_attr <- function(icon) {
+  if (is.null(icon) || isTRUE(icon)) {
+    return(NULL)
+  }
+  if (isFALSE(icon)) {
+    return("")
+  }
+  as.character(icon)
+}

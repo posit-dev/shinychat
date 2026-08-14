@@ -41,12 +41,28 @@ MATRIX_PATH = (
 MATRIX: list[dict[str, Any]] = json.loads(MATRIX_PATH.read_text())
 
 
+def _matrix_msg(role: str) -> dict[str, object]:
+    return {
+        "role": role,
+        "segments": [{"content": role, "content_type": "markdown"}],
+    }
+
+
+class _MatrixFakeChat(_NavFakeChat):
+    """Reports the same fixed user/assistant ui pair `_NavFakeAdapter`'s
+    turns produce, so message-index-based operations (handle_edit,
+    handle_navigate) have something to resolve against."""
+
+    def _messages_for_bookmark(self) -> list[Any]:
+        return [_matrix_msg("user"), _matrix_msg("assistant")]
+
+
 def _make_matrix_controller() -> tuple[
     HistoryController, InMemoryConversationStore
 ]:
     store = InMemoryConversationStore()
     controller = HistoryController(
-        chat=_NavFakeChat(),  # type: ignore[arg-type]
+        chat=_MatrixFakeChat(),  # type: ignore[arg-type]
         adapter=_NavFakeAdapter(),  # type: ignore[arg-type]
         store=store,
         title_fn=None,
@@ -59,12 +75,16 @@ def _make_matrix_controller() -> tuple[
     return controller, store
 
 
-async def _seed(controller: HistoryController, setup: dict[str, Any]) -> dict[str, str]:
+async def _seed(
+    controller: HistoryController, setup: dict[str, Any]
+) -> dict[str, str]:
     n = setup.get("conversations", 1) if setup.get("turns", 0) > 0 else 0
     ids: list[str] = []
     for i in range(n):
         await controller.on_response()
-        assert controller.record is not None, "setup must produce an active record"
+        assert controller.record is not None, (
+            "setup must produce an active record"
+        )
         ids.append(controller.record.id)
         if i < n - 1:
             await controller.new_chat()
@@ -149,6 +169,10 @@ async def _check_delete_inactive_conversation_leaves_active_record_and_removes_f
     assert ctx["first_id"] not in {m.id for m in remaining}
 
 
+async def _check_navigate_with_no_siblings_is_noop(ctx: dict[str, Any]) -> None:
+    assert ctx["controller"].record.current_leaf == ctx["before_current_leaf"]
+
+
 CUSTOM_CHECKS: dict[str, Callable[[dict[str, Any]], Any]] = {
     "rename_updates_title_and_marks_user_source": _check_rename,
     "delete_active_conversation_clears_controller_record": _check_delete,
@@ -167,6 +191,7 @@ CUSTOM_CHECKS: dict[str, Callable[[dict[str, Any]], Any]] = {
     "delete_inactive_conversation_leaves_active_record_and_removes_from_store": (
         _check_delete_inactive_conversation_leaves_active_record_and_removes_from_store
     ),
+    "navigate_with_no_siblings_is_noop": _check_navigate_with_no_siblings_is_noop,
 }
 
 
@@ -178,6 +203,7 @@ async def test_matrix(case: dict[str, Any]) -> None:
     active_id = ids["active_id"]
     before_updated_at = controller.record.updated_at  # type: ignore[union-attr]
     before_title = controller.record.title  # type: ignore[union-attr]
+    before_current_leaf = controller.record.current_leaf  # type: ignore[union-attr]
 
     method = case["operation"]["method"]
     args = _resolve_args(case["operation"].get("args", []), ids)
@@ -198,5 +224,6 @@ async def test_matrix(case: dict[str, Any]) -> None:
             "first_id": ids.get("first_id"),
             "before_updated_at": before_updated_at,
             "before_title": before_title,
+            "before_current_leaf": before_current_leaf,
         }
         await check(ctx)

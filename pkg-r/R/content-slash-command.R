@@ -61,7 +61,7 @@ ContentSlashCommand <- S7::new_class(
   parent = ellmer::ContentText,
   properties = list(
     command = new_property(
-      class_character,
+      S7::class_character,
       validator = function(value) {
         if (length(value) != 1 || is.na(value)) {
           "must be a single non-missing string."
@@ -69,7 +69,7 @@ ContentSlashCommand <- S7::new_class(
       }
     ),
     user_text = new_property(
-      class_character,
+      S7::class_character,
       default = "",
       validator = function(value) {
         if (length(value) != 1 || is.na(value)) {

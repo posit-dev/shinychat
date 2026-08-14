@@ -19,6 +19,18 @@ shiny-chat-container {
   // message (image thumbnail, PDF chip, text preview), so the row is uniform.
   --shiny-chat-attachment-size: 4.5rem;
 
+  // Opacity that quiets the tool-activity and thinking rows so a whole run reads
+  // as one subordinate unit rather than competing with the assistant's prose.
+  // The public --shiny-chat-activity-opacity overrides it (set inline to dim a
+  // single chat, or in a stylesheet to dim every instance); the private token is
+  // what the call sites in chat-tools.scss and the thinking header actually read.
+  // The high-contrast media query below resets it to 1. A second, fixed step
+  // dims metadata (intent / preview / disclosure glyph) *relative to* the row and
+  // is reset in lockstep, so nothing is left translucent when a user asks for
+  // full contrast.
+  --_activity-opacity: var(--shiny-chat-activity-opacity, 0.7);
+  --_activity-opacity-muted: 0.66;
+
   // Full-width and positioned so the history trigger and drawer overlay (direct
   // children) anchor to the whole element — the scrim covers messages, input,
   // and footer. The width limit + centering live on .shiny-chat-wrapper instead.
@@ -97,6 +109,20 @@ shiny-chat-container {
 // --_min-height override are trivial for developers.
 :where(shiny-chat-container:has(> .shiny-chat-history-trigger)) {
   --_min-height: 400px;
+}
+
+// Full contrast on request. Dimming activity rows by opacity blends the text
+// toward the background, which drops already-muted (secondary-color) labels well
+// below WCAG AA; when a user asks for more contrast, less transparency, or is in
+// a forced-colors mode, remove the reduction entirely. Set at element specificity
+// so it lands after the base --_activity-opacity assignment, i.e. accessibility
+// wins over an author's --shiny-chat-activity-opacity by default.
+@media (prefers-contrast: more), (prefers-reduced-transparency: reduce),
+  (forced-colors: active) {
+  shiny-chat-container {
+    --_activity-opacity: 1;
+    --_activity-opacity-muted: 1;
+  }
 }
 
 // The width-limited, centered content column: messages, input, and footer.
@@ -237,6 +263,13 @@ shiny-chat-container:not([fill]) {
     align-self: center;
     padding-right: 1px;
   }
+
+  /* When the icon is removed (icon_assistant=False / icon=False), collapse the
+     grid to a single content column so nothing dangles where the icon was. */
+  &:not(:has(> .message-icon)) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
 }
 
 .shiny-chat-message-content > hr:first-child {
@@ -255,6 +288,7 @@ shiny-chat-container:not([fill]) {
 
 /* Align the user message to the right */
 .shiny-chat-user-message {
+  position: relative;
   align-self: flex-end;
   padding: 0.75rem 1rem;
   border-radius: 10px;
@@ -264,6 +298,9 @@ shiny-chat-container:not([fill]) {
   grid-template-columns: auto;
   // Prevent structural wrapper/button elements from appearing in clipboard copies
   user-select: none;
+  // Let vertical scrolling through a message pass through even while our own
+  // long-press-hold gesture is tracking the pointer (see ChatMessage.tsx).
+  touch-action: pan-y;
 
   .shiny-chat-message-content {
     user-select: text;
@@ -275,6 +312,70 @@ shiny-chat-container:not([fill]) {
   .content-type-text {
     white-space: pre;
     overflow-x: auto;
+  }
+}
+
+.shiny-chat-btn-send {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background-color: transparent;
+  color: var(--bs-primary, #007bc2);
+  transition: color 0.25s ease-in-out;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  line-height: 16px;
+  border-radius: 50%;
+  &:disabled {
+    cursor: not-allowed;
+    color: var(--bs-gray-500, #8d959e);
+  }
+  &.shiny-chat-btn-cancel {
+    color: var(--bs-danger, #dc3545);
+  }
+  &.shiny-chat-btn-spinner {
+    pointer-events: none;
+    cursor: default;
+    svg {
+      display: block;
+      animation: shiny-chat-spin 0.75s linear infinite;
+      transform-origin: center;
+    }
+  }
+}
+
+.shiny-chat-btn-attach {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  // The button renders before the editor (AttachmentTray comes first in the
+  // DOM) and .ProseMirror is position: relative, so without a z-index the
+  // editor's opaque form-control background paints over the button.
+  z-index: 1;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  color: var(--bs-gray-600, #707782);
+  transition: color 0.25s ease-in-out;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 50%;
+  svg {
+    display: block;
+    width: 22px;
+    height: 22px;
+  }
+  &:hover:not(:disabled) {
+    color: var(--bs-primary, #007bc2);
+  }
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
   }
 }
 
@@ -323,62 +424,10 @@ shiny-chat-container:not([fill]) {
     }
   }
   .shiny-chat-btn-send {
-    position: absolute;
     bottom: calc(6px + var(--_input-padding-bottom));
-    right: 8px;
-    background-color: transparent;
-    color: var(--bs-primary, #007bc2);
-    transition: color 0.25s ease-in-out;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    line-height: 16px;
-    border-radius: 50%;
-    &:disabled {
-      cursor: not-allowed;
-      color: var(--bs-gray-500, #8d959e);
-    }
-    &.shiny-chat-btn-cancel {
-      color: var(--bs-danger, #dc3545);
-    }
-    &.shiny-chat-btn-spinner {
-      pointer-events: none;
-      cursor: default;
-      svg {
-        display: block;
-        animation: shiny-chat-spin 0.75s linear infinite;
-        transform-origin: center;
-      }
-    }
   }
   .shiny-chat-btn-attach {
-    position: absolute;
     bottom: calc(6px + var(--_input-padding-bottom));
-    left: 8px;
-    width: 24px;
-    height: 24px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background-color: transparent;
-    color: var(--bs-gray-600, #707782);
-    transition: color 0.25s ease-in-out;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    border-radius: 50%;
-    svg {
-      display: block;
-      width: 22px;
-      height: 22px;
-    }
-    &:hover:not(:disabled) {
-      color: var(--bs-primary, #007bc2);
-    }
-    &:disabled {
-      cursor: not-allowed;
-      opacity: 0.5;
-    }
   }
 }
 
@@ -498,7 +547,7 @@ shiny-chat-container:not([fill]) {
 }
 
 /* External link dialog styling */
-.shinychat-external-link-dialog {
+.shiny-chat-external-link-dialog {
   padding: 0;
   border: none;
   background: none;
@@ -511,88 +560,101 @@ shiny-chat-container:not([fill]) {
   }
 }
 
-.shinychat-external-link-dialog::backdrop {
+.shiny-chat-external-link-dialog::backdrop {
   background-color: rgba(0, 0, 0, 0.5);
 }
 
-.shinychat-external-link-dialog .link-url {
+.shiny-chat-external-link-dialog .link-url {
   word-break: break-all;
   font-weight: 500;
 }
 
 /* Thinking display */
-.shinychat-thinking {
-  --shinychat-thinking-header-color: var(--bs-secondary-color, #6c757d);
-  --shinychat-thinking-border-color: var(--bs-border-color, #dee2e6);
-  --shinychat-thinking-content-color: var(--bs-secondary-color, #6c757d);
-  // Chevron is 12px wide; border aligns to its horizontal center
-  --_chevron-center: 6px;
+.shiny-chat-thinking {
+  // `inherit`, not the muted secondary, so the header matches the tool rows'
+  // `color: inherit` exactly — the shared --_activity-opacity below is what
+  // quiets it, and muting the color on top of that made the header read dimmer
+  // than the rows it sits between. It also compounded: secondary at 0.7 is
+  // 2.49:1 (light), below AA for what is real text; inherited body color at the
+  // same opacity is 5.76:1. The thought *body* stays secondary — that prose is
+  // genuinely subordinate, and it is not part of the row stack.
+  --shiny-chat-thinking-header-color: inherit;
+  --shiny-chat-thinking-border-color: var(--bs-border-color, #dee2e6);
+  --shiny-chat-thinking-content-color: var(--bs-secondary-color, #6c757d);
 
-  font-size: 0.875rem;
+  // Row geometry shared with the condensed tool rows, which define the same
+  // pseudo-private tokens (see `.shiny-chat-tool-group` in chat-tools.scss). A
+  // collapsed thinking header and a tool-call row are both subordinate activity
+  // lines in the transcript and should read as one quiet surface, so they share
+  // the sizing, dimming, glyph slot, and hover pill.
+  --_row-pad: 0.4rem;
+  --_row-glyph-width: 0.9em;
+
+  font-size: 0.8em;
 }
 
-.shinychat-thinking-header {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  background: none;
-  border: none;
-  padding-block: 0.5em;
-  padding-inline: 0;
-  line-height: 1;
-  color: var(--shinychat-thinking-header-color);
-  cursor: pointer;
-  font-size: inherit;
-  transition: color 0.15s;
-  border-radius: 4px;
-
-  &:hover {
-    color: var(--bs-body-color, #212529);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--bs-primary, #007bc2);
-    outline-offset: 2px;
-  }
-}
-
-.shinychat-thinking-chevron {
-  flex-shrink: 0;
+.shiny-chat-thinking-header {
   display: flex;
   align-items: center;
-  transition: transform 0.2s ease;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 2em;
+  padding: 0.25rem var(--_row-pad);
+  border-radius: 6px;
+  background: none;
+  border: none;
+  text-align: left;
+  color: var(--shiny-chat-thinking-header-color);
+  cursor: pointer;
+  font: inherit;
+  opacity: var(--_activity-opacity);
 
-  &[data-expanded] {
-    transform: rotate(90deg);
+  // The focus ring is shared with the tool rows (see chat-tools.scss).
+  &:hover,
+  &:focus-visible {
+    background-color: rgba(var(--bs-emphasis-color-rgb), 0.05);
   }
 }
 
-.shinychat-thinking-label {
-  font-weight: 500;
+// The leading identity glyph is sized and shaped alongside the generic tool dot
+// (see `.shiny-chat-thinking-glyph` in chat-tools.scss); it is static, and the
+// trailing `.shiny-chat-thinking-disclosure` is what rotates.
+.shiny-chat-thinking-disclosure {
+  margin-inline-start: auto;
+}
+
+// Crossfades between labels ("Thinking" → "Thought for 2s"); the duration is
+// kept in step with `FADE_DURATION_MS` in `useFadingText.ts`, which the tool
+// group's title shares.
+.shiny-chat-thinking-label {
   transition: opacity 0.2s ease;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 
   &[data-fading] {
     opacity: 0;
   }
 }
 
-.shinychat-thinking-dot {
+.shiny-chat-thinking-dot {
   margin-left: 0;
   fill: currentColor;
   opacity: 0;
   transform-origin: center;
   animation:
-    shinychat-thinking-dot-appear 0.2s ease 500ms forwards,
-    shinychat-thinking-dot-pulse 1.75s infinite cubic-bezier(0.18, 0.89, 0.32, 1.28) 500ms;
+    shiny-chat-thinking-dot-appear 0.2s ease 500ms forwards,
+    shiny-chat-thinking-dot-pulse 1.75s infinite cubic-bezier(0.18, 0.89, 0.32, 1.28) 500ms;
 }
 
-@keyframes shinychat-thinking-dot-appear {
+@keyframes shiny-chat-thinking-dot-appear {
   to {
     opacity: 0.6;
   }
 }
 
-@keyframes shinychat-thinking-dot-pulse {
+@keyframes shiny-chat-thinking-dot-pulse {
   0% {
     transform: scale(1);
     opacity: 0.6;
@@ -607,13 +669,14 @@ shiny-chat-container:not([fill]) {
   }
 }
 
-.shinychat-thinking-content {
+.shiny-chat-thinking-content {
   display: grid;
   grid-template-rows: 0fr;
   transition: grid-template-rows 0.2s ease;
-  // Align left border with center of chevron
-  margin-left: calc(var(--_chevron-center) - 1px);
-  border-left: 2px solid var(--shinychat-thinking-border-color);
+  // Land the left rule on the leading glyph, the same way a tool row's drill-in
+  // rule does: past the row's inline padding, then half the glyph box.
+  margin-left: calc(var(--_row-pad) + var(--_row-glyph-width) / 2 - 1px);
+  border-left: 2px solid var(--shiny-chat-thinking-border-color);
 
   &[data-expanded] {
     grid-template-rows: 1fr;
@@ -621,13 +684,15 @@ shiny-chat-container:not([fill]) {
   }
 }
 
-.shinychat-thinking-content-inner {
+.shiny-chat-thinking-content-inner {
   overflow: hidden;
   padding-left: 0.75rem;
   padding-block: 0;
-  color: var(--shinychat-thinking-content-color);
+  color: var(--shiny-chat-thinking-content-color);
   font-size: 0.9em;
-  transition: padding-block 0.2s ease;
+  // No `padding-block` transition: the parent already animates the open/close
+  // with `grid-template-rows` over the same duration, so this only added a
+  // second layout-triggering property for 4px.
 
   [data-expanded] > & {
     padding-block: 0.25rem;
@@ -636,28 +701,28 @@ shiny-chat-container:not([fill]) {
   }
 }
 
-.shinychat-thinking-topic {
+.shiny-chat-thinking-topic {
   font-weight: 600;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .shinychat-thinking-dot {
-    animation: shinychat-thinking-dot-appear 0s ease 500ms forwards;
+  .shiny-chat-thinking-dot {
+    animation: shiny-chat-thinking-dot-appear 0s ease 500ms forwards;
   }
 
-  .shinychat-thinking-chevron {
+  .shiny-chat-thinking-disclosure {
     transition: none;
   }
 
-  .shinychat-thinking-content {
+  .shiny-chat-thinking-content {
     transition: none;
   }
 
-  .shinychat-thinking-content-inner {
+  .shiny-chat-thinking-content-inner {
     transition: none;
   }
 
-  .shinychat-thinking-label {
+  .shiny-chat-thinking-label {
     transition: none;
   }
 }
@@ -996,4 +1061,165 @@ shiny-chat-container:not([fill]) {
   font-size: 1.25rem;
   line-height: 1;
   cursor: pointer;
+}
+
+/* Footer row below a user message — sibling nav + edit button.
+   Positioned outside the bubble (not overlapping its text) and right-aligned
+   to match the bubble's alignment. */
+.shiny-chat-message-footer {
+  position: absolute;
+  right: 0.25rem;
+  bottom: -1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* Edit button — shown on hover over user messages. Deliberately left
+   focusable (opacity-only, not visibility/display) so keyboard users can
+   Tab to it; visibility:hidden would remove it from the tab order entirely
+   and no amount of :focus-within on an ancestor could bring it back. */
+.shiny-chat-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  color: var(--bs-secondary-color, #6c757d);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background-color 0.15s;
+
+  &:hover,
+  &:focus-visible {
+    opacity: 1;
+    color: var(--bs-primary, #007bc2);
+    background-color: var(--bs-tertiary-bg, rgba(0, 0, 0, 0.05));
+  }
+
+  svg {
+    display: block;
+  }
+}
+
+.shiny-chat-user-message:hover .shiny-chat-edit-btn,
+.shiny-chat-user-message:focus-within .shiny-chat-edit-btn,
+.shiny-chat-user-message[data-touch-revealed] .shiny-chat-edit-btn {
+  opacity: 1;
+}
+
+/* Edit box — a boxed mini-composer matching the chrome of the main input at
+   the bottom of the chat, so editing a message reuses the same visual
+   language as sending one, rather than a bespoke inline form. */
+.shiny-chat-edit-wrap {
+  width: 100%;
+}
+
+// While editing, let the bubble span the full row so the composer isn't
+// constrained to the (possibly tiny) width of the original message.
+.shiny-chat-user-message:has(.shiny-chat-edit-wrap) {
+  width: 100%;
+}
+
+.shiny-chat-edit-box {
+  position: relative;
+  width: 100%;
+  border: 1px solid var(--bs-border-color, #ced4da);
+  border-radius: 20px;
+
+  &:focus-within {
+    border-color: var(--bs-primary, #007bc2);
+  }
+
+  .tiptap {
+    // The edit box draws the pill border itself, so strip the editor's own
+    // form-control chrome (otherwise it reads as a second box inside).
+    border-color: transparent !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding-right: 36px !important;
+    min-height: 1.5rem;
+    max-height: 16rem;
+    overflow-y: auto;
+    font: inherit;
+    color: inherit;
+
+    &.is-empty::before {
+      content: attr(data-placeholder);
+      color: var(--bs-gray-600, #707782);
+      float: left;
+      height: 0;
+      pointer-events: none;
+    }
+  }
+
+  // Only reserve left space when the attach button is actually rendered.
+  &:has(.shiny-chat-btn-attach) {
+    .tiptap {
+      padding-left: 36px !important;
+    }
+  }
+}
+
+.shiny-chat-edit-cancel-outside {
+  display: block;
+  margin: 0.35rem 0 0 auto;
+  padding: 0.3rem 0.75rem;
+  border: none;
+  border-radius: 14px;
+  background-color: var(--bs-tertiary-bg, rgba(0, 0, 0, 0.05));
+  color: var(--bs-secondary-color, #6c757d);
+  font-size: 0.85em;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+
+  &:hover {
+    background-color: var(--bs-border-color, #ced4da);
+    color: var(--bs-body-color, inherit);
+  }
+}
+
+/* Sibling navigation arrows */
+.shiny-chat-sibling-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  font-size: 0.75rem;
+  color: var(--bs-secondary-color, #6c757d);
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: 50%;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    color: inherit;
+    transition: color 0.15s, background-color 0.15s;
+
+    &:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+
+    &:not(:disabled):hover {
+      color: var(--bs-primary, #007bc2);
+      background-color: var(--bs-tertiary-bg, rgba(0, 0, 0, 0.05));
+    }
+  }
+
+  span {
+    min-width: 2.5rem;
+    text-align: center;
+  }
 }

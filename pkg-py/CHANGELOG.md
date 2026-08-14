@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [UNRELEASED]
+
+### New features
+
+* Chatlas web search and web fetch responses now show their activity and citations directly in the chat. Readers can open a citation beside its claim or use the message-wide Sources pill. `ContentCitation.grounded_span` links each citation to the answer text that it supports.
+
+* Assistant messages can now attach source details to specific claims with the `<shiny-aside>` markup convention. This convention powers shinychat's web citations and can also support custom RAG workflows. Add an inline `<shiny-aside>` tag with source details and an optional `grounded-span`. Shinychat shows a compact source pill and highlights the related text when the pill is open. See the `Asides` callout in the `append_message` and `append_message_stream` documentation.
+
+* You can now edit a message you already sent, instead of only being able to send a new one. Hover a user message (or press and hold on a touch device) and click the pencil icon to open an inline editor (pre-filled with the original text and attachments); press Enter (or Cmd/Ctrl+Enter, depending on `submit_key`) to save and resend, or Escape to cancel. Editing forks the conversation from that point — the original branch isn't lost, it's kept as a sibling. `‹ 1 / 2 ›`-style controls appear on any message with more than one version, letting you step back and forth between them at any time, including after reloading the page or returning from the history drawer. Requires history to be enabled (the default when using `client=`). (#269)
+
+* Tool calls now render as a condensed activity row by default. Expand a group row to see each individual call, then drill into a call to see its full request/result card. `ToolResultDisplay` gained `label` (a short per-call identifying value, e.g. a filename or query) and `value_preview` (a terse peek at the result, e.g. "1,204 rows"), both shown in the activity row and expanded call list.
+
+* Added `tool_grouping` to `chat_ui()` / `Chat.ui()`: `"tool"` (default) groups calls to the same tool within a tool-calling loop (order-independent, not just consecutive calls); `"all"` groups every call in the loop together; `"none"` shows one activity row per call. Prose and thinking start a new loop. Individual tools can override `"tool"` or `"all"` via a `grouping` tool annotation -- for chatlas tools, set it under `annotations={"extra": {"grouping": ...}}`. Chat-level `"none"` always disables grouping.
+
+* Fully custom `ContentToolResult` UI returned through a `message_content()` or `message_content_chunk()` handler now settles its pending tool activity row and renders as standalone output. This preserves the custom UI for streamed messages, static preloads, and restored conversations without requiring changes to existing handlers.
+
+### Changes
+
+* The CSS classes used by the external-link dialog, thinking display, and tool-result images/PDFs now use the `.shiny-chat-*` prefix instead of `.shinychat-*`. The thinking display's custom properties and animation names have likewise changed from `--shinychat-thinking-*` / `shinychat-thinking-*` to `--shiny-chat-thinking-*` / `shiny-chat-thinking-*`. Update any custom CSS that targets these identifiers. (#285, #286)
+
+* The record of displayed messages is now sourced from the browser rather than a server-side accumulator. As a consequence, `chat.messages()` is *eventually* consistent: it returns an empty tuple until the client's first report, and a message passed to `chat.append_message()` does not appear there until the browser has rendered it and reported back. Read it reactively rather than expecting a synchronous update immediately after appending. (#272)
+
+    * The user-submission input (`input[f"{id}_user_input"]`) is now a persistent regular input rather than an event-priority one, so it retains its last value between submissions. This lets it co-batch with the message snapshot in a single reactive flush. It remains excluded from bookmarks. (#272)
+
+* A tool's definition `title` (from its annotations) and its result `title` (from `ToolResultDisplay`) are now shown as-is, without any client-side tense conjugation. The definition title is shown while the call is running and labels multi-call groups. For a single-call row, the result title (if provided) replaces it when the result arrives; in a multi-call group, a distinct result title can identify that call in the expanded list. The old `"Running {title}"` / `"{title} failed"` client-side title template has been removed. If a tool's title reads oddly while running now that the automatic "Running " prefix is gone, write an explicit present-tense definition title (e.g. "Running R code") and, optionally, a past-tense result title (e.g. "Ran R code"). Failures are shown via a separate status cue (a "failed"/"N failed" note and icon) rather than appended to the title.
+
+### Bug fixes
+
+* Fixed `MarkdownStream` permanently stopping following new content after the user scrolled back to the bottom. Pinning was decided only from `scroll` events, which browsers dispatch asynchronously; if a chunk grew the container first, the user's at-bottom position no longer read as at-bottom and auto-scroll silently disengaged for good. (#282)
+
 ## [0.6.1] - 2026-08-14
 
 ### Bug fixes

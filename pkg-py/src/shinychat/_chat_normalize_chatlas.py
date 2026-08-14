@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import warnings
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Optional, Sequence, Union
 
 from htmltools import (
@@ -17,6 +18,9 @@ from htmltools import (
 from packaging import version
 from pydantic import BaseModel, field_serializer, field_validator
 from typing_extensions import TypeAliasType
+
+from ._chat_types import ChatMessage
+from ._htmltools_serialization import SerializedHTML, serialize_htmltools
 
 if TYPE_CHECKING:
     from chatlas.types import ContentToolRequest, ContentToolResult
@@ -56,18 +60,18 @@ class ToolCardComponent(BaseModel):
     intent: Optional[str] = None
     "Optional intent description explaining the purpose of the tool execution."
 
-    expanded: bool = False
-    "Controls whether the card content is expanded/visible."
+    grouping: Optional[Literal["none", "tool", "all"]] = None
+    """
+    Per-tool override for how consecutive tool calls are grouped in the UI.
+    Read from the tool's `annotations["grouping"]`. If not provided, falls
+    back to the chat-level `tool_grouping` setting.
+    """
 
     model_config = {"arbitrary_types_allowed": True}
 
     @field_serializer("icon")
-    def _serialize_icon(self, value: TagChild) -> dict[str, Any]:
-        rendered = TagList(value).render()
-        return {
-            "html": rendered["html"],
-            "dependencies": [dep.as_dict() for dep in rendered["dependencies"]],
-        }
+    def _serialize_icon(self, value: TagChild) -> SerializedHTML:
+        return serialize_htmltools(value)
 
     @field_validator("icon", mode="before")
     @classmethod
@@ -95,8 +99,8 @@ class ToolRequestComponent(ToolCardComponent):
             tool_title=self.tool_title,
             icon=icon_ui["html"] if self.icon else None,
             intent=self.intent,
-            expanded="" if self.expanded else None,
             arguments=self.arguments,
+            grouping=self.grouping,
             *icon_ui["dependencies"],
         ).tagify()
 
@@ -178,16 +182,35 @@ class ToolResultComponent(ToolCardComponent):
     full_screen: bool = False
     "Controls whether a fullscreen toggle button is displayed on the card."
 
+    expanded: bool = False
+    "Controls whether the card content is expanded/visible."
+
+    label: Optional[str] = None
+    "A short, per-call identifying value shown alongside the tool title."
+
+    value_preview: Optional[str] = None
+    "A terse per-call preview of the tool result, shown in the condensed view."
+
+    custom_display: bool = False
+    """
+    Internal provenance marker only: set when `_chat_normalize.py` wraps an
+    author's own `message_content_chunk` override for a `ContentToolResult`
+    subclass through its internal normalization boundary, never by an author.
+    Not part of `ToolResultDisplay` or any author-facing
+    API. Records *that* shinychat performed the wrap, not how the client
+    should behave -- that interpretation stays free to change independently.
+    """
+
     def tagify(self) -> Tagified:
         icon_ui = TagList(self.icon).render()
 
         if self.value_type == "html":
             value_ui = TagList(self.value).render()
         else:
-            value_ui: "RenderedHTML" = {
-                "html": str(self.value),
-                "dependencies": [],
-            }
+            value_ui = RenderedHTML(
+                html=str(self.value),
+                dependencies=[],
+            )
 
         footer_ui = TagList(self.footer).render()
 
@@ -199,7 +222,7 @@ class ToolResultComponent(ToolCardComponent):
             tool_title=self.tool_title,
             icon=icon_ui["html"] if self.icon else None,
             intent=self.intent,
-            request_call=self.request_call,
+            request_call=self.request_call or None,
             status=self.status,
             value=value_ui["html"],
             value_type=self.value_type,
@@ -207,19 +230,70 @@ class ToolResultComponent(ToolCardComponent):
             expanded="" if self.expanded else None,
             footer=footer_ui["html"] if self.footer else None,
             full_screen="" if self.full_screen else None,
+            grouping=self.grouping,
+            label=self.label,
+            value_preview=self.value_preview,
+            custom_display="" if self.custom_display else None,
             *icon_ui["dependencies"],
             *value_ui["dependencies"],
             *footer_ui["dependencies"],
         ).tagify()
 
 
+class ShinyToolCardMessage(ChatMessage):
+    """Marker for shinychat's own rich tool-result card."""
+
+    pass
+
+
+def citation_aside(
+    url: str,
+    title: Optional[str],
+    grounded_span: Optional[str] = None,
+    cited_quote: Optional[str] = None,
+) -> str:
+    "Render a chatlas web citation as <shiny-aside> markup."
+    return str(
+        Tag(
+            "shiny-aside",
+            Tag("a", title or url, href=url),
+            data_citation="",
+            url=url,
+            grounded_span=grounded_span,
+            cited_quote=cited_quote,
+        )
+    )
+
+
 class ToolResultDisplay(BaseModel):
     """
-    Customize how tool results are displayed.
+    Customize the condensed display for a tool result.
 
     Assign a `ToolResultDisplay` instance to a
     [`chatlas.ContentToolResult`](https://posit-dev.github.io/chatlas/reference/types.ContentToolResult.html)
-    to customize the UI shown to the user when tool calls occur.
+    in its ``extra={"display": ...}`` metadata. Tool calls normally appear as a
+    compact activity row, optionally expand into a grouped call list, and drill
+    into a full request/result card. ``ToolResultDisplay`` customizes that row
+    and card without replacing either.
+
+    Use a present-tense definition title while the tool is running, then a
+    settled result title here when that improves the wording. For example,
+    register a tool with ``annotations={"title": "Looking up weather"}`` and
+    return ``title="Looked up weather for Duluth"``. In a single-call row, the
+    result title replaces the definition title when the result arrives. A
+    multi-call group keeps the shared definition title in its group row and can
+    use distinct result titles to identify calls in the expanded list.
+    shinychat does not conjugate titles automatically.
+
+    ``label`` and ``value_preview`` are compact, per-call metadata shown in the
+    activity row and grouped call list. Use them to distinguish repeated calls
+    without opening the card. ``html``, ``markdown``, and ``text`` customize the
+    result body inside the drill-down card. To replace the card with standalone
+    UI instead, register a custom ``message_content`` or
+    ``message_content_chunk`` handler for a ``ContentToolResult`` subclass.
+
+    See the [Tool calling guide](https://shiny.posit.co/py/docs/genai-tools.html)
+    for complete tool-display examples.
 
     Examples
     --------
@@ -231,7 +305,9 @@ class ToolResultDisplay(BaseModel):
 
     def my_tool():
         display = ToolResultDisplay(
-            title="Tool result title",
+            title="Looked up weather for Duluth",
+            label="Duluth, MN",
+            value_preview="18 C, clear",
             markdown="A _markdown_ message shown to user.",
         )
         return ctl.ContentToolResult(
@@ -244,29 +320,46 @@ class ToolResultDisplay(BaseModel):
     chat_client.register_tool(my_tool)
     ```
 
-    Parameters
-    ---------
-    title
-        The title to display in the header of the tool result.
-    icon
-        An icon to display in the header (alongside the title).
-    show_request
-        Whether to show the tool request inside the tool result container.
-    open
-        Whether or not the tool result details are expanded by default.
-    full_screen
-        Whether or not to display a fullscreen toggle button on the card.
-    html
-        Custom HTML content (to use in place of the default result display).
-    markdown
-        Custom Markdown string (to use in place of the default result display).
-    text
-        Custom plain text string (to use in place of the default result display).
-    footer
-        Optional HTML content to display in the card footer (below the card body).
+    Display fields
+    --------------
+    - ``title``:
+        The settled title for this result and its drill-down card. It replaces
+        the definition title in a single-call row. In a multi-call group, a
+        distinct result title can identify the call in the expanded call list.
+    - ``label``:
+        A short, per-call identifying value shown alongside the title
+        (e.g. a filename or query). Distinguishes this call from other calls
+        to the same tool. Without one, shinychat falls back to the call's own
+        `title` (when it differs from the group's), then a short preview of the
+        call's arguments, then the tool name.
+    - ``value_preview``:
+        A terse, per-call preview of the tool result, shown in the condensed
+        activity row and grouped call list before the full result is expanded.
+    - ``icon``:
+        An icon to display alongside the title in the activity row and
+        drill-down card.
+    - ``show_request``:
+        Whether to show the tool request inside the drill-down card.
+    - ``open``:
+        Whether the drill-down card is expanded by default.
+    - ``full_screen``:
+        Whether to display a fullscreen toggle button on the drill-down card.
+    - ``html``:
+        Custom HTML content inside the drill-down card, in place of the
+        default result display.
+    - ``markdown``:
+        Custom Markdown string inside the drill-down card, in place of the
+        default result display.
+    - ``text``:
+        Custom plain text string inside the drill-down card, in place of the
+        default result display.
+    - ``footer``:
+        Optional HTML content to display in the drill-down card footer.
     """
 
     title: Optional[str] = None
+    label: Optional[str] = None
+    value_preview: Optional[str] = None
     icon: TagChild = None
     html: TagChild = None
     show_request: bool = True
@@ -279,12 +372,8 @@ class ToolResultDisplay(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     @field_serializer("html", "icon", "footer")
-    def _serialize_html_icon(self, value: TagChild) -> dict[str, Any]:
-        rendered = TagList(value).render()
-        return {
-            "html": rendered["html"],
-            "dependencies": [dep.as_dict() for dep in rendered["dependencies"]],
-        }
+    def _serialize_html_icon(self, value: TagChild) -> SerializedHTML:
+        return serialize_htmltools(value)
 
     @field_validator("html", "icon", "footer", mode="before")
     @classmethod
@@ -293,6 +382,46 @@ class ToolResultDisplay(BaseModel):
             return restore_rendered_html(value)
         else:
             return value
+
+
+GroupingValue = Literal["none", "tool", "all"]
+
+
+@dataclass(frozen=True)
+class ResolvedToolAnnotations:
+    title: Optional[str] = None
+    icon: Any = None
+    grouping: Optional[GroupingValue] = None
+
+
+def as_grouping(value: object) -> Optional[GroupingValue]:
+    "Validate a tool annotation's `grouping` value, ignoring anything unexpected."
+    if value in ("none", "tool", "all"):
+        return value
+    return None
+
+
+def _annotation_extra(annotations: object) -> dict[str, Any]:
+    "Read a tool annotation's `extra` sub-dict, ignoring anything unexpected."
+    if not isinstance(annotations, dict):
+        return {}
+    extra = annotations.get("extra")
+    return extra if isinstance(extra, dict) else {}
+
+
+def resolve_tool_annotations(tool: Any) -> ResolvedToolAnnotations:
+    """Resolve the shared title, icon, and grouping annotation policy."""
+    if not tool or not tool.annotations:
+        return ResolvedToolAnnotations()
+
+    annotations = tool.annotations
+    extra = _annotation_extra(annotations)
+    return ResolvedToolAnnotations(
+        title=annotations.get("title"),
+        icon=extra.get("icon") or annotations.get("icon"),
+        grouping=as_grouping(extra.get("grouping"))
+        or as_grouping(annotations.get("grouping")),
+    )
 
 
 def tool_request_contents(x: "ContentToolRequest") -> Tagifiable:
@@ -308,16 +437,26 @@ def tool_request_contents(x: "ContentToolRequest") -> Tagifiable:
     if isinstance(x.arguments, dict):
         intent = x.arguments.get("_intent")
 
-    tool_title = None
-    if x.tool and x.tool.annotations:
-        tool_title = x.tool.annotations.get("title")
+    annotations = resolve_tool_annotations(x.tool)
+
+    # Icon strings are HTML and never get escaped
+    icon = (
+        HTML(annotations.icon)
+        if isinstance(annotations.icon, str)
+        else annotations.icon
+    )
 
     return ToolRequestComponent(
         request_id=x.id,
         tool_name=x.name,
         arguments=json.dumps(x.arguments),
         intent=intent,
-        tool_title=tool_title,
+        tool_title=annotations.title,
+        # The tool *definition* icon. The result element sends the result's own
+        # icon (falling back to this one), so the client needs both to tell a
+        # result-specific icon from the tool's shared identity.
+        icon=icon,
+        grouping=annotations.grouping,
     )
 
 
@@ -352,16 +491,10 @@ def tool_result_contents(x: "ContentToolResult") -> Tagifiable:
     if isinstance(x.arguments, dict):
         intent = x.arguments.get("_intent")
 
-    tool = x.request.tool
-    tool_title = None
-    icon = None
-    if tool and tool.annotations:
-        tool_title = tool.annotations.get("title")
-        icon = tool.annotations.get("extra", {}).get("icon")
-        icon = icon or tool.annotations.get("icon")
+    annotations = resolve_tool_annotations(x.request.tool)
 
     # Icon strings and HTML display never get escaped
-    icon = display.icon or icon
+    icon = display.icon or annotations.icon
     if icon and isinstance(icon, str):
         icon = HTML(icon)
     if value_type == "html" and isinstance(value, str):
@@ -373,7 +506,7 @@ def tool_result_contents(x: "ContentToolResult") -> Tagifiable:
         request_id=x.id,
         request_call=request_call,
         tool_name=x.request.name,
-        tool_title=display.title or tool_title,
+        tool_title=display.title or annotations.title,
         status="success" if x.error is None else "error",
         value=value,
         value_type=value_type,
@@ -383,6 +516,58 @@ def tool_result_contents(x: "ContentToolResult") -> Tagifiable:
         expanded=display.open,
         footer=display.footer,
         full_screen=display.full_screen,
+        grouping=annotations.grouping,
+        label=display.label,
+        value_preview=display.value_preview,
+    )
+
+
+def tool_result_message(result: Tagifiable) -> ChatMessage:
+    """Wrap shinychat's rich tool card in a marker message."""
+    cls = (
+        ShinyToolCardMessage
+        if isinstance(result, ToolResultComponent)
+        else ChatMessage
+    )
+    return cls(content=result)
+
+
+def wrap_custom_tool_result(
+    *,
+    request_id: str,
+    tool_name: str,
+    status: Literal["success", "error"],
+    # Not annotated `TagChild`: that name is rebound in this module to a
+    # pydantic `TypeAliasType` whose recursive `Sequence[TagChild]` arm
+    # pyright cannot resolve in a plain function signature. These are the only
+    # two shapes callers pass -- tags for `value_type="html"`, a plain string
+    # for every other mode, matching the split in `tagify()`.
+    value: Union[Tagifiable, str],
+    value_type: ValueType,
+    grouping: Optional[GroupingValue],
+) -> Tagifiable:
+    """Build the `<shiny-tool-result>` wrapper for an author's custom result UI.
+
+    Kept as a factory here so the caller only sees the opaque `Tagifiable`
+    return type.
+    """
+    return ToolResultComponent(
+        request_id=request_id,
+        tool_name=tool_name,
+        status=status,
+        value=value,
+        # Supplied by the caller, which mirrors the content mode the message
+        # already had, so wrapping never changes how the author's output
+        # renders (notably: a plain-string return stays on the markdown path
+        # rather than being promoted to `RawHTML`'s live `innerHTML`).
+        value_type=value_type,
+        # Keep the wire minimal: none of these render for a migrated call.
+        show_request=False,
+        grouping=grouping,
+        # Internal provenance marker only ("shinychat wrapped an author's
+        # custom output"), not part of any author-facing API and not
+        # surfaced by `ToolResultDisplay`.
+        custom_display=True,
     )
 
 

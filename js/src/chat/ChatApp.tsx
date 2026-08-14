@@ -1,18 +1,34 @@
-import { useReducer, useEffect, useRef, useMemo, useState } from "react"
+import {
+  useReducer,
+  useEffect,
+  useRef,
+  useMemo,
+  useState,
+  useCallback,
+} from "react"
 import {
   ShinyLifecycleContext,
   ChatToolContext,
   ChatDispatchContext,
+  ToolGroupingContext,
+  ChatSubmitContext,
+  AsideFaviconContext,
 } from "./context"
 import { setCurrentConversationId } from "./currentConversation"
 import { navigateTo } from "../utils/navigate"
 import {
   chatReducer,
   initialState,
+  routeToolBlocks,
+  splitThinkingBlocks,
+  contentFromBlocks,
+  buildMessagesSnapshot,
   type ChatMessageData,
   type ChatToolState,
   type GreetingData,
+  type ToolGrouping,
 } from "./state"
+import { useSupersededRequests } from "./useSupersededRequests"
 import { ChatContainer, type ChatContainerHandle } from "./ChatContainer"
 import type {
   ChatTransport,
@@ -20,6 +36,7 @@ import type {
   GreetingOptions,
 } from "../transport/types"
 import type { SubmitKey } from "./tiptap/submitShortcut"
+import type { AttachmentPayload } from "./attachments"
 
 export interface InitialGreeting {
   content: string
@@ -27,7 +44,7 @@ export interface InitialGreeting {
   options: GreetingOptions
 }
 
-interface ChatAppProps {
+export interface ChatAppProps {
   transport: ChatTransport
   shinyLifecycle: ShinyLifecycle
   elementId: string
@@ -41,6 +58,8 @@ interface ChatAppProps {
   initialGreeting?: InitialGreeting
   enableCancel?: boolean
   enableUpload?: boolean
+  asideFavicon?: boolean
+  toolGrouping?: ToolGrouping
   footerEl?: Element
   slashCommandId?: string
   submitKey?: SubmitKey
@@ -83,11 +102,29 @@ export function ChatApp({
   initialGreeting,
   enableCancel,
   enableUpload,
+  asideFavicon = true,
+  toolGrouping,
   footerEl,
   slashCommandId = "",
   submitKey,
 }: ChatAppProps) {
-  const messages = initialMessages ?? []
+  const resolvedToolGrouping = toolGrouping ?? initialState.toolGrouping
+  // Put preloaded/restored messages through the same block-construction pass as
+  // live ones — thinking split first, then the content router — so a restored
+  // transcript carries identical ThinkingDisplay and tool_loop grouping.
+  const messages = useMemo(
+    () =>
+      (initialMessages ?? []).map((m) => {
+        const split = m.blocks.flatMap((b) =>
+          b.type === "content"
+            ? splitThinkingBlocks(b.content, b.contentType)
+            : [b],
+        )
+        const blocks = routeToolBlocks(split, resolvedToolGrouping, m.role)
+        return { ...m, blocks, content: contentFromBlocks(blocks) }
+      }),
+    [initialMessages, resolvedToolGrouping],
+  )
   const [state, dispatch] = useReducer(chatReducer, {
     ...initialState,
     inputPlaceholder: placeholder ?? initialState.inputPlaceholder,
@@ -99,9 +136,72 @@ export function ChatApp({
     enableCancelExplicit: enableCancel !== undefined,
     enableUpload: enableUpload ?? initialState.enableUpload,
     enableUploadExplicit: enableUpload !== undefined,
+    toolGrouping: resolvedToolGrouping,
   })
 
+  // `tool-grouping` is a live attribute: the custom element re-renders this
+  // component when it changes, and the reducer re-routes the settled transcript
+  // at the new mode. No-ops on mount, where the prop already seeded the state.
+  useEffect(() => {
+    dispatch({ type: "SET_TOOL_GROUPING", grouping: resolvedToolGrouping })
+  }, [resolvedToolGrouping])
+
+  const stateRef = useRef(state)
+  stateRef.current = state
+
+  const reportSnapshot = useCallback(() => {
+    // Reports the entire settled transcript (all messages plus retained
+    // htmlDeps) on every change, so a session sends ~O(n^2) bytes over its
+    // lifetime. Fine for typical conversations; if very long transcripts
+    // become common, revisit with a delta/append protocol.
+    transport.sendMessagesSnapshot(
+      elementId,
+      buildMessagesSnapshot(stateRef.current),
+    )
+  }, [transport, elementId])
+
+  useEffect(() => {
+    reportSnapshot()
+  }, [state.messages, reportSnapshot])
+
+  const submitUserInput = useCallback(
+    (content: string, attachments: AttachmentPayload[]) => {
+      // Optimistic UI update (adds user message + loading placeholder).
+      dispatch({
+        type: "INPUT_SENT",
+        content,
+        role: "user",
+        ...(attachments.length > 0 ? { attachments } : {}),
+      })
+      // Build the snapshot from CURRENT settled state, then append the just-
+      // submitted user turn. Co-send userInput + snapshot in the SAME tick so
+      // Shiny batches them into one flush (server sees the turn in
+      // on_user_submit).
+      const snapshot = buildMessagesSnapshot(stateRef.current)
+      snapshot.push({
+        role: "user",
+        segments: [{ content, content_type: "markdown" }],
+        ...(attachments.length > 0 ? { attachments } : {}),
+      })
+      const uploadOn = stateRef.current.enableUpload
+      transport.sendInput(
+        inputId,
+        uploadOn ? { text: content, attachments } : content,
+      )
+      // The INPUT_SENT dispatch above also mutates state.messages, so the
+      // reportSnapshot effect fires a second, near-identical snapshot on the
+      // next render. That's intentional: this manual send is the one that
+      // co-batches with userInput in the current flush, and the server's
+      // save is idempotent, so the follow-up snapshot is a harmless no-op.
+      transport.sendMessagesSnapshot(elementId, snapshot)
+    },
+    [dispatch, transport, inputId, elementId],
+  )
+
   const containerRef = useRef<ChatContainerHandle>(null)
+  const siblingNavigationPendingRef = useRef(false)
+  const [siblingNavigationPending, setSiblingNavigationPending] =
+    useState(false)
 
   // The textarea is fully uncontrolled, so value/focus mutations go through
   // the imperative handle rather than the reducer.
@@ -139,6 +239,14 @@ export function ChatApp({
         return
       }
       dispatch(action)
+      if (
+        action.type === "history_update" &&
+        siblingNavigationPendingRef.current
+      ) {
+        siblingNavigationPendingRef.current = false
+        setSiblingNavigationPending(false)
+        containerRef.current?.endSiblingNavigation()
+      }
     })
     return unsubscribe
   }, [transport, elementId])
@@ -212,43 +320,73 @@ export function ChatApp({
     setCurrentConversationId(elementId, state.history.activeId)
   }, [elementId, state.history.enabled, state.history.activeId])
 
+  const handleEdit = useCallback(
+    (index: number, content: string, attachments: AttachmentPayload[]) => {
+      transport.sendMessageEdit(elementId, index, content, attachments)
+    },
+    [transport, elementId],
+  )
+
+  const handleNavigate = useCallback(
+    (index: number, direction: "prev" | "next") => {
+      if (siblingNavigationPendingRef.current) return
+
+      siblingNavigationPendingRef.current = true
+      setSiblingNavigationPending(true)
+      containerRef.current?.beginSiblingNavigation()
+      transport.sendMessageNavigate(elementId, index, direction)
+    },
+    [transport, elementId],
+  )
+
+  const supersededRequests = useSupersededRequests(
+    state.messages,
+    state.streamingMessage,
+  )
   const toolState: ChatToolState = useMemo(
-    () => ({
-      hiddenToolRequests: state.hiddenToolRequests,
-    }),
-    [state.hiddenToolRequests],
+    () => ({ supersededRequests }),
+    [supersededRequests],
   )
 
   return (
     <ShinyLifecycleContext.Provider value={shinyLifecycle}>
       <ChatToolContext.Provider value={toolState}>
-        <ChatDispatchContext.Provider value={dispatch}>
-          <ChatContainer
-            ref={containerRef}
-            transport={transport}
-            messages={state.messages}
-            streamingMessage={state.streamingMessage}
-            inputDisabled={state.inputDisabled}
-            inputPlaceholder={state.inputPlaceholder}
-            iconAssistant={iconAssistant}
-            inputId={inputId}
-            uploadAccept={uploadAccept}
-            maxUploadSize={maxUploadSize}
-            elementId={elementId}
-            greeting={state.greeting}
-            cancelId={cancelId}
-            enableCancel={state.enableCancel}
-            enableUpload={state.enableUpload}
-            cancelRequested={state.cancelRequested}
-            footerEl={footerEl}
-            slashCommands={state.slashCommands}
-            slashCommandId={slashCommandId}
-            submitKey={submitKey}
-            historyEnabled={state.history.enabled}
-            historyConversations={state.history.conversations}
-            historyActiveId={state.history.activeId}
-          />
-        </ChatDispatchContext.Provider>
+        <ToolGroupingContext.Provider value={state.toolGrouping}>
+          <ChatDispatchContext.Provider value={dispatch}>
+            <ChatSubmitContext.Provider value={submitUserInput}>
+              <AsideFaviconContext.Provider value={asideFavicon}>
+                <ChatContainer
+                  ref={containerRef}
+                  transport={transport}
+                  messages={state.messages}
+                  streamingMessage={state.streamingMessage}
+                  inputDisabled={state.inputDisabled}
+                  inputPlaceholder={state.inputPlaceholder}
+                  iconAssistant={iconAssistant}
+                  inputId={inputId}
+                  uploadAccept={uploadAccept}
+                  maxUploadSize={maxUploadSize}
+                  elementId={elementId}
+                  greeting={state.greeting}
+                  cancelId={cancelId}
+                  enableCancel={state.enableCancel}
+                  enableUpload={state.enableUpload}
+                  cancelRequested={state.cancelRequested}
+                  footerEl={footerEl}
+                  slashCommands={state.slashCommands}
+                  slashCommandId={slashCommandId}
+                  submitKey={submitKey}
+                  historyEnabled={state.history.enabled}
+                  historyConversations={state.history.conversations}
+                  historyActiveId={state.history.activeId}
+                  onEdit={handleEdit}
+                  onNavigate={handleNavigate}
+                  siblingNavigationPending={siblingNavigationPending}
+                />
+              </AsideFaviconContext.Provider>
+            </ChatSubmitContext.Provider>
+          </ChatDispatchContext.Provider>
+        </ToolGroupingContext.Provider>
       </ChatToolContext.Provider>
     </ShinyLifecycleContext.Provider>
   )

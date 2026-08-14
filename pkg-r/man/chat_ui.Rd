@@ -17,7 +17,8 @@ chat_ui(
   enable_cancel = NULL,
   submit_key = c("enter", "enter+modifier"),
   allow_attachments = NULL,
-  footer = NULL
+  footer = NULL,
+  tool_grouping = c("tool", "none", "all")
 )
 }
 \arguments{
@@ -62,7 +63,9 @@ container, if the container is
 
 \item{icon_assistant}{The icon to use for the assistant chat messages.
 Can be HTML or a tag in the form of \code{\link[htmltools:HTML]{htmltools::HTML()}} or
-\code{\link[htmltools:tags]{htmltools::tags()}}. If \code{None}, a default robot icon is used.}
+\code{\link[htmltools:tags]{htmltools::tags()}}. If \code{NULL} (or \code{TRUE}), a default robot icon is used.
+Pass \code{FALSE} to remove the assistant icon entirely (individual messages
+can still opt back in via the \code{icon} argument of \code{\link[=chat_append]{chat_append()}}).}
 
 \item{enable_cancel}{Whether to show a stop button during streaming that
 allows the user to cancel the in-progress response. When using
@@ -107,6 +110,28 @@ Useful for adding disclaimers, attribution, or other information.
 The footer text is styled slightly smaller and lighter than body text
 by default. Customize with CSS properties \code{--shiny-chat-footer-font-size}
 and \code{--shiny-chat-footer-color} on the chat container or footer element.}
+
+\item{tool_grouping}{Controls how tool calls are grouped together in the
+compact activity rows:
+\itemize{
+\item \code{"tool"} (default): calls to the \emph{same} tool within a turn's
+contiguous tool loop are grouped into one activity row. This groups by
+tool name across the whole loop, not just consecutive
+calls -- e.g. calls to tools \code{X}, \code{Y}, \code{Z}, \code{X}, \code{Y} (in that order)
+are grouped into \code{X} (2 calls), \code{Y} (2 calls), and \code{Z} (1 call).
+\item \code{"all"}: every tool call within a contiguous tool loop is summarized in
+one activity row, regardless of tool name.
+\item \code{"none"}: each tool call is shown in its own activity row. Its request
+and result remain available by drilling into that row; this does not
+restore an always-visible card stack.
+}
+
+Prose or thinking between tool calls starts a new tool loop, so calls on
+opposite sides of either boundary never group together. Individual tools can
+override \code{"tool"} or \code{"all"} via a top-level \code{grouping} tool annotation,
+e.g. \code{ellmer::tool(..., annotations = ellmer::tool_annotations(grouping = "all"))}.
+\code{tool_grouping = "none"} takes precedence over every annotation and disables
+grouping for the whole chat.}
 }
 \value{
 A Shiny tag object, suitable for inclusion in a Shiny UI
@@ -119,7 +144,49 @@ enter new messages.
 To respond to user input, listen for \code{input$ID_user_input} (for example, if
 \code{id="my_chat"}, user input will be at \code{input$my_chat_user_input}), and use
 \code{\link[=chat_append]{chat_append()}} to append messages to the chat.
+
+The chat also reports the client's current rendered message transcript as
+\code{input$ID_messages} (for example, \code{input$my_chat_messages}), tagged
+\code{shinychat.messages}. It updates every time a message finishes rendering
+or streaming (a "settle point"), and is a list of message objects:
+\code{list(role =, segments = list(list(content =, content_type =), ...))},
+plus optional \code{htmlDeps} and \code{attachments} fields when present.
+\code{\link[=chat_enable_history]{chat_enable_history()}} reads this internally to persist and restore
+exactly what was rendered — including raw HTML and Shiny UI dependencies —
+across a conversation switch or reload. It's exposed for advanced,
+read-only use (for example, custom logging or export); it is not an input
+you write to.
 }
+\section{Pairing with \code{chat_server()}}{
+
+
+\code{chat_ui(id)} and \code{chat_server(id, client)} pair by matching \code{id}. This
+works the same way at the top level of an app and inside your own Shiny
+module — \code{chat_server()} is not itself a module, so no \code{NS(id, "chat")}
+wrapping is required:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{# Top-level app, no module
+ui <- page_fillable(chat_ui("chat"))
+server <- function(input, output, session) \{
+  chat_server("chat", client)
+\}
+}\if{html}{\out{</div>}}
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{# Inside your own module: pass the same literal id to both, and call
+# chat_server() from inside moduleServer() so it inherits the module's
+# already-namespaced `session`
+mod_ui <- function(id) \{
+  ns <- NS(id)
+  chat_ui(ns("chat"))
+\}
+mod_server <- function(id, client) \{
+  moduleServer(id, function(input, output, session) \{
+    chat_server("chat", client)
+  \})
+\}
+}\if{html}{\out{</div>}}
+}
+
 \section{Greeting}{
 
 

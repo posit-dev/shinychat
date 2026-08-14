@@ -32,6 +32,12 @@ class _MockSession:
     ns: ResolvedId = ResolvedId("")
     app: object = None
     id: str = "mock-session"
+    input: Any
+
+    def __init__(self) -> None:
+        from shiny import Inputs
+
+        self.input = Inputs({}, ns=ResolvedId)
 
     def on_ended(self, callback: object) -> None:
         pass
@@ -112,7 +118,7 @@ def test_transform_user_input_raises():
 def test_stream_replace_discards_stale_html_dependencies():
     with session_context(test_session):
         chat = Chat(id="chat")
-        captured: list[StoredMessage] = []
+        sent: list[dict[str, Any]] = []
 
         custom_dep = HTMLDependency(
             name="custom-styled-card",
@@ -121,18 +127,10 @@ def test_stream_replace_discards_stale_html_dependencies():
             stylesheet={"href": "custom.css"},
         )
 
-        async def _noop_send(*args: object, **kwargs: object) -> None:
-            return None
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append({"action": action, "deps": deps})
 
-        def _capture_store(
-            message: StoredMessage | ChatMessage,
-            index: int | None = None,
-        ) -> None:
-            del index
-            captured.append(chat._as_stored_message(message))
-
-        chat._send_append_message = _noop_send  # type: ignore[method-assign]
-        chat._store_message = _capture_store  # type: ignore[method-assign]
+        chat._send_action = _capture  # type: ignore[method-assign]
         chat._serialize_html_deps = lambda deps: (  # type: ignore[method-assign]
             None
             if not deps
@@ -155,24 +153,22 @@ def test_stream_replace_discards_stale_html_dependencies():
                 stream_id="stream-id",
             )
 
-        exc: list[BaseException] = []
+        run_async(_exercise_stream)
 
-        def _run_in_thread() -> None:
-            try:
-                asyncio.run(_exercise_stream())
-            except BaseException as err:
-                exc.append(err)
-
-        thread = threading.Thread(target=_run_in_thread)
-        thread.start()
-        thread.join()
-
-        if exc:
-            raise exc[0]
-
-        assert len(captured) == 1
-        assert captured[0].content == "final"
-        assert captured[0].html_deps is None
+        # The `chunk="end", operation="replace"` send is the "chunk" action
+        # carrying the replaced content; find it and confirm the stale
+        # dependency from the earlier chunk didn't survive the replace.
+        replace_sends = [
+            s
+            for s in sent
+            if s["action"]["type"] == "chunk"
+            and s["action"]["operation"] == "replace"
+        ]
+        assert len(replace_sends) == 1
+        final_send = replace_sends[0]
+        assert final_send["action"]["content"] == "final"
+        dep_names = [d["name"] for d in (final_send["deps"] or [])]
+        assert "custom-styled-card" not in dep_names
 
 
 # ------------------------------------------------------------------------------------
@@ -226,7 +222,7 @@ def test_tagifiable_normalization():
     m = message_content(HTML("Hello <span>world</span>!"))
     assert (
         m.content
-        == "\n\n<shinychat-raw-html>Hello <span>world</span>!</shinychat-raw-html>\n\n"
+        == "\n\n<shiny-chat-raw-html>Hello <span>world</span>!</shiny-chat-raw-html>\n\n"
     )
     assert m.role == "assistant"
 
@@ -234,7 +230,7 @@ def test_tagifiable_normalization():
     m = message_content(div("Hello <span>world</span>!"))
     assert (
         m.content
-        == "\n\n<shinychat-raw-html>\n  <div>Hello &lt;span&gt;world&lt;/span&gt;!</div>\n</shinychat-raw-html>\n\n"
+        == "\n\n<shiny-chat-raw-html>\n  <div>Hello &lt;span&gt;world&lt;/span&gt;!</div>\n</shiny-chat-raw-html>\n\n"
     )
     assert m.role == "assistant"
 
@@ -590,8 +586,7 @@ def test_slash_command_echo_defaults_to_handler_presence():
         chat = Chat(id="chat")
 
         @chat.slash_command("withhandler", "Has a handler")
-        async def _():
-            ...
+        async def _(): ...
 
         chat.slash_command("nohandler", "No handler", fn=None)
 
@@ -608,8 +603,7 @@ def test_slash_command_echo_explicit_override():
         chat = Chat(id="chat")
 
         @chat.slash_command("sideeffect", "Side effect only", echo=False)
-        async def _():
-            ...
+        async def _(): ...
 
         with reactive.isolate():
             cmds = chat._slash_commands()
@@ -636,7 +630,9 @@ def test_slash_command_fn_none_with_explicit_echo_true():
     with session_context(test_session):
         chat = Chat(id="chat")
 
-        chat.slash_command("clientecho", "Client-side but echoed", fn=None, echo=True)
+        chat.slash_command(
+            "clientecho", "Client-side but echoed", fn=None, echo=True
+        )
 
         with reactive.isolate():
             cmds = chat._slash_commands()
@@ -649,28 +645,66 @@ def test_bookmark_round_trips_echoed_slash_command():
     # An echoed slash command stores the `/cmd args` text as a normal user
     # message (mirroring `_on_slash_command`), so it rides the generic
     # stored-message bookmark mechanism: saved, then restored as a static entry.
+    from shiny import reactive
+
     with session_context(test_session):
         chat = Chat(id="chat")
-        chat._store_message(
-            chat._as_stored_message(ChatMessage(content="/greet world", role="user"))
+        # `_messages_for_bookmark()` reads the client-reported snapshot input,
+        # not the server-side append log, so seed that input directly.
+        reported = (
+            chat._as_stored_message(
+                ChatMessage(content="/greet world", role="user")
+            ),
+            chat._as_stored_message(
+                ChatMessage(content="Hello! You said: world", role="assistant")
+            ),
         )
-        chat._store_message(ChatMessage(content="Hello! You said: world", role="assistant"))
-        saved = chat._messages_for_bookmark()
+        test_session.input[chat.messages_input_id]._set(reported)
+        with reactive.isolate():
+            saved = chat._messages_for_bookmark()
 
     assert saved == [
-        {"role": "user", "segments": [{"content": "/greet world", "content_type": "markdown"}]},
-        {"role": "assistant", "segments": [{"content": "Hello! You said: world", "content_type": "markdown"}]},
+        {
+            "role": "user",
+            "segments": [
+                {"content": "/greet world", "content_type": "markdown"}
+            ],
+        },
+        {
+            "role": "assistant",
+            "segments": [
+                {
+                    "content": "Hello! You said: world",
+                    "content_type": "markdown",
+                }
+            ],
+        },
     ]
 
     async def restore() -> list[tuple[Role, str]]:
-        from shiny import reactive
-
         with session_context(test_session):
             restored = Chat(id="chat_restored")
+            sent: list[dict[str, Any]] = []
+
+            async def _capture(action: Any, deps: Any = None) -> None:
+                sent.append(action)
+
+            restored._send_action = _capture  # type: ignore[method-assign]
+
             for message_dict in saved:
                 await restored._restore_bookmark_message(message_dict)
-            with reactive.isolate():
-                return [(m.role, m.content) for m in restored._messages()]
+
+            # `_restore_bookmark_message` re-sends each message to the client
+            # (which re-reports it into the messages snapshot on render); the
+            # server no longer keeps its own append log to read back from.
+            return [
+                (
+                    cast(Role, a["message"]["role"]),
+                    a["message"]["segments"][0]["content"],
+                )
+                for a in sent
+                if a["type"] == "message"
+            ]
 
     result: list[tuple[Role, str]] = []
 
@@ -686,17 +720,34 @@ def test_bookmark_round_trips_echoed_slash_command():
 
 
 def test_bookmark_omits_side_effect_only_slash_command():
-    # A side-effect-only command (echo=False) stores nothing, so it never
-    # contributes to the bookmark even though its handler runs.
+    # A side-effect-only command (echo=False) never reports anything to the
+    # client, so it never contributes to the bookmark even though its
+    # handler runs.
+    from shiny import reactive
+
     with session_context(test_session):
         chat = Chat(id="chat")
         chat.slash_command("note", "Side-effect only", echo=False)
-        # The echo=False command stored nothing; only an explicit message lands.
-        chat._store_message(ChatMessage(content="real message", role="user"))
-        saved = chat._messages_for_bookmark()
+        # `_messages_for_bookmark()` reads the client-reported snapshot
+        # input, not the server-side append log, so seed that input
+        # directly with only the explicit message (the echo=False command
+        # reports nothing).
+        reported = (
+            chat._as_stored_message(
+                ChatMessage(content="real message", role="user")
+            ),
+        )
+        test_session.input[chat.messages_input_id]._set(reported)
+        with reactive.isolate():
+            saved = chat._messages_for_bookmark()
 
     assert saved == [
-        {"role": "user", "segments": [{"content": "real message", "content_type": "markdown"}]},
+        {
+            "role": "user",
+            "segments": [
+                {"content": "real message", "content_type": "markdown"}
+            ],
+        },
     ]
 
 
@@ -860,19 +911,12 @@ def test_custom_objects():
 def test_stream_thinking_creates_thinking_segment():
     with session_context(test_session):
         chat = Chat(id="chat")
-        captured: list[StoredMessage] = []
+        sent: list[dict[str, Any]] = []
 
-        async def _noop_send(*a: object, **k: object) -> None:
-            return None
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append({"action": action, "deps": deps})
 
-        def _capture_store(
-            message: StoredMessage | ChatMessage, index: int | None = None
-        ) -> None:
-            del index
-            captured.append(chat._as_stored_message(message))
-
-        chat._send_append_message = _noop_send  # type: ignore[method-assign]
-        chat._store_message = _capture_store  # type: ignore[method-assign]
+        chat._send_action = _capture  # type: ignore[method-assign]
 
         async def _exercise() -> None:
             await chat._append_message_chunk("", chunk="start", stream_id="s1")
@@ -891,26 +935,26 @@ def test_stream_thinking_creates_thinking_segment():
             await chat._append_message_chunk("", chunk="end", stream_id="s1")
 
         run_async(_exercise)
-        segs = captured[0].segments
-        assert all(isinstance(s, StoredSegment) for s in segs)
-        assert [cast(StoredSegment, s).content_type for s in segs] == [
-            "thinking",
-            "markdown",
+
+        # Each chunk is sent individually on the wire; the client assembles
+        # segments from the (content, content_type) pairs of each chunk.
+        chunk_actions = [
+            s["action"] for s in sent if s["action"]["type"] == "chunk"
         ]
-        assert cast(StoredSegment, segs[0]).content == "reasoning"
-        assert cast(StoredSegment, segs[1]).content == "answer"
+        by_content = {a["content"]: a["content_type"] for a in chunk_actions}
+        assert by_content["reasoning"] == "thinking"
+        assert by_content["answer"] == "markdown"
 
 
 def test_thinking_stream_stores_segment_not_tags():
-    from shiny import reactive
-
     with session_context(test_session):
         chat = Chat(id="chat")
+        sent: list[dict[str, Any]] = []
 
-        async def _noop_send(*a: object, **k: object) -> None:
-            return None
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append({"action": action, "deps": deps})
 
-        chat._send_action = _noop_send  # type: ignore[method-assign]
+        chat._send_action = _capture  # type: ignore[method-assign]
 
         async def gen():
             yield ChatMessage(
@@ -924,15 +968,18 @@ def test_thinking_stream_stores_segment_not_tags():
             await chat.append_message_stream(gen())
 
         run_async(_exercise)
-        with reactive.isolate():
-            messages = chat._messages()
-        segs = messages[0].segments
-        assert all(isinstance(s, StoredSegment) for s in segs)
-        assert [cast(StoredSegment, s).content_type for s in segs] == [
-            "thinking",
-            "markdown",
+
+        # The thinking chunk must travel as bare content paired with
+        # content_type="thinking" -- not wrapped in literal <thinking> tags.
+        chunk_actions = [
+            s["action"] for s in sent if s["action"]["type"] == "chunk"
         ]
-        assert "<thinking>" not in cast(StoredSegment, segs[0]).content
+        thinking_actions = [
+            a for a in chunk_actions if a["content_type"] == "thinking"
+        ]
+        assert len(thinking_actions) == 1
+        assert thinking_actions[0]["content"] == "thinking hard"
+        assert all("<thinking>" not in a["content"] for a in chunk_actions)
 
 
 def test_send_message_payload_has_segments_with_thinking():
@@ -964,6 +1011,8 @@ def test_send_message_payload_has_segments_with_thinking():
 
 
 def test_bookmark_roundtrip_thinking_segment():
+    from shiny import reactive
+
     with session_context(test_session):
         chat = Chat(id="chat")
         sent: list[dict[str, Any]] = []
@@ -972,16 +1021,21 @@ def test_bookmark_roundtrip_thinking_segment():
             sent.append(action)
 
         chat._send_action = _capture  # type: ignore[method-assign]
-        chat._store_message(
+        # `_messages_for_bookmark()` reads the client-reported snapshot
+        # input, not the server-side append log, so seed that input
+        # directly.
+        reported = (
             StoredMessage(
                 role="assistant",
                 segments=[
                     StoredSegment(content="reasoning", content_type="thinking"),
                     StoredSegment(content="answer", content_type="markdown"),
                 ],
-            )
+            ),
         )
-        saved = chat._messages_for_bookmark()
+        test_session.input[chat.messages_input_id]._set(reported)
+        with reactive.isolate():
+            saved = chat._messages_for_bookmark()
         assert saved[0]["segments"][0]["content_type"] == "thinking"
 
         async def _exercise() -> None:
@@ -1012,10 +1066,14 @@ def test_send_append_message_serializes_attachments():
 
         chat._send_action = _capture  # type: ignore[method-assign]
 
-        att = Attachment.from_data(b"hello", mime="text/plain", name="hello.txt")
+        att = Attachment.from_data(
+            b"hello", mime="text/plain", name="hello.txt"
+        )
         stored = StoredMessage(
             role="assistant",
-            segments=[StoredSegment(content="here you go", content_type="markdown")],
+            segments=[
+                StoredSegment(content="here you go", content_type="markdown")
+            ],
             attachments=[att],
         )
 
@@ -1027,7 +1085,12 @@ def test_send_append_message_serializes_attachments():
 
         # Attachments must arrive as plain dicts with the expected keys.
         assert payload["attachments"] == [
-            {"mime": "text/plain", "name": "hello.txt", "size": 5, "data_url": att.data_url}
+            {
+                "mime": "text/plain",
+                "name": "hello.txt",
+                "size": 5,
+                "data_url": att.data_url,
+            }
         ]
 
 
@@ -1088,7 +1151,6 @@ def test_streaming_thinking_chunk_wire_content_not_empty():
             sent.append(action)
 
         chat._send_action = _capture  # type: ignore[method-assign]
-        chat._store_message = lambda *a, **k: None  # type: ignore[method-assign]
 
         async def _exercise() -> None:
             await chat._append_message_chunk("", chunk="start", stream_id="s1")
@@ -1131,7 +1193,6 @@ def test_streaming_chunk_content_type_follows_segment():
             sent.append(action)
 
         chat._send_action = _capture  # type: ignore[method-assign]
-        chat._store_message = lambda *a, **k: None  # type: ignore[method-assign]
 
         async def _exercise() -> None:
             await chat._append_message_chunk("", chunk="start", stream_id="s1")
@@ -1193,7 +1254,9 @@ def test_chat_message_attachments_become_stored_attachments():
         ChatMessage(
             content="here",
             role="assistant",
-            attachments=[Attachment.from_data(b"x", mime="image/png", name="c.png")],
+            attachments=[
+                Attachment.from_data(b"x", mime="image/png", name="c.png")
+            ],
         )
     )
     assert len(sm.segments) == 1
@@ -1209,7 +1272,9 @@ def test_user_message_with_attachments_stores_correctly():
         ChatMessage(
             content="look",
             role="user",
-            attachments=[Attachment.from_data(b"x", mime="image/png", name="c.png")],
+            attachments=[
+                Attachment.from_data(b"x", mime="image/png", name="c.png")
+            ],
         )
     )
     assert len(sm.segments) == 1
@@ -1266,18 +1331,15 @@ def test_wire_segments_excludes_attachments():
 def test_messages_surfaces_attachments():
     from shiny import reactive
     from shinychat._attachments import Attachment
-    from shinychat._chat_types import ChatMessage
+    from shinychat._chat_types import ChatMessage, StoredMessage
 
     with session_context(test_session):
         chat = Chat(id="chat")
 
-        async def _noop_send(*a: object, **k: object) -> None:
-            return None
-
-        chat._send_action = _noop_send  # type: ignore[method-assign]
-
-        async def _exercise() -> None:
-            await chat.append_message(
+        # `.messages()` reads the client-reported snapshot input, not the
+        # server-side append log, so seed that input directly.
+        reported = (
+            StoredMessage.from_chat_message(
                 ChatMessage(
                     "see attached",
                     role="assistant",
@@ -1287,10 +1349,14 @@ def test_messages_surfaces_attachments():
                         ),
                     ],
                 )
-            )
-            await chat.append_message("plain text")
-
-        run_async(_exercise)
+            ),
+            StoredMessage.from_chat_message(
+                ChatMessage("plain text", role="assistant")
+            ),
+        )
+        # Input values are read-only from application code; `_set()` is the
+        # same mechanism Shiny itself uses to deliver client-reported values.
+        test_session.input[chat.messages_input_id]._set(reported)
 
         with reactive.isolate():
             msgs = chat.messages()
