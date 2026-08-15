@@ -41,6 +41,17 @@
 
 * Fixed `output_markdown_stream()` permanently stopping following new content after the user scrolled back to the bottom. Pinning was decided only from `scroll` events, which browsers dispatch asynchronously; if a chunk grew the container first, the user's at-bottom position no longer read as at-bottom and auto-scroll silently disengaged for good. (#282)
 
+* Markdown text that happens to match shinychat's internal element names
+  (`<shiny-chat-raw-html>` and its legacy alias `<shinychat-raw-html>`, plus
+  `<shiny-tool-request>`, `<shiny-tool-result>`) is now shown as plain text
+  instead of being rendered as HTML. This closes a gap where AI-generated
+  markdown could render as HTML the same way trusted, server-built content
+  does. As part of this, `chat_ui(messages = )`, `chat_append_message()`, and
+  `output_markdown_stream()` now always label non-string/UI content as HTML
+  (regardless of the `content_type` argument), so their internal
+  `<shiny-chat-raw-html>` wrapper is still handled correctly rather than being
+  treated like ordinary markdown.
+
 * `chat_app()` no longer renders a close button or registers a `stopApp()` observer when deployed to a server. Both are now gated on `rlang::is_interactive()`, preventing session crashes in multi-user deployments. (#265)
 
 * The `dismissible` parameter of `chat_greeting()` has been renamed to `persistent` with an inverted value. `dismissible = FALSE` (greeting stays visible) is now `persistent = TRUE`. The old `dismissible` argument still works but warns. When both `persistent` and `dismissible` are provided, `persistent` now takes precedence silently rather than erroring. (#260)

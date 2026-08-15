@@ -71,7 +71,12 @@ test_that("chat_ui() HTML() greeting produces html content_type", {
   ui <- chat_ui("chat", greeting = HTML("<b>hi</b>"))
   payload <- jsonlite::fromJSON(ui$attribs$greeting)
   expect_equal(payload$content_type, "html")
-  expect_equal(payload$content, "<b>hi</b>")
+  # Wrapped in a <shiny-chat-raw-html> island, same as a Tag/TagList greeting,
+  # so e.g. Shiny bindings inside an HTML() string still work.
+  expect_equal(
+    payload$content,
+    "<shiny-chat-raw-html><b>hi</b></shiny-chat-raw-html>"
+  )
 })
 
 test_that("chat_ui() tag greeting produces html content_type and attaches dependencies", {
@@ -153,7 +158,12 @@ test_that("chat_set_greeting() HTML() content sends html content_type", {
   action <- msgs[[1]]$message$action
   expect_equal(action$type, "greeting")
   expect_equal(action$content_type, "html")
-  expect_equal(action$content, "<b>hi</b>")
+  # Wrapped in a <shiny-chat-raw-html> island, same as a Tag/TagList greeting,
+  # so e.g. Shiny bindings inside an HTML() string still work.
+  expect_equal(
+    as.character(action$content),
+    "<shiny-chat-raw-html><b>hi</b></shiny-chat-raw-html>"
+  )
 })
 
 test_that("chat_set_greeting() generator sends greeting_start, greeting_chunk(s), greeting_end", {

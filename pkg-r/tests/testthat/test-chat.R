@@ -53,6 +53,31 @@ test_that("Chat component markup", {
   # TODO: it'd be nice to mock the shinyChatMessage custom messages
 })
 
+test_that("chat_ui() labels non-string messages as html content", {
+  md_only <- as.character(chat_ui("chat", messages = list("plain string")))
+  expect_false(grepl("content-type", md_only, fixed = TRUE))
+
+  tagged <- as.character(chat_ui("chat", messages = list(htmltools::div("hi"))))
+  expect_match(tagged, 'content-type="html"', fixed = TRUE)
+
+  # The island wrapper is what the html content type exists to protect: as
+  # markdown it would be escaped and shown as literal text.
+  expect_match(tagged, "shiny-chat-raw-html", fixed = TRUE)
+
+  # htmltools::HTML() is a character vector too (class c("html", "character")),
+  # so is.character() alone would treat it as markdown -- it needs its own
+  # branch, same as chat_set_greeting()'s check. It gets the same
+  # <shiny-chat-raw-html> wrapping as a Tag/TagList, so e.g. Shiny bindings
+  # inside an HTML() string still work.
+  html_string <- as.character(
+    chat_ui("chat", messages = list(htmltools::HTML("<b>hi</b>")))
+  )
+  expect_match(html_string, 'content-type="html"', fixed = TRUE)
+  # htmltools::HTML() gets the same <shiny-chat-raw-html> wrapping as a
+  # Tag/TagList, so e.g. Shiny bindings inside an HTML() string still work.
+  expect_match(html_string, "shiny-chat-raw-html", fixed = TRUE)
+})
+
 test_that("chat_ui configures derived aside favicons from the environment", {
   withr::local_envvar(list(SHINYCHAT_ASIDE_FAVICON = NULL))
   expect_no_match(as.character(chat_ui("chat")), "aside-favicon", fixed = TRUE)
@@ -326,4 +351,31 @@ test_that("chat_append_message() emits segment payloads incl. thinking", {
 
   chunk <- captured[[2]]
   expect_equal(chunk$content_type, "thinking")
+})
+
+test_that("chat_append_message() labels content without an explicit html class as html", {
+  captured <- list()
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      captured[[length(captured) + 1]] <<- action
+      invisible()
+    }
+  )
+  session <- shiny::MockShinySession$new()
+
+  # A bare list of tag children (not wrapped in tagList()) has none of the
+  # classes is_html's allowlist checks for, but pre_process_ui() still
+  # resolves it via as.tags() and wraps it in a <shiny-chat-raw-html> island --
+  # same as chat_ui()'s and chat_set_greeting()'s HTML()/Tag/TagList content.
+  chat_append_message(
+    "chat",
+    list(role = "assistant", content = list(htmltools::div("hi"))),
+    chunk = FALSE,
+    session = session
+  )
+
+  msg <- captured[[1]]
+  segment <- msg$message$segments[[1]]
+  expect_equal(segment$content_type, "html")
+  expect_match(segment$content, "shiny-chat-raw-html", fixed = TRUE)
 })
