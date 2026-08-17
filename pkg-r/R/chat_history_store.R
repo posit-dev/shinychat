@@ -38,6 +38,11 @@ partition_key <- function(partition) {
 #' is the lightweight summary returned by `list()`: `id`, `title`,
 #' `created_at`, `updated_at`, and `size_bytes` (the backend's storage
 #' footprint for that conversation, e.g. on-disk bytes).
+#'
+#' `schema_version` compatibility is enforced by the framework's
+#' `HistoryController`, not by this class -- it calls `check_schema_version()`
+#' on every record it reads from a store and every record it is about to
+#' write, so a custom store doesn't need to check it itself.
 #' @export
 ConversationStore <- R6::R6Class(
   "ConversationStore",
@@ -325,7 +330,7 @@ FileConversationStore <- R6::R6Class(
           if (!file.exists(record_file)) {
             return(NULL)
           }
-          result <- tryCatch(
+          tryCatch(
             {
               raw <- jsonlite::fromJSON(record_file, simplifyVector = FALSE)
               check_schema_version(raw$schema_version)
@@ -336,12 +341,10 @@ FileConversationStore <- R6::R6Class(
               ))
               record_meta(raw, size_bytes = size_bytes)
             },
-            # Capture (rather than re-signal) an unsupported schema version
-            # here -- stop()ing from inside this handler would still be
-            # caught by the sibling `error` handler below, since both belong
-            # to this same tryCatch call. Re-raise it after tryCatch returns
-            # instead, so it escapes uncaught.
-            shinychat_error_unsupported_schema_version = function(e) e,
+            # An unsupported schema version is skipped like any other
+            # unreadable record, rather than failing the whole partition --
+            # one incompatible conversation (e.g. written by a newer
+            # shinychat) shouldn't hide every other conversation in the list.
             error = function(e) {
               rlang::warn(paste0(
                 "Skipping unreadable conversation ",
@@ -352,10 +355,6 @@ FileConversationStore <- R6::R6Class(
               NULL
             }
           )
-          if (inherits(result, "shinychat_error_unsupported_schema_version")) {
-            stop(result)
-          }
-          result
         })
       )
       timestamps <- vapply(metas, function(m) m$updated_at, character(1))

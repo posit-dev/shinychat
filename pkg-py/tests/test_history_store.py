@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 from datetime import timedelta
 from pathlib import Path
@@ -581,9 +582,10 @@ async def test_get_raises_on_unsupported_schema_version_on_disk(
 
 
 @pytest.mark.anyio
-async def test_list_raises_on_unsupported_schema_version_on_disk(
+async def test_list_skips_unsupported_schema_version_on_disk(
     store: FileConversationStore,
     tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
 ):
     good = new_conversation_record(title="good")
     bad = new_conversation_record(title="bad")
@@ -593,14 +595,18 @@ async def test_list_raises_on_unsupported_schema_version_on_disk(
         tmp_path, "chat", "alice", bad.id, MAX_SCHEMA_VERSION + 1
     )
 
-    with pytest.raises(UnsupportedSchemaVersionError):
-        await store.list(part(scope="alice"))
+    with caplog.at_level(logging.WARNING):
+        metas = await store.list(part(scope="alice"))
+
+    assert [m.id for m in metas] == [good.id]
+    assert "Unreadable conversation" in caplog.text
 
 
 @pytest.mark.anyio
-async def test_list_checks_schema_version_before_decoding_record(
+async def test_list_skips_record_with_unsupported_schema_version_before_decoding(
     store: FileConversationStore,
     tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
 ):
     rec = new_conversation_record(title="future")
     await store.put(part(scope="alice"), rec)
@@ -611,8 +617,11 @@ async def test_list_checks_schema_version_before_decoding_record(
     data["nodes"] = []
     record_file.write_text(json.dumps(data))
 
-    with pytest.raises(UnsupportedSchemaVersionError):
-        await store.list(part(scope="alice"))
+    with caplog.at_level(logging.WARNING):
+        metas = await store.list(part(scope="alice"))
+
+    assert metas == []
+    assert "Unreadable conversation" in caplog.text
 
 
 @pytest.mark.anyio

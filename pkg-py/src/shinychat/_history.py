@@ -271,6 +271,12 @@ class HistoryController:
             check_schema_version(record.schema_version)
         return record
 
+    async def _put_record(
+        self, partition: ConversationPartition, record: ConversationRecord
+    ) -> None:
+        check_schema_version(record.schema_version)
+        await self.store.put(partition, record)
+
     # -- save -----------------------------------------------------------
 
     async def on_response(self) -> None:
@@ -323,7 +329,7 @@ class HistoryController:
         )
         record.response_count += 1
         self._capture_app_state(record)
-        await self.store.put(self.partition, record)
+        await self._put_record(self.partition, record)
         await self._evict_if_needed()
         if self.on_response_saved is not None:
             await self.on_response_saved(record)
@@ -363,7 +369,7 @@ class HistoryController:
         target.title_source = "llm"
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
-        await self.store.put(self.partition, target)
+        await self._put_record(self.partition, target)
         await self.send_history_update()
 
     def cancel_pending(self) -> None:
@@ -416,7 +422,7 @@ class HistoryController:
             self.record, turn_groups, messages, ui_offset=self.ui_offset
         )
         self._capture_app_state(self.record)
-        await self.store.put(self.partition, self.record)
+        await self._put_record(self.partition, self.record)
         self.ui_offset = len(messages)
 
     def _capture_app_state(self, record: ConversationRecord) -> None:
@@ -515,7 +521,7 @@ class HistoryController:
             return
         record.title = title
         record.title_source = "user"
-        await self.store.put(self.partition, record)
+        await self._put_record(self.partition, record)
         await self.send_history_update()
 
     async def delete(self, conv_id: str) -> None:
@@ -587,7 +593,7 @@ class HistoryController:
         await self._send_sibling_metadata()
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
-        await self.store.put(self.partition, self.record)
+        await self._put_record(self.partition, self.record)
         await self.send_history_update()
 
     async def handle_edit(
@@ -867,7 +873,7 @@ class ChatHistory:
                     if old_state_id is not None:
                         await delete_bookmark_state(old_state_id)
                     if controller.partition is not None:
-                        await controller.store.put(controller.partition, record)
+                        await controller._put_record(controller.partition, record)
                     await controller.send_navigate(
                         f"?_state_id_={new_state_id}", captured_id
                     )
