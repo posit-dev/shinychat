@@ -190,7 +190,7 @@ test_that("contents_from_attachments builds ellmer image/pdf content", {
       )
     )
   )[[1]]
-  expect_equal(pdf_no_name@filename, "document.pdf")
+  expect_match(pdf_no_name@filename, "^file_\\d+\\.pdf$")
 })
 
 test_that("contents_from_attachments errors on unsupported type", {

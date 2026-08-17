@@ -37,7 +37,7 @@
 
 ## Bug fixes
 
-* Fixed PDF attachments losing the user's original filename. The filename now reaches ellmer via `ContentPDF()` directly instead of `content_pdf_url()`, matching the existing behavior in Python. (#323)
+* Fixed PDF attachments losing the user's original filename. `content_pdf_url()`'s synthetic filename is now overridden with the user's original filename when one was provided, matching the existing behavior in Python. (#323)
 
 * Fixed a race between the chat greeting and conversation history restore: reloading a page that restored a previous conversation could briefly flash the app's greeting, and starting a new chat after a session began with a restored conversation could fail to show any greeting at all. Greeting resolution now defers to history's own restore decision instead of racing the client's independent greeting request.
 

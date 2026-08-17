@@ -174,7 +174,9 @@ content_from_attachment <- function(att) {
   }
   if (identical(mime, "application/pdf")) {
     content <- ellmer::content_pdf_url(data_url)
-    content@filename <- if (nzchar(name)) name else "document.pdf"
+    if (nzchar(name)) {
+      content@filename <- name
+    }
     return(content)
   }
   if (mime %in% attachment_types()$text) {
