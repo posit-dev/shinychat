@@ -179,6 +179,18 @@ test_that("contents_from_attachments builds ellmer image/pdf content", {
     )
   )[[1]]
   expect_true(S7::S7_inherits(pdf, ellmer::ContentPDF))
+  expect_equal(pdf@filename, "r.pdf")
+
+  pdf_no_name <- contents_from_attachments(
+    list(
+      list(
+        mime = "application/pdf",
+        data_url = paste0("data:application/pdf;base64,", pdf_b64),
+        name = ""
+      )
+    )
+  )[[1]]
+  expect_equal(pdf_no_name@filename, "document.pdf")
 })
 
 test_that("contents_from_attachments errors on unsupported type", {
