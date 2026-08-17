@@ -173,15 +173,9 @@ content_from_attachment <- function(att) {
     return(ellmer::content_image_url(data_url))
   }
   if (identical(mime, "application/pdf")) {
-    comma <- regexpr(",", data_url, fixed = TRUE)
-    b64 <- substring(data_url, comma + 1L)
-    return(
-      ellmer::ContentPDF(
-        type = mime,
-        data = b64,
-        filename = if (nzchar(name)) name else "document.pdf"
-      )
-    )
+    content <- ellmer::content_pdf_url(data_url)
+    content@filename <- if (nzchar(name)) name else "document.pdf"
+    return(content)
   }
   if (mime %in% attachment_types()$text) {
     # Returned as a plain string: ellmer coerces character `...` args to
