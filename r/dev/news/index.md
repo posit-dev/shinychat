@@ -4,6 +4,12 @@
 
 ### New features and improvements
 
+- Web search and web fetch responses from ellmer now show their activity
+  and citations directly in the chat. Readers can open a citation beside
+  its claim or use the message-wide Sources pill.
+  `ContentCitation@grounded_span` links each citation to the answer text
+  that it supports.
+
 - Assistant messages can now attach source details to specific claims
   with the `<shiny-aside>` markup convention. This convention powers
   shinychat’s web citations and can also support custom RAG workflows.
@@ -176,6 +182,14 @@
   excluded from bookmarks.
 
 ### Bug fixes
+
+- Fixed a race between the chat greeting and conversation history
+  restore: reloading a page that restored a previous conversation could
+  briefly flash the app’s greeting, and starting a new chat after a
+  session began with a restored conversation could fail to show any
+  greeting at all. Greeting resolution now defers to history’s own
+  restore decision instead of racing the client’s independent greeting
+  request.
 
 - Fixed
   [`output_markdown_stream()`](https://posit-dev.github.io/shinychat/r/dev/reference/output_markdown_stream.md)
