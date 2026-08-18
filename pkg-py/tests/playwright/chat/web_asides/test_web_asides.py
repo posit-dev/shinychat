@@ -133,6 +133,105 @@ def test_web_asides(page: Page, local_app: ShinyAppProc) -> None:
     ).to_have_text("2 / 2")
 
 
+def test_aside_marker_public_style_properties(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.goto(local_app.url)
+
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30 * 1000)
+    chat.set_user_input("tell me about e-bike motors")
+    chat.send_user_input()
+
+    labeled_marker = page.get_by_role("button", name="eBicycles (+1 more)")
+    count_marker = page.get_by_role("button", name="Aside 1")
+    compact_marker = page.get_by_role(
+        "button", name="Asides 2, 3: Policy A; Policy B"
+    )
+    expect(labeled_marker).to_be_visible(timeout=30 * 1000)
+    expect(count_marker).to_be_visible()
+    expect(compact_marker).to_be_visible()
+    expect(compact_marker).to_have_attribute(
+        "data-shinychat-aside-display", "compact"
+    )
+    expect(labeled_marker).not_to_have_attribute(
+        "data-shinychat-aside-display", "compact"
+    )
+
+    chat.loc.evaluate(
+        """el => {
+          el.style.setProperty(
+            "--shiny-chat-aside-marker-color",
+            "rgb(10, 20, 30)"
+          );
+          el.style.setProperty(
+            "--shiny-chat-aside-marker-hover-color",
+            "rgb(40, 50, 60)"
+          );
+          el.style.setProperty(
+            "--shiny-chat-aside-marker-bg",
+            "rgb(70, 80, 90)"
+          );
+          el.style.setProperty(
+            "--shiny-chat-aside-marker-hover-bg",
+            "rgb(100, 110, 120)"
+          );
+          el.style.setProperty(
+            "--shiny-chat-aside-marker-font-family",
+            "monospace"
+          );
+        }"""
+    )
+
+    compact_face = compact_marker.locator(".shiny-aside-pill__count")
+    assert labeled_marker.evaluate("el => getComputedStyle(el).color") == (
+        "rgb(10, 20, 30)"
+    )
+    assert labeled_marker.evaluate("el => getComputedStyle(el).backgroundColor") == (
+        "rgb(70, 80, 90)"
+    )
+    assert count_marker.evaluate("el => getComputedStyle(el).backgroundColor") == (
+        "rgb(70, 80, 90)"
+    )
+    assert compact_marker.evaluate("el => getComputedStyle(el).color") == (
+        "rgb(10, 20, 30)"
+    )
+    assert compact_marker.evaluate("el => getComputedStyle(el).fontFamily") == (
+        "monospace"
+    )
+    assert compact_face.evaluate("el => getComputedStyle(el).backgroundColor") == (
+        "rgb(70, 80, 90)"
+    )
+
+    compact_marker.hover()
+    assert compact_marker.evaluate("el => getComputedStyle(el).color") == (
+        "rgb(40, 50, 60)"
+    )
+    assert compact_face.evaluate("el => getComputedStyle(el).backgroundColor") == (
+        "rgb(100, 110, 120)"
+    )
+
+    page.keyboard.press("Tab")
+    compact_marker.focus()
+    assert compact_marker.evaluate("el => el.matches(':focus-visible')")
+    assert compact_marker.evaluate("el => getComputedStyle(el).color") == (
+        "rgb(40, 50, 60)"
+    )
+    assert compact_face.evaluate("el => getComputedStyle(el).backgroundColor") == (
+        "rgb(100, 110, 120)"
+    )
+
+    compact_marker.click()
+    page.mouse.move(0, 0)
+    expect(compact_marker).to_have_attribute("aria-expanded", "true")
+    assert compact_marker.evaluate("el => getComputedStyle(el).color") == (
+        "rgb(40, 50, 60)"
+    )
+    assert compact_face.evaluate("el => getComputedStyle(el).backgroundColor") == (
+        "rgb(100, 110, 120)"
+    )
+
+
 def test_web_aside_symmetric_padding_when_favicon_fails(
     page: Page, local_app: ShinyAppProc
 ) -> None:

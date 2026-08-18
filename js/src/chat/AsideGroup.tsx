@@ -239,6 +239,7 @@ export const AsideGroupView = memo(function AsideGroupView({
         ref={refs.setReference}
         type="button"
         className={pillClass}
+        data-shinychat-aside-display={numberMarker ? "compact" : undefined}
         aria-label={pillLabel}
         {...getReferenceProps()}
       >

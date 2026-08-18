@@ -102,6 +102,21 @@ extends to at least 1.5rem high and 1.5rem wide. Only the exact value
 \code{"compact"} enables this behavior. Other values retain the normal label-based
 behavior.
 
+Customize aside marker colors, backgrounds, and font family on a chat
+container with these CSS properties. They apply to labeled, plain-count, and
+compact numbered markers, but not to popovers:
+\itemize{
+\item \code{--shiny-chat-aside-marker-color}
+\item \code{--shiny-chat-aside-marker-hover-color}
+\item \code{--shiny-chat-aside-marker-bg}
+\item \code{--shiny-chat-aside-marker-hover-bg}
+\item \code{--shiny-chat-aside-marker-font-family}
+}
+
+Shinychat continues to control marker spacing, position, and pointer-target
+size. Set the properties on a chat container to style all markers, or on
+\verb{[data-shinychat-aside-display="compact"]} to style only compact markers.
+
 \code{grounded-span} identifies the answer text that is related to an aside.
 Its value must exactly match text before the tag in the same paragraph or
 list item. When the popover opens, shinychat highlights the most recent
