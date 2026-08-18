@@ -36,6 +36,7 @@ from htmltools import (
 from pydantic import ValidationError
 
 from . import _utils
+from ._artifact import ChatArtifactController
 from ._attachments import (
     Attachment,
     attachment_to_content,
@@ -98,6 +99,7 @@ else:
 
 __all__ = (
     "Chat",
+    "ChatArtifactController",
     "ChatExpress",
     "ChatGreeting",
     "ChatMessage",
@@ -361,6 +363,7 @@ class Chat:
         )
         self._history_enabled: bool = history is not False
         self.history: ChatHistory = ChatHistory(self, config=history_config)
+        self.artifact: ChatArtifactController = ChatArtifactController(self)
         self._cancel_bookmarking_callbacks: CancelCallback | None = None
         self._greeting_content: str | None = None
 
@@ -1993,7 +1996,7 @@ class Chat:
             "id": self.id,
             "action": action,
         }
-        if html_deps:
+        if html_deps is not None:
             envelope["html_deps"] = html_deps
         await self._session.send_custom_message("shinyChatMessage", envelope)
 

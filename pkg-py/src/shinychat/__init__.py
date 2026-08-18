@@ -1,3 +1,4 @@
+from ._artifact import ChatArtifactController
 from ._attachments import Attachment, attachment_to_content
 from ._chat import Chat, UserInput, chat_greeting, chat_ui
 from ._chat_normalize import message_content, message_content_chunk
@@ -17,6 +18,7 @@ __all__ = [
     "attachment_to_content",
     "Chat",
     "ChatArtifact",
+    "ChatArtifactController",
     "ChatNavPanel",
     "ChatSidebar",
     "UserInput",
