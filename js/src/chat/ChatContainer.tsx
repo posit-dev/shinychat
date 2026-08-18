@@ -569,6 +569,7 @@ export const ChatContainer = forwardRef<
             conversations={history.conversations}
             activeId={history.activeId}
             busy={history.busy}
+            connected={history.connected}
             onSelect={historyStore.actions.select}
             onNew={historyStore.actions.create}
             onRename={historyStore.actions.rename}

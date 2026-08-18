@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
 import { render, screen, act, fireEvent } from "@testing-library/react"
+import { StrictMode } from "react"
 import { ChatApp } from "../../src/chat/ChatApp"
 import {
   createMockTransport,
@@ -394,6 +395,44 @@ describe("ChatApp integration: editable messages gated by history state", () => 
     expect(
       screen.getByRole("button", { name: /new conversation/i }),
     ).toHaveProperty("disabled", true)
+  })
+
+  it("keeps drawer actions attached through StrictMode effect replay", async () => {
+    mockMatchMedia(false)
+    const transport = createMockTransport()
+
+    render(
+      <StrictMode>
+        <ChatApp
+          transport={transport}
+          shinyLifecycle={createMockShinyLifecycle()}
+          elementId="test-chat"
+          inputId="test-input"
+          uploadAccept={["image/png"]}
+          maxUploadSize={30000000}
+          placeholder="Type..."
+        />
+      </StrictMode>,
+    )
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+      })
+    })
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /conversation history/i }),
+    )
+    expect(() =>
+      fireEvent.click(
+        screen.getByRole("button", { name: /new conversation/i }),
+      ),
+    ).not.toThrow()
+    expect(transport.sendHistoryNew).toHaveBeenCalledWith("test-chat")
   })
 
   it("forwards sibling navigation via transport.sendMessageNavigate once history is enabled", async () => {

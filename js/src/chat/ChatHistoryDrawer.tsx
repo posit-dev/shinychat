@@ -17,6 +17,8 @@ export interface ChatHistoryContentProps {
   activeId: string | null
   /** True while a stream is in flight: disables unsafe conversation actions. */
   busy: boolean
+  /** False while the chat's transport is temporarily unavailable. */
+  connected?: boolean
   onSelect: (id: string) => void
   onNew: () => void
   onRename: (id: string, title: string) => void
@@ -163,6 +165,7 @@ export function ChatHistoryContent({
   conversations,
   activeId,
   busy,
+  connected = true,
   onSelect,
   onNew,
   onRename,
@@ -197,13 +200,13 @@ export function ChatHistoryContent({
   const groups = useMemo(() => groupByRecency(filtered), [filtered])
 
   function handleSelect(id: string) {
-    if (busy) return
+    if (busy || !connected) return
     onSelect(id)
     onActionComplete?.()
   }
 
   function handleNew() {
-    if (busy) return
+    if (busy || !connected) return
     onNew()
     onActionComplete?.()
   }
@@ -243,8 +246,14 @@ export function ChatHistoryContent({
         <button
           type="button"
           className="shiny-chat-history-new"
-          disabled={busy}
-          title={busy ? "Wait for the response to finish" : undefined}
+          disabled={busy || !connected}
+          title={
+            busy
+              ? "Wait for the response to finish"
+              : !connected
+                ? "History is unavailable while chat reconnects"
+                : undefined
+          }
           aria-label="New conversation"
           onClick={handleNew}
         >
@@ -280,15 +289,18 @@ export function ChatHistoryContent({
                 meta={c}
                 active={c.id === activeId}
                 busy={busy}
+                connected={connected}
                 menuOpen={menuFor === c.id}
                 renaming={renaming === c.id}
                 confirmingDelete={confirmingDelete === c.id}
                 onToggleMenu={() => setMenuFor(menuFor === c.id ? null : c.id)}
                 onStartRename={() => {
+                  if (!connected) return
                   setRenaming(c.id)
                   setMenuFor(null)
                 }}
                 onStartDelete={() => {
+                  if (busy || !connected) return
                   setConfirmingDelete(c.id)
                   setMenuFor(null)
                 }}
@@ -297,10 +309,12 @@ export function ChatHistoryContent({
                   setConfirmingDelete(null)
                 }}
                 onRename={(title) => {
+                  if (!connected) return
                   onRename(c.id, title)
                   setRenaming(null)
                 }}
                 onDelete={() => {
+                  if (busy || !connected) return
                   onDelete(c.id)
                   setConfirmingDelete(null)
                 }}
@@ -318,6 +332,7 @@ interface ConversationItemProps {
   meta: ConversationMeta
   active: boolean
   busy: boolean
+  connected: boolean
   menuOpen: boolean
   renaming: boolean
   confirmingDelete: boolean
@@ -334,6 +349,7 @@ function ConversationItem({
   meta,
   active,
   busy,
+  connected,
   menuOpen,
   renaming,
   confirmingDelete,
@@ -360,6 +376,7 @@ function ConversationItem({
         <input
           className="shiny-chat-history-rename-input form-control form-control-sm"
           autoFocus
+          disabled={!connected}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
@@ -387,8 +404,14 @@ function ConversationItem({
       <button
         type="button"
         className="shiny-chat-history-item-select"
-        disabled={busy}
-        title={busy ? "Wait for the response to finish" : undefined}
+        disabled={busy || !connected}
+        title={
+          busy
+            ? "Wait for the response to finish"
+            : !connected
+              ? "History is unavailable while chat reconnects"
+              : undefined
+        }
         onClick={onSelect}
       >
         <span className="shiny-chat-history-item-title">{meta.title}</span>
@@ -402,6 +425,7 @@ function ConversationItem({
           <button
             type="button"
             className="shiny-chat-history-confirm-yes"
+            disabled={busy || !connected}
             onClick={onDelete}
             aria-label="Confirm delete"
           >
@@ -421,6 +445,12 @@ function ConversationItem({
           <button
             type="button"
             aria-label="Conversation actions"
+            disabled={!connected}
+            title={
+              !connected
+                ? "History is unavailable while chat reconnects"
+                : undefined
+            }
             onClick={onToggleMenu}
           >
             <MoreIcon />
@@ -434,8 +464,14 @@ function ConversationItem({
               <button
                 type="button"
                 className="shiny-chat-history-menu-danger"
-                disabled={busy}
-                title={busy ? "Wait for the response to finish" : undefined}
+                disabled={busy || !connected}
+                title={
+                  busy
+                    ? "Wait for the response to finish"
+                    : !connected
+                      ? "History is unavailable while chat reconnects"
+                      : undefined
+                }
                 onClick={onStartDelete}
               >
                 <TrashIcon />

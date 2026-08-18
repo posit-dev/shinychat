@@ -93,6 +93,7 @@ describe("historyStore", () => {
       conversations: [],
       activeId: null,
       busy: false,
+      connected: false,
     })
   })
 
@@ -140,19 +141,54 @@ describe("historyStore", () => {
     expect(secondTransport.sendHistoryNew).toHaveBeenCalledWith("chat")
   })
 
-  it("keeps mounted subscribers live through owner cleanup and removes empty entries", () => {
-    const registration = acquireHistoryStore("chat", createMockTransport())
+  it("retains replayed data with detached no-op actions until reacquisition", async () => {
+    const firstTransport = createMockTransport()
+    const registration = acquireHistoryStore("chat", firstTransport)
+    registration.store.updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+    })
     const subscriber = vi.fn()
     const unsubscribe = registration.store.subscribe(subscriber)
 
     registration.release()
     const retained = getHistoryStore("chat")
     expect(retained).toBe(registration.store)
+    expect(retained.getSnapshot()).toMatchObject({
+      initialized: true,
+      enabled: true,
+      conversations,
+      activeId: "first",
+      connected: false,
+    })
 
-    retained.setBusy(true)
+    expect(() => {
+      retained.actions.select("first")
+      retained.actions.create()
+      retained.actions.rename("first", "Renamed")
+      retained.actions.delete("first")
+    }).not.toThrow()
+    expect(firstTransport.sendHistorySelect).not.toHaveBeenCalled()
+    expect(firstTransport.sendHistoryNew).not.toHaveBeenCalled()
+    expect(firstTransport.sendHistoryRename).not.toHaveBeenCalled()
+    expect(firstTransport.sendHistoryDelete).not.toHaveBeenCalled()
     expect(subscriber).toHaveBeenCalledTimes(1)
 
+    const secondTransport = createMockTransport()
+    const replacement = acquireHistoryStore("chat", secondTransport)
+    expect(replacement.store).toBe(retained)
+    expect(retained.getSnapshot().connected).toBe(true)
+    retained.actions.rename("first", "Renamed")
+    expect(secondTransport.sendHistoryRename).toHaveBeenCalledWith(
+      "chat",
+      "first",
+      "Renamed",
+    )
+
+    replacement.release()
     unsubscribe()
+    await Promise.resolve()
     expect(getHistoryStore("chat")).not.toBe(retained)
   })
 })

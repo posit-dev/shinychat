@@ -111,6 +111,7 @@ function renderDrawer(props: Partial<WrapperProps> = {}) {
       conversations={props.conversations ?? DEFAULT_CONVOS}
       activeId={props.activeId ?? null}
       busy={props.busy ?? false}
+      connected={props.connected}
       startOpen={props.startOpen}
       onSelect={props.onSelect ?? onSelect}
       onNew={props.onNew ?? onNew}
@@ -592,6 +593,24 @@ describe("busy state", () => {
   })
 })
 
+describe("detached transport state", () => {
+  it("disables history controls while the transport is unavailable", () => {
+    renderDrawer({ connected: false })
+    openDrawer()
+
+    expect(
+      screen.getByRole("button", { name: /new conversation/i }),
+    ).toHaveProperty("disabled", true)
+    expect(
+      screen.getAllByRole("button", { name: /conversation actions/i })[0],
+    ).toHaveProperty("disabled", true)
+    const select = screen
+      .getByText("Today's chat")
+      .closest(".shiny-chat-history-item-select") as HTMLButtonElement
+    expect(select.disabled).toBe(true)
+  })
+})
+
 // ---------------------------------------------------------------------------
 // Closing behavior
 // ---------------------------------------------------------------------------
@@ -699,6 +718,7 @@ function renderPersistentDrawer(props: Partial<WrapperProps> = {}) {
       conversations={props.conversations ?? DEFAULT_CONVOS}
       activeId={props.activeId ?? null}
       busy={props.busy ?? false}
+      connected={props.connected}
       startOpen={props.startOpen}
       onSelect={props.onSelect ?? onSelect}
       onNew={props.onNew ?? onNew}

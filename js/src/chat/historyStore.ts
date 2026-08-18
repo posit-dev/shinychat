@@ -6,6 +6,7 @@ export interface HistorySnapshot {
   conversations: readonly ConversationMeta[]
   activeId: string | null
   busy: boolean
+  connected: boolean
 }
 
 export interface HistoryActions {
@@ -21,6 +22,7 @@ const initialSnapshot: HistorySnapshot = Object.freeze({
   conversations: Object.freeze([]),
   activeId: null,
   busy: false,
+  connected: false,
 })
 
 type Listener = () => void
@@ -34,31 +36,28 @@ export class HistoryStore {
 
   readonly actions: HistoryActions = {
     select: (conversationId) => {
-      if (!this.snapshot.busy) {
-        this.requireTransport().sendHistorySelect(
-          this.elementId,
-          conversationId,
-        )
+      const transport = this.activeTransport()
+      if (transport && !this.snapshot.busy) {
+        transport.sendHistorySelect(this.elementId, conversationId)
       }
     },
     create: () => {
-      if (!this.snapshot.busy) {
-        this.requireTransport().sendHistoryNew(this.elementId)
+      const transport = this.activeTransport()
+      if (transport && !this.snapshot.busy) {
+        transport.sendHistoryNew(this.elementId)
       }
     },
     rename: (conversationId, title) => {
-      this.requireTransport().sendHistoryRename(
+      this.activeTransport()?.sendHistoryRename(
         this.elementId,
         conversationId,
         title,
       )
     },
     delete: (conversationId) => {
-      if (!this.snapshot.busy) {
-        this.requireTransport().sendHistoryDelete(
-          this.elementId,
-          conversationId,
-        )
+      const transport = this.activeTransport()
+      if (transport && !this.snapshot.busy) {
+        transport.sendHistoryDelete(this.elementId, conversationId)
       }
     },
   }
@@ -66,6 +65,7 @@ export class HistoryStore {
   getSnapshot = (): HistorySnapshot => this.snapshot
 
   subscribe = (listener: Listener): (() => void) => {
+    retainRegistryEntry(this.elementId, this)
     this.listeners.add(listener)
     return () => {
       this.listeners.delete(listener)
@@ -75,6 +75,7 @@ export class HistoryStore {
 
   setTransport(transport: ChatTransport | null): void {
     this.transport = transport
+    this.publish({ ...this.snapshot, connected: transport !== null })
   }
 
   updateHistory({
@@ -101,6 +102,7 @@ export class HistoryStore {
       conversations: nextConversations,
       activeId,
       busy: this.snapshot.busy,
+      connected: this.snapshot.connected,
     })
   }
 
@@ -112,13 +114,8 @@ export class HistoryStore {
     return this.listeners.size
   }
 
-  private requireTransport(): ChatTransport {
-    if (!this.transport) {
-      throw new Error(
-        `History store for "${this.elementId}" has no active ChatTransport.`,
-      )
-    }
-    return this.transport
+  private activeTransport(): ChatTransport | null {
+    return this.snapshot.connected ? this.transport : null
   }
 
   private publish(next: HistorySnapshot): void {
@@ -133,6 +130,7 @@ export class HistoryStore {
 interface RegistryEntry {
   store: HistoryStore
   owners: Map<symbol, ChatTransport>
+  cleanupGeneration: number
 }
 
 const registry = new Map<string, RegistryEntry>()
@@ -145,7 +143,11 @@ export interface HistoryStoreRegistration {
 export function getHistoryStore(elementId: string): HistoryStore {
   let entry = registry.get(elementId)
   if (!entry) {
-    entry = { store: new HistoryStore(elementId), owners: new Map() }
+    entry = {
+      store: new HistoryStore(elementId),
+      owners: new Map(),
+      cleanupGeneration: 0,
+    }
     registry.set(elementId, entry)
   }
   return entry.store
@@ -175,6 +177,7 @@ export function acquireHistoryStore(
     )
   }
 
+  entry.cleanupGeneration += 1
   const owner = Symbol(elementId)
   entry.owners.set(owner, transport)
   entry.store.setTransport(transport)
@@ -201,11 +204,31 @@ export function acquireHistoryStore(
 function cleanupRegistryEntry(elementId: string, store: HistoryStore): void {
   const entry = registry.get(elementId)
   if (
-    entry?.store === store &&
-    entry.owners.size === 0 &&
-    store.listenerCount === 0
-  ) {
-    registry.delete(elementId)
+    !entry ||
+    entry.store !== store ||
+    entry.owners.size !== 0 ||
+    store.listenerCount !== 0
+  )
+    return
+
+  const cleanupGeneration = ++entry.cleanupGeneration
+  queueMicrotask(() => {
+    const current = registry.get(elementId)
+    if (
+      current?.store === store &&
+      current.cleanupGeneration === cleanupGeneration &&
+      current.owners.size === 0 &&
+      store.listenerCount === 0
+    ) {
+      registry.delete(elementId)
+    }
+  })
+}
+
+function retainRegistryEntry(elementId: string, store: HistoryStore): void {
+  const entry = registry.get(elementId)
+  if (entry?.store === store) {
+    entry.cleanupGeneration += 1
   }
 }
 
@@ -231,7 +254,8 @@ function snapshotsEqual(a: HistorySnapshot, b: HistorySnapshot): boolean {
     a.enabled === b.enabled &&
     a.conversations === b.conversations &&
     a.activeId === b.activeId &&
-    a.busy === b.busy
+    a.busy === b.busy &&
+    a.connected === b.connected
   )
 }
 
