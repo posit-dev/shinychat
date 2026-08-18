@@ -92,13 +92,7 @@ page. Each unlabeled aside remains a separate numbered pill. The grouped
 pill shows a \code{+N} overflow count only when its labeled asides have different
 labels. Asides that share one label use a single face with no count.
 
-Set \code{display="compact"} to show a compact numbered reference in the message.
-The popover retains the source label. Compact asides in the same paragraph or
-list item share a marker, such as \verb{[2, 3]}.
-
-Customize aside marker colors, backgrounds, and font family on a chat
-container with these CSS properties. They apply to labeled, plain-count, and
-compact numbered markers, but not to popovers:
+Set these CSS properties on the chat container to style aside markers:
 \itemize{
 \item \code{--shiny-chat-aside-marker-color}
 \item \code{--shiny-chat-aside-marker-hover-color}
@@ -107,9 +101,8 @@ compact numbered markers, but not to popovers:
 \item \code{--shiny-chat-aside-marker-font-family}
 }
 
-Shinychat continues to control marker spacing, position, and pointer-target
-size. Set the properties on a chat container to style all markers, or on
-\verb{[data-shinychat-aside-display="compact"]} to style only compact markers.
+To style only compact markers, set them on
+\verb{[data-shinychat-aside-display="compact"]}.
 
 \code{grounded-span} identifies the answer text that is related to an aside.
 Its value must exactly match text before the tag in the same paragraph or
@@ -119,6 +112,10 @@ match. If the value does not match, no text is highlighted.
 Long content wraps and scrolls within the viewport. The popover keeps the
 nearest scoped Bootstrap theme. In a paged popover, page changes are
 announced to assistive technology without repeating the body.
+
+Set \code{display="compact"} to show a compact numbered reference in the message.
+The popover retains the source label. Compact asides in the same paragraph or
+list item share a marker, such as \verb{[2, 3]}.
 
 The favicon is fetched at render time from a third-party service
 (DuckDuckGo's icon service), which receives the cited site's hostname. To
