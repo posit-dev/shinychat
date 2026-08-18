@@ -6,6 +6,7 @@ import {
   forwardRef,
   useImperativeHandle,
   useMemo,
+  useSyncExternalStore,
 } from "react"
 import { createPortal } from "react-dom"
 import { useStickToBottom } from "use-stick-to-bottom"
@@ -20,15 +21,16 @@ import {
   SlashCommandsContext,
   useChatDispatch,
 } from "./context"
-import { ChatHistoryDrawer, HistoryIcon } from "./ChatHistoryDrawer"
+import {
+  ChatHistoryContent,
+  ChatHistoryDrawer,
+  HistoryIcon,
+} from "./ChatHistoryDrawer"
+import type { HistoryStore } from "./historyStore"
 import { useFillPaddingTransfer } from "./useFillPaddingTransfer"
 import { useOverlapNudge } from "./useOverlapNudge"
 import type { ChatMessageData, GreetingData } from "./state"
-import type {
-  ChatTransport,
-  ConversationMeta,
-  SlashCommandDef,
-} from "../transport/types"
+import type { ChatTransport, SlashCommandDef } from "../transport/types"
 import type { SubmitKey } from "./tiptap/submitShortcut"
 import type { AttachmentPayload } from "./attachments"
 
@@ -62,9 +64,7 @@ export interface ChatContainerProps {
   slashCommands: SlashCommandDef[]
   slashCommandId: string
   submitKey?: SubmitKey
-  historyEnabled?: boolean
-  historyConversations?: ConversationMeta[]
-  historyActiveId?: string | null
+  historyStore: HistoryStore
   onEdit?: (
     index: number,
     content: string,
@@ -103,9 +103,7 @@ export const ChatContainer = forwardRef<
     slashCommands,
     slashCommandId,
     submitKey,
-    historyEnabled,
-    historyConversations,
-    historyActiveId,
+    historyStore,
     onEdit,
     onNavigate,
     siblingNavigationPending,
@@ -122,6 +120,11 @@ export const ChatContainer = forwardRef<
   )
 
   const chatInputRef = useRef<ChatInputHandle>(null)
+  const history = useSyncExternalStore(
+    historyStore.subscribe,
+    historyStore.getSnapshot,
+    historyStore.getSnapshot,
+  )
 
   const [historyOpen, setHistoryOpen] = useState(false)
   const historyTriggerRef = useRef<HTMLButtonElement>(null)
@@ -232,7 +235,7 @@ export const ChatContainer = forwardRef<
   // would record a false "no overlap"; the drawer's add/remove (watchMutations)
   // re-runs the measure once it closes and the toggle is measurable again.
   useOverlapNudge(historyTriggerRef, {
-    enabled: historyEnabled,
+    enabled: history.enabled,
     boundarySelector: "shiny-chat-container",
     shiftProperty: "--_history-trigger-shift",
     side: (container) =>
@@ -458,7 +461,7 @@ export const ChatContainer = forwardRef<
 
   return (
     <SlashCommandsContext.Provider value={slashCommands}>
-      {historyEnabled && (
+      {history.enabled && (
         <button
           type="button"
           ref={historyTriggerRef}
@@ -505,8 +508,8 @@ export const ChatContainer = forwardRef<
                   // controller, which only registers its input listeners
                   // when history is enabled -- without this gate the
                   // buttons would render but silently no-op on click.
-                  onEdit={historyEnabled ? onEdit : undefined}
-                  onNavigate={historyEnabled ? onNavigate : undefined}
+                  onEdit={history.enabled ? onEdit : undefined}
+                  onNavigate={history.enabled ? onNavigate : undefined}
                   siblingNavigationPending={siblingNavigationPending}
                   disabled={isStreaming}
                   inputId={inputId}
@@ -556,23 +559,23 @@ export const ChatContainer = forwardRef<
         {footerEl && <RawDOM source={footerEl} className="shiny-chat-footer" />}
       </div>
 
-      {historyEnabled && (
+      {history.enabled && (
         <ChatHistoryDrawer
           isOpen={historyOpen}
           onClose={() => setHistoryOpen(false)}
           triggerRef={historyTriggerRef}
-          conversations={historyConversations ?? []}
-          activeId={historyActiveId ?? null}
-          busy={isStreaming}
-          onSelect={(convId) => {
-            transport.sendHistorySelect(elementId, convId)
-          }}
-          onNew={() => transport.sendHistoryNew(elementId)}
-          onRename={(convId, title) =>
-            transport.sendHistoryRename(elementId, convId, title)
-          }
-          onDelete={(convId) => transport.sendHistoryDelete(elementId, convId)}
-        />
+        >
+          <ChatHistoryContent
+            conversations={history.conversations}
+            activeId={history.activeId}
+            busy={history.busy}
+            onSelect={historyStore.actions.select}
+            onNew={historyStore.actions.create}
+            onRename={historyStore.actions.rename}
+            onDelete={historyStore.actions.delete}
+            onActionComplete={() => setHistoryOpen(false)}
+          />
+        </ChatHistoryDrawer>
       )}
 
       {pendingUrl &&

@@ -358,6 +358,44 @@ describe("ChatApp integration: editable messages gated by history state", () => 
     )
   })
 
+  it("routes drawer actions through the history store and disables them while streaming", async () => {
+    mockMatchMedia(false)
+    const transport = createMockTransport()
+    renderChatApp(transport)
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+      })
+    })
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /conversation history/i }),
+    )
+    fireEvent.click(screen.getByRole("button", { name: /new conversation/i }))
+    expect(transport.sendHistoryNew).toHaveBeenCalledWith("test-chat")
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "chunk_start",
+        message: {
+          role: "assistant",
+          segments: [{ content: "", content_type: "markdown" }],
+        },
+      })
+    })
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /conversation history/i }),
+    )
+    expect(
+      screen.getByRole("button", { name: /new conversation/i }),
+    ).toHaveProperty("disabled", true)
+  })
+
   it("forwards sibling navigation via transport.sendMessageNavigate once history is enabled", async () => {
     mockMatchMedia(false)
     const transport = createMockTransport()

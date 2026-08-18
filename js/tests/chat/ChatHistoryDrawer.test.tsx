@@ -3,8 +3,9 @@ import { render, screen, fireEvent, act, within } from "@testing-library/react"
 import React from "react"
 import type { ConversationMeta } from "../../src/transport/types"
 import {
+  ChatHistoryContent,
   ChatHistoryDrawer,
-  type ChatHistoryDrawerProps,
+  type ChatHistoryContentProps,
   HistoryIcon,
 } from "../../src/chat/ChatHistoryDrawer"
 
@@ -63,10 +64,7 @@ const DEFAULT_CONVOS: ConversationMeta[] = [
 ]
 
 // Mimics how ChatContainer wires up the trigger + drawer.
-type WrapperProps = Omit<
-  ChatHistoryDrawerProps,
-  "isOpen" | "onClose" | "triggerRef"
-> & { startOpen?: boolean }
+type WrapperProps = ChatHistoryContentProps & { startOpen?: boolean }
 
 function DrawerWrapper(props: WrapperProps) {
   const { startOpen = false, ...rest } = props
@@ -88,11 +86,15 @@ function DrawerWrapper(props: WrapperProps) {
           to play the slide-out animation before unmounting. */}
       {isOpen && (
         <ChatHistoryDrawer
-          {...rest}
           isOpen={true}
           onClose={() => setIsOpen(false)}
           triggerRef={triggerRef}
-        />
+        >
+          <ChatHistoryContent
+            {...rest}
+            onActionComplete={() => setIsOpen(false)}
+          />
+        </ChatHistoryDrawer>
       )}
     </>
   )
@@ -673,11 +675,15 @@ function PersistentWrapper(props: WrapperProps) {
         <HistoryIcon />
       </button>
       <ChatHistoryDrawer
-        {...rest}
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}
         triggerRef={triggerRef}
-      />
+      >
+        <ChatHistoryContent
+          {...rest}
+          onActionComplete={() => setIsOpen(false)}
+        />
+      </ChatHistoryDrawer>
     </>
   )
 }

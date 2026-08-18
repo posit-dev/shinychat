@@ -9,27 +9,26 @@ export interface ChatHistoryDrawerProps {
   isOpen: boolean
   onClose: () => void
   triggerRef: React.RefObject<HTMLButtonElement | null>
-  conversations: ConversationMeta[]
+  children: React.ReactNode
+}
+
+export interface ChatHistoryContentProps {
+  conversations: readonly ConversationMeta[]
   activeId: string | null
-  /** True while a stream is in flight: disables select, + New, and Delete. */
+  /** True while a stream is in flight: disables unsafe conversation actions. */
   busy: boolean
   onSelect: (id: string) => void
   onNew: () => void
   onRename: (id: string, title: string) => void
   onDelete: (id: string) => void
+  onActionComplete?: () => void
 }
 
 export function ChatHistoryDrawer({
   isOpen,
   onClose,
   triggerRef,
-  conversations,
-  activeId,
-  busy,
-  onSelect,
-  onNew,
-  onRename,
-  onDelete,
+  children,
 }: ChatHistoryDrawerProps) {
   // visible stays true through the close animation, unlike isOpen
   const [visible, setVisible] = useState(isOpen)
@@ -38,18 +37,9 @@ export function ChatHistoryDrawer({
   const visibleRef = useRef(isOpen)
   visibleRef.current = visible
   const reducedMotion = usePrefersReducedMotion()
-  const [query, setQuery] = useState("")
-  const [menuFor, setMenuFor] = useState<string | null>(null)
-  const [renaming, setRenaming] = useState<string | null>(null)
-  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
   const drawerRef = useRef<HTMLDivElement>(null)
-  const searchRef = useRef<HTMLInputElement>(null)
 
   const handleClose = useCallback(() => {
-    setQuery("")
-    setMenuFor(null)
-    setRenaming(null)
-    setConfirmingDelete(null)
     onClose()
   }, [onClose])
 
@@ -91,15 +81,8 @@ export function ChatHistoryDrawer({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         // Scope Escape to whatever sub-state is active before closing the
-        // whole drawer, so a stray Escape can't skip handleClose()'s reset.
-        if (confirmingDelete) {
-          setConfirmingDelete(null)
-          return
-        }
-        if (menuFor) {
-          setMenuFor(null)
-          return
-        }
+        // whole drawer. Inline history controls stop propagation when they
+        // need to consume Escape themselves.
         handleClose()
         return
       }
@@ -125,7 +108,7 @@ export function ChatHistoryDrawer({
     }
     document.addEventListener("keydown", onKey)
     return () => document.removeEventListener("keydown", onKey)
-  }, [visible, closing, confirmingDelete, menuFor, handleClose])
+  }, [visible, closing, handleClose])
 
   // Move focus into the drawer on open (so Escape / focus-trap work and screen
   // readers announce the dialog) without landing on the search field — search
@@ -134,45 +117,12 @@ export function ChatHistoryDrawer({
     if (visible && !closing) drawerRef.current?.focus({ preventScroll: true })
   }, [visible, closing])
 
-  useEffect(() => {
-    if (!menuFor) return
-    const onPointerDown = (e: PointerEvent) => {
-      const target = e.target as Element
-      if (!target.closest(`[data-menu-id="${menuFor}"]`)) {
-        setMenuFor(null)
-      }
-    }
-    document.addEventListener("pointerdown", onPointerDown, true)
-    return () =>
-      document.removeEventListener("pointerdown", onPointerDown, true)
-  }, [menuFor])
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (!q) return conversations
-    return conversations.filter((c) => c.title.toLowerCase().includes(q))
-  }, [conversations, query])
-
-  const groups = useMemo(() => groupByRecency(filtered), [filtered])
-
   function handleDrawerAnimationEnd(e: React.AnimationEvent<HTMLDivElement>) {
     // onAnimationEnd bubbles from descendants; only react to the drawer's
     // own close animation, not a child's.
     if (e.target !== e.currentTarget) return
     if (!closing) return
     finishClosing()
-  }
-
-  function handleSelect(id: string) {
-    if (busy) return
-    onSelect(id)
-    handleClose()
-  }
-
-  function handleNew() {
-    if (busy) return
-    onNew()
-    handleClose()
   }
 
   if (!visible) return null
@@ -203,79 +153,162 @@ export function ChatHistoryDrawer({
             <CloseIcon />
           </button>
         </div>
-        <div className="shiny-chat-history-toprow">
-          <button
-            type="button"
-            className="shiny-chat-history-new"
-            disabled={busy}
-            title={busy ? "Wait for the response to finish" : undefined}
-            aria-label="New conversation"
-            onClick={handleNew}
-          >
-            <NewChatIcon />
-            New
-          </button>
-          <span className="shiny-chat-history-search-wrap">
-            <span className="shiny-chat-history-search-icon">
-              <SearchIcon />
-            </span>
-            <input
-              className="shiny-chat-history-search form-control"
-              ref={searchRef}
-              placeholder="Search…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              aria-label="Search conversations"
-            />
+        {children}
+      </div>
+    </div>
+  )
+}
+
+export function ChatHistoryContent({
+  conversations,
+  activeId,
+  busy,
+  onSelect,
+  onNew,
+  onRename,
+  onDelete,
+  onActionComplete,
+}: ChatHistoryContentProps) {
+  const [query, setQuery] = useState("")
+  const [menuFor, setMenuFor] = useState<string | null>(null)
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!menuFor) return
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Element
+      if (!target.closest(`[data-menu-id="${menuFor}"]`)) {
+        setMenuFor(null)
+      }
+    }
+    document.addEventListener("pointerdown", onPointerDown, true)
+    return () =>
+      document.removeEventListener("pointerdown", onPointerDown, true)
+  }, [menuFor])
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return conversations
+    return conversations.filter((c) => c.title.toLowerCase().includes(q))
+  }, [conversations, query])
+
+  const groups = useMemo(() => groupByRecency(filtered), [filtered])
+
+  function handleSelect(id: string) {
+    if (busy) return
+    onSelect(id)
+    onActionComplete?.()
+  }
+
+  function handleNew() {
+    if (busy) return
+    onNew()
+    onActionComplete?.()
+  }
+
+  const handleEscape = useCallback((): boolean => {
+    if (confirmingDelete) {
+      setConfirmingDelete(null)
+      return true
+    }
+    if (menuFor) {
+      setMenuFor(null)
+      return true
+    }
+    return false
+  }, [confirmingDelete, menuFor])
+
+  useEffect(() => {
+    if (!menuFor && !confirmingDelete) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return
+      event.stopPropagation()
+      handleEscape()
+    }
+    window.addEventListener("keydown", onKeyDown, true)
+    return () => window.removeEventListener("keydown", onKeyDown, true)
+  }, [menuFor, confirmingDelete, handleEscape])
+
+  return (
+    <div
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && handleEscape()) {
+          event.stopPropagation()
+        }
+      }}
+    >
+      <div className="shiny-chat-history-toprow">
+        <button
+          type="button"
+          className="shiny-chat-history-new"
+          disabled={busy}
+          title={busy ? "Wait for the response to finish" : undefined}
+          aria-label="New conversation"
+          onClick={handleNew}
+        >
+          <NewChatIcon />
+          New
+        </button>
+        <span className="shiny-chat-history-search-wrap">
+          <span className="shiny-chat-history-search-icon">
+            <SearchIcon />
           </span>
-        </div>
-        <div className="shiny-chat-history-list">
-          {filtered.length === 0 && (
-            <div className="shiny-chat-history-empty">
-              {query.trim() ? "No conversations found" : "No conversations yet"}
-            </div>
-          )}
-          {groups.map(([label, items]) => (
-            <React.Fragment key={label}>
-              <div className="shiny-chat-history-section">{label}</div>
-              {items.map((c) => (
-                <ConversationItem
-                  key={c.id}
-                  meta={c}
-                  active={c.id === activeId}
-                  busy={busy}
-                  menuOpen={menuFor === c.id}
-                  renaming={renaming === c.id}
-                  confirmingDelete={confirmingDelete === c.id}
-                  onToggleMenu={() =>
-                    setMenuFor(menuFor === c.id ? null : c.id)
-                  }
-                  onStartRename={() => {
-                    setRenaming(c.id)
-                    setMenuFor(null)
-                  }}
-                  onStartDelete={() => {
-                    setConfirmingDelete(c.id)
-                    setMenuFor(null)
-                  }}
-                  onCancelEdit={() => {
-                    setRenaming(null)
-                    setConfirmingDelete(null)
-                  }}
-                  onRename={(title) => {
-                    onRename(c.id, title)
-                    setRenaming(null)
-                  }}
-                  onDelete={() => {
-                    onDelete(c.id)
-                    setConfirmingDelete(null)
-                  }}
-                  onSelect={() => handleSelect(c.id)}
-                />
-              ))}
-            </React.Fragment>
-          ))}
-        </div>
+          <input
+            className="shiny-chat-history-search form-control"
+            ref={searchRef}
+            placeholder="Search…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search conversations"
+          />
+        </span>
+      </div>
+      <div className="shiny-chat-history-list">
+        {filtered.length === 0 && (
+          <div className="shiny-chat-history-empty">
+            {query.trim() ? "No conversations found" : "No conversations yet"}
+          </div>
+        )}
+        {groups.map(([label, items]) => (
+          <React.Fragment key={label}>
+            <div className="shiny-chat-history-section">{label}</div>
+            {items.map((c) => (
+              <ConversationItem
+                key={c.id}
+                meta={c}
+                active={c.id === activeId}
+                busy={busy}
+                menuOpen={menuFor === c.id}
+                renaming={renaming === c.id}
+                confirmingDelete={confirmingDelete === c.id}
+                onToggleMenu={() => setMenuFor(menuFor === c.id ? null : c.id)}
+                onStartRename={() => {
+                  setRenaming(c.id)
+                  setMenuFor(null)
+                }}
+                onStartDelete={() => {
+                  setConfirmingDelete(c.id)
+                  setMenuFor(null)
+                }}
+                onCancelEdit={() => {
+                  setRenaming(null)
+                  setConfirmingDelete(null)
+                }}
+                onRename={(title) => {
+                  onRename(c.id, title)
+                  setRenaming(null)
+                }}
+                onDelete={() => {
+                  onDelete(c.id)
+                  setConfirmingDelete(null)
+                }}
+                onSelect={() => handleSelect(c.id)}
+              />
+            ))}
+          </React.Fragment>
+        ))}
       </div>
     </div>
   )
@@ -417,8 +450,8 @@ function ConversationItem({
 }
 
 function groupByRecency(
-  items: ConversationMeta[],
-): Array<[string, ConversationMeta[]]> {
+  items: readonly ConversationMeta[],
+): Array<[string, readonly ConversationMeta[]]> {
   const startOfToday = new Date()
   startOfToday.setHours(0, 0, 0, 0)
 
