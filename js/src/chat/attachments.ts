@@ -177,11 +177,12 @@ export function decodeTextDataUrl(dataUrl: string): string {
   }
 }
 
-/** Decode a base64 data URL into a Blob (used for iframe-friendly Blob URLs). */
-export function dataUrlToBlob(dataUrl: string): Blob {
+/**
+ * Decode a base64 data URL into a Blob with the caller's trusted MIME type.
+ * The data-URL header is deliberately ignored because the Blob may be rendered.
+ */
+export function dataUrlToBlob(dataUrl: string, mime: string): Blob {
   const comma = dataUrl.indexOf(",")
-  const header = comma === -1 ? "" : dataUrl.slice(0, comma)
-  const mime = header.match(/data:([^;]+)/)?.[1] ?? "application/octet-stream"
   const bytes = base64ToBytes(comma === -1 ? "" : dataUrl.slice(comma + 1))
   return new Blob([bytes], { type: mime })
 }

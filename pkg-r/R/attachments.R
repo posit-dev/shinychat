@@ -114,9 +114,37 @@ validate_attachment_types <- function(attachments) {
   invisible(NULL)
 }
 
+# Require data URLs to carry the same MIME type as the validated attachment.
+validate_attachment_data_urls <- function(attachments) {
+  if (is.null(attachments) || length(attachments) == 0) {
+    return(invisible(NULL))
+  }
+  for (att in attachments) {
+    data_url <- att[["data_url"]]
+    if (
+      !is.character(data_url) ||
+        length(data_url) != 1L ||
+        is.na(data_url)
+    ) {
+      cli::cli_abort("Attachment {.field data_url} must be a single string.")
+    }
+    if (tolower(substr(data_url, 1L, 5L)) != "data:") {
+      next
+    }
+    expected <- paste0("data:", att[["mime"]], ";base64,")
+    if (!startsWith(data_url, expected)) {
+      cli::cli_abort(
+        "Attachment data URL must start with {.val {expected}} to match its declared MIME type."
+      )
+    }
+  }
+  invisible(NULL)
+}
+
 # Validate incoming attachments accepted from a client payload.
 validate_attachments <- function(attachments) {
   validate_attachment_types(attachments)
+  validate_attachment_data_urls(attachments)
   validate_attachment_payload_size(attachments)
 }
 

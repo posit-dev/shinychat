@@ -81,7 +81,11 @@ describe("ChatMessage attachments", () => {
     }
     const origCreate = url.createObjectURL
     const origRevoke = url.revokeObjectURL
-    url.createObjectURL = () => "blob:mock-url"
+    let createdBlob: Blob | undefined
+    url.createObjectURL = (blob) => {
+      createdBlob = blob
+      return "blob:mock-url"
+    }
     url.revokeObjectURL = () => {}
     try {
       render(
@@ -91,7 +95,7 @@ describe("ChatMessage attachments", () => {
             attachments: [
               {
                 mime: "application/pdf",
-                data_url: "data:application/pdf;base64,JVBERi0xLjQK",
+                data_url: "data:text/html;base64,PHNjcmlwdD48L3NjcmlwdD4=",
                 name: "report.pdf",
                 size: 0,
               },
@@ -104,9 +108,51 @@ describe("ChatMessage attachments", () => {
       const frame = dialog.querySelector("iframe")
       expect(frame).not.toBeNull()
       expect(frame!.getAttribute("src")).toBe("blob:mock-url")
+      expect(frame!.getAttribute("sandbox")).toBe("")
+      expect(createdBlob!.type).toBe("application/pdf")
       expect(
         dialog.querySelector(".shiny-chat-lightbox-name")!.textContent,
       ).toBe("report.pdf")
+    } finally {
+      url.createObjectURL = origCreate
+      url.revokeObjectURL = origRevoke
+    }
+  })
+
+  it("does not frame or create a Blob URL for an unsupported attachment MIME", () => {
+    const url = URL as unknown as {
+      createObjectURL: (b: Blob) => string
+      revokeObjectURL: (u: string) => void
+    }
+    const origCreate = url.createObjectURL
+    const origRevoke = url.revokeObjectURL
+    const createObjectURL = vi.fn(() => "blob:mock-url")
+    url.createObjectURL = createObjectURL
+    url.revokeObjectURL = () => {}
+    try {
+      render(
+        <ChatMessage
+          index={0}
+          message={userMessage({
+            attachments: [
+              {
+                mime: "image/svg+xml",
+                data_url: "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=",
+                name: "untrusted.svg",
+                size: 0,
+              },
+            ],
+          })}
+        />,
+      )
+
+      fireEvent.click(
+        screen.getByRole("button", { name: /view untrusted\.svg/i }),
+      )
+
+      const dialog = screen.getByRole("dialog")
+      expect(dialog.querySelector("iframe")).toBeNull()
+      expect(createObjectURL).not.toHaveBeenCalled()
     } finally {
       url.createObjectURL = origCreate
       url.revokeObjectURL = origRevoke

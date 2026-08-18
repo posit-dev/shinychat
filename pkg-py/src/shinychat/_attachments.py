@@ -224,9 +224,30 @@ def validate_attachment_types(attachments: list[Attachment]) -> None:
         )
 
 
+def validate_attachment_data_urls(attachments: list[Attachment]) -> None:
+    """Validate MIME headers on data URLs against each attachment's MIME."""
+    for att in attachments:
+        if att.data_url[:5].lower() != "data:":
+            continue
+
+        expected_header = f"data:{att.mime};base64,"
+        actual_header_end = att.data_url.find(",")
+        actual_header = (
+            att.data_url[: actual_header_end + 1]
+            if actual_header_end != -1
+            else att.data_url
+        )
+        if actual_header != expected_header:
+            raise ValueError(
+                f"Attachment data URL header must be {expected_header!r}, "
+                f"got {actual_header!r}."
+            )
+
+
 def validate_attachments(attachments: list[Attachment]) -> None:
     """Validate incoming attachments accepted from the user input payload."""
     validate_attachment_types(attachments)
+    validate_attachment_data_urls(attachments)
     validate_attachment_payload_size(attachments)
 
 

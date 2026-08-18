@@ -20,6 +20,7 @@ import {
   PASTE_AS_FILE_MIN_CHARS,
   pastedTextFile,
   decodeTextDataUrl,
+  dataUrlToBlob,
 } from "../../src/chat/attachments"
 
 describe("attachmentFamily", () => {
@@ -90,6 +91,17 @@ describe("dataUrlByteSize", () => {
   it("decodes the byte length from a base64 data URL", () => {
     // "hello" base64 = "aGVsbG8=" -> 5 bytes
     expect(dataUrlByteSize("data:text/plain;base64,aGVsbG8=")).toBe(5)
+  })
+})
+
+describe("dataUrlToBlob", () => {
+  it("uses the caller-provided MIME instead of the data URL header", () => {
+    const blob = dataUrlToBlob(
+      "data:text/html;base64,PHNjcmlwdD48L3NjcmlwdD4=",
+      "application/pdf",
+    )
+
+    expect(blob.type).toBe("application/pdf")
   })
 })
 

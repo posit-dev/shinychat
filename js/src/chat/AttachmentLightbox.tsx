@@ -11,6 +11,7 @@ import {
   attachmentFamily,
   dataUrlToBlob,
   decodeTextDataUrl,
+  SUPPORTED_PDF_TYPE,
 } from "./attachments"
 
 const FOCUSABLE_SELECTOR =
@@ -30,6 +31,7 @@ export function AttachmentLightbox({
   const family = attachmentFamily(mime)
   const isImage = family === "image"
   const isText = family === "text"
+  const isPdf = mime === SUPPORTED_PDF_TYPE
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
   const openerRef = useRef<HTMLElement | null>(null)
@@ -81,11 +83,11 @@ export function AttachmentLightbox({
 
   // A Blob URL is more robust than a multi-MB base64 data URL as an iframe src.
   useEffect(() => {
-    if (isImage || isText) return
-    const url = URL.createObjectURL(dataUrlToBlob(src))
+    if (!isPdf) return
+    const url = URL.createObjectURL(dataUrlToBlob(src, SUPPORTED_PDF_TYPE))
     setPdfUrl(url)
     return () => URL.revokeObjectURL(url)
-  }, [src, isImage, isText])
+  }, [src, isPdf])
 
   return createPortal(
     <div
@@ -116,15 +118,16 @@ export function AttachmentLightbox({
           >
             {text || "(empty file)"}
           </pre>
-        ) : (
+        ) : isPdf ? (
           pdfUrl && (
             <iframe
               className="shiny-chat-lightbox-frame"
               src={pdfUrl}
+              sandbox=""
               title={name || "PDF preview"}
             />
           )
-        )}
+        ) : null}
         {name && <div className="shiny-chat-lightbox-name">{name}</div>}
       </div>
       <button
