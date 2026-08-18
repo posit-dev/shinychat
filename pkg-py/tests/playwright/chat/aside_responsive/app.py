@@ -12,7 +12,10 @@ LONG_BODY = " ".join(["A detailed source explanation."] * 100)
 
 async def fake_stream():
     yield "Claim"
-    yield f'<shiny-aside label="{LONG_LABEL}">{LONG_BODY}</shiny-aside>.'
+    yield (
+        f'<shiny-aside label="{LONG_LABEL}" url="https://example.com/source">'
+        f"{LONG_BODY}</shiny-aside>."
+    )
 
 
 @chat.on_user_submit
