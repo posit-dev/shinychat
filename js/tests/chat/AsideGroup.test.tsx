@@ -286,6 +286,79 @@ describe("AsideGroup", () => {
     expect(pill).toHaveTextContent("1")
   })
 
+  it("renders a compact labeled aside with source identity in its accessible name", () => {
+    renderMarkdown(
+      'Claim<shiny-aside display="compact" label="Revenue policy" icon="policy.svg">Evidence</shiny-aside>.',
+    )
+
+    const pill = screen.getByRole("button", {
+      name: "Aside 1: Revenue policy",
+    })
+    expect(pill).toHaveTextContent("[1]")
+    expect(pill).toHaveClass("shiny-aside-pill--count")
+    expect(pill).toHaveClass("shiny-aside-pill--number")
+    expect(pill.querySelector(".shiny-aside-pill__count")).toHaveTextContent(
+      "1",
+    )
+    expect(pill.querySelector("img")).toBeNull()
+    expect(pill.querySelector(".shiny-aside-pill__label")).toBeNull()
+  })
+
+  it("does not give anonymous count pills the explicit number-marker class", () => {
+    renderMarkdown("Claim<shiny-aside>Evidence</shiny-aside>.")
+
+    const pill = screen.getByRole("button", { name: "Aside 1" })
+    expect(pill).toHaveClass("shiny-aside-pill--count")
+    expect(pill).not.toHaveClass("shiny-aside-pill--number")
+  })
+
+  it("keeps the label and icon in a compact aside's popover", async () => {
+    const user = userEvent.setup()
+    renderMarkdown(
+      'Claim<shiny-aside display="compact" label="Revenue policy" icon="policy.svg">Evidence</shiny-aside>.',
+    )
+
+    await user.click(
+      screen.getByRole("button", { name: "Aside 1: Revenue policy" }),
+    )
+    const dialog = screen.getByRole("dialog", {
+      name: "Aside 1: Revenue policy",
+    })
+    expect(within(dialog).getByText("Revenue policy")).toBeInTheDocument()
+    expect(dialog.querySelector("img")).toHaveAttribute("src", "policy.svg")
+    expect(dialog).toHaveTextContent("Evidence")
+  })
+
+  it("renders same-block compact labeled asides as one paged citation cluster", () => {
+    renderMarkdown(
+      [
+        'Claim<shiny-aside display="compact" label="One">first</shiny-aside>',
+        '<shiny-aside display="compact" label="Two">second</shiny-aside>.',
+      ].join(""),
+    )
+
+    const cluster = screen.getByRole("button", {
+      name: "Asides 1, 2: One; Two",
+    })
+    expect(cluster).toHaveTextContent("[1, 2]")
+    expect(
+      screen.queryByRole("button", { name: "Aside 2: Two" }),
+    ).not.toBeInTheDocument()
+
+    fireEvent.click(cluster)
+    const dialog = screen.getByRole("dialog", {
+      name: "Asides 1, 2: One; Two",
+    })
+    expect(dialog).toHaveTextContent("1 / 2")
+    expect(dialog).toHaveTextContent("One")
+    expect(dialog).toHaveTextContent("first")
+
+    fireEvent.click(screen.getByRole("button", { name: "Next source" }))
+    expect(dialog).toHaveTextContent("2 / 2")
+    expect(dialog).toHaveTextContent("Two")
+    expect(dialog).toHaveTextContent("second")
+  })
+
   it("renders inline children as the popover body", () => {
     renderMarkdown(
       'A claim<shiny-aside label="eBicycles" url="https://ebicycles.example">See the **study**.</shiny-aside>.',

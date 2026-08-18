@@ -964,6 +964,16 @@ class Chat:
         its labeled asides have different labels. Asides that share one label
         use a single face with no count.
 
+        Set `display="compact"` to keep each labeled aside's identity in the
+        popover while showing a compact numbered reference in the message.
+        Compact asides from the same paragraph or list item share one face,
+        such as `[2, 3]`. Each aside remains a separate popover page. Compact
+        asides from separate blocks remain separate. The accessible name
+        includes each aside number and source label. The visible marker remains
+        compact while its interactive hit area extends to at least 1.5rem high
+        and 1.5rem wide. Only the exact value `"compact"` enables this behavior.
+        Other values retain the normal label-based behavior.
+
         `grounded-span` identifies the answer text that is related to an aside.
         Its value must exactly match text before the tag in the same paragraph
         or list item. When the popover opens, shinychat highlights the most
@@ -984,6 +994,8 @@ class Chat:
 
         * A labeled aside with a grounded span and a one-line body:
           `Hub motors are cheaper<shiny-aside label="eBicycles" url="https://ebicycles.example/hub-vs-mid-drive" grounded-span="Hub motors are cheaper">[Hub Motor vs. Mid-Drive Motor Differences Explained](https://ebicycles.example/hub-vs-mid-drive)</shiny-aside>, and ideal for flatter terrain.`
+        * Two compact labeled asides that share one numbered marker and paged popover:
+          `'Revenue is recognized at shipment<shiny-aside display="compact" label="Revenue policy">Exact revenue policy.</shiny-aside> and records are retained for 30 days<shiny-aside display="compact" label="Retention policy">Exact retention policy.</shiny-aside>.'`
         * Two asides cited in the same sentence collapse into a single pill
           — the first source's label becomes the face, with a "+1" overflow:
           `...<shiny-aside label="eBicycles" url="https://ebicycles.example">...</shiny-aside><shiny-aside label="WIRED" url="https://wired.example">...</shiny-aside>...`
@@ -1281,6 +1293,16 @@ class Chat:
         its labeled asides have different labels. Asides that share one label
         use a single face with no count.
 
+        Set `display="compact"` to keep each labeled aside's identity in the
+        popover while showing a compact numbered reference in the message.
+        Compact asides from the same paragraph or list item share one face,
+        such as `[2, 3]`. Each aside remains a separate popover page. Compact
+        asides from separate blocks remain separate. The accessible name
+        includes each aside number and source label. The visible marker remains
+        compact while its interactive hit area extends to at least 1.5rem high
+        and 1.5rem wide. Only the exact value `"compact"` enables this behavior.
+        Other values retain the normal label-based behavior.
+
         `grounded-span` identifies the answer text that is related to an aside.
         Its value must exactly match text before the tag in the same paragraph
         or list item. When the popover opens, shinychat highlights the most
@@ -1301,6 +1323,8 @@ class Chat:
 
         * A labeled aside with a grounded span and a one-line body:
           `Hub motors are cheaper<shiny-aside label="eBicycles" url="https://ebicycles.example/hub-vs-mid-drive" grounded-span="Hub motors are cheaper">[Hub Motor vs. Mid-Drive Motor Differences Explained](https://ebicycles.example/hub-vs-mid-drive)</shiny-aside>, and ideal for flatter terrain.`
+        * Two compact labeled asides that share one numbered marker and paged popover:
+          `'Revenue is recognized at shipment<shiny-aside display="compact" label="Revenue policy">Exact revenue policy.</shiny-aside> and records are retained for 30 days<shiny-aside display="compact" label="Retention policy">Exact retention policy.</shiny-aside>.'`
         * Two asides cited in the same sentence collapse into a single pill
           — the first source's label becomes the face, with a "+1" overflow:
           `...<shiny-aside label="eBicycles" url="https://ebicycles.example">...</shiny-aside><shiny-aside label="WIRED" url="https://wired.example">...</shiny-aside>...`

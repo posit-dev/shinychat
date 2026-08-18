@@ -17,9 +17,9 @@ def test_web_asides(page: Page, local_app: ShinyAppProc) -> None:
     chat.set_user_input("tell me about e-bike motors")
     chat.send_user_input()
 
-    # Wait for the stream to finish: five aside groups should appear.
+    # Wait for the stream to finish: six aside groups should appear.
     groups = page.locator(".shiny-aside-group")
-    expect(groups).to_have_count(5, timeout=30 * 1000)
+    expect(groups).to_have_count(6, timeout=30 * 1000)
 
     # First group: two asides sharing one sentence, different labels →
     # labeled chip (first source's label) with a "+1" overflow.
@@ -62,6 +62,75 @@ def test_web_asides(page: Page, local_app: ShinyAppProc) -> None:
     expect(second_popover).to_contain_text("Methodology")
     expect(second_popover).to_contain_text("40 commuter e-bike models")
     expect(second_popover).to_contain_text("released in 2024")
+    second.locator(".shiny-aside-pill").click()
+    expect(second_popover).not_to_be_visible()
+
+    count_pills = page.locator(".shiny-aside-pill--count")
+    numbered = page.locator(".shiny-aside-pill--number")
+    expect(count_pills).to_have_count(2, timeout=30 * 1000)
+    expect(numbered).to_have_count(1)
+    expect(numbered).to_have_text("[2, 3]")
+    expect(numbered).to_have_attribute(
+        "aria-label", "Asides 2, 3: Policy A; Policy B"
+    )
+
+    marker = numbered.bounding_box()
+    face = numbered.locator(".shiny-aside-pill__count")
+    face_box = face.bounding_box()
+    assert marker is not None
+    assert face_box is not None
+    assert marker["width"] < 48
+    assert marker["height"] < 24
+    assert face_box["height"] < 24
+
+    target_size = numbered.evaluate(
+        """el => {
+            const style = getComputedStyle(el, "::before");
+            return [parseFloat(style.width), parseFloat(style.height)];
+        }"""
+    )
+    assert target_size[0] >= 24
+    assert target_size[1] >= 24
+
+    marker_background = numbered.evaluate(
+        "el => getComputedStyle(el).backgroundColor"
+    )
+    assert marker_background == "rgba(0, 0, 0, 0)"
+
+    resting_background = face.evaluate(
+        "el => getComputedStyle(el).backgroundColor"
+    )
+    assert resting_background != "rgba(0, 0, 0, 0)"
+
+    # Hover below the visible face but inside the 24px pseudo-element target.
+    page.mouse.move(
+        marker["x"] + marker["width"] / 2,
+        marker["y"] + marker["height"] / 2 + 10,
+    )
+    hover_background = face.evaluate(
+        "el => getComputedStyle(el).backgroundColor"
+    )
+    assert hover_background != resting_background
+
+    numbered_popover = page.get_by_role(
+        "dialog", name="Asides 2, 3: Policy A; Policy B"
+    )
+    expect(numbered_popover).to_be_visible()
+    expect(numbered_popover).to_contain_text("Policy A")
+    expect(numbered_popover).to_contain_text("Policy A evidence.")
+    expect(numbered_popover.locator(".shiny-aside-popover__nav")).to_have_count(
+        1
+    )
+    expect(
+        numbered_popover.locator(".shiny-aside-popover__count")
+    ).to_have_text("1 / 2")
+
+    numbered_popover.get_by_role("button", name="Next source").click()
+    expect(numbered_popover).to_contain_text("Policy B")
+    expect(numbered_popover).to_contain_text("Policy B evidence.")
+    expect(
+        numbered_popover.locator(".shiny-aside-popover__count")
+    ).to_have_text("2 / 2")
 
 
 def test_web_aside_symmetric_padding_when_favicon_fails(
@@ -211,7 +280,7 @@ def test_web_aside_popover_wraps_and_scrolls_in_a_narrow_viewport(
     chat.send_user_input()
 
     groups = page.locator(".shiny-aside-group")
-    expect(groups).to_have_count(5, timeout=30 * 1000)
+    expect(groups).to_have_count(6, timeout=30 * 1000)
     groups.nth(2).locator(".shiny-aside-pill").click()
 
     popover = page.locator(".shiny-aside-popover")

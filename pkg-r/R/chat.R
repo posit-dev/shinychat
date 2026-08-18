@@ -597,6 +597,16 @@ resolve_aside_favicon <- function() {
 #' pill shows a `+N` overflow count only when its labeled asides have different
 #' labels. Asides that share one label use a single face with no count.
 #'
+#' Set `display="compact"` to keep each labeled aside's identity in the popover
+#' while showing a compact numbered reference in the message. Compact asides
+#' from the same paragraph or list item share one face, such as `[2, 3]`. Each
+#' aside remains a separate popover page. Compact asides from separate blocks
+#' remain separate. The accessible name includes each aside number and source
+#' label. The visible marker remains compact while its interactive hit area
+#' extends to at least 1.5rem high and 1.5rem wide. Only the exact value
+#' `"compact"` enables this behavior. Other values retain the normal label-based
+#' behavior.
+#'
 #' `grounded-span` identifies the answer text that is related to an aside.
 #' Its value must exactly match text before the tag in the same paragraph or
 #' list item. When the popover opens, shinychat highlights the most recent
@@ -629,6 +639,22 @@ resolve_aside_favicon <- function() {
 #'     "(https://ebicycles.example/hub-vs-mid-drive)",
 #'     "</shiny-aside>",
 #'     ", and ideal for flatter terrain."
+#'   )
+#' )
+#' ```
+#'
+#' **Two compact labeled asides that share one numbered marker and paged popover:**
+#'
+#' ```r
+#' chat_append(
+#'   "chat",
+#'   paste0(
+#'     "Revenue is recognized at shipment",
+#'     '<shiny-aside display="compact" label="Revenue policy">',
+#'     "Exact revenue policy.</shiny-aside>",
+#'     " and records are retained for 30 days",
+#'     '<shiny-aside display="compact" label="Retention policy">',
+#'     "Exact retention policy.</shiny-aside>."
 #'   )
 #' )
 #' ```

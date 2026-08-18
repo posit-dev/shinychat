@@ -14,6 +14,18 @@ function isLabeled(aside: Element): boolean {
   )
 }
 
+function usesCompactDisplay(aside: Element): boolean {
+  return aside.properties?.display === "compact"
+}
+
+function usesIdentityMarker(aside: Element): boolean {
+  return isLabeled(aside) && !usesCompactDisplay(aside)
+}
+
+function usesCountMarker(aside: Element): boolean {
+  return !isLabeled(aside) || usesCompactDisplay(aside)
+}
+
 function hasNestedParagraph(node: Element): boolean {
   return node.children.some((c) => c.type === "element" && c.tagName === "p")
 }
@@ -90,16 +102,26 @@ function makeGroup(children: Element[]): Element {
 }
 
 function makeGroups(found: Element[]): Element[] {
-  const labeled = found.filter(isLabeled)
-  const labeledGroup = labeled.length > 0 ? makeGroup(labeled) : null
-  let labeledGroupPlaced = false
+  const identityAsides = found.filter(usesIdentityMarker)
+  const identityGroup =
+    identityAsides.length > 0 ? makeGroup(identityAsides) : null
+  const compactAsides = found.filter(usesCompactDisplay)
+  const compactGroup =
+    compactAsides.length > 0 ? makeGroup(compactAsides) : null
+  let identityGroupPlaced = false
+  let compactGroupPlaced = false
   const groups: Element[] = []
 
   for (const aside of found) {
-    if (isLabeled(aside)) {
-      if (!labeledGroupPlaced) {
-        groups.push(labeledGroup!)
-        labeledGroupPlaced = true
+    if (usesIdentityMarker(aside)) {
+      if (!identityGroupPlaced) {
+        groups.push(identityGroup!)
+        identityGroupPlaced = true
+      }
+    } else if (usesCompactDisplay(aside)) {
+      if (!compactGroupPlaced) {
+        groups.push(compactGroup!)
+        compactGroupPlaced = true
       }
     } else {
       groups.push(makeGroup([aside]))
@@ -108,10 +130,10 @@ function makeGroups(found: Element[]): Element[] {
   return groups
 }
 
-function assignAnonymousAsideIndexes(tree: Root): void {
+function assignCountMarkerIndexes(tree: Root): void {
   let asideIndex = 0
   visit(tree, "element", (node: Element) => {
-    if (!isAside(node) || isLabeled(node)) return
+    if (!isAside(node) || !usesCountMarker(node)) return
     asideIndex += 1
     node.properties = { ...node.properties, index: asideIndex }
   })
@@ -119,6 +141,7 @@ function assignAnonymousAsideIndexes(tree: Root): void {
 
 function transform(tree: Root): void {
   moveLooseListItemAsidesIntoParagraphs(tree)
+  assignCountMarkerIndexes(tree)
 
   visit(tree, "element", (node: Element) => {
     if (!isAsideContainer(node)) return
@@ -130,7 +153,6 @@ function transform(tree: Root): void {
 
   const rootGroups = makeGroups(collectAndRemoveRootAsides(tree))
   tree.children.push(...rootGroups)
-  assignAnonymousAsideIndexes(tree)
 }
 
 function trimTrailingAsideBreaks(children: ElementContent[]): void {
@@ -154,13 +176,12 @@ function trimTrailingAsideBreaks(children: ElementContent[]): void {
 /**
  * Rehype plugin that processes every <shiny-aside> found anywhere within
  * a paragraph or tight list item. Asides carrying a `label` and native web
- * citations collapse into a single trailing <shiny-aside-group>, keeping
- * every one in document order (each stays a distinct popover entry — the
- * pill decides whether to show an overflow count). Other label-less asides
- * never bundle with anything: each becomes its own single-entry
- * <shiny-aside-group>, stamped with `index`, a counter that runs across the
- * *entire* tree passed to this plugin (i.e. the whole message, since each
- * message is parsed independently) so pills can show a stable,
- * message-scoped aside number instead of a per-container count.
+ * citations collapse into a single trailing <shiny-aside-group>, unless they
+ * explicitly request `display="compact"`. Compact labeled asides collapse into
+ * their own group per container, while label-less asides each become a
+ * single-entry group. Both are stamped with `index`, a counter that runs across
+ * the *entire* tree passed to this plugin (i.e. the whole message, since each
+ * message is parsed independently) so pills can show stable, message-scoped
+ * aside numbers instead of per-container counts.
  */
 export const rehypeGroupAsides: Plugin<[], Root> = () => transform
