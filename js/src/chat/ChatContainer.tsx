@@ -129,6 +129,7 @@ export const ChatContainer = forwardRef<
   const artifactCloseRef = useRef<HTMLButtonElement>(null)
   const artifactReturnFocusRef = useRef<HTMLElement | null>(null)
   const priorArtifactVisibleRef = useRef(artifact.visible)
+  const priorArtifactTakeoverRef = useRef(false)
   const artifactLayoutRef = useRef<HTMLDivElement>(null)
   const [artifactTakeover, setArtifactTakeover] = useState(false)
   const history = useSyncExternalStore(
@@ -229,9 +230,12 @@ export const ChatContainer = forwardRef<
 
   useLayoutEffect(() => {
     const wasVisible = priorArtifactVisibleRef.current
+    const wasTakeover = priorArtifactTakeoverRef.current
     const isVisible = artifact.enabled && artifact.visible
+    const entersTakeover =
+      isVisible && artifactTakeover && (!wasVisible || !wasTakeover)
 
-    if (!wasVisible && isVisible && artifactTakeover) {
+    if (entersTakeover) {
       const active = document.activeElement
       artifactReturnFocusRef.current =
         active instanceof HTMLElement ? active : null
@@ -243,6 +247,7 @@ export const ChatContainer = forwardRef<
     }
 
     priorArtifactVisibleRef.current = isVisible
+    priorArtifactTakeoverRef.current = artifactTakeover
   }, [artifact.enabled, artifact.visible, artifactTakeover])
 
   const closeArtifact = useCallback(() => {

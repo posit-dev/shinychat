@@ -68,16 +68,26 @@ function ArtifactContent({
   const initialSourceRef = useRef(source)
   const initialContentRef = useRef(content)
   const adoptedInitialSourceRef = useRef(false)
+  const isBoundRef = useRef(false)
   const visibleRef = useRef(visible)
   visibleRef.current = visible
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const host = hostRef.current
     if (!host) return
 
     let cancelled = false
 
     const replaceContent = async () => {
+      // A server action makes the artifact visible before its dependencies
+      // resolve. Remove the old dynamic subtree in this layout effect so it
+      // cannot paint during that wait.
+      if (host.hasChildNodes()) {
+        shiny?.unbindAll(host)
+        isBoundRef.current = false
+        host.replaceChildren()
+      }
+
       if (htmlDeps.length > 0) {
         await shiny?.renderDependencies(htmlDeps)
       }
@@ -99,15 +109,23 @@ function ArtifactContent({
 
       if (cancelled || !host.hasChildNodes()) return
       await shiny?.bindAll(host)
-      if (!cancelled && visibleRef.current) triggerResize()
+      if (cancelled) return
+      isBoundRef.current = true
+      if (visibleRef.current) triggerResize()
     }
 
     void replaceContent()
     return () => {
       cancelled = true
-      shiny?.unbindAll(host)
     }
   }, [content, htmlDeps, shiny])
+
+  useEffect(() => {
+    const host = hostRef.current
+    return () => {
+      if (host && isBoundRef.current) shiny?.unbindAll(host)
+    }
+  }, [shiny])
 
   useEffect(() => {
     if (visible) triggerResize()
@@ -142,13 +160,21 @@ export function ChatArtifact({
   })
 
   const maxWidth = useCallback(() => {
-    const container = panelRef.current?.closest("shiny-chat-container")
+    const panel = panelRef.current
+    const container = panel?.closest("shiny-chat-container")
     const available = container?.getBoundingClientRect().width ?? 0
     if (available <= 0) return 840
-    return Math.max(MIN_ARTIFACT_WIDTH, available - MIN_CHAT_WIDTH)
+    const layout = panel?.closest(".shiny-chat-layout") as HTMLElement | null
+    const computedGap = layout
+      ? Number.parseFloat(window.getComputedStyle(layout).columnGap)
+      : NaN
+    const gap = Number.isFinite(computedGap)
+      ? computedGap
+      : Number.parseFloat(layout?.style.columnGap ?? "") || 0
+    return Math.max(MIN_ARTIFACT_WIDTH, available - MIN_CHAT_WIDTH - gap)
   }, [])
 
-  useLayoutEffect(() => {
+  const measureAndClampWidth = useCallback(() => {
     const panel = panelRef.current
     if (!panel || !artifact.visible || takeover) return
 
@@ -165,6 +191,17 @@ export function ChatArtifact({
       onWidthChange(`${bounded}px`)
     }
   }, [artifact.visible, artifact.width, takeover, maxWidth, onWidthChange])
+
+  useLayoutEffect(() => {
+    measureAndClampWidth()
+
+    const container = panelRef.current?.closest("shiny-chat-container")
+    if (!container || typeof ResizeObserver === "undefined") return
+
+    const observer = new ResizeObserver(measureAndClampWidth)
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [measureAndClampWidth])
 
   const setBoundedWidth = useCallback(
     (next: number) => {
