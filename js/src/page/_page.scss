@@ -235,19 +235,9 @@ shiny-chat-page[data-sidebar-resizing] .shiny-chat-page-sidebar-resize-indicator
 }
 
 @media (min-width: 800px) {
-  .shiny-chat-page-body {
-    grid-template-columns:
-      minmax(150px, var(--_page-sidebar-width))
-      minmax(360px, 1fr);
-  }
-
-  .shiny-chat-page-body:has(> .shiny-chat-page-sidebar[hidden]),
-  .shiny-chat-page-body:has(> .shiny-chat-page-sidebar:not([data-sidebar-key])) {
-    grid-template-columns: 0 minmax(0, 1fr);
-  }
-
   .shiny-chat-page-sidebar {
-    width: 100%;
+    min-width: min(150px, 100%);
+    max-width: var(--shiny-chat-page-sidebar-max-width, none);
   }
 }
 

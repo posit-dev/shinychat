@@ -4,8 +4,8 @@ from shinychat import chat_sidebar, page_chat
 app_ui = page_chat(
     "Assistant",
     sidebar=chat_sidebar(
-        ui.p("Sidebar content"),
-        width=1200,
+        ui.div("Sidebar content", style="width: 1200px"),
+        width="fit-content",
         open="open",
     ),
 )

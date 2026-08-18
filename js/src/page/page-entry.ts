@@ -543,6 +543,15 @@ class ChatPageElement extends HTMLElement {
 
   private updateResizeHandle(renderedWidth?: number) {
     if (!this.resizeHandle) return
+    if (this.mobile) {
+      this.style.removeProperty("--shiny-chat-page-sidebar-max-width")
+    } else {
+      this.style.setProperty(
+        "--shiny-chat-page-sidebar-max-width",
+        `${this.maximumSidebarWidth()}px`,
+      )
+    }
+
     const state = this.activeSidebarState()
     const enabled =
       !this.mobile && Boolean(state?.open && state.resizable && this.aside)
