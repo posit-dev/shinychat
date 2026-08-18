@@ -16,7 +16,6 @@ from ._history_types import (
     ConversationMeta,
     ConversationNode,
     ConversationRecord,
-    UnsupportedSchemaVersionError,
     check_schema_version,
 )
 
@@ -202,8 +201,6 @@ class FileConversationStore(ConversationStore):
                         f.stat().st_size for f in d.iterdir() if f.is_file()
                     )
                     metas.append(rec.meta(size_bytes=size_bytes))
-                except UnsupportedSchemaVersionError:
-                    raise
                 except Exception as e:
                     logger.warning("Unreadable conversation %s: %s", d.name, e)
                     continue

@@ -19,6 +19,11 @@ captured by \code{on_save}), and \code{bookmark_state_id}. A conversation meta l
 is the lightweight summary returned by \code{list()}: \code{id}, \code{title},
 \code{created_at}, \code{updated_at}, and \code{size_bytes} (the backend's storage
 footprint for that conversation, e.g. on-disk bytes).
+
+\code{schema_version} compatibility is enforced by the framework's
+\code{HistoryController}, not by this class -- it calls \code{check_schema_version()}
+on every record it reads from a store and every record it is about to
+write, so a custom store doesn't need to check it itself.
 }
 \section{Methods}{
 \subsection{Public methods}{

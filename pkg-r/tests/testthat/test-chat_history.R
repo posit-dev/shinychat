@@ -580,6 +580,46 @@ test_that("HistoryController$switch_to() rejects an unsupported schema_version f
   )
 })
 
+test_that("HistoryController$rename() rejects an unsupported schema_version before writing", {
+  # The controller must check schema_version on every write, not just every
+  # read -- a custom store's put() should never see an incompatible record
+  # (issue #322).
+  RecordingStore <- R6::R6Class(
+    "RecordingStore",
+    inherit = ConversationStore,
+    public = list(
+      put_calls = list(),
+      list = function(partition) list(),
+      get = function(partition, id) NULL,
+      put = function(partition, record) {
+        self$put_calls[[length(self$put_calls) + 1L]] <- record
+        invisible(NULL)
+      },
+      delete = function(partition, id) invisible(NULL)
+    )
+  )
+
+  store <- RecordingStore$new()
+  client <- mock_chat_client()
+  session <- shiny::MockShinySession$new()
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = session
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+  ctrl$record <- new_conversation_record("bad")
+  ctrl$record$schema_version <- 99L
+
+  expect_error(
+    ctrl$rename(ctrl$record$id, "new title"),
+    class = "shinychat_error_unsupported_schema_version"
+  )
+  expect_length(store$put_calls, 0L)
+})
+
 test_that("bookmark mode pre-switch emits reload navigation", {
   spy <- history_mock_session_with_spy()
   client <- mock_chat_client()

@@ -135,7 +135,7 @@ HistoryController <- R6::R6Class(
       self$record$response_count <- (self$record$response_count %||% 0L) + 1L
       self$record$values <- private$capture_app_state()
 
-      private$store$put(self$partition, self$record)
+      self$put_record(self$partition, self$record)
       private$evict_if_needed()
 
       if (!is.null(self$on_response_saved)) {
@@ -219,13 +219,13 @@ HistoryController <- R6::R6Class(
       if (!is.null(self$record) && identical(conv_id, self$record$id)) {
         self$record$title <- title
         self$record$title_source <- "user"
-        private$store$put(self$partition, self$record)
+        self$put_record(self$partition, self$record)
       } else {
         target <- self$get_record(self$partition, conv_id)
         if (!is.null(target)) {
           target$title <- title
           target$title_source <- "user"
-          private$store$put(self$partition, target)
+          self$put_record(self$partition, target)
         }
       }
       self$send_history_update()
@@ -324,6 +324,11 @@ HistoryController <- R6::R6Class(
       record
     },
 
+    put_record = function(partition, record) {
+      check_schema_version(record$schema_version)
+      private$store$put(partition, record)
+    },
+
     save_current = function() {
       if (is.null(self$record) || is.null(self$partition)) {
         return(invisible())
@@ -340,7 +345,7 @@ HistoryController <- R6::R6Class(
       )
       self$ui_offset <- length(messages)
       self$record$values <- private$capture_app_state()
-      private$store$put(self$partition, self$record)
+      self$put_record(self$partition, self$record)
     },
 
     restore_app_state = function(values) {
@@ -472,7 +477,7 @@ HistoryController <- R6::R6Class(
       # this guards against in switch_to().
       self$suppress_next_save <- FALSE
       self$send_sibling_metadata()
-      private$store$put(self$partition, self$record)
+      self$put_record(self$partition, self$record)
       self$send_history_update()
     },
 
@@ -615,7 +620,7 @@ HistoryController <- R6::R6Class(
 
         self$record$title <- title
         self$record$title_source <- "llm"
-        private$store$put(self$partition, self$record)
+        self$put_record(self$partition, self$record)
         self$send_history_update()
       })
     }
