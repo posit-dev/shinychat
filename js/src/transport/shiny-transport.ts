@@ -56,7 +56,9 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
           if (
             action.type === "message" ||
             action.type === "chunk_start" ||
-            action.type === "chunk"
+            action.type === "chunk" ||
+            action.type === "artifact_show" ||
+            action.type === "artifact_update"
           ) {
             ;(action as { html_deps?: HtmlDep[] }).html_deps = html_deps
           }
