@@ -12,7 +12,11 @@ named list of turn nodes forming the conversation tree), current_leaf
 captured by on_save), and bookmark_state_id. A conversation meta list
 is the lightweight summary returned by list(): id, title,
 created_at, updated_at, and size_bytes (the backend's storage
-footprint for that conversation, e.g. on-disk bytes)."><meta property="og:description" content="Subclass this to plug a custom persistence backend into
+footprint for that conversation, e.g. on-disk bytes).
+schema_version compatibility is enforced by the framework's
+HistoryController, not by this class – it calls check_schema_version()
+on every record it reads from a store and every record it is about to
+write, so a custom store doesn't need to check it itself."><meta property="og:description" content="Subclass this to plug a custom persistence backend into
 chat_enable_history() via history_options(store = ). All methods
 are partitioned by a conversation_partition() (chat id + owner scope);
 implementations should not need to know about users, sessions, or Shiny
@@ -25,7 +29,11 @@ named list of turn nodes forming the conversation tree), current_leaf
 captured by on_save), and bookmark_state_id. A conversation meta list
 is the lightweight summary returned by list(): id, title,
 created_at, updated_at, and size_bytes (the backend's storage
-footprint for that conversation, e.g. on-disk bytes)."><meta property="og:image" content="https://posit-dev.github.io/shinychat/r/logo.svg"><meta name="robots" content="noindex"><!-- Privacy-friendly analytics by Plausible --><script async src="https://plausible.io/js/pa-wYY8PsN7VIq_v1gETXZt9.js"></script><script>
+footprint for that conversation, e.g. on-disk bytes).
+schema_version compatibility is enforced by the framework's
+HistoryController, not by this class – it calls check_schema_version()
+on every record it reads from a store and every record it is about to
+write, so a custom store doesn't need to check it itself."><meta property="og:image" content="https://posit-dev.github.io/shinychat/r/logo.svg"><meta name="robots" content="noindex"><!-- Privacy-friendly analytics by Plausible --><script async src="https://plausible.io/js/pa-wYY8PsN7VIq_v1gETXZt9.js"></script><script>
   window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
   plausible.init()
 </script></head><body>
@@ -93,6 +101,10 @@ captured by <code>on_save</code>), and <code>bookmark_state_id</code>. A convers
 is the lightweight summary returned by <code><a href="https://rdrr.io/r/base/list.html" class="external-link">list()</a></code>: <code>id</code>, <code>title</code>,
 <code>created_at</code>, <code>updated_at</code>, and <code>size_bytes</code> (the backend's storage
 footprint for that conversation, e.g. on-disk bytes).</p>
+<p><code>schema_version</code> compatibility is enforced by the framework's
+<code>HistoryController</code>, not by this class – it calls <code>check_schema_version()</code>
+on every record it reads from a store and every record it is about to
+write, so a custom store doesn't need to check it itself.</p>
     </div>
 
 

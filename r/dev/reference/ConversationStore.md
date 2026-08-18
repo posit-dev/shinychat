@@ -17,6 +17,12 @@ returned by [`list()`](https://rdrr.io/r/base/list.html): `id`, `title`,
 `created_at`, `updated_at`, and `size_bytes` (the backend's storage
 footprint for that conversation, e.g. on-disk bytes).
 
+`schema_version` compatibility is enforced by the framework's
+`HistoryController`, not by this class – it calls
+`check_schema_version()` on every record it reads from a store and every
+record it is about to write, so a custom store doesn't need to check it
+itself.
+
 ## Methods
 
 ### Public methods
