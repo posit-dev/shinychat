@@ -312,6 +312,25 @@ describe("AsideGroup", () => {
     expect(pill).not.toHaveClass("shiny-aside-pill--number")
   })
 
+  it("does not repeat an unlinked default aside's identity in its popover", async () => {
+    const user = userEvent.setup()
+    renderMarkdown(
+      'Claim<shiny-aside label="Verified answer" icon="trusted.svg">Governed result.</shiny-aside>.',
+    )
+
+    const pill = screen.getByRole("button", { name: "Verified answer" })
+    expect(within(pill).getByText("Verified answer")).toBeInTheDocument()
+    expect(pill.querySelector("img")).toHaveAttribute("src", "trusted.svg")
+
+    await user.click(pill)
+    const dialog = screen.getByRole("dialog", { name: "Verified answer" })
+    expect(
+      within(dialog).queryByText("Verified answer"),
+    ).not.toBeInTheDocument()
+    expect(dialog.querySelector("img")).toBeNull()
+    expect(dialog).toHaveTextContent("Governed result.")
+  })
+
   it("keeps the label and icon in a compact aside's popover", async () => {
     const user = userEvent.setup()
     renderMarkdown(

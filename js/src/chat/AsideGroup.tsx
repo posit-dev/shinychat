@@ -232,6 +232,9 @@ export const AsideGroupView = memo(function AsideGroupView({
     : countMarker
       ? "shiny-aside-pill shiny-aside-pill--count"
       : "shiny-aside-pill"
+  const showPopoverLabel =
+    Boolean(current.label) &&
+    (numberMarker || entries.length > 1 || Boolean(current.url))
 
   return (
     <span className="shiny-aside-group">
@@ -317,7 +320,7 @@ export const AsideGroupView = memo(function AsideGroupView({
                   </span>
                 </div>
               )}
-              {current.label && (
+              {showPopoverLabel && (
                 <>
                   {current.url ? (
                     <a
