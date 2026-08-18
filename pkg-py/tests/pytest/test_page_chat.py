@@ -54,8 +54,17 @@ def test_chat_sidebar_normalizes_and_validates_values() -> None:
         chat_sidebar(width="garbage")
     with pytest.raises(ValueError, match="valid CSS width"):
         chat_sidebar(width="-30px")
+    with pytest.raises(ValueError, match="valid CSS width"):
+        chat_sidebar(width="clamp(20rem, 50vw, 60rem")
     assert chat_sidebar(width="30rem").width == "30rem"
     assert chat_sidebar(width="calc(100% - 2rem)").width == "calc(100% - 2rem)"
+    assert chat_sidebar(width="min(100%, 60rem)").width == "min(100%, 60rem)"
+    assert chat_sidebar(width="clamp(20rem, 50vw, 60rem)").width == (
+        "clamp(20rem, 50vw, 60rem)"
+    )
+    assert chat_sidebar(width="var(--chat-width)").width == "var(--chat-width)"
+    assert chat_sidebar(width="30cqw").width == "30cqw"
+    assert chat_sidebar(width="100dvh").width == "100dvh"
     assert chat_sidebar(width="auto").width == "auto"
 
 
