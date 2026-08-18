@@ -107,6 +107,18 @@ numbered pill. The grouped pill shows a `+N` overflow count only when
 its labeled asides have different labels. Asides that share one label
 use a single face with no count.
 
+Set these CSS properties on the chat container to style aside markers:
+
+- `--shiny-chat-aside-marker-color`
+
+- `--shiny-chat-aside-marker-hover-color`
+
+- `--shiny-chat-aside-marker-bg`
+
+- `--shiny-chat-aside-marker-hover-bg`
+
+- `--shiny-chat-aside-marker-font-family`
+
 `grounded-span` identifies the answer text that is related to an aside.
 Its value must exactly match text before the tag in the same paragraph
 or list item. When the popover opens, shinychat highlights the most
@@ -115,6 +127,12 @@ recent match. If the value does not match, no text is highlighted.
 Long content wraps and scrolls within the viewport. The popover keeps
 the nearest scoped Bootstrap theme. In a paged popover, page changes are
 announced to assistive technology without repeating the body.
+
+Set `display="compact"` to show a compact numbered reference in the
+message. The popover retains the source label. Compact asides in the
+same paragraph or list item share a marker, such as `[2, 3]`. To style
+only compact markers, set the CSS properties above on
+`[data-shinychat-aside-display="compact"]`.
 
 The favicon is fetched at render time from a third-party service
 (DuckDuckGo's icon service), which receives the cited site's hostname.
@@ -138,6 +156,20 @@ deployments — set the `SHINYCHAT_ASIDE_FAVICON` environment variable to
         "(https://ebicycles.example/hub-vs-mid-drive)",
         "</shiny-aside>",
         ", and ideal for flatter terrain."
+      )
+    )
+
+**Compact labeled asides that share one numbered marker:**
+
+    chat_append(
+      "chat",
+      paste0(
+        "Revenue is recognized at shipment",
+        '<shiny-aside display="compact" label="Revenue policy">',
+        "Exact revenue policy.</shiny-aside>",
+        " and records are retained for 30 days",
+        '<shiny-aside display="compact" label="Retention policy">',
+        "Exact retention policy.</shiny-aside>."
       )
     )
 
