@@ -202,30 +202,55 @@ export const AsideGroupView = memo(function AsideGroupView({
     faceIndex !== -1 &&
     entries.every((e) => e.label === entries[faceIndex]!.label)
   const showOverflow = overflow > 0 && !allSameLabel
+  const countEntry = entries[0]
+  const indexedEntries = entries.filter(
+    (entry): entry is AsideEntry & { index: number } =>
+      entry.index !== undefined,
+  )
+  const countMarker =
+    indexedEntries.length === entries.length || faceIndex === -1
+  const numberMarker =
+    indexedEntries.length === entries.length &&
+    entries.some((entry) => entry.label !== undefined)
+  const countText = indexedEntries.map((entry) => entry.index).join(", ")
 
   const current = entries[index]!
   const portal = portalTheme(refs.domReference.current)
-  const pillLabel =
-    faceIndex === -1
-      ? `Aside ${entries[0]!.index}`
+  const pillLabel = numberMarker
+    ? entries.length === 1
+      ? `Aside ${countText}: ${countEntry?.label}`
+      : `Asides ${countText}: ${entries
+          .map((entry) => entry.label ?? "Untitled source")
+          .join("; ")}`
+    : countMarker
+      ? `Aside ${countEntry?.index}`
       : showOverflow
         ? `${entries[faceIndex]!.label} (+${overflow} more)`
         : entries[faceIndex]!.label
+  const pillClass = numberMarker
+    ? "shiny-aside-pill shiny-aside-pill--count shiny-aside-pill--number"
+    : countMarker
+      ? "shiny-aside-pill shiny-aside-pill--count"
+      : "shiny-aside-pill"
+  const showPopoverLabel =
+    Boolean(current.label) &&
+    (numberMarker || entries.length > 1 || Boolean(current.url))
 
   return (
     <span className="shiny-aside-group">
       <button
         ref={refs.setReference}
         type="button"
-        className={
-          faceIndex === -1
-            ? "shiny-aside-pill shiny-aside-pill--count"
-            : "shiny-aside-pill"
-        }
+        className={pillClass}
+        data-shinychat-aside-display={numberMarker ? "compact" : undefined}
         aria-label={pillLabel}
         {...getReferenceProps()}
       >
-        {faceIndex !== -1 && (
+        {countMarker ? (
+          <span className="shiny-aside-pill__count">
+            {numberMarker ? `[${countText}]` : countEntry?.index}
+          </span>
+        ) : (
           <>
             <EntryIcon
               entry={entries[faceIndex]!}
@@ -239,7 +264,6 @@ export const AsideGroupView = memo(function AsideGroupView({
             )}
           </>
         )}
-        {faceIndex === -1 && entries[0]!.index}
       </button>
       {open && (
         <FloatingPortal>
@@ -296,7 +320,7 @@ export const AsideGroupView = memo(function AsideGroupView({
                   </span>
                 </div>
               )}
-              {current.label && (
+              {showPopoverLabel && (
                 <>
                   {current.url ? (
                     <a

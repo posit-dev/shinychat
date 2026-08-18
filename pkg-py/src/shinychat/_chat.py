@@ -964,6 +964,14 @@ class Chat:
         its labeled asides have different labels. Asides that share one label
         use a single face with no count.
 
+        Set these CSS properties on the chat container to style aside markers:
+
+        * `--shiny-chat-aside-marker-color`
+        * `--shiny-chat-aside-marker-hover-color`
+        * `--shiny-chat-aside-marker-bg`
+        * `--shiny-chat-aside-marker-hover-bg`
+        * `--shiny-chat-aside-marker-font-family`
+
         `grounded-span` identifies the answer text that is related to an aside.
         Its value must exactly match text before the tag in the same paragraph
         or list item. When the popover opens, shinychat highlights the most
@@ -972,6 +980,12 @@ class Chat:
         Long content wraps and scrolls within the viewport. The popover keeps
         the nearest scoped Bootstrap theme. In a paged popover, page changes
         are announced to assistive technology without repeating the body.
+
+        Set `display="compact"` to show a compact numbered reference in the
+        message. The popover retains the source label. Compact asides in the
+        same paragraph or list item share a marker, such as `[2, 3]`.
+        To style only compact markers, set the CSS properties above on
+        `[data-shinychat-aside-display="compact"]`.
 
         The favicon is fetched at render time from a third-party service
         (DuckDuckGo's icon service), which receives the cited site's hostname.
@@ -984,6 +998,8 @@ class Chat:
 
         * A labeled aside with a grounded span and a one-line body:
           `Hub motors are cheaper<shiny-aside label="eBicycles" url="https://ebicycles.example/hub-vs-mid-drive" grounded-span="Hub motors are cheaper">[Hub Motor vs. Mid-Drive Motor Differences Explained](https://ebicycles.example/hub-vs-mid-drive)</shiny-aside>, and ideal for flatter terrain.`
+        * Compact labeled asides that share one numbered marker:
+          `'Revenue is recognized at shipment<shiny-aside display="compact" label="Revenue policy">Exact revenue policy.</shiny-aside> and records are retained for 30 days<shiny-aside display="compact" label="Retention policy">Exact retention policy.</shiny-aside>.'`
         * Two asides cited in the same sentence collapse into a single pill
           — the first source's label becomes the face, with a "+1" overflow:
           `...<shiny-aside label="eBicycles" url="https://ebicycles.example">...</shiny-aside><shiny-aside label="WIRED" url="https://wired.example">...</shiny-aside>...`
@@ -1281,6 +1297,14 @@ class Chat:
         its labeled asides have different labels. Asides that share one label
         use a single face with no count.
 
+        Set these CSS properties on the chat container to style aside markers:
+
+        * `--shiny-chat-aside-marker-color`
+        * `--shiny-chat-aside-marker-hover-color`
+        * `--shiny-chat-aside-marker-bg`
+        * `--shiny-chat-aside-marker-hover-bg`
+        * `--shiny-chat-aside-marker-font-family`
+
         `grounded-span` identifies the answer text that is related to an aside.
         Its value must exactly match text before the tag in the same paragraph
         or list item. When the popover opens, shinychat highlights the most
@@ -1289,6 +1313,12 @@ class Chat:
         Long content wraps and scrolls within the viewport. The popover keeps
         the nearest scoped Bootstrap theme. In a paged popover, page changes
         are announced to assistive technology without repeating the body.
+
+        Set `display="compact"` to show a compact numbered reference in the
+        message. The popover retains the source label. Compact asides in the
+        same paragraph or list item share a marker, such as `[2, 3]`.
+        To style only compact markers, set the CSS properties above on
+        `[data-shinychat-aside-display="compact"]`.
 
         The favicon is fetched at render time from a third-party service
         (DuckDuckGo's icon service), which receives the cited site's hostname.
@@ -1301,6 +1331,8 @@ class Chat:
 
         * A labeled aside with a grounded span and a one-line body:
           `Hub motors are cheaper<shiny-aside label="eBicycles" url="https://ebicycles.example/hub-vs-mid-drive" grounded-span="Hub motors are cheaper">[Hub Motor vs. Mid-Drive Motor Differences Explained](https://ebicycles.example/hub-vs-mid-drive)</shiny-aside>, and ideal for flatter terrain.`
+        * Compact labeled asides that share one numbered marker:
+          `'Revenue is recognized at shipment<shiny-aside display="compact" label="Revenue policy">Exact revenue policy.</shiny-aside> and records are retained for 30 days<shiny-aside display="compact" label="Retention policy">Exact retention policy.</shiny-aside>.'`
         * Two asides cited in the same sentence collapse into a single pill
           — the first source's label becomes the face, with a "+1" overflow:
           `...<shiny-aside label="eBicycles" url="https://ebicycles.example">...</shiny-aside><shiny-aside label="WIRED" url="https://wired.example">...</shiny-aside>...`

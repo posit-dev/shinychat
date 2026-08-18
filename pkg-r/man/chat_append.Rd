@@ -92,6 +92,15 @@ page. Each unlabeled aside remains a separate numbered pill. The grouped
 pill shows a \code{+N} overflow count only when its labeled asides have different
 labels. Asides that share one label use a single face with no count.
 
+Set these CSS properties on the chat container to style aside markers:
+\itemize{
+\item \code{--shiny-chat-aside-marker-color}
+\item \code{--shiny-chat-aside-marker-hover-color}
+\item \code{--shiny-chat-aside-marker-bg}
+\item \code{--shiny-chat-aside-marker-hover-bg}
+\item \code{--shiny-chat-aside-marker-font-family}
+}
+
 \code{grounded-span} identifies the answer text that is related to an aside.
 Its value must exactly match text before the tag in the same paragraph or
 list item. When the popover opens, shinychat highlights the most recent
@@ -100,6 +109,12 @@ match. If the value does not match, no text is highlighted.
 Long content wraps and scrolls within the viewport. The popover keeps the
 nearest scoped Bootstrap theme. In a paged popover, page changes are
 announced to assistive technology without repeating the body.
+
+Set \code{display="compact"} to show a compact numbered reference in the message.
+The popover retains the source label. Compact asides in the same paragraph or
+list item share a marker, such as \verb{[2, 3]}.
+To style only compact markers, set the CSS properties above on
+\verb{[data-shinychat-aside-display="compact"]}.
 
 The favicon is fetched at render time from a third-party service
 (DuckDuckGo's icon service), which receives the cited site's hostname. To
@@ -123,6 +138,21 @@ lookup entirely.
     "(https://ebicycles.example/hub-vs-mid-drive)",
     "</shiny-aside>",
     ", and ideal for flatter terrain."
+  )
+)
+}\if{html}{\out{</div>}}
+
+\strong{Compact labeled asides that share one numbered marker:}
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_append(
+  "chat",
+  paste0(
+    "Revenue is recognized at shipment",
+    '<shiny-aside display="compact" label="Revenue policy">',
+    "Exact revenue policy.</shiny-aside>",
+    " and records are retained for 30 days",
+    '<shiny-aside display="compact" label="Retention policy">',
+    "Exact retention policy.</shiny-aside>."
   )
 )
 }\if{html}{\out{</div>}}

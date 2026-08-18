@@ -88,6 +88,96 @@ describe("rehypeGroupAsides", () => {
     expect(html).toContain('<shiny-aside index="2">note two</shiny-aside>')
   })
 
+  it("groups compact labeled asides from the same block", () => {
+    const md = [
+      'First<shiny-aside display="compact" label="Source A">a</shiny-aside>',
+      'second<shiny-aside display="compact" label="Source B">b</shiny-aside>.',
+    ].join(" ")
+    const html = process(md)
+
+    expect(html.match(/<shiny-aside-group>/g)).toHaveLength(1)
+    expect(html).toContain(
+      '<shiny-aside display="compact" label="Source A" index="1">',
+    )
+    expect(html).toContain(
+      '<shiny-aside display="compact" label="Source B" index="2">',
+    )
+  })
+
+  it("keeps compact labeled asides from separate blocks in separate groups", () => {
+    const md = [
+      'First<shiny-aside display="compact" label="Source A">a</shiny-aside>.',
+      "",
+      'Second<shiny-aside display="compact" label="Source B">b</shiny-aside>.',
+    ].join("\n")
+    const html = process(md)
+
+    expect(html.match(/<shiny-aside-group>/g)).toHaveLength(2)
+    expect(html).toContain(
+      '<shiny-aside display="compact" label="Source A" index="1">',
+    )
+    expect(html).toContain(
+      '<shiny-aside display="compact" label="Source B" index="2">',
+    )
+  })
+
+  it("numbers anonymous and compact labeled asides in document order", () => {
+    const md = [
+      "Anonymous<shiny-aside>a</shiny-aside>.",
+      'Compact label<shiny-aside display="compact" label="Source">b</shiny-aside>.',
+      'Ordinary label<shiny-aside label="Chip">c</shiny-aside>.',
+      "Anonymous again<shiny-aside>d</shiny-aside>.",
+    ].join("\n\n")
+    const html = process(md)
+
+    expect(html).toContain('<shiny-aside index="1">a</shiny-aside>')
+    expect(html).toContain(
+      '<shiny-aside display="compact" label="Source" index="2">',
+    )
+    expect(html).toContain('<shiny-aside index="3">d</shiny-aside>')
+    expect(html).not.toContain('label="Chip" index=')
+  })
+
+  it("preserves count marker indexes when marker types interleave in one block", () => {
+    const md = [
+      'First<shiny-aside display="compact" label="Source A">a</shiny-aside>,',
+      "anonymous<shiny-aside>b</shiny-aside>,",
+      'third<shiny-aside display="compact" label="Source C">c</shiny-aside>.',
+    ].join(" ")
+    const html = process(md)
+
+    expect(html).toContain(
+      '<shiny-aside display="compact" label="Source A" index="1">',
+    )
+    expect(html).toContain('<shiny-aside index="2">b</shiny-aside>')
+    expect(html).toContain(
+      '<shiny-aside display="compact" label="Source C" index="3">',
+    )
+  })
+
+  it("ignores unsupported display values and the former marker spelling", () => {
+    const md = [
+      'First<shiny-aside display="label" label="Source A">a</shiny-aside>',
+      'second<shiny-aside display="bogus" label="Source B">b</shiny-aside>.',
+      'third<shiny-aside marker="number" label="Source C">c</shiny-aside>.',
+    ].join(" ")
+    const html = process(md)
+
+    expect(html.match(/<shiny-aside-group>/g)).toHaveLength(1)
+    expect(html).not.toContain('index="')
+  })
+
+  it("does not change native web citations without an explicit compact display", () => {
+    const md = [
+      'First<shiny-aside data-citation label="A" url="https://a.example">a</shiny-aside>',
+      'second<shiny-aside data-citation label="B" url="https://b.example">b</shiny-aside>.',
+    ].join(" ")
+    const html = process(md)
+
+    expect(html.match(/<shiny-aside-group>/g)).toHaveLength(1)
+    expect(html).not.toContain('index="')
+  })
+
   it("places the bundled labeled group at the first labeled occurrence, anonymous singles at their own position", () => {
     const md = [
       "Anon claim<shiny-aside>note one</shiny-aside>,",
