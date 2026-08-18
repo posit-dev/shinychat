@@ -188,6 +188,32 @@ describe("ChatArtifact", () => {
     expect(screen.getByText("Second")).toBeInTheDocument()
   })
 
+  it("unbinds when an in-flight bind resolves after unmount", async () => {
+    let resolveBind!: () => void
+    const shiny: ShinyLifecycle = {
+      unbindAll: vi.fn(),
+      renderDependencies: vi.fn(async () => {}),
+      bindAll: vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveBind = resolve
+          }),
+      ),
+      showClientMessage: vi.fn(),
+    }
+    const { unmount } = renderArtifact(artifact(), { shiny })
+
+    await waitFor(() => expect(shiny.bindAll).toHaveBeenCalledTimes(1))
+    unmount()
+    expect(shiny.unbindAll).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      resolveBind()
+    })
+
+    await waitFor(() => expect(shiny.unbindAll).toHaveBeenCalledTimes(2))
+  })
+
   it("exposes a bounded keyboard and pointer resize separator", async () => {
     const shell = document.createElement("shiny-chat-container")
     Object.defineProperty(shell, "getBoundingClientRect", {
@@ -360,6 +386,146 @@ describe("ChatArtifact", () => {
     }
   })
 
+  it("does not clamp a CSS-takeover measurement before parent state updates", async () => {
+    let layoutWidth = 1500
+    const original = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "getBoundingClientRect",
+    )
+    Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", {
+      configurable: true,
+      value: function () {
+        if (this.matches("shiny-chat-container")) return { width: 1500 }
+        if (this.classList.contains("shiny-chat-layout")) {
+          return { width: layoutWidth }
+        }
+        if (this.classList.contains("shiny-chat-artifact")) {
+          return { width: 1000 }
+        }
+        return { width: 0 }
+      },
+    })
+    ResizeObserverStub.reset()
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub)
+
+    try {
+      const shell = document.createElement("shiny-chat-container")
+      const layout = document.createElement("div")
+      layout.className = "shiny-chat-layout"
+      shell.append(layout)
+      document.body.append(shell)
+      const onWidthChange = vi.fn()
+
+      render(
+        <ShinyLifecycleContext.Provider value={lifecycle()}>
+          <ChatArtifact
+            artifact={artifact({ width: "1000px" })}
+            titleId="artifact-title"
+            takeover={false}
+            closeButtonRef={createRef<HTMLButtonElement>()}
+            onClose={vi.fn()}
+            onWidthChange={onWidthChange}
+          />
+        </ShinyLifecycleContext.Provider>,
+        { container: layout },
+      )
+
+      layoutWidth = 1000
+      await act(async () => {
+        // The child observer fires before ChatContainer's layout observer.
+        ResizeObserverStub.resize(shell, 1500)
+      })
+
+      expect(onWidthChange).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+      if (original) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "getBoundingClientRect",
+          original,
+        )
+      } else {
+        delete (HTMLElement.prototype as { getBoundingClientRect?: unknown })
+          .getBoundingClientRect
+      }
+    }
+  })
+
+  it("updates the maximum ARIA value when only container capacity changes", async () => {
+    let containerWidth = 1500
+    const original = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "getBoundingClientRect",
+    )
+    Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", {
+      configurable: true,
+      value: function () {
+        if (this.matches("shiny-chat-container")) {
+          return { width: containerWidth }
+        }
+        if (this.classList.contains("shiny-chat-artifact")) {
+          return { width: 400 }
+        }
+        return { width: 0 }
+      },
+    })
+    ResizeObserverStub.reset()
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub)
+
+    try {
+      const shell = document.createElement("shiny-chat-container")
+      const layout = document.createElement("div")
+      layout.className = "shiny-chat-layout"
+      layout.style.columnGap = "24px"
+      shell.append(layout)
+      document.body.append(shell)
+      const onWidthChange = vi.fn()
+
+      render(
+        <ShinyLifecycleContext.Provider value={lifecycle()}>
+          <ChatArtifact
+            artifact={artifact({ width: "400px" })}
+            titleId="artifact-title"
+            takeover={false}
+            closeButtonRef={createRef<HTMLButtonElement>()}
+            onClose={vi.fn()}
+            onWidthChange={onWidthChange}
+          />
+        </ShinyLifecycleContext.Provider>,
+        { container: layout },
+      )
+
+      const separator = screen.getByRole("separator", {
+        name: "Resize artifact panel",
+      })
+      expect(separator).toHaveAttribute("aria-valuemax", "1116")
+
+      containerWidth = 1300
+      await act(async () => {
+        ResizeObserverStub.resize(shell, containerWidth)
+      })
+
+      await waitFor(() =>
+        expect(separator).toHaveAttribute("aria-valuemax", "916"),
+      )
+      expect(separator).toHaveAttribute("aria-valuenow", "400")
+      expect(onWidthChange).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+      if (original) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "getBoundingClientRect",
+          original,
+        )
+      } else {
+        delete (HTMLElement.prototype as { getBoundingClientRect?: unknown })
+          .getBoundingClientRect
+      }
+    }
+  })
+
   it("does not render the resizer when server markup disables resizing", () => {
     renderArtifact(artifact({ resizable: false }))
     expect(screen.queryByRole("separator")).toBeNull()
@@ -368,10 +534,6 @@ describe("ChatArtifact", () => {
   it("moves focus to the takeover back control and restores it when hidden", async () => {
     const transport = createMockTransport()
     const shinyLifecycle = createMockShinyLifecycle()
-    const priorFocus = document.createElement("button")
-    priorFocus.textContent = "Chat action"
-    document.body.append(priorFocus)
-    priorFocus.focus()
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
       callback(0)
       return 1
@@ -386,6 +548,8 @@ describe("ChatArtifact", () => {
         initialArtifact={artifact({ visible: false, content: "" })}
       />,
     )
+    const priorFocus = await screen.findByRole("textbox")
+    priorFocus.focus()
 
     act(() => {
       transport.fire("artifact-focus", {
@@ -456,6 +620,153 @@ describe("ChatArtifact", () => {
 
       fireEvent.click(back)
       await waitFor(() => expect(chatControl).toHaveFocus())
+    } finally {
+      vi.unstubAllGlobals()
+      if (original) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "getBoundingClientRect",
+          original,
+        )
+      } else {
+        delete (HTMLElement.prototype as { getBoundingClientRect?: unknown })
+          .getBoundingClientRect
+      }
+    }
+  })
+
+  it("keeps non-chat focus outside the artifact during a takeover transition", async () => {
+    let layoutWidth = 1200
+    const original = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "getBoundingClientRect",
+    )
+    Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", {
+      configurable: true,
+      value: function () {
+        if (this.classList.contains("shiny-chat-layout")) {
+          return { width: layoutWidth }
+        }
+        if (this.classList.contains("shiny-chat-artifact")) {
+          return { width: 400 }
+        }
+        return { width: 0 }
+      },
+    })
+    ResizeObserverStub.reset()
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub)
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      callback(0)
+      return 1
+    })
+
+    try {
+      const outsideControl = document.createElement("button")
+      outsideControl.textContent = "Outside chat"
+      document.body.append(outsideControl)
+      const view = render(
+        <ChatApp
+          transport={createMockTransport()}
+          shinyLifecycle={createMockShinyLifecycle()}
+          elementId="artifact-outside-focus"
+          inputId="artifact-outside-focus-input"
+          initialArtifact={artifact()}
+        />,
+      )
+      outsideControl.focus()
+      const layout = view.container.querySelector(
+        ".shiny-chat-layout",
+      ) as HTMLElement
+
+      layoutWidth = 1000
+      await act(async () => {
+        ResizeObserverStub.resize(layout, layoutWidth)
+      })
+
+      await screen.findByRole("button", { name: "Back to chat" })
+      expect(outsideControl).toHaveFocus()
+    } finally {
+      vi.unstubAllGlobals()
+      if (original) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "getBoundingClientRect",
+          original,
+        )
+      } else {
+        delete (HTMLElement.prototype as { getBoundingClientRect?: unknown })
+          .getBoundingClientRect
+      }
+    }
+  })
+
+  it("clears a stale takeover return target when re-entering from outside chat", async () => {
+    let layoutWidth = 1200
+    const original = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "getBoundingClientRect",
+    )
+    Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", {
+      configurable: true,
+      value: function () {
+        if (this.classList.contains("shiny-chat-layout")) {
+          return { width: layoutWidth }
+        }
+        if (this.classList.contains("shiny-chat-artifact")) {
+          return { width: 400 }
+        }
+        return { width: 0 }
+      },
+    })
+    ResizeObserverStub.reset()
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub)
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      callback(0)
+      return 1
+    })
+
+    try {
+      const view = render(
+        <ChatApp
+          transport={createMockTransport()}
+          shinyLifecycle={createMockShinyLifecycle()}
+          elementId="artifact-stale-focus"
+          inputId="artifact-stale-focus-input"
+          initialArtifact={artifact()}
+        />,
+      )
+      const chatControl = await screen.findByRole("textbox")
+      const layout = view.container.querySelector(
+        ".shiny-chat-layout",
+      ) as HTMLElement
+
+      chatControl.focus()
+      layoutWidth = 1000
+      await act(async () => {
+        ResizeObserverStub.resize(layout, layoutWidth)
+      })
+      await screen.findByRole("button", { name: "Back to chat" })
+
+      layoutWidth = 1200
+      await act(async () => {
+        ResizeObserverStub.resize(layout, layoutWidth)
+      })
+      await screen.findByRole("button", { name: "Close artifact" })
+
+      const outsideControl = document.createElement("button")
+      outsideControl.textContent = "Outside chat"
+      document.body.append(outsideControl)
+      outsideControl.focus()
+
+      layoutWidth = 1000
+      await act(async () => {
+        ResizeObserverStub.resize(layout, layoutWidth)
+      })
+      const back = await screen.findByRole("button", { name: "Back to chat" })
+      expect(outsideControl).toHaveFocus()
+
+      fireEvent.click(back)
+      await waitFor(() => expect(outsideControl).toHaveFocus())
     } finally {
       vi.unstubAllGlobals()
       if (original) {

@@ -11,6 +11,7 @@ import type { ChatArtifactState } from "./state"
 
 const MIN_ARTIFACT_WIDTH = 240
 const MIN_CHAT_WIDTH = 360
+export const ARTIFACT_TAKEOVER_WIDTH = 1120
 
 function clampWidth(width: number, maxWidth: number): number {
   return Math.round(Math.min(Math.max(width, MIN_ARTIFACT_WIDTH), maxWidth))
@@ -108,9 +109,15 @@ function ArtifactContent({
       }
 
       if (cancelled || !host.hasChildNodes()) return
-      await shiny?.bindAll(host)
-      if (cancelled) return
+      // Treat an in-flight bind as bound for cleanup purposes. A component
+      // unmount can happen while Shiny's bind promise is still pending.
       isBoundRef.current = true
+      await shiny?.bindAll(host)
+      if (cancelled) {
+        shiny?.unbindAll(host)
+        isBoundRef.current = false
+        return
+      }
       if (visibleRef.current) triggerResize()
     }
 
@@ -158,6 +165,7 @@ export function ChatArtifact({
     const parsed = Number.parseFloat(artifact.width)
     return Number.isFinite(parsed) ? parsed : 400
   })
+  const [maximumWidth, setMaximumWidth] = useState(840)
 
   const maxWidth = useCallback(() => {
     const panel = panelRef.current
@@ -176,13 +184,27 @@ export function ChatArtifact({
 
   const measureAndClampWidth = useCallback(() => {
     const panel = panelRef.current
-    if (!panel || !artifact.visible || takeover) return
+    if (!panel || !artifact.visible) return
+
+    const maximum = maxWidth()
+    setMaximumWidth(maximum)
+    const layout = panel.closest(".shiny-chat-layout")
+    const layoutWidth = layout?.getBoundingClientRect().width ?? 0
+    // A child observer can run before ChatContainer applies its takeover
+    // state. The panel is full-width in this range, so never persist that
+    // temporary measurement as a desktop artifact width.
+    if (
+      takeover ||
+      (layoutWidth > 0 && layoutWidth < ARTIFACT_TAKEOVER_WIDTH)
+    ) {
+      return
+    }
 
     const measured = Math.round(panel.getBoundingClientRect().width)
     if (measured <= 0) return
 
     const configured = pixelWidth(artifact.width)
-    const bounded = clampWidth(Math.max(measured, configured ?? 0), maxWidth())
+    const bounded = clampWidth(Math.max(measured, configured ?? 0), maximum)
     setWidth(bounded)
     if (
       bounded !== measured ||
@@ -195,11 +217,14 @@ export function ChatArtifact({
   useLayoutEffect(() => {
     measureAndClampWidth()
 
-    const container = panelRef.current?.closest("shiny-chat-container")
+    const panel = panelRef.current
+    const container = panel?.closest("shiny-chat-container")
     if (!container || typeof ResizeObserver === "undefined") return
 
     const observer = new ResizeObserver(measureAndClampWidth)
     observer.observe(container)
+    const layout = panel?.closest(".shiny-chat-layout")
+    if (layout && layout !== container) observer.observe(layout)
     return () => observer.disconnect()
   }, [measureAndClampWidth])
 
@@ -264,7 +289,6 @@ export function ChatArtifact({
   )
 
   const title = artifact.title || "Artifact"
-  const boundedMaxWidth = maxWidth()
   const style = {
     "--shiny-chat-artifact-width": artifact.width,
   } as React.CSSProperties
@@ -285,7 +309,7 @@ export function ChatArtifact({
           aria-label="Resize artifact panel"
           aria-orientation="vertical"
           aria-valuemin={MIN_ARTIFACT_WIDTH}
-          aria-valuemax={Math.round(boundedMaxWidth)}
+          aria-valuemax={Math.round(maximumWidth)}
           aria-valuenow={Math.round(width)}
           aria-valuetext={`${Math.round(width)} pixels`}
           tabIndex={0}

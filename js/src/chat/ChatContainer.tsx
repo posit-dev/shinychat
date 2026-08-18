@@ -17,7 +17,7 @@ import { ChatInput, type ChatInputHandle } from "./ChatInput"
 import { ScrollToBottomButton } from "./ScrollToBottomButton"
 import { ExternalLinkDialogComponent } from "./ExternalLinkDialog"
 import { RawDOM } from "./RawDOM"
-import { ChatArtifact } from "./ChatArtifact"
+import { ARTIFACT_TAKEOVER_WIDTH, ChatArtifact } from "./ChatArtifact"
 import {
   ChatScrollContext,
   SlashCommandsContext,
@@ -215,7 +215,7 @@ export const ChatContainer = forwardRef<
     const update = (width: number) => {
       // Keep the message column at its normal 680px reading cap. Below this
       // threshold an adjacent artifact would force that column narrower.
-      setArtifactTakeover(width < 1120)
+      setArtifactTakeover(width < ARTIFACT_TAKEOVER_WIDTH)
     }
     update(layout.getBoundingClientRect().width)
 
@@ -237,9 +237,15 @@ export const ChatContainer = forwardRef<
 
     if (entersTakeover) {
       const active = document.activeElement
-      artifactReturnFocusRef.current =
-        active instanceof HTMLElement ? active : null
-      requestAnimationFrame(() => artifactCloseRef.current?.focus())
+      const chatWrapper = artifactLayoutRef.current?.querySelector(
+        ".shiny-chat-wrapper",
+      )
+      if (active instanceof HTMLElement && chatWrapper?.contains(active)) {
+        artifactReturnFocusRef.current = active
+        requestAnimationFrame(() => artifactCloseRef.current?.focus())
+      } else {
+        artifactReturnFocusRef.current = null
+      }
     } else if (wasVisible && !isVisible) {
       const returnFocus = artifactReturnFocusRef.current
       if (returnFocus?.isConnected) returnFocus.focus()
