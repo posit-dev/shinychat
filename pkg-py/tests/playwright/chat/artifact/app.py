@@ -19,6 +19,7 @@ ui.page_opts(title="Artifact browser test", fillable=True)
 ui.div(
     ui.input_action_button("show_artifact", "Show artifact"),
     ui.input_action_button("update_artifact", "Update artifact"),
+    ui.input_action_button("clear_artifact", "Clear artifact"),
     ui.input_action_button("hide_artifact", "Hide artifact"),
     ui.input_action_button("show_preserved", "Show preserved"),
     ui.input_action_button("toggle_artifact", "Toggle artifact"),
@@ -46,6 +47,7 @@ def artifact_content(version: str) -> TagList:
                 "Artifact value",
                 value=version,
             ),
+            tags.div(id="artifact_output", class_="shiny-text-output"),
         ),
     )
 
@@ -53,6 +55,11 @@ def artifact_content(version: str) -> TagList:
 @render.text
 def artifact_echo() -> str:
     return f"Echo: {input.artifact_text()}"
+
+
+@render.text
+def artifact_output() -> str:
+    return f"Artifact output: {input.artifact_text()}"
 
 
 @reactive.effect
@@ -71,6 +78,12 @@ async def _update_artifact() -> None:
         artifact_content("Updated"),
         title="Updated artifact",
     )
+
+
+@reactive.effect
+@reactive.event(input.clear_artifact)
+async def _clear_artifact() -> None:
+    await chat.artifact.update(TagList(), title="")
 
 
 @reactive.effect
