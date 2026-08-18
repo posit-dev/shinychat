@@ -70,8 +70,7 @@ function ArtifactContent({
   const initialContentRef = useRef(content)
   const adoptedInitialSourceRef = useRef(false)
   const generationRef = useRef(0)
-  const boundGenerationRef = useRef<number | null>(null)
-  const unmountedRef = useRef(false)
+  const currentWrapperRef = useRef<HTMLDivElement | null>(null)
   const shinyRef = useRef(shiny)
   shinyRef.current = shiny
   const visibleRef = useRef(visible)
@@ -85,16 +84,20 @@ function ArtifactContent({
     generationRef.current = generation
     let cancelled = false
     const isCurrent = () => generationRef.current === generation
+    const wrapper = document.createElement("div")
+    wrapper.className = "shiny-chat-artifact-generation"
 
     const replaceContent = async () => {
       // A server action makes the artifact visible before its dependencies
       // resolve. Remove the old dynamic subtree in this layout effect so it
       // cannot paint during that wait.
-      if (host.hasChildNodes()) {
-        shiny?.unbindAll(host)
-        boundGenerationRef.current = null
-        host.replaceChildren()
+      const previousWrapper = currentWrapperRef.current
+      if (previousWrapper) {
+        shiny?.unbindAll(previousWrapper)
+        previousWrapper.remove()
       }
+      currentWrapperRef.current = wrapper
+      host.replaceChildren(wrapper)
 
       if (htmlDeps.length > 0) {
         await shiny?.renderDependencies(htmlDeps)
@@ -108,26 +111,27 @@ function ArtifactContent({
         content === initialContentRef.current
       ) {
         while (initialSource.firstChild) {
-          host.appendChild(initialSource.firstChild)
+          wrapper.appendChild(initialSource.firstChild)
         }
         adoptedInitialSourceRef.current = true
       } else {
-        host.innerHTML = content
+        wrapper.innerHTML = content
       }
 
-      if (cancelled || !isCurrent() || !host.hasChildNodes()) return
+      if (cancelled || !isCurrent() || !wrapper.hasChildNodes()) return
       // Treat an in-flight bind as bound for cleanup purposes. A component
       // unmount can happen while Shiny's bind promise is still pending.
-      boundGenerationRef.current = generation
-      await shiny?.bindAll(host)
+      await shiny?.bindAll(wrapper)
       if (!isCurrent()) {
-        if (unmountedRef.current) shiny?.unbindAll(host)
+        shiny?.unbindAll(wrapper)
+        wrapper.remove()
         return
       }
       if (cancelled) {
-        if (boundGenerationRef.current === generation) {
-          shiny?.unbindAll(host)
-          boundGenerationRef.current = null
+        shiny?.unbindAll(wrapper)
+        wrapper.remove()
+        if (currentWrapperRef.current === wrapper) {
+          currentWrapperRef.current = null
         }
         return
       }
@@ -141,15 +145,14 @@ function ArtifactContent({
   }, [content, htmlDeps, shiny])
 
   useEffect(() => {
-    unmountedRef.current = false
     const host = hostRef.current
     return () => {
-      const boundGeneration = boundGenerationRef.current
-      if (!host || boundGeneration === null) return
-      unmountedRef.current = true
       generationRef.current += 1
-      boundGenerationRef.current = null
-      shinyRef.current?.unbindAll(host)
+      const wrapper = currentWrapperRef.current
+      if (!host || !wrapper) return
+      currentWrapperRef.current = null
+      shinyRef.current?.unbindAll(wrapper)
+      wrapper.remove()
     }
   }, [])
 

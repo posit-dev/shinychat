@@ -216,25 +216,44 @@ describe("ChatArtifact", () => {
 
   it("ignores stale bind completion after a newer replacement binds", async () => {
     const resolvers: (() => void)[] = []
+    const bindings = new Map<string, Set<HTMLElement>>()
+    const idsFor = (element: HTMLElement) =>
+      Array.from(element.querySelectorAll<HTMLElement>("[id]")).map(
+        (child) => child.id,
+      )
     const shiny: ShinyLifecycle = {
-      unbindAll: vi.fn(),
+      unbindAll: vi.fn((element: HTMLElement) => {
+        for (const [id, owners] of bindings) {
+          owners.delete(element)
+          if (owners.size === 0) bindings.delete(id)
+        }
+      }),
       renderDependencies: vi.fn(async () => {}),
       bindAll: vi.fn(
-        () =>
+        (element: HTMLElement) =>
           new Promise<void>((resolve) => {
-            resolvers.push(resolve)
+            resolvers.push(() => {
+              for (const id of idsFor(element)) {
+                const owners = bindings.get(id) ?? new Set<HTMLElement>()
+                owners.add(element)
+                bindings.set(id, owners)
+              }
+              resolve()
+            })
           }),
       ),
       showClientMessage: vi.fn(),
     }
-    const first = artifact({ content: "<p>First</p>" })
+    const first = artifact({ content: '<input id="shared-input">' })
     const { rerender, unmount } = renderArtifact(first, { shiny })
 
     await waitFor(() => expect(shiny.bindAll).toHaveBeenCalledTimes(1))
     rerender(
       <ShinyLifecycleContext.Provider value={shiny}>
         <ChatArtifact
-          artifact={artifact({ content: "<p>Second</p>" })}
+          artifact={artifact({
+            content: '<div><input id="shared-input"></div>',
+          })}
           titleId="artifact-title"
           takeover={false}
           closeButtonRef={createRef<HTMLButtonElement>()}
@@ -245,20 +264,27 @@ describe("ChatArtifact", () => {
     )
 
     await waitFor(() => expect(shiny.bindAll).toHaveBeenCalledTimes(2))
-    expect(screen.getByText("Second")).toBeInTheDocument()
+    const firstWrapper = (shiny.bindAll as ReturnType<typeof vi.fn>).mock
+      .calls[0]![0] as HTMLElement
+    const secondWrapper = (shiny.bindAll as ReturnType<typeof vi.fn>).mock
+      .calls[1]![0] as HTMLElement
+    expect(shiny.unbindAll).toHaveBeenLastCalledWith(firstWrapper)
 
     await act(async () => {
       resolvers[1]!()
     })
+    expect([...bindings.keys()]).toEqual(["shared-input"])
+
     await act(async () => {
       resolvers[0]!()
     })
 
-    expect(screen.getByText("Second")).toBeInTheDocument()
-    expect(shiny.unbindAll).toHaveBeenCalledTimes(1)
+    expect([...bindings.keys()]).toEqual(["shared-input"])
+    expect(shiny.unbindAll).toHaveBeenLastCalledWith(firstWrapper)
 
     unmount()
-    expect(shiny.unbindAll).toHaveBeenCalledTimes(2)
+    expect(shiny.unbindAll).toHaveBeenLastCalledWith(secondWrapper)
+    expect(bindings.size).toBe(0)
   })
 
   it("exposes a bounded keyboard and pointer resize separator", async () => {

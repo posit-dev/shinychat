@@ -89,6 +89,12 @@
   padding: 1rem;
 }
 
+// Keep a DOM boundary for Shiny's bind/unbind APIs without changing the
+// authored artifact content's layout.
+.shiny-chat-artifact-generation {
+  display: contents;
+}
+
 .shiny-chat-artifact-resizer {
   position: absolute;
   z-index: 1;
