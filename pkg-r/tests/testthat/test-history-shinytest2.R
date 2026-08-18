@@ -1,6 +1,5 @@
 test_that("file-backed history restores after reload", {
-  skip_on_cran()
-  skip_if_not_installed("shinytest2")
+  skip_if_shinytest2_unavailable()
 
   history_dir <- withr::local_tempdir()
   withr::local_envvar(SHINYCHAT_HISTORY_TEST_DIR = history_dir)

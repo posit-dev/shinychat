@@ -35,6 +35,7 @@ Imports:
     S7,
     shiny (>= 1.10.0)
 Suggests:
+    chromote,
     covr,
     knitr,
     later,
