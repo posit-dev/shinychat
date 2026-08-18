@@ -330,9 +330,11 @@ export async function processFile(
 
   const spec = SUPPORTED_TYPES[type]
   const original = await fileToDataUrl(file)
+  const comma = original.indexOf(",")
+  const canonical = `data:${type};base64,${original.slice(comma + 1)}`
 
   if (spec?.downscale && isSupportedImageType(type)) {
-    const { dataUrl, wasDownscaled } = await downscaleDataUrl(original, type)
+    const { dataUrl, wasDownscaled } = await downscaleDataUrl(canonical, type)
     const outType = wasDownscaled && type === "image/gif" ? "image/png" : type
     return {
       file: {
@@ -353,9 +355,9 @@ export async function processFile(
       id: uuid(),
       type,
       family,
-      dataUrl: original,
+      dataUrl: canonical,
       name: file.name,
-      size: dataUrlByteSize(original),
+      size: dataUrlByteSize(canonical),
     },
     wasDownscaled: false,
     wasConverted: false,
