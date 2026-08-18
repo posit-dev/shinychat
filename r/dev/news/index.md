@@ -183,6 +183,22 @@
 
 ### Bug fixes
 
+- A response that fails before it streams anything is now reported in
+  the chat instead of leaving a loading indicator that never resolves
+  and a locked composer. The stream is consumed inside a coroutine
+  (`chat_append_stream_impl()`) ahead of its first `await`, so a failure
+  there was raised synchronously, skipped the error handling in
+  `chat_append_stream()` entirely, and ended up in the
+  [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  stream task where nothing read it. That is the shape of every turn a
+  provider rejects outright – an exhausted quota, an over-long context,
+  a dropped connection. The
+  [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  return also gained `last_error`, a reactive holding the condition from
+  the most recent failed response, since both a finished and a failed
+  response report `"idle"` in `status`.
+  ([\#304](https://github.com/posit-dev/shinychat/issues/304))
+
 - Fixed a race between the chat greeting and conversation history
   restore: reloading a page that restored a previous conversation could
   briefly flash the app’s greeting, and starting a new chat after a

@@ -194,6 +194,12 @@ updates the content but does not make it visible again; call
 <li><p><code>status</code>: A reactive value indicating the current chat interaction
 state. Returns <code>"idle"</code> when no response is in progress, or
 <code>"streaming"</code> while a response is actively being received.</p></li>
+<li><p><code>last_error</code>: A reactive value holding the condition from the most
+recent response if it failed, and <code>NULL</code> otherwise. Both a finished
+and a failed response read as <code>"idle"</code> in <code>status</code>, so this is what
+tells them apart. Responses only: a greeting streams from its own
+task, and an error raised by a slash command handler is reported as
+a notification, so neither appears here.</p></li>
 <li><p><code>client</code>: The current chat client object (an active binding that
 always reflects the latest client, even after <code>set_client()</code>
 is called).</p></li>

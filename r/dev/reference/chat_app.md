@@ -166,6 +166,13 @@ chat_server(
     state. Returns `"idle"` when no response is in progress, or
     `"streaming"` while a response is actively being received.
 
+  - `last_error`: A reactive value holding the condition from the most
+    recent response if it failed, and `NULL` otherwise. Both a finished
+    and a failed response read as `"idle"` in `status`, so this is what
+    tells them apart. Responses only: a greeting streams from its own
+    task, and an error raised by a slash command handler is reported as
+    a notification, so neither appears here.
+
   - `client`: The current chat client object (an active binding that
     always reflects the latest client, even after `set_client()` is
     called).
