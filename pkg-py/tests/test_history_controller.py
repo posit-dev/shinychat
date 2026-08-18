@@ -658,6 +658,21 @@ async def test_switch_to_rejects_record_with_unsupported_schema_version():
 
 
 @pytest.mark.anyio
+async def test_rename_rejects_record_with_unsupported_schema_version_before_writing():
+    # The controller must check schema_version on every write, not just every
+    # read -- a custom store's put() should never see an incompatible record
+    # (issue #322).
+    controller, store = _make_controller()
+    controller.record = new_conversation_record(title="t")
+    controller.record.schema_version = MAX_SCHEMA_VERSION + 1
+
+    with pytest.raises(UnsupportedSchemaVersionError):
+        await controller.rename(controller.record.id, "new title")
+
+    assert store.put_calls == []
+
+
+@pytest.mark.anyio
 async def test_new_chat_url_mode_sends_navigate_null():
     controller, _store, chat = _make_nav_controller(with_url_mode=True)
 

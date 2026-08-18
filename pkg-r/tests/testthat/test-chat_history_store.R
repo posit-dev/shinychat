@@ -692,7 +692,7 @@ test_that("FileConversationStore$get() aborts on an unsupported schema_version",
   )
 })
 
-test_that("FileConversationStore$list() aborts when a conversation has an unsupported schema_version", {
+test_that("FileConversationStore$list() skips a conversation with an unsupported schema_version", {
   dir <- withr::local_tempdir()
   store <- FileConversationStore$new(dir = dir)
   good <- new_conversation_record("good")
@@ -714,10 +714,11 @@ test_that("FileConversationStore$list() aborts when a conversation has an unsupp
     record_file
   )
 
-  expect_error(
-    store$list(part()),
-    class = "shinychat_error_unsupported_schema_version"
+  expect_warning(
+    metas <- store$list(part()),
+    "Skipping unreadable conversation"
   )
+  expect_equal(vapply(metas, function(m) m$id, character(1)), good$id)
 })
 
 test_that("FileConversationStore$put() rejects an unsupported schema_version and creates no directory", {
