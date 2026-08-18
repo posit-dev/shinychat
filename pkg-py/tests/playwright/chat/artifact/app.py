@@ -57,9 +57,11 @@ def artifact_echo() -> str:
     return f"Echo: {input.artifact_text()}"
 
 
-@render.text
-def artifact_output() -> str:
-    return f"Artifact output: {input.artifact_text()}"
+with ui.hold():
+
+    @render.text
+    def artifact_output() -> str:
+        return f"Artifact output: {input.artifact_text()}"
 
 
 @reactive.effect

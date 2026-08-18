@@ -84,6 +84,12 @@ def test_desktop_navigation_streaming_and_history_auto_open(
     expect(toggle).to_be_hidden()
 
     shell.get_by_role("button", name="Return to chat").click()
+    expect(sidebar.locator(".shiny-chat-history-item")).to_have_count(
+        1, timeout=TIMEOUT
+    )
+    page.wait_for_function(
+        "localStorage.getItem('shinychat-current:chat') !== null"
+    )
     page.reload()
     expect(shell).to_be_visible(timeout=TIMEOUT)
     expect(chat.loc).to_be_visible(timeout=TIMEOUT)
