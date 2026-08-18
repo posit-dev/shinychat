@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from decimal import Decimal
 from math import isfinite
@@ -22,24 +21,6 @@ __all__ = (
 )
 
 ChatSidebarOpen = Literal["auto", "open", "closed", "always"]
-
-_CSS_WIDTH_KEYWORDS = frozenset(
-    {
-        "auto",
-        "fit-content",
-        "inherit",
-        "initial",
-        "max-content",
-        "min-content",
-        "revert",
-        "revert-layer",
-        "stretch",
-        "unset",
-    }
-)
-_CSS_DIMENSION_RE = re.compile(
-    r"(?P<number>\.[0-9]+|[0-9]+(?:\.[0-9]+)?)(?P<unit>%|[A-Za-z]+)"
-)
 
 
 @dataclass(frozen=True)
@@ -75,25 +56,6 @@ def _validate_bool(value: object, name: str) -> bool:
     return value
 
 
-def _is_css_function(value: str) -> bool:
-    match = re.match(r"[-_A-Za-z][-_A-Za-z0-9]*\(", value)
-    if match is None or not value.endswith(")"):
-        return False
-
-    depth = 0
-    for index, char in enumerate(
-        value[match.end() - 1 :], start=match.end() - 1
-    ):
-        if char == "(":
-            depth += 1
-        elif char == ")":
-            depth -= 1
-            if depth < 0 or (depth == 0 and index != len(value) - 1):
-                return False
-
-    return depth == 0 and bool(value[match.end() : -1].strip())
-
-
 def _validate_css_width(value: object, name: str) -> str:
     if isinstance(value, bool) or not isinstance(value, (str, int, float)):
         raise TypeError(
@@ -101,15 +63,10 @@ def _validate_css_width(value: object, name: str) -> str:
             f"not {type(value).__name__}."
         )
     if isinstance(value, str):
-        css_width = value.strip()
-        if not css_width:
+        if not value.strip():
             raise ValueError(f"`{name}` must not be an empty CSS width.")
-        if css_width in _CSS_WIDTH_KEYWORDS or _is_css_function(css_width):
-            return value
-        dimension = _CSS_DIMENSION_RE.fullmatch(css_width)
-        if dimension is not None and Decimal(dimension["number"]) > 0:
-            return value
-        raise ValueError(f"`{name}` must be a valid CSS width.")
+        # String validation is delegated to Shiny and browser CSS semantics.
+        return value
     if not isfinite(value) or value <= 0:
         raise ValueError(f"`{name}` must be a finite, positive CSS width.")
 
