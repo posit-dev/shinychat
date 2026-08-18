@@ -65,6 +65,7 @@ def test_page_artifact_survives_navigation_and_history(
     )
 
     sidebar.locator(".shiny-chat-history-new").click()
+    expect(chat.loc_messages.locator("> *")).to_have_count(0, timeout=TIMEOUT)
     expect(panel).to_be_visible()
     expect(artifact_input).to_have_value("edited artifact")
 

@@ -10,9 +10,9 @@ artifact_dependency <- htmlDependency(
   stylesheet = "artifact.css"
 )
 
-artifact_content <- function(version) {
+artifact_content <- function(version, dependency = TRUE) {
   tagList(
-    artifact_dependency,
+    if (dependency) artifact_dependency,
     div(
       class = "artifact-dependency-marker",
       p(class = "artifact-content-label", paste(version, "content")),
@@ -62,7 +62,7 @@ ui <- page_chat(
     )
   ),
   artifact = chat_artifact(
-    artifact_content("Initial"),
+    artifact_content("Initial", dependency = FALSE),
     title = "Initial artifact",
     open = FALSE
   )
