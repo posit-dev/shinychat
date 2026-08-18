@@ -160,6 +160,7 @@ button.shiny-chat-page-identity:focus-visible,
 
 .shiny-chat-page-main {
   position: relative;
+  grid-column: 2;
   overflow: auto;
 }
 

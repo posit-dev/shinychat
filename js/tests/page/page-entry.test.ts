@@ -227,6 +227,8 @@ describe("shiny-chat-page navigation", () => {
   it("switches pages without replacing the mounted chat or its descendants", () => {
     const page = pageFixture()
     const { identity, navButtons, panels } = getPageElements(page)
+    const onResize = vi.fn()
+    window.addEventListener("resize", onResize)
     const chat = page.querySelector("shiny-chat-container")!
     const draft = page.querySelector<HTMLTextAreaElement>(".draft")!
     const streamState = page.querySelector<HTMLElement>(".stream-state")!
@@ -279,6 +281,8 @@ describe("shiny-chat-page navigation", () => {
     expect(
       navButtons.every((button) => !button.hasAttribute("aria-current")),
     ).toBe(true)
+    expect(onResize).toHaveBeenCalledTimes(2)
+    window.removeEventListener("resize", onResize)
   })
 
   it("synchronizes home, default, custom, and absent sidebar metadata", () => {

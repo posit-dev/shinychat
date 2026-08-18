@@ -297,6 +297,7 @@ class ChatPageElement extends HTMLElement {
 
     this.syncSidebar(selected)
     if (closeMenu && this.mobile) this.closeMobileMenu()
+    window.dispatchEvent(new Event("resize"))
     return true
   }
 
