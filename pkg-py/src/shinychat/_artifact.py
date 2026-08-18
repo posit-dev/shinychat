@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
 
-from htmltools import TagChild, TagList
+from htmltools import TagChild
 
 from ._chat_types import ArtifactShowAction, ArtifactUpdateAction
-from ._htmltools_serialization import serialize_htmltools
+from ._htmltools_serialization import render_htmltools
 
 if TYPE_CHECKING:
     from ._chat import Chat
@@ -64,12 +64,12 @@ class ChatArtifactController:
             action = {"type": "artifact_update"}
         html_deps = None
         if content is not None:
-            rendered = serialize_htmltools(content)
+            rendered = render_htmltools(content)
             action["content"] = rendered["html"]
             # Process dependencies through the chat session so Shiny can register
             # local assets before the browser renders the replacement content.
             html_deps = self._chat._serialize_html_deps(
-                TagList(content).get_dependencies()
+                rendered["dependencies"]
             )
             if html_deps is None:
                 html_deps = []

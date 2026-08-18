@@ -190,6 +190,43 @@ def test_artifact_content_uses_chat_session_dependency_serialization() -> None:
     ]
 
 
+def test_artifact_tagifiable_content_includes_tagified_dependencies() -> None:
+    class ArtifactContent:
+        def tagify(self):
+            dependency = HTMLDependency(
+                "tagified-artifact",
+                "1.0.0",
+                source={"subdir": "."},
+            )
+            return TagList(
+                dependency,
+                tags.div("Tagified artifact content"),
+            ).tagify()
+
+    chat, session = _make_chat()
+
+    _run_async(chat.artifact.show(cast(Any, ArtifactContent())))
+
+    assert session.messages == [
+        (
+            "shinyChatMessage",
+            {
+                "id": "chat",
+                "action": {
+                    "type": "artifact_show",
+                    "content": "<div>Tagified artifact content</div>",
+                },
+                "html_deps": [
+                    {
+                        "name": "tagified-artifact",
+                        "from_session": "artifact-session",
+                    }
+                ],
+            },
+        )
+    ]
+
+
 def test_artifact_uses_resolved_chat_id_and_envelope() -> None:
     session = _ArtifactSession()
     session.ns = ResolvedId("module")
