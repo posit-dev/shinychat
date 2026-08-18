@@ -1,8 +1,63 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { fireEvent } from "@testing-library/react"
+import type { ConversationMeta } from "../../src/transport/types"
+import {
+  getHistoryStore,
+  resetHistoryStoreRegistryForTests,
+} from "../../src/chat/historyStore"
 import { PAGE_MOBILE_MEDIA_QUERY } from "../../src/page/page-entry"
 
 type MediaListener = (event: MediaQueryListEvent) => void
+
+const conversations: ConversationMeta[] = [
+  {
+    id: "first",
+    title: "First conversation",
+    created_at: "2026-08-18T09:00:00.000Z",
+    updated_at: "2026-08-18T10:00:00.000Z",
+  },
+]
+
+class ResizeObserverStub {
+  private static instances = new Set<ResizeObserverStub>()
+  private readonly targets = new Set<Element>()
+
+  constructor(private readonly callback: ResizeObserverCallback) {
+    ResizeObserverStub.instances.add(this)
+  }
+
+  observe(target: Element) {
+    this.targets.add(target)
+  }
+
+  unobserve(target: Element) {
+    this.targets.delete(target)
+  }
+
+  disconnect() {
+    this.targets.clear()
+    ResizeObserverStub.instances.delete(this)
+  }
+
+  static resize(target: Element) {
+    ResizeObserverStub.instances.forEach((observer) => {
+      if (!observer.targets.has(target)) return
+      observer.callback(
+        [
+          {
+            target,
+            contentRect: target.getBoundingClientRect(),
+          } as ResizeObserverEntry,
+        ],
+        observer as unknown as ResizeObserver,
+      )
+    })
+  }
+
+  static reset() {
+    ResizeObserverStub.instances.clear()
+  }
+}
 
 function installMatchMedia(initialMatches: boolean) {
   const listeners = new Set<MediaListener>()
@@ -45,13 +100,35 @@ function pageFixture({
   identity = true,
   pages = true,
   sidebar = true,
+  chatId = "chat",
+  homeOpen = "open",
+  homeResizable = true,
+  homeWidth = "20rem",
+  customOpen = "closed",
+  customResizable = false,
+  customWidth = "24rem",
+  alwaysPage = false,
+  homeSidebarKey = "home",
+  layoutWidth = 1000,
 }: {
   identity?: boolean
   pages?: boolean
   sidebar?: boolean
+  chatId?: string
+  homeOpen?: "auto" | "open" | "closed" | "always"
+  homeResizable?: boolean
+  homeWidth?: string
+  customOpen?: "auto" | "open" | "closed" | "always"
+  customResizable?: boolean
+  customWidth?: string
+  alwaysPage?: boolean
+  homeSidebarKey?: "home" | "default"
+  layoutWidth?: number
 } = {}) {
   const page = document.createElement("shiny-chat-page")
+  page.dataset.chatId = chatId
   page.dataset.activePage = "home"
+  page.dataset.testLayoutWidth = layoutWidth.toString()
   page.innerHTML = `
     <header class="shiny-chat-page-header">
       <button
@@ -90,6 +167,15 @@ function pageFixture({
                     class="shiny-chat-page-nav-link"
                     data-page-target="no-sidebar"
                   >No sidebar</button>
+                  ${
+                    alwaysPage
+                      ? `<button
+                          type="button"
+                          class="shiny-chat-page-nav-link"
+                          data-page-target="always-page"
+                        >Always</button>`
+                      : ""
+                  }
                 `
                 : ""
             }
@@ -109,9 +195,9 @@ function pageFixture({
               <div
                 class="shiny-chat-page-sidebar-panel"
                 data-sidebar-for="home"
-                data-sidebar-open="open"
-                data-sidebar-width="20rem"
-                data-sidebar-resizable="true"
+                data-sidebar-open="${homeOpen}"
+                data-sidebar-width="${homeWidth}"
+                data-sidebar-resizable="${homeResizable}"
               >
                 <button type="button">Home action</button>
                 <details>
@@ -135,19 +221,33 @@ function pageFixture({
         <div
           class="shiny-chat-page-sidebar-panel"
           data-sidebar-for="page-2"
-          data-sidebar-open="closed"
-          data-sidebar-width="24rem"
-          data-sidebar-resizable="false"
+          data-sidebar-open="${customOpen}"
+          data-sidebar-width="${customWidth}"
+          data-sidebar-resizable="${customResizable}"
           hidden
         >
           <button type="button">Custom action</button>
         </div>
+        ${
+          alwaysPage
+            ? `<div
+                class="shiny-chat-page-sidebar-panel"
+                data-sidebar-for="always"
+                data-sidebar-open="always"
+                data-sidebar-width="18rem"
+                data-sidebar-resizable="true"
+                hidden
+              >
+                <button type="button">Always action</button>
+              </div>`
+            : ""
+        }
       </aside>
       <main class="shiny-chat-page-main">
         <section
           class="shiny-chat-page-panel shiny-chat-page-home"
           data-page-value="home"
-          ${sidebar ? 'data-sidebar-key="home"' : ""}
+          ${sidebar ? `data-sidebar-key="${homeSidebarKey}"` : ""}
         >
           <shiny-chat-container id="chat">
             <textarea class="draft">unfinished draft</textarea>
@@ -177,12 +277,58 @@ function pageFixture({
                 data-page-value="no-sidebar"
                 hidden
               >No sidebar page</section>
+              ${
+                alwaysPage
+                  ? `<section
+                      class="shiny-chat-page-panel"
+                      data-page-value="always-page"
+                      data-sidebar-key="always"
+                      hidden
+                    >Always page</section>`
+                  : ""
+              }
             `
             : ""
         }
       </main>
     </div>
   `
+
+  const currentLayoutWidth = () => Number(page.dataset.testLayoutWidth)
+  const layoutRect = () => new DOMRect(0, 0, currentLayoutWidth(), 700)
+  Object.defineProperty(page, "getBoundingClientRect", {
+    configurable: true,
+    value: layoutRect,
+  })
+  for (const element of page.querySelectorAll<HTMLElement>(
+    ".shiny-chat-page-body, .shiny-chat-page-main",
+  )) {
+    Object.defineProperty(element, "getBoundingClientRect", {
+      configurable: true,
+      value: layoutRect,
+    })
+  }
+  const aside = page.querySelector<HTMLElement>(".shiny-chat-page-sidebar")!
+  Object.defineProperty(aside, "getBoundingClientRect", {
+    configurable: true,
+    value: () => {
+      const configured =
+        page.style.getPropertyValue("--shiny-chat-page-sidebar-width") ||
+        aside.dataset.sidebarWidth ||
+        "0"
+      const numeric = Number.parseFloat(configured)
+      const requested = configured.endsWith("rem") ? numeric * 16 : numeric
+      const width = Math.max(
+        150,
+        Math.min(
+          Number.isFinite(requested) ? requested : 280,
+          currentLayoutWidth() - 360,
+        ),
+      )
+      return new DOMRect(0, 0, width, 700)
+    },
+  })
+
   document.body.append(page)
   return page
 }
@@ -212,15 +358,23 @@ function getPageElements(page: HTMLElement) {
     navButtons: Array.from(
       page.querySelectorAll<HTMLButtonElement>(".shiny-chat-page-nav-link"),
     ),
+    get resizer() {
+      return page.querySelector<HTMLElement>(".shiny-chat-page-sidebar-resizer")
+    },
   }
 }
 
 beforeEach(() => {
   installMatchMedia(false)
+  ResizeObserverStub.reset()
+  vi.stubGlobal("ResizeObserver", ResizeObserverStub)
 })
 
 afterEach(() => {
   document.body.replaceChildren()
+  resetHistoryStoreRegistryForTests()
+  ResizeObserverStub.reset()
+  vi.unstubAllGlobals()
 })
 
 describe("shiny-chat-page navigation", () => {
@@ -390,7 +544,7 @@ describe("shiny-chat-page responsive controls", () => {
     expect(page.querySelectorAll(".shiny-chat-page-controls")).toHaveLength(1)
   })
 
-  it("does not open the app menu in desktop mode", () => {
+  it("uses the toggle for the sidebar without opening a desktop dialog", () => {
     installMatchMedia(false)
     const page = pageFixture()
     const { toggle, aside } = getPageElements(page)
@@ -398,8 +552,462 @@ describe("shiny-chat-page responsive controls", () => {
     toggle.click()
 
     expect(page.hasAttribute("data-mobile-menu-open")).toBe(false)
-    expect(toggle.getAttribute("aria-expanded")).toBe("true")
+    expect(toggle.getAttribute("aria-expanded")).toBe("false")
+    expect(aside.hidden).toBe(true)
     expect(aside.hasAttribute("role")).toBe(false)
+  })
+})
+
+describe("shiny-chat-page desktop sidebar state", () => {
+  it("allows an explicitly open sidebar to be closed and reopened", () => {
+    const page = pageFixture({ homeOpen: "open" })
+    const { aside, toggle } = getPageElements(page)
+
+    expect(aside.hidden).toBe(false)
+    expect(toggle.hidden).toBe(false)
+    expect(toggle.getAttribute("aria-expanded")).toBe("true")
+
+    toggle.click()
+    expect(aside.hidden).toBe(true)
+    expect(toggle.getAttribute("aria-expanded")).toBe("false")
+
+    toggle.click()
+    expect(aside.hidden).toBe(false)
+    expect(toggle.getAttribute("aria-expanded")).toBe("true")
+  })
+
+  it("allows an explicitly closed sidebar to be opened", () => {
+    const page = pageFixture({ customOpen: "closed" })
+    const { aside, navButtons, toggle } = getPageElements(page)
+
+    navButtons[1]!.click()
+
+    expect(aside.hidden).toBe(true)
+    expect(toggle.hidden).toBe(false)
+    expect(toggle.getAttribute("aria-expanded")).toBe("false")
+
+    toggle.click()
+    expect(aside.hidden).toBe(false)
+    expect(toggle.getAttribute("aria-expanded")).toBe("true")
+  })
+
+  it("keeps an always-open sidebar visible and removes its collapse control", () => {
+    const page = pageFixture({ alwaysPage: true })
+    const { aside, navButtons, toggle } = getPageElements(page)
+
+    navButtons[3]!.click()
+
+    expect(aside.hidden).toBe(false)
+    expect(toggle.hidden).toBe(true)
+    expect(toggle.getAttribute("aria-expanded")).toBe("true")
+
+    toggle.click()
+    expect(aside.hidden).toBe(false)
+    expect(toggle.getAttribute("aria-expanded")).toBe("true")
+  })
+
+  it("opens a custom auto sidebar on desktop", () => {
+    const page = pageFixture({ customOpen: "auto" })
+    const { aside, navButtons, toggle } = getPageElements(page)
+
+    navButtons[1]!.click()
+
+    expect(aside.hidden).toBe(false)
+    expect(toggle.getAttribute("aria-expanded")).toBe("true")
+  })
+
+  it("restores each page sidebar's user-selected open state", () => {
+    const page = pageFixture({
+      homeOpen: "open",
+      customOpen: "closed",
+      customResizable: true,
+    })
+    const { aside, identity, navButtons, toggle } = getPageElements(page)
+
+    toggle.click()
+    expect(aside.hidden).toBe(true)
+
+    navButtons[1]!.click()
+    expect(aside.hidden).toBe(true)
+    toggle.click()
+    expect(aside.hidden).toBe(false)
+
+    identity!.click()
+    expect(aside.hidden).toBe(true)
+    expect(toggle.getAttribute("aria-expanded")).toBe("false")
+
+    navButtons[1]!.click()
+    expect(aside.hidden).toBe(false)
+    expect(toggle.getAttribute("aria-expanded")).toBe("true")
+  })
+})
+
+describe("shiny-chat-page automatic history sidebar", () => {
+  it("replays an initialized history snapshot when the page connects", () => {
+    getHistoryStore("chat").updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+    })
+
+    const page = pageFixture({ homeSidebarKey: "default" })
+    const { aside, toggle } = getPageElements(page)
+
+    expect(aside.hidden).toBe(false)
+    expect(toggle.getAttribute("aria-expanded")).toBe("true")
+    expect(getHistoryStore("chat").listenerCount).toBe(0)
+  })
+
+  it("opens after the first delayed initialized snapshot has conversations", () => {
+    const store = getHistoryStore("chat")
+    const page = pageFixture({ homeSidebarKey: "default" })
+    const { aside, toggle } = getPageElements(page)
+
+    expect(aside.hidden).toBe(true)
+    expect(toggle.getAttribute("aria-expanded")).toBe("false")
+    expect(store.listenerCount).toBe(1)
+
+    store.updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+    })
+
+    expect(aside.hidden).toBe(false)
+    expect(toggle.getAttribute("aria-expanded")).toBe("true")
+    expect(store.listenerCount).toBe(0)
+  })
+
+  it("keeps auto history closed for an empty initialized snapshot", () => {
+    const store = getHistoryStore("chat")
+    const page = pageFixture({ homeSidebarKey: "default" })
+    const { aside, toggle } = getPageElements(page)
+
+    store.updateHistory({
+      enabled: true,
+      conversations: [],
+      activeId: null,
+    })
+
+    expect(aside.hidden).toBe(true)
+    expect(toggle.getAttribute("aria-expanded")).toBe("false")
+    expect(store.listenerCount).toBe(0)
+  })
+
+  it("keeps auto history closed when history is disabled", () => {
+    const store = getHistoryStore("chat")
+    const page = pageFixture({ homeSidebarKey: "default" })
+    const { aside, toggle } = getPageElements(page)
+
+    store.updateHistory({
+      enabled: false,
+      conversations,
+      activeId: "first",
+    })
+
+    expect(aside.hidden).toBe(true)
+    expect(toggle.getAttribute("aria-expanded")).toBe("false")
+  })
+
+  it("does not reconsider the first initialized history decision", () => {
+    const store = getHistoryStore("chat")
+    const page = pageFixture({ homeSidebarKey: "default" })
+    const { aside, toggle } = getPageElements(page)
+
+    store.updateHistory({
+      enabled: true,
+      conversations: [],
+      activeId: null,
+    })
+    store.updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+    })
+
+    expect(aside.hidden).toBe(true)
+    expect(toggle.getAttribute("aria-expanded")).toBe("false")
+  })
+
+  it("gives a user toggle before initialization precedence over history", () => {
+    const store = getHistoryStore("chat")
+    const page = pageFixture({ homeSidebarKey: "default" })
+    const { aside, toggle } = getPageElements(page)
+
+    toggle.click()
+    toggle.click()
+    expect(aside.hidden).toBe(true)
+    expect(store.listenerCount).toBe(0)
+
+    store.updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+    })
+
+    expect(aside.hidden).toBe(true)
+    expect(toggle.getAttribute("aria-expanded")).toBe("false")
+  })
+
+  it("caches a mobile history decision and applies it on desktop", () => {
+    const media = installMatchMedia(true)
+    const store = getHistoryStore("chat")
+    const page = pageFixture({ homeSidebarKey: "default" })
+    const { aside, toggle } = getPageElements(page)
+
+    store.updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+    })
+
+    expect(page.hasAttribute("data-mobile-menu-open")).toBe(false)
+    expect(toggle.getAttribute("aria-expanded")).toBe("false")
+
+    media.setMatches(false)
+
+    expect(aside.hidden).toBe(false)
+    expect(toggle.getAttribute("aria-expanded")).toBe("true")
+  })
+
+  it("removes a pending history listener when disconnected", () => {
+    const store = getHistoryStore("chat")
+    const page = pageFixture({ homeSidebarKey: "default" })
+
+    expect(store.listenerCount).toBe(1)
+
+    page.remove()
+
+    expect(store.listenerCount).toBe(0)
+  })
+})
+
+describe("shiny-chat-page sidebar resizing", () => {
+  it("shows the separator only for an open resizable desktop sidebar", () => {
+    const media = installMatchMedia(false)
+    const page = pageFixture()
+    const { navButtons, resizer, toggle } = getPageElements(page)
+
+    expect(resizer).not.toBeNull()
+    expect(resizer!.hidden).toBe(false)
+
+    toggle.click()
+    expect(resizer!.hidden).toBe(true)
+
+    toggle.click()
+    expect(resizer!.hidden).toBe(false)
+
+    navButtons[1]!.click()
+    toggle.click()
+    expect(resizer!.hidden).toBe(true)
+
+    media.setMatches(true)
+    expect(resizer!.hidden).toBe(true)
+  })
+
+  it("keeps the separator available for an always-open resizable sidebar", () => {
+    const page = pageFixture({ alwaysPage: true })
+    const { navButtons, resizer, toggle } = getPageElements(page)
+
+    navButtons[3]!.click()
+
+    expect(toggle.hidden).toBe(true)
+    expect(resizer).not.toBeNull()
+    expect(resizer!.hidden).toBe(false)
+  })
+
+  it("supports Arrow, Home, and End keyboard resizing with ARIA bounds", () => {
+    const page = pageFixture({ layoutWidth: 1000 })
+    const { resizer } = getPageElements(page)
+
+    expect(resizer).not.toBeNull()
+    expect(resizer).toHaveAttribute("role", "separator")
+    expect(resizer).toHaveAttribute("aria-orientation", "vertical")
+    expect(resizer).toHaveAttribute("aria-valuemin", "150")
+    expect(resizer).toHaveAttribute("aria-valuemax", "640")
+    expect(resizer).toHaveAttribute("aria-valuenow", "320")
+
+    fireEvent.keyDown(resizer!, { key: "ArrowRight" })
+    expect(page.style.getPropertyValue("--shiny-chat-page-sidebar-width")).toBe(
+      "330px",
+    )
+
+    fireEvent.keyDown(resizer!, { key: "ArrowLeft" })
+    expect(page.style.getPropertyValue("--shiny-chat-page-sidebar-width")).toBe(
+      "320px",
+    )
+
+    fireEvent.keyDown(resizer!, { key: "Home" })
+    expect(page.style.getPropertyValue("--shiny-chat-page-sidebar-width")).toBe(
+      "150px",
+    )
+    expect(resizer).toHaveAttribute("aria-valuenow", "150")
+
+    fireEvent.keyDown(resizer!, { key: "End" })
+    expect(page.style.getPropertyValue("--shiny-chat-page-sidebar-width")).toBe(
+      "640px",
+    )
+    expect(resizer).toHaveAttribute("aria-valuenow", "640")
+    expect(resizer).toHaveAttribute("aria-valuetext", "640 pixels")
+  })
+
+  it("positions the separator from rendered width and observes container resizing", () => {
+    const page = pageFixture({
+      homeWidth: "900px",
+      layoutWidth: 1000,
+    })
+    const { resizer } = getPageElements(page)
+    const body = page.querySelector<HTMLElement>(".shiny-chat-page-body")!
+
+    expect(
+      page.style.getPropertyValue("--shiny-chat-page-sidebar-rendered-width"),
+    ).toBe("640px")
+    expect(resizer).toHaveAttribute("aria-valuenow", "640")
+    expect(resizer).toHaveAttribute("aria-valuemax", "640")
+
+    page.dataset.testLayoutWidth = "800"
+    ResizeObserverStub.resize(body)
+
+    expect(
+      page.style.getPropertyValue("--shiny-chat-page-sidebar-rendered-width"),
+    ).toBe("440px")
+    expect(resizer).toHaveAttribute("aria-valuenow", "440")
+    expect(resizer).toHaveAttribute("aria-valuemax", "440")
+  })
+
+  it("resizes by pointer and clamps to sidebar and main-area minimums", () => {
+    const page = pageFixture({ layoutWidth: 1000 })
+    const { resizer } = getPageElements(page)
+
+    expect(resizer).not.toBeNull()
+
+    fireEvent.pointerDown(resizer!, {
+      pointerId: 1,
+      clientX: 320,
+      button: 0,
+      isPrimary: true,
+    })
+    fireEvent.pointerMove(resizer!, { pointerId: 1, clientX: 500 })
+    expect(page.style.getPropertyValue("--shiny-chat-page-sidebar-width")).toBe(
+      "500px",
+    )
+
+    fireEvent.pointerMove(resizer!, { pointerId: 1, clientX: 0 })
+    expect(page.style.getPropertyValue("--shiny-chat-page-sidebar-width")).toBe(
+      "150px",
+    )
+
+    fireEvent.pointerMove(resizer!, { pointerId: 1, clientX: 1000 })
+    expect(page.style.getPropertyValue("--shiny-chat-page-sidebar-width")).toBe(
+      "640px",
+    )
+    fireEvent.pointerUp(resizer!, { pointerId: 1 })
+  })
+
+  it("accepts only one primary pointer and cancels capture on page changes", () => {
+    const page = pageFixture({
+      customOpen: "open",
+      customResizable: true,
+      layoutWidth: 1000,
+    })
+    const { navButtons, resizer } = getPageElements(page)
+
+    fireEvent.pointerDown(resizer!, {
+      pointerId: 1,
+      clientX: 320,
+      button: 2,
+    })
+    fireEvent.pointerMove(resizer!, { pointerId: 1, clientX: 500 })
+    expect(page.style.getPropertyValue("--shiny-chat-page-sidebar-width")).toBe(
+      "20rem",
+    )
+
+    fireEvent.pointerDown(resizer!, {
+      pointerId: 1,
+      clientX: 320,
+      button: 0,
+      isPrimary: true,
+    })
+    fireEvent.pointerDown(resizer!, {
+      pointerId: 2,
+      clientX: 320,
+      button: 0,
+      isPrimary: true,
+    })
+    fireEvent.pointerMove(resizer!, { pointerId: 2, clientX: 500 })
+    expect(page.style.getPropertyValue("--shiny-chat-page-sidebar-width")).toBe(
+      "20rem",
+    )
+
+    navButtons[1]!.click()
+    expect(page.hasAttribute("data-sidebar-resizing")).toBe(false)
+    fireEvent.pointerMove(resizer!, { pointerId: 1, clientX: 500 })
+    expect(page.style.getPropertyValue("--shiny-chat-page-sidebar-width")).toBe(
+      "24rem",
+    )
+  })
+
+  it("ends resizing when pointer capture is lost", () => {
+    const page = pageFixture()
+    const { resizer } = getPageElements(page)
+
+    fireEvent.pointerDown(resizer!, {
+      pointerId: 1,
+      clientX: 320,
+      button: 0,
+      isPrimary: true,
+    })
+    expect(page.dataset.sidebarResizing).toBe("true")
+
+    fireEvent.lostPointerCapture(resizer!, { pointerId: 1 })
+
+    expect(page.hasAttribute("data-sidebar-resizing")).toBe(false)
+    fireEvent.pointerMove(resizer!, { pointerId: 1, clientX: 500 })
+    expect(page.style.getPropertyValue("--shiny-chat-page-sidebar-width")).toBe(
+      "20rem",
+    )
+  })
+
+  it("persists resized widths independently for each sidebar panel", () => {
+    const page = pageFixture({
+      customOpen: "open",
+      customResizable: true,
+      layoutWidth: 1000,
+    })
+    const { identity, navButtons, resizer } = getPageElements(page)
+
+    expect(resizer).not.toBeNull()
+    fireEvent.pointerDown(resizer!, {
+      pointerId: 1,
+      clientX: 320,
+      button: 0,
+      isPrimary: true,
+    })
+    fireEvent.pointerMove(resizer!, { pointerId: 1, clientX: 420 })
+    fireEvent.pointerUp(resizer!, { pointerId: 1 })
+
+    navButtons[1]!.click()
+    expect(page.style.getPropertyValue("--shiny-chat-page-sidebar-width")).toBe(
+      "24rem",
+    )
+    fireEvent.pointerDown(resizer!, {
+      pointerId: 2,
+      clientX: 384,
+      button: 0,
+      isPrimary: true,
+    })
+    fireEvent.pointerMove(resizer!, { pointerId: 2, clientX: 500 })
+    fireEvent.pointerUp(resizer!, { pointerId: 2 })
+
+    identity!.click()
+    expect(page.style.getPropertyValue("--shiny-chat-page-sidebar-width")).toBe(
+      "420px",
+    )
+
+    navButtons[1]!.click()
+    expect(page.style.getPropertyValue("--shiny-chat-page-sidebar-width")).toBe(
+      "500px",
+    )
   })
 })
 
