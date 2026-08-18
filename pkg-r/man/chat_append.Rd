@@ -101,9 +101,6 @@ Set these CSS properties on the chat container to style aside markers:
 \item \code{--shiny-chat-aside-marker-font-family}
 }
 
-To style only compact markers, set them on
-\verb{[data-shinychat-aside-display="compact"]}.
-
 \code{grounded-span} identifies the answer text that is related to an aside.
 Its value must exactly match text before the tag in the same paragraph or
 list item. When the popover opens, shinychat highlights the most recent
@@ -116,6 +113,8 @@ announced to assistive technology without repeating the body.
 Set \code{display="compact"} to show a compact numbered reference in the message.
 The popover retains the source label. Compact asides in the same paragraph or
 list item share a marker, such as \verb{[2, 3]}.
+To style only compact markers, set the CSS properties above on
+\verb{[data-shinychat-aside-display="compact"]}.
 
 The favicon is fetched at render time from a third-party service
 (DuckDuckGo's icon service), which receives the cited site's hostname. To
