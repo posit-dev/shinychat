@@ -188,7 +188,7 @@ describe("ChatArtifact", () => {
     expect(screen.getByText("Second")).toBeInTheDocument()
   })
 
-  it("unbinds when an in-flight bind resolves after unmount", async () => {
+  it("unbinds the current in-flight bind after unmount", async () => {
     let resolveBind!: () => void
     const shiny: ShinyLifecycle = {
       unbindAll: vi.fn(),
@@ -212,6 +212,53 @@ describe("ChatArtifact", () => {
     })
 
     await waitFor(() => expect(shiny.unbindAll).toHaveBeenCalledTimes(2))
+  })
+
+  it("ignores stale bind completion after a newer replacement binds", async () => {
+    const resolvers: (() => void)[] = []
+    const shiny: ShinyLifecycle = {
+      unbindAll: vi.fn(),
+      renderDependencies: vi.fn(async () => {}),
+      bindAll: vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            resolvers.push(resolve)
+          }),
+      ),
+      showClientMessage: vi.fn(),
+    }
+    const first = artifact({ content: "<p>First</p>" })
+    const { rerender, unmount } = renderArtifact(first, { shiny })
+
+    await waitFor(() => expect(shiny.bindAll).toHaveBeenCalledTimes(1))
+    rerender(
+      <ShinyLifecycleContext.Provider value={shiny}>
+        <ChatArtifact
+          artifact={artifact({ content: "<p>Second</p>" })}
+          titleId="artifact-title"
+          takeover={false}
+          closeButtonRef={createRef<HTMLButtonElement>()}
+          onClose={vi.fn()}
+          onWidthChange={vi.fn()}
+        />
+      </ShinyLifecycleContext.Provider>,
+    )
+
+    await waitFor(() => expect(shiny.bindAll).toHaveBeenCalledTimes(2))
+    expect(screen.getByText("Second")).toBeInTheDocument()
+
+    await act(async () => {
+      resolvers[1]!()
+    })
+    await act(async () => {
+      resolvers[0]!()
+    })
+
+    expect(screen.getByText("Second")).toBeInTheDocument()
+    expect(shiny.unbindAll).toHaveBeenCalledTimes(1)
+
+    unmount()
+    expect(shiny.unbindAll).toHaveBeenCalledTimes(2)
   })
 
   it("exposes a bounded keyboard and pointer resize separator", async () => {
