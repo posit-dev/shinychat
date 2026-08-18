@@ -988,7 +988,16 @@ chat_append_stream <- function(
   icon = NULL,
   session = getDefaultReactiveDomain()
 ) {
-  result <- chat_append_stream_impl(id, stream, role, icon, session)
+  # `chat_append_stream_impl()` is a coroutine, so everything ahead of its
+  # first `await` runs eagerly. A stream that fails before it yields anything
+  # therefore throws synchronously rather than rejecting, and would skip the
+  # handling below entirely. `ellmer::Chat$stream_async()` returns a
+  # synchronous generator that performs the request on its first advance, so
+  # this is the shape of every turn a provider rejects outright.
+  result <- tryCatch(
+    chat_append_stream_impl(id, stream, role, icon, session),
+    error = function(cnd) promises::promise_reject(cnd)
+  )
   result <- chat_update_bookmark(id, result, session = session)
   # History saves are triggered by the client's `_messages` echo (see the
   # message_response_effect observer in chat_enable_history()), not chained

@@ -37,6 +37,8 @@
 
 ## Bug fixes
 
+* A response that fails before it streams anything is now reported in the chat instead of leaving a loading indicator that never resolves and a locked composer. The stream is consumed inside a coroutine (`chat_append_stream_impl()`) ahead of its first `await`, so a failure there was raised synchronously, skipped the error handling in `chat_append_stream()` entirely, and ended up in the `chat_server()` stream task where nothing read it. That is the shape of every turn a provider rejects outright -- an exhausted quota, an over-long context, a dropped connection. The `chat_server()` return also gained `last_error`, a reactive holding the condition from the most recent failed response, since both a finished and a failed response report `"idle"` in `status`. (#304)
+
 * Fixed a race between the chat greeting and conversation history restore: reloading a page that restored a previous conversation could briefly flash the app's greeting, and starting a new chat after a session began with a restored conversation could fail to show any greeting at all. Greeting resolution now defers to history's own restore decision instead of racing the client's independent greeting request.
 
 * Fixed `output_markdown_stream()` permanently stopping following new content after the user scrolled back to the bottom. Pinning was decided only from `scroll` events, which browsers dispatch asynchronously; if a chunk grew the container first, the user's at-bottom position no longer read as at-bottom and auto-scroll silently disengaged for good. (#282)

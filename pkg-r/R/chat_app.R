@@ -99,6 +99,12 @@
 #'     * `status`: A reactive value indicating the current chat interaction
 #'       state. Returns `"idle"` when no response is in progress, or
 #'       `"streaming"` while a response is actively being received.
+#'     * `last_error`: A reactive value holding the condition from the most
+#'       recent response if it failed, and `NULL` otherwise. Both a finished
+#'       and a failed response read as `"idle"` in `status`, so this is what
+#'       tells them apart. Responses only: a greeting streams from its own
+#'       task, and an error raised by a slash command handler is reported as
+#'       a notification, so neither appears here.
 #'     * `client`: The current chat client object (an active binding that
 #'       always reflects the latest client, even after `set_client()`
 #'       is called).
@@ -733,6 +739,18 @@ chat_server <- function(
   ret <- new.env(parent = emptyenv())
   ret$last_turn <- shiny::reactive(last_turn(), label = "mod_last_turn")
   ret$last_input <- shiny::reactive(last_input(), label = "mod_last_input")
+  # Derived rather than stored, so it cannot go stale: the task moves to
+  # "running" on the next turn and to "success" when one lands, and this
+  # follows. Nothing else reads the task's result, so a rejection is otherwise
+  # captured by the task and dropped -- `status()` reports a finished and a
+  # failed response alike as "idle".
+  ret$last_error <- shiny::reactive(label = "mod_last_error", {
+    if (append_stream_task$status() == "error") {
+      tryCatch(append_stream_task$result(), error = identity)
+    } else {
+      NULL
+    }
+  })
   ret$status <- shiny::reactive(label = "mod_status", {
     if (append_stream_task$status() == "running") "streaming" else "idle"
   })

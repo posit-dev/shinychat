@@ -182,6 +182,65 @@ test_that("chat_append_stream() returns the stream contents as list if not all t
   )
 })
 
+test_that("chat_append_stream() handles a stream that fails before it yields", {
+  messages <- list()
+  local_mocked_bindings(
+    chat_append_message = function(
+      id,
+      msg,
+      chunk = TRUE,
+      operation = c("append", "replace"),
+      icon = NULL,
+      session = getDefaultReactiveDomain()
+    ) {
+      messages[[length(messages) + 1]] <<- list(
+        id = id,
+        msg = msg,
+        chunk = chunk,
+        operation = operation
+      )
+      invisible()
+    }
+  )
+  withr::local_options(shiny.sanitize.errors = TRUE)
+
+  shiny::withReactiveDomain(shiny::MockShinySession$new(), {
+    # A synchronous generator, the shape `ellmer::Chat$stream_async()` returns:
+    # the request runs on first advance, so a provider that rejects the turn
+    # outright throws before the coroutine reaches its first `await`.
+    stream <- coro::generator(function() {
+      stop("boom")
+      yield(1)
+    })
+
+    p <- chat_append_stream("chat", stream())
+    expect_warning(
+      res <- tryCatch(sync(p), error = identity),
+      regexp = "chat_append_stream"
+    )
+
+    expect_promise(p, "rejected")
+    expect_equal(conditionMessage(res), "boom")
+    expect_s3_class(res, "shiny.silent.error")
+    expect_length(messages, 2)
+    expect_equal(
+      messages[[2]],
+      list(
+        id = "chat",
+        msg = list(
+          role = "assistant",
+          content = paste0(
+            "\n\n**An error occurred. Please try again or contact ",
+            "the app author.**"
+          )
+        ),
+        chunk = "end",
+        operation = "append"
+      )
+    )
+  })
+})
+
 test_that("chat_append_stream() handles errors in the stream", {
   local_mocked_bindings(
     chat_append_message = coro::async(function(...) invisible())
@@ -240,6 +299,8 @@ test_that("chat_server handles string user_input values", {
     {
       expect_no_warning(session$setInputs(chat_user_input = "hello"))
       expect_identical(args_seen[[1]], "hello")
+      later::run_now(0.05)
+      session$flushReact()
     }
   )
 })
@@ -326,4 +387,70 @@ test_that("chat_append_message() emits segment payloads incl. thinking", {
 
   chunk <- captured[[2]]
   expect_equal(chunk$content_type, "thinking")
+})
+
+test_that("chat_server() exposes a failed response until the next succeeds", {
+  local_mocked_bindings(
+    chat_restore = function(...) invisible(NULL),
+    send_chat_action = function(...) invisible(NULL)
+  )
+
+  session <- shiny::MockShinySession$new()
+
+  client <- mock_chat_client()
+  attempts <- 0
+  client$stream_async <- function(...) {
+    attempts <<- attempts + 1
+    if (attempts == 1) {
+      stop("boom")
+    }
+    "recovered"
+  }
+
+  # Driven against a session we keep open, since settling an ExtendedTask and
+  # then letting `testServer()` tear its session down leaks an unhandled
+  # rejection.
+  mod <- shiny::withReactiveDomain(session, {
+    chat_server("chat", client, history = FALSE, session = session)
+  })
+
+  shiny::withReactiveDomain(session, {
+    expect_null(shiny::isolate(mod$last_error()))
+
+    suppressWarnings({
+      session$setInputs(chat_user_input = "hi")
+
+      deadline <- Sys.time() + 5
+      while (
+        is.null(shiny::isolate(mod$last_error())) && Sys.time() < deadline
+      ) {
+        later::run_now(0.05)
+        session$flushReact()
+      }
+    })
+
+    expect_false(is.null(shiny::isolate(mod$last_error())))
+    expect_equal(shiny::isolate(mod$status()), "idle")
+    expect_equal(conditionMessage(shiny::isolate(mod$last_error())), "boom")
+
+    session$setInputs(chat_user_input = "retry")
+
+    deadline <- Sys.time() + 5
+    while (
+      (!is.null(shiny::isolate(mod$last_error())) ||
+        shiny::isolate(mod$status()) != "idle") &&
+        Sys.time() < deadline
+    ) {
+      later::run_now(0.05)
+      session$flushReact()
+    }
+
+    # Allow the ExtendedTask's finally callback to settle before teardown.
+    later::run_now(0.05)
+    session$flushReact()
+
+    expect_equal(attempts, 2)
+    expect_equal(shiny::isolate(mod$status()), "idle")
+    expect_null(shiny::isolate(mod$last_error()))
+  })
 })
