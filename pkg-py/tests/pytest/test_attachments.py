@@ -10,6 +10,7 @@ from shinychat._attachments import (
     is_text_type,
     resolve_attachment_attrs,
     resolve_max_attachment_size,
+    validate_attachments,
 )
 from shinychat._utils_types import MISSING
 
@@ -212,6 +213,62 @@ def test_attachment_from_url_data_url():
     assert a.name == "hi.txt"
     assert a.size == 5
     assert a.data_url.startswith("data:text/plain;base64,")
+
+
+def test_validate_attachments_accepts_matching_data_url_header():
+    attachment = Attachment(
+        mime="text/plain",
+        data_url="data:text/plain;base64,SGVsbG8=",
+        name="hi.txt",
+    )
+
+    validate_attachments([attachment])
+
+
+def test_validate_attachments_rejects_data_url_mime_mismatch():
+    attachment = Attachment(
+        mime="application/pdf",
+        data_url="data:text/html;base64,PGgxPk5vdCBhIFBERi48L2gxPg==",
+        name="report.pdf",
+    )
+
+    with pytest.raises(ValueError, match="data URL header must be"):
+        validate_attachments([attachment])
+
+
+@pytest.mark.parametrize(
+    "data_url",
+    [
+        "data:text/plain,SGVsbG8=",
+        "data:text/plain;base64",
+        "data:text/plain;charset=utf-8;base64,SGVsbG8=",
+        "DATA:text/plain;base64,SGVsbG8=",
+    ],
+)
+def test_validate_attachments_rejects_malformed_data_url_header(
+    data_url: str,
+):
+    attachment = Attachment(
+        mime="text/plain",
+        data_url=data_url,
+        name="hi.txt",
+    )
+
+    with pytest.raises(ValueError, match="data URL header must be"):
+        validate_attachments([attachment])
+
+
+def test_validate_attachments_preserves_remote_url():
+    attachment = Attachment.from_url(
+        "https://example.com/report.pdf",
+        mime="application/pdf",
+        name="report.pdf",
+    )
+
+    validate_attachments([attachment])
+    assert attachment.data_url == "https://example.com/report.pdf"
+    assert attachment.mime == "application/pdf"
+    assert attachment.size == 0
 
 
 def test_attachment_from_data():

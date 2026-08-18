@@ -20,6 +20,7 @@ import {
   PASTE_AS_FILE_MIN_CHARS,
   pastedTextFile,
   decodeTextDataUrl,
+  dataUrlToBlob,
 } from "../../src/chat/attachments"
 
 describe("attachmentFamily", () => {
@@ -90,6 +91,17 @@ describe("dataUrlByteSize", () => {
   it("decodes the byte length from a base64 data URL", () => {
     // "hello" base64 = "aGVsbG8=" -> 5 bytes
     expect(dataUrlByteSize("data:text/plain;base64,aGVsbG8=")).toBe(5)
+  })
+})
+
+describe("dataUrlToBlob", () => {
+  it("uses the caller-provided MIME instead of the data URL header", () => {
+    const blob = dataUrlToBlob(
+      "data:text/html;base64,PHNjcmlwdD48L3NjcmlwdD4=",
+      "application/pdf",
+    )
+
+    expect(blob.type).toBe("application/pdf")
   })
 })
 
@@ -179,19 +191,22 @@ describe("processFile", () => {
     expect(result!.file.type).toBe("text/markdown")
     expect(result!.file.family).toBe("text")
     expect(result!.file.name).toBe("notes.md")
-    expect(result!.file.dataUrl.startsWith("data:")).toBe(true)
+    expect(result!.file.dataUrl).toMatch(/^data:text\/markdown;base64,/)
     expect(result!.file.size).toBeGreaterThan(0)
     expect(result!.wasDownscaled).toBe(false)
   })
   it("resolves Quarto and Jupyter extensions", async () => {
     // browser reports text/plain, but the .qmd extension wins
     const qmd = new File(["---\n"], "report.qmd", { type: "text/plain" })
-    expect((await processFile(qmd, DEFAULT_UPLOAD_ACCEPT))!.file.type).toBe(
-      "text/markdown",
-    )
+    const qmdResult = (await processFile(qmd, DEFAULT_UPLOAD_ACCEPT))!.file
+    expect(qmdResult.type).toBe("text/markdown")
+    expect(qmdResult.dataUrl).toMatch(/^data:text\/markdown;base64,/)
+
     const ipynb = new File(["{}"], "nb.ipynb", { type: "" })
-    expect((await processFile(ipynb, DEFAULT_UPLOAD_ACCEPT))!.file.type).toBe(
-      "application/x-ipynb+json",
+    const ipynbResult = (await processFile(ipynb, DEFAULT_UPLOAD_ACCEPT))!.file
+    expect(ipynbResult.type).toBe("application/x-ipynb+json")
+    expect(ipynbResult.dataUrl).toMatch(
+      /^data:application\/x-ipynb\+json;base64,/,
     )
   })
   it("returns null for an unrecognized extension", async () => {

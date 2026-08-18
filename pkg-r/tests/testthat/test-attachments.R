@@ -300,6 +300,46 @@ test_that("user_input_contents rejects unsupported attachment MIME types", {
   expect_error(user_input_contents(value), "unsupported MIME type")
 })
 
+test_that("user_input_contents rejects mismatched attachment data URL MIME", {
+  value <- list(
+    text = "hello",
+    attachments = list(
+      list(
+        mime = "application/pdf",
+        data_url = "data:text/html;base64,PGgxPmhpPC9oMT4=",
+        name = "report.pdf",
+        size = 11
+      )
+    )
+  )
+  expect_error(user_input_contents(value), "match its declared MIME type")
+})
+
+test_that("user_input_contents rejects malformed attachment data URL headers", {
+  value <- list(
+    text = "hello",
+    attachments = list(
+      list(
+        mime = "application/pdf",
+        data_url = "data:application/pdf,JVBERi0xLjQ=",
+        name = "report.pdf",
+        size = 8
+      )
+    )
+  )
+  expect_error(user_input_contents(value), "data:application/pdf;base64,")
+})
+
+test_that("attachment validation preserves non-data remote URLs", {
+  attachment <- list(
+    mime = "image/png",
+    data_url = "https://example.com/image.png",
+    name = "image.png",
+    size = 0
+  )
+  expect_no_error(validate_attachments(list(attachment)))
+})
+
 test_that("chat_attachment creates correct structure from a PNG path", {
   path <- withr::local_tempfile(fileext = ".png")
   writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), path)

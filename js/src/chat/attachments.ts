@@ -177,11 +177,12 @@ export function decodeTextDataUrl(dataUrl: string): string {
   }
 }
 
-/** Decode a base64 data URL into a Blob (used for iframe-friendly Blob URLs). */
-export function dataUrlToBlob(dataUrl: string): Blob {
+/**
+ * Decode a base64 data URL into a Blob with the caller's trusted MIME type.
+ * The data-URL header is deliberately ignored because the Blob may be rendered.
+ */
+export function dataUrlToBlob(dataUrl: string, mime: string): Blob {
   const comma = dataUrl.indexOf(",")
-  const header = comma === -1 ? "" : dataUrl.slice(0, comma)
-  const mime = header.match(/data:([^;]+)/)?.[1] ?? "application/octet-stream"
   const bytes = base64ToBytes(comma === -1 ? "" : dataUrl.slice(comma + 1))
   return new Blob([bytes], { type: mime })
 }
@@ -329,9 +330,11 @@ export async function processFile(
 
   const spec = SUPPORTED_TYPES[type]
   const original = await fileToDataUrl(file)
+  const comma = original.indexOf(",")
+  const canonical = `data:${type};base64,${original.slice(comma + 1)}`
 
   if (spec?.downscale && isSupportedImageType(type)) {
-    const { dataUrl, wasDownscaled } = await downscaleDataUrl(original, type)
+    const { dataUrl, wasDownscaled } = await downscaleDataUrl(canonical, type)
     const outType = wasDownscaled && type === "image/gif" ? "image/png" : type
     return {
       file: {
@@ -352,9 +355,9 @@ export async function processFile(
       id: uuid(),
       type,
       family,
-      dataUrl: original,
+      dataUrl: canonical,
       name: file.name,
-      size: dataUrlByteSize(original),
+      size: dataUrlByteSize(canonical),
     },
     wasDownscaled: false,
     wasConverted: false,
