@@ -609,6 +609,51 @@ describe("detached transport state", () => {
       .closest(".shiny-chat-history-item-select") as HTMLButtonElement
     expect(select.disabled).toBe(true)
   })
+
+  it("disables an already-open Rename command after disconnect", () => {
+    const onRename = vi.fn()
+    const { rerender } = render(
+      <ChatHistoryContent
+        conversations={DEFAULT_CONVOS}
+        activeId={null}
+        busy={false}
+        connected={true}
+        onSelect={vi.fn()}
+        onNew={vi.fn()}
+        onRename={onRename}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    const menuWrapper = openMenuFor("Today's chat")
+    expect(within(menuWrapper).getByText("Rename")).toHaveProperty(
+      "disabled",
+      false,
+    )
+
+    rerender(
+      <ChatHistoryContent
+        conversations={DEFAULT_CONVOS}
+        activeId={null}
+        busy={false}
+        connected={false}
+        onSelect={vi.fn()}
+        onNew={vi.fn()}
+        onRename={onRename}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    const rename = within(menuWrapper).getByText("Rename")
+    expect(rename).toHaveProperty("disabled", true)
+    expect(rename).toHaveAttribute(
+      "title",
+      "History is unavailable while chat reconnects",
+    )
+    fireEvent.click(rename)
+    expect(onRename).not.toHaveBeenCalled()
+    expect(screen.queryByLabelText("Rename conversation")).toBeNull()
+  })
 })
 
 // ---------------------------------------------------------------------------

@@ -457,7 +457,16 @@ function ConversationItem({
           </button>
           {menuOpen && (
             <span className="shiny-chat-history-menu">
-              <button type="button" onClick={onStartRename}>
+              <button
+                type="button"
+                disabled={!connected}
+                title={
+                  !connected
+                    ? "History is unavailable while chat reconnects"
+                    : undefined
+                }
+                onClick={onStartRename}
+              >
                 <PencilIcon />
                 Rename
               </button>
