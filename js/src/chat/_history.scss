@@ -652,3 +652,33 @@ shiny-chat-container[data-history-placement="right"] {
     display: none;
   }
 }
+
+// Inline history is mounted by <shiny-chat-history for="..."> outside the chat
+// container. It reuses the drawer content classes and tokens, but it is part of
+// normal document flow rather than an overlay.
+.shiny-chat-history.shiny-chat-history-inline {
+  position: static;
+  inset: auto;
+  z-index: auto;
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  border: var(--bs-border-width, 1px) solid var(--_history-border-color);
+  border-radius: var(--bs-border-radius, 0.375rem);
+  background: var(--_history-bg);
+  color: var(--_history-fg);
+  box-shadow: none;
+
+  .shiny-chat-history-toprow {
+    padding-block-start: 0.75rem;
+  }
+
+  .shiny-chat-history-list {
+    max-block-size: min(32rem, 60vh);
+  }
+}
+
+shiny-chat-history {
+  display: block;
+  min-width: 0;
+}

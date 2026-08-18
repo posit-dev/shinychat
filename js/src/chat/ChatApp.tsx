@@ -26,6 +26,7 @@ import {
   buildMessagesSnapshot,
   type ChatMessageData,
   type ChatToolState,
+  type ChatArtifactState,
   type GreetingData,
   type ToolGrouping,
 } from "./state"
@@ -58,6 +59,8 @@ export interface ChatAppProps {
   placeholder?: string
   initialMessages?: ChatMessageData[]
   initialGreeting?: InitialGreeting
+  initialArtifact?: ChatArtifactState
+  artifactSource?: Element
   enableCancel?: boolean
   enableUpload?: boolean
   asideFavicon?: boolean
@@ -102,6 +105,8 @@ export function ChatApp({
   placeholder,
   initialMessages,
   initialGreeting,
+  initialArtifact,
+  artifactSource,
   enableCancel,
   enableUpload,
   asideFavicon = true,
@@ -139,6 +144,7 @@ export function ChatApp({
     enableUpload: enableUpload ?? initialState.enableUpload,
     enableUploadExplicit: enableUpload !== undefined,
     toolGrouping: resolvedToolGrouping,
+    artifact: initialArtifact ?? initialState.artifact,
   })
 
   // `tool-grouping` is a live attribute: the custom element re-renders this
@@ -389,6 +395,8 @@ export function ChatApp({
                   onEdit={handleEdit}
                   onNavigate={handleNavigate}
                   siblingNavigationPending={siblingNavigationPending}
+                  artifact={state.artifact}
+                  artifactSource={artifactSource}
                 />
               </AsideFaviconContext.Provider>
             </ChatSubmitContext.Provider>

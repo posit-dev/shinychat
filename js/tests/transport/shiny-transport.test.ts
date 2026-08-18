@@ -512,7 +512,7 @@ describe("ShinyTransport", () => {
       expect(order).toEqual(["deps", "listener"])
     })
 
-    it("attaches artifact dependencies to artifact content actions", async () => {
+    it("attaches artifact dependencies without rendering them in transport", async () => {
       const transport = new ShinyTransport()
       const received: ChatAction[] = []
       const deps = [{ name: "artifact-widget", version: "1.0.0" }]
@@ -531,7 +531,7 @@ describe("ShinyTransport", () => {
         ),
       )
 
-      expect(window.Shiny?.renderDependenciesAsync).toHaveBeenCalledTimes(2)
+      expect(window.Shiny?.renderDependenciesAsync).not.toHaveBeenCalled()
       expect(received).toEqual([
         {
           type: "artifact_show",

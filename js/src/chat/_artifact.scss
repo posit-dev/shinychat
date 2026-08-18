@@ -1,0 +1,160 @@
+.shiny-chat-layout {
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.shiny-chat-layout[data-artifact-open] {
+  grid-template-columns:
+    minmax(0, min(680px, 100%))
+    minmax(15rem, var(--shiny-chat-artifact-width, 400px));
+  justify-content: center;
+  column-gap: clamp(0.75rem, 1.5cqi, 1.5rem);
+  align-items: stretch;
+
+  .shiny-chat-wrapper {
+    width: 100%;
+    margin-inline: 0;
+  }
+}
+
+.shiny-chat-artifact {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  width: var(--shiny-chat-artifact-width, 400px);
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border: var(--shiny-chat-border);
+  background: var(--bs-body-bg, #fff);
+  color: var(--bs-body-color, #212529);
+  box-shadow: -8px 10px 24px rgba(33, 37, 41, 0.08);
+  animation: shiny-chat-artifact-reveal 180ms ease-out;
+}
+
+.shiny-chat-artifact-header {
+  min-width: 0;
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.625rem 0.5rem 1rem;
+  border-bottom: var(--shiny-chat-border);
+
+  h2 {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.shiny-chat-artifact-close {
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--bs-secondary-color, #6c757d);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--bs-tertiary-bg, #f2f4f5);
+    color: var(--bs-body-color, #212529);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--bs-primary, #007bc2);
+    outline-offset: 2px;
+  }
+}
+
+.shiny-chat-artifact-content {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 1rem;
+}
+
+.shiny-chat-artifact-resizer {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  left: -0.5rem;
+  width: 1rem;
+  cursor: col-resize;
+  touch-action: none;
+
+  &::before {
+    position: absolute;
+    top: 0.75rem;
+    bottom: 0.75rem;
+    left: calc(50% - 1px);
+    width: 2px;
+    border-radius: 1px;
+    background: var(--bs-border-color, #dee2e6);
+    content: "";
+    transition: background-color 150ms ease-out;
+  }
+
+  &:hover::before,
+  &:focus-visible::before {
+    background: var(--bs-primary, #007bc2);
+  }
+
+  &:focus-visible {
+    outline: none;
+  }
+}
+
+@keyframes shiny-chat-artifact-reveal {
+  from {
+    opacity: 0;
+    transform: translateX(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@container shiny-chat (max-width: 69.99rem) {
+  .shiny-chat-layout[data-artifact-open] {
+    display: block;
+
+    .shiny-chat-wrapper {
+      display: none;
+    }
+
+    .shiny-chat-artifact {
+      width: 100%;
+      min-height: 100%;
+      border-inline: 0;
+      box-shadow: none;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shiny-chat-artifact {
+    animation: none;
+  }
+
+  .shiny-chat-artifact-resizer::before {
+    transition: none;
+  }
+}

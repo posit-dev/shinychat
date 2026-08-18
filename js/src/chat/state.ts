@@ -147,6 +147,7 @@ export interface ChatState extends ChatInputState {
 // Actions that originate from the UI (not from the server)
 export type UIAction =
   | { type: "SET_TOOL_GROUPING"; grouping: ToolGrouping }
+  | { type: "SET_ARTIFACT_WIDTH"; width: string }
   | {
       type: "INPUT_SENT"
       content: string
@@ -965,6 +966,13 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         messages: state.messages.map((m) => rerouteMessage(m, action.grouping)),
       }
     }
+
+    case "SET_ARTIFACT_WIDTH":
+      if (!state.artifact.enabled) return state
+      return {
+        ...state,
+        artifact: { ...state.artifact, width: action.width },
+      }
 
     case "clear": {
       // action.greeting=true means "also clear the greeting"; otherwise restore it as visible

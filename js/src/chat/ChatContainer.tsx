@@ -3,6 +3,7 @@ import {
   useRef,
   useCallback,
   useEffect,
+  useLayoutEffect,
   forwardRef,
   useImperativeHandle,
   useMemo,
@@ -16,6 +17,7 @@ import { ChatInput, type ChatInputHandle } from "./ChatInput"
 import { ScrollToBottomButton } from "./ScrollToBottomButton"
 import { ExternalLinkDialogComponent } from "./ExternalLinkDialog"
 import { RawDOM } from "./RawDOM"
+import { ChatArtifact } from "./ChatArtifact"
 import {
   ChatScrollContext,
   SlashCommandsContext,
@@ -29,7 +31,7 @@ import {
 import type { HistoryStore } from "./historyStore"
 import { useFillPaddingTransfer } from "./useFillPaddingTransfer"
 import { useOverlapNudge } from "./useOverlapNudge"
-import type { ChatMessageData, GreetingData } from "./state"
+import type { ChatArtifactState, ChatMessageData, GreetingData } from "./state"
 import type { ChatTransport, SlashCommandDef } from "../transport/types"
 import type { SubmitKey } from "./tiptap/submitShortcut"
 import type { AttachmentPayload } from "./attachments"
@@ -65,6 +67,8 @@ export interface ChatContainerProps {
   slashCommandId: string
   submitKey?: SubmitKey
   historyStore: HistoryStore
+  artifact: ChatArtifactState
+  artifactSource?: Element
   onEdit?: (
     index: number,
     content: string,
@@ -104,6 +108,8 @@ export const ChatContainer = forwardRef<
     slashCommandId,
     submitKey,
     historyStore,
+    artifact,
+    artifactSource,
     onEdit,
     onNavigate,
     siblingNavigationPending,
@@ -120,6 +126,11 @@ export const ChatContainer = forwardRef<
   )
 
   const chatInputRef = useRef<ChatInputHandle>(null)
+  const artifactCloseRef = useRef<HTMLButtonElement>(null)
+  const artifactReturnFocusRef = useRef<HTMLElement | null>(null)
+  const priorArtifactVisibleRef = useRef(artifact.visible)
+  const artifactLayoutRef = useRef<HTMLDivElement>(null)
+  const [artifactTakeover, setArtifactTakeover] = useState(false)
   const history = useSyncExternalStore(
     historyStore.subscribe,
     historyStore.getSnapshot,
@@ -192,6 +203,58 @@ export const ChatContainer = forwardRef<
   const dispatch = useChatDispatch()
 
   const isStreaming = !!streamingMessage
+
+  useEffect(() => {
+    const layout = artifactLayoutRef.current
+    if (!layout || !artifact.enabled) {
+      setArtifactTakeover(false)
+      return
+    }
+
+    const update = (width: number) => {
+      // Keep the message column at its normal 680px reading cap. Below this
+      // threshold an adjacent artifact would force that column narrower.
+      setArtifactTakeover(width < 1120)
+    }
+    update(layout.getBoundingClientRect().width)
+
+    if (typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (entry) update(entry.contentRect.width)
+    })
+    observer.observe(layout)
+    return () => observer.disconnect()
+  }, [artifact.enabled])
+
+  useLayoutEffect(() => {
+    const wasVisible = priorArtifactVisibleRef.current
+    const isVisible = artifact.enabled && artifact.visible
+
+    if (!wasVisible && isVisible && artifactTakeover) {
+      const active = document.activeElement
+      artifactReturnFocusRef.current =
+        active instanceof HTMLElement ? active : null
+      requestAnimationFrame(() => artifactCloseRef.current?.focus())
+    } else if (wasVisible && !isVisible) {
+      const returnFocus = artifactReturnFocusRef.current
+      if (returnFocus?.isConnected) returnFocus.focus()
+      artifactReturnFocusRef.current = null
+    }
+
+    priorArtifactVisibleRef.current = isVisible
+  }, [artifact.enabled, artifact.visible, artifactTakeover])
+
+  const closeArtifact = useCallback(() => {
+    dispatch({ type: "artifact_hide" })
+  }, [dispatch])
+
+  const setArtifactWidth = useCallback(
+    (width: string) => {
+      dispatch({ type: "SET_ARTIFACT_WIDTH", width })
+    },
+    [dispatch],
+  )
 
   const cancelStream = useCallback((): void => {
     if (!enableCancel || !cancelId || !isStreaming || cancelRequested) return
@@ -476,87 +539,119 @@ export const ChatContainer = forwardRef<
       {/* Width-limited, centered content column. The container itself is
           full-width so the history trigger + drawer scrim (siblings of this
           wrapper) can span the whole element. */}
-      <div className="shiny-chat-wrapper">
-        <div className="shiny-chat-messages-wrapper">
-          <div
-            className="shiny-chat-messages"
-            ref={scrollRef}
-            onClick={onMessagesClick}
-            onFocus={handleFocusIn}
-            onBlur={handleFocusOut}
-            onKeyDown={onSuggestionKeydown}
-          >
-            <ChatScrollContext.Provider value={stopScroll}>
-              {/* Greeting lives outside contentRef so its growth (e.g. while a
+      <div
+        ref={artifactLayoutRef}
+        className="shiny-chat-layout"
+        style={
+          artifact.enabled
+            ? ({
+                "--shiny-chat-artifact-width": artifact.width,
+              } as React.CSSProperties)
+            : undefined
+        }
+        data-artifact-open={
+          artifact.enabled && artifact.visible ? "" : undefined
+        }
+        data-artifact-takeover={
+          artifactTakeover && artifact.visible ? "" : undefined
+        }
+      >
+        <div className="shiny-chat-wrapper">
+          <div className="shiny-chat-messages-wrapper">
+            <div
+              className="shiny-chat-messages"
+              ref={scrollRef}
+              onClick={onMessagesClick}
+              onFocus={handleFocusIn}
+              onBlur={handleFocusOut}
+              onKeyDown={onSuggestionKeydown}
+            >
+              <ChatScrollContext.Provider value={stopScroll}>
+                {/* Greeting lives outside contentRef so its growth (e.g. while a
                 streaming greeting fills in) does not trigger useStickToBottom
                 — only message growth does. Suggestion clicks inside the
                 greeting still reach the messages-level handlers via bubbling. */}
-              {greeting != null && <ChatGreeting greeting={greeting} />}
-              <div
-                className="shiny-chat-messages-content"
-                ref={handleContentRef}
-                role="log"
-                aria-live="polite"
-                {...(greeting?.status === "dismissing"
-                  ? { "data-greeting-dismissing": "" }
-                  : {})}
-              >
-                <ChatMessages
-                  messages={displayedMessages}
-                  iconAssistant={iconAssistant}
-                  // Editing/navigating requires the server-side history
-                  // controller, which only registers its input listeners
-                  // when history is enabled -- without this gate the
-                  // buttons would render but silently no-op on click.
-                  onEdit={history.enabled ? onEdit : undefined}
-                  onNavigate={history.enabled ? onNavigate : undefined}
-                  siblingNavigationPending={siblingNavigationPending}
-                  disabled={isStreaming}
-                  inputId={inputId}
-                  submitKey={submitKey}
-                  uploadAccept={uploadAccept}
-                  maxUploadSize={maxUploadSize}
-                  enableUpload={enableUpload}
-                />
-              </div>
-            </ChatScrollContext.Provider>
+                {greeting != null && <ChatGreeting greeting={greeting} />}
+                <div
+                  className="shiny-chat-messages-content"
+                  ref={handleContentRef}
+                  role="log"
+                  aria-live="polite"
+                  {...(greeting?.status === "dismissing"
+                    ? { "data-greeting-dismissing": "" }
+                    : {})}
+                >
+                  <ChatMessages
+                    messages={displayedMessages}
+                    iconAssistant={iconAssistant}
+                    // Editing/navigating requires the server-side history
+                    // controller, which only registers its input listeners
+                    // when history is enabled -- without this gate the
+                    // buttons would render but silently no-op on click.
+                    onEdit={history.enabled ? onEdit : undefined}
+                    onNavigate={history.enabled ? onNavigate : undefined}
+                    siblingNavigationPending={siblingNavigationPending}
+                    disabled={isStreaming}
+                    inputId={inputId}
+                    submitKey={submitKey}
+                    uploadAccept={uploadAccept}
+                    maxUploadSize={maxUploadSize}
+                    enableUpload={enableUpload}
+                  />
+                </div>
+              </ChatScrollContext.Provider>
+            </div>
+            <ScrollToBottomButton
+              isAtBottom={isAtBottom}
+              scrollToBottom={scrollToBottom}
+              streaming={!!streamingMessage || !!greeting?.streaming}
+            />
           </div>
-          <ScrollToBottomButton
-            isAtBottom={isAtBottom}
-            scrollToBottom={scrollToBottom}
-            streaming={!!streamingMessage || !!greeting?.streaming}
-          />
+
+          <div
+            className={
+              inputDisabled ? "shiny-chat-input disabled" : "shiny-chat-input"
+            }
+            onClick={onContainerClick}
+          >
+            <ChatInput
+              ref={chatInputRef}
+              transport={transport}
+              inputId={inputId}
+              uploadAccept={uploadAccept}
+              maxUploadSize={maxUploadSize}
+              disabled={inputDisabled}
+              hasTopShadow={!isAtBottom}
+              placeholder={inputPlaceholder}
+              onSend={onSend}
+              userMessages={userMessages}
+              enableCancel={enableCancel}
+              enableUpload={enableUpload}
+              cancelRequested={cancelRequested}
+              isStreaming={isStreaming}
+              onCancel={cancelStream}
+              slashCommands={slashCommands}
+              slashCommandId={slashCommandId}
+              submitKey={submitKey}
+            />
+          </div>
+
+          {footerEl && (
+            <RawDOM source={footerEl} className="shiny-chat-footer" />
+          )}
         </div>
 
-        <div
-          className={
-            inputDisabled ? "shiny-chat-input disabled" : "shiny-chat-input"
-          }
-          onClick={onContainerClick}
-        >
-          <ChatInput
-            ref={chatInputRef}
-            transport={transport}
-            inputId={inputId}
-            uploadAccept={uploadAccept}
-            maxUploadSize={maxUploadSize}
-            disabled={inputDisabled}
-            hasTopShadow={!isAtBottom}
-            placeholder={inputPlaceholder}
-            onSend={onSend}
-            userMessages={userMessages}
-            enableCancel={enableCancel}
-            enableUpload={enableUpload}
-            cancelRequested={cancelRequested}
-            isStreaming={isStreaming}
-            onCancel={cancelStream}
-            slashCommands={slashCommands}
-            slashCommandId={slashCommandId}
-            submitKey={submitKey}
+        {artifact.enabled && (
+          <ChatArtifact
+            artifact={artifact}
+            source={artifactSource}
+            titleId={`${elementId}-artifact-title`}
+            takeover={artifactTakeover}
+            closeButtonRef={artifactCloseRef}
+            onClose={closeArtifact}
+            onWidthChange={setArtifactWidth}
           />
-        </div>
-
-        {footerEl && <RawDOM source={footerEl} className="shiny-chat-footer" />}
+        )}
       </div>
 
       {history.enabled && (
