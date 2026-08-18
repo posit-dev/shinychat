@@ -28,6 +28,8 @@ website:
     left:
       - text: Get Started
         href: index.qmd
+      - text: Page chat
+        href: page-chat.qmd
       - text: API Reference
         href: api/index.qmd
     tools:
@@ -69,6 +71,11 @@ quartodoc:
         include_functions: true
       contents:
         - Chat
+        - page_chat
+        - chat_sidebar
+        - chat_nav_panel
+        - chat_artifact
+        - chat_ui_history
         - types.ChatClient
         - types.ChatMessage
         - types.Attachment
