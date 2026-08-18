@@ -2,6 +2,12 @@
 
 ## New features and improvements
 
+* Added `page_chat()` for full-window chat pages with persistent chat
+  navigation, responsive sidebars, optional page-specific sidebars, and
+  artifact panels. Use it instead of
+  `bslib::page_fillable(chat_ui(...))` when shinychat owns the page
+  composition; continue using `chat_ui()` for embedded or mixed layouts.
+
 * Web search and web fetch responses from ellmer now show their activity and citations directly in the chat. Readers can open a citation beside its claim or use the message-wide Sources pill. `ContentCitation@grounded_span` links each citation to the answer text that it supports.
 
 * Assistant messages can now attach source details to specific claims with the `<shiny-aside>` markup convention. This convention powers shinychat's web citations and can also support custom RAG workflows. Add an inline `<shiny-aside>` tag with source details and an optional `grounded-span`. Shinychat shows a compact source pill and highlights the related text when the pill is open. See the `Asides` section in `?chat_append`.

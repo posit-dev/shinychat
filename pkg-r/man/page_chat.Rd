@@ -61,3 +61,110 @@ A fillable bslib page.
 \code{page_chat()} creates a fillable page containing one persistent \code{\link[=chat_ui]{chat_ui()}}
 home view, optional navigation pages, and a responsive app-menu sidebar.
 }
+\details{
+Use \code{page_chat()} as the top-level page UI when the chat owns the full
+browser window. It owns the page layout, the single mounted chat, and the
+responsive app-menu controls. Use \code{\link[=chat_ui]{chat_ui()}} directly when the chat is
+embedded in an existing layout or alongside other top-level page content.
+}
+\section{Migration from \code{page_fillable()}}{
+
+
+Replace:
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{bslib::page_fillable(chat_ui("chat", fill = TRUE))
+}\if{html}{\out{</div>}}
+
+with:
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{page_chat("Assistant", id = "chat")
+}\if{html}{\out{</div>}}
+
+The page supplies the full-window sizing and sets \code{show_history = FALSE}
+on the mounted chat because history presentation belongs to the page
+sidebar. Do not wrap \code{page_chat()} in another page container or pass
+\code{height}, \code{fill}, or \code{show_history}; those arguments are page-owned.
+}
+
+\section{Navigation, sidebars, and artifacts}{
+
+
+Add \code{\link[=chat_nav_panel]{chat_nav_panel()}} configurations to \code{pages} for secondary views.
+Each panel can use the default sidebar, no page-specific sidebar, or its
+own \code{\link[=chat_sidebar]{chat_sidebar()}} configuration. The \code{sidebar} argument configures the
+home view; \code{toolbar} is rendered with the page navigation controls and
+follows them into the mobile app menu.
+
+Set \code{artifact} to a \code{\link[=chat_artifact]{chat_artifact()}} configuration to provide initial
+content and layout options. Update the mounted artifact from the server
+with \code{\link[=chat_artifact_show]{chat_artifact_show()}}, \code{\link[=chat_artifact_update]{chat_artifact_update()}},
+\code{\link[=chat_artifact_hide]{chat_artifact_hide()}}, and \code{\link[=chat_artifact_toggle]{chat_artifact_toggle()}}. Artifact content is
+static UI passed through those server functions; use ordinary Shiny
+inputs and outputs inside that content when needed.
+
+\code{page_chat()} owns page composition and accepts one chat root. Do not pass
+unrelated top-level UI, raw \code{bslib::sidebar()} objects, or a second chat
+root. Existing apps that need those layouts should continue using
+\code{\link[=chat_ui]{chat_ui()}} with \code{bslib::page_fillable()}, \code{bslib::page_sidebar()}, or
+another appropriate container.
+}
+
+\examples{
+library(shiny)
+library(shinychat)
+
+artifact_content <- function(label) {
+  tags$div(
+    tags$h3("Preview"),
+    tags$p(label)
+  )
+}
+
+ui <- page_chat(
+  "Assistant",
+  messages = "Welcome! Ask a question to get started.",
+  toolbar = actionButton("show_preview", "Show preview"),
+  sidebar = chat_sidebar(
+    tags$p("Home tools"),
+    history = FALSE,
+    open = "open"
+  ),
+  pages = list(
+    chat_nav_panel(
+      "About",
+      tags$p("This is a secondary page."),
+      value = "about"
+    ),
+    chat_nav_panel(
+      "Settings",
+      tags$p("Settings live here."),
+      value = "settings",
+      sidebar = chat_sidebar(
+        tags$p("Settings menu"),
+        width = 320,
+        open = "closed"
+      )
+    )
+  ),
+  artifact = chat_artifact(
+    artifact_content("Initial preview"),
+    title = "Preview"
+  )
+)
+
+server <- function(input, output, session) {
+  observeEvent(input$chat_user_input, {
+    chat_append("chat", paste0("You said: ", input$chat_user_input))
+  })
+
+  observeEvent(input$show_preview, {
+    chat_artifact_show(
+      "chat",
+      content = artifact_content("Preview opened from the server"),
+      title = "Preview"
+    )
+  })
+}
+
+shinyApp(ui, server)
+}
