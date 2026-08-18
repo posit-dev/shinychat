@@ -48,7 +48,101 @@ def page_chat(
     footer: Optional[TagChild] = None,
     **kwargs: Any,
 ) -> Tag:
-    """Create the sole top-level UI item for a full-window Express chat page."""
+    """
+    Create the sole top-level UI item for a full-window Express chat page.
+
+    The chat is the home page and remains mounted while users visit secondary
+    pages. This function configures :func:`shiny.express.ui.page_opts`
+    internally and owns the complete top-level page layout. Do not also call
+    ``chat.ui()``, add unrelated top-level UI, wrap the returned chat root, or
+    assign it to a variable. Compose additional UI through ``pages``,
+    ``toolbar``, ``sidebar``, and ``artifact``.
+
+    Parameters
+    ----------
+    title
+        Page title displayed in the header. When it is a string and
+        ``window_title`` is omitted, it is also used as the document title.
+    icon
+        Optional HTML child displayed next to ``title``.
+    id
+        Unique ID shared by the page shell and its chat. Use the same ID for
+        the server-side :class:`~shinychat.express.Chat`.
+    pages
+        Secondary pages created with :func:`~shinychat.chat_nav_panel`.
+    toolbar
+        Optional HTML child displayed with the navigation controls.
+    sidebar
+        Home-page sidebar. ``True`` uses the default conversation-history
+        sidebar, ``False`` removes it, and a
+        :class:`~shinychat.ChatSidebar` supplies custom content and behavior.
+        Raw :class:`shiny.ui.Sidebar` objects are not supported.
+    artifact
+        Whether the chat has an artifact region. Pass a
+        :class:`~shinychat.ChatArtifact` to configure its initial content and
+        behavior.
+    window_title
+        Optional document title. Use this when ``title`` is an HTML child or
+        when the browser title should differ from the displayed title.
+    lang
+        Optional language for the document's ``<html>`` element.
+    theme
+        Theme accepted by :func:`shiny.express.ui.page_opts`.
+    messages
+        Initial chat messages. See :meth:`shinychat.express.Chat.ui`.
+    greeting
+        Optional initial chat greeting. See :func:`~shinychat.chat_greeting`.
+    placeholder
+        Placeholder text for the chat input.
+    width
+        Maximum width of the chat content.
+    icon_assistant
+        Default icon for assistant messages. ``False`` removes it.
+    enable_cancel
+        Whether to show the streaming cancel control. When omitted, a chat
+        constructed with ``client=`` enables it automatically.
+    allow_attachments
+        Whether to allow attachments, or a list of accepted MIME types. When
+        omitted, a chat constructed with ``client=`` enables them
+        automatically.
+    footer
+        Optional HTML content below the chat input.
+    **kwargs
+        Additional :func:`~shinychat.chat_ui` options and HTML attributes.
+        ``page_chat()`` owns ``height``, ``fill``, and ``show_history``; these
+        arguments cannot be overridden.
+
+    Returns
+    -------
+    Tag
+        The internally created chat root. It must remain the sole top-level
+        Express UI item.
+
+    Examples
+    --------
+    ```python
+    from shiny import ui
+    from shinychat import chat_nav_panel, chat_sidebar
+    from shinychat.express import Chat, page_chat
+
+    chat = Chat("chat")
+
+    page_chat(
+        "Assistant",
+        pages=[
+            chat_nav_panel("About", ui.p("About this app"), sidebar=False),
+        ],
+        sidebar=chat_sidebar(history=False),
+    )
+    ```
+
+    See Also
+    --------
+    :func:`~shinychat.page_chat` : Create the same layout in a Core app.
+    :func:`~shinychat.chat_sidebar` : Configure page sidebars.
+    :func:`~shinychat.chat_nav_panel` : Configure secondary pages.
+    :func:`~shinychat.chat_artifact` : Configure the artifact region.
+    """
     from shiny.express import ui
 
     chat_root = _create_page_chat_root(

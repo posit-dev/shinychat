@@ -201,7 +201,7 @@ chat_ui_history <- function(id, ...) {
 #'
 #' @returns A fillable bslib page.
 #'
-#' @examples
+#' @examplesIf interactive()
 #' library(shiny)
 #' library(shinychat)
 #'

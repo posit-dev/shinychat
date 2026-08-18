@@ -110,6 +110,7 @@ another appropriate container.
 }
 
 \examples{
+\dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
 library(shiny)
 library(shinychat)
 
@@ -167,4 +168,5 @@ server <- function(input, output, session) {
 }
 
 shinyApp(ui, server)
+\dontshow{\}) # examplesIf}
 }

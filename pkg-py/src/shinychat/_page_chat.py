@@ -101,6 +101,56 @@ def chat_sidebar(
     open: ChatSidebarOpen | bool = "auto",
     resizable: bool = True,
 ) -> ChatSidebar:
+    """
+    Configure a sidebar for :func:`~shinychat.page_chat`.
+
+    This creates a shinychat sidebar configuration, not a
+    :class:`shiny.ui.Sidebar`. Raw Shiny sidebar objects cannot be passed to
+    :func:`~shinychat.page_chat` or :func:`~shinychat.chat_nav_panel`.
+
+    Parameters
+    ----------
+    *content
+        HTML children to display in the sidebar.
+    history
+        Whether to include the conversation-history view for the page's chat.
+    width
+        Initial sidebar width. A positive number is interpreted as pixels; a
+        string may use any valid CSS width.
+    open
+        Initial desktop state: ``"open"``, ``"closed"``, ``"always"``, or
+        ``"auto"``. ``"always"`` prevents the sidebar from being collapsed.
+        ``"auto"`` lets the page choose an initial state based on the sidebar
+        role and restored history. ``True`` and ``False`` are aliases for
+        ``"open"`` and ``"closed"``.
+    resizable
+        Whether the sidebar can be resized on desktop.
+
+    Returns
+    -------
+    ChatSidebar
+        A sidebar configuration for ``page_chat(sidebar=)`` or
+        ``chat_nav_panel(sidebar=)``.
+
+    Examples
+    --------
+    ```python
+    from shiny import ui
+    from shinychat import chat_sidebar
+
+    sidebar = chat_sidebar(
+        ui.p("Project controls"),
+        history=True,
+        width=320,
+        open="auto",
+    )
+    ```
+
+    See Also
+    --------
+    :func:`~shinychat.page_chat` : Create a full-window chat page.
+    :func:`~shinychat.chat_nav_panel` : Add a page-specific sidebar.
+    """
     _validate_content(content, "chat_sidebar()")
     open_value: ChatSidebarOpen
     if open is True:
@@ -132,6 +182,48 @@ def chat_artifact(
     open: bool = False,
     resizable: bool = True,
 ) -> ChatArtifact:
+    """
+    Configure the artifact region for a chat.
+
+    Parameters
+    ----------
+    *content
+        Initial HTML children for the artifact region.
+    title
+        Optional accessible and visible title for the artifact.
+    width
+        Initial artifact width. A positive number is interpreted as pixels; a
+        string may use any valid CSS width.
+    open
+        Whether the artifact is initially visible.
+    resizable
+        Whether the artifact can be resized on desktop.
+
+    Returns
+    -------
+    ChatArtifact
+        An artifact configuration for ``page_chat(artifact=)`` or
+        ``chat_ui(artifact=)``.
+
+    Examples
+    --------
+    ```python
+    from shiny import ui
+    from shinychat import chat_artifact
+
+    artifact = chat_artifact(
+        ui.p("No result selected."),
+        title="Result",
+        width=480,
+    )
+    ```
+
+    See Also
+    --------
+    :func:`~shinychat.page_chat` : Create a page with an artifact region.
+    :func:`~shinychat.chat_ui` : Create an embedded chat with an artifact region.
+    :class:`~shinychat.ChatArtifactController` : Update the artifact from the server.
+    """
     _validate_content(content, "chat_artifact()")
     if title is not None and not isinstance(title, str):
         raise TypeError(
@@ -153,6 +245,53 @@ def chat_nav_panel(
     icon: TagChild | None = None,
     sidebar: bool | ChatSidebar = False,
 ) -> ChatNavPanel:
+    """
+    Configure a secondary navigation page for :func:`~shinychat.page_chat`.
+
+    The chat remains mounted on the home page while users navigate to this
+    panel, preserving its current conversation and UI state.
+
+    Parameters
+    ----------
+    title
+        Non-empty label shown in the page navigation.
+    *content
+        HTML children to display on the page.
+    value
+        Optional unique navigation value. Defaults to ``title``. The value
+        ``"home"`` is reserved for the chat page.
+    icon
+        Optional HTML child displayed with the navigation label.
+    sidebar
+        Sidebar for this page. ``False`` shows no sidebar, ``True`` uses the
+        default conversation-history sidebar, and a
+        :class:`~shinychat.ChatSidebar` supplies a page-specific sidebar. Raw
+        :class:`shiny.ui.Sidebar` objects are not supported.
+
+    Returns
+    -------
+    ChatNavPanel
+        A navigation-panel configuration for ``page_chat(pages=)``.
+
+    Examples
+    --------
+    ```python
+    from shiny import ui
+    from shinychat import chat_nav_panel, chat_sidebar
+
+    settings = chat_nav_panel(
+        "Settings",
+        ui.input_switch("compact", "Compact answers"),
+        value="settings",
+        sidebar=chat_sidebar(ui.p("Display options")),
+    )
+    ```
+
+    See Also
+    --------
+    :func:`~shinychat.page_chat` : Add navigation panels to a chat page.
+    :func:`~shinychat.chat_sidebar` : Configure a panel's sidebar.
+    """
     if not isinstance(title, str):
         raise TypeError(
             f"`title` must be a string, not {type(title).__name__}."
@@ -183,6 +322,44 @@ def chat_nav_panel(
 
 
 def chat_ui_history(id: str, **attrs: TagAttrValue) -> Tag:
+    """
+    Create a conversation-history view bound to a chat.
+
+    Use this helper for a custom placement of chat history. A
+    :func:`~shinychat.page_chat` sidebar can include the same view more
+    directly with ``chat_sidebar(history=True)``.
+
+    Parameters
+    ----------
+    id
+        ID of the target chat. The ID is resolved in the current Shiny module
+        namespace.
+    **attrs
+        Additional HTML attributes for the history element. The ``for``
+        attribute is owned by this helper and cannot be overridden.
+
+    Returns
+    -------
+    Tag
+        A ``<shiny-chat-history>`` element connected to ``id``.
+
+    Examples
+    --------
+    ```python
+    from shiny import ui
+    from shinychat import chat_ui, chat_ui_history
+
+    ui.div(
+        chat_ui("chat", show_history=False),
+        chat_ui_history("chat", class_="conversation-list"),
+    )
+    ```
+
+    See Also
+    --------
+    :func:`~shinychat.chat_sidebar` : Include history in a page sidebar.
+    :func:`~shinychat.chat_ui` : Create the target chat UI.
+    """
     from shiny.module import resolve_id
 
     from ._html_deps_py_shiny import shinychat_dependency
@@ -481,7 +658,102 @@ def page_chat(
     footer: Optional[TagChild] = None,
     **kwargs: Any,
 ) -> Tag:
-    """Create a full-window page containing one persistent chat interface."""
+    """
+    Create a full-window page containing one persistent chat interface.
+
+    The chat is the home page and remains mounted while users visit secondary
+    pages. ``page_chat()`` owns the document shell, responsive navigation,
+    sidebars, and full-height chat layout. Use :func:`~shinychat.chat_ui`
+    instead when chat should be embedded in another page layout.
+
+    Parameters
+    ----------
+    title
+        Page title displayed in the header. When it is a string and
+        ``window_title`` is omitted, it is also used as the document title.
+    icon
+        Optional HTML child displayed next to ``title``.
+    id
+        Unique ID shared by the page shell and its chat.
+    pages
+        Secondary pages created with :func:`~shinychat.chat_nav_panel`.
+    toolbar
+        Optional HTML child displayed with the navigation controls.
+    sidebar
+        Home-page sidebar. ``True`` uses the default conversation-history
+        sidebar, ``False`` removes it, and a
+        :class:`~shinychat.ChatSidebar` supplies custom content and behavior.
+        Raw :class:`shiny.ui.Sidebar` objects are not supported.
+    artifact
+        Whether the chat has an artifact region. Pass a
+        :class:`~shinychat.ChatArtifact` to configure its initial content and
+        behavior.
+    window_title
+        Optional document title. Use this when ``title`` is an HTML child or
+        when the browser title should differ from the displayed title.
+    lang
+        Optional language for the document's ``<html>`` element.
+    theme
+        Theme accepted by :func:`shiny.ui.page_fillable`.
+    messages
+        Initial chat messages. See :func:`~shinychat.chat_ui`.
+    greeting
+        Optional initial chat greeting. See :func:`~shinychat.chat_greeting`.
+    placeholder
+        Placeholder text for the chat input.
+    width
+        Maximum width of the chat content.
+    icon_assistant
+        Default icon for assistant messages. ``False`` removes it.
+    enable_cancel
+        Whether to show the streaming cancel control. When omitted, a chat
+        constructed with ``client=`` enables it automatically.
+    allow_attachments
+        Whether to allow attachments, or a list of accepted MIME types. When
+        omitted, a chat constructed with ``client=`` enables them
+        automatically.
+    footer
+        Optional HTML content below the chat input.
+    **kwargs
+        Additional :func:`~shinychat.chat_ui` options and HTML attributes.
+        ``page_chat()`` owns ``height``, ``fill``, and ``show_history``; these
+        arguments cannot be overridden.
+
+    Returns
+    -------
+    Tag
+        A complete fillable Shiny page suitable for use as a Core app's UI.
+
+    Examples
+    --------
+    ```python
+    from shiny import App, ui
+    from shinychat import Chat, chat_nav_panel, chat_sidebar, page_chat
+
+    app_ui = page_chat(
+        "Assistant",
+        pages=[
+            chat_nav_panel("About", ui.p("About this app"), sidebar=False),
+        ],
+        sidebar=chat_sidebar(history=False),
+    )
+
+
+    def server(input, output, session):
+        Chat("chat")
+
+
+    app = App(app_ui, server)
+    ```
+
+    See Also
+    --------
+    :func:`~shinychat.chat_ui` : Embed chat in an existing page layout.
+    :func:`~shinychat.chat_sidebar` : Configure page sidebars.
+    :func:`~shinychat.chat_nav_panel` : Configure secondary pages.
+    :func:`~shinychat.chat_artifact` : Configure the artifact region.
+    :func:`~shinychat.express.page_chat` : Create the same layout in Express.
+    """
     chat_root = _create_page_chat_root(
         id=id,
         artifact=artifact,

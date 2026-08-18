@@ -83,7 +83,7 @@ app_ui = page_chat(
     toolbar=ui.input_action_button("clear_chat", "Clear conversation"),
     sidebar=chat_sidebar(
         ui.p("Recent conversations"),
-        history=True,
+        history=False,
         width=300,
     ),
     pages=[
@@ -135,7 +135,8 @@ def server(input, output, session):
 app = App(app_ui, server)
 ```
 
-`sidebar=True` supplies the default conversation-history sidebar. Pass a
+`sidebar=True` supplies the default conversation-history sidebar when `Chat`
+has a client and history enabled. Pass a
 `chat_sidebar()` object when the page needs additional content or a different
 initial width and open state. A navigation page can set `sidebar=False` to
 remove it, use `sidebar=True` to use the default history sidebar, or supply
@@ -164,7 +165,7 @@ page_chat(
     "Research assistant",
     id="chat",
     toolbar=ui.input_action_button("clear_chat", "Clear conversation"),
-    sidebar=chat_sidebar(history=True),
+    sidebar=chat_sidebar(history=False),
     pages=[
         chat_nav_panel(
             "About",
