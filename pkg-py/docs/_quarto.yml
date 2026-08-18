@@ -71,6 +71,7 @@ quartodoc:
         include_functions: true
       contents:
         - Chat
+        - ChatArtifactController
         - page_chat
         - chat_sidebar
         - chat_nav_panel
