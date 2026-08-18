@@ -96,6 +96,7 @@ quartodoc:
         include_functions: true
       contents:
         - express.Chat
+        - express.page_chat
     - title: Conversation history
       options:
         signature_name: relative

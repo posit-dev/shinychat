@@ -1,105 +1,84 @@
 from __future__ import annotations
 
+import inspect
 import textwrap
 from pathlib import Path
 
 import pytest
 from htmltools import Tag, TagList
 from shiny.express._run import run_express
+from shinychat import page_chat as core_page_chat
+from shinychat.express import page_chat as express_page_chat
 
-_ADAPTER_SOURCE = """
-from htmltools import Tag, tags
+_APP_IMPORTS = """
 from shiny.express import ui
-
-
-def _shared_core_page(
-    chat_root,
-    *,
-    title,
-    window_title,
-    lang,
-    theme,
-):
-    return tags.div(
-        chat_root,
-        id="shared-core-page",
-        **{
-            "data-page-title": title,
-            "data-window-title": window_title,
-            "data-lang": lang,
-            "data-theme": "none" if theme is None else "provided",
-        },
-    )
-
-
-def _page_fn(*items, **page_options):
-    chat_roots = [
-        item
-        for item in items
-        if isinstance(item, Tag)
-        and item.attrs.get("data-shinychat-page-root") == "true"
-    ]
-    if len(chat_roots) != 1 or len(items) != 1:
-        raise RuntimeError(
-            "shinychat.express.page_chat() owns the page layout; "
-            "remove unrelated top-level UI."
-        )
-
-    return _shared_core_page(chat_roots[0], **page_options)
-
-
-def page_chat(
-    title,
-    *,
-    window_title=None,
-    lang=None,
-    theme=None,
-):
-    ui.page_opts(
-        title=title,
-        window_title=window_title,
-        lang=lang,
-        theme=theme,
-        page_fn=_page_fn,
-    )
-    return tags.div(
-        "chat root",
-        **{"data-shinychat-page-root": "true"},
-    )
+from shinychat.express import page_chat
 """
+
+_OWNERSHIP_ERROR = (
+    r"shinychat\.express\.page_chat\(\) owns the page layout; "
+    r"remove unrelated top-level UI"
+)
 
 
 def _run_page_chat_source(tmp_path: Path, top_level_ui: str) -> Tag | TagList:
     app = tmp_path / "app.py"
     app.write_text(
-        textwrap.dedent(_ADAPTER_SOURCE) + "\n" + textwrap.dedent(top_level_ui),
+        textwrap.dedent(_APP_IMPORTS) + "\n" + textwrap.dedent(top_level_ui),
         encoding="utf-8",
     )
     return run_express(app)
 
 
-def test_express_page_fn_delegates_one_chat_root_and_page_options(
-    tmp_path: Path,
-) -> None:
-    page = _run_page_chat_source(
+def test_express_page_chat_signature_matches_core() -> None:
+    assert inspect.signature(express_page_chat) == inspect.signature(
+        core_page_chat
+    )
+
+
+def test_express_page_chat_matches_core_markup(tmp_path: Path) -> None:
+    express_page = _run_page_chat_source(
         tmp_path,
         """
+        page_chat("Assistant", sidebar=False)
+        """,
+    )
+
+    assert (
+        express_page.get_html_string()
+        == core_page_chat(
+            "Assistant",
+            sidebar=False,
+        ).get_html_string()
+    )
+
+
+def test_express_page_chat_propagates_page_options(tmp_path: Path) -> None:
+    theme = tmp_path / "custom-theme.css"
+    theme.write_text("body { color: rgb(1, 2, 3); }", encoding="utf-8")
+
+    page = _run_page_chat_source(
+        tmp_path,
+        f"""
         page_chat(
             "Assistant",
             window_title="Chat window",
             lang="fr",
-            theme="custom-theme.css",
+            theme={str(theme)!r},
         )
         """,
     )
 
     html = page.get_html_string()
-    assert 'id="shared-core-page"' in html
-    assert 'data-page-title="Assistant"' in html
-    assert 'data-window-title="Chat window"' in html
-    assert 'data-lang="fr"' in html
-    assert 'data-theme="provided"' in html
-    assert html.count('data-shinychat-page-root="true"') == 1
+    assert "<title>Chat window</title>" in html
+    assert '<html lang="fr">' in html
+    assert html.count("<shiny-chat-container") == 1
+    assert html.count("<shiny-chat-page") == 1
+    assert any(
+        dependency.head is not None
+        and "custom-theme.css" in str(dependency.head)
+        for dependency in page.get_dependencies()
+    )
 
 
 @pytest.mark.parametrize(
@@ -113,17 +92,17 @@ def test_express_page_fn_delegates_one_chat_root_and_page_options(
         page_chat("Assistant")
         page_chat("Another chat")
         """,
+        """
+        chat_root = page_chat("Assistant")
+        """,
+        """
+        ui.div(page_chat("Assistant"))
+        """,
     ],
 )
-def test_express_page_fn_rejects_unrelated_or_multiple_top_level_ui(
+def test_express_page_chat_rejects_invalid_top_level_composition(
     tmp_path: Path,
     top_level_ui: str,
 ) -> None:
-    with pytest.raises(
-        RuntimeError,
-        match=(
-            r"shinychat\.express\.page_chat\(\) owns the page layout; "
-            r"remove unrelated top-level UI"
-        ),
-    ):
+    with pytest.raises(RuntimeError, match=_OWNERSHIP_ERROR):
         _run_page_chat_source(tmp_path, top_level_ui)

@@ -411,6 +411,52 @@ def _render_page_control(
     )
 
 
+def _create_page_chat_root(
+    *,
+    id: str = "chat",
+    artifact: bool | ChatArtifact = True,
+    messages: Optional[
+        Iterable[str | TagChild | "ChatMessageDict" | "ChatMessage" | Any]
+    ] = None,
+    greeting: Optional[Union[str, HTML, Tag, TagList, "ChatGreeting"]] = None,
+    placeholder: str = "Enter a message...",
+    width: "CssUnit" = "min(680px, 100%)",
+    icon_assistant: Optional[HTML | Tag | TagList | bool] = None,
+    enable_cancel: "bool | MISSING_TYPE" = MISSING,
+    allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
+    footer: Optional[TagChild] = None,
+    **kwargs: Any,
+) -> Tag:
+    from ._chat import chat_ui
+
+    if not isinstance(id, str):
+        raise TypeError(f"`id` must be a string, not {type(id).__name__}.")
+    if not id.strip():
+        raise ValueError("`id` must not be an empty string.")
+
+    owned_args = {"height", "fill", "show_history"}.intersection(kwargs)
+    if owned_args:
+        names = ", ".join(f"`{name}`" for name in sorted(owned_args))
+        raise TypeError(f"`page_chat()` owns {names}; remove from `kwargs`.")
+
+    return chat_ui(
+        id,
+        messages=messages,
+        greeting=greeting,
+        placeholder=placeholder,
+        width=width,
+        height="100%",
+        fill=True,
+        icon_assistant=icon_assistant,
+        enable_cancel=enable_cancel,
+        allow_attachments=allow_attachments,
+        footer=footer,
+        artifact=artifact,
+        show_history=False,
+        **kwargs,
+    )
+
+
 def page_chat(
     title: TagChild,
     icon: TagChild | None = None,
@@ -436,10 +482,48 @@ def page_chat(
     **kwargs: Any,
 ) -> Tag:
     """Create a full-window page containing one persistent chat interface."""
+    chat_root = _create_page_chat_root(
+        id=id,
+        artifact=artifact,
+        messages=messages,
+        greeting=greeting,
+        placeholder=placeholder,
+        width=width,
+        icon_assistant=icon_assistant,
+        enable_cancel=enable_cancel,
+        allow_attachments=allow_attachments,
+        footer=footer,
+        **kwargs,
+    )
+    return _render_page_chat(
+        chat_root,
+        title,
+        icon,
+        id=id,
+        pages=pages,
+        toolbar=toolbar,
+        sidebar=sidebar,
+        window_title=window_title,
+        lang=lang,
+        theme=theme,
+    )
+
+
+def _render_page_chat(
+    chat_root: Tag,
+    title: TagChild,
+    icon: TagChild | None = None,
+    *,
+    id: str = "chat",
+    pages: Sequence[ChatNavPanel] | None = None,
+    toolbar: TagChild | None = None,
+    sidebar: bool | ChatSidebar = True,
+    window_title: str | None = None,
+    lang: str | None = None,
+    theme: Any = None,
+) -> Tag:
     from shiny import ui
     from shiny.module import resolve_id
-
-    from ._chat import chat_ui
 
     if not isinstance(id, str):
         raise TypeError(f"`id` must be a string, not {type(id).__name__}.")
@@ -462,11 +546,6 @@ def page_chat(
     if isinstance(lang, str) and not lang.strip():
         raise ValueError("`lang` must not be an empty string.")
 
-    owned_args = {"height", "fill", "show_history"}.intersection(kwargs)
-    if owned_args:
-        names = ", ".join(f"`{name}`" for name in sorted(owned_args))
-        raise TypeError(f"`page_chat()` owns {names}; remove from `kwargs`.")
-
     (
         normalized_pages,
         normalized_sidebars,
@@ -475,23 +554,6 @@ def page_chat(
     ) = _normalize_page_config(pages, sidebar)
     resolved_id = resolve_id(id)
     sidebar_id = f"{resolved_id}-sidebar"
-
-    chat = chat_ui(
-        id,
-        messages=messages,
-        greeting=greeting,
-        placeholder=placeholder,
-        width=width,
-        height="100%",
-        fill=True,
-        icon_assistant=icon_assistant,
-        enable_cancel=enable_cancel,
-        allow_attachments=allow_attachments,
-        footer=footer,
-        artifact=artifact,
-        show_history=False,
-        **kwargs,
-    )
 
     identity_content = (
         Tag(
@@ -608,7 +670,7 @@ def page_chat(
                 "main",
                 Tag(
                     "section",
-                    chat,
+                    chat_root,
                     class_="shiny-chat-page-panel shiny-chat-page-home",
                     data_page_value="home",
                     data_sidebar_key=home_sidebar_key,
