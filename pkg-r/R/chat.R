@@ -597,15 +597,9 @@ resolve_aside_favicon <- function() {
 #' pill shows a `+N` overflow count only when its labeled asides have different
 #' labels. Asides that share one label use a single face with no count.
 #'
-#' Set `display="compact"` to keep each labeled aside's identity in the popover
-#' while showing a compact numbered reference in the message. Compact asides
-#' from the same paragraph or list item share one face, such as `[2, 3]`. Each
-#' aside remains a separate popover page. Compact asides from separate blocks
-#' remain separate. The accessible name includes each aside number and source
-#' label. The visible marker remains compact while its interactive hit area
-#' extends to at least 1.5rem high and 1.5rem wide. Only the exact value
-#' `"compact"` enables this behavior. Other values retain the normal label-based
-#' behavior.
+#' Set `display="compact"` to show a compact numbered reference in the message.
+#' The popover retains the source label. Compact asides in the same paragraph or
+#' list item share a marker, such as `[2, 3]`.
 #'
 #' Customize aside marker colors, backgrounds, and font family on a chat
 #' container with these CSS properties. They apply to labeled, plain-count, and
@@ -657,7 +651,7 @@ resolve_aside_favicon <- function() {
 #' )
 #' ```
 #'
-#' **Two compact labeled asides that share one numbered marker and paged popover:**
+#' **Compact labeled asides that share one numbered marker:**
 #'
 #' ```r
 #' chat_append(
