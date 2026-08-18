@@ -64,34 +64,6 @@ function collectAndRemoveRootAsides(root: Root): Element[] {
   return collected
 }
 
-function moveLooseListItemAsidesIntoParagraphs(tree: Root): void {
-  visit(tree, "element", (node: Element) => {
-    if (node.tagName !== "li" || !hasNestedParagraph(node)) return
-
-    let precedingParagraph: Element | null = null
-    let index = 0
-    while (index < node.children.length) {
-      const child = node.children[index]!
-      if (child.type === "element" && child.tagName === "p") {
-        precedingParagraph = child
-        index += 1
-        continue
-      }
-
-      if (precedingParagraph && isAside(child)) {
-        precedingParagraph.children.push(child)
-        node.children.splice(index, 1)
-        continue
-      }
-
-      if (child.type !== "text" || child.value.trim() !== "") {
-        precedingParagraph = null
-      }
-      index += 1
-    }
-  })
-}
-
 function makeGroup(children: Element[]): Element {
   return {
     type: "element",
@@ -140,7 +112,6 @@ function assignCountMarkerIndexes(tree: Root): void {
 }
 
 function transform(tree: Root): void {
-  moveLooseListItemAsidesIntoParagraphs(tree)
   assignCountMarkerIndexes(tree)
 
   visit(tree, "element", (node: Element) => {

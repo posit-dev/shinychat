@@ -112,6 +112,22 @@ describe("MarkdownContent (pure)", () => {
     expect(container.textContent).toContain("A claim")
   })
 
+  it("attaches a direct html aside to the previous paragraph", () => {
+    const { container } = render(
+      <MarkdownContent
+        content={
+          '<p>A claim.</p><shiny-aside label="Source">source body</shiny-aside>'
+        }
+        contentType="html"
+        tagToComponentMap={chatTagToComponentMap}
+      />,
+    )
+
+    const pill = within(container).getByRole("button", { name: /Source/ })
+    expect(pill.closest("p")).toHaveTextContent("A claim.")
+    expect(container.querySelectorAll(":scope > p")).toHaveLength(1)
+  })
+
   it("preserves rich html content inside a <shiny-aside> popover", () => {
     const { container } = render(
       <MarkdownContent
