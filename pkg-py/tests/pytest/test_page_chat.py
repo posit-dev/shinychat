@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import importlib
 import inspect
+import re
 from typing import Any, cast
 
 import pytest
-from htmltools import HTMLDependency, tags
+from htmltools import HTMLDependency, Tag, tags
 from shiny import module, ui
 from shinychat import (
     ChatArtifact,
@@ -15,6 +17,7 @@ from shinychat import (
     chat_sidebar,
     chat_ui,
     chat_ui_history,
+    page_chat,
 )
 from shinychat.express import Chat as ExpressChat
 
@@ -23,6 +26,7 @@ def test_public_page_chat_configuration_exports() -> None:
     assert isinstance(chat_sidebar(), ChatSidebar)
     assert isinstance(chat_artifact(), ChatArtifact)
     assert isinstance(chat_nav_panel("About"), ChatNavPanel)
+    assert callable(page_chat)
 
 
 def test_chat_sidebar_normalizes_and_validates_values() -> None:
@@ -210,3 +214,399 @@ def test_core_and_express_ui_signatures_include_page_chat_values() -> None:
         assert parameters["show_history"].default is True
         assert parameters["artifact"].kind is inspect.Parameter.KEYWORD_ONLY
         assert parameters["show_history"].kind is inspect.Parameter.KEYWORD_ONLY
+
+
+def test_page_chat_signature_has_only_title_and_icon_positional() -> None:
+    parameters = inspect.signature(page_chat).parameters
+
+    assert list(parameters) == [
+        "title",
+        "icon",
+        "id",
+        "pages",
+        "toolbar",
+        "sidebar",
+        "artifact",
+        "window_title",
+        "lang",
+        "theme",
+        "messages",
+        "greeting",
+        "placeholder",
+        "width",
+        "icon_assistant",
+        "enable_cancel",
+        "allow_attachments",
+        "footer",
+        "kwargs",
+    ]
+    assert parameters["title"].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+    assert parameters["icon"].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+    for name in list(parameters)[2:-1]:
+        assert parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
+    assert parameters["id"].default == "chat"
+    assert parameters["artifact"].default is True
+    assert parameters["sidebar"].default is True
+    assert parameters["placeholder"].default == "Enter a message..."
+    assert parameters["width"].default == "min(680px, 100%)"
+
+
+def test_page_chat_builds_default_fillable_page_markup() -> None:
+    html = page_chat("Assistant").get_html_string()
+
+    assert "<title>Assistant</title>" in html
+    assert (
+        '<shiny-chat-page data-chat-id="chat" data-active-page="home">' in html
+    )
+    assert '<header class="shiny-chat-page-header">' in html
+    assert 'aria-controls="chat-sidebar"' in html
+    assert 'aria-expanded="false"' in html
+    assert '<span class="navbar-toggler-icon"></span>' in html
+    assert '<div class="shiny-chat-page-identity">' in html
+    assert "data-page-home" not in html
+    assert html.count('class="shiny-chat-page-controls"') == 1
+    assert html.count('aria-label="Pages"') == 1
+    assert html.count("shiny-chat-page-controls-mount-mobile") == 1
+    assert 'id="chat-sidebar"' in html
+    assert 'aria-label="App menu"' in html
+    assert 'data-sidebar-key="default"' in html
+    assert html.count('data-sidebar-for="default"') == 1
+    assert 'data-sidebar-open="auto"' in html
+    assert 'data-sidebar-width="280px"' in html
+    assert 'data-sidebar-resizable="true"' in html
+    assert html.count("<shiny-chat-history") == 1
+    assert 'for="chat"' in html
+    assert 'data-page-value="home"' in html
+    assert 'id="chat"' in html
+    assert "height:100%" in html
+    assert 'show-history="false"' in html
+
+
+def test_page_chat_normalizes_navigation_toolbar_and_sidebars() -> None:
+    custom_sidebar = chat_sidebar(
+        tags.p("Settings menu"),
+        history=True,
+        width=360,
+        open="closed",
+        resizable=False,
+    )
+    with module.namespace_context("mod"):  # pyright: ignore[reportPrivateImportUsage]
+        page = page_chat(
+            tags.span("Reactive title"),
+            tags.i("icon"),
+            id="assistant",
+            pages=[
+                chat_nav_panel(
+                    "About",
+                    tags.p("About content"),
+                    icon=tags.i("info"),
+                    sidebar=True,
+                ),
+                chat_nav_panel(
+                    "Settings",
+                    tags.p("Settings content"),
+                    value="settings",
+                    sidebar=custom_sidebar,
+                ),
+                chat_nav_panel("Help", tags.p("Help content")),
+            ],
+            toolbar=ui.input_action_button("save", "Save"),
+            sidebar=chat_sidebar(
+                tags.p("Home menu"),
+                history=True,
+                width="20rem",
+                open="always",
+            ),
+            window_title="Chat window",
+        )
+
+    html = page.get_html_string()
+    assert "<title>Chat window</title>" in html
+    assert 'data-chat-id="mod-assistant"' in html
+    assert 'aria-controls="mod-assistant-sidebar"' in html
+    assert 'id="mod-assistant-sidebar"' in html
+    assert '<button type="button" class="shiny-chat-page-identity"' in html
+    assert 'data-page-home=""' in html
+    assert 'aria-label="Return to chat"' in html
+    assert html.count('data-page-target="About"') == 1
+    assert html.count('data-page-target="settings"') == 1
+    assert html.count('data-page-target="Help"') == 1
+    assert '<nav class="shiny-chat-page-nav" aria-label="Pages">' in html
+    for index in range(1, 4):
+        assert f'id="mod-assistant-nav-{index}"' in html
+        assert f'aria-controls="mod-assistant-panel-{index}"' in html
+        assert f'id="mod-assistant-panel-{index}"' in html
+        assert f'aria-labelledby="mod-assistant-nav-{index}"' in html
+    assert 'role="tab"' not in html
+    assert "aria-selected" not in html
+    assert 'tabindex="-1"' not in html
+    assert 'role="tabpanel"' not in html
+    assert html.count('id="mod-save"') == 1
+    assert html.count('data-sidebar-for="home"') == 1
+    assert html.count('data-sidebar-for="default"') == 1
+    assert html.count('data-sidebar-for="page-2"') == 1
+    assert html.count("<shiny-chat-history") == 3
+    assert html.count('for="mod-assistant"') == 3
+    assert html.count("Settings menu") == 1
+    assert 'data-sidebar-open="closed"' in html
+    assert 'data-sidebar-width="360px"' in html
+    assert 'data-sidebar-resizable="false"' in html
+    assert 'data-page-value="About"' in html
+    assert 'data-page-value="settings"' in html
+    assert 'data-page-value="Help"' in html
+    sidebar_panel_tags = re.findall(
+        r'<div class="shiny-chat-page-sidebar-panel"[^>]*>', html
+    )
+    sidebar_panels: dict[str, str] = {}
+    sidebar_keys: list[str] = []
+    for panel in sidebar_panel_tags:
+        key = re.search(r'data-sidebar-for="([^"]+)"', panel)
+        assert key is not None
+        sidebar_key = key.group(1)
+        sidebar_keys.append(sidebar_key)
+        sidebar_panels[sidebar_key] = panel
+    assert sidebar_keys == ["default", "home", "page-2"]
+    assert 'hidden=""' not in sidebar_panels["home"]
+    assert 'hidden=""' in sidebar_panels["default"]
+    assert 'hidden=""' in sidebar_panels["page-2"]
+    assert html.count('hidden=""') == 5
+    assert 'data-page-title="Settings"' in html
+    assert "About content" in html
+    assert "Settings content" in html
+    assert "Help content" in html
+
+
+def test_page_chat_sidebar_false_keeps_hidden_default_for_nav_page() -> None:
+    html = page_chat(
+        "Assistant",
+        sidebar=False,
+        pages=[chat_nav_panel("About", tags.p("About"), sidebar=True)],
+    ).get_html_string()
+
+    assert 'class="shiny-chat-page-sidebar"' in html
+    assert "shiny-chat-page-controls-mount-mobile" in html
+    assert html.count('data-sidebar-for="default"') == 1
+    assert html.count("<shiny-chat-history") == 1
+    default_panel = re.search(
+        r'<div class="shiny-chat-page-sidebar-panel"'
+        r'[^>]*data-sidebar-for="default"[^>]*>',
+        html,
+    )
+    assert default_panel is not None
+    assert 'hidden=""' in default_panel.group(0)
+    home_start = html.index('data-page-value="home"')
+    home_end = html.index("</section>", home_start)
+    assert "data-sidebar-key" not in html[home_start:home_end]
+    about_start = html.index('data-page-value="About"')
+    about_end = html.index("</section>", about_start)
+    assert 'data-sidebar-key="default"' in html[about_start:about_end]
+
+
+def test_page_chat_sidebar_false_without_nav_sidebar_has_no_panel() -> None:
+    html = page_chat("Assistant", sidebar=False).get_html_string()
+
+    assert 'class="shiny-chat-page-sidebar"' in html
+    assert "shiny-chat-page-controls-mount-mobile" in html
+    assert "data-sidebar-for" not in html
+    assert "<shiny-chat-history" not in html
+
+
+@pytest.mark.parametrize("open", ["open", "always"])
+def test_page_chat_initial_sidebar_aria_matches_open_state(open: str) -> None:
+    html = page_chat(
+        "Assistant",
+        sidebar=chat_sidebar(open=cast(Any, open)),
+    ).get_html_string()
+
+    assert 'aria-expanded="true"' in html
+
+
+@pytest.mark.parametrize(
+    ("sidebar", "match"),
+    [
+        (
+            ChatSidebar(
+                content=cast(Any, []),
+                history=False,
+                width="280px",
+                open="auto",
+                resizable=True,
+            ),
+            "content.*tuple",
+        ),
+        (
+            ChatSidebar(
+                content=(),
+                history=cast(Any, "yes"),
+                width="280px",
+                open="auto",
+                resizable=True,
+            ),
+            "`history` must be a bool",
+        ),
+        (
+            ChatSidebar(
+                content=(),
+                history=False,
+                width="",
+                open="auto",
+                resizable=True,
+            ),
+            "empty CSS width",
+        ),
+        (
+            ChatSidebar(
+                content=(),
+                history=False,
+                width="280px",
+                open=cast(Any, "sometimes"),
+                resizable=True,
+            ),
+            "`open` must be one of",
+        ),
+        (
+            ChatSidebar(
+                content=(),
+                history=False,
+                width="280px",
+                open="auto",
+                resizable=cast(Any, 1),
+            ),
+            "`resizable` must be a bool",
+        ),
+    ],
+)
+def test_page_chat_revalidates_direct_sidebar_objects(
+    sidebar: ChatSidebar,
+    match: str,
+) -> None:
+    with pytest.raises((TypeError, ValueError), match=match):
+        page_chat("Assistant", sidebar=sidebar)
+
+
+@pytest.mark.parametrize(
+    ("pages", "match"),
+    [
+        ([chat_nav_panel("Home", value="home")], '"home" is reserved'),
+        (
+            [
+                chat_nav_panel("One", value="same"),
+                chat_nav_panel("Two", value="same"),
+            ],
+            "Duplicate navigation page value",
+        ),
+        ([cast(Any, tags.p("Not a panel"))], "only `ChatNavPanel`"),
+        (cast(Any, "About"), "sequence of `ChatNavPanel`"),
+    ],
+)
+def test_page_chat_rejects_invalid_pages(
+    pages: Any,
+    match: str,
+) -> None:
+    with pytest.raises((TypeError, ValueError), match=match):
+        page_chat("Assistant", pages=pages)
+
+
+@pytest.mark.parametrize("name", ["height", "fill", "show_history"])
+def test_page_chat_rejects_overriding_owned_chat_arguments(name: str) -> None:
+    with pytest.raises(TypeError, match=rf"`page_chat\(\)` owns `{name}`"):
+        page_chat("Assistant", **{name: cast(Any, "override")})
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "error", "match"),
+    [
+        ({"id": ""}, ValueError, "`id` must not be an empty"),
+        ({"id": cast(Any, 1)}, TypeError, "`id` must be a string"),
+        (
+            {"title": cast(Any, None)},
+            TypeError,
+            "`title` must be an HTML child",
+        ),
+        ({"title": " "}, ValueError, "`title` must not be an empty"),
+        ({"icon": cast(Any, False)}, TypeError, "`icon` must be an HTML child"),
+        (
+            {"toolbar": cast(Any, {"class": "bad"})},
+            TypeError,
+            "`toolbar` must be an HTML child",
+        ),
+        (
+            {"sidebar": cast(Any, ui.sidebar())},
+            TypeError,
+            "raw Shiny Sidebar objects",
+        ),
+        (
+            {"window_title": cast(Any, tags.span("bad"))},
+            TypeError,
+            "`window_title` must be a string",
+        ),
+        ({"lang": cast(Any, 1)}, TypeError, "`lang` must be a string"),
+        ({"lang": " "}, ValueError, "`lang` must not be an empty"),
+    ],
+)
+def test_page_chat_validates_page_arguments(
+    kwargs: dict[str, Any],
+    error: type[Exception],
+    match: str,
+) -> None:
+    title = kwargs.pop("title", "Assistant")
+    with pytest.raises(error, match=match):
+        page_chat(title, **kwargs)
+
+
+def test_page_chat_forwards_original_id_and_chat_options(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    def fake_chat_ui(id: str, **kwargs: Any) -> Tag:
+        calls.append((id, kwargs))
+        return tags.div("Chat", id=f"fake-{id}")
+
+    chat_module = importlib.import_module("shinychat._chat")
+    monkeypatch.setattr(chat_module, "chat_ui", fake_chat_ui)
+
+    with module.namespace_context("mod"):  # pyright: ignore[reportPrivateImportUsage]
+        page = page_chat(
+            "Assistant",
+            id="chat",
+            messages=["Hello"],
+            greeting="Welcome",
+            placeholder="Ask",
+            width="40rem",
+            enable_cancel=True,
+            allow_attachments=["text/plain"],
+            footer=tags.small("Footer"),
+            artifact=False,
+            submit_key="enter+modifier",
+            tool_grouping="all",
+            class_="chat-attrs",
+        )
+
+    assert page is not None
+    assert len(calls) == 1
+    called_id, options = calls[0]
+    assert called_id == "chat"
+    assert options["height"] == "100%"
+    assert options["fill"] is True
+    assert options["show_history"] is False
+    assert options["messages"] == ["Hello"]
+    assert options["greeting"] == "Welcome"
+    assert options["placeholder"] == "Ask"
+    assert options["width"] == "40rem"
+    assert options["enable_cancel"] is True
+    assert options["allow_attachments"] == ["text/plain"]
+    assert options["artifact"] is False
+    assert options["submit_key"] == "enter+modifier"
+    assert options["tool_grouping"] == "all"
+    assert options["class_"] == "chat-attrs"
+    assert 'data-chat-id="mod-chat"' in page.get_html_string()
+
+
+def test_page_chat_omits_document_title_for_non_string_title() -> None:
+    html = page_chat(
+        tags.span("Display title"), sidebar=False
+    ).get_html_string()
+
+    assert "<title>" not in html
+    assert html.count("Display title") == 1

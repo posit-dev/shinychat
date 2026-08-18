@@ -130,6 +130,156 @@
       Error in `chat_ui_history()`:
       ! `for` is managed by chat_ui_history(); supply the associated chat ID with `id`.
 
+# page_chat() builds the default fillable page contract
+
+    Code
+      cat(rendered$html, "\n", sep = "")
+    Output
+      <body class="bslib-page-fill bslib-gap-spacing html-fill-container" style="padding:0px;gap:0px;">
+        <shiny-chat-page data-chat-id="chat" data-active-page="home" data-require-bs-version="5" data-require-bs-caller="page_chat">
+          <header class="shiny-chat-page-header">
+            <button type="button" class="shiny-chat-page-sidebar-toggle navbar-toggler" aria-controls="chat-sidebar" aria-expanded="false" aria-label="Toggle app menu">
+              <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="shiny-chat-page-identity">
+              <span class="shiny-chat-page-identity-icon">
+                <span>A</span>
+              </span>
+              <span class="shiny-chat-page-identity-title">Assistant</span>
+            </div>
+            <div class="shiny-chat-page-controls-mount shiny-chat-page-controls-mount-desktop">
+              <div class="shiny-chat-page-controls">
+                <nav class="shiny-chat-page-nav" aria-label="Pages"></nav>
+                <div class="shiny-chat-page-toolbar"></div>
+              </div>
+            </div>
+          </header>
+          <div class="shiny-chat-page-body">
+            <aside id="chat-sidebar" class="shiny-chat-page-sidebar" aria-label="App menu" data-sidebar-key="default" data-sidebar-open="auto" data-sidebar-width="280px" data-sidebar-resizable="true">
+              <div class="shiny-chat-page-controls-mount shiny-chat-page-controls-mount-mobile"></div>
+              <div class="shiny-chat-page-sidebar-panel" data-sidebar-for="default" data-sidebar-open="auto" data-sidebar-width="280px" data-sidebar-resizable="true">
+                <shiny-chat-history for="chat"></shiny-chat-history>
+              </div>
+            </aside>
+            <main class="shiny-chat-page-main">
+              <section class="shiny-chat-page-panel shiny-chat-page-home" data-page-value="home" data-sidebar-key="default">
+                <shiny-chat-container class="html-fill-item html-fill-container" data-app-role="primary" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill id="chat" max-attachment-size="31457280" placeholder="Enter a message..." show-history="false" style="--_chat-width:min(680px, 100%);height:100%;" submit-key="enter+modifier">
+                  <shiny-chat-messages></shiny-chat-messages>
+                  <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
+                  <shiny-chat-artifact width="400px"></shiny-chat-artifact>
+                </shiny-chat-container>
+              </section>
+            </main>
+          </div>
+        </shiny-chat-page>
+      </body>
+
+# page_chat() validates page-owned arguments and page metadata
+
+    Code
+      page_chat("Assistant", NULL, "extra")
+    Condition
+      Error in `page_chat()`:
+      ! Only `title` and `icon` may be supplied positionally.
+
+---
+
+    Code
+      page_chat("Assistant", height = "10rem", fill = FALSE)
+    Condition
+      Error in `page_chat()`:
+      ! `page_chat()` owns `height` and `fill`.
+      i Remove the supplied arguments; the page always uses `height = "100%"`, `fill = TRUE`, and `show_history = FALSE`.
+
+---
+
+    Code
+      page_chat("Assistant", id = NULL)
+    Condition
+      Error in `chat_validate_plain_string()`:
+      ! `id` must be a non-empty string.
+
+---
+
+    Code
+      page_chat("", id = "chat")
+    Condition
+      Error in `page_chat()`:
+      ! `title` must not be an empty string.
+
+---
+
+    Code
+      page_chat(NULL)
+    Condition
+      Error in `chat_validate_page_ui()`:
+      ! `title` must be text or UI content.
+
+---
+
+    Code
+      page_chat("Assistant", icon = FALSE)
+    Condition
+      Error in `chat_validate_page_ui()`:
+      ! `icon` must be text or UI content.
+
+---
+
+    Code
+      page_chat("Assistant", toolbar = new.env())
+    Condition
+      Error in `chat_validate_page_ui()`:
+      ! `toolbar` must be text or UI content.
+
+---
+
+    Code
+      page_chat("Assistant", pages = chat_nav_panel("About"))
+    Condition
+      Error in `normalize_chat_pages()`:
+      ! `pages` must be `NULL` or a list of `chat_nav_panel()` configurations.
+
+---
+
+    Code
+      page_chat("Assistant", pages = list(htmltools::tags$p("About")))
+    Condition
+      Error in `normalize_chat_pages()`:
+      ! `pages` item 1 must be a `chat_nav_panel()` configuration.
+
+---
+
+    Code
+      page_chat("Assistant", pages = list(chat_nav_panel("Home", value = "home")))
+    Condition
+      Error in `normalize_chat_pages()`:
+      ! "home" is reserved for the chat home and cannot be used as a page value.
+
+---
+
+    Code
+      page_chat("Assistant", pages = list(chat_nav_panel("About"), chat_nav_panel(
+        "About")))
+    Condition
+      Error in `normalize_chat_pages()`:
+      ! Each navigation page must have a unique value; "About" is duplicated.
+
+---
+
+    Code
+      page_chat("Assistant", window_title = htmltools::HTML("Unsafe"))
+    Condition
+      Error in `chat_validate_plain_string()`:
+      ! `window_title` must be a string.
+
+---
+
+    Code
+      page_chat("Assistant", lang = "")
+    Condition
+      Error in `chat_validate_plain_string()`:
+      ! `lang` must be a non-empty string.
+
 # chat_ui() renders configured artifact content and dependencies
 
     Code
