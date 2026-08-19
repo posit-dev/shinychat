@@ -4,7 +4,7 @@
 
 import warnings
 from datetime import timedelta
-from typing import Any, cast
+from typing import Any, Callable, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -291,6 +291,7 @@ class _PartitionCaptureStore(ConversationStore):
 def _make_controller(
     store: ConversationStore | None = None,
     chat: _FakeChat | None = None,
+    save_callbacks: list[Callable[[dict[str, Any]], None]] | None = None,
 ) -> tuple[HistoryController, Any]:
     resolved_store = store if store is not None else _RecordingStore()
     controller = HistoryController(
@@ -300,6 +301,7 @@ def _make_controller(
         title_fn=None,
         title_enabled=False,
         client=None,
+        save_callbacks=save_callbacks,
     )
     controller.partition = part()
     return controller, resolved_store
@@ -436,7 +438,7 @@ async def test_transcript_offset_unchanged_when_save_current_put_raises():
     initial_offset = controller.transcript_offset
 
     with pytest.raises(OSError):
-        await controller.save_current()
+        await controller.save()
 
     assert controller.transcript_offset == initial_offset, (
         "transcript_offset must not advance when store.put() raises"
@@ -526,6 +528,90 @@ async def test_save_current_captures_out_of_band_transcript_before_switch():
     ]
     assert persisted == chat.messages
     assert controller.transcript_offset == len(chat.messages)
+
+
+@pytest.mark.anyio
+async def test_explicit_save_returns_false_without_active_record():
+    controller, store = _make_controller()
+
+    assert await controller.save() is False
+    assert store.put_calls == []
+
+
+@pytest.mark.anyio
+async def test_explicit_save_captures_state_without_counting_response():
+    saved_values: list[dict[str, Any]] = []
+
+    def capture(values: dict[str, Any]) -> None:
+        values["artifact"] = {"version": 2}
+        saved_values.append(dict(values))
+
+    controller, store = _make_controller(save_callbacks=[capture])
+    await controller.on_response()
+    assert controller.record is not None
+    response_count = controller.record.response_count
+    put_count = len(store.put_calls)
+
+    assert await controller.save() is True
+    assert controller.record.response_count == response_count
+    assert controller.record.values == {"artifact": {"version": 2}}
+    assert len(saved_values) == 2
+    assert len(store.put_calls) == put_count + 1
+    assert controller._title_task is None
+
+
+@pytest.mark.anyio
+async def test_explicit_save_does_not_start_title_generation():
+    title_calls: list[list[dict[str, Any]]] = []
+
+    async def title_fn(turns: list[dict[str, Any]]) -> str:
+        title_calls.append(turns)
+        return "Generated title"
+
+    controller, _store = _make_controller()
+    controller.title_enabled = True
+    controller.title_fn = title_fn
+    await controller.on_response()
+    assert controller.record is not None
+    assert controller.record.response_count == 1
+    assert controller._title_task is None
+
+    assert await controller.save() is True
+    assert controller._title_task is None
+    assert title_calls == []
+
+
+@pytest.mark.anyio
+async def test_explicit_save_runs_history_lifecycle_after_persist():
+    controller, store = _make_controller()
+    await controller.on_response()
+    events: list[str] = []
+
+    original_put = store.put
+
+    async def put(
+        partition: ConversationPartition, record: ConversationRecord
+    ) -> None:
+        await original_put(partition, record)
+        events.append("put")
+
+    async def bookmark(record: ConversationRecord) -> None:
+        events.append("bookmark")
+
+    store.put = put
+    controller.on_response_saved = bookmark
+    controller._evict_if_needed = AsyncMock(
+        side_effect=lambda: events.append("evict")
+    )
+    controller.send_history_update = AsyncMock(
+        side_effect=lambda: events.append("history")
+    )
+    controller._send_sibling_metadata = AsyncMock(
+        side_effect=lambda: events.append("siblings")
+    )
+
+    assert await controller.save() is True
+    assert events == ["put", "evict", "bookmark", "history", "siblings"]
 
 
 # --- on_url_change (URL-mode navigation) ------------------------------------

@@ -356,10 +356,23 @@ class HistoryController:
                 stacklevel=1,
             )
 
-    async def save_current(self) -> None:
+    async def save(self) -> bool:
+        """Persist app state for the active conversation."""
+        if not await self.save_current():
+            return False
+        record = self.record
+        assert record is not None
+        await self._evict_if_needed()
+        if self.on_response_saved is not None:
+            await self.on_response_saved(record)
+        await self.send_history_update()
+        await self._send_sibling_metadata()
+        return True
+
+    async def save_current(self) -> bool:
         """Persist the active conversation if it has ever been saved."""
         if self.record is None or self.partition is None:
-            return
+            return False
         turn_groups = self.adapter.get_turns_grouped()
         transcript = self.chat._messages_for_bookmark()
         record = self.record.model_copy(deep=True)
@@ -373,6 +386,7 @@ class HistoryController:
         await self.store.put(self.partition, record)
         self.record = record
         self.transcript_offset = len(transcript)
+        return True
 
     def _capture_app_state(self, record: ConversationRecord) -> None:
         values: dict[str, Any] = {}
