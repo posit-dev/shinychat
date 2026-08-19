@@ -7,9 +7,13 @@ TIMEOUT = 30_000
 
 
 def open_page(
-    page: Page, local_app: ShinyAppProc, *, artifact_width: str | None = None
+    page: Page,
+    local_app: ShinyAppProc,
+    *,
+    artifact_width: str | None = None,
+    viewport: tuple[int, int] = (1440, 900),
 ) -> tuple[ChatController, Locator]:
-    page.set_viewport_size({"width": 1440, "height": 900})
+    page.set_viewport_size({"width": viewport[0], "height": viewport[1]})
     url = local_app.url
     if artifact_width:
         url = f"{url}?artifact_width={artifact_width}"
@@ -19,6 +23,41 @@ def open_page(
     expect(shell).to_be_visible(timeout=TIMEOUT)
     expect(chat.loc).to_be_visible(timeout=TIMEOUT)
     return chat, shell
+
+
+def test_mobile_artifact_capable_chat_fills_page_and_keeps_composer_inset(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    viewport = (390, 760)
+    chat, shell = open_page(page, local_app, viewport=viewport)
+    main = shell.locator(".shiny-chat-page-main")
+    wrapper = chat.loc.locator(".shiny-chat-wrapper")
+
+    shell_box = shell.bounding_box()
+    header_box = shell.locator(".shiny-chat-page-header").bounding_box()
+    main_box = main.bounding_box()
+    chat_box = chat.loc.bounding_box()
+    wrapper_box = wrapper.bounding_box()
+    input_box = chat.loc_input_container.bounding_box()
+    assert shell_box is not None
+    assert header_box is not None
+    assert main_box is not None
+    assert chat_box is not None
+    assert wrapper_box is not None
+    assert input_box is not None
+
+    assert shell_box["height"] == pytest.approx(viewport[1], abs=1)
+    assert main_box["y"] == pytest.approx(
+        header_box["y"] + header_box["height"], abs=1
+    )
+    assert main_box["y"] + main_box["height"] == pytest.approx(
+        shell_box["y"] + shell_box["height"], abs=1
+    )
+    assert chat_box["height"] == pytest.approx(main_box["height"], abs=1)
+    assert wrapper_box["height"] == pytest.approx(chat_box["height"], abs=1)
+    assert input_box["x"] >= chat_box["x"] + 16
+    assert input_box["x"] + input_box["width"] <= chat_box["x"] + chat_box["width"] - 16
+    assert input_box["y"] + input_box["height"] >= chat_box["y"] + chat_box["height"] - 16
 
 
 def test_percentage_artifact_keeps_desktop_chat_width(

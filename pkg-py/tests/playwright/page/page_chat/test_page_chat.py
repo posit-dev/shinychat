@@ -244,6 +244,52 @@ def test_mobile_moves_controls_and_manages_dialog_focus(
     expect(toggle).to_have_attribute("aria-expanded", "true")
 
 
+@pytest.mark.parametrize(
+    "viewport",
+    [
+        pytest.param((1280, 800), id="desktop"),
+        pytest.param((390, 760), id="mobile"),
+    ],
+)
+def test_page_chat_keeps_content_inset_and_fills_its_page_region(
+    page: Page,
+    local_app: ShinyAppProc,
+    viewport: tuple[int, int],
+) -> None:
+    chat, shell = open_page(page, local_app, viewport=viewport)
+    main = shell.locator(".shiny-chat-page-main")
+    wrapper = chat.loc.locator(".shiny-chat-wrapper")
+
+    shell_box = shell.bounding_box()
+    header_box = shell.locator(".shiny-chat-page-header").bounding_box()
+    main_box = main.bounding_box()
+    chat_box = chat.loc.bounding_box()
+    wrapper_box = wrapper.bounding_box()
+    input_box = chat.loc_input_container.bounding_box()
+    assert shell_box is not None
+    assert header_box is not None
+    assert main_box is not None
+    assert chat_box is not None
+    assert wrapper_box is not None
+    assert input_box is not None
+
+    assert shell_box["height"] == pytest.approx(viewport[1], abs=1)
+    assert main_box["y"] == pytest.approx(
+        header_box["y"] + header_box["height"], abs=1
+    )
+    assert main_box["y"] + main_box["height"] == pytest.approx(
+        shell_box["y"] + shell_box["height"], abs=1
+    )
+    assert chat_box["height"] == pytest.approx(main_box["height"], abs=1)
+    assert chat_box["y"] == pytest.approx(main_box["y"], abs=1)
+    assert wrapper_box["height"] == pytest.approx(chat_box["height"], abs=1)
+    assert input_box["x"] >= chat_box["x"] + 16
+    assert input_box["x"] + input_box["width"] <= chat_box["x"] + chat_box["width"] - 16
+    assert input_box["y"] + input_box["height"] >= chat_box["y"] + chat_box["height"] - 16
+    expect(wrapper).to_have_css("padding-left", "16px")
+    expect(wrapper).to_have_css("padding-right", "16px")
+
+
 def test_page_toolbars_move_without_duplicate_controls(
     page: Page,
     local_app: ShinyAppProc,
