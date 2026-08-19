@@ -2,6 +2,31 @@ from playwright.sync_api import Page, expect
 from shiny.run import ShinyAppProc
 
 
+def test_fit_content_sidebar_includes_inherited_padding(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    page.set_viewport_size({"width": 1000, "height": 700})
+    page.goto(local_app.url)
+
+    shell = page.locator("shiny-chat-page")
+    sidebar = shell.locator(".shiny-chat-page-sidebar")
+    expect(sidebar).to_be_visible(timeout=30_000)
+    shell.evaluate(
+        """(element) => {
+          element.style.setProperty("--bslib-sidebar-padding", "24px");
+          const content = element.querySelector(
+            ".shiny-chat-page-sidebar-panel > div"
+          );
+          content.style.width = "120px";
+          content.textContent = "Narrow";
+          content.append(document.createElement("span"));
+        }"""
+    )
+
+    expect(sidebar).to_have_css("width", "168px")
+
+
 def test_sidebar_resizer_uses_a_coarse_pointer_hit_target(
     page: Page,
     local_app: ShinyAppProc,
