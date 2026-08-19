@@ -2,8 +2,7 @@ from typing import Any, AsyncGenerator
 from unittest.mock import MagicMock
 
 import chatlas
-from chatlas import Turn
-from chatlas._turn import AssistantTurn
+from chatlas import AssistantTurn, Turn
 from shiny import App, reactive, ui
 
 from shinychat import (
@@ -28,12 +27,8 @@ class EchoChatClient(chatlas.Chat):
     ) -> AsyncGenerator[str, None]:  # type: ignore[override]
         user_input = str(args[0]) if args else ""
         response = f"You said: {user_input}"
-        self._turns.extend(
-            [
-                Turn(role="user", contents=user_input),
-                AssistantTurn(contents=response),
-            ]
-        )
+        self.add_turn(Turn(role="user", contents=user_input))
+        self.add_turn(AssistantTurn(contents=response))
 
         async def _stream() -> AsyncGenerator[str, None]:
             yield response
@@ -52,7 +47,6 @@ app_ui = page_chat(
     "Field notes",
     id="chat",
     toolbar=ui.toolbar(
-        ui.toolbar_input_button("clear_chat", "Clear conversation"),
         ui.toolbar_input_button("show_preview", "Show preview"),
     ),
     toolbar_global=ui.toolbar(
@@ -133,11 +127,6 @@ def server(input, output, session):
             artifact_content(f"Latest request: {user_input}"),
             title="Latest request",
         )
-
-    @reactive.effect
-    @reactive.event(input.clear_chat)
-    async def _clear_chat():
-        await chat.clear_messages(greeting=True)
 
     @reactive.effect
     @reactive.event(input.show_preview)

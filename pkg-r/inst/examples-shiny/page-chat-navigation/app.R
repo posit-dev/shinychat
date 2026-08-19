@@ -51,7 +51,6 @@ ui <- page_chat(
   "Field notes",
   id = "chat",
   toolbar = bslib::toolbar(
-    bslib::toolbar_input_button("clear_chat", "Clear conversation"),
     bslib::toolbar_input_button("show_preview", "Show preview")
   ),
   toolbar_global = bslib::toolbar(
@@ -136,10 +135,6 @@ server <- function(input, output, session) {
       artifact_content(paste("Latest request:", user_text)),
       title = "Latest request"
     )
-  })
-
-  observeEvent(input$clear_chat, {
-    chat_clear("chat", greeting = TRUE)
   })
 
   observeEvent(input$show_preview, {
