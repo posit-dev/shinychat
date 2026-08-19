@@ -116,6 +116,7 @@ class ChatPageElement extends HTMLElement {
   private sidebarStates = new Map<string, PageSidebarState>()
   private scrim: HTMLElement | null = null
   private historyUnsubscribe: (() => void) | null = null
+  private sidebarMutationObserver: MutationObserver | null = null
   private historyAutoDecided = false
   private resizingSidebarKey: string | null = null
   private sidebarMotionFrame: number | null = null
@@ -356,35 +357,24 @@ class ChatPageElement extends HTMLElement {
 
     // The outer box does not change when asynchronous sidebar output grows.
     // Observe content mutations so fit-content can refresh its intrinsic width.
-    const mutations = new MutationObserver((records) => {
-      const hasContentChange = records.some((record) => {
-        const target =
-          record.target instanceof Element
-            ? record.target
-            : record.target.parentElement
-        const insideMeasurement =
-          target !== null &&
-          target.closest("[data-shiny-chat-sidebar-measurement]") !== null
-        return (
-          !insideMeasurement &&
-          (record.type === "characterData" ||
-            [...record.addedNodes, ...record.removedNodes].some(
-              (node) =>
-                !(
-                  node instanceof HTMLElement &&
-                  node.hasAttribute("data-shiny-chat-sidebar-measurement")
-                ),
-            ))
-        )
-      })
-      if (hasContentChange) this.updateResizeHandle()
+    const mutations = new MutationObserver(() => this.updateResizeHandle())
+    this.sidebarMutationObserver = mutations
+    this.observeSidebarMutations()
+    this.cleanupListeners.push(() => {
+      mutations.disconnect()
+      if (this.sidebarMutationObserver === mutations) {
+        this.sidebarMutationObserver = null
+      }
     })
-    mutations.observe(this.aside, {
+  }
+
+  private observeSidebarMutations() {
+    if (!this.sidebarMutationObserver || !this.aside) return
+    this.sidebarMutationObserver.observe(this.aside, {
       childList: true,
       characterData: true,
       subtree: true,
     })
-    this.cleanupListeners.push(() => mutations.disconnect())
   }
 
   private bindMediaQuery() {
@@ -783,9 +773,15 @@ class ChatPageElement extends HTMLElement {
           "position:fixed;visibility:hidden;pointer-events:none;contain:layout style;inline-size:max-content;block-size:auto;inset:0 auto auto -10000px;"
         // Keep the probe out of flow but under the real sidebar so inherited
         // page variables, such as the configured sidebar padding, apply.
-        this.aside?.append(probe)
-        const measured = probe.getBoundingClientRect().width
-        probe.remove()
+        this.sidebarMutationObserver?.disconnect()
+        let measured = 0
+        try {
+          this.aside?.append(probe)
+          measured = probe.getBoundingClientRect().width
+        } finally {
+          probe.remove()
+          this.observeSidebarMutations()
+        }
         if (measured > 0) return measured
       }
     }

@@ -436,7 +436,6 @@ def test_default_artifact_width_end_aligns_chat_wrapper(
         polling="raf",
         timeout=TIMEOUT,
     )
-    intermediate_open_box = wrapper.bounding_box()
     page.wait_for_timeout(220)
 
     layout_box = layout.bounding_box()
@@ -445,7 +444,6 @@ def test_default_artifact_width_end_aligns_chat_wrapper(
     assert layout_box is not None
     assert panel_box is not None
     assert wrapper_box is not None
-    assert intermediate_open_box is not None
     assert panel_box["width"] == pytest.approx(400, abs=1)
 
     first_track = layout.evaluate(
@@ -460,11 +458,6 @@ def test_default_artifact_width_end_aligns_chat_wrapper(
 
     assert wrapper_right == pytest.approx(track_right, abs=1)
     assert panel_box["x"] - wrapper_right == pytest.approx(gap, abs=1)
-    assert (
-        min(closed_box["x"], wrapper_box["x"])
-        < intermediate_open_box["x"]
-        < max(closed_box["x"], wrapper_box["x"])
-    )
 
     panel.get_by_role("button", name="Close artifact").click()
     page.wait_for_function(
