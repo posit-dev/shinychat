@@ -110,6 +110,10 @@ def test_chat_nav_panel_validates_sidebar_and_navigation_values() -> None:
     assert panel.title == "About"
     assert panel.value == "about"
     assert panel.sidebar is sidebar
+    assert panel.content_width == "min(680px, 100%)"
+
+    assert chat_nav_panel("Wide", content_width=720).content_width == "720px"
+    assert chat_nav_panel("Full", content_width="100vw").content_width == "100vw"
 
     with pytest.raises(TypeError, match="raw Shiny Sidebar objects"):
         chat_nav_panel("About", sidebar=ui.sidebar())  # type: ignore[arg-type]
@@ -119,6 +123,8 @@ def test_chat_nav_panel_validates_sidebar_and_navigation_values() -> None:
         chat_nav_panel("")
     with pytest.raises(TypeError, match="`title` must be a string"):
         chat_nav_panel(cast(Any, tags.span("About")))
+    with pytest.raises(ValueError, match="empty CSS width"):
+        chat_nav_panel("About", content_width=" ")
 
 
 def test_chat_ui_history_resolves_id_and_forwards_html_attributes() -> None:
@@ -409,6 +415,24 @@ def test_page_chat_sidebar_false_without_nav_sidebar_has_no_panel() -> None:
     assert "shiny-chat-page-controls-mount-mobile" in html
     assert "data-sidebar-for" not in html
     assert "<shiny-chat-history" not in html
+
+
+def test_page_chat_nav_panel_content_width_contract() -> None:
+    html = page_chat(
+        "Assistant",
+        pages=[
+            chat_nav_panel("Default", tags.p("Default")),
+            chat_nav_panel("Custom", tags.p("Custom"), content_width="42rem"),
+            chat_nav_panel("Percent", tags.p("Percent"), content_width="100%"),
+            chat_nav_panel("Viewport", tags.p("Viewport"), content_width="100vw"),
+            chat_nav_panel("Dynamic", tags.p("Dynamic"), content_width="100dvw"),
+        ],
+    ).get_html_string()
+
+    assert html.count('class="shiny-chat-page-panel-content"') == 5
+    assert "--shiny-chat-page-content-width:min(680px, 100%)" in html
+    assert "--shiny-chat-page-content-width:42rem" in html
+    assert html.count('data-content-full-bleed="true"') == 3
 
 
 @pytest.mark.parametrize("open", ["open", "always"])

@@ -62,6 +62,7 @@ class ChatNavPanel:
     value: str | None
     icon: TagChild | None
     sidebar: bool | ChatSidebar
+    content_width: str
 
 
 def _validate_bool(value: object, name: str) -> bool:
@@ -244,6 +245,7 @@ def chat_nav_panel(
     value: str | None = None,
     icon: TagChild | None = None,
     sidebar: bool | ChatSidebar = False,
+    content_width: "CssUnit" = "min(680px, 100%)",
 ) -> ChatNavPanel:
     """
     Configure a secondary navigation page for :func:`~shinychat.page_chat`.
@@ -267,6 +269,10 @@ def chat_nav_panel(
         default conversation-history sidebar, and a
         :class:`~shinychat.ChatSidebar` supplies a page-specific sidebar. Raw
         :class:`shiny.ui.Sidebar` objects are not supported.
+    content_width
+        Maximum width for the panel content. Content is centered and receives
+        responsive inline padding. ``"100%"``, ``"100vw"``, and ``"100dvw"``
+        create a full-bleed panel without component-provided inline padding.
 
     Returns
     -------
@@ -318,6 +324,7 @@ def chat_nav_panel(
         value=value,
         icon=icon,
         sidebar=sidebar,
+        content_width=_validate_css_width(content_width, "content_width"),
     )
 
 
@@ -950,7 +957,21 @@ def _render_page_chat(
                 *(
                     Tag(
                         "section",
-                        *page.panel.content,
+                        Tag(
+                            "div",
+                            *page.panel.content,
+                            class_="shiny-chat-page-panel-content",
+                            style=(
+                                "--shiny-chat-page-content-width:"
+                                f"{page.panel.content_width}"
+                            ),
+                            data_content_full_bleed=(
+                                "true"
+                                if page.panel.content_width
+                                in ("100%", "100vw", "100dvw")
+                                else None
+                            ),
+                        ),
                         id=f"{resolved_id}-panel-{index}",
                         class_="shiny-chat-page-panel",
                         aria_labelledby=f"{resolved_id}-nav-{index}",

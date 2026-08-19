@@ -4,7 +4,14 @@
 \alias{chat_nav_panel}
 \title{Create a page-chat navigation panel}
 \usage{
-chat_nav_panel(title, ..., value = NULL, icon = NULL, sidebar = FALSE)
+chat_nav_panel(
+  title,
+  ...,
+  value = NULL,
+  icon = NULL,
+  sidebar = FALSE,
+  content_width = "min(680px, 100\%)"
+)
 }
 \arguments{
 \item{title}{The panel title.}
@@ -17,6 +24,10 @@ chat_nav_panel(title, ..., value = NULL, icon = NULL, sidebar = FALSE)
 
 \item{sidebar}{Whether to use the default sidebar (\code{TRUE}), no
 page-specific sidebar (\code{FALSE}), or a \code{\link[=chat_sidebar]{chat_sidebar()}} configuration.}
+
+\item{content_width}{Maximum panel-content width. Content is centered and
+receives responsive inline padding. Use exactly \code{"100\%"}, \code{"100vw"}, or
+\code{"100dvw"} for full-bleed content without component-provided padding.}
 }
 \value{
 A configuration object for use with \code{page_chat()}.

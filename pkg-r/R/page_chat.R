@@ -81,6 +81,9 @@ chat_artifact <- function(
 #' @param icon An optional icon to display with the title.
 #' @param sidebar Whether to use the default sidebar (`TRUE`), no
 #'   page-specific sidebar (`FALSE`), or a [chat_sidebar()] configuration.
+#' @param content_width Maximum panel-content width. Content is centered and
+#'   receives responsive inline padding. Use exactly `"100%"`, `"100vw"`, or
+#'   `"100dvw"` for full-bleed content without component-provided padding.
 #'
 #' @returns A configuration object for use with `page_chat()`.
 #' @export
@@ -89,7 +92,8 @@ chat_nav_panel <- function(
   ...,
   value = NULL,
   icon = NULL,
-  sidebar = FALSE
+  sidebar = FALSE,
+  content_width = "min(680px, 100%)"
 ) {
   chat_validate_string(title, "title")
   content <- chat_config_content(...)
@@ -97,6 +101,7 @@ chat_nav_panel <- function(
     chat_validate_string(value, "value")
   }
   chat_validate_sidebar(sidebar)
+  content_width <- chat_validate_content_width(content_width, "content_width")
 
   structure(
     list(
@@ -104,7 +109,8 @@ chat_nav_panel <- function(
       content = content,
       value = value,
       icon = icon,
-      sidebar = sidebar
+      sidebar = sidebar,
+      content_width = content_width
     ),
     class = "chat_nav_panel"
   )
@@ -398,7 +404,19 @@ page_chat <- function(
         `data-page-title` = panel$title,
         `data-sidebar-key` = normalized$sidebar_key,
         hidden = NA,
-        !!!panel$content
+        htmltools::tags$div(
+          class = "shiny-chat-page-panel-content",
+          style = paste0(
+            "--shiny-chat-page-content-width:",
+            panel$content_width
+          ),
+          `data-content-full-bleed` = if (
+            panel$content_width %in% c("100%", "100vw", "100dvw")
+          ) {
+            "true"
+          },
+          !!!panel$content
+        )
       )
     },
     pages,
@@ -523,6 +541,10 @@ normalize_chat_pages <- function(pages) {
     }
     chat_validate_page_ui(page$icon, paste0("pages[[", i, "]]$icon"))
     chat_validate_sidebar(page$sidebar)
+    pages[[i]]$content_width <- chat_validate_content_width(
+      page$content_width,
+      paste0("pages[[", i, "]]$content_width")
+    )
     if (inherits(page$sidebar, "chat_sidebar")) {
       pages[[i]]$sidebar <- normalize_chat_sidebar_config(page$sidebar)
     }
@@ -801,6 +823,28 @@ chat_validate_width <- function(value, arg) {
       )
     }
   )
+}
+
+chat_validate_content_width <- function(value, arg) {
+  if (
+    length(value) != 1 ||
+      is.na(value) ||
+      (!is.numeric(value) && !is.character(value)) ||
+      (is.numeric(value) && (!is.finite(value) || value <= 0)) ||
+      (is.character(value) && !nzchar(trimws(value)))
+  ) {
+    cli::cli_abort(
+      "{.arg {arg}} must be a positive number or a non-empty CSS width."
+    )
+  }
+
+  if (is.numeric(value)) {
+    return(htmltools::validateCssUnit(value))
+  }
+
+  # CSS functions and custom properties are valid page content widths even
+  # though htmltools::validateCssUnit() only accepts simple CSS units.
+  value
 }
 
 chat_validate_string <- function(value, arg, allow_empty = FALSE) {

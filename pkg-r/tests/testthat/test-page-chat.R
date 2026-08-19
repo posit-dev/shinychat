@@ -75,13 +75,58 @@ test_that("chat_nav_panel() requires page-chat configuration", {
   expect_equal(panel$title, "Settings")
   expect_equal(panel$value, "settings")
   expect_s3_class(panel$sidebar, "chat_sidebar")
+  expect_equal(panel$content_width, "min(680px, 100%)")
+  expect_equal(chat_nav_panel("Wide", content_width = 720)$content_width, "720px")
+  expect_equal(chat_nav_panel("Full", content_width = "100vw")$content_width, "100vw")
 
   expect_snapshot(error = TRUE, chat_nav_panel(""))
   expect_snapshot(error = TRUE, chat_nav_panel("Settings", value = ""))
   expect_snapshot(error = TRUE, chat_nav_panel("Settings", sidebar = list()))
+  expect_error(
+    chat_nav_panel("Settings", content_width = ""),
+    "`content_width` must be a positive number"
+  )
   expect_snapshot(
     error = TRUE,
     chat_nav_panel("Settings", sidebar = bslib::sidebar())
+  )
+})
+
+test_that("chat_nav_panel() renders a content-width wrapper", {
+  page <- page_chat(
+    "Assistant",
+    pages = list(
+      chat_nav_panel("Default", htmltools::tags$p("Default")),
+      chat_nav_panel(
+        "Custom",
+        htmltools::tags$p("Custom"),
+        content_width = "42rem"
+      ),
+      chat_nav_panel("Full", htmltools::tags$p("Full"), content_width = "100%"),
+      chat_nav_panel("Viewport", htmltools::tags$p("Viewport"), content_width = "100vw"),
+      chat_nav_panel("Dynamic", htmltools::tags$p("Dynamic"), content_width = "100dvw")
+    )
+  )
+
+  content <- page_chat_tags(page, ".shiny-chat-page-panel-content")
+  expect_length(content, 5)
+  expect_match(
+    content[[1]]$attribs$style,
+    "--shiny-chat-page-content-width:min(680px, 100%)",
+    fixed = TRUE
+  )
+  expect_match(
+    content[[2]]$attribs$style,
+    "--shiny-chat-page-content-width:42rem",
+    fixed = TRUE
+  )
+  expect_equal(
+    unname(vapply(
+      content[3:5],
+      function(x) x$attribs[["data-content-full-bleed"]],
+      character(1)
+    )),
+    rep("true", 3)
   )
 })
 
