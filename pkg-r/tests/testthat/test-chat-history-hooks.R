@@ -49,10 +49,12 @@ test_that("on_restore callback fires on switch", {
   store <- InMemoryConversationStore$new()
   client <- .make_test_client()
   restored <- NULL
+  restored_id <- NULL
 
   ctrl <- .make_test_controller(client, history_options(store = store))
   ctrl$add_restore_callback(function(values) {
     restored <<- values
+    restored_id <<- ctrl$record$id
   })
   ctrl$partition <- conversation_partition("test", "alice")
 
@@ -94,6 +96,7 @@ test_that("on_restore callback fires on switch", {
 
   ctrl$switch_to(record_id)
   expect_equal(restored$x, 42)
+  expect_identical(restored_id, record_id)
 })
 
 test_that("on_restore does NOT fire on new_chat by default", {
