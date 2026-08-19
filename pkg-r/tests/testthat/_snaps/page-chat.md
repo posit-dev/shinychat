@@ -168,7 +168,7 @@
             </aside>
             <main class="shiny-chat-page-main">
               <section class="shiny-chat-page-panel shiny-chat-page-home" data-page-value="home" data-sidebar-key="default" data-page-toolbar-source="home">
-                <shiny-chat-container class="html-fill-item html-fill-container" data-app-role="primary" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill id="chat" max-attachment-size="31457280" placeholder="Enter a message..." show-history="false" style="--_chat-width:min(680px, 100%);height:100%;" submit-key="enter+modifier">
+                <shiny-chat-container class="html-fill-item html-fill-container" data-app-role="primary" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill id="chat" max-attachment-size="31457280" placeholder="Enter a message..." style="--_chat-width:min(680px, 100%);height:100%;" submit-key="enter+modifier">
                   <shiny-chat-messages></shiny-chat-messages>
                   <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
                   <shiny-chat-artifact width="400px"></shiny-chat-artifact>
@@ -199,7 +199,7 @@
     Condition
       Error in `page_chat()`:
       ! `page_chat()` owns `height` and `fill`.
-      i Remove the supplied arguments; the page always uses `height = "100%"`, `fill = TRUE`, and `show_history = FALSE`.
+      i Remove the supplied arguments; the page always uses `height = "100%"`, `fill = TRUE`, and `show_history = TRUE`.
 
 ---
 

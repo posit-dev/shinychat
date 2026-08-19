@@ -591,6 +591,30 @@ describe("ChatApp integration: page-owned history presentation", () => {
     expect(page.querySelector(".shiny-chat-history-trigger")).not.toBeNull()
   })
 
+  it("ignores history sidebars belonging to inactive navigation pages", async () => {
+    mockMatchMedia(false)
+    const { transport, page, elementId } = renderHistoryChat({
+      pageHistory: false,
+    })
+    page.querySelector("aside")!.innerHTML = `
+      <div class="shiny-chat-page-sidebar-panel" data-sidebar-for="home"></div>
+      <div class="shiny-chat-page-sidebar-panel" data-sidebar-for="sources" hidden>
+        <shiny-chat-history for="${elementId}"></shiny-chat-history>
+      </div>
+    `
+
+    await act(async () => {
+      transport.fire(elementId, {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+      })
+    })
+
+    expect(page.querySelector(".shiny-chat-history-trigger")).not.toBeNull()
+  })
+
   it("suppresses embedded history when the server disables it", async () => {
     mockMatchMedia(false)
     const { transport, page, elementId } = renderHistoryChat({

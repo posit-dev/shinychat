@@ -302,7 +302,7 @@ def test_page_chat_builds_default_fillable_page_markup() -> None:
     assert 'data-page-value="home"' in html
     assert 'id="chat"' in html
     assert "height:100%" in html
-    assert 'show-history="false"' in html
+    assert 'show-history="false"' not in html
 
 
 def test_page_chat_applies_supported_navbar_options_to_its_title_bar() -> None:
@@ -738,7 +738,7 @@ def test_page_chat_forwards_original_id_and_chat_options(
     assert called_id == "chat"
     assert options["height"] == "100%"
     assert options["fill"] is True
-    assert options["show_history"] is False
+    assert options["show_history"] is True
     assert options["messages"] == ["Hello"]
     assert options["greeting"] == "Welcome"
     assert options["placeholder"] == "Ask"

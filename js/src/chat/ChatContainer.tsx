@@ -107,7 +107,14 @@ function pageOwnsHistory(elementId: string): boolean {
 
   return Array.from(
     page.querySelectorAll("aside.shiny-chat-page-sidebar shiny-chat-history"),
-  ).some((history) => history.getAttribute("for") === elementId)
+  ).some((history) => {
+    if (history.getAttribute("for") !== elementId) return false
+
+    // Navigation sidebars remain mounted so their Shiny inputs retain state.
+    // Only the active sidebar can replace the embedded history trigger.
+    const panel = history.closest<HTMLElement>(".shiny-chat-page-sidebar-panel")
+    return panel === null || !panel.hidden
+  })
 }
 
 export interface ChatContainerProps {

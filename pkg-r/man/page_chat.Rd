@@ -91,9 +91,8 @@ with:
 \if{html}{\out{<div class="sourceCode">}}\preformatted{page_chat("Assistant", id = "chat")
 }\if{html}{\out{</div>}}
 
-The page supplies the full-window sizing and sets \code{show_history = FALSE}
-on the mounted chat because history presentation belongs to the page
-sidebar. Do not wrap \code{page_chat()} in another page container or pass
+The page supplies the full-window sizing and keeps \code{show_history = TRUE}
+on the mounted chat. Do not wrap \code{page_chat()} in another page container or pass
 \code{height}, \code{fill}, or \code{show_history}; those arguments are page-owned.
 }
 

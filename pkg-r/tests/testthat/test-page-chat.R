@@ -294,7 +294,7 @@ test_that("page_chat() builds the default fillable page contract", {
 
   chat <- page_chat_tag(home, "shiny-chat-container")
   expect_equal(chat$attribs$id, root$attribs[["data-chat-id"]])
-  expect_equal(chat$attribs[["show-history"]], "false")
+  expect_null(chat$attribs[["show-history"]])
   expect_true(is.na(chat$attribs$fill))
   expect_match(chat$attribs$style, "height:100%", fixed = TRUE)
   expect_equal(chat$attribs[["submit-key"]], "enter+modifier")

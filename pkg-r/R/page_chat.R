@@ -168,9 +168,8 @@ chat_ui_history <- function(id, ...) {
 #' page_chat("Assistant", id = "chat")
 #' ```
 #'
-#' The page supplies the full-window sizing and sets `show_history = FALSE`
-#' on the mounted chat because history presentation belongs to the page
-#' sidebar. Do not wrap `page_chat()` in another page container or pass
+#' The page supplies the full-window sizing and keeps `show_history = TRUE`
+#' on the mounted chat. Do not wrap `page_chat()` in another page container or pass
 #' `height`, `fill`, or `show_history`; those arguments are page-owned.
 #'
 #' @section Navigation, sidebars, and artifacts:
@@ -333,7 +332,7 @@ page_chat <- function(
   if (length(owned_args) > 0) {
     cli::cli_abort(c(
       "{.fn page_chat} owns {.arg {owned_args}}.",
-      i = "Remove {cli::qty(owned_args)}the supplied argument{?s}; the page always uses {.code height = \"100%\"}, {.code fill = TRUE}, and {.code show_history = FALSE}."
+      i = "Remove {cli::qty(owned_args)}the supplied argument{?s}; the page always uses {.code height = \"100%\"}, {.code fill = TRUE}, and {.code show_history = TRUE}."
     ))
   }
 
@@ -376,7 +375,7 @@ page_chat <- function(
     allow_attachments = allow_attachments,
     footer = footer,
     artifact = artifact,
-    show_history = FALSE
+    show_history = TRUE
   )
   sidebar_id <- paste0(resolved_id, "-sidebar")
 

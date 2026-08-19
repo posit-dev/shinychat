@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 
 import pytest
 
@@ -17,4 +18,8 @@ def test_page_chat_example_is_importable(module_name: str) -> None:
 
     assert module.app is not None
     assert module.app is app_module.app
-    assert "shiny-chat-page" in app_module.app_ui.get_html_string()
+    html = app_module.app_ui.get_html_string()
+    assert "shiny-chat-page" in html
+    if module_name.endswith(".navigation"):
+        assert '<shiny-chat-history for="chat">' in html
+        assert "HistoryOptions" in inspect.getsource(app_module)

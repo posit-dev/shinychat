@@ -716,7 +716,7 @@ def _create_page_chat_root(
         allow_attachments=allow_attachments,
         footer=footer,
         artifact=artifact,
-        show_history=False,
+        show_history=True,
         **kwargs,
     )
 
