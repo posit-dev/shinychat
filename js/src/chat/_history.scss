@@ -671,6 +671,11 @@ shiny-chat-container[data-history-placement="right"] {
 
   .shiny-chat-history-toprow {
     padding-block-start: 0.75rem;
+    padding-inline: 0;
+  }
+
+  .shiny-chat-history-list {
+    padding-inline: 0;
   }
 
   .shiny-chat-history-list {
