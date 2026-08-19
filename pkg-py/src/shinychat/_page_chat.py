@@ -181,7 +181,7 @@ def chat_artifact(
     *content: TagChild,
     title: str | None = None,
     width: "CssUnit" = 400,
-    open: bool = False,
+    open: bool = True,
     resizable: bool = True,
 ) -> ChatArtifact:
     """
@@ -1125,7 +1125,9 @@ def _render_page_chat(
         data_chat_id=resolved_id,
         data_active_page="home",
     )
-    _apply_page_chat_navbar_options(cast(Tag, shell.children[0]), navbar_options)
+    _apply_page_chat_navbar_options(
+        cast(Tag, shell.children[0]), navbar_options
+    )
 
     document_title = (
         title

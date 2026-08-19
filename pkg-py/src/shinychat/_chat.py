@@ -2656,7 +2656,7 @@ def chat_ui(
     if isinstance(artifact, ChatArtifact):
         artifact_config = artifact
     elif artifact:
-        artifact_config = chat_artifact()
+        artifact_config = chat_artifact(open=False)
     else:
         artifact_config = None
     artifact_tag = (

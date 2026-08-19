@@ -4,7 +4,7 @@
 \alias{chat_artifact}
 \title{Create a chat artifact configuration}
 \usage{
-chat_artifact(..., title = NULL, width = 400, open = FALSE, resizable = TRUE)
+chat_artifact(..., title = NULL, width = 400, open = TRUE, resizable = TRUE)
 }
 \arguments{
 \item{...}{UI content to display in the artifact panel.}

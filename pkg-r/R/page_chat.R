@@ -50,7 +50,7 @@ chat_artifact <- function(
   ...,
   title = NULL,
   width = 400,
-  open = FALSE,
+  open = TRUE,
   resizable = TRUE
 ) {
   content <- chat_config_content(...)
@@ -1042,7 +1042,7 @@ chat_validate_sidebar <- function(sidebar) {
 
 normalize_chat_artifact <- function(artifact) {
   if (isTRUE(artifact)) {
-    return(chat_artifact())
+    return(chat_artifact(open = FALSE))
   }
   if (isFALSE(artifact)) {
     return(NULL)

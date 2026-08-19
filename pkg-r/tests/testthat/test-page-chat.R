@@ -45,7 +45,6 @@ test_that("chat_artifact() validates configuration", {
     htmltools::tags$p("Artifact content"),
     title = "Preview",
     width = 480,
-    open = TRUE,
     resizable = FALSE
   )
 
@@ -54,6 +53,7 @@ test_that("chat_artifact() validates configuration", {
   expect_equal(artifact$width, "480px")
   expect_true(artifact$open)
   expect_false(artifact$resizable)
+  expect_false(chat_artifact(open = FALSE)$open)
 
   expect_snapshot(error = TRUE, chat_artifact(title = list()))
   expect_snapshot(error = TRUE, chat_artifact(width = -1))
@@ -838,7 +838,6 @@ test_that("chat_ui() renders configured artifact content and dependencies", {
       htmltools::tags$div("Artifact", artifact_dep),
       title = "",
       width = "30rem",
-      open = TRUE,
       resizable = FALSE
     )
   )

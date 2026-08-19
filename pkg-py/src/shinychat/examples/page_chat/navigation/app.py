@@ -81,6 +81,7 @@ app_ui = page_chat(
         artifact_content("Use the home toolbar to open this preview."),
         title="Working preview",
         width=420,
+        open=False,
     ),
     greeting="## Field notes\n\nTry the local echo response.",
     placeholder="Describe what you observed...",

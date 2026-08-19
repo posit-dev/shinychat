@@ -24,7 +24,9 @@ from shinychat.express import Chat as ExpressChat
 
 def test_public_page_chat_configuration_exports() -> None:
     assert isinstance(chat_sidebar(), ChatSidebar)
-    assert isinstance(chat_artifact(), ChatArtifact)
+    artifact = chat_artifact()
+    assert isinstance(artifact, ChatArtifact)
+    assert artifact.open is True
     assert isinstance(chat_nav_panel("About"), ChatNavPanel)
     assert callable(page_chat)
 
@@ -78,7 +80,6 @@ def test_chat_artifact_normalizes_and_validates_values() -> None:
         tags.p("Artifact"),
         title="Preview",
         width="32rem",
-        open=True,
         resizable=False,
     )
 
@@ -86,6 +87,7 @@ def test_chat_artifact_normalizes_and_validates_values() -> None:
     assert artifact.width == "32rem"
     assert artifact.open is True
     assert artifact.resizable is False
+    assert chat_artifact(open=False).open is False
 
     with pytest.raises(TypeError, match="`title` must be a string"):
         chat_artifact(title=1)  # type: ignore[arg-type]
@@ -188,7 +190,6 @@ def test_chat_ui_artifact_carries_content_and_dependencies() -> None:
         tags.div(dependency, "Artifact content"),
         title="Preview",
         width=320,
-        open=True,
         resizable=False,
     )
     tag = chat_ui("chat", artifact=artifact, fill=False)

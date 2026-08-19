@@ -66,7 +66,7 @@ def app_ui(request: Request) -> ui.Tag:
             class_="d-flex gap-2",
         ),
         sidebar=True,
-        artifact=chat_artifact(width=artifact_width),
+        artifact=chat_artifact(width=artifact_width, open=False),
     )
 
 
