@@ -894,12 +894,12 @@ def _render_page_chat(
                     Tag(
                         "path",
                         d=(
-                            "M0 3a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2"
-                            "a2 2 0 0 1-2-2zm5-1v12h9a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1zM4 "
-                            "2H2a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h2z"
+                            "M2.5 12a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4"
+                            "a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 "
+                            "0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5"
                         ),
                     ),
-                    class_="shiny-chat-page-sidebar-icon bi bi-layout-sidebar",
+                    class_="shiny-chat-page-sidebar-icon bi bi-list",
                     xmlns="http://www.w3.org/2000/svg",
                     viewBox="0 0 16 16",
                     aria_hidden="true",
