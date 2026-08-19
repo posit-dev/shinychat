@@ -297,6 +297,101 @@ describe("shiny-chat-resize-handle", () => {
     expect(handle).not.toHaveAttribute("data-boundary-armed")
   })
 
+  it("arms when a fine pointer jumps across the LTR activation zone", () => {
+    const handle = configuredHandle({
+      boundaryActivation: true,
+      boundaryTripWidth: 5,
+    })
+    Object.defineProperty(handle, "getBoundingClientRect", {
+      configurable: true,
+      value: () => new DOMRect(312, 100, 8, 400),
+    })
+
+    document.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 317, clientY: 300 }),
+    )
+    document.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 323, clientY: 300 }),
+    )
+
+    expect(handle).toHaveAttribute("data-boundary-armed")
+  })
+
+  it("arms when a fine pointer jumps across the RTL activation zone", () => {
+    const handle = configuredHandle({
+      panelSide: "inline-start",
+      boundaryActivation: true,
+      boundaryTripWidth: 5,
+    })
+    document.body.style.direction = "rtl"
+    Object.defineProperty(handle, "getBoundingClientRect", {
+      configurable: true,
+      value: () => new DOMRect(320, 100, 8, 400),
+    })
+
+    document.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 325, clientY: 300 }),
+    )
+    document.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 331, clientY: 300 }),
+    )
+
+    expect(handle).toHaveAttribute("data-boundary-armed")
+  })
+
+  it("does not arm when a fine pointer stays outside the activation zone", () => {
+    const handle = configuredHandle({
+      boundaryActivation: true,
+      boundaryTripWidth: 5,
+    })
+    Object.defineProperty(handle, "getBoundingClientRect", {
+      configurable: true,
+      value: () => new DOMRect(312, 100, 8, 400),
+    })
+
+    document.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 313, clientY: 300 }),
+    )
+    document.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 317, clientY: 300 }),
+    )
+
+    expect(handle).not.toHaveAttribute("data-boundary-armed")
+  })
+
+  it("reseeds boundary tracking after a disabled transition", () => {
+    const options = {
+      value: 300,
+      min: 150,
+      max: 640,
+      panelSide: "inline-end" as const,
+      label: "Resize sidebar",
+      boundaryActivation: true,
+      boundaryTripWidth: 5,
+    }
+    const handle = configuredHandle(options)
+    Object.defineProperty(handle, "getBoundingClientRect", {
+      configurable: true,
+      value: () => new DOMRect(312, 100, 8, 400),
+    })
+
+    document.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 317, clientY: 300 }),
+    )
+    handle.configure({ ...options, disabled: true })
+    handle.configure({ ...options, disabled: false })
+    document.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 323, clientY: 300 }),
+    )
+
+    expect(handle).not.toHaveAttribute("data-boundary-armed")
+
+    document.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 317, clientY: 300 }),
+    )
+    expect(handle).toHaveAttribute("data-boundary-armed")
+  })
+
   it("allows direct grabs from a boundary indicator before arming", () => {
     const handle = configuredHandle({ boundaryActivation: true })
     const indicator = document.createElement("span")

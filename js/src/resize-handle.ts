@@ -123,9 +123,12 @@ class ShinyChatResizeHandleElement
         pointerType: string
       }
     | undefined
+  private previousBoundaryPointerX: number | undefined
+
   connectedCallback() {
     if (this.listenerAbort) return
 
+    this.resetBoundaryPointer()
     const controller = new AbortController()
     this.listenerAbort = controller
     const signal = { signal: controller.signal }
@@ -158,6 +161,7 @@ class ShinyChatResizeHandleElement
   disconnectedCallback() {
     this.finishPointer()
     this.deactivateBoundary()
+    this.resetBoundaryPointer()
     this.listenerAbort?.abort()
     this.listenerAbort = null
   }
@@ -194,8 +198,10 @@ class ShinyChatResizeHandleElement
     if (this.options.disabled) {
       this.finishPointer()
       this.deactivateBoundary()
+      this.resetBoundaryPointer()
     } else if (!this.options.boundaryActivation) {
       this.deactivateBoundary()
+      this.resetBoundaryPointer()
     }
   }
 
@@ -218,6 +224,7 @@ class ShinyChatResizeHandleElement
 
   private beginPointer(pointerEvent: PointerEvent) {
     pointerEvent.preventDefault()
+    this.resetBoundaryPointer()
     if (this.options.boundaryActivation) {
       this.setAttribute("data-boundary-armed", "")
     }
@@ -234,6 +241,7 @@ class ShinyChatResizeHandleElement
 
   private readonly onDocumentPointerDown = (event: Event) => {
     const pointerEvent = event as PointerEvent
+    this.resetBoundaryPointer()
     if (
       !this.options.boundaryActivation ||
       this.options.disabled ||
@@ -250,6 +258,7 @@ class ShinyChatResizeHandleElement
 
   private readonly onDocumentTouchStart = (event: Event) => {
     const touchEvent = event as TouchEvent
+    this.resetBoundaryPointer()
     if (
       !this.options.boundaryActivation ||
       this.options.disabled ||
@@ -302,13 +311,18 @@ class ShinyChatResizeHandleElement
       this.pointer ||
       isCoarsePointer(pointerEvent)
     ) {
+      this.resetBoundaryPointer()
       return
     }
 
     const boundary = this.boundary()
-    if (boundary === undefined) return
+    if (boundary === undefined) {
+      this.resetBoundaryPointer()
+      return
+    }
 
     if (this.hasAttribute("data-boundary-armed")) {
+      this.previousBoundaryPointerX = pointerEvent.clientX
       const activeWidth = this.options.boundaryActiveWidth
       if (activeWidth !== undefined) {
         if (
@@ -333,14 +347,19 @@ class ShinyChatResizeHandleElement
       return
     }
 
+    const previousX = this.previousBoundaryPointerX
+    this.previousBoundaryPointerX = pointerEvent.clientX
     if (
-      this.options.boundaryTripWidth !== undefined
-        ? this.isWithinBoundaryProximity(
-            pointerEvent.clientX,
-            pointerEvent.clientY,
-            this.options.boundaryTripWidth,
-          )
-        : Math.abs(pointerEvent.clientX - boundary) <= 2
+      this.isWithinBoundaryProximity(
+        pointerEvent.clientX,
+        pointerEvent.clientY,
+      ) ||
+      (previousX !== undefined &&
+        this.segmentCrossesBoundaryProximity(
+          previousX,
+          pointerEvent.clientX,
+          pointerEvent.clientY,
+        ))
     ) {
       this.setAttribute("data-boundary-armed", "")
     }
@@ -401,6 +420,7 @@ class ShinyChatResizeHandleElement
     }
     this.removeAttribute("data-resizing")
     this.deactivateBoundary()
+    this.resetBoundaryPointer()
     this.emit("resize-end", { source: "pointer" })
   }
 
@@ -435,14 +455,43 @@ class ShinyChatResizeHandleElement
     )
   }
 
-  private isWithinBoundaryProximity(
-    clientX: number,
-    clientY: number,
-    tripWidth: number,
-  ) {
+  private isWithinBoundaryProximity(clientX: number, clientY: number) {
     // bslib's 5px trip strip only arms when the pointer is within 2px of the
     // true panel edge. Keep the stricter activation region inside the strip.
-    return this.isWithinBoundaryTarget(clientX, clientY, Math.min(4, tripWidth))
+    return this.isWithinBoundaryTarget(
+      clientX,
+      clientY,
+      this.boundaryActivationWidth(),
+    )
+  }
+
+  private segmentCrossesBoundaryProximity(
+    previousX: number,
+    clientX: number,
+    clientY: number,
+  ) {
+    const boundary = this.boundary()
+    if (
+      boundary === undefined ||
+      !this.isWithinBoundaryVerticalRange(clientY)
+    ) {
+      return false
+    }
+
+    const activationRadius = this.boundaryActivationWidth() / 2
+    return (
+      Math.min(previousX, clientX) <= boundary + activationRadius &&
+      Math.max(previousX, clientX) >= boundary - activationRadius
+    )
+  }
+
+  private boundaryActivationWidth() {
+    return Math.min(4, this.options.boundaryTripWidth ?? 4)
+  }
+
+  private isWithinBoundaryVerticalRange(clientY: number) {
+    const rect = this.getBoundingClientRect()
+    return clientY >= rect.top && clientY <= rect.bottom
   }
 
   private isDirectBoundaryIndicator(target: EventTarget | null) {
@@ -461,6 +510,10 @@ class ShinyChatResizeHandleElement
 
   private deactivateBoundary() {
     this.removeAttribute("data-boundary-armed")
+  }
+
+  private resetBoundaryPointer() {
+    this.previousBoundaryPointerX = undefined
   }
 
   private emit(
