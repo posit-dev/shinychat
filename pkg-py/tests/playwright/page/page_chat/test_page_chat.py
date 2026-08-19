@@ -118,7 +118,11 @@ def test_desktop_header_keeps_controls_available_with_a_long_title(
 
     expect(shell.get_by_role("button", name="Settings")).to_be_visible()
     expect(toolbar_input).to_be_visible()
-    assert toolbar_input.bounding_box()["x"] > identity_title.bounding_box()["x"]
+    toolbar_box = toolbar_input.bounding_box()
+    identity_title_box = identity_title.bounding_box()
+    assert toolbar_box is not None
+    assert identity_title_box is not None
+    assert toolbar_box["x"] > identity_title_box["x"]
 
 
 def test_mobile_moves_controls_and_manages_dialog_focus(
