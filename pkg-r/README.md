@@ -90,3 +90,10 @@ For an embedded chat or a layout with other top-level content, continue using
 `chat_ui()` inside `bslib::page_fillable()`, `bslib::page_sidebar()`, or
 another suitable container. `page_chat()` owns its page composition and should
 not be wrapped in another page container.
+
+The package includes credential-free `page_chat()` examples. Run them with:
+
+```r
+shiny::runExample("page-chat-navigation", package = "shinychat")
+shiny::runExample("page-chat-artifact-controls", package = "shinychat")
+```

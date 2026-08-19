@@ -348,9 +348,16 @@ state while controls move between desktop and mobile layouts. On narrow
 screens, navigation and toolbar controls move into the app menu above the
 active page's sidebar content without duplicating IDs.
 
-The repository includes [paired runnable navigation and artifact-control
-examples](https://github.com/posit-dev/shinychat/tree/main/examples/page-chat).
-They use local echo responses, so no provider credentials are required.
+The package includes runnable navigation and artifact-control examples. They
+use local echo responses, so no provider credentials are required:
+
+```r
+shiny::runExample("page-chat-navigation", package = "shinychat")
+shiny::runExample("page-chat-artifact-controls", package = "shinychat")
+```
+
+The [R example source](https://github.com/posit-dev/shinychat/tree/main/pkg-r/inst/examples-shiny)
+is available in the repository.
 
 ```{r, echo=FALSE, fig.cap="Screenshot of a chatbot filling the page.", fig.align='center', out.extra='class="rounded shadow"', out.width='100%'}
 knitr::include_graphics("images/chat-page_fillable.png")

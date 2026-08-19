@@ -1,4 +1,5 @@
 from shiny import App, reactive, ui
+
 from shinychat import (
     Chat,
     chat_artifact,
@@ -18,12 +19,13 @@ def artifact_content(label: str):
 app_ui = page_chat(
     "Field notes",
     id="chat",
-    toolbar=ui.div(
-        ui.input_action_button("clear_chat", "Clear conversation"),
-        ui.input_action_button("show_preview", "Show preview"),
-        class_="d-flex gap-2",
+    toolbar=ui.toolbar(
+        ui.toolbar_input_button("clear_chat", "Clear conversation"),
+        ui.toolbar_input_button("show_preview", "Show preview"),
     ),
-    toolbar_global=ui.input_action_button("help", "Help"),
+    toolbar_global=ui.toolbar(
+        ui.toolbar_input_button("help", "Help"),
+    ),
     sidebar=chat_sidebar(
         ui.h3("Workspace", class_="h6"),
         ui.input_text("project_name", "Project", "Coastal survey"),
@@ -57,9 +59,11 @@ app_ui = page_chat(
                 open="always",
                 resizable=False,
             ),
-            toolbar=ui.input_action_button(
-                "reset_settings",
-                "Reset settings",
+            toolbar=ui.toolbar(
+                ui.toolbar_input_button(
+                    "reset_settings",
+                    "Reset settings",
+                ),
             ),
         ),
         chat_nav_panel(

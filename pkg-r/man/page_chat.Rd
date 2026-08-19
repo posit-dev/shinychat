@@ -118,9 +118,12 @@ with \code{\link[=chat_artifact_show]{chat_artifact_show()}}, \code{\link[=chat_
 \code{\link[=chat_artifact_hide]{chat_artifact_hide()}}, and \code{\link[=chat_artifact_toggle]{chat_artifact_toggle()}}. Artifact content is
 static UI passed through those server functions; use ordinary Shiny
 inputs and outputs inside that content when needed.
-Paired local-response navigation and artifact-control examples, which do not
-require credentials, are available at
-\url{https://github.com/posit-dev/shinychat/tree/main/examples/page-chat}.
+Local-response navigation and artifact-control examples, which do not
+require credentials, are available through
+\code{shiny::runExample("page-chat-navigation", package = "shinychat")} and
+\code{shiny::runExample("page-chat-artifact-controls", package = "shinychat")}.
+Their source is available at
+\url{https://github.com/posit-dev/shinychat/tree/main/pkg-r/inst/examples-shiny}.
 
 \code{page_chat()} owns page composition and accepts one chat root. Do not pass
 unrelated top-level UI, raw \code{bslib::sidebar()} objects, or a second chat

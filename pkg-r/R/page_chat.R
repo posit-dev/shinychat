@@ -193,9 +193,12 @@ chat_ui_history <- function(id, ...) {
 #' [chat_artifact_hide()], and [chat_artifact_toggle()]. Artifact content is
 #' static UI passed through those server functions; use ordinary Shiny
 #' inputs and outputs inside that content when needed.
-#' Paired local-response navigation and artifact-control examples, which do not
-#' require credentials, are available at
-#' <https://github.com/posit-dev/shinychat/tree/main/examples/page-chat>.
+#' Local-response navigation and artifact-control examples, which do not
+#' require credentials, are available through
+#' `shiny::runExample("page-chat-navigation", package = "shinychat")` and
+#' `shiny::runExample("page-chat-artifact-controls", package = "shinychat")`.
+#' Their source is available at
+#' <https://github.com/posit-dev/shinychat/tree/main/pkg-r/inst/examples-shiny>.
 #'
 #' `page_chat()` owns page composition and accepts one chat root. Do not pass
 #' unrelated top-level UI, raw `bslib::sidebar()` objects, or a second chat
