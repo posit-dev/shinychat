@@ -81,7 +81,8 @@ def test_desktop_navigation_streaming_and_history_auto_open(
     expect(shell).to_have_attribute("data-active-page", "about")
     assert sidebar.get_attribute("data-sidebar-key") is None
     expect(sidebar).to_be_hidden()
-    expect(toggle).to_be_hidden()
+    expect(toggle).to_be_disabled()
+    expect(toggle).to_have_attribute("aria-expanded", "false")
 
     shell.get_by_role("button", name="Return to chat").click()
     expect(sidebar.locator(".shiny-chat-history-item")).to_have_count(

@@ -482,11 +482,10 @@ class ChatPageElement extends HTMLElement {
     const open = this.mobile
       ? this.hasAttribute("data-mobile-menu-open")
       : Boolean(state?.open)
-    const toggleHidden = !this.mobile && (!state || state.openMode === "always")
     const toggleDisabled =
       !this.mobile && (state?.openMode === "always" || !state)
 
-    this.toggle.hidden = toggleHidden
+    this.toggle.hidden = false
     this.toggle.disabled = toggleDisabled
     this.toggle.setAttribute("aria-disabled", toggleDisabled ? "true" : "false")
     this.toggle.setAttribute("aria-expanded", open ? "true" : "false")
