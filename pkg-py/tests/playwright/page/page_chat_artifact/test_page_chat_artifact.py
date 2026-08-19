@@ -174,6 +174,29 @@ def test_default_artifact_width_end_aligns_chat_wrapper(
     )
 
 
+def test_rtl_closed_artifact_wrapper_stays_centered(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    chat, _ = open_page(page, local_app, artifact_width="default")
+    layout = chat.loc.locator(".shiny-chat-layout")
+    wrapper = chat.loc.locator(".shiny-chat-wrapper")
+
+    page.evaluate("document.documentElement.dir = 'rtl'")
+    page.wait_for_timeout(220)
+
+    layout_box = layout.bounding_box()
+    wrapper_box = wrapper.bounding_box()
+    assert layout_box is not None
+    assert wrapper_box is not None
+    assert wrapper_box["x"] >= layout_box["x"]
+    assert wrapper_box["x"] + wrapper_box["width"] <= (
+        layout_box["x"] + layout_box["width"]
+    )
+    assert wrapper_box["x"] + wrapper_box["width"] / 2 == pytest.approx(
+        layout_box["x"] + layout_box["width"] / 2, abs=1
+    )
+
+
 def test_relative_artifact_width_refreshes_without_layout_resize(
     page: Page, local_app: ShinyAppProc
 ) -> None:
@@ -350,10 +373,12 @@ def test_artifact_motion_respects_reduced_motion_and_takeover(
     chat, _ = open_page(page, local_app)
     layout = chat.loc.locator(".shiny-chat-layout")
     panel = chat.loc.locator(".shiny-chat-artifact")
+    wrapper = chat.loc.locator(".shiny-chat-wrapper")
 
     page.get_by_role("button", name="Show artifact").click()
     expect(layout).to_have_css("transition-duration", "0s")
     expect(panel).to_have_css("transition-duration", "0s")
+    expect(wrapper).to_have_css("transition-duration", "0s")
 
     panel.get_by_role("button", name="Close artifact").click()
     expect(panel).to_be_hidden(timeout=TIMEOUT)
