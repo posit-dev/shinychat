@@ -117,8 +117,12 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.help)
     def _help():
-        ui.notification_show(
-            "The Help control is global and remains available on every page."
+        ui.show_toast(
+            ui.toast(
+                "The Help control is global and remains available on every page.",
+                header="Help",
+                type="info",
+            )
         )
 
 

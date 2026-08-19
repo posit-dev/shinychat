@@ -98,8 +98,12 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$help, {
-    showNotification(
-      "The Help control is global and remains available on every page."
+    bslib::show_toast(
+      bslib::toast(
+        "The Help control is global and remains available on every page.",
+        header = "Help",
+        type = "info"
+      )
     )
   })
 }
