@@ -99,19 +99,6 @@ def test_artifact_separator_remains_mouse_reachable_after_maximum_resize(
     maximum_bound = int(separator.get_attribute("aria-valuemax") or "0")
     assert maximum == maximum_bound
 
-    max_box = separator.bounding_box()
-    assert max_box is not None
-    assert (
-        page.evaluate(
-            """({ x, y }) =>
-              document.elementFromPoint(x, y)?.matches(
-                "shiny-chat-resize-handle.shiny-chat-artifact-resizer"
-              ) ?? false""",
-            {"x": max_box["x"] + 1, "y": max_box["y"] + 100},
-        )
-        is False
-    )
-
     arm_and_drag(100)
     page.wait_for_timeout(220)
     resized = int(separator.get_attribute("aria-valuenow") or "0")
@@ -131,7 +118,7 @@ def test_artifact_separator_remains_mouse_reachable_after_maximum_resize(
     assert settled_box["width"] == pytest.approx(expected_width, abs=1)
 
 
-def test_artifact_separator_arms_from_either_side_and_clicks_through(
+def test_artifact_separator_uses_bslib_sized_trip_and_active_targets(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     chat, _ = open_page(page, local_app, artifact_width="default")
@@ -153,40 +140,80 @@ def test_artifact_separator_arms_from_either_side_and_clicks_through(
         }"""
     )
 
-    def assert_bidirectional_arming(
-        boundary: float, panel_direction: float
-    ) -> None:
+    def assert_bslib_sized_target(boundary: float, panel_direction: float) -> None:
         box = separator.bounding_box()
         assert box is not None
         y = box["y"] + box["height"] / 2
-        # First approach the divider from the chat side, then from inside the
-        # artifact. Both positions land inside the two-pixel activation zone.
-        page.mouse.move(boundary - panel_direction, y)
+        target = separator.evaluate(
+            """(element) => {
+              const trip = getComputedStyle(element, "::after");
+              return {
+                width: Number.parseFloat(trip.width),
+                offset: trip.insetInlineStart,
+              };
+            }"""
+        )
+        assert target == {"width": 5, "offset": "-2px"}
+
+        # Both sides of the true divider can enter the transparent 5px trip.
+        page.mouse.move(boundary - panel_direction * 2, y)
         expect(separator).to_have_attribute("data-boundary-armed", "")
-        page.mouse.move(boundary + panel_direction * 10, y)
-        expect(separator).not_to_have_attribute("data-boundary-armed", "")
-        page.mouse.move(boundary + panel_direction * 10, y)
-        page.mouse.move(boundary + panel_direction, y)
+        active_width = separator.evaluate(
+            """(element) =>
+              Number.parseFloat(getComputedStyle(element, "::after").width)"""
+        )
+        assert active_width == 24
+
+        # Eleven pixels from the divider is outside the idle trip but inside
+        # the 24px armed target, so it remains usable without a precise
+        # reacquisition.
+        page.mouse.move(boundary + panel_direction * 11, y)
         expect(separator).to_have_attribute("data-boundary-armed", "")
         page.mouse.down()
         expect(separator).to_have_attribute("data-resizing", "")
         page.mouse.up()
         expect(separator).not_to_have_attribute("data-resizing", "")
 
+        page.mouse.move(boundary + panel_direction * 2, y)
+        expect(separator).to_have_attribute("data-boundary-armed", "")
+        page.mouse.move(boundary + panel_direction * 13, y)
+        expect(separator).not_to_have_attribute("data-boundary-armed", "")
+
+        # The real indicator retains bslib's direct-grab bypass even before
+        # the pointer has crossed the activation proximity.
+        indicator = separator.locator(".shiny-chat-artifact-resize-indicator")
+        indicator_box = indicator.bounding_box()
+        assert indicator_box is not None
+        page.mouse.move(
+            indicator_box["x"] + indicator_box["width"] / 2,
+            indicator_box["y"] + indicator_box["height"] / 2,
+        )
+        separator.evaluate(
+            "(element) => element.removeAttribute('data-boundary-armed')"
+        )
+        page.mouse.down()
+        expect(separator).to_have_attribute("data-resizing", "")
+        page.mouse.up()
+
     box = separator.bounding_box()
     assert box is not None
     y = box["y"] + box["height"] / 2
-    # Five pixels inside the desktop hit target is outside its two-pixel
-    # activation zone, so this real mouse click reaches the panel below.
+    # Five pixels inside the panel is outside the 5px divider trip, so this
+    # real mouse click reaches the adjacent panel content below the handle.
     page.mouse.click(box["x"] + 5, y)
     expect(panel).to_have_attribute("data-resize-underlay-clicks", "1")
-    assert_bidirectional_arming(box["x"], 1)
+    assert_bslib_sized_target(box["x"], 1)
 
     page.evaluate("document.documentElement.dir = 'rtl'")
     page.wait_for_timeout(220)
     rtl_box = separator.bounding_box()
     assert rtl_box is not None
-    assert_bidirectional_arming(rtl_box["x"] + rtl_box["width"], -1)
+    previous_clicks = int(panel.get_attribute("data-resize-underlay-clicks") or "0")
+    page.mouse.click(rtl_box["x"] + 2, y)
+    expect(panel).to_have_attribute(
+        "data-resize-underlay-clicks", str(previous_clicks + 1)
+    )
+    assert_bslib_sized_target(rtl_box["x"] + rtl_box["width"], -1)
 
 
 def test_artifact_resizer_uses_coarse_touch_geometry(

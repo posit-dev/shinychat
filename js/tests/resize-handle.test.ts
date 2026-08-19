@@ -267,6 +267,81 @@ describe("shiny-chat-resize-handle", () => {
     expect(handle).not.toHaveAttribute("data-boundary-armed")
   })
 
+  it("keeps an artifact-sized active target after a five-pixel boundary trip", () => {
+    const handle = configuredHandle({
+      boundaryActivation: true,
+      boundaryTripWidth: 5,
+      boundaryActiveWidth: 24,
+    })
+    Object.defineProperty(handle, "getBoundingClientRect", {
+      configurable: true,
+      value: () => new DOMRect(312, 100, 8, 400),
+    })
+
+    document.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 317, clientY: 300 }),
+    )
+    expect(handle).not.toHaveAttribute("data-boundary-armed")
+    document.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 318, clientY: 300 }),
+    )
+    expect(handle).toHaveAttribute("data-boundary-armed")
+
+    document.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 308, clientY: 300 }),
+    )
+    expect(handle).toHaveAttribute("data-boundary-armed")
+    document.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 307, clientY: 300 }),
+    )
+    expect(handle).not.toHaveAttribute("data-boundary-armed")
+  })
+
+  it("allows direct grabs from a boundary indicator before arming", () => {
+    const handle = configuredHandle({ boundaryActivation: true })
+    const indicator = document.createElement("span")
+    indicator.dataset.shinyChatResizeIndicator = ""
+    handle.append(indicator)
+    const starts = vi.fn()
+    handle.addEventListener("resize-start", starts)
+
+    indicator.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        button: 0,
+        isPrimary: true,
+        pointerId: 1,
+      }),
+    )
+
+    expect(starts).toHaveBeenCalledTimes(1)
+    expect(handle).toHaveAttribute("data-boundary-armed")
+  })
+
+  it("tracks boundary activation before nested controls can stop propagation", () => {
+    const handle = configuredHandle({
+      boundaryActivation: true,
+      boundaryTripWidth: 5,
+    })
+    const control = document.createElement("button")
+    control.addEventListener("pointermove", (event) => event.stopPropagation())
+    handle.append(control)
+    Object.defineProperty(handle, "getBoundingClientRect", {
+      configurable: true,
+      value: () => new DOMRect(312, 100, 8, 400),
+    })
+
+    control.dispatchEvent(
+      new PointerEvent("pointermove", {
+        bubbles: true,
+        clientX: 318,
+        clientY: 300,
+      }),
+    )
+
+    expect(handle).toHaveAttribute("data-boundary-armed")
+  })
+
   it("uses the mirrored boundary in RTL and allows coarse pointers", () => {
     const handle = configuredHandle({
       panelSide: "inline-start",

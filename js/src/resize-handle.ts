@@ -17,6 +17,8 @@ export interface ResizeHandleOptions {
   step?: number
   largeStep?: number
   boundaryActivation?: boolean
+  boundaryTripWidth?: number
+  boundaryActiveWidth?: number
 }
 
 export interface ResizeRequestDetail {
@@ -147,7 +149,10 @@ class ShinyChatResizeHandleElement
       capture: true,
       passive: false,
     })
-    document.addEventListener("pointermove", this.onDocumentPointerMove, signal)
+    document.addEventListener("pointermove", this.onDocumentPointerMove, {
+      ...signal,
+      capture: true,
+    })
   }
 
   disconnectedCallback() {
@@ -203,7 +208,8 @@ class ShinyChatResizeHandleElement
       pointerEvent.isPrimary === false ||
       (this.options.boundaryActivation &&
         !this.hasAttribute("data-boundary-armed") &&
-        !isCoarsePointer(pointerEvent))
+        !isCoarsePointer(pointerEvent) &&
+        !this.isDirectBoundaryIndicator(pointerEvent.target))
     ) {
       return
     }
@@ -303,6 +309,20 @@ class ShinyChatResizeHandleElement
     if (boundary === undefined) return
 
     if (this.hasAttribute("data-boundary-armed")) {
+      const activeWidth = this.options.boundaryActiveWidth
+      if (activeWidth !== undefined) {
+        if (
+          !this.isWithinBoundaryTarget(
+            pointerEvent.clientX,
+            pointerEvent.clientY,
+            activeWidth,
+          )
+        ) {
+          this.deactivateBoundary()
+        }
+        return
+      }
+
       const rect = this.getBoundingClientRect()
       if (
         pointerEvent.clientX < rect.left ||
@@ -313,7 +333,15 @@ class ShinyChatResizeHandleElement
       return
     }
 
-    if (Math.abs(pointerEvent.clientX - boundary) <= 2) {
+    if (
+      this.options.boundaryTripWidth !== undefined
+        ? this.isWithinBoundaryProximity(
+            pointerEvent.clientX,
+            pointerEvent.clientY,
+            this.options.boundaryTripWidth,
+          )
+        : Math.abs(pointerEvent.clientX - boundary) <= 2
+    ) {
       this.setAttribute("data-boundary-armed", "")
     }
   }
@@ -389,6 +417,38 @@ class ShinyChatResizeHandleElement
       clientX <= rect.right &&
       clientY >= rect.top &&
       clientY <= rect.bottom
+    )
+  }
+
+  private isWithinBoundaryTarget(
+    clientX: number,
+    clientY: number,
+    width: number,
+  ) {
+    const rect = this.getBoundingClientRect()
+    const boundary = this.boundary()
+    if (boundary === undefined) return false
+    return (
+      Math.abs(clientX - boundary) <= width / 2 &&
+      clientY >= rect.top &&
+      clientY <= rect.bottom
+    )
+  }
+
+  private isWithinBoundaryProximity(
+    clientX: number,
+    clientY: number,
+    tripWidth: number,
+  ) {
+    // bslib's 5px trip strip only arms when the pointer is within 2px of the
+    // true panel edge. Keep the stricter activation region inside the strip.
+    return this.isWithinBoundaryTarget(clientX, clientY, Math.min(4, tripWidth))
+  }
+
+  private isDirectBoundaryIndicator(target: EventTarget | null) {
+    return (
+      target instanceof Element &&
+      target.closest("[data-shiny-chat-resize-indicator]") !== null
     )
   }
 

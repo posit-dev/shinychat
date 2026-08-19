@@ -423,6 +423,8 @@ export function ChatArtifact({
       disabled: !artifact.resizable || takeover || !artifact.visible,
       label: "Resize artifact panel",
       boundaryActivation: true,
+      boundaryTripWidth: 5,
+      boundaryActiveWidth: 24,
     })
     const onResizeRequest = (event: Event) => {
       setBoundedWidth((event as CustomEvent<ResizeRequestDetail>).detail.value)
@@ -466,11 +468,19 @@ export function ChatArtifact({
     >
       {artifact.resizable &&
         !takeover &&
-        createElement(resizeHandleProvider.tagName, {
-          ref: resizeHandleRef,
-          className: "shiny-chat-artifact-resizer",
-          "data-shiny-chat-resize-handle-provider": resizeHandleProvider.name,
-        })}
+        createElement(
+          resizeHandleProvider.tagName,
+          {
+            ref: resizeHandleRef,
+            className: "shiny-chat-artifact-resizer",
+            "data-shiny-chat-resize-handle-provider": resizeHandleProvider.name,
+          },
+          createElement("span", {
+            "aria-hidden": true,
+            className: "shiny-chat-artifact-resize-indicator",
+            "data-shiny-chat-resize-indicator": "",
+          }),
+        )}
       <div className="shiny-chat-artifact-header">
         <h2 id={titleId}>{title}</h2>
         <button
