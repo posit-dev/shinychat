@@ -244,6 +244,28 @@ def test_mobile_moves_controls_and_manages_dialog_focus(
     expect(toggle).to_have_attribute("aria-expanded", "true")
 
 
+def test_sidebarless_page_hides_desktop_toggle_and_keeps_mobile_app_menu(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    page.set_viewport_size({"width": 1280, "height": 800})
+    page.goto(f"{local_app.url}?sidebarless=true")
+    shell = page.locator("shiny-chat-page")
+    toggle = shell.locator(".shiny-chat-page-sidebar-toggle")
+
+    expect(shell).to_be_visible(timeout=TIMEOUT)
+    expect(toggle).to_be_hidden()
+
+    page.set_viewport_size({"width": 390, "height": 760})
+
+    expect(toggle).to_be_visible()
+    expect(toggle).not_to_be_disabled()
+    toggle.click()
+    expect(shell).to_have_attribute("data-mobile-menu-open", "true")
+    expect(shell.get_by_role("button", name="About")).to_be_visible()
+    expect(page.locator("#sidebarless_toolbar")).to_be_visible()
+
+
 @pytest.mark.parametrize(
     "viewport",
     [

@@ -201,17 +201,22 @@ body:has(shiny-chat-page) > .toast-container:is(
   background: currentcolor;
 }
 
-.shiny-chat-page-sidebar-toggle:hover,
+.shiny-chat-page-sidebar-toggle:not(:disabled):hover,
 button.shiny-chat-page-identity:hover,
 .shiny-chat-page-nav-link:hover {
   background: var(--bs-tertiary-bg, #f1f3f5);
 }
 
-.shiny-chat-page-sidebar-toggle:focus-visible,
+.shiny-chat-page-sidebar-toggle:not(:disabled):focus-visible,
 button.shiny-chat-page-identity:focus-visible,
 .shiny-chat-page-nav-link:focus-visible {
   outline: 0.2rem solid color-mix(in srgb, var(--bs-primary, #0d6efd) 35%, transparent);
   outline-offset: 0.1rem;
+}
+
+.shiny-chat-page-sidebar-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .shiny-chat-page-body {

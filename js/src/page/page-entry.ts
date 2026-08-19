@@ -106,6 +106,7 @@ class ChatPageElement extends HTMLElement {
   private header: HTMLElement | null = null
   private controls: HTMLElement | null = null
   private toolbarScoped: HTMLElement | null = null
+  private toolbarGlobal: HTMLElement | null = null
   private toolbarSources = new Map<string, HTMLElement>()
   private activeToolbarSource: HTMLElement | null = null
   private desktopMount: HTMLElement | null = null
@@ -216,6 +217,9 @@ class ChatPageElement extends HTMLElement {
     this.header = headers[0]!
     this.toolbarScoped = this.controls.querySelector<HTMLElement>(
       ".shiny-chat-page-toolbar-scoped",
+    )
+    this.toolbarGlobal = this.controls.querySelector<HTMLElement>(
+      ".shiny-chat-page-toolbar-global",
     )
     this.desktopMount = desktopMounts[0]!
     this.mobileMount = mobileMounts[0]!
@@ -666,18 +670,53 @@ class ChatPageElement extends HTMLElement {
   }
 
   private updateToggleState() {
-    if (!this.toggle) return
+    if (!this.toggle || !this.aside) return
     const state = this.activeSidebarState()
-    const open = this.mobile
-      ? this.hasAttribute("data-mobile-menu-open")
-      : Boolean(state?.open)
+    const available = this.mobile
+      ? this.hasMobileMenuContent()
+      : this.sidebarStates.size > 0
     const toggleDisabled =
-      !this.mobile && (state?.openMode === "always" || !state)
+      available && !this.mobile && (state?.openMode === "always" || !state)
+    const open =
+      available &&
+      (this.mobile
+        ? this.hasAttribute("data-mobile-menu-open")
+        : Boolean(state?.open))
 
-    this.toggle.hidden = false
+    this.toggle.hidden = !available
     this.toggle.disabled = toggleDisabled
     this.toggle.setAttribute("aria-disabled", toggleDisabled ? "true" : "false")
     this.toggle.setAttribute("aria-expanded", open ? "true" : "false")
+    this.toggle.setAttribute(
+      "aria-label",
+      toggleDisabled ? "App menu unavailable on this page" : "Toggle app menu",
+    )
+    if (toggleDisabled) {
+      this.toggle.setAttribute("title", "App menu unavailable on this page")
+      this.toggle.removeAttribute("aria-controls")
+    } else {
+      this.toggle.removeAttribute("title")
+      this.toggle.setAttribute("aria-controls", this.aside.id)
+    }
+  }
+
+  private hasMobileMenuContent() {
+    return (
+      this.sidebarStates.size > 0 ||
+      this.navButtons.length > 0 ||
+      this.hasMeaningfulContent(this.toolbarGlobal) ||
+      Array.from(this.toolbarSources.values()).some((source) =>
+        this.hasMeaningfulContent(
+          source.querySelector<HTMLElement>(
+            ":scope > .shiny-chat-page-toolbar-content",
+          ),
+        ),
+      )
+    )
+  }
+
+  private hasMeaningfulContent(element: HTMLElement | null) {
+    return Boolean(element?.children.length || element?.textContent?.trim())
   }
 
   private activeSidebarState() {

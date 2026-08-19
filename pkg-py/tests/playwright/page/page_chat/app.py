@@ -11,6 +11,7 @@ from chatlas._turn import AssistantTurn
 from shiny import App, Inputs, Outputs, Session, reactive, ui
 from shinychat import Chat, chat_nav_panel, chat_sidebar, page_chat
 from shinychat.types import FileConversationStore, HistoryOptions
+from starlette.requests import Request
 
 
 class SlowEchoChatClient(chatlas.Chat):
@@ -43,7 +44,23 @@ class SlowEchoChatClient(chatlas.Chat):
 store_dir = tempfile.mkdtemp(prefix="shinychat-page-history-")
 
 
-def app_ui(request: object) -> ui.Tag:
+def app_ui(request: Request) -> ui.Tag:
+    if request.query_params.get("sidebarless") == "true":
+        return page_chat(
+            "Sidebarless Assistant",
+            id="chat",
+            pages=[
+                chat_nav_panel(
+                    "About",
+                    ui.div("About page", id="sidebarless_about_page"),
+                    sidebar=False,
+                ),
+            ],
+            toolbar=ui.input_action_button("sidebarless_toolbar", "Refresh"),
+            sidebar=False,
+            artifact=False,
+        )
+
     return page_chat(
         "Research Assistant",
         id="chat",

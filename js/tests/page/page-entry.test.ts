@@ -100,6 +100,8 @@ function pageFixture({
   identity = true,
   pages = true,
   sidebar = true,
+  pageSidebars = true,
+  toolbar = true,
   chatId = "chat",
   homeOpen = "open",
   homeResizable = true,
@@ -114,6 +116,8 @@ function pageFixture({
   identity?: boolean
   pages?: boolean
   sidebar?: boolean
+  pageSidebars?: boolean
+  toolbar?: boolean
   chatId?: string
   homeOpen?: "auto" | "open" | "closed" | "always"
   homeResizable?: boolean
@@ -184,7 +188,7 @@ function pageFixture({
           <div class="shiny-chat-page-toolbar">
             <div class="shiny-chat-page-toolbar-scoped"></div>
             <div class="shiny-chat-page-toolbar-global">
-              <input id="global-toolbar-input" value="global initial">
+              ${toolbar ? `<input id="global-toolbar-input" value="global initial">` : ""}
             </div>
           </div>
         </div>
@@ -212,26 +216,32 @@ function pageFixture({
             `
             : ""
         }
-        <div
-          class="shiny-chat-page-sidebar-panel"
-          data-sidebar-for="default"
-          data-sidebar-open="auto"
-          data-sidebar-width="280px"
-          data-sidebar-resizable="true"
-          hidden
-        >
-          <button type="button">Default action</button>
-        </div>
-        <div
-          class="shiny-chat-page-sidebar-panel"
-          data-sidebar-for="page-2"
-          data-sidebar-open="${customOpen}"
-          data-sidebar-width="${customWidth}"
-          data-sidebar-resizable="${customResizable}"
-          hidden
-        >
-          <button type="button">Custom action</button>
-        </div>
+        ${
+          pageSidebars
+            ? `
+              <div
+                class="shiny-chat-page-sidebar-panel"
+                data-sidebar-for="default"
+                data-sidebar-open="auto"
+                data-sidebar-width="280px"
+                data-sidebar-resizable="true"
+                hidden
+              >
+                <button type="button">Default action</button>
+              </div>
+              <div
+                class="shiny-chat-page-sidebar-panel"
+                data-sidebar-for="page-2"
+                data-sidebar-open="${customOpen}"
+                data-sidebar-width="${customWidth}"
+                data-sidebar-resizable="${customResizable}"
+                hidden
+              >
+                <button type="button">Custom action</button>
+              </div>
+            `
+            : ""
+        }
         ${
           alwaysPage
             ? `<div
@@ -302,12 +312,12 @@ function pageFixture({
     <div class="shiny-chat-page-toolbar-sources" hidden>
       <div class="shiny-chat-page-toolbar-source" data-page-toolbar-source="home">
         <div class="shiny-chat-page-toolbar-content">
-          <input id="shiny-toolbar-input" value="initial">
+          ${toolbar ? `<input id="shiny-toolbar-input" value="initial">` : ""}
         </div>
       </div>
       <div class="shiny-chat-page-toolbar-source" data-page-toolbar-source="custom-page">
         <div class="shiny-chat-page-toolbar-content">
-          <input id="custom-toolbar-input" value="custom initial">
+          ${toolbar ? `<input id="custom-toolbar-input" value="custom initial">` : ""}
         </div>
       </div>
     </div>
@@ -796,6 +806,12 @@ describe("shiny-chat-page desktop sidebar state", () => {
     expect(toggle.hidden).toBe(false)
     expect(toggle.disabled).toBe(true)
     expect(toggle).toHaveAttribute("aria-disabled", "true")
+    expect(toggle).toHaveAttribute(
+      "aria-label",
+      "App menu unavailable on this page",
+    )
+    expect(toggle).toHaveAttribute("title", "App menu unavailable on this page")
+    expect(toggle).not.toHaveAttribute("aria-controls")
 
     toggle.click()
     expect(aside.hidden).toBe(true)
@@ -1481,5 +1497,27 @@ describe("shiny-chat-page without secondary pages", () => {
     expect(page.dataset.mobileMenuOpen).toBe("true")
     expect(toggle.getAttribute("aria-expanded")).toBe("true")
     expect(aside.getAttribute("role")).toBe("dialog")
+  })
+
+  it("hides the toggle when neither desktop nor mobile can reveal menu content", () => {
+    const media = installMatchMedia(false)
+    const page = pageFixture({
+      identity: false,
+      pages: false,
+      sidebar: false,
+      pageSidebars: false,
+      toolbar: false,
+    })
+    const { toggle } = getPageElements(page)
+
+    expect(toggle.hidden).toBe(true)
+    expect(toggle.disabled).toBe(false)
+    expect(toggle).toHaveAttribute("aria-expanded", "false")
+
+    media.setMatches(true)
+
+    expect(toggle.hidden).toBe(true)
+    expect(toggle.disabled).toBe(false)
+    expect(toggle).toHaveAttribute("aria-expanded", "false")
   })
 })
