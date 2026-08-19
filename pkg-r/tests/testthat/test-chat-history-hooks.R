@@ -259,6 +259,11 @@ test_that("HistoryController$save returns FALSE without a record or partition", 
 
   expect_identical(ctrl$save(), FALSE)
 
+  ctrl$partition <- conversation_partition("test", "alice")
+
+  expect_identical(ctrl$save(), FALSE)
+
+  ctrl$partition <- NULL
   ctrl$record <- new_conversation_record("Saved conversation")
 
   expect_identical(ctrl$save(), FALSE)
@@ -351,12 +356,16 @@ test_that("HistoryController$save propagates store write errors", {
     )
   )
 
-  ctrl <- .make_test_controller(
-    .make_test_client(),
-    history_options(store = FailingStore$new(), title = NULL)
+  session <- shiny::MockShinySession$new()
+  ctrl <- HistoryController$new(
+    chat_id = "test",
+    client = .make_test_client(),
+    options = history_options(store = FailingStore$new(), title = NULL),
+    session = session
   )
   ctrl$partition <- conversation_partition("test", "alice")
   ctrl$record <- new_conversation_record("Saved conversation")
 
   expect_error(ctrl$save(), "disk full")
+  expect_identical(ctrl$transcript_offset, 0L)
 })
