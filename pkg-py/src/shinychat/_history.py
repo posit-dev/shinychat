@@ -731,6 +731,18 @@ class ChatHistory:
         if not self._started:
             self._start()
 
+    async def save(self) -> bool:
+        """
+        Persist the active conversation and its app state.
+
+        Returns ``False`` before history has started or when there is no saved
+        active conversation. Storage and bookmark errors propagate to the caller.
+        """
+        controller = self._controller
+        if controller is None:
+            return False
+        return await controller.save()
+
     def on_save(
         self, fn: "Callable[[dict[str, Any]], None]"
     ) -> "Callable[[dict[str, Any]], None]":
