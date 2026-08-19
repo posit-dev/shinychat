@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from playwright.sync_api import Locator, Page, expect
 from shiny.run import ShinyAppProc
 from shinychat.playwright import ChatController
@@ -102,14 +103,24 @@ def test_desktop_navigation_streaming_and_history_auto_open(
     chat.expect_latest_message("echo: stream while hidden", timeout=TIMEOUT)
 
 
-def test_desktop_header_keeps_controls_available_with_a_long_title(
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Short title",
+        "A page chat title long enough to test header overflow",
+    ],
+)
+def test_desktop_header_keeps_controls_available(
     page: Page,
     local_app: ShinyAppProc,
+    title: str,
 ) -> None:
     _, shell = open_page(page, local_app, viewport=(800, 760))
     header = shell.locator(".shiny-chat-page-header")
+    identity = shell.locator(".shiny-chat-page-identity")
     identity_title = shell.locator(".shiny-chat-page-identity-title")
     controls_mount = shell.locator(".shiny-chat-page-controls-mount-desktop")
+    toolbar = shell.locator(".shiny-chat-page-toolbar")
     toolbar_sources = shell.locator(".shiny-chat-page-toolbar-sources")
     toolbar_source = toolbar_sources.locator(
         ".shiny-chat-page-toolbar-source"
@@ -117,19 +128,45 @@ def test_desktop_header_keeps_controls_available_with_a_long_title(
     toolbar_input = page.locator("#toolbar_value")
 
     identity_title.evaluate(
-        """element => {
-            element.textContent = "A page chat title long enough to test header overflow";
-        }"""
+        "(element, value) => { element.textContent = value; }",
+        title,
     )
 
     expect(shell.get_by_role("button", name="Settings")).to_be_visible()
     expect(toolbar_input).to_be_visible()
-    toolbar_box = toolbar_input.bounding_box()
+    header_box = header.bounding_box()
+    identity_box = identity.bounding_box()
     identity_title_box = identity_title.bounding_box()
-    assert toolbar_box is not None
+    controls_mount_box = controls_mount.bounding_box()
+    toolbar_box = toolbar.bounding_box()
+    toolbar_input_box = toolbar_input.bounding_box()
+    assert header_box is not None
+    assert identity_box is not None
     assert identity_title_box is not None
-    assert identity_title_box["width"] >= 150
-    assert toolbar_box["x"] > identity_title_box["x"]
+    assert controls_mount_box is not None
+    assert toolbar_box is not None
+    assert toolbar_input_box is not None
+
+    title_cap_px = page.evaluate(
+        "12 * parseFloat(getComputedStyle(document.documentElement).fontSize)"
+    )
+    header_right = header_box["x"] + header_box["width"]
+    controls_mount_right = controls_mount_box["x"] + controls_mount_box["width"]
+    identity_title_right = identity_title_box["x"] + identity_title_box["width"]
+    toolbar_right = toolbar_box["x"] + toolbar_box["width"]
+    toolbar_input_right = toolbar_input_box["x"] + toolbar_input_box["width"]
+
+    assert identity_box["width"] <= title_cap_px
+    assert identity_title_right <= toolbar_box["x"]
+    assert toolbar_box["x"] >= controls_mount_box["x"]
+    assert toolbar_right <= controls_mount_right
+    assert toolbar_box["x"] >= header_box["x"]
+    assert toolbar_right <= header_right
+    assert toolbar_input_box["x"] >= controls_mount_box["x"]
+    assert toolbar_input_right <= controls_mount_right
+    assert toolbar_input_box["x"] >= header_box["x"]
+    assert toolbar_input_right <= header_right
+
     expect(controls_mount).to_have_css("overflow-x", "visible")
     expect(toolbar_sources).to_be_hidden()
     expect(toolbar_source).to_be_hidden()
