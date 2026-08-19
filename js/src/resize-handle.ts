@@ -115,6 +115,7 @@ class ShinyChatResizeHandleElement
         id: number
         startX: number
         startValue: number
+        pointerType: string
       }
     | undefined
   private lastPointerX: number | undefined
@@ -134,6 +135,16 @@ class ShinyChatResizeHandleElement
     document.addEventListener("pointerdown", this.onDocumentPointerDown, {
       ...signal,
       capture: true,
+    })
+    document.addEventListener("touchstart", this.onDocumentTouchStart, {
+      ...signal,
+      capture: true,
+      passive: false,
+    })
+    document.addEventListener("touchmove", this.onDocumentTouchMove, {
+      ...signal,
+      capture: true,
+      passive: false,
     })
     document.addEventListener("pointermove", this.onDocumentPointerMove, signal)
   }
@@ -200,10 +211,14 @@ class ShinyChatResizeHandleElement
 
   private beginPointer(pointerEvent: PointerEvent) {
     pointerEvent.preventDefault()
+    if (this.options.boundaryActivation) {
+      this.setAttribute("data-boundary-armed", "")
+    }
     this.pointer = {
       id: pointerEvent.pointerId,
       startX: pointerEvent.clientX,
       startValue: this.options.value,
+      pointerType: pointerEvent.pointerType,
     }
     this.setPointerCapture?.(pointerEvent.pointerId)
     this.toggleAttribute("data-resizing", true)
@@ -216,12 +231,41 @@ class ShinyChatResizeHandleElement
       !this.options.boundaryActivation ||
       this.options.disabled ||
       this.pointer ||
+      pointerEvent.button !== 0 ||
+      pointerEvent.isPrimary === false ||
       !isCoarsePointer(pointerEvent) ||
       !this.isWithinHitTarget(pointerEvent.clientX, pointerEvent.clientY)
     ) {
       return
     }
     this.beginPointer(pointerEvent)
+  }
+
+  private readonly onDocumentTouchStart = (event: Event) => {
+    const touchEvent = event as TouchEvent
+    if (
+      !this.options.boundaryActivation ||
+      this.options.disabled ||
+      this.pointer ||
+      touchEvent.touches.length !== 1
+    ) {
+      return
+    }
+
+    const touch = touchEvent.changedTouches[0]
+    if (touch && this.isWithinHitTarget(touch.clientX, touch.clientY)) {
+      touchEvent.preventDefault()
+    }
+  }
+
+  private readonly onDocumentTouchMove = (event: Event) => {
+    const touchEvent = event as TouchEvent
+    if (
+      this.pointer?.pointerType === "touch" &&
+      touchEvent.touches.length === 1
+    ) {
+      touchEvent.preventDefault()
+    }
   }
 
   private readonly onPointerMove = (event: Event) => {

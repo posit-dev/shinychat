@@ -286,6 +286,19 @@ describe("shiny-chat-resize-handle", () => {
       new PointerEvent("pointerdown", {
         bubbles: true,
         button: 0,
+        isPrimary: false,
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 324,
+        clientY: 200,
+      }),
+    )
+    expect(starts).not.toHaveBeenCalled()
+
+    document.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        button: 0,
         isPrimary: true,
         pointerId: 1,
         pointerType: "touch",
