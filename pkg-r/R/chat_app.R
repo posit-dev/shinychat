@@ -99,6 +99,10 @@
 #'     * `status`: A reactive value indicating the current chat interaction
 #'       state. Returns `"idle"` when no response is in progress, or
 #'       `"streaming"` while a response is actively being received.
+#'     * `history`: A namespace for managing conversation-history callbacks and
+#'       persistence. `saved <- chat_module$history$save()` saves only the
+#'       existing active conversation and returns whether it was saved. Storage
+#'       and bookmark errors propagate to the caller.
 #'     * `client`: The current chat client object (an active binding that
 #'       always reflects the latest client, even after `set_client()`
 #'       is called).
@@ -768,6 +772,17 @@ chat_server <- function(
   ret$slash_command <- slash_command_method
 
   hist_env <- new.env(parent = emptyenv())
+
+  hist_env$save <- function() {
+    ctrl <- get_session_chat_bookmark_info(
+      session,
+      paste0(id, ".history-controller")
+    )
+    if (is.null(ctrl)) {
+      return(FALSE)
+    }
+    ctrl$save()
+  }
 
   hist_env$on_save <- function(fn) {
     saved_on_save_fns <<- c(saved_on_save_fns, list(fn))

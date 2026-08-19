@@ -105,6 +105,10 @@ updates the content but does not make it visible again; call
 \item \code{status}: A reactive value indicating the current chat interaction
 state. Returns \code{"idle"} when no response is in progress, or
 \code{"streaming"} while a response is actively being received.
+\item \code{history}: A namespace for managing conversation-history callbacks and
+persistence. \code{saved <- chat_module$history$save()} saves only the
+existing active conversation and returns whether it was saved. Storage
+and bookmark errors propagate to the caller.
 \item \code{client}: The current chat client object (an active binding that
 always reflects the latest client, even after \code{set_client()}
 is called).

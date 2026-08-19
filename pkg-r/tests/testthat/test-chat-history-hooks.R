@@ -249,3 +249,65 @@ test_that("greeting session state is not wired into conversation record values",
     "Hello"
   )
 })
+
+test_that("HistoryController$save returns FALSE without an active conversation", {
+  store <- InMemoryConversationStore$new()
+  ctrl <- .make_test_controller(
+    .make_test_client(),
+    history_options(store = store, title = NULL)
+  )
+
+  expect_identical(ctrl$save(), FALSE)
+})
+
+test_that("HistoryController$save_current reports whether it saved", {
+  store <- InMemoryConversationStore$new()
+  ctrl <- .make_test_controller(
+    .make_test_client(),
+    history_options(store = store, title = NULL)
+  )
+
+  expect_identical(ctrl$save_current(), FALSE)
+
+  ctrl$partition <- conversation_partition("test", "alice")
+  ctrl$record <- new_conversation_record("Saved conversation")
+
+  expect_identical(ctrl$save_current(), TRUE)
+})
+
+test_that("HistoryController$save persists app state before history updates", {
+  store <- InMemoryConversationStore$new()
+  client <- .make_test_client()
+  session <- shiny::MockShinySession$new()
+  ctrl <- HistoryController$new(
+    chat_id = "test",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = session
+  )
+  ctrl$partition <- conversation_partition("test", "alice")
+  ctrl$record <- new_conversation_record("Saved conversation")
+
+  events <- character()
+  session$sendCustomMessage <- function(type, message) {
+    if (identical(message$action$type, "history_update")) {
+      events <<- c(events, "history")
+    }
+  }
+  ctrl$add_save_callback(function(values) {
+    events <<- c(events, "save")
+    values$flag <- TRUE
+    values
+  })
+  ctrl$on_response_saved <- function(record) {
+    events <<- c(events, "bookmark")
+  }
+
+  expect_identical(ctrl$save(), TRUE)
+  expect_true(isTRUE(ctrl$record$values$flag))
+  expect_equal(events, c("save", "bookmark", "history"))
+  expect_equal(
+    store$get(ctrl$partition, ctrl$record$id)$values$flag,
+    TRUE
+  )
+})
