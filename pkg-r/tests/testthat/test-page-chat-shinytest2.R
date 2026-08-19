@@ -34,7 +34,7 @@ test_that("page_chat navigation and sidebars work in a real Shiny app", {
         "  toolbarValue: root?.querySelector(",
         "    '.shiny-chat-page-toolbar input')?.value,",
         "  visibleToolbarContentCount: root?.querySelectorAll(",
-        "    '.shiny-chat-page-toolbar > .shiny-chat-page-toolbar-content')?.length,",
+        "    '.shiny-chat-page-toolbar-scoped > .shiny-chat-page-toolbar-content')?.length,",
         "  toolbarSourceHidden: root?.querySelector(",
         "    '.shiny-chat-page-toolbar-sources')?.hidden",
         "});",

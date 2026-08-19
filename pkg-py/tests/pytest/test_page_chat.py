@@ -110,14 +110,20 @@ def test_chat_nav_panel_validates_sidebar_and_navigation_values() -> None:
     assert panel.title == "About"
     assert panel.value == "about"
     assert panel.sidebar is sidebar
-    assert panel.toolbar is False
+    assert panel.toolbar is None
     assert panel.content_width == "min(680px, 100%)"
 
     assert chat_nav_panel("Wide", content_width=720).content_width == "720px"
-    assert chat_nav_panel("Full", content_width="100vw").content_width == "100vw"
+    assert (
+        chat_nav_panel("Full", content_width="100vw").content_width == "100vw"
+    )
     assert chat_nav_panel("Inherited", toolbar=True).toolbar is True
+    assert chat_nav_panel("Legacy empty", toolbar=False).toolbar is False
     custom_toolbar = tags.span("Custom toolbar")
-    assert chat_nav_panel("Custom", toolbar=custom_toolbar).toolbar is custom_toolbar
+    assert (
+        chat_nav_panel("Custom", toolbar=custom_toolbar).toolbar
+        is custom_toolbar
+    )
 
     with pytest.raises(TypeError, match="raw Shiny Sidebar objects"):
         chat_nav_panel("About", sidebar=ui.sidebar())  # type: ignore[arg-type]
@@ -129,8 +135,6 @@ def test_chat_nav_panel_validates_sidebar_and_navigation_values() -> None:
         chat_nav_panel(cast(Any, tags.span("About")))
     with pytest.raises(ValueError, match="empty CSS width"):
         chat_nav_panel("About", content_width=" ")
-    with pytest.raises(TypeError, match="None is not allowed"):
-        chat_nav_panel("About", toolbar=None)  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="must be an HTML child"):
         chat_nav_panel("About", toolbar={"class": "bad"})  # type: ignore[arg-type]
 
@@ -239,6 +243,7 @@ def test_page_chat_signature_has_only_title_and_icon_positional() -> None:
         "id",
         "pages",
         "toolbar",
+        "toolbar_global",
         "sidebar",
         "artifact",
         "window_title",
@@ -261,6 +266,7 @@ def test_page_chat_signature_has_only_title_and_icon_positional() -> None:
     assert parameters["id"].default == "chat"
     assert parameters["artifact"].default is True
     assert parameters["sidebar"].default is True
+    assert parameters["toolbar_global"].default is None
     assert parameters["placeholder"].default == "Enter a message..."
     assert parameters["width"].default == "min(680px, 100%)"
 
@@ -322,11 +328,14 @@ def test_page_chat_normalizes_navigation_toolbar_and_sidebars() -> None:
                     tags.p("Settings content"),
                     value="settings",
                     sidebar=custom_sidebar,
-                    toolbar=ui.input_action_button("settings_save", "Save settings"),
+                    toolbar=ui.input_action_button(
+                        "settings_save", "Save settings"
+                    ),
                 ),
                 chat_nav_panel("Help", tags.p("Help content")),
             ],
             toolbar=ui.input_action_button("save", "Save"),
+            toolbar_global=ui.input_action_button("help", "Help"),
             sidebar=chat_sidebar(
                 tags.p("Home menu"),
                 history=True,
@@ -358,6 +367,10 @@ def test_page_chat_normalizes_navigation_toolbar_and_sidebars() -> None:
     assert 'tabindex="-1"' not in html
     assert 'role="tabpanel"' not in html
     assert html.count('id="mod-save"') == 1
+    assert html.count('id="mod-help"') == 1
+    assert html.index('class="shiny-chat-page-toolbar-scoped"') < html.index(
+        'class="shiny-chat-page-toolbar-global"'
+    )
     assert html.count('data-page-toolbar-source="home"') == 3
     assert html.count('data-page-toolbar-source="page-2"') == 2
     assert html.count('class="shiny-chat-page-toolbar-source"') == 2
@@ -447,6 +460,38 @@ def test_page_chat_inherited_empty_toolbar_has_one_home_source() -> None:
     assert html.count('class="shiny-chat-page-toolbar-content"') == 1
 
 
+def test_page_chat_nav_toolbar_defaults_and_legacy_booleans() -> None:
+    html = page_chat(
+        "Assistant",
+        toolbar=tags.button("Home"),
+        toolbar_global=tags.button("Global"),
+        pages=[
+            chat_nav_panel("Default"),
+            chat_nav_panel("Inherited", toolbar=True),
+            chat_nav_panel("Legacy empty", toolbar=False),
+            chat_nav_panel("Custom", toolbar=tags.button("Custom")),
+        ],
+    ).get_html_string()
+
+    assert html.count('class="shiny-chat-page-toolbar-source"') == 2
+    assert html.count('class="shiny-chat-page-toolbar-content"') == 2
+    assert re.search(
+        r'class="shiny-chat-page-toolbar-global">\s*<button>Global</button>',
+        html,
+    )
+    sections: dict[str, str] = {}
+    for value in ("Default", "Inherited", "Legacy empty", "Custom"):
+        section = re.search(
+            rf'<section[^>]*data-page-value="{value}"[^>]*>', html
+        )
+        assert section is not None
+        sections[value] = section.group(0)
+    assert "data-page-toolbar-source" not in sections["Default"]
+    assert 'data-page-toolbar-source="home"' in sections["Inherited"]
+    assert "data-page-toolbar-source" not in sections["Legacy empty"]
+    assert 'data-page-toolbar-source="page-4"' in sections["Custom"]
+
+
 def test_page_chat_sidebar_false_without_nav_sidebar_has_no_panel() -> None:
     html = page_chat("Assistant", sidebar=False).get_html_string()
 
@@ -463,8 +508,12 @@ def test_page_chat_nav_panel_content_width_contract() -> None:
             chat_nav_panel("Default", tags.p("Default")),
             chat_nav_panel("Custom", tags.p("Custom"), content_width="42rem"),
             chat_nav_panel("Percent", tags.p("Percent"), content_width="100%"),
-            chat_nav_panel("Viewport", tags.p("Viewport"), content_width="100vw"),
-            chat_nav_panel("Dynamic", tags.p("Dynamic"), content_width="100dvw"),
+            chat_nav_panel(
+                "Viewport", tags.p("Viewport"), content_width="100vw"
+            ),
+            chat_nav_panel(
+                "Dynamic", tags.p("Dynamic"), content_width="100dvw"
+            ),
         ],
     ).get_html_string()
 

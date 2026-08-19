@@ -75,7 +75,7 @@ test_that("chat_nav_panel() requires page-chat configuration", {
   expect_equal(panel$title, "Settings")
   expect_equal(panel$value, "settings")
   expect_s3_class(panel$sidebar, "chat_sidebar")
-  expect_false(panel$toolbar)
+  expect_null(panel$toolbar)
   expect_equal(panel$content_width, "min(680px, 100%)")
   expect_equal(
     chat_nav_panel("Wide", content_width = 720)$content_width,
@@ -86,6 +86,7 @@ test_that("chat_nav_panel() requires page-chat configuration", {
     "100vw"
   )
   expect_true(chat_nav_panel("Inherited", toolbar = TRUE)$toolbar)
+  expect_false(chat_nav_panel("Legacy empty", toolbar = FALSE)$toolbar)
   custom_toolbar <- htmltools::tags$span("Custom toolbar")
   expect_identical(
     chat_nav_panel("Custom", toolbar = custom_toolbar)$toolbar,
@@ -102,10 +103,6 @@ test_that("chat_nav_panel() requires page-chat configuration", {
   expect_snapshot(
     error = TRUE,
     chat_nav_panel("Settings", sidebar = bslib::sidebar())
-  )
-  expect_error(
-    chat_nav_panel("Settings", toolbar = NULL),
-    "`toolbar`.*NULL.*not allowed"
   )
   expect_error(
     chat_nav_panel("Settings", toolbar = new.env()),
@@ -205,6 +202,7 @@ test_that("page_chat() has the agreed public signature", {
       "id",
       "pages",
       "toolbar",
+      "toolbar_global",
       "sidebar",
       "messages",
       "greeting",
@@ -342,6 +340,7 @@ test_that("page_chat() normalizes navigation and sidebar metadata once", {
       )
     ),
     toolbar = htmltools::tags$button("Help"),
+    toolbar_global = htmltools::tags$button("Global help"),
     sidebar = chat_sidebar(
       htmltools::tags$p("Default menu"),
       history = TRUE,
@@ -391,7 +390,19 @@ test_that("page_chat() normalizes navigation and sidebar metadata once", {
     logical(1)
   )))
   toolbar <- page_chat_tag(controls, ".shiny-chat-page-toolbar")
-  expect_length(toolbar$children, 0)
+  expect_length(toolbar$children, 2)
+  expect_equal(
+    vapply(toolbar$children, function(x) x$attribs$class, character(1)),
+    c(
+      "shiny-chat-page-toolbar-scoped",
+      "shiny-chat-page-toolbar-global"
+    )
+  )
+  expect_true(grepl(
+    "Global help",
+    as.character(toolbar$children[[2]]),
+    fixed = TRUE
+  ))
   toolbar_sources <- page_chat_tags(page, ".shiny-chat-page-toolbar-source")
   expect_length(toolbar_sources, 2)
   expect_equal(
@@ -409,6 +420,12 @@ test_that("page_chat() normalizes navigation and sidebar metadata once", {
     as.character(toolbar_sources[[2]]),
     fixed = TRUE
   ))
+
+  expect_false(any(vapply(
+    toolbar_sources,
+    function(x) grepl("Global help", as.character(x), fixed = TRUE),
+    logical(1)
+  )))
 
   aside <- page_chat_tag(page, ".shiny-chat-page-sidebar")
   expect_equal(aside$attribs[["data-sidebar-key"]], "home")
@@ -518,6 +535,40 @@ test_that("page_chat() normalizes navigation and sidebar metadata once", {
   document <- htmltools::renderTags(page)
   expect_match(document$head, "<title>Assistant window</title>", fixed = TRUE)
   expect_identical(attr(page, "lang"), "en")
+})
+
+test_that("page_chat() keeps global toolbar and supports legacy panel booleans", {
+  page <- page_chat(
+    "Assistant",
+    toolbar = htmltools::tags$button("Home"),
+    toolbar_global = htmltools::tags$button("Global"),
+    pages = list(
+      chat_nav_panel("Default"),
+      chat_nav_panel("Inherited", toolbar = TRUE),
+      chat_nav_panel("Legacy empty", toolbar = FALSE),
+      chat_nav_panel("Custom", toolbar = htmltools::tags$button("Custom"))
+    )
+  )
+
+  toolbar <- page_chat_tag(page, ".shiny-chat-page-toolbar")
+  expect_equal(
+    vapply(toolbar$children, function(x) x$attribs$class, character(1)),
+    c(
+      "shiny-chat-page-toolbar-scoped",
+      "shiny-chat-page-toolbar-global"
+    )
+  )
+  expect_true(grepl(
+    "Global",
+    as.character(toolbar$children[[2]]),
+    fixed = TRUE
+  ))
+  expect_length(page_chat_tags(page, ".shiny-chat-page-toolbar-source"), 2)
+  sections <- page_chat_tags(page, ".shiny-chat-page-panel")
+  expect_null(sections[[2]]$attribs[["data-page-toolbar-source"]])
+  expect_equal(sections[[3]]$attribs[["data-page-toolbar-source"]], "home")
+  expect_null(sections[[4]]$attribs[["data-page-toolbar-source"]])
+  expect_equal(sections[[5]]$attribs[["data-page-toolbar-source"]], "page-4")
 })
 
 test_that("page_chat() retains the app-menu shell without a home sidebar", {

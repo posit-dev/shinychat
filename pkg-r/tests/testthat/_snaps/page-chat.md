@@ -152,7 +152,10 @@
             <div class="shiny-chat-page-controls-mount shiny-chat-page-controls-mount-desktop">
               <div class="shiny-chat-page-controls">
                 <nav class="shiny-chat-page-nav" aria-label="Pages"></nav>
-                <div class="shiny-chat-page-toolbar"></div>
+                <div class="shiny-chat-page-toolbar">
+                  <div class="shiny-chat-page-toolbar-scoped"></div>
+                  <div class="shiny-chat-page-toolbar-global"></div>
+                </div>
               </div>
             </div>
           </header>

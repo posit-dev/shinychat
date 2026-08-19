@@ -81,6 +81,7 @@ app_ui = page_chat(
     "Research assistant",
     id="chat",
     toolbar=ui.input_action_button("clear_chat", "Clear conversation"),
+    toolbar_global=ui.input_action_button("help", "Help"),
     sidebar=chat_sidebar(
         ui.p("Recent conversations"),
         history=False,
@@ -146,10 +147,14 @@ its own `chat_sidebar()`. `chat_ui_history("chat")` is available when an
 advanced layout needs a history view bound to a specific chat ID outside a
 `page_chat()` sidebar.
 
-By default, a navigation page has no toolbar. Set `toolbar=True` to move the
-same home toolbar into that page, preserving its input and output state. Supply
-an HTML child for `toolbar` to use a page-specific toolbar instead. `None` is
-not a toolbar value.
+`toolbar` is scoped to the home page. A navigation page defaults to
+`toolbar=None`, which omits the scoped segment. Supply an HTML child for
+`toolbar` to replace that scoped segment, or use `toolbar=True` to retain the
+legacy behavior of moving the home toolbar into that page. `toolbar=False`
+remains a legacy alias for no scoped toolbar. Use `toolbar_global` for actions
+that must remain mounted and visible across every selected page; it is rendered
+after the page-scoped segment and keeps its input and output state when the
+controls move between desktop and mobile layouts.
 
 The artifact starts closed unless `chat_artifact(open=True)` is used. From the
 server, `chat.artifact.show()`, `.update()`, `.hide()`, and `.toggle()` change
@@ -172,6 +177,7 @@ page_chat(
     "Research assistant",
     id="chat",
     toolbar=ui.input_action_button("clear_chat", "Clear conversation"),
+    toolbar_global=ui.input_action_button("help", "Help"),
     sidebar=chat_sidebar(history=False),
     pages=[
         chat_nav_panel(

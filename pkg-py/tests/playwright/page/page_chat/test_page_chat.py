@@ -31,12 +31,15 @@ def test_desktop_navigation_streaming_and_history_auto_open(
     sidebar = shell.locator(".shiny-chat-page-sidebar")
     toggle = shell.locator(".shiny-chat-page-sidebar-toggle")
     toolbar_input = page.locator("#toolbar_value")
+    toolbar_global_input = page.locator("#toolbar_global_value")
 
     expect(shell).to_have_attribute("data-active-page", "home")
     expect(sidebar).to_be_hidden()
     expect(toggle).to_have_attribute("aria-expanded", "false")
     expect(toolbar_input).to_have_count(1)
+    expect(toolbar_global_input).to_have_count(1)
     toolbar_input.fill("preserved toolbar state")
+    toolbar_global_input.fill("preserved global toolbar state")
 
     expect(chat.loc_input).to_be_visible(timeout=TIMEOUT)
     chat.set_user_input("stream while hidden")
@@ -66,7 +69,9 @@ def test_desktop_navigation_streaming_and_history_auto_open(
     expect(chat.loc).to_be_visible()
     chat.expect_user_input("preserved draft")
     expect(toolbar_input).to_have_value("preserved toolbar state")
+    expect(toolbar_global_input).to_have_value("preserved global toolbar state")
     expect(toolbar_input).to_have_count(1)
+    expect(toolbar_global_input).to_have_count(1)
 
     # The first empty history snapshot decides auto-open once. Saving the new
     # conversation later must not override that decision.
@@ -248,17 +253,22 @@ def test_page_toolbars_move_without_duplicate_controls(
     toolbar_sources = shell.locator(".shiny-chat-page-toolbar-sources")
     home_input = page.locator("#toolbar_value")
     settings_input = page.locator("#settings_toolbar_value")
+    global_input = page.locator("#toolbar_global_value")
 
     expect(toolbar.locator("#toolbar_value")).to_have_count(1)
+    expect(toolbar.locator("#toolbar_global_value")).to_have_count(1)
     expect(toolbar.locator(".shiny-chat-page-toolbar-content")).to_have_count(1)
     expect(toolbar_sources).to_be_hidden()
     expect(page.locator("#toolbar_value")).to_have_count(1)
     expect(page.locator("#settings_toolbar_value")).to_have_count(1)
+    expect(page.locator("#toolbar_global_value")).to_have_count(1)
     home_input.fill("home toolbar state")
+    global_input.fill("global toolbar state")
 
     shell.get_by_role("button", name="History", exact=True).click()
     expect(shell).to_have_attribute("data-active-page", "history")
     expect(toolbar.locator("#toolbar_value")).to_have_count(1)
+    expect(toolbar.locator("#toolbar_global_value")).to_have_count(1)
     expect(toolbar.locator(".shiny-chat-page-toolbar-content")).to_have_count(1)
     expect(page.locator("#toolbar_value")).to_have_count(1)
     expect(home_input).to_have_value("home toolbar state")
@@ -267,23 +277,28 @@ def test_page_toolbars_move_without_duplicate_controls(
     expect(shell).to_have_attribute("data-active-page", "settings")
     expect(toolbar.locator("#settings_toolbar_value")).to_have_count(1)
     expect(toolbar.locator("#toolbar_value")).to_have_count(0)
+    expect(toolbar.locator("#toolbar_global_value")).to_have_count(1)
     expect(toolbar.locator(".shiny-chat-page-toolbar-content")).to_have_count(1)
     expect(home_input).to_have_count(1)
     expect(settings_input).to_have_count(1)
+    expect(global_input).to_have_value("global toolbar state")
     settings_input.fill("settings toolbar state")
 
     shell.get_by_role("button", name="About").click()
     expect(shell).to_have_attribute("data-active-page", "about")
-    expect(toolbar.locator("input")).to_have_count(0)
+    expect(toolbar.locator("input")).to_have_count(1)
     expect(toolbar.locator(".shiny-chat-page-toolbar-content")).to_have_count(0)
+    expect(toolbar.locator("#toolbar_global_value")).to_have_count(1)
     expect(home_input).to_have_count(1)
     expect(settings_input).to_have_count(1)
 
     shell.get_by_role("button", name="Return to chat").click()
     expect(toolbar.locator("#toolbar_value")).to_have_count(1)
+    expect(toolbar.locator("#toolbar_global_value")).to_have_count(1)
     expect(toolbar.locator(".shiny-chat-page-toolbar-content")).to_have_count(1)
     expect(home_input).to_have_value("home toolbar state")
     expect(settings_input).to_have_value("settings toolbar state")
+    expect(global_input).to_have_value("global toolbar state")
     expect(shell.locator(".shiny-chat-page-toolbar-content")).to_have_count(2)
 
     page.set_viewport_size({"width": 390, "height": 760})
@@ -293,7 +308,14 @@ def test_page_toolbars_move_without_duplicate_controls(
             ".shiny-chat-page-toolbar #toolbar_value"
         )
     ).to_have_count(1)
+    expect(
+        shell.locator(
+            ".shiny-chat-page-controls-mount-mobile "
+            ".shiny-chat-page-toolbar #toolbar_global_value"
+        )
+    ).to_have_count(1)
     expect(toolbar.locator(".shiny-chat-page-toolbar-content")).to_have_count(1)
+    expect(global_input).to_have_value("global toolbar state")
     toggle = shell.locator(".shiny-chat-page-sidebar-toggle")
     toggle.click()
     shell.get_by_role("button", name="Settings").click()
@@ -303,8 +325,10 @@ def test_page_toolbars_move_without_duplicate_controls(
             ".shiny-chat-page-toolbar #settings_toolbar_value"
         )
     ).to_have_count(1)
+    expect(toolbar.locator("#toolbar_global_value")).to_have_count(1)
     expect(toolbar.locator(".shiny-chat-page-toolbar-content")).to_have_count(1)
     expect(settings_input).to_have_value("settings toolbar state")
+    expect(global_input).to_have_value("global toolbar state")
     expect(page.locator("#settings_toolbar_value")).to_have_count(1)
 
 

@@ -31,6 +31,7 @@ def page_chat(
     id: str = "chat",
     pages: Sequence[ChatNavPanel] | None = None,
     toolbar: TagChild | None = None,
+    toolbar_global: TagChild | None = None,
     sidebar: bool | ChatSidebar = True,
     artifact: bool | ChatArtifact = True,
     window_title: str | None = None,
@@ -56,7 +57,7 @@ def page_chat(
     internally and owns the complete top-level page layout. Do not also call
     ``chat.ui()``, add unrelated top-level UI, wrap the returned chat root, or
     assign it to a variable. Compose additional UI through ``pages``,
-    ``toolbar``, ``sidebar``, and ``artifact``.
+    ``toolbar``, ``toolbar_global``, ``sidebar``, and ``artifact``.
 
     Parameters
     ----------
@@ -71,7 +72,12 @@ def page_chat(
     pages
         Secondary pages created with :func:`~shinychat.chat_nav_panel`.
     toolbar
-        Optional HTML child displayed with the navigation controls.
+        Optional home-page-scoped HTML child displayed with the navigation
+        controls. A page's ``chat_nav_panel(toolbar=)`` can replace this
+        segment.
+    toolbar_global
+        Optional persistent HTML child displayed after the page-scoped toolbar
+        in the navigation controls.
     sidebar
         Home-page sidebar. ``True`` uses the default conversation-history
         sidebar, ``False`` removes it, and a
@@ -170,6 +176,7 @@ def page_chat(
             id=id,
             pages=pages,
             toolbar=toolbar,
+            toolbar_global=toolbar_global,
             sidebar=sidebar,
             window_title=page_options["window_title"],
             lang=page_options["lang"],

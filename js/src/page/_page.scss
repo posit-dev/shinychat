@@ -121,22 +121,34 @@ shiny-chat-page {
 }
 
 .shiny-chat-page-toolbar {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   min-width: 0;
   gap: 0.375rem;
-  justify-content: flex-start;
+  justify-content: flex-end;
+}
+
+.shiny-chat-page-toolbar-scoped,
+.shiny-chat-page-toolbar-global {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  gap: 0.375rem;
 }
 
 .shiny-chat-page-toolbar-content {
   display: contents;
 }
 
-.shiny-chat-page-toolbar > .shiny-chat-page-toolbar-content > * {
+.shiny-chat-page-toolbar > .shiny-chat-page-toolbar-scoped > .shiny-chat-page-toolbar-content > *,
+.shiny-chat-page-toolbar > .shiny-chat-page-toolbar-global > * {
   min-width: 0;
   max-width: 100%;
+  flex: 0 1 auto;
 }
 
-.shiny-chat-page-toolbar > .shiny-chat-page-toolbar-content > .bslib-toolbar {
+.shiny-chat-page-toolbar > .shiny-chat-page-toolbar-scoped > .shiny-chat-page-toolbar-content > .bslib-toolbar,
+.shiny-chat-page-toolbar > .shiny-chat-page-toolbar-global > .bslib-toolbar {
   justify-content: flex-start;
 }
 
@@ -286,7 +298,8 @@ shiny-chat-resize-handle.shiny-chat-page-sidebar-resizer[data-boundary-activatio
   }
 
   .shiny-chat-page-toolbar,
-  .shiny-chat-page-toolbar > .shiny-chat-page-toolbar-content > .bslib-toolbar {
+  .shiny-chat-page-toolbar > .shiny-chat-page-toolbar-scoped > .shiny-chat-page-toolbar-content > .bslib-toolbar,
+  .shiny-chat-page-toolbar > .shiny-chat-page-toolbar-global > .bslib-toolbar {
     flex-wrap: nowrap;
   }
 
@@ -459,12 +472,16 @@ shiny-chat-resize-handle.shiny-chat-page-sidebar-resizer[data-boundary-activatio
 
   .shiny-chat-page-controls-mount-mobile .shiny-chat-page-controls,
   .shiny-chat-page-controls-mount-mobile .shiny-chat-page-nav,
-  .shiny-chat-page-controls-mount-mobile .shiny-chat-page-toolbar {
+  .shiny-chat-page-controls-mount-mobile .shiny-chat-page-toolbar,
+  .shiny-chat-page-controls-mount-mobile .shiny-chat-page-toolbar-scoped,
+  .shiny-chat-page-controls-mount-mobile .shiny-chat-page-toolbar-global {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .shiny-chat-page-controls-mount-mobile .shiny-chat-page-toolbar-content > * {
+  .shiny-chat-page-controls-mount-mobile .shiny-chat-page-toolbar-content > *,
+  .shiny-chat-page-controls-mount-mobile .shiny-chat-page-toolbar-global > * {
+    flex: 0 0 auto;
     width: 100%;
   }
 

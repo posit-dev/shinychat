@@ -11,6 +11,7 @@ page_chat(
   id = "chat",
   pages = NULL,
   toolbar = NULL,
+  toolbar_global = NULL,
   sidebar = TRUE,
   messages = NULL,
   greeting = NULL,
@@ -39,7 +40,11 @@ those arguments are rejected.}
 
 \item{pages}{\code{NULL} or a list of \code{\link[=chat_nav_panel]{chat_nav_panel()}} configurations.}
 
-\item{toolbar}{Optional UI displayed with the page navigation controls.}
+\item{toolbar}{Optional home-page-scoped UI displayed with the navigation
+controls. A panel's \code{chat_nav_panel(toolbar = )} can replace this segment.}
+
+\item{toolbar_global}{Optional persistent UI displayed after the page-scoped
+toolbar in the navigation controls.}
 
 \item{sidebar}{Whether to use the default history sidebar (\code{TRUE}), omit the
 default sidebar (\code{FALSE}), or use a \code{\link[=chat_sidebar]{chat_sidebar()}} configuration.}
@@ -92,8 +97,9 @@ sidebar. Do not wrap \code{page_chat()} in another page container or pass
 Add \code{\link[=chat_nav_panel]{chat_nav_panel()}} configurations to \code{pages} for secondary views.
 Each panel can use the default sidebar, no page-specific sidebar, or its
 own \code{\link[=chat_sidebar]{chat_sidebar()}} configuration. The \code{sidebar} argument configures the
-home view; \code{toolbar} is rendered with the page navigation controls and
-follows them into the mobile app menu.
+home view; \code{toolbar} is a home-page-scoped segment rendered with the page
+navigation controls and follows them into the mobile app menu.
+\code{toolbar_global} is a persistent segment that remains mounted on every page.
 
 Set \code{artifact} to a \code{\link[=chat_artifact]{chat_artifact()}} configuration to provide initial
 content and layout options. Update the mounted artifact from the server
@@ -125,6 +131,7 @@ ui <- page_chat(
   "Assistant",
   messages = "Welcome! Ask a question to get started.",
   toolbar = actionButton("show_preview", "Show preview"),
+  toolbar_global = actionButton("help", "Help"),
   sidebar = chat_sidebar(
     tags$p("Home tools"),
     history = FALSE,

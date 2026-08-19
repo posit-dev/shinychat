@@ -101,7 +101,7 @@ class ChatPageElement extends HTMLElement {
   private identity: HTMLButtonElement | null = null
   private identityReturnLabel = "Return to chat"
   private controls: HTMLElement | null = null
-  private toolbar: HTMLElement | null = null
+  private toolbarScoped: HTMLElement | null = null
   private toolbarSources = new Map<string, HTMLElement>()
   private activeToolbarSource: HTMLElement | null = null
   private desktopMount: HTMLElement | null = null
@@ -200,8 +200,8 @@ class ChatPageElement extends HTMLElement {
     }
 
     this.controls = controls[0]!
-    this.toolbar = this.controls.querySelector<HTMLElement>(
-      ".shiny-chat-page-toolbar",
+    this.toolbarScoped = this.controls.querySelector<HTMLElement>(
+      ".shiny-chat-page-toolbar-scoped",
     )
     this.desktopMount = desktopMounts[0]!
     this.mobileMount = mobileMounts[0]!
@@ -451,16 +451,16 @@ class ChatPageElement extends HTMLElement {
   }
 
   private syncToolbar(selected: HTMLElement) {
-    if (!this.toolbar || this.toolbarSources.size === 0) return
+    if (!this.toolbarScoped || this.toolbarSources.size === 0) return
 
     const key = selected.dataset.pageToolbarSource?.trim()
     const desired = key ? this.toolbarSources.get(key) : undefined
     if (desired === this.activeToolbarSource) return
 
     if (this.activeToolbarSource) {
-      this.activeToolbarSource.append(...this.toolbar.childNodes)
+      this.activeToolbarSource.append(...this.toolbarScoped.childNodes)
     } else {
-      this.toolbar.replaceChildren()
+      this.toolbarScoped.replaceChildren()
     }
     this.activeToolbarSource = null
 
@@ -470,7 +470,7 @@ class ChatPageElement extends HTMLElement {
     )
     if (!content) return
 
-    this.toolbar.append(content)
+    this.toolbarScoped.append(content)
     this.activeToolbarSource = desired
   }
 

@@ -119,6 +119,11 @@ def app_ui(request: object) -> ui.Tag:
             "Toolbar value",
             value="toolbar initial",
         ),
+        toolbar_global=ui.input_text(
+            "toolbar_global_value",
+            "Global toolbar value",
+            value="global toolbar initial",
+        ),
         sidebar=True,
         artifact=False,
         greeting="Start a conversation.",

@@ -81,8 +81,10 @@ chat_artifact <- function(
 #' @param icon An optional icon to display with the title.
 #' @param sidebar Whether to use the default sidebar (`TRUE`), no
 #'   page-specific sidebar (`FALSE`), or a [chat_sidebar()] configuration.
-#' @param toolbar `FALSE` (the default) for no toolbar, `TRUE` to reuse the
-#'   `page_chat()` toolbar, or UI content for a page-specific toolbar.
+#' @param toolbar `NULL` (the default) for no page-scoped toolbar, or UI
+#'   content for a page-specific toolbar. For backward compatibility, `TRUE`
+#'   reuses the home `page_chat()` toolbar and `FALSE` omits the page-scoped
+#'   toolbar.
 #' @param content_width Maximum panel-content width. Content is centered and
 #'   receives responsive inline padding. Use exactly `"100%"`, `"100vw"`, or
 #'   `"100dvw"` for full-bleed content without component-provided padding.
@@ -95,7 +97,7 @@ chat_nav_panel <- function(
   value = NULL,
   icon = NULL,
   sidebar = FALSE,
-  toolbar = FALSE,
+  toolbar = NULL,
   content_width = "min(680px, 100%)"
 ) {
   chat_validate_string(title, "title")
@@ -176,8 +178,9 @@ chat_ui_history <- function(id, ...) {
 #' Add [chat_nav_panel()] configurations to `pages` for secondary views.
 #' Each panel can use the default sidebar, no page-specific sidebar, or its
 #' own [chat_sidebar()] configuration. The `sidebar` argument configures the
-#' home view; `toolbar` is rendered with the page navigation controls and
-#' follows them into the mobile app menu.
+#' home view; `toolbar` is a home-page-scoped segment rendered with the page
+#' navigation controls and follows them into the mobile app menu.
+#' `toolbar_global` is a persistent segment that remains mounted on every page.
 #'
 #' Set `artifact` to a [chat_artifact()] configuration to provide initial
 #' content and layout options. Update the mounted artifact from the server
@@ -199,7 +202,10 @@ chat_ui_history <- function(id, ...) {
 #'   those arguments are rejected.
 #' @param id A non-empty string identifying the chat.
 #' @param pages `NULL` or a list of [chat_nav_panel()] configurations.
-#' @param toolbar Optional UI displayed with the page navigation controls.
+#' @param toolbar Optional home-page-scoped UI displayed with the navigation
+#'   controls. A panel's `chat_nav_panel(toolbar = )` can replace this segment.
+#' @param toolbar_global Optional persistent UI displayed after the page-scoped
+#'   toolbar in the navigation controls.
 #' @param sidebar Whether to use the default history sidebar (`TRUE`), omit the
 #'   default sidebar (`FALSE`), or use a [chat_sidebar()] configuration.
 #' @param messages,greeting,placeholder,width,icon_assistant,enable_cancel,allow_attachments,footer,artifact
@@ -227,6 +233,7 @@ chat_ui_history <- function(id, ...) {
 #'   "Assistant",
 #'   messages = "Welcome! Ask a question to get started.",
 #'   toolbar = actionButton("show_preview", "Show preview"),
+#'   toolbar_global = actionButton("help", "Help"),
 #'   sidebar = chat_sidebar(
 #'     tags$p("Home tools"),
 #'     history = FALSE,
@@ -280,6 +287,7 @@ page_chat <- function(
   id = "chat",
   pages = NULL,
   toolbar = NULL,
+  toolbar_global = NULL,
   sidebar = TRUE,
   messages = NULL,
   greeting = NULL,
@@ -324,6 +332,7 @@ page_chat <- function(
   }
   chat_validate_page_ui(icon, "icon")
   chat_validate_page_ui(toolbar, "toolbar")
+  chat_validate_page_ui(toolbar_global, "toolbar_global")
   chat_validate_sidebar(sidebar)
   if (inherits(sidebar, "chat_sidebar")) {
     sidebar <- normalize_chat_sidebar_config(sidebar)
@@ -369,7 +378,12 @@ page_chat <- function(
       lapply(normalized$pages, page_chat_nav_control)
     ),
     htmltools::tags$div(
-      class = "shiny-chat-page-toolbar"
+      class = "shiny-chat-page-toolbar",
+      htmltools::tags$div(class = "shiny-chat-page-toolbar-scoped"),
+      htmltools::tags$div(
+        class = "shiny-chat-page-toolbar-global",
+        toolbar_global
+      )
     )
   )
   toolbar_sources <- htmltools::tags$div(
@@ -694,7 +708,7 @@ normalize_page_sidebars <- function(pages, sidebar, resolved_id) {
       toolbar = page$toolbar,
       toolbar_key = if (isTRUE(page$toolbar)) {
         "home"
-      } else if (isFALSE(page$toolbar)) {
+      } else if (isFALSE(page$toolbar) || is.null(page$toolbar)) {
         NULL
       } else {
         paste0("page-", i)
@@ -846,9 +860,7 @@ chat_validate_page_ui <- function(value, arg, allow_null = TRUE) {
 
 chat_validate_panel_toolbar <- function(value) {
   if (is.null(value)) {
-    cli::cli_abort(
-      "{.arg toolbar} must be {.code TRUE}, {.code FALSE}, or text or UI content; {.code NULL} is not allowed."
-    )
+    return(invisible())
   }
   if (is.logical(value)) {
     chat_validate_boolean(value, "toolbar")

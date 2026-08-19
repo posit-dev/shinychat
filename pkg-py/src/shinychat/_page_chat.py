@@ -62,7 +62,7 @@ class ChatNavPanel:
     value: str | None
     icon: TagChild | None
     sidebar: bool | ChatSidebar
-    toolbar: bool | TagChild
+    toolbar: bool | TagChild | None
     content_width: str
 
 
@@ -246,7 +246,7 @@ def chat_nav_panel(
     value: str | None = None,
     icon: TagChild | None = None,
     sidebar: bool | ChatSidebar = False,
-    toolbar: bool | TagChild = False,
+    toolbar: bool | TagChild | None = None,
     content_width: "CssUnit" = "min(680px, 100%)",
 ) -> ChatNavPanel:
     """
@@ -272,9 +272,11 @@ def chat_nav_panel(
         :class:`~shinychat.ChatSidebar` supplies a page-specific sidebar. Raw
         :class:`shiny.ui.Sidebar` objects are not supported.
     toolbar
-        Toolbar for this page. ``False`` (the default) shows no toolbar,
-        ``True`` reuses the home :func:`~shinychat.page_chat` toolbar, and an
-        HTML child supplies a page-specific toolbar. ``None`` is not allowed.
+        Toolbar for this page. ``None`` (the default) shows no page-scoped
+        toolbar. An HTML child supplies a page-specific toolbar. ``True`` and
+        ``False`` are legacy aliases for reusing the home
+        :func:`~shinychat.page_chat` toolbar and showing no page-scoped
+        toolbar, respectively.
     content_width
         Maximum width for the panel content. Content is centered and receives
         responsive inline padding. ``"100%"``, ``"100vw"``, and ``"100dvw"``
@@ -440,9 +442,7 @@ def _validate_page_child(
 
 def _validate_panel_toolbar(value: object) -> None:
     if value is None:
-        raise TypeError(
-            "`toolbar` must be False, True, or an HTML child; None is not allowed."
-        )
+        return
     if isinstance(value, bool):
         return
     _validate_page_child(cast(TagChild, value), "toolbar")
@@ -550,7 +550,7 @@ def _normalize_page_config(
             "home"
             if panel.toolbar is True
             else f"page-{index + 1}"
-            if panel.toolbar is not False
+            if panel.toolbar is not False and panel.toolbar is not None
             else None
         )
         normalized_pages.append(
@@ -689,6 +689,7 @@ def page_chat(
     id: str = "chat",
     pages: Sequence[ChatNavPanel] | None = None,
     toolbar: TagChild | None = None,
+    toolbar_global: TagChild | None = None,
     sidebar: bool | ChatSidebar = True,
     artifact: bool | ChatArtifact = True,
     window_title: str | None = None,
@@ -726,7 +727,13 @@ def page_chat(
     pages
         Secondary pages created with :func:`~shinychat.chat_nav_panel`.
     toolbar
-        Optional HTML child displayed with the navigation controls.
+        Optional home-page-scoped HTML child displayed with the navigation
+        controls. A page's ``chat_nav_panel(toolbar=)`` can replace this
+        segment.
+    toolbar_global
+        Optional persistent HTML child displayed after the page-scoped toolbar
+        in the navigation controls. It remains mounted while pages are
+        selected and while controls move between desktop and mobile layouts.
     sidebar
         Home-page sidebar. ``True`` uses the default conversation-history
         sidebar, ``False`` removes it, and a
@@ -822,6 +829,7 @@ def page_chat(
         id=id,
         pages=pages,
         toolbar=toolbar,
+        toolbar_global=toolbar_global,
         sidebar=sidebar,
         window_title=window_title,
         lang=lang,
@@ -837,6 +845,7 @@ def _render_page_chat(
     id: str = "chat",
     pages: Sequence[ChatNavPanel] | None = None,
     toolbar: TagChild | None = None,
+    toolbar_global: TagChild | None = None,
     sidebar: bool | ChatSidebar = True,
     window_title: str | None = None,
     lang: str | None = None,
@@ -854,6 +863,7 @@ def _render_page_chat(
         raise ValueError("`title` must not be an empty string.")
     _validate_page_child(icon, "icon", allow_none=True)
     _validate_page_child(toolbar, "toolbar", allow_none=True)
+    _validate_page_child(toolbar_global, "toolbar_global", allow_none=True)
     if window_title is not None and not isinstance(window_title, str):
         raise TypeError(
             "`window_title` must be a string or None, "
@@ -918,6 +928,12 @@ def _render_page_chat(
         ),
         Tag(
             "div",
+            Tag("div", class_="shiny-chat-page-toolbar-scoped"),
+            Tag(
+                "div",
+                toolbar_global,
+                class_="shiny-chat-page-toolbar-global",
+            ),
             class_="shiny-chat-page-toolbar",
         ),
         class_="shiny-chat-page-controls",

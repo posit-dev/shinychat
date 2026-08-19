@@ -180,7 +180,12 @@ function pageFixture({
                 : ""
             }
           </nav>
-          <div class="shiny-chat-page-toolbar"></div>
+          <div class="shiny-chat-page-toolbar">
+            <div class="shiny-chat-page-toolbar-scoped"></div>
+            <div class="shiny-chat-page-toolbar-global">
+              <input id="global-toolbar-input" value="global initial">
+            </div>
+          </div>
         </div>
       </div>
     </header>
@@ -472,13 +477,18 @@ describe("shiny-chat-page navigation", () => {
     const customInput = page.querySelector<HTMLInputElement>(
       "#custom-toolbar-input",
     )!
+    const globalInput = page.querySelector<HTMLInputElement>(
+      "#global-toolbar-input",
+    )!
     const toolbarSources = page.querySelector<HTMLElement>(
       ".shiny-chat-page-toolbar-sources",
     )!
 
     homeInput.value = "home state"
+    globalInput.value = "global state"
     navButtons[0]!.click()
     expect(toolbar.querySelector("#shiny-toolbar-input")).toBe(homeInput)
+    expect(toolbar.querySelector("#global-toolbar-input")).toBe(globalInput)
     expect(page.querySelectorAll("#shiny-toolbar-input")).toHaveLength(1)
     expect(toolbarSources.hidden).toBe(true)
     expect(
@@ -491,15 +501,18 @@ describe("shiny-chat-page navigation", () => {
 
     navButtons[1]!.click()
     expect(toolbar.querySelector("#custom-toolbar-input")).toBe(customInput)
+    expect(toolbar.querySelector("#global-toolbar-input")).toBe(globalInput)
     expect(page.querySelectorAll("#custom-toolbar-input")).toHaveLength(1)
     expect(page.querySelector("#shiny-toolbar-input")).toBe(homeInput)
     customInput.value = "custom state"
 
     identity!.click()
     expect(toolbar.querySelector("#shiny-toolbar-input")).toBe(homeInput)
+    expect(toolbar.querySelector("#global-toolbar-input")).toBe(globalInput)
     expect(homeInput.value).toBe("home state")
     expect(page.querySelector("#custom-toolbar-input")).toBe(customInput)
     expect(customInput.value).toBe("custom state")
+    expect(globalInput.value).toBe("global state")
     expect(
       page.querySelectorAll(".shiny-chat-page-toolbar-content"),
     ).toHaveLength(2)
@@ -590,7 +603,11 @@ describe("shiny-chat-page responsive controls", () => {
     const shinyInput = page.querySelector<HTMLInputElement>(
       "#shiny-toolbar-input",
     )!
+    const globalInput = page.querySelector<HTMLInputElement>(
+      "#global-toolbar-input",
+    )!
     shinyInput.value = "live Shiny state"
+    globalInput.value = "live global state"
 
     expect(window.matchMedia).toHaveBeenCalledWith(PAGE_MOBILE_MEDIA_QUERY)
     expect(controls.parentElement).toBe(desktopMount)
@@ -605,6 +622,8 @@ describe("shiny-chat-page responsive controls", () => {
     expect(controls.parentElement).toBe(mobileMount)
     expect(page.querySelector("#shiny-toolbar-input")).toBe(shinyInput)
     expect(shinyInput.value).toBe("live Shiny state")
+    expect(page.querySelector("#global-toolbar-input")).toBe(globalInput)
+    expect(globalInput.value).toBe("live global state")
     expect(
       page.querySelectorAll(
         ".shiny-chat-page-toolbar:not(.shiny-chat-page-toolbar-sources) #shiny-toolbar-input",
@@ -619,6 +638,7 @@ describe("shiny-chat-page responsive controls", () => {
 
     expect(controls.parentElement).toBe(desktopMount)
     expect(page.querySelector("#shiny-toolbar-input")).toBe(shinyInput)
+    expect(page.querySelector("#global-toolbar-input")).toBe(globalInput)
     expect(page.querySelectorAll(".shiny-chat-page-controls")).toHaveLength(1)
   })
 
