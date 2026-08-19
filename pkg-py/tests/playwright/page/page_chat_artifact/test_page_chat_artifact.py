@@ -28,6 +28,7 @@ def test_percentage_artifact_keeps_desktop_chat_width(
     layout = chat.loc.locator(".shiny-chat-layout")
     wrapper = chat.loc.locator(".shiny-chat-wrapper")
     expect(panel).to_be_visible(timeout=TIMEOUT)
+    page.wait_for_timeout(220)
 
     layout_box = layout.bounding_box()
     panel_box = panel.bounding_box()
@@ -47,7 +48,8 @@ def test_percentage_artifact_keeps_desktop_chat_width(
     )
     assert isinstance(grid_tracks, list)
     assert len(grid_tracks) == 2
-    assert wrapper_box["width"] == pytest.approx(grid_tracks[0], abs=1)
+    assert grid_tracks[0] >= 360
+    assert wrapper_box["width"] <= grid_tracks[0] + 1
     assert panel_box["width"] == pytest.approx(grid_tracks[1], abs=1)
 
     separator = page.get_by_role("separator", name="Resize artifact panel")
@@ -139,7 +141,7 @@ def test_artifact_motion_retains_close_panel_and_suppresses_resize(
     layout = chat.loc.locator(".shiny-chat-layout")
     panel = chat.loc.locator(".shiny-chat-artifact")
 
-    assert "grid-template-columns" in layout.evaluate(
+    assert "--shiny-chat-artifact-layout-width" in layout.evaluate(
         "(element) => getComputedStyle(element).transitionProperty"
     )
     page.locator("#show_artifact").click()
@@ -150,16 +152,44 @@ def test_artifact_motion_retains_close_panel_and_suppresses_resize(
     separator.dispatch_event("resize-start")
     expect(layout).to_have_attribute("data-artifact-resizing", "")
     expect(layout).to_have_css("transition-duration", "0s")
-    separator.dispatch_event("resize-end")
-    expect(layout).not_to_have_attribute("data-artifact-resizing", "")
 
     panel.get_by_role("button", name="Close artifact").click()
     expect(panel).to_have_attribute("data-motion", "closing")
+    expect(layout).not_to_have_attribute("data-artifact-resizing", "")
     expect(panel).to_have_attribute("aria-hidden", "true")
     assert panel.evaluate("(element) => element.hidden") is False
     expect(layout).to_have_attribute("data-artifact-open", "")
     expect(panel).to_be_hidden(timeout=TIMEOUT)
     expect(layout).not_to_have_attribute("data-artifact-open", "")
+
+
+def test_artifact_layout_track_interpolates_during_desktop_reveal(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    chat, _ = open_page(page, local_app)
+    layout = chat.loc.locator(".shiny-chat-layout")
+    panel = chat.loc.locator(".shiny-chat-artifact")
+
+    page.locator("#show_artifact").click()
+    expect(layout).to_have_attribute("data-artifact-open", "")
+    expect(panel).to_be_visible()
+    page.wait_for_timeout(70)
+    intermediate_track = layout.evaluate(
+        """(element) =>
+          Number.parseFloat(
+            getComputedStyle(element).gridTemplateColumns.split(" ")[1]
+          )"""
+    )
+    page.wait_for_timeout(220)
+    final_track = layout.evaluate(
+        """(element) =>
+          Number.parseFloat(
+            getComputedStyle(element).gridTemplateColumns.split(" ")[1]
+          )"""
+    )
+
+    assert intermediate_track > 0
+    assert intermediate_track < final_track
 
 
 def test_artifact_motion_respects_reduced_motion_and_takeover(

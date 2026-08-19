@@ -1,13 +1,31 @@
+@property --shiny-chat-artifact-layout-width {
+  syntax: "<length-percentage>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --shiny-chat-artifact-layout-gap {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
 .shiny-chat-layout {
+  --shiny-chat-artifact-layout-width: 0px;
+  --shiny-chat-artifact-layout-gap: 0px;
+
   min-width: 0;
   min-height: 0;
   width: 100%;
   height: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(0, var(--shiny-chat-artifact-layout-width));
+  column-gap: var(--shiny-chat-artifact-layout-gap);
   transition:
-    grid-template-columns 180ms cubic-bezier(0.16, 1, 0.3, 1),
-    column-gap 180ms cubic-bezier(0.16, 1, 0.3, 1);
+    --shiny-chat-artifact-layout-width 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    --shiny-chat-artifact-layout-gap 180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .shiny-chat-artifact-trigger {
@@ -62,11 +80,9 @@ shiny-chat-container[data-history-placement="right"] {
 }
 
 .shiny-chat-layout[data-artifact-open] {
-  grid-template-columns:
-    minmax(0, min(680px, 100%))
-    minmax(15rem, var(--shiny-chat-artifact-width, 400px));
-  justify-content: end;
-  column-gap: clamp(0.75rem, 1.5cqi, 1.5rem);
+  --shiny-chat-artifact-layout-width: var(--shiny-chat-artifact-width, 400px);
+  --shiny-chat-artifact-layout-gap: clamp(0.75rem, 1.5cqi, 1.5rem);
+
   align-items: stretch;
 
   .shiny-chat-wrapper {
@@ -193,6 +209,7 @@ shiny-chat-container[data-history-placement="right"] {
 @container shiny-chat (max-width: 1119.99px) {
   .shiny-chat-layout[data-artifact-open] {
     display: block;
+    column-gap: 0;
 
     .shiny-chat-wrapper {
       display: none;

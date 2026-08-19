@@ -341,6 +341,26 @@ def test_desktop_sidebar_motion_keeps_close_semantics_and_suppresses_resize(
     expect(sidebar).to_be_hidden(timeout=TIMEOUT)
 
 
+def test_non_resizable_sidebar_uses_bounded_desktop_grid_track(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    _, shell = open_page(page, local_app, viewport=(1000, 800))
+    sidebar = shell.locator(".shiny-chat-page-sidebar")
+    main = shell.locator(".shiny-chat-page-main")
+
+    shell.get_by_role("button", name="Pinned").click()
+    expect(sidebar).to_be_visible()
+    expect(shell.get_by_role("separator", name="Resize sidebar")).to_be_hidden()
+
+    sidebar_box = sidebar.bounding_box()
+    main_box = main.bounding_box()
+    assert sidebar_box is not None
+    assert main_box is not None
+    assert sidebar_box["width"] <= 640
+    assert main_box["width"] >= 360
+
+
 def test_reduced_motion_disables_mobile_sidebar_transition(
     page: Page,
     local_app: ShinyAppProc,

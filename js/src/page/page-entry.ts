@@ -697,6 +697,10 @@ class ChatPageElement extends HTMLElement {
         maximum,
       ),
     )
+    this.style.setProperty(
+      "--shiny-chat-page-sidebar-rendered-width",
+      `${width}px`,
+    )
     this.resizeHandle.configure({
       value: width,
       min: MIN_SIDEBAR_WIDTH,
@@ -709,11 +713,6 @@ class ChatPageElement extends HTMLElement {
     if (!enabled) {
       return
     }
-
-    this.style.setProperty(
-      "--shiny-chat-page-sidebar-rendered-width",
-      `${width}px`,
-    )
   }
 
   private currentSidebarWidth() {

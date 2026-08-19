@@ -1003,6 +1003,21 @@ describe("shiny-chat-page sidebar resizing", () => {
     expect(resizer).toHaveAttribute("aria-valuemax", "440")
   })
 
+  it("bounds the rendered grid track for a non-resizable sidebar", () => {
+    const page = pageFixture({
+      homeWidth: "900px",
+      homeResizable: false,
+      layoutWidth: 1000,
+    })
+    const { resizer } = getPageElements(page)
+
+    expect(
+      page.style.getPropertyValue("--shiny-chat-page-sidebar-rendered-width"),
+    ).toBe("640px")
+    expect(resizer!.hidden).toBe(true)
+    expect(resizer).toHaveAttribute("aria-valuemax", "640")
+  })
+
   it("resizes by pointer and clamps to sidebar and main-area minimums", () => {
     const page = pageFixture({ layoutWidth: 1000 })
     const { resizer } = getPageElements(page)

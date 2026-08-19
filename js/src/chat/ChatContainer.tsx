@@ -602,6 +602,8 @@ export const ChatContainer = forwardRef<
 
   const artifactHasContent = artifact.content.trim().length > 0
   const artifactTakeoverActive = artifactTakeover && artifactPresented
+  const artifactLayoutOpen =
+    artifact.enabled && (artifact.visible || artifactPresented)
 
   return (
     <SlashCommandsContext.Provider value={slashCommands}>
@@ -647,9 +649,7 @@ export const ChatContainer = forwardRef<
               } as React.CSSProperties)
             : undefined
         }
-        data-artifact-open={
-          artifact.enabled && artifactPresented ? "" : undefined
-        }
+        data-artifact-open={artifactLayoutOpen ? "" : undefined}
         data-artifact-takeover={
           artifactTakeover && artifactPresented ? "" : undefined
         }

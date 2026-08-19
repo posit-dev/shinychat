@@ -18,6 +18,7 @@ import {
 
 const MIN_ARTIFACT_WIDTH = 240
 const MIN_CHAT_WIDTH = 360
+const ARTIFACT_LAYOUT_TRANSITION_DURATION = 180
 export const ARTIFACT_TAKEOVER_WIDTH = 1120
 
 function clampWidth(width: number, maxWidth: number): number {
@@ -194,6 +195,8 @@ export function ChatArtifact({
   const wasVisibleRef = useRef(artifact.visible)
   const motionFrameRef = useRef<number | null>(null)
   const motionTimerRef = useRef<number | null>(null)
+  const layoutReadyTimerRef = useRef<number | null>(null)
+  const [layoutReady, setLayoutReady] = useState(artifact.visible)
   const [width, setWidth] = useState(() => artifact.width || "400px")
   const [maximumWidth, setMaximumWidth] = useState(840)
   const [renderedWidth, setRenderedWidth] = useState(
@@ -203,6 +206,7 @@ export function ChatArtifact({
   const resizeHandleRef = useRef<ResizeHandleElement>(null)
 
   useLayoutEffect(() => {
+    const wasVisible = wasVisibleRef.current
     if (motionFrameRef.current !== null) {
       window.cancelAnimationFrame(motionFrameRef.current)
       motionFrameRef.current = null
@@ -211,13 +215,28 @@ export function ChatArtifact({
       window.clearTimeout(motionTimerRef.current)
       motionTimerRef.current = null
     }
+    if (
+      layoutReadyTimerRef.current !== null &&
+      (!artifact.visible || !wasVisible)
+    ) {
+      window.clearTimeout(layoutReadyTimerRef.current)
+      layoutReadyTimerRef.current = null
+    }
 
-    const wasVisible = wasVisibleRef.current
     wasVisibleRef.current = artifact.visible
     if (artifact.visible) {
       setPresent(true)
       if (!wasVisible) {
         setMotion("opening")
+        if (prefersReducedMotion || takeover) {
+          setLayoutReady(true)
+        } else {
+          setLayoutReady(false)
+          layoutReadyTimerRef.current = window.setTimeout(() => {
+            layoutReadyTimerRef.current = null
+            setLayoutReady(true)
+          }, ARTIFACT_LAYOUT_TRANSITION_DURATION)
+        }
         motionFrameRef.current = window.requestAnimationFrame(() => {
           motionFrameRef.current = null
           setMotion("open")
@@ -228,6 +247,8 @@ export function ChatArtifact({
       return
     }
 
+    setResizing(false)
+    setLayoutReady(false)
     if (!wasVisible) {
       setPresent(false)
       setMotion("closed")
@@ -245,7 +266,7 @@ export function ChatArtifact({
       motionTimerRef.current = null
       setPresent(false)
       setMotion("closed")
-    }, 180)
+    }, ARTIFACT_LAYOUT_TRANSITION_DURATION)
   }, [artifact.visible, prefersReducedMotion, takeover])
 
   useEffect(() => {
@@ -263,6 +284,9 @@ export function ChatArtifact({
       }
       if (motionTimerRef.current !== null) {
         window.clearTimeout(motionTimerRef.current)
+      }
+      if (layoutReadyTimerRef.current !== null) {
+        window.clearTimeout(layoutReadyTimerRef.current)
       }
     },
     [],
@@ -307,6 +331,7 @@ export function ChatArtifact({
     if (measured <= 0) return
 
     if (configured === undefined) {
+      if (!layoutReady) return
       const bounded = clampWidth(measured, maximum)
       setRenderedWidth(bounded)
       if (bounded !== measured) {
@@ -325,7 +350,14 @@ export function ChatArtifact({
     ) {
       onWidthChange(`${bounded}px`)
     }
-  }, [artifact.visible, artifact.width, takeover, maxWidth, onWidthChange])
+  }, [
+    artifact.visible,
+    artifact.width,
+    layoutReady,
+    takeover,
+    maxWidth,
+    onWidthChange,
+  ])
 
   useLayoutEffect(() => {
     measureAndClampWidth()

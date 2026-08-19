@@ -270,7 +270,10 @@ shiny-chat-resize-handle.shiny-chat-page-sidebar-resizer[data-boundary-activatio
   }
 
   shiny-chat-page[data-sidebar-open] .shiny-chat-page-body {
-    --_page-sidebar-track: var(--_page-sidebar-width);
+    --_page-sidebar-track: var(
+      --shiny-chat-page-sidebar-rendered-width,
+      var(--_page-sidebar-width)
+    );
   }
 
   .shiny-chat-page-header {

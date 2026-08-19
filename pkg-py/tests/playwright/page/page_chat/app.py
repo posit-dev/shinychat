@@ -108,7 +108,9 @@ def app_ui(request: object) -> ui.Tag:
                 value="pinned",
                 sidebar=chat_sidebar(
                     ui.div("Pinned sidebar content", id="pinned_sidebar"),
+                    width=900,
                     open="always",
+                    resizable=False,
                 ),
             ),
         ],

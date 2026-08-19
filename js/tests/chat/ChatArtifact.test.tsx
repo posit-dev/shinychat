@@ -154,6 +154,47 @@ describe("ChatArtifact", () => {
     )
   })
 
+  it("clears resize state when an active artifact starts closing", async () => {
+    const onResizeStateChange = vi.fn()
+    const shiny = lifecycle()
+    const { rerender } = renderArtifact(artifact(), {
+      shiny,
+      onResizeStateChange,
+    })
+    const panel = screen.getByRole("complementary")
+    const separator = screen.getByRole("separator", {
+      name: "Resize artifact panel",
+    })
+
+    fireEvent(
+      separator,
+      new CustomEvent("resize-start", { bubbles: true, composed: true }),
+    )
+    await waitFor(() =>
+      expect(onResizeStateChange).toHaveBeenLastCalledWith(true),
+    )
+    expect(panel).toHaveAttribute("data-artifact-resizing")
+
+    rerender(
+      <ShinyLifecycleContext.Provider value={shiny}>
+        <ChatArtifact
+          artifact={artifact({ visible: false })}
+          titleId="artifact-title"
+          takeover={false}
+          closeButtonRef={createRef<HTMLButtonElement>()}
+          onClose={vi.fn()}
+          onWidthChange={vi.fn()}
+          onResizeStateChange={onResizeStateChange}
+        />
+      </ShinyLifecycleContext.Provider>,
+    )
+
+    await waitFor(() => {
+      expect(panel).not.toHaveAttribute("data-artifact-resizing")
+      expect(onResizeStateChange).toHaveBeenLastCalledWith(false)
+    })
+  })
+
   it("adopts preserved initial DOM content while hidden", async () => {
     const source = document.createElement("shiny-chat-artifact")
     const initialChild = document.createElement("input")
