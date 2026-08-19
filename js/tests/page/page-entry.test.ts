@@ -1069,6 +1069,35 @@ describe("shiny-chat-page sidebar resizing", () => {
     ).toBe("360px")
   })
 
+  it("ignores lifecycle mutations inside a fit-content measurement clone", async () => {
+    const tagName = "shiny-chat-sidebar-measurement-test"
+    if (!customElements.get(tagName)) {
+      customElements.define(
+        tagName,
+        class extends HTMLElement {
+          connectedCallback() {
+            this.append(document.createElement("span"))
+          }
+        },
+      )
+    }
+
+    const page = pageFixture({
+      homeWidth: "fit-content",
+      layoutWidth: 1000,
+    })
+    const panel = page.querySelector<HTMLElement>(
+      ".shiny-chat-page-sidebar-panel:not([hidden])",
+    )!
+    const cloneNode = vi.spyOn(panel, "cloneNode")
+    panel.append(document.createElement(tagName))
+
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(cloneNode).toHaveBeenCalledTimes(1)
+  })
+
   it("keeps the selected sidebar target independent of animated geometry", () => {
     const page = pageFixture({
       homeWidth: "320px",

@@ -359,14 +359,19 @@ class ChatPageElement extends HTMLElement {
     const mutations = new MutationObserver((records) => {
       const hasContentChange = records.some(
         (record) =>
-          record.type === "characterData" ||
-          [...record.addedNodes, ...record.removedNodes].some(
-            (node) =>
-              !(
-                node instanceof HTMLElement &&
-                node.hasAttribute("data-shiny-chat-sidebar-measurement")
-              ),
-          ),
+          !(
+            record.target instanceof Element &&
+            record.target.closest("[data-shiny-chat-sidebar-measurement]") !==
+              null
+          ) &&
+          (record.type === "characterData" ||
+            [...record.addedNodes, ...record.removedNodes].some(
+              (node) =>
+                !(
+                  node instanceof HTMLElement &&
+                  node.hasAttribute("data-shiny-chat-sidebar-measurement")
+                ),
+            )),
       )
       if (hasContentChange) this.updateResizeHandle()
     })
