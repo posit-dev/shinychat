@@ -16,6 +16,7 @@ export interface ResizeHandleOptions {
   label: string
   step?: number
   largeStep?: number
+  boundaryActivation?: boolean
 }
 
 export interface ResizeRequestDetail {
@@ -55,6 +56,7 @@ const DEFAULT_OPTIONS: ResizeHandleOptions = {
   label: "Resize panel",
   step: 10,
   largeStep: 50,
+  boundaryActivation: false,
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -105,6 +107,7 @@ class ShinyChatResizeHandleElement
         startValue: number
       }
     | undefined
+  private lastPointerX: number | undefined
 
   connectedCallback() {
     if (this.listenerAbort) return
@@ -118,6 +121,7 @@ class ShinyChatResizeHandleElement
     this.addEventListener("pointercancel", this.onPointerEnd, signal)
     this.addEventListener("lostpointercapture", this.onPointerEnd, signal)
     this.addEventListener("keydown", this.onKeyDown, signal)
+    document.addEventListener("pointermove", this.onDocumentPointerMove, signal)
   }
 
   disconnectedCallback() {
@@ -149,9 +153,18 @@ class ShinyChatResizeHandleElement
     this.setAttribute("aria-disabled", this.options.disabled ? "true" : "false")
     this.tabIndex = this.options.disabled ? -1 : 0
     this.toggleAttribute("data-disabled", this.options.disabled)
+    this.toggleAttribute(
+      "data-boundary-activation",
+      this.options.boundaryActivation,
+    )
     this.title = this.options.label
 
-    if (this.options.disabled) this.finishPointer()
+    if (this.options.disabled) {
+      this.finishPointer()
+      this.deactivateBoundary()
+    } else if (!this.options.boundaryActivation) {
+      this.deactivateBoundary()
+    }
   }
 
   private readonly onPointerDown = (event: Event) => {
@@ -160,7 +173,10 @@ class ShinyChatResizeHandleElement
       this.options.disabled ||
       this.pointer ||
       pointerEvent.button !== 0 ||
-      pointerEvent.isPrimary === false
+      pointerEvent.isPrimary === false ||
+      (this.options.boundaryActivation &&
+        !this.hasAttribute("data-boundary-armed") &&
+        !isCoarsePointer(pointerEvent))
     ) {
       return
     }
@@ -193,6 +209,42 @@ class ShinyChatResizeHandleElement
       pointer.startValue +
       horizontalDirection * (pointerEvent.clientX - pointer.startX)
     this.request(value, "pointer")
+  }
+
+  private readonly onDocumentPointerMove = (event: Event) => {
+    const pointerEvent = event as PointerEvent
+    if (
+      !this.options.boundaryActivation ||
+      this.options.disabled ||
+      this.pointer ||
+      isCoarsePointer(pointerEvent)
+    ) {
+      return
+    }
+
+    const previousX = this.lastPointerX
+    this.lastPointerX = pointerEvent.clientX
+    const boundary = this.boundary()
+    if (boundary === undefined || previousX === undefined) return
+
+    if (this.hasAttribute("data-boundary-armed")) {
+      const rect = this.getBoundingClientRect()
+      if (
+        pointerEvent.clientX < rect.left ||
+        pointerEvent.clientX > rect.right
+      ) {
+        this.deactivateBoundary()
+      }
+      return
+    }
+
+    const panelIsLeft = this.panelIsLeft()
+    const crossedIntoPanel = panelIsLeft
+      ? previousX > boundary && pointerEvent.clientX <= boundary
+      : previousX < boundary && pointerEvent.clientX >= boundary
+    if (crossedIntoPanel) {
+      this.setAttribute("data-boundary-armed", "")
+    }
   }
 
   private readonly onPointerEnd = (event: Event) => {
@@ -249,7 +301,26 @@ class ShinyChatResizeHandleElement
       this.releasePointerCapture(pointer.id)
     }
     this.removeAttribute("data-resizing")
+    this.deactivateBoundary()
     this.emit("resize-end", { source: "pointer" })
+  }
+
+  private boundary() {
+    const rect = this.getBoundingClientRect()
+    if (rect.width <= 0) return undefined
+    return this.panelIsLeft() ? rect.right : rect.left
+  }
+
+  private panelIsLeft() {
+    const direction = window.getComputedStyle(
+      this.parentElement ?? this,
+    ).direction
+    return (this.options.panelSide === "inline-end") === (direction !== "rtl")
+  }
+
+  private deactivateBoundary() {
+    this.lastPointerX = undefined
+    this.removeAttribute("data-boundary-armed")
   }
 
   private emit(
@@ -264,6 +335,10 @@ class ShinyChatResizeHandleElement
       }),
     )
   }
+}
+
+function isCoarsePointer(event: PointerEvent) {
+  return event.pointerType === "touch"
 }
 
 if (!customElements.get(LOCAL_TAG_NAME)) {

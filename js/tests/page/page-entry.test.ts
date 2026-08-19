@@ -377,6 +377,16 @@ function getPageElements(page: HTMLElement) {
   }
 }
 
+function armSidebarResize(resizer: HTMLElement, sidebarWidth: number) {
+  Object.defineProperty(resizer, "getBoundingClientRect", {
+    configurable: true,
+    value: () => new DOMRect(sidebarWidth - 8, 0, 8, 700),
+  })
+  fireEvent.pointerMove(document, { clientX: sidebarWidth + 4 })
+  fireEvent.pointerMove(document, { clientX: sidebarWidth - 1 })
+  expect(resizer).toHaveAttribute("data-boundary-armed")
+}
+
 beforeEach(() => {
   installMatchMedia(false)
   ResizeObserverStub.reset()
@@ -943,6 +953,7 @@ describe("shiny-chat-page sidebar resizing", () => {
     const { resizer } = getPageElements(page)
 
     expect(resizer).not.toBeNull()
+    armSidebarResize(resizer!, 320)
 
     fireEvent.pointerDown(resizer!, {
       pointerId: 1,
@@ -985,6 +996,7 @@ describe("shiny-chat-page sidebar resizing", () => {
       "20rem",
     )
 
+    armSidebarResize(resizer!, 320)
     fireEvent.pointerDown(resizer!, {
       pointerId: 1,
       clientX: 320,
@@ -1014,6 +1026,7 @@ describe("shiny-chat-page sidebar resizing", () => {
     const page = pageFixture()
     const { resizer } = getPageElements(page)
 
+    armSidebarResize(resizer!, 320)
     fireEvent.pointerDown(resizer!, {
       pointerId: 1,
       clientX: 320,
@@ -1040,6 +1053,7 @@ describe("shiny-chat-page sidebar resizing", () => {
     const { identity, navButtons, resizer } = getPageElements(page)
 
     expect(resizer).not.toBeNull()
+    armSidebarResize(resizer!, 320)
     fireEvent.pointerDown(resizer!, {
       pointerId: 1,
       clientX: 320,
@@ -1053,6 +1067,7 @@ describe("shiny-chat-page sidebar resizing", () => {
     expect(page.style.getPropertyValue("--shiny-chat-page-sidebar-width")).toBe(
       "24rem",
     )
+    armSidebarResize(resizer!, 384)
     fireEvent.pointerDown(resizer!, {
       pointerId: 2,
       clientX: 384,

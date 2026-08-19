@@ -217,6 +217,78 @@ describe("shiny-chat-resize-handle", () => {
     expect(ends).toHaveBeenCalledTimes(2)
   })
 
+  it("arms fine pointers only after crossing into the configured pane boundary", () => {
+    const handle = configuredHandle({ boundaryActivation: true })
+    const starts = vi.fn()
+    handle.addEventListener("resize-start", starts)
+    Object.defineProperty(handle, "getBoundingClientRect", {
+      configurable: true,
+      value: () => new DOMRect(312, 0, 8, 400),
+    })
+
+    handle.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        button: 0,
+        isPrimary: true,
+        pointerId: 1,
+        clientX: 320,
+      }),
+    )
+    expect(starts).not.toHaveBeenCalled()
+
+    document.dispatchEvent(new PointerEvent("pointermove", { clientX: 324 }))
+    document.dispatchEvent(new PointerEvent("pointermove", { clientX: 319 }))
+    expect(handle).toHaveAttribute("data-boundary-armed")
+
+    handle.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        button: 0,
+        isPrimary: true,
+        pointerId: 2,
+        clientX: 319,
+      }),
+    )
+    expect(starts).toHaveBeenCalledTimes(1)
+
+    handle.dispatchEvent(
+      new PointerEvent("pointerup", { bubbles: true, pointerId: 2 }),
+    )
+    expect(handle).not.toHaveAttribute("data-boundary-armed")
+  })
+
+  it("uses the opposite crossing direction for inline-end and allows coarse pointers", () => {
+    const handle = configuredHandle({
+      panelSide: "inline-start",
+      boundaryActivation: true,
+    })
+    const starts = vi.fn()
+    handle.addEventListener("resize-start", starts)
+    Object.defineProperty(handle, "getBoundingClientRect", {
+      configurable: true,
+      value: () => new DOMRect(320, 0, 8, 400),
+    })
+
+    document.dispatchEvent(new PointerEvent("pointermove", { clientX: 316 }))
+    document.dispatchEvent(new PointerEvent("pointermove", { clientX: 321 }))
+    expect(handle).toHaveAttribute("data-boundary-armed")
+    document.dispatchEvent(new PointerEvent("pointermove", { clientX: 329 }))
+    expect(handle).not.toHaveAttribute("data-boundary-armed")
+
+    handle.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        button: 0,
+        isPrimary: true,
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 324,
+      }),
+    )
+    expect(starts).toHaveBeenCalledTimes(1)
+  })
+
   it("uses bslib only when the complete public contract is available", () => {
     class ConformingBslibHandle extends HTMLElement {
       static readonly resizeHandleEvents = RESIZE_HANDLE_EVENTS

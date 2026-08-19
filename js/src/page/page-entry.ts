@@ -613,6 +613,7 @@ class ChatPageElement extends HTMLElement {
       panelSide: "inline-end",
       disabled: !enabled,
       label: "Resize sidebar",
+      boundaryActivation: true,
     })
     if (!enabled) {
       return
@@ -665,6 +666,7 @@ class ChatPageElement extends HTMLElement {
       panelSide: "inline-end",
       disabled: true,
       label: "Resize sidebar",
+      boundaryActivation: true,
     })
   }
 
