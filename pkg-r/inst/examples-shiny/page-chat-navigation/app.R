@@ -60,7 +60,7 @@ ui <- page_chat(
   sidebar = chat_sidebar(
     tags$h3("Workspace", class = "h6"),
     textInput("project_name", "Project", "Coastal survey"),
-    # history = TRUE,
+    history = TRUE,
     width = 320,
     open = "auto"
   ),

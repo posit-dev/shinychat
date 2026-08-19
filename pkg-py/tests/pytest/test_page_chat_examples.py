@@ -22,4 +22,4 @@ def test_page_chat_example_is_importable(module_name: str) -> None:
     assert "shiny-chat-page" in html
     if module_name.endswith(".navigation"):
         assert '<shiny-chat-history for="chat">' in html
-        assert "HistoryOptions" in inspect.getsource(app_module)
+        assert "chatlas" not in inspect.getsource(app_module)
