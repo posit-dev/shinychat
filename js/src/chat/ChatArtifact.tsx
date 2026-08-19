@@ -187,6 +187,7 @@ export function ChatArtifact({
   const [renderedWidth, setRenderedWidth] = useState(
     () => pixelWidth(artifact.width || "400px") ?? 400,
   )
+  const [resizeHandleProvider] = useState(getResizeHandleProvider)
   const resizeHandleRef = useRef<ResizeHandleElement>(null)
 
   const maxWidth = useCallback(() => {
@@ -301,7 +302,6 @@ export function ChatArtifact({
   ])
 
   const title = artifact.title || "Artifact"
-  const resizeHandleProvider = getResizeHandleProvider()
   const style = {
     "--shiny-chat-artifact-width": width,
   } as React.CSSProperties
