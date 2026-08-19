@@ -165,6 +165,23 @@ HistoryController <- R6::R6Class(
       }
     },
 
+    save = function() {
+      if (is.null(self$record) || is.null(self$partition)) {
+        return(FALSE)
+      }
+
+      self$save_current()
+      private$evict_if_needed()
+
+      if (!is.null(self$on_response_saved)) {
+        self$on_response_saved(self$record)
+      }
+
+      self$send_history_update()
+      self$send_sibling_metadata()
+      TRUE
+    },
+
     switch_to = function(conv_id) {
       if (!is.null(self$record) && identical(conv_id, self$record$id)) {
         return(invisible())
@@ -331,7 +348,7 @@ HistoryController <- R6::R6Class(
 
     save_current = function() {
       if (is.null(self$record) || is.null(self$partition)) {
-        return(invisible())
+        return(FALSE)
       }
 
       recorded_turns <- get_turns_recorded(private$client)
@@ -343,9 +360,10 @@ HistoryController <- R6::R6Class(
         ui_offset = self$ui_offset,
         tools = private$client$get_tools()
       )
-      self$ui_offset <- length(messages)
       self$record$values <- private$capture_app_state()
       self$put_record(self$partition, self$record)
+      self$ui_offset <- length(messages)
+      TRUE
     },
 
     restore_app_state = function(values) {
