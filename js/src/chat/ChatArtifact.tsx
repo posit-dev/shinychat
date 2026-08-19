@@ -229,8 +229,11 @@ export function ChatArtifact({
 
     if (configured === undefined) {
       const bounded = clampWidth(measured, maximum)
-      setWidth(`${bounded}px`)
       setRenderedWidth(bounded)
+      if (bounded !== measured) {
+        setWidth(`${bounded}px`)
+        onWidthChange(`${bounded}px`)
+      }
       return
     }
 

@@ -444,7 +444,7 @@ describe("ChatArtifact", () => {
     )
     expect(separator).toHaveAttribute("aria-valuenow", "640")
     expect(separator).toHaveAttribute("aria-valuemax", "640")
-    expect(onWidthChange).not.toHaveBeenCalled()
+    expect(onWidthChange).toHaveBeenLastCalledWith("640px")
   })
 
   it("resizes from the logical inline-start edge in RTL", () => {
