@@ -129,6 +129,7 @@ function pageFixture({
   page.dataset.chatId = chatId
   page.dataset.activePage = "home"
   page.dataset.testLayoutWidth = layoutWidth.toString()
+  page.dataset.testHeaderHeight = "56"
   page.innerHTML = `
     <header class="shiny-chat-page-header">
       <button
@@ -313,6 +314,7 @@ function pageFixture({
   `
 
   const currentLayoutWidth = () => Number(page.dataset.testLayoutWidth)
+  const currentHeaderHeight = () => Number(page.dataset.testHeaderHeight)
   const layoutRect = () => new DOMRect(0, 0, currentLayoutWidth(), 700)
   Object.defineProperty(page, "getBoundingClientRect", {
     configurable: true,
@@ -326,6 +328,11 @@ function pageFixture({
       value: layoutRect,
     })
   }
+  const header = page.querySelector<HTMLElement>(".shiny-chat-page-header")!
+  Object.defineProperty(header, "getBoundingClientRect", {
+    configurable: true,
+    value: () => new DOMRect(0, 0, currentLayoutWidth(), currentHeaderHeight()),
+  })
   const aside = page.querySelector<HTMLElement>(".shiny-chat-page-sidebar")!
   Object.defineProperty(aside, "getBoundingClientRect", {
     configurable: true,
@@ -406,6 +413,47 @@ afterEach(() => {
 })
 
 describe("shiny-chat-page navigation", () => {
+  it("keeps top-aligned toasts below the rendered title bar", () => {
+    const page = pageFixture()
+    const header = page.querySelector<HTMLElement>(".shiny-chat-page-header")!
+    const { navButtons } = getPageElements(page)
+
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--shiny-chat-page-toast-offset",
+      ),
+    ).toBe("56px")
+
+    page.dataset.testHeaderHeight = "72"
+    navButtons[1]!.click()
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--shiny-chat-page-toast-offset",
+      ),
+    ).toBe("72px")
+
+    page.dataset.testHeaderHeight = "88"
+    ResizeObserverStub.resize(header)
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--shiny-chat-page-toast-offset",
+      ),
+    ).toBe("88px")
+
+    page.remove()
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--shiny-chat-page-toast-offset",
+      ),
+    ).toBe("")
+    ResizeObserverStub.resize(header)
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--shiny-chat-page-toast-offset",
+      ),
+    ).toBe("")
+  })
+
   it("switches pages without replacing the mounted chat or its descendants", () => {
     const page = pageFixture()
     const { identity, navButtons, panels } = getPageElements(page)

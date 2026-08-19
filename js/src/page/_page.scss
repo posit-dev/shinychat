@@ -16,6 +16,17 @@ shiny-chat-page {
   overflow: hidden;
 }
 
+body:has(shiny-chat-page) > .toast-container:is(
+  [data-bslib-toast-container="top-right"],
+  [data-bslib-toast-container="top-center"],
+  [data-bslib-toast-container="top-left"]
+) {
+  top: var(
+    --shiny-chat-page-toast-offset,
+    var(--bs-navbar-height, 3.5rem)
+  ) !important;
+}
+
 .shiny-chat-page-header {
   position: relative;
   z-index: 3;

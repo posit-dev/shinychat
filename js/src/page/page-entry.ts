@@ -14,6 +14,7 @@ const DEFAULT_SIDEBAR_KEY = "default"
 const MIN_SIDEBAR_WIDTH = 150
 const MIN_MAIN_WIDTH = 360
 const SIDEBAR_MOTION_DURATION = 180
+const TOAST_OFFSET_PROPERTY = "--shiny-chat-page-toast-offset"
 const FOCUSABLE_SELECTOR = [
   "a[href]",
   "area[href]",
@@ -91,6 +92,8 @@ function isVisibleFocusable(element: HTMLElement, boundary: HTMLElement) {
 }
 
 class ChatPageElement extends HTMLElement {
+  private static toastOffsetOwner: ChatPageElement | null = null
+
   private initialized = false
   private mobile = false
   private layoutInitialized = false
@@ -100,6 +103,7 @@ class ChatPageElement extends HTMLElement {
   private toggle: HTMLButtonElement | null = null
   private identity: HTMLButtonElement | null = null
   private identityReturnLabel = "Return to chat"
+  private header: HTMLElement | null = null
   private controls: HTMLElement | null = null
   private toolbarScoped: HTMLElement | null = null
   private toolbarSources = new Map<string, HTMLElement>()
@@ -152,6 +156,10 @@ class ChatPageElement extends HTMLElement {
     this.mediaQuery = null
     this.layoutInitialized = false
     this.initialized = false
+    if (ChatPageElement.toastOffsetOwner === this) {
+      document.documentElement.style.removeProperty(TOAST_OFFSET_PROPERTY)
+      ChatPageElement.toastOffsetOwner = null
+    }
   }
 
   private captureDom() {
@@ -171,6 +179,9 @@ class ChatPageElement extends HTMLElement {
     )
     const bodies = this.querySelectorAll<HTMLElement>(".shiny-chat-page-body")
     const mains = this.querySelectorAll<HTMLElement>(".shiny-chat-page-main")
+    const headers = this.querySelectorAll<HTMLElement>(
+      ".shiny-chat-page-header",
+    )
     const toggles = this.querySelectorAll<HTMLButtonElement>(
       "button.shiny-chat-page-sidebar-toggle",
     )
@@ -182,6 +193,7 @@ class ChatPageElement extends HTMLElement {
     if (asides.length !== 1) errors.push("sidebar")
     if (bodies.length !== 1) errors.push("body")
     if (mains.length !== 1) errors.push("main")
+    if (headers.length !== 1) errors.push("header")
     if (toggles.length !== 1) errors.push("sidebar-toggle")
 
     const main = mains[0]
@@ -201,6 +213,7 @@ class ChatPageElement extends HTMLElement {
     }
 
     this.controls = controls[0]!
+    this.header = headers[0]!
     this.toolbarScoped = this.controls.querySelector<HTMLElement>(
       ".shiny-chat-page-toolbar-scoped",
     )
@@ -342,17 +355,29 @@ class ChatPageElement extends HTMLElement {
       })
     }
 
-    this.listen(window, "resize", () => this.updateResizeHandle())
+    this.listen(window, "resize", () => {
+      this.updateResizeHandle()
+      this.updateToastOffset()
+    })
   }
 
   private bindResizeObserver() {
-    if (typeof ResizeObserver === "undefined" || !this.body || !this.aside) {
+    if (
+      typeof ResizeObserver === "undefined" ||
+      !this.body ||
+      !this.aside ||
+      !this.header
+    ) {
       return
     }
 
-    const observer = new ResizeObserver(() => this.updateResizeHandle())
+    const observer = new ResizeObserver(() => {
+      this.updateResizeHandle()
+      this.updateToastOffset()
+    })
     observer.observe(this.body)
     observer.observe(this.aside)
+    observer.observe(this.header)
     this.cleanupListeners.push(() => observer.disconnect())
 
     // The outer box does not change when asynchronous sidebar output grows.
@@ -435,6 +460,7 @@ class ChatPageElement extends HTMLElement {
       this.updateToggleState()
       this.updateResizeHandle()
     }
+    this.updateToastOffset()
   }
 
   private selectPage(value: string, closeMenu = true) {
@@ -468,8 +494,20 @@ class ChatPageElement extends HTMLElement {
     this.syncSidebar(selected)
     this.syncToolbar(selected)
     if (closeMenu && this.mobile) this.closeMobileMenu()
+    this.updateToastOffset()
     window.dispatchEvent(new Event("resize"))
     return true
+  }
+
+  private updateToastOffset() {
+    const bottom = this.header?.getBoundingClientRect().bottom
+    if (!bottom || !Number.isFinite(bottom)) return
+
+    document.documentElement.style.setProperty(
+      TOAST_OFFSET_PROPERTY,
+      `${Math.ceil(bottom)}px`,
+    )
+    ChatPageElement.toastOffsetOwner = this
   }
 
   private syncToolbar(selected: HTMLElement) {
