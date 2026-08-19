@@ -102,6 +102,25 @@ def test_desktop_navigation_streaming_and_history_auto_open(
     chat.expect_latest_message("echo: stream while hidden", timeout=TIMEOUT)
 
 
+def test_desktop_header_keeps_controls_available_with_a_long_title(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    _, shell = open_page(page, local_app, viewport=(800, 760))
+    identity_title = shell.locator(".shiny-chat-page-identity-title")
+    toolbar_input = page.locator("#toolbar_value")
+
+    identity_title.evaluate(
+        """element => {
+            element.textContent = "A page chat title long enough to test header overflow";
+        }"""
+    )
+
+    expect(shell.get_by_role("button", name="Settings")).to_be_visible()
+    expect(toolbar_input).to_be_visible()
+    assert toolbar_input.bounding_box()["x"] > identity_title.bounding_box()["x"]
+
+
 def test_mobile_moves_controls_and_manages_dialog_focus(
     page: Page,
     local_app: ShinyAppProc,

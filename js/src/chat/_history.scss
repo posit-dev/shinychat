@@ -662,7 +662,9 @@ shiny-chat-container[data-history-placement="right"] {
   z-index: auto;
   display: block;
   min-width: 0;
-  overflow: hidden;
+  // Let focus indicators on the edge-aligned controls extend beyond the
+  // wrapper. The list below owns its scrolling independently.
+  overflow: visible;
   border: 0;
   border-radius: 0;
   background: var(--_history-bg);

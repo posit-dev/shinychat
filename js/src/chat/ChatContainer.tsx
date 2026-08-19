@@ -264,10 +264,16 @@ export const ChatContainer = forwardRef<
     const wasVisible = priorArtifactVisibleRef.current
     const wasTakeover = priorArtifactTakeoverRef.current
     const isVisible = artifact.enabled && artifact.visible
+    const revealedFromControl =
+      isVisible && !wasVisible && artifactReturnToRevealRef.current
     const entersTakeover =
       isVisible && artifactTakeover && (!wasVisible || !wasTakeover)
 
-    if (entersTakeover) {
+    if (revealedFromControl) {
+      artifactReturnFocusRef.current = null
+      requestAnimationFrame(() => artifactCloseRef.current?.focus())
+      if (historyOpen) setHistoryOpen(false)
+    } else if (entersTakeover) {
       const active = document.activeElement
       const chatWrapper = artifactLayoutRef.current?.querySelector(
         ".shiny-chat-wrapper",

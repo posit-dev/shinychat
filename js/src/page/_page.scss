@@ -63,7 +63,7 @@ shiny-chat-page {
   align-items: center;
   justify-self: start;
   min-width: 0;
-  max-width: 100%;
+  max-width: min(30ch, 35%);
   gap: 0.5rem;
   padding: 0.375rem 0.5rem;
   font-size: var(--bs-navbar-brand-font-size, 1.125rem);

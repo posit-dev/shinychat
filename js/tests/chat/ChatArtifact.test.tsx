@@ -342,6 +342,105 @@ describe("ChatArtifact", () => {
     )
   })
 
+  it("preserves non-pixel widths until the user resizes the artifact", () => {
+    const shell = document.createElement("shiny-chat-container")
+    Object.defineProperty(shell, "getBoundingClientRect", {
+      value: () => ({ width: 1200 }),
+    })
+    document.body.append(shell)
+    const panelWidth = 512
+    const onWidthChange = vi.fn()
+
+    render(
+      <ShinyLifecycleContext.Provider value={lifecycle()}>
+        <ChatArtifact
+          artifact={artifact({ width: "32rem" })}
+          titleId="artifact-title"
+          takeover={false}
+          closeButtonRef={createRef<HTMLButtonElement>()}
+          onClose={vi.fn()}
+          onWidthChange={onWidthChange}
+        />
+      </ShinyLifecycleContext.Provider>,
+      { container: shell },
+    )
+
+    const panel = screen.getByRole("complementary")
+    Object.defineProperty(panel, "getBoundingClientRect", {
+      value: () => ({ width: panelWidth }),
+    })
+    expect(panel.style.getPropertyValue("--shiny-chat-artifact-width")).toBe(
+      "32rem",
+    )
+    expect(onWidthChange).not.toHaveBeenCalled()
+
+    const separator = screen.getByRole("separator", {
+      name: "Resize artifact panel",
+    })
+    fireEvent.pointerDown(separator, {
+      button: 0,
+      isPrimary: true,
+      pointerId: 1,
+      clientX: 100,
+    })
+    fireEvent.pointerMove(separator, {
+      isPrimary: true,
+      pointerId: 1,
+      clientX: 60,
+    })
+
+    expect(onWidthChange).toHaveBeenLastCalledWith("552px")
+    expect(panel.style.getPropertyValue("--shiny-chat-artifact-width")).toBe(
+      "552px",
+    )
+  })
+
+  it("resizes from the logical inline-start edge in RTL", () => {
+    const shell = document.createElement("shiny-chat-container")
+    Object.defineProperty(shell, "getBoundingClientRect", {
+      value: () => ({ width: 1200 }),
+    })
+    document.body.append(shell)
+    const onWidthChange = vi.fn()
+
+    render(
+      <ShinyLifecycleContext.Provider value={lifecycle()}>
+        <ChatArtifact
+          artifact={artifact({ width: "400px" })}
+          titleId="artifact-title"
+          takeover={false}
+          closeButtonRef={createRef<HTMLButtonElement>()}
+          onClose={vi.fn()}
+          onWidthChange={onWidthChange}
+        />
+      </ShinyLifecycleContext.Provider>,
+      { container: shell },
+    )
+
+    const panel = screen.getByRole("complementary")
+    panel.style.direction = "rtl"
+    Object.defineProperty(panel, "getBoundingClientRect", {
+      value: () => ({ width: 400 }),
+    })
+    const separator = screen.getByRole("separator", {
+      name: "Resize artifact panel",
+    })
+
+    fireEvent.pointerDown(separator, {
+      button: 0,
+      isPrimary: true,
+      pointerId: 1,
+      clientX: 100,
+    })
+    fireEvent.pointerMove(separator, {
+      isPrimary: true,
+      pointerId: 1,
+      clientX: 140,
+    })
+
+    expect(onWidthChange).toHaveBeenLastCalledWith("440px")
+  })
+
   it("clamps an oversized measured width and reports a matching ARIA value", async () => {
     const original = Object.getOwnPropertyDescriptor(
       HTMLElement.prototype,
@@ -631,47 +730,82 @@ describe("ChatArtifact", () => {
     },
   )
 
-  it("reveals a hidden artifact and returns focus to its reveal control", async () => {
-    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
-      callback(0)
-      return 1
-    })
+  it.each([1200, 1000])(
+    "moves focus to the close control after reveal at layout width %s",
+    async (layoutWidth) => {
+      const original = Object.getOwnPropertyDescriptor(
+        HTMLElement.prototype,
+        "getBoundingClientRect",
+      )
+      Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", {
+        configurable: true,
+        value: function () {
+          if (this.classList.contains("shiny-chat-layout")) {
+            return { width: layoutWidth }
+          }
+          return { width: 0 }
+        },
+      })
 
-    try {
-      render(
-        <ChatApp
-          transport={createMockTransport()}
-          shinyLifecycle={createMockShinyLifecycle()}
-          elementId="artifact-reveal"
-          inputId="artifact-reveal-input"
-          initialArtifact={artifact({
-            visible: false,
-            content: "<p>Ready</p>",
-          })}
-        />,
+      vi.stubGlobal(
+        "requestAnimationFrame",
+        (callback: FrameRequestCallback) => {
+          callback(0)
+          return 1
+        },
       )
 
-      const reveal = await screen.findByRole("button", {
-        name: "Show artifact",
-      })
-      expect(
-        screen.getByRole("complementary", { hidden: true }),
-      ).toHaveAttribute("hidden")
-      reveal.focus()
-      fireEvent.click(reveal)
+      try {
+        render(
+          <ChatApp
+            transport={createMockTransport()}
+            shinyLifecycle={createMockShinyLifecycle()}
+            elementId="artifact-reveal"
+            inputId="artifact-reveal-input"
+            initialArtifact={artifact({
+              visible: false,
+              content: "<p>Ready</p>",
+            })}
+          />,
+        )
 
-      await screen.findByRole("button", { name: "Close artifact" })
-      expect(screen.queryByRole("button", { name: "Show artifact" })).toBeNull()
+        const reveal = await screen.findByRole("button", {
+          name: "Show artifact",
+        })
+        expect(
+          screen.getByRole("complementary", { hidden: true }),
+        ).toHaveAttribute("hidden")
+        reveal.focus()
+        fireEvent.click(reveal)
 
-      fireEvent.click(screen.getByRole("button", { name: "Close artifact" }))
-      const restored = await screen.findByRole("button", {
-        name: "Show artifact",
-      })
-      expect(restored).toHaveFocus()
-    } finally {
-      vi.unstubAllGlobals()
-    }
-  })
+        const close = await screen.findByRole("button", {
+          name: "Close artifact",
+        })
+        expect(close).toHaveFocus()
+        expect(
+          screen.queryByRole("button", { name: "Show artifact" }),
+        ).toBeNull()
+
+        fireEvent.click(close)
+        const restored = await screen.findByRole("button", {
+          name: "Show artifact",
+        })
+        expect(restored).toHaveFocus()
+      } finally {
+        vi.unstubAllGlobals()
+        if (original) {
+          Object.defineProperty(
+            HTMLElement.prototype,
+            "getBoundingClientRect",
+            original,
+          )
+        } else {
+          delete (HTMLElement.prototype as { getBoundingClientRect?: unknown })
+            .getBoundingClientRect
+        }
+      }
+    },
+  )
 
   it("removes the reveal control when artifact content is cleared", async () => {
     const transport = createMockTransport()

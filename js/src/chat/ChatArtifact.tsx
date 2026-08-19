@@ -22,6 +22,14 @@ function pixelWidth(width: string): number | undefined {
   return match ? Number.parseFloat(match[1]!) : undefined
 }
 
+function measuredWidth(width: string, panel: HTMLElement | null): number {
+  const pixels = pixelWidth(width)
+  if (pixels !== undefined) return Math.round(pixels)
+
+  const measured = panel?.getBoundingClientRect().width ?? 0
+  return measured > 0 ? Math.round(measured) : 400
+}
+
 function triggerResize(): void {
   window.dispatchEvent(new Event("resize"))
 }
@@ -176,10 +184,7 @@ export function ChatArtifact({
   onWidthChange,
 }: ChatArtifactProps) {
   const panelRef = useRef<HTMLElement>(null)
-  const [width, setWidth] = useState(() => {
-    const parsed = Number.parseFloat(artifact.width)
-    return Number.isFinite(parsed) ? parsed : 400
-  })
+  const [width, setWidth] = useState(() => artifact.width || "400px")
   const [maximumWidth, setMaximumWidth] = useState(840)
   const [isResizing, setIsResizing] = useState(false)
 
@@ -206,6 +211,14 @@ export function ChatArtifact({
     setMaximumWidth(maximum)
     const layout = panel.closest(".shiny-chat-layout")
     const layoutWidth = layout?.getBoundingClientRect().width ?? 0
+    const configured = pixelWidth(artifact.width)
+    if (configured === undefined) {
+      setWidth((current) =>
+        current === artifact.width ? current : artifact.width,
+      )
+      return
+    }
+
     // A child observer can run before ChatContainer applies its takeover
     // state. The panel is full-width in this range, so never persist that
     // temporary measurement as a desktop artifact width.
@@ -219,9 +232,8 @@ export function ChatArtifact({
     const measured = Math.round(panel.getBoundingClientRect().width)
     if (measured <= 0) return
 
-    const configured = pixelWidth(artifact.width)
     const bounded = clampWidth(Math.max(measured, configured ?? 0), maximum)
-    setWidth(bounded)
+    setWidth(`${bounded}px`)
     if (
       bounded !== measured ||
       (configured !== undefined && bounded !== configured)
@@ -244,10 +256,12 @@ export function ChatArtifact({
     return () => observer.disconnect()
   }, [measureAndClampWidth])
 
+  const currentWidth = measuredWidth(width, panelRef.current)
+
   const setBoundedWidth = useCallback(
     (next: number) => {
       const bounded = clampWidth(next, maxWidth())
-      setWidth(bounded)
+      setWidth(`${bounded}px`)
       onWidthChange(`${bounded}px`)
     },
     [maxWidth, onWidthChange],
@@ -259,11 +273,11 @@ export function ChatArtifact({
       switch (event.key) {
         case "ArrowLeft":
           event.preventDefault()
-          setBoundedWidth(width - step)
+          setBoundedWidth(currentWidth - step)
           break
         case "ArrowRight":
           event.preventDefault()
-          setBoundedWidth(width + step)
+          setBoundedWidth(currentWidth + step)
           break
         case "Home":
           event.preventDefault()
@@ -275,7 +289,7 @@ export function ChatArtifact({
           break
       }
     },
-    [maxWidth, setBoundedWidth, width],
+    [currentWidth, maxWidth, setBoundedWidth],
   )
 
   const onResizePointerDown = useCallback(
@@ -296,8 +310,15 @@ export function ChatArtifact({
       setIsResizing(true)
       const move = (moveEvent: PointerEvent) => {
         // The resize handle is on the artifact's left edge: moving left grows
-        // the panel, while moving right yields more room to the chat.
-        setBoundedWidth(startingWidth - (moveEvent.clientX - startX))
+        // the panel in LTR. The logical inline-start edge is on the right in
+        // RTL, so the pointer delta has the opposite effect there.
+        const direction = window.getComputedStyle(
+          handle.parentElement!,
+        ).direction
+        const delta = moveEvent.clientX - startX
+        setBoundedWidth(
+          direction === "rtl" ? startingWidth + delta : startingWidth - delta,
+        )
       }
       const finish = () => {
         handle.removeEventListener("pointermove", move)
@@ -318,7 +339,7 @@ export function ChatArtifact({
 
   const title = artifact.title || "Artifact"
   const style = {
-    "--shiny-chat-artifact-width": `${width}px`,
+    "--shiny-chat-artifact-width": width,
   } as React.CSSProperties
 
   return (
@@ -341,8 +362,8 @@ export function ChatArtifact({
           aria-orientation="vertical"
           aria-valuemin={MIN_ARTIFACT_WIDTH}
           aria-valuemax={Math.round(maximumWidth)}
-          aria-valuenow={Math.round(width)}
-          aria-valuetext={`${Math.round(width)} pixels`}
+          aria-valuenow={currentWidth}
+          aria-valuetext={`${currentWidth} pixels`}
           tabIndex={0}
           onKeyDown={onResizeKeyDown}
           onPointerDown={onResizePointerDown}
