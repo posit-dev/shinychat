@@ -194,7 +194,9 @@ test_that("page_chat() builds the default fillable page contract", {
   expect_equal(toggle$attribs$type, "button")
   expect_equal(toggle$attribs[["aria-controls"]], "chat-sidebar")
   expect_equal(toggle$attribs[["aria-expanded"]], "false")
-  expect_length(page_chat_tags(toggle, ".shiny-chat-page-sidebar-icon"), 1)
+  icon <- page_chat_tag(toggle, ".shiny-chat-page-sidebar-icon")
+  expect_equal(icon$name, "svg")
+  expect_equal(icon$attribs[["aria-hidden"]], "true")
 
   identity <- page_chat_tag(page, ".shiny-chat-page-identity")
   expect_equal(identity$name, "div")

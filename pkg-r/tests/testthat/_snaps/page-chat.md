@@ -139,7 +139,9 @@
         <shiny-chat-page data-chat-id="chat" data-active-page="home" data-require-bs-version="5" data-require-bs-caller="page_chat">
           <header class="shiny-chat-page-header">
             <button type="button" class="shiny-chat-page-sidebar-toggle" aria-controls="chat-sidebar" aria-expanded="false" aria-label="Toggle app menu">
-              <span class="shiny-chat-page-sidebar-icon"></span>
+              <svg class="shiny-chat-page-sidebar-icon bi bi-layout-sidebar" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                <path d="M0 3a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2zm5-1v12h9a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1zM4 2H2a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h2z"></path>
+              </svg>
             </button>
             <div class="shiny-chat-page-identity">
               <span class="shiny-chat-page-identity-icon">

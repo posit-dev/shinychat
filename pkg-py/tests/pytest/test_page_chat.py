@@ -267,7 +267,7 @@ def test_page_chat_builds_default_fillable_page_markup() -> None:
     assert '<header class="shiny-chat-page-header">' in html
     assert 'aria-controls="chat-sidebar"' in html
     assert 'aria-expanded="false"' in html
-    assert '<span class="shiny-chat-page-sidebar-icon"></span>' in html
+    assert 'class="shiny-chat-page-sidebar-icon bi bi-layout-sidebar"' in html
     assert '<div class="shiny-chat-page-identity">' in html
     assert "data-page-home" not in html
     assert html.count('class="shiny-chat-page-controls"') == 1
