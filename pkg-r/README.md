@@ -66,9 +66,20 @@ responsive navigation and sidebar support:
 ```r
 ui <- page_chat(
   "Assistant",
+  toolbar = actionButton("clear_chat", "Clear conversation"),
   sidebar = chat_sidebar(tags$p("Tools"), history = FALSE),
   pages = list(
-    chat_nav_panel("About", tags$p("About this app."), value = "about")
+    chat_nav_panel(
+      "About",
+      tags$p("About this app."),
+      value = "about",
+      toolbar = TRUE
+    ),
+    chat_nav_panel(
+      "Settings",
+      tags$p("Settings"),
+      toolbar = actionButton("save_settings", "Save settings")
+    )
   ),
   artifact = chat_artifact(tags$p("Preview content"), title = "Preview")
 )

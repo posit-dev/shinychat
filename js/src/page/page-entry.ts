@@ -100,6 +100,9 @@ class ChatPageElement extends HTMLElement {
   private identity: HTMLButtonElement | null = null
   private identityReturnLabel = "Return to chat"
   private controls: HTMLElement | null = null
+  private toolbar: HTMLElement | null = null
+  private toolbarSources = new Map<string, HTMLElement>()
+  private activeToolbarSource: HTMLElement | null = null
   private desktopMount: HTMLElement | null = null
   private mobileMount: HTMLElement | null = null
   private body: HTMLElement | null = null
@@ -189,6 +192,9 @@ class ChatPageElement extends HTMLElement {
     }
 
     this.controls = controls[0]!
+    this.toolbar = this.controls.querySelector<HTMLElement>(
+      ".shiny-chat-page-toolbar",
+    )
     this.desktopMount = desktopMounts[0]!
     this.mobileMount = mobileMounts[0]!
     this.body = bodies[0]!
@@ -207,6 +213,7 @@ class ChatPageElement extends HTMLElement {
         "button.shiny-chat-page-nav-link[data-page-target]",
       ),
     )
+    this.captureToolbarSources()
     this.sidebarPanels = directChildrenMatching<HTMLElement>(
       this.aside,
       SIDEBAR_PANEL_SELECTOR,
@@ -217,6 +224,17 @@ class ChatPageElement extends HTMLElement {
     ).forEach((scrim) => scrim.remove())
 
     return true
+  }
+
+  private captureToolbarSources() {
+    this.toolbarSources.clear()
+    this.querySelectorAll<HTMLElement>(
+      ".shiny-chat-page-toolbar-source[data-page-toolbar-source]",
+    ).forEach((source) => {
+      const key = source.dataset.pageToolbarSource?.trim()
+      if (!key || this.toolbarSources.has(key)) return
+      this.toolbarSources.set(key, source)
+    })
   }
 
   private captureSidebarStates() {
@@ -405,9 +423,34 @@ class ChatPageElement extends HTMLElement {
     }
 
     this.syncSidebar(selected)
+    this.syncToolbar(selected)
     if (closeMenu && this.mobile) this.closeMobileMenu()
     window.dispatchEvent(new Event("resize"))
     return true
+  }
+
+  private syncToolbar(selected: HTMLElement) {
+    if (!this.toolbar || this.toolbarSources.size === 0) return
+
+    const key = selected.dataset.pageToolbarSource?.trim()
+    const desired = key ? this.toolbarSources.get(key) : undefined
+    if (desired === this.activeToolbarSource) return
+
+    if (this.activeToolbarSource) {
+      this.activeToolbarSource.append(...this.toolbar.childNodes)
+    } else {
+      this.toolbar.replaceChildren()
+    }
+    this.activeToolbarSource = null
+
+    if (!desired) return
+    const content = desired.querySelector<HTMLElement>(
+      ":scope > .shiny-chat-page-toolbar-content",
+    )
+    if (!content) return
+
+    this.toolbar.append(content)
+    this.activeToolbarSource = desired
   }
 
   private syncSidebar(selected: HTMLElement) {

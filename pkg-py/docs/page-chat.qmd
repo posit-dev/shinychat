@@ -91,6 +91,7 @@ app_ui = page_chat(
             "Sources",
             ui.p("Sources selected during this session appear here."),
             sidebar=True,
+            toolbar=True,
         ),
         chat_nav_panel(
             "Settings",
@@ -100,6 +101,7 @@ app_ui = page_chat(
                 open="closed",
                 width=260,
             ),
+            toolbar=ui.input_action_button("save_settings", "Save settings"),
         ),
         chat_nav_panel(
             "About",
@@ -144,6 +146,11 @@ its own `chat_sidebar()`. `chat_ui_history("chat")` is available when an
 advanced layout needs a history view bound to a specific chat ID outside a
 `page_chat()` sidebar.
 
+By default, a navigation page has no toolbar. Set `toolbar=True` to move the
+same home toolbar into that page, preserving its input and output state. Supply
+an HTML child for `toolbar` to use a page-specific toolbar instead. `None` is
+not a toolbar value.
+
 The artifact starts closed unless `chat_artifact(open=True)` is used. From the
 server, `chat.artifact.show()`, `.update()`, `.hide()`, and `.toggle()` change
 the artifact without replacing the chat. `show()` and `update()` accept
@@ -171,6 +178,12 @@ page_chat(
             "About",
             ui.p("This page keeps the chat mounted."),
             sidebar=False,
+            toolbar=True,
+        ),
+        chat_nav_panel(
+            "Settings",
+            ui.p("Settings"),
+            toolbar=ui.input_action_button("save_settings", "Save settings"),
         )
     ],
 )

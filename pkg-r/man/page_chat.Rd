@@ -134,7 +134,8 @@ ui <- page_chat(
     chat_nav_panel(
       "About",
       tags$p("This is a secondary page."),
-      value = "about"
+      value = "about",
+      toolbar = TRUE
     ),
     chat_nav_panel(
       "Settings",
@@ -144,7 +145,8 @@ ui <- page_chat(
         tags$p("Settings menu"),
         width = 320,
         open = "closed"
-      )
+      ),
+      toolbar = actionButton("save_settings", "Save settings")
     )
   ),
   artifact = chat_artifact(

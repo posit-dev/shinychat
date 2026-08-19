@@ -110,10 +110,14 @@ def test_chat_nav_panel_validates_sidebar_and_navigation_values() -> None:
     assert panel.title == "About"
     assert panel.value == "about"
     assert panel.sidebar is sidebar
+    assert panel.toolbar is False
     assert panel.content_width == "min(680px, 100%)"
 
     assert chat_nav_panel("Wide", content_width=720).content_width == "720px"
     assert chat_nav_panel("Full", content_width="100vw").content_width == "100vw"
+    assert chat_nav_panel("Inherited", toolbar=True).toolbar is True
+    custom_toolbar = tags.span("Custom toolbar")
+    assert chat_nav_panel("Custom", toolbar=custom_toolbar).toolbar is custom_toolbar
 
     with pytest.raises(TypeError, match="raw Shiny Sidebar objects"):
         chat_nav_panel("About", sidebar=ui.sidebar())  # type: ignore[arg-type]
@@ -125,6 +129,10 @@ def test_chat_nav_panel_validates_sidebar_and_navigation_values() -> None:
         chat_nav_panel(cast(Any, tags.span("About")))
     with pytest.raises(ValueError, match="empty CSS width"):
         chat_nav_panel("About", content_width=" ")
+    with pytest.raises(TypeError, match="None is not allowed"):
+        chat_nav_panel("About", toolbar=None)  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="must be an HTML child"):
+        chat_nav_panel("About", toolbar={"class": "bad"})  # type: ignore[arg-type]
 
 
 def test_chat_ui_history_resolves_id_and_forwards_html_attributes() -> None:
@@ -307,12 +315,14 @@ def test_page_chat_normalizes_navigation_toolbar_and_sidebars() -> None:
                     tags.p("About content"),
                     icon=tags.i("info"),
                     sidebar=True,
+                    toolbar=True,
                 ),
                 chat_nav_panel(
                     "Settings",
                     tags.p("Settings content"),
                     value="settings",
                     sidebar=custom_sidebar,
+                    toolbar=ui.input_action_button("settings_save", "Save settings"),
                 ),
                 chat_nav_panel("Help", tags.p("Help content")),
             ],
@@ -348,6 +358,23 @@ def test_page_chat_normalizes_navigation_toolbar_and_sidebars() -> None:
     assert 'tabindex="-1"' not in html
     assert 'role="tabpanel"' not in html
     assert html.count('id="mod-save"') == 1
+    assert html.count('data-page-toolbar-source="home"') == 3
+    assert html.count('data-page-toolbar-source="page-2"') == 2
+    assert html.count('class="shiny-chat-page-toolbar-source"') == 2
+    assert html.count('class="shiny-chat-page-toolbar-content"') == 2
+    assert html.count('id="mod-settings_save"') == 1
+    assert 'data-page-toolbar-source="home"' in re.search(
+        r'<section[^>]*data-page-value="About"[^>]*>',
+        html,
+    ).group(0)  # type: ignore[union-attr]
+    assert 'data-page-toolbar-source="page-2"' in re.search(
+        r'<section[^>]*data-page-value="settings"[^>]*>',
+        html,
+    ).group(0)  # type: ignore[union-attr]
+    assert "data-page-toolbar-source" not in re.search(
+        r'<section[^>]*data-page-value="Help"[^>]*>',
+        html,
+    ).group(0)  # type: ignore[union-attr]
     assert html.count('data-sidebar-for="home"') == 1
     assert html.count('data-sidebar-for="default"') == 1
     assert html.count('data-sidebar-for="page-2"') == 1
@@ -406,6 +433,17 @@ def test_page_chat_sidebar_false_keeps_hidden_default_for_nav_page() -> None:
     about_start = html.index('data-page-value="About"')
     about_end = html.index("</section>", about_start)
     assert 'data-sidebar-key="default"' in html[about_start:about_end]
+
+
+def test_page_chat_inherited_empty_toolbar_has_one_home_source() -> None:
+    html = page_chat(
+        "Assistant",
+        pages=[chat_nav_panel("About", tags.p("About"), toolbar=True)],
+    ).get_html_string()
+
+    assert html.count('data-page-toolbar-source="home"') == 3
+    assert html.count('class="shiny-chat-page-toolbar-source"') == 1
+    assert html.count('class="shiny-chat-page-toolbar-content"') == 1
 
 
 def test_page_chat_sidebar_false_without_nav_sidebar_has_no_panel() -> None:

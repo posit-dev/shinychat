@@ -179,6 +179,64 @@ def test_mobile_moves_controls_and_manages_dialog_focus(
     expect(toggle).to_have_attribute("aria-expanded", "true")
 
 
+def test_page_toolbars_move_without_duplicate_controls(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    _, shell = open_page(page, local_app, viewport=(1280, 800))
+    toolbar = shell.locator(".shiny-chat-page-toolbar")
+    home_input = page.locator("#toolbar_value")
+    settings_input = page.locator("#settings_toolbar_value")
+
+    expect(toolbar.locator("#toolbar_value")).to_have_count(1)
+    home_input.fill("home toolbar state")
+
+    shell.get_by_role("button", name="History", exact=True).click()
+    expect(shell).to_have_attribute("data-active-page", "history")
+    expect(toolbar.locator("#toolbar_value")).to_have_count(1)
+    expect(page.locator("#toolbar_value")).to_have_count(1)
+    expect(home_input).to_have_value("home toolbar state")
+
+    shell.get_by_role("button", name="Settings").click()
+    expect(shell).to_have_attribute("data-active-page", "settings")
+    expect(toolbar.locator("#settings_toolbar_value")).to_have_count(1)
+    expect(toolbar.locator("#toolbar_value")).to_have_count(0)
+    expect(home_input).to_have_count(1)
+    expect(settings_input).to_have_count(1)
+    settings_input.fill("settings toolbar state")
+
+    shell.get_by_role("button", name="About").click()
+    expect(shell).to_have_attribute("data-active-page", "about")
+    expect(toolbar.locator("input")).to_have_count(0)
+    expect(home_input).to_have_count(1)
+    expect(settings_input).to_have_count(1)
+
+    shell.get_by_role("button", name="Return to chat").click()
+    expect(toolbar.locator("#toolbar_value")).to_have_count(1)
+    expect(home_input).to_have_value("home toolbar state")
+    expect(settings_input).to_have_value("settings toolbar state")
+    expect(shell.locator(".shiny-chat-page-toolbar-content")).to_have_count(2)
+
+    page.set_viewport_size({"width": 390, "height": 760})
+    expect(
+        shell.locator(
+            ".shiny-chat-page-controls-mount-mobile "
+            ".shiny-chat-page-toolbar #toolbar_value"
+        )
+    ).to_have_count(1)
+    toggle = shell.locator(".shiny-chat-page-sidebar-toggle")
+    toggle.click()
+    shell.get_by_role("button", name="Settings").click()
+    expect(
+        shell.locator(
+            ".shiny-chat-page-controls-mount-mobile "
+            ".shiny-chat-page-toolbar #settings_toolbar_value"
+        )
+    ).to_have_count(1)
+    expect(settings_input).to_have_value("settings toolbar state")
+    expect(page.locator("#settings_toolbar_value")).to_have_count(1)
+
+
 def test_reduced_motion_disables_mobile_sidebar_transition(
     page: Page,
     local_app: ShinyAppProc,

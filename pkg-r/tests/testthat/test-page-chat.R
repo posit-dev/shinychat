@@ -75,9 +75,22 @@ test_that("chat_nav_panel() requires page-chat configuration", {
   expect_equal(panel$title, "Settings")
   expect_equal(panel$value, "settings")
   expect_s3_class(panel$sidebar, "chat_sidebar")
+  expect_false(panel$toolbar)
   expect_equal(panel$content_width, "min(680px, 100%)")
-  expect_equal(chat_nav_panel("Wide", content_width = 720)$content_width, "720px")
-  expect_equal(chat_nav_panel("Full", content_width = "100vw")$content_width, "100vw")
+  expect_equal(
+    chat_nav_panel("Wide", content_width = 720)$content_width,
+    "720px"
+  )
+  expect_equal(
+    chat_nav_panel("Full", content_width = "100vw")$content_width,
+    "100vw"
+  )
+  expect_true(chat_nav_panel("Inherited", toolbar = TRUE)$toolbar)
+  custom_toolbar <- htmltools::tags$span("Custom toolbar")
+  expect_identical(
+    chat_nav_panel("Custom", toolbar = custom_toolbar)$toolbar,
+    custom_toolbar
+  )
 
   expect_snapshot(error = TRUE, chat_nav_panel(""))
   expect_snapshot(error = TRUE, chat_nav_panel("Settings", value = ""))
@@ -89,6 +102,14 @@ test_that("chat_nav_panel() requires page-chat configuration", {
   expect_snapshot(
     error = TRUE,
     chat_nav_panel("Settings", sidebar = bslib::sidebar())
+  )
+  expect_error(
+    chat_nav_panel("Settings", toolbar = NULL),
+    "`toolbar`.*NULL.*not allowed"
+  )
+  expect_error(
+    chat_nav_panel("Settings", toolbar = new.env()),
+    "`toolbar` must be text or UI content"
   )
 })
 
@@ -103,8 +124,16 @@ test_that("chat_nav_panel() renders a content-width wrapper", {
         content_width = "42rem"
       ),
       chat_nav_panel("Full", htmltools::tags$p("Full"), content_width = "100%"),
-      chat_nav_panel("Viewport", htmltools::tags$p("Viewport"), content_width = "100vw"),
-      chat_nav_panel("Dynamic", htmltools::tags$p("Dynamic"), content_width = "100dvw")
+      chat_nav_panel(
+        "Viewport",
+        htmltools::tags$p("Viewport"),
+        content_width = "100vw"
+      ),
+      chat_nav_panel(
+        "Dynamic",
+        htmltools::tags$p("Dynamic"),
+        content_width = "100dvw"
+      )
     )
   )
 
@@ -127,6 +156,21 @@ test_that("chat_nav_panel() renders a content-width wrapper", {
       character(1)
     )),
     rep("true", 3)
+  )
+})
+
+test_that("page_chat() supports an inherited empty toolbar", {
+  page <- page_chat(
+    "Assistant",
+    pages = list(chat_nav_panel("About", toolbar = TRUE))
+  )
+
+  sources <- page_chat_tags(page, ".shiny-chat-page-toolbar-source")
+  expect_length(sources, 1)
+  expect_equal(sources[[1]]$attribs[["data-page-toolbar-source"]], "home")
+  expect_length(
+    page_chat_tags(page, ".shiny-chat-page-toolbar-content"),
+    1
   )
 })
 
@@ -274,7 +318,8 @@ test_that("page_chat() normalizes navigation and sidebar metadata once", {
       chat_nav_panel(
         "About",
         htmltools::tags$p("About content"),
-        icon = htmltools::tags$span("?")
+        icon = htmltools::tags$span("?"),
+        toolbar = TRUE
       ),
       chat_nav_panel(
         "Conversations",
@@ -292,7 +337,8 @@ test_that("page_chat() normalizes navigation and sidebar metadata once", {
           width = 360,
           open = "open",
           resizable = FALSE
-        )
+        ),
+        toolbar = shiny::actionButton("settings_save", "Save settings")
       )
     ),
     toolbar = htmltools::tags$button("Help"),
@@ -344,9 +390,23 @@ test_that("page_chat() normalizes navigation and sidebar metadata once", {
     },
     logical(1)
   )))
+  toolbar <- page_chat_tag(controls, ".shiny-chat-page-toolbar")
+  expect_length(toolbar$children, 0)
+  toolbar_sources <- page_chat_tags(page, ".shiny-chat-page-toolbar-source")
+  expect_length(toolbar_sources, 2)
+  expect_equal(
+    unname(vapply(
+      toolbar_sources,
+      function(x) x$attribs[["data-page-toolbar-source"]],
+      character(1)
+    )),
+    c("home", "page-3")
+  )
+  expect_length(page_chat_tags(page, ".shiny-chat-page-toolbar-content"), 2)
+  expect_true(grepl("Help", as.character(toolbar_sources[[1]]), fixed = TRUE))
   expect_true(grepl(
-    "Help",
-    as.character(page_chat_tag(controls, ".shiny-chat-page-toolbar")),
+    "Save settings",
+    as.character(toolbar_sources[[2]]),
     fixed = TRUE
   ))
 
@@ -374,6 +434,14 @@ test_that("page_chat() normalizes navigation and sidebar metadata once", {
       character(1)
     )),
     c("home", NA, "default", "page-3")
+  )
+  expect_equal(
+    unname(vapply(
+      sections,
+      function(x) x$attribs[["data-page-toolbar-source"]] %||% NA_character_,
+      character(1)
+    )),
+    c("home", "home", NA, "page-3")
   )
   expect_null(sections[[1]]$attribs$hidden)
   expect_true(all(vapply(

@@ -164,7 +164,7 @@
               </div>
             </aside>
             <main class="shiny-chat-page-main">
-              <section class="shiny-chat-page-panel shiny-chat-page-home" data-page-value="home" data-sidebar-key="default">
+              <section class="shiny-chat-page-panel shiny-chat-page-home" data-page-value="home" data-sidebar-key="default" data-page-toolbar-source="home">
                 <shiny-chat-container class="html-fill-item html-fill-container" data-app-role="primary" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill id="chat" max-attachment-size="31457280" placeholder="Enter a message..." show-history="false" style="--_chat-width:min(680px, 100%);height:100%;" submit-key="enter+modifier">
                   <shiny-chat-messages></shiny-chat-messages>
                   <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
@@ -172,6 +172,11 @@
                 </shiny-chat-container>
               </section>
             </main>
+          </div>
+          <div class="shiny-chat-page-toolbar-sources">
+            <div class="shiny-chat-page-toolbar-source" data-page-toolbar-source="home">
+              <div class="shiny-chat-page-toolbar-content"></div>
+            </div>
           </div>
         </shiny-chat-page>
       </body>

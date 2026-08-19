@@ -6,12 +6,15 @@ from pathlib import Path
 
 import pytest
 from htmltools import Tag, TagList
+from shiny import ui
 from shiny.express._run import run_express
+from shinychat import chat_nav_panel
 from shinychat import page_chat as core_page_chat
 from shinychat.express import page_chat as express_page_chat
 
 _APP_IMPORTS = """
 from shiny.express import ui
+from shinychat import chat_nav_panel
 from shinychat.express import page_chat
 """
 
@@ -40,7 +43,19 @@ def test_express_page_chat_matches_core_markup(tmp_path: Path) -> None:
     express_page = _run_page_chat_source(
         tmp_path,
         """
-        page_chat("Assistant", sidebar=False)
+        page_chat(
+            "Assistant",
+            sidebar=False,
+            toolbar=ui.input_action_button("home_action", "Home"),
+            pages=[
+                chat_nav_panel("Inherited", toolbar=True),
+                chat_nav_panel(
+                    "Custom",
+                    toolbar=ui.input_action_button("custom_action", "Custom"),
+                ),
+                chat_nav_panel("None"),
+            ],
+        )
         """,
     )
 
@@ -49,6 +64,15 @@ def test_express_page_chat_matches_core_markup(tmp_path: Path) -> None:
         == core_page_chat(
             "Assistant",
             sidebar=False,
+            toolbar=ui.input_action_button("home_action", "Home"),
+            pages=[
+                chat_nav_panel("Inherited", toolbar=True),
+                chat_nav_panel(
+                    "Custom",
+                    toolbar=ui.input_action_button("custom_action", "Custom"),
+                ),
+                chat_nav_panel("None"),
+            ],
         ).get_html_string()
     )
 

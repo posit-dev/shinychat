@@ -34,7 +34,8 @@ ui <- page_chat(
     actionButton("update_artifact", "Update artifact"),
     actionButton("hide_artifact", "Hide artifact"),
     actionButton("toggle_artifact", "Toggle artifact"),
-    actionButton("show_preserved", "Show preserved")
+    actionButton("show_preserved", "Show preserved"),
+    textInput("home_toolbar", "Home toolbar", value = "home toolbar initial")
   ),
   sidebar = chat_sidebar(
     div(id = "home-sidebar", "Home sidebar"),
@@ -47,7 +48,8 @@ ui <- page_chat(
       "About",
       div(id = "about-page", "About page"),
       value = "about",
-      sidebar = FALSE
+      sidebar = FALSE,
+      toolbar = TRUE
     ),
     chat_nav_panel(
       "Settings",
@@ -58,7 +60,18 @@ ui <- page_chat(
         history = FALSE,
         width = 320,
         open = "closed"
+      ),
+      toolbar = textInput(
+        "settings_toolbar",
+        "Settings toolbar",
+        value = "settings toolbar initial"
       )
+    ),
+    chat_nav_panel(
+      "Empty",
+      div(id = "empty-page", "Empty page"),
+      value = "empty",
+      sidebar = FALSE
     )
   ),
   artifact = chat_artifact(

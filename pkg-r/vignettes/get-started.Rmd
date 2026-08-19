@@ -273,7 +273,8 @@ ui <- page_chat(
     chat_nav_panel(
       "About",
       tags$p("This is a secondary page."),
-      value = "about"
+      value = "about",
+      toolbar = TRUE
     ),
     chat_nav_panel(
       "Settings",
@@ -283,7 +284,8 @@ ui <- page_chat(
         tags$p("Settings menu"),
         width = 320,
         open = "closed"
-      )
+      ),
+      toolbar = actionButton("save_settings", "Save settings")
     )
   ),
   artifact = chat_artifact(
@@ -334,6 +336,11 @@ ui <- bslib::page_fillable(
   fillable_mobile = TRUE
 )
 ```
+
+Navigation pages have no toolbar by default. Set `toolbar = TRUE` to move the
+same toolbar supplied to `page_chat()` into the selected page, or supply UI for
+a page-specific toolbar. The toolbar subtree moves without resetting its Shiny
+inputs or outputs; use `FALSE`, rather than `NULL`, when no toolbar is needed.
 
 ```{r, echo=FALSE, fig.cap="Screenshot of a chatbot filling the page.", fig.align='center', out.extra='class="rounded shadow"', out.width='100%'}
 knitr::include_graphics("images/chat-page_fillable.png")

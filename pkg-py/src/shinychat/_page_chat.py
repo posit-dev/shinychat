@@ -62,6 +62,7 @@ class ChatNavPanel:
     value: str | None
     icon: TagChild | None
     sidebar: bool | ChatSidebar
+    toolbar: bool | TagChild
     content_width: str
 
 
@@ -245,6 +246,7 @@ def chat_nav_panel(
     value: str | None = None,
     icon: TagChild | None = None,
     sidebar: bool | ChatSidebar = False,
+    toolbar: bool | TagChild = False,
     content_width: "CssUnit" = "min(680px, 100%)",
 ) -> ChatNavPanel:
     """
@@ -269,6 +271,10 @@ def chat_nav_panel(
         default conversation-history sidebar, and a
         :class:`~shinychat.ChatSidebar` supplies a page-specific sidebar. Raw
         :class:`shiny.ui.Sidebar` objects are not supported.
+    toolbar
+        Toolbar for this page. ``False`` (the default) shows no toolbar,
+        ``True`` reuses the home :func:`~shinychat.page_chat` toolbar, and an
+        HTML child supplies a page-specific toolbar. ``None`` is not allowed.
     content_width
         Maximum width for the panel content. Content is centered and receives
         responsive inline padding. ``"100%"``, ``"100vw"``, and ``"100dvw"``
@@ -318,12 +324,14 @@ def chat_nav_panel(
             "`sidebar` must be False, True, or a shinychat `ChatSidebar`; "
             "raw Shiny Sidebar objects are not supported."
         )
+    _validate_panel_toolbar(toolbar)
     return ChatNavPanel(
         title=title,
         content=content,
         value=value,
         icon=icon,
         sidebar=sidebar,
+        toolbar=toolbar,
         content_width=_validate_css_width(content_width, "content_width"),
     )
 
@@ -407,6 +415,7 @@ class _NormalizedPage:
     panel: ChatNavPanel
     value: str
     sidebar_key: str | None
+    toolbar_key: str | None
 
 
 @dataclass(frozen=True)
@@ -427,6 +436,16 @@ def _validate_page_child(
         raise TypeError(
             f"`{name}` must be {expected}, not {type(value).__name__}."
         )
+
+
+def _validate_panel_toolbar(value: object) -> None:
+    if value is None:
+        raise TypeError(
+            "`toolbar` must be False, True, or an HTML child; None is not allowed."
+        )
+    if isinstance(value, bool):
+        return
+    _validate_page_child(cast(TagChild, value), "toolbar")
 
 
 def _normalize_sidebar_config(sidebar: ChatSidebar) -> ChatSidebar:
@@ -500,6 +519,7 @@ def _normalize_page_config(
                 "Navigation page sidebars must be False, True, or a "
                 "shinychat `ChatSidebar`."
             )
+        _validate_panel_toolbar(panel.toolbar)
 
         value = panel.title if panel.value is None else panel.value
         if not value.strip():
@@ -526,11 +546,19 @@ def _normalize_page_config(
                 )
             )
 
+        toolbar_key = (
+            "home"
+            if panel.toolbar is True
+            else f"page-{index + 1}"
+            if panel.toolbar is not False
+            else None
+        )
         normalized_pages.append(
             _NormalizedPage(
                 panel=panel,
                 value=value,
                 sidebar_key=sidebar_key,
+                toolbar_key=toolbar_key,
             )
         )
 
@@ -592,6 +620,19 @@ def _render_page_control(
         class_="shiny-chat-page-nav-link",
         aria_controls=panel_id,
         data_page_target=page.value,
+    )
+
+
+def _render_toolbar_source(key: str, content: TagChild | None) -> Tag:
+    return Tag(
+        "div",
+        Tag(
+            "div",
+            content,
+            class_="shiny-chat-page-toolbar-content",
+        ),
+        class_="shiny-chat-page-toolbar-source",
+        data_page_toolbar_source=key,
     )
 
 
@@ -877,10 +918,22 @@ def _render_page_chat(
         ),
         Tag(
             "div",
-            toolbar,
             class_="shiny-chat-page-toolbar",
         ),
         class_="shiny-chat-page-controls",
+    )
+    toolbar_sources = Tag(
+        "div",
+        _render_toolbar_source("home", toolbar),
+        *(
+            _render_toolbar_source(
+                page.toolbar_key,
+                cast(TagChild, page.panel.toolbar),
+            )
+            for page in normalized_pages
+            if page.toolbar_key is not None and page.toolbar_key != "home"
+        ),
+        class_="shiny-chat-page-toolbar-sources",
     )
 
     shell = Tag(
@@ -968,6 +1021,7 @@ def _render_page_chat(
                     class_="shiny-chat-page-panel shiny-chat-page-home",
                     data_page_value="home",
                     data_sidebar_key=home_sidebar_key,
+                    data_page_toolbar_source="home",
                 ),
                 *(
                     Tag(
@@ -993,6 +1047,7 @@ def _render_page_chat(
                         data_page_value=page.value,
                         data_page_title=page.panel.title,
                         data_sidebar_key=page.sidebar_key,
+                        data_page_toolbar_source=page.toolbar_key,
                         hidden=True,
                     )
                     for index, page in enumerate(normalized_pages, start=1)
@@ -1001,6 +1056,7 @@ def _render_page_chat(
             ),
             class_="shiny-chat-page-body",
         ),
+        toolbar_sources,
         data_chat_id=resolved_id,
         data_active_page="home",
     )

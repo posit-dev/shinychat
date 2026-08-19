@@ -60,6 +60,7 @@ def app_ui(request: object) -> ui.Tag:
                 ),
                 value="history",
                 sidebar=True,
+                toolbar=True,
             ),
             chat_nav_panel(
                 "Settings",
@@ -81,6 +82,11 @@ def app_ui(request: object) -> ui.Tag:
                     width=320,
                     open="closed",
                     resizable=True,
+                ),
+                toolbar=ui.input_text(
+                    "settings_toolbar_value",
+                    "Settings toolbar value",
+                    value="settings toolbar initial",
                 ),
             ),
             chat_nav_panel(

@@ -180,9 +180,7 @@ function pageFixture({
                 : ""
             }
           </nav>
-          <div class="shiny-chat-page-toolbar">
-            <input id="shiny-toolbar-input" value="initial">
-          </div>
+          <div class="shiny-chat-page-toolbar"></div>
         </div>
       </div>
     </header>
@@ -247,6 +245,7 @@ function pageFixture({
         <section
           class="shiny-chat-page-panel shiny-chat-page-home"
           data-page-value="home"
+          data-page-toolbar-source="home"
           ${sidebar ? `data-sidebar-key="${homeSidebarKey}"` : ""}
         >
           <shiny-chat-container id="chat">
@@ -264,12 +263,14 @@ function pageFixture({
                 class="shiny-chat-page-panel"
                 data-page-value="default-page"
                 data-sidebar-key="default"
+                data-page-toolbar-source="home"
                 hidden
               >Default page</section>
               <section
                 class="shiny-chat-page-panel"
                 data-page-value="custom-page"
                 data-sidebar-key="page-2"
+                data-page-toolbar-source="custom-page"
                 hidden
               >Custom page</section>
               <section
@@ -291,6 +292,18 @@ function pageFixture({
             : ""
         }
       </main>
+    </div>
+    <div class="shiny-chat-page-toolbar-sources">
+      <div class="shiny-chat-page-toolbar-source" data-page-toolbar-source="home">
+        <div class="shiny-chat-page-toolbar-content">
+          <input id="shiny-toolbar-input" value="initial">
+        </div>
+      </div>
+      <div class="shiny-chat-page-toolbar-source" data-page-toolbar-source="custom-page">
+        <div class="shiny-chat-page-toolbar-content">
+          <input id="custom-toolbar-input" value="custom initial">
+        </div>
+      </div>
     </div>
   `
 
@@ -437,6 +450,38 @@ describe("shiny-chat-page navigation", () => {
     ).toBe(true)
     expect(onResize).toHaveBeenCalledTimes(2)
     window.removeEventListener("resize", onResize)
+  })
+
+  it("moves the selected toolbar subtree without cloning its controls", () => {
+    const page = pageFixture()
+    const { identity, navButtons } = getPageElements(page)
+    const toolbar = page.querySelector<HTMLElement>(".shiny-chat-page-toolbar")!
+    const homeInput = page.querySelector<HTMLInputElement>(
+      "#shiny-toolbar-input",
+    )!
+    const customInput = page.querySelector<HTMLInputElement>(
+      "#custom-toolbar-input",
+    )!
+
+    homeInput.value = "home state"
+    navButtons[0]!.click()
+    expect(toolbar.querySelector("#shiny-toolbar-input")).toBe(homeInput)
+    expect(page.querySelectorAll("#shiny-toolbar-input")).toHaveLength(1)
+
+    navButtons[1]!.click()
+    expect(toolbar.querySelector("#custom-toolbar-input")).toBe(customInput)
+    expect(page.querySelectorAll("#custom-toolbar-input")).toHaveLength(1)
+    expect(page.querySelector("#shiny-toolbar-input")).toBe(homeInput)
+    customInput.value = "custom state"
+
+    identity!.click()
+    expect(toolbar.querySelector("#shiny-toolbar-input")).toBe(homeInput)
+    expect(homeInput.value).toBe("home state")
+    expect(page.querySelector("#custom-toolbar-input")).toBe(customInput)
+    expect(customInput.value).toBe("custom state")
+    expect(
+      page.querySelectorAll(".shiny-chat-page-toolbar-content"),
+    ).toHaveLength(2)
   })
 
   it("synchronizes home, default, custom, and absent sidebar metadata", () => {

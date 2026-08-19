@@ -10,6 +10,7 @@ chat_nav_panel(
   value = NULL,
   icon = NULL,
   sidebar = FALSE,
+  toolbar = FALSE,
   content_width = "min(680px, 100\%)"
 )
 }
@@ -24,6 +25,9 @@ chat_nav_panel(
 
 \item{sidebar}{Whether to use the default sidebar (\code{TRUE}), no
 page-specific sidebar (\code{FALSE}), or a \code{\link[=chat_sidebar]{chat_sidebar()}} configuration.}
+
+\item{toolbar}{\code{FALSE} (the default) for no toolbar, \code{TRUE} to reuse the
+\code{page_chat()} toolbar, or UI content for a page-specific toolbar.}
 
 \item{content_width}{Maximum panel-content width. Content is centered and
 receives responsive inline padding. Use exactly \code{"100\%"}, \code{"100vw"}, or

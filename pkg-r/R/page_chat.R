@@ -81,6 +81,8 @@ chat_artifact <- function(
 #' @param icon An optional icon to display with the title.
 #' @param sidebar Whether to use the default sidebar (`TRUE`), no
 #'   page-specific sidebar (`FALSE`), or a [chat_sidebar()] configuration.
+#' @param toolbar `FALSE` (the default) for no toolbar, `TRUE` to reuse the
+#'   `page_chat()` toolbar, or UI content for a page-specific toolbar.
 #' @param content_width Maximum panel-content width. Content is centered and
 #'   receives responsive inline padding. Use exactly `"100%"`, `"100vw"`, or
 #'   `"100dvw"` for full-bleed content without component-provided padding.
@@ -93,6 +95,7 @@ chat_nav_panel <- function(
   value = NULL,
   icon = NULL,
   sidebar = FALSE,
+  toolbar = FALSE,
   content_width = "min(680px, 100%)"
 ) {
   chat_validate_string(title, "title")
@@ -101,6 +104,7 @@ chat_nav_panel <- function(
     chat_validate_string(value, "value")
   }
   chat_validate_sidebar(sidebar)
+  chat_validate_panel_toolbar(toolbar)
   content_width <- chat_validate_content_width(content_width, "content_width")
 
   structure(
@@ -110,6 +114,7 @@ chat_nav_panel <- function(
       value = value,
       icon = icon,
       sidebar = sidebar,
+      toolbar = toolbar,
       content_width = content_width
     ),
     class = "chat_nav_panel"
@@ -231,7 +236,8 @@ chat_ui_history <- function(id, ...) {
 #'     chat_nav_panel(
 #'       "About",
 #'       tags$p("This is a secondary page."),
-#'       value = "about"
+#'       value = "about",
+#'       toolbar = TRUE
 #'     ),
 #'     chat_nav_panel(
 #'       "Settings",
@@ -241,7 +247,8 @@ chat_ui_history <- function(id, ...) {
 #'         tags$p("Settings menu"),
 #'         width = 320,
 #'         open = "closed"
-#'       )
+#'       ),
+#'       toolbar = actionButton("save_settings", "Save settings")
 #'     )
 #'   ),
 #'   artifact = chat_artifact(
@@ -362,8 +369,20 @@ page_chat <- function(
       lapply(normalized$pages, page_chat_nav_control)
     ),
     htmltools::tags$div(
-      class = "shiny-chat-page-toolbar",
-      toolbar
+      class = "shiny-chat-page-toolbar"
+    )
+  )
+  toolbar_sources <- htmltools::tags$div(
+    class = "shiny-chat-page-toolbar-sources",
+    page_chat_toolbar_source("home", toolbar),
+    lapply(
+      normalized$pages,
+      function(page) {
+        if (is.null(page$toolbar_key) || identical(page$toolbar_key, "home")) {
+          return(NULL)
+        }
+        page_chat_toolbar_source(page$toolbar_key, page$toolbar)
+      }
     )
   )
 
@@ -403,6 +422,7 @@ page_chat <- function(
         `data-page-value` = normalized$value,
         `data-page-title` = panel$title,
         `data-sidebar-key` = normalized$sidebar_key,
+        `data-page-toolbar-source` = normalized$toolbar_key,
         hidden = NA,
         htmltools::tags$div(
           class = "shiny-chat-page-panel-content",
@@ -491,11 +511,13 @@ page_chat <- function(
             class = "shiny-chat-page-panel shiny-chat-page-home",
             `data-page-value` = "home",
             `data-sidebar-key` = normalized$home_sidebar_key,
+            `data-page-toolbar-source` = "home",
             chat
           ),
           nav_sections
         )
-      )
+      ),
+      toolbar_sources
     )
   )
 
@@ -554,6 +576,7 @@ normalize_chat_pages <- function(pages) {
     }
     chat_validate_page_ui(page$icon, paste0("pages[[", i, "]]$icon"))
     chat_validate_sidebar(page$sidebar)
+    chat_validate_panel_toolbar(page$toolbar)
     pages[[i]]$content_width <- chat_validate_content_width(
       page$content_width,
       paste0("pages[[", i, "]]$content_width")
@@ -667,6 +690,14 @@ normalize_page_sidebars <- function(pages, sidebar, resolved_id) {
       sidebar_key = sidebar_key,
       title = page$title,
       icon = page$icon,
+      toolbar = page$toolbar,
+      toolbar_key = if (isTRUE(page$toolbar)) {
+        "home"
+      } else if (isFALSE(page$toolbar)) {
+        NULL
+      } else {
+        paste0("page-", i)
+      },
       nav_id = paste0(resolved_id, "-nav-", i),
       panel_id = paste0(resolved_id, "-panel-", i)
     )
@@ -677,6 +708,17 @@ normalize_page_sidebars <- function(pages, sidebar, resolved_id) {
     sidebars = sidebars,
     home_sidebar_key = home_sidebar_key,
     home_sidebar = home_sidebar
+  )
+}
+
+page_chat_toolbar_source <- function(key, content) {
+  htmltools::tags$div(
+    class = "shiny-chat-page-toolbar-source",
+    `data-page-toolbar-source` = key,
+    htmltools::tags$div(
+      class = "shiny-chat-page-toolbar-content",
+      content
+    )
   )
 }
 
@@ -797,6 +839,20 @@ chat_validate_page_ui <- function(value, arg, allow_null = TRUE) {
 
   if (!is_ui(value)) {
     cli::cli_abort("{.arg {arg}} must be text or UI content.")
+  }
+  invisible()
+}
+
+chat_validate_panel_toolbar <- function(value) {
+  if (is.null(value)) {
+    cli::cli_abort(
+      "{.arg toolbar} must be {.code TRUE}, {.code FALSE}, or text or UI content; {.code NULL} is not allowed."
+    )
+  }
+  if (is.logical(value)) {
+    chat_validate_boolean(value, "toolbar")
+  } else {
+    chat_validate_page_ui(value, "toolbar", allow_null = FALSE)
   }
   invisible()
 }

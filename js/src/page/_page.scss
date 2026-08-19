@@ -126,13 +126,21 @@ shiny-chat-page {
   justify-content: flex-start;
 }
 
-.shiny-chat-page-toolbar > * {
+.shiny-chat-page-toolbar-content {
+  display: contents;
+}
+
+.shiny-chat-page-toolbar > .shiny-chat-page-toolbar-content > * {
   min-width: 0;
   max-width: 100%;
 }
 
-.shiny-chat-page-toolbar > .bslib-toolbar {
+.shiny-chat-page-toolbar > .shiny-chat-page-toolbar-content > .bslib-toolbar {
   justify-content: flex-start;
+}
+
+.shiny-chat-page-toolbar-sources {
+  display: none;
 }
 
 .shiny-chat-page-nav-link {
@@ -371,7 +379,7 @@ button.shiny-chat-page-identity:focus-visible,
     flex-direction: column;
   }
 
-  .shiny-chat-page-controls-mount-mobile .shiny-chat-page-toolbar > * {
+  .shiny-chat-page-controls-mount-mobile .shiny-chat-page-toolbar-content > * {
     width: 100%;
   }
 
