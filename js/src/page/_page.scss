@@ -233,12 +233,12 @@ button.shiny-chat-page-identity:focus-visible,
 
 @media (min-width: 800px) {
   .shiny-chat-page-header {
-    grid-template-columns: auto minmax(12rem, 30ch) minmax(0, 1fr);
+    grid-template-columns: auto fit-content(12rem) minmax(0, 1fr);
   }
 
   .shiny-chat-page-identity {
-    width: 100%;
-    max-width: none;
+    min-width: auto;
+    max-width: 12rem;
   }
 
   .shiny-chat-page-toolbar,
