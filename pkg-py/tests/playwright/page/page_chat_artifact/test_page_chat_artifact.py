@@ -65,6 +65,199 @@ def test_percentage_artifact_keeps_desktop_chat_width(
     expect(separator).to_have_attribute("aria-valuetext", f"{current} pixels")
 
 
+def test_artifact_separator_remains_mouse_reachable_after_maximum_resize(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    chat, _ = open_page(page, local_app, artifact_width="default")
+    page.get_by_role("button", name="Show artifact").click()
+
+    panel = chat.loc.locator(".shiny-chat-artifact")
+    separator = page.get_by_role("separator", name="Resize artifact panel")
+    expect(panel).to_be_visible(timeout=TIMEOUT)
+    expect(separator).to_be_visible()
+    page.wait_for_timeout(220)
+
+    def arm_and_drag(delta_x: float) -> None:
+        box = separator.bounding_box()
+        assert box is not None
+        start_x = box["x"] + 1
+        y = box["y"] + box["height"] / 2
+        # Cross the panel edge from the chat column before grabbing. The
+        # unarmed handle is pointer-transparent, so this follows mouse use.
+        page.mouse.move(max(0, start_x - 2), y)
+        page.mouse.move(start_x + 1, y)
+        expect(separator).to_have_attribute("data-boundary-armed", "")
+        page.mouse.down()
+        expect(separator).to_have_attribute("data-resizing", "")
+        page.mouse.move(start_x + delta_x, y)
+        page.mouse.up()
+
+    # Grow to the clamp, moving the separator's geometry in the process.
+    arm_and_drag(-1000)
+    page.wait_for_timeout(220)
+    maximum = int(separator.get_attribute("aria-valuenow") or "0")
+    maximum_bound = int(separator.get_attribute("aria-valuemax") or "0")
+    assert maximum == maximum_bound
+
+    max_box = separator.bounding_box()
+    assert max_box is not None
+    assert (
+        page.evaluate(
+            """({ x, y }) =>
+              document.elementFromPoint(x, y)?.matches(
+                "shiny-chat-resize-handle.shiny-chat-artifact-resizer"
+              ) ?? false""",
+            {"x": max_box["x"] + 1, "y": max_box["y"] + 100},
+        )
+        is False
+    )
+
+    arm_and_drag(100)
+    page.wait_for_timeout(220)
+    resized = int(separator.get_attribute("aria-valuenow") or "0")
+    assert 240 <= resized < maximum
+    resized_box = panel.bounding_box()
+    assert resized_box is not None
+    assert resized_box["width"] == pytest.approx(resized, abs=1)
+
+    separator.press("End")
+    end_width = int(separator.get_attribute("aria-valuenow") or "0")
+    separator.press("ArrowLeft")
+    expected_width = end_width - 10
+    page.wait_for_timeout(220)
+    expect(separator).to_have_attribute("aria-valuenow", str(expected_width))
+    settled_box = panel.bounding_box()
+    assert settled_box is not None
+    assert settled_box["width"] == pytest.approx(expected_width, abs=1)
+
+
+def test_artifact_separator_arms_from_either_side_and_clicks_through(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    chat, _ = open_page(page, local_app, artifact_width="default")
+    page.get_by_role("button", name="Show artifact").click()
+
+    panel = chat.loc.locator(".shiny-chat-artifact")
+    separator = page.get_by_role("separator", name="Resize artifact panel")
+    expect(panel).to_be_visible(timeout=TIMEOUT)
+    expect(separator).to_be_visible()
+    page.wait_for_timeout(220)
+    panel.evaluate(
+        """(element) => {
+          element.dataset.resizeUnderlayClicks = "0";
+          element.addEventListener("click", () => {
+            element.dataset.resizeUnderlayClicks = String(
+              Number(element.dataset.resizeUnderlayClicks) + 1
+            );
+          });
+        }"""
+    )
+
+    def assert_bidirectional_arming(
+        boundary: float, panel_direction: float
+    ) -> None:
+        box = separator.bounding_box()
+        assert box is not None
+        y = box["y"] + box["height"] / 2
+        # First approach the divider from the chat side, then from inside the
+        # artifact. Both positions land inside the two-pixel activation zone.
+        page.mouse.move(boundary - panel_direction, y)
+        expect(separator).to_have_attribute("data-boundary-armed", "")
+        page.mouse.move(boundary + panel_direction * 10, y)
+        expect(separator).not_to_have_attribute("data-boundary-armed", "")
+        page.mouse.move(boundary + panel_direction * 10, y)
+        page.mouse.move(boundary + panel_direction, y)
+        expect(separator).to_have_attribute("data-boundary-armed", "")
+        page.mouse.down()
+        expect(separator).to_have_attribute("data-resizing", "")
+        page.mouse.up()
+        expect(separator).not_to_have_attribute("data-resizing", "")
+
+    box = separator.bounding_box()
+    assert box is not None
+    y = box["y"] + box["height"] / 2
+    # Five pixels inside the desktop hit target is outside its two-pixel
+    # activation zone, so this real mouse click reaches the panel below.
+    page.mouse.click(box["x"] + 5, y)
+    expect(panel).to_have_attribute("data-resize-underlay-clicks", "1")
+    assert_bidirectional_arming(box["x"], 1)
+
+    page.evaluate("document.documentElement.dir = 'rtl'")
+    page.wait_for_timeout(220)
+    rtl_box = separator.bounding_box()
+    assert rtl_box is not None
+    assert_bidirectional_arming(rtl_box["x"] + rtl_box["width"], -1)
+
+
+def test_artifact_resizer_uses_coarse_touch_geometry(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    session = page.context.new_cdp_session(page)
+    session.send(
+        "Emulation.setTouchEmulationEnabled",
+        {"enabled": True, "maxTouchPoints": 1},
+    )
+    chat, _ = open_page(page, local_app, artifact_width="default")
+    page.get_by_role("button", name="Show artifact").click()
+
+    separator = page.get_by_role("separator", name="Resize artifact panel")
+    expect(separator).to_be_visible(timeout=TIMEOUT)
+    expect(separator).to_have_css("width", "26px")
+    page.wait_for_timeout(220)
+    initial_width = int(separator.get_attribute("aria-valuenow") or "0")
+    box = separator.bounding_box()
+    assert box is not None
+    start_x = box["x"] + box["width"] - 1
+    y = box["y"] + 100
+    session.send(
+        "Input.dispatchTouchEvent",
+        {
+            "type": "touchStart",
+            "touchPoints": [{"x": start_x, "y": y, "id": 7}],
+        },
+    )
+    expect(separator).to_have_attribute("data-resizing", "")
+    session.send(
+        "Input.dispatchTouchEvent",
+        {
+            "type": "touchMove",
+            "touchPoints": [{"x": start_x - 80, "y": y, "id": 7}],
+        },
+    )
+    session.send(
+        "Input.dispatchTouchEvent",
+        {"type": "touchEnd", "touchPoints": []},
+    )
+    assert int(separator.get_attribute("aria-valuenow") or "0") > initial_width
+
+
+def test_artifact_resizer_recovers_after_responsive_takeover(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    chat, _ = open_page(page, local_app, artifact_width="default")
+    page.get_by_role("button", name="Show artifact").click()
+
+    panel = chat.loc.locator(".shiny-chat-artifact")
+    separator = page.get_by_role("separator", name="Resize artifact panel")
+    expect(panel).to_be_visible(timeout=TIMEOUT)
+    expect(separator).to_be_visible()
+
+    page.set_viewport_size({"width": 800, "height": 900})
+    expect(chat.loc.locator(".shiny-chat-layout")).to_have_attribute(
+        "data-artifact-takeover", ""
+    )
+    expect(separator).to_have_count(0)
+
+    page.set_viewport_size({"width": 1440, "height": 900})
+    expect(chat.loc.locator(".shiny-chat-layout")).not_to_have_attribute(
+        "data-artifact-takeover", ""
+    )
+    expect(separator).to_be_visible()
+    width = int(separator.get_attribute("aria-valuenow") or "0")
+    separator.press("ArrowLeft")
+    expect(separator).to_have_attribute("aria-valuenow", str(width - 10))
+
+
 def test_ninety_percent_artifact_is_bounded_before_reveal(
     page: Page, local_app: ShinyAppProc
 ) -> None:

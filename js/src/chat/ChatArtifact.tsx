@@ -202,8 +202,11 @@ export function ChatArtifact({
   const [renderedWidth, setRenderedWidth] = useState(
     () => pixelWidth(artifact.width || "400px") ?? 400,
   )
-  const [resizeHandleProvider] = useState(getResizeHandleProvider)
+  const [resizeHandleProvider] = useState(() =>
+    getResizeHandleProvider(customElements, { boundaryActivation: true }),
+  )
   const resizeHandleRef = useRef<ResizeHandleElement>(null)
+  const pendingWidthRef = useRef<number | null>(null)
 
   useLayoutEffect(() => {
     const wasVisible = wasVisibleRef.current
@@ -247,6 +250,7 @@ export function ChatArtifact({
       return
     }
 
+    pendingWidthRef.current = null
     setResizing(false)
     setLayoutReady(false)
     if (!wasVisible) {
@@ -325,10 +329,28 @@ export function ChatArtifact({
       takeover ||
       (layoutWidth > 0 && layoutWidth < ARTIFACT_TAKEOVER_WIDTH)
     ) {
+      pendingWidthRef.current = null
       return
     }
 
     if (measured <= 0) return
+
+    const pending = pendingWidthRef.current
+    if (pending !== null) {
+      const bounded = clampWidth(pending, maximum)
+      pendingWidthRef.current = bounded
+      setWidth(`${bounded}px`)
+      setRenderedWidth(bounded)
+
+      // The parent state and grid track update independently. Keep this local
+      // intent authoritative until both report the requested pixel width.
+      if (configured === bounded && measured === bounded) {
+        pendingWidthRef.current = null
+      } else if (configured !== bounded) {
+        onWidthChange(`${bounded}px`)
+      }
+      return
+    }
 
     if (configured === undefined) {
       if (!layoutReady) return
@@ -341,7 +363,10 @@ export function ChatArtifact({
       return
     }
 
-    const bounded = clampWidth(Math.max(measured, configured ?? 0), maximum)
+    // A ResizeObserver can run before the grid applies a just-requested pixel
+    // width. Trust that configured value instead of restoring the stale,
+    // pre-resize measurement.
+    const bounded = clampWidth(configured, maximum)
     setWidth(`${bounded}px`)
     setRenderedWidth(bounded)
     if (
@@ -378,6 +403,7 @@ export function ChatArtifact({
   const setBoundedWidth = useCallback(
     (next: number) => {
       const bounded = clampWidth(next, maxWidth())
+      pendingWidthRef.current = bounded
       setWidth(`${bounded}px`)
       setRenderedWidth(bounded)
       onWidthChange(`${bounded}px`)
@@ -396,6 +422,7 @@ export function ChatArtifact({
       panelSide: "inline-start",
       disabled: !artifact.resizable || takeover || !artifact.visible,
       label: "Resize artifact panel",
+      boundaryActivation: true,
     })
     const onResizeRequest = (event: Event) => {
       setBoundedWidth((event as CustomEvent<ResizeRequestDetail>).detail.value)

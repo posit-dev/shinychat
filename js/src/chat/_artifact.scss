@@ -220,16 +220,14 @@ shiny-chat-container[data-history-placement="right"] {
 }
 
 .shiny-chat-artifact-resizer {
-  --_artifact-resize-handle-overhang: 4px;
-
-  inset-inline-start: calc(-1 * var(--_artifact-resize-handle-overhang));
+  inset-inline-start: 0;
+  --shiny-chat-resize-handle-indicator-offset: 0px;
   --shiny-chat-resize-handle-indicator-color: var(--bs-border-color, #dee2e6);
 }
 
-@media (any-pointer: coarse) {
-  .shiny-chat-artifact-resizer {
-    --_artifact-resize-handle-overhang: 13px;
-  }
+shiny-chat-resize-handle.shiny-chat-artifact-resizer[data-boundary-activation]:not([data-boundary-armed]) {
+  cursor: default;
+  pointer-events: none;
 }
 
 @container shiny-chat (max-width: 1119.99px) {

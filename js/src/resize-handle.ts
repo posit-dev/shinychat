@@ -83,7 +83,12 @@ function hasResizeHandleContract(
 
 export function getResizeHandleProvider(
   registry: ResizeHandleRegistry = customElements,
+  options: CreateResizeHandleOptions = {},
 ): ResizeHandleProvider {
+  if (options.boundaryActivation) {
+    return { name: "local", tagName: LOCAL_TAG_NAME }
+  }
+
   return hasResizeHandleContract(registry.get(BSLIB_TAG_NAME))
     ? { name: "bslib", tagName: BSLIB_TAG_NAME }
     : { name: "local", tagName: LOCAL_TAG_NAME }
@@ -94,9 +99,7 @@ export function createResizeHandle(
 ): ResizeHandleElement {
   // Boundary activation is a shinychat extension, not part of bslib's public
   // resize-handle contract. Keep page handles local until bslib supports it.
-  const provider = options.boundaryActivation
-    ? { name: "local" as const, tagName: LOCAL_TAG_NAME }
-    : getResizeHandleProvider()
+  const provider = getResizeHandleProvider(customElements, options)
   const handle = document.createElement(provider.tagName) as ResizeHandleElement
   handle.dataset.shinyChatResizeHandleProvider = provider.name
   return handle
@@ -118,8 +121,6 @@ class ShinyChatResizeHandleElement
         pointerType: string
       }
     | undefined
-  private lastPointerX: number | undefined
-
   connectedCallback() {
     if (this.listenerAbort) return
 
@@ -298,10 +299,8 @@ class ShinyChatResizeHandleElement
       return
     }
 
-    const previousX = this.lastPointerX
-    this.lastPointerX = pointerEvent.clientX
     const boundary = this.boundary()
-    if (boundary === undefined || previousX === undefined) return
+    if (boundary === undefined) return
 
     if (this.hasAttribute("data-boundary-armed")) {
       const rect = this.getBoundingClientRect()
@@ -314,11 +313,7 @@ class ShinyChatResizeHandleElement
       return
     }
 
-    const panelIsLeft = this.panelIsLeft()
-    const crossedIntoPanel = panelIsLeft
-      ? previousX > boundary && pointerEvent.clientX <= boundary
-      : previousX < boundary && pointerEvent.clientX >= boundary
-    if (crossedIntoPanel) {
+    if (Math.abs(pointerEvent.clientX - boundary) <= 2) {
       this.setAttribute("data-boundary-armed", "")
     }
   }
@@ -405,7 +400,6 @@ class ShinyChatResizeHandleElement
   }
 
   private deactivateBoundary() {
-    this.lastPointerX = undefined
     this.removeAttribute("data-boundary-armed")
   }
 

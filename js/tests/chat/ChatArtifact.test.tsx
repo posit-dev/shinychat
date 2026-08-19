@@ -97,6 +97,24 @@ function renderArtifact(
   return { ...view, closeButtonRef, shiny, onClose, onWidthChange }
 }
 
+function armArtifactResizer(
+  separator: HTMLElement,
+  direction: "ltr" | "rtl" = "ltr",
+) {
+  Object.defineProperty(separator, "getBoundingClientRect", {
+    configurable: true,
+    value: () => new DOMRect(100, 0, 8, 400),
+  })
+  if (direction === "rtl") {
+    fireEvent.pointerMove(document, { clientX: 109 })
+    fireEvent.pointerMove(document, { clientX: 107 })
+  } else {
+    fireEvent.pointerMove(document, { clientX: 99 })
+    fireEvent.pointerMove(document, { clientX: 101 })
+  }
+  expect(separator).toHaveAttribute("data-boundary-armed")
+}
+
 describe("ChatArtifact", () => {
   it("retains a closing artifact until its consumer motion completes", () => {
     vi.useFakeTimers()
@@ -424,6 +442,7 @@ describe("ChatArtifact", () => {
     fireEvent.keyDown(separator, { key: "ArrowRight" })
     expect(onWidthChange).toHaveBeenLastCalledWith("410px")
 
+    armArtifactResizer(separator)
     fireEvent.pointerDown(separator, {
       button: 0,
       isPrimary: true,
@@ -483,6 +502,7 @@ describe("ChatArtifact", () => {
     const separator = screen.getByRole("separator", {
       name: "Resize artifact panel",
     })
+    armArtifactResizer(separator)
     fireEvent.pointerDown(separator, {
       button: 0,
       isPrimary: true,
@@ -788,6 +808,7 @@ describe("ChatArtifact", () => {
       name: "Resize artifact panel",
     })
 
+    armArtifactResizer(separator, "rtl")
     fireEvent.pointerDown(separator, {
       button: 0,
       isPrimary: true,
@@ -1535,7 +1556,7 @@ describe("ChatArtifact", () => {
     }
   })
 
-  it("keeps its mounted resize provider when bslib becomes available", () => {
+  it("keeps its boundary-aware local resize provider when bslib becomes available", () => {
     class ConformingBslibHandle extends HTMLElement {
       static readonly resizeHandleEvents = RESIZE_HANDLE_EVENTS
 

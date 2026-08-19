@@ -217,7 +217,7 @@ describe("shiny-chat-resize-handle", () => {
     expect(ends).toHaveBeenCalledTimes(2)
   })
 
-  it("arms fine pointers only after crossing into the configured pane boundary", () => {
+  it("arms fine pointers near the configured pane boundary from either side", () => {
     const handle = configuredHandle({ boundaryActivation: true })
     const starts = vi.fn()
     handle.addEventListener("resize-start", starts)
@@ -240,10 +240,13 @@ describe("shiny-chat-resize-handle", () => {
     document.dispatchEvent(new PointerEvent("pointermove", { clientX: 324 }))
     document.dispatchEvent(new PointerEvent("pointermove", { clientX: 319 }))
     expect(handle).toHaveAttribute("data-boundary-armed")
+    document.dispatchEvent(new PointerEvent("pointermove", { clientX: 311 }))
+    expect(handle).not.toHaveAttribute("data-boundary-armed")
+    document.dispatchEvent(new PointerEvent("pointermove", { clientX: 318 }))
+    expect(handle).toHaveAttribute("data-boundary-armed")
     handle.remove()
     expect(handle).not.toHaveAttribute("data-boundary-armed")
     document.body.append(handle)
-    document.dispatchEvent(new PointerEvent("pointermove", { clientX: 324 }))
     document.dispatchEvent(new PointerEvent("pointermove", { clientX: 319 }))
     expect(handle).toHaveAttribute("data-boundary-armed")
 
@@ -264,7 +267,7 @@ describe("shiny-chat-resize-handle", () => {
     expect(handle).not.toHaveAttribute("data-boundary-armed")
   })
 
-  it("uses the opposite crossing direction for inline-end and allows coarse pointers", () => {
+  it("uses the mirrored boundary in RTL and allows coarse pointers", () => {
     const handle = configuredHandle({
       panelSide: "inline-start",
       boundaryActivation: true,
@@ -276,11 +279,15 @@ describe("shiny-chat-resize-handle", () => {
       value: () => new DOMRect(320, 0, 8, 400),
     })
 
-    document.dispatchEvent(new PointerEvent("pointermove", { clientX: 316 }))
-    document.dispatchEvent(new PointerEvent("pointermove", { clientX: 321 }))
+    document.body.style.direction = "rtl"
+    document.dispatchEvent(new PointerEvent("pointermove", { clientX: 330 }))
+    document.dispatchEvent(new PointerEvent("pointermove", { clientX: 327 }))
     expect(handle).toHaveAttribute("data-boundary-armed")
-    document.dispatchEvent(new PointerEvent("pointermove", { clientX: 329 }))
+    document.dispatchEvent(new PointerEvent("pointermove", { clientX: 318 }))
     expect(handle).not.toHaveAttribute("data-boundary-armed")
+    document.dispatchEvent(new PointerEvent("pointermove", { clientX: 322 }))
+    document.dispatchEvent(new PointerEvent("pointermove", { clientX: 327 }))
+    expect(handle).toHaveAttribute("data-boundary-armed")
 
     document.dispatchEvent(
       new PointerEvent("pointerdown", {
@@ -322,6 +329,67 @@ describe("shiny-chat-resize-handle", () => {
     expect(starts).toHaveBeenCalledTimes(1)
   })
 
+  it("can start another fine-pointer drag after a maximum-width resize", () => {
+    const handle = configuredHandle({
+      value: 400,
+      min: 240,
+      max: 840,
+      panelSide: "inline-start",
+      boundaryActivation: true,
+    })
+    const requests: number[] = []
+    handle.addEventListener("resize-request", (event) => {
+      requests.push((event as CustomEvent<{ value: number }>).detail.value)
+    })
+    let left = 700
+    Object.defineProperty(handle, "getBoundingClientRect", {
+      configurable: true,
+      value: () => new DOMRect(left, 0, 8, 400),
+    })
+
+    const arm = () => {
+      document.dispatchEvent(
+        new PointerEvent("pointermove", { clientX: left - 1 }),
+      )
+      document.dispatchEvent(
+        new PointerEvent("pointermove", { clientX: left + 1 }),
+      )
+      expect(handle).toHaveAttribute("data-boundary-armed")
+    }
+    const drag = (pointerId: number, endX: number) => {
+      handle.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          bubbles: true,
+          button: 0,
+          isPrimary: true,
+          pointerId,
+          clientX: left + 1,
+        }),
+      )
+      handle.dispatchEvent(
+        new PointerEvent("pointermove", {
+          bubbles: true,
+          pointerId,
+          clientX: endX,
+        }),
+      )
+      handle.dispatchEvent(
+        new PointerEvent("pointerup", { bubbles: true, pointerId }),
+      )
+    }
+
+    arm()
+    drag(1, left - 1000)
+    expect(requests).toEqual([840])
+    expect(handle).not.toHaveAttribute("data-boundary-armed")
+
+    // The panel's inline-start edge moves when its width reaches the clamp.
+    left = 260
+    arm()
+    drag(2, left + 101)
+    expect(requests).toEqual([840, 740])
+  })
+
   it("uses bslib only when the complete public contract is available", () => {
     class ConformingBslibHandle extends HTMLElement {
       static readonly resizeHandleEvents = RESIZE_HANDLE_EVENTS
@@ -338,6 +406,12 @@ describe("shiny-chat-resize-handle", () => {
     expect(getResizeHandleProvider(registry)).toEqual({
       name: "bslib",
       tagName: "bslib-resize-handle",
+    })
+    expect(
+      getResizeHandleProvider(registry, { boundaryActivation: true }),
+    ).toEqual({
+      name: "local",
+      tagName: "shiny-chat-resize-handle",
     })
     expect(createResizeHandle({ boundaryActivation: true }).tagName).toBe(
       "SHINY-CHAT-RESIZE-HANDLE",
