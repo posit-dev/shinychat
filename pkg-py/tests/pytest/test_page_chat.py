@@ -244,6 +244,7 @@ def test_page_chat_signature_has_only_title_and_icon_positional() -> None:
         "pages",
         "toolbar",
         "toolbar_global",
+        "navbar_options",
         "sidebar",
         "artifact",
         "window_title",
@@ -278,7 +279,9 @@ def test_page_chat_builds_default_fillable_page_markup() -> None:
     assert (
         '<shiny-chat-page data-chat-id="chat" data-active-page="home">' in html
     )
-    assert '<header class="shiny-chat-page-header">' in html
+    assert 'class="shiny-chat-page-header"' in html
+    assert 'data-bs-theme="auto"' in html
+    assert 'data-shiny-chat-page-nav-style="underline"' in html
     assert 'aria-controls="chat-sidebar"' in html
     assert 'aria-expanded="false"' in html
     assert 'class="shiny-chat-page-sidebar-icon bi bi-list"' in html
@@ -300,6 +303,40 @@ def test_page_chat_builds_default_fillable_page_markup() -> None:
     assert 'id="chat"' in html
     assert "height:100%" in html
     assert 'show-history="false"' in html
+
+
+def test_page_chat_applies_supported_navbar_options_to_its_title_bar() -> None:
+    html = page_chat(
+        "Assistant",
+        navbar_options=ui.navbar_options(
+            bg="#123456",
+            theme="dark",
+            underline=False,
+            class_="custom-header",
+            data_test="navbar",
+        ),
+    ).get_html_string()
+
+    header = re.search(r"<header[^>]*>", html)
+    assert header is not None
+    assert 'class="shiny-chat-page-header custom-header"' in header.group(0)
+    assert 'data-test="navbar"' in header.group(0)
+    assert 'data-bs-theme="dark"' in header.group(0)
+    assert 'data-shiny-chat-page-nav-style="pill"' in header.group(0)
+    assert "background-color:#123456;" in header.group(0)
+
+    with pytest.raises(ValueError, match=r"cannot set `position`"):
+        page_chat(
+            "Assistant",
+            navbar_options=ui.navbar_options(position="fixed-top"),
+        )
+    with pytest.raises(ValueError, match=r"cannot set `collapsible`"):
+        page_chat(
+            "Assistant",
+            navbar_options=ui.navbar_options(collapsible=False),
+        )
+    with pytest.raises(TypeError, match=r"must be created by"):
+        page_chat("Assistant", navbar_options=cast(Any, {}))
 
 
 def test_page_chat_normalizes_navigation_toolbar_and_sidebars() -> None:

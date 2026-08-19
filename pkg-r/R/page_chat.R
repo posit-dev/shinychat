@@ -181,6 +181,11 @@ chat_ui_history <- function(id, ...) {
 #' home view; `toolbar` is a home-page-scoped segment rendered with the page
 #' navigation controls and follows them into the mobile app menu.
 #' `toolbar_global` is a persistent segment that remains mounted on every page.
+#' A panel's `toolbar = NULL` omits the home-scoped segment; custom UI replaces
+#' it. For compatibility, `toolbar = TRUE` reuses the home toolbar and
+#' `toolbar = FALSE` is an alias for omitting it. On narrow screens, navigation
+#' and toolbar controls move into the app menu above the active page's sidebar
+#' content without duplicating Shiny input or output IDs.
 #'
 #' Set `artifact` to a [chat_artifact()] configuration to provide initial
 #' content and layout options. Update the mounted artifact from the server
@@ -188,6 +193,9 @@ chat_ui_history <- function(id, ...) {
 #' [chat_artifact_hide()], and [chat_artifact_toggle()]. Artifact content is
 #' static UI passed through those server functions; use ordinary Shiny
 #' inputs and outputs inside that content when needed.
+#' Paired local-response navigation and artifact-control examples, which do not
+#' require credentials, are available at
+#' <https://github.com/posit-dev/shinychat/tree/main/examples/page-chat>.
 #'
 #' `page_chat()` owns page composition and accepts one chat root. Do not pass
 #' unrelated top-level UI, raw `bslib::sidebar()` objects, or a second chat
@@ -206,6 +214,10 @@ chat_ui_history <- function(id, ...) {
 #'   controls. A panel's `chat_nav_panel(toolbar = )` can replace this segment.
 #' @param toolbar_global Optional persistent UI displayed after the page-scoped
 #'   toolbar in the navigation controls.
+#' @param navbar_options Optional [bslib::navbar_options()] that styles the
+#'   page title bar. Its `bg`, `theme`, `underline`, and HTML attributes are
+#'   supported. `position` and `collapsible` are unsupported because
+#'   `page_chat()` owns the full-window layout and responsive app menu.
 #' @param sidebar Whether to use the default history sidebar (`TRUE`), omit the
 #'   default sidebar (`FALSE`), or use a [chat_sidebar()] configuration.
 #' @param messages,greeting,placeholder,width,icon_assistant,enable_cancel,allow_attachments,footer,artifact
@@ -288,6 +300,7 @@ page_chat <- function(
   pages = NULL,
   toolbar = NULL,
   toolbar_global = NULL,
+  navbar_options = NULL,
   sidebar = TRUE,
   messages = NULL,
   greeting = NULL,
@@ -333,6 +346,7 @@ page_chat <- function(
   chat_validate_page_ui(icon, "icon")
   chat_validate_page_ui(toolbar, "toolbar")
   chat_validate_page_ui(toolbar_global, "toolbar_global")
+  navbar_options <- normalize_page_chat_navbar_options(navbar_options)
   chat_validate_sidebar(sidebar)
   if (inherits(sidebar, "chat_sidebar")) {
     sidebar <- normalize_chat_sidebar_config(sidebar)
@@ -458,50 +472,53 @@ page_chat <- function(
     normalized$pages
   )
 
+  header <- htmltools::tags$header(
+    class = "shiny-chat-page-header",
+    htmltools::tags$button(
+      type = "button",
+      class = "shiny-chat-page-sidebar-toggle",
+      `aria-controls` = sidebar_id,
+      `aria-expanded` = if (
+        !is.null(normalized$home_sidebar) &&
+          normalized$home_sidebar$open %in% c("open", "always")
+      ) {
+        "true"
+      } else {
+        "false"
+      },
+      `aria-label` = "Toggle app menu",
+      htmltools::tags$svg(
+        class = "shiny-chat-page-sidebar-icon bi bi-list",
+        xmlns = "http://www.w3.org/2000/svg",
+        viewBox = "0 0 16 16",
+        `aria-hidden` = "true",
+        focusable = "false",
+        htmltools::tags$path(
+          d = paste0(
+            "M2.5 12a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4",
+            "a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 ",
+            "0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5"
+          )
+        )
+      )
+    ),
+    identity,
+    htmltools::tags$div(
+      class = paste(
+        "shiny-chat-page-controls-mount",
+        "shiny-chat-page-controls-mount-desktop"
+      ),
+      controls
+    )
+  )
+  header <- apply_page_chat_navbar_options(header, navbar_options)
+
   root <- htmltools::tag(
     "shiny-chat-page",
     list(
       `data-chat-id` = resolved_id,
       `data-active-page` = "home",
-      htmltools::tags$header(
-        class = "shiny-chat-page-header",
-        htmltools::tags$button(
-          type = "button",
-          class = "shiny-chat-page-sidebar-toggle",
-          `aria-controls` = sidebar_id,
-          `aria-expanded` = if (
-            !is.null(normalized$home_sidebar) &&
-              normalized$home_sidebar$open %in% c("open", "always")
-          ) {
-            "true"
-          } else {
-            "false"
-          },
-          `aria-label` = "Toggle app menu",
-          htmltools::tags$svg(
-            class = "shiny-chat-page-sidebar-icon bi bi-list",
-            xmlns = "http://www.w3.org/2000/svg",
-            viewBox = "0 0 16 16",
-            `aria-hidden` = "true",
-            focusable = "false",
-            htmltools::tags$path(
-              d = paste0(
-                "M2.5 12a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4",
-                "a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 ",
-                "0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5"
-              )
-            )
-          )
-        ),
-        identity,
-        htmltools::tags$div(
-          class = paste(
-            "shiny-chat-page-controls-mount",
-            "shiny-chat-page-controls-mount-desktop"
-          ),
-          controls
-        )
-      ),
+      header,
       htmltools::tags$div(
         class = "shiny-chat-page-body",
         htmltools::tags$aside(
@@ -783,6 +800,59 @@ page_chat_nav_control <- function(page) {
     },
     htmltools::tags$span(class = "shiny-chat-page-nav-title", page$title)
   )
+}
+
+normalize_page_chat_navbar_options <- function(options) {
+  if (is.null(options)) {
+    return(bslib::navbar_options())
+  }
+  if (!inherits(options, "bslib_navbar_options")) {
+    cli::cli_abort(
+      "{.arg navbar_options} must be created by {.fn bslib::navbar_options}."
+    )
+  }
+
+  is_default <- attr(options, "is_default")
+  unsupported <- c("position", "collapsible")
+  supplied <- unsupported[
+    !vapply(
+      unsupported,
+      function(name) isTRUE(is_default[[name]]),
+      logical(1)
+    )
+  ]
+  if (length(supplied) > 0) {
+    cli::cli_abort(c(
+      "{.arg navbar_options} cannot set {.field {supplied}} in {.fn page_chat}.",
+      i = "{.fn page_chat} owns the full-window layout and responsive app menu."
+    ))
+  }
+
+  options
+}
+
+apply_page_chat_navbar_options <- function(header, options) {
+  attrs <- options$attribs %||% list()
+  if (length(attrs) > 0) {
+    header <- rlang::exec(htmltools::tagAppendAttributes, header, !!!attrs)
+  }
+  header <- htmltools::tagAppendAttributes(
+    header,
+    `data-bs-theme` = options$theme,
+    `data-shiny-chat-page-nav-style` = if (isTRUE(options$underline)) {
+      "underline"
+    } else {
+      "pill"
+    }
+  )
+  if (!is.null(options$bg)) {
+    header <- htmltools::tagAppendAttributes(
+      header,
+      style = paste0("background-color:", options$bg, ";")
+    )
+  }
+
+  header
 }
 
 normalize_chat_window_title <- function(window_title, title) {

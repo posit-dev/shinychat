@@ -54,6 +54,9 @@ def test_percentage_artifact_keeps_desktop_chat_width(
     assert grid_tracks[0] >= 360
     assert wrapper_box["width"] <= grid_tracks[0] + 1
     assert panel_box["width"] == pytest.approx(grid_tracks[1], abs=1)
+    wrapper_center = wrapper_box["x"] + wrapper_box["width"] / 2
+    chat_track_center = layout_box["x"] + grid_tracks[0] / 2
+    assert wrapper_center == pytest.approx(chat_track_center, abs=1)
 
     separator = page.get_by_role("separator", name="Resize artifact panel")
     expect(separator).to_be_visible()
@@ -405,7 +408,7 @@ def test_ninety_percent_artifact_is_bounded_before_reveal(
     assert wrapper_box["width"] >= 360
 
 
-def test_default_artifact_width_end_aligns_chat_wrapper(
+def test_default_artifact_width_centers_chat_wrapper(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     chat, _ = open_page(page, local_app, artifact_width="default")
@@ -457,11 +460,13 @@ def test_default_artifact_width_end_aligns_chat_wrapper(
     gap = layout.evaluate(
         "(element) => Number.parseFloat(getComputedStyle(element).columnGap)"
     )
-    wrapper_right = wrapper_box["x"] + wrapper_box["width"]
-    track_right = layout_box["x"] + first_track
+    wrapper_center = wrapper_box["x"] + wrapper_box["width"] / 2
+    track_center = layout_box["x"] + first_track / 2
 
-    assert wrapper_right == pytest.approx(track_right, abs=1)
-    assert panel_box["x"] - wrapper_right == pytest.approx(gap, abs=1)
+    assert wrapper_center == pytest.approx(track_center, abs=1)
+    assert panel_box["x"] - (layout_box["x"] + first_track) == pytest.approx(
+        gap, abs=1
+    )
     assert intermediate_open_x != pytest.approx(closed_box["x"], abs=1)
     assert intermediate_open_x != pytest.approx(wrapper_box["x"], abs=1)
 

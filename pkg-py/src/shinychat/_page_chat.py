@@ -636,6 +636,45 @@ def _render_toolbar_source(key: str, content: TagChild | None) -> Tag:
     )
 
 
+def _normalize_page_chat_navbar_options(options: Any) -> Any:
+    from shiny import ui
+
+    if options is None:
+        return ui.navbar_options()
+
+    options_type = type(ui.navbar_options())
+    if not isinstance(options, options_type):
+        raise TypeError(
+            "`navbar_options` must be created by `shiny.ui.navbar_options()`."
+        )
+
+    supplied = [
+        name
+        for name in ("position", "collapsible")
+        if not options._is_default.get(name, False)
+    ]
+    if supplied:
+        names = ", ".join(f"`{name}`" for name in supplied)
+        raise ValueError(
+            f"`navbar_options` cannot set {names} in `page_chat()`; "
+            "the page owns the full-window layout and responsive app menu."
+        )
+
+    return options
+
+
+def _apply_page_chat_navbar_options(header: Tag, options: Any) -> None:
+    header.attrs.update(options.attrs)
+    if "class" in options.attrs or "class_" in options.attrs:
+        header.add_class("shiny-chat-page-header", prepend=True)
+    header.attrs["data-bs-theme"] = options.theme
+    header.attrs["data-shiny-chat-page-nav-style"] = (
+        "underline" if options.underline else "pill"
+    )
+    if options.bg is not None:
+        header.add_style(f"background-color:{options.bg};")
+
+
 def _create_page_chat_root(
     *,
     id: str = "chat",
@@ -690,6 +729,7 @@ def page_chat(
     pages: Sequence[ChatNavPanel] | None = None,
     toolbar: TagChild | None = None,
     toolbar_global: TagChild | None = None,
+    navbar_options: Any = None,
     sidebar: bool | ChatSidebar = True,
     artifact: bool | ChatArtifact = True,
     window_title: str | None = None,
@@ -734,6 +774,11 @@ def page_chat(
         Optional persistent HTML child displayed after the page-scoped toolbar
         in the navigation controls. It remains mounted while pages are
         selected and while controls move between desktop and mobile layouts.
+    navbar_options
+        Optional :func:`shiny.ui.navbar_options` that styles the page title bar.
+        Its ``bg``, ``theme``, ``underline``, and HTML attributes are supported.
+        ``position`` and ``collapsible`` are unsupported because ``page_chat()``
+        owns the full-window layout and responsive app menu.
     sidebar
         Home-page sidebar. ``True`` uses the default conversation-history
         sidebar, ``False`` removes it, and a
@@ -830,6 +875,7 @@ def page_chat(
         pages=pages,
         toolbar=toolbar,
         toolbar_global=toolbar_global,
+        navbar_options=navbar_options,
         sidebar=sidebar,
         window_title=window_title,
         lang=lang,
@@ -846,6 +892,7 @@ def _render_page_chat(
     pages: Sequence[ChatNavPanel] | None = None,
     toolbar: TagChild | None = None,
     toolbar_global: TagChild | None = None,
+    navbar_options: Any = None,
     sidebar: bool | ChatSidebar = True,
     window_title: str | None = None,
     lang: str | None = None,
@@ -875,6 +922,7 @@ def _render_page_chat(
         )
     if isinstance(lang, str) and not lang.strip():
         raise ValueError("`lang` must not be an empty string.")
+    navbar_options = _normalize_page_chat_navbar_options(navbar_options)
 
     (
         normalized_pages,
@@ -1077,6 +1125,7 @@ def _render_page_chat(
         data_chat_id=resolved_id,
         data_active_page="home",
     )
+    _apply_page_chat_navbar_options(cast(Tag, shell.children[0]), navbar_options)
 
     document_title = (
         title

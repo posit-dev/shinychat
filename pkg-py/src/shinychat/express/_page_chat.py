@@ -32,6 +32,7 @@ def page_chat(
     pages: Sequence[ChatNavPanel] | None = None,
     toolbar: TagChild | None = None,
     toolbar_global: TagChild | None = None,
+    navbar_options: Any = None,
     sidebar: bool | ChatSidebar = True,
     artifact: bool | ChatArtifact = True,
     window_title: str | None = None,
@@ -78,6 +79,10 @@ def page_chat(
     toolbar_global
         Optional persistent HTML child displayed after the page-scoped toolbar
         in the navigation controls.
+    navbar_options
+        Optional :func:`shiny.ui.navbar_options` that styles the page title bar.
+        ``position`` and ``collapsible`` are unsupported because ``page_chat()``
+        owns the full-window layout and responsive app menu.
     sidebar
         Home-page sidebar. ``True`` uses the default conversation-history
         sidebar, ``False`` removes it, and a
@@ -177,6 +182,7 @@ def page_chat(
             pages=pages,
             toolbar=toolbar,
             toolbar_global=toolbar_global,
+            navbar_options=navbar_options,
             sidebar=sidebar,
             window_title=page_options["window_title"],
             lang=page_options["lang"],

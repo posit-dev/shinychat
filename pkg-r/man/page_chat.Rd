@@ -12,6 +12,7 @@ page_chat(
   pages = NULL,
   toolbar = NULL,
   toolbar_global = NULL,
+  navbar_options = NULL,
   sidebar = TRUE,
   messages = NULL,
   greeting = NULL,
@@ -45,6 +46,11 @@ controls. A panel's \code{chat_nav_panel(toolbar = )} can replace this segment.}
 
 \item{toolbar_global}{Optional persistent UI displayed after the page-scoped
 toolbar in the navigation controls.}
+
+\item{navbar_options}{Optional \code{\link[bslib:navbar_options]{bslib::navbar_options()}} that styles the
+page title bar. Its \code{bg}, \code{theme}, \code{underline}, and HTML attributes are
+supported. \code{position} and \code{collapsible} are unsupported because
+\code{page_chat()} owns the full-window layout and responsive app menu.}
 
 \item{sidebar}{Whether to use the default history sidebar (\code{TRUE}), omit the
 default sidebar (\code{FALSE}), or use a \code{\link[=chat_sidebar]{chat_sidebar()}} configuration.}
@@ -100,6 +106,11 @@ own \code{\link[=chat_sidebar]{chat_sidebar()}} configuration. The \code{sidebar
 home view; \code{toolbar} is a home-page-scoped segment rendered with the page
 navigation controls and follows them into the mobile app menu.
 \code{toolbar_global} is a persistent segment that remains mounted on every page.
+A panel's \code{toolbar = NULL} omits the home-scoped segment; custom UI replaces
+it. For compatibility, \code{toolbar = TRUE} reuses the home toolbar and
+\code{toolbar = FALSE} is an alias for omitting it. On narrow screens, navigation
+and toolbar controls move into the app menu above the active page's sidebar
+content without duplicating Shiny input or output IDs.
 
 Set \code{artifact} to a \code{\link[=chat_artifact]{chat_artifact()}} configuration to provide initial
 content and layout options. Update the mounted artifact from the server
@@ -107,6 +118,9 @@ with \code{\link[=chat_artifact_show]{chat_artifact_show()}}, \code{\link[=chat_
 \code{\link[=chat_artifact_hide]{chat_artifact_hide()}}, and \code{\link[=chat_artifact_toggle]{chat_artifact_toggle()}}. Artifact content is
 static UI passed through those server functions; use ordinary Shiny
 inputs and outputs inside that content when needed.
+Paired local-response navigation and artifact-control examples, which do not
+require credentials, are available at
+\url{https://github.com/posit-dev/shinychat/tree/main/examples/page-chat}.
 
 \code{page_chat()} owns page composition and accepts one chat root. Do not pass
 unrelated top-level UI, raw \code{bslib::sidebar()} objects, or a second chat

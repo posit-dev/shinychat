@@ -203,6 +203,7 @@ test_that("page_chat() has the agreed public signature", {
       "pages",
       "toolbar",
       "toolbar_global",
+      "navbar_options",
       "sidebar",
       "messages",
       "greeting",
@@ -263,6 +264,12 @@ test_that("page_chat() builds the default fillable page contract", {
   expect_null(nav$attribs$role)
   expect_length(page_chat_tags(nav, ".shiny-chat-page-nav-link"), 0)
   expect_length(page_chat_tags(page, ".shiny-chat-page-toolbar"), 1)
+  header <- page_chat_tag(page, ".shiny-chat-page-header")
+  expect_equal(
+    header$attribs[["data-shiny-chat-page-nav-style"]],
+    "underline"
+  )
+  expect_equal(header$attribs[["data-bs-theme"]], "auto")
 
   aside <- page_chat_tag(page, ".shiny-chat-page-sidebar")
   expect_equal(aside$name, "aside")
@@ -306,6 +313,45 @@ test_that("page_chat() builds the default fillable page contract", {
   expect_s3_class(attr(page, "bs_theme"), "bs_theme")
 
   expect_snapshot(cat(rendered$html, "\n", sep = ""))
+})
+
+test_that("page_chat() applies supported navbar_options to its title bar", {
+  page <- page_chat(
+    "Assistant",
+    navbar_options = bslib::navbar_options(
+      bg = "#123456",
+      theme = "dark",
+      underline = FALSE,
+      class = "custom-header",
+      `data-test` = "navbar"
+    )
+  )
+  header <- page_chat_tag(page, ".shiny-chat-page-header")
+
+  expect_match(as.character(header), 'class="[^"]*custom-header')
+  expect_equal(header$attribs[["data-test"]], "navbar")
+  expect_equal(header$attribs[["data-bs-theme"]], "dark")
+  expect_equal(header$attribs[["data-shiny-chat-page-nav-style"]], "pill")
+  expect_match(header$attribs$style, "background-color:#123456;")
+
+  expect_error(
+    page_chat(
+      "Assistant",
+      navbar_options = bslib::navbar_options(position = "fixed-top")
+    ),
+    "cannot set.*position"
+  )
+  expect_error(
+    page_chat(
+      "Assistant",
+      navbar_options = bslib::navbar_options(collapsible = FALSE)
+    ),
+    "cannot set.*collapsible"
+  )
+  expect_error(
+    page_chat("Assistant", navbar_options = list()),
+    "must be created by"
+  )
 })
 
 test_that("page_chat() normalizes navigation and sidebar metadata once", {
