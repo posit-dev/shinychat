@@ -424,18 +424,21 @@ def test_default_artifact_width_end_aligns_chat_wrapper(
 
     page.get_by_role("button", name="Show artifact").click()
     expect(panel).to_be_visible(timeout=TIMEOUT)
-    page.wait_for_function(
+    intermediate_open_x = page.wait_for_function(
         f"""() => {{
           const wrapper = document.querySelector(".shiny-chat-wrapper");
           if (!wrapper) return false;
           const translate = new DOMMatrixReadOnly(
             getComputedStyle(wrapper).transform
           ).m41;
-          return translate > {closed_translate + 1} && translate < -1;
+          if (translate <= {closed_translate + 1} || translate >= -1) {{
+            return false;
+          }}
+          return wrapper.getBoundingClientRect().x;
         }}""",
         polling="raf",
         timeout=TIMEOUT,
-    )
+    ).json_value()
     page.wait_for_timeout(220)
 
     layout_box = layout.bounding_box()
@@ -444,6 +447,7 @@ def test_default_artifact_width_end_aligns_chat_wrapper(
     assert layout_box is not None
     assert panel_box is not None
     assert wrapper_box is not None
+    assert isinstance(intermediate_open_x, float)
     assert panel_box["width"] == pytest.approx(400, abs=1)
 
     first_track = layout.evaluate(
@@ -458,6 +462,8 @@ def test_default_artifact_width_end_aligns_chat_wrapper(
 
     assert wrapper_right == pytest.approx(track_right, abs=1)
     assert panel_box["x"] - wrapper_right == pytest.approx(gap, abs=1)
+    assert intermediate_open_x != pytest.approx(closed_box["x"], abs=1)
+    assert intermediate_open_x != pytest.approx(wrapper_box["x"], abs=1)
 
     panel.get_by_role("button", name="Close artifact").click()
     page.wait_for_function(
