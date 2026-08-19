@@ -104,16 +104,21 @@ def test_desktop_navigation_streaming_and_history_auto_open(
 
 
 @pytest.mark.parametrize(
-    "title",
+    "title, is_long_title",
     [
-        "Short title",
-        "A page chat title long enough to test header overflow",
+        pytest.param("Short title", False, id="short-title"),
+        pytest.param(
+            "A page chat title long enough to test header overflow",
+            True,
+            id="long-title",
+        ),
     ],
 )
 def test_desktop_header_keeps_controls_available(
     page: Page,
     local_app: ShinyAppProc,
     title: str,
+    is_long_title: bool,
 ) -> None:
     _, shell = open_page(page, local_app, viewport=(800, 760))
     header = shell.locator(".shiny-chat-page-header")
@@ -157,6 +162,10 @@ def test_desktop_header_keeps_controls_available(
     toolbar_input_right = toolbar_input_box["x"] + toolbar_input_box["width"]
 
     assert identity_box["width"] <= title_cap_px
+    if is_long_title:
+        assert identity_title_box["width"] >= 150
+    else:
+        assert identity_box["width"] < title_cap_px
     assert identity_title_right <= toolbar_box["x"]
     assert toolbar_box["x"] >= controls_mount_box["x"]
     assert toolbar_right <= controls_mount_right
