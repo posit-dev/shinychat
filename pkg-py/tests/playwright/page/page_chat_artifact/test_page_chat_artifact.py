@@ -99,8 +99,30 @@ def test_default_artifact_width_end_aligns_chat_wrapper(
     panel = chat.loc.locator(".shiny-chat-artifact")
     wrapper = chat.loc.locator(".shiny-chat-wrapper")
 
+    closed_box = wrapper.bounding_box()
+    closed_translate = wrapper.evaluate(
+        """(element) => new DOMMatrixReadOnly(
+          getComputedStyle(element).transform
+        ).m41"""
+    )
+    assert closed_box is not None
+    assert closed_translate < 0
+
     page.get_by_role("button", name="Show artifact").click()
     expect(panel).to_be_visible(timeout=TIMEOUT)
+    page.wait_for_function(
+        f"""() => {{
+          const wrapper = document.querySelector(".shiny-chat-wrapper");
+          if (!wrapper) return false;
+          const translate = new DOMMatrixReadOnly(
+            getComputedStyle(wrapper).transform
+          ).m41;
+          return translate > {closed_translate + 1} && translate < -1;
+        }}""",
+        polling="raf",
+        timeout=TIMEOUT,
+    )
+    intermediate_open_box = wrapper.bounding_box()
     page.wait_for_timeout(220)
 
     layout_box = layout.bounding_box()
@@ -109,6 +131,7 @@ def test_default_artifact_width_end_aligns_chat_wrapper(
     assert layout_box is not None
     assert panel_box is not None
     assert wrapper_box is not None
+    assert intermediate_open_box is not None
     assert panel_box["width"] == pytest.approx(400, abs=1)
 
     first_track = layout.evaluate(
@@ -123,6 +146,55 @@ def test_default_artifact_width_end_aligns_chat_wrapper(
 
     assert wrapper_right == pytest.approx(track_right, abs=1)
     assert panel_box["x"] - wrapper_right == pytest.approx(gap, abs=1)
+    assert (
+        min(closed_box["x"], wrapper_box["x"])
+        < intermediate_open_box["x"]
+        < max(closed_box["x"], wrapper_box["x"])
+    )
+
+    panel.get_by_role("button", name="Close artifact").click()
+    page.wait_for_function(
+        f"""() => {{
+          const wrapper = document.querySelector(".shiny-chat-wrapper");
+          if (!wrapper) return false;
+          const translate = new DOMMatrixReadOnly(
+            getComputedStyle(wrapper).transform
+          ).m41;
+          return translate < -1 && translate > {closed_translate + 1};
+        }}""",
+        polling="raf",
+        timeout=TIMEOUT,
+    )
+    intermediate_close_box = wrapper.bounding_box()
+    assert intermediate_close_box is not None
+    assert (
+        min(wrapper_box["x"], closed_box["x"])
+        < intermediate_close_box["x"]
+        < max(wrapper_box["x"], closed_box["x"])
+    )
+
+
+def test_relative_artifact_width_refreshes_without_layout_resize(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    chat, _ = open_page(page, local_app, artifact_width="relative")
+    layout = chat.loc.locator(".shiny-chat-layout")
+    panel = chat.loc.locator(".shiny-chat-artifact")
+
+    page.get_by_role("button", name="Show artifact").click()
+    expect(panel).to_be_visible(timeout=TIMEOUT)
+    expect(layout).to_have_css("--shiny-chat-artifact-width", "512px")
+    page.wait_for_timeout(220)
+    initial_layout_box = layout.bounding_box()
+    assert initial_layout_box is not None
+
+    page.evaluate("document.documentElement.style.fontSize = '20px'")
+    expect(layout).to_have_css("--shiny-chat-artifact-width", "640px")
+    refreshed_layout_box = layout.bounding_box()
+    assert refreshed_layout_box is not None
+    assert refreshed_layout_box["width"] == pytest.approx(
+        initial_layout_box["width"], abs=1
+    )
 
 
 def test_page_artifact_survives_navigation_and_history(

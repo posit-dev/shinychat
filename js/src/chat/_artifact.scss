@@ -87,9 +87,16 @@ shiny-chat-container[data-history-placement="right"] {
 
   .shiny-chat-wrapper {
     width: 100%;
-    margin-inline: 0;
-    justify-self: end;
   }
+}
+
+.shiny-chat-artifact-width-probe {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  contain: layout style;
+  height: 0;
+  overflow: hidden;
 }
 
 .shiny-chat-layout[data-artifact-takeover] {
@@ -131,6 +138,26 @@ shiny-chat-container[data-history-placement="right"] {
 
 .shiny-chat-layout[data-artifact-resizing] .shiny-chat-artifact {
   transition: none;
+}
+
+@container shiny-chat (min-width: 1120px) {
+  .shiny-chat-layout .shiny-chat-wrapper {
+    justify-self: end;
+    margin-inline: 0;
+    transform: translateX(calc(50% - 50cqi));
+    transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .shiny-chat-layout[data-artifact-open] .shiny-chat-wrapper {
+    transform: translateX(0);
+  }
+
+  .shiny-chat-layout:is(
+    [data-artifact-resizing],
+    [data-artifact-takeover]
+  ) .shiny-chat-wrapper {
+    transition: none;
+  }
 }
 
 .shiny-chat-artifact-header {

@@ -54,6 +54,7 @@ function openLink(url: string): void {
 function resolveArtifactLayoutWidth(
   configuredWidth: string,
   layout: HTMLElement,
+  probe: HTMLElement | null,
 ): string {
   const layoutWidth = layout.getBoundingClientRect().width
   if (layoutWidth <= 0) return `${DEFAULT_ARTIFACT_LAYOUT_WIDTH}px`
@@ -67,13 +68,7 @@ function resolveArtifactLayoutWidth(
       : NaN
 
   if (!Number.isFinite(requested)) {
-    const probe = document.createElement("div")
-    probe.style.cssText =
-      "position:absolute;visibility:hidden;pointer-events:none;contain:layout style;inline-size:auto;block-size:0;overflow:hidden;"
-    probe.style.width = configuredWidth
-    layout.append(probe)
-    requested = probe.getBoundingClientRect().width
-    probe.remove()
+    requested = probe?.getBoundingClientRect().width ?? NaN
   }
 
   if (!Number.isFinite(requested) || requested <= 0) {
@@ -202,6 +197,7 @@ export const ChatContainer = forwardRef<
   const priorArtifactVisibleRef = useRef(artifact.visible)
   const priorArtifactTakeoverRef = useRef(false)
   const artifactLayoutRef = useRef<HTMLDivElement>(null)
+  const artifactWidthProbeRef = useRef<HTMLDivElement>(null)
   const [artifactTakeover, setArtifactTakeover] = useState(false)
   const [artifactPresented, setArtifactPresented] = useState(artifact.visible)
   const [artifactResizing, setArtifactResizing] = useState(false)
@@ -289,7 +285,11 @@ export const ChatContainer = forwardRef<
     const layout = artifactLayoutRef.current
     if (!layout || !artifact.enabled) return
 
-    const nextWidth = resolveArtifactLayoutWidth(artifact.width, layout)
+    const nextWidth = resolveArtifactLayoutWidth(
+      artifact.width,
+      layout,
+      artifactWidthProbeRef.current,
+    )
     setArtifactLayoutWidth((currentWidth) =>
       currentWidth === nextWidth ? currentWidth : nextWidth,
     )
@@ -302,6 +302,9 @@ export const ChatContainer = forwardRef<
     if (!layout || typeof ResizeObserver === "undefined") return
     const observer = new ResizeObserver(updateArtifactLayoutWidth)
     observer.observe(layout)
+    if (artifactWidthProbeRef.current) {
+      observer.observe(artifactWidthProbeRef.current)
+    }
     return () => observer.disconnect()
   }, [artifact.visible, updateArtifactLayoutWidth])
 
@@ -818,6 +821,14 @@ export const ChatContainer = forwardRef<
             onWidthChange={setArtifactWidth}
             onPresentationChange={setArtifactPresented}
             onResizeStateChange={setArtifactResizing}
+          />
+        )}
+        {artifact.enabled && (
+          <div
+            ref={artifactWidthProbeRef}
+            aria-hidden="true"
+            className="shiny-chat-artifact-width-probe"
+            style={{ width: artifact.width }}
           />
         )}
       </div>

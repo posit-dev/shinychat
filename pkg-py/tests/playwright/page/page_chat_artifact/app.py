@@ -47,6 +47,7 @@ def app_ui(request: Request) -> ui.Tag:
     artifact_width = {
         "default": "400px",
         "90pct": "90%",
+        "relative": "32rem",
     }.get(requested_width, "70%")
     return page_chat(
         "Artifact Assistant",

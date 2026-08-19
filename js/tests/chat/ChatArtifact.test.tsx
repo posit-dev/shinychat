@@ -688,6 +688,75 @@ describe("ChatArtifact", () => {
     }
   })
 
+  it("refreshes a relative artifact target when its persistent probe changes", async () => {
+    let relativeWidth = 512
+    const original = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "getBoundingClientRect",
+    )
+    Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", {
+      configurable: true,
+      value: function () {
+        if (this.classList.contains("shiny-chat-layout")) {
+          return { width: 1440 }
+        }
+        if (this.classList.contains("shiny-chat-artifact-width-probe")) {
+          return { width: relativeWidth }
+        }
+        return { width: 0 }
+      },
+    })
+    ResizeObserverStub.reset()
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub)
+
+    try {
+      const view = render(
+        <ChatApp
+          transport={createMockTransport()}
+          shinyLifecycle={createMockShinyLifecycle()}
+          elementId="artifact-relative-width"
+          inputId="artifact-relative-width-input"
+          initialArtifact={artifact({
+            visible: false,
+            width: "32rem",
+            content: "<p>Ready</p>",
+          })}
+        />,
+      )
+      const layout = view.container.querySelector(
+        ".shiny-chat-layout",
+      ) as HTMLElement
+      const probe = view.container.querySelector(
+        ".shiny-chat-artifact-width-probe",
+      ) as HTMLElement
+
+      expect(layout.style.getPropertyValue("--shiny-chat-artifact-width")).toBe(
+        "512px",
+      )
+
+      relativeWidth = 640
+      await act(async () => {
+        ResizeObserverStub.resize(probe, relativeWidth)
+      })
+
+      expect(layout.style.getPropertyValue("--shiny-chat-artifact-width")).toBe(
+        "640px",
+      )
+    } finally {
+      vi.unstubAllGlobals()
+      if (original) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "getBoundingClientRect",
+          original,
+        )
+      } else {
+        delete (HTMLElement.prototype as { getBoundingClientRect?: unknown })
+          .getBoundingClientRect
+      }
+    }
+  })
+
   it("resizes from the logical inline-start edge in RTL", () => {
     const shell = document.createElement("shiny-chat-container")
     Object.defineProperty(shell, "getBoundingClientRect", {
