@@ -181,7 +181,7 @@ def test_artifact_separator_uses_bslib_sized_trip_and_active_targets(
 
         # The real indicator retains bslib's direct-grab bypass even before
         # the pointer has crossed the activation proximity.
-        indicator = separator.locator(".shiny-chat-artifact-resize-indicator")
+        indicator = separator.locator("[data-shiny-chat-resize-indicator]")
         indicator_box = indicator.bounding_box()
         assert indicator_box is not None
         page.mouse.move(
@@ -216,6 +216,83 @@ def test_artifact_separator_uses_bslib_sized_trip_and_active_targets(
     assert_bslib_sized_target(rtl_box["x"] + rtl_box["width"], -1)
 
 
+def test_debug_resize_overlays_show_artifact_fine_targets(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    chat, _ = open_page(page, local_app, artifact_width="default")
+    page.get_by_role("button", name="Show artifact").click()
+    artifact_resizer = page.get_by_role("separator", name="Resize artifact panel")
+    expect(artifact_resizer).to_be_visible(timeout=TIMEOUT)
+
+    production_overlay = artifact_resizer.evaluate(
+        """(element) => {
+          const style = getComputedStyle(element, "::after");
+          return {
+            background: style.backgroundColor,
+            pointerEvents: style.pointerEvents,
+          };
+        }"""
+    )
+    assert production_overlay["background"] == "rgba(0, 0, 0, 0)"
+
+    page.locator("body").evaluate(
+        "(element) => element.classList.add('shiny-chat-debug-resize-handle')"
+    )
+    idle_overlay = artifact_resizer.evaluate(
+        """(element) => {
+          const style = getComputedStyle(element, "::after");
+          return {
+            width: Number.parseFloat(style.width),
+            background: style.backgroundColor,
+            pointerEvents: style.pointerEvents,
+          };
+        }"""
+    )
+    assert idle_overlay["width"] == 5
+    assert idle_overlay["background"] != "rgba(0, 0, 0, 0)"
+    assert idle_overlay["pointerEvents"] == production_overlay["pointerEvents"]
+
+    indicator = artifact_resizer.locator("[data-shiny-chat-resize-indicator]")
+    expect(indicator).to_be_visible()
+
+    artifact_idle = artifact_resizer.evaluate(
+        """(element) => {
+          const style = getComputedStyle(element, "::after");
+          return {
+            width: Number.parseFloat(style.width),
+            background: style.backgroundColor,
+          };
+        }"""
+    )
+    assert artifact_idle["width"] == 5
+    assert artifact_idle["background"] != "rgba(0, 0, 0, 0)"
+
+    indicator_color = indicator.evaluate(
+        "(element) => getComputedStyle(element).backgroundColor"
+    )
+    assert indicator_color != "rgba(0, 0, 0, 0)"
+
+    artifact_box = artifact_resizer.bounding_box()
+    assert artifact_box is not None
+    artifact_boundary = artifact_resizer.evaluate(
+        "(element) => element.getBoundingClientRect().left"
+    )
+    artifact_y = artifact_box["y"] + artifact_box["height"] / 2
+    page.mouse.move(artifact_boundary - 2, artifact_y)
+    expect(artifact_resizer).to_have_attribute("data-boundary-armed", "")
+    artifact_armed = artifact_resizer.evaluate(
+        """(element) => {
+          const style = getComputedStyle(element, "::after");
+          return {
+            width: Number.parseFloat(style.width),
+            background: style.backgroundColor,
+          };
+        }"""
+    )
+    assert artifact_armed["width"] == 24
+    assert artifact_armed["background"] != artifact_idle["background"]
+
+
 def test_artifact_resizer_uses_coarse_touch_geometry(
     page: Page, local_app: ShinyAppProc
 ) -> None:
@@ -230,6 +307,24 @@ def test_artifact_resizer_uses_coarse_touch_geometry(
     separator = page.get_by_role("separator", name="Resize artifact panel")
     expect(separator).to_be_visible(timeout=TIMEOUT)
     expect(separator).to_have_css("width", "26px")
+    page.locator("body").evaluate(
+        "(element) => element.classList.add('shiny-chat-debug-resize-handle')"
+    )
+    debug_overlay = separator.evaluate(
+        """(element) => {
+          const style = getComputedStyle(element, "::after");
+          return {
+            width: Number.parseFloat(style.width),
+            background: style.backgroundColor,
+            pointerEvents: style.pointerEvents,
+          };
+        }"""
+    )
+    assert debug_overlay == {
+        "width": 26,
+        "background": "rgba(13, 110, 253, 0.28)",
+        "pointerEvents": "none",
+    }
     page.wait_for_timeout(220)
     initial_width = int(separator.get_attribute("aria-valuenow") or "0")
     box = separator.bounding_box()

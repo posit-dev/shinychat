@@ -242,38 +242,10 @@ button.shiny-chat-page-identity:focus-visible,
 }
 
 .shiny-chat-page-sidebar-resizer {
-  --_page-resize-handle-width: 8px;
-
-  position: absolute;
-  z-index: 4;
-  inset-block: 0;
   inset-inline-start: calc(
     var(--shiny-chat-page-sidebar-rendered-width, var(--_page-sidebar-width)) -
-      var(--_page-resize-handle-width)
+      var(--shiny-chat-resize-handle-hit-target)
   );
-  width: var(--_page-resize-handle-width);
-}
-
-shiny-chat-resize-handle.shiny-chat-page-sidebar-resizer[data-boundary-activation]:not([data-boundary-armed]) {
-  cursor: default;
-  pointer-events: none;
-}
-
-:is(shiny-chat-resize-handle, bslib-resize-handle).shiny-chat-page-sidebar-resizer::before {
-  inset-inline-start: auto;
-  inset-inline-end: 0;
-  width: 2px;
-}
-
-:is(shiny-chat-resize-handle, bslib-resize-handle).shiny-chat-page-sidebar-resizer:is(:focus-visible, :active, [data-resizing], [data-boundary-armed])::before {
-  width: 4px;
-  height: 40px;
-}
-
-@media (any-pointer: coarse) {
-  .shiny-chat-page-sidebar-resizer {
-    --_page-resize-handle-width: 26px;
-  }
 }
 
 @media (min-width: 800px) {

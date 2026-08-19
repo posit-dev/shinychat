@@ -221,51 +221,6 @@ shiny-chat-container[data-history-placement="right"] {
 
 .shiny-chat-artifact-resizer {
   inset-inline-start: 0;
-  --shiny-chat-artifact-resize-trip-width: 5px;
-  --shiny-chat-artifact-resize-trip-offset: -2px;
-  --shiny-chat-artifact-resize-active-width: 24px;
-  --shiny-chat-artifact-resize-active-offset: -12px;
-  --shiny-chat-resize-handle-indicator-offset: 0px;
-  --shiny-chat-resize-handle-indicator-color: var(--bs-border-color, #dee2e6);
-}
-
-@media (any-pointer: fine) {
-  shiny-chat-resize-handle.shiny-chat-artifact-resizer[data-boundary-activation] {
-    cursor: default;
-    pointer-events: none;
-
-    // The only idle mouse target is a 5px strip centered on the panel's
-    // logical inline-start edge. Once crossed, grow it to bslib's 24px target.
-    &::after {
-      position: absolute;
-      inset-block: 0;
-      inset-inline-start: var(--shiny-chat-artifact-resize-trip-offset);
-      width: var(--shiny-chat-artifact-resize-trip-width);
-      content: "";
-      pointer-events: auto;
-    }
-
-    &[data-boundary-armed] {
-      cursor: ew-resize;
-      pointer-events: auto;
-
-      &::after {
-        inset-inline-start: var(--shiny-chat-artifact-resize-active-offset);
-        width: var(--shiny-chat-artifact-resize-active-width);
-      }
-    }
-  }
-}
-
-.shiny-chat-artifact-resize-indicator {
-  position: absolute;
-  z-index: 1;
-  inset-block-start: calc(50% - 15px);
-  inset-inline-start: 0;
-  width: 2px;
-  height: 30px;
-  cursor: ew-resize;
-  pointer-events: auto;
 }
 
 @container shiny-chat (max-width: 1119.99px) {

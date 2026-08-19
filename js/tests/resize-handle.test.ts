@@ -240,7 +240,7 @@ describe("shiny-chat-resize-handle", () => {
     document.dispatchEvent(new PointerEvent("pointermove", { clientX: 324 }))
     document.dispatchEvent(new PointerEvent("pointermove", { clientX: 319 }))
     expect(handle).toHaveAttribute("data-boundary-armed")
-    document.dispatchEvent(new PointerEvent("pointermove", { clientX: 311 }))
+    document.dispatchEvent(new PointerEvent("pointermove", { clientX: 307 }))
     expect(handle).not.toHaveAttribute("data-boundary-armed")
     document.dispatchEvent(new PointerEvent("pointermove", { clientX: 318 }))
     expect(handle).toHaveAttribute("data-boundary-armed")
@@ -267,12 +267,8 @@ describe("shiny-chat-resize-handle", () => {
     expect(handle).not.toHaveAttribute("data-boundary-armed")
   })
 
-  it("keeps an artifact-sized active target after a five-pixel boundary trip", () => {
-    const handle = configuredHandle({
-      boundaryActivation: true,
-      boundaryTripWidth: 5,
-      boundaryActiveWidth: 24,
-    })
+  it("keeps the shared 24-pixel active target after a five-pixel boundary trip", () => {
+    const handle = configuredHandle({ boundaryActivation: true })
     Object.defineProperty(handle, "getBoundingClientRect", {
       configurable: true,
       value: () => new DOMRect(312, 100, 8, 400),
@@ -298,10 +294,7 @@ describe("shiny-chat-resize-handle", () => {
   })
 
   it("arms when a fine pointer jumps across the LTR activation zone", () => {
-    const handle = configuredHandle({
-      boundaryActivation: true,
-      boundaryTripWidth: 5,
-    })
+    const handle = configuredHandle({ boundaryActivation: true })
     Object.defineProperty(handle, "getBoundingClientRect", {
       configurable: true,
       value: () => new DOMRect(312, 100, 8, 400),
@@ -321,7 +314,6 @@ describe("shiny-chat-resize-handle", () => {
     const handle = configuredHandle({
       panelSide: "inline-start",
       boundaryActivation: true,
-      boundaryTripWidth: 5,
     })
     document.body.style.direction = "rtl"
     Object.defineProperty(handle, "getBoundingClientRect", {
@@ -340,10 +332,7 @@ describe("shiny-chat-resize-handle", () => {
   })
 
   it("does not arm when a fine pointer stays outside the activation zone", () => {
-    const handle = configuredHandle({
-      boundaryActivation: true,
-      boundaryTripWidth: 5,
-    })
+    const handle = configuredHandle({ boundaryActivation: true })
     Object.defineProperty(handle, "getBoundingClientRect", {
       configurable: true,
       value: () => new DOMRect(312, 100, 8, 400),
@@ -367,7 +356,6 @@ describe("shiny-chat-resize-handle", () => {
       panelSide: "inline-end" as const,
       label: "Resize sidebar",
       boundaryActivation: true,
-      boundaryTripWidth: 5,
     }
     const handle = configuredHandle(options)
     Object.defineProperty(handle, "getBoundingClientRect", {
@@ -394,13 +382,13 @@ describe("shiny-chat-resize-handle", () => {
 
   it("allows direct grabs from a boundary indicator before arming", () => {
     const handle = configuredHandle({ boundaryActivation: true })
-    const indicator = document.createElement("span")
-    indicator.dataset.shinyChatResizeIndicator = ""
-    handle.append(indicator)
+    const indicator = handle.querySelector(
+      ":scope > [data-shiny-chat-resize-indicator]",
+    )
     const starts = vi.fn()
     handle.addEventListener("resize-start", starts)
 
-    indicator.dispatchEvent(
+    indicator!.dispatchEvent(
       new PointerEvent("pointerdown", {
         bubbles: true,
         button: 0,
@@ -411,13 +399,11 @@ describe("shiny-chat-resize-handle", () => {
 
     expect(starts).toHaveBeenCalledTimes(1)
     expect(handle).toHaveAttribute("data-boundary-armed")
+    expect(handle).toHaveAttribute("data-panel-side", "inline-end")
   })
 
   it("tracks boundary activation before nested controls can stop propagation", () => {
-    const handle = configuredHandle({
-      boundaryActivation: true,
-      boundaryTripWidth: 5,
-    })
+    const handle = configuredHandle({ boundaryActivation: true })
     const control = document.createElement("button")
     control.addEventListener("pointermove", (event) => event.stopPropagation())
     handle.append(control)
@@ -453,7 +439,7 @@ describe("shiny-chat-resize-handle", () => {
     document.dispatchEvent(new PointerEvent("pointermove", { clientX: 330 }))
     document.dispatchEvent(new PointerEvent("pointermove", { clientX: 327 }))
     expect(handle).toHaveAttribute("data-boundary-armed")
-    document.dispatchEvent(new PointerEvent("pointermove", { clientX: 318 }))
+    document.dispatchEvent(new PointerEvent("pointermove", { clientX: 315 }))
     expect(handle).not.toHaveAttribute("data-boundary-armed")
     document.dispatchEvent(new PointerEvent("pointermove", { clientX: 322 }))
     document.dispatchEvent(new PointerEvent("pointermove", { clientX: 327 }))

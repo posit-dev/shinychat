@@ -17,8 +17,6 @@ export interface ResizeHandleOptions {
   step?: number
   largeStep?: number
   boundaryActivation?: boolean
-  boundaryTripWidth?: number
-  boundaryActiveWidth?: number
 }
 
 export interface ResizeRequestDetail {
@@ -53,6 +51,8 @@ export interface CreateResizeHandleOptions {
 
 const LOCAL_TAG_NAME = "shiny-chat-resize-handle"
 const BSLIB_TAG_NAME = "bslib-resize-handle"
+const BOUNDARY_ACTIVATION_WIDTH = 4
+const BOUNDARY_ACTIVE_WIDTH = 24
 const DEFAULT_OPTIONS: ResizeHandleOptions = {
   value: 0,
   min: 0,
@@ -128,6 +128,7 @@ class ShinyChatResizeHandleElement
   connectedCallback() {
     if (this.listenerAbort) return
 
+    this.ensureBoundaryIndicator()
     this.resetBoundaryPointer()
     const controller = new AbortController()
     this.listenerAbort = controller
@@ -193,6 +194,7 @@ class ShinyChatResizeHandleElement
       "data-boundary-activation",
       this.options.boundaryActivation,
     )
+    this.dataset.panelSide = this.options.panelSide
     this.title = this.options.label
 
     if (this.options.disabled) {
@@ -323,24 +325,12 @@ class ShinyChatResizeHandleElement
 
     if (this.hasAttribute("data-boundary-armed")) {
       this.previousBoundaryPointerX = pointerEvent.clientX
-      const activeWidth = this.options.boundaryActiveWidth
-      if (activeWidth !== undefined) {
-        if (
-          !this.isWithinBoundaryTarget(
-            pointerEvent.clientX,
-            pointerEvent.clientY,
-            activeWidth,
-          )
-        ) {
-          this.deactivateBoundary()
-        }
-        return
-      }
-
-      const rect = this.getBoundingClientRect()
       if (
-        pointerEvent.clientX < rect.left ||
-        pointerEvent.clientX > rect.right
+        !this.isWithinBoundaryTarget(
+          pointerEvent.clientX,
+          pointerEvent.clientY,
+          BOUNDARY_ACTIVE_WIDTH,
+        )
       ) {
         this.deactivateBoundary()
       }
@@ -486,7 +476,7 @@ class ShinyChatResizeHandleElement
   }
 
   private boundaryActivationWidth() {
-    return Math.min(4, this.options.boundaryTripWidth ?? 4)
+    return BOUNDARY_ACTIVATION_WIDTH
   }
 
   private isWithinBoundaryVerticalRange(clientY: number) {
@@ -499,6 +489,17 @@ class ShinyChatResizeHandleElement
       target instanceof Element &&
       target.closest("[data-shiny-chat-resize-indicator]") !== null
     )
+  }
+
+  private ensureBoundaryIndicator() {
+    if (this.querySelector(":scope > [data-shiny-chat-resize-indicator]")) {
+      return
+    }
+
+    const indicator = document.createElement("span")
+    indicator.setAttribute("aria-hidden", "true")
+    indicator.dataset.shinyChatResizeIndicator = ""
+    this.append(indicator)
   }
 
   private panelIsLeft() {

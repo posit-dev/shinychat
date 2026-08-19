@@ -1,7 +1,6 @@
 shiny-chat-resize-handle {
   --shiny-chat-resize-handle-hit-target: 8px;
-  --shiny-chat-resize-handle-overhang: 4px;
-  --shiny-chat-resize-handle-indicator-offset: 3px;
+  --shiny-chat-resize-handle-indicator-color: currentcolor;
 
   position: absolute;
   z-index: 4;
@@ -16,35 +15,55 @@ shiny-chat-resize-handle {
   touch-action: none;
   user-select: none;
 
-  &::before {
+  > [data-shiny-chat-resize-indicator] {
     position: absolute;
+    z-index: 1;
     top: 50%;
-    inset-inline-start: var(--shiny-chat-resize-handle-indicator-offset);
     width: 2px;
     height: 30px;
-    content: "";
-    background: var(--shiny-chat-resize-handle-indicator-color, currentcolor);
+    background: var(--shiny-chat-resize-handle-indicator-color);
     border-radius: 1px;
+    cursor: ew-resize;
     opacity: 0.3;
-    pointer-events: none;
+    pointer-events: auto;
     transform: translateY(-50%);
     transition:
       background-color 150ms ease,
-      opacity 150ms ease;
+      height 150ms ease,
+      opacity 150ms ease,
+      width 150ms ease;
   }
 
-  &:hover::before {
+  &[data-panel-side="inline-start"] > [data-shiny-chat-resize-indicator] {
+    inset-inline-start: 0;
+  }
+
+  &[data-panel-side="inline-end"] > [data-shiny-chat-resize-indicator] {
+    inset-inline-end: 0;
+  }
+
+  &:hover > [data-shiny-chat-resize-indicator] {
     opacity: 0.65;
   }
 
-  &:focus-visible::before,
-  &:active::before,
-  &[data-resizing]::before {
+  &:is(
+    :focus-visible,
+    :active,
+    [data-resizing],
+    [data-boundary-armed]
+  ) > [data-shiny-chat-resize-indicator],
+  > [data-shiny-chat-resize-indicator]:hover {
+    width: 4px;
+    height: 40px;
     opacity: 1;
-    background: var(--bs-primary, #0d6efd);
   }
 
-  &:focus-visible::before {
+  &:is(:active, [data-resizing]) > [data-shiny-chat-resize-indicator] {
+    background: var(--bs-primary, #0d6efd);
+    height: 50px;
+  }
+
+  &:focus-visible > [data-shiny-chat-resize-indicator] {
     outline: 2px solid var(--bs-focus-ring-color, rgb(13 110 253 / 25%));
     outline-offset: 2px;
   }
@@ -59,16 +78,105 @@ shiny-chat-resize-handle {
   }
 }
 
+@media (any-pointer: fine) {
+  shiny-chat-resize-handle[data-boundary-activation] {
+    cursor: default;
+    pointer-events: none;
+
+    // The idle trip area straddles the true divider. Its geometry matches
+    // bslib: 5px wide, with 2px on the non-panel side and 3px on the panel.
+    &::after {
+      position: absolute;
+      inset-block: 0;
+      width: 5px;
+      content: "";
+      pointer-events: auto;
+    }
+
+    &[data-panel-side="inline-start"]::after {
+      inset-inline-start: -2px;
+    }
+
+    &[data-panel-side="inline-end"]::after {
+      inset-inline-end: -2px;
+    }
+
+    &[data-boundary-armed] {
+      cursor: ew-resize;
+      pointer-events: auto;
+
+      &::after {
+        width: 24px;
+      }
+
+      &[data-panel-side="inline-start"]::after {
+        inset-inline-start: -12px;
+      }
+
+      &[data-panel-side="inline-end"]::after {
+        inset-inline-end: -12px;
+      }
+    }
+  }
+}
+
+.shiny-chat-debug-resize-handle {
+  --shiny-chat-debug-resize-idle-color: rgb(255 193 7 / 28%);
+  --shiny-chat-debug-resize-armed-color: rgb(25 135 84 / 30%);
+  --shiny-chat-debug-resize-coarse-color: rgb(13 110 253 / 28%);
+  --shiny-chat-debug-resize-indicator-color: rgb(220 53 69 / 85%);
+
+  shiny-chat-resize-handle > [data-shiny-chat-resize-indicator] {
+    background: var(--shiny-chat-debug-resize-indicator-color);
+    outline: 1px solid var(--shiny-chat-debug-resize-indicator-color);
+    outline-offset: -1px;
+    opacity: 1;
+  }
+}
+
+@media (any-pointer: fine) {
+  .shiny-chat-debug-resize-handle
+    shiny-chat-resize-handle[data-boundary-activation]:not([data-boundary-armed])::after {
+    background: var(--shiny-chat-debug-resize-idle-color);
+    outline: 1px dashed var(--shiny-chat-debug-resize-idle-color);
+    outline-offset: -1px;
+  }
+
+  .shiny-chat-debug-resize-handle
+    shiny-chat-resize-handle[data-boundary-activation][data-boundary-armed]::after {
+    background: var(--shiny-chat-debug-resize-armed-color);
+    outline: 1px dashed var(--shiny-chat-debug-resize-armed-color);
+    outline-offset: -1px;
+  }
+}
+
 @media (any-pointer: coarse) {
   shiny-chat-resize-handle {
     --shiny-chat-resize-handle-hit-target: 26px;
-    --shiny-chat-resize-handle-overhang: 13px;
-    --shiny-chat-resize-handle-indicator-offset: 12px;
+  }
+
+  // Coarse starts are captured at the document using the host's 26px bounds.
+  // Keep the host transparent so a mouse on a hybrid device still reaches
+  // the panel content instead of being swallowed by an idle resize surface.
+  shiny-chat-resize-handle[data-boundary-activation] {
+    cursor: default;
+    pointer-events: none;
+  }
+
+  .shiny-chat-debug-resize-handle shiny-chat-resize-handle::after {
+    position: absolute;
+    inset: 0;
+    width: auto;
+    content: "";
+    background: var(--shiny-chat-debug-resize-coarse-color);
+    outline: 1px dashed var(--shiny-chat-debug-resize-coarse-color);
+    outline-offset: -1px;
+    pointer-events: none;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  shiny-chat-resize-handle::before {
+  shiny-chat-resize-handle > [data-shiny-chat-resize-indicator] {
     transition: none;
   }
 }
