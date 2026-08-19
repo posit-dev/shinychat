@@ -61,6 +61,18 @@ reference:
   - chat_get_greeting
   - update_chat_user_input
 
+- title: Page chat
+  contents:
+  - page_chat
+  - chat_nav_panel
+  - chat_sidebar
+  - chat_ui_history
+  - chat_artifact
+  - chat_artifact_show
+  - chat_artifact_hide
+  - chat_artifact_toggle
+  - chat_artifact_update
+
 - title: Streaming markdown interface
   contents:
   - markdown_stream

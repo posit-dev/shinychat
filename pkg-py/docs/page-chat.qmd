@@ -147,19 +147,33 @@ its own `chat_sidebar()`. `chat_ui_history("chat")` is available when an
 advanced layout needs a history view bound to a specific chat ID outside a
 `page_chat()` sidebar.
 
-`toolbar` is scoped to the home page. A navigation page defaults to
-`toolbar=None`, which omits the scoped segment. Supply an HTML child for
-`toolbar` to replace that scoped segment, or use `toolbar=True` to retain the
-legacy behavior of moving the home toolbar into that page. `toolbar=False`
-remains a legacy alias for no scoped toolbar. Use `toolbar_global` for actions
-that must remain mounted and visible across every selected page; it is rendered
-after the page-scoped segment and keeps its input and output state when the
-controls move between desktop and mobile layouts.
+`toolbar` is scoped to the chat home page. A navigation page defaults to
+`toolbar=None`, which omits that scoped segment. Supply an HTML child for
+`toolbar` to replace it. For compatibility with earlier code,
+`toolbar=True` reuses the home toolbar and `toolbar=False` is an alias for
+omitting it. Use `toolbar_global` for actions that must remain mounted and
+visible across every selected page; it is rendered after the page-scoped
+segment and keeps its input and output state when the controls move between
+desktop and mobile layouts.
+
+Use `navbar_options=ui.navbar_options(...)` to style the title bar with its
+background, color theme, underline navigation treatment, and HTML attributes.
+`page_chat()` uses underline navigation by default, matching `page_navbar()`.
+It owns the full-window layout and responsive app menu, so
+`navbar_options(position=...)` and `navbar_options(collapsible=...)` are not
+supported.
 
 The artifact starts closed unless `chat_artifact(open=True)` is used. From the
 server, `chat.artifact.show()`, `.update()`, `.hide()`, and `.toggle()` change
 the artifact without replacing the chat. `show()` and `update()` accept
 htmltools or Shiny UI content, including Shiny inputs and outputs.
+
+On narrow screens, the same navigation and toolbar controls move into the app
+menu above the active page's sidebar content. The controls are moved rather
+than duplicated, so Shiny IDs and control state stay unique. The [paired
+runnable examples](https://github.com/posit-dev/shinychat/tree/main/examples/page-chat)
+include local-response navigation and artifact-control apps that require no
+credentials.
 
 The same composition helpers work with Shiny Express. Keep `page_chat()` as the
 only top-level UI item and place application UI in its `toolbar`, `pages`,

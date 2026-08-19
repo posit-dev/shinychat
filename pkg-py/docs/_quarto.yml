@@ -71,17 +71,26 @@ quartodoc:
         include_functions: true
       contents:
         - Chat
+        - types.ChatClient
+        - types.ChatMessage
+        - types.Attachment
+        - chat_ui
+        - chat_greeting
+    - title: Page chat
+      options:
+        signature_name: relative
+        include_imports: false
+        include_inherited: false
+        include_attributes: true
+        include_classes: true
+        include_functions: true
+      contents:
         - ChatArtifactController
         - page_chat
         - chat_sidebar
         - chat_nav_panel
         - chat_artifact
         - chat_ui_history
-        - types.ChatClient
-        - types.ChatMessage
-        - types.Attachment
-        - chat_ui
-        - chat_greeting
     - title: Tool display
       options:
         signature_name: relative
