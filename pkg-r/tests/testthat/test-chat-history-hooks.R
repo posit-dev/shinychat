@@ -250,12 +250,16 @@ test_that("greeting session state is not wired into conversation record values",
   )
 })
 
-test_that("HistoryController$save returns FALSE without an active conversation", {
+test_that("HistoryController$save returns FALSE without a record or partition", {
   store <- InMemoryConversationStore$new()
   ctrl <- .make_test_controller(
     .make_test_client(),
     history_options(store = store, title = NULL)
   )
+
+  expect_identical(ctrl$save(), FALSE)
+
+  ctrl$record <- new_conversation_record("Saved conversation")
 
   expect_identical(ctrl$save(), FALSE)
 })
@@ -310,4 +314,49 @@ test_that("HistoryController$save persists app state before history updates", {
     store$get(ctrl$partition, ctrl$record$id)$values$flag,
     TRUE
   )
+})
+
+test_that("HistoryController$save preserves response count after on_response", {
+  store <- InMemoryConversationStore$new()
+  ctrl <- .make_test_controller(
+    .make_test_client(),
+    history_options(store = store, title = NULL)
+  )
+  ctrl$partition <- conversation_partition("test", "alice")
+
+  save_count <- 0L
+  ctrl$add_save_callback(function(values) {
+    save_count <<- save_count + 1L
+    values$save_count <- save_count
+    values
+  })
+
+  ctrl$on_response(list())
+  response_count <- ctrl$record$response_count
+
+  expect_identical(ctrl$save(), TRUE)
+  expect_identical(ctrl$record$response_count, response_count)
+  expect_identical(ctrl$record$values$save_count, 2L)
+})
+
+test_that("HistoryController$save propagates store write errors", {
+  FailingStore <- R6::R6Class(
+    "FailingStore",
+    inherit = ConversationStore,
+    public = list(
+      list = function(partition) list(),
+      get = function(partition, id) NULL,
+      put = function(partition, record) rlang::abort("disk full"),
+      delete = function(partition, id) invisible(NULL)
+    )
+  )
+
+  ctrl <- .make_test_controller(
+    .make_test_client(),
+    history_options(store = FailingStore$new(), title = NULL)
+  )
+  ctrl$partition <- conversation_partition("test", "alice")
+  ctrl$record <- new_conversation_record("Saved conversation")
+
+  expect_error(ctrl$save(), "disk full")
 })
