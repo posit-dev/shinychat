@@ -22,7 +22,7 @@ shiny-chat-page {
   position: relative;
   z-index: 3;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto auto minmax(0, 1fr);
   align-items: center;
   min-width: 0;
   min-height: var(--_page-header-height);
@@ -110,16 +110,18 @@ shiny-chat-page {
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
-  justify-self: end;
+  justify-self: stretch;
 }
 
 .shiny-chat-page-controls {
   min-width: 0;
   max-width: 100%;
+  width: 100%;
   gap: var(--bs-navbar-nav-link-padding-x, 0.5rem);
 }
 
 .shiny-chat-page-nav {
+  flex: 0 1 auto;
   min-width: 0;
   gap: 0.125rem;
   justify-content: flex-start;
@@ -132,6 +134,7 @@ shiny-chat-page {
 }
 
 .shiny-chat-page-toolbar {
+  flex: 0 0 auto;
   min-width: 0;
   gap: 0.375rem;
   justify-content: flex-start;
