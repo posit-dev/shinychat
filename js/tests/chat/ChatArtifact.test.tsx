@@ -5,6 +5,7 @@ import { ChatArtifact } from "../../src/chat/ChatArtifact"
 import { ChatApp } from "../../src/chat/ChatApp"
 import { ShinyLifecycleContext } from "../../src/chat/context"
 import { initialState, type ChatArtifactState } from "../../src/chat/state"
+import { RESIZE_HANDLE_EVENTS } from "../../src/resize-handle"
 import type { ShinyLifecycle } from "../../src/transport/types"
 import { createMockShinyLifecycle, createMockTransport } from "../helpers/mocks"
 
@@ -1263,6 +1264,65 @@ describe("ChatArtifact", () => {
         delete (HTMLElement.prototype as { getBoundingClientRect?: unknown })
           .getBoundingClientRect
       }
+    }
+  })
+
+  it("keeps its mounted resize provider when bslib becomes available", () => {
+    class ConformingBslibHandle extends HTMLElement {
+      static readonly resizeHandleEvents = RESIZE_HANDLE_EVENTS
+
+      configure() {}
+    }
+
+    const bslibTagName = "bslib-resize-handle"
+    const originalGet = customElements.get.bind(customElements)
+    if (!originalGet(bslibTagName)) {
+      customElements.define(bslibTagName, ConformingBslibHandle)
+    }
+    const get = vi
+      .spyOn(customElements, "get")
+      .mockImplementation((name) =>
+        name === bslibTagName ? undefined : originalGet(name),
+      )
+
+    try {
+      const { container, rerender, shiny } = renderArtifact(
+        artifact({ title: "Before bslib" }),
+      )
+      const localHandle = container.querySelector(
+        ".shiny-chat-artifact-resizer",
+      )
+      expect(localHandle?.tagName).toBe("SHINY-CHAT-RESIZE-HANDLE")
+      expect(localHandle).toHaveAttribute(
+        "data-shiny-chat-resize-handle-provider",
+        "local",
+      )
+
+      get.mockRestore()
+      rerender(
+        <ShinyLifecycleContext.Provider value={shiny}>
+          <ChatArtifact
+            artifact={artifact({ title: "After bslib" })}
+            titleId="artifact-title"
+            takeover={false}
+            closeButtonRef={createRef<HTMLButtonElement>()}
+            onClose={vi.fn()}
+            onWidthChange={vi.fn()}
+          />
+        </ShinyLifecycleContext.Provider>,
+      )
+
+      const rerenderedHandle = container.querySelector(
+        ".shiny-chat-artifact-resizer",
+      )
+      expect(rerenderedHandle).toBe(localHandle)
+      expect(rerenderedHandle?.tagName).toBe("SHINY-CHAT-RESIZE-HANDLE")
+      expect(rerenderedHandle).toHaveAttribute(
+        "data-shiny-chat-resize-handle-provider",
+        "local",
+      )
+    } finally {
+      get.mockRestore()
     }
   })
 
