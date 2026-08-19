@@ -571,7 +571,8 @@ class ChatPageElement extends HTMLElement {
         ":scope > .shiny-chat-page-sidebar-resizer",
       ),
     )
-    const handle = existing.shift() ?? createResizeHandle()
+    const handle =
+      existing.shift() ?? createResizeHandle({ boundaryActivation: true })
     existing.forEach((duplicate) => duplicate.remove())
 
     handle.className = "shiny-chat-page-sidebar-resizer"

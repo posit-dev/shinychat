@@ -45,6 +45,10 @@ export interface ResizeHandleProvider {
   tagName: "shiny-chat-resize-handle" | "bslib-resize-handle"
 }
 
+export interface CreateResizeHandleOptions {
+  boundaryActivation?: boolean
+}
+
 const LOCAL_TAG_NAME = "shiny-chat-resize-handle"
 const BSLIB_TAG_NAME = "bslib-resize-handle"
 const DEFAULT_OPTIONS: ResizeHandleOptions = {
@@ -85,8 +89,14 @@ export function getResizeHandleProvider(
     : { name: "local", tagName: LOCAL_TAG_NAME }
 }
 
-export function createResizeHandle(): ResizeHandleElement {
-  const provider = getResizeHandleProvider()
+export function createResizeHandle(
+  options: CreateResizeHandleOptions = {},
+): ResizeHandleElement {
+  // Boundary activation is a shinychat extension, not part of bslib's public
+  // resize-handle contract. Keep page handles local until bslib supports it.
+  const provider = options.boundaryActivation
+    ? { name: "local" as const, tagName: LOCAL_TAG_NAME }
+    : getResizeHandleProvider()
   const handle = document.createElement(provider.tagName) as ResizeHandleElement
   handle.dataset.shinyChatResizeHandleProvider = provider.name
   return handle
@@ -126,6 +136,7 @@ class ShinyChatResizeHandleElement
 
   disconnectedCallback() {
     this.finishPointer()
+    this.deactivateBoundary()
     this.listenerAbort?.abort()
     this.listenerAbort = null
   }

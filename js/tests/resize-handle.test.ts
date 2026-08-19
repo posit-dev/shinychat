@@ -240,6 +240,12 @@ describe("shiny-chat-resize-handle", () => {
     document.dispatchEvent(new PointerEvent("pointermove", { clientX: 324 }))
     document.dispatchEvent(new PointerEvent("pointermove", { clientX: 319 }))
     expect(handle).toHaveAttribute("data-boundary-armed")
+    handle.remove()
+    expect(handle).not.toHaveAttribute("data-boundary-armed")
+    document.body.append(handle)
+    document.dispatchEvent(new PointerEvent("pointermove", { clientX: 324 }))
+    document.dispatchEvent(new PointerEvent("pointermove", { clientX: 319 }))
+    expect(handle).toHaveAttribute("data-boundary-armed")
 
     handle.dispatchEvent(
       new PointerEvent("pointerdown", {
@@ -306,6 +312,9 @@ describe("shiny-chat-resize-handle", () => {
       name: "bslib",
       tagName: "bslib-resize-handle",
     })
+    expect(createResizeHandle({ boundaryActivation: true }).tagName).toBe(
+      "SHINY-CHAT-RESIZE-HANDLE",
+    )
 
     registered = IncompleteBslibHandle
     expect(getResizeHandleProvider(registry)).toEqual({

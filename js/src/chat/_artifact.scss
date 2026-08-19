@@ -153,8 +153,16 @@ shiny-chat-container[data-history-placement="right"] {
 }
 
 .shiny-chat-artifact-resizer {
-  inset-inline-start: calc(-1 * var(--shiny-chat-resize-handle-overhang));
+  --_artifact-resize-handle-overhang: 4px;
+
+  inset-inline-start: calc(-1 * var(--_artifact-resize-handle-overhang));
   --shiny-chat-resize-handle-indicator-color: var(--bs-border-color, #dee2e6);
+}
+
+@media (any-pointer: coarse) {
+  .shiny-chat-artifact-resizer {
+    --_artifact-resize-handle-overhang: 13px;
+  }
 }
 
 @keyframes shiny-chat-artifact-reveal {
