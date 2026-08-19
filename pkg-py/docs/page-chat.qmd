@@ -163,10 +163,12 @@ It owns the full-window layout and responsive app menu, so
 `navbar_options(position=...)` and `navbar_options(collapsible=...)` are not
 supported.
 
-The artifact starts closed unless `chat_artifact(open=True)` is used. From the
-server, `chat.artifact.show()`, `.update()`, `.hide()`, and `.toggle()` change
-the artifact without replacing the chat. `show()` and `update()` accept
-htmltools or Shiny UI content, including Shiny inputs and outputs.
+Configured artifacts start open by default; use `chat_artifact(open=False)` to
+start one closed. Bare `artifact=True` enables an empty, initially hidden
+artifact region. From the server, `chat.artifact.show()`, `.update()`,
+`.hide()`, and `.toggle()` change the artifact without replacing the chat.
+`show()` and `update()` accept htmltools or Shiny UI content, including Shiny
+inputs and outputs.
 
 On narrow screens, the same navigation and toolbar controls move into the app
 menu above the active page's sidebar content. The controls are moved rather
@@ -176,11 +178,12 @@ are installed with the package and require no credentials. Run the navigation
 example with:
 
 ```sh
+uv pip install "shinychat[providers]"
 shiny run shinychat.examples.page_chat.navigation:app
 ```
 
 Replace `navigation` with `artifact_control` to run the artifact-controls
-example.
+example; it has no optional dependencies.
 
 The same composition helpers work with Shiny Express. Keep `page_chat()` as the
 only top-level UI item and place application UI in its `toolbar`, `pages`,

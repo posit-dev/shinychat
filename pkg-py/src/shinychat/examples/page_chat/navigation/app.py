@@ -1,3 +1,9 @@
+from typing import Any, AsyncGenerator
+from unittest.mock import MagicMock
+
+import chatlas
+from chatlas import Turn
+from chatlas._turn import AssistantTurn
 from shiny import App, reactive, ui
 
 from shinychat import (
@@ -7,6 +13,32 @@ from shinychat import (
     chat_sidebar,
     page_chat,
 )
+from shinychat.types import HistoryOptions
+
+
+class EchoChatClient(chatlas.Chat):
+    def __init__(self) -> None:
+        provider = MagicMock()
+        provider.name = "local-echo"
+        provider.model = "local-echo"
+        super().__init__(provider)
+
+    async def stream_async(
+        self, *args: Any, **kwargs: Any
+    ) -> AsyncGenerator[str, None]:  # type: ignore[override]
+        user_input = str(args[0]) if args else ""
+        response = f"You said: {user_input}"
+        self._turns.extend(
+            [
+                Turn(role="user", contents=user_input),
+                AssistantTurn(contents=response),
+            ]
+        )
+
+        async def _stream() -> AsyncGenerator[str, None]:
+            yield response
+
+        return _stream()
 
 
 def artifact_content(label: str):
@@ -89,11 +121,14 @@ app_ui = page_chat(
 
 
 def server(input, output, session):
-    chat = Chat("chat")
+    chat = Chat(
+        "chat",
+        client=EchoChatClient(),
+        history=HistoryOptions(store="memory", title=None),
+    )
 
     @chat.on_user_submit
-    async def _reply(user_input: str):
-        await chat.append_message(f"You said: {user_input}")
+    async def _update_artifact(user_input: str):
         await chat.artifact.update(
             artifact_content(f"Latest request: {user_input}"),
             title="Latest request",
