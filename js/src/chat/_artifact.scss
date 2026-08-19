@@ -143,22 +143,7 @@ shiny-chat-container[data-history-placement="right"] {
 
 @container shiny-chat (min-width: 1120px) {
   .shiny-chat-layout .shiny-chat-wrapper {
-    justify-self: end;
-    margin-inline: 0;
-    transform: translateX(calc(50% - 50cqi));
-    transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .shiny-chat-layout:not([data-artifact-open]) .shiny-chat-wrapper:dir(rtl) {
-    transform: translateX(calc(50cqi - 50%));
-  }
-
-  .shiny-chat-layout[data-artifact-open] .shiny-chat-wrapper {
-    transform: translateX(0);
-  }
-
-  .shiny-chat-layout:is([data-artifact-resizing], [data-artifact-takeover]) .shiny-chat-wrapper {
-    transition: none;
+    justify-self: center;
   }
 }
 

@@ -456,31 +456,28 @@ def test_default_artifact_width_centers_chat_wrapper(
     wrapper = chat.loc.locator(".shiny-chat-wrapper")
 
     closed_box = wrapper.bounding_box()
-    closed_translate = wrapper.evaluate(
-        """(element) => new DOMMatrixReadOnly(
-          getComputedStyle(element).transform
-        ).m41"""
-    )
     assert closed_box is not None
-    assert closed_translate < 0
 
+    page.evaluate(
+        """() => {
+          const layout = document.querySelector(".shiny-chat-layout");
+          const wrapper = document.querySelector(".shiny-chat-wrapper");
+          if (!layout || !wrapper) {
+            return;
+          }
+          window.__shinychatArtifactOpeningX = new Promise((resolve) => {
+            const observer = new MutationObserver(() => {
+              if (!layout.hasAttribute("data-artifact-open")) return;
+              observer.disconnect();
+              resolve(wrapper.getBoundingClientRect().x);
+            });
+            observer.observe(layout, { attributes: true });
+          });
+        }"""
+    )
     page.get_by_role("button", name="Show artifact").click()
     expect(panel).to_be_visible(timeout=TIMEOUT)
-    intermediate_open_x = page.wait_for_function(
-        f"""() => {{
-          const wrapper = document.querySelector(".shiny-chat-wrapper");
-          if (!wrapper) return false;
-          const translate = new DOMMatrixReadOnly(
-            getComputedStyle(wrapper).transform
-          ).m41;
-          if (translate <= {closed_translate + 1} || translate >= -1) {{
-            return false;
-          }}
-          return wrapper.getBoundingClientRect().x;
-        }}""",
-        polling="raf",
-        timeout=TIMEOUT,
-    ).json_value()
+    opening_x = page.evaluate("() => window.__shinychatArtifactOpeningX")
     page.wait_for_timeout(220)
 
     layout_box = layout.bounding_box()
@@ -489,7 +486,7 @@ def test_default_artifact_width_centers_chat_wrapper(
     assert layout_box is not None
     assert panel_box is not None
     assert wrapper_box is not None
-    assert isinstance(intermediate_open_x, float)
+    assert isinstance(opening_x, (int, float))
     assert panel_box["width"] == pytest.approx(400, abs=1)
 
     first_track = layout.evaluate(
@@ -506,29 +503,10 @@ def test_default_artifact_width_centers_chat_wrapper(
     assert panel_box["x"] - (layout_box["x"] + first_track) == pytest.approx(
         gap, abs=1
     )
-    assert intermediate_open_x != pytest.approx(closed_box["x"], abs=1)
-    assert intermediate_open_x != pytest.approx(wrapper_box["x"], abs=1)
+    assert opening_x == pytest.approx(closed_box["x"], abs=1)
+    assert wrapper_box["x"] != pytest.approx(closed_box["x"], abs=1)
 
     panel.get_by_role("button", name="Close artifact").click()
-    page.wait_for_function(
-        f"""() => {{
-          const wrapper = document.querySelector(".shiny-chat-wrapper");
-          if (!wrapper) return false;
-          const translate = new DOMMatrixReadOnly(
-            getComputedStyle(wrapper).transform
-          ).m41;
-          return translate < -1 && translate > {closed_translate + 1};
-        }}""",
-        polling="raf",
-        timeout=TIMEOUT,
-    )
-    intermediate_close_box = wrapper.bounding_box()
-    assert intermediate_close_box is not None
-    assert (
-        min(wrapper_box["x"], closed_box["x"])
-        < intermediate_close_box["x"]
-        < max(wrapper_box["x"], closed_box["x"])
-    )
 
 
 def test_rtl_closed_artifact_wrapper_stays_centered(

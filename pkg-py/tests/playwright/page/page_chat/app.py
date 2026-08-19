@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import chatlas
 from chatlas import Turn
 from chatlas._turn import AssistantTurn
-from shiny import App, Inputs, Outputs, Session, ui
+from shiny import App, Inputs, Outputs, Session, reactive, ui
 from shinychat import Chat, chat_nav_panel, chat_sidebar, page_chat
 from shinychat.types import FileConversationStore, HistoryOptions
 
@@ -119,10 +119,13 @@ def app_ui(request: object) -> ui.Tag:
             "Toolbar value",
             value="toolbar initial",
         ),
-        toolbar_global=ui.input_text(
-            "toolbar_global_value",
-            "Global toolbar value",
-            value="global toolbar initial",
+        toolbar_global=ui.TagList(
+            ui.input_text(
+                "toolbar_global_value",
+                "Global toolbar value",
+                value="global toolbar initial",
+            ),
+            ui.input_action_button("show_toast", "Show toast"),
         ),
         sidebar=True,
         artifact=False,
@@ -139,6 +142,11 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
             title=None,
         ),
     )
+
+    @reactive.effect
+    @reactive.event(input.show_toast)
+    def _show_toast() -> None:
+        ui.show_toast(ui.toast("Toast content", header="Toast", type="info"))
 
 
 app = App(app_ui, server)

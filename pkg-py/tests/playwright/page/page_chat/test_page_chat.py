@@ -290,6 +290,25 @@ def test_page_chat_keeps_content_inset_and_fills_its_page_region(
     expect(wrapper).to_have_css("padding-right", "16px")
 
 
+def test_top_aligned_toast_starts_below_the_page_title_bar(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    _, shell = open_page(page, local_app, viewport=(1280, 800))
+    header = shell.locator(".shiny-chat-page-header")
+    page.get_by_role("button", name="Show toast").click()
+
+    container = page.locator("body > .toast-container")
+    expect(container).to_be_visible(timeout=TIMEOUT)
+    header_box = header.bounding_box()
+    container_box = container.bounding_box()
+    assert header_box is not None
+    assert container_box is not None
+
+    header_bottom = header_box["y"] + header_box["height"]
+    assert container_box["y"] == pytest.approx(header_bottom, abs=1)
+    expect(container).to_have_css("top", f"{header_bottom}px")
+
+
 def test_page_toolbars_move_without_duplicate_controls(
     page: Page,
     local_app: ShinyAppProc,

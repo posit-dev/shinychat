@@ -29,7 +29,7 @@ app_ui = page_chat(
     sidebar=chat_sidebar(
         ui.h3("Workspace", class_="h6"),
         ui.input_text("project_name", "Project", "Coastal survey"),
-        history=True,
+        history=False,
         width=320,
         open="auto",
     ),

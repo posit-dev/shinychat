@@ -5,7 +5,6 @@ from shinychat import (
     chat_artifact,
     chat_nav_panel,
     chat_sidebar,
-    chat_ui_history,
     page_chat,
 )
 
@@ -28,14 +27,7 @@ app_ui = page_chat(
         ui.toolbar_input_button("hide_artifact", "Hide"),
         ui.toolbar_input_button("toggle_artifact", "Toggle"),
     ),
-    sidebar=chat_sidebar(
-        ui.h3("History", class_="h6"),
-        chat_ui_history("chat"),
-        history=False,
-        width=300,
-        open="open",
-        resizable=False,
-    ),
+    sidebar=False,
     pages=[
         chat_nav_panel(
             "Inspector",

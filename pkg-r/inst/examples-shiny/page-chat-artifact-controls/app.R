@@ -19,14 +19,7 @@ ui <- page_chat(
     bslib::toolbar_input_button("hide_artifact", "Hide"),
     bslib::toolbar_input_button("toggle_artifact", "Toggle")
   ),
-  sidebar = chat_sidebar(
-    tags$h3("History", class = "h6"),
-    chat_ui_history("chat"),
-    history = FALSE,
-    width = 300,
-    open = "open",
-    resizable = FALSE
-  ),
+  sidebar = FALSE,
   pages = list(
     chat_nav_panel(
       "Inspector",
