@@ -1,10 +1,14 @@
 shiny-chat-resize-handle {
+  --shiny-chat-resize-handle-hit-target: 8px;
+  --shiny-chat-resize-handle-overhang: 4px;
+  --shiny-chat-resize-handle-indicator-offset: 3px;
+
   position: absolute;
   z-index: 4;
   top: 0;
   bottom: 0;
   display: block;
-  width: 0.75rem;
+  width: var(--shiny-chat-resize-handle-hit-target);
   padding: 0;
   color: inherit;
   cursor: ew-resize;
@@ -15,40 +19,38 @@ shiny-chat-resize-handle {
   &::before {
     position: absolute;
     top: 50%;
-    inset-inline-start: 0;
-    width: 0.125rem;
-    height: 1.875rem;
+    inset-inline-start: var(--shiny-chat-resize-handle-indicator-offset);
+    width: 2px;
+    height: 30px;
     content: "";
     background: var(--shiny-chat-resize-handle-indicator-color, currentcolor);
-    border-radius: 0.125rem;
-    opacity: 0.15;
+    border-radius: 1px;
+    opacity: 0.3;
     pointer-events: none;
     transform: translateY(-50%);
     transition:
-      width 150ms ease,
-      height 150ms ease,
+      background-color 150ms ease,
       opacity 150ms ease;
   }
 
-  &:hover::before,
-  &:focus-visible::before,
-  &[data-resizing]::before {
-    width: 0.1875rem;
-    height: 2.5rem;
-    opacity: 1;
+  &:hover::before {
+    opacity: 0.65;
   }
 
+  &:focus-visible::before,
+  &:active::before,
   &[data-resizing]::before {
+    opacity: 1;
     background: var(--bs-primary, #0d6efd);
+  }
+
+  &:focus-visible::before {
+    outline: 2px solid var(--bs-focus-ring-color, rgb(13 110 253 / 25%));
+    outline-offset: 2px;
   }
 
   &:focus-visible {
     outline: 0;
-
-    &::before {
-      outline: 0.125rem solid var(--bs-focus-ring-color, rgb(13 110 253 / 25%));
-      outline-offset: 0.125rem;
-    }
   }
 
   &[data-disabled] {
@@ -59,7 +61,9 @@ shiny-chat-resize-handle {
 
 @media (any-pointer: coarse) {
   shiny-chat-resize-handle {
-    width: 1.625rem;
+    --shiny-chat-resize-handle-hit-target: 26px;
+    --shiny-chat-resize-handle-overhang: 13px;
+    --shiny-chat-resize-handle-indicator-offset: 12px;
   }
 }
 

@@ -107,7 +107,13 @@ def test_desktop_header_keeps_controls_available_with_a_long_title(
     local_app: ShinyAppProc,
 ) -> None:
     _, shell = open_page(page, local_app, viewport=(800, 760))
+    header = shell.locator(".shiny-chat-page-header")
     identity_title = shell.locator(".shiny-chat-page-identity-title")
+    controls_mount = shell.locator(".shiny-chat-page-controls-mount-desktop")
+    toolbar_sources = shell.locator(".shiny-chat-page-toolbar-sources")
+    toolbar_source = toolbar_sources.locator(
+        ".shiny-chat-page-toolbar-source"
+    ).first
     toolbar_input = page.locator("#toolbar_value")
 
     identity_title.evaluate(
@@ -122,7 +128,11 @@ def test_desktop_header_keeps_controls_available_with_a_long_title(
     identity_title_box = identity_title.bounding_box()
     assert toolbar_box is not None
     assert identity_title_box is not None
+    assert identity_title_box["width"] >= 150
     assert toolbar_box["x"] > identity_title_box["x"]
+    expect(controls_mount).to_have_css("overflow-x", "visible")
+    expect(toolbar_sources).to_be_hidden()
+    expect(toolbar_source).to_be_hidden()
 
 
 def test_mobile_moves_controls_and_manages_dialog_focus(

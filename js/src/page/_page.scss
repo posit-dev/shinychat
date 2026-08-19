@@ -94,8 +94,9 @@ shiny-chat-page {
 
 .shiny-chat-page-controls-mount-desktop {
   min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
+  padding: 0.25rem;
+  margin: -0.25rem;
+  overflow: visible;
   justify-self: stretch;
 }
 
@@ -139,8 +140,9 @@ shiny-chat-page {
   justify-content: flex-start;
 }
 
-.shiny-chat-page-toolbar-sources {
-  display: none;
+.shiny-chat-page-toolbar-sources,
+.shiny-chat-page-toolbar-source {
+  display: none !important;
 }
 
 .shiny-chat-page-nav-link {
@@ -230,6 +232,20 @@ button.shiny-chat-page-identity:focus-visible,
 }
 
 @media (min-width: 800px) {
+  .shiny-chat-page-header {
+    grid-template-columns: auto minmax(12rem, 30ch) minmax(0, 1fr);
+  }
+
+  .shiny-chat-page-identity {
+    width: 100%;
+    max-width: none;
+  }
+
+  .shiny-chat-page-toolbar,
+  .shiny-chat-page-toolbar > .shiny-chat-page-toolbar-content > .bslib-toolbar {
+    flex-wrap: nowrap;
+  }
+
   .shiny-chat-page-sidebar {
     min-width: min(150px, 100%);
     max-width: var(--shiny-chat-page-sidebar-max-width, none);
