@@ -8,7 +8,7 @@ import chatlas
 from chatlas import Turn
 from chatlas._turn import AssistantTurn
 from shiny import App, Inputs, Outputs, Session, reactive, render, ui
-from shinychat import Chat, chat_nav_panel, page_chat
+from shinychat import Chat, chat_artifact, chat_nav_panel, page_chat
 from shinychat.types import FileConversationStore, HistoryOptions
 
 
@@ -57,7 +57,7 @@ app_ui = page_chat(
         class_="d-flex gap-2",
     ),
     sidebar=True,
-    artifact=True,
+    artifact=chat_artifact(width="70%"),
 )
 
 

@@ -1,3 +1,4 @@
+import pytest
 from playwright.sync_api import Locator, Page, expect
 from shiny.run import ShinyAppProc
 from shinychat.playwright import ChatController
@@ -15,6 +16,48 @@ def open_page(
     expect(shell).to_be_visible(timeout=TIMEOUT)
     expect(chat.loc).to_be_visible(timeout=TIMEOUT)
     return chat, shell
+
+
+def test_percentage_artifact_keeps_desktop_chat_width(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    chat, _ = open_page(page, local_app)
+    page.get_by_role("button", name="Show artifact").click()
+
+    panel = chat.loc.locator(".shiny-chat-artifact")
+    layout = chat.loc.locator(".shiny-chat-layout")
+    wrapper = chat.loc.locator(".shiny-chat-wrapper")
+    expect(panel).to_be_visible(timeout=TIMEOUT)
+
+    layout_box = layout.bounding_box()
+    panel_box = panel.bounding_box()
+    wrapper_box = wrapper.bounding_box()
+    assert layout_box is not None
+    assert panel_box is not None
+    assert wrapper_box is not None
+    assert panel_box["width"] > 0
+    assert wrapper_box["width"] >= 360
+    assert panel_box["x"] >= layout_box["x"] + wrapper_box["width"]
+
+    grid_tracks = layout.evaluate(
+        """(element) =>
+          getComputedStyle(element).gridTemplateColumns
+            .split(" ")
+            .map((value) => Number.parseFloat(value))"""
+    )
+    assert isinstance(grid_tracks, list)
+    assert len(grid_tracks) == 2
+    assert wrapper_box["width"] == pytest.approx(grid_tracks[0], abs=1)
+    assert panel_box["width"] == pytest.approx(grid_tracks[1], abs=1)
+
+    separator = page.get_by_role("separator", name="Resize artifact panel")
+    expect(separator).to_be_visible()
+    minimum = int(separator.get_attribute("aria-valuemin") or "0")
+    maximum = int(separator.get_attribute("aria-valuemax") or "0")
+    current = int(separator.get_attribute("aria-valuenow") or "0")
+    assert minimum == 240
+    assert minimum <= current <= maximum
+    expect(separator).to_have_attribute("aria-valuetext", f"{current} pixels")
 
 
 def test_page_artifact_survives_navigation_and_history(
