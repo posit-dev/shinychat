@@ -1215,8 +1215,8 @@ async def test_restore_callback_fires_on_switch(tmp_path: Any) -> None:
     from shinychat._history_store import FileConversationStore
     from shinychat._history_types import new_conversation_record
 
-    restored: list[dict[str, Any]] = []
-    restore_cbs: list[Any] = [lambda v: restored.append(dict(v))]
+    restored: list[tuple[dict[str, Any], str]] = []
+    restore_cbs: list[Any] = []
 
     store = FileConversationStore(tmp_path)
     adapter = _NavFakeAdapter()
@@ -1233,6 +1233,12 @@ async def test_restore_callback_fires_on_switch(tmp_path: Any) -> None:
     )
     controller.partition = part(scope="alice")
 
+    def on_restore(values: dict[str, Any]) -> None:
+        assert controller.record is not None
+        restored.append((dict(values), controller.record.id))
+
+    restore_cbs.append(on_restore)
+
     # Create a record with values directly in the store (not via on_response,
     # which would immediately re-capture and overwrite our values).
     target = new_conversation_record(title="old")
@@ -1246,7 +1252,7 @@ async def test_restore_callback_fires_on_switch(tmp_path: Any) -> None:
 
     await controller.switch_to(target.id)
 
-    assert any(r.get("x") == 99 for r in restored)
+    assert restored == [({"x": 99}, target.id)]
 
 
 # ---------------------------------------------------------------------------

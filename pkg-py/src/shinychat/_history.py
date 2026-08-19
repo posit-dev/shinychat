@@ -102,19 +102,12 @@ class HistoryOptions:
         when the app uses Shiny bookmarks to capture full input state
         alongside the chat.
 
-        Note: only the ``values`` dict captured by ``@chat.history.on_save``
-        callbacks is restored on in-session conversation switches — raw Shiny
-        input values (sliders, text boxes, etc.) are **not** synced
-        automatically. For ``"browser"`` and ``"url"`` modes, use
-        ``@chat.history.on_restore`` to update them on both page-load and
-        in-session switches.
-
-        For ``"bookmark"`` mode, ``@chat.history.on_restore`` does **not**
-        fire — Shiny's native bookmark restore handles app state. Use
-        ``session.bookmark.on_restore`` directly if you need to restore
-        auxiliary UI state alongside the conversation. Values captured by
-        ``@chat.history.on_save`` are persisted in the conversation record in
-        this mode, but are never passed to ``on_restore``.
+        The ``values`` dict captured by ``@chat.history.on_save`` callbacks
+        is restored by ``@chat.history.on_restore`` in every restore mode,
+        including ``"bookmark"``. Callbacks run after the target conversation
+        becomes active. Raw Shiny input values (sliders, text boxes, etc.) are
+        not synced automatically; use ``on_restore`` to update them on both
+        page-load restores and in-session switches.
     store
         Where conversations are persisted. ``"auto"`` (the default) picks
         ``FileConversationStore`` in most environments and defers to the
@@ -469,8 +462,8 @@ class HistoryController:
                 return
         self.adapter.set_turns_json(target.path_turns())
         await self.replay_ui(target)
-        self._restore_app_state(target.values or {})
         self.record = target
+        self._restore_app_state(target.values or {})
         await self._send_sibling_metadata()
         if self.on_active_id_change is not None:
             await self.on_active_id_change(target.id)
@@ -769,12 +762,12 @@ class ChatHistory:
         """
         Decorator. Register a callback fired when a conversation is loaded.
 
-        Fires on both page-load restore (when ``restore_mode`` is ``"browser"``
-        or ``"url"`` and a prior conversation is found) and on in-session
-        conversation switches. Use it to sync auxiliary UI state — active tabs,
-        model selectors, etc. — to match the restored conversation. Raw Shiny
-        input values are not synced automatically; call the appropriate
-        ``ui.update_*()`` functions here.
+        Fires on page-load restores in every ``restore_mode``, including
+        ``"bookmark"``, and on in-session conversation switches. The target
+        conversation is active before callbacks run. Use it to sync auxiliary
+        UI state — active tabs, model selectors, etc. — to match the restored
+        conversation. Raw Shiny input values are not synced automatically;
+        call the appropriate ``ui.update_*()`` functions here.
 
         The callback receives the ``values`` dict that was captured by the
         corresponding ``on_save`` callback::
@@ -786,10 +779,6 @@ class ChatHistory:
         Multiple callbacks can be registered and run in registration order.
         Safe to call before ``enabled = True``.
 
-        .. note::
-           This callback does **not** fire when ``restore_mode="bookmark"``.
-           In that mode Shiny's own bookmark restore cycle handles app state;
-           use ``session.bookmark.on_restore`` instead.
         """
         self._restore_callbacks.append(fn)
         return fn
@@ -899,7 +888,9 @@ class ChatHistory:
                     if old_state_id is not None:
                         await delete_bookmark_state(old_state_id)
                     if controller.partition is not None:
-                        await controller._put_record(controller.partition, record)
+                        await controller._put_record(
+                            controller.partition, record
+                        )
                     await controller.send_navigate(
                         f"?_state_id_={new_state_id}", captured_id
                     )
@@ -1034,9 +1025,8 @@ class ChatHistory:
                 if target is not None:
                     adapter.set_turns_json(target.path_turns())
                     await controller.replay_ui(target)
-                    if restore_mode != "bookmark":
-                        controller._restore_app_state(target.values or {})
                     controller.record = target
+                    controller._restore_app_state(target.values or {})
                     await controller._send_sibling_metadata()
                     await controller.send_history_update()
                     initialized = True
@@ -1070,8 +1060,8 @@ class ChatHistory:
                 if pointed is not None:
                     adapter.set_turns_json(pointed.path_turns())
                     await controller.replay_ui(pointed)
-                    controller._restore_app_state(pointed.values or {})
                     controller.record = pointed
+                    controller._restore_app_state(pointed.values or {})
                     await controller._send_sibling_metadata()
             await controller.send_history_update()
             initialized = True

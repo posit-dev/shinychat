@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import chatlas
 from chatlas import Turn
 from chatlas._turn import AssistantTurn
-from shiny import App, Inputs, Outputs, Session, render, ui
+from shiny import App, Inputs, Outputs, Session, reactive, render, ui
 from shinychat import Chat, chat_ui
 from shinychat.types import FileConversationStore, HistoryOptions
 
@@ -43,6 +43,7 @@ def app_ui(request: object) -> ui.Tag:
     return ui.page_fillable(
         ui.input_text("filter_text", "Filter", value="none"),
         ui.output_text("filter_state"),
+        ui.output_text("history_restore_state"),
         chat_ui("chat"),
     )
 
@@ -58,10 +59,15 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
             restore_mode="bookmark",
         ),
     )
+    restore_state: reactive.Value[str] = reactive.Value("not-restored")
 
     @render.text
     def filter_state():
         return f"filter: {input.filter_text()}"
+
+    @render.text
+    def history_restore_state():
+        return restore_state()
 
     @chat.history.on_save
     def _(values: dict[str, object]) -> None:
@@ -71,6 +77,7 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     def _(values: dict[str, object]) -> None:
         v = values.get("filter_text", "none")
         ui.update_text("filter_text", value=str(v))
+        restore_state.set(f"restored: {v}")
 
 
 app = App(app_ui, server, bookmark_store="server")
