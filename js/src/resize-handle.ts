@@ -131,7 +131,10 @@ class ShinyChatResizeHandleElement
     this.addEventListener("pointercancel", this.onPointerEnd, signal)
     this.addEventListener("lostpointercapture", this.onPointerEnd, signal)
     this.addEventListener("keydown", this.onKeyDown, signal)
-    document.addEventListener("pointerdown", this.onDocumentPointerDown, signal)
+    document.addEventListener("pointerdown", this.onDocumentPointerDown, {
+      ...signal,
+      capture: true,
+    })
     document.addEventListener("pointermove", this.onDocumentPointerMove, signal)
   }
 
@@ -214,7 +217,7 @@ class ShinyChatResizeHandleElement
       this.options.disabled ||
       this.pointer ||
       !isCoarsePointer(pointerEvent) ||
-      !this.isWithinHitTarget(pointerEvent.clientX)
+      !this.isWithinHitTarget(pointerEvent.clientX, pointerEvent.clientY)
     ) {
       return
     }
@@ -340,9 +343,14 @@ class ShinyChatResizeHandleElement
     return this.panelIsLeft() ? rect.right : rect.left
   }
 
-  private isWithinHitTarget(clientX: number) {
+  private isWithinHitTarget(clientX: number, clientY: number) {
     const rect = this.getBoundingClientRect()
-    return clientX >= rect.left && clientX <= rect.right
+    return (
+      clientX >= rect.left &&
+      clientX <= rect.right &&
+      clientY >= rect.top &&
+      clientY <= rect.bottom
+    )
   }
 
   private panelIsLeft() {

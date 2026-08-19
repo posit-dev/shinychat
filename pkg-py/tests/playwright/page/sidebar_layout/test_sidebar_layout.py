@@ -23,6 +23,11 @@ def test_sidebar_clamps_to_page_and_supports_touch_drag(
     page: Page,
     local_app: ShinyAppProc,
 ) -> None:
+    session = page.context.new_cdp_session(page)
+    session.send(
+        "Emulation.setTouchEmulationEnabled",
+        {"enabled": True, "maxTouchPoints": 1},
+    )
     page.set_viewport_size({"width": 800, "height": 700})
     page.goto(local_app.url)
 
@@ -45,29 +50,27 @@ def test_sidebar_clamps_to_page_and_supports_touch_drag(
         "(element) => getComputedStyle(element).touchAction"
     ) == ("none")
 
-    start_x = sidebar_box["x"] + sidebar_box["width"]
-    resizer.evaluate(
-        """(element, startX) => {
-          element.setPointerCapture = () => {};
-          element.hasPointerCapture = () => false;
-          const event = (type, clientX) => {
-            const pointerEvent = new PointerEvent(type, {
-              bubbles: true,
-              button: 0,
-              clientX,
-              isPrimary: true,
-              pointerId: 7,
-            });
-            Object.defineProperty(pointerEvent, "pointerType", {
-              value: "touch",
-            });
-            return pointerEvent;
-          };
-          document.dispatchEvent(event("pointerdown", startX));
-          element.dispatchEvent(event("pointermove", startX - 1000));
-          element.dispatchEvent(event("pointerup", startX - 1000));
-        }""",
-        start_x,
+    resizer_box = resizer.bounding_box()
+    assert resizer_box is not None
+    start_x = resizer_box["x"] + resizer_box["width"] - 1
+    touch_y = resizer_box["y"] + 100
+    session.send(
+        "Input.dispatchTouchEvent",
+        {
+            "type": "touchStart",
+            "touchPoints": [{"x": start_x, "y": touch_y, "id": 7}],
+        },
+    )
+    session.send(
+        "Input.dispatchTouchEvent",
+        {
+            "type": "touchMove",
+            "touchPoints": [{"x": 0, "y": touch_y, "id": 7}],
+        },
+    )
+    session.send(
+        "Input.dispatchTouchEvent",
+        {"type": "touchEnd", "touchPoints": []},
     )
 
     expect(sidebar).to_have_attribute("data-sidebar-width", "150px")

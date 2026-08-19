@@ -1286,8 +1286,10 @@ describe("ChatArtifact", () => {
       )
 
     try {
+      const onWidthChange = vi.fn()
       const { container, rerender, shiny } = renderArtifact(
         artifact({ title: "Before bslib" }),
+        { onWidthChange },
       )
       const localHandle = container.querySelector(
         ".shiny-chat-artifact-resizer",
@@ -1307,7 +1309,7 @@ describe("ChatArtifact", () => {
             takeover={false}
             closeButtonRef={createRef<HTMLButtonElement>()}
             onClose={vi.fn()}
-            onWidthChange={vi.fn()}
+            onWidthChange={onWidthChange}
           />
         </ShinyLifecycleContext.Provider>,
       )
@@ -1321,6 +1323,14 @@ describe("ChatArtifact", () => {
         "data-shiny-chat-resize-handle-provider",
         "local",
       )
+      act(() => {
+        rerenderedHandle!.dispatchEvent(
+          new CustomEvent("resize-request", {
+            detail: { value: 480, source: "pointer" },
+          }),
+        )
+      })
+      expect(onWidthChange).toHaveBeenLastCalledWith("480px")
     } finally {
       get.mockRestore()
     }

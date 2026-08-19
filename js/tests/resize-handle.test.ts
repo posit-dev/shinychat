@@ -290,6 +290,20 @@ describe("shiny-chat-resize-handle", () => {
         pointerId: 1,
         pointerType: "touch",
         clientX: 324,
+        clientY: 500,
+      }),
+    )
+    expect(starts).not.toHaveBeenCalled()
+
+    document.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        button: 0,
+        isPrimary: true,
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 324,
+        clientY: 200,
       }),
     )
     expect(starts).toHaveBeenCalledTimes(1)
