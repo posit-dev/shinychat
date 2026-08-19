@@ -22,7 +22,7 @@ def test_sidebar_resizer_uses_a_coarse_pointer_hit_target(
     )
     debug_overlay = resizer.evaluate(
         """(element) => {
-          const style = getComputedStyle(element, "::after");
+          const style = getComputedStyle(element, "::before");
           return {
             width: Number.parseFloat(style.width),
             background: style.backgroundColor,

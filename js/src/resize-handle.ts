@@ -115,6 +115,8 @@ class ShinyChatResizeHandleElement
 
   private options = DEFAULT_OPTIONS
   private listenerAbort: AbortController | null = null
+  private boundaryListenerAbort: AbortController | null = null
+  private activeTouchAbort: AbortController | null = null
   private pointer:
     | {
         id: number
@@ -139,30 +141,17 @@ class ShinyChatResizeHandleElement
     this.addEventListener("pointercancel", this.onPointerEnd, signal)
     this.addEventListener("lostpointercapture", this.onPointerEnd, signal)
     this.addEventListener("keydown", this.onKeyDown, signal)
-    document.addEventListener("pointerdown", this.onDocumentPointerDown, {
-      ...signal,
-      capture: true,
-    })
-    document.addEventListener("touchstart", this.onDocumentTouchStart, {
-      ...signal,
-      capture: true,
-      passive: false,
-    })
-    document.addEventListener("touchmove", this.onDocumentTouchMove, {
-      ...signal,
-      capture: true,
-      passive: false,
-    })
-    document.addEventListener("pointermove", this.onDocumentPointerMove, {
-      ...signal,
-      capture: true,
-    })
+    this.syncBoundaryListeners()
   }
 
   disconnectedCallback() {
     this.finishPointer()
     this.deactivateBoundary()
     this.resetBoundaryPointer()
+    this.boundaryListenerAbort?.abort()
+    this.boundaryListenerAbort = null
+    this.activeTouchAbort?.abort()
+    this.activeTouchAbort = null
     this.listenerAbort?.abort()
     this.listenerAbort = null
   }
@@ -196,6 +185,7 @@ class ShinyChatResizeHandleElement
     )
     this.dataset.panelSide = this.options.panelSide
     this.title = this.options.label
+    this.syncBoundaryListeners()
 
     if (this.options.disabled) {
       this.finishPointer()
@@ -237,6 +227,15 @@ class ShinyChatResizeHandleElement
       pointerType: pointerEvent.pointerType,
     }
     this.setPointerCapture?.(pointerEvent.pointerId)
+    if (pointerEvent.pointerType === "touch") {
+      const controller = new AbortController()
+      this.activeTouchAbort = controller
+      document.addEventListener("touchmove", this.onDocumentTouchMove, {
+        signal: controller.signal,
+        capture: true,
+        passive: false,
+      })
+    }
     this.toggleAttribute("data-resizing", true)
     this.emit("resize-start", { source: "pointer" })
   }
@@ -405,6 +404,8 @@ class ShinyChatResizeHandleElement
     if (!pointer) return
 
     this.pointer = undefined
+    this.activeTouchAbort?.abort()
+    this.activeTouchAbort = null
     if (this.hasPointerCapture?.(pointer.id)) {
       this.releasePointerCapture(pointer.id)
     }
@@ -515,6 +516,28 @@ class ShinyChatResizeHandleElement
 
   private resetBoundaryPointer() {
     this.previousBoundaryPointerX = undefined
+  }
+
+  private syncBoundaryListeners() {
+    this.boundaryListenerAbort?.abort()
+    this.boundaryListenerAbort = null
+    if (
+      !this.listenerAbort ||
+      !this.options.boundaryActivation ||
+      this.options.disabled
+    ) {
+      return
+    }
+
+    const controller = new AbortController()
+    this.boundaryListenerAbort = controller
+    const signal = { signal: controller.signal, capture: true }
+    document.addEventListener("pointerdown", this.onDocumentPointerDown, signal)
+    document.addEventListener("touchstart", this.onDocumentTouchStart, {
+      ...signal,
+      passive: false,
+    })
+    document.addEventListener("pointermove", this.onDocumentPointerMove, signal)
   }
 
   private emit(

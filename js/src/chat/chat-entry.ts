@@ -133,7 +133,7 @@ class ChatContainerElement extends HTMLElement {
   // which by then have been superseded by live reducer state).
   private appProps: ChatAppProps | null = null
 
-  static observedAttributes = ["tool-grouping"]
+  static observedAttributes = ["tool-grouping", "show-history"]
 
   connectedCallback() {
     // Moving the element in the DOM fires disconnectedCallback then
@@ -164,6 +164,7 @@ class ChatContainerElement extends HTMLElement {
       enableUploadAttr === null ? undefined : enableUploadAttr !== "false"
 
     const toolGrouping = parseToolGrouping(this.getAttribute("tool-grouping"))
+    const showHistory = this.getAttribute("show-history") !== "false"
 
     const inputEl = this.querySelector(CHAT_INPUT_TAG)
     const placeholder = inputEl?.getAttribute("placeholder") ?? undefined
@@ -258,6 +259,7 @@ class ChatContainerElement extends HTMLElement {
       enableCancel,
       enableUpload,
       asideFavicon,
+      showHistory,
       toolGrouping,
       footerEl: this.footerEl ?? undefined,
       slashCommandId,
@@ -267,17 +269,25 @@ class ChatContainerElement extends HTMLElement {
     this.reactRoot.render(createElement(ChatApp, this.appProps))
   }
 
-  // Changing the mode re-routes the transcript in place rather than rebuilding
-  // the chat, so an app can offer it as a display setting without discarding the
-  // conversation. Attribute changes before connect are picked up by
-  // connectedCallback's own read, hence the guard rather than a queue.
+  // These display settings update in place rather than rebuilding the chat.
+  // Attribute changes before connect are picked up by connectedCallback's own
+  // read, hence the guard rather than a queue.
   attributeChangedCallback(
     name: string,
     _old: string | null,
     next: string | null,
   ) {
-    if (name !== "tool-grouping" || !this.reactRoot || !this.appProps) return
-    this.appProps = { ...this.appProps, toolGrouping: parseToolGrouping(next) }
+    if (!this.reactRoot || !this.appProps) return
+    if (name === "tool-grouping") {
+      this.appProps = {
+        ...this.appProps,
+        toolGrouping: parseToolGrouping(next),
+      }
+    } else if (name === "show-history") {
+      this.appProps = { ...this.appProps, showHistory: next !== "false" }
+    } else {
+      return
+    }
     this.reactRoot.render(createElement(ChatApp, this.appProps))
   }
 

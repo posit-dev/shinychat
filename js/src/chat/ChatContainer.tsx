@@ -140,6 +140,7 @@ export interface ChatContainerProps {
   ) => void
   onNavigate?: (index: number, direction: "prev" | "next") => void
   siblingNavigationPending?: boolean
+  showHistory: boolean
 }
 
 export interface ChatContainerHandle extends ChatInputHandle {
@@ -177,6 +178,7 @@ export const ChatContainer = forwardRef<
     onEdit,
     onNavigate,
     siblingNavigationPending,
+    showHistory,
   },
   ref,
 ) {
@@ -676,7 +678,7 @@ export const ChatContainer = forwardRef<
 
   return (
     <SlashCommandsContext.Provider value={slashCommands}>
-      {history.enabled && !historyOwnedByPage && (
+      {showHistory && history.enabled && !historyOwnedByPage && (
         <button
           type="button"
           ref={historyTriggerRef}
@@ -833,7 +835,7 @@ export const ChatContainer = forwardRef<
         )}
       </div>
 
-      {history.enabled && !historyOwnedByPage && (
+      {showHistory && history.enabled && !historyOwnedByPage && (
         <ChatHistoryDrawer
           isOpen={historyOpen}
           onClose={() => setHistoryOpen(false)}

@@ -522,7 +522,8 @@ describe("ChatApp integration: editable messages gated by history state", () => 
 describe("ChatApp integration: page-owned history presentation", () => {
   function renderHistoryChat({
     pageHistory = true,
-  }: { pageHistory?: boolean } = {}) {
+    showHistory = true,
+  }: { pageHistory?: boolean; showHistory?: boolean } = {}) {
     const transport = createMockTransport()
     const page = document.createElement("shiny-chat-page")
     const chat = document.createElement("shiny-chat-container")
@@ -549,6 +550,7 @@ describe("ChatApp integration: page-owned history presentation", () => {
         inputId="test-input"
         uploadAccept={[]}
         maxUploadSize={null}
+        showHistory={showHistory}
       />,
       { container: chat },
     )
@@ -587,5 +589,24 @@ describe("ChatApp integration: page-owned history presentation", () => {
     })
 
     expect(page.querySelector(".shiny-chat-history-trigger")).not.toBeNull()
+  })
+
+  it("suppresses embedded history when the server disables it", async () => {
+    mockMatchMedia(false)
+    const { transport, page, elementId } = renderHistoryChat({
+      pageHistory: false,
+      showHistory: false,
+    })
+
+    await act(async () => {
+      transport.fire(elementId, {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+      })
+    })
+
+    expect(page.querySelector(".shiny-chat-history-trigger")).toBeNull()
   })
 })

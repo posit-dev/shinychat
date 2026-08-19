@@ -1038,6 +1038,37 @@ describe("shiny-chat-page sidebar resizing", () => {
     expect(resizer).toHaveAttribute("aria-valuemax", "640")
   })
 
+  it("measures fit-content sidebars intrinsically and refreshes after content changes", async () => {
+    const page = pageFixture({
+      homeWidth: "fit-content",
+      layoutWidth: 1000,
+    })
+    const panel = page.querySelector<HTMLElement>(
+      ".shiny-chat-page-sidebar-panel:not([hidden])",
+    )!
+    let intrinsicWidth = 180
+    vi.spyOn(panel, "cloneNode").mockImplementation(() => {
+      const probe = document.createElement("div")
+      Object.defineProperty(probe, "getBoundingClientRect", {
+        configurable: true,
+        value: () => new DOMRect(0, 0, intrinsicWidth, 700),
+      })
+      return probe
+    })
+
+    window.dispatchEvent(new Event("resize"))
+    expect(
+      page.style.getPropertyValue("--shiny-chat-page-sidebar-rendered-width"),
+    ).toBe("180px")
+
+    intrinsicWidth = 360
+    panel.append(document.createElement("div"))
+    await Promise.resolve()
+    expect(
+      page.style.getPropertyValue("--shiny-chat-page-sidebar-rendered-width"),
+    ).toBe("360px")
+  })
+
   it("keeps the selected sidebar target independent of animated geometry", () => {
     const page = pageFixture({
       homeWidth: "320px",

@@ -217,6 +217,43 @@ describe("shiny-chat-resize-handle", () => {
     expect(ends).toHaveBeenCalledTimes(2)
   })
 
+  it("installs non-passive touch movement handling only during a touch resize", () => {
+    const addEventListener = vi.spyOn(document, "addEventListener")
+    const handle = configuredHandle({ boundaryActivation: true })
+    Object.defineProperty(handle, "getBoundingClientRect", {
+      configurable: true,
+      value: () => new DOMRect(312, 100, 26, 400),
+    })
+
+    expect(addEventListener).not.toHaveBeenCalledWith(
+      "touchmove",
+      expect.any(Function),
+      expect.anything(),
+    )
+
+    document.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        button: 0,
+        isPrimary: true,
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 320,
+        clientY: 300,
+      }),
+    )
+
+    expect(addEventListener).toHaveBeenCalledWith(
+      "touchmove",
+      expect.any(Function),
+      expect.objectContaining({ passive: false }),
+    )
+    handle.dispatchEvent(
+      new PointerEvent("pointerup", { bubbles: true, pointerId: 1 }),
+    )
+    addEventListener.mockRestore()
+  })
+
   it("arms fine pointers near the configured pane boundary from either side", () => {
     const handle = configuredHandle({ boundaryActivation: true })
     const starts = vi.fn()

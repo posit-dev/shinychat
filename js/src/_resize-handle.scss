@@ -163,7 +163,7 @@ shiny-chat-resize-handle {
     pointer-events: none;
   }
 
-  .shiny-chat-debug-resize-handle shiny-chat-resize-handle::after {
+  .shiny-chat-debug-resize-handle shiny-chat-resize-handle::before {
     position: absolute;
     inset: 0;
     width: auto;

@@ -223,6 +223,7 @@ def test_debug_resize_overlays_show_artifact_fine_targets(
     page.get_by_role("button", name="Show artifact").click()
     artifact_resizer = page.get_by_role("separator", name="Resize artifact panel")
     expect(artifact_resizer).to_be_visible(timeout=TIMEOUT)
+    page.wait_for_timeout(220)
 
     production_overlay = artifact_resizer.evaluate(
         """(element) => {
@@ -274,11 +275,9 @@ def test_debug_resize_overlays_show_artifact_fine_targets(
 
     artifact_box = artifact_resizer.bounding_box()
     assert artifact_box is not None
-    artifact_boundary = artifact_resizer.evaluate(
-        "(element) => element.getBoundingClientRect().left"
-    )
     artifact_y = artifact_box["y"] + artifact_box["height"] / 2
-    page.mouse.move(artifact_boundary - 2, artifact_y)
+    page.mouse.move(artifact_box["x"] - 4, artifact_y)
+    page.mouse.move(artifact_box["x"] + artifact_box["width"] + 4, artifact_y)
     expect(artifact_resizer).to_have_attribute("data-boundary-armed", "")
     artifact_armed = artifact_resizer.evaluate(
         """(element) => {
@@ -312,7 +311,7 @@ def test_artifact_resizer_uses_coarse_touch_geometry(
     )
     debug_overlay = separator.evaluate(
         """(element) => {
-          const style = getComputedStyle(element, "::after");
+          const style = getComputedStyle(element, "::before");
           return {
             width: Number.parseFloat(style.width),
             background: style.backgroundColor,

@@ -30,6 +30,33 @@ afterEach(async () => {
 })
 
 describe("chat-entry custom element boot", () => {
+  it("honors a live show-history preference from server markup", async () => {
+    const host = document.createElement("shiny-chat-container")
+    host.setAttribute("id", "history-entry")
+    host.setAttribute("show-history", "false")
+    host.innerHTML = `
+      <shiny-chat-messages></shiny-chat-messages>
+      <shiny-chat-input></shiny-chat-input>
+    `
+
+    await act(async () => {
+      document.body.appendChild(host)
+    })
+
+    await waitFor(() => {
+      expect(host.querySelector('[role="textbox"]')).not.toBeNull()
+    })
+    expect(host.querySelector(".shiny-chat-history-trigger")).toBeNull()
+
+    await act(async () => {
+      host.removeAttribute("show-history")
+    })
+
+    // History starts disabled until the server publishes its first snapshot,
+    // but the live attribute update must retain a mounted chat without error.
+    expect(host.querySelector('[role="textbox"]')).not.toBeNull()
+  })
+
   it("boots from server-rendered HTML using child input attributes and initial messages", async () => {
     const host = document.createElement("shiny-chat-container")
     host.setAttribute("id", "chat-entry-test")

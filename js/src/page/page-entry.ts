@@ -353,6 +353,16 @@ class ChatPageElement extends HTMLElement {
     observer.observe(this.body)
     observer.observe(this.aside)
     this.cleanupListeners.push(() => observer.disconnect())
+
+    // The outer box does not change when asynchronous sidebar output grows.
+    // Observe content mutations so fit-content can refresh its intrinsic width.
+    const mutations = new MutationObserver(() => this.updateResizeHandle())
+    mutations.observe(this.aside, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    })
+    this.cleanupListeners.push(() => mutations.disconnect())
   }
 
   private bindMediaQuery() {
@@ -741,8 +751,18 @@ class ChatPageElement extends HTMLElement {
       const panel = this.aside?.querySelector<HTMLElement>(
         ".shiny-chat-page-sidebar-panel:not([hidden])",
       )
-      const measured = panel?.scrollWidth ?? this.aside?.scrollWidth ?? 0
-      if (measured > 0) return Math.max(280, measured)
+      if (panel) {
+        const probe = panel.cloneNode(true) as HTMLElement
+        probe
+          .querySelectorAll("[id]")
+          .forEach((element) => element.removeAttribute("id"))
+        probe.style.cssText =
+          "position:fixed;visibility:hidden;pointer-events:none;contain:layout style;inline-size:max-content;block-size:auto;inset:0 auto auto -10000px;"
+        document.body.append(probe)
+        const measured = probe.getBoundingClientRect().width
+        probe.remove()
+        if (measured > 0) return measured
+      }
     }
 
     // Resolve uncommon valid CSS widths against the stable page body, never

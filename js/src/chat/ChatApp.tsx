@@ -64,6 +64,7 @@ export interface ChatAppProps {
   enableCancel?: boolean
   enableUpload?: boolean
   asideFavicon?: boolean
+  showHistory?: boolean
   toolGrouping?: ToolGrouping
   footerEl?: Element
   slashCommandId?: string
@@ -110,6 +111,7 @@ export function ChatApp({
   enableCancel,
   enableUpload,
   asideFavicon = true,
+  showHistory = true,
   toolGrouping,
   footerEl,
   slashCommandId = "",
@@ -395,6 +397,7 @@ export function ChatApp({
                   onEdit={handleEdit}
                   onNavigate={handleNavigate}
                   siblingNavigationPending={siblingNavigationPending}
+                  showHistory={showHistory}
                   artifact={state.artifact}
                   artifactSource={artifactSource}
                 />
