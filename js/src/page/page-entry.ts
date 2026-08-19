@@ -737,6 +737,14 @@ class ChatPageElement extends HTMLElement {
         return (available * Number.parseFloat(percent[1]!)) / 100
     }
 
+    if (configured.trim().toLowerCase() === "fit-content") {
+      const panel = this.aside?.querySelector<HTMLElement>(
+        ".shiny-chat-page-sidebar-panel:not([hidden])",
+      )
+      const measured = panel?.scrollWidth ?? this.aside?.scrollWidth ?? 0
+      if (measured > 0) return Math.max(280, measured)
+    }
+
     // Resolve uncommon valid CSS widths against the stable page body, never
     // the sidebar whose geometry changes while the reveal animation runs.
     if (this.body) {
