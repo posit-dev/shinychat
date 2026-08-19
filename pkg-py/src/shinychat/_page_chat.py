@@ -889,9 +889,9 @@ def _render_page_chat(
             "header",
             Tag(
                 "button",
-                Tag("span", class_="navbar-toggler-icon"),
+                Tag("span", class_="shiny-chat-page-sidebar-icon"),
                 type="button",
-                class_="shiny-chat-page-sidebar-toggle navbar-toggler",
+                class_="shiny-chat-page-sidebar-toggle",
                 aria_controls=sidebar_id,
                 aria_expanded=(
                     "true"

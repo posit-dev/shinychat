@@ -138,8 +138,8 @@
       <body class="bslib-page-fill bslib-gap-spacing html-fill-container" style="padding:0px;gap:0px;">
         <shiny-chat-page data-chat-id="chat" data-active-page="home" data-require-bs-version="5" data-require-bs-caller="page_chat">
           <header class="shiny-chat-page-header">
-            <button type="button" class="shiny-chat-page-sidebar-toggle navbar-toggler" aria-controls="chat-sidebar" aria-expanded="false" aria-label="Toggle app menu">
-              <span class="navbar-toggler-icon"></span>
+            <button type="button" class="shiny-chat-page-sidebar-toggle" aria-controls="chat-sidebar" aria-expanded="false" aria-label="Toggle app menu">
+              <span class="shiny-chat-page-sidebar-icon"></span>
             </button>
             <div class="shiny-chat-page-identity">
               <span class="shiny-chat-page-identity-icon">

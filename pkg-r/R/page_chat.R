@@ -432,7 +432,7 @@ page_chat <- function(
         class = "shiny-chat-page-header",
         htmltools::tags$button(
           type = "button",
-          class = "shiny-chat-page-sidebar-toggle navbar-toggler",
+          class = "shiny-chat-page-sidebar-toggle",
           `aria-controls` = sidebar_id,
           `aria-expanded` = if (
             !is.null(normalized$home_sidebar) &&
@@ -443,7 +443,7 @@ page_chat <- function(
             "false"
           },
           `aria-label` = "Toggle app menu",
-          htmltools::tags$span(class = "navbar-toggler-icon")
+          htmltools::tags$span(class = "shiny-chat-page-sidebar-icon")
         ),
         identity,
         htmltools::tags$div(
