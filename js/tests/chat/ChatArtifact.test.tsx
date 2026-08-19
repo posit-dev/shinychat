@@ -401,6 +401,52 @@ describe("ChatArtifact", () => {
     )
   })
 
+  it("bounds a non-pixel layout width before configuring its first separator", async () => {
+    ResizeObserverStub.reset()
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub)
+    const shell = document.createElement("shiny-chat-container")
+    const layout = document.createElement("div")
+    layout.className = "shiny-chat-layout"
+    shell.append(layout)
+    document.body.append(shell)
+    Object.defineProperty(shell, "getBoundingClientRect", {
+      value: () => ({ width: 1000 }),
+    })
+    const onWidthChange = vi.fn()
+
+    render(
+      <ShinyLifecycleContext.Provider value={lifecycle()}>
+        <ChatArtifact
+          artifact={artifact({ width: "100%" })}
+          titleId="artifact-title"
+          takeover={false}
+          closeButtonRef={createRef<HTMLButtonElement>()}
+          onClose={vi.fn()}
+          onWidthChange={onWidthChange}
+        />
+      </ShinyLifecycleContext.Provider>,
+      { container: layout },
+    )
+
+    const panel = screen.getByRole("complementary")
+    Object.defineProperty(panel, "getBoundingClientRect", {
+      value: () => ({ width: 1000 }),
+    })
+    await act(async () => {
+      ResizeObserverStub.resize(shell, 1000)
+    })
+
+    const separator = screen.getByRole("separator", {
+      name: "Resize artifact panel",
+    })
+    expect(panel.style.getPropertyValue("--shiny-chat-artifact-width")).toBe(
+      "640px",
+    )
+    expect(separator).toHaveAttribute("aria-valuenow", "640")
+    expect(separator).toHaveAttribute("aria-valuemax", "640")
+    expect(onWidthChange).not.toHaveBeenCalled()
+  })
+
   it("resizes from the logical inline-start edge in RTL", () => {
     const shell = document.createElement("shiny-chat-container")
     Object.defineProperty(shell, "getBoundingClientRect", {

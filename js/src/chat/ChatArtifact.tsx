@@ -214,13 +214,6 @@ export function ChatArtifact({
     const layoutWidth = layout?.getBoundingClientRect().width ?? 0
     const measured = Math.round(panel.getBoundingClientRect().width)
     const configured = pixelWidth(artifact.width)
-    if (configured === undefined) {
-      if (measured > 0) setRenderedWidth(measured)
-      setWidth((current) =>
-        current === artifact.width ? current : artifact.width,
-      )
-      return
-    }
 
     // A child observer can run before ChatContainer applies its takeover
     // state. The panel is full-width in this range, so never persist that
@@ -233,6 +226,13 @@ export function ChatArtifact({
     }
 
     if (measured <= 0) return
+
+    if (configured === undefined) {
+      const bounded = clampWidth(measured, maximum)
+      setWidth(`${bounded}px`)
+      setRenderedWidth(bounded)
+      return
+    }
 
     const bounded = clampWidth(Math.max(measured, configured ?? 0), maximum)
     setWidth(`${bounded}px`)
