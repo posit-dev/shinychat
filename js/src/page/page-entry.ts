@@ -477,6 +477,9 @@ class ChatPageElement extends HTMLElement {
   private syncSidebar(selected: HTMLElement) {
     if (!this.aside) return
 
+    // Do not carry a prior sidebar's rendered target into the next selection.
+    // updateResizeHandle() reseeds this from the newly active configuration.
+    this.style.removeProperty("--shiny-chat-page-sidebar-rendered-width")
     const sidebarKey = selected.dataset.sidebarKey?.trim()
     if (sidebarKey) {
       this.aside.dataset.sidebarKey = sidebarKey
@@ -670,7 +673,7 @@ class ChatPageElement extends HTMLElement {
     return handle
   }
 
-  private updateResizeHandle(renderedWidth?: number) {
+  private updateResizeHandle() {
     if (!this.resizeHandle) return
     if (this.mobile) {
       this.style.removeProperty("--shiny-chat-page-sidebar-max-width")
@@ -690,10 +693,7 @@ class ChatPageElement extends HTMLElement {
     const maximum = this.maximumSidebarWidth()
     const width = Math.round(
       Math.min(
-        Math.max(
-          renderedWidth ?? this.currentSidebarWidth(),
-          MIN_SIDEBAR_WIDTH,
-        ),
+        Math.max(this.requestedSidebarWidth(), MIN_SIDEBAR_WIDTH),
         maximum,
       ),
     )
@@ -713,6 +713,44 @@ class ChatPageElement extends HTMLElement {
     if (!enabled) {
       return
     }
+  }
+
+  private requestedSidebarWidth() {
+    const configured = this.activeSidebarState()?.width ?? "280px"
+    const pixels = configured.match(/^\s*(\d+(?:\.\d+)?)px\s*$/i)
+    if (pixels) return Number.parseFloat(pixels[1]!)
+
+    const rem = configured.match(/^\s*(\d+(?:\.\d+)?)rem\s*$/i)
+    if (rem) {
+      const rootSize = Number.parseFloat(
+        window.getComputedStyle(document.documentElement).fontSize,
+      )
+      return (
+        Number.parseFloat(rem[1]!) * (Number.isFinite(rootSize) ? rootSize : 16)
+      )
+    }
+
+    const percent = configured.match(/^\s*(\d+(?:\.\d+)?)%\s*$/)
+    if (percent) {
+      const available = this.body?.getBoundingClientRect().width ?? 0
+      if (available > 0)
+        return (available * Number.parseFloat(percent[1]!)) / 100
+    }
+
+    // Resolve uncommon valid CSS widths against the stable page body, never
+    // the sidebar whose geometry changes while the reveal animation runs.
+    if (this.body) {
+      const probe = document.createElement("div")
+      probe.style.cssText =
+        "position:absolute;visibility:hidden;pointer-events:none;contain:layout style;inline-size:auto;block-size:0;overflow:hidden;"
+      probe.style.width = configured
+      this.body.append(probe)
+      const measured = probe.getBoundingClientRect().width
+      probe.remove()
+      if (measured > 0) return measured
+    }
+
+    return 280
   }
 
   private currentSidebarWidth() {
@@ -742,7 +780,7 @@ class ChatPageElement extends HTMLElement {
     state.width = `${bounded}px`
     if (this.aside) this.aside.dataset.sidebarWidth = state.width
     this.style.setProperty("--shiny-chat-page-sidebar-width", state.width)
-    this.updateResizeHandle(bounded)
+    this.updateResizeHandle()
     window.dispatchEvent(new Event("resize"))
   }
 

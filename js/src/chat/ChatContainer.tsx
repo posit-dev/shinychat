@@ -42,8 +42,51 @@ declare global {
   }
 }
 
+const DEFAULT_ARTIFACT_LAYOUT_WIDTH = 400
+const MIN_ARTIFACT_LAYOUT_WIDTH = 240
+const MIN_CHAT_LAYOUT_WIDTH = 360
+const MAX_ARTIFACT_LAYOUT_GAP = 24
+
 function openLink(url: string): void {
   window.open(url, "_blank", "noopener,noreferrer")
+}
+
+function resolveArtifactLayoutWidth(
+  configuredWidth: string,
+  layout: HTMLElement,
+): string {
+  const layoutWidth = layout.getBoundingClientRect().width
+  if (layoutWidth <= 0) return `${DEFAULT_ARTIFACT_LAYOUT_WIDTH}px`
+
+  const pixels = /^\s*(\d+(?:\.\d+)?)px\s*$/i.exec(configuredWidth)
+  const percent = /^\s*(\d+(?:\.\d+)?)%\s*$/.exec(configuredWidth)
+  let requested = pixels
+    ? Number.parseFloat(pixels[1]!)
+    : percent
+      ? (layoutWidth * Number.parseFloat(percent[1]!)) / 100
+      : NaN
+
+  if (!Number.isFinite(requested)) {
+    const probe = document.createElement("div")
+    probe.style.cssText =
+      "position:absolute;visibility:hidden;pointer-events:none;contain:layout style;inline-size:auto;block-size:0;overflow:hidden;"
+    probe.style.width = configuredWidth
+    layout.append(probe)
+    requested = probe.getBoundingClientRect().width
+    probe.remove()
+  }
+
+  if (!Number.isFinite(requested) || requested <= 0) {
+    requested = DEFAULT_ARTIFACT_LAYOUT_WIDTH
+  }
+
+  const maximum = Math.max(
+    MIN_ARTIFACT_LAYOUT_WIDTH,
+    layoutWidth - MIN_CHAT_LAYOUT_WIDTH - MAX_ARTIFACT_LAYOUT_GAP,
+  )
+  return `${Math.round(
+    Math.min(Math.max(requested, MIN_ARTIFACT_LAYOUT_WIDTH), maximum),
+  )}px`
 }
 
 function ArtifactRevealIcon() {
@@ -162,6 +205,9 @@ export const ChatContainer = forwardRef<
   const [artifactTakeover, setArtifactTakeover] = useState(false)
   const [artifactPresented, setArtifactPresented] = useState(artifact.visible)
   const [artifactResizing, setArtifactResizing] = useState(false)
+  const [artifactLayoutWidth, setArtifactLayoutWidth] = useState(
+    `${DEFAULT_ARTIFACT_LAYOUT_WIDTH}px`,
+  )
   const history = useSyncExternalStore(
     historyStore.subscribe,
     historyStore.getSnapshot,
@@ -238,6 +284,26 @@ export const ChatContainer = forwardRef<
   const dispatch = useChatDispatch()
 
   const isStreaming = !!streamingMessage
+
+  const updateArtifactLayoutWidth = useCallback(() => {
+    const layout = artifactLayoutRef.current
+    if (!layout || !artifact.enabled) return
+
+    const nextWidth = resolveArtifactLayoutWidth(artifact.width, layout)
+    setArtifactLayoutWidth((currentWidth) =>
+      currentWidth === nextWidth ? currentWidth : nextWidth,
+    )
+  }, [artifact.enabled, artifact.width])
+
+  useLayoutEffect(() => {
+    updateArtifactLayoutWidth()
+
+    const layout = artifactLayoutRef.current
+    if (!layout || typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver(updateArtifactLayoutWidth)
+    observer.observe(layout)
+    return () => observer.disconnect()
+  }, [artifact.visible, updateArtifactLayoutWidth])
 
   useEffect(() => {
     const layout = artifactLayoutRef.current
@@ -645,7 +711,7 @@ export const ChatContainer = forwardRef<
         style={
           artifact.enabled
             ? ({
-                "--shiny-chat-artifact-width": artifact.width,
+                "--shiny-chat-artifact-width": artifactLayoutWidth,
               } as React.CSSProperties)
             : undefined
         }

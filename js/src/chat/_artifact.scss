@@ -88,6 +88,7 @@ shiny-chat-container[data-history-placement="right"] {
   .shiny-chat-wrapper {
     width: 100%;
     margin-inline: 0;
+    justify-self: end;
   }
 }
 
@@ -124,10 +125,7 @@ shiny-chat-container[data-history-placement="right"] {
   transform: translateX(0.75rem);
 }
 
-.shiny-chat-layout:is(
-  [data-artifact-resizing],
-  [data-artifact-takeover]
-) {
+.shiny-chat-layout:is([data-artifact-resizing], [data-artifact-takeover]) {
   transition: none;
 }
 

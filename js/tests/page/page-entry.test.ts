@@ -1018,6 +1018,29 @@ describe("shiny-chat-page sidebar resizing", () => {
     expect(resizer).toHaveAttribute("aria-valuemax", "640")
   })
 
+  it("keeps the selected sidebar target independent of animated geometry", () => {
+    const page = pageFixture({
+      homeWidth: "320px",
+      customWidth: "500px",
+      layoutWidth: 1000,
+    })
+    const { aside, navButtons } = getPageElements(page)
+    const customPage = navButtons.find(
+      (button) => button.dataset.pageTarget === "custom-page",
+    )!
+    Object.defineProperty(aside, "getBoundingClientRect", {
+      configurable: true,
+      value: () => new DOMRect(0, 0, 210, 700),
+    })
+
+    fireEvent.click(customPage)
+    ResizeObserverStub.resize(aside)
+
+    expect(
+      page.style.getPropertyValue("--shiny-chat-page-sidebar-rendered-width"),
+    ).toBe("500px")
+  })
+
   it("resizes by pointer and clamps to sidebar and main-area minimums", () => {
     const page = pageFixture({ layoutWidth: 1000 })
     const { resizer } = getPageElements(page)

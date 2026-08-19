@@ -588,6 +588,106 @@ describe("ChatArtifact", () => {
     )
   })
 
+  it("resolves auto artifact widths to a pixel layout target before reveal", async () => {
+    const original = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "getBoundingClientRect",
+    )
+    Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", {
+      configurable: true,
+      value: function () {
+        if (this.classList.contains("shiny-chat-layout")) {
+          return { width: 1440 }
+        }
+        return { width: 0 }
+      },
+    })
+
+    try {
+      const view = render(
+        <ChatApp
+          transport={createMockTransport()}
+          shinyLifecycle={createMockShinyLifecycle()}
+          elementId="artifact-auto-width"
+          inputId="artifact-auto-width-input"
+          initialArtifact={artifact({
+            visible: false,
+            width: "auto",
+            content: "<p>Ready</p>",
+          })}
+        />,
+      )
+      const layout = view.container.querySelector(
+        ".shiny-chat-layout",
+      ) as HTMLElement
+
+      expect(layout.style.getPropertyValue("--shiny-chat-artifact-width")).toBe(
+        "400px",
+      )
+    } finally {
+      if (original) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "getBoundingClientRect",
+          original,
+        )
+      } else {
+        delete (HTMLElement.prototype as { getBoundingClientRect?: unknown })
+          .getBoundingClientRect
+      }
+    }
+  })
+
+  it("clamps percentage artifact layout targets before desktop reveal", async () => {
+    const original = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "getBoundingClientRect",
+    )
+    Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", {
+      configurable: true,
+      value: function () {
+        if (this.classList.contains("shiny-chat-layout")) {
+          return { width: 1440 }
+        }
+        return { width: 0 }
+      },
+    })
+
+    try {
+      const view = render(
+        <ChatApp
+          transport={createMockTransport()}
+          shinyLifecycle={createMockShinyLifecycle()}
+          elementId="artifact-percent-width"
+          inputId="artifact-percent-width-input"
+          initialArtifact={artifact({
+            visible: false,
+            width: "90%",
+            content: "<p>Ready</p>",
+          })}
+        />,
+      )
+      const layout = view.container.querySelector(
+        ".shiny-chat-layout",
+      ) as HTMLElement
+
+      expect(layout.style.getPropertyValue("--shiny-chat-artifact-width")).toBe(
+        "1056px",
+      )
+    } finally {
+      if (original) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "getBoundingClientRect",
+          original,
+        )
+      } else {
+        delete (HTMLElement.prototype as { getBoundingClientRect?: unknown })
+          .getBoundingClientRect
+      }
+    }
+  })
+
   it("resizes from the logical inline-start edge in RTL", () => {
     const shell = document.createElement("shiny-chat-container")
     Object.defineProperty(shell, "getBoundingClientRect", {

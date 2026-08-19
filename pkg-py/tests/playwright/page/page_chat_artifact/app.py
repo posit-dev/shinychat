@@ -10,6 +10,7 @@ from chatlas._turn import AssistantTurn
 from shiny import App, Inputs, Outputs, Session, reactive, render, ui
 from shinychat import Chat, chat_artifact, chat_nav_panel, page_chat
 from shinychat.types import FileConversationStore, HistoryOptions
+from starlette.requests import Request
 
 
 class EchoChatClient(chatlas.Chat):
@@ -40,25 +41,32 @@ class EchoChatClient(chatlas.Chat):
 store_dir = tempfile.mkdtemp(prefix="shinychat-page-artifact-history-")
 
 
-app_ui = page_chat(
-    "Artifact Assistant",
-    id="chat",
-    pages=[
-        chat_nav_panel(
-            "Details",
-            ui.div("Secondary page content", id="details_page"),
-            value="details",
-            sidebar=True,
+def app_ui(request: Request) -> ui.Tag:
+    query_params = request.query_params
+    requested_width = query_params.get("artifact_width") or ""
+    artifact_width = {
+        "default": "400px",
+        "90pct": "90%",
+    }.get(requested_width, "70%")
+    return page_chat(
+        "Artifact Assistant",
+        id="chat",
+        pages=[
+            chat_nav_panel(
+                "Details",
+                ui.div("Secondary page content", id="details_page"),
+                value="details",
+                sidebar=True,
+            ),
+        ],
+        toolbar=ui.div(
+            ui.input_action_button("show_artifact", "Show artifact"),
+            ui.input_action_button("update_artifact", "Update artifact"),
+            class_="d-flex gap-2",
         ),
-    ],
-    toolbar=ui.div(
-        ui.input_action_button("show_artifact", "Show artifact"),
-        ui.input_action_button("update_artifact", "Update artifact"),
-        class_="d-flex gap-2",
-    ),
-    sidebar=True,
-    artifact=chat_artifact(width="70%"),
-)
+        sidebar=True,
+        artifact=chat_artifact(width=artifact_width),
+    )
 
 
 def artifact_content(version: str) -> ui.Tag:

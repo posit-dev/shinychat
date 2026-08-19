@@ -7,10 +7,13 @@ TIMEOUT = 30_000
 
 
 def open_page(
-    page: Page, local_app: ShinyAppProc
+    page: Page, local_app: ShinyAppProc, *, artifact_width: str | None = None
 ) -> tuple[ChatController, Locator]:
     page.set_viewport_size({"width": 1440, "height": 900})
-    page.goto(local_app.url)
+    url = local_app.url
+    if artifact_width:
+        url = f"{url}?artifact_width={artifact_width}"
+    page.goto(url)
     chat = ChatController(page, "chat")
     shell = page.locator("shiny-chat-page")
     expect(shell).to_be_visible(timeout=TIMEOUT)
@@ -60,6 +63,66 @@ def test_percentage_artifact_keeps_desktop_chat_width(
     assert minimum == 240
     assert minimum <= current <= maximum
     expect(separator).to_have_attribute("aria-valuetext", f"{current} pixels")
+
+
+def test_ninety_percent_artifact_is_bounded_before_reveal(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    chat, _ = open_page(page, local_app, artifact_width="90pct")
+    layout = chat.loc.locator(".shiny-chat-layout")
+    wrapper = chat.loc.locator(".shiny-chat-wrapper")
+
+    page.get_by_role("button", name="Show artifact").click()
+    expect(layout).to_have_attribute("data-artifact-open", "")
+    expect(layout).to_have_css("--shiny-chat-artifact-width", "1056px")
+    page.wait_for_timeout(70)
+
+    grid_tracks = layout.evaluate(
+        """(element) =>
+          getComputedStyle(element).gridTemplateColumns
+            .split(" ")
+            .map((value) => Number.parseFloat(value))"""
+    )
+    wrapper_box = wrapper.bounding_box()
+    assert isinstance(grid_tracks, list)
+    assert len(grid_tracks) == 2
+    assert grid_tracks[0] >= 360
+    assert wrapper_box is not None
+    assert wrapper_box["width"] >= 360
+
+
+def test_default_artifact_width_end_aligns_chat_wrapper(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    chat, _ = open_page(page, local_app, artifact_width="default")
+    layout = chat.loc.locator(".shiny-chat-layout")
+    panel = chat.loc.locator(".shiny-chat-artifact")
+    wrapper = chat.loc.locator(".shiny-chat-wrapper")
+
+    page.get_by_role("button", name="Show artifact").click()
+    expect(panel).to_be_visible(timeout=TIMEOUT)
+    page.wait_for_timeout(220)
+
+    layout_box = layout.bounding_box()
+    panel_box = panel.bounding_box()
+    wrapper_box = wrapper.bounding_box()
+    assert layout_box is not None
+    assert panel_box is not None
+    assert wrapper_box is not None
+    assert panel_box["width"] == pytest.approx(400, abs=1)
+
+    first_track = layout.evaluate(
+        """(element) =>
+          Number.parseFloat(getComputedStyle(element).gridTemplateColumns.split(" ")[0])"""
+    )
+    gap = layout.evaluate(
+        "(element) => Number.parseFloat(getComputedStyle(element).columnGap)"
+    )
+    wrapper_right = wrapper_box["x"] + wrapper_box["width"]
+    track_right = layout_box["x"] + first_track
+
+    assert wrapper_right == pytest.approx(track_right, abs=1)
+    assert panel_box["x"] - wrapper_right == pytest.approx(gap, abs=1)
 
 
 def test_page_artifact_survives_navigation_and_history(
@@ -173,7 +236,23 @@ def test_artifact_layout_track_interpolates_during_desktop_reveal(
     page.locator("#show_artifact").click()
     expect(layout).to_have_attribute("data-artifact-open", "")
     expect(panel).to_be_visible()
-    page.wait_for_timeout(70)
+    page.wait_for_function(
+        """() => {
+          const element = document.querySelector(".shiny-chat-layout");
+          if (!element) return false;
+          const track = Number.parseFloat(
+            getComputedStyle(element).gridTemplateColumns.split(" ")[1]
+          );
+          const target = Number.parseFloat(
+            getComputedStyle(element).getPropertyValue(
+              "--shiny-chat-artifact-width"
+            )
+          );
+          return track > 0 && track < target;
+        }""",
+        polling="raf",
+        timeout=TIMEOUT,
+    )
     intermediate_track = layout.evaluate(
         """(element) =>
           Number.parseFloat(
