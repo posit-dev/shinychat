@@ -260,11 +260,6 @@ shiny-chat-resize-handle.shiny-chat-page-sidebar-resizer[data-boundary-activatio
   .shiny-chat-page-sidebar-resizer {
     --_page-resize-handle-width: 26px;
   }
-
-  shiny-chat-resize-handle.shiny-chat-page-sidebar-resizer[data-boundary-activation]:not([data-boundary-armed]):not([data-disabled]) {
-    cursor: ew-resize;
-    pointer-events: auto;
-  }
 }
 
 @media (min-width: 800px) {

@@ -50,15 +50,20 @@ def test_sidebar_clamps_to_page_and_supports_touch_drag(
         """(element, startX) => {
           element.setPointerCapture = () => {};
           element.hasPointerCapture = () => false;
-          const event = (type, clientX) => new PointerEvent(type, {
-            bubbles: true,
-            button: 0,
-            clientX,
-            isPrimary: true,
-            pointerId: 7,
-            pointerType: "touch",
-          });
-          element.dispatchEvent(event("pointerdown", startX));
+          const event = (type, clientX) => {
+            const pointerEvent = new PointerEvent(type, {
+              bubbles: true,
+              button: 0,
+              clientX,
+              isPrimary: true,
+              pointerId: 7,
+            });
+            Object.defineProperty(pointerEvent, "pointerType", {
+              value: "touch",
+            });
+            return pointerEvent;
+          };
+          document.dispatchEvent(event("pointerdown", startX));
           element.dispatchEvent(event("pointermove", startX - 1000));
           element.dispatchEvent(event("pointerup", startX - 1000));
         }""",

@@ -131,6 +131,7 @@ class ShinyChatResizeHandleElement
     this.addEventListener("pointercancel", this.onPointerEnd, signal)
     this.addEventListener("lostpointercapture", this.onPointerEnd, signal)
     this.addEventListener("keydown", this.onKeyDown, signal)
+    document.addEventListener("pointerdown", this.onDocumentPointerDown, signal)
     document.addEventListener("pointermove", this.onDocumentPointerMove, signal)
   }
 
@@ -191,7 +192,10 @@ class ShinyChatResizeHandleElement
     ) {
       return
     }
+    this.beginPointer(pointerEvent)
+  }
 
+  private beginPointer(pointerEvent: PointerEvent) {
     pointerEvent.preventDefault()
     this.pointer = {
       id: pointerEvent.pointerId,
@@ -201,6 +205,20 @@ class ShinyChatResizeHandleElement
     this.setPointerCapture?.(pointerEvent.pointerId)
     this.toggleAttribute("data-resizing", true)
     this.emit("resize-start", { source: "pointer" })
+  }
+
+  private readonly onDocumentPointerDown = (event: Event) => {
+    const pointerEvent = event as PointerEvent
+    if (
+      !this.options.boundaryActivation ||
+      this.options.disabled ||
+      this.pointer ||
+      !isCoarsePointer(pointerEvent) ||
+      !this.isWithinHitTarget(pointerEvent.clientX)
+    ) {
+      return
+    }
+    this.beginPointer(pointerEvent)
   }
 
   private readonly onPointerMove = (event: Event) => {
@@ -320,6 +338,11 @@ class ShinyChatResizeHandleElement
     const rect = this.getBoundingClientRect()
     if (rect.width <= 0) return undefined
     return this.panelIsLeft() ? rect.right : rect.left
+  }
+
+  private isWithinHitTarget(clientX: number) {
+    const rect = this.getBoundingClientRect()
+    return clientX >= rect.left && clientX <= rect.right
   }
 
   private panelIsLeft() {

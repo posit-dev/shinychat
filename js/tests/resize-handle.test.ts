@@ -282,7 +282,7 @@ describe("shiny-chat-resize-handle", () => {
     document.dispatchEvent(new PointerEvent("pointermove", { clientX: 329 }))
     expect(handle).not.toHaveAttribute("data-boundary-armed")
 
-    handle.dispatchEvent(
+    document.dispatchEvent(
       new PointerEvent("pointerdown", {
         bubbles: true,
         button: 0,
