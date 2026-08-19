@@ -1,0 +1,69 @@
+@mixin vertical-resize-handle($handle, $indicator, $active-selector: null, $indicator-edge: inline-start) {
+  #{$handle} {
+    position: absolute;
+    z-index: 4;
+    top: 0;
+    bottom: 0;
+    width: 0.75rem;
+    padding: 0;
+    color: inherit;
+    cursor: ew-resize;
+    pointer-events: auto;
+    touch-action: none;
+    user-select: none;
+  }
+
+  #{$indicator} {
+    position: absolute;
+    top: 50%;
+    width: 0.125rem;
+    height: 1.875rem;
+    background: currentcolor;
+    border-radius: 0.125rem;
+    cursor: ew-resize;
+    opacity: 0.15;
+    pointer-events: none;
+    transform: translateY(-50%);
+    transition:
+      width 150ms ease,
+      height 150ms ease,
+      opacity 150ms ease;
+
+    @if $indicator-edge == inline-end {
+      inset-inline-end: 0;
+    } @else {
+      inset-inline-start: 0;
+    }
+  }
+
+  #{$handle}:hover #{$indicator},
+  #{$handle}:focus-visible #{$indicator} {
+    width: 0.1875rem;
+    height: 2.5rem;
+    opacity: 1;
+  }
+
+  @if $active-selector != null {
+    #{$active-selector} #{$indicator} {
+      width: 0.1875rem;
+      height: 2.5rem;
+      opacity: 1;
+      color: var(--bs-primary, #0d6efd);
+    }
+  }
+
+  #{$handle}:focus-visible {
+    outline: 0;
+  }
+
+  #{$handle}:focus-visible #{$indicator} {
+    outline: 0.125rem solid var(--bs-focus-ring-color, rgb(13 110 253 / 25%));
+    outline-offset: 0.125rem;
+  }
+
+  @media (any-pointer: coarse) {
+    #{$handle} {
+      width: 1.625rem;
+    }
+  }
+}

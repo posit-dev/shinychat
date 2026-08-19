@@ -241,6 +241,7 @@ class ChatPageElement extends HTMLElement {
     if (!this.toggle) return
 
     this.listen(this.toggle, "click", () => {
+      if (this.toggle?.disabled) return
       if (this.mobile) {
         if (this.hasAttribute("data-mobile-menu-open")) {
           this.closeMobileMenu()
@@ -376,7 +377,7 @@ class ChatPageElement extends HTMLElement {
     } else if (changed) {
       this.closeMobileMenu(false)
       if (this.aside) this.aside.hidden = false
-      if (this.toggle) this.toggle.hidden = false
+      this.updateToggleState()
       this.updateResizeHandle()
     }
   }
@@ -454,6 +455,7 @@ class ChatPageElement extends HTMLElement {
 
     if (this.mobile) {
       this.aside.hidden = false
+      this.updateToggleState()
       this.updateResizeHandle()
     } else {
       this.applyDesktopSidebarState()
@@ -466,13 +468,26 @@ class ChatPageElement extends HTMLElement {
     const open = Boolean(state?.open)
 
     this.aside.hidden = !open
-    this.toggle.hidden = !state || state.openMode === "always"
-    this.toggle.setAttribute("aria-expanded", open ? "true" : "false")
     if (state) {
       this.aside.dataset.sidebarWidth = state.width
       this.style.setProperty("--shiny-chat-page-sidebar-width", state.width)
     }
+    this.updateToggleState()
     this.updateResizeHandle()
+  }
+
+  private updateToggleState() {
+    if (!this.toggle) return
+    const state = this.activeSidebarState()
+    const open = Boolean(state?.open)
+    const mobileHomeMenu = this.mobile && this.dataset.activePage === "home"
+    const toggleDisabled =
+      state?.openMode === "always" || (!state && !mobileHomeMenu)
+
+    this.toggle.hidden = false
+    this.toggle.disabled = toggleDisabled
+    this.toggle.setAttribute("aria-disabled", toggleDisabled ? "true" : "false")
+    this.toggle.setAttribute("aria-expanded", open ? "true" : "false")
   }
 
   private activeSidebarState() {

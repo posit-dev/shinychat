@@ -26,7 +26,7 @@ function triggerResize(): void {
   window.dispatchEvent(new Event("resize"))
 }
 
-function ArtifactCloseIcon({ back }: { back: boolean }) {
+function ArtifactCloseIcon() {
   return (
     <svg
       aria-hidden="true"
@@ -39,16 +39,7 @@ function ArtifactCloseIcon({ back }: { back: boolean }) {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      {back ? (
-        <>
-          <path d="M10.5 2.5 5 8l5.5 5.5" />
-          <path d="M5.5 8h8" />
-        </>
-      ) : (
-        <>
-          <path d="m3 3 10 10M13 3 3 13" />
-        </>
-      )}
+      <path d="m3 3 10 10M13 3 3 13" />
     </svg>
   )
 }
@@ -166,6 +157,7 @@ function ArtifactContent({
 export interface ChatArtifactProps {
   artifact: ChatArtifactState
   source?: Element
+  panelId?: string
   titleId: string
   takeover: boolean
   closeButtonRef: React.RefObject<HTMLButtonElement | null>
@@ -176,6 +168,7 @@ export interface ChatArtifactProps {
 export function ChatArtifact({
   artifact,
   source,
+  panelId,
   titleId,
   takeover,
   closeButtonRef,
@@ -188,6 +181,7 @@ export function ChatArtifact({
     return Number.isFinite(parsed) ? parsed : 400
   })
   const [maximumWidth, setMaximumWidth] = useState(840)
+  const [isResizing, setIsResizing] = useState(false)
 
   const maxWidth = useCallback(() => {
     const panel = panelRef.current
@@ -261,7 +255,7 @@ export function ChatArtifact({
 
   const onResizeKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
-      const step = event.shiftKey ? 48 : 16
+      const step = event.shiftKey ? 50 : 10
       switch (event.key) {
         case "ArrowLeft":
           event.preventDefault()
@@ -286,12 +280,20 @@ export function ChatArtifact({
 
   const onResizePointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
+      if (
+        (event.button !== undefined && event.button !== 0) ||
+        event.isPrimary === false
+      ) {
+        return
+      }
+      event.preventDefault()
       const handle = event.currentTarget
       const startingWidth = panelRef.current?.getBoundingClientRect().width
       if (!startingWidth) return
 
       handle.setPointerCapture?.(event.pointerId)
       const startX = event.clientX
+      setIsResizing(true)
       const move = (moveEvent: PointerEvent) => {
         // The resize handle is on the artifact's left edge: moving left grows
         // the panel, while moving right yields more room to the chat.
@@ -301,6 +303,10 @@ export function ChatArtifact({
         handle.removeEventListener("pointermove", move)
         handle.removeEventListener("pointerup", finish)
         handle.removeEventListener("pointercancel", finish)
+        if (handle.hasPointerCapture?.(event.pointerId)) {
+          handle.releasePointerCapture?.(event.pointerId)
+        }
+        setIsResizing(false)
       }
 
       handle.addEventListener("pointermove", move)
@@ -312,16 +318,18 @@ export function ChatArtifact({
 
   const title = artifact.title || "Artifact"
   const style = {
-    "--shiny-chat-artifact-width": artifact.width,
+    "--shiny-chat-artifact-width": `${width}px`,
   } as React.CSSProperties
 
   return (
     <aside
       ref={panelRef}
+      id={panelId}
       className="shiny-chat-artifact"
       aria-labelledby={titleId}
       hidden={!artifact.visible}
       data-takeover={takeover ? "" : undefined}
+      data-artifact-resizing={isResizing ? "" : undefined}
       style={style}
     >
       {artifact.resizable && !takeover && (
@@ -329,6 +337,7 @@ export function ChatArtifact({
           className="shiny-chat-artifact-resizer"
           role="separator"
           aria-label="Resize artifact panel"
+          aria-keyshortcuts="ArrowLeft ArrowRight Home End"
           aria-orientation="vertical"
           aria-valuemin={MIN_ARTIFACT_WIDTH}
           aria-valuemax={Math.round(maximumWidth)}
@@ -337,7 +346,9 @@ export function ChatArtifact({
           tabIndex={0}
           onKeyDown={onResizeKeyDown}
           onPointerDown={onResizePointerDown}
-        />
+        >
+          <div className="shiny-chat-artifact-resize-indicator" />
+        </div>
       )}
       <div className="shiny-chat-artifact-header">
         <h2 id={titleId}>{title}</h2>
@@ -345,10 +356,10 @@ export function ChatArtifact({
           ref={closeButtonRef}
           type="button"
           className="shiny-chat-artifact-close"
-          aria-label={takeover ? "Back to chat" : "Close artifact"}
+          aria-label="Close artifact"
           onClick={onClose}
         >
-          <ArtifactCloseIcon back={takeover} />
+          <ArtifactCloseIcon />
         </button>
       </div>
       <ArtifactContent

@@ -591,19 +591,36 @@ describe("shiny-chat-page desktop sidebar state", () => {
     expect(toggle.getAttribute("aria-expanded")).toBe("true")
   })
 
-  it("keeps an always-open sidebar visible and removes its collapse control", () => {
+  it("keeps an always-open sidebar visible with a disabled toggle slot", () => {
     const page = pageFixture({ alwaysPage: true })
     const { aside, navButtons, toggle } = getPageElements(page)
 
     navButtons[3]!.click()
 
     expect(aside.hidden).toBe(false)
-    expect(toggle.hidden).toBe(true)
+    expect(toggle.hidden).toBe(false)
+    expect(toggle.disabled).toBe(true)
+    expect(toggle).toHaveAttribute("aria-disabled", "true")
     expect(toggle.getAttribute("aria-expanded")).toBe("true")
 
     toggle.click()
     expect(aside.hidden).toBe(false)
     expect(toggle.getAttribute("aria-expanded")).toBe("true")
+  })
+
+  it("keeps the toggle slot disabled when the selected page has no sidebar", () => {
+    const page = pageFixture()
+    const { aside, navButtons, toggle } = getPageElements(page)
+
+    navButtons[2]!.click()
+
+    expect(aside.hidden).toBe(true)
+    expect(toggle.hidden).toBe(false)
+    expect(toggle.disabled).toBe(true)
+    expect(toggle).toHaveAttribute("aria-disabled", "true")
+
+    toggle.click()
+    expect(aside.hidden).toBe(true)
   })
 
   it("opens a custom auto sidebar on desktop", () => {
@@ -811,7 +828,8 @@ describe("shiny-chat-page sidebar resizing", () => {
 
     navButtons[3]!.click()
 
-    expect(toggle.hidden).toBe(true)
+    expect(toggle.hidden).toBe(false)
+    expect(toggle.disabled).toBe(true)
     expect(resizer).not.toBeNull()
     expect(resizer!.hidden).toBe(false)
   })

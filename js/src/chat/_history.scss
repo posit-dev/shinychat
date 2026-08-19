@@ -663,8 +663,8 @@ shiny-chat-container[data-history-placement="right"] {
   display: block;
   min-width: 0;
   overflow: hidden;
-  border: var(--bs-border-width, 1px) solid var(--_history-border-color);
-  border-radius: var(--bs-border-radius, 0.375rem);
+  border: 0;
+  border-radius: 0;
   background: var(--_history-bg);
   color: var(--_history-fg);
   box-shadow: none;

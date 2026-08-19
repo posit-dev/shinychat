@@ -322,11 +322,24 @@ describe("ChatArtifact", () => {
     expect(separator).toHaveAttribute("aria-valuemax", "840")
 
     fireEvent.keyDown(separator, { key: "ArrowRight" })
-    expect(onWidthChange).toHaveBeenLastCalledWith("416px")
+    expect(onWidthChange).toHaveBeenLastCalledWith("410px")
 
-    fireEvent.pointerDown(separator, { pointerId: 1, clientX: 100 })
-    fireEvent.pointerMove(separator, { pointerId: 1, clientX: 60 })
+    fireEvent.pointerDown(separator, {
+      button: 0,
+      isPrimary: true,
+      pointerId: 1,
+      clientX: 100,
+    })
+    fireEvent.pointerMove(separator, {
+      isPrimary: true,
+      pointerId: 1,
+      clientX: 60,
+    })
     expect(onWidthChange).toHaveBeenLastCalledWith("440px")
+    fireEvent.pointerUp(separator, { isPrimary: true, pointerId: 1 })
+    expect(screen.getByRole("complementary")).not.toHaveAttribute(
+      "data-artifact-resizing",
+    )
   })
 
   it("clamps an oversized measured width and reports a matching ARIA value", async () => {
@@ -604,7 +617,88 @@ describe("ChatArtifact", () => {
     expect(screen.queryByRole("separator")).toBeNull()
   })
 
-  it("moves focus to the takeover back control and restores it when hidden", async () => {
+  it.each([false, true])(
+    "uses the close icon and semantics in %s takeover mode",
+    (takeover) => {
+      renderArtifact(artifact(), { takeover })
+
+      const close = screen.getByRole("button", { name: "Close artifact" })
+      expect(close.querySelector("svg path")).toHaveAttribute(
+        "d",
+        "m3 3 10 10M13 3 3 13",
+      )
+      expect(screen.queryByRole("button", { name: "Back to chat" })).toBeNull()
+    },
+  )
+
+  it("reveals a hidden artifact and returns focus to its reveal control", async () => {
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      callback(0)
+      return 1
+    })
+
+    try {
+      render(
+        <ChatApp
+          transport={createMockTransport()}
+          shinyLifecycle={createMockShinyLifecycle()}
+          elementId="artifact-reveal"
+          inputId="artifact-reveal-input"
+          initialArtifact={artifact({
+            visible: false,
+            content: "<p>Ready</p>",
+          })}
+        />,
+      )
+
+      const reveal = await screen.findByRole("button", {
+        name: "Show artifact",
+      })
+      expect(
+        screen.getByRole("complementary", { hidden: true }),
+      ).toHaveAttribute("hidden")
+      reveal.focus()
+      fireEvent.click(reveal)
+
+      await screen.findByRole("button", { name: "Close artifact" })
+      expect(screen.queryByRole("button", { name: "Show artifact" })).toBeNull()
+
+      fireEvent.click(screen.getByRole("button", { name: "Close artifact" }))
+      const restored = await screen.findByRole("button", {
+        name: "Show artifact",
+      })
+      expect(restored).toHaveFocus()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it("removes the reveal control when artifact content is cleared", async () => {
+    const transport = createMockTransport()
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={createMockShinyLifecycle()}
+        elementId="artifact-clear"
+        inputId="artifact-clear-input"
+        initialArtifact={artifact({
+          visible: false,
+          content: "<p>Ready</p>",
+        })}
+      />,
+    )
+
+    await screen.findByRole("button", { name: "Show artifact" })
+    act(() => {
+      transport.fire("artifact-clear", {
+        type: "artifact_update",
+        content: "",
+      })
+    })
+    expect(screen.queryByRole("button", { name: "Show artifact" })).toBeNull()
+  })
+
+  it("moves focus to the takeover close control and restores it when hidden", async () => {
     const transport = createMockTransport()
     const shinyLifecycle = createMockShinyLifecycle()
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
@@ -631,15 +725,15 @@ describe("ChatArtifact", () => {
       })
     })
 
-    const back = await screen.findByRole("button", { name: "Back to chat" })
-    expect(back).toHaveFocus()
+    const close = await screen.findByRole("button", { name: "Close artifact" })
+    expect(close).toHaveFocus()
 
-    fireEvent.click(back)
+    fireEvent.click(close)
     await waitFor(() => expect(priorFocus).toHaveFocus())
     vi.unstubAllGlobals()
   })
 
-  it("moves focus to Back when a visible artifact transitions to takeover", async () => {
+  it("moves focus to Close when a visible artifact transitions to takeover", async () => {
     let layoutWidth = 1200
     const original = Object.getOwnPropertyDescriptor(
       HTMLElement.prototype,
@@ -688,11 +782,99 @@ describe("ChatArtifact", () => {
         ResizeObserverStub.resize(layout, layoutWidth)
       })
 
-      const back = await screen.findByRole("button", { name: "Back to chat" })
-      expect(back).toHaveFocus()
+      const close = await screen.findByRole("button", {
+        name: "Close artifact",
+      })
+      expect(close).toHaveFocus()
 
-      fireEvent.click(back)
+      fireEvent.click(close)
       await waitFor(() => expect(chatControl).toHaveFocus())
+    } finally {
+      vi.unstubAllGlobals()
+      if (original) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "getBoundingClientRect",
+          original,
+        )
+      } else {
+        delete (HTMLElement.prototype as { getBoundingClientRect?: unknown })
+          .getBoundingClientRect
+      }
+    }
+  })
+
+  it("removes the history trigger from takeover interaction", async () => {
+    let layoutWidth = 1200
+    const original = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "getBoundingClientRect",
+    )
+    Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", {
+      configurable: true,
+      value: function () {
+        if (this.classList.contains("shiny-chat-layout")) {
+          return { width: layoutWidth }
+        }
+        if (this.classList.contains("shiny-chat-artifact")) {
+          return { width: 400 }
+        }
+        return { width: 0 }
+      },
+    })
+    ResizeObserverStub.reset()
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub)
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      callback(0)
+      return 1
+    })
+
+    try {
+      const transport = createMockTransport()
+      const view = render(
+        <ChatApp
+          transport={transport}
+          shinyLifecycle={createMockShinyLifecycle()}
+          elementId="artifact-history-takeover"
+          inputId="artifact-history-takeover-input"
+          initialArtifact={artifact({ visible: false, content: "" })}
+        />,
+      )
+      await act(async () => {
+        transport.fire("artifact-history-takeover", {
+          type: "history_update",
+          enabled: true,
+          conversations: [],
+          active_id: null,
+        })
+      })
+
+      const history = await screen.findByRole("button", {
+        name: "Conversation history",
+      })
+      const layout = view.container.querySelector(
+        ".shiny-chat-layout",
+      ) as HTMLElement
+      layoutWidth = 1000
+      await act(async () => {
+        ResizeObserverStub.resize(layout, layoutWidth)
+      })
+
+      await act(async () => {
+        transport.fire("artifact-history-takeover", {
+          type: "artifact_show",
+          content: "<p>Ready</p>",
+        })
+      })
+
+      await screen.findByRole("button", { name: "Close artifact" })
+      expect(layout).toHaveAttribute("data-artifact-takeover", "")
+      expect(history).toBeDisabled()
+      expect(history).toHaveAttribute("aria-hidden", "true")
+      expect(history).toHaveAttribute("tabindex", "-1")
+
+      fireEvent.click(screen.getByRole("button", { name: "Close artifact" }))
+      await waitFor(() => expect(history).not.toBeDisabled())
     } finally {
       vi.unstubAllGlobals()
       if (original) {
@@ -756,7 +938,7 @@ describe("ChatArtifact", () => {
         ResizeObserverStub.resize(layout, layoutWidth)
       })
 
-      await screen.findByRole("button", { name: "Back to chat" })
+      await screen.findByRole("button", { name: "Close artifact" })
       expect(outsideControl).toHaveFocus()
     } finally {
       vi.unstubAllGlobals()
@@ -818,7 +1000,7 @@ describe("ChatArtifact", () => {
       await act(async () => {
         ResizeObserverStub.resize(layout, layoutWidth)
       })
-      await screen.findByRole("button", { name: "Back to chat" })
+      await screen.findByRole("button", { name: "Close artifact" })
 
       layoutWidth = 1200
       await act(async () => {
@@ -835,10 +1017,12 @@ describe("ChatArtifact", () => {
       await act(async () => {
         ResizeObserverStub.resize(layout, layoutWidth)
       })
-      const back = await screen.findByRole("button", { name: "Back to chat" })
+      const close = await screen.findByRole("button", {
+        name: "Close artifact",
+      })
       expect(outsideControl).toHaveFocus()
 
-      fireEvent.click(back)
+      fireEvent.click(close)
       await waitFor(() => expect(outsideControl).toHaveFocus())
     } finally {
       vi.unstubAllGlobals()

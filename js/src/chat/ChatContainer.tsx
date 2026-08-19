@@ -46,6 +46,35 @@ function openLink(url: string): void {
   window.open(url, "_blank", "noopener,noreferrer")
 }
 
+function ArtifactRevealIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="2" y="2" width="12" height="12" rx="1" />
+      <path d="M10 2v12M12 6.5 10.5 8l1.5 1.5" />
+    </svg>
+  )
+}
+
+function pageOwnsHistory(elementId: string): boolean {
+  const chat = document.getElementById(elementId)
+  const page = chat?.closest("shiny-chat-page")
+  if (!page) return false
+
+  return Array.from(
+    page.querySelectorAll("aside.shiny-chat-page-sidebar shiny-chat-history"),
+  ).some((history) => history.getAttribute("for") === elementId)
+}
+
 export interface ChatContainerProps {
   transport: ChatTransport
   messages: ChatMessageData[]
@@ -127,7 +156,9 @@ export const ChatContainer = forwardRef<
 
   const chatInputRef = useRef<ChatInputHandle>(null)
   const artifactCloseRef = useRef<HTMLButtonElement>(null)
+  const artifactRevealRef = useRef<HTMLButtonElement>(null)
   const artifactReturnFocusRef = useRef<HTMLElement | null>(null)
+  const artifactReturnToRevealRef = useRef(false)
   const priorArtifactVisibleRef = useRef(artifact.visible)
   const priorArtifactTakeoverRef = useRef(false)
   const artifactLayoutRef = useRef<HTMLDivElement>(null)
@@ -140,6 +171,10 @@ export const ChatContainer = forwardRef<
 
   const [historyOpen, setHistoryOpen] = useState(false)
   const historyTriggerRef = useRef<HTMLButtonElement>(null)
+  const historyOwnedByPage = useMemo(
+    () => pageOwnsHistory(elementId),
+    [elementId],
+  )
 
   const [pendingUrl, setPendingUrl] = useState<string | null>(null)
   const pendingUrlRef = useRef<string | null>(null)
@@ -240,24 +275,51 @@ export const ChatContainer = forwardRef<
       const chatWrapper = artifactLayoutRef.current?.querySelector(
         ".shiny-chat-wrapper",
       )
-      if (active instanceof HTMLElement && chatWrapper?.contains(active)) {
-        artifactReturnFocusRef.current = active
+      const activeInChat =
+        active instanceof HTMLElement && chatWrapper?.contains(active)
+      const activeOnHistoryTrigger = active === historyTriggerRef.current
+      if (activeInChat || activeOnHistoryTrigger || historyOpen) {
+        artifactReturnFocusRef.current =
+          activeInChat && active instanceof HTMLElement
+            ? active
+            : historyTriggerRef.current
+        requestAnimationFrame(() => artifactCloseRef.current?.focus())
+      } else if (artifactReturnToRevealRef.current) {
+        artifactReturnFocusRef.current = null
         requestAnimationFrame(() => artifactCloseRef.current?.focus())
       } else {
         artifactReturnFocusRef.current = null
       }
+      if (historyOpen) setHistoryOpen(false)
     } else if (wasVisible && !isVisible) {
-      const returnFocus = artifactReturnFocusRef.current
-      if (returnFocus?.isConnected) returnFocus.focus()
+      const returnToReveal = artifactReturnToRevealRef.current
+      artifactReturnToRevealRef.current = false
+      if (returnToReveal) {
+        requestAnimationFrame(() => artifactRevealRef.current?.focus())
+      } else {
+        const returnFocus = artifactReturnFocusRef.current
+        if (returnFocus?.isConnected) returnFocus.focus()
+      }
       artifactReturnFocusRef.current = null
     }
 
     priorArtifactVisibleRef.current = isVisible
     priorArtifactTakeoverRef.current = artifactTakeover
-  }, [artifact.enabled, artifact.visible, artifactTakeover])
+  }, [artifact.enabled, artifact.visible, artifactTakeover, historyOpen])
+
+  useEffect(() => {
+    if (artifactTakeover && artifact.visible && historyOpen) {
+      setHistoryOpen(false)
+    }
+  }, [artifact.visible, artifactTakeover, historyOpen])
 
   const closeArtifact = useCallback(() => {
     dispatch({ type: "artifact_hide" })
+  }, [dispatch])
+
+  const revealArtifact = useCallback(() => {
+    artifactReturnToRevealRef.current = true
+    dispatch({ type: "artifact_toggle" })
   }, [dispatch])
 
   const setArtifactWidth = useCallback(
@@ -533,18 +595,38 @@ export const ChatContainer = forwardRef<
     scrollToBottom()
   }, [scrollToBottom])
 
+  const artifactHasContent = artifact.content.trim().length > 0
+  const artifactTakeoverActive = artifactTakeover && artifact.visible
+
   return (
     <SlashCommandsContext.Provider value={slashCommands}>
-      {history.enabled && (
+      {history.enabled && !historyOwnedByPage && (
         <button
           type="button"
           ref={historyTriggerRef}
           className="shiny-chat-history-trigger"
           aria-label="Conversation history"
           aria-expanded={historyOpen}
+          aria-hidden={artifactTakeoverActive || undefined}
+          disabled={artifactTakeoverActive}
+          tabIndex={artifactTakeoverActive ? -1 : undefined}
           onClick={() => setHistoryOpen((v) => !v)}
         >
           <HistoryIcon />
+        </button>
+      )}
+      {artifact.enabled && !artifact.visible && artifactHasContent && (
+        <button
+          type="button"
+          ref={artifactRevealRef}
+          className="shiny-chat-artifact-trigger"
+          aria-label="Show artifact"
+          aria-controls={`${elementId}-artifact`}
+          aria-expanded={false}
+          title="Show artifact"
+          onClick={revealArtifact}
+        >
+          <ArtifactRevealIcon />
         </button>
       )}
       {/* Width-limited, centered content column. The container itself is
@@ -656,6 +738,7 @@ export const ChatContainer = forwardRef<
           <ChatArtifact
             artifact={artifact}
             source={artifactSource}
+            panelId={`${elementId}-artifact`}
             titleId={`${elementId}-artifact-title`}
             takeover={artifactTakeover}
             closeButtonRef={artifactCloseRef}
@@ -665,7 +748,7 @@ export const ChatContainer = forwardRef<
         )}
       </div>
 
-      {history.enabled && (
+      {history.enabled && !historyOwnedByPage && (
         <ChatHistoryDrawer
           isOpen={historyOpen}
           onClose={() => setHistoryOpen(false)}

@@ -1,6 +1,11 @@
+@use "../resize-handle" as resize;
+
 shiny-chat-page {
-  --_page-header-height: 3.5rem;
+  --_page-header-height: var(--bs-navbar-height, 3.5rem);
+  --_page-header-padding-x: var(--bs-navbar-padding-x, 0.75rem);
+  --_page-header-padding-y: var(--bs-navbar-padding-y, 0.5rem);
   --_page-sidebar-width: var(--shiny-chat-page-sidebar-width, 280px);
+  --_page-sidebar-padding: var(--bslib-sidebar-padding, var(--bslib-spacer, var(--bs-spacer, 1rem)));
   --_page-border: var(--bs-border-width, 1px) solid var(--bs-border-color, #dee2e6);
 
   display: grid;
@@ -20,7 +25,8 @@ shiny-chat-page {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   min-width: 0;
-  padding: 0 0.75rem;
+  min-height: var(--_page-header-height);
+  padding: var(--_page-header-padding-y) var(--_page-header-padding-x);
   border-bottom: var(--_page-border);
   background: var(--bs-body-bg, #fff);
 }
@@ -37,9 +43,31 @@ shiny-chat-page {
 .shiny-chat-page-sidebar-toggle {
   display: inline-grid;
   place-items: center;
-  min-width: 2.75rem;
-  padding: 0.625rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+  padding: 0.5rem;
   border-radius: var(--bs-border-radius, 0.375rem);
+}
+
+.shiny-chat-page-sidebar-toggle .navbar-toggler-icon {
+  position: relative;
+  display: block;
+  width: 1.125rem;
+  height: 1rem;
+  background-image: none;
+  border-block: 0.125rem solid currentcolor;
+}
+
+.shiny-chat-page-sidebar-toggle .navbar-toggler-icon::after {
+  position: absolute;
+  inset-inline: 0;
+  top: 50%;
+  height: 0.125rem;
+  content: "";
+  background: currentcolor;
+  transform: translateY(-50%);
 }
 
 .shiny-chat-page-identity {
@@ -49,8 +77,10 @@ shiny-chat-page {
   min-width: 0;
   max-width: 100%;
   gap: 0.5rem;
-  padding: 0.375rem 0.625rem;
-  font-weight: 600;
+  padding: 0.375rem 0.5rem;
+  font-size: var(--bs-navbar-brand-font-size, 1.125rem);
+  font-weight: var(--bs-navbar-brand-font-weight, 500);
+  line-height: var(--bs-navbar-brand-line-height, 1.2);
   text-align: start;
   border-radius: var(--bs-border-radius, 0.375rem);
 }
@@ -76,17 +106,44 @@ shiny-chat-page {
   align-items: center;
 }
 
+.shiny-chat-page-controls-mount-desktop {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  justify-self: end;
+}
+
 .shiny-chat-page-controls {
   min-width: 0;
-  gap: 0.5rem;
+  max-width: 100%;
+  gap: var(--bs-navbar-nav-link-padding-x, 0.5rem);
 }
 
 .shiny-chat-page-nav {
+  min-width: 0;
   gap: 0.125rem;
+  justify-content: flex-start;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.shiny-chat-page-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .shiny-chat-page-toolbar {
+  min-width: 0;
   gap: 0.375rem;
+  justify-content: flex-start;
+}
+
+.shiny-chat-page-toolbar > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.shiny-chat-page-toolbar > .bslib-toolbar {
+  justify-content: flex-start;
 }
 
 .shiny-chat-page-nav-link {
@@ -149,7 +206,9 @@ button.shiny-chat-page-identity:focus-visible,
   flex: 1 1 auto;
   min-height: 0;
   flex-direction: column;
+  gap: var(--_page-sidebar-padding);
   overflow: auto;
+  padding: var(--_page-sidebar-padding);
 }
 
 .shiny-chat-page-controls-mount-mobile {
@@ -170,69 +229,18 @@ button.shiny-chat-page-identity:focus-visible,
 }
 
 .shiny-chat-page-sidebar-resizer {
-  position: absolute;
-  z-index: 4;
-  top: 0;
-  bottom: 0;
   left: var(--shiny-chat-page-sidebar-rendered-width, var(--_page-sidebar-width));
-  width: 0.75rem;
-  padding: 0;
-  color: inherit;
-  cursor: ew-resize;
-  pointer-events: auto;
-  touch-action: none;
-  user-select: none;
 }
 
 .shiny-chat-page-sidebar-resize-indicator {
-  position: absolute;
-  top: 50%;
   left: 0;
-  width: 0.125rem;
-  height: 1.875rem;
-  background: currentcolor;
-  border-radius: 0.125rem;
-  cursor: ew-resize;
-  opacity: 0.15;
-  pointer-events: none;
-  transform: translateY(-50%);
-  transition:
-    width 150ms ease,
-    height 150ms ease,
-    opacity 150ms ease;
 }
 
-.shiny-chat-page-sidebar-resizer:hover .shiny-chat-page-sidebar-resize-indicator,
-.shiny-chat-page-sidebar-resizer:focus-visible .shiny-chat-page-sidebar-resize-indicator,
-shiny-chat-page[data-sidebar-resizing] .shiny-chat-page-sidebar-resize-indicator {
-  width: 0.1875rem;
-  height: 2.5rem;
-  opacity: 1;
-}
-
-.shiny-chat-page-sidebar-resizer:focus-visible {
-  outline: 0;
-}
-
-.shiny-chat-page-sidebar-resizer:focus-visible .shiny-chat-page-sidebar-resize-indicator {
-  outline: 0.125rem solid var(--bs-focus-ring-color, rgb(13 110 253 / 25%));
-  outline-offset: 0.125rem;
-}
-
-shiny-chat-page[data-sidebar-resizing] {
-  cursor: ew-resize;
-  user-select: none;
-}
-
-shiny-chat-page[data-sidebar-resizing] .shiny-chat-page-sidebar-resize-indicator {
-  color: var(--bs-primary, #0d6efd);
-}
-
-@media (any-pointer: coarse) {
-  .shiny-chat-page-sidebar-resizer {
-    width: 1.625rem;
-  }
-}
+@include resize.vertical-resize-handle(
+  ".shiny-chat-page-sidebar-resizer",
+  ".shiny-chat-page-sidebar-resize-indicator",
+  "shiny-chat-page[data-sidebar-resizing]"
+);
 
 @media (min-width: 800px) {
   .shiny-chat-page-sidebar {
@@ -244,6 +252,21 @@ shiny-chat-page[data-sidebar-resizing] .shiny-chat-page-sidebar-resize-indicator
 .shiny-chat-page-panel {
   width: 100%;
   height: 100%;
+}
+
+.shiny-chat-page-panel-content {
+  width: 100%;
+  max-width: var(--shiny-chat-page-content-width, min(680px, 100%));
+  min-width: 0;
+  margin-inline: auto;
+  padding-block: var(--bs-spacer, 1rem);
+  padding-inline: max(var(--bs-spacer, 1rem), env(safe-area-inset-left))
+    max(var(--bs-spacer, 1rem), env(safe-area-inset-right));
+}
+
+.shiny-chat-page-panel-content[data-content-full-bleed="true"] {
+  max-width: none;
+  padding: 0;
 }
 
 .shiny-chat-page-panel[hidden],
@@ -271,7 +294,7 @@ shiny-chat-page[data-sidebar-resizing] .shiny-chat-page-sidebar-resize-indicator
 @media (max-width: 799px) {
   .shiny-chat-page-header {
     grid-template-columns: auto minmax(0, 1fr);
-    padding-inline: max(0.375rem, env(safe-area-inset-left)) max(0.375rem, env(safe-area-inset-right));
+    padding-inline: max(var(--_page-header-padding-x), env(safe-area-inset-left)) max(var(--_page-header-padding-x), env(safe-area-inset-right));
   }
 
   .shiny-chat-page-controls-mount-desktop {
@@ -367,6 +390,10 @@ shiny-chat-page[data-sidebar-resizing] .shiny-chat-page-sidebar-resize-indicator
   .shiny-chat-page-controls-mount-mobile .shiny-chat-page-toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .shiny-chat-page-controls-mount-mobile .shiny-chat-page-toolbar > * {
+    width: 100%;
   }
 
   .shiny-chat-page-controls-mount-mobile .shiny-chat-page-nav-link {

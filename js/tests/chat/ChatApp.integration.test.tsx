@@ -518,3 +518,74 @@ describe("ChatApp integration: editable messages gated by history state", () => 
     expect(next).toHaveProperty("disabled", false)
   })
 })
+
+describe("ChatApp integration: page-owned history presentation", () => {
+  function renderHistoryChat({
+    pageHistory = true,
+  }: { pageHistory?: boolean } = {}) {
+    const transport = createMockTransport()
+    const page = document.createElement("shiny-chat-page")
+    const chat = document.createElement("shiny-chat-container")
+    const elementId = pageHistory
+      ? "page-history-chat"
+      : "standalone-history-chat"
+    chat.id = elementId
+    page.innerHTML = `
+      <aside class="shiny-chat-page-sidebar">
+        ${
+          pageHistory
+            ? `<shiny-chat-history for="${elementId}"></shiny-chat-history>`
+            : ""
+        }
+      </aside>
+    `
+    page.append(chat)
+    document.body.append(page)
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={createMockShinyLifecycle()}
+        elementId={elementId}
+        inputId="test-input"
+        uploadAccept={[]}
+        maxUploadSize={null}
+      />,
+      { container: chat },
+    )
+    return { transport, page, elementId }
+  }
+
+  it("suppresses the embedded trigger when the page sidebar owns history", async () => {
+    mockMatchMedia(false)
+    const { transport, page, elementId } = renderHistoryChat()
+
+    await act(async () => {
+      transport.fire(elementId, {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+      })
+    })
+
+    expect(page.querySelector(".shiny-chat-history-trigger")).toBeNull()
+  })
+
+  it("retains the embedded trigger when the page has no history sidebar", async () => {
+    mockMatchMedia(false)
+    const { transport, page, elementId } = renderHistoryChat({
+      pageHistory: false,
+    })
+
+    await act(async () => {
+      transport.fire(elementId, {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+      })
+    })
+
+    expect(page.querySelector(".shiny-chat-history-trigger")).not.toBeNull()
+  })
+})
