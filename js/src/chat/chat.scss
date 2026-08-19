@@ -384,7 +384,10 @@ shiny-chat-container:not([fill]) {
 
 .shiny-chat-input {
   --_input-padding-top: 0;
-  --_input-padding-bottom: var(--_chat-container-padding, 0.25rem);
+  --_input-padding-bottom: var(
+    --shiny-chat-input-padding-bottom,
+    var(--_chat-container-padding, 0.25rem)
+  );
 
   margin-top: calc(-1 * var(--_input-padding-top));
   position: sticky;
