@@ -13,6 +13,7 @@ const SIDEBAR_METADATA = ["open", "width", "resizable"] as const
 const DEFAULT_SIDEBAR_KEY = "default"
 const MIN_SIDEBAR_WIDTH = 150
 const MIN_MAIN_WIDTH = 360
+const SIDEBAR_MOTION_DURATION = 180
 const FOCUSABLE_SELECTOR = [
   "a[href]",
   "area[href]",
@@ -117,6 +118,8 @@ class ChatPageElement extends HTMLElement {
   private historyUnsubscribe: (() => void) | null = null
   private historyAutoDecided = false
   private resizingSidebarKey: string | null = null
+  private sidebarMotionFrame: number | null = null
+  private sidebarMotionTimer: number | null = null
 
   connectedCallback() {
     if (this.initialized) return
@@ -132,6 +135,10 @@ class ChatPageElement extends HTMLElement {
       this.selectPage("home", false)
     }
     this.bindHistoryAutoOpen()
+    this.sidebarMotionFrame = window.requestAnimationFrame(() => {
+      this.sidebarMotionFrame = null
+      this.setAttribute("data-sidebar-motion-ready", "")
+    })
   }
 
   disconnectedCallback() {
@@ -140,6 +147,7 @@ class ChatPageElement extends HTMLElement {
     this.cleanupListeners.splice(0).forEach((cleanup) => cleanup())
     this.closeMobileMenu(false)
     this.removeScrim()
+    this.cancelSidebarMotion()
     this.mediaQuery = null
     this.layoutInitialized = false
     this.initialized = false
@@ -325,9 +333,11 @@ class ChatPageElement extends HTMLElement {
       })
       this.listen(this.resizeHandle, "resize-start", () => {
         this.resizingSidebarKey = this.activeSidebarState()?.key ?? null
+        this.setAttribute("data-sidebar-resizing", "")
       })
       this.listen(this.resizeHandle, "resize-end", () => {
         this.resizingSidebarKey = null
+        this.removeAttribute("data-sidebar-resizing")
       })
     }
 
@@ -376,6 +386,13 @@ class ChatPageElement extends HTMLElement {
 
     const changed = !this.layoutInitialized || this.mobile !== matches
     const wasOpen = this.hasAttribute("data-mobile-menu-open")
+    if (matches) {
+      this.setAttribute("data-responsive-takeover", "")
+      this.cancelSidebarMotion()
+    } else {
+      this.removeAttribute("data-responsive-takeover")
+      if (changed) this.suppressSidebarMotionThroughNextFrame()
+    }
     this.mobile = matches
     this.layoutInitialized = true
 
@@ -388,7 +405,11 @@ class ChatPageElement extends HTMLElement {
       this.applyDesktopSidebarState()
     } else if (changed) {
       this.closeMobileMenu(false)
-      if (this.aside) this.aside.hidden = false
+      if (this.aside) {
+        this.aside.hidden = false
+        this.aside.removeAttribute("inert")
+        this.aside.setAttribute("aria-hidden", "false")
+      }
       this.updateToggleState()
       this.updateResizeHandle()
     }
@@ -491,6 +512,8 @@ class ChatPageElement extends HTMLElement {
 
     if (this.mobile) {
       this.aside.hidden = false
+      this.aside.removeAttribute("inert")
+      this.aside.setAttribute("aria-hidden", "false")
       this.updateToggleState()
       this.updateResizeHandle()
     } else {
@@ -503,13 +526,80 @@ class ChatPageElement extends HTMLElement {
     const state = this.activeSidebarState()
     const open = Boolean(state?.open)
 
-    this.aside.hidden = !open
     if (state) {
       this.aside.dataset.sidebarWidth = state.width
       this.style.setProperty("--shiny-chat-page-sidebar-width", state.width)
     }
+    this.presentDesktopSidebar(open)
     this.updateToggleState()
     this.updateResizeHandle()
+  }
+
+  private presentDesktopSidebar(open: boolean) {
+    if (!this.aside) return
+    this.cancelSidebarMotion()
+
+    if (open) {
+      this.aside.hidden = false
+      this.aside.removeAttribute("inert")
+      this.aside.setAttribute("aria-hidden", "false")
+      const reveal = () => {
+        this.sidebarMotionFrame = null
+        if (!this.mobile && this.activeSidebarState()?.open) {
+          this.setAttribute("data-sidebar-open", "")
+        }
+      }
+      if (this.shouldAnimateSidebar()) {
+        this.sidebarMotionFrame = window.requestAnimationFrame(reveal)
+      } else {
+        reveal()
+      }
+      return
+    }
+
+    this.removeAttribute("data-sidebar-open")
+    this.aside.setAttribute("aria-hidden", "true")
+    this.aside.setAttribute("inert", "")
+    if (!this.shouldAnimateSidebar()) {
+      this.aside.hidden = true
+      return
+    }
+
+    this.sidebarMotionTimer = window.setTimeout(() => {
+      this.sidebarMotionTimer = null
+      if (!this.hasAttribute("data-sidebar-open")) this.aside!.hidden = true
+    }, SIDEBAR_MOTION_DURATION)
+  }
+
+  private shouldAnimateSidebar() {
+    const reducedMotion =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    return (
+      this.hasAttribute("data-sidebar-motion-ready") &&
+      !this.mobile &&
+      !this.hasAttribute("data-responsive-takeover") &&
+      !this.hasAttribute("data-sidebar-handoff") &&
+      !reducedMotion
+    )
+  }
+
+  private cancelSidebarMotion() {
+    if (this.sidebarMotionFrame !== null) {
+      window.cancelAnimationFrame(this.sidebarMotionFrame)
+      this.sidebarMotionFrame = null
+    }
+    if (this.sidebarMotionTimer !== null) {
+      window.clearTimeout(this.sidebarMotionTimer)
+      this.sidebarMotionTimer = null
+    }
+  }
+
+  private suppressSidebarMotionThroughNextFrame() {
+    this.setAttribute("data-sidebar-handoff", "")
+    window.requestAnimationFrame(() => {
+      this.removeAttribute("data-sidebar-handoff")
+    })
   }
 
   private updateToggleState() {

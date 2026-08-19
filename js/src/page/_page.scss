@@ -172,9 +172,11 @@ button.shiny-chat-page-identity:focus-visible,
 }
 
 .shiny-chat-page-body {
+  --_page-sidebar-track: 0px;
+
   position: relative;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, var(--_page-sidebar-track)) minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
 }
@@ -263,6 +265,14 @@ shiny-chat-resize-handle.shiny-chat-page-sidebar-resizer[data-boundary-activatio
 }
 
 @media (min-width: 800px) {
+  shiny-chat-page[data-sidebar-motion-ready] .shiny-chat-page-body {
+    transition: grid-template-columns 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  shiny-chat-page[data-sidebar-open] .shiny-chat-page-body {
+    --_page-sidebar-track: var(--_page-sidebar-width);
+  }
+
   .shiny-chat-page-header {
     grid-template-columns: auto fit-content(12rem) minmax(0, 1fr);
   }
@@ -278,8 +288,33 @@ shiny-chat-resize-handle.shiny-chat-page-sidebar-resizer[data-boundary-activatio
   }
 
   .shiny-chat-page-sidebar {
-    min-width: min(150px, 100%);
+    width: 100%;
+    min-width: 0;
     max-width: var(--shiny-chat-page-sidebar-max-width, none);
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-0.75rem);
+  }
+
+  shiny-chat-page[data-sidebar-motion-ready] .shiny-chat-page-sidebar {
+    transition:
+      opacity 140ms ease-out,
+      transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  shiny-chat-page[data-sidebar-open] .shiny-chat-page-sidebar {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(0);
+  }
+
+  shiny-chat-page:is(
+    [data-sidebar-resizing],
+    [data-responsive-takeover],
+    [data-sidebar-handoff]
+  ) :is(.shiny-chat-page-body, .shiny-chat-page-sidebar) {
+    transition: none;
   }
 }
 

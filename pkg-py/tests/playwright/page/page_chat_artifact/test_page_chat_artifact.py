@@ -130,3 +130,55 @@ def test_page_artifact_survives_navigation_and_history(
         "Artifact value: edited artifact",
         timeout=TIMEOUT,
     )
+
+
+def test_artifact_motion_retains_close_panel_and_suppresses_resize(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    chat, _ = open_page(page, local_app)
+    layout = chat.loc.locator(".shiny-chat-layout")
+    panel = chat.loc.locator(".shiny-chat-artifact")
+
+    assert "grid-template-columns" in layout.evaluate(
+        "(element) => getComputedStyle(element).transitionProperty"
+    )
+    page.locator("#show_artifact").click()
+    expect(panel).to_have_attribute("data-motion", "open")
+    expect(layout).to_have_attribute("data-artifact-open", "")
+
+    separator = page.get_by_role("separator", name="Resize artifact panel")
+    separator.dispatch_event("resize-start")
+    expect(layout).to_have_attribute("data-artifact-resizing", "")
+    expect(layout).to_have_css("transition-duration", "0s")
+    separator.dispatch_event("resize-end")
+    expect(layout).not_to_have_attribute("data-artifact-resizing", "")
+
+    panel.get_by_role("button", name="Close artifact").click()
+    expect(panel).to_have_attribute("data-motion", "closing")
+    expect(panel).to_have_attribute("aria-hidden", "true")
+    assert panel.evaluate("(element) => element.hidden") is False
+    expect(layout).to_have_attribute("data-artifact-open", "")
+    expect(panel).to_be_hidden(timeout=TIMEOUT)
+    expect(layout).not_to_have_attribute("data-artifact-open", "")
+
+
+def test_artifact_motion_respects_reduced_motion_and_takeover(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.emulate_media(reduced_motion="reduce")
+    chat, _ = open_page(page, local_app)
+    layout = chat.loc.locator(".shiny-chat-layout")
+    panel = chat.loc.locator(".shiny-chat-artifact")
+
+    page.get_by_role("button", name="Show artifact").click()
+    expect(layout).to_have_css("transition-duration", "0s")
+    expect(panel).to_have_css("transition-duration", "0s")
+
+    panel.get_by_role("button", name="Close artifact").click()
+    expect(panel).to_be_hidden(timeout=TIMEOUT)
+
+    page.emulate_media(reduced_motion="no-preference")
+    page.set_viewport_size({"width": 1024, "height": 900})
+    page.locator("#show_artifact").click()
+    expect(layout).to_have_attribute("data-artifact-takeover", "")
+    expect(layout).to_have_css("transition-duration", "0s")

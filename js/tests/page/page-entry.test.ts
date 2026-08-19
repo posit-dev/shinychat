@@ -637,6 +637,38 @@ describe("shiny-chat-page responsive controls", () => {
 })
 
 describe("shiny-chat-page desktop sidebar state", () => {
+  it("keeps a closing desktop sidebar present through its consumer transition", () => {
+    vi.useFakeTimers()
+    try {
+      const page = pageFixture({ homeOpen: "open" })
+      const { aside, resizer, toggle } = getPageElements(page)
+      page.setAttribute("data-sidebar-motion-ready", "")
+      page.removeAttribute("data-sidebar-handoff")
+
+      toggle.click()
+      expect(page).not.toHaveAttribute("data-sidebar-open")
+      expect(aside.hidden).toBe(false)
+      expect(aside).toHaveAttribute("aria-hidden", "true")
+      expect(aside).toHaveAttribute("inert")
+
+      vi.advanceTimersByTime(180)
+      expect(aside.hidden).toBe(true)
+
+      toggle.click()
+      vi.advanceTimersByTime(16)
+      expect(page).toHaveAttribute("data-sidebar-open")
+      expect(aside.hidden).toBe(false)
+      expect(aside).not.toHaveAttribute("inert")
+
+      resizer!.dispatchEvent(new CustomEvent("resize-start"))
+      expect(page).toHaveAttribute("data-sidebar-resizing")
+      resizer!.dispatchEvent(new CustomEvent("resize-end"))
+      expect(page).not.toHaveAttribute("data-sidebar-resizing")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("allows an explicitly open sidebar to be closed and reopened", () => {
     const page = pageFixture({ homeOpen: "open" })
     const { aside, toggle } = getPageElements(page)

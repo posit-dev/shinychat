@@ -308,6 +308,39 @@ def test_page_toolbars_move_without_duplicate_controls(
     expect(page.locator("#settings_toolbar_value")).to_have_count(1)
 
 
+def test_desktop_sidebar_motion_keeps_close_semantics_and_suppresses_resize(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    _, shell = open_page(page, local_app, viewport=(1280, 800))
+    sidebar = shell.locator(".shiny-chat-page-sidebar")
+    body = shell.locator(".shiny-chat-page-body")
+    toggle = shell.locator(".shiny-chat-page-sidebar-toggle")
+
+    assert "grid-template-columns" in body.evaluate(
+        "(element) => getComputedStyle(element).transitionProperty"
+    )
+
+    toggle.click()
+    expect(shell).to_have_attribute("data-sidebar-open", "")
+    expect(sidebar).to_be_visible()
+    expect(sidebar).to_have_attribute("aria-hidden", "false")
+
+    resizer = shell.get_by_role("separator", name="Resize sidebar")
+    expect(resizer).to_be_visible()
+    resizer.dispatch_event("resize-start")
+    expect(shell).to_have_attribute("data-sidebar-resizing", "")
+    expect(body).to_have_css("transition-duration", "0s")
+    resizer.dispatch_event("resize-end")
+    expect(shell).not_to_have_attribute("data-sidebar-resizing", "")
+
+    toggle.click()
+    expect(shell).not_to_have_attribute("data-sidebar-open", "")
+    expect(sidebar).to_have_attribute("aria-hidden", "true")
+    assert sidebar.evaluate("(element) => element.hidden") is False
+    expect(sidebar).to_be_hidden(timeout=TIMEOUT)
+
+
 def test_reduced_motion_disables_mobile_sidebar_transition(
     page: Page,
     local_app: ShinyAppProc,

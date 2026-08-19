@@ -160,6 +160,8 @@ export const ChatContainer = forwardRef<
   const priorArtifactTakeoverRef = useRef(false)
   const artifactLayoutRef = useRef<HTMLDivElement>(null)
   const [artifactTakeover, setArtifactTakeover] = useState(false)
+  const [artifactPresented, setArtifactPresented] = useState(artifact.visible)
+  const [artifactResizing, setArtifactResizing] = useState(false)
   const history = useSyncExternalStore(
     historyStore.subscribe,
     historyStore.getSnapshot,
@@ -599,7 +601,7 @@ export const ChatContainer = forwardRef<
   }, [scrollToBottom])
 
   const artifactHasContent = artifact.content.trim().length > 0
-  const artifactTakeoverActive = artifactTakeover && artifact.visible
+  const artifactTakeoverActive = artifactTakeover && artifactPresented
 
   return (
     <SlashCommandsContext.Provider value={slashCommands}>
@@ -646,11 +648,12 @@ export const ChatContainer = forwardRef<
             : undefined
         }
         data-artifact-open={
-          artifact.enabled && artifact.visible ? "" : undefined
+          artifact.enabled && artifactPresented ? "" : undefined
         }
         data-artifact-takeover={
-          artifactTakeover && artifact.visible ? "" : undefined
+          artifactTakeover && artifactPresented ? "" : undefined
         }
+        data-artifact-resizing={artifactResizing ? "" : undefined}
       >
         <div className="shiny-chat-wrapper">
           <div className="shiny-chat-messages-wrapper">
@@ -747,6 +750,8 @@ export const ChatContainer = forwardRef<
             closeButtonRef={artifactCloseRef}
             onClose={closeArtifact}
             onWidthChange={setArtifactWidth}
+            onPresentationChange={setArtifactPresented}
+            onResizeStateChange={setArtifactResizing}
           />
         )}
       </div>

@@ -9,6 +9,7 @@ import {
 } from "react"
 import { ShinyLifecycleContext } from "./context"
 import type { ChatArtifactState } from "./state"
+import { usePrefersReducedMotion } from "./usePrefersReducedMotion"
 import {
   getResizeHandleProvider,
   type ResizeHandleElement,
@@ -169,6 +170,8 @@ export interface ChatArtifactProps {
   closeButtonRef: React.RefObject<HTMLButtonElement | null>
   onClose(): void
   onWidthChange(width: string): void
+  onPresentationChange?(present: boolean): void
+  onResizeStateChange?(resizing: boolean): void
 }
 
 export function ChatArtifact({
@@ -180,8 +183,17 @@ export function ChatArtifact({
   closeButtonRef,
   onClose,
   onWidthChange,
+  onPresentationChange,
+  onResizeStateChange,
 }: ChatArtifactProps) {
   const panelRef = useRef<HTMLElement>(null)
+  const prefersReducedMotion = usePrefersReducedMotion()
+  const [present, setPresent] = useState(artifact.visible)
+  const [motion, setMotion] = useState(artifact.visible ? "open" : "closed")
+  const [resizing, setResizing] = useState(false)
+  const wasVisibleRef = useRef(artifact.visible)
+  const motionFrameRef = useRef<number | null>(null)
+  const motionTimerRef = useRef<number | null>(null)
   const [width, setWidth] = useState(() => artifact.width || "400px")
   const [maximumWidth, setMaximumWidth] = useState(840)
   const [renderedWidth, setRenderedWidth] = useState(
@@ -189,6 +201,72 @@ export function ChatArtifact({
   )
   const [resizeHandleProvider] = useState(getResizeHandleProvider)
   const resizeHandleRef = useRef<ResizeHandleElement>(null)
+
+  useLayoutEffect(() => {
+    if (motionFrameRef.current !== null) {
+      window.cancelAnimationFrame(motionFrameRef.current)
+      motionFrameRef.current = null
+    }
+    if (motionTimerRef.current !== null) {
+      window.clearTimeout(motionTimerRef.current)
+      motionTimerRef.current = null
+    }
+
+    const wasVisible = wasVisibleRef.current
+    wasVisibleRef.current = artifact.visible
+    if (artifact.visible) {
+      setPresent(true)
+      if (!wasVisible) {
+        setMotion("opening")
+        motionFrameRef.current = window.requestAnimationFrame(() => {
+          motionFrameRef.current = null
+          setMotion("open")
+        })
+      } else {
+        setMotion("open")
+      }
+      return
+    }
+
+    if (!wasVisible) {
+      setPresent(false)
+      setMotion("closed")
+      return
+    }
+
+    setMotion("closing")
+    if (prefersReducedMotion || takeover) {
+      setPresent(false)
+      setMotion("closed")
+      return
+    }
+
+    motionTimerRef.current = window.setTimeout(() => {
+      motionTimerRef.current = null
+      setPresent(false)
+      setMotion("closed")
+    }, 180)
+  }, [artifact.visible, prefersReducedMotion, takeover])
+
+  useEffect(() => {
+    onPresentationChange?.(present)
+  }, [onPresentationChange, present])
+
+  useEffect(() => {
+    onResizeStateChange?.(resizing)
+  }, [onResizeStateChange, resizing])
+
+  useEffect(
+    () => () => {
+      if (motionFrameRef.current !== null) {
+        window.cancelAnimationFrame(motionFrameRef.current)
+      }
+      if (motionTimerRef.current !== null) {
+        window.clearTimeout(motionTimerRef.current)
+      }
+    },
+    [],
+  )
 
   const maxWidth = useCallback(() => {
     const panel = panelRef.current
@@ -290,8 +368,16 @@ export function ChatArtifact({
     const onResizeRequest = (event: Event) => {
       setBoundedWidth((event as CustomEvent<ResizeRequestDetail>).detail.value)
     }
+    const onResizeStart = () => setResizing(true)
+    const onResizeEnd = () => setResizing(false)
     handle.addEventListener("resize-request", onResizeRequest)
-    return () => handle.removeEventListener("resize-request", onResizeRequest)
+    handle.addEventListener("resize-start", onResizeStart)
+    handle.addEventListener("resize-end", onResizeEnd)
+    return () => {
+      handle.removeEventListener("resize-request", onResizeRequest)
+      handle.removeEventListener("resize-start", onResizeStart)
+      handle.removeEventListener("resize-end", onResizeEnd)
+    }
   }, [
     artifact.resizable,
     artifact.visible,
@@ -312,8 +398,11 @@ export function ChatArtifact({
       id={panelId}
       className="shiny-chat-artifact"
       aria-labelledby={titleId}
-      hidden={!artifact.visible}
+      aria-hidden={!artifact.visible || undefined}
+      hidden={!present}
       data-takeover={takeover ? "" : undefined}
+      data-motion={motion}
+      data-artifact-resizing={resizing ? "" : undefined}
       style={style}
     >
       {artifact.resizable &&

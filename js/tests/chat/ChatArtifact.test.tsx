@@ -73,6 +73,7 @@ function renderArtifact(
     takeover?: boolean
     onClose?: () => void
     onWidthChange?: (width: string) => void
+    onResizeStateChange?: (resizing: boolean) => void
   } = {},
 ) {
   const closeButtonRef = createRef<HTMLButtonElement>()
@@ -89,6 +90,7 @@ function renderArtifact(
         closeButtonRef={closeButtonRef}
         onClose={onClose}
         onWidthChange={onWidthChange}
+        onResizeStateChange={options.onResizeStateChange}
       />
     </ShinyLifecycleContext.Provider>,
   )
@@ -96,6 +98,62 @@ function renderArtifact(
 }
 
 describe("ChatArtifact", () => {
+  it("retains a closing artifact until its consumer motion completes", () => {
+    vi.useFakeTimers()
+    try {
+      const shiny = lifecycle()
+      const { rerender } = renderArtifact(artifact(), { shiny })
+      const panel = screen.getByRole("complementary")
+
+      rerender(
+        <ShinyLifecycleContext.Provider value={shiny}>
+          <ChatArtifact
+            artifact={artifact({ visible: false })}
+            titleId="artifact-title"
+            takeover={false}
+            closeButtonRef={createRef<HTMLButtonElement>()}
+            onClose={vi.fn()}
+            onWidthChange={vi.fn()}
+          />
+        </ShinyLifecycleContext.Provider>,
+      )
+
+      expect(panel.hidden).toBe(false)
+      expect(panel).toHaveAttribute("data-motion", "closing")
+      expect(panel).toHaveAttribute("aria-hidden", "true")
+
+      act(() => vi.advanceTimersByTime(180))
+      expect(panel.hidden).toBe(true)
+      expect(panel).toHaveAttribute("data-motion", "closed")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("reports resize activity to its layout consumer", async () => {
+    const onResizeStateChange = vi.fn()
+    renderArtifact(artifact(), { onResizeStateChange })
+
+    const separator = screen.getByRole("separator", {
+      name: "Resize artifact panel",
+    })
+    fireEvent(
+      separator,
+      new CustomEvent("resize-start", { bubbles: true, composed: true }),
+    )
+    await waitFor(() =>
+      expect(onResizeStateChange).toHaveBeenLastCalledWith(true),
+    )
+
+    fireEvent(
+      separator,
+      new CustomEvent("resize-end", { bubbles: true, composed: true }),
+    )
+    await waitFor(() =>
+      expect(onResizeStateChange).toHaveBeenLastCalledWith(false),
+    )
+  })
+
   it("adopts preserved initial DOM content while hidden", async () => {
     const source = document.createElement("shiny-chat-artifact")
     const initialChild = document.createElement("input")
