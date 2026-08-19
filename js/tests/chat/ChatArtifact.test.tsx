@@ -335,14 +335,16 @@ describe("ChatArtifact", () => {
       pointerId: 1,
       clientX: 60,
     })
-    expect(onWidthChange).toHaveBeenLastCalledWith("440px")
+    expect(onWidthChange).toHaveBeenLastCalledWith("450px")
     fireEvent.pointerUp(separator, { isPrimary: true, pointerId: 1 })
     expect(screen.getByRole("complementary")).not.toHaveAttribute(
       "data-artifact-resizing",
     )
   })
 
-  it("preserves non-pixel widths until the user resizes the artifact", () => {
+  it("preserves non-pixel widths until the user resizes the artifact", async () => {
+    ResizeObserverStub.reset()
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub)
     const shell = document.createElement("shiny-chat-container")
     Object.defineProperty(shell, "getBoundingClientRect", {
       value: () => ({ width: 1200 }),
@@ -373,6 +375,10 @@ describe("ChatArtifact", () => {
       "32rem",
     )
     expect(onWidthChange).not.toHaveBeenCalled()
+
+    await act(async () => {
+      ResizeObserverStub.resize(shell, 1200)
+    })
 
     const separator = screen.getByRole("separator", {
       name: "Resize artifact panel",

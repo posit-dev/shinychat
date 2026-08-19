@@ -1,6 +1,7 @@
 import {
   useCallback,
   useContext,
+  createElement,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -8,6 +9,11 @@ import {
 } from "react"
 import { ShinyLifecycleContext } from "./context"
 import type { ChatArtifactState } from "./state"
+import {
+  getResizeHandleProvider,
+  type ResizeHandleElement,
+  type ResizeRequestDetail,
+} from "../resize-handle"
 
 const MIN_ARTIFACT_WIDTH = 240
 const MIN_CHAT_WIDTH = 360
@@ -20,14 +26,6 @@ function clampWidth(width: number, maxWidth: number): number {
 function pixelWidth(width: string): number | undefined {
   const match = /^\s*(\d+(?:\.\d+)?)px\s*$/i.exec(width)
   return match ? Number.parseFloat(match[1]!) : undefined
-}
-
-function measuredWidth(width: string, panel: HTMLElement | null): number {
-  const pixels = pixelWidth(width)
-  if (pixels !== undefined) return Math.round(pixels)
-
-  const measured = panel?.getBoundingClientRect().width ?? 0
-  return measured > 0 ? Math.round(measured) : 400
 }
 
 function triggerResize(): void {
@@ -186,7 +184,10 @@ export function ChatArtifact({
   const panelRef = useRef<HTMLElement>(null)
   const [width, setWidth] = useState(() => artifact.width || "400px")
   const [maximumWidth, setMaximumWidth] = useState(840)
-  const [isResizing, setIsResizing] = useState(false)
+  const [renderedWidth, setRenderedWidth] = useState(
+    () => pixelWidth(artifact.width || "400px") ?? 400,
+  )
+  const resizeHandleRef = useRef<ResizeHandleElement>(null)
 
   const maxWidth = useCallback(() => {
     const panel = panelRef.current
@@ -211,8 +212,10 @@ export function ChatArtifact({
     setMaximumWidth(maximum)
     const layout = panel.closest(".shiny-chat-layout")
     const layoutWidth = layout?.getBoundingClientRect().width ?? 0
+    const measured = Math.round(panel.getBoundingClientRect().width)
     const configured = pixelWidth(artifact.width)
     if (configured === undefined) {
+      if (measured > 0) setRenderedWidth(measured)
       setWidth((current) =>
         current === artifact.width ? current : artifact.width,
       )
@@ -229,11 +232,11 @@ export function ChatArtifact({
       return
     }
 
-    const measured = Math.round(panel.getBoundingClientRect().width)
     if (measured <= 0) return
 
     const bounded = clampWidth(Math.max(measured, configured ?? 0), maximum)
     setWidth(`${bounded}px`)
+    setRenderedWidth(bounded)
     if (
       bounded !== measured ||
       (configured !== undefined && bounded !== configured)
@@ -256,88 +259,46 @@ export function ChatArtifact({
     return () => observer.disconnect()
   }, [measureAndClampWidth])
 
-  const currentWidth = measuredWidth(width, panelRef.current)
+  const currentWidth = pixelWidth(width) ?? renderedWidth
 
   const setBoundedWidth = useCallback(
     (next: number) => {
       const bounded = clampWidth(next, maxWidth())
       setWidth(`${bounded}px`)
+      setRenderedWidth(bounded)
       onWidthChange(`${bounded}px`)
     },
     [maxWidth, onWidthChange],
   )
 
-  const onResizeKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLDivElement>) => {
-      const step = event.shiftKey ? 50 : 10
-      switch (event.key) {
-        case "ArrowLeft":
-          event.preventDefault()
-          setBoundedWidth(currentWidth - step)
-          break
-        case "ArrowRight":
-          event.preventDefault()
-          setBoundedWidth(currentWidth + step)
-          break
-        case "Home":
-          event.preventDefault()
-          setBoundedWidth(MIN_ARTIFACT_WIDTH)
-          break
-        case "End":
-          event.preventDefault()
-          setBoundedWidth(maxWidth())
-          break
-      }
-    },
-    [currentWidth, maxWidth, setBoundedWidth],
-  )
+  useLayoutEffect(() => {
+    const handle = resizeHandleRef.current
+    if (!handle) return
 
-  const onResizePointerDown = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      if (
-        (event.button !== undefined && event.button !== 0) ||
-        event.isPrimary === false
-      ) {
-        return
-      }
-      event.preventDefault()
-      const handle = event.currentTarget
-      const startingWidth = panelRef.current?.getBoundingClientRect().width
-      if (!startingWidth) return
-
-      handle.setPointerCapture?.(event.pointerId)
-      const startX = event.clientX
-      setIsResizing(true)
-      const move = (moveEvent: PointerEvent) => {
-        // The resize handle is on the artifact's left edge: moving left grows
-        // the panel in LTR. The logical inline-start edge is on the right in
-        // RTL, so the pointer delta has the opposite effect there.
-        const direction = window.getComputedStyle(
-          handle.parentElement!,
-        ).direction
-        const delta = moveEvent.clientX - startX
-        setBoundedWidth(
-          direction === "rtl" ? startingWidth + delta : startingWidth - delta,
-        )
-      }
-      const finish = () => {
-        handle.removeEventListener("pointermove", move)
-        handle.removeEventListener("pointerup", finish)
-        handle.removeEventListener("pointercancel", finish)
-        if (handle.hasPointerCapture?.(event.pointerId)) {
-          handle.releasePointerCapture?.(event.pointerId)
-        }
-        setIsResizing(false)
-      }
-
-      handle.addEventListener("pointermove", move)
-      handle.addEventListener("pointerup", finish)
-      handle.addEventListener("pointercancel", finish)
-    },
-    [setBoundedWidth],
-  )
+    handle.configure({
+      value: currentWidth,
+      min: MIN_ARTIFACT_WIDTH,
+      max: maximumWidth,
+      panelSide: "inline-start",
+      disabled: !artifact.resizable || takeover || !artifact.visible,
+      label: "Resize artifact panel",
+    })
+    const onResizeRequest = (event: Event) => {
+      setBoundedWidth((event as CustomEvent<ResizeRequestDetail>).detail.value)
+    }
+    handle.addEventListener("resize-request", onResizeRequest)
+    return () => handle.removeEventListener("resize-request", onResizeRequest)
+  }, [
+    artifact.resizable,
+    artifact.visible,
+    currentWidth,
+    maximumWidth,
+    setBoundedWidth,
+    takeover,
+  ])
 
   const title = artifact.title || "Artifact"
+  const resizeHandleProvider = getResizeHandleProvider()
   const style = {
     "--shiny-chat-artifact-width": width,
   } as React.CSSProperties
@@ -350,27 +311,15 @@ export function ChatArtifact({
       aria-labelledby={titleId}
       hidden={!artifact.visible}
       data-takeover={takeover ? "" : undefined}
-      data-artifact-resizing={isResizing ? "" : undefined}
       style={style}
     >
-      {artifact.resizable && !takeover && (
-        <div
-          className="shiny-chat-artifact-resizer"
-          role="separator"
-          aria-label="Resize artifact panel"
-          aria-keyshortcuts="ArrowLeft ArrowRight Home End"
-          aria-orientation="vertical"
-          aria-valuemin={MIN_ARTIFACT_WIDTH}
-          aria-valuemax={Math.round(maximumWidth)}
-          aria-valuenow={currentWidth}
-          aria-valuetext={`${currentWidth} pixels`}
-          tabIndex={0}
-          onKeyDown={onResizeKeyDown}
-          onPointerDown={onResizePointerDown}
-        >
-          <div className="shiny-chat-artifact-resize-indicator" />
-        </div>
-      )}
+      {artifact.resizable &&
+        !takeover &&
+        createElement(resizeHandleProvider.tagName, {
+          ref: resizeHandleRef,
+          className: "shiny-chat-artifact-resizer",
+          "data-shiny-chat-resize-handle-provider": resizeHandleProvider.name,
+        })}
       <div className="shiny-chat-artifact-header">
         <h2 id={titleId}>{title}</h2>
         <button

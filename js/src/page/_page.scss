@@ -1,5 +1,3 @@
-@use "../resize-handle" as resize;
-
 shiny-chat-page {
   --_page-header-height: var(--bs-navbar-height, 3.5rem);
   --_page-header-padding-x: var(--bs-navbar-padding-x, 0.75rem);
@@ -222,16 +220,6 @@ button.shiny-chat-page-identity:focus-visible,
 .shiny-chat-page-sidebar-resizer {
   left: var(--shiny-chat-page-sidebar-rendered-width, var(--_page-sidebar-width));
 }
-
-.shiny-chat-page-sidebar-resize-indicator {
-  left: 0;
-}
-
-@include resize.vertical-resize-handle(
-  ".shiny-chat-page-sidebar-resizer",
-  ".shiny-chat-page-sidebar-resize-indicator",
-  "shiny-chat-page[data-sidebar-resizing]"
-);
 
 @media (min-width: 800px) {
   .shiny-chat-page-sidebar {

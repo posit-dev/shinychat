@@ -258,7 +258,7 @@ export const ChatContainer = forwardRef<
     })
     observer.observe(layout)
     return () => observer.disconnect()
-  }, [artifact.enabled])
+  }, [artifact.enabled, artifact.visible])
 
   useLayoutEffect(() => {
     const wasVisible = priorArtifactVisibleRef.current

@@ -958,7 +958,7 @@ describe("shiny-chat-page sidebar resizing", () => {
     )
 
     navButtons[1]!.click()
-    expect(page.hasAttribute("data-sidebar-resizing")).toBe(false)
+    expect(resizer).not.toHaveAttribute("data-resizing")
     fireEvent.pointerMove(resizer!, { pointerId: 1, clientX: 500 })
     expect(page.style.getPropertyValue("--shiny-chat-page-sidebar-width")).toBe(
       "24rem",
@@ -975,11 +975,11 @@ describe("shiny-chat-page sidebar resizing", () => {
       button: 0,
       isPrimary: true,
     })
-    expect(page.dataset.sidebarResizing).toBe("true")
+    expect(resizer).toHaveAttribute("data-resizing")
 
     fireEvent.lostPointerCapture(resizer!, { pointerId: 1 })
 
-    expect(page.hasAttribute("data-sidebar-resizing")).toBe(false)
+    expect(resizer).not.toHaveAttribute("data-resizing")
     fireEvent.pointerMove(resizer!, { pointerId: 1, clientX: 500 })
     expect(page.style.getPropertyValue("--shiny-chat-page-sidebar-width")).toBe(
       "20rem",

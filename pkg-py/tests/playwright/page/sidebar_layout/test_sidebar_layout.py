@@ -2,6 +2,23 @@ from playwright.sync_api import Page, expect
 from shiny.run import ShinyAppProc
 
 
+def test_sidebar_resizer_uses_a_coarse_pointer_hit_target(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    session = page.context.new_cdp_session(page)
+    session.send(
+        "Emulation.setTouchEmulationEnabled",
+        {"enabled": True, "maxTouchPoints": 1},
+    )
+    page.set_viewport_size({"width": 800, "height": 700})
+    page.goto(local_app.url)
+
+    resizer = page.get_by_role("separator", name="Resize sidebar")
+    expect(resizer).to_be_visible(timeout=30_000)
+    expect(resizer).to_have_css("width", "26px")
+
+
 def test_sidebar_clamps_to_page_and_supports_touch_drag(
     page: Page,
     local_app: ShinyAppProc,

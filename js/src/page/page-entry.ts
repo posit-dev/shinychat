@@ -1,4 +1,9 @@
 import { getHistoryStore } from "../chat/historyStore"
+import {
+  createResizeHandle,
+  type ResizeHandleElement,
+  type ResizeRequestDetail,
+} from "../resize-handle"
 
 export const PAGE_MOBILE_MEDIA_QUERY = "(max-width: 799px)"
 
@@ -100,7 +105,7 @@ class ChatPageElement extends HTMLElement {
   private body: HTMLElement | null = null
   private aside: HTMLElement | null = null
   private closeButton: HTMLButtonElement | null = null
-  private resizeHandle: HTMLElement | null = null
+  private resizeHandle: ResizeHandleElement | null = null
   private sections: HTMLElement[] = []
   private navButtons: HTMLButtonElement[] = []
   private sidebarPanels: HTMLElement[] = []
@@ -108,10 +113,7 @@ class ChatPageElement extends HTMLElement {
   private scrim: HTMLElement | null = null
   private historyUnsubscribe: (() => void) | null = null
   private historyAutoDecided = false
-  private resizePointerId: number | null = null
-  private resizeSidebarKey: string | null = null
-  private resizeStartX = 0
-  private resizeStartWidth = 0
+  private resizingSidebarKey: string | null = null
 
   connectedCallback() {
     if (this.initialized) return
@@ -132,7 +134,6 @@ class ChatPageElement extends HTMLElement {
   disconnectedCallback() {
     this.historyUnsubscribe?.()
     this.historyUnsubscribe = null
-    this.finishSidebarResize()
     this.cleanupListeners.splice(0).forEach((cleanup) => cleanup())
     this.closeMobileMenu(false)
     this.removeScrim()
@@ -299,23 +300,16 @@ class ChatPageElement extends HTMLElement {
     )
 
     if (this.resizeHandle) {
-      this.listen(this.resizeHandle, "pointerdown", (event) => {
-        this.onResizePointerDown(event as PointerEvent)
+      this.listen(this.resizeHandle, "resize-request", (event) => {
+        this.setSidebarWidth(
+          (event as CustomEvent<ResizeRequestDetail>).detail.value,
+        )
       })
-      this.listen(this.resizeHandle, "pointermove", (event) => {
-        this.onResizePointerMove(event as PointerEvent)
+      this.listen(this.resizeHandle, "resize-start", () => {
+        this.resizingSidebarKey = this.activeSidebarState()?.key ?? null
       })
-      this.listen(this.resizeHandle, "pointerup", (event) => {
-        this.onResizePointerEnd(event as PointerEvent)
-      })
-      this.listen(this.resizeHandle, "pointercancel", (event) => {
-        this.onResizePointerEnd(event as PointerEvent)
-      })
-      this.listen(this.resizeHandle, "lostpointercapture", (event) => {
-        this.onResizePointerEnd(event as PointerEvent)
-      })
-      this.listen(this.resizeHandle, "keydown", (event) => {
-        this.onResizeKeyDown(event as KeyboardEvent)
+      this.listen(this.resizeHandle, "resize-end", () => {
+        this.resizingSidebarKey = null
       })
     }
 
@@ -387,8 +381,7 @@ class ChatPageElement extends HTMLElement {
       (section) => section.dataset.pageValue === value,
     )
     if (!selected) return false
-    this.finishSidebarResize()
-
+    this.cancelSidebarResize()
     this.sections.forEach((section) => {
       section.hidden = section !== selected
     })
@@ -527,32 +520,18 @@ class ChatPageElement extends HTMLElement {
     this.historyUnsubscribe = null
   }
 
-  private captureResizeHandle() {
+  private captureResizeHandle(): ResizeHandleElement | null {
     if (!this.body) return null
 
     const existing = Array.from(
-      this.body.querySelectorAll<HTMLElement>(
+      this.body.querySelectorAll<ResizeHandleElement>(
         ":scope > .shiny-chat-page-sidebar-resizer",
       ),
     )
-    const handle = existing.shift() ?? document.createElement("div")
+    const handle = existing.shift() ?? createResizeHandle()
     existing.forEach((duplicate) => duplicate.remove())
 
     handle.className = "shiny-chat-page-sidebar-resizer"
-    handle.setAttribute("role", "separator")
-    handle.setAttribute("aria-label", "Resize sidebar")
-    handle.setAttribute("aria-orientation", "vertical")
-    handle.setAttribute("aria-keyshortcuts", "ArrowLeft ArrowRight Home End")
-    handle.title = "Drag to resize sidebar"
-    handle.replaceChildren()
-
-    const indicator = document.createElement("div")
-    indicator.className = "shiny-chat-page-sidebar-resize-indicator"
-    const instructions = document.createElement("div")
-    instructions.className = "visually-hidden"
-    instructions.textContent =
-      "Use arrow keys to resize the sidebar, Shift for larger steps, Home or End for minimum or maximum width."
-    handle.append(indicator, instructions)
     if (!handle.isConnected) this.body.append(handle)
     return handle
   }
@@ -574,28 +553,32 @@ class ChatPageElement extends HTMLElement {
 
     this.resizeHandle.hidden = !enabled
     this.resizeHandle.setAttribute("aria-hidden", enabled ? "false" : "true")
+    const maximum = this.maximumSidebarWidth()
+    const width = Math.round(
+      Math.min(
+        Math.max(
+          renderedWidth ?? this.currentSidebarWidth(),
+          MIN_SIDEBAR_WIDTH,
+        ),
+        maximum,
+      ),
+    )
+    this.resizeHandle.configure({
+      value: width,
+      min: MIN_SIDEBAR_WIDTH,
+      max: maximum,
+      panelSide: "inline-end",
+      disabled: !enabled,
+      label: "Resize sidebar",
+    })
     if (!enabled) {
-      this.resizeHandle.removeAttribute("tabindex")
-      this.finishSidebarResize()
       return
     }
 
-    const width = Math.round(renderedWidth ?? this.currentSidebarWidth())
     this.style.setProperty(
       "--shiny-chat-page-sidebar-rendered-width",
       `${width}px`,
     )
-    this.resizeHandle.tabIndex = 0
-    this.resizeHandle.setAttribute(
-      "aria-valuemin",
-      MIN_SIDEBAR_WIDTH.toString(),
-    )
-    this.resizeHandle.setAttribute(
-      "aria-valuemax",
-      this.maximumSidebarWidth().toString(),
-    )
-    this.resizeHandle.setAttribute("aria-valuenow", width.toString())
-    this.resizeHandle.setAttribute("aria-valuetext", `${width} pixels`)
   }
 
   private currentSidebarWidth() {
@@ -629,82 +612,17 @@ class ChatPageElement extends HTMLElement {
     window.dispatchEvent(new Event("resize"))
   }
 
-  private onResizePointerDown(event: PointerEvent) {
-    const state = this.activeSidebarState()
-    if (
-      this.mobile ||
-      !state?.open ||
-      !state.resizable ||
-      !this.resizeHandle ||
-      this.resizePointerId !== null ||
-      event.button !== 0 ||
-      event.isPrimary === false
-    ) {
-      return
-    }
+  private cancelSidebarResize() {
+    if (!this.resizeHandle || !this.resizingSidebarKey) return
 
-    event.preventDefault()
-    this.resizePointerId = event.pointerId
-    this.resizeSidebarKey = state.key
-    this.resizeStartX = event.clientX
-    this.resizeStartWidth = this.currentSidebarWidth()
-    this.dataset.sidebarResizing = "true"
-    this.resizeHandle.setPointerCapture?.(event.pointerId)
-  }
-
-  private onResizePointerMove(event: PointerEvent) {
-    if (event.pointerId !== this.resizePointerId) return
-    if (this.activeSidebarState()?.key !== this.resizeSidebarKey) {
-      this.finishSidebarResize()
-      return
-    }
-    event.preventDefault()
-    this.setSidebarWidth(
-      this.resizeStartWidth + (event.clientX - this.resizeStartX),
-    )
-  }
-
-  private onResizePointerEnd(event: PointerEvent) {
-    if (event.pointerId !== this.resizePointerId) return
-    this.finishSidebarResize()
-  }
-
-  private finishSidebarResize() {
-    if (this.resizePointerId === null) return
-    const pointerId = this.resizePointerId
-    this.resizePointerId = null
-    this.resizeSidebarKey = null
-    if (this.resizeHandle?.hasPointerCapture?.(pointerId)) {
-      this.resizeHandle.releasePointerCapture(pointerId)
-    }
-    delete this.dataset.sidebarResizing
-  }
-
-  private onResizeKeyDown(event: KeyboardEvent) {
-    const state = this.activeSidebarState()
-    if (this.mobile || !state?.open || !state.resizable) return
-
-    const step = event.shiftKey ? 50 : 10
-    let width = this.currentSidebarWidth()
-    switch (event.key) {
-      case "ArrowLeft":
-        width -= step
-        break
-      case "ArrowRight":
-        width += step
-        break
-      case "Home":
-        width = MIN_SIDEBAR_WIDTH
-        break
-      case "End":
-        width = this.maximumSidebarWidth()
-        break
-      default:
-        return
-    }
-
-    event.preventDefault()
-    this.setSidebarWidth(width)
+    this.resizeHandle.configure({
+      value: this.currentSidebarWidth(),
+      min: MIN_SIDEBAR_WIDTH,
+      max: this.maximumSidebarWidth(),
+      panelSide: "inline-end",
+      disabled: true,
+      label: "Resize sidebar",
+    })
   }
 
   private openMobileMenu() {

@@ -152,7 +152,7 @@ def test_artifact_desktop_resize_semantics_focus_and_signaling(
     )
 
     separator.press("ArrowLeft")
-    keyboard_width = initial_width - 16
+    keyboard_width = initial_width - 10
     expect(separator).to_have_attribute("aria-valuenow", str(keyboard_width))
 
     separator.evaluate(
@@ -220,11 +220,11 @@ def test_artifact_takeover_focus_and_close(
     panel = page.get_by_role("complementary")
     expect(panel).to_be_visible(timeout=TIMEOUT)
     expect(chat.loc.locator(".shiny-chat-wrapper")).to_be_hidden()
-    back = page.get_by_role("button", name="Back to chat")
-    expect(back).to_be_visible()
-    expect(back).to_be_focused()
+    close = page.get_by_role("button", name="Close artifact")
+    expect(close).to_be_visible()
+    expect(close).to_be_focused()
 
-    back.click()
+    close.click()
     expect(panel).to_be_hidden(timeout=TIMEOUT)
     expect(chat.loc.locator(".shiny-chat-wrapper")).to_be_visible()
     expect(input_loc).to_be_focused()
