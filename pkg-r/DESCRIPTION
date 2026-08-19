@@ -21,7 +21,7 @@ URL: https://posit-dev.github.io/shinychat/r/,
 BugReports: https://github.com/posit-dev/shinychat/issues
 Imports:
     base64enc,
-    bslib,
+    bslib (>= 0.10.0),
     cli,
     coro,
     ellmer (>= 0.4.1),
