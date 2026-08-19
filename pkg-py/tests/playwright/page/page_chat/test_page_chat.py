@@ -136,6 +136,7 @@ def test_mobile_moves_controls_and_manages_dialog_focus(
     expect(shell).to_have_attribute("data-active-page", "about")
     expect(shell).not_to_have_attribute("data-mobile-menu-open", "true")
     expect(toggle).to_be_focused()
+    expect(toggle).not_to_be_disabled()
 
     # A page without a sidebar still retains the mobile app menu because it
     # owns navigation and toolbar controls.
@@ -147,6 +148,15 @@ def test_mobile_moves_controls_and_manages_dialog_focus(
     )
     expect(shell).not_to_have_attribute("data-mobile-menu-open", "true")
     expect(toggle).to_be_focused()
+
+    toggle.click()
+    shell.get_by_role("button", name="Pinned").click()
+    expect(shell).to_have_attribute("data-active-page", "pinned")
+    expect(toggle).not_to_be_disabled()
+    expect(toggle).to_have_attribute("aria-expanded", "false")
+    toggle.click()
+    expect(shell).to_have_attribute("data-mobile-menu-open", "true")
+    expect(toggle).to_have_attribute("aria-expanded", "true")
 
 
 def test_reduced_motion_disables_mobile_sidebar_transition(

@@ -96,6 +96,15 @@ def app_ui(request: object) -> ui.Tag:
                 value="about",
                 sidebar=False,
             ),
+            chat_nav_panel(
+                "Pinned",
+                ui.div("Pinned page content", id="pinned_page"),
+                value="pinned",
+                sidebar=chat_sidebar(
+                    ui.div("Pinned sidebar content", id="pinned_sidebar"),
+                    open="always",
+                ),
+            ),
         ],
         toolbar=ui.input_text(
             "toolbar_value",

@@ -479,12 +479,14 @@ class ChatPageElement extends HTMLElement {
   private updateToggleState() {
     if (!this.toggle) return
     const state = this.activeSidebarState()
-    const open = Boolean(state?.open)
-    const mobileHomeMenu = this.mobile && this.dataset.activePage === "home"
+    const open = this.mobile
+      ? this.hasAttribute("data-mobile-menu-open")
+      : Boolean(state?.open)
+    const toggleHidden = !this.mobile && (!state || state.openMode === "always")
     const toggleDisabled =
-      state?.openMode === "always" || (!state && !mobileHomeMenu)
+      !this.mobile && (state?.openMode === "always" || !state)
 
-    this.toggle.hidden = false
+    this.toggle.hidden = toggleHidden
     this.toggle.disabled = toggleDisabled
     this.toggle.setAttribute("aria-disabled", toggleDisabled ? "true" : "false")
     this.toggle.setAttribute("aria-expanded", open ? "true" : "false")
