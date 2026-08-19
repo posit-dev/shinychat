@@ -171,15 +171,15 @@ htmltools or Shiny UI content, including Shiny inputs and outputs.
 On narrow screens, the same navigation and toolbar controls move into the app
 menu above the active page's sidebar content. The controls are moved rather
 than duplicated, so Shiny IDs and control state stay unique. The [paired
-runnable examples](https://github.com/posit-dev/shinychat/tree/main/pkg-py/src/shinychat/examples)
+runnable examples](https://github.com/posit-dev/shinychat/tree/main/pkg-py/src/shinychat/examples/page_chat)
 are installed with the package and require no credentials. Run the navigation
 example with:
 
 ```sh
-shiny run shinychat.examples.navigation:app
+shiny run shinychat.examples.page_chat.navigation:app
 ```
 
-Replace `navigation` with `artifact_controls` to run the artifact-controls
+Replace `navigation` with `artifact_control` to run the artifact-controls
 example.
 
 The same composition helpers work with Shiny Express. Keep `page_chat()` as the
