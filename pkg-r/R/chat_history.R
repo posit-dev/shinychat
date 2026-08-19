@@ -361,8 +361,8 @@ HistoryController <- R6::R6Class(
         tools = private$client$get_tools()
       )
       self$record$values <- private$capture_app_state()
-      self$put_record(self$partition, self$record)
       self$ui_offset <- length(messages)
+      self$put_record(self$partition, self$record)
       TRUE
     },
 
