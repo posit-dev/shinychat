@@ -934,6 +934,7 @@ def _render_page_chat(
             if page.toolbar_key is not None and page.toolbar_key != "home"
         ),
         class_="shiny-chat-page-toolbar-sources",
+        hidden=True,
     )
 
     shell = Tag(

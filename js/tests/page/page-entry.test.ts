@@ -293,7 +293,7 @@ function pageFixture({
         }
       </main>
     </div>
-    <div class="shiny-chat-page-toolbar-sources">
+    <div class="shiny-chat-page-toolbar-sources" hidden>
       <div class="shiny-chat-page-toolbar-source" data-page-toolbar-source="home">
         <div class="shiny-chat-page-toolbar-content">
           <input id="shiny-toolbar-input" value="initial">
@@ -472,11 +472,22 @@ describe("shiny-chat-page navigation", () => {
     const customInput = page.querySelector<HTMLInputElement>(
       "#custom-toolbar-input",
     )!
+    const toolbarSources = page.querySelector<HTMLElement>(
+      ".shiny-chat-page-toolbar-sources",
+    )!
 
     homeInput.value = "home state"
     navButtons[0]!.click()
     expect(toolbar.querySelector("#shiny-toolbar-input")).toBe(homeInput)
     expect(page.querySelectorAll("#shiny-toolbar-input")).toHaveLength(1)
+    expect(toolbarSources.hidden).toBe(true)
+    expect(
+      Array.from(
+        page.querySelectorAll<HTMLElement>(".shiny-chat-page-toolbar-content"),
+      ).filter(
+        (content) => !content.closest(".shiny-chat-page-toolbar-sources"),
+      ),
+    ).toHaveLength(1)
 
     navButtons[1]!.click()
     expect(toolbar.querySelector("#custom-toolbar-input")).toBe(customInput)
@@ -492,6 +503,13 @@ describe("shiny-chat-page navigation", () => {
     expect(
       page.querySelectorAll(".shiny-chat-page-toolbar-content"),
     ).toHaveLength(2)
+    expect(
+      Array.from(
+        page.querySelectorAll<HTMLElement>(".shiny-chat-page-toolbar-content"),
+      ).filter(
+        (content) => !content.closest(".shiny-chat-page-toolbar-sources"),
+      ),
+    ).toHaveLength(1)
   })
 
   it("synchronizes home, default, custom, and absent sidebar metadata", () => {
@@ -587,6 +605,11 @@ describe("shiny-chat-page responsive controls", () => {
     expect(controls.parentElement).toBe(mobileMount)
     expect(page.querySelector("#shiny-toolbar-input")).toBe(shinyInput)
     expect(shinyInput.value).toBe("live Shiny state")
+    expect(
+      page.querySelectorAll(
+        ".shiny-chat-page-toolbar:not(.shiny-chat-page-toolbar-sources) #shiny-toolbar-input",
+      ),
+    ).toHaveLength(1)
     expect(
       page.querySelector<HTMLButtonElement>(".shiny-chat-page-sidebar-close")!
         .hidden,

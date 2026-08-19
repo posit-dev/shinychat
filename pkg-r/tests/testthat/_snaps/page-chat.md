@@ -173,7 +173,7 @@
               </section>
             </main>
           </div>
-          <div class="shiny-chat-page-toolbar-sources">
+          <div class="shiny-chat-page-toolbar-sources" hidden>
             <div class="shiny-chat-page-toolbar-source" data-page-toolbar-source="home">
               <div class="shiny-chat-page-toolbar-content"></div>
             </div>

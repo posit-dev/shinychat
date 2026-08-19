@@ -402,7 +402,8 @@ def test_page_chat_normalizes_navigation_toolbar_and_sidebars() -> None:
     assert 'hidden=""' not in sidebar_panels["home"]
     assert 'hidden=""' in sidebar_panels["default"]
     assert 'hidden=""' in sidebar_panels["page-2"]
-    assert html.count('hidden=""') == 5
+    assert html.count('hidden=""') == 6
+    assert '<div class="shiny-chat-page-toolbar-sources" hidden="">' in html
     assert 'data-page-title="Settings"' in html
     assert "About content" in html
     assert "Settings content" in html

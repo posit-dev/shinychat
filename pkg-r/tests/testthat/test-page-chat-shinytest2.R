@@ -33,8 +33,10 @@ test_that("page_chat navigation and sidebars work in a real Shiny app", {
         "    '.shiny-chat-page-toolbar input')?.id,",
         "  toolbarValue: root?.querySelector(",
         "    '.shiny-chat-page-toolbar input')?.value,",
-        "  toolbarContentCount: root?.querySelectorAll(",
-        "    '.shiny-chat-page-toolbar-content')?.length",
+        "  visibleToolbarContentCount: root?.querySelectorAll(",
+        "    '.shiny-chat-page-toolbar > .shiny-chat-page-toolbar-content')?.length,",
+        "  toolbarSourceHidden: root?.querySelector(",
+        "    '.shiny-chat-page-toolbar-sources')?.hidden",
         "});",
         "})()",
         sep = "\n"
@@ -58,7 +60,8 @@ test_that("page_chat navigation and sidebars work in a real Shiny app", {
   expect_equal(initial$visiblePanels, 1)
   expect_match(initial$controls, "mount-desktop", fixed = TRUE)
   expect_identical(initial$toolbarInput, "home_toolbar")
-  expect_equal(initial$toolbarContentCount, 2)
+  expect_equal(initial$visibleToolbarContentCount, 1)
+  expect_true(initial$toolbarSourceHidden)
   app$run_js(
     "document.querySelector('#home_toolbar').value = 'home toolbar state';"
   )
@@ -75,6 +78,7 @@ test_that("page_chat navigation and sidebars work in a real Shiny app", {
   expect_identical(settings$toggleExpanded, "false")
   expect_equal(settings$visiblePanels, 1)
   expect_identical(settings$toolbarInput, "settings_toolbar")
+  expect_equal(settings$visibleToolbarContentCount, 1)
   app$run_js(
     "document.querySelector('#settings_toolbar').value = 'settings toolbar state';"
   )
@@ -102,6 +106,7 @@ test_that("page_chat navigation and sidebars work in a real Shiny app", {
   expect_null(about$sidebarOpen)
   expect_equal(about$visiblePanels, 1)
   expect_identical(about$toolbarInput, "home_toolbar")
+  expect_equal(about$visibleToolbarContentCount, 1)
 
   app$click(selector = "button[data-page-home]")
   app$wait_for_idle(timeout = 30 * 1000)
@@ -112,11 +117,13 @@ test_that("page_chat navigation and sidebars work in a real Shiny app", {
   expect_identical(home$sidebarOpen, "open")
   expect_identical(home$toolbarInput, "home_toolbar")
   expect_identical(home$toolbarValue, "home toolbar state")
+  expect_equal(home$visibleToolbarContentCount, 1)
 
   app$click(selector = "button[data-page-target='empty']")
   app$wait_for_idle(timeout = 30 * 1000)
   empty <- page_state()
   expect_identical(empty$toolbarInput, NULL)
+  expect_equal(empty$visibleToolbarContentCount, 0)
   expect_equal(
     app$get_js("document.querySelectorAll('#home_toolbar').length"),
     1
@@ -131,6 +138,7 @@ test_that("page_chat navigation and sidebars work in a real Shiny app", {
   settings_return <- page_state()
   expect_identical(settings_return$toolbarInput, "settings_toolbar")
   expect_identical(settings_return$toolbarValue, "settings toolbar state")
+  expect_equal(settings_return$visibleToolbarContentCount, 1)
 
   app$set_window_size(700, 900)
   app$wait_for_idle(timeout = 30 * 1000)

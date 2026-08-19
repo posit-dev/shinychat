@@ -374,6 +374,7 @@ page_chat <- function(
   )
   toolbar_sources <- htmltools::tags$div(
     class = "shiny-chat-page-toolbar-sources",
+    hidden = NA,
     page_chat_toolbar_source("home", toolbar),
     lapply(
       normalized$pages,
