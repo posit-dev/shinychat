@@ -29,15 +29,13 @@ response and when the user switches conversations. Multiple callbacks may
 be registered; they are called in registration order.}
 
 \item{on_restore}{An optional \verb{function(values)} called when a conversation
-is loaded — on page-load restore and on in-session switches. Use it to
-sync auxiliary UI state (tabs, model selectors, etc.) to match the restored
-conversation. Call the appropriate \code{updateXxx()} functions here. Receives
-the \code{values} list captured by \code{on_save}. Multiple callbacks may be
-registered; they are called in registration order.
-
-\strong{Note:} This callback does not fire when \code{restore_mode = "bookmark"}.
-In that mode Shiny's native bookmark restore cycle handles app state;
-use \code{session$onRestore()} directly if needed.}
+is loaded — after it becomes active, on page-load restore and on in-session
+switches. Use it to sync auxiliary UI state (tabs, model selectors, etc.)
+to match the restored conversation. Call the appropriate \code{updateXxx()}
+functions here. Receives the \code{values} list captured by \code{on_save}. Multiple
+callbacks may be registered; they are called in registration order. In
+\code{restore_mode = "bookmark"}, this callback also runs while Shiny restores
+native bookmarked inputs.}
 
 \item{options}{A \code{\link[=history_options]{history_options()}} object controlling storage, identity,
 titling, and restore behaviour.}

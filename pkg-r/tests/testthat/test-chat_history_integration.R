@@ -1508,6 +1508,58 @@ test_that("init waits for browser token when session$user is set (browser restor
   })
 })
 
+test_that("bookmark startup restores history state after activating conversation", {
+  skip_if_not_installed("ellmer")
+
+  old_bookmark_store <- shiny::getShinyOption("bookmarkStore", NULL)
+  withr::defer(shiny::shinyOptions(bookmarkStore = old_bookmark_store))
+
+  client <- mock_chat_client()
+  session <- shiny::MockShinySession$new()
+  store <- InMemoryConversationStore$new()
+  record <- new_conversation_record("Prior conversation")
+  record$values <- list(marker = "from-history")
+  store$put(
+    conversation_partition(session$ns("chat"), "test-user"),
+    record
+  )
+  session$restoreContext <- list(
+    active = TRUE,
+    values = list(chat_history_conversation_id = record$id)
+  )
+
+  restored_marker <- NULL
+  observed_id <- NULL
+  server <- function(input, output, session) {
+    shiny::shinyOptions(bookmarkStore = "server")
+    chat_enable_history(
+      "chat",
+      client,
+      on_restore = function(values) {
+        restored_marker <<- values$marker
+        ctrl <- get_session_chat_bookmark_info(
+          session,
+          "chat.history-controller"
+        )
+        observed_id <<- ctrl$record$id
+      },
+      options = history_options(
+        restore_mode = "bookmark",
+        store = store,
+        scope = "test-user",
+        title = NULL
+      )
+    )
+  }
+
+  shiny::testServer(server, session = session, {
+    session$flushReact()
+
+    expect_identical(restored_marker, "from-history")
+    expect_identical(observed_id, record$id)
+  })
+})
+
 test_that("set_client() does not re-render the UI or double-fire on_restore (regression)", {
   # Regression: chat_enable_history() was re-run from scratch on every
   # set_client() swap, spinning up a fresh controller/init effect with no
