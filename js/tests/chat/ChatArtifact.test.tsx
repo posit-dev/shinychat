@@ -447,6 +447,47 @@ describe("ChatArtifact", () => {
     expect(onWidthChange).toHaveBeenLastCalledWith("640px")
   })
 
+  it("bounds an oversized percentage grid track without applying it twice", async () => {
+    ResizeObserverStub.reset()
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub)
+    const shell = document.createElement("shiny-chat-container")
+    const layout = document.createElement("div")
+    layout.className = "shiny-chat-layout"
+    shell.append(layout)
+    document.body.append(shell)
+    Object.defineProperty(shell, "getBoundingClientRect", {
+      value: () => ({ width: 1000 }),
+    })
+    const onWidthChange = vi.fn()
+
+    render(
+      <ShinyLifecycleContext.Provider value={lifecycle()}>
+        <ChatArtifact
+          artifact={artifact({ width: "70%" })}
+          titleId="artifact-title"
+          takeover={false}
+          closeButtonRef={createRef<HTMLButtonElement>()}
+          onClose={vi.fn()}
+          onWidthChange={onWidthChange}
+        />
+      </ShinyLifecycleContext.Provider>,
+      { container: layout },
+    )
+
+    const panel = screen.getByRole("complementary")
+    Object.defineProperty(panel, "getBoundingClientRect", {
+      value: () => ({ width: 700 }),
+    })
+    await act(async () => {
+      ResizeObserverStub.resize(shell, 1000)
+    })
+
+    expect(onWidthChange).toHaveBeenLastCalledWith("640px")
+    expect(panel.style.getPropertyValue("--shiny-chat-artifact-width")).toBe(
+      "640px",
+    )
+  })
+
   it("resizes from the logical inline-start edge in RTL", () => {
     const shell = document.createElement("shiny-chat-container")
     Object.defineProperty(shell, "getBoundingClientRect", {
