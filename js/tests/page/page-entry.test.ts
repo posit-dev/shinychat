@@ -1069,14 +1069,16 @@ describe("shiny-chat-page sidebar resizing", () => {
     ).toBe("360px")
   })
 
-  it("ignores lifecycle mutations inside a fit-content measurement clone", async () => {
+  it("ignores lifecycle text mutations inside a fit-content measurement clone", async () => {
     const tagName = "shiny-chat-sidebar-measurement-test"
     if (!customElements.get(tagName)) {
       customElements.define(
         tagName,
         class extends HTMLElement {
           connectedCallback() {
-            this.append(document.createElement("span"))
+            const text = document.createTextNode("loading")
+            this.append(text)
+            text.data = "ready"
           }
         },
       )

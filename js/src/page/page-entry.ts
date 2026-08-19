@@ -357,13 +357,16 @@ class ChatPageElement extends HTMLElement {
     // The outer box does not change when asynchronous sidebar output grows.
     // Observe content mutations so fit-content can refresh its intrinsic width.
     const mutations = new MutationObserver((records) => {
-      const hasContentChange = records.some(
-        (record) =>
-          !(
-            record.target instanceof Element &&
-            record.target.closest("[data-shiny-chat-sidebar-measurement]") !==
-              null
-          ) &&
+      const hasContentChange = records.some((record) => {
+        const target =
+          record.target instanceof Element
+            ? record.target
+            : record.target.parentElement
+        const insideMeasurement =
+          target !== null &&
+          target.closest("[data-shiny-chat-sidebar-measurement]") !== null
+        return (
+          !insideMeasurement &&
           (record.type === "characterData" ||
             [...record.addedNodes, ...record.removedNodes].some(
               (node) =>
@@ -371,8 +374,9 @@ class ChatPageElement extends HTMLElement {
                   node instanceof HTMLElement &&
                   node.hasAttribute("data-shiny-chat-sidebar-measurement")
                 ),
-            )),
-      )
+            ))
+        )
+      })
       if (hasContentChange) this.updateResizeHandle()
     })
     mutations.observe(this.aside, {
