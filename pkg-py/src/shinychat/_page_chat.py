@@ -16,6 +16,7 @@ from typing import (
 
 from htmltools import HTML, Tag, TagAttrValue, TagChild, TagList
 
+from ._page_chat_theme import page_chat_theme
 from ._utils_types import MISSING, MISSING_TYPE
 
 if TYPE_CHECKING:
@@ -32,124 +33,9 @@ __all__ = (
     "chat_sidebar",
     "chat_ui_history",
     "page_chat",
-    "page_chat_theme",
 )
 
 ChatSidebarOpen = Literal["auto", "open", "closed", "always"]
-
-_PAGE_CHAT_THEME_DEFAULTS = {
-    "font-family-sans-serif": (
-        'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", '
-        "sans-serif"
-    ),
-    "font-family-base": "$font-family-sans-serif",
-    "font-family-monospace": (
-        'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", '
-        '"Courier New", monospace'
-    ),
-    "web-font-path": False,
-    "shiny-chat-page-header-height": "3.25rem",
-    "shiny-chat-page-header-padding-y": "0.25rem",
-    "shiny-chat-page-sidebar-padding": "0.875rem",
-    "shiny-chat-page-title-gap": "0.375rem",
-    "shiny-chat-page-title-font-size": "0.9375rem",
-    "shiny-chat-page-title-font-weight": 600,
-    "shiny-chat-page-controls-gap": "0.375rem",
-    "shiny-chat-page-nav-link-gap": "0.3125rem",
-    "shiny-chat-page-nav-link-padding-y": "0.375rem",
-    "shiny-chat-page-nav-link-padding-x": "0.625rem",
-    "shiny-chat-page-nav-link-font-size": "0.875rem",
-    "shiny-chat-page-nav-link-font-weight": 500,
-    "shiny-chat-page-panel-padding-block": "1.25rem",
-    "shiny-chat-page-panel-padding-block-mobile": "1rem",
-    "shiny-chat-page-panel-padding-inline": "1rem",
-    "shiny-chat-page-fill-padding": (
-        'unquote("max(1rem, env(safe-area-inset-left), '
-        'env(safe-area-inset-right))")'
-    ),
-    "shiny-chat-page-input-padding-bottom": (
-        'unquote("max(1rem, env(safe-area-inset-bottom))")'
-    ),
-    "shiny-chat-page-surface-bg": "var(--bs-body-bg)",
-    "shiny-chat-page-sidebar-bg": "var(--bs-secondary-bg)",
-    "shiny-chat-page-canvas-bg": "var(--bs-tertiary-bg)",
-    "shiny-chat-page-artifact-bg": "var(--shiny-chat-page-surface-bg)",
-    "shiny-chat-page-artifact-box-shadow": "none",
-    "shiny-chat-page-artifact-header-bg": "var(--shiny-chat-page-canvas-bg)",
-    "shiny-chat-suggestion-card-border-radius": "var(--bs-border-radius)",
-    "shiny-chat-user-message-border-radius": "var(--bs-border-radius)",
-    "shiny-chat-user-message-padding": "0.5rem 0.75rem",
-    "shiny-chat-user-assistant-gap-reduction": "0.5rem",
-}
-
-_PAGE_CHAT_THEME_RULES = """
-:root {
-  --shiny-chat-page-header-height: #{$shiny-chat-page-header-height};
-  --shiny-chat-page-header-padding-y: #{$shiny-chat-page-header-padding-y};
-  --shiny-chat-page-sidebar-padding: #{$shiny-chat-page-sidebar-padding};
-  --shiny-chat-page-title-gap: #{$shiny-chat-page-title-gap};
-  --shiny-chat-page-title-font-size: #{$shiny-chat-page-title-font-size};
-  --shiny-chat-page-title-font-weight: #{$shiny-chat-page-title-font-weight};
-  --shiny-chat-page-controls-gap: #{$shiny-chat-page-controls-gap};
-  --shiny-chat-page-nav-link-gap: #{$shiny-chat-page-nav-link-gap};
-  --shiny-chat-page-nav-link-padding-y: #{$shiny-chat-page-nav-link-padding-y};
-  --shiny-chat-page-nav-link-padding-x: #{$shiny-chat-page-nav-link-padding-x};
-  --shiny-chat-page-nav-link-font-size: #{$shiny-chat-page-nav-link-font-size};
-  --shiny-chat-page-nav-link-font-weight: #{$shiny-chat-page-nav-link-font-weight};
-  --shiny-chat-page-panel-padding-block: #{$shiny-chat-page-panel-padding-block};
-  --shiny-chat-page-panel-padding-block-mobile: #{$shiny-chat-page-panel-padding-block-mobile};
-  --shiny-chat-page-panel-padding-inline: #{$shiny-chat-page-panel-padding-inline};
-  --shiny-chat-page-fill-padding: #{$shiny-chat-page-fill-padding};
-  --shiny-chat-page-input-padding-bottom: #{$shiny-chat-page-input-padding-bottom};
-  --shiny-chat-page-surface-bg: #{$shiny-chat-page-surface-bg};
-  --shiny-chat-page-sidebar-bg: #{$shiny-chat-page-sidebar-bg};
-  --shiny-chat-page-canvas-bg: #{$shiny-chat-page-canvas-bg};
-  --shiny-chat-page-artifact-bg: #{$shiny-chat-page-artifact-bg};
-  --shiny-chat-page-artifact-box-shadow: #{$shiny-chat-page-artifact-box-shadow};
-  --shiny-chat-page-artifact-header-bg: #{$shiny-chat-page-artifact-header-bg};
-  --shiny-chat-suggestion-card-border-radius: #{$shiny-chat-suggestion-card-border-radius};
-  --shiny-chat-user-message-border-radius: #{$shiny-chat-user-message-border-radius};
-  --shiny-chat-user-message-padding: #{$shiny-chat-user-message-padding};
-  --shiny-chat-user-assistant-gap-reduction: #{$shiny-chat-user-assistant-gap-reduction};
-}
-
-shiny-chat-page :is(
-  .shiny-chat-page-header,
-  .shiny-chat-page-sidebar,
-  .shiny-chat-page-panel
-) :is(.form-control, .form-select) {
-  border-color: var(--bs-border-color, currentcolor);
-  border-radius: var(--bs-border-radius-sm, 0.25rem);
-}
-
-shiny-chat-page :is(
-  .shiny-chat-page-header,
-  .shiny-chat-page-sidebar,
-  .shiny-chat-page-panel
-) :is(.form-control, .form-select):focus {
-  border-color: var(--bs-primary, #0d6efd);
-  box-shadow: 0 0 0 0.2rem color-mix(
-    in srgb,
-    var(--bs-primary, #0d6efd) 32%,
-    transparent
-  );
-}
-
-.shiny-chat-page-home > shiny-chat-container {
-  --shiny-chat-fill-padding: var(--shiny-chat-page-fill-padding);
-  --shiny-chat-input-padding-bottom: var(--shiny-chat-page-input-padding-bottom);
-}
-
-.shiny-chat-page-home .shiny-chat-artifact {
-  background: var(--shiny-chat-page-artifact-bg);
-  box-shadow: var(--shiny-chat-page-artifact-box-shadow);
-}
-
-.shiny-chat-page-home .shiny-chat-artifact-header {
-  background: var(--shiny-chat-page-artifact-header-bg);
-}
-"""
-
 
 @dataclass(frozen=True)
 class ChatSidebar:
@@ -180,39 +66,169 @@ class ChatNavPanel:
     content_width: str
 
 
-def page_chat_theme(
-    preset: str | None = "shiny",
-    **variables: str | float | int | bool | None,
-) -> Any:
+def page_chat(
+    title: TagChild,
+    icon: TagChild | None = None,
+    *,
+    id: str = "chat",
+    pages: Sequence[ChatNavPanel] | None = None,
+    toolbar: TagChild | None = None,
+    toolbar_global: TagChild | None = None,
+    navbar_options: Any = None,
+    sidebar: bool | ChatSidebar = True,
+    artifact: bool | ChatArtifact = True,
+    window_title: str | None = None,
+    lang: str | None = None,
+    theme: Any = None,
+    messages: Optional[
+        Iterable[str | TagChild | "ChatMessageDict" | "ChatMessage" | Any]
+    ] = None,
+    greeting: Optional[Union[str, HTML, Tag, TagList, "ChatGreeting"]] = None,
+    placeholder: str = "Enter a message...",
+    width: "CssUnit" = "min(680px, 100%)",
+    icon_assistant: Optional[HTML | Tag | TagList | bool] = None,
+    enable_cancel: "bool | MISSING_TYPE" = MISSING,
+    allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
+    footer: Optional[TagChild] = None,
+    **kwargs: Any,
+) -> Tag:
     """
-    Create a theme for :func:`~shinychat.page_chat`.
+    Create a full-window page containing one persistent chat interface.
 
-    The default layers page-scoped surface, chat-radius, and density tokens and
-    system typography over Shiny's ``"shiny"`` preset. Pass another ``preset``
-    or Sass-variable overrides to apply application branding while retaining
-    the page-chat layout treatment. Pass a :class:`shiny.ui.Theme` directly to
-    :func:`~shinychat.page_chat` to use a completely custom theme.
+    The chat is the home page and remains mounted while users visit secondary
+    pages. ``page_chat()`` owns the document shell, responsive navigation,
+    sidebars, and full-height chat layout. Use :func:`~shinychat.chat_ui`
+    instead when chat should be embedded in another page layout.
 
     Parameters
     ----------
-    preset
-        A Shiny or Bootswatch preset name.
-    **variables
-        Sass-variable overrides. Keys may use either ``snake_case`` or
-        ``kebab-case`` names.
+    title
+        Page title displayed in the header. When it is a string and
+        ``window_title`` is omitted, it is also used as the document title.
+    icon
+        Optional HTML child displayed next to ``title``.
+    id
+        Unique ID shared by the page shell and its chat.
+    pages
+        Secondary pages created with :func:`~shinychat.chat_nav_panel`.
+    toolbar
+        Optional home-page-scoped HTML child displayed with the navigation
+        controls. A page's ``chat_nav_panel(toolbar=)`` can replace this
+        segment.
+    toolbar_global
+        Optional persistent HTML child displayed after the page-scoped toolbar
+        in the navigation controls. It remains mounted while pages are
+        selected and while controls move between desktop and mobile layouts.
+    navbar_options
+        Optional :func:`shiny.ui.navbar_options` that styles the page title bar.
+        Its ``bg``, ``theme``, ``underline``, and HTML attributes are supported.
+        ``position`` and ``collapsible`` are unsupported because ``page_chat()``
+        owns the full-window layout and responsive app menu.
+    sidebar
+        Home-page sidebar. ``True`` uses the default conversation-history
+        sidebar, ``False`` removes it, and a
+        :class:`~shinychat.ChatSidebar` supplies custom content and behavior.
+        Raw :class:`shiny.ui.Sidebar` objects are not supported.
+    artifact
+        Whether the chat has an artifact region. Pass a
+        :class:`~shinychat.ChatArtifact` to configure its initial content and
+        behavior.
+    window_title
+        Optional document title. Use this when ``title`` is an HTML child or
+        when the browser title should differ from the displayed title.
+    lang
+        Optional language for the document's ``<html>`` element.
+    theme
+        Theme accepted by :func:`shiny.ui.page_fillable`. By default,
+        :func:`~shinychat.page_chat_theme` layers page-chat surface tokens over
+        Shiny's ``"shiny"`` preset. Pass :class:`shiny.ui.Theme` directly to
+        use another preset or a completely custom theme.
+    messages
+        Initial chat messages. See :func:`~shinychat.chat_ui`.
+    greeting
+        Optional initial chat greeting. See :func:`~shinychat.chat_greeting`.
+    placeholder
+        Placeholder text for the chat input.
+    width
+        Maximum width of the chat content.
+    icon_assistant
+        Default icon for assistant messages. ``False`` removes it.
+    enable_cancel
+        Whether to show the streaming cancel control. When omitted, a chat
+        constructed with ``client=`` enables it automatically.
+    allow_attachments
+        Whether to allow attachments, or a list of accepted MIME types. When
+        omitted, a chat constructed with ``client=`` enables them
+        automatically.
+    footer
+        Optional HTML content below the chat input.
+    **kwargs
+        Additional :func:`~shinychat.chat_ui` options and HTML attributes.
+        ``page_chat()`` owns ``height``, ``fill``, and ``show_history``; these
+        arguments cannot be overridden.
 
     Returns
     -------
-    :
-        A :class:`shiny.ui.Theme` suitable for ``page_chat(theme=)``.
-    """
-    from shiny import ui
+    Tag
+        A complete fillable Shiny page suitable for use as a Core app's UI.
 
-    theme = ui.Theme(preset=preset, name="shinychat-page")
-    theme.add_defaults(**_PAGE_CHAT_THEME_DEFAULTS)
-    theme.add_defaults(**variables)
-    theme.add_rules(_PAGE_CHAT_THEME_RULES)
-    return theme
+    Examples
+    --------
+    ```python
+    from shiny import App, ui
+    from shinychat import Chat, chat_nav_panel, chat_sidebar, page_chat
+
+    app_ui = page_chat(
+        "Assistant",
+        pages=[
+            chat_nav_panel("About", ui.p("About this app"), sidebar=False),
+        ],
+        sidebar=chat_sidebar(history=False),
+    )
+
+
+    def server(input, output, session):
+        Chat("chat")
+
+
+    app = App(app_ui, server)
+    ```
+
+    See Also
+    --------
+    :func:`~shinychat.chat_ui` : Embed chat in an existing page layout.
+    :func:`~shinychat.chat_sidebar` : Configure page sidebars.
+    :func:`~shinychat.chat_nav_panel` : Configure secondary pages.
+    :func:`~shinychat.chat_artifact` : Configure the artifact region.
+    :func:`~shinychat.express.page_chat` : Create the same layout in Express.
+    """
+    chat_root = _create_page_chat_root(
+        id=id,
+        artifact=artifact,
+        messages=messages,
+        greeting=greeting,
+        placeholder=placeholder,
+        width=width,
+        icon_assistant=icon_assistant,
+        enable_cancel=enable_cancel,
+        allow_attachments=allow_attachments,
+        footer=footer,
+        **kwargs,
+    )
+    return _render_page_chat(
+        chat_root,
+        title,
+        icon,
+        id=id,
+        pages=pages,
+        toolbar=toolbar,
+        toolbar_global=toolbar_global,
+        navbar_options=navbar_options,
+        sidebar=sidebar,
+        window_title=window_title,
+        lang=lang,
+        theme=theme,
+    )
 
 
 def _validate_bool(value: object, name: str) -> bool:
@@ -334,7 +350,12 @@ def chat_artifact(
     resizable: bool = True,
 ) -> ChatArtifact:
     """
-    Configure the artifact region for a chat.
+    Configure content displayed adjacent to a chat interface.
+
+    An artifact can show a preview, generated report, or detail view beside the
+    conversation. Pass this configuration to ``chat_ui(artifact=)`` or
+    ``page_chat(artifact=)`` for its initial content and layout, then update it
+    through the chat artifact controller.
 
     Parameters
     ----------
@@ -468,8 +489,6 @@ def chat_nav_panel(
         )
     if value == "":
         raise ValueError("`value` must not be an empty string.")
-    if icon is not None and isinstance(icon, (bool, dict)):
-        raise TypeError("`icon` must be an HTML child or None.")
     if not isinstance(sidebar, (bool, ChatSidebar)):
         raise TypeError(
             "`sidebar` must be False, True, or a shinychat `ChatSidebar`; "
@@ -578,15 +597,9 @@ class _NormalizedSidebar:
 def _validate_page_child(
     value: TagChild, name: str, *, allow_none: bool = False
 ) -> None:
-    if value is None and allow_none:
+    if value is not None or allow_none:
         return
-    if value is None or isinstance(value, (bool, dict)):
-        expected = "an HTML child"
-        if allow_none:
-            expected += " or None"
-        raise TypeError(
-            f"`{name}` must be {expected}, not {type(value).__name__}."
-        )
+    raise TypeError(f"`{name}` must not be None.")
 
 
 def _validate_panel_toolbar(value: object) -> None:
@@ -867,171 +880,6 @@ def _create_page_chat_root(
         artifact=artifact,
         show_history=True,
         **kwargs,
-    )
-
-
-def page_chat(
-    title: TagChild,
-    icon: TagChild | None = None,
-    *,
-    id: str = "chat",
-    pages: Sequence[ChatNavPanel] | None = None,
-    toolbar: TagChild | None = None,
-    toolbar_global: TagChild | None = None,
-    navbar_options: Any = None,
-    sidebar: bool | ChatSidebar = True,
-    artifact: bool | ChatArtifact = True,
-    window_title: str | None = None,
-    lang: str | None = None,
-    theme: Any = None,
-    messages: Optional[
-        Iterable[str | TagChild | "ChatMessageDict" | "ChatMessage" | Any]
-    ] = None,
-    greeting: Optional[Union[str, HTML, Tag, TagList, "ChatGreeting"]] = None,
-    placeholder: str = "Enter a message...",
-    width: "CssUnit" = "min(680px, 100%)",
-    icon_assistant: Optional[HTML | Tag | TagList | bool] = None,
-    enable_cancel: "bool | MISSING_TYPE" = MISSING,
-    allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
-    footer: Optional[TagChild] = None,
-    **kwargs: Any,
-) -> Tag:
-    """
-    Create a full-window page containing one persistent chat interface.
-
-    The chat is the home page and remains mounted while users visit secondary
-    pages. ``page_chat()`` owns the document shell, responsive navigation,
-    sidebars, and full-height chat layout. Use :func:`~shinychat.chat_ui`
-    instead when chat should be embedded in another page layout.
-
-    Parameters
-    ----------
-    title
-        Page title displayed in the header. When it is a string and
-        ``window_title`` is omitted, it is also used as the document title.
-    icon
-        Optional HTML child displayed next to ``title``.
-    id
-        Unique ID shared by the page shell and its chat.
-    pages
-        Secondary pages created with :func:`~shinychat.chat_nav_panel`.
-    toolbar
-        Optional home-page-scoped HTML child displayed with the navigation
-        controls. A page's ``chat_nav_panel(toolbar=)`` can replace this
-        segment.
-    toolbar_global
-        Optional persistent HTML child displayed after the page-scoped toolbar
-        in the navigation controls. It remains mounted while pages are
-        selected and while controls move between desktop and mobile layouts.
-    navbar_options
-        Optional :func:`shiny.ui.navbar_options` that styles the page title bar.
-        Its ``bg``, ``theme``, ``underline``, and HTML attributes are supported.
-        ``position`` and ``collapsible`` are unsupported because ``page_chat()``
-        owns the full-window layout and responsive app menu.
-    sidebar
-        Home-page sidebar. ``True`` uses the default conversation-history
-        sidebar, ``False`` removes it, and a
-        :class:`~shinychat.ChatSidebar` supplies custom content and behavior.
-        Raw :class:`shiny.ui.Sidebar` objects are not supported.
-    artifact
-        Whether the chat has an artifact region. Pass a
-        :class:`~shinychat.ChatArtifact` to configure its initial content and
-        behavior.
-    window_title
-        Optional document title. Use this when ``title`` is an HTML child or
-        when the browser title should differ from the displayed title.
-    lang
-        Optional language for the document's ``<html>`` element.
-    theme
-        Theme accepted by :func:`shiny.ui.page_fillable`. By default,
-        :func:`~shinychat.page_chat_theme` layers page-chat surface tokens over
-        Shiny's ``"shiny"`` preset. Pass :class:`shiny.ui.Theme` directly to
-        use another preset or a completely custom theme.
-    messages
-        Initial chat messages. See :func:`~shinychat.chat_ui`.
-    greeting
-        Optional initial chat greeting. See :func:`~shinychat.chat_greeting`.
-    placeholder
-        Placeholder text for the chat input.
-    width
-        Maximum width of the chat content.
-    icon_assistant
-        Default icon for assistant messages. ``False`` removes it.
-    enable_cancel
-        Whether to show the streaming cancel control. When omitted, a chat
-        constructed with ``client=`` enables it automatically.
-    allow_attachments
-        Whether to allow attachments, or a list of accepted MIME types. When
-        omitted, a chat constructed with ``client=`` enables them
-        automatically.
-    footer
-        Optional HTML content below the chat input.
-    **kwargs
-        Additional :func:`~shinychat.chat_ui` options and HTML attributes.
-        ``page_chat()`` owns ``height``, ``fill``, and ``show_history``; these
-        arguments cannot be overridden.
-
-    Returns
-    -------
-    Tag
-        A complete fillable Shiny page suitable for use as a Core app's UI.
-
-    Examples
-    --------
-    ```python
-    from shiny import App, ui
-    from shinychat import Chat, chat_nav_panel, chat_sidebar, page_chat
-
-    app_ui = page_chat(
-        "Assistant",
-        pages=[
-            chat_nav_panel("About", ui.p("About this app"), sidebar=False),
-        ],
-        sidebar=chat_sidebar(history=False),
-    )
-
-
-    def server(input, output, session):
-        Chat("chat")
-
-
-    app = App(app_ui, server)
-    ```
-
-    See Also
-    --------
-    :func:`~shinychat.chat_ui` : Embed chat in an existing page layout.
-    :func:`~shinychat.chat_sidebar` : Configure page sidebars.
-    :func:`~shinychat.chat_nav_panel` : Configure secondary pages.
-    :func:`~shinychat.chat_artifact` : Configure the artifact region.
-    :func:`~shinychat.express.page_chat` : Create the same layout in Express.
-    """
-    chat_root = _create_page_chat_root(
-        id=id,
-        artifact=artifact,
-        messages=messages,
-        greeting=greeting,
-        placeholder=placeholder,
-        width=width,
-        icon_assistant=icon_assistant,
-        enable_cancel=enable_cancel,
-        allow_attachments=allow_attachments,
-        footer=footer,
-        **kwargs,
-    )
-    return _render_page_chat(
-        chat_root,
-        title,
-        icon,
-        id=id,
-        pages=pages,
-        toolbar=toolbar,
-        toolbar_global=toolbar_global,
-        navbar_options=navbar_options,
-        sidebar=sidebar,
-        window_title=window_title,
-        lang=lang,
-        theme=theme,
     )
 
 

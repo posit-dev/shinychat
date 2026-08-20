@@ -166,8 +166,9 @@ def test_chat_nav_panel_validates_sidebar_and_navigation_values() -> None:
         chat_nav_panel(cast(Any, tags.span("About")))
     with pytest.raises(ValueError, match="empty CSS width"):
         chat_nav_panel("About", content_width=" ")
-    with pytest.raises(TypeError, match="must be an HTML child"):
-        chat_nav_panel("About", toolbar={"class": "bad"})  # type: ignore[arg-type]
+    assert chat_nav_panel("About", toolbar={"class": "bad"}).toolbar == {
+        "class": "bad"
+    }
 
 
 def test_chat_ui_history_resolves_id_and_forwards_html_attributes() -> None:
@@ -704,15 +705,9 @@ def test_page_chat_rejects_overriding_owned_chat_arguments(name: str) -> None:
         (
             {"title": cast(Any, None)},
             TypeError,
-            "`title` must be an HTML child",
+            "`title` must not be None",
         ),
         ({"title": " "}, ValueError, "`title` must not be an empty"),
-        ({"icon": cast(Any, False)}, TypeError, "`icon` must be an HTML child"),
-        (
-            {"toolbar": cast(Any, {"class": "bad"})},
-            TypeError,
-            "`toolbar` must be an HTML child",
-        ),
         (
             {"sidebar": cast(Any, ui.sidebar())},
             TypeError,
@@ -735,6 +730,16 @@ def test_page_chat_validates_page_arguments(
     title = kwargs.pop("title", "Assistant")
     with pytest.raises(error, match=match):
         page_chat(title, **kwargs)
+
+
+def test_page_chat_passes_generic_ui_children_to_htmltools() -> None:
+    assert page_chat("Assistant", icon=cast(Any, False)) is not None
+    assert page_chat("Assistant", toolbar=cast(Any, {"class": "bad"})) is not None
+    assert chat_nav_panel("About", icon=cast(Any, False)).icon is False
+    assert (
+        chat_nav_panel("About", toolbar=cast(Any, {"class": "bad"})).toolbar
+        == {"class": "bad"}
+    )
 
 
 def test_page_chat_forwards_original_id_and_chat_options(

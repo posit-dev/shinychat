@@ -12,8 +12,8 @@ from ._page_chat import (
     chat_sidebar,
     chat_ui_history,
     page_chat,
-    page_chat_theme,
 )
+from ._page_chat_theme import page_chat_theme
 
 __all__ = [
     "Attachment",
