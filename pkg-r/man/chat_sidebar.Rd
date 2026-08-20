@@ -36,13 +36,12 @@ Configures sidebar content for the home view or a \code{\link[=chat_nav_panel]{c
 history selector.
 }
 \examples{
-ui <- bslib::page_fillable(
-  bslib::layout_sidebar(
-    sidebar = bslib::sidebar(chat_ui_history("chat")),
-    bslib::card(
-      bslib::card_header("Assistant"),
-      chat_ui("chat", show_history = FALSE)
-    )
+ui <- page_chat(
+  "Assistant",
+  sidebar = chat_sidebar(
+    shiny::tags$p("Workspace"),
+    history = TRUE,
+    open = "open"
   )
 )
 }
