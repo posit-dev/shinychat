@@ -71,10 +71,13 @@ def test_navigation_example_mobile_menu_includes_home_link(
     expect(home_link).to_have_text("Field notes")
     home_box = home_link.bounding_box()
     sidebar_box = shell.locator(".shiny-chat-page-sidebar").bounding_box()
+    sources_box = shell.get_by_role("button", name="Sources").bounding_box()
     assert home_box is not None
     assert sidebar_box is not None
+    assert sources_box is not None
     assert home_box["y"] >= sidebar_box["y"]
     assert home_box["y"] + home_box["height"] <= sidebar_box["y"] + sidebar_box["height"]
+    assert home_box["y"] + home_box["height"] <= sources_box["y"]
 
     shell.get_by_role("button", name="Sources").click()
     expect(shell).to_have_attribute("data-active-page", "Sources")

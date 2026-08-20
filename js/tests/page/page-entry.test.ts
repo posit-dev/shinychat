@@ -691,6 +691,16 @@ describe("shiny-chat-page responsive controls", () => {
     await Promise.resolve()
     expect(homeLink.textContent).toBe("Updated assistant")
 
+    identityTitle.replaceChildren(
+      Object.assign(document.createElement("img"), {
+        alt: "Updated assistant icon",
+      }),
+    )
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(homeLink.textContent).toBe("Home")
+    expect(homeLink.hidden).toBe(false)
+
     toggle.click()
     homeLink.click()
     expect(page.dataset.activePage).toBe("home")

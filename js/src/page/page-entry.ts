@@ -582,7 +582,7 @@ class ChatPageElement extends HTMLElement {
     if (this.dataset.activePage !== "home") {
       content.append(this.identityReturnLabel, document.createElement("br"))
     }
-    content.append(this.identityTitle?.textContent?.trim() ?? "")
+    content.append(this.mobileHomeLabel())
     return content
   }
 
@@ -624,12 +624,16 @@ class ChatPageElement extends HTMLElement {
   private updateMobileHomeLink() {
     if (!this.mobileHomeLink) return
 
-    const label = this.identityTitle?.textContent?.trim() ?? ""
+    const label = this.mobileHomeLabel()
     const title = this.mobileHomeLink.querySelector<HTMLElement>(
       ".shiny-chat-page-nav-title",
     )
     if (title) title.textContent = label
-    this.mobileHomeLink.hidden = !this.mobile || !label
+    this.mobileHomeLink.hidden = !this.mobile
+  }
+
+  private mobileHomeLabel() {
+    return this.identityTitle?.textContent?.trim() || "Home"
   }
 
   private updateToastOffset() {
