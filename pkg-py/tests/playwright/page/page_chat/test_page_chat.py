@@ -412,6 +412,36 @@ def test_sidebarless_page_hides_desktop_toggle_and_keeps_mobile_app_menu(
     expect(page.locator("#sidebarless_toolbar")).to_be_visible()
 
 
+def test_sidebarless_mobile_history_trigger_does_not_overlay_messages(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    page.set_viewport_size({"width": 390, "height": 760})
+    page.goto(f"{local_app.url}?sidebarless=true")
+    chat = ChatController(page, "chat")
+    shell = page.locator("shiny-chat-page")
+    trigger = chat.loc.locator(".shiny-chat-history-trigger")
+
+    expect(shell).to_be_visible(timeout=TIMEOUT)
+    expect(trigger).to_be_visible(timeout=TIMEOUT)
+    expect(chat.loc.locator(".shiny-chat-messages")).to_have_css(
+        "padding-top", "48px"
+    )
+
+    chat.set_user_input("history spacing")
+    chat.send_user_input()
+    chat.expect_latest_message(
+        "echo: history spacing",
+        timeout=TIMEOUT,
+    )
+
+    trigger_box = trigger.bounding_box()
+    message_box = chat.loc.locator(".shiny-chat-user-message").first.bounding_box()
+    assert trigger_box is not None
+    assert message_box is not None
+    assert message_box["y"] >= trigger_box["y"] + trigger_box["height"]
+
+
 @pytest.mark.parametrize(
     "viewport",
     [

@@ -697,6 +697,40 @@ export const ChatContainer = forwardRef<
   const artifactLayoutOpen =
     artifact.enabled && (artifact.visible || artifactPresented)
 
+  useLayoutEffect(() => {
+    const container = document.getElementById(elementId)
+    if (!container) return
+
+    const controls: string[] = []
+    if (showHistory && history.enabled && !historyOwnedByPage) {
+      controls.push("history")
+    }
+    if (artifact.enabled && !artifact.visible && artifactHasContent) {
+      controls.push("artifact")
+    }
+
+    const value = controls.join(" ")
+    if (value) {
+      container.dataset.inlineControls = value
+    } else {
+      delete container.dataset.inlineControls
+    }
+
+    return () => {
+      if (container.dataset.inlineControls === value) {
+        delete container.dataset.inlineControls
+      }
+    }
+  }, [
+    artifact.enabled,
+    artifact.visible,
+    artifactHasContent,
+    history.enabled,
+    historyOwnedByPage,
+    elementId,
+    showHistory,
+  ])
+
   return (
     <SlashCommandsContext.Provider value={slashCommands}>
       {showHistory && history.enabled && !historyOwnedByPage && (

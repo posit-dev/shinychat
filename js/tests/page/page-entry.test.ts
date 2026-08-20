@@ -152,7 +152,7 @@ function pageFixture({
               class="shiny-chat-page-identity"
               data-page-home
               aria-label="Return to chat"
-            >Assistant</button>`
+            ><span class="shiny-chat-page-identity-title">Assistant</span></button>`
           : `<div class="shiny-chat-page-identity">Assistant</div>`
       }
       <div class="shiny-chat-page-controls-mount-desktop">
@@ -395,7 +395,9 @@ function getPageElements(page: HTMLElement) {
       page.querySelectorAll<HTMLElement>(".shiny-chat-page-sidebar-panel"),
     ),
     navButtons: Array.from(
-      page.querySelectorAll<HTMLButtonElement>(".shiny-chat-page-nav-link"),
+      page.querySelectorAll<HTMLButtonElement>(
+        ".shiny-chat-page-nav-link:not(.shiny-chat-page-home-link)",
+      ),
     ),
     get resizer() {
       return page.querySelector<HTMLElement>(".shiny-chat-page-sidebar-resizer")
@@ -658,6 +660,46 @@ describe("shiny-chat-page navigation", () => {
 })
 
 describe("shiny-chat-page responsive controls", () => {
+  it("adds a title-derived home link to the mobile menu", async () => {
+    const media = installMatchMedia(false)
+    const page = pageFixture()
+    const { identity, toggle } = getPageElements(page)
+    const identityTitle = identity!.querySelector<HTMLElement>(
+      ".shiny-chat-page-identity-title",
+    )!
+    const homeLink = page.querySelector<HTMLButtonElement>(
+      ".shiny-chat-page-home-link",
+    )!
+
+    expect(homeLink.hidden).toBe(true)
+    expect(homeLink.textContent).toBe("Assistant")
+    expect(identity?.parentElement).toBe(
+      page.querySelector(".shiny-chat-page-header"),
+    )
+
+    media.setMatches(true)
+
+    expect(homeLink.hidden).toBe(false)
+    expect(homeLink).toHaveAttribute("aria-current", "page")
+    expect(homeLink.textContent).toBe("Assistant")
+    expect(identity?.parentElement).toBe(
+      page.querySelector(".shiny-chat-page-header"),
+    )
+
+    identityTitle.textContent = "Updated assistant"
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(homeLink.textContent).toBe("Updated assistant")
+
+    toggle.click()
+    homeLink.click()
+    expect(page.dataset.activePage).toBe("home")
+    expect(page).not.toHaveAttribute("data-mobile-menu-open")
+
+    media.setMatches(false)
+    expect(homeLink.hidden).toBe(true)
+  })
+
   it("moves one controls node between mounts and preserves Shiny input identity", () => {
     const media = installMatchMedia(false)
     const page = pageFixture()

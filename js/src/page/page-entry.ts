@@ -121,6 +121,7 @@ class ChatPageElement extends HTMLElement {
   private identityTooltip: BootstrapTooltip | null = null
   private identityTitleObserver: MutationObserver | null = null
   private identityTitle: HTMLElement | null = null
+  private mobileHomeLink: HTMLButtonElement | null = null
   private identityReturnLabel = "Return to chat"
   private header: HTMLElement | null = null
   private controls: HTMLElement | null = null
@@ -259,12 +260,13 @@ class ChatPageElement extends HTMLElement {
       this.identity?.querySelector<HTMLElement>(
         ".shiny-chat-page-identity-title",
       ) ?? null
+    this.captureMobileHomeLink()
     this.identityReturnLabel =
       this.identity?.getAttribute("aria-label")?.trim() || "Return to chat"
     this.sections = sections
     this.navButtons = Array.from(
       this.controls.querySelectorAll<HTMLButtonElement>(
-        "button.shiny-chat-page-nav-link[data-page-target]",
+        "button.shiny-chat-page-nav-link[data-page-target]:not(.shiny-chat-page-home-link)",
       ),
     )
     this.captureToolbarSources()
@@ -346,6 +348,12 @@ class ChatPageElement extends HTMLElement {
 
     if (this.identity) {
       this.listen(this.identity, "click", () => {
+        this.selectPage("home")
+      })
+    }
+
+    if (this.mobileHomeLink) {
+      this.listen(this.mobileHomeLink, "click", () => {
         this.selectPage("home")
       })
     }
@@ -474,6 +482,7 @@ class ChatPageElement extends HTMLElement {
     }
     this.mobile = matches
     this.layoutInitialized = true
+    this.updateMobileHomeLink()
 
     const mount = matches ? this.mobileMount : this.desktopMount
     if (this.controls.parentElement !== mount) mount.append(this.controls)
@@ -523,6 +532,13 @@ class ChatPageElement extends HTMLElement {
       }
       this.updateIdentityTooltip()
     }
+    if (this.mobileHomeLink) {
+      if (value === "home") {
+        this.mobileHomeLink.setAttribute("aria-current", "page")
+      } else {
+        this.mobileHomeLink.removeAttribute("aria-current")
+      }
+    }
 
     this.syncSidebar(selected)
     this.syncToolbar(selected)
@@ -535,25 +551,29 @@ class ChatPageElement extends HTMLElement {
   private initializeIdentityTooltip() {
     const identity = this.identity
     const title = this.identityTitle
-    const Tooltip = (
-      window as Window & {
-        bootstrap?: { Tooltip?: BootstrapTooltipConstructor }
-      }
-    ).bootstrap?.Tooltip
-    if (!identity || !title || !Tooltip) return
+    if (!identity || !title) return
 
-    this.identityTooltip = new Tooltip(identity, {
-      html: true,
-      placement: "bottom",
-      title: this.identityTooltipContent(),
-    })
     this.identityTitleObserver = new MutationObserver(() => {
       this.updateIdentityTooltip()
+      this.updateMobileHomeLink()
     })
     this.identityTitleObserver.observe(title, {
       childList: true,
       characterData: true,
       subtree: true,
+    })
+
+    const Tooltip = (
+      window as Window & {
+        bootstrap?: { Tooltip?: BootstrapTooltipConstructor }
+      }
+    ).bootstrap?.Tooltip
+    if (!Tooltip) return
+
+    this.identityTooltip = new Tooltip(identity, {
+      html: true,
+      placement: "bottom",
+      title: this.identityTooltipContent(),
     })
   }
 
@@ -570,6 +590,46 @@ class ChatPageElement extends HTMLElement {
     this.identityTooltip?.setContent({
       ".tooltip-inner": this.identityTooltipContent(),
     })
+  }
+
+  private captureMobileHomeLink() {
+    const nav = this.controls?.querySelector<HTMLElement>(
+      ".shiny-chat-page-nav",
+    )
+    const existing = nav?.querySelector<HTMLButtonElement>(
+      "button.shiny-chat-page-home-link",
+    )
+    this.mobileHomeLink = null
+
+    if (!this.identity || !nav) {
+      existing?.remove()
+      return
+    }
+
+    const link = existing ?? document.createElement("button")
+    link.type = "button"
+    link.className = "shiny-chat-page-nav-link shiny-chat-page-home-link"
+    link.dataset.pageTarget = "home"
+    let title = link.querySelector<HTMLElement>(".shiny-chat-page-nav-title")
+    if (!title) {
+      title = document.createElement("span")
+      title.className = "shiny-chat-page-nav-title"
+      link.append(title)
+    }
+    if (!link.isConnected) nav.prepend(link)
+    this.mobileHomeLink = link
+    this.updateMobileHomeLink()
+  }
+
+  private updateMobileHomeLink() {
+    if (!this.mobileHomeLink) return
+
+    const label = this.identityTitle?.textContent?.trim() ?? ""
+    const title = this.mobileHomeLink.querySelector<HTMLElement>(
+      ".shiny-chat-page-nav-title",
+    )
+    if (title) title.textContent = label
+    this.mobileHomeLink.hidden = !this.mobile || !label
   }
 
   private updateToastOffset() {
@@ -794,7 +854,8 @@ class ChatPageElement extends HTMLElement {
             ":scope > .shiny-chat-page-toolbar-content",
           ),
         ),
-      )
+      ) ||
+      Boolean(this.mobileHomeLink)
     )
   }
 

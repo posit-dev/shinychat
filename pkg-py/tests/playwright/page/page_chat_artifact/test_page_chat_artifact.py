@@ -60,6 +60,47 @@ def test_mobile_artifact_capable_chat_fills_page_and_keeps_composer_inset(
     assert input_box["y"] + input_box["height"] >= chat_box["y"] + chat_box["height"] - 16
 
 
+@pytest.mark.parametrize(
+    "viewport",
+    [
+        pytest.param((390, 760), id="mobile"),
+        pytest.param((800, 760), id="constrained-container"),
+    ],
+)
+def test_compact_artifact_trigger_does_not_overlay_messages(
+    page: Page,
+    local_app: ShinyAppProc,
+    viewport: tuple[int, int],
+) -> None:
+    chat, shell = open_page(page, local_app, viewport=viewport)
+
+    expect(chat.loc.locator(".shiny-chat-messages")).to_have_css(
+        "padding-top", "0px"
+    )
+    chat.set_user_input("hi there")
+    chat.send_user_input()
+    chat.expect_latest_message("echo: hi there", timeout=TIMEOUT)
+
+    if viewport[0] <= 799:
+        shell.locator(".shiny-chat-page-sidebar-toggle").click()
+    page.get_by_role("button", name="Show artifact").click()
+    page.get_by_role("button", name="Close artifact").click()
+
+    trigger = chat.loc.locator(".shiny-chat-artifact-trigger")
+    message = chat.loc.locator(".shiny-chat-user-message").first
+    expect(trigger).to_be_visible()
+    expect(message).to_be_visible()
+    expect(chat.loc.locator(".shiny-chat-messages")).to_have_css(
+        "padding-top", "48px"
+    )
+
+    trigger_box = trigger.bounding_box()
+    message_box = message.bounding_box()
+    assert trigger_box is not None
+    assert message_box is not None
+    assert message_box["y"] >= trigger_box["y"] + trigger_box["height"]
+
+
 def test_percentage_artifact_keeps_desktop_chat_width(
     page: Page, local_app: ShinyAppProc
 ) -> None:

@@ -55,6 +55,65 @@ def test_navigation_example_saves_conversations(
     ) == sidebar.evaluate("(element) => getComputedStyle(element).backgroundColor")
 
 
+def test_navigation_example_mobile_menu_includes_home_link(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.set_viewport_size({"width": 390, "height": 760})
+    page.goto(local_app.url)
+    shell = page.locator("shiny-chat-page")
+    home_link = shell.locator(".shiny-chat-page-home-link")
+
+    expect(shell.locator(".shiny-chat-page-identity-title")).to_have_text(
+        "Field notes"
+    )
+    shell.locator(".shiny-chat-page-sidebar-toggle").click()
+    expect(home_link).to_be_visible()
+    expect(home_link).to_have_text("Field notes")
+    home_box = home_link.bounding_box()
+    sidebar_box = shell.locator(".shiny-chat-page-sidebar").bounding_box()
+    assert home_box is not None
+    assert sidebar_box is not None
+    assert home_box["y"] >= sidebar_box["y"]
+    assert home_box["y"] + home_box["height"] <= sidebar_box["y"] + sidebar_box["height"]
+
+    shell.get_by_role("button", name="Sources").click()
+    expect(shell).to_have_attribute("data-active-page", "Sources")
+
+    shell.locator(".shiny-chat-page-sidebar-toggle").click()
+    home_link.click()
+    expect(shell).to_have_attribute("data-active-page", "home")
+
+
+def test_navigation_example_mobile_artifact_trigger_does_not_overlay_messages(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.set_viewport_size({"width": 390, "height": 760})
+    page.goto(local_app.url)
+    chat = ChatController(page, "chat")
+    trigger = chat.loc.locator(".shiny-chat-artifact-trigger")
+    scroll = chat.loc.locator(".shiny-chat-messages")
+    greeting = chat.loc.locator(".shiny-chat-greeting")
+
+    expect(chat.loc).to_be_visible()
+    expect(trigger).to_be_visible()
+    expect(greeting).to_be_visible()
+    expect(scroll).to_have_css("padding-top", "48px")
+    trigger_box = trigger.bounding_box()
+    greeting_box = greeting.bounding_box()
+    assert trigger_box is not None
+    assert greeting_box is not None
+    assert greeting_box["y"] >= trigger_box["y"] + trigger_box["height"]
+
+    chat.set_user_input("hi there")
+    chat.send_user_input()
+    chat.expect_latest_message(
+        "The assistant replied to your message: hi there"
+    )
+
+    expect(trigger).to_be_visible()
+    expect(scroll).to_have_css("padding-top", "48px")
+
+
 def test_navigation_example_shows_settings_offcanvas_from_global_toolbar(
     page: Page, local_app: ShinyAppProc
 ) -> None:

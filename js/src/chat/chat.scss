@@ -163,6 +163,19 @@ shiny-chat-container {
   flex-direction: column;
 }
 
+// Both default triggers occupy the first 3rem of the chat: 0.5rem from the
+// edge, a 2rem control, and 0.5rem of breathing room. Artifact moves below a
+// right-placed history trigger, so reserve the combined stack in that case.
+:where(shiny-chat-container[data-inline-controls]) {
+  --_chat-inline-controls-inset: 3rem;
+}
+
+:where(
+  shiny-chat-container[data-history-placement="right"][data-inline-controls~="artifact"]
+) {
+  --_chat-inline-controls-inset: 5.5rem;
+}
+
 // In non-filling mode the page scrolls, not .shiny-chat-messages.
 shiny-chat-container:not([fill]) {
   // Ensure there's enough room for the history drawer to be usable even when
@@ -194,6 +207,9 @@ shiny-chat-container:not([fill]) {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+  // Embedded history and artifact triggers float over the top of the message
+  // flow. Reserve their occupied edge only while those controls are present.
+  padding-block-start: var(--_chat-inline-controls-inset, 0px);
   // Flex column so a stand-alone greeting can margin-block:auto into the
   // vertical center of the scroll area when no messages exist yet.
   display: flex;
