@@ -29,3 +29,13 @@ def test_page_chat_example_is_importable(module_name: str) -> None:
         assert 'data-page-target="Settings"' not in html
         assert "HistoryOptions" in inspect.getsource(app_module)
         assert "ui.show_offcanvas" in inspect.getsource(app_module)
+
+
+def test_navigation_example_requires_shiny_1_7_for_offcanvas() -> None:
+    app_module = importlib.import_module(
+        "shinychat.examples.page_chat.navigation.app"
+    )
+
+    app_module.require_offcanvas_support("1.7.0")
+    with pytest.raises(RuntimeError, match=r"requires shiny >= 1\.7\.0"):
+        app_module.require_offcanvas_support("1.6.0")
