@@ -95,7 +95,7 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
         client=EchoChatClient(),
         history=HistoryOptions(
             store=FileConversationStore(dir=store_dir),
-            scope="page-artifact-test",
+            scope=f"page-artifact-test-{session.id}",
             title=None,
         ),
     )

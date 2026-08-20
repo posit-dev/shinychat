@@ -112,11 +112,11 @@ def test_percentage_artifact_keeps_desktop_chat_width(
 
 
 @pytest.mark.parametrize(
-    ("chat_width", "expected_max_width"),
+    ("chat_width", "expected_max_width", "expected_rendered_width"),
     [
-        pytest.param("full", "100%", id="full"),
-        pytest.param("wide", "900px", id="wide"),
-        pytest.param("intrinsic", "fit-content", id="intrinsic"),
+        pytest.param("full", "100%", None, id="full"),
+        pytest.param("wide", "900px", 900, id="wide"),
+        pytest.param("intrinsic", "fit-content", None, id="intrinsic"),
     ],
 )
 def test_artifact_open_preserves_configured_chat_width(
@@ -124,6 +124,7 @@ def test_artifact_open_preserves_configured_chat_width(
     local_app: ShinyAppProc,
     chat_width: str,
     expected_max_width: str,
+    expected_rendered_width: int | None,
 ) -> None:
     chat, _ = open_page(
         page,
@@ -150,6 +151,19 @@ def test_artifact_open_preserves_configured_chat_width(
     )
     assert wrapper_box["x"] >= layout_box["x"]
     assert wrapper_box["x"] + wrapper_box["width"] <= panel_box["x"]
+
+    if expected_rendered_width is not None:
+        grid_tracks = layout.evaluate(
+            """(element) =>
+              getComputedStyle(element).gridTemplateColumns
+                .split(" ")
+                .map((value) => Number.parseFloat(value))"""
+        )
+        assert isinstance(grid_tracks, list)
+        assert len(grid_tracks) == 2
+        assert wrapper_box["width"] == pytest.approx(
+            min(expected_rendered_width, grid_tracks[0]), abs=1
+        )
 
 
 def test_artifact_separator_remains_mouse_reachable_after_maximum_resize(
