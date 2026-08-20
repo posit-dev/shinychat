@@ -67,6 +67,8 @@ def messages_input_value(value: Any) -> list[StoredMessage]:
         # malformed message is a client/protocol bug we surface loudly rather
         # than silently drop (which would be invisible data loss on save). The
         # R handler (chat_history_types.R) takes the same posture.
+        # The browser reports dependencies at message scope. Store them once
+        # because StoredMessage.html_deps aggregates dependencies across segments.
         html_deps = m.get("htmlDeps")
         segments = [
             StoredSegment(
