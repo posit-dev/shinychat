@@ -401,7 +401,10 @@ export const ChatContainer = forwardRef<
         // greeting grows. Oversized greetings must instead begin at the
         // scroll viewport's origin.
         const scroll = scrollRef.current
-        if (scroll && scroll.scrollTop !== 0) scroll.scrollTop = 0
+        if (!composerPositionRef.current.greetingOverflows) {
+          stopScroll()
+          if (scroll) scroll.scrollTop = 0
+        }
         setPosition({
           centered: false,
           greetingOverflows: true,
@@ -454,11 +457,12 @@ export const ChatContainer = forwardRef<
 
     return () => {
       if (resizeSettleTimer) window.clearTimeout(resizeSettleTimer)
+      setComposerResizing(false)
       resizeObserver?.disconnect()
       mutationObserver.disconnect()
       window.removeEventListener("resize", update)
     }
-  }, [elementId, footerEl, greeting, messages.length, scrollRef])
+  }, [elementId, footerEl, greeting, messages.length, scrollRef, stopScroll])
 
   const updateArtifactLayoutWidth = useCallback(() => {
     const layout = artifactLayoutRef.current

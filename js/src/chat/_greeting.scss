@@ -114,14 +114,6 @@ shiny-chat-page
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .shiny-chat-wrapper {
-    transition: none;
-  }
-
-  .shiny-chat-composer {
-    animation: none;
-  }
-
   .shiny-chat-greeting.shiny-chat-greeting--enter,
   .shiny-chat-greeting[data-dismissing] {
     animation: none;

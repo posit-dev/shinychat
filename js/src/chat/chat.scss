@@ -151,6 +151,13 @@ shiny-chat-container {
 .shiny-chat-composer {
   grid-row: 2;
   min-width: 0;
+  position: sticky;
+  bottom: calc(
+    -1 * var(
+        --shiny-chat-input-padding-bottom,
+        var(--_chat-container-padding, 0.25rem)
+      )
+  );
   translate: 0 var(--shiny-chat-composer-offset, 0px);
 }
 
@@ -174,6 +181,17 @@ shiny-chat-page
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  shiny-chat-page .shiny-chat-layout .shiny-chat-composer {
+    animation: none;
+    transition: none;
+  }
+
+  shiny-chat-page .shiny-chat-layout .shiny-chat-greeting {
+    transition: none;
   }
 }
 
