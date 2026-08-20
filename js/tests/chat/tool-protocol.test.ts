@@ -52,6 +52,7 @@ describe("tool protocol", () => {
       requestCall: "",
       showRequest: true,
       fullScreen: true,
+      presentation: "default",
       expanded: true,
       customDisplay: true,
       footer: "",
@@ -75,6 +76,24 @@ describe("tool protocol", () => {
     })
     expect(absentStatus).toMatchObject({ status: "success" })
     expect(otherStatus).toMatchObject({ status: "success" })
+  })
+
+  it("normalizes result presentation to framed or default", () => {
+    const [framed, absent, invalid] = [
+      parseToolEvents(result('presentation="framed"'), "markdown")[0],
+      parseToolEvents(result(), "markdown")[0],
+      parseToolEvents(result('presentation="panel"'), "markdown")[0],
+    ]
+
+    expect(framed).toMatchObject({ kind: "result", presentation: "framed" })
+    expect(absent).toMatchObject({
+      kind: "result",
+      presentation: "default",
+    })
+    expect(invalid).toMatchObject({
+      kind: "result",
+      presentation: "default",
+    })
   })
 
   it('accepts only "" and "true" as true boolean values', () => {

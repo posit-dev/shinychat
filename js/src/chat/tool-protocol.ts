@@ -43,6 +43,8 @@ export interface ToolRequestEvent extends ToolEventSource {
   arguments?: string
 }
 
+export type ToolResultPresentation = "default" | "framed"
+
 export interface ToolResultEvent extends ToolEventSource {
   kind: "result"
   title?: string
@@ -55,6 +57,7 @@ export interface ToolResultEvent extends ToolEventSource {
   requestCall?: string
   showRequest: boolean
   fullScreen: boolean
+  presentation: ToolResultPresentation
   expanded: boolean
   customDisplay: boolean
   footer?: string
@@ -240,6 +243,7 @@ function normalizeToolElement(element: ParsedToolElement): ToolEvent {
       : {}),
     showRequest: attrTruthy(attrs, "show-request"),
     fullScreen: attrTruthy(attrs, "full-screen"),
+    presentation: attrs.presentation === "framed" ? "framed" : "default",
     expanded: attrTruthy(attrs, "expanded"),
     customDisplay: attrTruthy(attrs, "custom-display"),
     ...(attrs["footer"] !== undefined ? { footer: attrs["footer"] } : {}),
