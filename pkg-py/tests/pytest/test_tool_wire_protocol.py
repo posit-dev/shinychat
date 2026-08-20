@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any, cast
 
-from chatlas.types import ContentToolRequest, ContentToolResult
-from htmltools import HTML, TagList
 import pytest
+from chatlas.types import ContentToolRequest, ContentToolResult
+from htmltools import HTML, Tagifiable, TagList
 from pydantic import ValidationError
 from shinychat._chat_normalize_chatlas import (
     ToolRequestComponent,
@@ -17,7 +18,7 @@ from shinychat._chat_normalize_chatlas import (
 from shinychat.types import ToolResultDisplay
 
 
-def _render(component: ToolRequestComponent | ToolResultComponent) -> str:
+def _render(component: Tagifiable) -> str:
     return TagList(component.tagify()).render()["html"]
 
 
@@ -60,7 +61,7 @@ def test_tool_result_display_presentation_is_validated() -> None:
     assert display.presentation == "framed"
 
     with pytest.raises(ValidationError, match="presentation"):
-        ToolResultDisplay(presentation="panel")
+        ToolResultDisplay(presentation=cast(Any, "panel"))
 
 
 def test_tool_wire_protocol_fixture_matches_python_serialization() -> None:
