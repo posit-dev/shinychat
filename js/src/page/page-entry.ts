@@ -682,20 +682,29 @@ class ChatPageElement extends HTMLElement {
       (this.mobile
         ? this.hasAttribute("data-mobile-menu-open")
         : Boolean(state?.open))
+    const unavailable = toggleDisabled && state?.openMode !== "always"
+    const toggleLabel =
+      state?.openMode === "always"
+        ? "App menu is always open"
+        : unavailable
+          ? "App menu unavailable on this page"
+          : "Toggle app menu"
 
     this.toggle.hidden = !available
+    this.header?.toggleAttribute("data-sidebar-toggle-hidden", !available)
     this.toggle.disabled = toggleDisabled
     this.toggle.setAttribute("aria-disabled", toggleDisabled ? "true" : "false")
     this.toggle.setAttribute("aria-expanded", open ? "true" : "false")
-    this.toggle.setAttribute(
-      "aria-label",
-      toggleDisabled ? "App menu unavailable on this page" : "Toggle app menu",
-    )
-    if (toggleDisabled) {
-      this.toggle.setAttribute("title", "App menu unavailable on this page")
+    this.toggle.setAttribute("aria-label", toggleLabel)
+    if (unavailable) {
+      this.toggle.setAttribute("title", toggleLabel)
       this.toggle.removeAttribute("aria-controls")
     } else {
-      this.toggle.removeAttribute("title")
+      if (state?.openMode === "always") {
+        this.toggle.setAttribute("title", toggleLabel)
+      } else {
+        this.toggle.removeAttribute("title")
+      }
       this.toggle.setAttribute("aria-controls", this.aside.id)
     }
   }
@@ -705,6 +714,11 @@ class ChatPageElement extends HTMLElement {
       this.sidebarStates.size > 0 ||
       this.navButtons.length > 0 ||
       this.hasMeaningfulContent(this.toolbarGlobal) ||
+      this.hasMeaningfulContent(
+        this.toolbarScoped?.querySelector<HTMLElement>(
+          ":scope > .shiny-chat-page-toolbar-content",
+        ) ?? null,
+      ) ||
       Array.from(this.toolbarSources.values()).some((source) =>
         this.hasMeaningfulContent(
           source.querySelector<HTMLElement>(

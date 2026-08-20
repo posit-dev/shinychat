@@ -300,6 +300,10 @@ button.shiny-chat-page-identity:focus-visible,
     grid-template-columns: auto fit-content(12rem) minmax(0, 1fr);
   }
 
+  .shiny-chat-page-header[data-sidebar-toggle-hidden] {
+    grid-template-columns: fit-content(12rem) minmax(0, 1fr);
+  }
+
   .shiny-chat-page-identity {
     min-width: auto;
     max-width: 12rem;

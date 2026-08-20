@@ -790,6 +790,9 @@ describe("shiny-chat-page desktop sidebar state", () => {
     expect(toggle.disabled).toBe(true)
     expect(toggle).toHaveAttribute("aria-disabled", "true")
     expect(toggle.getAttribute("aria-expanded")).toBe("true")
+    expect(toggle).toHaveAttribute("aria-label", "App menu is always open")
+    expect(toggle).toHaveAttribute("title", "App menu is always open")
+    expect(toggle).toHaveAttribute("aria-controls", aside.id)
 
     toggle.click()
     expect(aside.hidden).toBe(false)
@@ -815,6 +818,28 @@ describe("shiny-chat-page desktop sidebar state", () => {
 
     toggle.click()
     expect(aside.hidden).toBe(true)
+  })
+
+  it("shows a toolbar-only app menu after changing from desktop to mobile", () => {
+    const media = installMatchMedia(false)
+    const page = pageFixture({
+      pages: false,
+      sidebar: false,
+      pageSidebars: false,
+    })
+    const { aside, toggle } = getPageElements(page)
+
+    expect(toggle.hidden).toBe(true)
+    expect(
+      page.querySelector(".shiny-chat-page-toolbar-scoped input"),
+    ).not.toBeNull()
+
+    media.setMatches(true)
+
+    expect(toggle.hidden).toBe(false)
+    toggle.click()
+    expect(page).toHaveAttribute("data-mobile-menu-open")
+    expect(aside).not.toHaveAttribute("aria-hidden", "true")
   })
 
   it("opens a custom auto sidebar on desktop", () => {
