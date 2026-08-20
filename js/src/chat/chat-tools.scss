@@ -837,6 +837,10 @@ shinychat-raw-html {
   &:focus-visible {
     background-color: rgba(var(--bs-emphasis-color-rgb), 0.1);
   }
+
+  &:focus-visible {
+    outline-offset: -2px;
+  }
 }
 
 .shiny-chat-tool-call-row--framed > .shiny-chat-tool-call-row__summary {
