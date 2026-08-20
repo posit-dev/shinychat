@@ -42,6 +42,17 @@ def test_artifact_desktop_transport_and_rebinding(
     ).to_be_visible()
 
     wrapper = chat.loc.locator(".shiny-chat-wrapper")
+    page.wait_for_function(
+        """() => {
+          const wrapper = document.querySelector("#chat .shiny-chat-wrapper");
+          const panel = document.querySelector(".shiny-chat-artifact");
+          if (!wrapper || !panel) return false;
+          const wrapperBox = wrapper.getBoundingClientRect();
+          const panelBox = panel.getBoundingClientRect();
+          return panelBox.x >= wrapperBox.x + wrapperBox.width;
+        }""",
+        timeout=TIMEOUT,
+    )
     wrapper_box = wrapper.bounding_box()
     panel_box = panel.bounding_box()
     assert wrapper_box is not None
