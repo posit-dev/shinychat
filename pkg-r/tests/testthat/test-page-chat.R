@@ -310,6 +310,9 @@ test_that("page_chat() builds the default fillable page contract", {
   root <- page_chat_tag(page, "shiny-chat-page")
   expect_equal(root$attribs[["data-chat-id"]], "chat")
   expect_equal(root$attribs[["data-active-page"]], "home")
+  dark_mode <- page_chat_tag(page, "bslib-input-dark-mode")
+  expect_equal(dark_mode$attribs$attribute, "data-bs-theme")
+  expect_match(as.character(page), "display: none", fixed = TRUE)
 
   toggle <- page_chat_tag(page, ".shiny-chat-page-sidebar-toggle")
   expect_equal(toggle$attribs$type, "button")

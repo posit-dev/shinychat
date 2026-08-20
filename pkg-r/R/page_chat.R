@@ -528,6 +528,7 @@ page_chat <- function(
     list(
       `data-chat-id` = resolved_id,
       `data-active-page` = "home",
+      bslib::input_dark_mode(style = "display: none"),
       header,
       htmltools::tags$div(
         class = "shiny-chat-page-body",

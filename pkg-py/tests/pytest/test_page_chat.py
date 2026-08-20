@@ -312,6 +312,9 @@ def test_page_chat_builds_default_fillable_page_markup() -> None:
     assert 'class="shiny-chat-page-header"' in html
     assert 'data-bs-theme="auto"' in html
     assert 'data-shiny-chat-page-nav-style="underline"' in html
+    assert "<bslib-input-dark-mode" in html
+    assert 'attribute="data-bs-theme"' in html
+    assert "display: none" in html
     assert 'aria-controls="chat-sidebar"' in html
     assert 'aria-expanded="false"' in html
     assert 'class="shiny-chat-page-sidebar-icon bi bi-list"' in html

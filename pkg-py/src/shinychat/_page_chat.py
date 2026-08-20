@@ -1283,6 +1283,7 @@ def _render_page_chat(
             class_="shiny-chat-page-body",
         ),
         toolbar_sources,
+        ui.input_dark_mode(style="display: none"),
         data_chat_id=resolved_id,
         data_active_page="home",
     )
