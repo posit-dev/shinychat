@@ -182,6 +182,9 @@ class ToolResultComponent(ToolCardComponent):
     full_screen: bool = False
     "Controls whether a fullscreen toggle button is displayed on the card."
 
+    presentation: Literal["default", "framed"] = "default"
+    "Controls whether the result uses the default or framed presentation."
+
     expanded: bool = False
     "Controls whether the card content is expanded/visible."
 
@@ -230,6 +233,7 @@ class ToolResultComponent(ToolCardComponent):
             expanded="" if self.expanded else None,
             footer=footer_ui["html"] if self.footer else None,
             full_screen="" if self.full_screen else None,
+            presentation="framed" if self.presentation == "framed" else None,
             grouping=self.grouping,
             label=self.label,
             value_preview=self.value_preview,
@@ -344,6 +348,9 @@ class ToolResultDisplay(BaseModel):
         Whether the drill-down card is expanded by default.
     - ``full_screen``:
         Whether to display a fullscreen toggle button on the drill-down card.
+    - ``presentation``:
+        Whether to use the default drill-down presentation or a framed
+        presentation for this result.
     - ``html``:
         Custom HTML content inside the drill-down card, in place of the
         default result display.
@@ -365,6 +372,7 @@ class ToolResultDisplay(BaseModel):
     show_request: bool = True
     open: bool = False
     full_screen: bool = False
+    presentation: Literal["default", "framed"] = "default"
     markdown: Optional[str] = None
     text: Optional[str] = None
     footer: TagChild = None
@@ -516,6 +524,7 @@ def tool_result_contents(x: "ContentToolResult") -> Tagifiable:
         expanded=display.open,
         footer=display.footer,
         full_screen=display.full_screen,
+        presentation=display.presentation,
         grouping=annotations.grouping,
         label=display.label,
         value_preview=display.value_preview,

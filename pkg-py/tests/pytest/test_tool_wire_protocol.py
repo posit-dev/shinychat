@@ -6,10 +6,13 @@ import json
 from pathlib import Path
 
 from htmltools import HTML, TagList
+import pytest
+from pydantic import ValidationError
 from shinychat._chat_normalize_chatlas import (
     ToolRequestComponent,
     ToolResultComponent,
 )
+from shinychat.types import ToolResultDisplay
 
 
 def _render(component: ToolRequestComponent | ToolResultComponent) -> str:
@@ -44,8 +47,18 @@ def _protocol_components() -> tuple[ToolRequestComponent, ToolResultComponent]:
         expanded=True,
         custom_display=False,
         footer=HTML("<span>footer</span>"),
+        presentation="framed",
     )
     return request, result
+
+
+def test_tool_result_display_presentation_is_validated() -> None:
+    display = ToolResultDisplay(presentation="framed")
+
+    assert display.presentation == "framed"
+
+    with pytest.raises(ValidationError, match="presentation"):
+        ToolResultDisplay(presentation="panel")
 
 
 def test_tool_wire_protocol_fixture_matches_python_serialization() -> None:
@@ -57,3 +70,13 @@ def test_tool_wire_protocol_fixture_matches_python_serialization() -> None:
 
     assert _render(request) == fixture["request"]
     assert _render(result) == fixture["result"]
+
+
+def test_default_tool_result_presentation_is_not_serialized() -> None:
+    component = ToolResultComponent(
+        request_id="wire-default",
+        tool_name="search",
+        value="Result body",
+    )
+
+    assert "presentation=" not in _render(component)
