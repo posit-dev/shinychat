@@ -21,7 +21,9 @@ def test_navigation_example_saves_conversations(
 
     chat.set_user_input("Remember this exchange")
     chat.send_user_input()
-    chat.expect_latest_message("You said: Remember this exchange")
+    chat.expect_latest_message(
+        "The assistant replied to your message: Remember this exchange"
+    )
     expect(
         sidebar.locator(
             ".shiny-chat-page-sidebar-panel:not([hidden]) "
