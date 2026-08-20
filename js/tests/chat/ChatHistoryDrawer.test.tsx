@@ -400,9 +400,29 @@ describe("rename flow", () => {
     const menu = openMenuFor("Today's chat")
 
     expect(menu.closest(".shiny-chat-history-list")).toBeNull()
-    expect(menu.closest("[data-floating-ui-portal]")?.parentElement).toBe(
-      document.body,
+    expect(
+      menu.closest("[data-floating-ui-portal]")?.closest("[role=dialog]"),
+    ).toBe(screen.getByRole("dialog"))
+  })
+
+  it("keeps the portaled actions menu inside an RTL history scope", () => {
+    const { container } = render(
+      <div dir="rtl">
+        <DrawerWrapper
+          conversations={DEFAULT_CONVOS}
+          activeId={null}
+          busy={false}
+          onSelect={vi.fn()}
+          onNew={vi.fn()}
+          onRename={vi.fn()}
+          onDelete={vi.fn()}
+        />
+      </div>,
     )
+    openDrawer()
+    const menu = openMenuFor("Today's chat")
+
+    expect(menu.closest("[dir='rtl']")).toBe(container.firstElementChild)
   })
 
   it("shows inline rename input after clicking Rename", () => {
@@ -698,6 +718,42 @@ describe("closing behavior", () => {
       .closest(".shiny-chat-history-item-select") as HTMLElement
     fireEvent.click(selectBtn!)
     expect(screen.queryByRole("dialog")).toBeNull()
+  })
+})
+
+describe("actions menu focus boundary", () => {
+  it("wraps Tab from the final portaled action to the first drawer control", () => {
+    renderDrawer()
+    openDrawer()
+    const menu = openMenuFor("Today's chat")
+    const deleteButton = within(menu).getByRole("button", {
+      name: "Delete",
+    })
+    deleteButton.focus()
+
+    fireEvent.keyDown(document, { key: "Tab" })
+
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Close history" }),
+    )
+  })
+
+  it("does not read computed styles for closed conversation menus", () => {
+    const getComputedStyle = vi.spyOn(window, "getComputedStyle")
+
+    render(
+      <ChatHistoryContent
+        conversations={DEFAULT_CONVOS}
+        activeId={null}
+        busy={false}
+        onSelect={vi.fn()}
+        onNew={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    expect(getComputedStyle).not.toHaveBeenCalled()
   })
 })
 

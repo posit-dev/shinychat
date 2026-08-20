@@ -34,6 +34,8 @@ const HISTORY_PORTAL_VARIABLES = [
   "--_history-item-active-bg",
 ] as const
 
+const HistoryMenuPortalContext = React.createContext<HTMLElement | null>(null)
+
 export interface ChatHistoryDrawerProps {
   isOpen: boolean
   onClose: () => void
@@ -69,6 +71,9 @@ export function ChatHistoryDrawer({
   visibleRef.current = visible
   const reducedMotion = usePrefersReducedMotion()
   const drawerRef = useRef<HTMLDivElement>(null)
+  const [menuPortalRoot, setMenuPortalRoot] = useState<HTMLDivElement | null>(
+    null,
+  )
 
   const handleClose = useCallback(() => {
     onClose()
@@ -119,7 +124,7 @@ export function ChatHistoryDrawer({
       }
       if (e.key === "Tab") {
         const focusable = drawer.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"]):not([data-floating-ui-focus-guard])',
         )
         if (focusable.length === 0) return
         const first = focusable[0]!
@@ -168,24 +173,27 @@ export function ChatHistoryDrawer({
       aria-label="Conversation history"
       tabIndex={-1}
     >
-      <div className="shiny-chat-history-scrim" onClick={handleClose} />
-      <div
-        className="shiny-chat-history-drawer"
-        onAnimationEnd={handleDrawerAnimationEnd}
-      >
-        <div className="shiny-chat-history-header">
-          <h2 className="shiny-chat-history-title">History</h2>
-          <button
-            type="button"
-            className="shiny-chat-history-close"
-            aria-label="Close history"
-            onClick={handleClose}
-          >
-            <CloseIcon />
-          </button>
+      <HistoryMenuPortalContext.Provider value={menuPortalRoot}>
+        <div className="shiny-chat-history-scrim" onClick={handleClose} />
+        <div
+          className="shiny-chat-history-drawer"
+          onAnimationEnd={handleDrawerAnimationEnd}
+        >
+          <div className="shiny-chat-history-header">
+            <h2 className="shiny-chat-history-title">History</h2>
+            <button
+              type="button"
+              className="shiny-chat-history-close"
+              aria-label="Close history"
+              onClick={handleClose}
+            >
+              <CloseIcon />
+            </button>
+          </div>
+          {children}
         </div>
-        {children}
-      </div>
+        <div ref={setMenuPortalRoot} />
+      </HistoryMenuPortalContext.Provider>
     </div>
   )
 }
@@ -206,6 +214,8 @@ export function ChatHistoryContent({
   const [renaming, setRenaming] = useState<string | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const dialogPortalRoot = React.useContext(HistoryMenuPortalContext)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -252,6 +262,7 @@ export function ChatHistoryContent({
 
   return (
     <div
+      ref={contentRef}
       onKeyDown={(event) => {
         if (event.key === "Escape" && handleEscape()) {
           event.stopPropagation()
@@ -306,6 +317,7 @@ export function ChatHistoryContent({
                 active={c.id === activeId}
                 busy={busy}
                 connected={connected}
+                portalRoot={dialogPortalRoot ?? contentRef.current}
                 menuOpen={menuFor === c.id}
                 renaming={renaming === c.id}
                 confirmingDelete={confirmingDelete === c.id}
@@ -349,6 +361,7 @@ interface ConversationItemProps {
   active: boolean
   busy: boolean
   connected: boolean
+  portalRoot: HTMLElement | null
   menuOpen: boolean
   renaming: boolean
   confirmingDelete: boolean
@@ -366,6 +379,7 @@ function ConversationItem({
   active,
   busy,
   connected,
+  portalRoot,
   menuOpen,
   renaming,
   confirmingDelete,
@@ -392,10 +406,9 @@ function ConversationItem({
     click,
     dismiss,
   ])
-  const portal = portalTheme(
-    refs.domReference.current,
-    HISTORY_PORTAL_VARIABLES,
-  )
+  const portal = menuOpen
+    ? portalTheme(refs.domReference.current, HISTORY_PORTAL_VARIABLES)
+    : null
 
   // Resync if meta.title changes from outside this component (e.g. rename from another tab)
   useEffect(() => {
@@ -495,7 +508,7 @@ function ConversationItem({
             <MoreIcon />
           </button>
           {menuOpen && (
-            <FloatingPortal>
+            <FloatingPortal root={portalRoot}>
               <FloatingFocusManager
                 context={context}
                 modal={false}
@@ -505,8 +518,8 @@ function ConversationItem({
                 <div
                   ref={refs.setFloating}
                   className="shiny-chat-history-menu"
-                  style={{ ...portal.style, ...floatingStyles }}
-                  data-bs-theme={portal.theme}
+                  style={{ ...portal?.style, ...floatingStyles }}
+                  data-bs-theme={portal?.theme}
                   {...getFloatingProps()}
                 >
                   <button
