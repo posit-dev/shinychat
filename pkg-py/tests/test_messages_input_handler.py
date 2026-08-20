@@ -1,26 +1,33 @@
 from __future__ import annotations
 
+import warnings
+
 import pytest
 from shinychat._chat_types import StoredMessage
 from shinychat._input_handler import messages_input_value
 
 
 def test_messages_handler_deserializes_snapshot():
-    payload = [
+    payload = (
         {
             "role": "user",
-            "segments": [{"content": "hi", "content_type": "markdown"}],
+            "segments": ({"content": "hi", "content_type": "markdown"},),
         },
         {
             "role": "assistant",
-            "segments": [{"content": "yo", "content_type": "markdown"}],
-            "htmlDeps": [{"name": "w", "version": "1.0.0"}],
+            "segments": ({"content": "yo", "content_type": "markdown"},),
+            "htmlDeps": ({"name": "w", "version": "1.0.0"},),
         },
-    ]
+    )
     out = messages_input_value(payload)
     assert all(isinstance(m, StoredMessage) for m in out)
     assert out[0].role == "user"
     assert out[1].segments[0].html_deps == [{"name": "w", "version": "1.0.0"}]
+    assert isinstance(out[1].segments[0].html_deps, list)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        out[1].model_dump_json()
 
 
 def test_messages_handler_raises_on_message_missing_content_type():
