@@ -300,7 +300,7 @@ test_that("page_chat() builds the default fillable page contract", {
     1
   )
   expect_match(as.character(page), "Close app menu", fixed = TRUE)
-  expect_match(as.character(close_button), "fa-xmark", fixed = TRUE)
+  expect_match(as.character(close_button), "bi bi-x", fixed = TRUE)
 
   identity <- page_chat_tag(page, ".shiny-chat-page-identity")
   expect_equal(identity$name, "div")

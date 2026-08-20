@@ -164,9 +164,7 @@
               <div class="bslib-toolbar bslib-gap-spacing" data-align="right">
                 <bslib-tooltip id="chat-sidebar-close_tooltip" placement="bottom" bsOptions="[]" data-require-bs-version="5" data-require-bs-caller="tooltip()">
                   <template>Close app menu</template>
-                  <button aria-labelledby="btn-label-{id}" class="btn btn-default action-button bslib-toolbar-input-button btn-sm border-0 shiny-chat-page-sidebar-close" data-type="icon" id="chat-sidebar-close" type="button"><span class="action-icon"><span class="bslib-toolbar-icon" aria-hidden="true" style="pointer-events: none">
-                        <i class="fas fa-xmark" role="presentation" aria-label="xmark icon"></i>
-                      </span></span><span class="action-label"><span id="btn-label-{id}" class="bslib-toolbar-label" hidden>Close app menu</span></span></button>
+                  <button aria-labelledby="btn-label-{id}" class="btn btn-default action-button bslib-toolbar-input-button btn-sm border-0 shiny-chat-page-sidebar-close" data-type="icon" id="chat-sidebar-close" type="button"><span class="action-icon"><span class="bslib-toolbar-icon" aria-hidden="true" style="pointer-events: none"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x" viewBox="0 0 16 16"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708"/></svg></span></span><span class="action-label"><span id="btn-label-{id}" class="bslib-toolbar-label" hidden>Close app menu</span></span></button>
                 </bslib-tooltip>
               </div>
               <div class="shiny-chat-page-controls-mount shiny-chat-page-controls-mount-mobile"></div>
