@@ -182,9 +182,12 @@ def test_artifact_separator_uses_bslib_sized_trip_and_active_targets(
         }"""
     )
 
-    def assert_bslib_sized_target(boundary: float, panel_direction: float) -> None:
+    def assert_bslib_sized_target(panel_direction: float) -> None:
         box = separator.bounding_box()
         assert box is not None
+        boundary = (
+            box["x"] if panel_direction > 0 else box["x"] + box["width"]
+        )
         y = box["y"] + box["height"] / 2
         target = separator.evaluate(
             """(element) => {
@@ -244,7 +247,7 @@ def test_artifact_separator_uses_bslib_sized_trip_and_active_targets(
     # real mouse click reaches the adjacent panel content below the handle.
     page.mouse.click(box["x"] + 5, y)
     expect(panel).to_have_attribute("data-resize-underlay-clicks", "1")
-    assert_bslib_sized_target(box["x"], 1)
+    assert_bslib_sized_target(1)
 
     page.evaluate("document.documentElement.dir = 'rtl'")
     page.wait_for_timeout(220)
@@ -255,7 +258,7 @@ def test_artifact_separator_uses_bslib_sized_trip_and_active_targets(
     expect(panel).to_have_attribute(
         "data-resize-underlay-clicks", str(previous_clicks + 1)
     )
-    assert_bslib_sized_target(rtl_box["x"] + rtl_box["width"], -1)
+    assert_bslib_sized_target(-1)
 
 
 def test_debug_resize_overlays_show_artifact_fine_targets(
