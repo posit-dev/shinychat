@@ -420,12 +420,8 @@ def test_page_chat_normalizes_navigation_toolbar_and_sidebars() -> None:
     assert 'data-chat-id="mod-assistant"' in html
     assert 'aria-controls="mod-assistant-sidebar"' in html
     assert 'id="mod-assistant-sidebar"' in html
-    assert (
-        '<bslib-tooltip placement="bottom" '
-        'class="shiny-chat-page-identity-tooltip">' in html
-    )
-    assert '<template style="display:none;"><span>Reactive title</span></template>' in html
     assert '<button type="button" class="shiny-chat-page-identity"' in html
+    assert html.count('<span>Reactive title</span>') == 1
     assert 'data-page-home=""' in html
     assert 'aria-label="Return to chat"' in html
     assert html.count('data-page-target="About"') == 1

@@ -289,21 +289,26 @@ def test_identity_tooltip_discloses_title_and_return_action(
 
     identity = shell.locator(".shiny-chat-page-identity")
     title = "Research Assistant for long-running analyses and multi-step investigations"
+    updated_title = f"Updated {title}"
     tooltip = page.get_by_role("tooltip")
 
+    identity.locator(".shiny-chat-page-identity-title").evaluate(
+        "(element, value) => { element.textContent = value; }",
+        updated_title,
+    )
     identity.hover()
-    expect(tooltip).to_have_text(title)
+    expect(tooltip).to_have_text(updated_title)
 
     shell.get_by_role("button", name="Settings").click()
     expect(tooltip).not_to_be_visible()
     identity.hover()
     expect(tooltip).to_contain_text("Return to chat")
-    expect(tooltip).to_contain_text(title)
+    expect(tooltip).to_contain_text(updated_title)
     expect(tooltip.locator("br")).to_have_count(1)
 
     identity.click()
     identity.hover()
-    expect(tooltip).to_have_text(title)
+    expect(tooltip).to_have_text(updated_title)
 
 
 def test_mobile_moves_controls_and_manages_dialog_focus(

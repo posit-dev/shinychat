@@ -504,11 +504,8 @@ test_that("page_chat() normalizes navigation and sidebar metadata once", {
   expect_equal(identity$name, "button")
   expect_equal(identity$attribs[["data-page-home"]], "")
   expect_equal(identity$attribs[["aria-label"]], "Return to chat")
-  identity_tooltip <- page_chat_tag(page, ".shiny-chat-page-identity-tooltip")
-  expect_equal(identity_tooltip$name, "bslib-tooltip")
-  expect_equal(identity_tooltip$attribs$placement, "bottom")
   expect_match(
-    as.character(identity_tooltip),
+    as.character(identity),
     "<span>Reactive title</span>",
     fixed = TRUE
   )

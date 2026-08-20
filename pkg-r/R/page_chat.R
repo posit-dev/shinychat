@@ -433,13 +433,6 @@ page_chat <- function(
       page_chat_identity_content(icon, title)
     )
   }
-  if (length(pages) > 0) {
-    identity <- htmltools::tagAppendAttributes(
-      bslib::tooltip(identity, title, placement = "bottom"),
-      class = "shiny-chat-page-identity-tooltip"
-    )
-  }
-
   sidebar_panels <- lapply(
     normalized$sidebars,
     function(panel) {

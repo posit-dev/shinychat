@@ -42,10 +42,20 @@ interface PageSidebarState {
   resizable: boolean
 }
 
-interface BslibTooltipElement extends HTMLElement {
-  bsTooltip?: object
-  visible?: boolean
-  _updateTitle?: (title: { html: HTMLElement; deps: unknown[] }) => void
+interface BootstrapTooltip {
+  dispose: () => void
+  setContent: (content: Record<string, HTMLElement>) => void
+}
+
+interface BootstrapTooltipConstructor {
+  new (
+    element: Element,
+    config: {
+      html: boolean
+      placement: string
+      title: HTMLElement
+    },
+  ): BootstrapTooltip
 }
 
 function sidebarOpenMode(value: string | undefined): SidebarOpenMode {
@@ -108,7 +118,8 @@ class ChatPageElement extends HTMLElement {
 
   private toggle: HTMLButtonElement | null = null
   private identity: HTMLButtonElement | null = null
-  private identityTooltip: BslibTooltipElement | null = null
+  private identityTooltip: BootstrapTooltip | null = null
+  private identityTitleObserver: MutationObserver | null = null
   private identityTitle: HTMLElement | null = null
   private identityReturnLabel = "Return to chat"
   private header: HTMLElement | null = null
@@ -140,6 +151,7 @@ class ChatPageElement extends HTMLElement {
     if (!this.captureDom()) return
 
     this.initialized = true
+    this.initializeIdentityTooltip()
     this.bindInteractions()
     this.bindMediaQuery()
     this.bindResizeObserver()
@@ -156,6 +168,10 @@ class ChatPageElement extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this.identityTooltip?.dispose()
+    this.identityTooltip = null
+    this.identityTitleObserver?.disconnect()
+    this.identityTitleObserver = null
     this.historyUnsubscribe?.()
     this.historyUnsubscribe = null
     this.cleanupListeners.splice(0).forEach((cleanup) => cleanup())
@@ -239,10 +255,6 @@ class ChatPageElement extends HTMLElement {
     this.identity = this.querySelector<HTMLButtonElement>(
       "button.shiny-chat-page-identity[data-page-home]",
     )
-    this.identityTooltip =
-      this.identity?.closest<BslibTooltipElement>(
-        ".shiny-chat-page-identity-tooltip",
-      ) ?? null
     this.identityTitle =
       this.identity?.querySelector<HTMLElement>(
         ".shiny-chat-page-identity-title",
@@ -509,7 +521,7 @@ class ChatPageElement extends HTMLElement {
         this.identity.removeAttribute("aria-current")
         this.identity.setAttribute("aria-label", this.identityReturnLabel)
       }
-      this.updateIdentityTooltip(value)
+      this.updateIdentityTooltip()
     }
 
     this.syncSidebar(selected)
@@ -520,25 +532,44 @@ class ChatPageElement extends HTMLElement {
     return true
   }
 
-  private updateIdentityTooltip(value: string) {
-    const tooltip = this.identityTooltip
+  private initializeIdentityTooltip() {
+    const identity = this.identity
     const title = this.identityTitle
-    if (!tooltip?.bsTooltip || !title) return
+    const Tooltip = (
+      window as Window & {
+        bootstrap?: { Tooltip?: BootstrapTooltipConstructor }
+      }
+    ).bootstrap?.Tooltip
+    if (!identity || !title || !Tooltip) return
 
+    this.identityTooltip = new Tooltip(identity, {
+      html: true,
+      placement: "bottom",
+      title: this.identityTooltipContent(),
+    })
+    this.identityTitleObserver = new MutationObserver(() => {
+      this.updateIdentityTooltip()
+    })
+    this.identityTitleObserver.observe(title, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    })
+  }
+
+  private identityTooltipContent() {
     const content = document.createElement("span")
-    if (value !== "home") {
+    if (this.dataset.activePage !== "home") {
       content.append(this.identityReturnLabel, document.createElement("br"))
     }
-    content.append(
-      ...Array.from(title.childNodes, (child) => child.cloneNode(true)),
-    )
-    const update = () => tooltip._updateTitle?.({ html: content, deps: [] })
-    update()
-    if (tooltip.visible) {
-      this.identity?.addEventListener("hidden.bs.tooltip", update, {
-        once: true,
-      })
-    }
+    content.append(this.identityTitle?.textContent?.trim() ?? "")
+    return content
+  }
+
+  private updateIdentityTooltip() {
+    this.identityTooltip?.setContent({
+      ".tooltip-inner": this.identityTooltipContent(),
+    })
   }
 
   private updateToastOffset() {
