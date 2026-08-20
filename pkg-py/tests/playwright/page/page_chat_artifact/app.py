@@ -44,14 +44,21 @@ store_dir = tempfile.mkdtemp(prefix="shinychat-page-artifact-history-")
 def app_ui(request: Request) -> ui.Tag:
     query_params = request.query_params
     requested_width = query_params.get("artifact_width") or ""
+    requested_chat_width = query_params.get("chat_width") or ""
     artifact_width = {
         "default": "400px",
         "90pct": "90%",
         "relative": "32rem",
     }.get(requested_width, "70%")
+    chat_width = {
+        "full": "100%",
+        "wide": "900px",
+        "intrinsic": "fit-content",
+    }.get(requested_chat_width, "min(680px, 100%)")
     return page_chat(
         "Artifact Assistant",
         id="chat",
+        width=chat_width,
         pages=[
             chat_nav_panel(
                 "Details",

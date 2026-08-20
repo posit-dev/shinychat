@@ -86,9 +86,9 @@ shiny-chat-container[data-history-placement="right"] {
   align-items: stretch;
 
   .shiny-chat-wrapper {
-    // Keep the chat's readable column separate from the artifact track even
-    // when the developer explicitly configured the chat itself as width="100%".
-    max-width: min(680px, var(--_chat-width, 100%));
+    // Include the chat gutter in the grid-track width so a full-width chat
+    // cannot overlap the artifact, while retaining the configured max width.
+    box-sizing: border-box;
     width: 100%;
     justify-self: center;
   }

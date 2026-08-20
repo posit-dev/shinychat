@@ -11,12 +11,16 @@ def open_page(
     local_app: ShinyAppProc,
     *,
     artifact_width: str | None = None,
+    chat_width: str | None = None,
     viewport: tuple[int, int] = (1440, 900),
 ) -> tuple[ChatController, Locator]:
     page.set_viewport_size({"width": viewport[0], "height": viewport[1]})
-    url = local_app.url
+    query: list[str] = []
     if artifact_width:
-        url = f"{url}?artifact_width={artifact_width}"
+        query.append(f"artifact_width={artifact_width}")
+    if chat_width:
+        query.append(f"chat_width={chat_width}")
+    url = f"{local_app.url}?{'&'.join(query)}" if query else local_app.url
     page.goto(url)
     chat = ChatController(page, "chat")
     shell = page.locator("shiny-chat-page")
@@ -146,6 +150,51 @@ def test_percentage_artifact_keeps_desktop_chat_width(
     assert minimum == 240
     assert minimum <= current <= maximum
     expect(separator).to_have_attribute("aria-valuetext", f"{current} pixels")
+
+
+@pytest.mark.parametrize(
+    ("chat_width", "expected_max_width", "expected_width"),
+    [
+        pytest.param("full", "100%", None, id="full"),
+        pytest.param("wide", "900px", 900, id="wide"),
+        pytest.param("intrinsic", "fit-content", None, id="intrinsic"),
+    ],
+)
+def test_artifact_open_preserves_configured_chat_width(
+    page: Page,
+    local_app: ShinyAppProc,
+    chat_width: str,
+    expected_max_width: str,
+    expected_width: int | None,
+) -> None:
+    chat, _ = open_page(
+        page,
+        local_app,
+        artifact_width="default",
+        chat_width=chat_width,
+    )
+    page.get_by_role("button", name="Show artifact").click()
+
+    layout = chat.loc.locator(".shiny-chat-layout")
+    panel = chat.loc.locator(".shiny-chat-artifact")
+    wrapper = chat.loc.locator(".shiny-chat-wrapper")
+    expect(panel).to_be_visible(timeout=TIMEOUT)
+    page.wait_for_timeout(220)
+
+    layout_box = layout.bounding_box()
+    panel_box = panel.bounding_box()
+    wrapper_box = wrapper.bounding_box()
+    assert layout_box is not None
+    assert panel_box is not None
+    assert wrapper_box is not None
+    assert wrapper.evaluate("(element) => getComputedStyle(element).maxWidth") == (
+        expected_max_width
+    )
+    assert wrapper_box["x"] >= layout_box["x"]
+    assert wrapper_box["x"] + wrapper_box["width"] <= panel_box["x"]
+
+    if expected_width is not None:
+        assert wrapper_box["width"] == pytest.approx(expected_width, abs=1)
 
 
 def test_artifact_separator_remains_mouse_reachable_after_maximum_resize(
