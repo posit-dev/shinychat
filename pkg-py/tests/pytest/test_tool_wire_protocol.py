@@ -5,12 +5,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from chatlas.types import ContentToolRequest, ContentToolResult
 from htmltools import HTML, TagList
 import pytest
 from pydantic import ValidationError
 from shinychat._chat_normalize_chatlas import (
     ToolRequestComponent,
     ToolResultComponent,
+    tool_result_contents,
 )
 from shinychat.types import ToolResultDisplay
 
@@ -73,10 +75,15 @@ def test_tool_wire_protocol_fixture_matches_python_serialization() -> None:
 
 
 def test_default_tool_result_presentation_is_not_serialized() -> None:
-    component = ToolResultComponent(
-        request_id="wire-default",
-        tool_name="search",
+    request = ContentToolRequest(
+        id="wire-default",
+        name="search",
+        arguments={"q": "shiny"},
+    )
+    result = ContentToolResult(
         value="Result body",
+        request=request,
+        extra={"display": ToolResultDisplay()},
     )
 
-    assert "presentation=" not in _render(component)
+    assert "presentation=" not in _render(tool_result_contents(result))
