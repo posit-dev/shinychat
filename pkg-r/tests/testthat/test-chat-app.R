@@ -146,7 +146,7 @@ test_that("chat_app() diagnoses legacy shinyApp() arguments in dots", {
   )
 })
 
-test_that("chat_app() puts the interactive close button in the page toolbar", {
+test_that("chat_app() puts the interactive stop button in the page toolbar", {
   local_mocked_bindings(
     is_interactive = function() TRUE,
     .package = "rlang"
@@ -159,5 +159,18 @@ test_that("chat_app() puts the interactive close button in the page toolbar", {
     fixed = TRUE
   )
   expect_match(html, 'id="chat-close-btn"', fixed = TRUE)
+  expect_match(html, "bi-stop-circle-fill text-danger", fixed = TRUE)
+  expect_match(html, "Stop chat app", fixed = TRUE)
   expect_false(grepl("position: fixed", html, fixed = TRUE))
+})
+
+test_that("chat_app() omits the stop button outside interactive use", {
+  local_mocked_bindings(
+    is_interactive = function() FALSE,
+    .package = "rlang"
+  )
+  html <- chat_app_html(chat_app(mock_chat_client()))
+
+  expect_false(grepl('id="chat-close-btn"', html, fixed = TRUE))
+  expect_false(grepl("bi-stop-circle-fill", html, fixed = TRUE))
 })

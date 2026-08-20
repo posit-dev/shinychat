@@ -193,13 +193,7 @@ chat_app <- function(
   if (is_interactive) {
     dots$toolbar_global <- htmltools::tagList(
       dots$toolbar_global,
-      shiny::actionButton(
-        close_id,
-        label = "",
-        class = "btn-close",
-        `aria-label` = "Close chat app",
-        title = "Close chat app"
-      )
+      chat_app_stop_button(close_id)
     )
   }
 
@@ -229,6 +223,18 @@ chat_app <- function(
     server,
     options = app_options,
     enableBookmarking = bookmark_store
+  )
+}
+
+chat_app_stop_button <- function(id) {
+  bslib::toolbar_input_button(
+    id = id,
+    label = "Stop chat app",
+    icon = htmltools::HTML(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-stop-circle-fill text-danger" viewBox="0 0 16 16"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0M6.5 5A1.5 1.5 0 0 0 5 6.5v3A1.5 1.5 0 0 0 6.5 11h3A1.5 1.5 0 0 0 9.5 5z"/></svg>'
+    ),
+    show_label = FALSE,
+    tooltip = "Stop chat app"
   )
 }
 

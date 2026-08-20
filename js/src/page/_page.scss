@@ -350,7 +350,23 @@ button.shiny-chat-page-identity:focus-visible,
   }
 
   .shiny-chat-page-header:has(.shiny-chat-page-identity:not([data-page-home])) {
-    grid-template-columns: auto max-content minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, max-content) minmax(0, 1fr);
+  }
+
+  .shiny-chat-page-header[data-sidebar-toggle-hidden]:has(
+      .shiny-chat-page-identity:not([data-page-home])
+    ) {
+    grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  }
+
+  .shiny-chat-page-identity:not([data-page-home]) {
+    min-width: 0;
+  }
+
+  .shiny-chat-page-identity:not([data-page-home])
+    > .shiny-chat-page-identity-title {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .shiny-chat-page-toolbar,
@@ -529,6 +545,24 @@ button.shiny-chat-page-identity:focus-visible,
     background: transparent;
     border: 0;
     border-radius: var(--bs-border-radius, 0.375rem);
+  }
+
+  .shiny-chat-page-sidebar > button.shiny-chat-page-sidebar-close::before,
+  .shiny-chat-page-sidebar > button.shiny-chat-page-sidebar-close::after {
+    position: absolute;
+    width: 1.125rem;
+    height: 0.125rem;
+    content: "";
+    background: currentcolor;
+    border-radius: 0.125rem;
+  }
+
+  .shiny-chat-page-sidebar > button.shiny-chat-page-sidebar-close::before {
+    transform: rotate(45deg);
+  }
+
+  .shiny-chat-page-sidebar > button.shiny-chat-page-sidebar-close::after {
+    transform: rotate(-45deg);
   }
 
   .shiny-chat-page-sidebar-resizer {

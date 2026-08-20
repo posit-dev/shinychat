@@ -197,6 +197,9 @@ def test_single_page_title_is_not_truncated(
 
     identity = shell.locator(".shiny-chat-page-identity")
     identity_title = shell.locator(".shiny-chat-page-identity-title")
+    header = shell.locator(".shiny-chat-page-header")
+    controls_mount = shell.locator(".shiny-chat-page-controls-mount-desktop")
+    toolbar = shell.locator(".shiny-chat-page-toolbar")
     expect(identity).to_have_count(1)
     expect(identity).to_have_attribute("class", "shiny-chat-page-identity")
     expect(identity).not_to_have_attribute("data-page-home")
@@ -204,12 +207,28 @@ def test_single_page_title_is_not_truncated(
     expect(identity_title).to_have_css("text-overflow", "clip")
     expect(identity_title).to_have_css("white-space", "normal")
 
+    identity_title.evaluate(
+        "(element) => { element.textContent = 'A title with a deliberately "
+        "unusually long unbroken run of characters that must wrap without "
+        "pushing toolbar controls outside the page'; }"
+    )
     identity_box = identity.bounding_box()
+    header_box = header.bounding_box()
+    controls_mount_box = controls_mount.bounding_box()
+    toolbar_box = toolbar.bounding_box()
     assert identity_box is not None
+    assert header_box is not None
+    assert controls_mount_box is not None
+    assert toolbar_box is not None
     title_cap_px = page.evaluate(
         "12 * parseFloat(getComputedStyle(document.documentElement).fontSize)"
     )
     assert identity_box["width"] > title_cap_px
+    assert identity_box["x"] + identity_box["width"] <= toolbar_box["x"]
+    assert toolbar_box["x"] >= controls_mount_box["x"]
+    assert toolbar_box["x"] + toolbar_box["width"] <= (
+        header_box["x"] + header_box["width"]
+    )
 
 
 def test_mobile_moves_controls_and_manages_dialog_focus(
@@ -235,9 +254,26 @@ def test_mobile_moves_controls_and_manages_dialog_focus(
     expect(sidebar).to_have_attribute("role", "dialog")
     expect(sidebar).to_have_attribute("aria-modal", "true")
     expect(sidebar).to_be_focused()
+    close_button = shell.get_by_role("button", name="Close app menu")
+    expect(close_button).to_be_visible()
+    close_icon = close_button.evaluate(
+        """(element) => {
+          const style = getComputedStyle(element, "::before");
+          return {
+            content: style.content,
+            width: style.width,
+            height: style.height,
+            backgroundColor: style.backgroundColor,
+          };
+        }"""
+    )
+    assert close_icon["content"] == '""'
+    assert close_icon["width"] == "18px"
+    assert close_icon["height"] == "2px"
+    assert close_icon["backgroundColor"] != "rgba(0, 0, 0, 0)"
 
     page.keyboard.press("Tab")
-    expect(shell.get_by_role("button", name="Close app menu")).to_be_focused()
+    expect(close_button).to_be_focused()
     page.keyboard.press("Escape")
     expect(shell).not_to_have_attribute("data-mobile-menu-open", "true")
     expect(toggle).to_be_focused()
