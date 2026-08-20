@@ -62,9 +62,15 @@ def test_navigation_example_mobile_menu_includes_home_link(
     page.goto(local_app.url)
     shell = page.locator("shiny-chat-page")
     home_link = shell.locator(".shiny-chat-page-home-link")
+    chat = ChatController(page, "chat")
 
     expect(shell.locator(".shiny-chat-page-identity-title")).to_have_text(
         "Field notes"
+    )
+    chat.set_user_input("keep the mobile home link")
+    chat.send_user_input()
+    chat.expect_latest_message(
+        "The assistant replied to your message: keep the mobile home link"
     )
     shell.locator(".shiny-chat-page-sidebar-toggle").click()
     expect(home_link).to_be_visible()
