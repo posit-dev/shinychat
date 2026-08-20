@@ -14,7 +14,7 @@ def test_fit_content_sidebar_includes_inherited_padding(
     expect(sidebar).to_be_visible(timeout=30_000)
     shell.evaluate(
         """(element) => {
-          element.style.setProperty("--bslib-sidebar-padding", "24px");
+          element.style.setProperty("--shiny-chat-page-sidebar-padding", "24px");
           const content = element.querySelector(
             ".shiny-chat-page-sidebar-panel > div"
           );

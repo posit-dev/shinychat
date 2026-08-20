@@ -202,6 +202,7 @@ export const ChatContainer = forwardRef<
   const artifactCloseRef = useRef<HTMLButtonElement>(null)
   const artifactRevealRef = useRef<HTMLButtonElement>(null)
   const artifactReturnFocusRef = useRef<HTMLElement | null>(null)
+  const artifactRestoreFocusRef = useRef<HTMLElement | null>(null)
   const artifactReturnToRevealRef = useRef(false)
   const priorArtifactVisibleRef = useRef(artifact.visible)
   const priorArtifactTakeoverRef = useRef(false)
@@ -351,9 +352,11 @@ export const ChatContainer = forwardRef<
 
     if (revealedFromControl) {
       artifactReturnFocusRef.current = null
+      artifactRestoreFocusRef.current = null
       requestAnimationFrame(() => artifactCloseRef.current?.focus())
       if (historyOpen) setHistoryOpen(false)
     } else if (entersTakeover) {
+      artifactRestoreFocusRef.current = null
       const active = document.activeElement
       const chatWrapper = artifactLayoutRef.current?.querySelector(
         ".shiny-chat-wrapper",
@@ -380,8 +383,7 @@ export const ChatContainer = forwardRef<
       if (returnToReveal) {
         requestAnimationFrame(() => artifactRevealRef.current?.focus())
       } else {
-        const returnFocus = artifactReturnFocusRef.current
-        if (returnFocus?.isConnected) returnFocus.focus()
+        artifactRestoreFocusRef.current = artifactReturnFocusRef.current
       }
       artifactReturnFocusRef.current = null
     }
@@ -389,6 +391,18 @@ export const ChatContainer = forwardRef<
     priorArtifactVisibleRef.current = isVisible
     priorArtifactTakeoverRef.current = artifactTakeover
   }, [artifact.enabled, artifact.visible, artifactTakeover, historyOpen])
+
+  useLayoutEffect(() => {
+    if (artifact.visible || artifactPresented) return
+
+    const returnFocus = artifactRestoreFocusRef.current
+    artifactRestoreFocusRef.current = null
+    if (!returnFocus?.isConnected) return
+
+    requestAnimationFrame(() => {
+      if (returnFocus.isConnected) returnFocus.focus()
+    })
+  }, [artifact.visible, artifactPresented])
 
   useEffect(() => {
     if (artifactTakeover && artifact.visible && historyOpen) {

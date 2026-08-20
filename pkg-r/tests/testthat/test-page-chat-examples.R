@@ -1,4 +1,13 @@
 page_chat_example_path <- function(...) {
+  installed_path <- system.file(
+    "examples-shiny",
+    ...,
+    package = "shinychat"
+  )
+  if (nzchar(installed_path)) {
+    return(installed_path)
+  }
+
   testthat::test_path("..", "..", "inst", "examples-shiny", ...)
 }
 

@@ -166,7 +166,7 @@ def test_chat_nav_panel_validates_sidebar_and_navigation_values() -> None:
         chat_nav_panel(cast(Any, tags.span("About")))
     with pytest.raises(ValueError, match="empty CSS width"):
         chat_nav_panel("About", content_width=" ")
-    assert chat_nav_panel("About", toolbar={"class": "bad"}).toolbar == {
+    assert chat_nav_panel("About", toolbar=cast(Any, {"class": "bad"})).toolbar == {
         "class": "bad"
     }
 

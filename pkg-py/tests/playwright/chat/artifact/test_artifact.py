@@ -160,6 +160,10 @@ def test_artifact_desktop_resize_semantics_focus_and_signaling(
           handle.setPointerCapture = () => {};
           const box = handle.getBoundingClientRect();
           const startX = box.x + box.width / 2;
+          const indicator = handle.querySelector(
+            "[data-shiny-chat-resize-indicator]"
+          );
+          if (!indicator) throw new Error("Resize indicator is missing");
           const event = (type, clientX) => new PointerEvent(type, {
             bubbles: true,
             button: 0,
@@ -168,9 +172,9 @@ def test_artifact_desktop_resize_semantics_focus_and_signaling(
             pointerId: 7,
             pointerType: "mouse",
           });
-          handle.dispatchEvent(event("pointerdown", startX));
-          handle.dispatchEvent(event("pointermove", startX - 80));
-          handle.dispatchEvent(event("pointerup", startX - 80));
+          indicator.dispatchEvent(event("pointerdown", startX));
+          indicator.dispatchEvent(event("pointermove", startX - 80));
+          indicator.dispatchEvent(event("pointerup", startX - 80));
         }"""
     )
     expect(separator).to_have_attribute(
@@ -200,8 +204,9 @@ def test_artifact_honors_reduced_motion(
     ) == ("none")
 
     separator = page.get_by_role("separator", name="Resize artifact panel")
-    assert separator.evaluate(
-        "(element) => getComputedStyle(element, '::before').transitionProperty"
+    indicator = separator.locator("[data-shiny-chat-resize-indicator]")
+    assert indicator.evaluate(
+        "(element) => getComputedStyle(element).transitionProperty"
     ) == ("none")
 
 
