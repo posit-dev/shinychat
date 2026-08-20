@@ -15,7 +15,8 @@ tool_result_display(
   full_screen = FALSE,
   footer = NULL,
   label = NULL,
-  value_preview = NULL
+  value_preview = NULL,
+  presentation = "default"
 )
 }
 \arguments{
@@ -58,6 +59,9 @@ arguments, then the tool name.}
 
 \item{value_preview}{A terse, per-call preview of the tool result, shown
 in the activity row before its drill-down card is opened.}
+
+\item{presentation}{Whether to use the default drill-down presentation or a
+framed presentation for this result.}
 }
 \value{
 An object of class \code{shinychat_tool_result_display}, for use as
