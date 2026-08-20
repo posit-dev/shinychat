@@ -109,7 +109,14 @@ app_ui = page_chat(
         width=420,
         open=False,
     ),
-    greeting="## Field notes\n\nTry the local echo response.",
+    greeting="""## Field notes
+
+Try the local echo response.
+
+* <span class=\"suggestion\">Capture a new field note</span>
+* <span class=\"suggestion\">Organize and summarize my notes</span>
+* <span class=\"suggestion\">Analyze my notes for recurring observations</span>
+""",
     placeholder="Describe what you observed...",
     icon_assistant=False,
 )

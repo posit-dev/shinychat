@@ -109,7 +109,14 @@ ui <- page_chat(
     width = 420,
     open = FALSE
   ),
-  greeting = "## Field notes\n\nTry the local echo response.",
+  greeting = paste(
+    "## Field notes\n",
+    "Try the local echo response.\n",
+    "* <span class=\"suggestion\">Capture a new field note</span>",
+    "* <span class=\"suggestion\">Organize and summarize my notes</span>",
+    "* <span class=\"suggestion\">Analyze my notes for recurring observations</span>",
+    sep = "\n"
+  ),
   placeholder = "Describe what you observed...",
   icon_assistant = FALSE
 )
