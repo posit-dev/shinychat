@@ -42,6 +42,7 @@ def test_artifact_desktop_transport_and_rebinding(
     ).to_be_visible()
 
     wrapper = chat.loc.locator(".shiny-chat-wrapper")
+    page.wait_for_timeout(220)
     page.wait_for_function(
         """() => {
           const wrapper = document.querySelector("#chat .shiny-chat-wrapper");

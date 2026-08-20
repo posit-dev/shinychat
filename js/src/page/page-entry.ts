@@ -859,7 +859,7 @@ class ChatPageElement extends HTMLElement {
           ),
         ),
       ) ||
-      Boolean(this.mobileHomeLink)
+      (this.mobile && Boolean(this.mobileHomeLink))
     )
   }
 

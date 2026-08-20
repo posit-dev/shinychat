@@ -662,7 +662,14 @@ describe("shiny-chat-page navigation", () => {
 describe("shiny-chat-page responsive controls", () => {
   it("adds a title-derived home link to the mobile menu", async () => {
     const media = installMatchMedia(false)
-    const page = pageFixture()
+    const page = pageFixture({
+      pages: false,
+      sidebar: false,
+      pageSidebars: false,
+      toolbar: false,
+      globalToolbar: false,
+      customToolbar: false,
+    })
     const { identity, toggle } = getPageElements(page)
     const identityTitle = identity!.querySelector<HTMLElement>(
       ".shiny-chat-page-identity-title",
@@ -673,6 +680,7 @@ describe("shiny-chat-page responsive controls", () => {
 
     expect(homeLink.hidden).toBe(true)
     expect(homeLink.textContent).toBe("Assistant")
+    expect(toggle.hidden).toBe(true)
     expect(identity?.parentElement).toBe(
       page.querySelector(".shiny-chat-page-header"),
     )
@@ -680,6 +688,7 @@ describe("shiny-chat-page responsive controls", () => {
     media.setMatches(true)
 
     expect(homeLink.hidden).toBe(false)
+    expect(toggle.hidden).toBe(false)
     expect(homeLink).toHaveAttribute("aria-current", "page")
     expect(homeLink.textContent).toBe("Assistant")
     expect(identity?.parentElement).toBe(
