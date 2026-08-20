@@ -292,9 +292,13 @@ class ToolResultDisplay(BaseModel):
     ``label`` and ``value_preview`` are compact, per-call metadata shown in the
     activity row and grouped call list. Use them to distinguish repeated calls
     without opening the card. ``html``, ``markdown``, and ``text`` customize the
-    result body inside the drill-down card. To replace the card with standalone
+    result body inside the drill-down card. ``presentation="framed"`` opts a
+    substantial rich result into Shiny Chat's expanded frame;
+    ``presentation="default"`` retains the existing drill-down presentation.
+    Framing belongs to the normal tool UI. To replace the card with standalone
     UI instead, register a custom ``message_content`` or
-    ``message_content_chunk`` handler for a ``ContentToolResult`` subclass.
+    ``message_content_chunk`` handler for a ``ContentToolResult`` subclass;
+    standalone output is not framed.
 
     See the [Tool calling guide](https://shiny.posit.co/py/docs/genai-tools.html)
     for complete tool-display examples.
@@ -304,15 +308,16 @@ class ToolResultDisplay(BaseModel):
 
     ```python
     import chatlas as ctl
+    from shiny import ui
     from shinychat.types import ToolResultDisplay
 
 
     def my_tool():
         display = ToolResultDisplay(
-            title="Looked up weather for Duluth",
-            label="Duluth, MN",
-            value_preview="18 C, clear",
-            markdown="A _markdown_ message shown to user.",
+            html=ui.div(...),
+            footer=ui.div(...),
+            full_screen=True,
+            presentation="framed",
         )
         return ctl.ContentToolResult(
             value="Value the model sees",
@@ -349,8 +354,8 @@ class ToolResultDisplay(BaseModel):
     - ``full_screen``:
         Whether to display a fullscreen toggle button on the drill-down card.
     - ``presentation``:
-        Whether to use the default drill-down presentation or a framed
-        presentation for this result.
+        Use ``"framed"`` to opt an expanded normal rich result into Shiny
+        Chat's frame. ``"default"`` retains the existing presentation.
     - ``html``:
         Custom HTML content inside the drill-down card, in place of the
         default result display.
