@@ -67,13 +67,15 @@ def messages_input_value(value: Any) -> list[StoredMessage]:
         # malformed message is a client/protocol bug we surface loudly rather
         # than silently drop (which would be invisible data loss on save). The
         # R handler (chat_history_types.R) takes the same posture.
-        segments = [
-            StoredSegment(content=s["content"], content_type=s["content_type"])
-            for s in m.get("segments", [])
-        ]
         html_deps = m.get("htmlDeps")
-        if html_deps and segments:
-            segments[0].html_deps = html_deps
+        segments = [
+            StoredSegment(
+                content=s["content"],
+                content_type=s["content_type"],
+                html_deps=html_deps if i == 0 else None,
+            )
+            for i, s in enumerate(m.get("segments", []))
+        ]
         attachments = [
             Attachment.model_validate(a) for a in (m.get("attachments") or [])
         ]
