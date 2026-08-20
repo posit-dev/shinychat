@@ -74,6 +74,11 @@ test_that("chat_app() forwards chat_server() options", {
     history = FALSE
   )
 
+  expect_false(grepl(
+    '<shiny-chat-history for="custom-chat">',
+    chat_app_html(app),
+    fixed = TRUE
+  ))
   app$serverFuncSource()(NULL, NULL, NULL)
 
   expect_identical(
@@ -85,6 +90,16 @@ test_that("chat_app() forwards chat_server() options", {
       history = FALSE
     )
   )
+})
+
+test_that("chat_app() preserves an explicit sidebar when history is disabled", {
+  html <- chat_app_html(chat_app(
+    mock_chat_client(),
+    history = FALSE,
+    sidebar = TRUE
+  ))
+
+  expect_match(html, '<shiny-chat-history for="chat">', fixed = TRUE)
 })
 
 test_that("chat_app() forwards app options and bookmark store", {

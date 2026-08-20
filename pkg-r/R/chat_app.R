@@ -164,6 +164,9 @@ chat_app <- function(
   check_ellmer_chat(client)
   dots <- rlang::list2(...)
   check_chat_app_dots(dots)
+  if (isFALSE(history) && !"sidebar" %in% rlang::names2(dots)) {
+    dots$sidebar <- FALSE
+  }
 
   if (!is.list(app_options)) {
     cli::cli_abort("{.arg app_options} must be a list.")
