@@ -22,6 +22,16 @@ test_that("page-chat R examples parse and construct", {
     if (basename(dirname(app)) == "page-chat-navigation") {
       html <- htmltools::renderTags(env$ui)$html
       expect_match(html, '<shiny-chat-history for="chat">', fixed = TRUE)
+      expect_match(html, 'id="show_settings"', fixed = TRUE)
+      expect_match(html, 'class="bi bi-gear-fill"', fixed = TRUE)
+      expect_match(html, 'class="bi bi-info-circle-fill"', fixed = TRUE)
+      expect_match(html, 'data-page-target="Notebook"', fixed = TRUE)
+      expect_false(grepl('data-page-target="Settings"', html, fixed = TRUE))
+      expect_match(
+        paste(readLines(app, warn = FALSE), collapse = "\n"),
+        "bslib::show_offcanvas",
+        fixed = TRUE
+      )
       expect_match(
         paste(readLines(app, warn = FALSE), collapse = "\n"),
         "chat_enable_history",

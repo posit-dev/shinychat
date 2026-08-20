@@ -55,6 +55,26 @@ def test_navigation_example_saves_conversations(
     ) == sidebar.evaluate("(element) => getComputedStyle(element).backgroundColor")
 
 
+def test_navigation_example_shows_settings_offcanvas_from_global_toolbar(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.goto(local_app.url)
+    shell = page.locator("shiny-chat-page")
+    settings_button = shell.locator("#show_settings")
+    help_button = shell.locator("#help")
+
+    expect(settings_button.locator("svg.bi-gear-fill")).to_be_visible()
+    expect(help_button.locator("svg.bi-info-circle-fill")).to_be_visible()
+    settings_button.click()
+
+    offcanvas = page.locator("#answer_settings")
+    expect(offcanvas).to_be_visible()
+    expect(offcanvas.get_by_text("Answer settings", exact=True)).to_be_visible()
+    expect(offcanvas.locator("#length")).to_be_visible()
+    expect(offcanvas.locator("#citations")).to_be_visible()
+    expect(offcanvas.get_by_role("button", name="Reset settings")).to_be_visible()
+
+
 def test_navigation_example_history_new_button_meets_aa_contrast(
     page: Page, local_app: ShinyAppProc
 ) -> None:
