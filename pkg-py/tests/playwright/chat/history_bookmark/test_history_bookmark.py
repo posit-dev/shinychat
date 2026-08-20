@@ -51,7 +51,12 @@ def test_bookmark_mode_switch_restores_inputs(
 
     # Switch back to A: full page load, input value restored.
     open_drawer(page)
-    page.locator(".shiny-chat-history-item", has_text="first question").click()
+    conversation = page.locator(
+        ".shiny-chat-history-item", has_text="first question"
+    )
+    select = conversation.locator(".shiny-chat-history-item-select")
+    expect(select).to_be_enabled(timeout=30_000)
+    select.click()
     controller.InputText(page, "filter_text").expect_value(
         "penguins", timeout=30_000
     )
