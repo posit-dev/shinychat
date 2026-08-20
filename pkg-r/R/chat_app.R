@@ -193,7 +193,7 @@ chat_app <- function(
   if (is_interactive) {
     dots$toolbar_global <- htmltools::tagList(
       dots$toolbar_global,
-      chat_app_stop_button(close_id)
+      bslib::toolbar(chat_app_stop_button(close_id))
     )
   }
 

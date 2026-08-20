@@ -182,6 +182,11 @@ test_that("chat_app() puts the interactive stop button in the page toolbar", {
     fixed = TRUE
   )
   expect_match(html, 'id="chat-close-btn"', fixed = TRUE)
+  expect_match(
+    html,
+    '<div class="bslib-toolbar bslib-gap-spacing" data-align="right">',
+    fixed = TRUE
+  )
   expect_match(html, "bi-stop-circle-fill text-danger", fixed = TRUE)
   expect_match(html, "Stop chat app", fixed = TRUE)
   expect_false(grepl("position: fixed", html, fixed = TRUE))
