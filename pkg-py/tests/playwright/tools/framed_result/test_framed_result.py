@@ -24,6 +24,21 @@ def open_single_call(loop: Locator) -> None:
     expect(loop.locator(".shiny-tool-card")).to_be_visible(timeout=5_000)
 
 
+def border_widths(locator: Locator) -> list[str]:
+    return locator.evaluate(
+        """(el) => {
+            const style = getComputedStyle(el);
+            return [
+                style.borderTopWidth,
+                style.borderRightWidth,
+                style.borderBottomWidth,
+                style.borderLeftWidth,
+                style.borderInlineStartWidth,
+            ];
+        }"""
+    )
+
+
 def test_framed_result_has_one_outer_frame_and_contained_footer(
     page: Page, local_app: ShinyAppProc
 ) -> None:
@@ -42,12 +57,7 @@ def test_framed_result_has_one_outer_frame_and_contained_footer(
     assert frame.locator(".card-footer").evaluate(
         "(el) => el.closest('.shiny-chat-tool-group--framed') !== null"
     )
-    assert (
-        frame.locator(".shiny-tool-card").evaluate(
-            "(el) => getComputedStyle(el).borderTopWidth"
-        )
-        == "0px"
-    )
+    assert border_widths(frame.locator(".shiny-tool-card")) == ["0px"] * 5
     expect(frame.get_by_text("Recognizable framed body")).to_be_visible()
     expect(frame.get_by_text("Recognizable framed footer")).to_be_visible()
 
@@ -66,6 +76,12 @@ def test_framed_result_focus_visible_stays_inside_outer_frame(
     page.keyboard.press("Shift+Tab")
     assert summary.evaluate("(el) => el.matches(':focus-visible')")
     assert (
+        summary.evaluate("(el) => getComputedStyle(el).outlineWidth") != "0px"
+    )
+    assert (
+        summary.evaluate("(el) => getComputedStyle(el).outlineStyle") == "solid"
+    )
+    assert (
         summary.evaluate("(el) => getComputedStyle(el).outlineOffset") == "-2px"
     )
 
@@ -82,11 +98,26 @@ def test_grouped_result_frames_only_the_selected_framed_call(
     default_call = loop.locator("li", has_text="default")
     framed_call.locator(".shiny-chat-tool-call-row__summary").click()
 
+    group = loop.locator(".shiny-chat-tool-group")
     expect(framed_call).to_have_class(
         "shiny-chat-tool-call-row shiny-chat-tool-call-row--framed"
     )
+    assert (
+        framed_call.evaluate("(el) => getComputedStyle(el).borderTopStyle")
+        == "solid"
+    )
+    assert (
+        framed_call.evaluate("(el) => getComputedStyle(el).borderTopWidth")
+        != "0px"
+    )
     expect(default_call).to_have_class("shiny-chat-tool-call-row")
+    assert border_widths(default_call) == ["0px"] * 5
+    assert not group.evaluate(
+        "(el) => el.classList.contains('shiny-chat-tool-group--framed')"
+    )
+    assert border_widths(group) == ["0px"] * 5
     expect(framed_call.locator(".shiny-tool-card")).to_be_visible()
+    assert border_widths(framed_call.locator(".shiny-tool-card")) == ["0px"] * 5
 
 
 def test_framed_fullscreen_result_keeps_leaf_overlay(
