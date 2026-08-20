@@ -370,5 +370,5 @@ test_that("HistoryController$save propagates store write errors", {
   ctrl$record <- new_conversation_record("Saved conversation")
 
   expect_error(ctrl$save(), "disk full")
-  expect_identical(ctrl$transcript_offset, 0L)
+  expect_equal(ctrl$transcript_offset, 0)
 })

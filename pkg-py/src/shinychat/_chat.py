@@ -977,7 +977,7 @@ class Chat:
         self,
         message: Any,
         *,
-        icon: HTML | Tag | TagList | None = None,
+        icon: HTML | Tag | TagList | bool | None = None,
     ) -> bool:
         msg = normalize_message(message)
         msg = await self._transform_message(msg)
@@ -1118,7 +1118,7 @@ class Chat:
         chunk: Literal[True, "start", "end"] = True,
         stream_id: str,
         operation: Literal["append", "replace"] = "append",
-        icon: HTML | Tag | TagList | None = None,
+        icon: HTML | Tag | TagList | bool | None = None,
     ) -> bool:
         # Normalize various message types into a ChatMessage()
         msg = normalize_message_chunk(message)
@@ -1201,7 +1201,7 @@ class Chat:
         projection: StoredMessage | None,
         operation: Literal["append", "replace"],
         is_end: bool,
-        icon: HTML | Tag | TagList | None,
+        icon: HTML | Tag | TagList | bool | None,
     ) -> tuple[StoredMessage | None, StoredMessage | None]:
         """Transform, send, and resolve one stream chunk (or the terminal settle).
 
@@ -1402,7 +1402,7 @@ class Chat:
         self,
         message: Iterable[Any] | AsyncIterable[Any],
         *,
-        icon: HTML | Tag | None = None,
+        icon: HTML | Tag | bool | None = None,
         on_settled: Callable[[], Awaitable[None]] | None = None,
     ) -> ExtendedTask[[], str]:
         from shiny import reactive
