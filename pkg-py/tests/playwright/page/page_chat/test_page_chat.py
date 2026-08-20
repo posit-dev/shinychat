@@ -631,11 +631,15 @@ def test_page_chat_respects_reduced_motion_for_composer_positioning(
     composer = chat.loc.locator(".shiny-chat-composer")
 
     expect(layout).to_have_attribute("data-composer-centered", "")
-    expect(layout).to_have_attribute("data-composer-revealing", "")
     expect(composer).to_have_css("transition-duration", "0s")
-    assert composer.evaluate(
-        """(element) => {
-          const styles = getComputedStyle(element);
+    page.wait_for_function(
+        """() => {
+          const layout = document.querySelector('#chat .shiny-chat-layout');
+          const composer = layout?.querySelector('.shiny-chat-composer');
+          if (!layout?.hasAttribute('data-composer-revealing') || !composer) {
+            return false;
+          }
+          const styles = getComputedStyle(composer);
           return styles.animationName === 'none' && styles.animationDuration === '0s';
         }"""
     )
