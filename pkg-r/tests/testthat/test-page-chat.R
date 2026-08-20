@@ -264,6 +264,23 @@ test_that("page_chat() builds the default fillable page contract", {
   expect_equal(icon$name, "svg")
   expect_equal(icon$attribs[["aria-hidden"]], "true")
 
+  close_button <- page_chat_tag(page, ".shiny-chat-page-sidebar-close")
+  expect_equal(close_button$name, "button")
+  expect_equal(close_button$attribs$type, "button")
+  expect_equal(close_button$attribs$id, "chat-sidebar-close")
+  expect_match(
+    as.character(close_button),
+    "bslib-toolbar-input-button",
+    fixed = TRUE
+  )
+  close_toolbar <- page_chat_tag(page, ".bslib-toolbar")
+  expect_length(
+    page_chat_tags(close_toolbar, ".shiny-chat-page-sidebar-close"),
+    1
+  )
+  expect_match(as.character(page), "Close app menu", fixed = TRUE)
+  expect_match(as.character(close_button), "fa-xmark", fixed = TRUE)
+
   identity <- page_chat_tag(page, ".shiny-chat-page-identity")
   expect_equal(identity$name, "div")
   expect_null(identity$attribs[["data-page-home"]])
@@ -335,7 +352,12 @@ test_that("page_chat() builds the default fillable page contract", {
   expect_identical(attr(page, "lang"), NULL)
   expect_s3_class(attr(page, "bs_theme"), "bs_theme")
 
-  expect_snapshot(cat(rendered$html, "\n", sep = ""))
+  rendered_html <- gsub(
+    "btn-label-[0-9]+",
+    "btn-label-{id}",
+    rendered$html
+  )
+  expect_snapshot(cat(rendered_html, "\n", sep = ""))
 })
 
 test_that("page_chat() applies supported navbar_options to its title bar", {

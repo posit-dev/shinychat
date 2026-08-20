@@ -448,7 +448,8 @@ button.shiny-chat-page-identity:focus-visible,
   display: none;
 }
 
-.shiny-chat-page-sidebar-close {
+.shiny-chat-page-sidebar-close,
+.shiny-chat-page-sidebar > .bslib-toolbar:has(.shiny-chat-page-sidebar-close) {
   display: none;
 }
 
@@ -507,15 +508,22 @@ button.shiny-chat-page-identity:focus-visible,
     border-bottom: var(--_page-border);
   }
 
-  .shiny-chat-page-sidebar-close {
+  .shiny-chat-page-sidebar > .bslib-toolbar:has(
+      .shiny-chat-page-sidebar-close
+    ) {
     position: absolute;
     z-index: 1;
     top: max(0.5rem, env(safe-area-inset-top));
     right: 0.5rem;
+    display: flex;
+    padding: 0;
+    margin: 0;
+  }
+
+  .shiny-chat-page-sidebar-close {
     display: grid;
     width: 2.75rem;
     height: 2.75rem;
-    place-items: center;
     padding: 0;
     color: inherit;
     background: transparent;
@@ -525,24 +533,6 @@ button.shiny-chat-page-identity:focus-visible,
 
   .shiny-chat-page-sidebar-resizer {
     display: none;
-  }
-
-  .shiny-chat-page-sidebar-close::before,
-  .shiny-chat-page-sidebar-close::after {
-    position: absolute;
-    width: 1.125rem;
-    height: 0.125rem;
-    content: "";
-    background: currentcolor;
-    border-radius: 0.125rem;
-  }
-
-  .shiny-chat-page-sidebar-close::before {
-    transform: rotate(45deg);
-  }
-
-  .shiny-chat-page-sidebar-close::after {
-    transform: rotate(-45deg);
   }
 
   .shiny-chat-page-sidebar-close:hover {

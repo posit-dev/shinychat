@@ -979,17 +979,21 @@ class ChatPageElement extends HTMLElement {
 
     const existing = Array.from(
       this.aside.querySelectorAll<HTMLButtonElement>(
-        ":scope > button.shiny-chat-page-sidebar-close",
+        [
+          ":scope > button.shiny-chat-page-sidebar-close",
+          ":scope > .bslib-toolbar button.shiny-chat-page-sidebar-close",
+        ].join(", "),
       ),
     )
     const button = existing.shift() ?? document.createElement("button")
     existing.forEach((duplicate) => duplicate.remove())
 
     button.type = "button"
-    button.className = "shiny-chat-page-sidebar-close"
-    button.setAttribute("aria-label", "Close app menu")
-    button.replaceChildren()
-    if (!button.isConnected) this.aside.prepend(button)
+    if (!button.isConnected) {
+      button.className = "shiny-chat-page-sidebar-close"
+      button.setAttribute("aria-label", "Close app menu")
+      this.aside.prepend(button)
+    }
     return button
   }
 

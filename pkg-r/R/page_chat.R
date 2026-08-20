@@ -533,6 +533,7 @@ page_chat <- function(
           `data-sidebar-open` = active_sidebar$open,
           `data-sidebar-width` = active_sidebar$width,
           `data-sidebar-resizable` = active_sidebar$resizable,
+          page_chat_sidebar_close_button(resolved_id),
           htmltools::tags$div(
             class = paste(
               "shiny-chat-page-controls-mount",
@@ -567,6 +568,19 @@ page_chat <- function(
     title = window_title,
     theme = theme,
     lang = lang
+  )
+}
+
+page_chat_sidebar_close_button <- function(id) {
+  bslib::toolbar(
+    bslib::toolbar_input_button(
+      id = paste0(id, "-sidebar-close"),
+      label = "Close app menu",
+      icon = shiny::icon("xmark"),
+      show_label = FALSE,
+      tooltip = "Close app menu",
+      class = "shiny-chat-page-sidebar-close"
+    )
   )
 }
 

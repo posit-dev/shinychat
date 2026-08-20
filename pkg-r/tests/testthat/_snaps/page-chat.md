@@ -133,7 +133,7 @@
 # page_chat() builds the default fillable page contract
 
     Code
-      cat(rendered$html, "\n", sep = "")
+      cat(rendered_html, "\n", sep = "")
     Output
       <body class="bslib-page-fill bslib-gap-spacing html-fill-container" style="padding:0px;gap:0px;">
         <shiny-chat-page data-chat-id="chat" data-active-page="home" data-require-bs-version="5" data-require-bs-caller="page_chat">
@@ -161,6 +161,14 @@
           </header>
           <div class="shiny-chat-page-body">
             <aside id="chat-sidebar" class="shiny-chat-page-sidebar" aria-label="App menu" data-sidebar-key="default" data-sidebar-open="auto" data-sidebar-width="280px" data-sidebar-resizable="true">
+              <div class="bslib-toolbar bslib-gap-spacing" data-align="right">
+                <bslib-tooltip id="chat-sidebar-close_tooltip" placement="bottom" bsOptions="[]" data-require-bs-version="5" data-require-bs-caller="tooltip()">
+                  <template>Close app menu</template>
+                  <button aria-labelledby="btn-label-{id}" class="btn btn-default action-button bslib-toolbar-input-button btn-sm border-0 shiny-chat-page-sidebar-close" data-type="icon" id="chat-sidebar-close" type="button"><span class="action-icon"><span class="bslib-toolbar-icon" aria-hidden="true" style="pointer-events: none">
+                        <i class="fas fa-xmark" role="presentation" aria-label="xmark icon"></i>
+                      </span></span><span class="action-label"><span id="btn-label-{id}" class="bslib-toolbar-label" hidden>Close app menu</span></span></button>
+                </bslib-tooltip>
+              </div>
               <div class="shiny-chat-page-controls-mount shiny-chat-page-controls-mount-mobile"></div>
               <div class="shiny-chat-page-sidebar-panel" data-sidebar-for="default" data-sidebar-open="auto" data-sidebar-width="280px" data-sidebar-resizable="true">
                 <shiny-chat-history for="chat"></shiny-chat-history>
