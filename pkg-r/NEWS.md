@@ -31,6 +31,15 @@
 
 ## Breaking changes
 
+* `chat_app()` now configures its full-window page through `page_chat()`.
+  Arguments in `...` are passed to `page_chat()` instead of
+  `shiny::shinyApp()`: use `app_options` instead of `options`,
+  `bookmark_store` instead of `enableBookmarking`, and compose `page_chat()`
+  with `chat_server()` when you need `onStart` or `uiPattern`. `chat_app()`
+  now owns the page layout, so its `title`, `icon`, and `id` configure the
+  page-chat shell. Existing layouts that embed chat should use `chat_ui()`
+  and `chat_server()` directly.
+
 * The CSS classes used by the external-link dialog, thinking display, and tool-result images/PDFs now use the `.shiny-chat-*` prefix instead of `.shinychat-*`. The thinking display's custom properties and animation names have likewise changed from `--shinychat-thinking-*` / `shinychat-thinking-*` to `--shiny-chat-thinking-*` / `shiny-chat-thinking-*`. Update any custom CSS that targets these identifiers. (#285, #286)
 
 * A tool's definition `title` (from its annotations) and its result `title` (from `tool_result_display()`) are now shown as-is, without any client-side tense conjugation. The definition title is shown while the call is running and labels multi-call groups. For a single-call row, the result title (if provided) replaces it when the result arrives; in a multi-call group, a distinct result title can identify that call in the expanded list. The old `"Running {title}"` / `"{title} failed"` client-side title template has been removed. If a tool's title reads oddly while running now that the automatic "Running " prefix is gone, write an explicit present-tense definition title (e.g. "Running R code") and, optionally, a past-tense result title (e.g. "Ran R code"). Failures are shown via a separate status cue (a "failed"/"N failed" note and icon) rather than appended to the title.

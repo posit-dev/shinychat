@@ -26,8 +26,23 @@ or \code{"always"}. Logical values are aliases for \code{"open"} and \code{"clos
 \item{resizable}{Whether the sidebar can be resized on desktop.}
 }
 \value{
-A configuration object for use with \code{\link[=chat_nav_panel]{chat_nav_panel()}}.
+A configuration object for use with \code{\link[=page_chat]{page_chat()}} or
+\code{\link[=chat_nav_panel]{chat_nav_panel()}}.
 }
 \description{
-Create a chat sidebar configuration
+Configures sidebar content for the home view or a \code{\link[=chat_nav_panel]{chat_nav_panel()}} in
+\code{\link[=page_chat]{page_chat()}}. A page-chat sidebar behaves like a compact
+\code{\link[bslib:sidebar]{bslib::sidebar()}} beside the chat and can include the chat's conversation
+history selector.
+}
+\examples{
+ui <- bslib::page_fillable(
+  bslib::layout_sidebar(
+    sidebar = bslib::sidebar(chat_ui_history("chat")),
+    bslib::card(
+      bslib::card_header("Assistant"),
+      chat_ui("chat", show_history = FALSE)
+    )
+  )
+)
 }

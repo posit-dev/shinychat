@@ -46,7 +46,7 @@
       chat_artifact(title = list())
     Condition
       Error in `chat_validate_string()`:
-      ! `title` must be a string.
+      ! `title` must be a single string, not an empty list.
 
 ---
 
@@ -88,7 +88,7 @@
       chat_nav_panel("")
     Condition
       Error in `chat_validate_string()`:
-      ! `title` must be a non-empty string.
+      ! `title` must be a single string, not the empty string "".
 
 ---
 
@@ -96,7 +96,7 @@
       chat_nav_panel("Settings", value = "")
     Condition
       Error in `chat_validate_string()`:
-      ! `value` must be a non-empty string.
+      ! `value` must be a single string, not the empty string "".
 
 ---
 
@@ -104,15 +104,7 @@
       chat_nav_panel("Settings", sidebar = list())
     Condition
       Error in `chat_validate_sidebar()`:
-      ! `sidebar` must be `TRUE`, `FALSE`, or a `chat_sidebar()` configuration.
-
----
-
-    Code
-      chat_nav_panel("Settings", sidebar = bslib::sidebar())
-    Condition
-      Error in `chat_validate_sidebar()`:
-      ! `sidebar` must be `TRUE`, `FALSE`, or a `chat_sidebar()` configuration.
+      ! `sidebar` must be `TRUE`, `FALSE`, or a `chat_sidebar()` or `bslib::sidebar()` configuration.
 
 # chat_ui_history() resolves IDs and accepts named HTML attributes
 
@@ -139,11 +131,7 @@
         <shiny-chat-page data-chat-id="chat" data-active-page="home" data-require-bs-version="5" data-require-bs-caller="page_chat">
           <bslib-input-dark-mode attribute="data-bs-theme" data-require-bs-caller="input_dark_mode()" data-require-bs-version="5" style="--text-1:var(--bs-emphasis-color);--text-2:var(--bs-tertiary-color);--vertical-correction: ; display: none"></bslib-input-dark-mode>
           <header class="shiny-chat-page-header" data-bs-theme="auto" data-shiny-chat-page-nav-style="underline">
-            <button type="button" class="shiny-chat-page-sidebar-toggle" aria-controls="chat-sidebar" aria-expanded="false" aria-label="Toggle app menu">
-              <svg class="shiny-chat-page-sidebar-icon bi bi-list" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                <path d="M2.5 12a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5"></path>
-              </svg>
-            </button>
+            <button type="button" class="shiny-chat-page-sidebar-toggle" aria-controls="chat-sidebar" aria-expanded="false" aria-label="Toggle app menu"><svg class="shiny-chat-page-sidebar-icon bi bi-list" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2.5 12a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5"/></svg></button>
             <div class="shiny-chat-page-identity">
               <span class="shiny-chat-page-identity-icon">
                 <span>A</span>
@@ -214,7 +202,7 @@
       page_chat("Assistant", id = NULL)
     Condition
       Error in `chat_validate_plain_string()`:
-      ! `id` must be a non-empty string.
+      ! `id` must be a single string, not `NULL`.
 
 ---
 
@@ -230,23 +218,7 @@
       page_chat(NULL)
     Condition
       Error in `chat_validate_page_ui()`:
-      ! `title` must be text or UI content.
-
----
-
-    Code
-      page_chat("Assistant", icon = FALSE)
-    Condition
-      Error in `chat_validate_page_ui()`:
-      ! `icon` must be text or UI content.
-
----
-
-    Code
-      page_chat("Assistant", toolbar = new.env())
-    Condition
-      Error in `chat_validate_page_ui()`:
-      ! `toolbar` must be text or UI content.
+      ! `title` must not be NULL.
 
 ---
 
@@ -287,7 +259,7 @@
       page_chat("Assistant", window_title = htmltools::HTML("Unsafe"))
     Condition
       Error in `chat_validate_plain_string()`:
-      ! `window_title` must be a string.
+      ! `window_title` must be a plain string.
 
 ---
 
@@ -295,7 +267,7 @@
       page_chat("Assistant", lang = "")
     Condition
       Error in `chat_validate_plain_string()`:
-      ! `lang` must be a non-empty string.
+      ! `lang` must be a single string, not the empty string "".
 
 # chat_ui() renders configured artifact content and dependencies
 

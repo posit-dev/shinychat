@@ -28,3 +28,14 @@ Invisibly, \code{NULL}.
 Shows a chat's artifact panel. Supplying \code{content} or \code{title} updates that
 field before the panel is shown. Omitted fields preserve their current value.
 }
+\seealso{
+\code{\link[=chat_artifact]{chat_artifact()}} to configure an artifact, and \code{\link[=chat_ui]{chat_ui()}} or
+\code{\link[=page_chat]{page_chat()}} to display one.
+
+Other chat artifacts:
+\code{\link[=chat_artifact]{chat_artifact()}},
+\code{\link[=chat_artifact_hide]{chat_artifact_hide()}},
+\code{\link[=chat_artifact_toggle]{chat_artifact_toggle()}},
+\code{\link[=chat_artifact_update]{chat_artifact_update()}}
+}
+\concept{chat artifacts}

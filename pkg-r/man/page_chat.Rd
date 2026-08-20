@@ -53,7 +53,10 @@ supported. \code{position} and \code{collapsible} are unsupported because
 \code{page_chat()} owns the full-window layout and responsive app menu.}
 
 \item{sidebar}{Whether to use the default history sidebar (\code{TRUE}), omit the
-default sidebar (\code{FALSE}), or use a \code{\link[=chat_sidebar]{chat_sidebar()}} configuration.}
+default sidebar (\code{FALSE}), or use a \code{\link[=chat_sidebar]{chat_sidebar()}} or
+\code{\link[bslib:sidebar]{bslib::sidebar()}} configuration. A bslib sidebar supplies its child
+content, width, initial open state, and resizability; its history defaults
+to \code{FALSE}.}
 
 \item{messages, greeting, placeholder, width, icon_assistant, enable_cancel, allow_attachments, footer, artifact}{Common arguments passed to \code{\link[=chat_ui]{chat_ui()}}.}
 
@@ -73,12 +76,13 @@ A fillable bslib page.
 \description{
 \code{page_chat()} creates a fillable page containing one persistent \code{\link[=chat_ui]{chat_ui()}}
 home view, optional navigation pages, and a responsive app-menu sidebar.
-}
-\details{
+
 Use \code{page_chat()} as the top-level page UI when the chat owns the full
 browser window. It owns the page layout, the single mounted chat, and the
 responsive app-menu controls. Use \code{\link[=chat_ui]{chat_ui()}} directly when the chat is
 embedded in an existing layout or alongside other top-level page content.
+For a standalone interactive chat application, use \code{\link[=chat_app]{chat_app()}}, which
+composes \code{page_chat()} with \code{\link[=chat_server]{chat_server()}}.
 }
 \section{Migration from \code{page_fillable()}}{
 
@@ -101,9 +105,11 @@ on the mounted chat. Do not wrap \code{page_chat()} in another page container or
 \section{Navigation, sidebars, and artifacts}{
 
 
-Add \code{\link[=chat_nav_panel]{chat_nav_panel()}} configurations to \code{pages} for secondary views.
+\code{pages} accepts a list of additional pages, each created with
+\code{\link[=chat_nav_panel]{chat_nav_panel()}}.
 Each panel can use the default sidebar, no page-specific sidebar, or its
-own \code{\link[=chat_sidebar]{chat_sidebar()}} configuration. The \code{sidebar} argument configures the
+own \code{\link[=chat_sidebar]{chat_sidebar()}} or \code{\link[bslib:sidebar]{bslib::sidebar()}} configuration. The \code{sidebar}
+argument configures the
 home view; \code{toolbar} is a home-page-scoped segment rendered with the page
 navigation controls and follows them into the mobile app menu.
 \code{toolbar_global} is a persistent segment that remains mounted on every page.
@@ -119,18 +125,15 @@ with \code{\link[=chat_artifact_show]{chat_artifact_show()}}, \code{\link[=chat_
 \code{\link[=chat_artifact_hide]{chat_artifact_hide()}}, and \code{\link[=chat_artifact_toggle]{chat_artifact_toggle()}}. Artifact content is
 static UI passed through those server functions; use ordinary Shiny
 inputs and outputs inside that content when needed.
-Local-response navigation and artifact-control examples, which do not
-require credentials, are available through
+You can try navigation and artifact-control examples, which do not require
+credentials, through
 \code{shiny::runExample("page-chat-navigation", package = "shinychat")} and
 \code{shiny::runExample("page-chat-artifact-controls", package = "shinychat")}.
-Their source is available at
-\url{https://github.com/posit-dev/shinychat/tree/main/pkg-r/inst/examples-shiny}.
 
 \code{page_chat()} owns page composition and accepts one chat root. Do not pass
-unrelated top-level UI, raw \code{bslib::sidebar()} objects, or a second chat
-root. Existing apps that need those layouts should continue using
-\code{\link[=chat_ui]{chat_ui()}} with \code{bslib::page_fillable()}, \code{bslib::page_sidebar()}, or
-another appropriate container.
+unrelated top-level UI or a second chat root. Existing apps that need those
+layouts should continue using \code{\link[=chat_ui]{chat_ui()}} with \code{\link[bslib:page_fillable]{bslib::page_fillable()}},
+\code{\link[bslib:page_sidebar]{bslib::page_sidebar()}}, or another appropriate container.
 }
 
 \examples{

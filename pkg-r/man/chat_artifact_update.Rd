@@ -28,3 +28,14 @@ Updates a chat's artifact content or title without changing its visibility.
 Omitted fields preserve their current value. Use an empty
 \code{\link[htmltools:tagList]{htmltools::tagList()}} to clear content or \code{""} to clear the title.
 }
+\seealso{
+\code{\link[=chat_artifact]{chat_artifact()}} to configure an artifact, and \code{\link[=chat_ui]{chat_ui()}} or
+\code{\link[=page_chat]{page_chat()}} to display one.
+
+Other chat artifacts:
+\code{\link[=chat_artifact]{chat_artifact()}},
+\code{\link[=chat_artifact_hide]{chat_artifact_hide()}},
+\code{\link[=chat_artifact_show]{chat_artifact_show()}},
+\code{\link[=chat_artifact_toggle]{chat_artifact_toggle()}}
+}
+\concept{chat artifacts}

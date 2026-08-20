@@ -35,12 +35,12 @@ chat_server(
 \item{...}{Named arguments passed to \code{\link[=page_chat]{page_chat()}}.}
 
 \item{title}{The title displayed in the page header. If \code{NULL} (the
-default), \code{chat_app()} derives \code{"{model} ({provider})"} from \code{client}.}
+default), a \code{"{model} ({provider})"} title is derived from \code{client}.}
 
 \item{icon}{Optional UI displayed before \code{title}. See \code{\link[=page_chat]{page_chat()}}.}
 
 \item{window_title}{The browser-window title. If \code{NULL} (the default),
-\code{chat_app()} uses \code{"shinychat | {model} | {date}"}.}
+uses \code{"shinychat | {model} | {date}"} derived from \code{client}.}
 
 \item{id}{The ID shared by \code{\link[=page_chat]{page_chat()}} and \code{\link[=chat_server]{chat_server()}}.}
 
@@ -162,6 +162,10 @@ patterns.
 Shiny app options through \code{app_options}, and use \code{bookmark_store} instead of
 \code{enableBookmarking}. To customize \code{onStart} or \code{uiPattern}, compose
 \code{\link[=page_chat]{page_chat()}} and \code{\link[=chat_server]{chat_server()}} manually.
+
+This is a breaking change: \code{...} no longer accepts arguments for
+\code{\link[shiny:shinyApp]{shiny::shinyApp()}}, including \code{options}, \code{enableBookmarking}, \code{onStart},
+and \code{uiPattern}.
 }
 
 \section{Greeting}{

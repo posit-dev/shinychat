@@ -24,7 +24,8 @@ chat_nav_panel(
 \item{icon}{An optional icon to display with the title.}
 
 \item{sidebar}{Whether to use the default sidebar (\code{TRUE}), no
-page-specific sidebar (\code{FALSE}), or a \code{\link[=chat_sidebar]{chat_sidebar()}} configuration.}
+page-specific sidebar (\code{FALSE}), or a \code{\link[=chat_sidebar]{chat_sidebar()}} or
+\code{\link[bslib:sidebar]{bslib::sidebar()}} configuration.}
 
 \item{toolbar}{\code{NULL} (the default) for no page-scoped toolbar, or UI
 content for a page-specific toolbar. For backward compatibility, \code{TRUE}
@@ -36,8 +37,11 @@ receives responsive inline padding. Use exactly \code{"100\%"}, \code{"100vw"}, 
 \code{"100dvw"} for full-bleed content without component-provided padding.}
 }
 \value{
-A configuration object for use with \code{page_chat()}.
+A configuration object for use with \code{\link[=page_chat]{page_chat()}}.
 }
 \description{
-Create a page-chat navigation panel
+Creates a secondary page for \code{\link[=page_chat]{page_chat()}} in the same style as
+\code{\link[bslib:nav_panel]{bslib::nav_panel()}} and \code{\link[bslib:page_navbar]{bslib::page_navbar()}}. When users navigate to the
+panel, the chat remains mounted on the home page so its conversation and UI
+state persist.
 }

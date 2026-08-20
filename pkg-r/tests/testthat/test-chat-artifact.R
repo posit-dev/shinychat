@@ -106,11 +106,11 @@ test_that("chat artifact controls validate inputs and sessions", {
 
   expect_error(
     chat_artifact_show("", session = session),
-    "`id` must be a non-empty string"
+    "`id` must be a single string"
   )
   expect_error(
     chat_artifact_update("chat", title = list(), session = session),
-    "`title` must be a string"
+    "`title` must be a single string"
   )
   expect_error(
     chat_artifact_update("chat", content = function() NULL, session = session),

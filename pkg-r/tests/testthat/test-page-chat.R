@@ -178,13 +178,51 @@ test_that("chat_nav_panel() requires page-chat configuration", {
     chat_nav_panel("Settings", content_width = ""),
     "`content_width` must be a positive number"
   )
-  expect_snapshot(
-    error = TRUE,
-    chat_nav_panel("Settings", sidebar = bslib::sidebar())
+  expect_s3_class(
+    chat_nav_panel("Settings", sidebar = bslib::sidebar()),
+    "chat_nav_panel"
   )
-  expect_error(
+  expect_s3_class(
     chat_nav_panel("Settings", toolbar = new.env()),
-    "`toolbar` must be text or UI content"
+    "chat_nav_panel"
+  )
+})
+
+test_that("page_chat() normalizes bslib sidebars", {
+  page <- page_chat(
+    "Assistant",
+    sidebar = bslib::sidebar(
+      htmltools::tags$p("Home controls"),
+      width = 320,
+      open = "open",
+      resizable = FALSE
+    ),
+    pages = list(
+      chat_nav_panel(
+        "Settings",
+        sidebar = bslib::sidebar(
+          htmltools::tags$p("Settings controls"),
+          width = "18rem",
+          open = "closed"
+        )
+      )
+    )
+  )
+  panels <- page_chat_tags(page, ".shiny-chat-page-sidebar-panel")
+
+  expect_equal(panels[[1]]$attribs[["data-sidebar-width"]], "320px")
+  expect_equal(panels[[1]]$attribs[["data-sidebar-open"]], "open")
+  expect_equal(panels[[1]]$attribs[["data-sidebar-resizable"]], "false")
+  expect_match(
+    htmltools::renderTags(panels[[1]])$html,
+    "Home controls",
+    fixed = TRUE
+  )
+  expect_equal(panels[[2]]$attribs[["data-sidebar-width"]], "18rem")
+  expect_equal(panels[[2]]$attribs[["data-sidebar-open"]], "closed")
+  expect_error(
+    page_chat("Assistant", sidebar = bslib::sidebar(position = "right")),
+    "left-positioned"
   )
 })
 
@@ -318,9 +356,11 @@ test_that("page_chat() builds the default fillable page contract", {
   expect_equal(toggle$attribs$type, "button")
   expect_equal(toggle$attribs[["aria-controls"]], "chat-sidebar")
   expect_equal(toggle$attribs[["aria-expanded"]], "false")
-  icon <- page_chat_tag(toggle, ".shiny-chat-page-sidebar-icon")
-  expect_equal(icon$name, "svg")
-  expect_equal(icon$attribs[["aria-hidden"]], "true")
+  expect_match(
+    htmltools::renderTags(toggle)$html,
+    'class="shiny-chat-page-sidebar-icon bi bi-list"',
+    fixed = TRUE
+  )
 
   close_button <- page_chat_tag(page, ".shiny-chat-page-sidebar-close")
   expect_equal(close_button$name, "button")
@@ -869,13 +909,10 @@ test_that("page_chat() validates page-owned arguments and page metadata", {
   expect_snapshot(error = TRUE, page_chat("Assistant", id = NULL))
   expect_error(page_chat("Assistant", id = " "), "`id`")
   expect_snapshot(error = TRUE, page_chat("", id = "chat"))
-  expect_error(page_chat(c("Assistant", "Chat")), "`title`")
+  expect_no_error(page_chat(c("Assistant", "Chat")))
   expect_snapshot(error = TRUE, page_chat(NULL))
-  expect_snapshot(error = TRUE, page_chat("Assistant", icon = FALSE))
-  expect_snapshot(
-    error = TRUE,
-    page_chat("Assistant", toolbar = new.env())
-  )
+  expect_no_error(page_chat("Assistant", icon = FALSE))
+  expect_no_error(page_chat("Assistant", toolbar = new.env()))
   expect_snapshot(
     error = TRUE,
     page_chat("Assistant", pages = chat_nav_panel("About"))

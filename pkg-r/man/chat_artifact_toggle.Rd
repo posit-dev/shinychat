@@ -17,3 +17,14 @@ Invisibly, \code{NULL}.
 \description{
 Toggle a chat artifact
 }
+\seealso{
+\code{\link[=chat_artifact]{chat_artifact()}} to configure an artifact, and \code{\link[=chat_ui]{chat_ui()}} or
+\code{\link[=page_chat]{page_chat()}} to display one.
+
+Other chat artifacts:
+\code{\link[=chat_artifact]{chat_artifact()}},
+\code{\link[=chat_artifact_hide]{chat_artifact_hide()}},
+\code{\link[=chat_artifact_show]{chat_artifact_show()}},
+\code{\link[=chat_artifact_update]{chat_artifact_update()}}
+}
+\concept{chat artifacts}

@@ -15,6 +15,10 @@
 #' `enableBookmarking`. To customize `onStart` or `uiPattern`, compose
 #' [page_chat()] and [chat_server()] manually.
 #'
+#' This is a breaking change: `...` no longer accepts arguments for
+#' [shiny::shinyApp()], including `options`, `enableBookmarking`, `onStart`,
+#' and `uiPattern`.
+#'
 #' @examples
 #' \dontrun{
 #' # Interactive in the console ----
@@ -66,10 +70,10 @@
 #'   [ellmer::chat_openai()] and friends.
 #' @param ... Named arguments passed to [page_chat()].
 #' @param title The title displayed in the page header. If `NULL` (the
-#'   default), `chat_app()` derives `"{model} ({provider})"` from `client`.
+#'   default), a `"{model} ({provider})"` title is derived from `client`.
 #' @param icon Optional UI displayed before `title`. See [page_chat()].
 #' @param window_title The browser-window title. If `NULL` (the default),
-#'   `chat_app()` uses `"shinychat | {model} | {date}"`.
+#'   uses `"shinychat | {model} | {date}"` derived from `client`.
 #' @param id The ID shared by [page_chat()] and [chat_server()].
 #' @param greeting See [chat_server()].
 #' @param history See [chat_server()].
@@ -162,7 +166,7 @@ chat_app <- function(
   app_options = list()
 ) {
   check_ellmer_chat(client)
-  dots <- rlang::list2(...)
+  dots <- rlang::dots_list(...)
   check_chat_app_dots(dots)
   if (isFALSE(history) && !"sidebar" %in% rlang::names2(dots)) {
     dots$sidebar <- FALSE
@@ -200,8 +204,8 @@ chat_app <- function(
   ui <- function(req) {
     rlang::exec(
       page_chat,
-      title,
-      icon,
+      title = title,
+      icon = icon,
       !!!dots,
       id = id,
       window_title = window_title
