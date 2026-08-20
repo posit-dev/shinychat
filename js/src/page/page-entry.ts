@@ -682,13 +682,13 @@ class ChatPageElement extends HTMLElement {
       (this.mobile
         ? this.hasAttribute("data-mobile-menu-open")
         : Boolean(state?.open))
-    const unavailable = toggleDisabled && state?.openMode !== "always"
-    const toggleLabel =
-      state?.openMode === "always"
-        ? "App menu is always open"
-        : unavailable
-          ? "App menu unavailable on this page"
-          : "Toggle app menu"
+    const alwaysOpen = !this.mobile && state?.openMode === "always"
+    const unavailable = toggleDisabled && !alwaysOpen
+    const toggleLabel = alwaysOpen
+      ? "App menu is always open"
+      : unavailable
+        ? "App menu unavailable on this page"
+        : "Toggle app menu"
 
     this.toggle.hidden = !available
     this.header?.toggleAttribute("data-sidebar-toggle-hidden", !available)
@@ -700,7 +700,7 @@ class ChatPageElement extends HTMLElement {
       this.toggle.setAttribute("title", toggleLabel)
       this.toggle.removeAttribute("aria-controls")
     } else {
-      if (state?.openMode === "always") {
+      if (alwaysOpen) {
         this.toggle.setAttribute("title", toggleLabel)
       } else {
         this.toggle.removeAttribute("title")

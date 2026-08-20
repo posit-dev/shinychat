@@ -102,6 +102,8 @@ function pageFixture({
   sidebar = true,
   pageSidebars = true,
   toolbar = true,
+  globalToolbar = toolbar,
+  customToolbar = toolbar,
   chatId = "chat",
   homeOpen = "open",
   homeResizable = true,
@@ -118,6 +120,8 @@ function pageFixture({
   sidebar?: boolean
   pageSidebars?: boolean
   toolbar?: boolean
+  globalToolbar?: boolean
+  customToolbar?: boolean
   chatId?: string
   homeOpen?: "auto" | "open" | "closed" | "always"
   homeResizable?: boolean
@@ -188,7 +192,7 @@ function pageFixture({
           <div class="shiny-chat-page-toolbar">
             <div class="shiny-chat-page-toolbar-scoped"></div>
             <div class="shiny-chat-page-toolbar-global">
-              ${toolbar ? `<input id="global-toolbar-input" value="global initial">` : ""}
+              ${globalToolbar ? `<input id="global-toolbar-input" value="global initial">` : ""}
             </div>
           </div>
         </div>
@@ -317,7 +321,7 @@ function pageFixture({
       </div>
       <div class="shiny-chat-page-toolbar-source" data-page-toolbar-source="custom-page">
         <div class="shiny-chat-page-toolbar-content">
-          ${toolbar ? `<input id="custom-toolbar-input" value="custom initial">` : ""}
+          ${customToolbar ? `<input id="custom-toolbar-input" value="custom initial">` : ""}
         </div>
       </div>
     </div>
@@ -780,6 +784,7 @@ describe("shiny-chat-page desktop sidebar state", () => {
   })
 
   it("keeps an always-open sidebar visible with a disabled toggle slot", () => {
+    const media = installMatchMedia(false)
     const page = pageFixture({ alwaysPage: true })
     const { aside, navButtons, toggle } = getPageElements(page)
 
@@ -794,9 +799,11 @@ describe("shiny-chat-page desktop sidebar state", () => {
     expect(toggle).toHaveAttribute("title", "App menu is always open")
     expect(toggle).toHaveAttribute("aria-controls", aside.id)
 
+    media.setMatches(true)
+    expect(toggle.disabled).toBe(false)
     toggle.click()
-    expect(aside.hidden).toBe(false)
-    expect(toggle.getAttribute("aria-expanded")).toBe("true")
+    expect(toggle).toHaveAttribute("aria-label", "Toggle app menu")
+    expect(toggle).toHaveAttribute("aria-expanded", "true")
   })
 
   it("keeps the toggle slot disabled when the selected page has no sidebar", () => {
@@ -826,6 +833,8 @@ describe("shiny-chat-page desktop sidebar state", () => {
       pages: false,
       sidebar: false,
       pageSidebars: false,
+      globalToolbar: false,
+      customToolbar: false,
     })
     const { aside, toggle } = getPageElements(page)
 
