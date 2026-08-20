@@ -534,6 +534,11 @@ method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     show_request = if (!isFALSE(display$show_request)) NA,
     expanded = if (isTRUE(display$open)) NA,
     full_screen = if (isTRUE(display$full_screen)) NA,
+    presentation = if (identical(display$presentation, "framed")) {
+      "framed"
+    } else {
+      NULL
+    },
     footer = display$footer,
     grouping = annotations$grouping,
     label = display$label,
@@ -585,6 +590,8 @@ method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
 #'   arguments, then the tool name.
 #' @param value_preview A terse, per-call preview of the tool result, shown
 #'   in the activity row before its drill-down card is opened.
+#' @param presentation Whether to use the default drill-down presentation or a
+#'   framed presentation for this result.
 #'
 #' @return An object of class `shinychat_tool_result_display`, for use as
 #'   `extra = list(display = tool_result_display(...))` when creating an
@@ -620,7 +627,8 @@ tool_result_display <- function(
   full_screen = FALSE,
   footer = NULL,
   label = NULL,
-  value_preview = NULL
+  value_preview = NULL,
+  presentation = "default"
 ) {
   as_tool_result_display(
     compact(list(
@@ -634,7 +642,8 @@ tool_result_display <- function(
       full_screen = full_screen,
       footer = footer,
       label = label,
-      value_preview = value_preview
+      value_preview = value_preview,
+      presentation = presentation
     ))
   )
 }
@@ -651,7 +660,8 @@ tool_result_display_fields <- c(
   "full_screen",
   "footer",
   "label",
-  "value_preview"
+  "value_preview",
+  "presentation"
 )
 
 # Fields that are rendered as HTML and therefore accept a string *or* tag-like
@@ -677,6 +687,8 @@ is_tag_like <- function(x) {
 tool_result_display_field_is_valid <- function(field, value) {
   if (field %in% tool_result_display_flag_fields) {
     is_bool(value)
+  } else if (identical(field, "presentation")) {
+    is_string(value) && value %in% c("default", "framed")
   } else if (field %in% tool_result_display_html_fields) {
     is_string(value) || is_tag_like(value)
   } else {
@@ -687,6 +699,8 @@ tool_result_display_field_is_valid <- function(field, value) {
 tool_result_display_field_expects <- function(field) {
   if (field %in% tool_result_display_flag_fields) {
     cli::format_inline("{.code TRUE} or {.code FALSE}")
+  } else if (identical(field, "presentation")) {
+    cli::format_inline("{.code default} or {.code framed}")
   } else if (field %in% tool_result_display_html_fields) {
     "a single string or HTML content"
   } else {

@@ -141,7 +141,8 @@ test_that("tool card serialization matches the shared wire fixture", {
     full_screen = NA,
     expanded = NA,
     footer = "<span>footer</span>",
-    grouping = "all"
+    grouping = "all",
+    presentation = "framed"
   )
 
   expect_identical(format(as.tags(request)), fixture$request)
@@ -306,6 +307,25 @@ test_that("ContentToolResult with additional display options from result", {
   expect_equal(res_tags$attribs[["show-request"]], NULL)
   expect_equal(res_tags$attribs$expanded, NA)
   expect_equal(res_tags$attribs[["tool-title"]], "Custom Title")
+})
+
+test_that("ContentToolResult serializes framed presentation only when requested", {
+  local_shinychat_tool_display(opt = "rich")
+
+  framed <- new_tool_result(
+    value = "test",
+    extra = list(display = tool_result_display(presentation = "framed"))
+  )
+  default <- new_tool_result(
+    value = "test",
+    extra = list(display = tool_result_display())
+  )
+
+  expect_equal(
+    as.tags(contents_shinychat(framed))$attribs$presentation,
+    "framed"
+  )
+  expect_null(as.tags(contents_shinychat(default))$attribs$presentation)
 })
 
 test_that("mutating a card's tool_title overrides the annotation title", {
@@ -782,10 +802,18 @@ test_that("tool_result_display() drops NULL fields but keeps defaults", {
         title = "Title only",
         show_request = TRUE,
         open = FALSE,
-        full_screen = FALSE
+        full_screen = FALSE,
+        presentation = "default"
       ),
       class = "shinychat_tool_result_display"
     )
+  )
+})
+
+test_that("tool_result_display() supports framed presentation", {
+  expect_equal(
+    tool_result_display(presentation = "framed")$presentation,
+    "framed"
   )
 })
 
@@ -820,6 +848,14 @@ test_that("as_tool_result_display() warns and drops non-logical flag fields", {
   expect_null(res$show_request)
   expect_null(res$open)
   expect_null(res$full_screen)
+})
+
+test_that("as_tool_result_display() warns and drops invalid presentation", {
+  expect_warning(
+    display <- as_tool_result_display(list(presentation = "panel")),
+    "presentation.*must be.*default.*framed"
+  )
+  expect_null(display$presentation)
 })
 
 test_that("as_tool_result_display() rejects non-scalar and NA logicals", {
