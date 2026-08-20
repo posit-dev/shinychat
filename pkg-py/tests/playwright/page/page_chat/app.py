@@ -45,6 +45,15 @@ store_dir = tempfile.mkdtemp(prefix="shinychat-page-history-")
 
 
 def app_ui(request: Request) -> ui.Tag:
+    if request.query_params.get("single") == "true":
+        return page_chat(
+            "A single-page title that should remain fully visible",
+            id="chat",
+            toolbar=ui.input_action_button("single_toolbar", "Action"),
+            sidebar=False,
+            artifact=False,
+        )
+
     if request.query_params.get("sidebarless") == "true":
         return page_chat(
             "Sidebarless Assistant",

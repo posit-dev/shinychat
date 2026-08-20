@@ -186,6 +186,32 @@ def test_desktop_header_keeps_controls_available(
     expect(toolbar_source).to_be_hidden()
 
 
+def test_single_page_title_is_not_truncated(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    page.set_viewport_size({"width": 800, "height": 760})
+    page.goto(f"{local_app.url}?single=true")
+    shell = page.locator("shiny-chat-page")
+    expect(shell).to_be_visible(timeout=TIMEOUT)
+
+    identity = shell.locator(".shiny-chat-page-identity")
+    identity_title = shell.locator(".shiny-chat-page-identity-title")
+    expect(identity).to_have_count(1)
+    expect(identity).to_have_attribute("class", "shiny-chat-page-identity")
+    expect(identity).not_to_have_attribute("data-page-home")
+    expect(identity_title).to_have_css("overflow", "visible")
+    expect(identity_title).to_have_css("text-overflow", "clip")
+    expect(identity_title).to_have_css("white-space", "normal")
+
+    identity_box = identity.bounding_box()
+    assert identity_box is not None
+    title_cap_px = page.evaluate(
+        "12 * parseFloat(getComputedStyle(document.documentElement).fontSize)"
+    )
+    assert identity_box["width"] > title_cap_px
+
+
 def test_mobile_moves_controls_and_manages_dialog_focus(
     page: Page,
     local_app: ShinyAppProc,
