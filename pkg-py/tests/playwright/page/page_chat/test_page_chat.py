@@ -631,8 +631,14 @@ def test_page_chat_respects_reduced_motion_for_composer_positioning(
     composer = chat.loc.locator(".shiny-chat-composer")
 
     expect(layout).to_have_attribute("data-composer-centered", "")
+    expect(layout).to_have_attribute("data-composer-revealing", "")
     expect(composer).to_have_css("transition-duration", "0s")
-    expect(composer).to_have_css("animation-name", "none")
+    assert composer.evaluate(
+        """(element) => {
+          const styles = getComputedStyle(element);
+          return styles.animationName === 'none' && styles.animationDuration === '0s';
+        }"""
+    )
     expect(chat.loc_greeting).to_have_css("transition-duration", "0s")
 
 
