@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from math import ceil
+
 import pytest
 from playwright.sync_api import Locator, Page, expect
 from shiny.run import ShinyAppProc
@@ -200,6 +202,7 @@ def test_single_page_title_is_not_truncated(
     header = shell.locator(".shiny-chat-page-header")
     controls_mount = shell.locator(".shiny-chat-page-controls-mount-desktop")
     toolbar = shell.locator(".shiny-chat-page-toolbar")
+    main = shell.locator(".shiny-chat-page-main")
     expect(identity).to_have_count(1)
     expect(identity).to_have_attribute("class", "shiny-chat-page-identity")
     expect(identity).not_to_have_attribute("data-page-home")
@@ -216,10 +219,14 @@ def test_single_page_title_is_not_truncated(
     header_box = header.bounding_box()
     controls_mount_box = controls_mount.bounding_box()
     toolbar_box = toolbar.bounding_box()
+    main_box = main.bounding_box()
+    shell_box = shell.bounding_box()
     assert identity_box is not None
     assert header_box is not None
     assert controls_mount_box is not None
     assert toolbar_box is not None
+    assert main_box is not None
+    assert shell_box is not None
     title_cap_px = page.evaluate(
         "12 * parseFloat(getComputedStyle(document.documentElement).fontSize)"
     )
@@ -228,6 +235,13 @@ def test_single_page_title_is_not_truncated(
     assert toolbar_box["x"] >= controls_mount_box["x"]
     assert toolbar_box["x"] + toolbar_box["width"] <= (
         header_box["x"] + header_box["width"]
+    )
+    assert header_box["height"] > 52
+    assert main_box["y"] == pytest.approx(
+        header_box["y"] + header_box["height"], abs=1
+    )
+    assert main_box["y"] + main_box["height"] == pytest.approx(
+        shell_box["y"] + shell_box["height"], abs=1
     )
 
 
@@ -256,6 +270,10 @@ def test_mobile_moves_controls_and_manages_dialog_focus(
     expect(sidebar).to_be_focused()
     close_button = shell.get_by_role("button", name="Close app menu")
     expect(close_button).to_be_visible()
+    expect(close_button).to_have_css("position", "absolute")
+    expect(close_button).to_have_css("top", "8px")
+    expect(close_button).to_have_css("right", "8px")
+    expect(close_button).to_have_css("place-items", "center")
     close_icon = close_button.evaluate(
         """(element) => {
           const style = getComputedStyle(element, "::before");
@@ -390,7 +408,7 @@ def test_top_aligned_toast_starts_below_the_page_title_bar(
 
     header_bottom = header_box["y"] + header_box["height"]
     assert container_box["y"] == pytest.approx(header_bottom, abs=1)
-    expect(container).to_have_css("top", f"{header_bottom}px")
+    expect(container).to_have_css("top", f"{ceil(header_bottom)}px")
 
 
 def test_page_toolbars_move_without_duplicate_controls(
