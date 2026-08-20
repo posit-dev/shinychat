@@ -185,13 +185,18 @@ shiny-chat-page
 }
 
 @media (prefers-reduced-motion: reduce) {
-  shiny-chat-page .shiny-chat-layout .shiny-chat-composer {
-    animation: none;
+  shiny-chat-page
+    .shiny-chat-layout[data-composer-motion-ready]:not(
+      [data-composer-resizing]
+    )
+    .shiny-chat-composer {
     transition: none;
   }
 
-  shiny-chat-page .shiny-chat-layout .shiny-chat-greeting {
-    transition: none;
+  shiny-chat-page
+    .shiny-chat-layout[data-composer-revealing]
+    .shiny-chat-composer {
+    animation: none;
   }
 }
 

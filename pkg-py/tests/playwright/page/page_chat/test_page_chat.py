@@ -621,6 +621,21 @@ def test_page_chat_tracks_resize_without_composer_transition(
     expect(composer).to_have_css("transition-duration", "0.35s")
 
 
+def test_page_chat_respects_reduced_motion_for_composer_positioning(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    page.emulate_media(reduced_motion="reduce")
+    chat, _ = open_page(page, local_app, viewport=(1280, 800))
+    layout = chat.loc.locator(".shiny-chat-layout")
+    composer = chat.loc.locator(".shiny-chat-composer")
+
+    expect(layout).to_have_attribute("data-composer-centered", "")
+    expect(composer).to_have_css("transition-duration", "0s")
+    expect(composer).to_have_css("animation-name", "none")
+    expect(chat.loc_greeting).to_have_css("transition-duration", "0s")
+
+
 def test_top_aligned_toast_starts_below_the_page_title_bar(
     page: Page, local_app: ShinyAppProc
 ) -> None:

@@ -114,6 +114,14 @@ shiny-chat-page
 }
 
 @media (prefers-reduced-motion: reduce) {
+  shiny-chat-page
+    .shiny-chat-layout[data-composer-motion-ready][data-composer-centered]:not(
+      [data-composer-resizing]
+    )
+    .shiny-chat-greeting {
+    transition: none;
+  }
+
   .shiny-chat-greeting.shiny-chat-greeting--enter,
   .shiny-chat-greeting[data-dismissing] {
     animation: none;
