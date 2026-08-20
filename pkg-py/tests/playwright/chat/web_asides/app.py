@@ -66,6 +66,19 @@ async def fake_stream():
         "- Evidence two\n\n"
         "</shiny-aside>"
     )
+    yield "\n\nNumbered source one"
+    yield (
+        '<shiny-aside display="compact" label="Policy A">'
+        "Policy A evidence."
+        "</shiny-aside>"
+    )
+    yield " and numbered source two"
+    yield (
+        '<shiny-aside display="compact" label="Policy B">'
+        "Policy B evidence."
+        "</shiny-aside>"
+    )
+    yield "."
     yield (
         "\n\n"
         '<shiny-aside label="Final source" url="https://example.com/final-source">'

@@ -5,6 +5,7 @@ import remarkRehype from "remark-rehype"
 import rehypeRaw from "rehype-raw"
 import rehypeStringify from "rehype-stringify"
 import type { Root } from "hast"
+import { rehypeAttachAsidesToPreviousParagraph } from "../../../src/markdown/plugins/rehypeAttachAsidesToPreviousParagraph"
 import { rehypeGroupAsides } from "../../../src/markdown/plugins/rehypeGroupAsides"
 import {
   rehypeMarkTrailingAsides,
@@ -18,6 +19,7 @@ function processStreaming(md: string): string {
       .use(remarkParse)
       .use(remarkRehype, { allowDangerousHtml: true })
       .use(rehypeRaw)
+      .use(rehypeAttachAsidesToPreviousParagraph)
       .use(rehypeGroupAsides)
       .use(rehypeMarkTrailingAsides)
       .use(rehypeStringify)
@@ -31,6 +33,7 @@ function process(md: string): string {
     .use(remarkParse)
     .use(remarkRehype, { allowDangerousHtml: true })
     .use(rehypeRaw)
+    .use(rehypeAttachAsidesToPreviousParagraph)
     .use(rehypeGroupAsides)
     .use(rehypeMarkTrailingAsides)
     .use(() => (tree, _file, next) => {
@@ -85,6 +88,19 @@ describe("rehypeMarkTrailingAsides", () => {
     const pendingIdx = html.indexOf("data-pending")
     expect(html.indexOf('label="B"')).toBeGreaterThan(pendingIdx)
     expect(html.indexOf('label="A"')).toBeLessThan(pendingIdx)
+  })
+
+  it("marks a blank-line aside as pending in its attached trailing paragraph", () => {
+    const md = [
+      "A claim.",
+      "",
+      '<shiny-aside label="Source" url="https://x.example"></shiny-aside>',
+    ].join("\n")
+
+    const html = processStreaming(md)
+
+    expect(html.match(/<p>/g)).toHaveLength(1)
+    expect(html).toContain("<p>A claim.<shiny-aside-group data-pending")
   })
 
   it("leaves a message with no asides untouched", () => {
