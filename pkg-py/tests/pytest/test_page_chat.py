@@ -48,6 +48,16 @@ def test_page_chat_theme_composes_preset_and_caller_overrides() -> None:
     assert "--bs-primary: #123456" in css
     assert "--shiny-chat-page-header-height: 3.25rem" in css
     assert "--shiny-chat-page-fill-padding:" in css
+    assert (
+        "--shiny-chat-fill-padding: var(--shiny-chat-page-fill-padding)" in css
+    )
+    assert (
+        "--shiny-chat-input-padding-bottom: "
+        "var(--shiny-chat-page-input-padding-bottom)" in css
+    )
+    assert "background:var(--shiny-chat-page-artifact-bg)" in css
+    assert "box-shadow:var(--shiny-chat-page-artifact-box-shadow)" in css
+    assert "background:var(--shiny-chat-page-artifact-header-bg)" in css
 
 
 def test_chat_sidebar_normalizes_and_validates_values() -> None:

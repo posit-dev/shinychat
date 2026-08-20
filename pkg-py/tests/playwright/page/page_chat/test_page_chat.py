@@ -121,12 +121,26 @@ def test_explicit_theme_keeps_embedded_chat_composer_chrome(
     page.goto(f"{local_app.url}?standard_theme=true")
     chat = ChatController(page, "chat")
     composer = chat.loc.locator(".shiny-chat-input .tiptap")
+    input_area = chat.loc.locator(".shiny-chat-input")
+    wrapper = chat.loc.locator(".shiny-chat-wrapper")
+    shell = page.locator("shiny-chat-page")
 
     expect(chat.loc).to_be_visible(timeout=TIMEOUT)
     expect(composer).to_have_css("border-radius", "26px")
-    assert composer.evaluate(
-        "(element) => getComputedStyle(element).getPropertyValue('--shiny-chat-page-fill-padding')"
-    ) == ""
+    expect(wrapper).to_have_css("padding-left", "4px")
+    expect(input_area).to_have_css("padding-bottom", "4px")
+
+    shell.evaluate(
+        """(element) => {
+          element.style.setProperty('--shiny-chat-page-fill-padding', '2rem');
+          element.style.setProperty(
+            '--shiny-chat-page-input-padding-bottom',
+            '3rem',
+          );
+        }"""
+    )
+    expect(wrapper).to_have_css("padding-left", "32px")
+    expect(input_area).to_have_css("padding-bottom", "48px")
 
 
 @pytest.mark.parametrize(

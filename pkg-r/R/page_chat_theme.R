@@ -117,17 +117,17 @@ page_chat_theme <- function(..., preset = "shiny") {
     }
 
     .shiny-chat-page-home > shiny-chat-container {
-      --shiny-chat-fill-padding: #{$shiny-chat-page-fill-padding};
-      --shiny-chat-input-padding-bottom: #{$shiny-chat-page-input-padding-bottom};
+      --shiny-chat-fill-padding: var(--shiny-chat-page-fill-padding);
+      --shiny-chat-input-padding-bottom: var(--shiny-chat-page-input-padding-bottom);
     }
 
     .shiny-chat-page-home .shiny-chat-artifact {
-      background: #{$shiny-chat-page-artifact-bg};
-      box-shadow: #{$shiny-chat-page-artifact-box-shadow};
+      background: var(--shiny-chat-page-artifact-bg);
+      box-shadow: var(--shiny-chat-page-artifact-box-shadow);
     }
 
     .shiny-chat-page-home .shiny-chat-artifact-header {
-      background: #{$shiny-chat-page-artifact-header-bg};
+      background: var(--shiny-chat-page-artifact-header-bg);
     }
     "
   )

@@ -104,6 +104,40 @@ test_that("page_chat_theme() contains the page-specific baseline tokens", {
 
   expect_false(anyNA(bslib::bs_get_variables(page_theme, tokens)))
   expect_true(all(is.na(bslib::bs_get_variables(standard_theme, tokens))))
+
+  bootstrap <- bslib::bs_theme_dependencies(page_theme)[[2]]
+  css <- paste(
+    readLines(
+      file.path(bootstrap$src$file, bootstrap$stylesheet),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(
+    css,
+    "--shiny-chat-fill-padding: var(--shiny-chat-page-fill-padding)",
+    fixed = TRUE
+  )
+  expect_match(
+    css,
+    "--shiny-chat-input-padding-bottom: var(--shiny-chat-page-input-padding-bottom)",
+    fixed = TRUE
+  )
+  expect_match(
+    css,
+    "background:var(--shiny-chat-page-artifact-bg)",
+    fixed = TRUE
+  )
+  expect_match(
+    css,
+    "box-shadow:var(--shiny-chat-page-artifact-box-shadow)",
+    fixed = TRUE
+  )
+  expect_match(
+    css,
+    "background:var(--shiny-chat-page-artifact-header-bg)",
+    fixed = TRUE
+  )
 })
 
 test_that("chat_nav_panel() requires page-chat configuration", {
