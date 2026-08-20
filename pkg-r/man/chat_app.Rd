@@ -5,7 +5,18 @@
 \alias{chat_server}
 \title{Open a live chat application in the browser}
 \usage{
-chat_app(client, ..., bookmark_store = "url", allow_attachments = TRUE)
+chat_app(
+  client,
+  ...,
+  title = NULL,
+  icon = NULL,
+  window_title = NULL,
+  id = "chat",
+  greeting = NULL,
+  history = TRUE,
+  bookmark_store = "url",
+  app_options = list()
+)
 
 chat_server(
   id,
@@ -21,39 +32,17 @@ chat_server(
 \item{client}{A chat object created by \pkg{ellmer}, e.g.
 \code{\link[ellmer:chat_openai]{ellmer::chat_openai()}} and friends.}
 
-\item{...}{Additional arguments passed to \code{\link[shiny:shinyApp]{shiny::shinyApp()}}.}
+\item{...}{Named arguments passed to \code{\link[=page_chat]{page_chat()}}.}
 
-\item{bookmark_store}{The bookmarking store to use for the app. Passed to
-\code{enable_bookmarking} in \code{\link[shiny:shinyApp]{shiny::shinyApp()}}. Defaults to \code{"url"}, which
-uses the URL to store the chat state. URL-based bookmarking is limited in
-size; use \code{"server"} to store the state on the server side without size
-limitations; or disable bookmarking by setting this to \code{"disable"}.}
+\item{title}{The title displayed in the page header. If \code{NULL} (the
+default), \code{chat_app()} derives \code{"{model} ({provider})"} from \code{client}.}
 
-\item{allow_attachments}{Controls the file-attachment affordance (an attach
-button, plus clipboard paste and drag-and-drop) in the chat input.
-\code{NULL} (default) defers to \code{\link[=chat_server]{chat_server()}}, which enables attachments
-automatically. Pass \code{TRUE} to accept all supported types (PNG, JPEG, GIF,
-WebP, PDF, and common text/code files such as Markdown, plain text, CSV,
-JSON, and source files), \code{FALSE} to disable, or a character vector of MIME
-types to restrict what is accepted (each must be one of the supported
-types).
+\item{icon}{Optional UI displayed before \code{title}. See \code{\link[=page_chat]{page_chat()}}.}
 
-The shape of \verb{input$<id>_user_input} is determined by this argument, so it
-is predictable for a given app. When attachments are disabled (the
-default), it is the typed text as a character string, exactly as before.
-When attachments are enabled, it is always a list of ellmer
-\link[ellmer:Content]{ellmer::Content} objects (the typed text, if any, followed by one content
-object per attachment) - a list even when no files were attached. Splice
-the list into a chat method's \code{...} with \verb{!!!}, e.g.
-\verb{client$stream_async(!!!input$<id>_user_input)}. (No \code{\link[rlang:inject]{rlang::inject()}} is
-needed: ellmer's chat methods collect \code{...} with dynamic dots.)
+\item{window_title}{The browser-window title. If \code{NULL} (the default),
+\code{chat_app()} uses \code{"shinychat | {model} | {date}"}.}
 
-The maximum combined size of all attachments in a single message is
-controlled globally by the \code{SHINYCHAT_MAX_ATTACHMENT_SIZE} environment
-variable (a raw byte count; defaults to approximately 30 MB). Files that
-would push the total over this cap are rejected in the browser with a notice.}
-
-\item{id}{The ID of the chat element}
+\item{id}{The ID shared by \code{\link[=page_chat]{page_chat()}} and \code{\link[=chat_server]{chat_server()}}.}
 
 \item{greeting}{Optional greeting to set when the module initializes.
 Accepts a static value (string, \code{\link[htmltools:HTML]{htmltools::HTML()}}, \code{\link[htmltools:tagList]{htmltools::tagList()}},
@@ -63,6 +52,15 @@ dynamically. See the \strong{Greeting} section below for details.}
 \item{history}{Conversation history configuration. \code{TRUE} (default) enables
 history with default settings; \code{FALSE} disables it; pass a \code{\link[=history_options]{history_options()}}
 object to customise storage, identity, titling, or hooks.}
+
+\item{bookmark_store}{The bookmarking store to use for the app. Passed to
+\code{enableBookmarking} in \code{\link[shiny:shinyApp]{shiny::shinyApp()}}. Defaults to \code{"url"}, which
+uses the URL to store the chat state. URL-based bookmarking is limited in
+size; use \code{"server"} to store the state on the server side without size
+limitations; or disable bookmarking by setting this to \code{"disable"}.}
+
+\item{app_options}{A list passed to the \code{options} argument of
+\code{\link[shiny:shinyApp]{shiny::shinyApp()}}.}
 
 \item{bookmark_on_input}{A logical value determines if the bookmark should be updated when the user submits a message. Default is \code{TRUE}.}
 
@@ -158,6 +156,14 @@ with \code{chat_server()}} in \code{\link[=chat_ui]{chat_ui()}} for the top-leve
 patterns.
 
 }}
+\section{Migration}{
+
+\code{...} now configures \code{\link[=page_chat]{page_chat()}} instead of \code{\link[shiny:shinyApp]{shiny::shinyApp()}}. Pass
+Shiny app options through \code{app_options}, and use \code{bookmark_store} instead of
+\code{enableBookmarking}. To customize \code{onStart} or \code{uiPattern}, compose
+\code{\link[=page_chat]{page_chat()}} and \code{\link[=chat_server]{chat_server()}} manually.
+}
+
 \section{Greeting}{
 
 

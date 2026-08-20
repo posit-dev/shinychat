@@ -9,6 +9,12 @@
 #' user. For multi-user Shiny apps, use [chat_ui()] and `chat_server()` and be
 #' sure to create a new chat client for each user session.
 #'
+#' @section Migration:
+#' `...` now configures [page_chat()] instead of [shiny::shinyApp()]. Pass
+#' Shiny app options through `app_options`, and use `bookmark_store` instead of
+#' `enableBookmarking`. To customize `onStart` or `uiPattern`, compose
+#' [page_chat()] and [chat_server()] manually.
+#'
 #' @examples
 #' \dontrun{
 #' # Interactive in the console ----
@@ -58,12 +64,22 @@
 #'
 #' @param client A chat object created by \pkg{ellmer}, e.g.
 #'   [ellmer::chat_openai()] and friends.
-#' @param ... Additional arguments passed to [shiny::shinyApp()].
+#' @param ... Named arguments passed to [page_chat()].
+#' @param title The title displayed in the page header. If `NULL` (the
+#'   default), `chat_app()` derives `"{model} ({provider})"` from `client`.
+#' @param icon Optional UI displayed before `title`. See [page_chat()].
+#' @param window_title The browser-window title. If `NULL` (the default),
+#'   `chat_app()` uses `"shinychat | {model} | {date}"`.
+#' @param id The ID shared by [page_chat()] and [chat_server()].
+#' @param greeting See [chat_server()].
+#' @param history See [chat_server()].
 #' @param bookmark_store The bookmarking store to use for the app. Passed to
-#'   `enable_bookmarking` in [shiny::shinyApp()]. Defaults to `"url"`, which
+#'   `enableBookmarking` in [shiny::shinyApp()]. Defaults to `"url"`, which
 #'   uses the URL to store the chat state. URL-based bookmarking is limited in
 #'   size; use `"server"` to store the state on the server side without size
 #'   limitations; or disable bookmarking by setting this to `"disable"`.
+#' @param app_options A list passed to the `options` argument of
+#'   [shiny::shinyApp()].
 #'
 #' @returns
 #'   * `chat_app()` returns a [shiny::shinyApp()] object.
@@ -132,46 +148,111 @@
 #' @describeIn chat_app A simple Shiny app for live chatting. Note that this
 #'   app is suitable for interactive use by a single user; do not use
 #'   `chat_app()` in a multi-user Shiny app context.
-#' @inheritParams chat_ui
 #' @export
 chat_app <- function(
   client,
   ...,
+  title = NULL,
+  icon = NULL,
+  window_title = NULL,
+  id = "chat",
+  greeting = NULL,
+  history = TRUE,
   bookmark_store = "url",
-  allow_attachments = TRUE
+  app_options = list()
 ) {
   check_ellmer_chat(client)
+  dots <- rlang::list2(...)
+  check_chat_app_dots(dots)
+
+  if (!is.list(app_options)) {
+    cli::cli_abort("{.arg app_options} must be a list.")
+  }
+
+  client_info <- NULL
+  if (is.null(title) || is.null(window_title)) {
+    client_info <- get_client_info(client)
+  }
+  if (is.null(title)) {
+    title <- paste0(client_info$model, " (", client_info$provider, ")")
+  }
+  if (is.null(window_title)) {
+    window_title <- paste(
+      "shinychat",
+      client_info$model,
+      format(Sys.Date(), "%Y-%m-%d"),
+      sep = " | "
+    )
+  }
+
+  is_interactive <- rlang::is_interactive()
+  close_id <- paste0(id, "-close-btn")
+  if (is_interactive) {
+    dots$toolbar_global <- htmltools::tagList(
+      dots$toolbar_global,
+      shiny::actionButton(
+        close_id,
+        label = "",
+        class = "btn-close",
+        `aria-label` = "Close chat app",
+        title = "Close chat app"
+      )
+    )
+  }
 
   ui <- function(req) {
-    bslib::page_fillable(
-      chat_ui(
-        "chat",
-        height = "100%",
-        enable_cancel = TRUE,
-        allow_attachments = allow_attachments
-      ),
-      if (rlang::is_interactive()) {
-        shiny::actionButton(
-          "close_btn",
-          label = "",
-          class = "btn-close",
-          style = "position: fixed; top: 6px; right: 6px;"
-        )
-      }
+    rlang::exec(
+      page_chat,
+      title,
+      icon,
+      !!!dots,
+      id = id,
+      window_title = window_title
     )
   }
 
   server <- function(input, output, session) {
-    if (rlang::is_interactive()) {
-      shiny::setBookmarkExclude("close_btn")
-      shiny::observeEvent(input$close_btn, label = "on_close_btn", {
+    if (is_interactive) {
+      shiny::setBookmarkExclude(close_id)
+      shiny::observeEvent(input[[close_id]], label = "on_close_btn", {
         shiny::stopApp()
       })
     }
-    chat_server("chat", client)
+    chat_server(id, client, greeting = greeting, history = history)
   }
 
-  shiny::shinyApp(ui, server, ..., enableBookmarking = bookmark_store)
+  shiny::shinyApp(
+    ui,
+    server,
+    options = app_options,
+    enableBookmarking = bookmark_store
+  )
+}
+
+check_chat_app_dots <- function(dots) {
+  dot_names <- rlang::names2(dots)
+  shiny_app_args <- names(formals(shiny::shinyApp))
+  legacy_args <- intersect(dot_names, shiny_app_args)
+  if (length(legacy_args) == 0) {
+    return(invisible())
+  }
+
+  migration <- c(
+    options = "Pass this list with {.arg app_options}.",
+    enableBookmarking = "Use {.arg bookmark_store}.",
+    onStart = "Compose {.fn page_chat} and {.fn chat_server} manually to customize app startup.",
+    uiPattern = "Compose {.fn page_chat} and {.fn chat_server} manually to customize the app route.",
+    ui = "{.fn chat_app} owns the app UI; compose {.fn page_chat} and {.fn chat_server} manually instead.",
+    server = "{.fn chat_app} owns the app server; compose {.fn page_chat} and {.fn chat_server} manually instead."
+  )
+
+  cli::cli_abort(
+    c(
+      "{.fn chat_app} no longer passes {.arg ...} to {.fn shiny::shinyApp}.",
+      setNames(migration[legacy_args], rep("i", length(legacy_args)))
+    ),
+    call = rlang::caller_env()
+  )
 }
 
 check_ellmer_chat <- function(client) {
