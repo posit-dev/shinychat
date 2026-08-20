@@ -29,7 +29,14 @@ def test_history_rename_delete_search(
     open_drawer(page)
     # Open the per-row actions menu.
     page.locator(".shiny-chat-history-itemmenu button").first.click()
-    page.locator(".shiny-chat-history-menu").get_by_role(
+    menu = page.locator(".shiny-chat-history-menu")
+    expect(menu).to_be_visible()
+    assert menu.evaluate(
+        """(element) => !document
+          .querySelector(".shiny-chat-history-list")
+          ?.contains(element)"""
+    )
+    menu.get_by_role(
         "button", name="Rename"
     ).click()
     # The item switches to an inline input.

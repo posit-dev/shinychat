@@ -65,7 +65,7 @@ function menuFor(host: HTMLElement, title: string): HTMLElement {
   fireEvent.click(
     within(menu).getByRole("button", { name: /conversation actions/i }),
   )
-  return menu
+  return document.querySelector(".shiny-chat-history-menu") as HTMLElement
 }
 
 describe("shiny-chat-history custom element", () => {

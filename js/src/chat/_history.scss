@@ -448,7 +448,7 @@
   &-item:hover &-itemmenu,
   &-item.active &-itemmenu,
   &-itemmenu:focus-within,
-  &-itemmenu:has(> .shiny-chat-history-menu) {
+  &-itemmenu[data-menu-open] {
     opacity: 1;
   }
 
@@ -459,10 +459,7 @@
   }
 
   &-menu {
-    position: absolute;
-    inset-inline-end: 0;
-    top: calc(100% + 2px);
-    z-index: 10;
+    z-index: var(--bs-popover-zindex, 1070);
     min-width: 8rem;
     display: flex;
     flex-direction: column;

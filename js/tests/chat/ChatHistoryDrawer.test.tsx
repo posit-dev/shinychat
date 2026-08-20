@@ -132,14 +132,14 @@ function openDrawer() {
 function openMenuFor(title: string): HTMLElement {
   const titleEl = screen.getByText(title)
   const row = titleEl.closest(".shiny-chat-history-item") as HTMLElement
-  const menuWrapper = row.querySelector(
+  const menuTrigger = row.querySelector(
     ".shiny-chat-history-itemmenu",
   ) as HTMLElement
-  const menuBtn = within(menuWrapper).getByRole("button", {
+  const menuBtn = within(menuTrigger).getByRole("button", {
     name: /conversation actions/i,
   })
   fireEvent.click(menuBtn)
-  return menuWrapper
+  return document.querySelector(".shiny-chat-history-menu") as HTMLElement
 }
 
 // ---------------------------------------------------------------------------
@@ -390,8 +390,19 @@ describe("rename flow", () => {
   it("opens actions menu for a conversation", () => {
     renderDrawer()
     openDrawer()
-    const menuWrapper = openMenuFor("Today's chat")
-    expect(within(menuWrapper).getByText("Rename")).toBeTruthy()
+    const menu = openMenuFor("Today's chat")
+    expect(within(menu).getByText("Rename")).toBeTruthy()
+  })
+
+  it("portals the actions menu outside the scrollable history list", () => {
+    renderDrawer()
+    openDrawer()
+    const menu = openMenuFor("Today's chat")
+
+    expect(menu.closest(".shiny-chat-history-list")).toBeNull()
+    expect(menu.closest("[data-floating-ui-portal]")?.parentElement).toBe(
+      document.body,
+    )
   })
 
   it("shows inline rename input after clicking Rename", () => {
@@ -545,14 +556,14 @@ describe("busy state", () => {
     openDrawer()
     const titleEl = screen.getByText("Today's chat")
     const row = titleEl.closest(".shiny-chat-history-item") as HTMLElement
-    const menuWrapper = row.querySelector(
+    const menuTrigger = row.querySelector(
       ".shiny-chat-history-itemmenu",
     ) as HTMLElement
-    const menuBtn = within(menuWrapper).getByRole("button", {
+    const menuBtn = within(menuTrigger).getByRole("button", {
       name: /conversation actions/i,
     })
     fireEvent.click(menuBtn)
-    const deleteBtn = within(menuWrapper).getByText("Delete")
+    const deleteBtn = within(document.body).getByText("Delete")
     expect((deleteBtn as HTMLButtonElement).disabled).toBe(true)
   })
 
@@ -561,14 +572,14 @@ describe("busy state", () => {
     openDrawer()
     const titleEl = screen.getByText("Today's chat")
     const row = titleEl.closest(".shiny-chat-history-item") as HTMLElement
-    const menuWrapper = row.querySelector(
+    const menuTrigger = row.querySelector(
       ".shiny-chat-history-itemmenu",
     ) as HTMLElement
-    const menuBtn = within(menuWrapper).getByRole("button", {
+    const menuBtn = within(menuTrigger).getByRole("button", {
       name: /conversation actions/i,
     })
     fireEvent.click(menuBtn)
-    const renameBtn = within(menuWrapper).getByText("Rename")
+    const renameBtn = within(document.body).getByText("Rename")
     expect((renameBtn as HTMLButtonElement).disabled).toBe(false)
   })
 

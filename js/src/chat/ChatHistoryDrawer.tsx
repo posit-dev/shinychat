@@ -1,9 +1,38 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {
+  FloatingFocusManager,
+  FloatingPortal,
+  autoUpdate,
+  flip,
+  offset,
+  shift,
+  useClick,
+  useDismiss,
+  useFloating,
+  useInteractions,
+} from "@floating-ui/react"
 import type { ConversationMeta } from "../transport/types"
+import { portalTheme } from "./portalTheme"
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion"
 
 // Matches the 0.2s CSS animation in _history.scss, plus a margin of safety.
 const DRAWER_CLOSE_FALLBACK_MS = 300
+
+const HISTORY_PORTAL_VARIABLES = [
+  "--shiny-chat-history-accent",
+  "--shiny-chat-history-bg",
+  "--shiny-chat-history-border-color",
+  "--shiny-chat-history-item-hover-bg",
+  "--shiny-chat-history-item-active-bg",
+  "--_history-accent",
+  "--_history-bg",
+  "--_history-border-color",
+  "--_history-muted",
+  "--_history-fg",
+  "--_history-danger",
+  "--_history-item-hover-bg",
+  "--_history-item-active-bg",
+] as const
 
 export interface ChatHistoryDrawerProps {
   isOpen: boolean
@@ -178,19 +207,6 @@ export function ChatHistoryContent({
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    if (!menuFor) return
-    const onPointerDown = (e: PointerEvent) => {
-      const target = e.target as Element
-      if (!target.closest(`[data-menu-id="${menuFor}"]`)) {
-        setMenuFor(null)
-      }
-    }
-    document.addEventListener("pointerdown", onPointerDown, true)
-    return () =>
-      document.removeEventListener("pointerdown", onPointerDown, true)
-  }, [menuFor])
-
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return conversations
@@ -293,7 +309,7 @@ export function ChatHistoryContent({
                 menuOpen={menuFor === c.id}
                 renaming={renaming === c.id}
                 confirmingDelete={confirmingDelete === c.id}
-                onToggleMenu={() => setMenuFor(menuFor === c.id ? null : c.id)}
+                onMenuOpenChange={(open) => setMenuFor(open ? c.id : null)}
                 onStartRename={() => {
                   if (!connected) return
                   setRenaming(c.id)
@@ -336,7 +352,7 @@ interface ConversationItemProps {
   menuOpen: boolean
   renaming: boolean
   confirmingDelete: boolean
-  onToggleMenu: () => void
+  onMenuOpenChange: (open: boolean) => void
   onStartRename: () => void
   onStartDelete: () => void
   onCancelEdit: () => void
@@ -353,7 +369,7 @@ function ConversationItem({
   menuOpen,
   renaming,
   confirmingDelete,
-  onToggleMenu,
+  onMenuOpenChange,
   onStartRename,
   onStartDelete,
   onCancelEdit,
@@ -362,6 +378,24 @@ function ConversationItem({
   onSelect,
 }: ConversationItemProps) {
   const [draft, setDraft] = useState(meta.title)
+  const { refs, floatingStyles, context } = useFloating({
+    open: menuOpen,
+    onOpenChange: onMenuOpenChange,
+    strategy: "fixed",
+    placement: "bottom-end",
+    middleware: [offset(4), flip(), shift({ padding: 8, crossAxis: true })],
+    whileElementsMounted: autoUpdate,
+  })
+  const click = useClick(context)
+  const dismiss = useDismiss(context, { outsidePressEvent: "mousedown" })
+  const { getReferenceProps, getFloatingProps } = useInteractions([
+    click,
+    dismiss,
+  ])
+  const portal = portalTheme(
+    refs.domReference.current,
+    HISTORY_PORTAL_VARIABLES,
+  )
 
   // Resync if meta.title changes from outside this component (e.g. rename from another tab)
   useEffect(() => {
@@ -441,8 +475,13 @@ function ConversationItem({
           </button>
         </span>
       ) : (
-        <span className="shiny-chat-history-itemmenu" data-menu-id={meta.id}>
+        <span
+          className="shiny-chat-history-itemmenu"
+          data-menu-id={meta.id}
+          data-menu-open={menuOpen || undefined}
+        >
           <button
+            ref={refs.setReference}
             type="button"
             aria-label="Conversation actions"
             disabled={!connected}
@@ -451,42 +490,57 @@ function ConversationItem({
                 ? "History is unavailable while chat reconnects"
                 : undefined
             }
-            onClick={onToggleMenu}
+            {...getReferenceProps()}
           >
             <MoreIcon />
           </button>
           {menuOpen && (
-            <span className="shiny-chat-history-menu">
-              <button
-                type="button"
-                disabled={!connected}
-                title={
-                  !connected
-                    ? "History is unavailable while chat reconnects"
-                    : undefined
-                }
-                onClick={onStartRename}
+            <FloatingPortal>
+              <FloatingFocusManager
+                context={context}
+                modal={false}
+                initialFocus={-1}
+                returnFocus
               >
-                <PencilIcon />
-                Rename
-              </button>
-              <button
-                type="button"
-                className="shiny-chat-history-menu-danger"
-                disabled={busy || !connected}
-                title={
-                  busy
-                    ? "Wait for the response to finish"
-                    : !connected
-                      ? "History is unavailable while chat reconnects"
-                      : undefined
-                }
-                onClick={onStartDelete}
-              >
-                <TrashIcon />
-                Delete
-              </button>
-            </span>
+                <div
+                  ref={refs.setFloating}
+                  className="shiny-chat-history-menu"
+                  style={{ ...portal.style, ...floatingStyles }}
+                  data-bs-theme={portal.theme}
+                  {...getFloatingProps()}
+                >
+                  <button
+                    type="button"
+                    disabled={!connected}
+                    title={
+                      !connected
+                        ? "History is unavailable while chat reconnects"
+                        : undefined
+                    }
+                    onClick={onStartRename}
+                  >
+                    <PencilIcon />
+                    Rename
+                  </button>
+                  <button
+                    type="button"
+                    className="shiny-chat-history-menu-danger"
+                    disabled={busy || !connected}
+                    title={
+                      busy
+                        ? "Wait for the response to finish"
+                        : !connected
+                          ? "History is unavailable while chat reconnects"
+                          : undefined
+                    }
+                    onClick={onStartDelete}
+                  >
+                    <TrashIcon />
+                    Delete
+                  </button>
+                </div>
+              </FloatingFocusManager>
+            </FloatingPortal>
           )}
         </span>
       )}
