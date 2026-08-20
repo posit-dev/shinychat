@@ -110,7 +110,8 @@ ui <- page_chat(
     open = FALSE
   ),
   greeting = "## Field notes\n\nTry the local echo response.",
-  placeholder = "Describe what you observed..."
+  placeholder = "Describe what you observed...",
+  icon_assistant = FALSE
 )
 
 server <- function(input, output, session) {
@@ -127,7 +128,10 @@ server <- function(input, output, session) {
     } else {
       input$chat_user_input
     }
-    assistant_text <- paste0("You said: ", user_text)
+    assistant_text <- paste0(
+      "The assistant replied to your message: ",
+      user_text
+    )
     record_exchange(client, user_text, assistant_text)
     chat_append("chat", assistant_text)
     chat_artifact_update(

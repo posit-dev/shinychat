@@ -26,7 +26,7 @@ class EchoChatClient(chatlas.Chat):
         self, *args: Any, **kwargs: Any
     ) -> AsyncGenerator[str, None]:  # type: ignore[override]
         user_input = str(args[0]) if args else ""
-        response = f"You said: {user_input}"
+        response = f"The assistant replied to your message: {user_input}"
         self.add_turn(Turn(role="user", contents=user_input))
         self.add_turn(AssistantTurn(contents=response))
 
@@ -111,6 +111,7 @@ app_ui = page_chat(
     ),
     greeting="## Field notes\n\nTry the local echo response.",
     placeholder="Describe what you observed...",
+    icon_assistant=False,
 )
 
 
