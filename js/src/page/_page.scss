@@ -253,6 +253,12 @@ button.shiny-chat-page-identity:focus-visible,
   background: var(--_page-sidebar-bg);
 }
 
+.shiny-chat-page-sidebar .shiny-chat-history.shiny-chat-history-inline {
+  // Keep the wrapper transparent, but use the sidebar surface behind sticky
+  // headings so scrolling conversation rows do not show through.
+  --_history-inline-bg: var(--shiny-chat-history-bg, var(--_page-sidebar-bg));
+}
+
 .shiny-chat-page-sidebar:not([data-sidebar-key]) {
   display: none;
 }

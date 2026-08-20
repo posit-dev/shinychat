@@ -656,6 +656,8 @@ shiny-chat-container[data-history-placement="right"] {
 // container. It reuses the drawer content classes and tokens, but adopts its
 // host surface by default instead of introducing an opaque card.
 .shiny-chat-history.shiny-chat-history-inline {
+  --_history-inline-bg: var(--_history-bg);
+
   position: static;
   inset: auto;
   z-index: auto;
@@ -685,7 +687,7 @@ shiny-chat-container[data-history-placement="right"] {
   }
 
   .shiny-chat-history-section {
-    background: var(--_history-bg);
+    background: var(--_history-inline-bg);
   }
 }
 

@@ -45,6 +45,14 @@ def test_navigation_example_saves_conversations(
             ".shiny-chat-history-item"
         )
     ).to_have_count(1)
+    history_section = sidebar.locator(
+        ".shiny-chat-page-sidebar-panel:not([hidden]) "
+        ".shiny-chat-history-section"
+    )
+    expect(history_section).to_be_visible()
+    assert history_section.evaluate(
+        "(element) => getComputedStyle(element).backgroundColor"
+    ) == sidebar.evaluate("(element) => getComputedStyle(element).backgroundColor")
 
 
 def test_navigation_example_history_new_button_meets_aa_contrast(
