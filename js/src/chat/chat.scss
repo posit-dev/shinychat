@@ -142,13 +142,39 @@ shiny-chat-container {
 
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: 1fr auto;
-  &:has(.shiny-chat-footer) {
-    grid-template-rows: 1fr auto auto;
-  }
+  grid-template-rows: minmax(0, 1fr) auto minmax(0, 0fr);
   gap: 0;
   padding: var(--_chat-container-padding);
   padding-bottom: 0; // Bottom padding is on input element
+}
+
+.shiny-chat-composer {
+  grid-row: 2;
+  min-width: 0;
+  translate: 0 var(--shiny-chat-composer-offset, 0px);
+}
+
+.shiny-chat-layout[data-composer-motion-ready]:not([data-composer-resizing])
+  .shiny-chat-composer {
+  transition: translate 350ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+shiny-chat-page
+  .shiny-chat-layout[data-composer-revealing]
+  .shiny-chat-composer {
+  animation: shiny-chat-composer-reveal 300ms cubic-bezier(0.22, 1, 0.36, 1)
+    both;
+}
+
+@keyframes shiny-chat-composer-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 // Wrapper for the scroll container. overflow: clip (not hidden) is intentional —

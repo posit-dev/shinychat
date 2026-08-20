@@ -155,6 +155,15 @@ export interface ChatContainerHandle extends ChatInputHandle {
   endSiblingNavigation(): void
 }
 
+interface ComposerPosition {
+  centered: boolean
+  greetingOverflows: boolean
+  greetingOffset: number
+  composerOffset: number
+}
+
+const CENTERED_GREETING_GAP = 12
+
 export const ChatContainer = forwardRef<
   ChatContainerHandle,
   ChatContainerProps
@@ -208,9 +217,21 @@ export const ChatContainer = forwardRef<
   const priorArtifactTakeoverRef = useRef(false)
   const artifactLayoutRef = useRef<HTMLDivElement>(null)
   const artifactWidthProbeRef = useRef<HTMLDivElement>(null)
+  const composerRef = useRef<HTMLDivElement>(null)
   const [artifactTakeover, setArtifactTakeover] = useState(false)
   const [artifactPresented, setArtifactPresented] = useState(artifact.visible)
   const [artifactResizing, setArtifactResizing] = useState(false)
+  const [composerPosition, setComposerPosition] = useState<ComposerPosition>({
+    centered: false,
+    greetingOverflows: false,
+    greetingOffset: 0,
+    composerOffset: 0,
+  })
+  const [composerMotionReady, setComposerMotionReady] = useState(false)
+  const [composerRevealing, setComposerRevealing] = useState(false)
+  const [composerResizing, setComposerResizing] = useState(false)
+  const composerPositionRef = useRef(composerPosition)
+  composerPositionRef.current = composerPosition
   const [artifactLayoutWidth, setArtifactLayoutWidth] = useState(
     `${DEFAULT_ARTIFACT_LAYOUT_WIDTH}px`,
   )
@@ -290,6 +311,154 @@ export const ChatContainer = forwardRef<
   const dispatch = useChatDispatch()
 
   const isStreaming = !!streamingMessage
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setComposerMotionReady(true))
+    return () => cancelAnimationFrame(frame)
+  }, [])
+
+  useEffect(() => {
+    if (!composerPosition.centered) return
+
+    setComposerRevealing(true)
+    const timeout = window.setTimeout(() => setComposerRevealing(false), 300)
+    return () => window.clearTimeout(timeout)
+  }, [composerPosition.centered])
+
+  // Keep the normal grid and scroll behavior intact, then translate the
+  // greeting and composer as one group. Centering only the composer leaves a
+  // multi-line greeting top-heavy; removing it from normal flow clips long
+  // greetings before the overflow fallback can take effect.
+  useLayoutEffect(() => {
+    const layout = artifactLayoutRef.current
+    const composer = composerRef.current
+    const isPageChat = document
+      .getElementById(elementId)
+      ?.closest("shiny-chat-page")
+
+    if (!layout || !composer || !isPageChat) return
+
+    let resizeObserver: ResizeObserver | undefined
+    let observedGreeting: Element | null = null
+    let receivedInitialResize = false
+    let resizeSettleTimer: number | undefined
+
+    const setPosition = (nextPosition: ComposerPosition) => {
+      const currentPosition = composerPositionRef.current
+      if (
+        currentPosition.centered === nextPosition.centered &&
+        currentPosition.greetingOverflows === nextPosition.greetingOverflows &&
+        currentPosition.greetingOffset === nextPosition.greetingOffset &&
+        currentPosition.composerOffset === nextPosition.composerOffset
+      ) {
+        return
+      }
+      composerPositionRef.current = nextPosition
+      setComposerPosition(nextPosition)
+    }
+
+    const resetPosition = () => {
+      setPosition({
+        centered: false,
+        greetingOverflows: false,
+        greetingOffset: 0,
+        composerOffset: 0,
+      })
+    }
+
+    const translateY = (element: Element) => {
+      const value = getComputedStyle(element).translate
+      if (value === "none") return 0
+      const [, y] = value.split(/\s+/)
+      return Number.parseFloat(y ?? "") || 0
+    }
+
+    const update = () => {
+      const greetingEl = layout.querySelector(".shiny-chat-greeting")
+      if (
+        !greetingEl ||
+        messages.length > 0 ||
+        greeting?.status !== "visible"
+      ) {
+        resetPosition()
+        return
+      }
+
+      if (resizeObserver && observedGreeting !== greetingEl) {
+        if (observedGreeting) resizeObserver.unobserve(observedGreeting)
+        resizeObserver.observe(greetingEl)
+        observedGreeting = greetingEl
+      }
+
+      const layoutBox = layout.getBoundingClientRect()
+      const greetingBox = greetingEl.getBoundingClientRect()
+      const composerBox = composer.getBoundingClientRect()
+      const totalHeight =
+        greetingBox.height + CENTERED_GREETING_GAP + composerBox.height
+
+      if (totalHeight > layout.clientHeight) {
+        // useStickToBottom can retain the empty-state scroll position while a
+        // greeting grows. Oversized greetings must instead begin at the
+        // scroll viewport's origin.
+        const scroll = scrollRef.current
+        if (scroll && scroll.scrollTop !== 0) scroll.scrollTop = 0
+        setPosition({
+          centered: false,
+          greetingOverflows: true,
+          greetingOffset: 0,
+          composerOffset: 0,
+        })
+        return
+      }
+
+      const greetingTarget =
+        layoutBox.top + (layoutBox.height - totalHeight) / 2
+      const composerTarget =
+        greetingTarget + greetingBox.height + CENTERED_GREETING_GAP
+      setPosition({
+        centered: true,
+        greetingOverflows: false,
+        greetingOffset:
+          translateY(greetingEl) + greetingTarget - greetingBox.top,
+        composerOffset: translateY(composer) + composerTarget - composerBox.top,
+      })
+    }
+
+    const settleResize = () => {
+      setComposerResizing(true)
+      if (resizeSettleTimer) window.clearTimeout(resizeSettleTimer)
+      resizeSettleTimer = window.setTimeout(
+        () => setComposerResizing(false),
+        120,
+      )
+    }
+
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(() => {
+        update()
+        // Observing an element reports its existing dimensions once. That is
+        // initialization, not a resize, so retain discrete-state motion.
+        if (receivedInitialResize) settleResize()
+        receivedInitialResize = true
+      })
+      resizeObserver.observe(layout)
+      resizeObserver.observe(composer)
+    }
+
+    // History "New" can insert its greeting after this effect has run. Watch
+    // the local layout so its first placement is measured immediately.
+    const mutationObserver = new MutationObserver(update)
+    mutationObserver.observe(layout, { childList: true, subtree: true })
+    window.addEventListener("resize", update)
+    update()
+
+    return () => {
+      if (resizeSettleTimer) window.clearTimeout(resizeSettleTimer)
+      resizeObserver?.disconnect()
+      mutationObserver.disconnect()
+      window.removeEventListener("resize", update)
+    }
+  }, [elementId, footerEl, greeting, messages.length, scrollRef])
 
   const updateArtifactLayoutWidth = useCallback(() => {
     const layout = artifactLayoutRef.current
@@ -769,9 +938,15 @@ export const ChatContainer = forwardRef<
         ref={artifactLayoutRef}
         className="shiny-chat-layout"
         style={
-          artifact.enabled
+          artifact.enabled || composerPosition.centered
             ? ({
-                "--shiny-chat-artifact-width": artifactLayoutWidth,
+                ...(artifact.enabled
+                  ? {
+                      "--shiny-chat-artifact-width": artifactLayoutWidth,
+                    }
+                  : {}),
+                "--shiny-chat-greeting-offset": `${composerPosition.greetingOffset}px`,
+                "--shiny-chat-composer-offset": `${composerPosition.composerOffset}px`,
               } as React.CSSProperties)
             : undefined
         }
@@ -780,6 +955,13 @@ export const ChatContainer = forwardRef<
           artifactTakeover && artifactPresented ? "" : undefined
         }
         data-artifact-resizing={artifactResizing ? "" : undefined}
+        data-composer-centered={composerPosition.centered ? "" : undefined}
+        data-greeting-overflow={
+          composerPosition.greetingOverflows ? "" : undefined
+        }
+        data-composer-motion-ready={composerMotionReady ? "" : undefined}
+        data-composer-revealing={composerRevealing ? "" : undefined}
+        data-composer-resizing={composerResizing ? "" : undefined}
       >
         <div className="shiny-chat-wrapper">
           <div className="shiny-chat-messages-wrapper">
@@ -833,37 +1015,39 @@ export const ChatContainer = forwardRef<
             />
           </div>
 
-          <div
-            className={
-              inputDisabled ? "shiny-chat-input disabled" : "shiny-chat-input"
-            }
-            onClick={onContainerClick}
-          >
-            <ChatInput
-              ref={chatInputRef}
-              transport={transport}
-              inputId={inputId}
-              uploadAccept={uploadAccept}
-              maxUploadSize={maxUploadSize}
-              disabled={inputDisabled}
-              hasTopShadow={!isAtBottom}
-              placeholder={inputPlaceholder}
-              onSend={onSend}
-              userMessages={userMessages}
-              enableCancel={enableCancel}
-              enableUpload={enableUpload}
-              cancelRequested={cancelRequested}
-              isStreaming={isStreaming}
-              onCancel={cancelStream}
-              slashCommands={slashCommands}
-              slashCommandId={slashCommandId}
-              submitKey={submitKey}
-            />
-          </div>
+          <div className="shiny-chat-composer" ref={composerRef}>
+            <div
+              className={
+                inputDisabled ? "shiny-chat-input disabled" : "shiny-chat-input"
+              }
+              onClick={onContainerClick}
+            >
+              <ChatInput
+                ref={chatInputRef}
+                transport={transport}
+                inputId={inputId}
+                uploadAccept={uploadAccept}
+                maxUploadSize={maxUploadSize}
+                disabled={inputDisabled}
+                hasTopShadow={!isAtBottom}
+                placeholder={inputPlaceholder}
+                onSend={onSend}
+                userMessages={userMessages}
+                enableCancel={enableCancel}
+                enableUpload={enableUpload}
+                cancelRequested={cancelRequested}
+                isStreaming={isStreaming}
+                onCancel={cancelStream}
+                slashCommands={slashCommands}
+                slashCommandId={slashCommandId}
+                submitKey={submitKey}
+              />
+            </div>
 
-          {footerEl && (
-            <RawDOM source={footerEl} className="shiny-chat-footer" />
-          )}
+            {footerEl && (
+              <RawDOM source={footerEl} className="shiny-chat-footer" />
+            )}
+          </div>
         </div>
 
         {artifact.enabled && (

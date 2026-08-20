@@ -483,9 +483,142 @@ def test_page_chat_keeps_content_inset_and_fills_its_page_region(
     assert wrapper_box["height"] == pytest.approx(chat_box["height"], abs=1)
     assert input_box["x"] >= chat_box["x"] + 16
     assert input_box["x"] + input_box["width"] <= chat_box["x"] + chat_box["width"] - 16
-    assert input_box["y"] + input_box["height"] >= chat_box["y"] + chat_box["height"] - 16
+    assert input_box["y"] < chat_box["y"] + chat_box["height"] * 0.75
     expect(wrapper).to_have_css("padding-left", "16px")
     expect(wrapper).to_have_css("padding-right", "16px")
+
+
+def test_page_chat_centers_fitting_greeting_composer_and_pins_overflow(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    chat, _ = open_page(page, local_app, viewport=(1280, 800))
+    layout = chat.loc.locator(".shiny-chat-layout")
+    greeting = chat.loc_greeting
+    composer = chat.loc.locator(".shiny-chat-composer")
+    footer = chat.loc.locator(".page-chat-footer")
+
+    expect(layout).to_have_attribute("data-composer-centered", "")
+    expect(layout).not_to_have_attribute("data-composer-revealing")
+    expect(layout).not_to_have_attribute("data-composer-resizing")
+    greeting_box = greeting.bounding_box()
+    composer_box = composer.bounding_box()
+    footer_box = footer.bounding_box()
+    assert greeting_box is not None
+    assert composer_box is not None
+    assert footer_box is not None
+    assert composer_box["y"] >= greeting_box["y"] + greeting_box["height"]
+    assert composer_box["y"] - (
+        greeting_box["y"] + greeting_box["height"]
+    ) <= 16
+    assert footer_box["y"] >= composer_box["y"]
+    group_center = (
+        greeting_box["y"] + footer_box["y"] + footer_box["height"]
+    ) / 2
+    chat_box = chat.loc.bounding_box()
+    assert chat_box is not None
+    assert group_center == pytest.approx(
+        chat_box["y"] + chat_box["height"] / 2, abs=8
+    )
+
+    chat.set_user_input("Move the composer")
+    chat.send_user_input()
+    expect(layout).not_to_have_attribute("data-composer-centered", timeout=TIMEOUT)
+    page.wait_for_timeout(400)
+    input_box = chat.loc_input_container.bounding_box()
+    chat_box = chat.loc.bounding_box()
+    assert input_box is not None
+    assert chat_box is not None
+    assert input_box["y"] + input_box["height"] >= chat_box["y"] + chat_box["height"] - 48
+
+    # A greeting taller than the chat region retains the usual bottom-pinned
+    # composer instead of competing for the centered empty-state layout.
+    page.reload()
+    expect(layout).to_have_attribute("data-composer-centered", "")
+    greeting.evaluate("(element) => { element.style.minHeight = '100vh'; }")
+    expect(layout).not_to_have_attribute("data-composer-centered", timeout=TIMEOUT)
+    page.wait_for_timeout(400)
+    input_box = chat.loc_input_container.bounding_box()
+    chat_box = chat.loc.bounding_box()
+    assert input_box is not None
+    assert chat_box is not None
+    assert input_box["y"] + input_box["height"] >= chat_box["y"] + chat_box["height"] - 48
+    scroll_box = chat.loc_scroll_container.bounding_box()
+    greeting_box = greeting.bounding_box()
+    assert scroll_box is not None
+    assert greeting_box is not None
+    assert greeting_box["y"] >= scroll_box["y"]
+    assert chat.loc_scroll_container.evaluate(
+        "(element) => element.scrollHeight > element.clientHeight"
+    )
+
+
+def test_page_chat_remeasures_greeting_after_history_new(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    chat, shell = open_page(page, local_app, viewport=(1280, 800))
+    layout = chat.loc.locator(".shiny-chat-layout")
+
+    chat.set_user_input("Save this conversation")
+    chat.send_user_input()
+    chat.expect_latest_message("echo: Save this conversation", timeout=TIMEOUT)
+
+    shell.get_by_role("button", name="History", exact=True).click()
+    history = shell.get_by_role("region", name="History", exact=True).locator(
+        "shiny-chat-history"
+    )
+    expect(history).to_be_visible(timeout=TIMEOUT)
+    history.get_by_role("button", name="New conversation").click()
+    shell.get_by_role("button", name="Return to chat").click()
+
+    expect(layout).to_have_attribute("data-composer-centered", "", timeout=TIMEOUT)
+    expect(layout).not_to_have_attribute("data-composer-revealing")
+    expect(layout).not_to_have_attribute("data-composer-resizing")
+    greeting_box = chat.loc_greeting.bounding_box()
+    composer_box = chat.loc.locator(".shiny-chat-composer").bounding_box()
+    assert greeting_box is not None
+    assert composer_box is not None
+    assert composer_box["y"] >= greeting_box["y"] + greeting_box["height"]
+    assert composer_box["y"] - (
+        greeting_box["y"] + greeting_box["height"]
+    ) <= 16
+
+
+def test_page_chat_tracks_resize_without_composer_transition(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    chat, _ = open_page(page, local_app, viewport=(1280, 800))
+    layout = chat.loc.locator(".shiny-chat-layout")
+    composer = chat.loc.locator(".shiny-chat-composer")
+    expect(layout).to_have_attribute("data-composer-centered", "")
+
+    resize_samples = layout.evaluate(
+        """async (element) => {
+          const samples = [];
+          for (const width of ['720px', '420px', '680px', '460px']) {
+            element.style.width = width;
+            await new Promise(requestAnimationFrame);
+            await new Promise(requestAnimationFrame);
+            const composer = element.querySelector('.shiny-chat-composer');
+            samples.push({
+              resizing: element.hasAttribute('data-composer-resizing'),
+              transitionDuration: getComputedStyle(composer).transitionDuration,
+            });
+          }
+          element.style.removeProperty('width');
+          return samples;
+        }"""
+    )
+    assert all(sample["resizing"] for sample in resize_samples)
+    assert all(sample["transitionDuration"] == "0s" for sample in resize_samples)
+
+    expect(layout).not_to_have_attribute(
+        "data-composer-resizing",
+        timeout=TIMEOUT,
+    )
+    expect(composer).to_have_css("transition-duration", "0.35s")
 
 
 def test_top_aligned_toast_starts_below_the_page_title_bar(

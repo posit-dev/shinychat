@@ -9,7 +9,13 @@ import chatlas
 from chatlas import Turn
 from chatlas._turn import AssistantTurn
 from shiny import App, Inputs, Outputs, Session, reactive, ui
-from shinychat import Chat, chat_nav_panel, chat_sidebar, page_chat
+from shinychat import (
+    Chat,
+    chat_nav_panel,
+    chat_sidebar,
+    chat_ui_history,
+    page_chat,
+)
 from shinychat.types import FileConversationStore, HistoryOptions
 from starlette.requests import Request
 
@@ -92,6 +98,7 @@ def app_ui(request: Request) -> ui.Tag:
         pages=[
             chat_nav_panel(
                 "History",
+                chat_ui_history("chat"),
                 ui.div(
                     ui.input_text(
                         "history_page_input",
@@ -172,6 +179,7 @@ def app_ui(request: Request) -> ui.Tag:
         sidebar=True,
         artifact=False,
         greeting="Start a conversation.",
+        footer=ui.div("Page chat footer", class_="page-chat-footer"),
     )
 
 

@@ -103,7 +103,8 @@ class Chat(UiBase):
         self.loc_scroll_container = self.loc.locator(".shiny-chat-messages")
         self.loc_latest_message = self.loc_messages.locator("> :last-child")
         self.loc_input_container = self.loc.locator(
-            "> .shiny-chat-layout > .shiny-chat-wrapper > .shiny-chat-input"
+            "> .shiny-chat-layout > .shiny-chat-wrapper > "
+            ".shiny-chat-composer > .shiny-chat-input"
         )
         self.loc_input = self.loc_input_container.locator('[role="textbox"]')
         self.loc_input_button = self.loc_input_container.locator(
