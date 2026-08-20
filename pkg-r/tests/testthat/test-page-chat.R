@@ -85,6 +85,25 @@ test_that("page_chat_theme() composes caller overrides over a preset", {
   expect_no_error(bslib::bs_theme_dependencies(theme))
 })
 
+test_that("page_chat_theme() contains the page-specific baseline tokens", {
+  page_theme <- page_chat_theme()
+  standard_theme <- bslib::bs_theme()
+  tokens <- c(
+    "shiny-chat-page-header-height",
+    "shiny-chat-page-header-padding-y",
+    "shiny-chat-page-sidebar-padding",
+    "shiny-chat-page-title-gap",
+    "shiny-chat-page-title-font-size",
+    "shiny-chat-page-title-font-weight",
+    "shiny-chat-page-controls-gap",
+    "shiny-chat-page-nav-link-font-size",
+    "shiny-chat-page-panel-padding-block"
+  )
+
+  expect_false(anyNA(bslib::bs_get_variables(page_theme, tokens)))
+  expect_true(all(is.na(bslib::bs_get_variables(standard_theme, tokens))))
+})
+
 test_that("chat_nav_panel() requires page-chat configuration", {
   panel <- chat_nav_panel(
     "Settings",

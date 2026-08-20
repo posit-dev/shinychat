@@ -53,6 +53,29 @@ test_that("chat_app() forwards page and browser-title options", {
   expect_false(grepl("<shiny-chat-artifact", html, fixed = TRUE))
 })
 
+test_that("chat_app() preserves an explicitly supplied bslib theme", {
+  captured_theme <- NULL
+  local_mocked_bindings(
+    page_chat = function(...) {
+      captured_theme <<- rlang::list2(...)$theme
+      bslib::page_fillable()
+    },
+    .package = "shinychat"
+  )
+  theme <- bslib::bs_theme(primary = "#123456")
+
+  chat_app_html(chat_app(mock_chat_client(), theme = theme))
+
+  expect_identical(captured_theme, theme)
+  expect_equal(
+    bslib::bs_get_variables(
+      captured_theme,
+      c("primary", "shiny-chat-page-header-height")
+    ),
+    c("primary" = "#123456", "shiny-chat-page-header-height" = NA_character_)
+  )
+})
+
 test_that("chat_app() forwards chat_server() options", {
   called <- NULL
   local_mocked_bindings(
