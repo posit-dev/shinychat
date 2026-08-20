@@ -90,6 +90,41 @@ describe("tool presentation projection", () => {
     })
   })
 
+  it("keeps a successful framed result in its activity row", () => {
+    const framed = call({
+      presentation: "framed",
+      value: "forecast",
+      valueType: "text",
+    })
+
+    const presentation = projectToolGroup(group([framed]))
+
+    expect(presentation.row?.calls).toEqual([framed])
+    expect(presentation.standalonePayloads).toEqual([])
+  })
+
+  it("keeps custom-display migration authoritative over framed presentation", () => {
+    const customFramed = call({
+      customDisplay: true,
+      presentation: "framed",
+      value: "<table></table>",
+      valueType: "html",
+    })
+
+    const presentation = projectToolGroup(group([customFramed]))
+
+    expect(presentation.row).toBeNull()
+    expect(presentation.standalonePayloads).toEqual([
+      {
+        key: "request-1",
+        call: customFramed,
+        value: "<table></table>",
+        valueType: "html",
+        showRequest: false,
+      },
+    ])
+  })
+
   it("keeps a running custom-display request in the activity row", () => {
     const running = call({
       status: "running",
