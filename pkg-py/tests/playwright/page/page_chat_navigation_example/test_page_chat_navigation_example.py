@@ -72,6 +72,31 @@ def test_navigation_example_history_new_button_meets_aa_contrast(
         assert _contrast_ratio(colors["foreground"], colors["background"]) >= 4.5
 
 
+def test_navigation_example_locally_themed_header_meets_aa_contrast(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.goto(local_app.url)
+    header = page.locator(".shiny-chat-page-header")
+
+    for theme in ("light", "dark"):
+        header.evaluate(
+            "(element, value) => element.setAttribute('data-bs-theme', value)",
+            theme,
+        )
+        colors = header.evaluate(
+            """(element) => {
+              const styles = getComputedStyle(element);
+              const parse = (color) =>
+                color.match(/\\d+/g).slice(0, 3).map(Number);
+              return {
+                foreground: parse(styles.color),
+                background: parse(styles.backgroundColor),
+              };
+            }"""
+        )
+        assert _contrast_ratio(colors["foreground"], colors["background"]) >= 4.5
+
+
 def test_navigation_example_chat_surfaces_follow_theme_radius(
     page: Page, local_app: ShinyAppProc
 ) -> None:

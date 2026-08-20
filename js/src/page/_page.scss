@@ -47,7 +47,7 @@ body:has(shiny-chat-page) > .toast-container:is(
   min-height: var(--_page-header-height);
   padding: var(--_page-header-padding-y) var(--_page-header-padding-x);
   border-bottom: var(--_page-border);
-  background: var(--_page-surface-bg);
+  background: var(--bs-body-bg, var(--_page-surface-bg));
   color: var(--bs-body-color, #212529);
 }
 
