@@ -59,7 +59,7 @@ shiny-chat-container {
       position: relative;
       padding: 0.75rem 2rem 0.75rem 1rem;
       border: var(--shiny-chat-border);
-      border-radius: 8px;
+      border-radius: var(--shiny-chat-suggestion-card-border-radius, 8px);
       background-color: var(--bs-body-bg, #fff);
       cursor: pointer;
       color: inherit;
@@ -193,4 +193,3 @@ shiny-chat-container {
     transform: none !important;
   }
 }
-

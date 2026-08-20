@@ -25,7 +25,7 @@ page_chat(
   artifact = TRUE,
   window_title = NA,
   lang = NULL,
-  theme = bslib::bs_theme()
+  theme = page_chat_theme()
 )
 }
 \arguments{
@@ -63,7 +63,9 @@ Use \code{NULL} to omit the window title.}
 
 \item{lang}{An optional non-empty document language string.}
 
-\item{theme}{A \code{\link[bslib:bs_theme]{bslib::bs_theme()}} object.}
+\item{theme}{A \code{\link[bslib:bs_theme]{bslib::bs_theme()}} object. Defaults to \code{\link[=page_chat_theme]{page_chat_theme()}}.
+Supply \code{\link[bslib:bs_theme]{bslib::bs_theme()}} directly to use another bslib preset or a
+completely custom Bootstrap theme.}
 }
 \value{
 A fillable bslib page.

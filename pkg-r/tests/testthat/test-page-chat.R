@@ -62,6 +62,29 @@ test_that("chat_artifact() validates configuration", {
   expect_snapshot(error = TRUE, chat_artifact(data_role = "artifact"))
 })
 
+test_that("page_chat_theme() composes caller overrides over a preset", {
+  theme <- page_chat_theme(
+    preset = "flatly",
+    primary = "#123456",
+    "shiny-chat-page-canvas-bg" = "#F0F0F0"
+  )
+  expect_s3_class(theme, "bs_theme")
+  expect_equal(
+    bslib::bs_get_variables(
+      theme,
+      c(
+        "primary",
+        "shiny-chat-page-canvas-bg"
+      )
+    ),
+    c(
+      "primary" = "#123456",
+      "shiny-chat-page-canvas-bg" = "#F0F0F0"
+    )
+  )
+  expect_no_error(bslib::bs_theme_dependencies(theme))
+})
+
 test_that("chat_nav_panel() requires page-chat configuration", {
   panel <- chat_nav_panel(
     "Settings",

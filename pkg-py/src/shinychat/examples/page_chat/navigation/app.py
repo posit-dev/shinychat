@@ -78,6 +78,7 @@ app_ui = page_chat(
             ui.h2("Answer settings"),
             ui.input_slider("length", "Target length", 100, 1000, 400),
             ui.input_switch("citations", "Request citations", True),
+            ui.input_dark_mode(),
             sidebar=chat_sidebar(
                 ui.p("This page has a fixed, page-specific sidebar."),
                 history=False,
@@ -119,6 +120,7 @@ Try the local echo response.
 """,
     placeholder="Describe what you observed...",
     icon_assistant=False,
+    # theme=ui.Theme(preset="zephyr"),
 )
 
 

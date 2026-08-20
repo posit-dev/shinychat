@@ -293,8 +293,8 @@ shiny-chat-container:not([fill]) {
 .shiny-chat-user-message {
   position: relative;
   align-self: flex-end;
-  padding: 0.75rem 1rem;
-  border-radius: 10px;
+  padding: var(--shiny-chat-user-message-padding, 0.75rem 1rem);
+  border-radius: var(--shiny-chat-user-message-border-radius, 10px);
   background-color: var(--shiny-chat-user-message-bg);
   max-width: 100%;
   // User messages don't have an icon by default
@@ -308,6 +308,13 @@ shiny-chat-container:not([fill]) {
   .shiny-chat-message-content {
     user-select: text;
   }
+}
+
+// A prompt and its immediate answer are one conversational unit. The optional
+// reduction is supplied by page_chat_theme(); embedded chats retain the
+// transcript's normal spacing.
+.shiny-chat-user-message + .shiny-chat-message {
+  margin-top: calc(-1 * var(--shiny-chat-user-assistant-gap-reduction, 0px));
 }
 
 .shiny-chat-message,

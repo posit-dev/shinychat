@@ -18,6 +18,7 @@ from shinychat import (
     chat_ui,
     chat_ui_history,
     page_chat,
+    page_chat_theme,
 )
 from shinychat.express import Chat as ExpressChat
 
@@ -29,6 +30,22 @@ def test_public_page_chat_configuration_exports() -> None:
     assert artifact.open is True
     assert isinstance(chat_nav_panel("About"), ChatNavPanel)
     assert callable(page_chat)
+    assert callable(page_chat_theme)
+
+
+def test_page_chat_theme_composes_preset_and_caller_overrides() -> None:
+    assert page_chat_theme().preset == "shiny"
+
+    custom_theme = page_chat_theme(
+        preset="flatly",
+        primary="#123456",
+        shiny_chat_page_canvas_bg="#f0f0f0",
+    )
+    assert custom_theme.preset == "flatly"
+
+    css = custom_theme.to_css()
+    assert "--shiny-chat-page-canvas-bg: #f0f0f0" in css
+    assert "--bs-primary: #123456" in css
 
 
 def test_chat_sidebar_normalizes_and_validates_values() -> None:

@@ -228,7 +228,9 @@ chat_ui_history <- function(id, ...) {
 #'   derives the window title from `title` when `title` is a scalar string.
 #'   Use `NULL` to omit the window title.
 #' @param lang An optional non-empty document language string.
-#' @param theme A [bslib::bs_theme()] object.
+#' @param theme A [bslib::bs_theme()] object. Defaults to [page_chat_theme()].
+#'   Supply [bslib::bs_theme()] directly to use another bslib preset or a
+#'   completely custom Bootstrap theme.
 #'
 #' @returns A fillable bslib page.
 #'
@@ -315,7 +317,7 @@ page_chat <- function(
   artifact = TRUE,
   window_title = NA,
   lang = NULL,
-  theme = bslib::bs_theme()
+  theme = page_chat_theme()
 ) {
   dots <- rlang::list2(...)
   dot_names <- rlang::names2(dots)

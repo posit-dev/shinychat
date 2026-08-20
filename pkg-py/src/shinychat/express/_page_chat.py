@@ -98,7 +98,9 @@ def page_chat(
     lang
         Optional language for the document's ``<html>`` element.
     theme
-        Theme accepted by :func:`shiny.express.ui.page_opts`.
+        Theme accepted by :func:`shiny.express.ui.page_opts`. By default,
+        :func:`~shinychat.page_chat_theme` layers page-chat tokens over the
+        ``"shiny"`` preset.
     messages
         Initial chat messages. See :meth:`shinychat.express.Chat.ui`.
     greeting

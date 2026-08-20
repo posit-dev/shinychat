@@ -64,6 +64,7 @@ reference:
 - title: Page chat
   contents:
   - page_chat
+  - page_chat_theme
   - chat_nav_panel
   - chat_sidebar
   - chat_ui_history

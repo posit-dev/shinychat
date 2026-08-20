@@ -32,9 +32,42 @@ __all__ = (
     "chat_sidebar",
     "chat_ui_history",
     "page_chat",
+    "page_chat_theme",
 )
 
 ChatSidebarOpen = Literal["auto", "open", "closed", "always"]
+
+_PAGE_CHAT_THEME_DEFAULTS = {
+    "font-family-sans-serif": (
+        'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", '
+        "sans-serif"
+    ),
+    "font-family-base": "$font-family-sans-serif",
+    "font-family-monospace": (
+        'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", '
+        '"Courier New", monospace'
+    ),
+    "web-font-path": False,
+    "shiny-chat-page-surface-bg": "var(--bs-body-bg)",
+    "shiny-chat-page-sidebar-bg": "var(--bs-secondary-bg)",
+    "shiny-chat-page-canvas-bg": "var(--bs-tertiary-bg)",
+    "shiny-chat-suggestion-card-border-radius": "var(--bs-border-radius)",
+    "shiny-chat-user-message-border-radius": "var(--bs-border-radius)",
+    "shiny-chat-user-message-padding": "0.5rem 0.75rem",
+    "shiny-chat-user-assistant-gap-reduction": "0.5rem",
+}
+
+_PAGE_CHAT_THEME_RULES = """
+:root {
+  --shiny-chat-page-surface-bg: #{$shiny-chat-page-surface-bg};
+  --shiny-chat-page-sidebar-bg: #{$shiny-chat-page-sidebar-bg};
+  --shiny-chat-page-canvas-bg: #{$shiny-chat-page-canvas-bg};
+  --shiny-chat-suggestion-card-border-radius: #{$shiny-chat-suggestion-card-border-radius};
+  --shiny-chat-user-message-border-radius: #{$shiny-chat-user-message-border-radius};
+  --shiny-chat-user-message-padding: #{$shiny-chat-user-message-padding};
+  --shiny-chat-user-assistant-gap-reduction: #{$shiny-chat-user-assistant-gap-reduction};
+}
+"""
 
 
 @dataclass(frozen=True)
@@ -64,6 +97,41 @@ class ChatNavPanel:
     sidebar: bool | ChatSidebar
     toolbar: bool | TagChild | None
     content_width: str
+
+
+def page_chat_theme(
+    preset: str | None = "shiny",
+    **variables: str | float | int | bool | None,
+) -> Any:
+    """
+    Create a theme for :func:`~shinychat.page_chat`.
+
+    The default layers page-scoped surface, chat-radius, and density tokens and
+    system typography over Shiny's ``"shiny"`` preset. Pass another ``preset``
+    or Sass-variable overrides to apply application branding while retaining
+    the page-chat layout treatment. Pass a :class:`shiny.ui.Theme` directly to
+    :func:`~shinychat.page_chat` to use a completely custom theme.
+
+    Parameters
+    ----------
+    preset
+        A Shiny or Bootswatch preset name.
+    **variables
+        Sass-variable overrides. Keys may use either ``snake_case`` or
+        ``kebab-case`` names.
+
+    Returns
+    -------
+    :
+        A :class:`shiny.ui.Theme` suitable for ``page_chat(theme=)``.
+    """
+    from shiny import ui
+
+    theme = ui.Theme(preset=preset, name="shinychat-page")
+    theme.add_defaults(**_PAGE_CHAT_THEME_DEFAULTS)
+    theme.add_defaults(**variables)
+    theme.add_rules(_PAGE_CHAT_THEME_RULES)
+    return theme
 
 
 def _validate_bool(value: object, name: str) -> bool:
@@ -794,7 +862,10 @@ def page_chat(
     lang
         Optional language for the document's ``<html>`` element.
     theme
-        Theme accepted by :func:`shiny.ui.page_fillable`.
+        Theme accepted by :func:`shiny.ui.page_fillable`. By default,
+        :func:`~shinychat.page_chat_theme` layers page-chat surface tokens over
+        Shiny's ``"shiny"`` preset. Pass :class:`shiny.ui.Theme` directly to
+        use another preset or a completely custom theme.
     messages
         Initial chat messages. See :func:`~shinychat.chat_ui`.
     greeting
@@ -923,6 +994,8 @@ def _render_page_chat(
     if isinstance(lang, str) and not lang.strip():
         raise ValueError("`lang` must not be an empty string.")
     navbar_options = _normalize_page_chat_navbar_options(navbar_options)
+    if theme is None:
+        theme = page_chat_theme()
 
     (
         normalized_pages,

@@ -87,6 +87,7 @@ quartodoc:
       contents:
         - ChatArtifactController
         - page_chat
+        - page_chat_theme
         - chat_sidebar
         - chat_nav_panel
         - chat_artifact

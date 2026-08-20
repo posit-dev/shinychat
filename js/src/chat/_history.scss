@@ -207,6 +207,13 @@
   // Sized to match the adjacent .form-control search field exactly (same
   // font metrics, padding, radius, and border) so the two read as a pair.
   &-new {
+    // Accent color is reserved for interaction feedback; the default surface
+    // and border deliberately match the adjacent search control.
+    --_history-new-focus: var(
+      --shiny-chat-history-accent,
+      var(--bs-primary-text-emphasis, var(--_history-accent))
+    );
+
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
@@ -219,7 +226,7 @@
     line-height: 1.5;
     border-radius: var(--bs-border-radius, 0.375rem);
     border: var(--bs-border-width, 1px) solid var(--_history-border-color);
-    background: none;
+    background: var(--bs-body-bg, #fff);
     color: var(--_history-fg);
     cursor: pointer;
     transition:
@@ -232,17 +239,12 @@
     }
 
     &:hover:not(:disabled) {
-      color: var(--_history-accent);
-      border-color: color-mix(
-        in srgb,
-        var(--_history-accent) 40%,
-        var(--_history-border-color)
-      );
+      color: var(--_history-new-focus);
       background: var(--_history-item-hover-bg);
     }
 
     &:focus-visible {
-      outline: 2px solid var(--_history-accent);
+      outline: 2px solid var(--_history-new-focus);
       outline-offset: 2px;
     }
 
@@ -651,8 +653,8 @@ shiny-chat-container[data-history-placement="right"] {
 }
 
 // Inline history is mounted by <shiny-chat-history for="..."> outside the chat
-// container. It reuses the drawer content classes and tokens, but it is part of
-// normal document flow rather than an overlay.
+// container. It reuses the drawer content classes and tokens, but adopts its
+// host surface by default instead of introducing an opaque card.
 .shiny-chat-history.shiny-chat-history-inline {
   position: static;
   inset: auto;
@@ -664,7 +666,9 @@ shiny-chat-container[data-history-placement="right"] {
   overflow: visible;
   border: 0;
   border-radius: 0;
-  background: var(--_history-bg);
+  // Respect an explicit history background, but otherwise let the surrounding
+  // layout provide the surface. Drawers and floating menus retain _history-bg.
+  background: var(--shiny-chat-history-bg, transparent);
   color: var(--_history-fg);
   box-shadow: none;
 
@@ -678,6 +682,10 @@ shiny-chat-container[data-history-placement="right"] {
 
   .shiny-chat-history-list {
     max-block-size: min(32rem, 60vh);
+  }
+
+  .shiny-chat-history-section {
+    background: var(--shiny-chat-history-bg, transparent);
   }
 }
 

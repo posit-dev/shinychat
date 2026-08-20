@@ -12,6 +12,7 @@ from ._page_chat import (
     chat_sidebar,
     chat_ui_history,
     page_chat,
+    page_chat_theme,
 )
 
 __all__ = [
@@ -30,6 +31,7 @@ __all__ = [
     "chat_ui",
     "chat_ui_history",
     "page_chat",
+    "page_chat_theme",
     "MarkdownStream",
     "output_markdown_stream",
     "message_content",
