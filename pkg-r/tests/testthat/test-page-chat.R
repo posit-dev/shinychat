@@ -97,7 +97,9 @@ test_that("page_chat_theme() contains the page-specific baseline tokens", {
     "shiny-chat-page-title-font-weight",
     "shiny-chat-page-controls-gap",
     "shiny-chat-page-nav-link-font-size",
-    "shiny-chat-page-panel-padding-block"
+    "shiny-chat-page-panel-padding-block",
+    "shiny-chat-page-fill-padding",
+    "shiny-chat-page-artifact-box-shadow"
   )
 
   expect_false(anyNA(bslib::bs_get_variables(page_theme, tokens)))

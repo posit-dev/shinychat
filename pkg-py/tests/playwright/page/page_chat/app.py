@@ -45,6 +45,15 @@ store_dir = tempfile.mkdtemp(prefix="shinychat-page-history-")
 
 
 def app_ui(request: Request) -> ui.Tag:
+    if request.query_params.get("standard_theme") == "true":
+        return page_chat(
+            "Standard theme",
+            id="chat",
+            sidebar=False,
+            artifact=False,
+            theme=ui.Theme(preset="shiny"),
+        )
+
     if request.query_params.get("single") == "true":
         return page_chat(
             "A single-page title that should remain fully visible",

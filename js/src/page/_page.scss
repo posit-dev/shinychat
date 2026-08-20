@@ -14,8 +14,8 @@ shiny-chat-page {
     var(--bslib-sidebar-padding, var(--bslib-spacer, var(--bs-spacer, 1rem)))
   );
   --_page-surface-bg: var(--shiny-chat-page-surface-bg, var(--bs-body-bg, #fff));
-  --_page-sidebar-bg: var(--shiny-chat-page-sidebar-bg, var(--bs-secondary-bg, #f8fafc));
-  --_page-canvas-bg: var(--shiny-chat-page-canvas-bg, var(--bs-tertiary-bg, #f4f7fa));
+  --_page-sidebar-bg: var(--shiny-chat-page-sidebar-bg, var(--bs-body-bg, #fff));
+  --_page-canvas-bg: var(--shiny-chat-page-canvas-bg, var(--bs-body-bg, #fff));
   --_page-border: var(--bs-border-width, 1px) solid var(
     --shiny-chat-page-border-color,
     var(--bs-border-color, color-mix(in srgb, var(--bs-body-color, #212529) 12%, transparent))
@@ -310,20 +310,6 @@ button.shiny-chat-page-identity:focus-visible,
   padding: var(--_page-sidebar-padding);
 }
 
-.shiny-chat-page-header :is(.form-control, .form-select),
-.shiny-chat-page-sidebar :is(.form-control, .form-select),
-.shiny-chat-page-panel :is(.form-control, .form-select) {
-  border-color: var(--bs-border-color, currentcolor);
-  border-radius: var(--bs-border-radius-sm, 0.25rem);
-}
-
-.shiny-chat-page-header :is(.form-control, .form-select):focus,
-.shiny-chat-page-sidebar :is(.form-control, .form-select):focus,
-.shiny-chat-page-panel :is(.form-control, .form-select):focus {
-  border-color: var(--bs-primary, #0d6efd);
-  box-shadow: 0 0 0 0.2rem var(--_page-focus-ring-color);
-}
-
 .shiny-chat-page-controls-mount-mobile {
   display: none;
 }
@@ -474,27 +460,9 @@ button.shiny-chat-page-identity:focus-visible,
 }
 
 .shiny-chat-page-home > shiny-chat-container {
-  // page_fillable() deliberately has no outer padding. Keep a stable reading
-  // inset inside the chat itself, including its sticky composer and safe areas.
-  --shiny-chat-fill-padding: max(
-    1rem,
-    env(safe-area-inset-left),
-    env(safe-area-inset-right)
-  );
-  --shiny-chat-input-padding-bottom: max(1rem, env(safe-area-inset-bottom));
-
   width: 100%;
   height: 100%;
   background: var(--_page-surface-bg);
-}
-
-.shiny-chat-page-home .shiny-chat-artifact {
-  background: var(--_page-surface-bg);
-  box-shadow: none;
-}
-
-.shiny-chat-page-home .shiny-chat-artifact-header {
-  background: var(--_page-canvas-bg);
 }
 
 .shiny-chat-page-sidebar-scrim {

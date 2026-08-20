@@ -46,6 +46,8 @@ def test_page_chat_theme_composes_preset_and_caller_overrides() -> None:
     css = custom_theme.to_css()
     assert "--shiny-chat-page-canvas-bg: #f0f0f0" in css
     assert "--bs-primary: #123456" in css
+    assert "--shiny-chat-page-header-height: 3.25rem" in css
+    assert "--shiny-chat-page-fill-padding:" in css
 
 
 def test_chat_sidebar_normalizes_and_validates_values() -> None:

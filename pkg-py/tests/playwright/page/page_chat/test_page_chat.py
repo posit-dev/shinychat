@@ -36,6 +36,9 @@ def test_desktop_navigation_streaming_and_history_auto_open(
     toolbar_global_input = page.locator("#toolbar_global_value")
 
     expect(shell).to_have_attribute("data-active-page", "home")
+    expect(shell.locator(".shiny-chat-page-header")).to_have_css(
+        "min-height", "52px"
+    )
     expect(sidebar).to_be_hidden()
     expect(toggle).to_have_attribute("aria-expanded", "false")
     expect(toolbar_input).to_have_count(1)
@@ -108,6 +111,22 @@ def test_desktop_navigation_streaming_and_history_auto_open(
         1, timeout=TIMEOUT
     )
     chat.expect_latest_message("echo: stream while hidden", timeout=TIMEOUT)
+
+
+def test_explicit_theme_keeps_embedded_chat_composer_chrome(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    page.set_viewport_size({"width": 800, "height": 760})
+    page.goto(f"{local_app.url}?standard_theme=true")
+    chat = ChatController(page, "chat")
+    composer = chat.loc.locator(".shiny-chat-input .tiptap")
+
+    expect(chat.loc).to_be_visible(timeout=TIMEOUT)
+    expect(composer).to_have_css("border-radius", "26px")
+    assert composer.evaluate(
+        "(element) => getComputedStyle(element).getPropertyValue('--shiny-chat-page-fill-padding')"
+    ) == ""
 
 
 @pytest.mark.parametrize(
