@@ -42,6 +42,12 @@ interface PageSidebarState {
   resizable: boolean
 }
 
+interface BslibTooltipElement extends HTMLElement {
+  bsTooltip?: object
+  visible?: boolean
+  _updateTitle?: (title: { html: HTMLElement; deps: unknown[] }) => void
+}
+
 function sidebarOpenMode(value: string | undefined): SidebarOpenMode {
   return value === "open" ||
     value === "closed" ||
@@ -102,6 +108,8 @@ class ChatPageElement extends HTMLElement {
 
   private toggle: HTMLButtonElement | null = null
   private identity: HTMLButtonElement | null = null
+  private identityTooltip: BslibTooltipElement | null = null
+  private identityTitle: HTMLElement | null = null
   private identityReturnLabel = "Return to chat"
   private header: HTMLElement | null = null
   private controls: HTMLElement | null = null
@@ -231,6 +239,14 @@ class ChatPageElement extends HTMLElement {
     this.identity = this.querySelector<HTMLButtonElement>(
       "button.shiny-chat-page-identity[data-page-home]",
     )
+    this.identityTooltip =
+      this.identity?.closest<BslibTooltipElement>(
+        ".shiny-chat-page-identity-tooltip",
+      ) ?? null
+    this.identityTitle =
+      this.identity?.querySelector<HTMLElement>(
+        ".shiny-chat-page-identity-title",
+      ) ?? null
     this.identityReturnLabel =
       this.identity?.getAttribute("aria-label")?.trim() || "Return to chat"
     this.sections = sections
@@ -493,6 +509,7 @@ class ChatPageElement extends HTMLElement {
         this.identity.removeAttribute("aria-current")
         this.identity.setAttribute("aria-label", this.identityReturnLabel)
       }
+      this.updateIdentityTooltip(value)
     }
 
     this.syncSidebar(selected)
@@ -501,6 +518,27 @@ class ChatPageElement extends HTMLElement {
     this.updateToastOffset()
     window.dispatchEvent(new Event("resize"))
     return true
+  }
+
+  private updateIdentityTooltip(value: string) {
+    const tooltip = this.identityTooltip
+    const title = this.identityTitle
+    if (!tooltip?.bsTooltip || !title) return
+
+    const content = document.createElement("span")
+    if (value !== "home") {
+      content.append(this.identityReturnLabel, document.createElement("br"))
+    }
+    content.append(
+      ...Array.from(title.childNodes, (child) => child.cloneNode(true)),
+    )
+    const update = () => tooltip._updateTitle?.({ html: content, deps: [] })
+    update()
+    if (tooltip.visible) {
+      this.identity?.addEventListener("hidden.bs.tooltip", update, {
+        once: true,
+      })
+    }
   }
 
   private updateToastOffset() {

@@ -1116,6 +1116,13 @@ def _render_page_chat(
             *identity_content,
             class_="shiny-chat-page-identity",
         )
+    if normalized_pages:
+        identity = ui.tooltip(
+            identity,
+            title,
+            placement="bottom",
+            class_="shiny-chat-page-identity-tooltip",
+        )
 
     controls = Tag(
         "div",

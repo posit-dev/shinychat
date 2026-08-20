@@ -79,8 +79,15 @@ def app_ui(request: Request) -> ui.Tag:
             artifact=False,
         )
 
+    title = "Research Assistant"
+    if request.query_params.get("long_title") == "true":
+        title = (
+            "Research Assistant for long-running analyses and "
+            "multi-step investigations"
+        )
+
     return page_chat(
-        "Research Assistant",
+        title,
         id="chat",
         pages=[
             chat_nav_panel(

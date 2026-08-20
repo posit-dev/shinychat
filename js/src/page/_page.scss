@@ -72,6 +72,10 @@ body:has(shiny-chat-page) > .toast-container:is(
   border: 0;
 }
 
+.shiny-chat-page-identity-tooltip {
+  display: contents;
+}
+
 .shiny-chat-page-sidebar-toggle {
   display: inline-grid;
   place-items: center;
