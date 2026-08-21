@@ -34,6 +34,8 @@ def test_web_asides(page: Page, local_app: ShinyAppProc) -> None:
     first.locator(".shiny-aside-pill").click()
     popover = page.locator(".shiny-aside-popover")
     expect(popover).to_be_visible()
+    portal = popover.locator("xpath=ancestor::*[@data-floating-ui-portal]")
+    expect(portal).to_have_css("position", "fixed")
     expect(popover).to_contain_text("eBicycles")
     expect(popover.locator(".shiny-aside-popover__count")).to_have_text("1 / 2")
 
