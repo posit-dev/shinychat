@@ -168,11 +168,9 @@ shiny-chat-container {
 }
 
 .shiny-chat-input-toolbar {
-  // Keep the toolbar tight to the visible input while allowing the input's
-  // safe-area reserve to remain below it.
-  margin-top: calc(
-    0.25rem - var(--_chat-composer-input-padding-bottom)
-  );
+  // Cancel the input's flow-only reserve so the toolbar starts one compact
+  // padding step below the visible input.
+  margin-top: calc(-1 * var(--_chat-composer-input-padding-bottom));
   padding: 0.25rem 0
     var(--_chat-composer-input-padding-bottom);
 }

@@ -160,7 +160,7 @@ def test_page_chat_toolbar_input_aligns_with_composer_and_footer_is_pinned(
     footer_content = chat.loc.locator(".page-chat-footer")
 
     expect(input_area).to_have_css("padding-bottom", "0px")
-    expect(toolbar).to_have_css("margin-top", "4px")
+    expect(toolbar).to_have_css("margin-top", "0px")
     expect(toolbar).to_have_css("padding-bottom", "0px")
     expect(footer).to_have_css("padding-left", "16px")
     expect(footer).to_have_css("margin-top", "0px")
@@ -175,7 +175,7 @@ def test_page_chat_toolbar_input_aligns_with_composer_and_footer_is_pinned(
     assert chat_box is not None
     assert toolbar_box["x"] == pytest.approx(input_box["x"], abs=1)
     toolbar_gap = toolbar_box["y"] - (input_box["y"] + input_box["height"])
-    assert 8 <= toolbar_gap <= 12
+    assert 4 <= toolbar_gap <= 8
     assert footer_box["y"] + footer_box["height"] <= chat_box["y"] + chat_box["height"]
     assert footer_box["y"] + footer_box["height"] >= (
         chat_box["y"] + chat_box["height"] - 32
