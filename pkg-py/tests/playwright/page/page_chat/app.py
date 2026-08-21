@@ -92,7 +92,7 @@ def app_ui(request: Request) -> ui.Tag:
             "multi-step investigations"
         )
 
-    chat_kwargs: dict[str, object] = {}
+    chat_kwargs: dict[str, Any] = {}
     if request.query_params.get("toolbar_input") == "true":
         chat_kwargs["toolbar_input"] = ui.div(
             "Page chat input toolbar", class_="page-chat-input-toolbar"
