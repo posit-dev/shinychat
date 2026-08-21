@@ -36,6 +36,13 @@ test_that("page-chat R examples parse and construct", {
       expect_match(html, 'class="bi bi-info-circle-fill"', fixed = TRUE)
       expect_match(html, 'data-page-target="Notebook"', fixed = TRUE)
       expect_false(grepl('data-page-target="Settings"', html, fixed = TRUE))
+      expect_match(html, 'id="model"', fixed = TRUE)
+      expect_match(html, 'id="reasoning"', fixed = TRUE)
+      expect_match(
+        html,
+        "AI can be wrong. Check your work.",
+        fixed = TRUE
+      )
       expect_match(
         paste(readLines(app, warn = FALSE), collapse = "\n"),
         "bslib::show_offcanvas",

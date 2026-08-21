@@ -90,6 +90,24 @@ ui <- page_chat(
       tooltip = "Help"
     )
   ),
+  toolbar_input = bslib::toolbar(
+    align = "left",
+    bslib::toolbar_input_select(
+      "model",
+      "Model",
+      c("Haiku", "Sonnet", "Opus"),
+      selected = "Sonnet",
+      show_label = TRUE
+    ),
+    bslib::toolbar_input_select(
+      "reasoning",
+      "Effort",
+      c("high", "med", "low", "off"),
+      selected = "med",
+      show_label = TRUE
+    )
+  ),
+  footer = tags$p("AI can be wrong. Check your work."),
   sidebar = chat_sidebar(
     tags$h3("Workspace", class = "h6"),
     textInput("project_name", "Project", "Coastal survey"),
@@ -168,7 +186,10 @@ server <- function(input, output, session) {
       input$chat_user_input
     }
     assistant_text <- paste0(
-      "The assistant replied to your message: ",
+      input$model,
+      " [",
+      input$reasoning,
+      "] replied to your message: ",
       user_text
     )
     record_exchange(client, user_text, assistant_text)

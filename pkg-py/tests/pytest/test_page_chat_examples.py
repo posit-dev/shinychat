@@ -27,6 +27,9 @@ def test_page_chat_example_is_importable(module_name: str) -> None:
         assert 'class="bi bi-info-circle-fill"' in html
         assert 'data-page-target="Notebook"' in html
         assert 'data-page-target="Settings"' not in html
+        assert 'id="model"' in html
+        assert 'id="reasoning"' in html
+        assert "AI can be wrong. Check your work." in html
         assert "HistoryOptions" in inspect.getsource(app_module)
         assert "ui.show_offcanvas" in inspect.getsource(app_module)
 
