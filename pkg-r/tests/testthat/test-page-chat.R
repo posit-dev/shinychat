@@ -353,7 +353,12 @@ test_that("page_chat() builds the default fillable page contract", {
   expect_equal(root$attribs[["data-active-page"]], "home")
   dark_mode <- page_chat_tag(page, "bslib-input-dark-mode")
   expect_equal(dark_mode$attribs$attribute, "data-bs-theme")
-  expect_match(as.character(page), "display: none", fixed = TRUE)
+  global_toolbar <- page_chat_tag(page, ".shiny-chat-page-toolbar-global")
+  expect_length(page_chat_tags(global_toolbar, ".bslib-toolbar"), 1)
+  expect_length(page_chat_tags(global_toolbar, "bslib-input-dark-mode"), 1)
+
+  opt_out <- page_chat("Assistant", toolbar_global = NULL)
+  expect_length(page_chat_tags(opt_out, "bslib-input-dark-mode"), 0)
 
   toggle <- page_chat_tag(page, ".shiny-chat-page-sidebar-toggle")
   expect_equal(toggle$attribs$type, "button")
@@ -374,7 +379,10 @@ test_that("page_chat() builds the default fillable page contract", {
     "bslib-toolbar-input-button",
     fixed = TRUE
   )
-  close_toolbar <- page_chat_tag(page, ".bslib-toolbar")
+  close_toolbar <- page_chat_tag(
+    page,
+    ".shiny-chat-page-sidebar > .bslib-toolbar"
+  )
   expect_length(
     page_chat_tags(close_toolbar, ".shiny-chat-page-sidebar-close"),
     1

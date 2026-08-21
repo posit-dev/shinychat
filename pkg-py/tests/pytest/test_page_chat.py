@@ -367,7 +367,9 @@ def test_page_chat_global_toolbar_dark_mode_has_explicit_opt_out() -> None:
     opt_out_html = page_chat("Assistant", toolbar_global=None).get_html_string()
 
     assert re.search(
-        r'class="shiny-chat-page-toolbar-global">\s*<bslib-input-dark-mode',
+        r'class="shiny-chat-page-toolbar-global">\s*'
+        r'<div class="bslib-toolbar[^"]*"[^>]*>\s*'
+        r'<bslib-input-dark-mode',
         default_html,
     )
     assert "<bslib-input-dark-mode" not in opt_out_html

@@ -129,7 +129,6 @@
     Output
       <body class="bslib-page-fill bslib-gap-spacing html-fill-container" style="padding:0px;gap:0px;">
         <shiny-chat-page data-chat-id="chat" data-active-page="home" data-require-bs-version="5" data-require-bs-caller="page_chat">
-          <bslib-input-dark-mode attribute="data-bs-theme" data-require-bs-caller="input_dark_mode()" data-require-bs-version="5" style="--text-1:var(--bs-emphasis-color);--text-2:var(--bs-tertiary-color);--vertical-correction: ; display: none"></bslib-input-dark-mode>
           <header class="shiny-chat-page-header" data-bs-theme="auto" data-shiny-chat-page-nav-style="underline">
             <button type="button" class="shiny-chat-page-sidebar-toggle" aria-controls="chat-sidebar" aria-expanded="false" aria-label="Toggle app menu"><svg class="shiny-chat-page-sidebar-icon bi bi-list" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2.5 12a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5"/></svg></button>
             <div class="shiny-chat-page-identity">
@@ -143,7 +142,11 @@
                 <nav class="shiny-chat-page-nav" aria-label="Pages"></nav>
                 <div class="shiny-chat-page-toolbar">
                   <div class="shiny-chat-page-toolbar-scoped"></div>
-                  <div class="shiny-chat-page-toolbar-global"></div>
+                  <div class="shiny-chat-page-toolbar-global">
+                    <div class="bslib-toolbar bslib-gap-spacing" data-align="right">
+                      <bslib-input-dark-mode attribute="data-bs-theme" style="--text-1:var(--bs-emphasis-color);--text-2:var(--bs-tertiary-color);--vertical-correction: ;" data-require-bs-version="5" data-require-bs-caller="input_dark_mode()"></bslib-input-dark-mode>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

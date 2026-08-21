@@ -931,7 +931,9 @@ def _render_page_chat(
     if theme is None:
         theme = page_chat_theme()
     if isinstance(toolbar_global, MISSING_TYPE):
-        toolbar_global_content: TagChild | None = ui.input_dark_mode()
+        toolbar_global_content: TagChild | None = ui.toolbar(
+            ui.input_dark_mode()
+        )
     else:
         toolbar_global_content = toolbar_global
 

@@ -70,7 +70,8 @@
 #' @param toolbar Optional home-page-scoped UI displayed with the navigation
 #'   controls. A panel's `chat_nav_panel(toolbar = )` can replace this segment.
 #' @param toolbar_global Optional persistent UI displayed after the page-scoped
-#'   toolbar in the navigation controls.
+#'   toolbar in the navigation controls. Defaults to a toolbar containing
+#'   [bslib::input_dark_mode()]; use `NULL` to opt out.
 #' @param navbar_options Optional [bslib::navbar_options()] that styles the
 #'   page title bar. Its `bg`, `theme`, `underline`, and HTML attributes are
 #'   supported. `position` and `collapsible` are unsupported because
@@ -161,7 +162,7 @@ page_chat <- function(
   id = "chat",
   pages = NULL,
   toolbar = NULL,
-  toolbar_global = NULL,
+  toolbar_global = bslib::toolbar(bslib::input_dark_mode()),
   navbar_options = NULL,
   sidebar = TRUE,
   messages = NULL,
@@ -360,7 +361,6 @@ page_chat <- function(
     list(
       `data-chat-id` = resolved_id,
       `data-active-page` = "home",
-      bslib::input_dark_mode(style = "display: none"),
       header,
       htmltools::tags$div(
         class = "shiny-chat-page-body",

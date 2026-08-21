@@ -11,7 +11,7 @@ page_chat(
   id = "chat",
   pages = NULL,
   toolbar = NULL,
-  toolbar_global = NULL,
+  toolbar_global = bslib::toolbar(bslib::input_dark_mode()),
   navbar_options = NULL,
   sidebar = TRUE,
   messages = NULL,
@@ -45,7 +45,8 @@ those arguments are rejected.}
 controls. A panel's \code{chat_nav_panel(toolbar = )} can replace this segment.}
 
 \item{toolbar_global}{Optional persistent UI displayed after the page-scoped
-toolbar in the navigation controls.}
+toolbar in the navigation controls. Defaults to a toolbar containing
+\code{\link[bslib:input_dark_mode]{bslib::input_dark_mode()}}; use \code{NULL} to opt out.}
 
 \item{navbar_options}{Optional \code{\link[bslib:navbar_options]{bslib::navbar_options()}} that styles the
 page title bar. Its \code{bg}, \code{theme}, \code{underline}, and HTML attributes are
