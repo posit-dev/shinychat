@@ -76,11 +76,11 @@
 #'   page title bar. Its `bg`, `theme`, `underline`, and HTML attributes are
 #'   supported. `position` and `collapsible` are unsupported because
 #'   `page_chat()` owns the full-window layout and responsive app menu.
-#' @param sidebar Whether to use the default history sidebar (`TRUE`), omit the
-#'   default sidebar (`FALSE`), or use a [chat_sidebar()] or
-#'   [bslib::sidebar()] configuration. A bslib sidebar supplies its child
-#'   content, width, initial open state, and resizability; its history defaults
-#'   to `FALSE`.
+#' @param sidebar Whether to use the default history sidebar (`TRUE` or the
+#'   default `NULL`), omit the default sidebar (`FALSE`), or use a
+#'   [chat_sidebar()] or [bslib::sidebar()] configuration. A bslib sidebar
+#'   supplies its child content, width, initial open state, and resizability;
+#'   its history defaults to `FALSE`.
 #' @param messages,greeting,placeholder,width,icon_assistant,enable_cancel,allow_attachments,footer,artifact
 #'   Common arguments passed to [chat_ui()].
 #' @param window_title A static browser-window title. The default, `NA`,
@@ -164,7 +164,7 @@ page_chat <- function(
   toolbar = NULL,
   toolbar_global = NULL,
   navbar_options = NULL,
-  sidebar = TRUE,
+  sidebar = NULL,
   messages = NULL,
   greeting = NULL,
   placeholder = "Enter a message...",
@@ -478,8 +478,8 @@ chat_sidebar <- function(
 #' @param value An optional unique navigation value.
 #' @param icon An optional icon to display with the title.
 #' @param sidebar Whether to use the default sidebar (`TRUE`), no
-#'   page-specific sidebar (`FALSE`), or a [chat_sidebar()] or
-#'   [bslib::sidebar()] configuration.
+#'   page-specific sidebar (`FALSE` or the default `NULL`), or a
+#'   [chat_sidebar()] or [bslib::sidebar()] configuration.
 #' @param toolbar `NULL` (the default) for no page-scoped toolbar, or UI
 #'   content for a page-specific toolbar. For backward compatibility, `TRUE`
 #'   reuses the home `page_chat()` toolbar and `FALSE` omits the page-scoped
@@ -495,7 +495,7 @@ chat_nav_panel <- function(
   ...,
   value = NULL,
   icon = NULL,
-  sidebar = FALSE,
+  sidebar = NULL,
   toolbar = NULL,
   content_width = "min(680px, 100%)"
 ) {
@@ -686,21 +686,22 @@ normalize_page_sidebar <- function(sidebar) {
 }
 
 normalize_page_sidebars <- function(pages, sidebar, resolved_id) {
-  use_default <- isTRUE(sidebar) ||
+  use_default <- is.null(sidebar) ||
+    isTRUE(sidebar) ||
     any(vapply(
       pages,
       function(page) isTRUE(page$sidebar),
       logical(1)
     ))
   default_sidebar <- if (use_default) chat_sidebar(history = TRUE)
-  home_sidebar <- if (isTRUE(sidebar)) {
+  home_sidebar <- if (is.null(sidebar) || isTRUE(sidebar)) {
     default_sidebar
   } else if (isFALSE(sidebar)) {
     NULL
   } else {
     sidebar
   }
-  home_sidebar_key <- if (isTRUE(sidebar)) {
+  home_sidebar_key <- if (is.null(sidebar) || isTRUE(sidebar)) {
     "default"
   } else if (inherits(sidebar, "chat_sidebar")) {
     "home"
@@ -726,7 +727,7 @@ normalize_page_sidebars <- function(pages, sidebar, resolved_id) {
     value <- page$value %||% page$title
     sidebar_key <- if (isTRUE(page$sidebar)) {
       "default"
-    } else if (isFALSE(page$sidebar)) {
+    } else if (is.null(page$sidebar) || isFALSE(page$sidebar)) {
       NULL
     } else {
       key <- paste0("page-", i)
@@ -1023,6 +1024,7 @@ chat_normalize_sidebar_open <- function(open) {
 
 chat_validate_sidebar <- function(sidebar) {
   if (
+    is.null(sidebar) ||
     isTRUE(sidebar) ||
       isFALSE(sidebar) ||
       inherits(sidebar, "chat_sidebar") ||

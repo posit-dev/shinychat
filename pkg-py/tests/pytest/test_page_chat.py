@@ -143,6 +143,7 @@ def test_chat_nav_panel_validates_sidebar_and_navigation_values() -> None:
     assert panel.sidebar is sidebar
     assert panel.toolbar is None
     assert panel.content_width == "min(680px, 100%)"
+    assert chat_nav_panel("Default").sidebar is None
 
     assert chat_nav_panel("Wide", content_width=720).content_width == "720px"
     assert (
@@ -297,7 +298,7 @@ def test_page_chat_signature_has_only_title_and_icon_positional() -> None:
         assert parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
     assert parameters["id"].default == "chat"
     assert parameters["artifact"].default is True
-    assert parameters["sidebar"].default is True
+    assert parameters["sidebar"].default is None
     assert parameters["toolbar_global"].default is None
     assert parameters["placeholder"].default == "Enter a message..."
     assert parameters["width"].default == "min(680px, 100%)"

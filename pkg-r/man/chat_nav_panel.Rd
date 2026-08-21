@@ -9,7 +9,7 @@ chat_nav_panel(
   ...,
   value = NULL,
   icon = NULL,
-  sidebar = FALSE,
+  sidebar = NULL,
   toolbar = NULL,
   content_width = "min(680px, 100\%)"
 )
@@ -24,8 +24,8 @@ chat_nav_panel(
 \item{icon}{An optional icon to display with the title.}
 
 \item{sidebar}{Whether to use the default sidebar (\code{TRUE}), no
-page-specific sidebar (\code{FALSE}), or a \code{\link[=chat_sidebar]{chat_sidebar()}} or
-\code{\link[bslib:sidebar]{bslib::sidebar()}} configuration.}
+page-specific sidebar (\code{FALSE} or the default \code{NULL}), or a
+\code{\link[=chat_sidebar]{chat_sidebar()}} or \code{\link[bslib:sidebar]{bslib::sidebar()}} configuration.}
 
 \item{toolbar}{\code{NULL} (the default) for no page-scoped toolbar, or UI
 content for a page-specific toolbar. For backward compatibility, \code{TRUE}

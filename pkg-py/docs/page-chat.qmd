@@ -138,13 +138,14 @@ def server(input, output, session):
 app = App(app_ui, server)
 ```
 
-`sidebar=True` supplies the default conversation-history sidebar when `Chat`
-has a client and history enabled. Pass a
+An omitted `sidebar` (or `sidebar=None`) supplies the default
+conversation-history sidebar. `sidebar=True` is an explicit alias. Pass a
 `chat_sidebar()` object when the page needs additional content or a different
 initial width and open state. A navigation page can set `sidebar=False` to
-remove it, use `sidebar=True` to use the default history sidebar, or supply
-its own `chat_sidebar()`. `chat_ui_history("chat")` is available when an
-advanced layout needs a history view bound to a specific chat ID outside a
+remove its page-specific sidebar, omit the argument for the same result, use
+`sidebar=True` to use the default history sidebar, or supply its own
+`chat_sidebar()`. `chat_ui_history("chat")` is available when an advanced
+layout needs a history view bound to a specific chat ID outside a
 `page_chat()` sidebar.
 
 `toolbar` is scoped to the chat home page. A navigation page defaults to

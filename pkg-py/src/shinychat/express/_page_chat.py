@@ -33,7 +33,7 @@ def page_chat(
     toolbar: TagChild | None = None,
     toolbar_global: TagChild | None = None,
     navbar_options: Any = None,
-    sidebar: bool | ChatSidebar = True,
+    sidebar: bool | ChatSidebar | None = None,
     artifact: bool | ChatArtifact = True,
     window_title: str | None = None,
     lang: str | None = None,
@@ -84,8 +84,8 @@ def page_chat(
         ``position`` and ``collapsible`` are unsupported because ``page_chat()``
         owns the full-window layout and responsive app menu.
     sidebar
-        Home-page sidebar. ``True`` uses the default conversation-history
-        sidebar, ``False`` removes it, and a
+        Home-page sidebar. When omitted or ``True``, the page uses the default
+        conversation-history sidebar. ``False`` removes it, and a
         :class:`~shinychat.ChatSidebar` supplies custom content and behavior.
         Raw :class:`shiny.ui.Sidebar` objects are not supported.
     artifact
