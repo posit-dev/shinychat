@@ -61,6 +61,9 @@ page_chat_theme <- function(..., preset = "shiny") {
   variables <- rlang::dots_list(!!!defaults, ..., .homonyms = "last")
 
   theme <- rlang::exec(bslib::bs_theme, preset = preset, !!!variables)
+  # Keep these rules in sync with pkg-py/src/shinychat/_page_chat_theme.py.
+  # The packages inject runtime Sass through different framework APIs, so the
+  # duplication is intentional.
   bslib::bs_add_rules(
     theme,
     "

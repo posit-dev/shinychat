@@ -50,6 +50,9 @@ _PAGE_CHAT_THEME_DEFAULTS = {
     "shiny-chat-user-assistant-gap-reduction": "0.5rem",
 }
 
+# Keep this Sass in sync with the equivalent rules in pkg-r/R/page_chat_theme.R.
+# Python and R inject runtime Sass through different framework APIs, so sharing
+# a source file would add package-path and runtime dependency complexity.
 _PAGE_CHAT_THEME_RULES = """
 :root {
   --shiny-chat-page-header-height: #{$shiny-chat-page-header-height};
