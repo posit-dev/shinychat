@@ -159,9 +159,9 @@ def test_page_chat_toolbar_input_aligns_with_composer_and_footer_is_pinned(
     footer = chat.loc.locator(".shiny-chat-footer")
     footer_content = chat.loc.locator(".page-chat-footer")
 
-    expect(input_area).to_have_css("padding-bottom", "16px")
-    expect(toolbar).to_have_css("margin-top", "-12px")
-    expect(toolbar).to_have_css("padding-bottom", "16px")
+    expect(input_area).to_have_css("padding-bottom", "0px")
+    expect(toolbar).to_have_css("margin-top", "4px")
+    expect(toolbar).to_have_css("padding-bottom", "0px")
     expect(footer).to_have_css("padding-left", "16px")
     expect(footer).to_have_css("margin-top", "0px")
 
@@ -543,6 +543,7 @@ def test_page_chat_centers_fitting_greeting_composer_and_pins_overflow(
         page, local_app, viewport=(1280, 800), toolbar_input=True
     )
     layout = chat.loc.locator(".shiny-chat-layout")
+    wrapper = chat.loc.locator(".shiny-chat-wrapper")
     greeting = chat.loc_greeting
     composer = chat.loc.locator(".shiny-chat-composer")
     toolbar = chat.loc.locator(".page-chat-input-toolbar")
@@ -555,10 +556,12 @@ def test_page_chat_centers_fitting_greeting_composer_and_pins_overflow(
     composer_box = composer.bounding_box()
     toolbar_box = toolbar.bounding_box()
     footer_box = footer.bounding_box()
+    wrapper_box = wrapper.bounding_box()
     assert greeting_box is not None
     assert composer_box is not None
     assert toolbar_box is not None
     assert footer_box is not None
+    assert wrapper_box is not None
     assert composer_box["y"] >= greeting_box["y"] + greeting_box["height"]
     assert composer_box["y"] - (
         greeting_box["y"] + greeting_box["height"]
@@ -567,11 +570,11 @@ def test_page_chat_centers_fitting_greeting_composer_and_pins_overflow(
     group_center = (
         greeting_box["y"] + composer_box["y"] + composer_box["height"]
     ) / 2
+    assert group_center == pytest.approx(
+        wrapper_box["y"] + wrapper_box["height"] / 2, abs=8
+    )
     chat_box = chat.loc.bounding_box()
     assert chat_box is not None
-    assert group_center == pytest.approx(
-        chat_box["y"] + chat_box["height"] / 2, abs=8
-    )
     assert footer_box["y"] + footer_box["height"] >= (
         chat_box["y"] + chat_box["height"] - 32
     )

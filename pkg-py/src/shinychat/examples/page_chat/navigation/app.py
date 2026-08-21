@@ -68,17 +68,19 @@ app_ui = page_chat(
         ),
     ),
     toolbar_input=ui.toolbar(
-        ui.input_select(
+        ui.toolbar_input_select(
             "model",
             "Model",
             choices=["Haiku", "Sonnet", "Opus"],
             selected="Sonnet",
+            show_label=True,
         ),
-        ui.input_select(
+        ui.toolbar_input_select(
             "reasoning",
-            "Reasoning",
+            "Effort",
             choices=["high", "med", "low", "off"],
             selected="med",
+            show_label=True,
         ),
         align="left",
     ),

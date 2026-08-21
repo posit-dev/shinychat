@@ -149,26 +149,32 @@ shiny-chat-container {
 }
 
 .shiny-chat-composer {
+  --_chat-composer-input-padding-bottom: var(
+    --shiny-chat-input-padding-bottom,
+    var(--_chat-container-padding, 0.25rem)
+  );
+
   grid-row: 2;
   min-width: 0;
   position: sticky;
-  bottom: calc(
-    -1 * var(
-        --shiny-chat-input-padding-bottom,
-        var(--_chat-container-padding, 0.25rem)
-      )
-  );
+  bottom: calc(-1 * var(--_chat-composer-input-padding-bottom));
   translate: 0 var(--shiny-chat-composer-offset, 0px);
+}
+
+.shiny-chat-layout:has(> .shiny-chat-footer) .shiny-chat-composer {
+  // The footer owns the safe-area reserve below its controls. Keeping it on
+  // the composer as well would create a second, empty safe-area-sized row.
+  --_chat-composer-input-padding-bottom: 0px;
 }
 
 .shiny-chat-input-toolbar {
   // Keep the toolbar tight to the visible input while allowing the input's
   // safe-area reserve to remain below it.
   margin-top: calc(
-    0.25rem - var(--shiny-chat-input-padding-bottom, 0.25rem)
+    0.25rem - var(--_chat-composer-input-padding-bottom)
   );
   padding: 0.25rem 0
-    var(--shiny-chat-input-padding-bottom, 0.25rem);
+    var(--_chat-composer-input-padding-bottom);
 }
 
 .shiny-chat-layout[data-composer-motion-ready]:not([data-composer-resizing])
@@ -466,10 +472,7 @@ shiny-chat-container:not([fill]) {
 
 .shiny-chat-input {
   --_input-padding-top: 0;
-  --_input-padding-bottom: var(
-    --shiny-chat-input-padding-bottom,
-    var(--_chat-container-padding, 0.25rem)
-  );
+  --_input-padding-bottom: var(--_chat-composer-input-padding-bottom);
 
   margin-top: calc(-1 * var(--_input-padding-top));
   position: sticky;

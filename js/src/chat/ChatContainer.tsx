@@ -334,11 +334,12 @@ export const ChatContainer = forwardRef<
   useLayoutEffect(() => {
     const layout = artifactLayoutRef.current
     const composer = composerRef.current
+    const wrapper = layout?.querySelector(".shiny-chat-wrapper")
     const isPageChat = document
       .getElementById(elementId)
       ?.closest("shiny-chat-page")
 
-    if (!layout || !composer || !isPageChat) return
+    if (!layout || !composer || !wrapper || !isPageChat) return
 
     let resizeObserver: ResizeObserver | undefined
     let observedGreeting: Element | null = null
@@ -392,13 +393,13 @@ export const ChatContainer = forwardRef<
         observedGreeting = greetingEl
       }
 
-      const layoutBox = layout.getBoundingClientRect()
+      const wrapperBox = wrapper.getBoundingClientRect()
       const greetingBox = greetingEl.getBoundingClientRect()
       const composerBox = composer.getBoundingClientRect()
       const totalHeight =
         greetingBox.height + CENTERED_GREETING_GAP + composerBox.height
 
-      if (totalHeight > layout.clientHeight) {
+      if (totalHeight > wrapper.clientHeight) {
         // useStickToBottom can retain the empty-state scroll position while a
         // greeting grows. Oversized greetings must instead begin at the
         // scroll viewport's origin.
@@ -417,7 +418,7 @@ export const ChatContainer = forwardRef<
       }
 
       const greetingTarget =
-        layoutBox.top + (layoutBox.height - totalHeight) / 2
+        wrapperBox.top + (wrapperBox.height - totalHeight) / 2
       const composerTarget =
         greetingTarget + greetingBox.height + CENTERED_GREETING_GAP
       setPosition({
@@ -447,7 +448,10 @@ export const ChatContainer = forwardRef<
         receivedInitialResize = true
       })
       resizeObserver.observe(layout)
+      resizeObserver.observe(wrapper)
       resizeObserver.observe(composer)
+      const footer = layout.querySelector(".shiny-chat-footer")
+      if (footer) resizeObserver.observe(footer)
     }
 
     // History "New" can insert its greeting after this effect has run. Watch
