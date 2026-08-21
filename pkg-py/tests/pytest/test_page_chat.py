@@ -177,6 +177,18 @@ def test_chat_nav_panel_validates_sidebar_and_navigation_values() -> None:
         "About", toolbar=cast(Any, {"class": "bad"})
     ).toolbar == {"class": "bad"}
 
+    direct_panel = ChatNavPanel(
+        title="Direct",
+        content=(),
+        value=None,
+        icon=None,
+        sidebar=False,
+        toolbar=True,
+        content_width="min(680px, 100%)",
+    )
+    with pytest.raises(TypeError, match=r"`toolbar` must be an HTML child"):
+        page_chat("Assistant", pages=[direct_panel])
+
 
 def test_sidebar_history_defaults_to_its_page_owner() -> None:
     home_html = page_chat(

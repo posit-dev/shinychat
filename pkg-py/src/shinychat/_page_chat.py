@@ -691,6 +691,11 @@ def _normalize_page_config(
                 "Navigation page sidebars must be False, True, or a "
                 "shinychat `ChatSidebar`."
             )
+        if isinstance(panel.toolbar, bool):
+            raise TypeError(
+                "`toolbar` must be an HTML child or None, "
+                f"not {type(panel.toolbar).__name__}."
+            )
         value = panel.title if panel.value is None else panel.value
         if not value.strip():
             raise ValueError("Navigation page values must not be empty.")

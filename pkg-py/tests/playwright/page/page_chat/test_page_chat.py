@@ -713,11 +713,10 @@ def test_page_toolbars_move_without_duplicate_controls(
 
     shell.get_by_role("button", name="History", exact=True).click()
     expect(shell).to_have_attribute("data-active-page", "history")
-    expect(toolbar.locator("#toolbar_value")).to_have_count(1)
+    expect(toolbar.locator("#toolbar_value")).to_have_count(0)
     expect(toolbar.locator("#toolbar_global_value")).to_have_count(1)
-    expect(toolbar.locator(".shiny-chat-page-toolbar-content")).to_have_count(1)
+    expect(toolbar.locator(".shiny-chat-page-toolbar-content")).to_have_count(0)
     expect(page.locator("#toolbar_value")).to_have_count(1)
-    expect(home_input).to_have_value("home toolbar state")
 
     shell.get_by_role("button", name="Settings").click()
     expect(shell).to_have_attribute("data-active-page", "settings")

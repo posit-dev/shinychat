@@ -187,9 +187,16 @@ test_that("chat_app() puts the interactive stop button in the page toolbar", {
     '<div class="bslib-toolbar bslib-gap-spacing" data-align="right">',
     fixed = TRUE
   )
+  expect_match(html, "bslib-input-dark-mode", fixed = TRUE)
   expect_match(html, "bi-stop-circle-fill text-danger", fixed = TRUE)
   expect_match(html, "Stop chat app", fixed = TRUE)
   expect_false(grepl("position: fixed", html, fixed = TRUE))
+
+  opt_out_html <- chat_app_html(
+    chat_app(mock_chat_client(), toolbar_global = NULL)
+  )
+  expect_false(grepl("bslib-input-dark-mode", opt_out_html, fixed = TRUE))
+  expect_match(opt_out_html, "bi-stop-circle-fill text-danger", fixed = TRUE)
 })
 
 test_that("chat_app() omits the stop button outside interactive use", {
