@@ -9,8 +9,8 @@
 shiny-chat-container {
   --shiny-chat-border: var(--bs-border-width, 1px) solid var(--bs-border-color, #e9ecef);
   --shiny-chat-user-message-bg: RGBA(var(--bs-primary-rgb, 0, 123, 194), 0.06);
-  // Content padding for the centered .shiny-chat-wrapper column, propagated to
-  // the footer and the input's sticky bottom gap. Defaults to 0.25rem. When a
+  // Content padding for the centered .shiny-chat-wrapper column and the input's
+  // sticky bottom gap. Defaults to 0.25rem. When a
   // fill-enabled chat is the sole child of a padded bslib fillable container,
   // ChatContainer zeros the parent's padding and hands the captured value here
   // via the public --shiny-chat-fill-padding token, so the history trigger +
@@ -128,7 +128,7 @@ shiny-chat-container {
   }
 }
 
-// The width-limited, centered content column: messages, input, and footer.
+// The width-limited, centered content column: messages and composer.
 // Lives inside the full-width container so the history trigger + drawer scrim
 // (its siblings) span the whole element while this column stays constrained.
 // The `--_chat-width` custom property is set inline on the container from the
@@ -142,7 +142,7 @@ shiny-chat-container {
 
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: minmax(0, 1fr) auto minmax(0, 0fr);
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 0;
   padding: var(--_chat-container-padding);
   padding-bottom: 0; // Bottom padding is on input element
@@ -159,6 +159,16 @@ shiny-chat-container {
       )
   );
   translate: 0 var(--shiny-chat-composer-offset, 0px);
+}
+
+.shiny-chat-input-toolbar {
+  // Keep the toolbar tight to the visible input while allowing the input's
+  // safe-area reserve to remain below it.
+  margin-top: calc(
+    0.25rem - var(--shiny-chat-input-padding-bottom, 0.25rem)
+  );
+  padding: 0.25rem 0
+    var(--shiny-chat-input-padding-bottom, 0.25rem);
 }
 
 .shiny-chat-layout[data-composer-motion-ready]:not([data-composer-resizing])
@@ -525,14 +535,10 @@ shiny-chat-container:not([fill]) {
   font-size: var(--shiny-chat-footer-font-size);
   color: var(--shiny-chat-footer-color);
   text-align: center;
-  // The wrapper already owns the horizontal content inset. Do not apply it
-  // again here, or page_chat_theme()'s wider page gutter double-indents
-  // footer controls. Keep the usual 0.25rem input-to-footer rhythm, then
-  // place the page's bottom safe-area reserve below the footer controls.
-  margin-top: calc(
-    0.25rem - var(--shiny-chat-input-padding-bottom, 0.25rem)
-  );
-  padding: 0.25rem 0
+  // The footer is a bottom-pinned chat-area region rather than part of the
+  // centered messages column. Retain the chat-area gutter around its content
+  // and keep the page's safe-area reserve below its controls.
+  padding: 0.25rem var(--_chat-container-padding)
     var(--shiny-chat-input-padding-bottom, 0.25rem);
 }
 

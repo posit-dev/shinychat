@@ -31,6 +31,7 @@ def page_chat(
     id: str = "chat",
     pages: Sequence[ChatNavPanel] | None = None,
     toolbar: TagChild | None = None,
+    toolbar_input: TagChild | None = None,
     toolbar_global: TagChild | None = None,
     navbar_options: Any = None,
     sidebar: bool | ChatSidebar = True,
@@ -76,6 +77,9 @@ def page_chat(
         Optional home-page-scoped HTML child displayed with the navigation
         controls. A page's ``chat_nav_panel(toolbar=)`` can replace this
         segment.
+    toolbar_input
+        Optional HTML content displayed directly below the chat input. This is
+        independent of the navigation ``toolbar``.
     toolbar_global
         Optional persistent HTML child displayed after the page-scoped toolbar
         in the navigation controls.
@@ -119,7 +123,7 @@ def page_chat(
         omitted, a chat constructed with ``client=`` enables them
         automatically.
     footer
-        Optional HTML content below the chat input.
+        Optional HTML content in a bottom-pinned, full-width chat region.
     **kwargs
         Additional :func:`~shinychat.chat_ui` options and HTML attributes.
         ``page_chat()`` owns ``height``, ``fill``, and ``show_history``; these
@@ -168,6 +172,7 @@ def page_chat(
         icon_assistant=icon_assistant,
         enable_cancel=enable_cancel,
         allow_attachments=allow_attachments,
+        toolbar_input=toolbar_input,
         footer=footer,
         **kwargs,
     )

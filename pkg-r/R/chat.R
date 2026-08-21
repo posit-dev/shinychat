@@ -268,7 +268,11 @@ chat_greeting <- function(
 #'   controlled globally by the `SHINYCHAT_MAX_ATTACHMENT_SIZE` environment
 #'   variable (a raw byte count; defaults to approximately 30 MB). Files that
 #'   would push the total over this cap are rejected in the browser with a notice.
-#' @param footer Optional HTML content to display below the chat input.
+#' @param toolbar_input Optional HTML content to display directly below the chat
+#'   input. Use it for compact controls such as a model selector or input
+#'   actions.
+#' @param footer Optional HTML content to display in a bottom-pinned, full-width
+#'   chat region.
 #'   This can be any HTML content (tags, tag lists, or character strings).
 #'   Useful for adding disclaimers, attribution, or other information.
 #'   The footer text is styled slightly smaller and lighter than body text
@@ -379,6 +383,7 @@ chat_ui <- function(
   enable_cancel = NULL,
   submit_key = c("enter", "enter+modifier"),
   allow_attachments = NULL,
+  toolbar_input = NULL,
   footer = NULL,
   artifact = TRUE,
   show_history = TRUE,
@@ -427,6 +432,10 @@ chat_ui <- function(
     )
   })
 
+  toolbar_tag <- NULL
+  if (!is.null(toolbar_input)) {
+    toolbar_tag <- tag("shiny-chat-input-toolbar", list(toolbar_input))
+  }
   footer_tag <- NULL
   if (!is.null(footer)) {
     footer_tag <- tag("shiny-chat-footer", list(footer))
@@ -534,6 +543,7 @@ chat_ui <- function(
         "shiny-chat-input",
         list(id = paste0(id, "_user_input"), placeholder = placeholder)
       ),
+      toolbar_tag,
       footer_tag,
       artifact_tag,
       shinychat_deps(),

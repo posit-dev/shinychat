@@ -11,6 +11,7 @@ page_chat(
   id = "chat",
   pages = NULL,
   toolbar = NULL,
+  toolbar_input = NULL,
   toolbar_global = NULL,
   navbar_options = NULL,
   sidebar = TRUE,
@@ -43,6 +44,9 @@ those arguments are rejected.}
 
 \item{toolbar}{Optional home-page-scoped UI displayed with the navigation
 controls. A panel's \code{chat_nav_panel(toolbar = )} can replace this segment.}
+
+\item{toolbar_input}{Optional UI displayed directly below the chat input.
+This is independent of the navigation \code{toolbar}.}
 
 \item{toolbar_global}{Optional persistent UI displayed after the page-scoped
 toolbar in the navigation controls.}

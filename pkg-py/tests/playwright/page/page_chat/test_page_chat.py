@@ -15,9 +15,11 @@ def open_page(
     local_app: ShinyAppProc,
     *,
     viewport: tuple[int, int],
+    toolbar_input: bool = False,
 ) -> tuple[ChatController, Locator]:
     page.set_viewport_size({"width": viewport[0], "height": viewport[1]})
-    page.goto(local_app.url)
+    url = f"{local_app.url}?toolbar_input=true" if toolbar_input else local_app.url
+    page.goto(url)
     chat = ChatController(page, "chat")
     shell = page.locator("shiny-chat-page")
     expect(shell).to_be_visible(timeout=TIMEOUT)
@@ -143,28 +145,40 @@ def test_explicit_theme_keeps_embedded_chat_composer_chrome(
     expect(input_area).to_have_css("padding-bottom", "48px")
 
 
-def test_page_chat_footer_aligns_with_the_composer(
+def test_page_chat_toolbar_input_aligns_with_composer_and_footer_is_pinned(
     page: Page,
     local_app: ShinyAppProc,
 ) -> None:
-    chat, _ = open_page(page, local_app, viewport=(800, 760))
+    chat, _ = open_page(
+        page, local_app, viewport=(800, 760), toolbar_input=True
+    )
     input_area = chat.loc.locator(".shiny-chat-input")
     input_editor = input_area.locator(".tiptap")
+    toolbar = chat.loc.locator(".shiny-chat-input-toolbar")
+    toolbar_content = chat.loc.locator(".page-chat-input-toolbar")
     footer = chat.loc.locator(".shiny-chat-footer")
     footer_content = chat.loc.locator(".page-chat-footer")
 
     expect(input_area).to_have_css("padding-bottom", "16px")
-    expect(footer).to_have_css("padding-left", "0px")
-    expect(footer).to_have_css("margin-top", "-12px")
-    expect(footer).to_have_css("padding-bottom", "16px")
+    expect(toolbar).to_have_css("margin-top", "-12px")
+    expect(toolbar).to_have_css("padding-bottom", "16px")
+    expect(footer).to_have_css("padding-left", "16px")
+    expect(footer).to_have_css("margin-top", "0px")
 
     input_box = input_editor.bounding_box()
+    toolbar_box = toolbar_content.bounding_box()
     footer_box = footer_content.bounding_box()
+    chat_box = chat.loc.bounding_box()
     assert input_box is not None
+    assert toolbar_box is not None
     assert footer_box is not None
-    assert footer_box["x"] == pytest.approx(input_box["x"], abs=1)
-    assert footer_box["y"] - (input_box["y"] + input_box["height"]) == pytest.approx(
-        8, abs=1
+    assert chat_box is not None
+    assert toolbar_box["x"] == pytest.approx(input_box["x"], abs=1)
+    toolbar_gap = toolbar_box["y"] - (input_box["y"] + input_box["height"])
+    assert 8 <= toolbar_gap <= 12
+    assert footer_box["y"] + footer_box["height"] <= chat_box["y"] + chat_box["height"]
+    assert footer_box["y"] + footer_box["height"] >= (
+        chat_box["y"] + chat_box["height"] - 32
     )
 
 
@@ -479,21 +493,26 @@ def test_page_chat_keeps_content_inset_and_fills_its_page_region(
     local_app: ShinyAppProc,
     viewport: tuple[int, int],
 ) -> None:
-    chat, shell = open_page(page, local_app, viewport=viewport)
+    chat, shell = open_page(
+        page, local_app, viewport=viewport, toolbar_input=True
+    )
     main = shell.locator(".shiny-chat-page-main")
     wrapper = chat.loc.locator(".shiny-chat-wrapper")
+    footer = chat.loc.locator(".shiny-chat-footer")
 
     shell_box = shell.bounding_box()
     header_box = shell.locator(".shiny-chat-page-header").bounding_box()
     main_box = main.bounding_box()
     chat_box = chat.loc.bounding_box()
     wrapper_box = wrapper.bounding_box()
+    footer_box = footer.bounding_box()
     input_box = chat.loc_input_container.bounding_box()
     assert shell_box is not None
     assert header_box is not None
     assert main_box is not None
     assert chat_box is not None
     assert wrapper_box is not None
+    assert footer_box is not None
     assert input_box is not None
 
     assert shell_box["height"] == pytest.approx(viewport[1], abs=1)
@@ -505,7 +524,10 @@ def test_page_chat_keeps_content_inset_and_fills_its_page_region(
     )
     assert chat_box["height"] == pytest.approx(main_box["height"], abs=1)
     assert chat_box["y"] == pytest.approx(main_box["y"], abs=1)
-    assert wrapper_box["height"] == pytest.approx(chat_box["height"], abs=1)
+    assert wrapper_box["y"] == pytest.approx(chat_box["y"], abs=1)
+    assert wrapper_box["height"] + footer_box["height"] == pytest.approx(
+        chat_box["height"], abs=1
+    )
     assert input_box["x"] >= chat_box["x"] + 16
     assert input_box["x"] + input_box["width"] <= chat_box["x"] + chat_box["width"] - 16
     assert input_box["y"] < chat_box["y"] + chat_box["height"] * 0.75
@@ -517,10 +539,13 @@ def test_page_chat_centers_fitting_greeting_composer_and_pins_overflow(
     page: Page,
     local_app: ShinyAppProc,
 ) -> None:
-    chat, _ = open_page(page, local_app, viewport=(1280, 800))
+    chat, _ = open_page(
+        page, local_app, viewport=(1280, 800), toolbar_input=True
+    )
     layout = chat.loc.locator(".shiny-chat-layout")
     greeting = chat.loc_greeting
     composer = chat.loc.locator(".shiny-chat-composer")
+    toolbar = chat.loc.locator(".page-chat-input-toolbar")
     footer = chat.loc.locator(".page-chat-footer")
 
     expect(layout).to_have_attribute("data-composer-centered", "")
@@ -528,15 +553,17 @@ def test_page_chat_centers_fitting_greeting_composer_and_pins_overflow(
     expect(layout).not_to_have_attribute("data-composer-resizing")
     greeting_box = greeting.bounding_box()
     composer_box = composer.bounding_box()
+    toolbar_box = toolbar.bounding_box()
     footer_box = footer.bounding_box()
     assert greeting_box is not None
     assert composer_box is not None
+    assert toolbar_box is not None
     assert footer_box is not None
     assert composer_box["y"] >= greeting_box["y"] + greeting_box["height"]
     assert composer_box["y"] - (
         greeting_box["y"] + greeting_box["height"]
     ) <= 16
-    assert footer_box["y"] >= composer_box["y"]
+    assert toolbar_box["y"] >= composer_box["y"]
     group_center = (
         greeting_box["y"] + composer_box["y"] + composer_box["height"]
     ) / 2
@@ -545,16 +572,21 @@ def test_page_chat_centers_fitting_greeting_composer_and_pins_overflow(
     assert group_center == pytest.approx(
         chat_box["y"] + chat_box["height"] / 2, abs=8
     )
+    assert footer_box["y"] + footer_box["height"] >= (
+        chat_box["y"] + chat_box["height"] - 32
+    )
 
     chat.set_user_input("Move the composer")
     chat.send_user_input()
     expect(layout).not_to_have_attribute("data-composer-centered", timeout=TIMEOUT)
     page.wait_for_timeout(400)
-    input_box = chat.loc_input_container.bounding_box()
+    composer_box = composer.bounding_box()
     chat_box = chat.loc.bounding_box()
-    assert input_box is not None
+    assert composer_box is not None
     assert chat_box is not None
-    assert input_box["y"] + input_box["height"] >= chat_box["y"] + chat_box["height"] - 48
+    assert composer_box["y"] + composer_box["height"] >= (
+        chat_box["y"] + chat_box["height"] - 48
+    )
 
     # A greeting taller than the chat region retains the usual bottom-pinned
     # composer instead of competing for the centered empty-state layout.
@@ -563,11 +595,13 @@ def test_page_chat_centers_fitting_greeting_composer_and_pins_overflow(
     greeting.evaluate("(element) => { element.style.minHeight = '100vh'; }")
     expect(layout).not_to_have_attribute("data-composer-centered", timeout=TIMEOUT)
     page.wait_for_timeout(400)
-    input_box = chat.loc_input_container.bounding_box()
+    composer_box = composer.bounding_box()
     chat_box = chat.loc.bounding_box()
-    assert input_box is not None
+    assert composer_box is not None
     assert chat_box is not None
-    assert input_box["y"] + input_box["height"] >= chat_box["y"] + chat_box["height"] - 48
+    assert composer_box["y"] + composer_box["height"] >= (
+        chat_box["y"] + chat_box["height"] - 48
+    )
     scroll_box = chat.loc_scroll_container.bounding_box()
     greeting_box = greeting.bounding_box()
     assert scroll_box is not None

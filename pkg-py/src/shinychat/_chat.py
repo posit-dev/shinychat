@@ -2268,6 +2268,7 @@ class ChatExpress(Chat):
         enable_cancel: "bool | MISSING_TYPE" = MISSING,
         submit_key: 'Literal["enter", "enter+modifier"]' = "enter",
         allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
+        toolbar_input: Optional[TagChild] = None,
         footer: Optional[TagChild] = None,
         tool_grouping: 'Literal["none", "tool", "all"]' = "tool",
         artifact: bool | ChatArtifact = True,
@@ -2339,8 +2340,12 @@ class ChatExpress(Chat):
             When bookmarking is enabled, prefer ``bookmark_store="server"``:
             attachment data is saved in the bookmark and can exceed URL length
             limits with ``bookmark_store="url"``.
+        toolbar_input
+            Optional HTML content displayed directly below the chat input.
+            Use it for compact controls such as a model selector or input actions.
         footer
-            Optional HTML content to display below the chat input.
+            Optional HTML content displayed in a bottom-pinned, full-width chat
+            region.
             This can be any HTML content (tags, tag lists, or strings).
             Useful for adding disclaimers, attribution, or other information.
             The footer text is styled slightly smaller and lighter than body text
@@ -2394,6 +2399,7 @@ class ChatExpress(Chat):
             enable_cancel=enable_cancel,
             submit_key=submit_key,
             allow_attachments=allow_attachments,
+            toolbar_input=toolbar_input,
             footer=footer,
             tool_grouping=tool_grouping,
             artifact=artifact,
@@ -2498,6 +2504,7 @@ def chat_ui(
     enable_cancel: "bool | MISSING_TYPE" = MISSING,
     submit_key: 'Literal["enter", "enter+modifier"]' = "enter",
     allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
+    toolbar_input: Optional[TagChild] = None,
     footer: Optional[TagChild] = None,
     tool_grouping: 'Literal["none", "tool", "all"]' = "tool",
     artifact: bool | ChatArtifact = True,
@@ -2594,8 +2601,12 @@ def chat_ui(
         When bookmarking is enabled, prefer ``bookmark_store="server"``:
         attachment data is saved in the bookmark and can exceed URL length
         limits with ``bookmark_store="url"``.
+    toolbar_input
+        Optional HTML content displayed directly below the chat input. Use it
+        for compact controls such as a model selector or input actions.
     footer
-        Optional HTML content to display below the chat input.
+        Optional HTML content displayed in a bottom-pinned, full-width chat
+        region.
         This can be any HTML content (tags, tag lists, or strings).
         Useful for adding disclaimers, attribution, or other information.
         The footer text is styled slightly smaller and lighter than body text
@@ -2680,6 +2691,10 @@ def chat_ui(
             )
         )
 
+    toolbar_tag = None
+    if toolbar_input is not None:
+        toolbar_tag = Tag("shiny-chat-input-toolbar", toolbar_input)
+
     footer_tag = None
     if footer is not None:
         footer_tag = Tag("shiny-chat-footer", footer)
@@ -2744,6 +2759,7 @@ def chat_ui(
             id=f"{id}_user_input",
             placeholder=placeholder,
         ),
+        toolbar_tag,
         footer_tag,
         artifact_tag,
         shinychat_dependency(),

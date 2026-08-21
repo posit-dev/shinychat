@@ -133,6 +133,7 @@ export interface ChatContainerProps {
   enableCancel?: boolean
   enableUpload?: boolean
   cancelRequested?: boolean
+  toolbarEl?: Element
   footerEl?: Element
   slashCommands: SlashCommandDef[]
   slashCommandId: string
@@ -184,6 +185,7 @@ export const ChatContainer = forwardRef<
     enableCancel,
     enableUpload,
     cancelRequested,
+    toolbarEl,
     footerEl,
     slashCommands,
     slashCommandId,
@@ -462,7 +464,7 @@ export const ChatContainer = forwardRef<
       mutationObserver.disconnect()
       window.removeEventListener("resize", update)
     }
-  }, [elementId, footerEl, greeting, messages.length, scrollRef, stopScroll])
+  }, [elementId, greeting, messages.length, scrollRef, stopScroll])
 
   const updateArtifactLayoutWidth = useCallback(() => {
     const layout = artifactLayoutRef.current
@@ -1048,11 +1050,13 @@ export const ChatContainer = forwardRef<
               />
             </div>
 
-            {footerEl && (
-              <RawDOM source={footerEl} className="shiny-chat-footer" />
+            {toolbarEl && (
+              <RawDOM source={toolbarEl} className="shiny-chat-input-toolbar" />
             )}
           </div>
         </div>
+
+        {footerEl && <RawDOM source={footerEl} className="shiny-chat-footer" />}
 
         {artifact.enabled && (
           <ChatArtifact
