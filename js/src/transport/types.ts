@@ -59,6 +59,17 @@ export type MessagePayload = {
   siblings?: { index: number; total: number }
 }
 
+/**
+ * Fields shared by artifact content mutations. Omitted fields retain their
+ * prior value; an empty string explicitly clears content or title.
+ */
+export type ArtifactMutationPayload = {
+  content?: string
+  title?: string
+  /** Dependencies accompanying replacement content. */
+  html_deps?: HtmlDep[]
+}
+
 export type ChatAction =
   | { type: "message"; message: MessagePayload; html_deps?: HtmlDep[] }
   | { type: "chunk_start"; message: MessagePayload; html_deps?: HtmlDep[] }
@@ -104,6 +115,10 @@ export type ChatAction =
   | { type: "greeting_end" }
   | { type: "greeting_clear" }
   | { type: "update_slash_commands"; commands: SlashCommandDef[] }
+  | ({ type: "artifact_show" } & ArtifactMutationPayload)
+  | { type: "artifact_hide" }
+  | { type: "artifact_toggle" }
+  | ({ type: "artifact_update" } & ArtifactMutationPayload)
   | {
       type: "history_update"
       enabled: boolean

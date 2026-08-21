@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from htmltools import TagList, is_tag_child
+from htmltools import RenderedHTML, TagList, is_tag_child
 from pydantic_core import PydanticSerializationError
 from typing_extensions import TypedDict
 
@@ -19,14 +19,19 @@ class SerializedHTML(TypedDict):
     dependencies: list[dict[str, Any]]
 
 
-def serialize_htmltools(value: object) -> SerializedHTML:
-    """Convert an htmltools node to shinychat's current JSON wire format."""
+def render_htmltools(value: object) -> RenderedHTML:
+    """Validate, tagify, and render an htmltools node."""
     if not is_tag_child(value):
         raise PydanticSerializationError(
             f"Unable to serialize unknown type: {type(value)}"
         )
 
-    rendered = TagList(value).render()
+    return TagList(value).tagify().render()
+
+
+def serialize_htmltools(value: object) -> SerializedHTML:
+    """Convert an htmltools node to shinychat's current JSON wire format."""
+    rendered = render_htmltools(value)
     return {
         "html": rendered["html"],
         "dependencies": [

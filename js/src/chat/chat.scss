@@ -4,6 +4,7 @@
 @use "slash-commands.scss";
 @use "command-chip.scss";
 @use "history";
+@use "artifact";
 
 shiny-chat-container {
   --shiny-chat-border: var(--bs-border-width, 1px) solid var(--bs-border-color, #e9ecef);
@@ -44,6 +45,8 @@ shiny-chat-container {
   display: grid;
   grid-template-columns: 1fr;
   grid-template-rows: 1fr;
+  container-type: inline-size;
+  container-name: shiny-chat;
 
   // Floor height for the history drawer. The min-height *property* is set here,
   // unconditionally and at element-level (low) specificity, from the
@@ -139,13 +142,62 @@ shiny-chat-container {
 
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: 1fr auto;
-  &:has(.shiny-chat-footer) {
-    grid-template-rows: 1fr auto auto;
-  }
+  grid-template-rows: minmax(0, 1fr) auto minmax(0, 0fr);
   gap: 0;
   padding: var(--_chat-container-padding);
   padding-bottom: 0; // Bottom padding is on input element
+}
+
+.shiny-chat-composer {
+  grid-row: 2;
+  min-width: 0;
+  position: sticky;
+  bottom: calc(
+    -1 * var(
+        --shiny-chat-input-padding-bottom,
+        var(--_chat-container-padding, 0.25rem)
+      )
+  );
+  translate: 0 var(--shiny-chat-composer-offset, 0px);
+}
+
+.shiny-chat-layout[data-composer-motion-ready]:not([data-composer-resizing])
+  .shiny-chat-composer {
+  transition: translate 350ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+shiny-chat-page
+  .shiny-chat-layout[data-composer-revealing]
+  .shiny-chat-composer {
+  animation: shiny-chat-composer-reveal 300ms cubic-bezier(0.22, 1, 0.36, 1)
+    both;
+}
+
+@keyframes shiny-chat-composer-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  shiny-chat-page
+    .shiny-chat-layout[data-composer-motion-ready]:not(
+      [data-composer-resizing]
+    )
+    .shiny-chat-composer {
+    transition: none;
+  }
+
+  shiny-chat-page
+    .shiny-chat-layout[data-composer-revealing]
+    .shiny-chat-composer {
+    animation: none;
+  }
 }
 
 // Wrapper for the scroll container. overflow: clip (not hidden) is intentional —
@@ -158,6 +210,19 @@ shiny-chat-container {
   overflow: clip;
   display: flex;
   flex-direction: column;
+}
+
+// Both default triggers occupy the first 3rem of the chat: 0.5rem from the
+// edge, a 2rem control, and 0.5rem of breathing room. Artifact moves below a
+// right-placed history trigger, so reserve the combined stack in that case.
+:where(shiny-chat-container[data-inline-controls]) {
+  --_chat-inline-controls-inset: 3rem;
+}
+
+:where(
+  shiny-chat-container[data-history-placement="right"][data-inline-controls~="artifact"]
+) {
+  --_chat-inline-controls-inset: 5.5rem;
 }
 
 // In non-filling mode the page scrolls, not .shiny-chat-messages.
@@ -191,6 +256,9 @@ shiny-chat-container:not([fill]) {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+  // Embedded history and artifact triggers float over the top of the message
+  // flow. Reserve their occupied edge only while those controls are present.
+  padding-block-start: var(--_chat-inline-controls-inset, 0px);
   // Flex column so a stand-alone greeting can margin-block:auto into the
   // vertical center of the scroll area when no messages exist yet.
   display: flex;
@@ -290,8 +358,8 @@ shiny-chat-container:not([fill]) {
 .shiny-chat-user-message {
   position: relative;
   align-self: flex-end;
-  padding: 0.75rem 1rem;
-  border-radius: 10px;
+  padding: var(--shiny-chat-user-message-padding, 0.75rem 1rem);
+  border-radius: var(--shiny-chat-user-message-border-radius, 10px);
   background-color: var(--shiny-chat-user-message-bg);
   max-width: 100%;
   // User messages don't have an icon by default
@@ -305,6 +373,13 @@ shiny-chat-container:not([fill]) {
   .shiny-chat-message-content {
     user-select: text;
   }
+}
+
+// A prompt and its immediate answer are one conversational unit. The optional
+// reduction is supplied by page_chat_theme(); embedded chats retain the
+// transcript's normal spacing.
+.shiny-chat-user-message + .shiny-chat-message {
+  margin-top: calc(-1 * var(--shiny-chat-user-assistant-gap-reduction, 0px));
 }
 
 .shiny-chat-message,
@@ -381,7 +456,10 @@ shiny-chat-container:not([fill]) {
 
 .shiny-chat-input {
   --_input-padding-top: 0;
-  --_input-padding-bottom: var(--_chat-container-padding, 0.25rem);
+  --_input-padding-bottom: var(
+    --shiny-chat-input-padding-bottom,
+    var(--_chat-container-padding, 0.25rem)
+  );
 
   margin-top: calc(-1 * var(--_input-padding-top));
   position: sticky;
@@ -447,8 +525,15 @@ shiny-chat-container:not([fill]) {
   font-size: var(--shiny-chat-footer-font-size);
   color: var(--shiny-chat-footer-color);
   text-align: center;
-  padding-block: 0.25rem;
-  padding-inline: var(--_chat-container-padding);
+  // The wrapper already owns the horizontal content inset. Do not apply it
+  // again here, or page_chat_theme()'s wider page gutter double-indents
+  // footer controls. Keep the usual 0.25rem input-to-footer rhythm, then
+  // place the page's bottom safe-area reserve below the footer controls.
+  margin-top: calc(
+    0.25rem - var(--shiny-chat-input-padding-bottom, 0.25rem)
+  );
+  padding: 0.25rem 0
+    var(--shiny-chat-input-padding-bottom, 0.25rem);
 }
 
 /*

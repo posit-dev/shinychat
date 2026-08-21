@@ -30,6 +30,33 @@ afterEach(async () => {
 })
 
 describe("chat-entry custom element boot", () => {
+  it("honors a live show-history preference from server markup", async () => {
+    const host = document.createElement("shiny-chat-container")
+    host.setAttribute("id", "history-entry")
+    host.setAttribute("show-history", "false")
+    host.innerHTML = `
+      <shiny-chat-messages></shiny-chat-messages>
+      <shiny-chat-input></shiny-chat-input>
+    `
+
+    await act(async () => {
+      document.body.appendChild(host)
+    })
+
+    await waitFor(() => {
+      expect(host.querySelector('[role="textbox"]')).not.toBeNull()
+    })
+    expect(host.querySelector(".shiny-chat-history-trigger")).toBeNull()
+
+    await act(async () => {
+      host.removeAttribute("show-history")
+    })
+
+    // History starts disabled until the server publishes its first snapshot,
+    // but the live attribute update must retain a mounted chat without error.
+    expect(host.querySelector('[role="textbox"]')).not.toBeNull()
+  })
+
   it("boots from server-rendered HTML using child input attributes and initial messages", async () => {
     const host = document.createElement("shiny-chat-container")
     host.setAttribute("id", "chat-entry-test")
@@ -79,6 +106,58 @@ describe("chat-entry custom element boot", () => {
     expect(host.querySelector(".assistant-icon")).not.toBeNull()
 
     expect(window.Shiny?.unbindAll).toHaveBeenCalledWith(host)
+  })
+
+  it("seeds and preserves an initial artifact from server markup", async () => {
+    const host = document.createElement("shiny-chat-container")
+    host.setAttribute("id", "artifact-entry")
+    host.innerHTML = `
+      <shiny-chat-messages></shiny-chat-messages>
+      <shiny-chat-input></shiny-chat-input>
+      <shiny-chat-artifact title="Preview" width="32rem" open resizable="false">
+        <input value="Preserved artifact">
+        <script data-artifact-dependency>window.__artifact = true</script>
+      </shiny-chat-artifact>
+    `
+    const initialInput = host.querySelector(
+      "shiny-chat-artifact input",
+    ) as HTMLInputElement
+    const initialDependency = host.querySelector(
+      "shiny-chat-artifact script",
+    ) as HTMLScriptElement
+    let artifactWasPresentAtUnbind = false
+    const unbindAll = window.Shiny!.unbindAll as ReturnType<typeof vi.fn>
+    unbindAll.mockImplementation((element: HTMLElement) => {
+      if (element === host) {
+        artifactWasPresentAtUnbind = element.contains(initialInput)
+      }
+    })
+
+    await act(async () => {
+      document.body.appendChild(host)
+    })
+
+    await waitFor(() => {
+      expect(host.querySelector(".shiny-chat-artifact")).not.toBeNull()
+    })
+
+    const panel = host.querySelector(
+      ".shiny-chat-artifact",
+    ) as HTMLElement | null
+    expect(panel).not.toBeNull()
+    expect(panel?.hidden).toBe(false)
+    expect(panel?.style.getPropertyValue("--shiny-chat-artifact-width")).toBe(
+      "32rem",
+    )
+    expect(
+      host.querySelector("#artifact-entry-artifact-title")?.textContent,
+    ).toBe("Preview")
+    expect(host.querySelector(".shiny-chat-artifact input")).toBe(initialInput)
+    expect(host.querySelector(".shiny-chat-artifact script")).toBe(
+      initialDependency,
+    )
+    expect(artifactWasPresentAtUnbind).toBe(true)
+    expect(host.querySelector('[role="separator"]')).toBeNull()
   })
 
   it("routes preloaded tool calls through the content router (tool-grouping attr)", async () => {

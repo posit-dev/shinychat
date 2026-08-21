@@ -512,6 +512,40 @@ describe("ShinyTransport", () => {
       expect(order).toEqual(["deps", "listener"])
     })
 
+    it("attaches artifact dependencies without rendering them in transport", async () => {
+      const transport = new ShinyTransport()
+      const received: ChatAction[] = []
+      const deps = [{ name: "artifact-widget", version: "1.0.0" }]
+      transport.onMessage("chat1", (action) => received.push(action))
+
+      await fire(
+        makeEnvelope(
+          { type: "artifact_show", content: "<div>Artifact</div>" },
+          { html_deps: deps },
+        ),
+      )
+      await fire(
+        makeEnvelope(
+          { type: "artifact_update", content: "<div>Updated</div>" },
+          { html_deps: deps },
+        ),
+      )
+
+      expect(window.Shiny?.renderDependenciesAsync).not.toHaveBeenCalled()
+      expect(received).toEqual([
+        {
+          type: "artifact_show",
+          content: "<div>Artifact</div>",
+          html_deps: deps,
+        },
+        {
+          type: "artifact_update",
+          content: "<div>Updated</div>",
+          html_deps: deps,
+        },
+      ])
+    })
+
     it("routes an action to the correct listener by ID", async () => {
       const transport = new ShinyTransport()
       const receivedA: unknown[] = []

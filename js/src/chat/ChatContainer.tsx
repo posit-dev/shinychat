@@ -3,9 +3,11 @@ import {
   useRef,
   useCallback,
   useEffect,
+  useLayoutEffect,
   forwardRef,
   useImperativeHandle,
   useMemo,
+  useSyncExternalStore,
 } from "react"
 import { createPortal } from "react-dom"
 import { useStickToBottom } from "use-stick-to-bottom"
@@ -15,20 +17,22 @@ import { ChatInput, type ChatInputHandle } from "./ChatInput"
 import { ScrollToBottomButton } from "./ScrollToBottomButton"
 import { ExternalLinkDialogComponent } from "./ExternalLinkDialog"
 import { RawDOM } from "./RawDOM"
+import { ARTIFACT_TAKEOVER_WIDTH, ChatArtifact } from "./ChatArtifact"
 import {
   ChatScrollContext,
   SlashCommandsContext,
   useChatDispatch,
 } from "./context"
-import { ChatHistoryDrawer, HistoryIcon } from "./ChatHistoryDrawer"
+import {
+  ChatHistoryContent,
+  ChatHistoryDrawer,
+  HistoryIcon,
+} from "./ChatHistoryDrawer"
+import type { HistoryStore } from "./historyStore"
 import { useFillPaddingTransfer } from "./useFillPaddingTransfer"
 import { useOverlapNudge } from "./useOverlapNudge"
-import type { ChatMessageData, GreetingData } from "./state"
-import type {
-  ChatTransport,
-  ConversationMeta,
-  SlashCommandDef,
-} from "../transport/types"
+import type { ChatArtifactState, ChatMessageData, GreetingData } from "./state"
+import type { ChatTransport, SlashCommandDef } from "../transport/types"
 import type { SubmitKey } from "./tiptap/submitShortcut"
 import type { AttachmentPayload } from "./attachments"
 
@@ -38,8 +42,79 @@ declare global {
   }
 }
 
+const DEFAULT_ARTIFACT_LAYOUT_WIDTH = 400
+const MIN_ARTIFACT_LAYOUT_WIDTH = 240
+const MIN_CHAT_LAYOUT_WIDTH = 360
+const MAX_ARTIFACT_LAYOUT_GAP = 24
+
 function openLink(url: string): void {
   window.open(url, "_blank", "noopener,noreferrer")
+}
+
+function resolveArtifactLayoutWidth(
+  configuredWidth: string,
+  layout: HTMLElement,
+  probe: HTMLElement | null,
+): string {
+  const layoutWidth = layout.getBoundingClientRect().width
+  if (layoutWidth <= 0) return `${DEFAULT_ARTIFACT_LAYOUT_WIDTH}px`
+
+  const pixels = /^\s*(\d+(?:\.\d+)?)px\s*$/i.exec(configuredWidth)
+  const percent = /^\s*(\d+(?:\.\d+)?)%\s*$/.exec(configuredWidth)
+  let requested = pixels
+    ? Number.parseFloat(pixels[1]!)
+    : percent
+      ? (layoutWidth * Number.parseFloat(percent[1]!)) / 100
+      : NaN
+
+  if (!Number.isFinite(requested)) {
+    requested = probe?.getBoundingClientRect().width ?? NaN
+  }
+
+  if (!Number.isFinite(requested) || requested <= 0) {
+    requested = DEFAULT_ARTIFACT_LAYOUT_WIDTH
+  }
+
+  const maximum = Math.max(
+    MIN_ARTIFACT_LAYOUT_WIDTH,
+    layoutWidth - MIN_CHAT_LAYOUT_WIDTH - MAX_ARTIFACT_LAYOUT_GAP,
+  )
+  return `${Math.round(
+    Math.min(Math.max(requested, MIN_ARTIFACT_LAYOUT_WIDTH), maximum),
+  )}px`
+}
+
+function ArtifactRevealIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="currentColor"
+      className="bi bi-layout-sidebar-inset-reverse"
+    >
+      <path d="M2 2a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1zm12-1a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2z" />
+      <path d="M13 4a1 1 0 0 0-1-1h-2a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1z" />
+    </svg>
+  )
+}
+
+function pageOwnsHistory(elementId: string): boolean {
+  const chat = document.getElementById(elementId)
+  const page = chat?.closest("shiny-chat-page")
+  if (!page) return false
+
+  return Array.from(
+    page.querySelectorAll("aside.shiny-chat-page-sidebar shiny-chat-history"),
+  ).some((history) => {
+    if (history.getAttribute("for") !== elementId) return false
+
+    // Navigation sidebars remain mounted so their Shiny inputs retain state.
+    // Only the active sidebar can replace the embedded history trigger.
+    const panel = history.closest<HTMLElement>(".shiny-chat-page-sidebar-panel")
+    return panel === null || !panel.hidden
+  })
 }
 
 export interface ChatContainerProps {
@@ -62,9 +137,9 @@ export interface ChatContainerProps {
   slashCommands: SlashCommandDef[]
   slashCommandId: string
   submitKey?: SubmitKey
-  historyEnabled?: boolean
-  historyConversations?: ConversationMeta[]
-  historyActiveId?: string | null
+  historyStore: HistoryStore
+  artifact: ChatArtifactState
+  artifactSource?: Element
   onEdit?: (
     index: number,
     content: string,
@@ -72,12 +147,22 @@ export interface ChatContainerProps {
   ) => void
   onNavigate?: (index: number, direction: "prev" | "next") => void
   siblingNavigationPending?: boolean
+  showHistory: boolean
 }
 
 export interface ChatContainerHandle extends ChatInputHandle {
   beginSiblingNavigation(): void
   endSiblingNavigation(): void
 }
+
+interface ComposerPosition {
+  centered: boolean
+  greetingOverflows: boolean
+  greetingOffset: number
+  composerOffset: number
+}
+
+const CENTERED_GREETING_GAP = 12
 
 export const ChatContainer = forwardRef<
   ChatContainerHandle,
@@ -103,12 +188,13 @@ export const ChatContainer = forwardRef<
     slashCommands,
     slashCommandId,
     submitKey,
-    historyEnabled,
-    historyConversations,
-    historyActiveId,
+    historyStore,
+    artifact,
+    artifactSource,
     onEdit,
     onNavigate,
     siblingNavigationPending,
+    showHistory,
   },
   ref,
 ) {
@@ -122,9 +208,45 @@ export const ChatContainer = forwardRef<
   )
 
   const chatInputRef = useRef<ChatInputHandle>(null)
+  const artifactCloseRef = useRef<HTMLButtonElement>(null)
+  const artifactRevealRef = useRef<HTMLButtonElement>(null)
+  const artifactReturnFocusRef = useRef<HTMLElement | null>(null)
+  const artifactRestoreFocusRef = useRef<HTMLElement | null>(null)
+  const artifactReturnToRevealRef = useRef(false)
+  const priorArtifactVisibleRef = useRef(artifact.visible)
+  const priorArtifactTakeoverRef = useRef(false)
+  const artifactLayoutRef = useRef<HTMLDivElement>(null)
+  const artifactWidthProbeRef = useRef<HTMLDivElement>(null)
+  const composerRef = useRef<HTMLDivElement>(null)
+  const [artifactTakeover, setArtifactTakeover] = useState(false)
+  const [artifactPresented, setArtifactPresented] = useState(artifact.visible)
+  const [artifactResizing, setArtifactResizing] = useState(false)
+  const [composerPosition, setComposerPosition] = useState<ComposerPosition>({
+    centered: false,
+    greetingOverflows: false,
+    greetingOffset: 0,
+    composerOffset: 0,
+  })
+  const [composerMotionReady, setComposerMotionReady] = useState(false)
+  const [composerRevealing, setComposerRevealing] = useState(false)
+  const [composerResizing, setComposerResizing] = useState(false)
+  const composerPositionRef = useRef(composerPosition)
+  composerPositionRef.current = composerPosition
+  const [artifactLayoutWidth, setArtifactLayoutWidth] = useState(
+    `${DEFAULT_ARTIFACT_LAYOUT_WIDTH}px`,
+  )
+  const history = useSyncExternalStore(
+    historyStore.subscribe,
+    historyStore.getSnapshot,
+    historyStore.getSnapshot,
+  )
 
   const [historyOpen, setHistoryOpen] = useState(false)
   const historyTriggerRef = useRef<HTMLButtonElement>(null)
+  const historyOwnedByPage = useMemo(
+    () => pageOwnsHistory(elementId),
+    [elementId],
+  )
 
   const [pendingUrl, setPendingUrl] = useState<string | null>(null)
   const pendingUrlRef = useRef<string | null>(null)
@@ -190,6 +312,293 @@ export const ChatContainer = forwardRef<
 
   const isStreaming = !!streamingMessage
 
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setComposerMotionReady(true))
+    return () => cancelAnimationFrame(frame)
+  }, [])
+
+  useEffect(() => {
+    if (!composerPosition.centered) return
+
+    setComposerRevealing(true)
+    const timeout = window.setTimeout(() => setComposerRevealing(false), 300)
+    return () => window.clearTimeout(timeout)
+  }, [composerPosition.centered])
+
+  // Keep the normal grid and scroll behavior intact, then translate the
+  // greeting and composer as one group. Centering only the composer leaves a
+  // multi-line greeting top-heavy; removing it from normal flow clips long
+  // greetings before the overflow fallback can take effect.
+  useLayoutEffect(() => {
+    const layout = artifactLayoutRef.current
+    const composer = composerRef.current
+    const isPageChat = document
+      .getElementById(elementId)
+      ?.closest("shiny-chat-page")
+
+    if (!layout || !composer || !isPageChat) return
+
+    let resizeObserver: ResizeObserver | undefined
+    let observedGreeting: Element | null = null
+    let receivedInitialResize = false
+    let resizeSettleTimer: number | undefined
+
+    const setPosition = (nextPosition: ComposerPosition) => {
+      const currentPosition = composerPositionRef.current
+      if (
+        currentPosition.centered === nextPosition.centered &&
+        currentPosition.greetingOverflows === nextPosition.greetingOverflows &&
+        currentPosition.greetingOffset === nextPosition.greetingOffset &&
+        currentPosition.composerOffset === nextPosition.composerOffset
+      ) {
+        return
+      }
+      composerPositionRef.current = nextPosition
+      setComposerPosition(nextPosition)
+    }
+
+    const resetPosition = () => {
+      setPosition({
+        centered: false,
+        greetingOverflows: false,
+        greetingOffset: 0,
+        composerOffset: 0,
+      })
+    }
+
+    const translateY = (element: Element) => {
+      const value = getComputedStyle(element).translate
+      if (value === "none") return 0
+      const [, y] = value.split(/\s+/)
+      return Number.parseFloat(y ?? "") || 0
+    }
+
+    const update = () => {
+      const greetingEl = layout.querySelector(".shiny-chat-greeting")
+      if (
+        !greetingEl ||
+        messages.length > 0 ||
+        greeting?.status !== "visible"
+      ) {
+        resetPosition()
+        return
+      }
+
+      if (resizeObserver && observedGreeting !== greetingEl) {
+        if (observedGreeting) resizeObserver.unobserve(observedGreeting)
+        resizeObserver.observe(greetingEl)
+        observedGreeting = greetingEl
+      }
+
+      const layoutBox = layout.getBoundingClientRect()
+      const greetingBox = greetingEl.getBoundingClientRect()
+      const composerBox = composer.getBoundingClientRect()
+      const totalHeight =
+        greetingBox.height + CENTERED_GREETING_GAP + composerBox.height
+
+      if (totalHeight > layout.clientHeight) {
+        // useStickToBottom can retain the empty-state scroll position while a
+        // greeting grows. Oversized greetings must instead begin at the
+        // scroll viewport's origin.
+        const scroll = scrollRef.current
+        if (!composerPositionRef.current.greetingOverflows) {
+          stopScroll()
+          if (scroll) scroll.scrollTop = 0
+        }
+        setPosition({
+          centered: false,
+          greetingOverflows: true,
+          greetingOffset: 0,
+          composerOffset: 0,
+        })
+        return
+      }
+
+      const greetingTarget =
+        layoutBox.top + (layoutBox.height - totalHeight) / 2
+      const composerTarget =
+        greetingTarget + greetingBox.height + CENTERED_GREETING_GAP
+      setPosition({
+        centered: true,
+        greetingOverflows: false,
+        greetingOffset:
+          translateY(greetingEl) + greetingTarget - greetingBox.top,
+        composerOffset: translateY(composer) + composerTarget - composerBox.top,
+      })
+    }
+
+    const settleResize = () => {
+      setComposerResizing(true)
+      if (resizeSettleTimer) window.clearTimeout(resizeSettleTimer)
+      resizeSettleTimer = window.setTimeout(
+        () => setComposerResizing(false),
+        120,
+      )
+    }
+
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(() => {
+        update()
+        // Observing an element reports its existing dimensions once. That is
+        // initialization, not a resize, so retain discrete-state motion.
+        if (receivedInitialResize) settleResize()
+        receivedInitialResize = true
+      })
+      resizeObserver.observe(layout)
+      resizeObserver.observe(composer)
+    }
+
+    // History "New" can insert its greeting after this effect has run. Watch
+    // the local layout so its first placement is measured immediately.
+    const mutationObserver = new MutationObserver(update)
+    mutationObserver.observe(layout, { childList: true, subtree: true })
+    window.addEventListener("resize", update)
+    update()
+
+    return () => {
+      if (resizeSettleTimer) window.clearTimeout(resizeSettleTimer)
+      setComposerResizing(false)
+      resizeObserver?.disconnect()
+      mutationObserver.disconnect()
+      window.removeEventListener("resize", update)
+    }
+  }, [elementId, footerEl, greeting, messages.length, scrollRef, stopScroll])
+
+  const updateArtifactLayoutWidth = useCallback(() => {
+    const layout = artifactLayoutRef.current
+    if (!layout || !artifact.enabled) return
+
+    const nextWidth = resolveArtifactLayoutWidth(
+      artifact.width,
+      layout,
+      artifactWidthProbeRef.current,
+    )
+    setArtifactLayoutWidth((currentWidth) =>
+      currentWidth === nextWidth ? currentWidth : nextWidth,
+    )
+  }, [artifact.enabled, artifact.width])
+
+  useLayoutEffect(() => {
+    updateArtifactLayoutWidth()
+
+    const layout = artifactLayoutRef.current
+    if (!layout || typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver(updateArtifactLayoutWidth)
+    observer.observe(layout)
+    if (artifactWidthProbeRef.current) {
+      observer.observe(artifactWidthProbeRef.current)
+    }
+    return () => observer.disconnect()
+  }, [artifact.visible, updateArtifactLayoutWidth])
+
+  useEffect(() => {
+    const layout = artifactLayoutRef.current
+    if (!layout || !artifact.enabled) {
+      setArtifactTakeover(false)
+      return
+    }
+
+    const update = (width: number) => {
+      // Keep the message column at its normal 680px reading cap. Below this
+      // threshold an adjacent artifact would force that column narrower.
+      setArtifactTakeover(width < ARTIFACT_TAKEOVER_WIDTH)
+    }
+    update(layout.getBoundingClientRect().width)
+
+    if (typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (entry) update(entry.contentRect.width)
+    })
+    observer.observe(layout)
+    return () => observer.disconnect()
+  }, [artifact.enabled, artifact.visible])
+
+  useLayoutEffect(() => {
+    const wasVisible = priorArtifactVisibleRef.current
+    const wasTakeover = priorArtifactTakeoverRef.current
+    const isVisible = artifact.enabled && artifact.visible
+    const revealedFromControl =
+      isVisible && !wasVisible && artifactReturnToRevealRef.current
+    const entersTakeover =
+      isVisible && artifactTakeover && (!wasVisible || !wasTakeover)
+
+    if (revealedFromControl) {
+      artifactReturnFocusRef.current = null
+      artifactRestoreFocusRef.current = null
+      requestAnimationFrame(() => artifactCloseRef.current?.focus())
+      if (historyOpen) setHistoryOpen(false)
+    } else if (entersTakeover) {
+      artifactRestoreFocusRef.current = null
+      const active = document.activeElement
+      const chatWrapper = artifactLayoutRef.current?.querySelector(
+        ".shiny-chat-wrapper",
+      )
+      const activeInChat =
+        active instanceof HTMLElement && chatWrapper?.contains(active)
+      const activeOnHistoryTrigger = active === historyTriggerRef.current
+      if (activeInChat || activeOnHistoryTrigger || historyOpen) {
+        artifactReturnFocusRef.current =
+          activeInChat && active instanceof HTMLElement
+            ? active
+            : historyTriggerRef.current
+        requestAnimationFrame(() => artifactCloseRef.current?.focus())
+      } else if (artifactReturnToRevealRef.current) {
+        artifactReturnFocusRef.current = null
+        requestAnimationFrame(() => artifactCloseRef.current?.focus())
+      } else {
+        artifactReturnFocusRef.current = null
+      }
+      if (historyOpen) setHistoryOpen(false)
+    } else if (wasVisible && !isVisible) {
+      const returnToReveal = artifactReturnToRevealRef.current
+      artifactReturnToRevealRef.current = false
+      if (returnToReveal) {
+        requestAnimationFrame(() => artifactRevealRef.current?.focus())
+      } else {
+        artifactRestoreFocusRef.current = artifactReturnFocusRef.current
+      }
+      artifactReturnFocusRef.current = null
+    }
+
+    priorArtifactVisibleRef.current = isVisible
+    priorArtifactTakeoverRef.current = artifactTakeover
+  }, [artifact.enabled, artifact.visible, artifactTakeover, historyOpen])
+
+  useLayoutEffect(() => {
+    if (artifact.visible || artifactPresented) return
+
+    const returnFocus = artifactRestoreFocusRef.current
+    artifactRestoreFocusRef.current = null
+    if (!returnFocus?.isConnected) return
+
+    requestAnimationFrame(() => {
+      if (returnFocus.isConnected) returnFocus.focus()
+    })
+  }, [artifact.visible, artifactPresented])
+
+  useEffect(() => {
+    if (artifactTakeover && artifact.visible && historyOpen) {
+      setHistoryOpen(false)
+    }
+  }, [artifact.visible, artifactTakeover, historyOpen])
+
+  const closeArtifact = useCallback(() => {
+    dispatch({ type: "artifact_hide" })
+  }, [dispatch])
+
+  const revealArtifact = useCallback(() => {
+    artifactReturnToRevealRef.current = true
+    dispatch({ type: "artifact_toggle" })
+  }, [dispatch])
+
+  const setArtifactWidth = useCallback(
+    (width: string) => {
+      dispatch({ type: "SET_ARTIFACT_WIDTH", width })
+    },
+    [dispatch],
+  )
+
   const cancelStream = useCallback((): void => {
     if (!enableCancel || !cancelId || !isStreaming || cancelRequested) return
     dispatch({ type: "CANCEL_REQUESTED" })
@@ -232,7 +641,7 @@ export const ChatContainer = forwardRef<
   // would record a false "no overlap"; the drawer's add/remove (watchMutations)
   // re-runs the measure once it closes and the toggle is measurable again.
   useOverlapNudge(historyTriggerRef, {
-    enabled: historyEnabled,
+    enabled: history.enabled,
     boundarySelector: "shiny-chat-container",
     shiftProperty: "--_history-trigger-shift",
     side: (container) =>
@@ -456,123 +865,237 @@ export const ChatContainer = forwardRef<
     scrollToBottom()
   }, [scrollToBottom])
 
+  const artifactHasContent = artifact.content.trim().length > 0
+  const artifactTakeoverActive = artifactTakeover && artifactPresented
+  const artifactLayoutOpen =
+    artifact.enabled && (artifact.visible || artifactPresented)
+
+  useLayoutEffect(() => {
+    const container = document.getElementById(elementId)
+    if (!container) return
+
+    const controls: string[] = []
+    if (showHistory && history.enabled && !historyOwnedByPage) {
+      controls.push("history")
+    }
+    if (artifact.enabled && !artifact.visible && artifactHasContent) {
+      controls.push("artifact")
+    }
+
+    const value = controls.join(" ")
+    if (value) {
+      container.dataset.inlineControls = value
+    } else {
+      delete container.dataset.inlineControls
+    }
+
+    return () => {
+      if (container.dataset.inlineControls === value) {
+        delete container.dataset.inlineControls
+      }
+    }
+  }, [
+    artifact.enabled,
+    artifact.visible,
+    artifactHasContent,
+    history.enabled,
+    historyOwnedByPage,
+    elementId,
+    showHistory,
+  ])
+
   return (
     <SlashCommandsContext.Provider value={slashCommands}>
-      {historyEnabled && (
+      {showHistory && history.enabled && !historyOwnedByPage && (
         <button
           type="button"
           ref={historyTriggerRef}
           className="shiny-chat-history-trigger"
           aria-label="Conversation history"
           aria-expanded={historyOpen}
+          aria-hidden={artifactTakeoverActive || undefined}
+          disabled={artifactTakeoverActive}
+          tabIndex={artifactTakeoverActive ? -1 : undefined}
           onClick={() => setHistoryOpen((v) => !v)}
         >
           <HistoryIcon />
         </button>
       )}
+      {artifact.enabled && !artifact.visible && artifactHasContent && (
+        <button
+          type="button"
+          ref={artifactRevealRef}
+          className="shiny-chat-artifact-trigger"
+          aria-label="Show artifact"
+          aria-controls={`${elementId}-artifact`}
+          aria-expanded={false}
+          title="Show artifact"
+          onClick={revealArtifact}
+        >
+          <ArtifactRevealIcon />
+        </button>
+      )}
       {/* Width-limited, centered content column. The container itself is
           full-width so the history trigger + drawer scrim (siblings of this
           wrapper) can span the whole element. */}
-      <div className="shiny-chat-wrapper">
-        <div className="shiny-chat-messages-wrapper">
-          <div
-            className="shiny-chat-messages"
-            ref={scrollRef}
-            onClick={onMessagesClick}
-            onFocus={handleFocusIn}
-            onBlur={handleFocusOut}
-            onKeyDown={onSuggestionKeydown}
-          >
-            <ChatScrollContext.Provider value={stopScroll}>
-              {/* Greeting lives outside contentRef so its growth (e.g. while a
+      <div
+        ref={artifactLayoutRef}
+        className="shiny-chat-layout"
+        style={
+          artifact.enabled || composerPosition.centered
+            ? ({
+                ...(artifact.enabled
+                  ? {
+                      "--shiny-chat-artifact-width": artifactLayoutWidth,
+                    }
+                  : {}),
+                "--shiny-chat-greeting-offset": `${composerPosition.greetingOffset}px`,
+                "--shiny-chat-composer-offset": `${composerPosition.composerOffset}px`,
+              } as React.CSSProperties)
+            : undefined
+        }
+        data-artifact-open={artifactLayoutOpen ? "" : undefined}
+        data-artifact-takeover={
+          artifactTakeover && artifactPresented ? "" : undefined
+        }
+        data-artifact-resizing={artifactResizing ? "" : undefined}
+        data-composer-centered={composerPosition.centered ? "" : undefined}
+        data-greeting-overflow={
+          composerPosition.greetingOverflows ? "" : undefined
+        }
+        data-composer-motion-ready={composerMotionReady ? "" : undefined}
+        data-composer-revealing={composerRevealing ? "" : undefined}
+        data-composer-resizing={composerResizing ? "" : undefined}
+      >
+        <div className="shiny-chat-wrapper">
+          <div className="shiny-chat-messages-wrapper">
+            <div
+              className="shiny-chat-messages"
+              ref={scrollRef}
+              onClick={onMessagesClick}
+              onFocus={handleFocusIn}
+              onBlur={handleFocusOut}
+              onKeyDown={onSuggestionKeydown}
+            >
+              <ChatScrollContext.Provider value={stopScroll}>
+                {/* Greeting lives outside contentRef so its growth (e.g. while a
                 streaming greeting fills in) does not trigger useStickToBottom
                 — only message growth does. Suggestion clicks inside the
                 greeting still reach the messages-level handlers via bubbling. */}
-              {greeting != null && <ChatGreeting greeting={greeting} />}
-              <div
-                className="shiny-chat-messages-content"
-                ref={handleContentRef}
-                role="log"
-                aria-live="polite"
-                {...(greeting?.status === "dismissing"
-                  ? { "data-greeting-dismissing": "" }
-                  : {})}
-              >
-                <ChatMessages
-                  messages={displayedMessages}
-                  iconAssistant={iconAssistant}
-                  // Editing/navigating requires the server-side history
-                  // controller, which only registers its input listeners
-                  // when history is enabled -- without this gate the
-                  // buttons would render but silently no-op on click.
-                  onEdit={historyEnabled ? onEdit : undefined}
-                  onNavigate={historyEnabled ? onNavigate : undefined}
-                  siblingNavigationPending={siblingNavigationPending}
-                  disabled={isStreaming}
-                  inputId={inputId}
-                  submitKey={submitKey}
-                  uploadAccept={uploadAccept}
-                  maxUploadSize={maxUploadSize}
-                  enableUpload={enableUpload}
-                />
-              </div>
-            </ChatScrollContext.Provider>
+                {greeting != null && <ChatGreeting greeting={greeting} />}
+                <div
+                  className="shiny-chat-messages-content"
+                  ref={handleContentRef}
+                  role="log"
+                  aria-live="polite"
+                  {...(greeting?.status === "dismissing"
+                    ? { "data-greeting-dismissing": "" }
+                    : {})}
+                >
+                  <ChatMessages
+                    messages={displayedMessages}
+                    iconAssistant={iconAssistant}
+                    // Editing/navigating requires the server-side history
+                    // controller, which only registers its input listeners
+                    // when history is enabled -- without this gate the
+                    // buttons would render but silently no-op on click.
+                    onEdit={history.enabled ? onEdit : undefined}
+                    onNavigate={history.enabled ? onNavigate : undefined}
+                    siblingNavigationPending={siblingNavigationPending}
+                    disabled={isStreaming}
+                    inputId={inputId}
+                    submitKey={submitKey}
+                    uploadAccept={uploadAccept}
+                    maxUploadSize={maxUploadSize}
+                    enableUpload={enableUpload}
+                  />
+                </div>
+              </ChatScrollContext.Provider>
+            </div>
+            <ScrollToBottomButton
+              isAtBottom={isAtBottom}
+              scrollToBottom={scrollToBottom}
+              streaming={!!streamingMessage || !!greeting?.streaming}
+            />
           </div>
-          <ScrollToBottomButton
-            isAtBottom={isAtBottom}
-            scrollToBottom={scrollToBottom}
-            streaming={!!streamingMessage || !!greeting?.streaming}
-          />
+
+          <div className="shiny-chat-composer" ref={composerRef}>
+            <div
+              className={
+                inputDisabled ? "shiny-chat-input disabled" : "shiny-chat-input"
+              }
+              onClick={onContainerClick}
+            >
+              <ChatInput
+                ref={chatInputRef}
+                transport={transport}
+                inputId={inputId}
+                uploadAccept={uploadAccept}
+                maxUploadSize={maxUploadSize}
+                disabled={inputDisabled}
+                hasTopShadow={!isAtBottom}
+                placeholder={inputPlaceholder}
+                onSend={onSend}
+                userMessages={userMessages}
+                enableCancel={enableCancel}
+                enableUpload={enableUpload}
+                cancelRequested={cancelRequested}
+                isStreaming={isStreaming}
+                onCancel={cancelStream}
+                slashCommands={slashCommands}
+                slashCommandId={slashCommandId}
+                submitKey={submitKey}
+              />
+            </div>
+
+            {footerEl && (
+              <RawDOM source={footerEl} className="shiny-chat-footer" />
+            )}
+          </div>
         </div>
 
-        <div
-          className={
-            inputDisabled ? "shiny-chat-input disabled" : "shiny-chat-input"
-          }
-          onClick={onContainerClick}
-        >
-          <ChatInput
-            ref={chatInputRef}
-            transport={transport}
-            inputId={inputId}
-            uploadAccept={uploadAccept}
-            maxUploadSize={maxUploadSize}
-            disabled={inputDisabled}
-            hasTopShadow={!isAtBottom}
-            placeholder={inputPlaceholder}
-            onSend={onSend}
-            userMessages={userMessages}
-            enableCancel={enableCancel}
-            enableUpload={enableUpload}
-            cancelRequested={cancelRequested}
-            isStreaming={isStreaming}
-            onCancel={cancelStream}
-            slashCommands={slashCommands}
-            slashCommandId={slashCommandId}
-            submitKey={submitKey}
+        {artifact.enabled && (
+          <ChatArtifact
+            artifact={artifact}
+            source={artifactSource}
+            panelId={`${elementId}-artifact`}
+            titleId={`${elementId}-artifact-title`}
+            takeover={artifactTakeover}
+            closeButtonRef={artifactCloseRef}
+            onClose={closeArtifact}
+            onWidthChange={setArtifactWidth}
+            onPresentationChange={setArtifactPresented}
+            onResizeStateChange={setArtifactResizing}
           />
-        </div>
-
-        {footerEl && <RawDOM source={footerEl} className="shiny-chat-footer" />}
+        )}
+        {artifact.enabled && (
+          <div
+            ref={artifactWidthProbeRef}
+            aria-hidden="true"
+            className="shiny-chat-artifact-width-probe"
+            style={{ width: artifact.width }}
+          />
+        )}
       </div>
 
-      {historyEnabled && (
+      {showHistory && history.enabled && !historyOwnedByPage && (
         <ChatHistoryDrawer
           isOpen={historyOpen}
           onClose={() => setHistoryOpen(false)}
           triggerRef={historyTriggerRef}
-          conversations={historyConversations ?? []}
-          activeId={historyActiveId ?? null}
-          busy={isStreaming}
-          onSelect={(convId) => {
-            transport.sendHistorySelect(elementId, convId)
-          }}
-          onNew={() => transport.sendHistoryNew(elementId)}
-          onRename={(convId, title) =>
-            transport.sendHistoryRename(elementId, convId, title)
-          }
-          onDelete={(convId) => transport.sendHistoryDelete(elementId, convId)}
-        />
+        >
+          <ChatHistoryContent
+            conversations={history.conversations}
+            activeId={history.activeId}
+            busy={history.busy}
+            connected={history.connected}
+            onSelect={historyStore.actions.select}
+            onNew={historyStore.actions.create}
+            onRename={historyStore.actions.rename}
+            onDelete={historyStore.actions.delete}
+            onActionComplete={() => setHistoryOpen(false)}
+          />
+        </ChatHistoryDrawer>
       )}
 
       {pendingUrl &&

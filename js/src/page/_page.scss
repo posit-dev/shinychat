@@ -1,0 +1,648 @@
+shiny-chat-page {
+  --_page-header-height: var(
+    --shiny-chat-page-header-height,
+    var(--bs-navbar-height, 3.5rem)
+  );
+  --_page-header-padding-x: var(--shiny-chat-page-header-padding-x, 0.75rem);
+  --_page-header-padding-y: var(
+    --shiny-chat-page-header-padding-y,
+    var(--bs-navbar-padding-y, 0.5rem)
+  );
+  --_page-sidebar-width: var(--shiny-chat-page-sidebar-width, 280px);
+  --_page-sidebar-padding: var(
+    --shiny-chat-page-sidebar-padding,
+    var(--bslib-sidebar-padding, var(--bslib-spacer, var(--bs-spacer, 1rem)))
+  );
+  --_page-surface-bg: var(--shiny-chat-page-surface-bg, var(--bs-body-bg, #fff));
+  --_page-sidebar-bg: var(--shiny-chat-page-sidebar-bg, var(--bs-body-bg, #fff));
+  --_page-canvas-bg: var(--shiny-chat-page-canvas-bg, var(--bs-body-bg, #fff));
+  --_page-border: var(--bs-border-width, 1px) solid var(
+    --shiny-chat-page-border-color,
+    var(--bs-border-color, color-mix(in srgb, var(--bs-body-color, #212529) 12%, transparent))
+  );
+  --_page-focus-ring-color: var(
+    --shiny-chat-page-focus-ring-color,
+    color-mix(in srgb, var(--bs-primary, #0d6efd) 32%, transparent)
+  );
+
+  display: grid;
+  grid-template-rows: minmax(
+    var(--_page-header-height),
+    max-content
+  ) minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  color: var(--bs-body-color, #212529);
+  background: var(--_page-canvas-bg);
+  overflow: hidden;
+}
+
+body:has(shiny-chat-page) > .toast-container:is(
+  [data-bslib-toast-container="top-right"],
+  [data-bslib-toast-container="top-center"],
+  [data-bslib-toast-container="top-left"]
+) {
+  top: var(
+    --shiny-chat-page-toast-offset,
+    var(--_page-header-height, 3.25rem)
+  ) !important;
+}
+
+.shiny-chat-page-header {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  min-width: 0;
+  min-height: var(--_page-header-height);
+  padding: var(--_page-header-padding-y) var(--_page-header-padding-x);
+  border-bottom: var(--_page-border);
+  background: var(--bs-body-bg, var(--_page-surface-bg));
+  color: var(--bs-body-color, #212529);
+}
+
+.shiny-chat-page-sidebar-toggle,
+.shiny-chat-page-identity,
+.shiny-chat-page-nav-link {
+  min-height: 2.75rem;
+  color: inherit;
+  background: transparent;
+  border: 0;
+}
+
+.shiny-chat-page-sidebar-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  padding: 0.375rem;
+  border-radius: var(--bs-border-radius, 0.375rem);
+}
+
+.shiny-chat-page-sidebar-icon {
+  display: block;
+  width: 1rem;
+  height: 1rem;
+  fill: currentcolor;
+}
+
+.shiny-chat-page-identity {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  min-width: 0;
+  gap: var(--shiny-chat-page-title-gap, 0.5rem);
+  padding: 0.375rem 0.5rem;
+  font-size: var(
+    --shiny-chat-page-title-font-size,
+    var(--bs-navbar-brand-font-size, 1.125rem)
+  );
+  font-weight: var(
+    --shiny-chat-page-title-font-weight,
+    var(--bs-navbar-brand-font-weight, 500)
+  );
+  line-height: var(--bs-navbar-brand-line-height, 1.2);
+  text-align: start;
+  border-radius: var(--bs-border-radius, 0.375rem);
+}
+
+.shiny-chat-page-identity[data-page-home] {
+  max-width: min(30ch, 35%);
+}
+
+.shiny-chat-page-identity[data-page-home] > .shiny-chat-page-identity-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shiny-chat-page-identity-icon,
+.shiny-chat-page-nav-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.shiny-chat-page-controls,
+.shiny-chat-page-nav,
+.shiny-chat-page-toolbar {
+  display: flex;
+  align-items: center;
+}
+
+.shiny-chat-page-controls-mount-desktop {
+  min-width: 0;
+  padding: 0.25rem;
+  margin: -0.25rem;
+  overflow: visible;
+  justify-self: stretch;
+}
+
+.shiny-chat-page-controls {
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  gap: var(
+    --shiny-chat-page-controls-gap,
+    var(--bs-navbar-nav-link-padding-x, 0.5rem)
+  );
+}
+
+.shiny-chat-page-nav {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 0.125rem;
+  justify-content: flex-start;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.shiny-chat-page-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.shiny-chat-page-toolbar {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 0.375rem;
+  justify-content: flex-end;
+}
+
+.shiny-chat-page-toolbar-scoped,
+.shiny-chat-page-toolbar-global {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  gap: 0.375rem;
+}
+
+.shiny-chat-page-toolbar-content {
+  display: contents;
+}
+
+.shiny-chat-page-toolbar > .shiny-chat-page-toolbar-scoped > .shiny-chat-page-toolbar-content > *,
+.shiny-chat-page-toolbar > .shiny-chat-page-toolbar-global > * {
+  min-width: 0;
+  max-width: 100%;
+  flex: 0 1 auto;
+}
+
+.shiny-chat-page-toolbar > .shiny-chat-page-toolbar-scoped > .shiny-chat-page-toolbar-content > .bslib-toolbar,
+.shiny-chat-page-toolbar > .shiny-chat-page-toolbar-global > .bslib-toolbar {
+  justify-content: flex-start;
+}
+
+.shiny-chat-page-toolbar-sources,
+.shiny-chat-page-toolbar-source {
+  display: none !important;
+}
+
+.shiny-chat-page-nav-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--shiny-chat-page-nav-link-gap, 0.375rem);
+  padding: var(--shiny-chat-page-nav-link-padding-y, 0.5rem)
+    var(--shiny-chat-page-nav-link-padding-x, 0.75rem);
+  font-size: var(
+    --shiny-chat-page-nav-link-font-size,
+    var(--bs-nav-link-font-size, inherit)
+  );
+  font-weight: var(
+    --shiny-chat-page-nav-link-font-weight,
+    var(--bs-nav-link-font-weight, inherit)
+  );
+  border-radius: var(--bs-border-radius, 0.375rem);
+}
+
+.shiny-chat-page-nav-link[aria-current="page"] {
+  color: var(--bs-primary-text-emphasis, var(--bs-primary, #0d6efd));
+  background: var(--bs-primary-bg-subtle, rgb(13 110 253 / 10%));
+}
+
+.shiny-chat-page-header[data-shiny-chat-page-nav-style="underline"] .shiny-chat-page-nav-link {
+  border-radius: 0;
+}
+
+.shiny-chat-page-header[data-shiny-chat-page-nav-style="underline"] .shiny-chat-page-nav-link[aria-current="page"] {
+  background: transparent;
+}
+
+.shiny-chat-page-header[data-shiny-chat-page-nav-style="underline"] .shiny-chat-page-nav-link[aria-current="page"]::after {
+  position: absolute;
+  right: 0.75rem;
+  bottom: -1px;
+  left: 0.75rem;
+  height: 2px;
+  content: "";
+  background: currentcolor;
+}
+
+.shiny-chat-page-sidebar-toggle:not(:disabled):hover,
+button.shiny-chat-page-identity:hover,
+.shiny-chat-page-nav-link:hover {
+  background: var(--bs-tertiary-bg, #f1f3f5);
+}
+
+.shiny-chat-page-sidebar-toggle:not(:disabled):focus-visible,
+button.shiny-chat-page-identity:focus-visible,
+.shiny-chat-page-nav-link:focus-visible {
+  outline: 0.2rem solid var(--_page-focus-ring-color);
+  outline-offset: 0.1rem;
+}
+
+.shiny-chat-page-sidebar-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.shiny-chat-page-body {
+  --_page-sidebar-track: 0px;
+
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, var(--_page-sidebar-track)) minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  background: var(--_page-canvas-bg);
+}
+
+.shiny-chat-page-sidebar {
+  display: flex;
+  flex-direction: column;
+  width: var(--_page-sidebar-width);
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border-right: var(--_page-border);
+  background: var(--_page-sidebar-bg);
+}
+
+.shiny-chat-page-sidebar .shiny-chat-history.shiny-chat-history-inline {
+  // Keep the wrapper transparent, but use the sidebar surface behind sticky
+  // headings so scrolling conversation rows do not show through.
+  --_history-inline-bg: var(--shiny-chat-history-bg, var(--_page-sidebar-bg));
+}
+
+.shiny-chat-page-sidebar:not([data-sidebar-key]) {
+  display: none;
+}
+
+.shiny-chat-page-sidebar[hidden],
+.shiny-chat-page-sidebar-toggle[hidden],
+.shiny-chat-page-sidebar-resizer[hidden] {
+  display: none;
+}
+
+.shiny-chat-page-sidebar-panel {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--_page-sidebar-padding);
+  overflow: auto;
+  padding: var(--_page-sidebar-padding);
+}
+
+.shiny-chat-page-controls-mount-mobile {
+  display: none;
+}
+
+.shiny-chat-page-main,
+.shiny-chat-page-panel,
+.shiny-chat-page-home {
+  min-width: 0;
+  min-height: 0;
+}
+
+.shiny-chat-page-main {
+  position: relative;
+  grid-column: 2;
+  overflow: auto;
+  background: var(--_page-canvas-bg);
+}
+
+.shiny-chat-page-sidebar-resizer {
+  inset-inline-start: calc(
+    var(--shiny-chat-page-sidebar-rendered-width, var(--_page-sidebar-width)) -
+      var(--shiny-chat-resize-handle-hit-target)
+  );
+}
+
+@media (min-width: 800px) {
+  shiny-chat-page[data-sidebar-motion-ready] .shiny-chat-page-body {
+    transition: grid-template-columns 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  shiny-chat-page[data-sidebar-open] .shiny-chat-page-body {
+    --_page-sidebar-track: var(
+      --shiny-chat-page-sidebar-rendered-width,
+      var(--_page-sidebar-width)
+    );
+  }
+
+  .shiny-chat-page-header {
+    grid-template-columns: auto fit-content(12rem) minmax(0, 1fr);
+  }
+
+  .shiny-chat-page-header[data-sidebar-toggle-hidden] {
+    grid-template-columns: fit-content(12rem) minmax(0, 1fr);
+  }
+
+  .shiny-chat-page-identity {
+    min-width: auto;
+  }
+
+  .shiny-chat-page-identity[data-page-home] {
+    max-width: 12rem;
+  }
+
+  .shiny-chat-page-header:has(.shiny-chat-page-identity:not([data-page-home])) {
+    grid-template-columns: auto minmax(0, max-content) minmax(0, 1fr);
+  }
+
+  .shiny-chat-page-header[data-sidebar-toggle-hidden]:has(
+      .shiny-chat-page-identity:not([data-page-home])
+    ) {
+    grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  }
+
+  .shiny-chat-page-identity:not([data-page-home]) {
+    min-width: 0;
+  }
+
+  .shiny-chat-page-identity:not([data-page-home])
+    > .shiny-chat-page-identity-title {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .shiny-chat-page-toolbar,
+  .shiny-chat-page-toolbar > .shiny-chat-page-toolbar-scoped > .shiny-chat-page-toolbar-content > .bslib-toolbar,
+  .shiny-chat-page-toolbar > .shiny-chat-page-toolbar-global > .bslib-toolbar {
+    flex-wrap: nowrap;
+  }
+
+  .shiny-chat-page-sidebar {
+    width: 100%;
+    min-width: 0;
+    max-width: var(--shiny-chat-page-sidebar-max-width, none);
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-0.75rem);
+  }
+
+  shiny-chat-page[data-sidebar-motion-ready] .shiny-chat-page-sidebar {
+    transition:
+      opacity 140ms ease-out,
+      transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  shiny-chat-page[data-sidebar-open] .shiny-chat-page-sidebar {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(0);
+  }
+
+  shiny-chat-page:is(
+    [data-sidebar-resizing],
+    [data-responsive-takeover],
+    [data-sidebar-handoff]
+  ) :is(.shiny-chat-page-body, .shiny-chat-page-sidebar) {
+    transition: none;
+  }
+}
+
+.shiny-chat-page-panel {
+  width: 100%;
+  height: 100%;
+}
+
+.shiny-chat-page-panel-content {
+  width: 100%;
+  max-width: var(--shiny-chat-page-content-width, min(680px, 100%));
+  min-width: 0;
+  margin-inline: auto;
+  padding-block: var(
+    --shiny-chat-page-panel-padding-block,
+    var(--bs-spacer, 1rem)
+  );
+  padding-inline: max(
+      var(--shiny-chat-page-panel-padding-inline, var(--bs-spacer, 1rem)),
+      env(safe-area-inset-left)
+    )
+    max(
+      var(--shiny-chat-page-panel-padding-inline, var(--bs-spacer, 1rem)),
+      env(safe-area-inset-right)
+    );
+}
+
+.shiny-chat-page-panel-content[data-content-full-bleed="true"] {
+  max-width: none;
+  padding: 0;
+}
+
+.shiny-chat-page-panel[hidden],
+.shiny-chat-page-sidebar-panel[hidden] {
+  display: none;
+}
+
+.shiny-chat-page-home {
+  overflow: hidden;
+  background: var(--_page-surface-bg);
+}
+
+.shiny-chat-page-home > shiny-chat-container {
+  // Preserve device insets for every page theme. page_chat_theme() raises the
+  // baseline gutter through the public page tokens below.
+  --shiny-chat-fill-padding: max(
+    var(--shiny-chat-page-fill-padding, 0.25rem),
+    env(safe-area-inset-left),
+    env(safe-area-inset-right)
+  );
+  --shiny-chat-input-padding-bottom: max(
+    var(--shiny-chat-page-input-padding-bottom, 0.25rem),
+    env(safe-area-inset-bottom)
+  );
+
+  width: 100%;
+  height: 100%;
+  background: var(--_page-surface-bg);
+}
+
+.shiny-chat-page-sidebar-scrim {
+  display: none;
+}
+
+.shiny-chat-page-sidebar-close,
+.shiny-chat-page-sidebar > .bslib-toolbar:has(.shiny-chat-page-sidebar-close) {
+  display: none;
+}
+
+@media (max-width: 799px) {
+  .shiny-chat-page-header {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding-inline: max(var(--_page-header-padding-x), env(safe-area-inset-left)) max(var(--_page-header-padding-x), env(safe-area-inset-right));
+  }
+
+  .shiny-chat-page-controls-mount-desktop {
+    display: none;
+  }
+
+  .shiny-chat-page-panel-content {
+    padding-block: var(
+      --shiny-chat-page-panel-padding-block-mobile,
+      var(--bs-spacer, 1rem)
+    );
+  }
+
+  .shiny-chat-page-body {
+    display: block;
+  }
+
+  .shiny-chat-page-main {
+    height: 100%;
+  }
+
+  .shiny-chat-page-sidebar {
+    position: fixed;
+    z-index: 6;
+    inset: 0 auto 0 0;
+    display: flex;
+    width: min(88vw, 22rem);
+    max-width: none;
+    padding-bottom: env(safe-area-inset-bottom);
+    visibility: hidden;
+    transform: translateX(-100%);
+    transition:
+      transform 180ms ease-out,
+      visibility 0s linear 180ms;
+    box-shadow: 0.5rem 0 1.5rem rgb(0 0 0 / 18%);
+  }
+
+  .shiny-chat-page-sidebar:not([data-sidebar-key]) {
+    display: flex;
+  }
+
+  shiny-chat-page[data-mobile-menu-open] .shiny-chat-page-sidebar {
+    visibility: visible;
+    transform: translateX(0);
+    transition-delay: 0s;
+  }
+
+  .shiny-chat-page-controls-mount-mobile {
+    display: block;
+    flex: 0 0 auto;
+    padding: max(3.25rem, calc(env(safe-area-inset-top) + 3.25rem)) 0.5rem 0.5rem;
+    border-bottom: var(--_page-border);
+  }
+
+  .shiny-chat-page-sidebar > .bslib-toolbar:has(
+      .shiny-chat-page-sidebar-close
+    ) {
+    position: absolute;
+    z-index: 1;
+    top: max(0.5rem, env(safe-area-inset-top));
+    right: 0.5rem;
+    display: flex;
+    padding: 0;
+    margin: 0;
+  }
+
+  .shiny-chat-page-sidebar > button.shiny-chat-page-sidebar-close {
+    position: absolute;
+    z-index: 1;
+    top: max(0.5rem, env(safe-area-inset-top));
+    right: 0.5rem;
+    place-items: center;
+  }
+
+  .shiny-chat-page-sidebar-close {
+    display: grid;
+    width: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    border-radius: var(--bs-border-radius, 0.375rem);
+  }
+
+  .shiny-chat-page-sidebar > button.shiny-chat-page-sidebar-close::before,
+  .shiny-chat-page-sidebar > button.shiny-chat-page-sidebar-close::after {
+    position: absolute;
+    width: 1.125rem;
+    height: 0.125rem;
+    content: "";
+    background: currentcolor;
+    border-radius: 0.125rem;
+  }
+
+  .shiny-chat-page-sidebar > button.shiny-chat-page-sidebar-close::before {
+    transform: rotate(45deg);
+  }
+
+  .shiny-chat-page-sidebar > button.shiny-chat-page-sidebar-close::after {
+    transform: rotate(-45deg);
+  }
+
+  .shiny-chat-page-sidebar-resizer {
+    display: none;
+  }
+
+  .shiny-chat-page-sidebar-close:hover {
+    background: var(--bs-tertiary-bg, #f1f3f5);
+  }
+
+  .shiny-chat-page-sidebar-close:focus-visible {
+    outline: 0.2rem solid var(--_page-focus-ring-color);
+    outline-offset: 0.1rem;
+  }
+
+  .shiny-chat-page-controls-mount-mobile .shiny-chat-page-controls,
+  .shiny-chat-page-controls-mount-mobile .shiny-chat-page-nav,
+  .shiny-chat-page-controls-mount-mobile .shiny-chat-page-toolbar,
+  .shiny-chat-page-controls-mount-mobile .shiny-chat-page-toolbar-scoped,
+  .shiny-chat-page-controls-mount-mobile .shiny-chat-page-toolbar-global {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .shiny-chat-page-controls-mount-mobile .shiny-chat-page-toolbar-content > *,
+  .shiny-chat-page-controls-mount-mobile .shiny-chat-page-toolbar-global > * {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+
+  .shiny-chat-page-controls-mount-mobile .shiny-chat-page-nav-link {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .shiny-chat-page-sidebar-scrim {
+    position: fixed;
+    z-index: 5;
+    inset: 0;
+    display: none;
+    padding: 0;
+    background: rgb(0 0 0 / 35%);
+    border: 0;
+  }
+
+  shiny-chat-page[data-mobile-menu-open] .shiny-chat-page-sidebar-scrim {
+    display: block;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shiny-chat-page-sidebar {
+    transition: none;
+  }
+}

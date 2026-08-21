@@ -5,14 +5,23 @@ export interface PortalTheme {
   style: CSSProperties & Record<`--${string}`, string>
 }
 
-export function portalTheme(reference: globalThis.Element | null): PortalTheme {
+export function portalTheme(
+  reference: globalThis.Element | null,
+  customProperties: readonly `--${string}`[] = [],
+): PortalTheme {
   const style: PortalTheme["style"] = {}
   if (!(reference instanceof HTMLElement)) return { style }
 
+  const includedProperties = new Set(customProperties)
   const computed = getComputedStyle(reference)
   for (let index = 0; index < computed.length; index += 1) {
     const property = computed.item(index)
-    if (!property.startsWith("--bs-")) continue
+    if (
+      !property.startsWith("--bs-") &&
+      !includedProperties.has(property as `--${string}`)
+    ) {
+      continue
+    }
     const value = computed.getPropertyValue(property).trim()
     if (value) style[property as `--${string}`] = value
   }

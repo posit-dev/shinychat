@@ -243,9 +243,95 @@ Suggested next steps:
 
 ## Layouts
 
+### Full-window page with navigation
+
+For a full-window chat with navigation, use `page_chat()`. It owns the page
+container, the mounted chat, and the responsive app-menu sidebar. The example
+below uses a local echo response, so it can be run without an LLM provider:
+
+```r
+library(shiny)
+library(shinychat)
+
+artifact_content <- function(label) {
+  tags$div(
+    tags$h3("Preview"),
+    tags$p(label)
+  )
+}
+
+ui <- page_chat(
+  "Assistant",
+  messages = "Welcome! Ask a question to get started.",
+  toolbar = actionButton("show_preview", "Show preview"),
+  toolbar_global = bslib::toolbar(
+    bslib::input_dark_mode(),
+    actionButton("help", "Help")
+  ),
+  sidebar = chat_sidebar(
+    tags$p("Home tools"),
+    history = FALSE,
+    open = "open"
+  ),
+  pages = list(
+    chat_nav_panel(
+      "About",
+      tags$p("This is a secondary page."),
+      value = "about",
+    ),
+    chat_nav_panel(
+      "Settings",
+      tags$p("Settings live here."),
+      value = "settings",
+      sidebar = chat_sidebar(
+        tags$p("Settings menu"),
+        width = 320,
+        open = "closed"
+      ),
+      toolbar = actionButton("save_settings", "Save settings")
+    )
+  ),
+  artifact = chat_artifact(
+    artifact_content("Initial preview"),
+    title = "Preview"
+  )
+)
+
+server <- function(input, output, session) {
+  observeEvent(input$chat_user_input, {
+    chat_append("chat", paste0("You said: ", input$chat_user_input))
+  })
+
+  observeEvent(input$show_preview, {
+    chat_artifact_show(
+      "chat",
+      content = artifact_content("Preview opened from the server"),
+      title = "Preview"
+    )
+  })
+}
+
+shinyApp(ui, server)
+```
+
+This is the `page_chat()` equivalent of
+`bslib::page_fillable(chat_ui("chat", fill = TRUE))`. Do not wrap
+`page_chat()` in another page container or pass `height`, `fill`, or
+`show_history`; those options belong to the page. Use `chat_ui()` directly
+when the chat is embedded alongside other top-level UI or inside an existing
+`bslib` layout.
+
+Set `history = TRUE` in a `chat_sidebar()` when the chat is connected to
+`chat_server()` or `chat_enable_history()`. Use `chat_artifact_update()`,
+`chat_artifact_hide()`, and `chat_artifact_toggle()` for subsequent artifact
+updates. Artifact content may contain ordinary Shiny inputs and outputs.
+
 ### Screen-filling layout
 
 Use [`page_fillable()`](https://rstudio.github.io/bslib/reference/page_fillable.html) with `fillable_mobile = TRUE` if you want the chatbot input to stay anchored at the bottom of the page and the chat to fill the remaining space.
+
+This remains the compatible choice when the page contains other top-level
+content or when you need to compose the chat with an existing `bslib` layout.
 
 ```r
 ui <- bslib::page_fillable(
@@ -253,6 +339,26 @@ ui <- bslib::page_fillable(
   fillable_mobile = TRUE
 )
 ```
+
+`toolbar` is scoped to the home page. Navigation pages default to
+`toolbar = NULL`, which omits the scoped segment. Supply UI to replace that
+segment. Supply UI to add a page-specific toolbar. Use `toolbar_global` for
+actions that remain mounted across every page; it is
+rendered after the scoped segment and preserves its Shiny input and output
+state while controls move between desktop and mobile layouts. On narrow
+screens, navigation and toolbar controls move into the app menu above the
+active page's sidebar content without duplicating IDs.
+
+The package includes runnable navigation and artifact-control examples. They
+use local echo responses, so no provider credentials are required:
+
+```r
+shiny::runExample("page-chat-navigation", package = "shinychat")
+shiny::runExample("page-chat-artifact-controls", package = "shinychat")
+```
+
+The [R example source](https://github.com/posit-dev/shinychat/tree/main/pkg-r/inst/examples-shiny)
+is available in the repository.
 
 ```{r, echo=FALSE, fig.cap="Screenshot of a chatbot filling the page.", fig.align='center', out.extra='class="rounded shadow"', out.width='100%'}
 knitr::include_graphics("images/chat-page_fillable.png")

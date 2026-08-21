@@ -33,12 +33,10 @@ You'll also need to install the [ellmer](https://ellmer.tidyverse.org/) package 
 library(shiny)
 library(shinychat)
 
-ui <- bslib::page_fillable(
-  chat_ui(
-    id = "chat",
-    messages = "**Hello!** How can I help you today?"
-  ),
-  fillable_mobile = TRUE
+ui <- page_chat(
+  "Assistant",
+  id = "chat",
+  messages = "**Hello!** How can I help you today?"
 )
 
 server <- function(input, output, session) {
@@ -61,3 +59,43 @@ shinyApp(ui, server)
 ## Next steps
 
 Ready to start building a chatbot with shinychat? See [Get Started](https://posit-dev.github.io/shinychat/r/articles/get-started.html) to learn more.
+
+Use `page_chat()` when the chat owns the full browser window. It includes
+responsive navigation and sidebar support:
+
+```r
+ui <- page_chat(
+  "Assistant",
+  toolbar = actionButton("clear_chat", "Clear conversation"),
+  toolbar_global = bslib::toolbar(
+    bslib::input_dark_mode(),
+    actionButton("help", "Help")
+  ),
+  sidebar = chat_sidebar(tags$p("Tools"), history = FALSE),
+  pages = list(
+    chat_nav_panel(
+      "About",
+      tags$p("About this app."),
+      value = "about",
+    ),
+    chat_nav_panel(
+      "Settings",
+      tags$p("Settings"),
+      toolbar = actionButton("save_settings", "Save settings")
+    )
+  ),
+  artifact = chat_artifact(tags$p("Preview content"), title = "Preview")
+)
+```
+
+For an embedded chat or a layout with other top-level content, continue using
+`chat_ui()` inside `bslib::page_fillable()`, `bslib::page_sidebar()`, or
+another suitable container. `page_chat()` owns its page composition and should
+not be wrapped in another page container.
+
+The package includes credential-free `page_chat()` examples. Run them with:
+
+```r
+shiny::runExample("page-chat-navigation", package = "shinychat")
+shiny::runExample("page-chat-artifact-controls", package = "shinychat")
+```

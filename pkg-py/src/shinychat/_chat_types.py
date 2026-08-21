@@ -129,6 +129,26 @@ class UpdateSlashCommandsAction(TypedDict):
     commands: list[SlashCommandDef]
 
 
+class ArtifactShowAction(TypedDict):
+    type: Literal["artifact_show"]
+    content: NotRequired[str]
+    title: NotRequired[str]
+
+
+class ArtifactHideAction(TypedDict):
+    type: Literal["artifact_hide"]
+
+
+class ArtifactToggleAction(TypedDict):
+    type: Literal["artifact_toggle"]
+
+
+class ArtifactUpdateAction(TypedDict):
+    type: Literal["artifact_update"]
+    content: NotRequired[str]
+    title: NotRequired[str]
+
+
 class HistoryUpdateAction(TypedDict):
     type: Literal["history_update"]
     enabled: bool
@@ -164,6 +184,10 @@ ChatAction = Union[
     GreetingEndAction,
     GreetingClearAction,
     UpdateSlashCommandsAction,
+    ArtifactShowAction,
+    ArtifactHideAction,
+    ArtifactToggleAction,
+    ArtifactUpdateAction,
     HistoryUpdateAction,
     HistoryNavigateAction,
     UpdateSiblingsAction,

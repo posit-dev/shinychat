@@ -2,6 +2,12 @@
 
 ## New features and improvements
 
+* Added `page_chat()` for full-window chat pages with persistent chat
+  navigation, responsive sidebars, optional page-specific sidebars, and
+  artifact panels. Use it instead of
+  `bslib::page_fillable(chat_ui(...))` when shinychat owns the page
+  composition; continue using `chat_ui()` for embedded or mixed layouts.
+
 * Web search and web fetch responses from ellmer now show their activity and citations directly in the chat. Readers can open a citation beside its claim or use the message-wide Sources pill. `ContentCitation@grounded_span` links each citation to the answer text that it supports.
 
 * Assistant messages can now attach source details to specific claims with the `<shiny-aside>` markup convention. This convention powers shinychat's web citations and can also support custom RAG workflows. Add an inline `<shiny-aside>` tag with source details and an optional `grounded-span`. Shinychat shows a compact source pill and highlights the related text when the pill is open. See the `Asides` section in `?chat_append`.
@@ -24,6 +30,15 @@
 * Added `submit_key` parameter to `chat_ui()`: `"enter"` (default, Enter submits) or `"enter+modifier"` (Ctrl/Cmd+Enter submits, plain Enter inserts a line break). The input remains editable while a response is streaming — only submission is blocked, not typing. (#251)
 
 ## Breaking changes
+
+* `chat_app()` now configures its full-window page through `page_chat()`.
+  Arguments in `...` are passed to `page_chat()` instead of
+  `shiny::shinyApp()`: use `app_options` instead of `options`,
+  `bookmark_store` instead of `enableBookmarking`, and compose `page_chat()`
+  with `chat_server()` when you need `onStart` or `uiPattern`. `chat_app()`
+  now owns the page layout, so its `title`, `icon`, and `id` configure the
+  page-chat shell. Existing layouts that embed chat should use `chat_ui()`
+  and `chat_server()` directly.
 
 * The CSS classes used by the external-link dialog, thinking display, and tool-result images/PDFs now use the `.shiny-chat-*` prefix instead of `.shinychat-*`. The thinking display's custom properties and animation names have likewise changed from `--shinychat-thinking-*` / `shinychat-thinking-*` to `--shiny-chat-thinking-*` / `shiny-chat-thinking-*`. Update any custom CSS that targets these identifiers. (#285, #286)
 

@@ -28,6 +28,8 @@ website:
     left:
       - text: Get Started
         href: index.qmd
+      - text: Page chat
+        href: page-chat.qmd
       - text: API Reference
         href: api/index.qmd
     tools:
@@ -74,6 +76,22 @@ quartodoc:
         - types.Attachment
         - chat_ui
         - chat_greeting
+    - title: Page chat
+      options:
+        signature_name: relative
+        include_imports: false
+        include_inherited: false
+        include_attributes: true
+        include_classes: true
+        include_functions: true
+      contents:
+        - ChatArtifactController
+        - page_chat
+        - page_chat_theme
+        - chat_sidebar
+        - chat_nav_panel
+        - chat_artifact
+        - chat_ui_history
     - title: Tool display
       options:
         signature_name: relative
@@ -96,6 +114,7 @@ quartodoc:
         include_functions: true
       contents:
         - express.Chat
+        - express.page_chat
     - title: Conversation history
       options:
         signature_name: relative

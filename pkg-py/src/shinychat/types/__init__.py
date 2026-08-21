@@ -9,6 +9,7 @@ from .._history_store import (
     FileConversationStore,
 )
 from .._history_types import ConversationMeta, ConversationRecord
+from .._page_chat import ChatArtifact, ChatNavPanel, ChatSidebar
 
 try:
     from .._chat_normalize_chatlas import ToolResultDisplay
@@ -38,4 +39,7 @@ __all__ = [
     "ConversationStore",
     "FileConversationStore",
     "ToolResultDisplay",
+    "ChatArtifact",
+    "ChatNavPanel",
+    "ChatSidebar",
 ]
