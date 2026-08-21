@@ -33,6 +33,7 @@ app_ui = page_chat(
         ui.toolbar_input_button("show_preview", "Show preview"),
     ),
     toolbar_global=ui.toolbar(
+        ui.input_dark_mode(),
         ui.toolbar_input_button(
             "show_settings",
             "Answer settings",

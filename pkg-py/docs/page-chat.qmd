@@ -81,7 +81,10 @@ app_ui = page_chat(
     "Research assistant",
     id="chat",
     toolbar=ui.input_action_button("clear_chat", "Clear conversation"),
-    toolbar_global=ui.input_action_button("help", "Help"),
+    toolbar_global=ui.toolbar(
+        ui.input_dark_mode(),
+        ui.input_action_button("help", "Help"),
+    ),
     sidebar=chat_sidebar(
         ui.p("Recent conversations"),
         history=False,
@@ -201,7 +204,10 @@ page_chat(
     "Research assistant",
     id="chat",
     toolbar=ui.input_action_button("clear_chat", "Clear conversation"),
-    toolbar_global=ui.input_action_button("help", "Help"),
+    toolbar_global=ui.toolbar(
+        ui.input_dark_mode(),
+        ui.input_action_button("help", "Help"),
+    ),
     sidebar=chat_sidebar(history=False),
     pages=[
         chat_nav_panel(

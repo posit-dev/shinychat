@@ -75,6 +75,7 @@ ui <- page_chat(
     bslib::toolbar_input_button("show_preview", "Show preview")
   ),
   toolbar_global = bslib::toolbar(
+    bslib::input_dark_mode(),
     bslib::toolbar_input_button(
       "show_settings",
       "Answer settings",

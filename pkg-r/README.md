@@ -67,7 +67,10 @@ responsive navigation and sidebar support:
 ui <- page_chat(
   "Assistant",
   toolbar = actionButton("clear_chat", "Clear conversation"),
-  toolbar_global = actionButton("help", "Help"),
+  toolbar_global = bslib::toolbar(
+    bslib::input_dark_mode(),
+    actionButton("help", "Help")
+  ),
   sidebar = chat_sidebar(tags$p("Tools"), history = FALSE),
   pages = list(
     chat_nav_panel(

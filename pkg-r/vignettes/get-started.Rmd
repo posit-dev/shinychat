@@ -264,7 +264,10 @@ ui <- page_chat(
   "Assistant",
   messages = "Welcome! Ask a question to get started.",
   toolbar = actionButton("show_preview", "Show preview"),
-  toolbar_global = actionButton("help", "Help"),
+  toolbar_global = bslib::toolbar(
+    bslib::input_dark_mode(),
+    actionButton("help", "Help")
+  ),
   sidebar = chat_sidebar(
     tags$p("Home tools"),
     history = FALSE,
