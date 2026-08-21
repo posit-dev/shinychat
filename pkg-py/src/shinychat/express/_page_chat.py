@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Optional, Sequence, Union
 
 from htmltools import HTML, Tag, TagChild, TagList
@@ -15,6 +16,7 @@ from .._utils_types import MISSING, MISSING_TYPE
 
 if TYPE_CHECKING:
     from shiny.ui import Theme
+    from shiny.ui._html_deps_external import ThemeProvider
     from shiny.ui.css import CssUnit
 
     from .._chat_types import ChatGreeting, ChatMessage, ChatMessageDict
@@ -38,7 +40,7 @@ def page_chat(
     artifact: bool | ChatArtifact = True,
     window_title: str | None = None,
     lang: str | None = None,
-    theme: Theme | None = None,
+    theme: str | Path | Theme | ThemeProvider | None = None,
     messages: Optional[
         Iterable[str | TagChild | "ChatMessageDict" | "ChatMessage" | Any]
     ] = None,

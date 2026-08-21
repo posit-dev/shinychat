@@ -1033,7 +1033,7 @@ chat_validate_sidebar <- function(sidebar) {
     return(invisible())
   }
   cli::cli_abort(
-    "{.arg sidebar} must be {.code TRUE}, {.code FALSE}, or a {.fn chat_sidebar} or {.fn bslib::sidebar} configuration."
+    "{.arg sidebar} must be {.code NULL}, {.code TRUE}, {.code FALSE}, or a {.fn chat_sidebar} or {.fn bslib::sidebar} configuration."
   )
 }
 

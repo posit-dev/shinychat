@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 from math import isfinite
+from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -21,6 +22,7 @@ from ._utils_types import MISSING, MISSING_TYPE
 
 if TYPE_CHECKING:
     from shiny.ui import Theme
+    from shiny.ui._html_deps_external import ThemeProvider
     from shiny.ui.css import CssUnit
 
     from ._chat_types import ChatGreeting, ChatMessage, ChatMessageDict
@@ -81,7 +83,7 @@ def page_chat(
     artifact: bool | ChatArtifact = True,
     window_title: str | None = None,
     lang: str | None = None,
-    theme: Theme | None = None,
+    theme: str | Path | Theme | ThemeProvider | None = None,
     messages: Optional[
         Iterable[str | TagChild | "ChatMessageDict" | "ChatMessage" | Any]
     ] = None,
@@ -494,7 +496,7 @@ def chat_nav_panel(
         raise ValueError("`value` must not be an empty string.")
     if sidebar is not None and not isinstance(sidebar, (bool, ChatSidebar)):
         raise TypeError(
-            "`sidebar` must be False, True, or a shinychat `ChatSidebar`; "
+            "`sidebar` must be None, False, True, or a shinychat `ChatSidebar`; "
             "raw Shiny Sidebar objects are not supported."
         )
     return ChatNavPanel(
@@ -621,7 +623,7 @@ def _normalize_page_config(
 ]:
     if sidebar is not None and not isinstance(sidebar, (bool, ChatSidebar)):
         raise TypeError(
-            "`sidebar` must be False, True, or a shinychat `ChatSidebar`; "
+            "`sidebar` must be None, False, True, or a shinychat `ChatSidebar`; "
             "raw Shiny Sidebar objects are not supported."
         )
 
@@ -666,7 +668,7 @@ def _normalize_page_config(
             panel.sidebar, (bool, ChatSidebar)
         ):
             raise TypeError(
-                "Navigation page sidebars must be False, True, or a "
+                "Navigation page sidebars must be None, False, True, or a "
                 "shinychat `ChatSidebar`."
             )
         value = panel.title if panel.value is None else panel.value
@@ -882,7 +884,7 @@ def _render_page_chat(
     sidebar: bool | ChatSidebar | None = None,
     window_title: str | None = None,
     lang: str | None = None,
-    theme: Theme | None = None,
+    theme: str | Path | Theme | ThemeProvider | None = None,
 ) -> Tag:
     from shiny import ui
     from shiny.module import resolve_id
