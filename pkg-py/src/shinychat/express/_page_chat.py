@@ -14,6 +14,7 @@ from .._page_chat import (
 from .._utils_types import MISSING, MISSING_TYPE
 
 if TYPE_CHECKING:
+    from shiny.ui import Theme
     from shiny.ui.css import CssUnit
 
     from .._chat_types import ChatGreeting, ChatMessage, ChatMessageDict
@@ -26,18 +27,18 @@ _OWNERSHIP_ERROR = (
 
 def page_chat(
     title: TagChild,
-    icon: TagChild | None = None,
     *,
+    icon: TagChild | None = None,
     id: str = "chat",
     pages: Sequence[ChatNavPanel] | None = None,
-    toolbar: TagChild | None = None,
+    toolbar: TagChild | None | MISSING_TYPE = MISSING,
     toolbar_global: TagChild | None = None,
     navbar_options: Any = None,
     sidebar: bool | ChatSidebar | None = None,
     artifact: bool | ChatArtifact = True,
     window_title: str | None = None,
     lang: str | None = None,
-    theme: Any = None,
+    theme: Theme | None = None,
     messages: Optional[
         Iterable[str | TagChild | "ChatMessageDict" | "ChatMessage" | Any]
     ] = None,
@@ -74,8 +75,9 @@ def page_chat(
         Secondary pages created with :func:`~shinychat.chat_nav_panel`.
     toolbar
         Optional home-page-scoped HTML child displayed with the navigation
-        controls. A page's ``chat_nav_panel(toolbar=)`` can replace this
-        segment.
+        controls. When omitted, the toolbar contains Shiny's dark/light mode
+        toggle. Pass ``None`` to omit it. A page's
+        ``chat_nav_panel(toolbar=)`` can replace this segment.
     toolbar_global
         Optional persistent HTML child displayed after the page-scoped toolbar
         in the navigation controls.
@@ -86,11 +88,11 @@ def page_chat(
     sidebar
         Home-page sidebar. When omitted or ``True``, the page uses the default
         conversation-history sidebar. ``False`` removes it, and a
-        :class:`~shinychat.ChatSidebar` supplies custom content and behavior.
+        :class:`~shinychat.types.ChatSidebar` supplies custom content and behavior.
         Raw :class:`shiny.ui.Sidebar` objects are not supported.
     artifact
         Whether the chat has an artifact region. Pass a
-        :class:`~shinychat.ChatArtifact` to configure its initial content and
+        :class:`~shinychat.types.ChatArtifact` to configure its initial content and
         behavior.
     window_title
         Optional document title. Use this when ``title`` is an HTML child or
@@ -188,14 +190,16 @@ def page_chat(
             sidebar=sidebar,
             window_title=page_options["window_title"],
             lang=page_options["lang"],
-            theme=page_options["theme"],
+            theme=page_options.get("theme"),
         )
 
-    ui.page_opts(
-        title=title,  # pyright: ignore[reportArgumentType]
-        window_title=window_title,  # pyright: ignore[reportArgumentType]
-        lang=lang,  # pyright: ignore[reportArgumentType]
-        theme=theme,
-        page_fn=page_fn,
-    )
+    page_options: dict[str, Any] = {
+        "title": title,
+        "window_title": window_title,
+        "lang": lang,
+        "page_fn": page_fn,
+    }
+    if theme is not None:
+        page_options["theme"] = theme
+    ui.page_opts(**page_options)
     return chat_root

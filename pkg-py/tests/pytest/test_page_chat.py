@@ -6,12 +6,10 @@ import re
 from typing import Any, cast
 
 import pytest
+import shinychat
 from htmltools import HTMLDependency, Tag, tags
 from shiny import module, ui
 from shinychat import (
-    ChatArtifact,
-    ChatNavPanel,
-    ChatSidebar,
     chat_artifact,
     chat_nav_panel,
     chat_sidebar,
@@ -20,7 +18,9 @@ from shinychat import (
     page_chat,
     page_chat_theme,
 )
+from shinychat._utils_types import MISSING
 from shinychat.express import Chat as ExpressChat
+from shinychat.types import ChatArtifact, ChatNavPanel, ChatSidebar
 
 
 def test_public_page_chat_configuration_exports() -> None:
@@ -31,6 +31,9 @@ def test_public_page_chat_configuration_exports() -> None:
     assert isinstance(chat_nav_panel("About"), ChatNavPanel)
     assert callable(page_chat)
     assert callable(page_chat_theme)
+    assert not hasattr(shinychat, "ChatArtifact")
+    assert not hasattr(shinychat, "ChatNavPanel")
+    assert not hasattr(shinychat, "ChatSidebar")
 
 
 def test_page_chat_theme_composes_preset_and_caller_overrides() -> None:
@@ -167,9 +170,9 @@ def test_chat_nav_panel_validates_sidebar_and_navigation_values() -> None:
         chat_nav_panel(cast(Any, tags.span("About")))
     with pytest.raises(ValueError, match="empty CSS width"):
         chat_nav_panel("About", content_width=" ")
-    assert chat_nav_panel("About", toolbar=cast(Any, {"class": "bad"})).toolbar == {
-        "class": "bad"
-    }
+    assert chat_nav_panel(
+        "About", toolbar=cast(Any, {"class": "bad"})
+    ).toolbar == {"class": "bad"}
 
 
 def test_chat_ui_history_resolves_id_and_forwards_html_attributes() -> None:
@@ -266,7 +269,7 @@ def test_core_and_express_ui_signatures_include_page_chat_values() -> None:
         assert parameters["show_history"].kind is inspect.Parameter.KEYWORD_ONLY
 
 
-def test_page_chat_signature_has_only_title_and_icon_positional() -> None:
+def test_page_chat_signature_makes_icon_keyword_only() -> None:
     parameters = inspect.signature(page_chat).parameters
 
     assert list(parameters) == [
@@ -293,12 +296,13 @@ def test_page_chat_signature_has_only_title_and_icon_positional() -> None:
         "kwargs",
     ]
     assert parameters["title"].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
-    assert parameters["icon"].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+    assert parameters["icon"].kind is inspect.Parameter.KEYWORD_ONLY
     for name in list(parameters)[2:-1]:
         assert parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
     assert parameters["id"].default == "chat"
     assert parameters["artifact"].default is True
     assert parameters["sidebar"].default is None
+    assert parameters["toolbar"].default is MISSING
     assert parameters["toolbar_global"].default is None
     assert parameters["placeholder"].default == "Enter a message..."
     assert parameters["width"].default == "min(680px, 100%)"
@@ -316,7 +320,7 @@ def test_page_chat_builds_default_fillable_page_markup() -> None:
     assert 'data-shiny-chat-page-nav-style="underline"' in html
     assert "<bslib-input-dark-mode" in html
     assert 'attribute="data-bs-theme"' in html
-    assert "display: none" in html
+    assert html.count("<bslib-input-dark-mode") == 1
     assert 'aria-controls="chat-sidebar"' in html
     assert 'aria-expanded="false"' in html
     assert 'class="shiny-chat-page-sidebar-icon bi bi-list"' in html
@@ -338,6 +342,14 @@ def test_page_chat_builds_default_fillable_page_markup() -> None:
     assert 'id="chat"' in html
     assert "height:100%" in html
     assert 'show-history="false"' not in html
+
+
+def test_page_chat_toolbar_dark_mode_has_explicit_opt_out() -> None:
+    default_html = page_chat("Assistant").get_html_string()
+    opt_out_html = page_chat("Assistant", toolbar=None).get_html_string()
+
+    assert "<bslib-input-dark-mode" in default_html
+    assert "<bslib-input-dark-mode" not in opt_out_html
 
 
 def test_page_chat_applies_supported_navbar_options_to_its_title_bar() -> None:
@@ -385,7 +397,7 @@ def test_page_chat_normalizes_navigation_toolbar_and_sidebars() -> None:
     with module.namespace_context("mod"):  # pyright: ignore[reportPrivateImportUsage]
         page = page_chat(
             tags.span("Reactive title"),
-            tags.i("icon"),
+            icon=tags.i("icon"),
             id="assistant",
             pages=[
                 chat_nav_panel(
@@ -423,7 +435,7 @@ def test_page_chat_normalizes_navigation_toolbar_and_sidebars() -> None:
     assert 'aria-controls="mod-assistant-sidebar"' in html
     assert 'id="mod-assistant-sidebar"' in html
     assert '<button type="button" class="shiny-chat-page-identity"' in html
-    assert html.count('<span>Reactive title</span>') == 1
+    assert html.count("<span>Reactive title</span>") == 1
     assert 'data-page-home=""' in html
     assert 'aria-label="Return to chat"' in html
     assert html.count('data-page-target="About"') == 1
@@ -735,12 +747,13 @@ def test_page_chat_validates_page_arguments(
 
 def test_page_chat_passes_generic_ui_children_to_htmltools() -> None:
     assert page_chat("Assistant", icon=cast(Any, False)) is not None
-    assert page_chat("Assistant", toolbar=cast(Any, {"class": "bad"})) is not None
-    assert chat_nav_panel("About", icon=cast(Any, False)).icon is False
     assert (
-        chat_nav_panel("About", toolbar=cast(Any, {"class": "bad"})).toolbar
-        == {"class": "bad"}
+        page_chat("Assistant", toolbar=cast(Any, {"class": "bad"})) is not None
     )
+    assert chat_nav_panel("About", icon=cast(Any, False)).icon is False
+    assert chat_nav_panel(
+        "About", toolbar=cast(Any, {"class": "bad"})
+    ).toolbar == {"class": "bad"}
 
 
 def test_page_chat_forwards_original_id_and_chat_options(

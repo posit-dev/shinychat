@@ -2371,7 +2371,7 @@ class ChatExpress(Chat):
             requests ``"tool"`` or ``"all"``.
         artifact
             Whether the artifact region is available. Pass a
-            :class:`~shinychat.ChatArtifact` to supply its initial content and
+            :class:`~shinychat.types.ChatArtifact` to supply its initial content and
             configuration.
         show_history
             Whether to render the chat's built-in history selector.

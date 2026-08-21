@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from shiny.ui import Theme
 
 _PAGE_CHAT_THEME_DEFAULTS = {
     "font-family-sans-serif": (
@@ -119,7 +122,7 @@ shiny-chat-page :is(
 def page_chat_theme(
     preset: str | None = "shiny",
     **variables: str | float | int | bool | None,
-) -> Any:
+) -> "Theme":
     """
     Create a theme for :func:`~shinychat.page_chat`.
 

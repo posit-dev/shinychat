@@ -148,9 +148,10 @@ remove its page-specific sidebar, omit the argument for the same result, use
 layout needs a history view bound to a specific chat ID outside a
 `page_chat()` sidebar.
 
-`toolbar` is scoped to the chat home page. A navigation page defaults to
-`toolbar=None`, which omits that scoped segment. Supply an HTML child for
-`toolbar` to replace it. For compatibility with earlier code,
+`toolbar` is scoped to the chat home page. When omitted, it provides Shiny's
+dark/light mode toggle; pass `toolbar=None` to opt out. A navigation page
+defaults to `toolbar=None`, which omits that scoped segment. Supply an HTML
+child for `toolbar` to replace it. For compatibility with earlier code,
 `toolbar=True` reuses the home toolbar and `toolbar=False` is an alias for
 omitting it. Use `toolbar_global` for actions that must remain mounted and
 visible across every selected page; it is rendered after the page-scoped

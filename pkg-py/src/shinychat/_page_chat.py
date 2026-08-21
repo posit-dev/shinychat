@@ -20,6 +20,7 @@ from ._page_chat_theme import page_chat_theme
 from ._utils_types import MISSING, MISSING_TYPE
 
 if TYPE_CHECKING:
+    from shiny.ui import Theme
     from shiny.ui.css import CssUnit
 
     from ._chat_types import ChatGreeting, ChatMessage, ChatMessageDict
@@ -36,6 +37,7 @@ __all__ = (
 )
 
 ChatSidebarOpen = Literal["auto", "open", "closed", "always"]
+
 
 @dataclass(frozen=True)
 class ChatSidebar:
@@ -68,18 +70,18 @@ class ChatNavPanel:
 
 def page_chat(
     title: TagChild,
-    icon: TagChild | None = None,
     *,
+    icon: TagChild | None = None,
     id: str = "chat",
     pages: Sequence[ChatNavPanel] | None = None,
-    toolbar: TagChild | None = None,
+    toolbar: TagChild | None | MISSING_TYPE = MISSING,
     toolbar_global: TagChild | None = None,
     navbar_options: Any = None,
     sidebar: bool | ChatSidebar | None = None,
     artifact: bool | ChatArtifact = True,
     window_title: str | None = None,
     lang: str | None = None,
-    theme: Any = None,
+    theme: Theme | None = None,
     messages: Optional[
         Iterable[str | TagChild | "ChatMessageDict" | "ChatMessage" | Any]
     ] = None,
@@ -113,8 +115,9 @@ def page_chat(
         Secondary pages created with :func:`~shinychat.chat_nav_panel`.
     toolbar
         Optional home-page-scoped HTML child displayed with the navigation
-        controls. A page's ``chat_nav_panel(toolbar=)`` can replace this
-        segment.
+        controls. When omitted, the toolbar contains Shiny's dark/light mode
+        toggle. Pass ``None`` to omit it. A page's
+        ``chat_nav_panel(toolbar=)`` can replace this segment.
     toolbar_global
         Optional persistent HTML child displayed after the page-scoped toolbar
         in the navigation controls. It remains mounted while pages are
@@ -127,11 +130,11 @@ def page_chat(
     sidebar
         Home-page sidebar. When omitted or ``True``, the page uses the default
         conversation-history sidebar. ``False`` removes it, and a
-        :class:`~shinychat.ChatSidebar` supplies custom content and behavior.
+        :class:`~shinychat.types.ChatSidebar` supplies custom content and behavior.
         Raw :class:`shiny.ui.Sidebar` objects are not supported.
     artifact
         Whether the chat has an artifact region. Pass a
-        :class:`~shinychat.ChatArtifact` to configure its initial content and
+        :class:`~shinychat.types.ChatArtifact` to configure its initial content and
         behavior.
     window_title
         Optional document title. Use this when ``title`` is an HTML child or
@@ -141,7 +144,7 @@ def page_chat(
     theme
         Theme accepted by :func:`shiny.ui.page_fillable`. By default,
         :func:`~shinychat.page_chat_theme` layers page-chat surface tokens over
-        Shiny's ``"shiny"`` preset. Pass :class:`shiny.ui.Theme` directly to
+        Shiny's ``"shiny"`` preset. Pass a :class:`shiny.ui.Theme` directly to
         use another preset or a completely custom theme.
     messages
         Initial chat messages. See :func:`~shinychat.chat_ui`.
@@ -439,7 +442,7 @@ def chat_nav_panel(
     sidebar
         Sidebar for this page. When omitted or ``False``, this page has no
         page-specific sidebar. ``True`` uses the default conversation-history
-        sidebar, and a :class:`~shinychat.ChatSidebar` supplies a page-specific
+        sidebar, and a :class:`~shinychat.types.ChatSidebar` supplies a page-specific
         sidebar. Raw :class:`shiny.ui.Sidebar` objects are not supported.
     toolbar
         Toolbar for this page. ``None`` (the default) shows no page-scoped
@@ -494,7 +497,6 @@ def chat_nav_panel(
             "`sidebar` must be False, True, or a shinychat `ChatSidebar`; "
             "raw Shiny Sidebar objects are not supported."
         )
-    _validate_panel_toolbar(toolbar)
     return ChatNavPanel(
         title=title,
         content=content,
@@ -594,22 +596,6 @@ class _NormalizedSidebar:
     config: ChatSidebar
 
 
-def _validate_page_child(
-    value: TagChild, name: str, *, allow_none: bool = False
-) -> None:
-    if value is not None or allow_none:
-        return
-    raise TypeError(f"`{name}` must not be None.")
-
-
-def _validate_panel_toolbar(value: object) -> None:
-    if value is None:
-        return
-    if isinstance(value, bool):
-        return
-    _validate_page_child(cast(TagChild, value), "toolbar")
-
-
 def _normalize_sidebar_config(sidebar: ChatSidebar) -> ChatSidebar:
     if not isinstance(sidebar.content, tuple):
         raise TypeError(
@@ -683,8 +669,6 @@ def _normalize_page_config(
                 "Navigation page sidebars must be False, True, or a "
                 "shinychat `ChatSidebar`."
             )
-        _validate_panel_toolbar(panel.toolbar)
-
         value = panel.title if panel.value is None else panel.value
         if not value.strip():
             raise ValueError("Navigation page values must not be empty.")
@@ -892,13 +876,13 @@ def _render_page_chat(
     *,
     id: str = "chat",
     pages: Sequence[ChatNavPanel] | None = None,
-    toolbar: TagChild | None = None,
+    toolbar: TagChild | None | MISSING_TYPE = MISSING,
     toolbar_global: TagChild | None = None,
     navbar_options: Any = None,
     sidebar: bool | ChatSidebar | None = None,
     window_title: str | None = None,
     lang: str | None = None,
-    theme: Any = None,
+    theme: Theme | None = None,
 ) -> Tag:
     from shiny import ui
     from shiny.module import resolve_id
@@ -907,12 +891,10 @@ def _render_page_chat(
         raise TypeError(f"`id` must be a string, not {type(id).__name__}.")
     if not id.strip():
         raise ValueError("`id` must not be an empty string.")
-    _validate_page_child(title, "title")
+    if title is None:
+        raise TypeError("`title` must not be None.")
     if isinstance(title, str) and not title.strip():
         raise ValueError("`title` must not be an empty string.")
-    _validate_page_child(icon, "icon", allow_none=True)
-    _validate_page_child(toolbar, "toolbar", allow_none=True)
-    _validate_page_child(toolbar_global, "toolbar_global", allow_none=True)
     if window_title is not None and not isinstance(window_title, str):
         raise TypeError(
             "`window_title` must be a string or None, "
@@ -927,6 +909,10 @@ def _render_page_chat(
     navbar_options = _normalize_page_chat_navbar_options(navbar_options)
     if theme is None:
         theme = page_chat_theme()
+    if isinstance(toolbar, MISSING_TYPE):
+        toolbar_content: TagChild | None = ui.input_dark_mode()
+    else:
+        toolbar_content = toolbar
 
     (
         normalized_pages,
@@ -991,7 +977,7 @@ def _render_page_chat(
     )
     toolbar_sources = Tag(
         "div",
-        _render_toolbar_source("home", toolbar),
+        _render_toolbar_source("home", toolbar_content),
         *(
             _render_toolbar_source(
                 page.toolbar_key,
@@ -1004,134 +990,133 @@ def _render_page_chat(
         hidden=True,
     )
 
-    shell = Tag(
-        "shiny-chat-page",
+    header = Tag(
+        "header",
         Tag(
-            "header",
+            "button",
             Tag(
-                "button",
+                "svg",
                 Tag(
-                    "svg",
-                    Tag(
-                        "path",
-                        d=(
-                            "M2.5 12a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4"
-                            "a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 "
-                            "0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5"
-                        ),
+                    "path",
+                    d=(
+                        "M2.5 12a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4"
+                        "a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 "
+                        "0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5"
                     ),
-                    class_="shiny-chat-page-sidebar-icon bi bi-list",
-                    xmlns="http://www.w3.org/2000/svg",
-                    viewBox="0 0 16 16",
-                    aria_hidden="true",
-                    focusable="false",
                 ),
-                type="button",
-                class_="shiny-chat-page-sidebar-toggle",
-                aria_controls=sidebar_id,
-                aria_expanded=(
-                    "true"
-                    if home_sidebar is not None
-                    and home_sidebar.open in ("open", "always")
-                    else "false"
-                ),
-                aria_label="Toggle app menu",
+                class_="shiny-chat-page-sidebar-icon bi bi-list",
+                xmlns="http://www.w3.org/2000/svg",
+                viewBox="0 0 16 16",
+                aria_hidden="true",
+                focusable="false",
             ),
-            identity,
-            Tag(
-                "div",
-                controls,
-                class_=(
-                    "shiny-chat-page-controls-mount "
-                    "shiny-chat-page-controls-mount-desktop"
-                ),
+            type="button",
+            class_="shiny-chat-page-sidebar-toggle",
+            aria_controls=sidebar_id,
+            aria_expanded=(
+                "true"
+                if home_sidebar is not None
+                and home_sidebar.open in ("open", "always")
+                else "false"
             ),
-            class_="shiny-chat-page-header",
+            aria_label="Toggle app menu",
         ),
+        identity,
         Tag(
             "div",
+            controls,
+            class_=(
+                "shiny-chat-page-controls-mount "
+                "shiny-chat-page-controls-mount-desktop"
+            ),
+        ),
+        class_="shiny-chat-page-header",
+    )
+    body = Tag(
+        "div",
+        Tag(
+            "aside",
             Tag(
-                "aside",
-                Tag(
-                    "div",
-                    class_=(
-                        "shiny-chat-page-controls-mount "
-                        "shiny-chat-page-controls-mount-mobile"
-                    ),
-                ),
-                *(
-                    _render_sidebar_panel(sidebar, id, home_sidebar_key)
-                    for sidebar in normalized_sidebars
-                ),
-                id=sidebar_id,
-                class_="shiny-chat-page-sidebar",
-                aria_label="App menu",
-                data_sidebar_key=home_sidebar_key,
-                data_sidebar_open=(
-                    home_sidebar.open if home_sidebar is not None else None
-                ),
-                data_sidebar_width=(
-                    home_sidebar.width if home_sidebar is not None else None
-                ),
-                data_sidebar_resizable=(
-                    "true"
-                    if home_sidebar is not None and home_sidebar.resizable
-                    else "false"
-                    if home_sidebar is not None
-                    else None
+                "div",
+                class_=(
+                    "shiny-chat-page-controls-mount "
+                    "shiny-chat-page-controls-mount-mobile"
                 ),
             ),
+            *(
+                _render_sidebar_panel(sidebar, id, home_sidebar_key)
+                for sidebar in normalized_sidebars
+            ),
+            id=sidebar_id,
+            class_="shiny-chat-page-sidebar",
+            aria_label="App menu",
+            data_sidebar_key=home_sidebar_key,
+            data_sidebar_open=(
+                home_sidebar.open if home_sidebar is not None else None
+            ),
+            data_sidebar_width=(
+                home_sidebar.width if home_sidebar is not None else None
+            ),
+            data_sidebar_resizable=(
+                "true"
+                if home_sidebar is not None and home_sidebar.resizable
+                else "false"
+                if home_sidebar is not None
+                else None
+            ),
+        ),
+        Tag(
+            "main",
             Tag(
-                "main",
+                "section",
+                chat_root,
+                class_="shiny-chat-page-panel shiny-chat-page-home",
+                data_page_value="home",
+                data_sidebar_key=home_sidebar_key,
+                data_page_toolbar_source="home",
+            ),
+            *(
                 Tag(
                     "section",
-                    chat_root,
-                    class_="shiny-chat-page-panel shiny-chat-page-home",
-                    data_page_value="home",
-                    data_sidebar_key=home_sidebar_key,
-                    data_page_toolbar_source="home",
-                ),
-                *(
                     Tag(
-                        "section",
-                        Tag(
-                            "div",
-                            *page.panel.content,
-                            class_="shiny-chat-page-panel-content",
-                            style=(
-                                "--shiny-chat-page-content-width:"
-                                f"{page.panel.content_width}"
-                            ),
-                            data_content_full_bleed=(
-                                "true"
-                                if page.panel.content_width
-                                in ("100%", "100vw", "100dvw")
-                                else None
-                            ),
+                        "div",
+                        *page.panel.content,
+                        class_="shiny-chat-page-panel-content",
+                        style=(
+                            "--shiny-chat-page-content-width:"
+                            f"{page.panel.content_width}"
                         ),
-                        id=f"{resolved_id}-panel-{index}",
-                        class_="shiny-chat-page-panel",
-                        aria_labelledby=f"{resolved_id}-nav-{index}",
-                        data_page_value=page.value,
-                        data_page_title=page.panel.title,
-                        data_sidebar_key=page.sidebar_key,
-                        data_page_toolbar_source=page.toolbar_key,
-                        hidden=True,
-                    )
-                    for index, page in enumerate(normalized_pages, start=1)
-                ),
-                class_="shiny-chat-page-main",
+                        data_content_full_bleed=(
+                            "true"
+                            if page.panel.content_width
+                            in ("100%", "100vw", "100dvw")
+                            else None
+                        ),
+                    ),
+                    id=f"{resolved_id}-panel-{index}",
+                    class_="shiny-chat-page-panel",
+                    aria_labelledby=f"{resolved_id}-nav-{index}",
+                    data_page_value=page.value,
+                    data_page_title=page.panel.title,
+                    data_sidebar_key=page.sidebar_key,
+                    data_page_toolbar_source=page.toolbar_key,
+                    hidden=True,
+                )
+                for index, page in enumerate(normalized_pages, start=1)
             ),
-            class_="shiny-chat-page-body",
+            class_="shiny-chat-page-main",
         ),
+        class_="shiny-chat-page-body",
+    )
+    shell = Tag(
+        "shiny-chat-page",
+        header,
+        body,
         toolbar_sources,
-        ui.input_dark_mode(style="display: none"),
         data_chat_id=resolved_id,
         data_active_page="home",
     )
-    _apply_page_chat_navbar_options(
-        cast(Tag, shell.children[0]), navbar_options
-    )
+    _apply_page_chat_navbar_options(header, navbar_options)
 
     document_title = (
         title
