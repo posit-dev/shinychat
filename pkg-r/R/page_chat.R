@@ -80,7 +80,8 @@
 #'   default sidebar (`FALSE`), or use a
 #'   [chat_sidebar()] or [bslib::sidebar()] configuration. A bslib sidebar
 #'   supplies its child content, width, initial open state, and resizability;
-#'   its history defaults to `FALSE`.
+#'   its history defaults to `FALSE`. A [chat_sidebar()] with `history = NULL`
+#'   defaults to `TRUE` here.
 #' @param messages,greeting,placeholder,width,icon_assistant,enable_cancel,allow_attachments,footer,artifact
 #'   Common arguments passed to [chat_ui()].
 #' @param window_title A static browser-window title. The default, `NA`,
@@ -211,7 +212,7 @@ page_chat <- function(
   chat_validate_page_ui(toolbar_global, "toolbar_global")
   navbar_options <- normalize_page_chat_navbar_options(navbar_options)
   chat_validate_sidebar(sidebar)
-  sidebar <- normalize_page_sidebar(sidebar)
+  sidebar <- normalize_page_sidebar(sidebar, default_history = TRUE)
   pages <- normalize_chat_pages(pages)
   window_title <- normalize_chat_window_title(window_title, title)
   if (!is.null(lang)) {
@@ -421,6 +422,8 @@ page_chat <- function(
 #'
 #' @param ... UI content to display in the sidebar.
 #' @param history Whether to display the chat history selector in the sidebar.
+#'   When `NULL`, [page_chat()] defaults to `TRUE` and [chat_nav_panel()]
+#'   defaults to `FALSE`.
 #' @param width The initial sidebar width. Positive numbers are converted to
 #'   pixels; character values must be valid CSS lengths.
 #' @param open The initial sidebar state. One of `"auto"`, `"open"`, `"closed"`,
@@ -442,13 +445,15 @@ page_chat <- function(
 #' @export
 chat_sidebar <- function(
   ...,
-  history = FALSE,
+  history = NULL,
   width = 280,
   open = "auto",
   resizable = TRUE
 ) {
   content <- chat_config_content(...)
-  chat_validate_boolean(history, "history")
+  if (!is.null(history)) {
+    chat_validate_boolean(history, "history")
+  }
   width <- chat_validate_width(width, "width")
   open <- chat_normalize_sidebar_open(open)
   chat_validate_boolean(resizable, "resizable")
@@ -479,7 +484,8 @@ chat_sidebar <- function(
 #' @param icon An optional icon to display with the title.
 #' @param sidebar Whether to use the default sidebar (`TRUE`), no
 #'   page-specific sidebar (`FALSE`), or a
-#'   [chat_sidebar()] or [bslib::sidebar()] configuration.
+#'   [chat_sidebar()] or [bslib::sidebar()] configuration. A [chat_sidebar()]
+#'   with `history = NULL` defaults to `FALSE` here.
 #' @param toolbar `NULL` (the default) for no page-scoped toolbar, or UI
 #'   content for a page-specific toolbar. For backward compatibility, `TRUE`
 #'   reuses the home `page_chat()` toolbar and `FALSE` omits the page-scoped
@@ -609,7 +615,10 @@ normalize_chat_pages <- function(pages) {
       page$content_width,
       paste0("pages[[", i, "]]$content_width")
     )
-    pages[[i]]$sidebar <- normalize_page_sidebar(page$sidebar)
+    pages[[i]]$sidebar <- normalize_page_sidebar(
+      page$sidebar,
+      default_history = FALSE
+    )
   }
 
   values <- vapply(
@@ -634,7 +643,7 @@ normalize_chat_pages <- function(pages) {
   pages
 }
 
-normalize_chat_sidebar_config <- function(sidebar) {
+normalize_chat_sidebar_config <- function(sidebar, default_history) {
   required <- c("content", "history", "width", "open", "resizable")
   if (!is.list(sidebar) || !all(required %in% names(sidebar))) {
     cli::cli_abort(
@@ -652,7 +661,7 @@ normalize_chat_sidebar_config <- function(sidebar) {
 
   chat_sidebar(
     !!!sidebar$content,
-    history = sidebar$history,
+    history = sidebar$history %||% default_history,
     width = sidebar$width,
     open = sidebar$open,
     resizable = sidebar$resizable
@@ -675,9 +684,9 @@ normalize_bslib_sidebar_config <- function(sidebar) {
   )
 }
 
-normalize_page_sidebar <- function(sidebar) {
+normalize_page_sidebar <- function(sidebar, default_history) {
   if (inherits(sidebar, "chat_sidebar")) {
-    return(normalize_chat_sidebar_config(sidebar))
+    return(normalize_chat_sidebar_config(sidebar, default_history))
   }
   if (inherits(sidebar, "bslib_sidebar")) {
     return(normalize_bslib_sidebar_config(sidebar))

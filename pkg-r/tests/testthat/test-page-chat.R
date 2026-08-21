@@ -18,6 +18,8 @@ page_chat_tag <- function(ui, selector) {
 }
 
 test_that("chat_sidebar() validates and normalizes configuration", {
+  expect_null(chat_sidebar()$history)
+
   sidebar <- chat_sidebar(
     htmltools::tags$p("Extra controls"),
     history = TRUE,
@@ -171,6 +173,15 @@ test_that("chat_nav_panel() requires page-chat configuration", {
     chat_nav_panel("Custom", toolbar = custom_toolbar)$toolbar,
     custom_toolbar
   )
+
+  home <- page_chat("Assistant", sidebar = chat_sidebar())
+  panel <- page_chat(
+    "Assistant",
+    sidebar = FALSE,
+    pages = list(chat_nav_panel("About", sidebar = chat_sidebar()))
+  )
+  expect_length(page_chat_tags(home, "shiny-chat-history"), 1)
+  expect_length(page_chat_tags(panel, "shiny-chat-history"), 0)
 
   expect_snapshot(error = TRUE, chat_nav_panel(""))
   expect_snapshot(error = TRUE, chat_nav_panel("Settings", value = ""))

@@ -44,7 +44,7 @@ ChatSidebarOpen = Literal["auto", "open", "closed", "always"]
 @dataclass(frozen=True)
 class ChatSidebar:
     content: tuple[TagChild, ...]
-    history: bool
+    history: bool | MISSING_TYPE
     width: str
     open: ChatSidebarOpen
     resizable: bool
@@ -134,6 +134,7 @@ def page_chat(
         Home-page sidebar. ``True`` uses the default conversation-history
         sidebar, ``False`` removes it, and a
         :class:`~shinychat.types.ChatSidebar` supplies custom content and behavior.
+        A sidebar created without ``history=`` defaults to ``True`` here.
         Raw :class:`shiny.ui.Sidebar` objects are not supported.
     artifact
         Whether the chat has an artifact region. Pass a
@@ -269,7 +270,7 @@ def _validate_content(content: tuple[TagChild, ...], name: str) -> None:
 
 def chat_sidebar(
     *content: TagChild,
-    history: bool = False,
+    history: bool | MISSING_TYPE = MISSING,
     width: "CssUnit" = 280,
     open: ChatSidebarOpen | bool = "auto",
     resizable: bool = True,
@@ -287,6 +288,8 @@ def chat_sidebar(
         HTML children to display in the sidebar.
     history
         Whether to include the conversation-history view for the page's chat.
+        When omitted, ``page_chat()`` defaults to ``True`` and
+        ``chat_nav_panel()`` defaults to ``False``.
     width
         Initial sidebar width. A positive number is interpreted as pixels; a
         string may use any valid CSS width.
@@ -341,7 +344,11 @@ def chat_sidebar(
         open_value = cast(ChatSidebarOpen, open)
     return ChatSidebar(
         content=content,
-        history=_validate_bool(history, "history"),
+        history=(
+            history
+            if isinstance(history, MISSING_TYPE)
+            else _validate_bool(history, "history")
+        ),
         width=_validate_css_width(width, "width"),
         open=open_value,
         resizable=_validate_bool(resizable, "resizable"),
@@ -446,6 +453,7 @@ def chat_nav_panel(
         Sidebar for this page. ``False`` shows no page-specific sidebar,
         ``True`` uses the default conversation-history sidebar, and a
         :class:`~shinychat.types.ChatSidebar` supplies a page-specific sidebar.
+        A sidebar created without ``history=`` defaults to ``False`` here.
         Raw :class:`shiny.ui.Sidebar` objects are not supported.
     toolbar
         Toolbar for this page. ``None`` (the default) shows no page-scoped
@@ -599,14 +607,22 @@ class _NormalizedSidebar:
     config: ChatSidebar
 
 
-def _normalize_sidebar_config(sidebar: ChatSidebar) -> ChatSidebar:
+def _normalize_sidebar_config(
+    sidebar: ChatSidebar,
+    *,
+    default_history: bool,
+) -> ChatSidebar:
     if not isinstance(sidebar.content, tuple):
         raise TypeError(
             "`ChatSidebar.content` must be a tuple of HTML children."
         )
     return chat_sidebar(
         *sidebar.content,
-        history=sidebar.history,
+        history=(
+            default_history
+            if isinstance(sidebar.history, MISSING_TYPE)
+            else sidebar.history
+        ),
         width=sidebar.width,
         open=sidebar.open,
         resizable=sidebar.resizable,
@@ -637,7 +653,10 @@ def _normalize_page_config(
         home_sidebar_key = "default"
         sidebars.append(_NormalizedSidebar("default", default_sidebar))
     elif isinstance(sidebar, ChatSidebar):
-        home_sidebar = _normalize_sidebar_config(sidebar)
+        home_sidebar = _normalize_sidebar_config(
+            sidebar,
+            default_history=True,
+        )
         home_sidebar_key = "home"
         sidebars.append(_NormalizedSidebar("home", home_sidebar))
     else:
@@ -691,7 +710,10 @@ def _normalize_page_config(
             sidebars.append(
                 _NormalizedSidebar(
                     sidebar_key,
-                    _normalize_sidebar_config(panel.sidebar),
+                    _normalize_sidebar_config(
+                        panel.sidebar,
+                        default_history=False,
+                    ),
                 )
             )
 

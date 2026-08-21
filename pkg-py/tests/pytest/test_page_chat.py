@@ -25,6 +25,7 @@ from shinychat.types import ChatArtifact, ChatNavPanel, ChatSidebar
 
 def test_public_page_chat_configuration_exports() -> None:
     assert isinstance(chat_sidebar(), ChatSidebar)
+    assert chat_sidebar().history is MISSING
     artifact = chat_artifact()
     assert isinstance(artifact, ChatArtifact)
     assert artifact.open is True
@@ -173,6 +174,21 @@ def test_chat_nav_panel_validates_sidebar_and_navigation_values() -> None:
     assert chat_nav_panel(
         "About", toolbar=cast(Any, {"class": "bad"})
     ).toolbar == {"class": "bad"}
+
+
+def test_sidebar_history_defaults_to_its_page_owner() -> None:
+    home_html = page_chat(
+        "Assistant",
+        sidebar=chat_sidebar(),
+    ).get_html_string()
+    panel_html = page_chat(
+        "Assistant",
+        sidebar=False,
+        pages=[chat_nav_panel("About", sidebar=chat_sidebar())],
+    ).get_html_string()
+
+    assert home_html.count("<shiny-chat-history") == 1
+    assert "<shiny-chat-history" not in panel_html
 
 
 def test_chat_ui_history_resolves_id_and_forwards_html_attributes() -> None:

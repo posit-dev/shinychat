@@ -140,7 +140,9 @@ app = App(app_ui, server)
 
 `sidebar=True` supplies the default conversation-history sidebar. Pass a
 `chat_sidebar()` object when the page needs additional content or a different
-initial width and open state. A navigation page can set `sidebar=False` to
+initial width and open state. If its `history` argument is omitted,
+`page_chat()` enables history and `chat_nav_panel()` disables it. A navigation
+page can set `sidebar=False` to
 remove its page-specific sidebar, use `sidebar=True` to use the default history
 sidebar, or supply its own `chat_sidebar()`. `chat_ui_history("chat")` is available when an advanced
 layout needs a history view bound to a specific chat ID outside a

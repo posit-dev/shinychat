@@ -56,7 +56,8 @@ supported. \code{position} and \code{collapsible} are unsupported because
 default sidebar (\code{FALSE}), or use a
 \code{\link[=chat_sidebar]{chat_sidebar()}} or \code{\link[bslib:sidebar]{bslib::sidebar()}} configuration. A bslib sidebar
 supplies its child content, width, initial open state, and resizability;
-its history defaults to \code{FALSE}.}
+its history defaults to \code{FALSE}. A \code{\link[=chat_sidebar]{chat_sidebar()}} with \code{history = NULL}
+defaults to \code{TRUE} here.}
 
 \item{messages, greeting, placeholder, width, icon_assistant, enable_cancel, allow_attachments, footer, artifact}{Common arguments passed to \code{\link[=chat_ui]{chat_ui()}}.}
 
