@@ -97,6 +97,7 @@ chat = Chat(id="chat")
 chat.ui(messages=["Use the controls to add deterministic tool results."])
 
 ui.input_action_button("add_framed", "Add framed result")
+ui.input_action_button("add_default", "Add default result")
 ui.input_action_button("add_grouped", "Add grouped results")
 ui.input_action_button("add_fullscreen", "Add fullscreen result")
 ui.input_action_button("add_error", "Add errored result")
@@ -114,6 +115,20 @@ async def add_framed_result() -> None:
             text="Recognizable framed body",
             footer=ui.span("Recognizable framed footer"),
             presentation="framed",
+        ),
+    )
+
+
+@reactive.effect
+@reactive.event(input.add_default)
+async def add_default_result() -> None:
+    await append_single_result(
+        id="default-single",
+        name="default_tool",
+        value="Recognizable default body",
+        display=ToolResultDisplay(
+            text="Recognizable default body",
+            footer=ui.span("Recognizable default footer"),
         ),
     )
 
