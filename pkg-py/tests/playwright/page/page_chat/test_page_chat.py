@@ -143,6 +143,30 @@ def test_explicit_theme_keeps_embedded_chat_composer_chrome(
     expect(input_area).to_have_css("padding-bottom", "48px")
 
 
+def test_page_chat_footer_aligns_with_the_composer(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    chat, _ = open_page(page, local_app, viewport=(800, 760))
+    input_area = chat.loc.locator(".shiny-chat-input")
+    input_editor = input_area.locator(".tiptap")
+    footer = chat.loc.locator(".shiny-chat-footer")
+    footer_content = chat.loc.locator(".page-chat-footer")
+
+    expect(input_area).to_have_css("padding-bottom", "16px")
+    expect(footer).to_have_css("padding-left", "0px")
+    expect(footer).to_have_css("margin-top", "-12px")
+
+    input_box = input_editor.bounding_box()
+    footer_box = footer_content.bounding_box()
+    assert input_box is not None
+    assert footer_box is not None
+    assert footer_box["x"] == pytest.approx(input_box["x"], abs=1)
+    assert footer_box["y"] - (input_box["y"] + input_box["height"]) == pytest.approx(
+        8, abs=1
+    )
+
+
 @pytest.mark.parametrize(
     "title, is_long_title",
     [

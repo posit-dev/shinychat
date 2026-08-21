@@ -525,8 +525,14 @@ shiny-chat-container:not([fill]) {
   font-size: var(--shiny-chat-footer-font-size);
   color: var(--shiny-chat-footer-color);
   text-align: center;
+  // The wrapper already owns the horizontal content inset. Do not apply it
+  // again here, or page_chat_theme()'s wider page gutter double-indents
+  // footer controls. Keep the usual 0.25rem input-to-footer rhythm when the
+  // page reserves additional room below the input for a safe area.
+  margin-top: calc(
+    0.25rem - var(--shiny-chat-input-padding-bottom, 0.25rem)
+  );
   padding-block: 0.25rem;
-  padding-inline: var(--_chat-container-padding);
 }
 
 /*
