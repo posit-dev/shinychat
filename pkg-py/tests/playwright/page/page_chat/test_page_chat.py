@@ -156,6 +156,7 @@ def test_page_chat_footer_aligns_with_the_composer(
     expect(input_area).to_have_css("padding-bottom", "16px")
     expect(footer).to_have_css("padding-left", "0px")
     expect(footer).to_have_css("margin-top", "-12px")
+    expect(footer).to_have_css("padding-bottom", "16px")
 
     input_box = input_editor.bounding_box()
     footer_box = footer_content.bounding_box()
@@ -537,7 +538,7 @@ def test_page_chat_centers_fitting_greeting_composer_and_pins_overflow(
     ) <= 16
     assert footer_box["y"] >= composer_box["y"]
     group_center = (
-        greeting_box["y"] + footer_box["y"] + footer_box["height"]
+        greeting_box["y"] + composer_box["y"] + composer_box["height"]
     ) / 2
     chat_box = chat.loc.bounding_box()
     assert chat_box is not None

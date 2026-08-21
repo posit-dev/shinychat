@@ -527,12 +527,13 @@ shiny-chat-container:not([fill]) {
   text-align: center;
   // The wrapper already owns the horizontal content inset. Do not apply it
   // again here, or page_chat_theme()'s wider page gutter double-indents
-  // footer controls. Keep the usual 0.25rem input-to-footer rhythm when the
-  // page reserves additional room below the input for a safe area.
+  // footer controls. Keep the usual 0.25rem input-to-footer rhythm, then
+  // place the page's bottom safe-area reserve below the footer controls.
   margin-top: calc(
     0.25rem - var(--shiny-chat-input-padding-bottom, 0.25rem)
   );
-  padding-block: 0.25rem;
+  padding: 0.25rem 0
+    var(--shiny-chat-input-padding-bottom, 0.25rem);
 }
 
 /*
