@@ -44,7 +44,15 @@ ui <- page_chat(
     width = "34rem",
     open = TRUE
   ),
-  greeting = "## Artifact controls\n\nUse the toolbar to change this panel."
+  greeting = "## Artifact controls\n\nUse the toolbar to change this panel.",
+  toolbar_input = bslib::toolbar(
+    align = "left",
+    bslib::toolbar_input_select(
+      "model",
+      "Model",
+      c("GLM 5.2", "Kimi K3", "Claude Sonnet 5", "GPT 5.6 Sol")
+    )
+  )
 )
 
 server <- function(input, output, session) {

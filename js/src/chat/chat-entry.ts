@@ -40,6 +40,7 @@ function getBrowserToken(): string {
 
 const CHAT_INPUT_TAG = "shiny-chat-input"
 const CHAT_MESSAGE_TAG = "shiny-chat-message"
+const CHAT_TOOLBAR_TAG = "shiny-chat-input-toolbar"
 const CHAT_FOOTER_TAG = "shiny-chat-footer"
 const CHAT_ARTIFACT_TAG = "shiny-chat-artifact"
 
@@ -125,6 +126,7 @@ function parseToolGrouping(value: string | null): ToolGrouping | undefined {
 
 class ChatContainerElement extends HTMLElement {
   private reactRoot: Root | null = null
+  private toolbarEl: Element | null = null
   private footerEl: Element | null = null
   private artifactEl: Element | null = null
   private pendingUnmount: ReturnType<typeof setTimeout> | null = null
@@ -189,6 +191,9 @@ class ChatContainerElement extends HTMLElement {
     const initialMessages = parseInitialMessages(this)
     const initialArtifact = parseInitialArtifact(this)
 
+    if (!this.toolbarEl) {
+      this.toolbarEl = this.querySelector(CHAT_TOOLBAR_TAG)
+    }
     if (!this.footerEl) {
       this.footerEl = this.querySelector(CHAT_FOOTER_TAG)
     }
@@ -211,6 +216,7 @@ class ChatContainerElement extends HTMLElement {
     transport.unbindAll(this)
     // Detach preserved DOM only after unbinding its server-owned subtree.
     // RawDOM and ChatArtifact later adopt those children without serializing.
+    this.toolbarEl?.remove()
     this.footerEl?.remove()
     this.artifactEl?.remove()
 
@@ -261,6 +267,7 @@ class ChatContainerElement extends HTMLElement {
       asideFavicon,
       showHistory,
       toolGrouping,
+      toolbarEl: this.toolbarEl ?? undefined,
       footerEl: this.footerEl ?? undefined,
       slashCommandId,
       submitKey,

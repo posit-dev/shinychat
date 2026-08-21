@@ -34,10 +34,12 @@ def test_navigation_example_saves_conversations(
         shell.locator(".shiny-chat-page-sidebar-toggle").click()
     expect(sidebar).to_be_visible()
 
+    page.locator("select#model-select").select_option("Opus")
+    page.locator("select#reasoning-select").select_option("high")
     chat.set_user_input("Remember this exchange")
     chat.send_user_input()
     chat.expect_latest_message(
-        "The assistant replied to your message: Remember this exchange"
+        "Opus [high] replied to your message: Remember this exchange"
     )
     expect(
         sidebar.locator(
@@ -70,7 +72,7 @@ def test_navigation_example_mobile_menu_includes_home_link(
     chat.set_user_input("keep the mobile home link")
     chat.send_user_input()
     chat.expect_latest_message(
-        "The assistant replied to your message: keep the mobile home link"
+        "Sonnet [med] replied to your message: keep the mobile home link"
     )
     shell.locator(".shiny-chat-page-sidebar-toggle").click()
     expect(home_link).to_be_visible()
@@ -115,9 +117,7 @@ def test_navigation_example_mobile_artifact_trigger_does_not_overlay_messages(
 
     chat.set_user_input("hi there")
     chat.send_user_input()
-    chat.expect_latest_message(
-        "The assistant replied to your message: hi there"
-    )
+    chat.expect_latest_message("Sonnet [med] replied to your message: hi there")
 
     expect(trigger).to_be_visible()
     expect(scroll).to_have_css("padding-top", "48px")
@@ -218,7 +218,7 @@ def test_navigation_example_chat_surfaces_follow_theme_radius(
     chat.set_user_input("Check theme radius")
     chat.send_user_input()
     chat.expect_latest_message(
-        "The assistant replied to your message: Check theme radius"
+        "Sonnet [med] replied to your message: Check theme radius"
     )
 
     user_message = page.locator(".shiny-chat-user-message").last

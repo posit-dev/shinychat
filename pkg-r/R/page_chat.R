@@ -70,6 +70,8 @@
 #' @param pages `NULL` or a list of [chat_nav_panel()] configurations.
 #' @param toolbar Optional home-page-scoped UI displayed with the navigation
 #'   controls. A panel's `chat_nav_panel(toolbar = )` can replace this segment.
+#' @param toolbar_input Optional UI displayed directly below the chat input.
+#'   This is independent of the navigation `toolbar`.
 #' @param toolbar_global Optional persistent UI displayed after the page-scoped
 #'   toolbar in the navigation controls.
 #' @param navbar_options Optional [bslib::navbar_options()] that styles the
@@ -162,6 +164,7 @@ page_chat <- function(
   id = "chat",
   pages = NULL,
   toolbar = NULL,
+  toolbar_input = NULL,
   toolbar_global = NULL,
   navbar_options = NULL,
   sidebar = TRUE,
@@ -208,6 +211,7 @@ page_chat <- function(
   }
   chat_validate_page_ui(icon, "icon")
   chat_validate_page_ui(toolbar, "toolbar")
+  chat_validate_page_ui(toolbar_input, "toolbar_input")
   chat_validate_page_ui(toolbar_global, "toolbar_global")
   navbar_options <- normalize_page_chat_navbar_options(navbar_options)
   chat_validate_sidebar(sidebar)
@@ -232,6 +236,7 @@ page_chat <- function(
     icon_assistant = icon_assistant,
     enable_cancel = enable_cancel,
     allow_attachments = allow_attachments,
+    toolbar_input = toolbar_input,
     footer = footer,
     artifact = artifact,
     show_history = TRUE

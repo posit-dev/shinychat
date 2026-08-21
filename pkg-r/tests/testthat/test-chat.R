@@ -87,6 +87,20 @@ test_that("chat_ui() emits tool-grouping only when non-default", {
   expect_snapshot(chat_ui("chat", tool_grouping = "all"))
 })
 
+test_that("chat_ui() renders toolbar_input and footer islands", {
+  ui <- chat_ui(
+    "chat",
+    toolbar_input = htmltools::tags$span("Toolbar input"),
+    footer = htmltools::tags$span("Footer")
+  )
+  html <- as.character(ui)
+
+  expect_match(html, "<shiny-chat-input-toolbar>", fixed = TRUE)
+  expect_match(html, "Toolbar input", fixed = TRUE)
+  expect_match(html, "<shiny-chat-footer>", fixed = TRUE)
+  expect_match(html, "Footer", fixed = TRUE)
+})
+
 test_that("chat_ui() errors for an invalid tool_grouping value", {
   expect_snapshot(
     error = TRUE,

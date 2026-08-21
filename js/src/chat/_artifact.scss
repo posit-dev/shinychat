@@ -22,6 +22,7 @@
   grid-template-columns:
     minmax(0, 1fr)
     minmax(0, var(--shiny-chat-artifact-layout-width));
+  grid-template-rows: minmax(0, 1fr) auto;
   column-gap: var(--shiny-chat-artifact-layout-gap);
   transition:
     --shiny-chat-artifact-layout-width 180ms cubic-bezier(0.16, 1, 0.3, 1),
@@ -94,6 +95,16 @@ shiny-chat-container[data-history-placement="right"] {
   }
 }
 
+.shiny-chat-layout > .shiny-chat-wrapper {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.shiny-chat-layout > .shiny-chat-footer {
+  grid-column: 1;
+  grid-row: 2;
+}
+
 .shiny-chat-artifact-width-probe {
   position: absolute;
   visibility: hidden;
@@ -109,6 +120,8 @@ shiny-chat-container[data-history-placement="right"] {
 }
 
 .shiny-chat-artifact {
+  grid-column: 2;
+  grid-row: 1 / -1;
   position: relative;
   min-width: 0;
   min-height: 0;
@@ -218,6 +231,10 @@ shiny-chat-container[data-history-placement="right"] {
     column-gap: 0;
 
     .shiny-chat-wrapper {
+      display: none;
+    }
+
+    .shiny-chat-footer {
       display: none;
     }
 

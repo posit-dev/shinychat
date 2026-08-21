@@ -66,6 +66,7 @@ export interface ChatAppProps {
   asideFavicon?: boolean
   showHistory?: boolean
   toolGrouping?: ToolGrouping
+  toolbarEl?: Element
   footerEl?: Element
   slashCommandId?: string
   submitKey?: SubmitKey
@@ -113,6 +114,7 @@ export function ChatApp({
   asideFavicon = true,
   showHistory = true,
   toolGrouping,
+  toolbarEl,
   footerEl,
   slashCommandId = "",
   submitKey,
@@ -389,6 +391,7 @@ export function ChatApp({
                   enableCancel={state.enableCancel}
                   enableUpload={state.enableUpload}
                   cancelRequested={state.cancelRequested}
+                  toolbarEl={toolbarEl}
                   footerEl={footerEl}
                   slashCommands={state.slashCommands}
                   slashCommandId={slashCommandId}
