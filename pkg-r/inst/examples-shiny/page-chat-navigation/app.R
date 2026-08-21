@@ -108,8 +108,6 @@ ui <- page_chat(
         selected = c("Field observations", "Published research")
       ),
       sidebar = TRUE,
-      # Compatibility alias: reuse the home-page toolbar here.
-      toolbar = TRUE
     ),
     chat_nav_panel(
       "Notebook",

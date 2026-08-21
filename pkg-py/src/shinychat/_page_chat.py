@@ -66,7 +66,7 @@ class ChatNavPanel:
     value: str | None
     icon: TagChild | None
     sidebar: bool | ChatSidebar
-    toolbar: bool | TagChild | None
+    toolbar: TagChild | None
     content_width: str
 
 
@@ -429,7 +429,7 @@ def chat_nav_panel(
     value: str | None = None,
     icon: TagChild | None = None,
     sidebar: bool | ChatSidebar = False,
-    toolbar: bool | TagChild | None = None,
+    toolbar: TagChild | None = None,
     content_width: "CssUnit" = "min(680px, 100%)",
 ) -> ChatNavPanel:
     """
@@ -457,10 +457,7 @@ def chat_nav_panel(
         Raw :class:`shiny.ui.Sidebar` objects are not supported.
     toolbar
         Toolbar for this page. ``None`` (the default) shows no page-scoped
-        toolbar. An HTML child supplies a page-specific toolbar. ``True`` and
-        ``False`` are legacy aliases for reusing the home
-        :func:`~shinychat.page_chat` toolbar and showing no page-scoped
-        toolbar, respectively.
+        toolbar. An HTML child supplies a page-specific toolbar.
     content_width
         Maximum width for the panel content. Content is centered and receives
         responsive inline padding. ``"100%"``, ``"100vw"``, and ``"100dvw"``
@@ -507,6 +504,11 @@ def chat_nav_panel(
         raise TypeError(
             "`sidebar` must be False, True, or a shinychat `ChatSidebar`; "
             "raw Shiny Sidebar objects are not supported."
+        )
+    if isinstance(toolbar, bool):
+        raise TypeError(
+            "`toolbar` must be an HTML child or None, "
+            f"not {type(toolbar).__name__}."
         )
     return ChatNavPanel(
         title=title,
@@ -718,11 +720,7 @@ def _normalize_page_config(
             )
 
         toolbar_key = (
-            "home"
-            if panel.toolbar is True
-            else f"page-{index + 1}"
-            if panel.toolbar is not False and panel.toolbar is not None
-            else None
+            f"page-{index + 1}" if panel.toolbar is not None else None
         )
         normalized_pages.append(
             _NormalizedPage(

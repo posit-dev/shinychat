@@ -66,8 +66,6 @@ app_ui = page_chat(
                 selected=["Field observations", "Published research"],
             ),
             sidebar=True,
-            # Compatibility alias: reuse the home-page toolbar here.
-            toolbar=True,
         ),
         chat_nav_panel(
             "Notebook",

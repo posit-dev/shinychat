@@ -105,8 +105,8 @@ test_that("page_chat navigation and sidebars work in a real Shiny app", {
   expect_null(about$sidebarKey)
   expect_null(about$sidebarOpen)
   expect_equal(about$visiblePanels, 1)
-  expect_identical(about$toolbarInput, "home_toolbar")
-  expect_equal(about$visibleToolbarContentCount, 1)
+  expect_null(about$toolbarInput)
+  expect_equal(about$visibleToolbarContentCount, 0)
 
   app$click(selector = "button[data-page-home]")
   app$wait_for_idle(timeout = 30 * 1000)

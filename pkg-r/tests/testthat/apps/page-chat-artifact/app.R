@@ -49,7 +49,6 @@ ui <- page_chat(
       div(id = "about-page", "About page"),
       value = "about",
       sidebar = FALSE,
-      toolbar = TRUE
     ),
     chat_nav_panel(
       "Settings",

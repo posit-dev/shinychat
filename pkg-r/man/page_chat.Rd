@@ -115,10 +115,9 @@ home view; \code{toolbar} is a home-page-scoped segment rendered with the page
 navigation controls and follows them into the mobile app menu.
 \code{toolbar_global} is a persistent segment that remains mounted on every page.
 A panel's \code{toolbar = NULL} omits the home-scoped segment; custom UI replaces
-it. For compatibility, \code{toolbar = TRUE} reuses the home toolbar and
-\code{toolbar = FALSE} is an alias for omitting it. On narrow screens, navigation
-and toolbar controls move into the app menu above the active page's sidebar
-content without duplicating Shiny input or output IDs.
+it. On narrow screens, navigation and toolbar controls move into the app
+menu above the active page's sidebar content without duplicating Shiny input
+or output IDs.
 
 Set \code{artifact} to a \code{\link[=chat_artifact]{chat_artifact()}} configuration to provide initial
 content and layout options. Update the mounted artifact from the server
@@ -164,7 +163,6 @@ ui <- page_chat(
       "About",
       tags$p("This is a secondary page."),
       value = "about",
-      toolbar = TRUE
     ),
     chat_nav_panel(
       "Settings",

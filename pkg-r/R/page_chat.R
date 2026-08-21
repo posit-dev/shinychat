@@ -40,10 +40,9 @@
 #' navigation controls and follows them into the mobile app menu.
 #' `toolbar_global` is a persistent segment that remains mounted on every page.
 #' A panel's `toolbar = NULL` omits the home-scoped segment; custom UI replaces
-#' it. For compatibility, `toolbar = TRUE` reuses the home toolbar and
-#' `toolbar = FALSE` is an alias for omitting it. On narrow screens, navigation
-#' and toolbar controls move into the app menu above the active page's sidebar
-#' content without duplicating Shiny input or output IDs.
+#' it. On narrow screens, navigation and toolbar controls move into the app
+#' menu above the active page's sidebar content without duplicating Shiny input
+#' or output IDs.
 #'
 #' Set `artifact` to a [chat_artifact()] configuration to provide initial
 #' content and layout options. Update the mounted artifact from the server
@@ -120,7 +119,6 @@
 #'       "About",
 #'       tags$p("This is a secondary page."),
 #'       value = "about",
-#'       toolbar = TRUE
 #'     ),
 #'     chat_nav_panel(
 #'       "Settings",
@@ -487,9 +485,7 @@ chat_sidebar <- function(
 #'   [chat_sidebar()] or [bslib::sidebar()] configuration. A [chat_sidebar()]
 #'   with `history = NULL` defaults to `FALSE` here.
 #' @param toolbar `NULL` (the default) for no page-scoped toolbar, or UI
-#'   content for a page-specific toolbar. For backward compatibility, `TRUE`
-#'   reuses the home `page_chat()` toolbar and `FALSE` omits the page-scoped
-#'   toolbar.
+#'   content for a page-specific toolbar.
 #' @param content_width Maximum panel-content width. Content is centered and
 #'   receives responsive inline padding. Use exactly `"100%"`, `"100vw"`, or
 #'   `"100dvw"` for full-bleed content without component-provided padding.
@@ -751,9 +747,7 @@ normalize_page_sidebars <- function(pages, sidebar, resolved_id) {
       title = page$title,
       icon = page$icon,
       toolbar = page$toolbar,
-      toolbar_key = if (isTRUE(page$toolbar)) {
-        "home"
-      } else if (isFALSE(page$toolbar) || is.null(page$toolbar)) {
+      toolbar_key = if (is.null(page$toolbar)) {
         NULL
       } else {
         paste0("page-", i)
@@ -937,7 +931,7 @@ chat_validate_panel_toolbar <- function(value) {
     return(invisible())
   }
   if (is.logical(value)) {
-    chat_validate_boolean(value, "toolbar")
+    cli::cli_abort("{.arg toolbar} must be NULL or UI content.")
   } else {
     chat_validate_page_ui(value, "toolbar", allow_null = FALSE)
   }

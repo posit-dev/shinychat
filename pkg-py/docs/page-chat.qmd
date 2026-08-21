@@ -92,7 +92,6 @@ app_ui = page_chat(
             "Sources",
             ui.p("Sources selected during this session appear here."),
             sidebar=True,
-            toolbar=True,
         ),
         chat_nav_panel(
             "Settings",
@@ -150,10 +149,9 @@ layout needs a history view bound to a specific chat ID outside a
 
 `toolbar` is scoped to the chat home page. Supply an HTML child for `toolbar`
 to replace it. A navigation page defaults to `toolbar=None`, which omits that
-scoped segment. For compatibility with earlier code,
-`toolbar=True` reuses the home toolbar and `toolbar=False` is an alias for
-omitting it. Use `toolbar_global` for actions that must remain mounted and
-visible across every selected page. When omitted, `toolbar_global` contains
+scoped segment. Supply an HTML child to add a page-specific toolbar. Use
+`toolbar_global` for actions that must remain mounted and visible across every
+selected page. When omitted, `toolbar_global` contains
 Shiny's dark/light mode toggle; pass `toolbar_global=None` to opt out. It is
 rendered after the page-scoped segment and keeps its input and output state
 when the controls move between desktop and mobile layouts.
@@ -210,7 +208,6 @@ page_chat(
             "About",
             ui.p("This page keeps the chat mounted."),
             sidebar=False,
-            toolbar=True,
         ),
         chat_nav_panel(
             "Settings",

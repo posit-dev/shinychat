@@ -109,7 +109,6 @@ def app_ui(request: Request) -> ui.Tag:
                 ),
                 value="history",
                 sidebar=True,
-                toolbar=True,
             ),
             chat_nav_panel(
                 "Settings",

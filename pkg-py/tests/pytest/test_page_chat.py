@@ -153,8 +153,10 @@ def test_chat_nav_panel_validates_sidebar_and_navigation_values() -> None:
     assert (
         chat_nav_panel("Full", content_width="100vw").content_width == "100vw"
     )
-    assert chat_nav_panel("Inherited", toolbar=True).toolbar is True
-    assert chat_nav_panel("Legacy empty", toolbar=False).toolbar is False
+    with pytest.raises(TypeError, match=r"`toolbar` must be an HTML child"):
+        chat_nav_panel("Inherited", toolbar=True)
+    with pytest.raises(TypeError, match=r"`toolbar` must be an HTML child"):
+        chat_nav_panel("Legacy empty", toolbar=False)
     custom_toolbar = tags.span("Custom toolbar")
     assert (
         chat_nav_panel("Custom", toolbar=custom_toolbar).toolbar
@@ -424,7 +426,7 @@ def test_page_chat_normalizes_navigation_toolbar_and_sidebars() -> None:
                     tags.p("About content"),
                     icon=tags.i("info"),
                     sidebar=True,
-                    toolbar=True,
+                    toolbar=tags.button("About toolbar"),
                 ),
                 chat_nav_panel(
                     "Settings",
@@ -475,12 +477,13 @@ def test_page_chat_normalizes_navigation_toolbar_and_sidebars() -> None:
     assert html.index('class="shiny-chat-page-toolbar-scoped"') < html.index(
         'class="shiny-chat-page-toolbar-global"'
     )
-    assert html.count('data-page-toolbar-source="home"') == 3
+    assert html.count('data-page-toolbar-source="home"') == 2
+    assert html.count('data-page-toolbar-source="page-1"') == 2
     assert html.count('data-page-toolbar-source="page-2"') == 2
-    assert html.count('class="shiny-chat-page-toolbar-source"') == 2
-    assert html.count('class="shiny-chat-page-toolbar-content"') == 2
+    assert html.count('class="shiny-chat-page-toolbar-source"') == 3
+    assert html.count('class="shiny-chat-page-toolbar-content"') == 3
     assert html.count('id="mod-settings_save"') == 1
-    assert 'data-page-toolbar-source="home"' in re.search(
+    assert 'data-page-toolbar-source="page-1"' in re.search(
         r'<section[^>]*data-page-value="About"[^>]*>',
         html,
     ).group(0)  # type: ignore[union-attr]
@@ -553,26 +556,14 @@ def test_page_chat_sidebar_false_keeps_hidden_default_for_nav_page() -> None:
     assert 'data-sidebar-key="default"' in html[about_start:about_end]
 
 
-def test_page_chat_inherited_empty_toolbar_has_one_home_source() -> None:
-    html = page_chat(
-        "Assistant",
-        pages=[chat_nav_panel("About", tags.p("About"), toolbar=True)],
-    ).get_html_string()
-
-    assert html.count('data-page-toolbar-source="home"') == 3
-    assert html.count('class="shiny-chat-page-toolbar-source"') == 1
-    assert html.count('class="shiny-chat-page-toolbar-content"') == 1
-
-
-def test_page_chat_nav_toolbar_defaults_and_legacy_booleans() -> None:
+def test_page_chat_nav_toolbar_defaults_and_custom_content() -> None:
     html = page_chat(
         "Assistant",
         toolbar=tags.button("Home"),
         toolbar_global=tags.button("Global"),
         pages=[
             chat_nav_panel("Default"),
-            chat_nav_panel("Inherited", toolbar=True),
-            chat_nav_panel("Legacy empty", toolbar=False),
+            chat_nav_panel("No toolbar"),
             chat_nav_panel("Custom", toolbar=tags.button("Custom")),
         ],
     ).get_html_string()
@@ -584,16 +575,15 @@ def test_page_chat_nav_toolbar_defaults_and_legacy_booleans() -> None:
         html,
     )
     sections: dict[str, str] = {}
-    for value in ("Default", "Inherited", "Legacy empty", "Custom"):
+    for value in ("Default", "No toolbar", "Custom"):
         section = re.search(
             rf'<section[^>]*data-page-value="{value}"[^>]*>', html
         )
         assert section is not None
         sections[value] = section.group(0)
     assert "data-page-toolbar-source" not in sections["Default"]
-    assert 'data-page-toolbar-source="home"' in sections["Inherited"]
-    assert "data-page-toolbar-source" not in sections["Legacy empty"]
-    assert 'data-page-toolbar-source="page-4"' in sections["Custom"]
+    assert "data-page-toolbar-source" not in sections["No toolbar"]
+    assert 'data-page-toolbar-source="page-3"' in sections["Custom"]
 
 
 def test_page_chat_sidebar_false_without_nav_sidebar_has_no_panel() -> None:

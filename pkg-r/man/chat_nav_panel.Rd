@@ -29,9 +29,7 @@ page-specific sidebar (\code{FALSE}), or a
 with \code{history = NULL} defaults to \code{FALSE} here.}
 
 \item{toolbar}{\code{NULL} (the default) for no page-scoped toolbar, or UI
-content for a page-specific toolbar. For backward compatibility, \code{TRUE}
-reuses the home \code{page_chat()} toolbar and \code{FALSE} omits the page-scoped
-toolbar.}
+content for a page-specific toolbar.}
 
 \item{content_width}{Maximum panel-content width. Content is centered and
 receives responsive inline padding. Use exactly \code{"100\%"}, \code{"100vw"}, or

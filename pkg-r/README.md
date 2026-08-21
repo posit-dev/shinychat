@@ -74,7 +74,6 @@ ui <- page_chat(
       "About",
       tags$p("About this app."),
       value = "about",
-      toolbar = TRUE
     ),
     chat_nav_panel(
       "Settings",
