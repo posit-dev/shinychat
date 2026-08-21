@@ -973,6 +973,14 @@ shinychat-raw-html {
   }
 }
 
+// Keep portal hosts from participating in flex or grid app-shell layout.
+[data-floating-ui-portal]:has(
+  > .shiny-aside-popover,
+  > .shiny-sources-popover
+) {
+  position: fixed;
+}
+
 .shiny-aside-popover {
   // Position comes from Floating UI. The portal lets the popover escape the
   // message list's scroll container while flip/shift keep it in the viewport.
