@@ -65,7 +65,7 @@ class ChatNavPanel:
     content: tuple[TagChild, ...]
     value: str | None
     icon: TagChild | None
-    sidebar: bool | ChatSidebar | None
+    sidebar: bool | ChatSidebar
     toolbar: bool | TagChild | None
     content_width: str
 
@@ -73,13 +73,13 @@ class ChatNavPanel:
 def page_chat(
     title: TagChild,
     *,
-    icon: TagChild | None = None,
     id: str = "chat",
+    icon: TagChild | None = None,
     pages: Sequence[ChatNavPanel] | None = None,
-    toolbar: TagChild | None | MISSING_TYPE = MISSING,
-    toolbar_global: TagChild | None = None,
+    toolbar: TagChild | None = None,
+    toolbar_global: TagChild | None | MISSING_TYPE = MISSING,
     navbar_options: Any = None,
-    sidebar: bool | ChatSidebar | None = None,
+    sidebar: bool | ChatSidebar = True,
     artifact: bool | ChatArtifact = True,
     window_title: str | None = None,
     lang: str | None = None,
@@ -117,21 +117,22 @@ def page_chat(
         Secondary pages created with :func:`~shinychat.chat_nav_panel`.
     toolbar
         Optional home-page-scoped HTML child displayed with the navigation
-        controls. When omitted, the toolbar contains Shiny's dark/light mode
-        toggle. Pass ``None`` to omit it. A page's
-        ``chat_nav_panel(toolbar=)`` can replace this segment.
+        controls. A page's ``chat_nav_panel(toolbar=)`` can replace this
+        segment.
     toolbar_global
         Optional persistent HTML child displayed after the page-scoped toolbar
-        in the navigation controls. It remains mounted while pages are
-        selected and while controls move between desktop and mobile layouts.
+        in the navigation controls. When omitted, it contains Shiny's
+        dark/light mode toggle; pass ``None`` to opt out. It remains mounted
+        while pages are selected and while controls move between desktop and
+        mobile layouts.
     navbar_options
         Optional :func:`shiny.ui.navbar_options` that styles the page title bar.
         Its ``bg``, ``theme``, ``underline``, and HTML attributes are supported.
         ``position`` and ``collapsible`` are unsupported because ``page_chat()``
         owns the full-window layout and responsive app menu.
     sidebar
-        Home-page sidebar. When omitted or ``True``, the page uses the default
-        conversation-history sidebar. ``False`` removes it, and a
+        Home-page sidebar. ``True`` uses the default conversation-history
+        sidebar, ``False`` removes it, and a
         :class:`~shinychat.types.ChatSidebar` supplies custom content and behavior.
         Raw :class:`shiny.ui.Sidebar` objects are not supported.
     artifact
@@ -420,7 +421,7 @@ def chat_nav_panel(
     *content: TagChild,
     value: str | None = None,
     icon: TagChild | None = None,
-    sidebar: bool | ChatSidebar | None = None,
+    sidebar: bool | ChatSidebar = False,
     toolbar: bool | TagChild | None = None,
     content_width: "CssUnit" = "min(680px, 100%)",
 ) -> ChatNavPanel:
@@ -442,10 +443,10 @@ def chat_nav_panel(
     icon
         Optional HTML child displayed with the navigation label.
     sidebar
-        Sidebar for this page. When omitted or ``False``, this page has no
-        page-specific sidebar. ``True`` uses the default conversation-history
-        sidebar, and a :class:`~shinychat.types.ChatSidebar` supplies a page-specific
-        sidebar. Raw :class:`shiny.ui.Sidebar` objects are not supported.
+        Sidebar for this page. ``False`` shows no page-specific sidebar,
+        ``True`` uses the default conversation-history sidebar, and a
+        :class:`~shinychat.types.ChatSidebar` supplies a page-specific sidebar.
+        Raw :class:`shiny.ui.Sidebar` objects are not supported.
     toolbar
         Toolbar for this page. ``None`` (the default) shows no page-scoped
         toolbar. An HTML child supplies a page-specific toolbar. ``True`` and
@@ -494,9 +495,9 @@ def chat_nav_panel(
         )
     if value == "":
         raise ValueError("`value` must not be an empty string.")
-    if sidebar is not None and not isinstance(sidebar, (bool, ChatSidebar)):
+    if not isinstance(sidebar, (bool, ChatSidebar)):
         raise TypeError(
-            "`sidebar` must be None, False, True, or a shinychat `ChatSidebar`; "
+            "`sidebar` must be False, True, or a shinychat `ChatSidebar`; "
             "raw Shiny Sidebar objects are not supported."
         )
     return ChatNavPanel(
@@ -614,23 +615,23 @@ def _normalize_sidebar_config(sidebar: ChatSidebar) -> ChatSidebar:
 
 def _normalize_page_config(
     pages: Sequence[ChatNavPanel] | None,
-    sidebar: bool | ChatSidebar | None,
+    sidebar: bool | ChatSidebar,
 ) -> tuple[
     tuple[_NormalizedPage, ...],
     tuple[_NormalizedSidebar, ...],
     str | None,
     ChatSidebar | None,
 ]:
-    if sidebar is not None and not isinstance(sidebar, (bool, ChatSidebar)):
+    if not isinstance(sidebar, (bool, ChatSidebar)):
         raise TypeError(
-            "`sidebar` must be None, False, True, or a shinychat `ChatSidebar`; "
+            "`sidebar` must be False, True, or a shinychat `ChatSidebar`; "
             "raw Shiny Sidebar objects are not supported."
         )
 
     default_sidebar: ChatSidebar | None = None
     home_sidebar: ChatSidebar | None
     sidebars: list[_NormalizedSidebar] = []
-    if sidebar is None or sidebar is True:
+    if sidebar is True:
         default_sidebar = chat_sidebar(history=True)
         home_sidebar = default_sidebar
         home_sidebar_key = "default"
@@ -664,11 +665,9 @@ def _normalize_page_config(
             )
         if panel.value is not None and not isinstance(panel.value, str):
             raise TypeError("Navigation page values must be strings or None.")
-        if panel.sidebar is not None and not isinstance(
-            panel.sidebar, (bool, ChatSidebar)
-        ):
+        if not isinstance(panel.sidebar, (bool, ChatSidebar)):
             raise TypeError(
-                "Navigation page sidebars must be None, False, True, or a "
+                "Navigation page sidebars must be False, True, or a "
                 "shinychat `ChatSidebar`."
             )
         value = panel.title if panel.value is None else panel.value
@@ -685,7 +684,7 @@ def _normalize_page_config(
             if default_sidebar is None:
                 default_sidebar = chat_sidebar(history=True)
                 sidebars.append(_NormalizedSidebar("default", default_sidebar))
-        elif panel.sidebar is None or panel.sidebar is False:
+        elif panel.sidebar is False:
             sidebar_key = None
         else:
             sidebar_key = f"page-{index + 1}"
@@ -878,10 +877,10 @@ def _render_page_chat(
     *,
     id: str = "chat",
     pages: Sequence[ChatNavPanel] | None = None,
-    toolbar: TagChild | None | MISSING_TYPE = MISSING,
-    toolbar_global: TagChild | None = None,
+    toolbar: TagChild | None = None,
+    toolbar_global: TagChild | None | MISSING_TYPE = MISSING,
     navbar_options: Any = None,
-    sidebar: bool | ChatSidebar | None = None,
+    sidebar: bool | ChatSidebar = True,
     window_title: str | None = None,
     lang: str | None = None,
     theme: str | Path | Theme | ThemeProvider | None = None,
@@ -911,10 +910,10 @@ def _render_page_chat(
     navbar_options = _normalize_page_chat_navbar_options(navbar_options)
     if theme is None:
         theme = page_chat_theme()
-    if isinstance(toolbar, MISSING_TYPE):
-        toolbar_content: TagChild | None = ui.input_dark_mode()
+    if isinstance(toolbar_global, MISSING_TYPE):
+        toolbar_global_content: TagChild | None = ui.input_dark_mode()
     else:
-        toolbar_content = toolbar
+        toolbar_global_content = toolbar_global
 
     (
         normalized_pages,
@@ -970,7 +969,7 @@ def _render_page_chat(
             Tag("div", class_="shiny-chat-page-toolbar-scoped"),
             Tag(
                 "div",
-                toolbar_global,
+                toolbar_global_content,
                 class_="shiny-chat-page-toolbar-global",
             ),
             class_="shiny-chat-page-toolbar",
@@ -979,7 +978,7 @@ def _render_page_chat(
     )
     toolbar_sources = Tag(
         "div",
-        _render_toolbar_source("home", toolbar_content),
+        _render_toolbar_source("home", toolbar),
         *(
             _render_toolbar_source(
                 page.toolbar_key,

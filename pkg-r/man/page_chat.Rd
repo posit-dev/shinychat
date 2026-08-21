@@ -13,7 +13,7 @@ page_chat(
   toolbar = NULL,
   toolbar_global = NULL,
   navbar_options = NULL,
-  sidebar = NULL,
+  sidebar = TRUE,
   messages = NULL,
   greeting = NULL,
   placeholder = "Enter a message...",
@@ -52,8 +52,8 @@ page title bar. Its \code{bg}, \code{theme}, \code{underline}, and HTML attribut
 supported. \code{position} and \code{collapsible} are unsupported because
 \code{page_chat()} owns the full-window layout and responsive app menu.}
 
-\item{sidebar}{Whether to use the default history sidebar (\code{TRUE} or the
-default \code{NULL}), omit the default sidebar (\code{FALSE}), or use a
+\item{sidebar}{Whether to use the default history sidebar (\code{TRUE}), omit the
+default sidebar (\code{FALSE}), or use a
 \code{\link[=chat_sidebar]{chat_sidebar()}} or \code{\link[bslib:sidebar]{bslib::sidebar()}} configuration. A bslib sidebar
 supplies its child content, width, initial open state, and resizability;
 its history defaults to \code{FALSE}.}

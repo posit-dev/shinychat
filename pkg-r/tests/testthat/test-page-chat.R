@@ -155,7 +155,7 @@ test_that("chat_nav_panel() requires page-chat configuration", {
   expect_s3_class(panel$sidebar, "chat_sidebar")
   expect_null(panel$toolbar)
   expect_equal(panel$content_width, "min(680px, 100%)")
-  expect_null(chat_nav_panel("Default")$sidebar)
+  expect_false(chat_nav_panel("Default")$sidebar)
   expect_equal(
     chat_nav_panel("Wide", content_width = 720)$content_width,
     "720px"

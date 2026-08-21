@@ -138,25 +138,23 @@ def server(input, output, session):
 app = App(app_ui, server)
 ```
 
-An omitted `sidebar` (or `sidebar=None`) supplies the default
-conversation-history sidebar. `sidebar=True` is an explicit alias. Pass a
+`sidebar=True` supplies the default conversation-history sidebar. Pass a
 `chat_sidebar()` object when the page needs additional content or a different
 initial width and open state. A navigation page can set `sidebar=False` to
-remove its page-specific sidebar, omit the argument for the same result, use
-`sidebar=True` to use the default history sidebar, or supply its own
-`chat_sidebar()`. `chat_ui_history("chat")` is available when an advanced
+remove its page-specific sidebar, use `sidebar=True` to use the default history
+sidebar, or supply its own `chat_sidebar()`. `chat_ui_history("chat")` is available when an advanced
 layout needs a history view bound to a specific chat ID outside a
 `page_chat()` sidebar.
 
-`toolbar` is scoped to the chat home page. When omitted, it provides Shiny's
-dark/light mode toggle; pass `toolbar=None` to opt out. A navigation page
-defaults to `toolbar=None`, which omits that scoped segment. Supply an HTML
-child for `toolbar` to replace it. For compatibility with earlier code,
+`toolbar` is scoped to the chat home page. Supply an HTML child for `toolbar`
+to replace it. A navigation page defaults to `toolbar=None`, which omits that
+scoped segment. For compatibility with earlier code,
 `toolbar=True` reuses the home toolbar and `toolbar=False` is an alias for
 omitting it. Use `toolbar_global` for actions that must remain mounted and
-visible across every selected page; it is rendered after the page-scoped
-segment and keeps its input and output state when the controls move between
-desktop and mobile layouts.
+visible across every selected page. When omitted, `toolbar_global` contains
+Shiny's dark/light mode toggle; pass `toolbar_global=None` to opt out. It is
+rendered after the page-scoped segment and keeps its input and output state
+when the controls move between desktop and mobile layouts.
 
 Use `navbar_options=ui.navbar_options(...)` to style the title bar with its
 background, color theme, underline navigation treatment, and HTML attributes.

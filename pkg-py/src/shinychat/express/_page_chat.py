@@ -30,13 +30,13 @@ _OWNERSHIP_ERROR = (
 def page_chat(
     title: TagChild,
     *,
-    icon: TagChild | None = None,
     id: str = "chat",
+    icon: TagChild | None = None,
     pages: Sequence[ChatNavPanel] | None = None,
-    toolbar: TagChild | None | MISSING_TYPE = MISSING,
-    toolbar_global: TagChild | None = None,
+    toolbar: TagChild | None = None,
+    toolbar_global: TagChild | None | MISSING_TYPE = MISSING,
     navbar_options: Any = None,
-    sidebar: bool | ChatSidebar | None = None,
+    sidebar: bool | ChatSidebar = True,
     artifact: bool | ChatArtifact = True,
     window_title: str | None = None,
     lang: str | None = None,
@@ -77,19 +77,19 @@ def page_chat(
         Secondary pages created with :func:`~shinychat.chat_nav_panel`.
     toolbar
         Optional home-page-scoped HTML child displayed with the navigation
-        controls. When omitted, the toolbar contains Shiny's dark/light mode
-        toggle. Pass ``None`` to omit it. A page's
-        ``chat_nav_panel(toolbar=)`` can replace this segment.
+        controls. A page's ``chat_nav_panel(toolbar=)`` can replace this
+        segment.
     toolbar_global
         Optional persistent HTML child displayed after the page-scoped toolbar
-        in the navigation controls.
+        in the navigation controls. When omitted, it contains Shiny's
+        dark/light mode toggle; pass ``None`` to opt out.
     navbar_options
         Optional :func:`shiny.ui.navbar_options` that styles the page title bar.
         ``position`` and ``collapsible`` are unsupported because ``page_chat()``
         owns the full-window layout and responsive app menu.
     sidebar
-        Home-page sidebar. When omitted or ``True``, the page uses the default
-        conversation-history sidebar. ``False`` removes it, and a
+        Home-page sidebar. ``True`` uses the default conversation-history
+        sidebar, ``False`` removes it, and a
         :class:`~shinychat.types.ChatSidebar` supplies custom content and behavior.
         Raw :class:`shiny.ui.Sidebar` objects are not supported.
     artifact

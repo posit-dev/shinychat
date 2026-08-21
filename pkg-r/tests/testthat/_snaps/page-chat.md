@@ -104,7 +104,7 @@
       chat_nav_panel("Settings", sidebar = list())
     Condition
       Error in `chat_validate_sidebar()`:
-      ! `sidebar` must be `NULL`, `TRUE`, `FALSE`, or a `chat_sidebar()` or `bslib::sidebar()` configuration.
+      ! `sidebar` must be `TRUE`, `FALSE`, or a `chat_sidebar()` or `bslib::sidebar()` configuration.
 
 # chat_ui_history() resolves IDs and accepts named HTML attributes
 
