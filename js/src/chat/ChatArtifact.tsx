@@ -305,14 +305,12 @@ export function ChatArtifact({
     const container = panel?.closest("shiny-chat-container")
     const available = container?.getBoundingClientRect().width ?? 0
     if (available <= 0) return 840
-    const layout = panel?.closest(".shiny-chat-layout") as HTMLElement | null
-    const computedGap = layout
-      ? Number.parseFloat(window.getComputedStyle(layout).columnGap)
-      : NaN
-    const gap = Number.isFinite(computedGap)
-      ? computedGap
-      : Number.parseFloat(layout?.style.columnGap ?? "") || 0
-    return Math.max(MIN_ARTIFACT_WIDTH, available - MIN_CHAT_WIDTH - gap)
+    // Match ChatContainer's layout reservation. The computed gap can be
+    // smaller at constrained widths, but the grid still reserves this maximum.
+    return Math.max(
+      MIN_ARTIFACT_WIDTH,
+      available - MIN_CHAT_WIDTH - MAX_ARTIFACT_LAYOUT_GAP,
+    )
   }, [])
 
   const measureAndClampWidth = useCallback(() => {

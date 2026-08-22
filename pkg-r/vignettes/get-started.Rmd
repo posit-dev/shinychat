@@ -263,7 +263,9 @@ artifact_content <- function(label) {
 ui <- page_chat(
   "Assistant",
   messages = "Welcome! Ask a question to get started.",
-  toolbar = actionButton("show_preview", "Show preview"),
+  toolbar = bslib::toolbar(
+    actionButton("show_preview", "Show preview")
+  ),
   toolbar_global = bslib::toolbar(
     bslib::input_dark_mode(),
     actionButton("help", "Help")
@@ -288,7 +290,9 @@ ui <- page_chat(
         width = 320,
         open = "closed"
       ),
-      toolbar = actionButton("save_settings", "Save settings")
+      toolbar = bslib::toolbar(
+        actionButton("save_settings", "Save settings")
+      )
     )
   ),
   artifact_panel = chat_artifact_panel(
@@ -356,9 +360,7 @@ page-specific sidebar or toolbar; use `chat_nav_panel()` when a page needs
 those options. `bslib::nav_menu()` supports nested menus,
 `bslib::nav_item()` adds non-selecting navigation UI, and
 `bslib::nav_spacer()` separates items. `bslib::nav_panel_hidden()` creates an
-unlisted panel; provide a custom `bslib::nav_item()` trigger with
-`.shiny-chat-page-nav-link` and `data-page-target` when it needs to be
-selected.
+unlisted panel.
 
 The package includes runnable navigation and artifact-control examples. They
 use local echo responses, so no provider credentials are required:

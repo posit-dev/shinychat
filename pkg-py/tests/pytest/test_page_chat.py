@@ -556,7 +556,7 @@ def test_page_chat_supports_standard_shiny_navigation_items() -> None:
                 "More",
                 ui.nav_panel("Help", tags.p("Help content"), value="help"),
                 "---",
-                ui.nav_menu(
+                ui.nav_menu(  # pyright: ignore[reportArgumentType]
                     "Nested",
                     ui.nav_panel(
                         "Details",

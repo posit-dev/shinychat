@@ -82,7 +82,9 @@ from shinychat import (
 app_ui = page_chat(
     "Research assistant",
     id="chat",
-    toolbar=ui.input_action_button("clear_chat", "Clear conversation"),
+    toolbar=ui.toolbar(
+        ui.input_action_button("clear_chat", "Clear conversation"),
+    ),
     toolbar_global=ui.toolbar(
         ui.input_dark_mode(),
         ui.input_action_button("help", "Help"),
@@ -106,7 +108,9 @@ app_ui = page_chat(
                 open="closed",
                 width=260,
             ),
-            toolbar=ui.input_action_button("save_settings", "Save settings"),
+            toolbar=ui.toolbar(
+                ui.input_action_button("save_settings", "Save settings"),
+            ),
         ),
         chat_nav_panel(
             "About",
@@ -216,7 +220,9 @@ chat = Chat("chat")
 page_chat(
     "Research assistant",
     id="chat",
-    toolbar=ui.input_action_button("clear_chat", "Clear conversation"),
+    toolbar=ui.toolbar(
+        ui.input_action_button("clear_chat", "Clear conversation"),
+    ),
     toolbar_global=ui.toolbar(
         ui.input_dark_mode(),
         ui.input_action_button("help", "Help"),
@@ -231,7 +237,9 @@ page_chat(
         chat_nav_panel(
             "Settings",
             ui.p("Settings"),
-            toolbar=ui.input_action_button("save_settings", "Save settings"),
+            toolbar=ui.toolbar(
+                ui.input_action_button("save_settings", "Save settings"),
+            ),
         )
     ],
 )

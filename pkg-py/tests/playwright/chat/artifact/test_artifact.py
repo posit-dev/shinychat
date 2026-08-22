@@ -225,7 +225,7 @@ def test_artifact_honors_reduced_motion(
 def test_artifact_takeover_focus_and_close(
     page: Page, local_app: ShinyAppProc
 ) -> None:
-    chat = open_chat(page, local_app, viewport=(800, 900))
+    chat = open_chat(page, local_app, viewport=(600, 900))
     input_loc = chat_input(chat)
     input_loc.focus()
     expect(input_loc).to_be_focused()

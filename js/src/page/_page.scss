@@ -257,6 +257,78 @@ button.shiny-chat-page-identity:focus-visible,
   outline-offset: 0.1rem;
 }
 
+.shiny-chat-page-nav-control {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  min-height: 2.75rem;
+}
+
+.shiny-chat-page-nav > .bslib-nav-spacer {
+  flex: 1 1 auto;
+  min-width: 0.5rem;
+}
+
+.shiny-chat-page-nav-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.shiny-chat-page-nav-menu-toggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: var(--shiny-chat-page-nav-link-padding-y, 0.5rem)
+    var(--shiny-chat-page-nav-link-padding-x, 0.75rem);
+  cursor: pointer;
+  list-style: none;
+  border-radius: var(--bs-border-radius, 0.375rem);
+}
+
+.shiny-chat-page-nav-menu-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.shiny-chat-page-nav-menu-toggle:hover,
+.shiny-chat-page-nav-menu-toggle:focus-visible {
+  background: var(--bs-tertiary-bg, #f1f3f5);
+}
+
+.shiny-chat-page-nav-menu-toggle:focus-visible {
+  outline: 0.2rem solid var(--_page-focus-ring-color);
+  outline-offset: 0.1rem;
+}
+
+.shiny-chat-page-nav-menu-items {
+  position: absolute;
+  z-index: 6;
+  top: calc(100% + 0.25rem);
+  inset-inline-start: 0;
+  display: grid;
+  min-width: max-content;
+  padding: 0.25rem;
+  border: var(--_page-border);
+  border-radius: var(--bs-border-radius, 0.375rem);
+  background: var(--bs-body-bg, var(--_page-surface-bg));
+  box-shadow: var(--bs-box-shadow, 0 0.5rem 1rem rgb(0 0 0 / 15%));
+}
+
+.shiny-chat-page-nav-menu-items .shiny-chat-page-nav-link {
+  justify-content: flex-start;
+  width: 100%;
+}
+
+.shiny-chat-page-nav-menu-header,
+.shiny-chat-page-nav-divider {
+  margin: 0.25rem 0;
+}
+
+.shiny-chat-page-nav-menu-header {
+  padding: 0.25rem 0.5rem;
+  color: var(--bs-secondary-color, #6c757d);
+  font-size: 0.875rem;
+}
+
 .shiny-chat-page-sidebar-toggle:disabled {
   cursor: not-allowed;
   opacity: 0.5;
@@ -624,6 +696,29 @@ button.shiny-chat-page-identity:focus-visible,
   .shiny-chat-page-controls-mount-mobile .shiny-chat-page-nav-link {
     justify-content: flex-start;
     width: 100%;
+  }
+
+  .shiny-chat-page-controls-mount-mobile .shiny-chat-page-nav-control {
+    width: 100%;
+  }
+
+  .shiny-chat-page-controls-mount-mobile .shiny-chat-page-nav > .bslib-nav-spacer {
+    display: none;
+  }
+
+  .shiny-chat-page-controls-mount-mobile .shiny-chat-page-nav-menu {
+    width: 100%;
+  }
+
+  .shiny-chat-page-controls-mount-mobile .shiny-chat-page-nav-menu-toggle {
+    width: 100%;
+  }
+
+  .shiny-chat-page-controls-mount-mobile .shiny-chat-page-nav-menu-items {
+    position: static;
+    min-width: 0;
+    margin-inline-start: 0.75rem;
+    box-shadow: none;
   }
 
   .shiny-chat-page-sidebar-scrim {

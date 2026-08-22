@@ -674,9 +674,7 @@ class ChatPageElement extends HTMLElement {
     if (!this.toolbarScoped || this.toolbarSources.size === 0) return
 
     const key = selected.dataset.pageToolbarSource?.trim()
-    const desired = key
-      ? this.toolbarSources.get(key)
-      : this.toolbarSources.get("home")
+    const desired = key ? this.toolbarSources.get(key) : undefined
     if (desired === this.activeToolbarSource) return
 
     if (this.activeToolbarSource) {
@@ -871,6 +869,9 @@ class ChatPageElement extends HTMLElement {
     return (
       this.sidebarStates.size > 0 ||
       this.navButtons.length > 0 ||
+      this.hasMeaningfulContent(
+        this.controls?.querySelector(".shiny-chat-page-nav") ?? null,
+      ) ||
       this.hasMeaningfulContent(this.toolbarGlobal) ||
       this.hasMeaningfulContent(
         this.toolbarScoped?.querySelector<HTMLElement>(

@@ -109,6 +109,9 @@ ui <- page_chat(
         selected = c("Field observations", "Published research")
       ),
       sidebar = TRUE,
+      toolbar = bslib::toolbar(
+        bslib::toolbar_input_button("show_preview_sources", "Show Panel")
+      )
     ),
     chat_nav_panel(
       "Notebook",
@@ -180,6 +183,11 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$show_preview, {
+    session$sendCustomMessage("shinychat.page_chat_home", list(id = "chat"))
+    chat_artifact_panel_show("chat", title = "Working preview")
+  })
+
+  observeEvent(input$show_preview_sources, {
     session$sendCustomMessage("shinychat.page_chat_home", list(id = "chat"))
     chat_artifact_panel_show("chat", title = "Working preview")
   })

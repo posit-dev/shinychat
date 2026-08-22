@@ -42,10 +42,7 @@ those arguments are rejected.}
 \item{pages_navbar}{\code{NULL} or a list of \code{\link[=chat_nav_panel]{chat_nav_panel()}} configurations
 and supported standard bslib navigation items. Standard content panels
 use the normal page-chat content width with no page-specific sidebar or
-toolbar. Hidden panels are omitted from the generated navigation controls;
-pair them with a \code{\link[bslib:nav_item]{bslib::nav_item()}} control carrying
-\code{.shiny-chat-page-nav-link} and \code{data-page-target} when they need a custom
-trigger.}
+toolbar. Hidden panels are omitted from the generated navigation controls.}
 
 \item{toolbar}{Optional home-page-scoped UI displayed with the navigation
 controls. Use \code{\link[bslib:toolbar]{bslib::toolbar()}} to group toolbar controls. A panel's
@@ -170,7 +167,7 @@ artifact_content <- function(label) {
 ui <- page_chat(
   "Assistant",
   messages = "Welcome! Ask a question to get started.",
-  toolbar = actionButton("show_preview", "Show preview"),
+  toolbar = bslib::toolbar(actionButton("show_preview", "Show preview")),
   toolbar_global = actionButton("help", "Help"),
   sidebar = chat_sidebar(
     tags$p("Home tools"),
@@ -192,7 +189,7 @@ ui <- page_chat(
         width = 320,
         open = "closed"
       ),
-      toolbar = actionButton("save_settings", "Save settings")
+      toolbar = bslib::toolbar(actionButton("save_settings", "Save settings"))
     )
   ),
   artifact_panel = chat_artifact_panel(

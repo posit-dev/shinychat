@@ -437,7 +437,7 @@ describe("ChatArtifact", () => {
       name: "Resize artifact panel",
     })
     expect(separator).toHaveAttribute("aria-valuemin", "240")
-    expect(separator).toHaveAttribute("aria-valuemax", "840")
+    expect(separator).toHaveAttribute("aria-valuemax", "816")
 
     fireEvent.keyDown(separator, { key: "ArrowRight" })
     expect(onWidthChange).toHaveBeenLastCalledWith("410px")
@@ -560,11 +560,11 @@ describe("ChatArtifact", () => {
       name: "Resize artifact panel",
     })
     expect(panel.style.getPropertyValue("--shiny-chat-artifact-width")).toBe(
-      "640px",
+      "616px",
     )
-    expect(separator).toHaveAttribute("aria-valuenow", "640")
-    expect(separator).toHaveAttribute("aria-valuemax", "640")
-    expect(onWidthChange).toHaveBeenLastCalledWith("640px")
+    expect(separator).toHaveAttribute("aria-valuenow", "616")
+    expect(separator).toHaveAttribute("aria-valuemax", "616")
+    expect(onWidthChange).toHaveBeenLastCalledWith("616px")
   })
 
   it("bounds an oversized percentage grid track without applying it twice", async () => {
@@ -602,9 +602,9 @@ describe("ChatArtifact", () => {
       ResizeObserverStub.resize(shell, 1000)
     })
 
-    expect(onWidthChange).toHaveBeenLastCalledWith("640px")
+    expect(onWidthChange).toHaveBeenLastCalledWith("616px")
     expect(panel.style.getPropertyValue("--shiny-chat-artifact-width")).toBe(
-      "640px",
+      "616px",
     )
   })
 
@@ -859,14 +859,14 @@ describe("ChatArtifact", () => {
       )
 
       await waitFor(() => {
-        expect(onWidthChange).toHaveBeenCalledWith("840px")
+        expect(onWidthChange).toHaveBeenCalledWith("816px")
       })
       const separator = screen.getByRole("separator", {
         name: "Resize artifact panel",
       })
-      expect(separator).toHaveAttribute("aria-valuemax", "840")
-      expect(separator).toHaveAttribute("aria-valuenow", "840")
-      expect(separator).toHaveAttribute("aria-valuetext", "840 pixels")
+      expect(separator).toHaveAttribute("aria-valuemax", "816")
+      expect(separator).toHaveAttribute("aria-valuenow", "816")
+      expect(separator).toHaveAttribute("aria-valuetext", "816 pixels")
     } finally {
       if (original) {
         Object.defineProperty(
