@@ -461,12 +461,17 @@ def test_desktop_dropdown_navigation_is_clickable_and_closes_after_selection(
     shell = page.locator("shiny-chat-page")
     menu = shell.locator(".shiny-chat-page-nav-menu")
     nav = shell.locator(".shiny-chat-page-nav")
-    details = menu.get_by_role("button", name="Details")
+    details = menu.locator(".shiny-chat-page-nav-link")
 
     expect(shell).to_be_visible(timeout=TIMEOUT)
     expect(nav).to_have_css("overflow-x", "auto")
     assert nav.evaluate("(element) => element.scrollWidth > element.clientWidth")
     menu.scroll_into_view_if_needed()
+    details.evaluate(
+        """(element) => {
+          element.textContent = `Details ${"very long ".repeat(200)}`;
+        }"""
+    )
     menu.locator("summary").click()
     expect(menu).to_have_attribute("open", "")
     expect(details).to_be_visible()
@@ -477,6 +482,7 @@ def test_desktop_dropdown_navigation_is_clickable_and_closes_after_selection(
     assert menu_items_box is not None
     assert menu_items_box["x"] >= 0
     assert menu_items_box["x"] + menu_items_box["width"] <= 1280
+    assert menu_items_box["width"] == pytest.approx(1264, abs=1)
     hit_target = page.evaluate(
         """({ x, y }) => document.elementFromPoint(x, y)?.textContent""",
         {
@@ -532,6 +538,31 @@ def test_desktop_dropdown_navigation_aligns_in_rtl(
     assert items_box["x"] + items_box["width"] == pytest.approx(
         summary_box["x"] + summary_box["width"], abs=1
     )
+
+
+def test_open_mobile_dropdown_repositions_after_desktop_resize(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.set_viewport_size({"width": 390, "height": 760})
+    page.goto(f"{local_app.url}?dropdown=true")
+    shell = page.locator("shiny-chat-page")
+    menu = shell.locator(".shiny-chat-page-nav-menu")
+
+    expect(shell).to_be_visible(timeout=TIMEOUT)
+    shell.locator(".shiny-chat-page-sidebar-toggle").click()
+    menu.locator("summary").click()
+    expect(menu.locator(".shiny-chat-page-nav-menu-items")).to_have_css(
+        "position", "static"
+    )
+
+    page.set_viewport_size({"width": 1280, "height": 800})
+    expect(menu.locator(".shiny-chat-page-nav-menu-items")).to_have_css(
+        "position", "fixed"
+    )
+    items_box = menu.locator(".shiny-chat-page-nav-menu-items").bounding_box()
+    assert items_box is not None
+    assert items_box["x"] >= 0
+    assert items_box["x"] + items_box["width"] <= 1280
 
 
 def test_sidebarless_mobile_history_trigger_does_not_overlay_messages(

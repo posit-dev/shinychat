@@ -537,6 +537,7 @@ class ChatPageElement extends HTMLElement {
       this.updateToggleState()
       this.updateResizeHandle()
     }
+    this.positionNavigationMenus()
     this.updateToastOffset()
   }
 

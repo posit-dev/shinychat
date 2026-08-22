@@ -320,6 +320,8 @@ button.shiny-chat-page-identity:focus-visible,
     inset-inline-start: auto;
     left: var(--shiny-chat-page-nav-menu-left);
     box-sizing: border-box;
+    width: max-content;
+    min-width: 0;
     max-width: calc(100vw - 1rem);
     max-height: calc(100vh - 1rem);
     overflow: auto;
