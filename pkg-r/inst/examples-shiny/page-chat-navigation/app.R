@@ -98,7 +98,7 @@ ui <- page_chat(
     width = 320,
     open = "auto"
   ),
-  pages = list(
+  pages_navbar = list(
     chat_nav_panel(
       "Sources",
       tags$h2("Source checklist"),

@@ -75,7 +75,7 @@ def page_chat(
     *,
     id: str = "chat",
     icon: TagChild | None = None,
-    pages: Sequence[ChatNavPanel] | None = None,
+    pages_navbar: Sequence[ChatNavPanel] | None = None,
     toolbar: TagChild | None = None,
     toolbar_global: TagChild | None | MISSING_TYPE = MISSING,
     navbar_options: Any = None,
@@ -113,8 +113,9 @@ def page_chat(
         Optional HTML child displayed next to ``title``.
     id
         Unique ID shared by the page shell and its chat.
-    pages
-        Secondary pages created with :func:`~shinychat.chat_nav_panel`.
+    pages_navbar
+        Secondary navbar pages created with :func:`~shinychat.chat_nav_panel`.
+        Sidebar navigation is not yet implemented.
     toolbar
         Optional home-page-scoped HTML child displayed with the navigation
         controls. A page's ``chat_nav_panel(toolbar=)`` can replace this
@@ -123,7 +124,7 @@ def page_chat(
         Optional persistent HTML child displayed after the page-scoped toolbar
         in the navigation controls. When omitted, it contains Shiny's
         dark/light mode toggle; pass ``None`` to opt out. It remains mounted
-        while pages are selected and while controls move between desktop and
+        while secondary pages are selected and while controls move between desktop and
         mobile layouts.
     navbar_options
         Optional :func:`shiny.ui.navbar_options` that styles the page title bar.
@@ -187,7 +188,7 @@ def page_chat(
 
     app_ui = page_chat(
         "Assistant",
-        pages=[
+        pages_navbar=[
             chat_nav_panel("About", ui.p("About this app"), sidebar=False),
         ],
         sidebar=chat_sidebar(history=False),
@@ -205,7 +206,7 @@ def page_chat(
     --------
     :func:`~shinychat.chat_ui` : Embed chat in an existing page layout.
     :func:`~shinychat.chat_sidebar` : Configure page sidebars.
-    :func:`~shinychat.chat_nav_panel` : Configure secondary pages.
+    :func:`~shinychat.chat_nav_panel` : Configure secondary navbar pages.
     :func:`~shinychat.chat_artifact_panel` : Configure the artifact panel.
     :func:`~shinychat.express.page_chat` : Create the same layout in Express.
     """
@@ -227,7 +228,7 @@ def page_chat(
         title,
         icon,
         id=id,
-        pages=pages,
+        pages_navbar=pages_navbar,
         toolbar=toolbar,
         toolbar_global=toolbar_global,
         navbar_options=navbar_options,
@@ -466,7 +467,7 @@ def chat_nav_panel(
     Returns
     -------
     ChatNavPanel
-        A navigation-panel configuration for ``page_chat(pages=)``.
+        A navigation-panel configuration for ``page_chat(pages_navbar=)``.
 
     Examples
     --------
@@ -632,7 +633,7 @@ def _normalize_sidebar_config(
 
 
 def _normalize_page_config(
-    pages: Sequence[ChatNavPanel] | None,
+    pages_navbar: Sequence[ChatNavPanel] | None,
     sidebar: bool | ChatSidebar,
 ) -> tuple[
     tuple[_NormalizedPage, ...],
@@ -665,19 +666,23 @@ def _normalize_page_config(
         home_sidebar = None
         home_sidebar_key = None
 
-    if pages is None:
+    if pages_navbar is None:
         page_items: Sequence[ChatNavPanel] = ()
-    elif isinstance(pages, (str, bytes)) or not isinstance(pages, Sequence):
-        raise TypeError("`pages` must be a sequence of `ChatNavPanel` objects.")
+    elif isinstance(pages_navbar, (str, bytes)) or not isinstance(
+        pages_navbar, Sequence
+    ):
+        raise TypeError(
+            "`pages_navbar` must be a sequence of `ChatNavPanel` objects."
+        )
     else:
-        page_items = pages
+        page_items = pages_navbar
 
     normalized_pages: list[_NormalizedPage] = []
     values = {"home"}
     for index, panel in enumerate(page_items):
         if not isinstance(panel, ChatNavPanel):
             raise TypeError(
-                "`pages` must contain only `ChatNavPanel` objects, "
+                "`pages_navbar` must contain only `ChatNavPanel` objects, "
                 f"not {type(panel).__name__}."
             )
         if not isinstance(panel.title, str) or not panel.title.strip():
@@ -899,7 +904,7 @@ def _render_page_chat(
     icon: TagChild | None = None,
     *,
     id: str = "chat",
-    pages: Sequence[ChatNavPanel] | None = None,
+    pages_navbar: Sequence[ChatNavPanel] | None = None,
     toolbar: TagChild | None = None,
     toolbar_global: TagChild | None | MISSING_TYPE = MISSING,
     navbar_options: Any = None,
@@ -945,7 +950,7 @@ def _render_page_chat(
         normalized_sidebars,
         home_sidebar_key,
         home_sidebar,
-    ) = _normalize_page_config(pages, sidebar)
+    ) = _normalize_page_config(pages_navbar, sidebar)
     resolved_id = resolve_id(id)
     sidebar_id = f"{resolved_id}-sidebar"
 

@@ -59,7 +59,7 @@ def app_ui(request: Request) -> ui.Tag:
         "Artifact Assistant",
         id="chat",
         width=chat_width,
-        pages=[
+        pages_navbar=[
             chat_nav_panel(
                 "Details",
                 ui.div("Secondary page content", id="details_page"),

@@ -43,7 +43,7 @@ ui <- page_chat(
     width = 280,
     open = "open"
   ),
-  pages = list(
+  pages_navbar = list(
     chat_nav_panel(
       "About",
       div(id = "about-page", "About page"),

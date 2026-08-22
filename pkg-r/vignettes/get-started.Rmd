@@ -273,7 +273,7 @@ ui <- page_chat(
     history = FALSE,
     open = "open"
   ),
-  pages = list(
+  pages_navbar = list(
     chat_nav_panel(
       "About",
       tags$p("This is a secondary page."),

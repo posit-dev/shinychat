@@ -9,7 +9,7 @@ page_chat(
   icon = NULL,
   ...,
   id = "chat",
-  pages = NULL,
+  pages_navbar = NULL,
   toolbar = NULL,
   toolbar_global = bslib::toolbar(bslib::input_dark_mode()),
   navbar_options = NULL,
@@ -39,7 +39,7 @@ those arguments are rejected.}
 
 \item{id}{A non-empty string identifying the chat.}
 
-\item{pages}{\code{NULL} or a list of \code{\link[=chat_nav_panel]{chat_nav_panel()}} configurations.}
+\item{pages_navbar}{\code{NULL} or a list of \code{\link[=chat_nav_panel]{chat_nav_panel()}} configurations.}
 
 \item{toolbar}{Optional home-page-scoped UI displayed with the navigation
 controls. A panel's \code{chat_nav_panel(toolbar = )} can replace this segment.}
@@ -107,8 +107,9 @@ on the mounted chat. Do not wrap \code{page_chat()} in another page container or
 \section{Navigation, sidebars, and artifacts}{
 
 
-\code{pages} accepts a list of additional pages, each created with
+\code{pages_navbar} accepts a list of additional navbar pages, each created with
 \code{\link[=chat_nav_panel]{chat_nav_panel()}}.
+Sidebar navigation is not yet implemented.
 Each panel can use the default sidebar, no page-specific sidebar, or its
 own \code{\link[=chat_sidebar]{chat_sidebar()}} or \code{\link[bslib:sidebar]{bslib::sidebar()}} configuration. The \code{sidebar}
 argument configures the
@@ -160,7 +161,7 @@ ui <- page_chat(
     history = FALSE,
     open = "open"
   ),
-  pages = list(
+  pages_navbar = list(
     chat_nav_panel(
       "About",
       tags$p("This is a secondary page."),

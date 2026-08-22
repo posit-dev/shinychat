@@ -28,7 +28,7 @@ app_ui = page_chat(
         ui.toolbar_input_button("toggle_artifact", "Toggle"),
     ),
     sidebar=False,
-    pages=[
+    pages_navbar=[
         chat_nav_panel(
             "Inspector",
             ui.h2("Mounted-state inspector"),

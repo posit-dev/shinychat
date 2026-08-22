@@ -72,7 +72,7 @@ ui <- page_chat(
     actionButton("help", "Help")
   ),
   sidebar = chat_sidebar(tags$p("Tools"), history = FALSE),
-  pages = list(
+  pages_navbar = list(
     chat_nav_panel(
       "About",
       tags$p("About this app."),

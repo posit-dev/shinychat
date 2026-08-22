@@ -184,7 +184,7 @@ test_that("chat_nav_panel() requires page-chat configuration", {
   panel <- page_chat(
     "Assistant",
     sidebar = FALSE,
-    pages = list(chat_nav_panel("About", sidebar = chat_sidebar()))
+    pages_navbar = list(chat_nav_panel("About", sidebar = chat_sidebar()))
   )
   expect_length(page_chat_tags(home, "shiny-chat-history"), 1)
   expect_length(page_chat_tags(panel, "shiny-chat-history"), 0)
@@ -215,7 +215,7 @@ test_that("page_chat() normalizes bslib sidebars", {
       open = "open",
       resizable = FALSE
     ),
-    pages = list(
+    pages_navbar = list(
       chat_nav_panel(
         "Settings",
         sidebar = bslib::sidebar(
@@ -247,7 +247,7 @@ test_that("page_chat() normalizes bslib sidebars", {
 test_that("chat_nav_panel() renders a content-width wrapper", {
   page <- page_chat(
     "Assistant",
-    pages = list(
+    pages_navbar = list(
       chat_nav_panel("Default", htmltools::tags$p("Default")),
       chat_nav_panel(
         "Custom",
@@ -319,7 +319,7 @@ test_that("page_chat() has the agreed public signature", {
       "icon",
       "...",
       "id",
-      "pages",
+      "pages_navbar",
       "toolbar",
       "toolbar_global",
       "navbar_options",
@@ -512,7 +512,7 @@ test_that("page_chat() normalizes navigation and sidebar metadata once", {
   page <- page_chat(
     htmltools::tags$span("Reactive title"),
     icon = htmltools::tags$span("R"),
-    pages = list(
+    pages_navbar = list(
       chat_nav_panel(
         "About",
         htmltools::tags$p("About content"),
@@ -746,7 +746,7 @@ test_that("page_chat() keeps global and custom panel toolbars separate", {
     "Assistant",
     toolbar = htmltools::tags$button("Home"),
     toolbar_global = htmltools::tags$button("Global"),
-    pages = list(
+    pages_navbar = list(
       chat_nav_panel("Default"),
       chat_nav_panel("No toolbar"),
       chat_nav_panel("Custom", toolbar = htmltools::tags$button("Custom"))
@@ -777,7 +777,7 @@ test_that("page_chat() retains the app-menu shell without a home sidebar", {
   page <- page_chat(
     "Assistant",
     sidebar = FALSE,
-    pages = list(chat_nav_panel("About", sidebar = TRUE)),
+    pages_navbar = list(chat_nav_panel("About", sidebar = TRUE)),
     window_title = NULL
   )
 
@@ -859,7 +859,7 @@ test_that("page_chat() revalidates mutated sidebar configurations", {
   invalid_resizable$resizable <- NA
   panel <- chat_nav_panel("About", sidebar = invalid_resizable)
   expect_error(
-    page_chat("Assistant", pages = list(panel)),
+    page_chat("Assistant", pages_navbar = list(panel)),
     "`resizable`"
   )
 })
@@ -872,7 +872,7 @@ test_that("page_chat() resolves its shared chat ID once", {
     page <- page_chat(
       "Assistant",
       id = "chat",
-      pages = list(chat_nav_panel("About"))
+      pages_navbar = list(chat_nav_panel("About"))
     )
     root <- page_chat_tag(page, "shiny-chat-page")
     chat <- page_chat_tag(page, "shiny-chat-container")
@@ -923,24 +923,24 @@ test_that("page_chat() validates page-owned arguments and page metadata", {
   expect_no_error(page_chat("Assistant", toolbar = new.env()))
   expect_snapshot(
     error = TRUE,
-    page_chat("Assistant", pages = chat_nav_panel("About"))
+    page_chat("Assistant", pages_navbar = chat_nav_panel("About"))
   )
   expect_snapshot(
     error = TRUE,
-    page_chat("Assistant", pages = list(htmltools::tags$p("About")))
+    page_chat("Assistant", pages_navbar = list(htmltools::tags$p("About")))
   )
   expect_snapshot(
     error = TRUE,
     page_chat(
       "Assistant",
-      pages = list(chat_nav_panel("Home", value = "home"))
+      pages_navbar = list(chat_nav_panel("Home", value = "home"))
     )
   )
   expect_snapshot(
     error = TRUE,
     page_chat(
       "Assistant",
-      pages = list(chat_nav_panel("About"), chat_nav_panel("About"))
+      pages_navbar = list(chat_nav_panel("About"), chat_nav_panel("About"))
     )
   )
   expect_snapshot(

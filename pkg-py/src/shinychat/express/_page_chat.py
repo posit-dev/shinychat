@@ -32,7 +32,7 @@ def page_chat(
     *,
     id: str = "chat",
     icon: TagChild | None = None,
-    pages: Sequence[ChatNavPanel] | None = None,
+    pages_navbar: Sequence[ChatNavPanel] | None = None,
     toolbar: TagChild | None = None,
     toolbar_global: TagChild | None | MISSING_TYPE = MISSING,
     navbar_options: Any = None,
@@ -60,7 +60,7 @@ def page_chat(
     pages. This function configures :func:`shiny.express.ui.page_opts`
     internally and owns the complete top-level page layout. Do not also call
     ``chat.ui()``, add unrelated top-level UI, wrap the returned chat root, or
-    assign it to a variable. Compose additional UI through ``pages``,
+    assign it to a variable. Compose additional UI through ``pages_navbar``,
     ``toolbar``, ``toolbar_global``, ``sidebar``, and ``artifact_panel``.
 
     Parameters
@@ -73,8 +73,9 @@ def page_chat(
     id
         Unique ID shared by the page shell and its chat. Use the same ID for
         the server-side :class:`~shinychat.express.Chat`.
-    pages
-        Secondary pages created with :func:`~shinychat.chat_nav_panel`.
+    pages_navbar
+        Secondary navbar pages created with :func:`~shinychat.chat_nav_panel`.
+        Sidebar navigation is not yet implemented.
     toolbar
         Optional home-page-scoped HTML child displayed with the navigation
         controls. A page's ``chat_nav_panel(toolbar=)`` can replace this
@@ -146,7 +147,7 @@ def page_chat(
 
     page_chat(
         "Assistant",
-        pages=[
+        pages_navbar=[
             chat_nav_panel("About", ui.p("About this app"), sidebar=False),
         ],
         sidebar=chat_sidebar(history=False),
@@ -157,7 +158,7 @@ def page_chat(
     --------
     :func:`~shinychat.page_chat` : Create the same layout in a Core app.
     :func:`~shinychat.chat_sidebar` : Configure page sidebars.
-    :func:`~shinychat.chat_nav_panel` : Configure secondary pages.
+    :func:`~shinychat.chat_nav_panel` : Configure secondary navbar pages.
     :func:`~shinychat.chat_artifact_panel` : Configure the artifact panel.
     """
     from shiny.express import ui
@@ -185,7 +186,7 @@ def page_chat(
             page_options["title"],
             icon,
             id=id,
-            pages=pages,
+            pages_navbar=pages_navbar,
             toolbar=toolbar,
             toolbar_global=toolbar_global,
             navbar_options=navbar_options,

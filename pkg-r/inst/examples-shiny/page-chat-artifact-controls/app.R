@@ -20,7 +20,7 @@ ui <- page_chat(
     bslib::toolbar_input_button("toggle_artifact", "Toggle")
   ),
   sidebar = FALSE,
-  pages = list(
+  pages_navbar = list(
     chat_nav_panel(
       "Inspector",
       tags$h2("Mounted-state inspector"),

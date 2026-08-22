@@ -31,8 +31,9 @@
 #'
 #' @section Navigation, sidebars, and artifacts:
 #'
-#' `pages` accepts a list of additional pages, each created with
+#' `pages_navbar` accepts a list of additional navbar pages, each created with
 #' [chat_nav_panel()].
+#' Sidebar navigation is not yet implemented.
 #' Each panel can use the default sidebar, no page-specific sidebar, or its
 #' own [chat_sidebar()] or [bslib::sidebar()] configuration. The `sidebar`
 #' argument configures the
@@ -67,7 +68,7 @@
 #'   `page_chat()` owns `height`, `fill`, and `show_history`; attempts to pass
 #'   those arguments are rejected.
 #' @param id A non-empty string identifying the chat.
-#' @param pages `NULL` or a list of [chat_nav_panel()] configurations.
+#' @param pages_navbar `NULL` or a list of [chat_nav_panel()] configurations.
 #' @param toolbar Optional home-page-scoped UI displayed with the navigation
 #'   controls. A panel's `chat_nav_panel(toolbar = )` can replace this segment.
 #' @param toolbar_global Optional persistent UI displayed after the page-scoped
@@ -116,7 +117,7 @@
 #'     history = FALSE,
 #'     open = "open"
 #'   ),
-#'   pages = list(
+#'   pages_navbar = list(
 #'     chat_nav_panel(
 #'       "About",
 #'       tags$p("This is a secondary page."),
@@ -161,7 +162,7 @@ page_chat <- function(
   icon = NULL,
   ...,
   id = "chat",
-  pages = NULL,
+  pages_navbar = NULL,
   toolbar = NULL,
   toolbar_global = bslib::toolbar(bslib::input_dark_mode()),
   navbar_options = NULL,
@@ -213,7 +214,7 @@ page_chat <- function(
   navbar_options <- normalize_page_chat_navbar_options(navbar_options)
   chat_validate_sidebar(sidebar)
   sidebar <- normalize_page_sidebar(sidebar, default_history = TRUE)
-  pages <- normalize_chat_pages(pages)
+  pages_navbar <- normalize_chat_pages(pages_navbar)
   window_title <- normalize_chat_window_title(window_title, title)
   if (!is.null(lang)) {
     chat_validate_plain_string(lang, "lang")
@@ -240,7 +241,7 @@ page_chat <- function(
   sidebar_id <- paste0(resolved_id, "-sidebar")
 
   normalized <- normalize_page_sidebars(
-    pages,
+    pages_navbar,
     sidebar,
     resolved_id
   )
@@ -251,7 +252,7 @@ page_chat <- function(
     htmltools::tags$nav(
       class = "shiny-chat-page-nav",
       `aria-label` = "Pages",
-      lapply(normalized$pages, page_chat_nav_control)
+      lapply(normalized$pages_navbar, page_chat_nav_control)
     ),
     htmltools::tags$div(
       class = "shiny-chat-page-toolbar",
@@ -267,7 +268,7 @@ page_chat <- function(
     hidden = NA,
     page_chat_toolbar_source("home", toolbar),
     lapply(
-      normalized$pages,
+      normalized$pages_navbar,
       function(page) {
         if (is.null(page$toolbar_key) || identical(page$toolbar_key, "home")) {
           return(NULL)
@@ -277,7 +278,7 @@ page_chat <- function(
     )
   )
 
-  identity <- if (length(pages) > 0) {
+  identity <- if (length(pages_navbar) > 0) {
     htmltools::tags$button(
       type = "button",
       class = "shiny-chat-page-identity",
@@ -325,8 +326,8 @@ page_chat <- function(
         )
       )
     },
-    pages,
-    normalized$pages
+    pages_navbar,
+    normalized$pages_navbar
   )
 
   header <- htmltools::tags$header(
@@ -576,50 +577,56 @@ chat_ui_history_tag <- function(id, attrs = list()) {
   )
 }
 
-normalize_chat_pages <- function(pages) {
-  if (is.null(pages)) {
+normalize_chat_pages <- function(pages_navbar) {
+  if (is.null(pages_navbar)) {
     return(list())
   }
-  if (!is.list(pages) || inherits(pages, "chat_nav_panel")) {
+  if (!is.list(pages_navbar) || inherits(pages_navbar, "chat_nav_panel")) {
     cli::cli_abort(
-      "{.arg pages} must be {.code NULL} or a list of {.fn chat_nav_panel} configurations."
+      "{.arg pages_navbar} must be {.code NULL} or a list of {.fn chat_nav_panel} configurations."
     )
   }
 
-  valid <- vapply(pages, inherits, logical(1), what = "chat_nav_panel")
+  valid <- vapply(pages_navbar, inherits, logical(1), what = "chat_nav_panel")
   if (!all(valid)) {
     cli::cli_abort(
-      "{.arg pages} item {which(!valid)[1]} must be a {.fn chat_nav_panel} configuration."
+      "{.arg pages_navbar} item {which(!valid)[1]} must be a {.fn chat_nav_panel} configuration."
     )
   }
 
-  for (i in seq_along(pages)) {
-    page <- pages[[i]]
-    chat_validate_plain_string(page$title, paste0("pages[[", i, "]]$title"))
+  for (i in seq_along(pages_navbar)) {
+    page <- pages_navbar[[i]]
+    chat_validate_plain_string(
+      page$title,
+      paste0("pages_navbar[[", i, "]]$title")
+    )
     if (!is.null(page$value)) {
-      chat_validate_plain_string(page$value, paste0("pages[[", i, "]]$value"))
+      chat_validate_plain_string(
+        page$value,
+        paste0("pages_navbar[[", i, "]]$value")
+      )
     }
     if (!is.list(page$content)) {
-      arg <- paste0("pages[[", i, "]]$content")
+      arg <- paste0("pages_navbar[[", i, "]]$content")
       cli::cli_abort(
         "{.arg {arg}} must be a list of UI content."
       )
     }
-    chat_validate_page_ui(page$icon, paste0("pages[[", i, "]]$icon"))
+    chat_validate_page_ui(page$icon, paste0("pages_navbar[[", i, "]]$icon"))
     chat_validate_sidebar(page$sidebar)
     chat_validate_panel_toolbar(page$toolbar)
-    pages[[i]]$content_width <- chat_validate_content_width(
+    pages_navbar[[i]]$content_width <- chat_validate_content_width(
       page$content_width,
-      paste0("pages[[", i, "]]$content_width")
+      paste0("pages_navbar[[", i, "]]$content_width")
     )
-    pages[[i]]$sidebar <- normalize_page_sidebar(
+    pages_navbar[[i]]$sidebar <- normalize_page_sidebar(
       page$sidebar,
       default_history = FALSE
     )
   }
 
   values <- vapply(
-    pages,
+    pages_navbar,
     function(page) {
       page$value %||% page$title
     },
@@ -637,7 +644,7 @@ normalize_chat_pages <- function(pages) {
     )
   }
 
-  pages
+  pages_navbar
 }
 
 normalize_chat_sidebar_config <- function(sidebar, default_history) {
@@ -691,10 +698,10 @@ normalize_page_sidebar <- function(sidebar, default_history) {
   sidebar
 }
 
-normalize_page_sidebars <- function(pages, sidebar, resolved_id) {
+normalize_page_sidebars <- function(pages_navbar, sidebar, resolved_id) {
   use_default <- isTRUE(sidebar) ||
     any(vapply(
-      pages,
+      pages_navbar,
       function(page) isTRUE(page$sidebar),
       logical(1)
     ))
@@ -712,7 +719,7 @@ normalize_page_sidebars <- function(pages, sidebar, resolved_id) {
     "home"
   }
 
-  normalized_pages <- vector("list", length(pages))
+  normalized_pages <- vector("list", length(pages_navbar))
   sidebars <- list()
   if (!is.null(default_sidebar)) {
     sidebars[[length(sidebars) + 1]] <- list(
@@ -727,8 +734,8 @@ normalize_page_sidebars <- function(pages, sidebar, resolved_id) {
     )
   }
 
-  for (i in seq_along(pages)) {
-    page <- pages[[i]]
+  for (i in seq_along(pages_navbar)) {
+    page <- pages_navbar[[i]]
     value <- page$value %||% page$title
     sidebar_key <- if (isTRUE(page$sidebar)) {
       "default"
@@ -759,7 +766,7 @@ normalize_page_sidebars <- function(pages, sidebar, resolved_id) {
   }
 
   list(
-    pages = normalized_pages,
+    pages_navbar = normalized_pages,
     sidebars = sidebars,
     home_sidebar_key = home_sidebar_key,
     home_sidebar = home_sidebar

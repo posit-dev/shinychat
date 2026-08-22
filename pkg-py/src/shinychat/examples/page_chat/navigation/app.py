@@ -56,7 +56,7 @@ app_ui = page_chat(
         width=320,
         open="auto",
     ),
-    pages=[
+    pages_navbar=[
         chat_nav_panel(
             "Sources",
             ui.h2("Source checklist"),

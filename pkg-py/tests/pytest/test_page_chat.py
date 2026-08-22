@@ -188,7 +188,7 @@ def test_chat_nav_panel_validates_sidebar_and_navigation_values() -> None:
         content_width="min(680px, 100%)",
     )
     with pytest.raises(TypeError, match=r"`toolbar` must be an HTML child"):
-        page_chat("Assistant", pages=[direct_panel])
+        page_chat("Assistant", pages_navbar=[direct_panel])
 
 
 def test_sidebar_history_defaults_to_its_page_owner() -> None:
@@ -199,7 +199,7 @@ def test_sidebar_history_defaults_to_its_page_owner() -> None:
     panel_html = page_chat(
         "Assistant",
         sidebar=False,
-        pages=[chat_nav_panel("About", sidebar=chat_sidebar())],
+        pages_navbar=[chat_nav_panel("About", sidebar=chat_sidebar())],
     ).get_html_string()
 
     assert home_html.count("<shiny-chat-history") == 1
@@ -309,7 +309,7 @@ def test_page_chat_signature_makes_icon_keyword_only() -> None:
         "title",
         "id",
         "icon",
-        "pages",
+        "pages_navbar",
         "toolbar",
         "toolbar_global",
         "navbar_options",
@@ -437,7 +437,7 @@ def test_page_chat_normalizes_navigation_toolbar_and_sidebars() -> None:
             tags.span("Reactive title"),
             icon=tags.i("icon"),
             id="assistant",
-            pages=[
+            pages_navbar=[
                 chat_nav_panel(
                     "About",
                     tags.p("About content"),
@@ -551,7 +551,7 @@ def test_page_chat_sidebar_false_keeps_hidden_default_for_nav_page() -> None:
     html = page_chat(
         "Assistant",
         sidebar=False,
-        pages=[chat_nav_panel("About", tags.p("About"), sidebar=True)],
+        pages_navbar=[chat_nav_panel("About", tags.p("About"), sidebar=True)],
     ).get_html_string()
 
     assert 'class="shiny-chat-page-sidebar"' in html
@@ -578,7 +578,7 @@ def test_page_chat_nav_toolbar_defaults_and_custom_content() -> None:
         "Assistant",
         toolbar=tags.button("Home"),
         toolbar_global=tags.button("Global"),
-        pages=[
+        pages_navbar=[
             chat_nav_panel("Default"),
             chat_nav_panel("No toolbar"),
             chat_nav_panel("Custom", toolbar=tags.button("Custom")),
@@ -615,7 +615,7 @@ def test_page_chat_sidebar_false_without_nav_sidebar_has_no_panel() -> None:
 def test_page_chat_nav_panel_content_width_contract() -> None:
     html = page_chat(
         "Assistant",
-        pages=[
+        pages_navbar=[
             chat_nav_panel("Default", tags.p("Default")),
             chat_nav_panel("Custom", tags.p("Custom"), content_width="42rem"),
             chat_nav_panel("Percent", tags.p("Percent"), content_width="100%"),
@@ -708,7 +708,7 @@ def test_page_chat_revalidates_direct_sidebar_objects(
 
 
 @pytest.mark.parametrize(
-    ("pages", "match"),
+    ("pages_navbar", "match"),
     [
         ([chat_nav_panel("Home", value="home")], '"home" is reserved'),
         (
@@ -723,11 +723,11 @@ def test_page_chat_revalidates_direct_sidebar_objects(
     ],
 )
 def test_page_chat_rejects_invalid_pages(
-    pages: Any,
+    pages_navbar: Any,
     match: str,
 ) -> None:
     with pytest.raises((TypeError, ValueError), match=match):
-        page_chat("Assistant", pages=pages)
+        page_chat("Assistant", pages_navbar=pages_navbar)
 
 
 @pytest.mark.parametrize("name", ["height", "fill", "show_history"])

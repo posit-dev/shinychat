@@ -226,23 +226,23 @@
 ---
 
     Code
-      page_chat("Assistant", pages = chat_nav_panel("About"))
+      page_chat("Assistant", pages_navbar = chat_nav_panel("About"))
     Condition
       Error in `normalize_chat_pages()`:
-      ! `pages` must be `NULL` or a list of `chat_nav_panel()` configurations.
+      ! `pages_navbar` must be `NULL` or a list of `chat_nav_panel()` configurations.
 
 ---
 
     Code
-      page_chat("Assistant", pages = list(htmltools::tags$p("About")))
+      page_chat("Assistant", pages_navbar = list(htmltools::tags$p("About")))
     Condition
       Error in `normalize_chat_pages()`:
-      ! `pages` item 1 must be a `chat_nav_panel()` configuration.
+      ! `pages_navbar` item 1 must be a `chat_nav_panel()` configuration.
 
 ---
 
     Code
-      page_chat("Assistant", pages = list(chat_nav_panel("Home", value = "home")))
+      page_chat("Assistant", pages_navbar = list(chat_nav_panel("Home", value = "home")))
     Condition
       Error in `normalize_chat_pages()`:
       ! "home" is reserved for the chat home and cannot be used as a page value.
@@ -250,8 +250,8 @@
 ---
 
     Code
-      page_chat("Assistant", pages = list(chat_nav_panel("About"), chat_nav_panel(
-        "About")))
+      page_chat("Assistant", pages_navbar = list(chat_nav_panel("About"),
+      chat_nav_panel("About")))
     Condition
       Error in `normalize_chat_pages()`:
       ! Each navigation page must have a unique value; "About" is duplicated.

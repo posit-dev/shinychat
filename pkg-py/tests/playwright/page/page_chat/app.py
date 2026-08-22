@@ -73,7 +73,7 @@ def app_ui(request: Request) -> ui.Tag:
         return page_chat(
             "Sidebarless Assistant",
             id="chat",
-            pages=[
+            pages_navbar=[
                 chat_nav_panel(
                     "About",
                     ui.div("About page", id="sidebarless_about_page"),
@@ -95,7 +95,7 @@ def app_ui(request: Request) -> ui.Tag:
     return page_chat(
         title,
         id="chat",
-        pages=[
+        pages_navbar=[
             chat_nav_panel(
                 "History",
                 chat_ui_history("chat"),
