@@ -5,7 +5,7 @@ import {
   isRoutableContentType,
   parseToolEvents,
   type ToolEvent,
-  type ToolResultPresentation,
+  type ToolResultOpenStyle,
 } from "./tool-protocol"
 
 /** How a loop's tool calls are aggregated in the condensed view. */
@@ -46,7 +46,7 @@ export interface ToolCallItem {
   requestCall?: string
   showRequest?: boolean
   fullScreen?: boolean
-  presentation?: ToolResultPresentation
+  openStyle?: ToolResultOpenStyle
   expanded?: boolean
   /**
    * Internal wire provenance: the server wrapped an author's custom UI in a
@@ -134,7 +134,7 @@ function applyEvent(
   if (event.footer !== undefined) item.footer = event.footer
   item.showRequest = event.showRequest
   item.fullScreen = event.fullScreen
-  item.presentation = event.presentation
+  item.openStyle = event.openStyle
   item.expanded = event.expanded
   item.customDisplay = event.customDisplay
   item.resolveIndex = event.start

@@ -7,14 +7,14 @@ import { parseToolEvents } from "../../src/chat/tool-protocol"
 
 const request = (id: string, title: string) =>
   `<shiny-tool-request request-id="${id}" tool-name="search" tool-title="${title}"></shiny-tool-request>`
-const result = (id: string, title: string, presentation = "") =>
-  `<shiny-tool-result request-id="${id}" tool-name="search" status="success" tool-title="${title}" ${presentation}></shiny-tool-result>`
+const result = (id: string, title: string, extraAttrs = "") =>
+  `<shiny-tool-result request-id="${id}" tool-name="search" status="success" tool-title="${title}" ${extraAttrs}></shiny-tool-result>`
 
 describe("tool lifecycle model", () => {
   it("pairs request and result elements into one settled call", () => {
     const events = parseToolEvents(
       request("r1", "Searching") +
-        result("r1", "Searched", 'presentation="framed"'),
+        result("r1", "Searched", 'open-style="framed"'),
       "markdown",
     )
     const calls = pairToolEvents(events, "0:0", 0)
@@ -26,7 +26,7 @@ describe("tool lifecycle model", () => {
       status: "success",
       definitionTitle: "Searching",
       title: "Searched",
-      presentation: "framed",
+      openStyle: "framed",
     })
   })
 

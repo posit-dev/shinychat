@@ -52,7 +52,7 @@ describe("tool protocol", () => {
       requestCall: "",
       showRequest: true,
       fullScreen: true,
-      presentation: "default",
+      openStyle: "minimal",
       expanded: true,
       customDisplay: true,
       footer: "",
@@ -78,21 +78,21 @@ describe("tool protocol", () => {
     expect(otherStatus).toMatchObject({ status: "success" })
   })
 
-  it("normalizes result presentation to framed or default", () => {
+  it("normalizes result open style to framed or minimal", () => {
     const [framed, absent, invalid] = [
-      parseToolEvents(result('presentation="framed"'), "markdown")[0],
+      parseToolEvents(result('open-style="framed"'), "markdown")[0],
       parseToolEvents(result(), "markdown")[0],
-      parseToolEvents(result('presentation="panel"'), "markdown")[0],
+      parseToolEvents(result('open-style="panel"'), "markdown")[0],
     ]
 
-    expect(framed).toMatchObject({ kind: "result", presentation: "framed" })
+    expect(framed).toMatchObject({ kind: "result", openStyle: "framed" })
     expect(absent).toMatchObject({
       kind: "result",
-      presentation: "default",
+      openStyle: "minimal",
     })
     expect(invalid).toMatchObject({
       kind: "result",
-      presentation: "default",
+      openStyle: "minimal",
     })
   })
 

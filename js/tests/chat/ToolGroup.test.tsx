@@ -85,7 +85,7 @@ describe("ToolGroup", () => {
           calls: [
             call({
               requestId: "chart",
-              presentation: "framed",
+              openStyle: "framed",
               value: "chart output",
               valueType: "text",
               footer: "<span>Chart footer</span>",
@@ -121,7 +121,7 @@ describe("ToolGroup", () => {
             call({
               requestId: "chart",
               label: "revenue",
-              presentation: "framed",
+              openStyle: "framed",
               value: "chart output",
               valueType: "text",
             }),
@@ -163,7 +163,7 @@ describe("ToolGroup", () => {
             call({
               requestId: "failed-chart",
               label: "revenue",
-              presentation: "framed",
+              openStyle: "framed",
               status: "error",
               value: "chart failed",
               valueType: "text",

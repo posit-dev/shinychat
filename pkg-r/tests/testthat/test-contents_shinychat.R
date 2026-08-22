@@ -142,7 +142,7 @@ test_that("tool card serialization matches the shared wire fixture", {
     expanded = NA,
     footer = "<span>footer</span>",
     grouping = "all",
-    presentation = "framed"
+    open_style = "framed"
   )
 
   expect_identical(format(as.tags(request)), fixture$request)
@@ -309,23 +309,23 @@ test_that("ContentToolResult with additional display options from result", {
   expect_equal(res_tags$attribs[["tool-title"]], "Custom Title")
 })
 
-test_that("ContentToolResult serializes framed presentation only when requested", {
+test_that("ContentToolResult serializes framed open style only when requested", {
   local_shinychat_tool_display(opt = "rich")
 
   framed <- new_tool_result(
     value = "test",
-    extra = list(display = tool_result_display(presentation = "framed"))
+    extra = list(display = tool_result_display(open_style = "framed"))
   )
-  default <- new_tool_result(
+  minimal <- new_tool_result(
     value = "test",
     extra = list(display = tool_result_display())
   )
 
   expect_equal(
-    as.tags(contents_shinychat(framed))$attribs$presentation,
+    as.tags(contents_shinychat(framed))$attribs[["open-style"]],
     "framed"
   )
-  expect_null(as.tags(contents_shinychat(default))$attribs$presentation)
+  expect_null(as.tags(contents_shinychat(minimal))$attribs[["open-style"]])
 })
 
 test_that("mutating a card's tool_title overrides the annotation title", {
@@ -803,16 +803,16 @@ test_that("tool_result_display() drops NULL fields but keeps defaults", {
         show_request = TRUE,
         open = FALSE,
         full_screen = FALSE,
-        presentation = "default"
+        open_style = "minimal"
       ),
       class = "shinychat_tool_result_display"
     )
   )
 })
 
-test_that("tool_result_display() supports framed presentation", {
+test_that("tool_result_display() supports framed open style", {
   expect_equal(
-    tool_result_display(presentation = "framed")$presentation,
+    tool_result_display(open_style = "framed")$open_style,
     "framed"
   )
 })
@@ -850,12 +850,12 @@ test_that("as_tool_result_display() warns and drops non-logical flag fields", {
   expect_null(res$full_screen)
 })
 
-test_that("as_tool_result_display() warns and drops invalid presentation", {
+test_that("as_tool_result_display() warns and drops invalid open_style", {
   expect_warning(
-    display <- as_tool_result_display(list(presentation = "panel")),
-    "presentation.*must be.*default.*framed"
+    display <- as_tool_result_display(list(open_style = "panel")),
+    "open_style.*must be.*minimal.*framed"
   )
-  expect_null(display$presentation)
+  expect_null(display$open_style)
 })
 
 test_that("as_tool_result_display() rejects non-scalar and NA logicals", {
@@ -922,7 +922,8 @@ test_that("tool_result_display() validates its arguments", {
   )
   expect_s3_class(display, "shinychat_tool_result_display")
   expect_equal(display$title, "Title")
-  expect_null(display$open)
+  # Exact-name lookup: `$open` would partially match `open_style`
+  expect_null(display[["open"]])
 })
 
 test_that("malformed display flags serialize to their defaults", {

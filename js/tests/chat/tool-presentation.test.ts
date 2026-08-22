@@ -92,7 +92,7 @@ describe("tool presentation projection", () => {
 
   it("keeps a successful framed result in its activity row", () => {
     const framed = call({
-      presentation: "framed",
+      openStyle: "framed",
       value: "forecast",
       valueType: "text",
     })
@@ -106,7 +106,7 @@ describe("tool presentation projection", () => {
   it("keeps custom-display migration authoritative over framed presentation", () => {
     const customFramed = call({
       customDisplay: true,
-      presentation: "framed",
+      openStyle: "framed",
       value: "<table></table>",
       valueType: "html",
     })

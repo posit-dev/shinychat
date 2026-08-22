@@ -534,7 +534,7 @@ method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     show_request = if (!isFALSE(display$show_request)) NA,
     expanded = if (isTRUE(display$open)) NA,
     full_screen = if (isTRUE(display$full_screen)) NA,
-    presentation = if (identical(display$presentation, "framed")) {
+    open_style = if (identical(display$open_style, "framed")) {
       "framed"
     } else {
       NULL
@@ -590,8 +590,8 @@ method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
 #'   arguments, then the tool name.
 #' @param value_preview A terse, per-call preview of the tool result, shown
 #'   in the activity row before its drill-down card is opened.
-#' @param presentation Whether to use the default drill-down presentation or a
-#'   framed presentation for this result.
+#' @param open_style Whether the result uses the minimal drill-down style or a
+#'   framed style when open.
 #'
 #' @return An object of class `shinychat_tool_result_display`, for use as
 #'   `extra = list(display = tool_result_display(...))` when creating an
@@ -628,7 +628,7 @@ tool_result_display <- function(
   footer = NULL,
   label = NULL,
   value_preview = NULL,
-  presentation = "default"
+  open_style = "minimal"
 ) {
   as_tool_result_display(
     compact(list(
@@ -643,7 +643,7 @@ tool_result_display <- function(
       footer = footer,
       label = label,
       value_preview = value_preview,
-      presentation = presentation
+      open_style = open_style
     ))
   )
 }
@@ -661,7 +661,7 @@ tool_result_display_fields <- c(
   "footer",
   "label",
   "value_preview",
-  "presentation"
+  "open_style"
 )
 
 # Fields that are rendered as HTML and therefore accept a string *or* tag-like
@@ -687,8 +687,8 @@ is_tag_like <- function(x) {
 tool_result_display_field_is_valid <- function(field, value) {
   if (field %in% tool_result_display_flag_fields) {
     is_bool(value)
-  } else if (identical(field, "presentation")) {
-    is_string(value) && value %in% c("default", "framed")
+  } else if (identical(field, "open_style")) {
+    is_string(value) && value %in% c("minimal", "framed")
   } else if (field %in% tool_result_display_html_fields) {
     is_string(value) || is_tag_like(value)
   } else {
@@ -699,8 +699,8 @@ tool_result_display_field_is_valid <- function(field, value) {
 tool_result_display_field_expects <- function(field) {
   if (field %in% tool_result_display_flag_fields) {
     cli::format_inline("{.code TRUE} or {.code FALSE}")
-  } else if (identical(field, "presentation")) {
-    cli::format_inline("{.code default} or {.code framed}")
+  } else if (identical(field, "open_style")) {
+    cli::format_inline("{.code minimal} or {.code framed}")
   } else if (field %in% tool_result_display_html_fields) {
     "a single string or HTML content"
   } else {

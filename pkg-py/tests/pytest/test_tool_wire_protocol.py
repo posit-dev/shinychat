@@ -50,18 +50,18 @@ def _protocol_components() -> tuple[ToolRequestComponent, ToolResultComponent]:
         expanded=True,
         custom_display=False,
         footer=HTML("<span>footer</span>"),
-        presentation="framed",
+        open_style="framed",
     )
     return request, result
 
 
-def test_tool_result_display_presentation_is_validated() -> None:
-    display = ToolResultDisplay(presentation="framed")
+def test_tool_result_display_open_style_is_validated() -> None:
+    display = ToolResultDisplay(open_style="framed")
 
-    assert display.presentation == "framed"
+    assert display.open_style == "framed"
 
-    with pytest.raises(ValidationError, match="presentation"):
-        ToolResultDisplay(presentation=cast(Any, "panel"))
+    with pytest.raises(ValidationError, match="open_style"):
+        ToolResultDisplay(open_style=cast(Any, "panel"))
 
 
 def test_tool_wire_protocol_fixture_matches_python_serialization() -> None:
@@ -75,7 +75,7 @@ def test_tool_wire_protocol_fixture_matches_python_serialization() -> None:
     assert _render(result) == fixture["result"]
 
 
-def test_default_tool_result_presentation_is_not_serialized() -> None:
+def test_minimal_tool_result_open_style_is_not_serialized() -> None:
     request = ContentToolRequest(
         id="wire-default",
         name="search",
@@ -87,4 +87,4 @@ def test_default_tool_result_presentation_is_not_serialized() -> None:
         extra={"display": ToolResultDisplay()},
     )
 
-    assert "presentation=" not in _render(tool_result_contents(result))
+    assert "open-style=" not in _render(tool_result_contents(result))

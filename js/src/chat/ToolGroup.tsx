@@ -182,7 +182,7 @@ function ToolCallRow({
 }): ReactNode {
   const [open, setOpen] = useExpandable(item.expanded)
   const framed =
-    open && item.status === "success" && item.presentation === "framed"
+    open && item.status === "success" && item.openStyle === "framed"
   const label = toolCallLabel(item, segmentTitle, false)
   const statusClass =
     item.status === "error"
@@ -333,7 +333,7 @@ function ToolGroupRow({
 }): ReactNode {
   const { identity, single, anyRunning, failedCount, heterogeneous } = row
   const framed =
-    expanded && single?.status === "success" && single.presentation === "framed"
+    expanded && single?.status === "success" && single.openStyle === "framed"
   const label = single && toolCallLabel(single, identity.title, true)
   const glyph = glyphHtml(toolGroupGlyph(row))
 
