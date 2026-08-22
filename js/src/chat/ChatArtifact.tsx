@@ -18,8 +18,12 @@ import {
 
 const MIN_ARTIFACT_WIDTH = 240
 const MIN_CHAT_WIDTH = 360
+const MAX_ARTIFACT_LAYOUT_GAP = 24
 const ARTIFACT_LAYOUT_TRANSITION_DURATION = 180
-export const ARTIFACT_TAKEOVER_WIDTH = 1120
+// Keep both columns adjacent until their established minimums need more room.
+// The extra margin avoids switching layouts at the exact mathematical limit.
+export const ARTIFACT_TAKEOVER_WIDTH =
+  MIN_ARTIFACT_WIDTH + MIN_CHAT_WIDTH + MAX_ARTIFACT_LAYOUT_GAP + 16
 
 function clampWidth(width: number, maxWidth: number): number {
   return Math.round(Math.min(Math.max(width, MIN_ARTIFACT_WIDTH), maxWidth))
@@ -324,7 +328,7 @@ export function ChatArtifact({
 
     // A child observer can run before ChatContainer applies its takeover
     // state. The panel is full-width in this range, so never persist that
-    // temporary measurement as a desktop artifact width.
+    // temporary measurement as an adjacent artifact width.
     if (
       takeover ||
       (layoutWidth > 0 && layoutWidth < ARTIFACT_TAKEOVER_WIDTH)

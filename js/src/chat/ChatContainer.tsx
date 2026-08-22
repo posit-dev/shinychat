@@ -499,8 +499,8 @@ export const ChatContainer = forwardRef<
     }
 
     const update = (width: number) => {
-      // Keep the message column at its normal 680px reading cap. Below this
-      // threshold an adjacent artifact would force that column narrower.
+      // Preserve the adjacent layout whenever the chat and artifact can both
+      // meet their established minimum widths.
       setArtifactTakeover(width < ARTIFACT_TAKEOVER_WIDTH)
     }
     update(layout.getBoundingClientRect().width)

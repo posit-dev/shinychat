@@ -144,7 +144,7 @@ shiny-chat-container[data-history-placement="right"] {
   transition: none;
 }
 
-@container shiny-chat (min-width: 1120px) {
+@container shiny-chat (min-width: 640px) {
   .shiny-chat-layout .shiny-chat-wrapper {
     justify-self: center;
   }
@@ -212,7 +212,7 @@ shiny-chat-container[data-history-placement="right"] {
   inset-inline-start: 0;
 }
 
-@container shiny-chat (max-width: 1119.99px) {
+@container shiny-chat (max-width: 639.99px) {
   .shiny-chat-layout[data-artifact-open] {
     display: block;
     column-gap: 0;
