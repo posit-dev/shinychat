@@ -565,6 +565,9 @@ class ChatPageElement extends HTMLElement {
 
     this.syncSidebar(selected)
     this.syncToolbar(selected)
+    this.controls
+      ?.querySelectorAll<HTMLDetailsElement>(".shiny-chat-page-nav-menu[open]")
+      .forEach((menu) => menu.removeAttribute("open"))
     if (closeMenu && this.mobile) this.closeMobileMenu()
     this.updateToastOffset()
     window.dispatchEvent(new Event("resize"))

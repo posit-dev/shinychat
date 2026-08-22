@@ -85,6 +85,39 @@ def app_ui(request: Request) -> ui.Tag:
             artifact_panel=False,
         )
 
+    if request.query_params.get("controls_only") == "true":
+        return page_chat(
+            "Controls only",
+            id="chat",
+            pages_navbar=[
+                ui.nav_control(
+                    ui.input_action_button("controls_only_action", "Action")
+                ),
+            ],
+            sidebar=False,
+            toolbar_global=None,
+            artifact_panel=False,
+        )
+
+    if request.query_params.get("dropdown") == "true":
+        return page_chat(
+            "Dropdown navigation",
+            id="chat",
+            pages_navbar=[
+                ui.nav_menu(
+                    "More",
+                    ui.nav_panel(
+                        "Details",
+                        ui.div("Details page", id="dropdown_details_page"),
+                        value="details",
+                    ),
+                ),
+            ],
+            sidebar=False,
+            toolbar_global=None,
+            artifact_panel=False,
+        )
+
     title = "Research Assistant"
     if request.query_params.get("long_title") == "true":
         title = (

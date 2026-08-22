@@ -437,6 +437,54 @@ def test_sidebarless_page_hides_desktop_toggle_and_keeps_mobile_app_menu(
     expect(page.locator("#sidebarless_toolbar")).to_be_visible()
 
 
+def test_mobile_menu_remains_available_for_navigation_controls_only(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.set_viewport_size({"width": 390, "height": 760})
+    page.goto(f"{local_app.url}?controls_only=true")
+    shell = page.locator("shiny-chat-page")
+    toggle = shell.locator(".shiny-chat-page-sidebar-toggle")
+
+    expect(toggle).to_be_visible()
+    toggle.click()
+    expect(shell).to_have_attribute("data-mobile-menu-open", "true")
+    action = page.locator("#controls_only_action")
+    expect(action).to_be_visible()
+    action.click()
+
+
+def test_desktop_dropdown_navigation_is_clickable_and_closes_after_selection(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.set_viewport_size({"width": 1280, "height": 800})
+    page.goto(f"{local_app.url}?dropdown=true")
+    shell = page.locator("shiny-chat-page")
+    menu = shell.locator(".shiny-chat-page-nav-menu")
+    details = menu.get_by_role("button", name="Details")
+
+    expect(shell).to_be_visible(timeout=TIMEOUT)
+    menu.locator("summary").click()
+    expect(menu).to_have_attribute("open", "")
+    expect(details).to_be_visible()
+
+    details_box = details.bounding_box()
+    assert details_box is not None
+    hit_target = page.evaluate(
+        """({ x, y }) => document.elementFromPoint(x, y)?.textContent""",
+        {
+            "x": details_box["x"] + details_box["width"] / 2,
+            "y": details_box["y"] + details_box["height"] / 2,
+        },
+    )
+    assert hit_target is not None
+    assert "Details" in hit_target
+
+    details.click()
+    expect(shell).to_have_attribute("data-active-page", "details")
+    expect(page.locator("#dropdown_details_page")).to_be_visible()
+    expect(menu).not_to_have_attribute("open", "")
+
+
 def test_sidebarless_mobile_history_trigger_does_not_overlay_messages(
     page: Page,
     local_app: ShinyAppProc,
