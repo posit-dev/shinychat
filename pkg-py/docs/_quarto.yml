@@ -85,12 +85,12 @@ quartodoc:
         include_classes: true
         include_functions: true
       contents:
-        - ChatArtifactController
+        - types.ChatArtifactPanelController
         - page_chat
         - page_chat_theme
         - chat_sidebar
         - chat_nav_panel
-        - chat_artifact
+        - chat_artifact_panel
         - chat_ui_history
     - title: Tool display
       options:

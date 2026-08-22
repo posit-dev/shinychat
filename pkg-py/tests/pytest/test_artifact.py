@@ -11,7 +11,8 @@ from pydantic_core import PydanticSerializationError
 from shiny import Inputs, Session
 from shiny.module import ResolvedId
 from shiny.session import session_context
-from shinychat import Chat, ChatArtifactController
+from shinychat import Chat
+from shinychat.types import ChatArtifactPanelController
 
 
 class _ArtifactSession:
@@ -71,31 +72,37 @@ def _run_async(coro: Any) -> None:
         raise errors[0]
 
 
-def test_artifact_controller_is_stable_and_public() -> None:
+def test_artifact_panel_controller_is_stable_and_public() -> None:
     chat, _ = _make_chat()
 
-    assert isinstance(chat.artifact, ChatArtifactController)
-    assert chat.artifact is chat.artifact
+    assert isinstance(chat.artifact_panel, ChatArtifactPanelController)
+    assert chat.artifact_panel is chat.artifact_panel
 
 
 def test_artifact_controller_methods_are_async_with_expected_signatures() -> (
     None
 ):
     for method in (
-        ChatArtifactController.show,
-        ChatArtifactController.hide,
-        ChatArtifactController.toggle,
-        ChatArtifactController.update,
+        ChatArtifactPanelController.show,
+        ChatArtifactPanelController.hide,
+        ChatArtifactPanelController.toggle,
+        ChatArtifactPanelController.update,
     ):
         assert inspect.iscoroutinefunction(method)
 
-    for method in (ChatArtifactController.show, ChatArtifactController.update):
+    for method in (
+        ChatArtifactPanelController.show,
+        ChatArtifactPanelController.update,
+    ):
         parameters = inspect.signature(method).parameters
         assert tuple(parameters) == ("self", "content", "title")
         assert parameters["content"].default is None
         assert parameters["title"].default is None
 
-    for method in (ChatArtifactController.hide, ChatArtifactController.toggle):
+    for method in (
+        ChatArtifactPanelController.hide,
+        ChatArtifactPanelController.toggle,
+    ):
         assert tuple(inspect.signature(method).parameters) == ("self",)
 
 
@@ -104,10 +111,10 @@ def test_artifact_actions_omit_unsupplied_fields_and_preserve_visibility() -> (
 ):
     chat, session = _make_chat()
 
-    _run_async(chat.artifact.show())
-    _run_async(chat.artifact.update(title="Preview"))
-    _run_async(chat.artifact.hide())
-    _run_async(chat.artifact.toggle())
+    _run_async(chat.artifact_panel.show())
+    _run_async(chat.artifact_panel.update(title="Preview"))
+    _run_async(chat.artifact_panel.hide())
+    _run_async(chat.artifact_panel.toggle())
 
     assert session.messages == [
         (
@@ -136,7 +143,7 @@ def test_artifact_actions_omit_unsupplied_fields_and_preserve_visibility() -> (
 def test_artifact_empty_content_clears_dependencies(content: object) -> None:
     chat, session = _make_chat()
 
-    _run_async(chat.artifact.update(cast(Any, content), title=""))
+    _run_async(chat.artifact_panel.update(cast(Any, content), title=""))
 
     assert session.messages == [
         (
@@ -164,7 +171,7 @@ def test_artifact_content_uses_chat_session_dependency_serialization() -> None:
     )
 
     _run_async(
-        chat.artifact.show(
+        chat.artifact_panel.show(
             tags.div(dependency, "Artifact content"), title="Preview"
         )
     )
@@ -205,7 +212,7 @@ def test_artifact_tagifiable_content_includes_tagified_dependencies() -> None:
 
     chat, session = _make_chat()
 
-    _run_async(chat.artifact.show(cast(Any, ArtifactContent())))
+    _run_async(chat.artifact_panel.show(cast(Any, ArtifactContent())))
 
     assert session.messages == [
         (
@@ -233,7 +240,7 @@ def test_artifact_uses_resolved_chat_id_and_envelope() -> None:
     with session_context(cast(Session, session)):
         chat = Chat("chat")
 
-    _run_async(chat.artifact.show(tags.span("Artifact")))
+    _run_async(chat.artifact_panel.show(tags.span("Artifact")))
 
     assert session.messages == [
         (
@@ -254,6 +261,6 @@ def test_artifact_validates_title_and_content() -> None:
     chat, _ = _make_chat()
 
     with pytest.raises(TypeError, match="`title` must be a string or None"):
-        _run_async(chat.artifact.show(title=cast(Any, 1)))
+        _run_async(chat.artifact_panel.show(title=cast(Any, 1)))
     with pytest.raises(PydanticSerializationError, match="Unable to serialize"):
-        _run_async(chat.artifact.show(cast(Any, object())))
+        _run_async(chat.artifact_panel.show(cast(Any, object())))

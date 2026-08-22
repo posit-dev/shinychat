@@ -36,7 +36,7 @@ from htmltools import (
 from pydantic import ValidationError
 
 from . import _utils
-from ._artifact import ChatArtifactController
+from ._artifact import ChatArtifactPanelController
 from ._attachments import (
     Attachment,
     attachment_to_content,
@@ -78,7 +78,11 @@ from ._chat_types import (
 )
 from ._history import ChatHistory, HistoryOptions
 from ._html_deps_py_shiny import shinychat_dependency
-from ._page_chat import ChatArtifact, chat_artifact, render_chat_artifact
+from ._page_chat import (
+    ChatArtifactPanel,
+    chat_artifact_panel,
+    render_chat_artifact_panel,
+)
 from ._utils_types import DEPRECATED, DEPRECATED_TYPE, MISSING, MISSING_TYPE
 
 if TYPE_CHECKING:
@@ -99,11 +103,9 @@ else:
 
 __all__ = (
     "Chat",
-    "ChatArtifactController",
     "ChatExpress",
     "ChatGreeting",
     "ChatMessage",
-    "ChatArtifact",
     "chat_greeting",
     "chat_ui",
     "ChatMessageDict",
@@ -363,7 +365,9 @@ class Chat:
         )
         self._history_enabled: bool = history is not False
         self.history: ChatHistory = ChatHistory(self, config=history_config)
-        self.artifact: ChatArtifactController = ChatArtifactController(self)
+        self.artifact_panel: ChatArtifactPanelController = (
+            ChatArtifactPanelController(self)
+        )
         self._cancel_bookmarking_callbacks: CancelCallback | None = None
         self._greeting_content: str | None = None
 
@@ -2270,7 +2274,7 @@ class ChatExpress(Chat):
         allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
         footer: Optional[TagChild] = None,
         tool_grouping: 'Literal["none", "tool", "all"]' = "tool",
-        artifact: bool | ChatArtifact = True,
+        artifact_panel: bool | ChatArtifactPanel = True,
         show_history: bool = True,
         **kwargs: TagAttrValue,
     ) -> Tag:
@@ -2369,9 +2373,9 @@ class ChatExpress(Chat):
             ``ToolAnnotations``, so type checkers reject it. Chat-level
             ``"none"`` always disables grouping, even when a tool annotation
             requests ``"tool"`` or ``"all"``.
-        artifact
-            Whether the artifact region is available. Pass a
-            :class:`~shinychat.types.ChatArtifact` to supply its initial content and
+        artifact_panel
+            Whether the artifact panel is available. Pass a
+            :class:`~shinychat.types.ChatArtifactPanel` to supply its initial content and
             configuration.
         show_history
             Whether to render the chat's built-in history selector.
@@ -2396,7 +2400,7 @@ class ChatExpress(Chat):
             allow_attachments=allow_attachments,
             footer=footer,
             tool_grouping=tool_grouping,
-            artifact=artifact,
+            artifact_panel=artifact_panel,
             show_history=show_history,
             **kwargs,
         )
@@ -2500,7 +2504,7 @@ def chat_ui(
     allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
     footer: Optional[TagChild] = None,
     tool_grouping: 'Literal["none", "tool", "all"]' = "tool",
-    artifact: bool | ChatArtifact = True,
+    artifact_panel: bool | ChatArtifactPanel = True,
     show_history: bool = True,
     **kwargs: TagAttrValue,
 ) -> Tag:
@@ -2623,9 +2627,9 @@ def chat_ui(
         chatlas' ``ToolAnnotations``, so type checkers reject it. Chat-level
         ``"none"`` always disables grouping, even when a tool annotation
         requests ``"tool"`` or ``"all"``.
-    artifact
-        Whether the artifact region is available. Pass a
-        :class:`~shinychat.types.ChatArtifact` to supply its initial content and
+    artifact_panel
+        Whether the artifact panel is available. Pass a
+        :class:`~shinychat.types.ChatArtifactPanel` to supply its initial content and
         configuration.
     show_history
         Whether to render the chat's built-in history selector.
@@ -2647,10 +2651,10 @@ def chat_ui(
             f"not {tool_grouping!r}."
         )
 
-    if not isinstance(artifact, (bool, ChatArtifact)):
+    if not isinstance(artifact_panel, (bool, ChatArtifactPanel)):
         raise TypeError(
-            "`artifact` must be a bool or a shinychat `ChatArtifact`, "
-            f"not {type(artifact).__name__}."
+            "`artifact_panel` must be a bool or a shinychat `ChatArtifactPanel`, "
+            f"not {type(artifact_panel).__name__}."
         )
     if not isinstance(show_history, bool):
         raise TypeError(
@@ -2684,16 +2688,16 @@ def chat_ui(
     if footer is not None:
         footer_tag = Tag("shiny-chat-footer", footer)
 
-    artifact_config: ChatArtifact | None
-    if isinstance(artifact, ChatArtifact):
-        artifact_config = artifact
-    elif artifact:
-        artifact_config = chat_artifact(open=False)
+    artifact_panel_config: ChatArtifactPanel | None
+    if isinstance(artifact_panel, ChatArtifactPanel):
+        artifact_panel_config = artifact_panel
+    elif artifact_panel:
+        artifact_panel_config = chat_artifact_panel(open=False)
     else:
-        artifact_config = None
-    artifact_tag = (
-        render_chat_artifact(artifact_config)
-        if artifact_config is not None
+        artifact_panel_config = None
+    artifact_panel_tag = (
+        render_chat_artifact_panel(artifact_panel_config)
+        if artifact_panel_config is not None
         else None
     )
 
@@ -2745,7 +2749,7 @@ def chat_ui(
             placeholder=placeholder,
         ),
         footer_tag,
-        artifact_tag,
+        artifact_panel_tag,
         shinychat_dependency(),
         icon_deps,
         {"style": _container_style(as_css_unit(width), as_css_unit(height))},

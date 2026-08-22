@@ -8,7 +8,7 @@ import chatlas
 from chatlas import Turn
 from chatlas._turn import AssistantTurn
 from shiny import App, Inputs, Outputs, Session, reactive, render, ui
-from shinychat import Chat, chat_artifact, chat_nav_panel, page_chat
+from shinychat import Chat, chat_artifact_panel, chat_nav_panel, page_chat
 from shinychat.types import FileConversationStore, HistoryOptions
 from starlette.requests import Request
 
@@ -73,7 +73,7 @@ def app_ui(request: Request) -> ui.Tag:
             class_="d-flex gap-2",
         ),
         sidebar=True,
-        artifact=chat_artifact(width=artifact_width, open=False),
+        artifact_panel=chat_artifact_panel(width=artifact_width, open=False),
     )
 
 
@@ -107,7 +107,7 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     @reactive.effect
     @reactive.event(input.show_artifact)
     async def _show_artifact() -> None:
-        await chat.artifact.show(
+        await chat.artifact_panel.show(
             artifact_content("Initial"),
             title="Initial artifact",
         )
@@ -115,7 +115,7 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     @reactive.effect
     @reactive.event(input.update_artifact)
     async def _update_artifact() -> None:
-        await chat.artifact.update(
+        await chat.artifact_panel.update(
             artifact_content("Updated"),
             title="Updated artifact",
         )

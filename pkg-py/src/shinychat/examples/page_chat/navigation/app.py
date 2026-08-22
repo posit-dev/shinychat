@@ -2,7 +2,7 @@ from shiny import App, reactive, ui
 
 from shinychat import (
     Chat,
-    chat_artifact,
+    chat_artifact_panel,
     chat_nav_panel,
     chat_sidebar,
     page_chat,
@@ -94,7 +94,7 @@ app_ui = page_chat(
             toolbar=None,
         ),
     ],
-    artifact=chat_artifact(
+    artifact_panel=chat_artifact_panel(
         artifact_content("Use the home toolbar to open this preview."),
         title="Working preview",
         width=420,
@@ -123,7 +123,7 @@ def server(input, output, session):
 
     @chat.on_user_submit
     async def _update_artifact(user_input: str):
-        await chat.artifact.update(
+        await chat.artifact_panel.update(
             artifact_content(f"Latest request: {user_input}"),
             title="Latest request",
         )
@@ -131,7 +131,7 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.show_preview)
     async def _show_preview():
-        await chat.artifact.show(title="Working preview")
+        await chat.artifact_panel.show(title="Working preview")
 
     @reactive.effect
     @reactive.event(input.show_settings)

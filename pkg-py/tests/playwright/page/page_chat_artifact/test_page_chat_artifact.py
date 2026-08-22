@@ -467,7 +467,7 @@ def test_artifact_resizer_recovers_after_responsive_takeover(
     expect(panel).to_be_visible(timeout=TIMEOUT)
     expect(separator).to_be_visible()
 
-    page.set_viewport_size({"width": 800, "height": 900})
+    page.set_viewport_size({"width": 600, "height": 900})
     expect(chat.loc.locator(".shiny-chat-layout")).to_have_attribute(
         "data-artifact-takeover", ""
     )
@@ -781,10 +781,32 @@ def test_artifact_motion_respects_reduced_motion_and_takeover(
     expect(panel).to_be_hidden(timeout=TIMEOUT)
 
     page.emulate_media(reduced_motion="no-preference")
-    page.set_viewport_size({"width": 1024, "height": 900})
-    page.locator("#show_artifact").click()
+    page.set_viewport_size({"width": 600, "height": 900})
+    chat.loc.locator(".shiny-chat-artifact-trigger").click()
     expect(layout).to_have_attribute("data-artifact-takeover", "")
     expect(layout).to_have_css("transition-duration", "0s")
+
+
+def test_artifact_stays_adjacent_with_open_desktop_sidebar(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    chat, shell = open_page(
+        page,
+        local_app,
+        artifact_width="default",
+        viewport=(1024, 900),
+    )
+    sidebar = shell.locator(".shiny-chat-page-sidebar")
+    if sidebar.is_hidden():
+        shell.locator(".shiny-chat-page-sidebar-toggle").click()
+    expect(sidebar).to_be_visible(timeout=TIMEOUT)
+
+    page.get_by_role("button", name="Show artifact").click()
+    layout = chat.loc.locator(".shiny-chat-layout")
+    panel = chat.loc.locator(".shiny-chat-artifact")
+    expect(panel).to_be_visible(timeout=TIMEOUT)
+    expect(layout).not_to_have_attribute("data-artifact-takeover")
+    expect(page.get_by_role("separator", name="Resize artifact panel")).to_be_visible()
 
 
 @pytest.mark.parametrize(

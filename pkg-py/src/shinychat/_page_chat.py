@@ -28,10 +28,10 @@ if TYPE_CHECKING:
     from ._chat_types import ChatGreeting, ChatMessage, ChatMessageDict
 
 __all__ = (
-    "ChatArtifact",
+    "ChatArtifactPanel",
     "ChatNavPanel",
     "ChatSidebar",
-    "chat_artifact",
+    "chat_artifact_panel",
     "chat_nav_panel",
     "chat_sidebar",
     "chat_ui_history",
@@ -51,7 +51,7 @@ class ChatSidebar:
 
 
 @dataclass(frozen=True)
-class ChatArtifact:
+class ChatArtifactPanel:
     content: tuple[TagChild, ...]
     title: str | None
     width: str
@@ -80,7 +80,7 @@ def page_chat(
     toolbar_global: TagChild | None | MISSING_TYPE = MISSING,
     navbar_options: Any = None,
     sidebar: bool | ChatSidebar = True,
-    artifact: bool | ChatArtifact = True,
+    artifact_panel: bool | ChatArtifactPanel = True,
     window_title: str | None = None,
     lang: str | None = None,
     theme: str | Path | Theme | ThemeProvider | None = None,
@@ -136,9 +136,9 @@ def page_chat(
         :class:`~shinychat.types.ChatSidebar` supplies custom content and behavior.
         A sidebar created without ``history=`` defaults to ``True`` here.
         Raw :class:`shiny.ui.Sidebar` objects are not supported.
-    artifact
-        Whether the chat has an artifact region. Pass a
-        :class:`~shinychat.types.ChatArtifact` to configure its initial content and
+    artifact_panel
+        Whether the chat has an artifact panel. Pass a
+        :class:`~shinychat.types.ChatArtifactPanel` to configure its initial content and
         behavior.
     window_title
         Optional document title. Use this when ``title`` is an HTML child or
@@ -206,12 +206,12 @@ def page_chat(
     :func:`~shinychat.chat_ui` : Embed chat in an existing page layout.
     :func:`~shinychat.chat_sidebar` : Configure page sidebars.
     :func:`~shinychat.chat_nav_panel` : Configure secondary pages.
-    :func:`~shinychat.chat_artifact` : Configure the artifact region.
+    :func:`~shinychat.chat_artifact_panel` : Configure the artifact panel.
     :func:`~shinychat.express.page_chat` : Create the same layout in Express.
     """
     chat_root = _create_page_chat_root(
         id=id,
-        artifact=artifact,
+        artifact_panel=artifact_panel,
         messages=messages,
         greeting=greeting,
         placeholder=placeholder,
@@ -355,48 +355,48 @@ def chat_sidebar(
     )
 
 
-def chat_artifact(
+def chat_artifact_panel(
     *content: TagChild,
     title: str | None = None,
     width: "CssUnit" = 400,
     open: bool = True,
     resizable: bool = True,
-) -> ChatArtifact:
+) -> ChatArtifactPanel:
     """
     Configure content displayed adjacent to a chat interface.
 
-    An artifact can show a preview, generated report, or detail view beside the
-    conversation. Pass this configuration to ``chat_ui(artifact=)`` or
-    ``page_chat(artifact=)`` for its initial content and layout, then update it
+    An artifact panel can show a preview, generated report, or detail view beside
+    the conversation. Pass this configuration to ``chat_ui(artifact_panel=)`` or
+    ``page_chat(artifact_panel=)`` for its initial content and layout, then update it
     through the chat artifact controller.
 
     Parameters
     ----------
     *content
-        Initial HTML children for the artifact region.
+        Initial HTML children for the artifact panel.
     title
-        Optional accessible and visible title for the artifact.
+        Optional accessible and visible title for the artifact panel.
     width
-        Initial artifact width. A positive number is interpreted as pixels; a
+        Initial artifact-panel width. A positive number is interpreted as pixels; a
         string may use any valid CSS width.
     open
-        Whether the artifact is initially visible.
+        Whether the artifact panel is initially visible.
     resizable
-        Whether the artifact can be resized on desktop.
+        Whether the artifact panel can be resized on desktop.
 
     Returns
     -------
-    ChatArtifact
-        An artifact configuration for ``page_chat(artifact=)`` or
-        ``chat_ui(artifact=)``.
+    ChatArtifactPanel
+        An artifact-panel configuration for ``page_chat(artifact_panel=)`` or
+        ``chat_ui(artifact_panel=)``.
 
     Examples
     --------
     ```python
     from shiny import ui
-    from shinychat import chat_artifact
+    from shinychat import chat_artifact_panel
 
-    artifact = chat_artifact(
+    artifact = chat_artifact_panel(
         ui.p("No result selected."),
         title="Result",
         width=480,
@@ -405,16 +405,16 @@ def chat_artifact(
 
     See Also
     --------
-    :func:`~shinychat.page_chat` : Create a page with an artifact region.
-    :func:`~shinychat.chat_ui` : Create an embedded chat with an artifact region.
-    :class:`~shinychat.ChatArtifactController` : Update the artifact from the server.
+    :func:`~shinychat.page_chat` : Create a page with an artifact panel.
+    :func:`~shinychat.chat_ui` : Create an embedded chat with an artifact panel.
+    :class:`~shinychat.types.ChatArtifactPanelController` : Update the panel from the server.
     """
-    _validate_content(content, "chat_artifact()")
+    _validate_content(content, "chat_artifact_panel()")
     if title is not None and not isinstance(title, str):
         raise TypeError(
             f"`title` must be a string or None, not {type(title).__name__}."
         )
-    return ChatArtifact(
+    return ChatArtifactPanel(
         content=content,
         title=title,
         width=_validate_css_width(width, "width"),
@@ -584,14 +584,14 @@ def chat_ui_history(id: str, **attrs: TagAttrValue) -> Tag:
     )
 
 
-def render_chat_artifact(artifact: ChatArtifact) -> Tag:
+def render_chat_artifact_panel(artifact_panel: ChatArtifactPanel) -> Tag:
     return Tag(
         "shiny-chat-artifact",
-        *artifact.content,
-        title=artifact.title,
-        width=artifact.width,
-        open=artifact.open,
-        resizable="false" if not artifact.resizable else None,
+        *artifact_panel.content,
+        title=artifact_panel.title,
+        width=artifact_panel.width,
+        open=artifact_panel.open,
+        resizable="false" if not artifact_panel.resizable else None,
     )
 
 
@@ -724,9 +724,7 @@ def _normalize_page_config(
                 )
             )
 
-        toolbar_key = (
-            f"page-{index + 1}" if panel.toolbar is not None else None
-        )
+        toolbar_key = f"page-{index + 1}" if panel.toolbar is not None else None
         normalized_pages.append(
             _NormalizedPage(
                 panel=panel,
@@ -852,7 +850,7 @@ def _apply_page_chat_navbar_options(header: Tag, options: Any) -> None:
 def _create_page_chat_root(
     *,
     id: str = "chat",
-    artifact: bool | ChatArtifact = True,
+    artifact_panel: bool | ChatArtifactPanel = True,
     messages: Optional[
         Iterable[str | TagChild | "ChatMessageDict" | "ChatMessage" | Any]
     ] = None,
@@ -889,7 +887,7 @@ def _create_page_chat_root(
         enable_cancel=enable_cancel,
         allow_attachments=allow_attachments,
         footer=footer,
-        artifact=artifact,
+        artifact_panel=artifact_panel,
         show_history=True,
         **kwargs,
     )

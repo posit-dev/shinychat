@@ -2,7 +2,7 @@ from shiny import App, reactive, render, ui
 
 from shinychat import (
     Chat,
-    chat_artifact,
+    chat_artifact_panel,
     chat_nav_panel,
     chat_sidebar,
     page_chat,
@@ -49,7 +49,7 @@ app_ui = page_chat(
             ),
         ),
     ],
-    artifact=chat_artifact(
+    artifact_panel=chat_artifact_panel(
         artifact_content("Initial"),
         title="Live artifact",
         width="34rem",
@@ -73,7 +73,7 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.show_artifact)
     async def _show_artifact():
-        await chat.artifact.show(
+        await chat.artifact_panel.show(
             artifact_content("Shown"),
             title="Shown artifact",
         )
@@ -81,7 +81,7 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.update_artifact)
     async def _update_artifact():
-        await chat.artifact.update(
+        await chat.artifact_panel.update(
             artifact_content("Updated"),
             title="Updated artifact",
         )
@@ -89,22 +89,22 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.clear_artifact)
     async def _clear_artifact():
-        await chat.artifact.update(ui.TagList(), title="")
+        await chat.artifact_panel.update(ui.TagList(), title="")
 
     @reactive.effect
     @reactive.event(input.hide_artifact)
     async def _hide_artifact():
-        await chat.artifact.hide()
+        await chat.artifact_panel.hide()
 
     @reactive.effect
     @reactive.event(input.toggle_artifact)
     async def _toggle_artifact():
-        await chat.artifact.toggle()
+        await chat.artifact_panel.toggle()
 
     @reactive.effect
     @reactive.event(input.refresh_artifact)
     async def _refresh_artifact():
-        await chat.artifact.update(
+        await chat.artifact_panel.update(
             artifact_content("Inspector refresh"),
             title="Inspector artifact",
         )

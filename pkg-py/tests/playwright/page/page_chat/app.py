@@ -56,7 +56,7 @@ def app_ui(request: Request) -> ui.Tag:
             "Standard theme",
             id="chat",
             sidebar=False,
-            artifact=False,
+            artifact_panel=False,
             theme=ui.Theme(preset="shiny"),
         )
 
@@ -66,7 +66,7 @@ def app_ui(request: Request) -> ui.Tag:
             id="chat",
             toolbar=ui.input_action_button("single_toolbar", "Action"),
             sidebar=False,
-            artifact=False,
+            artifact_panel=False,
         )
 
     if request.query_params.get("sidebarless") == "true":
@@ -82,7 +82,7 @@ def app_ui(request: Request) -> ui.Tag:
             ],
             toolbar=ui.input_action_button("sidebarless_toolbar", "Refresh"),
             sidebar=False,
-            artifact=False,
+            artifact_panel=False,
         )
 
     title = "Research Assistant"
@@ -176,7 +176,7 @@ def app_ui(request: Request) -> ui.Tag:
             ui.input_action_button("show_toast", "Show toast"),
         ),
         sidebar=True,
-        artifact=False,
+        artifact_panel=False,
         greeting="Start a conversation.",
         footer=ui.div("Page chat footer", class_="page-chat-footer"),
     )

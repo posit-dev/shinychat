@@ -28,7 +28,7 @@ ui.div(
 
 chat = Chat("chat")
 chat.ui(
-    artifact=True,
+    artifact_panel=True,
     width="100%",
     height="600px",
     fill=False,
@@ -67,7 +67,7 @@ with ui.hold():
 @reactive.effect
 @reactive.event(input.show_artifact)
 async def _show_artifact() -> None:
-    await chat.artifact.show(
+    await chat.artifact_panel.show(
         artifact_content("Initial"),
         title="Initial artifact",
     )
@@ -76,7 +76,7 @@ async def _show_artifact() -> None:
 @reactive.effect
 @reactive.event(input.update_artifact)
 async def _update_artifact() -> None:
-    await chat.artifact.update(
+    await chat.artifact_panel.update(
         artifact_content("Updated"),
         title="Updated artifact",
     )
@@ -85,22 +85,22 @@ async def _update_artifact() -> None:
 @reactive.effect
 @reactive.event(input.clear_artifact)
 async def _clear_artifact() -> None:
-    await chat.artifact.update(TagList(), title="")
+    await chat.artifact_panel.update(TagList(), title="")
 
 
 @reactive.effect
 @reactive.event(input.hide_artifact)
 async def _hide_artifact() -> None:
-    await chat.artifact.hide()
+    await chat.artifact_panel.hide()
 
 
 @reactive.effect
 @reactive.event(input.show_preserved)
 async def _show_preserved() -> None:
-    await chat.artifact.show()
+    await chat.artifact_panel.show()
 
 
 @reactive.effect
 @reactive.event(input.toggle_artifact)
 async def _toggle_artifact() -> None:
-    await chat.artifact.toggle()
+    await chat.artifact_panel.toggle()

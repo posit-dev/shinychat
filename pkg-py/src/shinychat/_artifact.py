@@ -10,11 +10,11 @@ from ._htmltools_serialization import render_htmltools
 if TYPE_CHECKING:
     from ._chat import Chat
 
-__all__ = ("ChatArtifactController",)
+__all__ = ("ChatArtifactPanelController",)
 
 
-class ChatArtifactController:
-    """Control the artifact region associated with a :class:`~shinychat.Chat`."""
+class ChatArtifactPanelController:
+    """Control the artifact panel associated with a :class:`~shinychat.Chat`."""
 
     def __init__(self, chat: Chat):
         self._chat = chat
@@ -24,15 +24,15 @@ class ChatArtifactController:
         content: TagChild | None = None,
         title: str | None = None,
     ) -> None:
-        """Show the artifact, optionally replacing its content or title."""
+        """Show the artifact panel, optionally replacing its content or title."""
         await self._send_mutation("artifact_show", content=content, title=title)
 
     async def hide(self) -> None:
-        """Hide the artifact without changing its content."""
+        """Hide the artifact panel without changing its content."""
         await self._chat._send_action({"type": "artifact_hide"})
 
     async def toggle(self) -> None:
-        """Toggle the artifact's visibility without changing its content."""
+        """Toggle the artifact panel's visibility without changing its content."""
         await self._chat._send_action({"type": "artifact_toggle"})
 
     async def update(
@@ -40,7 +40,7 @@ class ChatArtifactController:
         content: TagChild | None = None,
         title: str | None = None,
     ) -> None:
-        """Update supplied artifact fields without changing its visibility."""
+        """Update supplied panel fields without changing its visibility."""
         await self._send_mutation(
             "artifact_update", content=content, title=title
         )
