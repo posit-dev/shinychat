@@ -61,7 +61,7 @@ async def append_grouped_results() -> None:
                     "display": ToolResultDisplay(
                         text="Framed grouped body",
                         label="framed",
-                        presentation="framed",
+                        open_style="framed",
                     )
                 },
             ),
@@ -87,7 +87,7 @@ async def append_custom_result() -> None:
             CustomFramedResult(
                 value="The custom handler owns this output.",
                 request=request,
-                extra={"display": ToolResultDisplay(presentation="framed")},
+                extra={"display": ToolResultDisplay(open_style="framed")},
             ),
         )
     )
@@ -114,7 +114,7 @@ async def add_framed_result() -> None:
         display=ToolResultDisplay(
             text="Recognizable framed body",
             footer=ui.span("Recognizable framed footer"),
-            presentation="framed",
+            open_style="framed",
         ),
     )
 
@@ -149,7 +149,7 @@ async def add_fullscreen_result() -> None:
         display=ToolResultDisplay(
             text="Fullscreen framed body",
             full_screen=True,
-            presentation="framed",
+            open_style="framed",
         ),
     )
 
@@ -162,7 +162,7 @@ async def add_error_result() -> None:
         name="error_tool",
         value="The model never sees this.",
         error=ValueError("Recognizable framed error"),
-        display=ToolResultDisplay(presentation="framed"),
+        display=ToolResultDisplay(open_style="framed"),
     )
 
 
