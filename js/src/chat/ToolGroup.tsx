@@ -181,6 +181,8 @@ function ToolCallRow({
   heterogeneous: boolean
 }): ReactNode {
   const [open, setOpen] = useExpandable(item.expanded)
+  const framed =
+    open && item.status === "success" && item.openStyle === "framed"
   const label = toolCallLabel(item, segmentTitle, false)
   const statusClass =
     item.status === "error"
@@ -203,7 +205,12 @@ function ToolCallRow({
   const contentId = `tool-call${useId()}`
 
   return (
-    <li className="shiny-chat-tool-call-row" role="listitem">
+    <li
+      className={`shiny-chat-tool-call-row${
+        framed ? " shiny-chat-tool-call-row--framed" : ""
+      }`}
+      role="listitem"
+    >
       <button
         type="button"
         className="shiny-chat-tool-call-row__summary"
@@ -325,6 +332,8 @@ function ToolGroupRow({
   bodyId: string
 }): ReactNode {
   const { identity, single, anyRunning, failedCount, heterogeneous } = row
+  const framed =
+    expanded && single?.status === "success" && single.openStyle === "framed"
   const label = single && toolCallLabel(single, identity.title, true)
   const glyph = glyphHtml(toolGroupGlyph(row))
 
@@ -332,7 +341,7 @@ function ToolGroupRow({
     <div
       className={`shiny-chat-tool-group shiny-chat-tool-group--${
         single ? "single" : "multi"
-      }`}
+      }${framed ? " shiny-chat-tool-group--framed" : ""}`}
     >
       <button
         type="button"

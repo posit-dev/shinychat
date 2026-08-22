@@ -1,6 +1,6 @@
 {
   "request": "<shiny-tool-request data-shinychat-react=\"\" request-id=\"wire-1\" tool-name=\"search\" tool-title=\"Searching\" icon=\"&lt;i&gt;search&lt;/i&gt;\" intent=\"Find docs\" arguments=\"{&quot;q&quot;:&quot;shiny&quot;}\" grouping=\"all\"></shiny-tool-request>",
-  "result": "<shiny-tool-result data-shinychat-react=\"\" request-id=\"wire-1\" tool-name=\"search\" tool-title=\"Searched\" icon=\"&lt;i&gt;done&lt;/i&gt;\" intent=\"Find docs\" request-call=\"search(q=&quot;shiny&quot;)\" status=\"success\" value=\"Result body\" value-type=\"markdown\" show-request=\"\" expanded=\"\" footer=\"&lt;span&gt;footer&lt;/span&gt;\" full-screen=\"\" grouping=\"all\" label=\"docs\" value-preview=\"3 results\"></shiny-tool-result>",
+  "result": "<shiny-tool-result data-shinychat-react=\"\" request-id=\"wire-1\" tool-name=\"search\" tool-title=\"Searched\" icon=\"&lt;i&gt;done&lt;/i&gt;\" intent=\"Find docs\" request-call=\"search(q=&quot;shiny&quot;)\" status=\"success\" value=\"Result body\" value-type=\"markdown\" show-request=\"\" expanded=\"\" footer=\"&lt;span&gt;footer&lt;/span&gt;\" full-screen=\"\" open-style=\"framed\" grouping=\"all\" label=\"docs\" value-preview=\"3 results\"></shiny-tool-result>",
   "expected": {
     "request": {
       "kind": "request",
@@ -28,6 +28,7 @@
       "requestCall": "search(q=\"shiny\")",
       "showRequest": true,
       "fullScreen": true,
+      "openStyle": "framed",
       "expanded": true,
       "customDisplay": false,
       "footer": "<span>footer</span>"

@@ -182,6 +182,9 @@ class ToolResultComponent(ToolCardComponent):
     full_screen: bool = False
     "Controls whether a fullscreen toggle button is displayed on the card."
 
+    open_style: Literal["minimal", "framed"] = "minimal"
+    "Controls whether the result uses the minimal or framed style when open."
+
     expanded: bool = False
     "Controls whether the card content is expanded/visible."
 
@@ -230,6 +233,7 @@ class ToolResultComponent(ToolCardComponent):
             expanded="" if self.expanded else None,
             footer=footer_ui["html"] if self.footer else None,
             full_screen="" if self.full_screen else None,
+            open_style="framed" if self.open_style == "framed" else None,
             grouping=self.grouping,
             label=self.label,
             value_preview=self.value_preview,
@@ -288,9 +292,13 @@ class ToolResultDisplay(BaseModel):
     ``label`` and ``value_preview`` are compact, per-call metadata shown in the
     activity row and grouped call list. Use them to distinguish repeated calls
     without opening the card. ``html``, ``markdown``, and ``text`` customize the
-    result body inside the drill-down card. To replace the card with standalone
+    result body inside the drill-down card. ``open_style="framed"`` opts a
+    substantial rich result into Shiny Chat's expanded frame;
+    ``open_style="minimal"`` retains the existing drill-down presentation.
+    Framing belongs to the normal tool UI. To replace the card with standalone
     UI instead, register a custom ``message_content`` or
-    ``message_content_chunk`` handler for a ``ContentToolResult`` subclass.
+    ``message_content_chunk`` handler for a ``ContentToolResult`` subclass;
+    standalone output is not framed.
 
     See the [Tool calling guide](https://shiny.posit.co/py/docs/genai-tools.html)
     for complete tool-display examples.
@@ -300,15 +308,16 @@ class ToolResultDisplay(BaseModel):
 
     ```python
     import chatlas as ctl
+    from shiny import ui
     from shinychat.types import ToolResultDisplay
 
 
     def my_tool():
         display = ToolResultDisplay(
-            title="Looked up weather for Duluth",
-            label="Duluth, MN",
-            value_preview="18 C, clear",
-            markdown="A _markdown_ message shown to user.",
+            html=ui.div(...),
+            footer=ui.div(...),
+            full_screen=True,
+            open_style="framed",
         )
         return ctl.ContentToolResult(
             value="Value the model sees",
@@ -344,6 +353,9 @@ class ToolResultDisplay(BaseModel):
         Whether the drill-down card is expanded by default.
     - ``full_screen``:
         Whether to display a fullscreen toggle button on the drill-down card.
+    - ``open_style``:
+        Use ``"framed"`` to opt an expanded normal rich result into Shiny
+        Chat's frame. ``"minimal"`` retains the existing presentation.
     - ``html``:
         Custom HTML content inside the drill-down card, in place of the
         default result display.
@@ -365,6 +377,7 @@ class ToolResultDisplay(BaseModel):
     show_request: bool = True
     open: bool = False
     full_screen: bool = False
+    open_style: Literal["minimal", "framed"] = "minimal"
     markdown: Optional[str] = None
     text: Optional[str] = None
     footer: TagChild = None
@@ -516,6 +529,7 @@ def tool_result_contents(x: "ContentToolResult") -> Tagifiable:
         expanded=display.open,
         footer=display.footer,
         full_screen=display.full_screen,
+        open_style=display.open_style,
         grouping=annotations.grouping,
         label=display.label,
         value_preview=display.value_preview,
