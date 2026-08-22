@@ -472,7 +472,11 @@ def test_desktop_dropdown_navigation_is_clickable_and_closes_after_selection(
     expect(details).to_be_visible()
 
     details_box = details.bounding_box()
+    menu_items_box = menu.locator(".shiny-chat-page-nav-menu-items").bounding_box()
     assert details_box is not None
+    assert menu_items_box is not None
+    assert menu_items_box["x"] >= 0
+    assert menu_items_box["x"] + menu_items_box["width"] <= 1280
     hit_target = page.evaluate(
         """({ x, y }) => document.elementFromPoint(x, y)?.textContent""",
         {
@@ -488,6 +492,46 @@ def test_desktop_dropdown_navigation_is_clickable_and_closes_after_selection(
     expect(page.locator("#dropdown_details_page")).to_be_visible()
     expect(menu).not_to_have_attribute("open", "")
     expect(menu.locator("summary")).to_be_focused()
+
+
+def test_mobile_dropdown_navigation_remains_in_the_app_menu(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.set_viewport_size({"width": 390, "height": 760})
+    page.goto(f"{local_app.url}?dropdown=true")
+    shell = page.locator("shiny-chat-page")
+    toggle = shell.locator(".shiny-chat-page-sidebar-toggle")
+    menu = shell.locator(".shiny-chat-page-nav-menu")
+
+    expect(shell).to_be_visible(timeout=TIMEOUT)
+    toggle.click()
+    menu.locator("summary").click()
+    expect(menu.locator(".shiny-chat-page-nav-menu-items")).to_have_css(
+        "position", "static"
+    )
+    expect(menu.get_by_role("button", name="Details")).to_be_visible()
+
+
+def test_desktop_dropdown_navigation_aligns_in_rtl(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.set_viewport_size({"width": 1280, "height": 800})
+    page.goto(f"{local_app.url}?dropdown=true")
+    shell = page.locator("shiny-chat-page")
+    menu = shell.locator(".shiny-chat-page-nav-menu")
+    summary = menu.locator("summary")
+    items = menu.locator(".shiny-chat-page-nav-menu-items")
+
+    expect(shell).to_be_visible(timeout=TIMEOUT)
+    page.locator("html").evaluate("(element) => { element.dir = 'rtl' }")
+    summary.click()
+    summary_box = summary.bounding_box()
+    items_box = items.bounding_box()
+    assert summary_box is not None
+    assert items_box is not None
+    assert items_box["x"] + items_box["width"] == pytest.approx(
+        summary_box["x"] + summary_box["width"], abs=1
+    )
 
 
 def test_sidebarless_mobile_history_trigger_does_not_overlay_messages(

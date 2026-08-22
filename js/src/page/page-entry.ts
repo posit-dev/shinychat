@@ -15,6 +15,7 @@ const MIN_SIDEBAR_WIDTH = 150
 const MIN_MAIN_WIDTH = 360
 const SIDEBAR_MOTION_DURATION = 180
 const TOAST_OFFSET_PROPERTY = "--shiny-chat-page-toast-offset"
+const NAV_MENU_VIEWPORT_INSET = 8
 const FOCUSABLE_SELECTOR = [
   "a[href]",
   "area[href]",
@@ -606,13 +607,35 @@ class ChatPageElement extends HTMLElement {
         if (!toggle || !items) return
 
         const bounds = toggle.getBoundingClientRect()
+        const menuBounds = items.getBoundingClientRect()
+        const maxLeft = Math.max(
+          NAV_MENU_VIEWPORT_INSET,
+          window.innerWidth - menuBounds.width - NAV_MENU_VIEWPORT_INSET,
+        )
+        const preferredLeft =
+          window.getComputedStyle(toggle).direction === "rtl"
+            ? bounds.right - menuBounds.width
+            : bounds.left
+        const left = Math.min(
+          Math.max(preferredLeft, NAV_MENU_VIEWPORT_INSET),
+          maxLeft,
+        )
+        const preferredTop = bounds.bottom + 4
+        const top =
+          preferredTop + menuBounds.height <=
+          window.innerHeight - NAV_MENU_VIEWPORT_INSET
+            ? preferredTop
+            : Math.max(
+                NAV_MENU_VIEWPORT_INSET,
+                bounds.top - menuBounds.height - 4,
+              )
         items.style.setProperty(
           "--shiny-chat-page-nav-menu-top",
-          `${Math.round(bounds.bottom + 4)}px`,
+          `${Math.round(top)}px`,
         )
         items.style.setProperty(
-          "--shiny-chat-page-nav-menu-inline-start",
-          `${Math.round(bounds.left)}px`,
+          "--shiny-chat-page-nav-menu-left",
+          `${Math.round(left)}px`,
         )
       })
   }

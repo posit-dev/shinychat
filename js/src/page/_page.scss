@@ -313,10 +313,17 @@ button.shiny-chat-page-identity:focus-visible,
   box-shadow: var(--bs-box-shadow, 0 0.5rem 1rem rgb(0 0 0 / 15%));
 }
 
-.shiny-chat-page-nav-menu[open] .shiny-chat-page-nav-menu-items {
-  position: fixed;
-  top: var(--shiny-chat-page-nav-menu-top);
-  inset-inline-start: var(--shiny-chat-page-nav-menu-inline-start);
+@media (min-width: 800px) {
+  .shiny-chat-page-nav-menu[open] .shiny-chat-page-nav-menu-items {
+    position: fixed;
+    top: var(--shiny-chat-page-nav-menu-top);
+    inset-inline-start: auto;
+    left: var(--shiny-chat-page-nav-menu-left);
+    box-sizing: border-box;
+    max-width: calc(100vw - 1rem);
+    max-height: calc(100vh - 1rem);
+    overflow: auto;
+  }
 }
 
 .shiny-chat-page-nav-menu-items .shiny-chat-page-nav-link {
