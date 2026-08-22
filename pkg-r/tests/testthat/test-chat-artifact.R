@@ -10,9 +10,9 @@ artifact_session_with_spy <- function() {
   )
 }
 
-test_that("chat_artifact_show() sends an action without updates", {
+test_that("chat_artifact_panel_show() sends an action without updates", {
   spy <- artifact_session_with_spy()
-  chat_artifact_show("chat", session = spy$session)
+  chat_artifact_panel_show("chat", session = spy$session)
 
   messages <- spy$messages()
   expect_length(messages, 1)
@@ -22,7 +22,7 @@ test_that("chat_artifact_show() sends an action without updates", {
   expect_null(messages[[1]]$message$html_deps)
 })
 
-test_that("chat_artifact_show() serializes content, dependencies, and title", {
+test_that("chat_artifact_panel_show() serializes content, dependencies, and title", {
   spy <- artifact_session_with_spy()
   dependency <- htmltools::htmlDependency(
     "artifact-dependency",
@@ -30,7 +30,7 @@ test_that("chat_artifact_show() serializes content, dependencies, and title", {
     src = tempdir()
   )
 
-  chat_artifact_show(
+  chat_artifact_panel_show(
     "chat",
     content = htmltools::tags$div("Artifact", dependency),
     title = "Preview",
@@ -45,9 +45,9 @@ test_that("chat_artifact_show() serializes content, dependencies, and title", {
   expect_equal(message$html_deps[[1]]$name, "artifact-dependency")
 })
 
-test_that("chat_artifact_show() preserves omitted fields and clears empty UI", {
+test_that("chat_artifact_panel_show() preserves omitted fields and clears empty UI", {
   spy <- artifact_session_with_spy()
-  chat_artifact_show(
+  chat_artifact_panel_show(
     "chat",
     content = htmltools::tagList(),
     title = "",
@@ -66,9 +66,9 @@ test_that("chat_artifact_show() preserves omitted fields and clears empty UI", {
   expect_equal(message$html_deps, list())
 })
 
-test_that("chat_artifact_update() changes supplied fields without visibility", {
+test_that("chat_artifact_panel_update() changes supplied fields without visibility", {
   spy <- artifact_session_with_spy()
-  chat_artifact_update(
+  chat_artifact_panel_update(
     "chat",
     content = htmltools::tags$span("Updated"),
     session = spy$session
@@ -80,19 +80,19 @@ test_that("chat_artifact_update() changes supplied fields without visibility", {
   expect_equal(message$html_deps, list())
 })
 
-test_that("chat_artifact_update() sends a title-only update", {
+test_that("chat_artifact_panel_update() sends a title-only update", {
   spy <- artifact_session_with_spy()
-  chat_artifact_update("chat", title = "", session = spy$session)
+  chat_artifact_panel_update("chat", title = "", session = spy$session)
 
   message <- spy$messages()[[1]]$message
   expect_equal(message$action, list(type = "artifact_update", title = ""))
   expect_null(message$html_deps)
 })
 
-test_that("chat_artifact_hide() and chat_artifact_toggle() send exact actions", {
+test_that("chat_artifact_panel_hide() and chat_artifact_panel_toggle() send exact actions", {
   spy <- artifact_session_with_spy()
-  chat_artifact_hide("chat", session = spy$session)
-  chat_artifact_toggle("chat", session = spy$session)
+  chat_artifact_panel_hide("chat", session = spy$session)
+  chat_artifact_panel_toggle("chat", session = spy$session)
 
   messages <- spy$messages()
   expect_equal(messages[[1]]$message$action, list(type = "artifact_hide"))
@@ -101,20 +101,24 @@ test_that("chat_artifact_hide() and chat_artifact_toggle() send exact actions", 
   expect_null(messages[[2]]$message$html_deps)
 })
 
-test_that("chat artifact controls validate inputs and sessions", {
+test_that("chat artifact panel controls validate inputs and sessions", {
   session <- shiny::MockShinySession$new()
 
   expect_error(
-    chat_artifact_show("", session = session),
+    chat_artifact_panel_show("", session = session),
     "`id` must be a single string"
   )
   expect_error(
-    chat_artifact_update("chat", title = list(), session = session),
+    chat_artifact_panel_update("chat", title = list(), session = session),
     "`title` must be a single string"
   )
   expect_error(
-    chat_artifact_update("chat", content = function() NULL, session = session),
+    chat_artifact_panel_update(
+      "chat",
+      content = function() NULL,
+      session = session
+    ),
     "`content` must be static UI content"
   )
-  expect_error(chat_artifact_hide("chat"), "active Shiny session")
+  expect_error(chat_artifact_panel_hide("chat"), "active Shiny session")
 })

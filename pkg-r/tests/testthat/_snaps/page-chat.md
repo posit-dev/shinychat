@@ -40,10 +40,10 @@
       Error in `chat_config_content()`:
       ! Arguments in ... must be unnamed UI content.
 
-# chat_artifact() validates configuration
+# chat_artifact_panel() validates configuration
 
     Code
-      chat_artifact(title = list())
+      chat_artifact_panel(title = list())
     Condition
       Error in `chat_validate_string()`:
       ! `title` must be a single string, not an empty list.
@@ -51,7 +51,7 @@
 ---
 
     Code
-      chat_artifact(width = -1)
+      chat_artifact_panel(width = -1)
     Condition
       Error in `chat_validate_width()`:
       ! `width` must be a positive number or a non-empty CSS length.
@@ -59,7 +59,7 @@
 ---
 
     Code
-      chat_artifact(width = "bogus")
+      chat_artifact_panel(width = "bogus")
     Condition
       Error in `chat_validate_width()`:
       ! `width` must be a valid CSS length.
@@ -69,7 +69,7 @@
 ---
 
     Code
-      chat_artifact(open = "yes")
+      chat_artifact_panel(open = "yes")
     Condition
       Error in `chat_validate_boolean()`:
       ! `open` must be `TRUE` or `FALSE`.
@@ -77,7 +77,7 @@
 ---
 
     Code
-      chat_artifact(data_role = "artifact")
+      chat_artifact_panel(data_role = "artifact")
     Condition
       Error in `chat_config_content()`:
       ! Arguments in ... must be unnamed UI content.
@@ -288,10 +288,10 @@
 # chat_ui() omits disabled artifact support and history presentation
 
     Code
-      chat_ui("chat", artifact = list())
+      chat_ui("chat", artifact_panel = list())
     Condition
-      Error in `normalize_chat_artifact()`:
-      ! `artifact` must be `TRUE`, `FALSE`, or a `chat_artifact()` configuration.
+      Error in `normalize_chat_artifact_panel()`:
+      ! `artifact_panel` must be `TRUE`, `FALSE`, or a `chat_artifact_panel()` configuration.
 
 ---
 

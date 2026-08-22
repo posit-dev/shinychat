@@ -73,7 +73,7 @@ ui <- page_chat(
       sidebar = FALSE
     )
   ),
-  artifact = chat_artifact(
+  artifact_panel = chat_artifact_panel(
     artifact_content("Initial", dependency = FALSE),
     title = "Initial artifact",
     open = FALSE
@@ -87,7 +87,7 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$show_artifact, {
-    chat_artifact_show(
+    chat_artifact_panel_show(
       "chat",
       content = artifact_content("Initial"),
       title = "Initial artifact",
@@ -96,7 +96,7 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$update_artifact, {
-    chat_artifact_update(
+    chat_artifact_panel_update(
       "chat",
       content = artifact_content("Updated"),
       title = "Updated artifact",
@@ -105,15 +105,15 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$hide_artifact, {
-    chat_artifact_hide("chat", session = session)
+    chat_artifact_panel_hide("chat", session = session)
   })
 
   observeEvent(input$toggle_artifact, {
-    chat_artifact_toggle("chat", session = session)
+    chat_artifact_panel_toggle("chat", session = session)
   })
 
   observeEvent(input$show_preserved, {
-    chat_artifact_show("chat", session = session)
+    chat_artifact_panel_show("chat", session = session)
   })
 }
 

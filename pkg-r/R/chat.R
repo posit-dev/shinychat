@@ -274,9 +274,9 @@ chat_greeting <- function(
 #'   The footer text is styled slightly smaller and lighter than body text
 #'   by default. Customize with CSS properties `--shiny-chat-footer-font-size`
 #'   and `--shiny-chat-footer-color` on the chat container or footer element.
-#' @param artifact Whether to enable the artifact panel. `TRUE` (the default)
+#' @param artifact_panel Whether to enable the artifact panel. `TRUE` (the default)
 #'   enables an initially hidden panel with default options, `FALSE` omits it,
-#'   and [chat_artifact()] supplies its initial configuration.
+#'   and [chat_artifact_panel()] supplies its initial configuration.
 #' @param show_history Whether to show the built-in history selector. Defaults
 #'   to `TRUE`; setting it to `FALSE` only hides its presentation.
 #' @param tool_grouping Controls how tool calls are grouped together in the
@@ -380,14 +380,14 @@ chat_ui <- function(
   submit_key = c("enter", "enter+modifier"),
   allow_attachments = NULL,
   footer = NULL,
-  artifact = TRUE,
+  artifact_panel = TRUE,
   show_history = TRUE,
   tool_grouping = c("tool", "none", "all")
 ) {
   submit_key <- rlang::arg_match(submit_key)
   tool_grouping <- rlang::arg_match(tool_grouping)
   chat_validate_boolean(show_history, "show_history")
-  artifact <- normalize_chat_artifact(artifact)
+  artifact_panel <- normalize_chat_artifact_panel(artifact_panel)
 
   attrs <- rlang::list2(...)
   if (!all(nzchar(rlang::names2(attrs)))) {
@@ -431,7 +431,9 @@ chat_ui <- function(
   if (!is.null(footer)) {
     footer_tag <- tag("shiny-chat-footer", list(footer))
   }
-  artifact_tag <- if (!is.null(artifact)) chat_artifact_tag(artifact)
+  artifact_tag <- if (!is.null(artifact_panel)) {
+    chat_artifact_panel_tag(artifact_panel)
+  }
 
   # Process greeting -------------------------------------------------------
   greeting_attr <- NULL

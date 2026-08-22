@@ -18,7 +18,7 @@ chat_ui(
   submit_key = c("enter", "enter+modifier"),
   allow_attachments = NULL,
   footer = NULL,
-  artifact = TRUE,
+  artifact_panel = TRUE,
   show_history = TRUE,
   tool_grouping = c("tool", "none", "all")
 )
@@ -113,9 +113,9 @@ The footer text is styled slightly smaller and lighter than body text
 by default. Customize with CSS properties \code{--shiny-chat-footer-font-size}
 and \code{--shiny-chat-footer-color} on the chat container or footer element.}
 
-\item{artifact}{Whether to enable the artifact panel. \code{TRUE} (the default)
+\item{artifact_panel}{Whether to enable the artifact panel. \code{TRUE} (the default)
 enables an initially hidden panel with default options, \code{FALSE} omits it,
-and \code{\link[=chat_artifact]{chat_artifact()}} supplies its initial configuration.}
+and \code{\link[=chat_artifact_panel]{chat_artifact_panel()}} supplies its initial configuration.}
 
 \item{show_history}{Whether to show the built-in history selector. Defaults
 to \code{TRUE}; setting it to \code{FALSE} only hides its presentation.}

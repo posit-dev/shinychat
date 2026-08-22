@@ -84,7 +84,7 @@ ui <- page_chat(
       toolbar = actionButton("save_settings", "Save settings")
     )
   ),
-  artifact = chat_artifact(tags$p("Preview content"), title = "Preview")
+  artifact_panel = chat_artifact_panel(tags$p("Preview content"), title = "Preview")
 )
 ```
 

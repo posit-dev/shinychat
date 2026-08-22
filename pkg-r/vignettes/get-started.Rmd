@@ -291,7 +291,7 @@ ui <- page_chat(
       toolbar = actionButton("save_settings", "Save settings")
     )
   ),
-  artifact = chat_artifact(
+  artifact_panel = chat_artifact_panel(
     artifact_content("Initial preview"),
     title = "Preview"
   )
@@ -303,7 +303,7 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$show_preview, {
-    chat_artifact_show(
+    chat_artifact_panel_show(
       "chat",
       content = artifact_content("Preview opened from the server"),
       title = "Preview"
@@ -322,8 +322,8 @@ when the chat is embedded alongside other top-level UI or inside an existing
 `bslib` layout.
 
 Set `history = TRUE` in a `chat_sidebar()` when the chat is connected to
-`chat_server()` or `chat_enable_history()`. Use `chat_artifact_update()`,
-`chat_artifact_hide()`, and `chat_artifact_toggle()` for subsequent artifact
+`chat_server()` or `chat_enable_history()`. Use `chat_artifact_panel_update()`,
+`chat_artifact_panel_hide()`, and `chat_artifact_panel_toggle()` for subsequent artifact
 updates. Artifact content may contain ordinary Shiny inputs and outputs.
 
 ### Screen-filling layout

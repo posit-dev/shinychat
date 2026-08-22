@@ -34,7 +34,7 @@ test_that("chat_app() forwards page and browser-title options", {
     window_title = "Custom window",
     id = "custom-chat",
     sidebar = FALSE,
-    artifact = FALSE
+    artifact_panel = FALSE
   )
   html <- chat_app_html(app)
 

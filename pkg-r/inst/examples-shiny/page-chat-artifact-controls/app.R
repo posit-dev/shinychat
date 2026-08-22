@@ -38,7 +38,7 @@ ui <- page_chat(
       )
     )
   ),
-  artifact = chat_artifact(
+  artifact_panel = chat_artifact_panel(
     artifact_content("Initial"),
     title = "Live artifact",
     width = "34rem",
@@ -58,7 +58,7 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$show_artifact, {
-    chat_artifact_show(
+    chat_artifact_panel_show(
       "chat",
       artifact_content("Shown"),
       title = "Shown artifact"
@@ -66,7 +66,7 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$update_artifact, {
-    chat_artifact_update(
+    chat_artifact_panel_update(
       "chat",
       artifact_content("Updated"),
       title = "Updated artifact"
@@ -74,19 +74,19 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$clear_artifact, {
-    chat_artifact_update("chat", htmltools::tagList(), title = "")
+    chat_artifact_panel_update("chat", htmltools::tagList(), title = "")
   })
 
   observeEvent(input$hide_artifact, {
-    chat_artifact_hide("chat")
+    chat_artifact_panel_hide("chat")
   })
 
   observeEvent(input$toggle_artifact, {
-    chat_artifact_toggle("chat")
+    chat_artifact_panel_toggle("chat")
   })
 
   observeEvent(input$refresh_artifact, {
-    chat_artifact_update(
+    chat_artifact_panel_update(
       "chat",
       artifact_content("Inspector refresh"),
       title = "Inspector artifact"

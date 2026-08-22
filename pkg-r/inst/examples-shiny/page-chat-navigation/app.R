@@ -134,7 +134,7 @@ ui <- page_chat(
       toolbar = NULL
     )
   ),
-  artifact = chat_artifact(
+  artifact_panel = chat_artifact_panel(
     artifact_content("Use the home toolbar to open this preview."),
     title = "Working preview",
     width = 420,
@@ -172,7 +172,7 @@ server <- function(input, output, session) {
     )
     record_exchange(client, user_text, assistant_text)
     chat_append("chat", assistant_text)
-    chat_artifact_update(
+    chat_artifact_panel_update(
       "chat",
       artifact_content(paste("Latest request:", user_text)),
       title = "Latest request"
@@ -180,7 +180,7 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$show_preview, {
-    chat_artifact_show("chat", title = "Working preview")
+    chat_artifact_panel_show("chat", title = "Working preview")
   })
 
   observeEvent(input$show_settings, {

@@ -22,7 +22,7 @@ page_chat(
   enable_cancel = NULL,
   allow_attachments = NULL,
   footer = NULL,
-  artifact = TRUE,
+  artifact_panel = TRUE,
   window_title = NA,
   lang = NULL,
   theme = page_chat_theme()
@@ -60,7 +60,7 @@ supplies its child content, width, initial open state, and resizability;
 its history defaults to \code{FALSE}. A \code{\link[=chat_sidebar]{chat_sidebar()}} with \code{history = NULL}
 defaults to \code{TRUE} here.}
 
-\item{messages, greeting, placeholder, width, icon_assistant, enable_cancel, allow_attachments, footer, artifact}{Common arguments passed to \code{\link[=chat_ui]{chat_ui()}}.}
+\item{messages, greeting, placeholder, width, icon_assistant, enable_cancel, allow_attachments, footer, artifact_panel}{Common arguments passed to \code{\link[=chat_ui]{chat_ui()}}.}
 
 \item{window_title}{A static browser-window title. The default, \code{NA},
 derives the window title from \code{title} when \code{title} is a scalar string.
@@ -120,10 +120,11 @@ it. On narrow screens, navigation and toolbar controls move into the app
 menu above the active page's sidebar content without duplicating Shiny input
 or output IDs.
 
-Set \code{artifact} to a \code{\link[=chat_artifact]{chat_artifact()}} configuration to provide initial
-content and layout options. Update the mounted artifact from the server
-with \code{\link[=chat_artifact_show]{chat_artifact_show()}}, \code{\link[=chat_artifact_update]{chat_artifact_update()}},
-\code{\link[=chat_artifact_hide]{chat_artifact_hide()}}, and \code{\link[=chat_artifact_toggle]{chat_artifact_toggle()}}. Artifact content is
+Set \code{artifact_panel} to a \code{\link[=chat_artifact_panel]{chat_artifact_panel()}} configuration to provide
+initial content and layout options. Update the mounted artifact panel from
+the server
+with \code{\link[=chat_artifact_panel_show]{chat_artifact_panel_show()}}, \code{\link[=chat_artifact_panel_update]{chat_artifact_panel_update()}},
+\code{\link[=chat_artifact_panel_hide]{chat_artifact_panel_hide()}}, and \code{\link[=chat_artifact_panel_toggle]{chat_artifact_panel_toggle()}}. Artifact content is
 static UI passed through those server functions; use ordinary Shiny
 inputs and outputs inside that content when needed.
 You can try navigation and artifact-control examples, which do not require
@@ -177,7 +178,7 @@ ui <- page_chat(
       toolbar = actionButton("save_settings", "Save settings")
     )
   ),
-  artifact = chat_artifact(
+  artifact_panel = chat_artifact_panel(
     artifact_content("Initial preview"),
     title = "Preview"
   )
@@ -189,7 +190,7 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$show_preview, {
-    chat_artifact_show(
+    chat_artifact_panel_show(
       "chat",
       content = artifact_content("Preview opened from the server"),
       title = "Preview"

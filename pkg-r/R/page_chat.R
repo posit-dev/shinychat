@@ -44,10 +44,11 @@
 #' menu above the active page's sidebar content without duplicating Shiny input
 #' or output IDs.
 #'
-#' Set `artifact` to a [chat_artifact()] configuration to provide initial
-#' content and layout options. Update the mounted artifact from the server
-#' with [chat_artifact_show()], [chat_artifact_update()],
-#' [chat_artifact_hide()], and [chat_artifact_toggle()]. Artifact content is
+#' Set `artifact_panel` to a [chat_artifact_panel()] configuration to provide
+#' initial content and layout options. Update the mounted artifact panel from
+#' the server
+#' with [chat_artifact_panel_show()], [chat_artifact_panel_update()],
+#' [chat_artifact_panel_hide()], and [chat_artifact_panel_toggle()]. Artifact content is
 #' static UI passed through those server functions; use ordinary Shiny
 #' inputs and outputs inside that content when needed.
 #' You can try navigation and artifact-control examples, which do not require
@@ -82,7 +83,7 @@
 #'   supplies its child content, width, initial open state, and resizability;
 #'   its history defaults to `FALSE`. A [chat_sidebar()] with `history = NULL`
 #'   defaults to `TRUE` here.
-#' @param messages,greeting,placeholder,width,icon_assistant,enable_cancel,allow_attachments,footer,artifact
+#' @param messages,greeting,placeholder,width,icon_assistant,enable_cancel,allow_attachments,footer,artifact_panel
 #'   Common arguments passed to [chat_ui()].
 #' @param window_title A static browser-window title. The default, `NA`,
 #'   derives the window title from `title` when `title` is a scalar string.
@@ -133,7 +134,7 @@
 #'       toolbar = actionButton("save_settings", "Save settings")
 #'     )
 #'   ),
-#'   artifact = chat_artifact(
+#'   artifact_panel = chat_artifact_panel(
 #'     artifact_content("Initial preview"),
 #'     title = "Preview"
 #'   )
@@ -145,7 +146,7 @@
 #'   })
 #'
 #'   observeEvent(input$show_preview, {
-#'     chat_artifact_show(
+#'     chat_artifact_panel_show(
 #'       "chat",
 #'       content = artifact_content("Preview opened from the server"),
 #'       title = "Preview"
@@ -173,7 +174,7 @@ page_chat <- function(
   enable_cancel = NULL,
   allow_attachments = NULL,
   footer = NULL,
-  artifact = TRUE,
+  artifact_panel = TRUE,
   window_title = NA,
   lang = NULL,
   theme = page_chat_theme()
@@ -233,7 +234,7 @@ page_chat <- function(
     enable_cancel = enable_cancel,
     allow_attachments = allow_attachments,
     footer = footer,
-    artifact = artifact,
+    artifact_panel = artifact_panel,
     show_history = TRUE
   )
   sidebar_id <- paste0(resolved_id, "-sidebar")
@@ -1038,17 +1039,17 @@ chat_validate_sidebar <- function(sidebar) {
   )
 }
 
-normalize_chat_artifact <- function(artifact) {
-  if (isTRUE(artifact)) {
-    return(chat_artifact(open = FALSE))
+normalize_chat_artifact_panel <- function(panel) {
+  if (isTRUE(panel)) {
+    return(chat_artifact_panel(open = FALSE))
   }
-  if (isFALSE(artifact)) {
+  if (isFALSE(panel)) {
     return(NULL)
   }
-  if (inherits(artifact, "chat_artifact")) {
-    return(artifact)
+  if (inherits(panel, "chat_artifact_panel")) {
+    return(panel)
   }
   cli::cli_abort(
-    "{.arg artifact} must be {.code TRUE}, {.code FALSE}, or a {.fn chat_artifact} configuration."
+    "{.arg artifact_panel} must be {.code TRUE}, {.code FALSE}, or a {.fn chat_artifact_panel} configuration."
   )
 }

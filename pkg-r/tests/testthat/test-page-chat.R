@@ -42,26 +42,26 @@ test_that("chat_sidebar() validates and normalizes configuration", {
   expect_snapshot(error = TRUE, chat_sidebar(class = "not-an-attribute"))
 })
 
-test_that("chat_artifact() validates configuration", {
-  artifact <- chat_artifact(
+test_that("chat_artifact_panel() validates configuration", {
+  artifact <- chat_artifact_panel(
     htmltools::tags$p("Artifact content"),
     title = "Preview",
     width = 480,
     resizable = FALSE
   )
 
-  expect_s3_class(artifact, "chat_artifact")
+  expect_s3_class(artifact, "chat_artifact_panel")
   expect_equal(artifact$title, "Preview")
   expect_equal(artifact$width, "480px")
   expect_true(artifact$open)
   expect_false(artifact$resizable)
-  expect_false(chat_artifact(open = FALSE)$open)
+  expect_false(chat_artifact_panel(open = FALSE)$open)
 
-  expect_snapshot(error = TRUE, chat_artifact(title = list()))
-  expect_snapshot(error = TRUE, chat_artifact(width = -1))
-  expect_snapshot(error = TRUE, chat_artifact(width = "bogus"))
-  expect_snapshot(error = TRUE, chat_artifact(open = "yes"))
-  expect_snapshot(error = TRUE, chat_artifact(data_role = "artifact"))
+  expect_snapshot(error = TRUE, chat_artifact_panel(title = list()))
+  expect_snapshot(error = TRUE, chat_artifact_panel(width = -1))
+  expect_snapshot(error = TRUE, chat_artifact_panel(width = "bogus"))
+  expect_snapshot(error = TRUE, chat_artifact_panel(open = "yes"))
+  expect_snapshot(error = TRUE, chat_artifact_panel(data_role = "artifact"))
 })
 
 test_that("page_chat_theme() composes caller overrides over a preset", {
@@ -332,7 +332,7 @@ test_that("page_chat() has the agreed public signature", {
       "enable_cancel",
       "allow_attachments",
       "footer",
-      "artifact",
+      "artifact_panel",
       "window_title",
       "lang",
       "theme"
@@ -987,7 +987,7 @@ test_that("chat_ui() renders configured artifact content and dependencies", {
   artifact_dep <- htmltools::htmlDependency("artifact-dep", "1.0.0", "")
   ui <- chat_ui(
     "chat",
-    artifact = chat_artifact(
+    artifact_panel = chat_artifact_panel(
       htmltools::tags$div("Artifact", artifact_dep),
       title = "",
       width = "30rem",
@@ -1010,7 +1010,7 @@ test_that("chat_ui() renders configured artifact content and dependencies", {
 })
 
 test_that("chat_ui() omits disabled artifact support and history presentation", {
-  ui <- chat_ui("chat", artifact = FALSE, show_history = FALSE)
+  ui <- chat_ui("chat", artifact_panel = FALSE, show_history = FALSE)
 
   expect_equal(ui$attribs[["show-history"]], "false")
   expect_false(any(vapply(
@@ -1019,6 +1019,6 @@ test_that("chat_ui() omits disabled artifact support and history presentation", 
     logical(1)
   )))
 
-  expect_snapshot(error = TRUE, chat_ui("chat", artifact = list()))
+  expect_snapshot(error = TRUE, chat_ui("chat", artifact_panel = list()))
   expect_snapshot(error = TRUE, chat_ui("chat", show_history = NA))
 })
