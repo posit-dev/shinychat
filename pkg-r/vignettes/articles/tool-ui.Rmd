@@ -423,7 +423,7 @@ get_weather_forecast <- tool(
           open = TRUE,
           full_screen = TRUE,
           footer = htmltools::tags$small("Forecast data from weather.gov"),
-          presentation = "framed"
+          open_style = "framed"
         )
       )
     )
