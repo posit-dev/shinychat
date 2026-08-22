@@ -182,6 +182,28 @@ describe("shiny-chat-resize-handle", () => {
     expect(handle).toHaveAttribute("aria-valuenow", "640")
   })
 
+  it.each([
+    ["LTR inline-end", "ltr", "inline-end", 310],
+    ["LTR inline-start", "ltr", "inline-start", 290],
+    ["RTL inline-end", "rtl", "inline-end", 290],
+    ["RTL inline-start", "rtl", "inline-start", 310],
+  ] as const)(
+    "matches pointer direction for %s",
+    (_name, direction, panelSide, expectedValue) => {
+      document.body.style.direction = direction
+      const handle = configuredHandle({ panelSide })
+      const requests: number[] = []
+      handle.addEventListener("resize-request", (event) => {
+        requests.push((event as CustomEvent<{ value: number }>).detail.value)
+      })
+
+      handle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }))
+      handle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft" }))
+
+      expect(requests).toEqual([expectedValue, 300])
+    },
+  )
+
   it("ends a pointer interaction exactly once on cancellation and disconnect", () => {
     const handle = configuredHandle()
     const ends = vi.fn()

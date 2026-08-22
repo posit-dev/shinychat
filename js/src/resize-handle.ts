@@ -291,13 +291,7 @@ class ShinyChatResizeHandleElement
     if (!pointer || pointerEvent.pointerId !== pointer.id) return
 
     pointerEvent.preventDefault()
-    const direction = window.getComputedStyle(
-      this.parentElement ?? this,
-    ).direction
-    const horizontalDirection =
-      (this.options.panelSide === "inline-end") === (direction !== "rtl")
-        ? 1
-        : -1
+    const horizontalDirection = this.panelIsLeft() ? 1 : -1
     const value =
       pointer.startValue +
       horizontalDirection * (pointerEvent.clientX - pointer.startX)
@@ -368,12 +362,13 @@ class ShinyChatResizeHandleElement
       ? this.options.largeStep!
       : this.options.step!
     let value = this.options.value
+    const horizontalDirection = this.panelIsLeft() ? 1 : -1
     switch (keyEvent.key) {
       case "ArrowLeft":
-        value -= step
+        value -= horizontalDirection * step
         break
       case "ArrowRight":
-        value += step
+        value += horizontalDirection * step
         break
       case "Home":
         value = this.options.min
