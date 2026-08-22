@@ -741,6 +741,79 @@ test_that("page_chat() normalizes navigation and sidebar metadata once", {
   expect_identical(attr(page, "lang"), "en")
 })
 
+test_that("page_chat() supports standard bslib navigation items", {
+  page <- page_chat(
+    "Assistant",
+    pages_navbar = list(
+      bslib::nav_panel(
+        "About",
+        htmltools::tags$p("About content"),
+        value = "about"
+      ),
+      bslib::nav_menu(
+        "More",
+        bslib::nav_panel(
+          "Help",
+          htmltools::tags$p("Help content"),
+          value = "help"
+        ),
+        "---",
+        bslib::nav_menu(
+          "Nested",
+          bslib::nav_panel(
+            "Details",
+            htmltools::tags$p("Details content"),
+            value = "details"
+          )
+        )
+      ),
+      bslib::nav_item(
+        htmltools::tags$a("Documentation", href = "https://example.com")
+      ),
+      bslib::nav_spacer(),
+      chat_nav_panel("Settings", htmltools::tags$p("Settings content")),
+      bslib::nav_panel_hidden(
+        "advanced",
+        htmltools::tags$p("Advanced content")
+      )
+    )
+  )
+
+  sections <- page_chat_tags(page, ".shiny-chat-page-panel")
+  expect_equal(
+    unname(vapply(
+      sections,
+      function(section) section$attribs[["data-page-value"]],
+      character(1)
+    )),
+    c("home", "about", "help", "details", "Settings", "advanced")
+  )
+  expect_equal(
+    unname(vapply(
+      sections[-c(1, 6)],
+      function(section) section$attribs[["aria-labelledby"]],
+      character(1)
+    )),
+    paste0("chat-nav-", 1:4)
+  )
+  expect_null(sections[[6]]$attribs[["aria-labelledby"]])
+  controls <- page_chat_tag(page, ".shiny-chat-page-nav")
+  expect_length(
+    page_chat_tags(controls, ".shiny-chat-page-nav-link"),
+    4
+  )
+  expect_length(page_chat_tags(controls, ".shiny-chat-page-nav-menu"), 2)
+  expect_length(page_chat_tags(controls, ".shiny-chat-page-nav-divider"), 1)
+  expect_length(page_chat_tags(controls, ".shiny-chat-page-nav-control"), 1)
+  expect_length(page_chat_tags(controls, ".bslib-nav-spacer"), 1)
+  expect_match(as.character(controls), "Documentation", fixed = TRUE)
+  expect_match(
+    as.character(page),
+    "--shiny-chat-page-content-width:min(680px, 100%)",
+    fixed = TRUE
+  )
+})
+
 test_that("page_chat() keeps global and custom panel toolbars separate", {
   page <- page_chat(
     "Assistant",

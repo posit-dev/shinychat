@@ -31,8 +31,11 @@
 #'
 #' @section Navigation, sidebars, and artifacts:
 #'
-#' `pages_navbar` accepts a list of additional navbar pages, each created with
-#' [chat_nav_panel()].
+#' `pages_navbar` accepts a list of additional navbar items. Use
+#' [chat_nav_panel()] when a page needs page-chat-specific sidebar, toolbar, or
+#' content-width options. It also accepts [bslib::nav_panel()],
+#' [bslib::nav_panel_hidden()], [bslib::nav_menu()], [bslib::nav_item()], and
+#' [bslib::nav_spacer()].
 #' Sidebar navigation is not yet implemented.
 #' Each panel can use the default sidebar, no page-specific sidebar, or its
 #' own [chat_sidebar()] or [bslib::sidebar()] configuration. The `sidebar`
@@ -71,7 +74,13 @@
 #'   `page_chat()` owns `height`, `fill`, and `show_history`; attempts to pass
 #'   those arguments are rejected.
 #' @param id A non-empty string identifying the chat.
-#' @param pages_navbar `NULL` or a list of [chat_nav_panel()] configurations.
+#' @param pages_navbar `NULL` or a list of [chat_nav_panel()] configurations
+#'   and supported standard bslib navigation items. Standard content panels
+#'   use the normal page-chat content width with no page-specific sidebar or
+#'   toolbar. Hidden panels are omitted from the generated navigation controls;
+#'   pair them with a [bslib::nav_item()] control carrying
+#'   `.shiny-chat-page-nav-link` and `data-page-target` when they need a custom
+#'   trigger.
 #' @param toolbar Optional home-page-scoped UI displayed with the navigation
 #'   controls. Use [bslib::toolbar()] to group toolbar controls. A panel's
 #'   `chat_nav_panel(toolbar = )` replaces this scoped segment.
@@ -221,7 +230,8 @@ page_chat <- function(
   navbar_options <- normalize_page_chat_navbar_options(navbar_options)
   chat_validate_sidebar(sidebar)
   sidebar <- normalize_page_sidebar(sidebar, default_history = TRUE)
-  pages_navbar <- normalize_chat_pages(pages_navbar)
+  navbar <- normalize_chat_pages(pages_navbar)
+  pages_navbar <- navbar$pages
   window_title <- normalize_chat_window_title(window_title, title)
   if (!is.null(lang)) {
     chat_validate_plain_string(lang, "lang")
@@ -250,7 +260,8 @@ page_chat <- function(
   normalized <- normalize_page_sidebars(
     pages_navbar,
     sidebar,
-    resolved_id
+    resolved_id,
+    page_chat_nav_control_indexes(navbar$controls)
   )
   active_sidebar <- sidebar_metadata(normalized$home_sidebar)
 
@@ -259,7 +270,11 @@ page_chat <- function(
     htmltools::tags$nav(
       class = "shiny-chat-page-nav",
       `aria-label` = "Pages",
-      lapply(normalized$pages_navbar, page_chat_nav_control)
+      lapply(
+        navbar$controls,
+        page_chat_nav_item,
+        pages = normalized$pages_navbar
+      )
     ),
     htmltools::tags$div(
       class = "shiny-chat-page-toolbar",
@@ -317,7 +332,9 @@ page_chat <- function(
       htmltools::tags$section(
         class = "shiny-chat-page-panel",
         id = normalized$panel_id,
-        `aria-labelledby` = normalized$nav_id,
+        `aria-labelledby` = if (normalized$has_nav_control) {
+          normalized$nav_id
+        },
         `data-page-value` = normalized$value,
         `data-page-title` = panel$title,
         `data-sidebar-key` = normalized$sidebar_key,
@@ -585,25 +602,130 @@ chat_ui_history_tag <- function(id, attrs = list()) {
   )
 }
 
+is_bslib_nav_menu <- function(item) {
+  inherits(item, "shiny.navbarmenu")
+}
+
+is_bslib_nav_panel <- function(item) {
+  inherits(item, "shiny.tag") &&
+    identical(item$name, "div") &&
+    identical(item$attribs$class, "tab-pane") &&
+    !is.null(item$attribs[["data-value"]])
+}
+
+is_bslib_nav_item <- function(item) {
+  inherits(item, "shiny.tag") &&
+    identical(item$name, "li") &&
+    grepl(
+      "(^| )bslib-nav-item( |$)",
+      item$attribs$class %||% ""
+    )
+}
+
+is_bslib_nav_spacer <- function(item) {
+  inherits(item, "shiny.tag") &&
+    grepl(
+      "(^| )bslib-nav-spacer( |$)",
+      item$attribs$class %||% ""
+    )
+}
+
+standard_nav_panel <- function(item, location) {
+  value <- item$attribs[["data-value"]]
+  if (!rlang::is_string(value) || !nzchar(value)) {
+    cli::cli_abort(
+      "{.arg pages_navbar} item {location} must have a non-empty navigation value."
+    )
+  }
+  title <- item$attribs$title %||% value
+  if (!rlang::is_string(title) || !nzchar(title)) {
+    title <- value
+  }
+  structure(
+    list(
+      title = title,
+      content = item$children,
+      value = value,
+      icon = attr(item, "_shiny_icon"),
+      sidebar = FALSE,
+      toolbar = NULL,
+      content_width = "min(680px, 100%)"
+    ),
+    class = "chat_nav_panel"
+  )
+}
+
 normalize_chat_pages <- function(pages_navbar) {
   if (is.null(pages_navbar)) {
-    return(list())
+    return(list(pages = list(), controls = list()))
   }
   if (!is.list(pages_navbar) || inherits(pages_navbar, "chat_nav_panel")) {
     cli::cli_abort(
-      "{.arg pages_navbar} must be {.code NULL} or a list of {.fn chat_nav_panel} configurations."
+      "{.arg pages_navbar} must be {.code NULL} or a list of {.fn chat_nav_panel} configurations and supported bslib navigation items."
     )
   }
 
-  valid <- vapply(pages_navbar, inherits, logical(1), what = "chat_nav_panel")
-  if (!all(valid)) {
+  pages <- list()
+  normalize_item <- NULL
+  normalize_item <- function(item, location, in_menu = FALSE) {
+    if (rlang::is_string(item)) {
+      if (!in_menu) {
+        cli::cli_abort(
+          "{.arg pages_navbar} item {location} is a string; strings are only supported as nav-menu headers or dividers."
+        )
+      }
+      if (nchar(item) >= 2 && grepl("^-+$", item)) {
+        return(list(type = "divider"))
+      }
+      return(list(type = "header", content = item))
+    }
+    if (inherits(item, "chat_nav_panel")) {
+      pages[[length(pages) + 1]] <<- item
+      return(list(type = "page", page_index = length(pages)))
+    }
+    if (is_bslib_nav_menu(item)) {
+      if (!is.list(item$tabs)) {
+        cli::cli_abort("{.arg pages_navbar} menu {location} is malformed.")
+      }
+      return(list(
+        type = "menu",
+        title = item$title,
+        icon = item$icon,
+        children = Map(
+          function(child, index) {
+            normalize_item(child, paste0(location, ".", index), TRUE)
+          },
+          item$tabs,
+          seq_along(item$tabs)
+        )
+      ))
+    }
+    if (is_bslib_nav_panel(item)) {
+      pages[[length(pages) + 1]] <<- standard_nav_panel(item, location)
+      if (is.null(item$attribs$title)) {
+        return(list(type = "hidden"))
+      }
+      return(list(type = "page", page_index = length(pages)))
+    }
+    if (is_bslib_nav_item(item)) {
+      return(list(type = "item", content = item$children))
+    }
+    if (is_bslib_nav_spacer(item)) {
+      return(list(type = "spacer"))
+    }
     cli::cli_abort(
-      "{.arg pages_navbar} item {which(!valid)[1]} must be a {.fn chat_nav_panel} configuration."
+      "{.arg pages_navbar} item {location} must be a {.fn chat_nav_panel} configuration or a supported bslib navigation item."
     )
   }
 
-  for (i in seq_along(pages_navbar)) {
-    page <- pages_navbar[[i]]
+  controls <- Map(
+    function(item, index) normalize_item(item, as.character(index)),
+    pages_navbar,
+    seq_along(pages_navbar)
+  )
+
+  for (i in seq_along(pages)) {
+    page <- pages[[i]]
     chat_validate_plain_string(
       page$title,
       paste0("pages_navbar[[", i, "]]$title")
@@ -623,18 +745,18 @@ normalize_chat_pages <- function(pages_navbar) {
     chat_validate_page_ui(page$icon, paste0("pages_navbar[[", i, "]]$icon"))
     chat_validate_sidebar(page$sidebar)
     chat_validate_panel_toolbar(page$toolbar)
-    pages_navbar[[i]]$content_width <- chat_validate_content_width(
+    pages[[i]]$content_width <- chat_validate_content_width(
       page$content_width,
       paste0("pages_navbar[[", i, "]]$content_width")
     )
-    pages_navbar[[i]]$sidebar <- normalize_page_sidebar(
+    pages[[i]]$sidebar <- normalize_page_sidebar(
       page$sidebar,
       default_history = FALSE
     )
   }
 
   values <- vapply(
-    pages_navbar,
+    pages,
     function(page) {
       page$value %||% page$title
     },
@@ -652,7 +774,17 @@ normalize_chat_pages <- function(pages_navbar) {
     )
   }
 
-  pages_navbar
+  list(pages = pages, controls = controls)
+}
+
+page_chat_nav_control_indexes <- function(items) {
+  indexes <- unlist(lapply(items, function(item) {
+    if (identical(item$type, "page")) {
+      return(item$page_index)
+    }
+    page_chat_nav_control_indexes(item$children %||% list())
+  }))
+  as.integer(indexes)
 }
 
 normalize_chat_sidebar_config <- function(sidebar, default_history) {
@@ -706,7 +838,12 @@ normalize_page_sidebar <- function(sidebar, default_history) {
   sidebar
 }
 
-normalize_page_sidebars <- function(pages_navbar, sidebar, resolved_id) {
+normalize_page_sidebars <- function(
+  pages_navbar,
+  sidebar,
+  resolved_id,
+  nav_control_indexes = integer()
+) {
   use_default <- isTRUE(sidebar) ||
     any(vapply(
       pages_navbar,
@@ -768,6 +905,7 @@ normalize_page_sidebars <- function(pages_navbar, sidebar, resolved_id) {
       } else {
         paste0("page-", i)
       },
+      has_nav_control = i %in% nav_control_indexes,
       nav_id = paste0(resolved_id, "-nav-", i),
       panel_id = paste0(resolved_id, "-panel-", i)
     )
@@ -837,6 +975,50 @@ page_chat_nav_control <- function(page) {
       htmltools::tags$span(class = "shiny-chat-page-nav-icon", page$icon)
     },
     htmltools::tags$span(class = "shiny-chat-page-nav-title", page$title)
+  )
+}
+
+page_chat_nav_item <- function(item, pages) {
+  if (identical(item$type, "page")) {
+    return(page_chat_nav_control(pages[[item$page_index]]))
+  }
+  if (identical(item$type, "item")) {
+    return(htmltools::tags$span(
+      class = "shiny-chat-page-nav-control",
+      !!!item$content
+    ))
+  }
+  if (identical(item$type, "spacer")) {
+    return(htmltools::tags$span(class = "bslib-nav-spacer"))
+  }
+  if (identical(item$type, "divider")) {
+    return(htmltools::tags$hr(class = "shiny-chat-page-nav-divider"))
+  }
+  if (identical(item$type, "header")) {
+    return(htmltools::tags$span(
+      class = "shiny-chat-page-nav-menu-header",
+      item$content
+    ))
+  }
+  if (identical(item$type, "hidden")) {
+    return(NULL)
+  }
+  htmltools::tags$details(
+    class = "shiny-chat-page-nav-menu",
+    htmltools::tags$summary(
+      class = "shiny-chat-page-nav-menu-toggle",
+      if (!is.null(item$icon)) {
+        htmltools::tags$span(
+          class = "shiny-chat-page-nav-icon",
+          item$icon
+        )
+      },
+      item$title
+    ),
+    htmltools::tags$div(
+      class = "shiny-chat-page-nav-menu-items",
+      lapply(item$children, page_chat_nav_item, pages = pages)
+    )
   )
 }
 

@@ -63,7 +63,9 @@ page_chat("Assistant", id="chat")
 ## Compose a page
 
 The home page always contains the chat. Add secondary pages with
-`chat_nav_panel()`, configure a home or page-specific sidebar with
+`chat_nav_panel()` or Shiny's `ui.nav_panel()`, organize them with
+`ui.nav_menu()`, and add non-selecting navigation UI with `ui.nav_control()`
+or `ui.nav_spacer()`. Configure a home or page-specific sidebar with
 `chat_sidebar()`, and use `chat_artifact_panel()` for initial artifact content.
 This complete Core app echoes submitted text and shows it in the artifact panel.
 
@@ -150,8 +152,14 @@ sidebar, or supply its own `chat_sidebar()`. `chat_ui_history("chat")` is availa
 layout needs a history view bound to a specific chat ID outside a
 `page_chat()` sidebar.
 
-`pages_navbar` supplies the header/navbar navigation only. Sidebar navigation
-is not yet implemented; a future `pages_sidebar` argument will configure it.
+`pages_navbar` supplies the header/navbar navigation only. A standard
+`ui.nav_panel()` receives the normal page-chat content width and no
+page-specific sidebar or toolbar; use `chat_nav_panel()` when a page needs
+those options. `ui.nav_menu()` supports nested menus, while menu strings remain
+section headers or dividers. Shiny for Python currently has no
+`nav_panel_hidden()` or `nav_item()` equivalent; use `ui.nav_control()` for
+non-selecting navigation UI. Sidebar navigation is not yet implemented; a
+future `pages_sidebar` argument will configure it.
 
 Use `shiny.ui.toolbar()` to group controls in every page-chat toolbar.
 `toolbar` is scoped to the chat home page. A navigation page defaults to

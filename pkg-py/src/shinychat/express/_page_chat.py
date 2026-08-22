@@ -32,7 +32,7 @@ def page_chat(
     *,
     id: str = "chat",
     icon: TagChild | None = None,
-    pages_navbar: Sequence[ChatNavPanel] | None = None,
+    pages_navbar: Sequence[ChatNavPanel | Any] | None = None,
     toolbar: TagChild | None = None,
     toolbar_global: TagChild | None | MISSING_TYPE = MISSING,
     navbar_options: Any = None,
@@ -74,7 +74,14 @@ def page_chat(
         Unique ID shared by the page shell and its chat. Use the same ID for
         the server-side :class:`~shinychat.express.Chat`.
     pages_navbar
-        Secondary navbar pages created with :func:`~shinychat.chat_nav_panel`.
+        Secondary navbar items. In addition to
+        :func:`~shinychat.chat_nav_panel`, this accepts Shiny's
+        :func:`shiny.ui.nav_panel`, :func:`shiny.ui.nav_menu`,
+        :func:`shiny.ui.nav_spacer`, and :func:`shiny.ui.nav_control`.
+        Standard content panels use the normal page-chat content width and no
+        page-specific sidebar or toolbar. Shiny for Python does not currently
+        expose ``nav_panel_hidden()`` or ``nav_item()``; use
+        :func:`shiny.ui.nav_control` for non-selecting navigation content.
         Sidebar navigation is not yet implemented.
     toolbar
         Optional home-page-scoped HTML child displayed with the navigation

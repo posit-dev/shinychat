@@ -350,6 +350,16 @@ When omitted, `toolbar_global` contains bslib's dark/light mode toggle; pass
 `toolbar_global = NULL` to opt out. The controls move between the desktop
 header and mobile app menu without duplicating their Shiny IDs or losing state.
 
+`pages_navbar` also accepts bslib navigation items. A standard
+`bslib::nav_panel()` uses the normal page-chat content width with no
+page-specific sidebar or toolbar; use `chat_nav_panel()` when a page needs
+those options. `bslib::nav_menu()` supports nested menus,
+`bslib::nav_item()` adds non-selecting navigation UI, and
+`bslib::nav_spacer()` separates items. `bslib::nav_panel_hidden()` creates an
+unlisted panel; provide a custom `bslib::nav_item()` trigger with
+`.shiny-chat-page-nav-link` and `data-page-target` when it needs to be
+selected.
+
 The package includes runnable navigation and artifact-control examples. They
 use local echo responses, so no provider credentials are required:
 

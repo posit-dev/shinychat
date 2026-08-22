@@ -547,6 +547,44 @@ def test_page_chat_normalizes_navigation_toolbar_and_sidebars() -> None:
     assert "Help content" in html
 
 
+def test_page_chat_supports_standard_shiny_navigation_items() -> None:
+    html = page_chat(
+        "Assistant",
+        pages_navbar=[
+            ui.nav_panel("About", tags.p("About content"), value="about"),
+            ui.nav_menu(
+                "More",
+                ui.nav_panel("Help", tags.p("Help content"), value="help"),
+                "---",
+                ui.nav_menu(
+                    "Nested",
+                    ui.nav_panel(
+                        "Details",
+                        tags.p("Details content"),
+                        value="details",
+                    ),
+                ),
+            ),
+            ui.nav_control(tags.a("Documentation", href="https://example.com")),
+            ui.nav_spacer(),
+            chat_nav_panel("Settings", tags.p("Settings content")),
+        ],
+    ).get_html_string()
+
+    for index, value in enumerate(
+        ("about", "help", "details", "Settings"), start=1
+    ):
+        assert f'data-page-value="{value}"' in html
+        assert f'id="chat-panel-{index}"' in html
+        assert f'id="chat-nav-{index}"' in html
+    assert "--shiny-chat-page-content-width:min(680px, 100%)" in html
+    assert html.count('class="shiny-chat-page-nav-menu"') == 2
+    assert 'class="shiny-chat-page-nav-divider"' in html
+    assert 'class="shiny-chat-page-nav-control"' in html
+    assert 'href="https://example.com"' in html
+    assert 'class="bslib-nav-spacer"' in html
+
+
 def test_page_chat_sidebar_false_keeps_hidden_default_for_nav_page() -> None:
     html = page_chat(
         "Assistant",
@@ -718,8 +756,10 @@ def test_page_chat_revalidates_direct_sidebar_objects(
             ],
             "Duplicate navigation page value",
         ),
-        ([cast(Any, tags.p("Not a panel"))], "only `ChatNavPanel`"),
-        (cast(Any, "About"), "sequence of `ChatNavPanel`"),
+        ([cast(Any, tags.p("Not a panel"))], "supported Shiny navigation item"),
+        (cast(Any, "About"), "supported Shiny navigation items"),
+        ([cast(Any, object())], "supported Shiny navigation item"),
+        ([cast(Any, "About")], "strings are only supported"),
     ],
 )
 def test_page_chat_rejects_invalid_pages(

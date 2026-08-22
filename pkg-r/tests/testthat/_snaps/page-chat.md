@@ -229,15 +229,15 @@
       page_chat("Assistant", pages_navbar = chat_nav_panel("About"))
     Condition
       Error in `normalize_chat_pages()`:
-      ! `pages_navbar` must be `NULL` or a list of `chat_nav_panel()` configurations.
+      ! `pages_navbar` must be `NULL` or a list of `chat_nav_panel()` configurations and supported bslib navigation items.
 
 ---
 
     Code
       page_chat("Assistant", pages_navbar = list(htmltools::tags$p("About")))
     Condition
-      Error in `normalize_chat_pages()`:
-      ! `pages_navbar` item 1 must be a `chat_nav_panel()` configuration.
+      Error in `normalize_item()`:
+      ! `pages_navbar` item 1 must be a `chat_nav_panel()` configuration or a supported bslib navigation item.
 
 ---
 

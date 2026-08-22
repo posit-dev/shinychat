@@ -75,7 +75,7 @@ def page_chat(
     *,
     id: str = "chat",
     icon: TagChild | None = None,
-    pages_navbar: Sequence[ChatNavPanel] | None = None,
+    pages_navbar: Sequence[ChatNavPanel | Any] | None = None,
     toolbar: TagChild | None = None,
     toolbar_global: TagChild | None | MISSING_TYPE = MISSING,
     navbar_options: Any = None,
@@ -114,7 +114,14 @@ def page_chat(
     id
         Unique ID shared by the page shell and its chat.
     pages_navbar
-        Secondary navbar pages created with :func:`~shinychat.chat_nav_panel`.
+        Secondary navbar items. In addition to
+        :func:`~shinychat.chat_nav_panel`, this accepts Shiny's
+        :func:`shiny.ui.nav_panel`, :func:`shiny.ui.nav_menu`,
+        :func:`shiny.ui.nav_spacer`, and :func:`shiny.ui.nav_control`.
+        Standard content panels use the normal page-chat content width and no
+        page-specific sidebar or toolbar. Shiny for Python does not currently
+        expose ``nav_panel_hidden()`` or ``nav_item()``; use
+        :func:`shiny.ui.nav_control` for non-selecting navigation content.
         Sidebar navigation is not yet implemented.
     toolbar
         Optional home-page-scoped HTML child displayed with the navigation
@@ -605,12 +612,21 @@ class _NormalizedPage:
     value: str
     sidebar_key: str | None
     toolbar_key: str | None
+    has_nav_control: bool
 
 
 @dataclass(frozen=True)
 class _NormalizedSidebar:
     key: str
     config: ChatSidebar
+
+
+@dataclass(frozen=True)
+class _PageNavItem:
+    kind: Literal["page", "menu", "control", "spacer", "divider", "header"]
+    page_index: int | None = None
+    label: tuple[TagChild, ...] = ()
+    children: tuple["_PageNavItem", ...] = ()
 
 
 def _normalize_sidebar_config(
@@ -635,14 +651,153 @@ def _normalize_sidebar_config(
     )
 
 
+def _is_shiny_nav_panel(value: object) -> bool:
+    return hasattr(value, "nav") and hasattr(value, "content")
+
+
+def _is_shiny_nav_menu(value: object) -> bool:
+    return hasattr(value, "nav_controls") and hasattr(value, "title")
+
+
+def _nav_panel_label(panel: Any) -> tuple[TagChild, ...]:
+    nav = panel.nav
+    if not isinstance(nav, Tag) or not nav.children:
+        raise TypeError(
+            "Shiny navigation panels must contain a navigation link."
+        )
+    link = nav.children[0]
+    if not isinstance(link, Tag):
+        raise TypeError(
+            "Shiny navigation panels must contain a navigation link."
+        )
+    return tuple(link.children)
+
+
+def _nav_panel_title(label: tuple[TagChild, ...], value: str) -> str:
+    for child in reversed(label):
+        if isinstance(child, str) and child.strip():
+            return child
+    return value
+
+
+def _normalize_standard_nav_items(
+    pages_navbar: Sequence[ChatNavPanel | Any] | None,
+) -> tuple[tuple[ChatNavPanel, ...], tuple[_PageNavItem, ...]]:
+    if pages_navbar is None:
+        return (), ()
+    if isinstance(pages_navbar, (str, bytes)) or not isinstance(
+        pages_navbar, Sequence
+    ):
+        raise TypeError(
+            "`pages_navbar` must be a sequence of `ChatNavPanel` or supported "
+            "Shiny navigation items."
+        )
+
+    pages: list[ChatNavPanel] = []
+
+    def normalize_item(item: Any, location: str, in_menu: bool) -> _PageNavItem:
+        if isinstance(item, str):
+            if not in_menu:
+                raise TypeError(
+                    f"`pages_navbar` item {location} is a string; strings are "
+                    "only supported as nav-menu headers or dividers."
+                )
+            if len(item) >= 2 and set(item) == {"-"}:
+                return _PageNavItem("divider")
+            return _PageNavItem("header", label=(item,))
+
+        if isinstance(item, ChatNavPanel):
+            pages.append(item)
+            return _PageNavItem("page", page_index=len(pages) - 1)
+
+        if _is_shiny_nav_menu(item):
+            controls = getattr(item, "nav_controls")
+            if not isinstance(controls, list):
+                raise TypeError(f"`pages_navbar` menu {location} is malformed.")
+            title = getattr(item, "title")
+            label = (
+                tuple(title)
+                if isinstance(title, TagList)
+                else (cast(TagChild, title),)
+            )
+            return _PageNavItem(
+                "menu",
+                label=label,
+                children=tuple(
+                    normalize_item(child, f"{location}.{index}", True)
+                    for index, child in enumerate(controls, start=1)
+                ),
+            )
+
+        if _is_shiny_nav_panel(item):
+            content = getattr(item, "content")
+            nav = getattr(item, "nav")
+            if not isinstance(nav, Tag):
+                raise TypeError(f"`pages_navbar` item {location} is malformed.")
+            if content is None:
+                if nav.has_class("bslib-nav-spacer"):
+                    return _PageNavItem("spacer")
+                if nav.has_class("dropdown-divider"):
+                    return _PageNavItem("divider")
+                if nav.has_class("dropdown-header"):
+                    return _PageNavItem("header", label=tuple(nav.children))
+                return _PageNavItem("control", label=tuple(nav.children))
+            if not isinstance(content, Tag):
+                raise TypeError(f"`pages_navbar` item {location} is malformed.")
+            value = item.get_value()
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(
+                    f"`pages_navbar` item {location} must have a non-empty "
+                    "navigation value."
+                )
+            label = _nav_panel_label(item)
+            pages.append(
+                ChatNavPanel(
+                    title=_nav_panel_title(label, value),
+                    content=tuple(content.children),
+                    value=value,
+                    icon=None,
+                    sidebar=False,
+                    toolbar=None,
+                    content_width="min(680px, 100%)",
+                )
+            )
+            return _PageNavItem(
+                "page",
+                page_index=len(pages) - 1,
+                label=label,
+            )
+
+        raise TypeError(
+            f"`pages_navbar` item {location} must be a `ChatNavPanel` or a "
+            "supported Shiny navigation item."
+        )
+
+    nav_items = tuple(
+        normalize_item(item, str(index), False)
+        for index, item in enumerate(pages_navbar, start=1)
+    )
+    return tuple(pages), nav_items
+
+
+def _nav_control_page_indexes(items: Sequence[_PageNavItem]) -> set[int]:
+    indexes: set[int] = set()
+    for item in items:
+        if item.kind == "page" and item.page_index is not None:
+            indexes.add(item.page_index)
+        indexes.update(_nav_control_page_indexes(item.children))
+    return indexes
+
+
 def _normalize_page_config(
-    pages_navbar: Sequence[ChatNavPanel] | None,
+    pages_navbar: Sequence[ChatNavPanel | Any] | None,
     sidebar: bool | ChatSidebar,
 ) -> tuple[
     tuple[_NormalizedPage, ...],
     tuple[_NormalizedSidebar, ...],
     str | None,
     ChatSidebar | None,
+    tuple[_PageNavItem, ...],
 ]:
     if not isinstance(sidebar, (bool, ChatSidebar)):
         raise TypeError(
@@ -669,23 +824,16 @@ def _normalize_page_config(
         home_sidebar = None
         home_sidebar_key = None
 
-    if pages_navbar is None:
-        page_items: Sequence[ChatNavPanel] = ()
-    elif isinstance(pages_navbar, (str, bytes)) or not isinstance(
-        pages_navbar, Sequence
-    ):
-        raise TypeError(
-            "`pages_navbar` must be a sequence of `ChatNavPanel` objects."
-        )
-    else:
-        page_items = pages_navbar
+    page_items, nav_items = _normalize_standard_nav_items(pages_navbar)
+    nav_control_indexes = _nav_control_page_indexes(nav_items)
 
     normalized_pages: list[_NormalizedPage] = []
     values = {"home"}
     for index, panel in enumerate(page_items):
         if not isinstance(panel, ChatNavPanel):
             raise TypeError(
-                "`pages_navbar` must contain only `ChatNavPanel` objects, "
+                "`pages_navbar` must contain only `ChatNavPanel` objects "
+                "or supported Shiny navigation items, "
                 f"not {type(panel).__name__}."
             )
         if not isinstance(panel.title, str) or not panel.title.strip():
@@ -739,6 +887,7 @@ def _normalize_page_config(
                 value=value,
                 sidebar_key=sidebar_key,
                 toolbar_key=toolbar_key,
+                has_nav_control=index in nav_control_indexes,
             )
         )
 
@@ -750,6 +899,7 @@ def _normalize_page_config(
         tuple(sidebars),
         home_sidebar_key,
         home_sidebar,
+        nav_items,
     )
 
 
@@ -776,6 +926,7 @@ def _render_page_control(
     page: _NormalizedPage,
     resolved_id: str,
     index: int,
+    label: tuple[TagChild, ...] | None = None,
 ) -> Tag:
     control_id = f"{resolved_id}-nav-{index}"
     panel_id = f"{resolved_id}-panel-{index}"
@@ -792,7 +943,7 @@ def _render_page_control(
         ),
         Tag(
             "span",
-            page.panel.title,
+            *(label if label else (page.panel.title,)),
             class_="shiny-chat-page-nav-title",
         ),
         type="button",
@@ -800,6 +951,54 @@ def _render_page_control(
         class_="shiny-chat-page-nav-link",
         aria_controls=panel_id,
         data_page_target=page.value,
+    )
+
+
+def _render_page_nav_item(
+    item: _PageNavItem,
+    pages: tuple[_NormalizedPage, ...],
+    resolved_id: str,
+) -> Tag:
+    if item.kind == "page":
+        assert item.page_index is not None
+        return _render_page_control(
+            pages[item.page_index],
+            resolved_id,
+            item.page_index + 1,
+            item.label,
+        )
+    if item.kind == "control":
+        return Tag(
+            "span",
+            *item.label,
+            class_="shiny-chat-page-nav-control",
+        )
+    if item.kind == "spacer":
+        return Tag("span", class_="bslib-nav-spacer")
+    if item.kind == "divider":
+        return Tag("hr", class_="shiny-chat-page-nav-divider")
+    if item.kind == "header":
+        return Tag(
+            "span",
+            *item.label,
+            class_="shiny-chat-page-nav-menu-header",
+        )
+    return Tag(
+        "details",
+        Tag(
+            "summary",
+            *item.label,
+            class_="shiny-chat-page-nav-menu-toggle",
+        ),
+        Tag(
+            "div",
+            *(
+                _render_page_nav_item(child, pages, resolved_id)
+                for child in item.children
+            ),
+            class_="shiny-chat-page-nav-menu-items",
+        ),
+        class_="shiny-chat-page-nav-menu",
     )
 
 
@@ -907,7 +1106,7 @@ def _render_page_chat(
     icon: TagChild | None = None,
     *,
     id: str = "chat",
-    pages_navbar: Sequence[ChatNavPanel] | None = None,
+    pages_navbar: Sequence[ChatNavPanel | Any] | None = None,
     toolbar: TagChild | None = None,
     toolbar_global: TagChild | None | MISSING_TYPE = MISSING,
     navbar_options: Any = None,
@@ -953,6 +1152,7 @@ def _render_page_chat(
         normalized_sidebars,
         home_sidebar_key,
         home_sidebar,
+        nav_items,
     ) = _normalize_page_config(pages_navbar, sidebar)
     resolved_id = resolve_id(id)
     sidebar_id = f"{resolved_id}-sidebar"
@@ -991,8 +1191,8 @@ def _render_page_chat(
         Tag(
             "nav",
             *(
-                _render_page_control(page, resolved_id, index)
-                for index, page in enumerate(normalized_pages, start=1)
+                _render_page_nav_item(item, normalized_pages, resolved_id)
+                for item in nav_items
             ),
             class_="shiny-chat-page-nav",
             aria_label="Pages",
@@ -1129,7 +1329,11 @@ def _render_page_chat(
                     ),
                     id=f"{resolved_id}-panel-{index}",
                     class_="shiny-chat-page-panel",
-                    aria_labelledby=f"{resolved_id}-nav-{index}",
+                    aria_labelledby=(
+                        f"{resolved_id}-nav-{index}"
+                        if page.has_nav_control
+                        else None
+                    ),
                     data_page_value=page.value,
                     data_page_title=page.panel.title,
                     data_sidebar_key=page.sidebar_key,

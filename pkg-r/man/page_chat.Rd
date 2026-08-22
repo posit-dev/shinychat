@@ -39,7 +39,13 @@ those arguments are rejected.}
 
 \item{id}{A non-empty string identifying the chat.}
 
-\item{pages_navbar}{\code{NULL} or a list of \code{\link[=chat_nav_panel]{chat_nav_panel()}} configurations.}
+\item{pages_navbar}{\code{NULL} or a list of \code{\link[=chat_nav_panel]{chat_nav_panel()}} configurations
+and supported standard bslib navigation items. Standard content panels
+use the normal page-chat content width with no page-specific sidebar or
+toolbar. Hidden panels are omitted from the generated navigation controls;
+pair them with a \code{\link[bslib:nav_item]{bslib::nav_item()}} control carrying
+\code{.shiny-chat-page-nav-link} and \code{data-page-target} when they need a custom
+trigger.}
 
 \item{toolbar}{Optional home-page-scoped UI displayed with the navigation
 controls. Use \code{\link[bslib:toolbar]{bslib::toolbar()}} to group toolbar controls. A panel's
@@ -111,8 +117,11 @@ on the mounted chat. Do not wrap \code{page_chat()} in another page container or
 \section{Navigation, sidebars, and artifacts}{
 
 
-\code{pages_navbar} accepts a list of additional navbar pages, each created with
-\code{\link[=chat_nav_panel]{chat_nav_panel()}}.
+\code{pages_navbar} accepts a list of additional navbar items. Use
+\code{\link[=chat_nav_panel]{chat_nav_panel()}} when a page needs page-chat-specific sidebar, toolbar, or
+content-width options. It also accepts \code{\link[bslib:nav_panel]{bslib::nav_panel()}},
+\code{\link[bslib:nav_panel_hidden]{bslib::nav_panel_hidden()}}, \code{\link[bslib:nav_menu]{bslib::nav_menu()}}, \code{\link[bslib:nav_item]{bslib::nav_item()}}, and
+\code{\link[bslib:nav_spacer]{bslib::nav_spacer()}}.
 Sidebar navigation is not yet implemented.
 Each panel can use the default sidebar, no page-specific sidebar, or its
 own \code{\link[=chat_sidebar]{chat_sidebar()}} or \code{\link[bslib:sidebar]{bslib::sidebar()}} configuration. The \code{sidebar}
