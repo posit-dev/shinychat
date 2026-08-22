@@ -123,6 +123,23 @@ def test_navigation_example_mobile_artifact_trigger_does_not_overlay_messages(
     expect(scroll).to_have_css("padding-top", "48px")
 
 
+def test_navigation_example_home_toolbar_returns_home_before_showing_artifact(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.goto(local_app.url)
+    shell = page.locator("shiny-chat-page")
+    chat = ChatController(page, "chat")
+
+    shell.get_by_role("button", name="Sources").click()
+    expect(shell).to_have_attribute("data-active-page", "Sources")
+    expect(chat.loc.locator(".shiny-chat-artifact")).to_be_hidden()
+
+    shell.get_by_role("button", name="Show Panel").click()
+
+    expect(shell).to_have_attribute("data-active-page", "home")
+    expect(chat.loc.locator(".shiny-chat-artifact")).to_be_visible()
+
+
 def test_navigation_example_shows_settings_offcanvas_from_global_toolbar(
     page: Page, local_app: ShinyAppProc
 ) -> None:

@@ -30,7 +30,7 @@ app_ui = page_chat(
     "Field notes",
     id="chat",
     toolbar=ui.toolbar(
-        ui.toolbar_input_button("show_preview", "Show preview"),
+        ui.toolbar_input_button("show_preview", "Show Panel"),
     ),
     toolbar_global=ui.toolbar(
         ui.input_dark_mode(),
@@ -131,6 +131,7 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.show_preview)
     async def _show_preview():
+        await session.send_custom_message("shinychat.page_chat_home", {"id": "chat"})
         await chat.artifact_panel.show(title="Working preview")
 
     @reactive.effect

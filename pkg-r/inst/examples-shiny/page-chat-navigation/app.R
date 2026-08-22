@@ -72,7 +72,7 @@ ui <- page_chat(
   "Field notes",
   id = "chat",
   toolbar = bslib::toolbar(
-    bslib::toolbar_input_button("show_preview", "Show preview")
+    bslib::toolbar_input_button("show_preview", "Show Panel")
   ),
   toolbar_global = bslib::toolbar(
     bslib::input_dark_mode(),
@@ -180,6 +180,7 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$show_preview, {
+    session$sendCustomMessage("shinychat.page_chat_home", list(id = "chat"))
     chat_artifact_panel_show("chat", title = "Working preview")
   })
 

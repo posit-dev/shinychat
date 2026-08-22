@@ -89,6 +89,42 @@ test_that("page-chat navigation example mounts inline history", {
   )
 })
 
+test_that("page-chat navigation example returns home before showing artifact", {
+  skip_if_shinytest2_unavailable()
+
+  app <- shinytest2::AppDriver$new(
+    page_chat_example_path("page-chat-navigation"),
+    name = "page-chat-navigation-artifact-example",
+    width = 1440,
+    height = 900,
+    timeout = 30 * 1000
+  )
+  withr::defer(app$stop())
+
+  app$wait_for_js(
+    "document.querySelector('shiny-chat-page #chat [role=\"textbox\"]') !== null;",
+    timeout = 30 * 1000
+  )
+  app$click(selector = "button[data-page-target='Sources']")
+  app$wait_for_idle(timeout = 30 * 1000)
+  expect_identical(
+    app$get_js("document.querySelector('shiny-chat-page')?.dataset.activePage"),
+    "Sources"
+  )
+
+  app$click(selector = "#show_preview")
+  app$wait_for_idle(timeout = 30 * 1000)
+  expect_identical(
+    app$get_js("document.querySelector('shiny-chat-page')?.dataset.activePage"),
+    "home"
+  )
+  expect_true(
+    isTRUE(app$get_js(
+      "document.querySelector('#chat .shiny-chat-artifact')?.hidden === false"
+    ))
+  )
+})
+
 test_that("page-chat R examples are discoverable as package examples", {
   examples_dir <- page_chat_example_path()
   expect_true(dir.exists(examples_dir))

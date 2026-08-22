@@ -32,6 +32,28 @@ const FOCUSABLE_SELECTOR = [
   "[tabindex]:not([tabindex='-1'])",
 ].join(",")
 
+let pageChatHomeHandlerRegistered = false
+
+function registerPageChatHomeHandler() {
+  if (pageChatHomeHandlerRegistered || !window.Shiny?.addCustomMessageHandler) {
+    return
+  }
+
+  window.Shiny.addCustomMessageHandler(
+    "shinychat.page_chat_home",
+    (message: { id?: string }) => {
+      const pages = Array.from(
+        document.querySelectorAll<ChatPageElement>("shiny-chat-page"),
+      )
+      const page = pages.find(
+        (candidate) => candidate.dataset.chatId === message.id,
+      )
+      page?.querySelector<HTMLButtonElement>("button[data-page-home]")?.click()
+    },
+  )
+  pageChatHomeHandlerRegistered = true
+}
+
 type SidebarOpenMode = "auto" | "open" | "closed" | "always"
 
 interface PageSidebarState {
@@ -149,6 +171,7 @@ class ChatPageElement extends HTMLElement {
 
   connectedCallback() {
     if (this.initialized) return
+    registerPageChatHomeHandler()
     if (!this.captureDom()) return
 
     this.initialized = true
@@ -651,7 +674,9 @@ class ChatPageElement extends HTMLElement {
     if (!this.toolbarScoped || this.toolbarSources.size === 0) return
 
     const key = selected.dataset.pageToolbarSource?.trim()
-    const desired = key ? this.toolbarSources.get(key) : undefined
+    const desired = key
+      ? this.toolbarSources.get(key)
+      : this.toolbarSources.get("home")
     if (desired === this.activeToolbarSource) return
 
     if (this.activeToolbarSource) {
