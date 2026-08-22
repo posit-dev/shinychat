@@ -153,14 +153,16 @@ layout needs a history view bound to a specific chat ID outside a
 `pages_navbar` supplies the header/navbar navigation only. Sidebar navigation
 is not yet implemented; a future `pages_sidebar` argument will configure it.
 
-`toolbar` is scoped to the chat home page. Supply an HTML child for `toolbar`
-to replace it. A navigation page defaults to `toolbar=None`, which omits that
-scoped segment. Supply an HTML child to add a page-specific toolbar. Use
-`toolbar_global` for actions that must remain mounted and visible across every
-selected page. When omitted, `toolbar_global` contains
-Shiny's dark/light mode toggle; pass `toolbar_global=None` to opt out. It is
-rendered after the page-scoped segment and keeps its input and output state
-when the controls move between desktop and mobile layouts.
+Use `shiny.ui.toolbar()` to group controls in every page-chat toolbar.
+`toolbar` is scoped to the chat home page. A navigation page defaults to
+`toolbar=None`, which omits that scoped segment; its
+`chat_nav_panel(toolbar=ui.toolbar(...))` supplies a page-specific replacement.
+Use `toolbar_global=ui.toolbar(...)` for actions that must remain mounted and
+visible across every selected page. It is rendered after the active scoped
+toolbar. When omitted, `toolbar_global` contains Shiny's dark/light mode
+toggle; pass `toolbar_global=None` to opt out. The controls move between the
+desktop header and mobile app menu without duplicating their Shiny IDs or
+losing state.
 
 Use `navbar_options=ui.navbar_options(...)` to style the title bar with its
 background, color theme, underline navigation treatment, and HTML attributes.

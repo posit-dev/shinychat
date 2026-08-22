@@ -42,11 +42,15 @@ those arguments are rejected.}
 \item{pages_navbar}{\code{NULL} or a list of \code{\link[=chat_nav_panel]{chat_nav_panel()}} configurations.}
 
 \item{toolbar}{Optional home-page-scoped UI displayed with the navigation
-controls. A panel's \code{chat_nav_panel(toolbar = )} can replace this segment.}
+controls. Use \code{\link[bslib:toolbar]{bslib::toolbar()}} to group toolbar controls. A panel's
+\code{chat_nav_panel(toolbar = )} replaces this scoped segment.}
 
 \item{toolbar_global}{Optional persistent UI displayed after the page-scoped
-toolbar in the navigation controls. Defaults to a toolbar containing
-\code{\link[bslib:input_dark_mode]{bslib::input_dark_mode()}}; use \code{NULL} to opt out.}
+toolbar in the navigation controls. Use \code{\link[bslib:toolbar]{bslib::toolbar()}} to group
+toolbar controls. Defaults to a toolbar containing
+\code{\link[bslib:input_dark_mode]{bslib::input_dark_mode()}}; use \code{NULL} to opt out. It remains mounted
+while secondary pages are selected and while controls move between desktop
+and mobile layouts.}
 
 \item{navbar_options}{Optional \code{\link[bslib:navbar_options]{bslib::navbar_options()}} that styles the
 page title bar. Its \code{bg}, \code{theme}, \code{underline}, and HTML attributes are
@@ -113,13 +117,16 @@ Sidebar navigation is not yet implemented.
 Each panel can use the default sidebar, no page-specific sidebar, or its
 own \code{\link[=chat_sidebar]{chat_sidebar()}} or \code{\link[bslib:sidebar]{bslib::sidebar()}} configuration. The \code{sidebar}
 argument configures the
-home view; \code{toolbar} is a home-page-scoped segment rendered with the page
-navigation controls and follows them into the mobile app menu.
-\code{toolbar_global} is a persistent segment that remains mounted on every page.
-A panel's \code{toolbar = NULL} omits the home-scoped segment; custom UI replaces
-it. On narrow screens, navigation and toolbar controls move into the app
-menu above the active page's sidebar content without duplicating Shiny input
-or output IDs.
+home view. Use \code{\link[bslib:toolbar]{bslib::toolbar()}} to group controls in \code{toolbar}; it is a
+home-page-scoped segment rendered with the page navigation controls and
+follows them into the mobile app menu. A panel's \code{toolbar = NULL} omits that
+scoped segment; \code{chat_nav_panel(toolbar = bslib::toolbar(...))} supplies a
+page-specific replacement. Use \code{toolbar_global = bslib::toolbar(...)} for a
+persistent segment that remains mounted on every page after the active
+scoped toolbar. On narrow screens, navigation and toolbar controls move into
+the app menu above the active page's sidebar content without duplicating
+Shiny input or output IDs. By default, \code{toolbar_global} contains
+\code{\link[bslib:input_dark_mode]{bslib::input_dark_mode()}}; use \code{NULL} to opt out.
 
 Set \code{artifact_panel} to a \code{\link[=chat_artifact_panel]{chat_artifact_panel()}} configuration to provide
 initial content and layout options. Update the mounted artifact panel from

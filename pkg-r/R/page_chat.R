@@ -37,13 +37,16 @@
 #' Each panel can use the default sidebar, no page-specific sidebar, or its
 #' own [chat_sidebar()] or [bslib::sidebar()] configuration. The `sidebar`
 #' argument configures the
-#' home view; `toolbar` is a home-page-scoped segment rendered with the page
-#' navigation controls and follows them into the mobile app menu.
-#' `toolbar_global` is a persistent segment that remains mounted on every page.
-#' A panel's `toolbar = NULL` omits the home-scoped segment; custom UI replaces
-#' it. On narrow screens, navigation and toolbar controls move into the app
-#' menu above the active page's sidebar content without duplicating Shiny input
-#' or output IDs.
+#' home view. Use [bslib::toolbar()] to group controls in `toolbar`; it is a
+#' home-page-scoped segment rendered with the page navigation controls and
+#' follows them into the mobile app menu. A panel's `toolbar = NULL` omits that
+#' scoped segment; `chat_nav_panel(toolbar = bslib::toolbar(...))` supplies a
+#' page-specific replacement. Use `toolbar_global = bslib::toolbar(...)` for a
+#' persistent segment that remains mounted on every page after the active
+#' scoped toolbar. On narrow screens, navigation and toolbar controls move into
+#' the app menu above the active page's sidebar content without duplicating
+#' Shiny input or output IDs. By default, `toolbar_global` contains
+#' [bslib::input_dark_mode()]; use `NULL` to opt out.
 #'
 #' Set `artifact_panel` to a [chat_artifact_panel()] configuration to provide
 #' initial content and layout options. Update the mounted artifact panel from
@@ -70,10 +73,14 @@
 #' @param id A non-empty string identifying the chat.
 #' @param pages_navbar `NULL` or a list of [chat_nav_panel()] configurations.
 #' @param toolbar Optional home-page-scoped UI displayed with the navigation
-#'   controls. A panel's `chat_nav_panel(toolbar = )` can replace this segment.
+#'   controls. Use [bslib::toolbar()] to group toolbar controls. A panel's
+#'   `chat_nav_panel(toolbar = )` replaces this scoped segment.
 #' @param toolbar_global Optional persistent UI displayed after the page-scoped
-#'   toolbar in the navigation controls. Defaults to a toolbar containing
-#'   [bslib::input_dark_mode()]; use `NULL` to opt out.
+#'   toolbar in the navigation controls. Use [bslib::toolbar()] to group
+#'   toolbar controls. Defaults to a toolbar containing
+#'   [bslib::input_dark_mode()]; use `NULL` to opt out. It remains mounted
+#'   while secondary pages are selected and while controls move between desktop
+#'   and mobile layouts.
 #' @param navbar_options Optional [bslib::navbar_options()] that styles the
 #'   page title bar. Its `bg`, `theme`, `underline`, and HTML attributes are
 #'   supported. `position` and `collapsible` are unsupported because
@@ -487,7 +494,8 @@ chat_sidebar <- function(
 #'   [chat_sidebar()] or [bslib::sidebar()] configuration. A [chat_sidebar()]
 #'   with `history = NULL` defaults to `FALSE` here.
 #' @param toolbar `NULL` (the default) for no page-scoped toolbar, or UI
-#'   content for a page-specific toolbar.
+#'   content for a page-specific toolbar. Use [bslib::toolbar()] to group
+#'   toolbar controls.
 #' @param content_width Maximum panel-content width. Content is centered and
 #'   receives responsive inline padding. Use exactly `"100%"`, `"100vw"`, or
 #'   `"100dvw"` for full-bleed content without component-provided padding.

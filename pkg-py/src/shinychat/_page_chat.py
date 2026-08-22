@@ -118,14 +118,16 @@ def page_chat(
         Sidebar navigation is not yet implemented.
     toolbar
         Optional home-page-scoped HTML child displayed with the navigation
-        controls. A page's ``chat_nav_panel(toolbar=)`` can replace this
+        controls. Use :func:`shiny.ui.toolbar` to group toolbar controls. A
+        secondary page's ``chat_nav_panel(toolbar=)`` replaces this scoped
         segment.
     toolbar_global
         Optional persistent HTML child displayed after the page-scoped toolbar
-        in the navigation controls. When omitted, it contains Shiny's
-        dark/light mode toggle; pass ``None`` to opt out. It remains mounted
-        while secondary pages are selected and while controls move between desktop and
-        mobile layouts.
+        in the navigation controls. Use :func:`shiny.ui.toolbar` to group
+        toolbar controls. When omitted, it contains Shiny's dark/light mode
+        toggle; pass ``None`` to opt out. It remains mounted while secondary
+        pages are selected and while controls move between desktop and mobile
+        layouts.
     navbar_options
         Optional :func:`shiny.ui.navbar_options` that styles the page title bar.
         Its ``bg``, ``theme``, ``underline``, and HTML attributes are supported.
@@ -458,7 +460,8 @@ def chat_nav_panel(
         Raw :class:`shiny.ui.Sidebar` objects are not supported.
     toolbar
         Toolbar for this page. ``None`` (the default) shows no page-scoped
-        toolbar. An HTML child supplies a page-specific toolbar.
+        toolbar. An HTML child, typically :func:`shiny.ui.toolbar`, supplies a
+        page-specific toolbar.
     content_width
         Maximum width for the panel content. Content is centered and receives
         responsive inline padding. ``"100%"``, ``"100vw"``, and ``"100dvw"``

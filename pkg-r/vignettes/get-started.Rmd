@@ -340,14 +340,15 @@ ui <- bslib::page_fillable(
 )
 ```
 
+Use `bslib::toolbar()` to group controls in every page-chat toolbar.
 `toolbar` is scoped to the home page. Navigation pages default to
-`toolbar = NULL`, which omits the scoped segment. Supply UI to replace that
-segment. Supply UI to add a page-specific toolbar. Use `toolbar_global` for
-actions that remain mounted across every page; it is
-rendered after the scoped segment and preserves its Shiny input and output
-state while controls move between desktop and mobile layouts. On narrow
-screens, navigation and toolbar controls move into the app menu above the
-active page's sidebar content without duplicating IDs.
+`toolbar = NULL`, which omits the scoped segment; their
+`chat_nav_panel(toolbar = bslib::toolbar(...))` supplies a page-specific
+replacement. Use `toolbar_global = bslib::toolbar(...)` for actions that remain
+mounted across every page. It is rendered after the active scoped toolbar.
+When omitted, `toolbar_global` contains bslib's dark/light mode toggle; pass
+`toolbar_global = NULL` to opt out. The controls move between the desktop
+header and mobile app menu without duplicating their Shiny IDs or losing state.
 
 The package includes runnable navigation and artifact-control examples. They
 use local echo responses, so no provider credentials are required:
