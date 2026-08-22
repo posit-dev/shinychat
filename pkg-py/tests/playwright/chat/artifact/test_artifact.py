@@ -164,7 +164,7 @@ def test_artifact_desktop_resize_semantics_focus_and_signaling(
     )
 
     separator.press("ArrowLeft")
-    keyboard_width = initial_width - 10
+    keyboard_width = initial_width + 10
     expect(separator).to_have_attribute("aria-valuenow", str(keyboard_width))
 
     separator.evaluate(

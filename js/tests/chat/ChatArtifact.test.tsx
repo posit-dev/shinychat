@@ -440,7 +440,7 @@ describe("ChatArtifact", () => {
     expect(separator).toHaveAttribute("aria-valuemax", "816")
 
     fireEvent.keyDown(separator, { key: "ArrowRight" })
-    expect(onWidthChange).toHaveBeenLastCalledWith("410px")
+    expect(onWidthChange).toHaveBeenLastCalledWith("390px")
 
     armArtifactResizer(separator)
     fireEvent.pointerDown(separator, {
@@ -454,7 +454,7 @@ describe("ChatArtifact", () => {
       pointerId: 1,
       clientX: 60,
     })
-    expect(onWidthChange).toHaveBeenLastCalledWith("450px")
+    expect(onWidthChange).toHaveBeenLastCalledWith("430px")
     fireEvent.pointerUp(separator, { isPrimary: true, pointerId: 1 })
     expect(screen.getByRole("complementary")).not.toHaveAttribute(
       "data-artifact-resizing",

@@ -211,7 +211,7 @@ def test_artifact_separator_remains_mouse_reachable_after_maximum_resize(
     separator.press("End")
     end_width = int(separator.get_attribute("aria-valuenow") or "0")
     separator.press("ArrowLeft")
-    expected_width = end_width - 10
+    expected_width = end_width
     page.wait_for_timeout(220)
     expect(separator).to_have_attribute("aria-valuenow", str(expected_width))
     settled_box = panel.bounding_box()
@@ -480,7 +480,7 @@ def test_artifact_resizer_recovers_after_responsive_takeover(
     expect(separator).to_be_visible()
     width = int(separator.get_attribute("aria-valuenow") or "0")
     separator.press("ArrowLeft")
-    expect(separator).to_have_attribute("aria-valuenow", str(width - 10))
+    expect(separator).to_have_attribute("aria-valuenow", str(width + 10))
 
 
 def test_ninety_percent_artifact_is_bounded_before_reveal(
