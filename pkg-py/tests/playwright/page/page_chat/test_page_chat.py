@@ -457,12 +457,16 @@ def test_desktop_dropdown_navigation_is_clickable_and_closes_after_selection(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     page.set_viewport_size({"width": 1280, "height": 800})
-    page.goto(f"{local_app.url}?dropdown=true")
+    page.goto(f"{local_app.url}?crowded_dropdown=true")
     shell = page.locator("shiny-chat-page")
     menu = shell.locator(".shiny-chat-page-nav-menu")
+    nav = shell.locator(".shiny-chat-page-nav")
     details = menu.get_by_role("button", name="Details")
 
     expect(shell).to_be_visible(timeout=TIMEOUT)
+    expect(nav).to_have_css("overflow-x", "auto")
+    assert nav.evaluate("(element) => element.scrollWidth > element.clientWidth")
+    menu.scroll_into_view_if_needed()
     menu.locator("summary").click()
     expect(menu).to_have_attribute("open", "")
     expect(details).to_be_visible()
@@ -483,6 +487,7 @@ def test_desktop_dropdown_navigation_is_clickable_and_closes_after_selection(
     expect(shell).to_have_attribute("data-active-page", "details")
     expect(page.locator("#dropdown_details_page")).to_be_visible()
     expect(menu).not_to_have_attribute("open", "")
+    expect(menu.locator("summary")).to_be_focused()
 
 
 def test_sidebarless_mobile_history_trigger_does_not_overlay_messages(

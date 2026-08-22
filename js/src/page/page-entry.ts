@@ -387,6 +387,18 @@ class ChatPageElement extends HTMLElement {
         if (target) this.selectPage(target)
       })
     })
+    const nav = this.controls?.querySelector<HTMLElement>(
+      ".shiny-chat-page-nav",
+    )
+    if (nav) {
+      this.listen(nav, "scroll", () => this.positionNavigationMenus())
+      nav
+        .querySelectorAll<HTMLDetailsElement>(".shiny-chat-page-nav-menu")
+        .forEach((menu) => {
+          this.listen(menu, "toggle", () => this.positionNavigationMenus())
+        })
+    }
+    this.listen(window, "resize", () => this.positionNavigationMenus())
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (!this.mobile || !this.hasAttribute("data-mobile-menu-open")) return
@@ -565,13 +577,44 @@ class ChatPageElement extends HTMLElement {
 
     this.syncSidebar(selected)
     this.syncToolbar(selected)
+    const activeElement = document.activeElement
+    const focusedMenu = Array.from(
+      this.controls?.querySelectorAll<HTMLDetailsElement>(
+        ".shiny-chat-page-nav-menu[open]",
+      ) ?? [],
+    ).find((menu) => menu.contains(activeElement))
     this.controls
       ?.querySelectorAll<HTMLDetailsElement>(".shiny-chat-page-nav-menu[open]")
       .forEach((menu) => menu.removeAttribute("open"))
+    focusedMenu?.querySelector<HTMLElement>(":scope > summary")?.focus()
     if (closeMenu && this.mobile) this.closeMobileMenu()
     this.updateToastOffset()
     window.dispatchEvent(new Event("resize"))
     return true
+  }
+
+  private positionNavigationMenus() {
+    if (this.mobile || !this.controls) return
+
+    this.controls
+      .querySelectorAll<HTMLDetailsElement>(".shiny-chat-page-nav-menu[open]")
+      .forEach((menu) => {
+        const toggle = menu.querySelector<HTMLElement>(":scope > summary")
+        const items = menu.querySelector<HTMLElement>(
+          ":scope > .shiny-chat-page-nav-menu-items",
+        )
+        if (!toggle || !items) return
+
+        const bounds = toggle.getBoundingClientRect()
+        items.style.setProperty(
+          "--shiny-chat-page-nav-menu-top",
+          `${Math.round(bounds.bottom + 4)}px`,
+        )
+        items.style.setProperty(
+          "--shiny-chat-page-nav-menu-inline-start",
+          `${Math.round(bounds.left)}px`,
+        )
+      })
   }
 
   private initializeIdentityTooltip() {

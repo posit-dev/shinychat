@@ -118,6 +118,33 @@ def app_ui(request: Request) -> ui.Tag:
             artifact_panel=False,
         )
 
+    if request.query_params.get("crowded_dropdown") == "true":
+        return page_chat(
+            "Crowded dropdown navigation",
+            id="chat",
+            pages_navbar=[
+                *(
+                    ui.nav_panel(
+                        f"Navigation item {index}",
+                        ui.div(f"Page {index}"),
+                        value=f"page-{index}",
+                    )
+                    for index in range(12)
+                ),
+                ui.nav_menu(
+                    "More",
+                    ui.nav_panel(
+                        "Details",
+                        ui.div("Details page", id="dropdown_details_page"),
+                        value="details",
+                    ),
+                ),
+            ],
+            sidebar=False,
+            toolbar_global=None,
+            artifact_panel=False,
+        )
+
     title = "Research Assistant"
     if request.query_params.get("long_title") == "true":
         title = (

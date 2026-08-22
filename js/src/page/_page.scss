@@ -158,7 +158,12 @@ body:has(shiny-chat-page) > .toast-container:is(
   min-width: 0;
   gap: 0.125rem;
   justify-content: flex-start;
-  overflow: visible;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.shiny-chat-page-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .shiny-chat-page-toolbar {
@@ -306,6 +311,12 @@ button.shiny-chat-page-identity:focus-visible,
   border-radius: var(--bs-border-radius, 0.375rem);
   background: var(--bs-body-bg, var(--_page-surface-bg));
   box-shadow: var(--bs-box-shadow, 0 0.5rem 1rem rgb(0 0 0 / 15%));
+}
+
+.shiny-chat-page-nav-menu[open] .shiny-chat-page-nav-menu-items {
+  position: fixed;
+  top: var(--shiny-chat-page-nav-menu-top);
+  inset-inline-start: var(--shiny-chat-page-nav-menu-inline-start);
 }
 
 .shiny-chat-page-nav-menu-items .shiny-chat-page-nav-link {
