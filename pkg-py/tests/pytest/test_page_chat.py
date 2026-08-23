@@ -346,7 +346,8 @@ def test_page_chat_builds_default_fillable_page_markup() -> None:
 
     assert "<title>Assistant</title>" in html
     assert (
-        '<shiny-chat-page data-chat-id="chat" data-active-page="home">' in html
+        '<shiny-chat-page data-chat-id="chat" data-active-page="__home__">'
+        in html
     )
     assert 'class="shiny-chat-page-header"' in html
     assert 'data-bs-theme="auto"' in html
@@ -371,7 +372,7 @@ def test_page_chat_builds_default_fillable_page_markup() -> None:
     assert 'data-sidebar-resizable="true"' in html
     assert html.count("<shiny-chat-history") == 1
     assert 'for="chat"' in html
-    assert 'data-page-value="home"' in html
+    assert 'data-page-value="__home__"' in html
     assert 'id="chat"' in html
     assert "height:100%" in html
     assert 'show-history="false"' not in html
@@ -603,7 +604,7 @@ def test_page_chat_sidebar_false_keeps_hidden_default_for_nav_page() -> None:
     )
     assert default_panel is not None
     assert 'hidden=""' in default_panel.group(0)
-    home_start = html.index('data-page-value="home"')
+    home_start = html.index('data-page-value="__home__"')
     home_end = html.index("</section>", home_start)
     assert "data-sidebar-key" not in html[home_start:home_end]
     about_start = html.index('data-page-value="About"')
@@ -748,7 +749,7 @@ def test_page_chat_revalidates_direct_sidebar_objects(
 @pytest.mark.parametrize(
     ("pages_navbar", "match"),
     [
-        ([chat_nav_panel("Home", value="home")], '"home" is reserved'),
+        ([chat_nav_panel("Home", value="__home__")], '"__home__" is reserved'),
         (
             [
                 chat_nav_panel("One", value="same"),

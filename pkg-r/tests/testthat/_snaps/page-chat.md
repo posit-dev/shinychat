@@ -128,7 +128,7 @@
       cat(rendered_html, "\n", sep = "")
     Output
       <body class="bslib-page-fill bslib-gap-spacing html-fill-container" style="padding:0px;gap:0px;">
-        <shiny-chat-page data-chat-id="chat" data-active-page="home" data-require-bs-version="5" data-require-bs-caller="page_chat">
+        <shiny-chat-page data-chat-id="chat" data-active-page="__home__" data-require-bs-version="5" data-require-bs-caller="page_chat">
           <header class="shiny-chat-page-header" data-bs-theme="auto" data-shiny-chat-page-nav-style="underline">
             <button type="button" class="shiny-chat-page-sidebar-toggle" aria-controls="chat-sidebar" aria-expanded="false" aria-label="Toggle app menu"><svg class="shiny-chat-page-sidebar-icon bi bi-list" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2.5 12a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5"/></svg></button>
             <div class="shiny-chat-page-identity">
@@ -165,7 +165,7 @@
               </div>
             </aside>
             <main class="shiny-chat-page-main">
-              <section class="shiny-chat-page-panel shiny-chat-page-home" data-page-value="home" data-sidebar-key="default" data-page-toolbar-source="home">
+              <section class="shiny-chat-page-panel shiny-chat-page-home" data-page-value="__home__" data-sidebar-key="default" data-page-toolbar-source="home">
                 <shiny-chat-container class="html-fill-item html-fill-container" data-app-role="primary" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill id="chat" max-attachment-size="31457280" placeholder="Enter a message..." style="--_chat-width:min(680px, 100%);height:100%;" submit-key="enter+modifier">
                   <shiny-chat-messages></shiny-chat-messages>
                   <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
@@ -242,10 +242,10 @@
 ---
 
     Code
-      page_chat("Assistant", pages_navbar = list(chat_nav_panel("Home", value = "home")))
+      page_chat("Assistant", pages_navbar = list(chat_nav_panel("Home", value = "__home__")))
     Condition
       Error in `normalize_chat_pages()`:
-      ! "home" is reserved for the chat home and cannot be used as a page value.
+      ! "__home__" is reserved for the chat home and cannot be used as a page value.
 
 ---
 

@@ -6,6 +6,7 @@ import {
 } from "../resize-handle"
 
 export const PAGE_MOBILE_MEDIA_QUERY = "(max-width: 799px)"
+export const HOME_PAGE_VALUE = "__home__"
 
 const PAGE_SELECTOR = ".shiny-chat-page-panel"
 const SIDEBAR_PANEL_SELECTOR = ".shiny-chat-page-sidebar-panel"
@@ -181,9 +182,9 @@ class ChatPageElement extends HTMLElement {
     this.bindMediaQuery()
     this.bindResizeObserver()
 
-    const requestedPage = this.dataset.activePage || "home"
+    const requestedPage = this.dataset.activePage || HOME_PAGE_VALUE
     if (!this.selectPage(requestedPage, false)) {
-      this.selectPage("home", false)
+      this.selectPage(HOME_PAGE_VALUE, false)
     }
     this.bindHistoryAutoOpen()
     this.sidebarMotionFrame = window.requestAnimationFrame(() => {
@@ -251,8 +252,9 @@ class ChatPageElement extends HTMLElement {
       ? directChildrenMatching<HTMLElement>(main, PAGE_SELECTOR)
       : []
     if (
-      sections.filter((section) => section.dataset.pageValue === "home")
-        .length !== 1
+      sections.filter(
+        (section) => section.dataset.pageValue === HOME_PAGE_VALUE,
+      ).length !== 1
     ) {
       errors.push("home-panel")
     }
@@ -372,13 +374,13 @@ class ChatPageElement extends HTMLElement {
 
     if (this.identity) {
       this.listen(this.identity, "click", () => {
-        this.selectPage("home")
+        this.selectPage(HOME_PAGE_VALUE)
       })
     }
 
     if (this.mobileHomeLink) {
       this.listen(this.mobileHomeLink, "click", () => {
-        this.selectPage("home")
+        this.selectPage(HOME_PAGE_VALUE)
       })
     }
 
@@ -553,14 +555,14 @@ class ChatPageElement extends HTMLElement {
     this.dataset.activePage = value
 
     this.navButtons.forEach((button) => {
-      if (value !== "home" && button.dataset.pageTarget === value) {
+      if (value !== HOME_PAGE_VALUE && button.dataset.pageTarget === value) {
         button.setAttribute("aria-current", "page")
       } else {
         button.removeAttribute("aria-current")
       }
     })
     if (this.identity) {
-      if (value === "home") {
+      if (value === HOME_PAGE_VALUE) {
         this.identity.setAttribute("aria-current", "page")
         this.identity.removeAttribute("aria-label")
       } else {
@@ -570,7 +572,7 @@ class ChatPageElement extends HTMLElement {
       this.updateIdentityTooltip()
     }
     if (this.mobileHomeLink) {
-      if (value === "home") {
+      if (value === HOME_PAGE_VALUE) {
         this.mobileHomeLink.setAttribute("aria-current", "page")
       } else {
         this.mobileHomeLink.removeAttribute("aria-current")
@@ -672,7 +674,7 @@ class ChatPageElement extends HTMLElement {
 
   private identityTooltipContent() {
     const content = document.createElement("span")
-    if (this.dataset.activePage !== "home") {
+    if (this.dataset.activePage !== HOME_PAGE_VALUE) {
       content.append(this.identityReturnLabel, document.createElement("br"))
     }
     content.append(this.mobileHomeLabel())
@@ -702,7 +704,7 @@ class ChatPageElement extends HTMLElement {
     const link = existing ?? document.createElement("button")
     link.type = "button"
     link.className = "shiny-chat-page-nav-link shiny-chat-page-home-link"
-    link.dataset.pageTarget = "home"
+    link.dataset.pageTarget = HOME_PAGE_VALUE
     let title = link.querySelector<HTMLElement>(".shiny-chat-page-nav-title")
     if (!title) {
       title = document.createElement("span")

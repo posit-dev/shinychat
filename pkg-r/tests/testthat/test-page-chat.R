@@ -350,7 +350,7 @@ test_that("page_chat() builds the default fillable page contract", {
 
   root <- page_chat_tag(page, "shiny-chat-page")
   expect_equal(root$attribs[["data-chat-id"]], "chat")
-  expect_equal(root$attribs[["data-active-page"]], "home")
+  expect_equal(root$attribs[["data-active-page"]], "__home__")
   dark_mode <- page_chat_tag(page, "bslib-input-dark-mode")
   expect_equal(dark_mode$attribs$attribute, "data-bs-theme")
   global_toolbar <- page_chat_tag(page, ".shiny-chat-page-toolbar-global")
@@ -438,7 +438,7 @@ test_that("page_chat() builds the default fillable page contract", {
   main <- page_chat_tag(page, ".shiny-chat-page-main")
   expect_equal(main$name, "main")
   home <- page_chat_tag(main, ".shiny-chat-page-home")
-  expect_equal(home$attribs[["data-page-value"]], "home")
+  expect_equal(home$attribs[["data-page-value"]], "__home__")
   expect_equal(home$attribs[["data-sidebar-key"]], "default")
 
   chat <- page_chat_tag(home, "shiny-chat-container")
@@ -644,7 +644,7 @@ test_that("page_chat() normalizes navigation and sidebar metadata once", {
       function(x) x$attribs[["data-page-value"]],
       character(1)
     )),
-    c("home", "About", "conversations", "settings")
+    c("__home__", "About", "conversations", "settings")
   )
   expect_equal(
     unname(vapply(
@@ -786,7 +786,7 @@ test_that("page_chat() supports standard bslib navigation items", {
       function(section) section$attribs[["data-page-value"]],
       character(1)
     )),
-    c("home", "about", "help", "details", "Settings", "advanced")
+    c("__home__", "about", "help", "details", "Settings", "advanced")
   )
   expect_equal(
     unname(vapply(
@@ -1006,7 +1006,7 @@ test_that("page_chat() validates page-owned arguments and page metadata", {
     error = TRUE,
     page_chat(
       "Assistant",
-      pages_navbar = list(chat_nav_panel("Home", value = "home"))
+      pages_navbar = list(chat_nav_panel("Home", value = "__home__"))
     )
   )
   expect_snapshot(

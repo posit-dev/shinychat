@@ -116,7 +116,7 @@ test_that("page-chat navigation example returns home before showing artifact", {
   app$wait_for_idle(timeout = 30 * 1000)
   expect_identical(
     app$get_js("document.querySelector('shiny-chat-page')?.dataset.activePage"),
-    "home"
+    "__home__"
   )
   expect_true(
     isTRUE(app$get_js(

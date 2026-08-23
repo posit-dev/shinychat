@@ -90,7 +90,7 @@ def test_navigation_example_mobile_menu_includes_home_link(
 
     shell.locator(".shiny-chat-page-sidebar-toggle").click()
     home_link.click()
-    expect(shell).to_have_attribute("data-active-page", "home")
+    expect(shell).to_have_attribute("data-active-page", "__home__")
 
 
 def test_navigation_example_mobile_artifact_trigger_does_not_overlay_messages(
@@ -136,7 +136,7 @@ def test_navigation_example_home_toolbar_returns_home_before_showing_artifact(
 
     shell.get_by_role("button", name="Show Panel").click()
 
-    expect(shell).to_have_attribute("data-active-page", "home")
+    expect(shell).to_have_attribute("data-active-page", "__home__")
     expect(chat.loc.locator(".shiny-chat-artifact")).to_be_visible()
 
 

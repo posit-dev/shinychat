@@ -456,7 +456,7 @@ def chat_nav_panel(
         HTML children to display on the page.
     value
         Optional unique navigation value. Defaults to ``title``. The value
-        ``"home"`` is reserved for the chat page.
+        ``"__home__"`` is reserved for the chat page.
     icon
         Optional HTML child displayed with the navigation label.
     sidebar
@@ -828,7 +828,7 @@ def _normalize_page_config(
     nav_control_indexes = _nav_control_page_indexes(nav_items)
 
     normalized_pages: list[_NormalizedPage] = []
-    values = {"home"}
+    values = {"__home__"}
     for index, panel in enumerate(page_items):
         if not isinstance(panel, ChatNavPanel):
             raise TypeError(
@@ -855,8 +855,8 @@ def _normalize_page_config(
         value = panel.title if panel.value is None else panel.value
         if not value.strip():
             raise ValueError("Navigation page values must not be empty.")
-        if value == "home":
-            raise ValueError('Navigation page value "home" is reserved.')
+        if value == "__home__":
+            raise ValueError('Navigation page value "__home__" is reserved.')
         if value in values:
             raise ValueError(f"Duplicate navigation page value {value!r}.")
         values.add(value)
@@ -1215,7 +1215,7 @@ def _render_page_chat(
         *(
             _render_toolbar_source(
                 page.toolbar_key,
-                cast(TagChild, page.panel.toolbar),
+                page.panel.toolbar,
             )
             for page in normalized_pages
             if page.toolbar_key is not None and page.toolbar_key != "home"
@@ -1305,7 +1305,7 @@ def _render_page_chat(
                 "section",
                 chat_root,
                 class_="shiny-chat-page-panel shiny-chat-page-home",
-                data_page_value="home",
+                data_page_value="__home__",
                 data_sidebar_key=home_sidebar_key,
                 data_page_toolbar_source="home",
             ),
@@ -1352,7 +1352,7 @@ def _render_page_chat(
         body,
         toolbar_sources,
         data_chat_id=resolved_id,
-        data_active_page="home",
+        data_active_page="__home__",
     )
     _apply_page_chat_navbar_options(header, navbar_options)
 

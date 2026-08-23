@@ -51,7 +51,7 @@ test_that("page_chat navigation and sidebars work in a real Shiny app", {
   app$wait_for_idle(timeout = 30 * 1000)
 
   initial <- page_state()
-  expect_identical(initial$active, "home")
+  expect_identical(initial$active, "__home__")
   expect_false(initial$asideHidden)
   expect_identical(initial$sidebarKey, "home")
   expect_identical(initial$sidebarOpen, "open")
@@ -111,7 +111,7 @@ test_that("page_chat navigation and sidebars work in a real Shiny app", {
   app$click(selector = "button[data-page-home]")
   app$wait_for_idle(timeout = 30 * 1000)
   home <- page_state()
-  expect_identical(home$active, "home")
+  expect_identical(home$active, "__home__")
   expect_false(home$asideHidden)
   expect_identical(home$sidebarKey, "home")
   expect_identical(home$sidebarOpen, "open")

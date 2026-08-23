@@ -383,7 +383,7 @@ page_chat <- function(
     "shiny-chat-page",
     list(
       `data-chat-id` = resolved_id,
-      `data-active-page` = "home",
+      `data-active-page` = "__home__",
       header,
       htmltools::tags$div(
         class = "shiny-chat-page-body",
@@ -408,7 +408,7 @@ page_chat <- function(
           class = "shiny-chat-page-main",
           htmltools::tags$section(
             class = "shiny-chat-page-panel shiny-chat-page-home",
-            `data-page-value` = "home",
+            `data-page-value` = "__home__",
             `data-sidebar-key` = normalized$home_sidebar_key,
             `data-page-toolbar-source` = "home",
             chat
@@ -759,9 +759,9 @@ normalize_chat_pages <- function(pages_navbar) {
     },
     character(1)
   )
-  if ("home" %in% values) {
+  if ("__home__" %in% values) {
     cli::cli_abort(
-      "{.val home} is reserved for the chat home and cannot be used as a page value."
+      "{.val __home__} is reserved for the chat home and cannot be used as a page value."
     )
   }
   duplicate <- duplicated(values)

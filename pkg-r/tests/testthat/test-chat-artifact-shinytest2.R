@@ -143,7 +143,7 @@ test_that("R artifact actions render dynamic Shiny content and preserve state", 
   app$wait_for_js(
     paste(
       "document.querySelector('shiny-chat-page')?.dataset.activePage ===",
-      "'home' && document.querySelector(",
+      "'__home__' && document.querySelector(",
       "'#chat .shiny-chat-artifact:not([hidden]) #artifact_text'",
       ")?.value === 'Updated';",
       sep = "\n"

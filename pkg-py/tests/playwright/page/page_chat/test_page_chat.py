@@ -35,7 +35,7 @@ def test_desktop_navigation_streaming_and_history_auto_open(
     toolbar_input = page.locator("#toolbar_value")
     toolbar_global_input = page.locator("#toolbar_global_value")
 
-    expect(shell).to_have_attribute("data-active-page", "home")
+    expect(shell).to_have_attribute("data-active-page", "__home__")
     expect(shell.locator(".shiny-chat-page-header")).to_have_css(
         "min-height", "52px"
     )
@@ -163,9 +163,9 @@ def test_page_chat_footer_aligns_with_the_composer(
     assert input_box is not None
     assert footer_box is not None
     assert footer_box["x"] == pytest.approx(input_box["x"], abs=1)
-    assert footer_box["y"] - (input_box["y"] + input_box["height"]) == pytest.approx(
-        8, abs=1
-    )
+    assert footer_box["y"] - (
+        input_box["y"] + input_box["height"]
+    ) == pytest.approx(8, abs=1)
 
 
 @pytest.mark.parametrize(
@@ -465,7 +465,9 @@ def test_desktop_dropdown_navigation_is_clickable_and_closes_after_selection(
 
     expect(shell).to_be_visible(timeout=TIMEOUT)
     expect(nav).to_have_css("overflow-x", "auto")
-    assert nav.evaluate("(element) => element.scrollWidth > element.clientWidth")
+    assert nav.evaluate(
+        "(element) => element.scrollWidth > element.clientWidth"
+    )
     menu.scroll_into_view_if_needed()
     details.evaluate(
         """(element) => {
@@ -477,7 +479,9 @@ def test_desktop_dropdown_navigation_is_clickable_and_closes_after_selection(
     expect(details).to_be_visible()
 
     details_box = details.bounding_box()
-    menu_items_box = menu.locator(".shiny-chat-page-nav-menu-items").bounding_box()
+    menu_items_box = menu.locator(
+        ".shiny-chat-page-nav-menu-items"
+    ).bounding_box()
     assert details_box is not None
     assert menu_items_box is not None
     assert menu_items_box["x"] >= 0
@@ -589,7 +593,9 @@ def test_sidebarless_mobile_history_trigger_does_not_overlay_messages(
     )
 
     trigger_box = trigger.bounding_box()
-    message_box = chat.loc.locator(".shiny-chat-user-message").first.bounding_box()
+    message_box = chat.loc.locator(
+        ".shiny-chat-user-message"
+    ).first.bounding_box()
     assert trigger_box is not None
     assert message_box is not None
     assert message_box["y"] >= trigger_box["y"] + trigger_box["height"]
@@ -635,7 +641,10 @@ def test_page_chat_keeps_content_inset_and_fills_its_page_region(
     assert chat_box["y"] == pytest.approx(main_box["y"], abs=1)
     assert wrapper_box["height"] == pytest.approx(chat_box["height"], abs=1)
     assert input_box["x"] >= chat_box["x"] + 16
-    assert input_box["x"] + input_box["width"] <= chat_box["x"] + chat_box["width"] - 16
+    assert (
+        input_box["x"] + input_box["width"]
+        <= chat_box["x"] + chat_box["width"] - 16
+    )
     assert input_box["y"] < chat_box["y"] + chat_box["height"] * 0.75
     expect(wrapper).to_have_css("padding-left", "16px")
     expect(wrapper).to_have_css("padding-right", "16px")
@@ -661,9 +670,9 @@ def test_page_chat_centers_fitting_greeting_composer_and_pins_overflow(
     assert composer_box is not None
     assert footer_box is not None
     assert composer_box["y"] >= greeting_box["y"] + greeting_box["height"]
-    assert composer_box["y"] - (
-        greeting_box["y"] + greeting_box["height"]
-    ) <= 16
+    assert (
+        composer_box["y"] - (greeting_box["y"] + greeting_box["height"]) <= 16
+    )
     assert footer_box["y"] >= composer_box["y"]
     group_center = (
         greeting_box["y"] + composer_box["y"] + composer_box["height"]
@@ -676,26 +685,36 @@ def test_page_chat_centers_fitting_greeting_composer_and_pins_overflow(
 
     chat.set_user_input("Move the composer")
     chat.send_user_input()
-    expect(layout).not_to_have_attribute("data-composer-centered", timeout=TIMEOUT)
+    expect(layout).not_to_have_attribute(
+        "data-composer-centered", timeout=TIMEOUT
+    )
     page.wait_for_timeout(400)
     input_box = chat.loc_input_container.bounding_box()
     chat_box = chat.loc.bounding_box()
     assert input_box is not None
     assert chat_box is not None
-    assert input_box["y"] + input_box["height"] >= chat_box["y"] + chat_box["height"] - 48
+    assert (
+        input_box["y"] + input_box["height"]
+        >= chat_box["y"] + chat_box["height"] - 48
+    )
 
     # A greeting taller than the chat region retains the usual bottom-pinned
     # composer instead of competing for the centered empty-state layout.
     page.reload()
     expect(layout).to_have_attribute("data-composer-centered", "")
     greeting.evaluate("(element) => { element.style.minHeight = '100vh'; }")
-    expect(layout).not_to_have_attribute("data-composer-centered", timeout=TIMEOUT)
+    expect(layout).not_to_have_attribute(
+        "data-composer-centered", timeout=TIMEOUT
+    )
     page.wait_for_timeout(400)
     input_box = chat.loc_input_container.bounding_box()
     chat_box = chat.loc.bounding_box()
     assert input_box is not None
     assert chat_box is not None
-    assert input_box["y"] + input_box["height"] >= chat_box["y"] + chat_box["height"] - 48
+    assert (
+        input_box["y"] + input_box["height"]
+        >= chat_box["y"] + chat_box["height"] - 48
+    )
     scroll_box = chat.loc_scroll_container.bounding_box()
     greeting_box = greeting.bounding_box()
     assert scroll_box is not None
@@ -725,7 +744,9 @@ def test_page_chat_remeasures_greeting_after_history_new(
     history.get_by_role("button", name="New conversation").click()
     shell.get_by_role("button", name="Return to chat").click()
 
-    expect(layout).to_have_attribute("data-composer-centered", "", timeout=TIMEOUT)
+    expect(layout).to_have_attribute(
+        "data-composer-centered", "", timeout=TIMEOUT
+    )
     expect(layout).not_to_have_attribute("data-composer-revealing")
     expect(layout).not_to_have_attribute("data-composer-resizing")
     greeting_box = chat.loc_greeting.bounding_box()
@@ -733,9 +754,9 @@ def test_page_chat_remeasures_greeting_after_history_new(
     assert greeting_box is not None
     assert composer_box is not None
     assert composer_box["y"] >= greeting_box["y"] + greeting_box["height"]
-    assert composer_box["y"] - (
-        greeting_box["y"] + greeting_box["height"]
-    ) <= 16
+    assert (
+        composer_box["y"] - (greeting_box["y"] + greeting_box["height"]) <= 16
+    )
 
 
 def test_page_chat_tracks_resize_without_composer_transition(
@@ -765,7 +786,9 @@ def test_page_chat_tracks_resize_without_composer_transition(
         }"""
     )
     assert all(sample["resizing"] for sample in resize_samples)
-    assert all(sample["transitionDuration"] == "0s" for sample in resize_samples)
+    assert all(
+        sample["transitionDuration"] == "0s" for sample in resize_samples
+    )
 
     expect(layout).not_to_have_attribute(
         "data-composer-resizing",

@@ -135,7 +135,7 @@ function pageFixture({
 } = {}) {
   const page = document.createElement("shiny-chat-page")
   page.dataset.chatId = chatId
-  page.dataset.activePage = "home"
+  page.dataset.activePage = "__home__"
   page.dataset.testLayoutWidth = layoutWidth.toString()
   page.dataset.testHeaderHeight = "56"
   page.innerHTML = `
@@ -264,7 +264,7 @@ function pageFixture({
       <main class="shiny-chat-page-main">
         <section
           class="shiny-chat-page-panel shiny-chat-page-home"
-          data-page-value="home"
+          data-page-value="__home__"
           data-page-toolbar-source="home"
           ${sidebar ? `data-sidebar-key="${homeSidebarKey}"` : ""}
         >
@@ -489,7 +489,7 @@ describe("shiny-chat-page navigation", () => {
       writable: true,
     })
 
-    expect(page.dataset.activePage).toBe("home")
+    expect(page.dataset.activePage).toBe("__home__")
     expect(identity?.getAttribute("aria-current")).toBe("page")
     expect(identity?.hasAttribute("aria-label")).toBe(false)
 
@@ -515,7 +515,7 @@ describe("shiny-chat-page navigation", () => {
 
     identity!.click()
 
-    expect(page.dataset.activePage).toBe("home")
+    expect(page.dataset.activePage).toBe("__home__")
     expect(panels.map((panel) => panel.hidden)).toEqual([
       false,
       true,
@@ -712,7 +712,7 @@ describe("shiny-chat-page responsive controls", () => {
 
     toggle.click()
     homeLink.click()
-    expect(page.dataset.activePage).toBe("home")
+    expect(page.dataset.activePage).toBe("__home__")
     expect(page).not.toHaveAttribute("data-mobile-menu-open")
 
     media.setMatches(false)
@@ -1573,7 +1573,7 @@ describe("shiny-chat-page without secondary pages", () => {
 
     expect(page.dataset.pageError).toBeUndefined()
     expect(page.querySelector("button.shiny-chat-page-identity")).toBeNull()
-    expect(page.dataset.activePage).toBe("home")
+    expect(page.dataset.activePage).toBe("__home__")
     expect(
       page.querySelector<HTMLElement>(".shiny-chat-page-home")!.hidden,
     ).toBe(false)
