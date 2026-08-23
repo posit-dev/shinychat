@@ -232,8 +232,17 @@ nav_visibility_wait_input <- function(app, value) {
   )
 }
 
+nav_visibility_open_offcanvas <- function(app) {
+  app$click(selector = "#nav_controls")
+  app$wait_for_js(
+    "!!document.querySelector('.offcanvas.show #select_about');",
+    timeout = 30 * 1000
+  )
+}
+
 test_that("page_chat supports bslib nav_select in a real Shiny app", {
   skip_if_shinytest2_unavailable()
+  skip_if_not_installed("bslib", minimum_version = "0.12.0")
 
   app <- shinytest2::AppDriver$new(
     test_path("apps/page-chat-nav-visibility"),
@@ -249,6 +258,7 @@ test_that("page_chat supports bslib nav_select in a real Shiny app", {
     "document.querySelector('#page_value')?.textContent.trim() === '__home__';",
     timeout = 30 * 1000
   )
+  nav_visibility_open_offcanvas(app)
   initial <- nav_visibility_state(app)
   expect_identical(initial$active, "__home__")
   # The nav_panel_hidden() control is pre-rendered but hidden.
@@ -281,6 +291,7 @@ test_that("page_chat supports bslib nav_select in a real Shiny app", {
 
 test_that("page_chat supports bslib nav_hide/nav_show in a real Shiny app", {
   skip_if_shinytest2_unavailable()
+  skip_if_not_installed("bslib", minimum_version = "0.12.0")
 
   app <- shinytest2::AppDriver$new(
     test_path("apps/page-chat-nav-visibility"),
@@ -295,6 +306,7 @@ test_that("page_chat supports bslib nav_hide/nav_show in a real Shiny app", {
     "document.querySelector('#page_value')?.textContent.trim() === '__home__';",
     timeout = 30 * 1000
   )
+  nav_visibility_open_offcanvas(app)
 
   # Hiding a non-active page hides only its nav control.
   app$click(selector = "#hide_about")

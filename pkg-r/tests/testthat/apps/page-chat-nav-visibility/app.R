@@ -38,21 +38,13 @@ ui <- page_chat(
       )
     )
   ),
-  # Controls for programmatic navigation, rendered in the persistent global
-  # toolbar so they stay reachable while any page is active. This also
-  # replaces the default dark-mode toggle, keeping the toolbar deterministic.
+  # A single persistent trigger keeps the header deterministic (replacing the
+  # default dark-mode toggle); the nav-driving buttons live in an offcanvas,
+  # mirroring the paired navigation example, so they stay reachable while any
+  # page is active without crowding the header. The active page value output
+  # must stay visible, so it remains in the global toolbar.
   toolbar_global = bslib::toolbar(
-    bslib::toolbar_input_button("select_about", "Select About"),
-    bslib::toolbar_input_button("select_nested", "Select Nested"),
-    bslib::toolbar_input_button("select_secret", "Select Secret"),
-    bslib::toolbar_input_button("select_home", "Select Home"),
-    bslib::toolbar_input_button("hide_about", "Hide About"),
-    bslib::toolbar_input_button("hide_nested", "Hide Nested"),
-    bslib::toolbar_input_button("show_about", "Show About"),
-    bslib::toolbar_input_button("show_nested", "Show Nested"),
-    bslib::toolbar_input_button("show_secret_select", "Show Secret & Select"),
-    bslib::toolbar_input_button("hide_home", "Hide Home (error)"),
-    bslib::toolbar_input_button("hide_unknown", "Hide Unknown (error)"),
+    bslib::toolbar_input_button("nav_controls", "Navigation controls"),
     textOutput("page_value", inline = TRUE)
   ),
   artifact_panel = FALSE
@@ -62,6 +54,28 @@ server <- function(input, output, session) {
   # Render the server-visible input value so tests can assert it.
   output$page_value <- renderText({
     input$chat_page
+  })
+
+  observeEvent(input$nav_controls, {
+    bslib::show_offcanvas(
+      bslib::offcanvas(
+        title = "Navigation controls",
+        id = "nav_controls_panel",
+        placement = "right",
+        actionButton("select_about", "Select About"),
+        actionButton("select_nested", "Select Nested"),
+        actionButton("select_secret", "Select Secret"),
+        actionButton("select_home", "Select Home"),
+        actionButton("hide_about", "Hide About"),
+        actionButton("hide_nested", "Hide Nested"),
+        actionButton("show_about", "Show About"),
+        actionButton("show_nested", "Show Nested"),
+        actionButton("show_secret_select", "Show Secret & Select"),
+        actionButton("hide_home", "Hide Home (error)"),
+        actionButton("hide_unknown", "Hide Unknown (error)")
+      ),
+      session = session
+    )
   })
 
   observeEvent(input$select_about, {
