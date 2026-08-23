@@ -346,8 +346,8 @@ def test_page_chat_builds_default_fillable_page_markup() -> None:
 
     assert "<title>Assistant</title>" in html
     assert (
-        '<shiny-chat-page data-chat-id="chat" data-active-page="__home__">'
-        in html
+        '<shiny-chat-page id="chat_page" data-chat-id="chat" '
+        'data-active-page="__home__">' in html
     )
     assert 'class="shiny-chat-page-header"' in html
     assert 'data-bs-theme="auto"' in html

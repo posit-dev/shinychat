@@ -134,13 +134,14 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.show_preview)
     async def _show_preview():
-        await session.send_custom_message("shinychat.page_chat_home", {"id": "chat"})
+        # The page-chat root element is addressable as "<id>_page".
+        ui.update_navset("chat_page", "__home__")
         await chat.artifact_panel.show(title="Working preview")
 
     @reactive.effect
     @reactive.event(input.show_preview_sources)
     async def _show_preview_from_sources():
-        await session.send_custom_message("shinychat.page_chat_home", {"id": "chat"})
+        ui.update_navset("chat_page", "__home__")
         await chat.artifact_panel.show(title="Working preview")
 
     @reactive.effect

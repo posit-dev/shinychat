@@ -128,7 +128,7 @@
       cat(rendered_html, "\n", sep = "")
     Output
       <body class="bslib-page-fill bslib-gap-spacing html-fill-container" style="padding:0px;gap:0px;">
-        <shiny-chat-page data-chat-id="chat" data-active-page="__home__" data-require-bs-version="5" data-require-bs-caller="page_chat">
+        <shiny-chat-page id="chat_page" data-chat-id="chat" data-active-page="__home__" data-require-bs-version="5" data-require-bs-caller="page_chat">
           <header class="shiny-chat-page-header" data-bs-theme="auto" data-shiny-chat-page-nav-style="underline">
             <button type="button" class="shiny-chat-page-sidebar-toggle" aria-controls="chat-sidebar" aria-expanded="false" aria-label="Toggle app menu"><svg class="shiny-chat-page-sidebar-icon bi bi-list" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2.5 12a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5"/></svg></button>
             <div class="shiny-chat-page-identity">

@@ -1351,6 +1351,7 @@ def _render_page_chat(
         header,
         body,
         toolbar_sources,
+        id=f"{resolved_id}_page",
         data_chat_id=resolved_id,
         data_active_page="__home__",
     )

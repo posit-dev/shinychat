@@ -183,12 +183,13 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$show_preview, {
-    session$sendCustomMessage("shinychat.page_chat_home", list(id = "chat"))
+    # The page-chat root element is addressable as "<id>_page".
+    bslib::nav_select("chat_page", "__home__", session = session)
     chat_artifact_panel_show("chat", title = "Working preview")
   })
 
   observeEvent(input$show_preview_sources, {
-    session$sendCustomMessage("shinychat.page_chat_home", list(id = "chat"))
+    bslib::nav_select("chat_page", "__home__", session = session)
     chat_artifact_panel_show("chat", title = "Working preview")
   })
 

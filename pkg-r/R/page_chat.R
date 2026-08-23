@@ -382,6 +382,7 @@ page_chat <- function(
   root <- htmltools::tag(
     "shiny-chat-page",
     list(
+      id = paste0(resolved_id, "_page"),
       `data-chat-id` = resolved_id,
       `data-active-page` = "__home__",
       header,
@@ -700,7 +701,7 @@ normalize_chat_pages <- function(pages_navbar) {
     if (is_bslib_nav_panel(item)) {
       pages[[length(pages) + 1]] <<- standard_nav_panel(item, location)
       if (is.null(item$attribs$title)) {
-        return(list(type = "hidden"))
+        return(list(type = "hidden", page_index = length(pages)))
       }
       return(list(type = "page", page_index = length(pages)))
     }
@@ -776,7 +777,7 @@ normalize_chat_pages <- function(pages_navbar) {
 
 page_chat_nav_control_indexes <- function(items) {
   indexes <- unlist(lapply(items, function(item) {
-    if (identical(item$type, "page")) {
+    if (identical(item$type, "page") || identical(item$type, "hidden")) {
       return(item$page_index)
     }
     page_chat_nav_control_indexes(item$children %||% list())
@@ -998,7 +999,10 @@ page_chat_nav_item <- function(item, pages) {
     ))
   }
   if (identical(item$type, "hidden")) {
-    return(NULL)
+    return(htmltools::tagAppendAttributes(
+      page_chat_nav_control(pages[[item$page_index]]),
+      hidden = NA
+    ))
   }
   htmltools::tags$details(
     class = "shiny-chat-page-nav-menu",

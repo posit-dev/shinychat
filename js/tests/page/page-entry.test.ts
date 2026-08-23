@@ -5,7 +5,11 @@ import {
   getHistoryStore,
   resetHistoryStoreRegistryForTests,
 } from "../../src/chat/historyStore"
-import { PAGE_MOBILE_MEDIA_QUERY } from "../../src/page/page-entry"
+import {
+  ChatPageElement,
+  ChatPageInputBinding,
+  PAGE_MOBILE_MEDIA_QUERY,
+} from "../../src/page/page-entry"
 
 type MediaListener = (event: MediaQueryListEvent) => void
 
@@ -114,6 +118,8 @@ function pageFixture({
   alwaysPage = false,
   homeSidebarKey = "home",
   layoutWidth = 1000,
+  menu = false,
+  hiddenPage = false,
 }: {
   identity?: boolean
   pages?: boolean
@@ -132,6 +138,8 @@ function pageFixture({
   alwaysPage?: boolean
   homeSidebarKey?: "home" | "default"
   layoutWidth?: number
+  menu?: boolean
+  hiddenPage?: boolean
 } = {}) {
   const page = document.createElement("shiny-chat-page")
   page.dataset.chatId = chatId
@@ -185,6 +193,34 @@ function pageFixture({
                         >Always</button>`
                       : ""
                   }
+                `
+                : ""
+            }
+            ${
+              menu
+                ? `
+                  <details class="shiny-chat-page-nav-menu">
+                    <summary class="shiny-chat-page-nav-menu-toggle">More</summary>
+                    <div class="shiny-chat-page-nav-menu-items">
+                      <button
+                        type="button"
+                        class="shiny-chat-page-nav-link"
+                        data-page-target="menu-page"
+                      >Menu page</button>
+                    </div>
+                  </details>
+                `
+                : ""
+            }
+            ${
+              hiddenPage
+                ? `
+                  <button
+                    type="button"
+                    class="shiny-chat-page-nav-link"
+                    data-page-target="hidden-page"
+                    hidden
+                  >Hidden</button>
                 `
                 : ""
             }
@@ -309,6 +345,24 @@ function pageFixture({
                   : ""
               }
             `
+            : ""
+        }
+        ${
+          menu
+            ? `<section
+                class="shiny-chat-page-panel"
+                data-page-value="menu-page"
+                hidden
+              >Menu page</section>`
+            : ""
+        }
+        ${
+          hiddenPage
+            ? `<section
+                class="shiny-chat-page-panel"
+                data-page-value="hidden-page"
+                hidden
+              >Hidden page</section>`
             : ""
         }
       </main>
@@ -1614,5 +1668,454 @@ describe("shiny-chat-page without secondary pages", () => {
     expect(toggle.hidden).toBe(true)
     expect(toggle.disabled).toBe(false)
     expect(toggle).toHaveAttribute("aria-expanded", "false")
+  })
+})
+
+describe("shiny-chat-page input binding", () => {
+  const registerBinding = vi.fn()
+
+  beforeEach(() => {
+    ;(window as unknown as Record<string, unknown>).Shiny = {
+      addCustomMessageHandler: vi.fn(),
+      inputBindings: { register: registerBinding },
+    }
+  })
+
+  afterEach(() => {
+    delete (window as unknown as Record<string, unknown>).Shiny
+    registerBinding.mockClear()
+  })
+
+  // This test must remain the first in the file that connects a page element
+  // with window.Shiny present: the binding registers once per module load.
+  it("registers itself with Shiny on first connect", () => {
+    pageFixture()
+    expect(registerBinding).toHaveBeenCalledTimes(1)
+    const [binding, name] = registerBinding.mock.calls[0]!
+    expect(binding).toBeInstanceOf(ChatPageInputBinding)
+    expect(name).toBe("shinychat.chatPage")
+  })
+
+  it("finds only page elements with an id and reads the active page", () => {
+    const page = pageFixture()
+    const binding = new ChatPageInputBinding()
+
+    expect(binding.find(document.body)).toEqual([])
+
+    page.id = "chat_page"
+    expect(binding.find(document.body)).toEqual([page])
+    expect(binding.getId(page)).toBe("chat_page")
+    expect(binding.getValue(page)).toBe("__home__")
+  })
+
+  it("notifies subscribers only when the active page changes", () => {
+    const page = pageFixture()
+    const el = page as unknown as ChatPageElement
+    const { navButtons } = getPageElements(page)
+    const binding = new ChatPageInputBinding()
+    const callback = vi.fn()
+    binding.subscribe(page, callback)
+
+    el.navSelect("default-page")
+    expect(callback).toHaveBeenCalledTimes(1)
+    expect(callback).toHaveBeenLastCalledWith(false)
+    expect(binding.getValue(page)).toBe("default-page")
+
+    // Re-selecting the current page is not a change.
+    el.navSelect("default-page")
+    expect(callback).toHaveBeenCalledTimes(1)
+
+    // Pointer-driven selection notifies the same way.
+    navButtons[1]!.click()
+    expect(callback).toHaveBeenCalledTimes(2)
+    expect(binding.getValue(page)).toBe("custom-page")
+
+    binding.unsubscribe(page)
+    el.navSelect("__home__")
+    expect(callback).toHaveBeenCalledTimes(2)
+  })
+
+  it("applies { value } messages and ignores empty or foreign shapes", () => {
+    const page = pageFixture()
+    const binding = new ChatPageInputBinding()
+
+    binding.receiveMessage(page, { value: "custom-page" })
+    expect(page.dataset.activePage).toBe("custom-page")
+
+    const ignored: unknown[] = [
+      {},
+      { value: 42 },
+      { selected: "default-page" },
+      null,
+      "default-page",
+    ]
+    for (const message of ignored) {
+      binding.receiveMessage(page, message)
+      expect(page.dataset.activePage).toBe("custom-page")
+    }
+  })
+})
+
+describe("shiny-chat-page programmatic navigation", () => {
+  let consoleError: ReturnType<typeof vi.spyOn>
+  let clientMessages: CustomEvent[]
+
+  beforeEach(() => {
+    consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
+    clientMessages = []
+    document.addEventListener("shiny:client-message", onClientMessage)
+  })
+
+  afterEach(() => {
+    consoleError.mockRestore()
+    document.removeEventListener("shiny:client-message", onClientMessage)
+  })
+
+  function onClientMessage(event: Event) {
+    clientMessages.push(event as CustomEvent)
+  }
+
+  function expectNavigationError(match: string) {
+    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining(match))
+    const event = clientMessages[clientMessages.length - 1]
+    expect(event?.detail).toMatchObject({ status: "error" })
+    expect(event?.detail.message).toContain(match)
+  }
+
+  it("selects home, regular pages, menu children, and hidden panels", () => {
+    const page = pageFixture({ menu: true, hiddenPage: true })
+    const el = page as unknown as ChatPageElement
+    const { navButtons } = getPageElements(page)
+
+    el.navSelect("default-page")
+    expect(page.dataset.activePage).toBe("default-page")
+
+    el.navSelect("__home__")
+    expect(page.dataset.activePage).toBe("__home__")
+
+    const menuButton = navButtons.find(
+      (button) => button.dataset.pageTarget === "menu-page",
+    )!
+    expect(menuButton.closest(".shiny-chat-page-nav-menu")).not.toBeNull()
+    el.navSelect("menu-page")
+    expect(page.dataset.activePage).toBe("menu-page")
+    expect(menuButton.getAttribute("aria-current")).toBe("page")
+
+    // Hidden panels stay selectable; the nav control remains hidden.
+    el.navSelect("hidden-page")
+    expect(page.dataset.activePage).toBe("hidden-page")
+    expect(
+      page.querySelector<HTMLElement>('[data-page-value="hidden-page"]')!
+        .hidden,
+    ).toBe(false)
+    expect(
+      navButtons.find((button) => button.dataset.pageTarget === "hidden-page")!
+        .hidden,
+    ).toBe(true)
+  })
+
+  it("reports unknown page values without changing state", () => {
+    const page = pageFixture()
+    const el = page as unknown as ChatPageElement
+
+    el.navSelect("bogus")
+    expectNavigationError('Cannot select page "bogus"')
+    expect(page.dataset.activePage).toBe("__home__")
+  })
+
+  it("hides a page's nav control and restores it on show", () => {
+    const page = pageFixture()
+    const el = page as unknown as ChatPageElement
+    const { navButtons } = getPageElements(page)
+
+    el.navHide("default-page")
+    expect(navButtons[0]!.hidden).toBe(true)
+    expect(consoleError).not.toHaveBeenCalled()
+
+    // Hiding twice is a silent no-op.
+    el.navHide("default-page")
+    expect(consoleError).not.toHaveBeenCalled()
+    expect(navButtons[0]!.hidden).toBe(true)
+
+    el.navShow("default-page")
+    expect(navButtons[0]!.hidden).toBe(false)
+
+    // Showing a visible page (including home) is a silent no-op.
+    el.navShow("default-page")
+    el.navShow("__home__")
+    expect(consoleError).not.toHaveBeenCalled()
+    expect(navButtons[0]!.hidden).toBe(false)
+  })
+
+  it("returns home and updates the input value when hiding the active page", () => {
+    const page = pageFixture()
+    const el = page as unknown as ChatPageElement
+    const { navButtons } = getPageElements(page)
+    const binding = new ChatPageInputBinding()
+    const callback = vi.fn()
+    binding.subscribe(page, callback)
+
+    el.navSelect("default-page")
+    expect(callback).toHaveBeenCalledTimes(1)
+
+    el.navHide("default-page")
+    expect(page.dataset.activePage).toBe("__home__")
+    expect(binding.getValue(page)).toBe("__home__")
+    expect(callback).toHaveBeenCalledTimes(2)
+    expect(navButtons[0]!.hidden).toBe(true)
+  })
+
+  it("refuses to hide the home page", () => {
+    const page = pageFixture()
+    const el = page as unknown as ChatPageElement
+
+    el.navHide("__home__")
+    expectNavigationError('Cannot hide page "__home__"')
+    expect(page.dataset.activePage).toBe("__home__")
+  })
+
+  it("reports unknown hide/show targets without changing state", () => {
+    const page = pageFixture()
+    const el = page as unknown as ChatPageElement
+    const { navButtons } = getPageElements(page)
+
+    el.navHide("bogus")
+    expectNavigationError('Cannot hide page "bogus"')
+
+    el.navShow("bogus")
+    expectNavigationError('Cannot show page "bogus"')
+    expect(navButtons.every((button) => !button.hidden)).toBe(true)
+  })
+
+  it("reveals a pre-hidden nav control on show", () => {
+    const page = pageFixture({ hiddenPage: true })
+    const el = page as unknown as ChatPageElement
+    const { navButtons } = getPageElements(page)
+    const control = navButtons.find(
+      (button) => button.dataset.pageTarget === "hidden-page",
+    )!
+
+    expect(control.hidden).toBe(true)
+    el.navShow("hidden-page")
+    expect(control.hidden).toBe(false)
+  })
+
+  it("moves focus to the identity button when focus was inside the hidden control", () => {
+    const page = pageFixture()
+    const el = page as unknown as ChatPageElement
+    const { navButtons, identity } = getPageElements(page)
+
+    navButtons[0]!.focus()
+    expect(document.activeElement).toBe(navButtons[0])
+
+    el.navHide("default-page")
+    expect(document.activeElement).toBe(identity)
+  })
+
+  it("stops counting sidebars owned only by hidden pages on desktop", () => {
+    const page = pageFixture({ sidebar: false })
+    const el = page as unknown as ChatPageElement
+    const { toggle } = getPageElements(page)
+
+    // Home has no sidebar; both page sidebars start available.
+    expect(toggle.hidden).toBe(false)
+
+    el.navHide("default-page")
+    expect(toggle.hidden).toBe(false)
+
+    el.navHide("custom-page")
+    expect(toggle.hidden).toBe(true)
+
+    el.navShow("custom-page")
+    expect(toggle.hidden).toBe(false)
+  })
+
+  it("keeps the shared default sidebar available while a visible page uses it", () => {
+    const page = pageFixture({ homeSidebarKey: "default" })
+    const el = page as unknown as ChatPageElement
+    const { toggle } = getPageElements(page)
+
+    // "default-page" shares the "default" sidebar key with the home page.
+    el.navHide("default-page")
+    el.navHide("custom-page")
+    expect(toggle.hidden).toBe(false)
+  })
+
+  it("leaves an open active sidebar alone when another page is hidden", () => {
+    const page = pageFixture({ homeOpen: "open" })
+    const el = page as unknown as ChatPageElement
+    const { aside, toggle } = getPageElements(page)
+
+    expect(aside.hidden).toBe(false)
+    el.navHide("custom-page")
+    expect(aside.hidden).toBe(false)
+    expect(toggle.hidden).toBe(false)
+    expect(toggle.disabled).toBe(false)
+  })
+
+  it("ignores hidden nav buttons for mobile menu availability", () => {
+    installMatchMedia(true)
+    const page = pageFixture({
+      identity: false,
+      sidebar: false,
+      pageSidebars: false,
+      toolbar: false,
+    })
+    const el = page as unknown as ChatPageElement
+    const { toggle } = getPageElements(page)
+
+    expect(toggle.hidden).toBe(false)
+
+    el.navHide("default-page")
+    el.navHide("custom-page")
+    el.navHide("no-sidebar")
+    expect(toggle.hidden).toBe(true)
+
+    el.navShow("no-sidebar")
+    expect(toggle.hidden).toBe(false)
+  })
+})
+
+class FakeJQueryEvent {
+  message?: Record<string, unknown>
+  private defaultPrevented = false
+
+  constructor(public readonly type: string) {}
+
+  preventDefault() {
+    this.defaultPrevented = true
+  }
+
+  isDefaultPrevented() {
+    return this.defaultPrevented
+  }
+}
+
+const jQueryHandlers = new Map<string, Set<(event: FakeJQueryEvent) => void>>()
+
+// Minimal jQuery stub: just enough `on`/`off`/`Event` for the page-chat
+// `shiny:message` interceptor (no real jQuery in node_modules).
+const jQueryStub = Object.assign(
+  (_target: unknown) => ({
+    on(event: string, handler: (event: FakeJQueryEvent) => void) {
+      if (!jQueryHandlers.has(event)) jQueryHandlers.set(event, new Set())
+      jQueryHandlers.get(event)!.add(handler)
+    },
+    off(event: string, handler?: (event: FakeJQueryEvent) => void) {
+      if (handler) {
+        jQueryHandlers.get(event)?.delete(handler)
+      } else {
+        jQueryHandlers.delete(event)
+      }
+    },
+  }),
+  { Event: FakeJQueryEvent },
+)
+
+function triggerShinyMessage(message: Record<string, unknown>) {
+  const event = new FakeJQueryEvent("shiny:message")
+  event.message = message
+  jQueryHandlers.get("shiny:message")?.forEach((handler) => handler(event))
+  return event
+}
+
+describe("shiny-chat-page tab visibility messages", () => {
+  beforeEach(() => {
+    ;(window as unknown as Record<string, unknown>).jQuery = jQueryStub
+  })
+
+  afterEach(() => {
+    delete (window as unknown as Record<string, unknown>).jQuery
+  })
+
+  it("routes page-chat visibility messages to navHide/navShow and claims them", () => {
+    const page = pageFixture()
+    page.id = "chat_page"
+    const { navButtons } = getPageElements(page)
+
+    expect(jQueryHandlers.get("shiny:message")?.size).toBe(1)
+
+    const hideMessage: Record<string, unknown> = {
+      "shiny-change-tab-visibility": {
+        inputId: "chat_page",
+        target: "default-page",
+        type: "hide",
+      },
+    }
+    triggerShinyMessage(hideMessage)
+    expect(navButtons[0]!.hidden).toBe(true)
+    expect("shiny-change-tab-visibility" in hideMessage).toBe(false)
+
+    const showMessage: Record<string, unknown> = {
+      "shiny-change-tab-visibility": {
+        inputId: "chat_page",
+        target: "default-page",
+        type: "show",
+      },
+    }
+    triggerShinyMessage(showMessage)
+    expect(navButtons[0]!.hidden).toBe(false)
+    expect("shiny-change-tab-visibility" in showMessage).toBe(false)
+  })
+
+  it("passes through messages for other tabsets untouched", () => {
+    pageFixture()
+    const other = document.createElement("div")
+    other.id = "other_tabset"
+    document.body.append(other)
+
+    const foreign: Record<string, unknown> = {
+      "shiny-change-tab-visibility": {
+        inputId: "other_tabset",
+        target: "default-page",
+        type: "hide",
+      },
+    }
+    triggerShinyMessage(foreign)
+    expect("shiny-change-tab-visibility" in foreign).toBe(true)
+
+    const missing: Record<string, unknown> = {
+      "shiny-change-tab-visibility": {
+        inputId: "no_such_element",
+        target: "default-page",
+        type: "hide",
+      },
+    }
+    triggerShinyMessage(missing)
+    expect("shiny-change-tab-visibility" in missing).toBe(true)
+  })
+
+  it("ignores malformed visibility messages", () => {
+    const page = pageFixture()
+    page.id = "chat_page"
+    const { navButtons } = getPageElements(page)
+
+    const malformed: Record<string, unknown>[] = [
+      {
+        "shiny-change-tab-visibility": {
+          target: "default-page",
+          type: "hide",
+        },
+      },
+      {
+        "shiny-change-tab-visibility": {
+          inputId: "chat_page",
+          type: "hide",
+        },
+      },
+      {
+        "shiny-change-tab-visibility": {
+          inputId: "chat_page",
+          target: "default-page",
+          type: "bogus",
+        },
+      },
+      { "shiny-change-tab-visibility": "hide" },
+    ]
+    for (const message of malformed) {
+      triggerShinyMessage(message)
+      expect("shiny-change-tab-visibility" in message).toBe(true)
+    }
+    expect(navButtons[0]!.hidden).toBe(false)
   })
 })

@@ -12,7 +12,11 @@ test_that("chat_app() composes a page chat with client-derived titles", {
   html <- chat_app_html(app)
   date <- format(Sys.Date(), "%Y-%m-%d")
 
-  expect_match(html, '<shiny-chat-page data-chat-id="chat"', fixed = TRUE)
+  expect_match(
+    html,
+    '<shiny-chat-page id="chat_page" data-chat-id="chat"',
+    fixed = TRUE
+  )
   expect_match(
     html,
     '<span class="shiny-chat-page-identity-title">mock-model (Mock)</span>',

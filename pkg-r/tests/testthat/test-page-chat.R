@@ -349,6 +349,7 @@ test_that("page_chat() builds the default fillable page contract", {
   )
 
   root <- page_chat_tag(page, "shiny-chat-page")
+  expect_equal(root$attribs$id, "chat_page")
   expect_equal(root$attribs[["data-chat-id"]], "chat")
   expect_equal(root$attribs[["data-active-page"]], "__home__")
   dark_mode <- page_chat_tag(page, "bslib-input-dark-mode")
@@ -790,18 +791,15 @@ test_that("page_chat() supports standard bslib navigation items", {
   )
   expect_equal(
     unname(vapply(
-      sections[-c(1, 6)],
+      sections[-1],
       function(section) section$attribs[["aria-labelledby"]],
       character(1)
     )),
-    paste0("chat-nav-", 1:4)
+    paste0("chat-nav-", 1:5)
   )
-  expect_null(sections[[6]]$attribs[["aria-labelledby"]])
   controls <- page_chat_tag(page, ".shiny-chat-page-nav")
-  expect_length(
-    page_chat_tags(controls, ".shiny-chat-page-nav-link"),
-    4
-  )
+  nav_links <- page_chat_tags(controls, ".shiny-chat-page-nav-link")
+  expect_length(nav_links, 5)
   expect_length(page_chat_tags(controls, ".shiny-chat-page-nav-menu"), 2)
   expect_length(page_chat_tags(controls, ".shiny-chat-page-nav-divider"), 1)
   expect_length(page_chat_tags(controls, ".shiny-chat-page-nav-control"), 1)
@@ -812,6 +810,129 @@ test_that("page_chat() supports standard bslib navigation items", {
     "--shiny-chat-page-content-width:min(680px, 100%)",
     fixed = TRUE
   )
+})
+
+test_that("page_chat() pre-renders hidden nav controls in configured position", {
+  page <- page_chat(
+    "Assistant",
+    pages_navbar = list(
+      chat_nav_panel("About", htmltools::tags$p("About content")),
+      bslib::nav_panel_hidden(
+        "advanced",
+        htmltools::tags$p("Advanced content")
+      ),
+      chat_nav_panel("Settings", htmltools::tags$p("Settings content"))
+    )
+  )
+
+  sections <- page_chat_tags(page, ".shiny-chat-page-panel")
+  expect_equal(
+    unname(vapply(
+      sections,
+      function(section) section$attribs[["data-page-value"]],
+      character(1)
+    )),
+    c("__home__", "About", "advanced", "Settings")
+  )
+
+  nav <- page_chat_tag(page, ".shiny-chat-page-nav")
+  nav_links <- page_chat_tags(nav, ".shiny-chat-page-nav-link")
+  expect_length(nav_links, 3)
+
+  # The hidden control renders in its configured position (second).
+  expect_equal(nav_links[[1]]$attribs[["data-page-target"]], "About")
+  expect_equal(nav_links[[2]]$attribs[["data-page-target"]], "advanced")
+  expect_equal(nav_links[[3]]$attribs[["data-page-target"]], "Settings")
+
+  # The hidden control has the `hidden` attribute; visible controls do not.
+  expect_null(nav_links[[1]]$attribs$hidden)
+  expect_true(is.na(nav_links[[2]]$attribs$hidden))
+  expect_null(nav_links[[3]]$attribs$hidden)
+
+  # The hidden control's visible label falls back to the panel value.
+  title_spans <- page_chat_tags(
+    nav,
+    ".shiny-chat-page-nav-title"
+  )
+  expect_match(as.character(title_spans[[2]]), "advanced", fixed = TRUE)
+
+  # The hidden panel's section has aria-labelledby referencing its control.
+  hidden_section <- sections[[3]]
+  expect_equal(
+    hidden_section$attribs[["aria-labelledby"]],
+    nav_links[[2]]$attribs$id
+  )
+  expect_equal(hidden_section$attribs[["data-page-title"]], "advanced")
+})
+
+test_that("page_chat() pre-renders hidden nav controls inside nav_menu()", {
+  page <- page_chat(
+    "Assistant",
+    pages_navbar = list(
+      chat_nav_panel("About", htmltools::tags$p("About content")),
+      bslib::nav_menu(
+        "More",
+        bslib::nav_panel(
+          "Help",
+          htmltools::tags$p("Help content"),
+          value = "help"
+        ),
+        bslib::nav_panel_hidden(
+          "secret",
+          htmltools::tags$p("Secret content")
+        )
+      )
+    )
+  )
+
+  sections <- page_chat_tags(page, ".shiny-chat-page-panel")
+  expect_equal(
+    unname(vapply(
+      sections,
+      function(section) section$attribs[["data-page-value"]],
+      character(1)
+    )),
+    c("__home__", "About", "help", "secret")
+  )
+
+  nav <- page_chat_tag(page, ".shiny-chat-page-nav")
+  nav_links <- page_chat_tags(nav, ".shiny-chat-page-nav-link")
+  expect_length(nav_links, 3)
+
+  # The hidden control is inside the menu, in its configured position.
+  expect_equal(nav_links[[1]]$attribs[["data-page-target"]], "About")
+  expect_equal(nav_links[[2]]$attribs[["data-page-target"]], "help")
+  expect_equal(nav_links[[3]]$attribs[["data-page-target"]], "secret")
+  expect_true(is.na(nav_links[[3]]$attribs$hidden))
+  expect_null(nav_links[[2]]$attribs$hidden)
+
+  # The hidden panel's section has aria-labelledby referencing its control.
+  secret_section <- sections[[4]]
+  expect_equal(
+    secret_section$attribs[["aria-labelledby"]],
+    nav_links[[3]]$attribs$id
+  )
+})
+
+test_that("page_chat() preserves icon on hidden nav controls", {
+  icon_html <- htmltools::tags$span("A")
+  page <- page_chat(
+    "Assistant",
+    pages_navbar = list(
+      bslib::nav_panel_hidden(
+        "advanced",
+        htmltools::tags$p("Advanced content"),
+        icon = icon_html
+      )
+    )
+  )
+
+  nav <- page_chat_tag(page, ".shiny-chat-page-nav")
+  nav_link <- page_chat_tag(nav, ".shiny-chat-page-nav-link")
+  expect_true(is.na(nav_link$attribs$hidden))
+  icon_spans <- page_chat_tags(nav_link, ".shiny-chat-page-nav-icon")
+  expect_length(icon_spans, 1)
+  expect_match(as.character(icon_spans[[1]]), "<span>A</span>", fixed = TRUE)
 })
 
 test_that("page_chat() keeps global and custom panel toolbars separate", {
