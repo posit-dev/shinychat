@@ -190,3 +190,161 @@ test_that("page_chat navigation and sidebars work in a real Shiny app", {
   expect_false(isTRUE(closed$menuOpen))
   expect_true(isTRUE(closed$focused))
 })
+
+nav_visibility_state <- function(app) {
+  jsonlite::fromJSON(app$get_js(
+    paste(
+      "(() => {",
+      "const root = document.querySelector('shiny-chat-page');",
+      "const controls = {};",
+      "root?.querySelectorAll('.shiny-chat-page-nav button[data-page-target]')",
+      "  .forEach((button) => {",
+      "    controls[button.dataset.pageTarget] = button.hidden;",
+      "  });",
+      "return JSON.stringify({",
+      "  active: root?.dataset.activePage,",
+      "  input: document.querySelector('#page_value')?.textContent.trim(),",
+      "  controls: controls,",
+      "});",
+      "})()",
+      sep = "\n"
+    )
+  ))
+}
+
+nav_visibility_wait_active <- function(app, value) {
+  app$wait_for_js(
+    sprintf(
+      "document.querySelector('shiny-chat-page')?.dataset.activePage === '%s';",
+      value
+    ),
+    timeout = 30 * 1000
+  )
+}
+
+nav_visibility_wait_input <- function(app, value) {
+  app$wait_for_js(
+    sprintf(
+      "document.querySelector('#page_value')?.textContent.trim() === '%s';",
+      value
+    ),
+    timeout = 30 * 1000
+  )
+}
+
+test_that("page_chat supports bslib nav_select in a real Shiny app", {
+  skip_if_shinytest2_unavailable()
+
+  app <- shinytest2::AppDriver$new(
+    test_path("apps/page-chat-nav-visibility"),
+    name = "page-chat-nav-select",
+    width = 1440,
+    height = 900,
+    timeout = 30 * 1000
+  )
+  withr::defer(app$stop())
+
+  # The input binding round-trips the initial home value to the server.
+  app$wait_for_js(
+    "document.querySelector('#page_value')?.textContent.trim() === '__home__';",
+    timeout = 30 * 1000
+  )
+  initial <- nav_visibility_state(app)
+  expect_identical(initial$active, "__home__")
+  # The nav_panel_hidden() control is pre-rendered but hidden.
+  expect_true(isTRUE(initial$controls$secret))
+  expect_false(isTRUE(initial$controls$about))
+  expect_false(isTRUE(initial$controls$nested))
+
+  # nav_select drives the page and the server-visible input value.
+  app$click(selector = "#select_about")
+  nav_visibility_wait_active(app, "about")
+  nav_visibility_wait_input(app, "about")
+
+  # Menu children are selectable.
+  app$click(selector = "#select_nested")
+  nav_visibility_wait_active(app, "nested")
+  nav_visibility_wait_input(app, "nested")
+
+  # Hidden panels stay selectable; the control remains hidden.
+  app$click(selector = "#select_secret")
+  nav_visibility_wait_active(app, "secret")
+  nav_visibility_wait_input(app, "secret")
+  secret <- nav_visibility_state(app)
+  expect_true(isTRUE(secret$controls$secret))
+
+  # nav_select returns home via the reserved value.
+  app$click(selector = "#select_home")
+  nav_visibility_wait_active(app, "__home__")
+  nav_visibility_wait_input(app, "__home__")
+})
+
+test_that("page_chat supports bslib nav_hide/nav_show in a real Shiny app", {
+  skip_if_shinytest2_unavailable()
+
+  app <- shinytest2::AppDriver$new(
+    test_path("apps/page-chat-nav-visibility"),
+    name = "page-chat-nav-visibility",
+    width = 1440,
+    height = 900,
+    timeout = 30 * 1000
+  )
+  withr::defer(app$stop())
+
+  app$wait_for_js(
+    "document.querySelector('#page_value')?.textContent.trim() === '__home__';",
+    timeout = 30 * 1000
+  )
+
+  # Hiding a non-active page hides only its nav control.
+  app$click(selector = "#hide_about")
+  app$wait_for_js(
+    "document.querySelector(\"button[data-page-target='about']\")?.hidden === true;",
+    timeout = 30 * 1000
+  )
+  hidden <- nav_visibility_state(app)
+  expect_identical(hidden$active, "__home__")
+  expect_false(isTRUE(hidden$controls$nested))
+
+  # nav_show reveals the control without selecting the page.
+  app$click(selector = "#show_about")
+  app$wait_for_js(
+    "document.querySelector(\"button[data-page-target='about']\")?.hidden === false;",
+    timeout = 30 * 1000
+  )
+  expect_identical(nav_visibility_state(app)$active, "__home__")
+
+  # Hiding the active page returns home and the input value follows.
+  app$click(selector = "#select_about")
+  nav_visibility_wait_active(app, "about")
+  app$click(selector = "#hide_about")
+  nav_visibility_wait_active(app, "__home__")
+  nav_visibility_wait_input(app, "__home__")
+  app$click(selector = "#show_about")
+  app$wait_for_js(
+    "document.querySelector(\"button[data-page-target='about']\")?.hidden === false;",
+    timeout = 30 * 1000
+  )
+
+  # nav_show(select = TRUE) reveals the hidden panel's control and selects it.
+  app$click(selector = "#show_secret_select")
+  nav_visibility_wait_active(app, "secret")
+  nav_visibility_wait_input(app, "secret")
+  revealed <- nav_visibility_state(app)
+  expect_false(isTRUE(revealed$controls$secret))
+
+  # Error cases (hiding home, unknown target) leave the app fully functional.
+  app$click(selector = "#select_home")
+  nav_visibility_wait_active(app, "__home__")
+  app$click(selector = "#hide_home")
+  app$click(selector = "#hide_unknown")
+  app$wait_for_idle(timeout = 30 * 1000)
+  after_errors <- nav_visibility_state(app)
+  expect_identical(after_errors$active, "__home__")
+  expect_false(isTRUE(after_errors$controls$about))
+  expect_false(isTRUE(after_errors$controls$nested))
+
+  app$click(selector = "#select_nested")
+  nav_visibility_wait_active(app, "nested")
+  nav_visibility_wait_input(app, "nested")
+})

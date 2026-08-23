@@ -990,3 +990,77 @@ def test_reduced_motion_disables_mobile_sidebar_transition(
     sidebar = shell.locator(".shiny-chat-page-sidebar")
 
     expect(sidebar).to_have_css("transition-duration", "0s")
+
+
+def test_update_navset_selects_a_non_home_page(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    _, shell = open_page(page, local_app, viewport=(1280, 800))
+    active_page = page.locator("#active_page_value")
+
+    expect(shell).to_have_attribute("data-active-page", "__home__")
+    expect(active_page).to_have_text("__home__")
+
+    page.locator("#select_settings").click()
+
+    expect(shell).to_have_attribute("data-active-page", "settings")
+    expect(page.locator("#settings_page_input")).to_be_visible()
+    expect(active_page).to_have_text("settings")
+
+
+def test_update_navset_returns_home(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    chat, shell = open_page(page, local_app, viewport=(1280, 800))
+    active_page = page.locator("#active_page_value")
+
+    shell.get_by_role("button", name="Settings").click()
+    expect(shell).to_have_attribute("data-active-page", "settings")
+    expect(active_page).to_have_text("settings")
+
+    page.locator("#select_home").click()
+
+    expect(shell).to_have_attribute("data-active-page", "__home__")
+    expect(chat.loc).to_be_visible()
+    expect(active_page).to_have_text("__home__")
+
+
+def test_update_navset_selects_a_page_inside_a_nav_menu(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    _, shell = open_page(page, local_app, viewport=(1280, 800))
+    active_page = page.locator("#active_page_value")
+    menu = shell.locator(".shiny-chat-page-nav-menu")
+
+    expect(shell).to_have_attribute("data-active-page", "__home__")
+
+    page.locator("#select_secret").click()
+
+    expect(shell).to_have_attribute("data-active-page", "secret")
+    expect(page.locator("#secret_page")).to_be_visible()
+    expect(active_page).to_have_text("secret")
+    expect(menu).not_to_have_attribute("open", "")
+
+
+def test_update_navset_with_unknown_value_reports_error_without_changing_state(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    _, shell = open_page(page, local_app, viewport=(1280, 800))
+    active_page = page.locator("#active_page_value")
+
+    shell.get_by_role("button", name="About").click()
+    expect(shell).to_have_attribute("data-active-page", "about")
+    expect(active_page).to_have_text("about")
+
+    with page.expect_console_message(
+        lambda msg: msg.type == "error" and "nonexistent-page" in msg.text,
+        timeout=TIMEOUT,
+    ):
+        page.locator("#select_unknown").click()
+
+    expect(shell).to_have_attribute("data-active-page", "about")
+    expect(active_page).to_have_text("about")
