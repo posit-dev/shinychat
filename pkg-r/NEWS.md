@@ -8,6 +8,13 @@
   `bslib::page_fillable(chat_ui(...))` when shinychat owns the page
   composition; continue using `chat_ui()` for embedded or mixed layouts.
 
+* `page_chat()` now supports standard bslib programmatic navigation. The
+  page shell's root element carries the derived id `"<id>_page"`, so
+  `bslib::nav_select()`, `bslib::nav_show()`, and `bslib::nav_hide()` work
+  against it. The active page is readable server-side as `input$<id>_page`
+  (`"__home__"` when the chat home is active). `nav_insert()` and
+  `nav_remove()` are not yet supported.
+
 * Web search and web fetch responses from ellmer now show their activity and citations directly in the chat. Readers can open a citation beside its claim or use the message-wide Sources pill. `ContentCitation@grounded_span` links each citation to the answer text that it supports.
 
 * Assistant messages can now attach source details to specific claims with the `<shiny-aside>` markup convention. This convention powers shinychat's web citations and can also support custom RAG workflows. Add an inline `<shiny-aside>` tag with source details and an optional `grounded-span`. Shinychat shows a compact source pill and highlights the related text when the pill is open. See the `Asides` section in `?chat_append`.

@@ -36,6 +36,11 @@
 #' content-width options. It also accepts [bslib::nav_panel()],
 #' [bslib::nav_panel_hidden()], [bslib::nav_menu()], [bslib::nav_item()], and
 #' [bslib::nav_spacer()].
+#' Programmatic navigation uses standard bslib helpers against the derived
+#' `"<id>_page"` id: [bslib::nav_select()] to switch pages (including hidden
+#' panels and `nav_menu()` children), [bslib::nav_show()] and
+#' [bslib::nav_hide()] to reveal or hide nav controls. The active page is
+#' readable as `input$<id>_page` (`"__home__"` when the chat home is active).
 #' Sidebar navigation is not yet implemented.
 #' Each panel can use the default sidebar, no page-specific sidebar, or its
 #' own [chat_sidebar()] or [bslib::sidebar()] configuration. The `sidebar`
@@ -73,11 +78,16 @@
 #' @param ... Named lower-frequency [chat_ui()] arguments and HTML attributes.
 #'   `page_chat()` owns `height`, `fill`, and `show_history`; attempts to pass
 #'   those arguments are rejected.
-#' @param id A non-empty string identifying the chat.
+#' @param id A non-empty string identifying the chat. The page shell's root
+#'   element receives the derived id `"<id>_page"` (e.g. `"chat_page"`), so
+#'   [bslib::nav_select()], [bslib::nav_show()], and [bslib::nav_hide()] work
+#'   against it. The active page is readable server-side as `input$<id>_page`,
+#'   whose value is `"__home__"` when the chat home is active.
 #' @param pages_navbar `NULL` or a list of [chat_nav_panel()] configurations
 #'   and supported standard bslib navigation items. Standard content panels
 #'   use the normal page-chat content width with no page-specific sidebar or
-#'   toolbar. Hidden panels are omitted from the generated navigation controls.
+#'   toolbar. [bslib::nav_panel_hidden()] panels render their nav control
+#'   hidden; use [bslib::nav_show()] to reveal it.
 #' @param toolbar Optional home-page-scoped UI displayed with the navigation
 #'   controls. Use [bslib::toolbar()] to group toolbar controls. A panel's
 #'   `chat_nav_panel(toolbar = )` replaces this scoped segment.

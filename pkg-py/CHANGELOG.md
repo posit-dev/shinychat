@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * Fully custom `ContentToolResult` UI returned through a `message_content()` or `message_content_chunk()` handler now settles its pending tool activity row and renders as standalone output. This preserves the custom UI for streamed messages, static preloads, and restored conversations without requiring changes to existing handlers.
 
+* `page_chat()` now supports standard Shiny programmatic navigation. The page shell's root element carries the derived ID `"<id>_page"`, so `shiny.ui.update_navset()` works against it. The active page is readable server-side as `input["<id>_page"]` (`"__home__"` when the chat home is active).
+
 ### Changes
 
 * The CSS classes used by the external-link dialog, thinking display, and tool-result images/PDFs now use the `.shiny-chat-*` prefix instead of `.shinychat-*`. The thinking display's custom properties and animation names have likewise changed from `--shinychat-thinking-*` / `shinychat-thinking-*` to `--shiny-chat-thinking-*` / `shiny-chat-thinking-*`. Update any custom CSS that targets these identifiers. (#285, #286)

@@ -37,12 +37,17 @@ page_chat(
 \code{page_chat()} owns \code{height}, \code{fill}, and \code{show_history}; attempts to pass
 those arguments are rejected.}
 
-\item{id}{A non-empty string identifying the chat.}
+\item{id}{A non-empty string identifying the chat. The page shell's root
+element receives the derived id \code{"<id>_page"} (e.g. \code{"chat_page"}), so
+\code{\link[bslib:nav_select]{bslib::nav_select()}}, \code{\link[bslib:nav_show]{bslib::nav_show()}}, and \code{\link[bslib:nav_hide]{bslib::nav_hide()}} work
+against it. The active page is readable server-side as \verb{input$<id>_page},
+whose value is \code{"__home__"} when the chat home is active.}
 
 \item{pages_navbar}{\code{NULL} or a list of \code{\link[=chat_nav_panel]{chat_nav_panel()}} configurations
 and supported standard bslib navigation items. Standard content panels
 use the normal page-chat content width with no page-specific sidebar or
-toolbar. Hidden panels are omitted from the generated navigation controls.}
+toolbar. \code{\link[bslib:nav_panel_hidden]{bslib::nav_panel_hidden()}} panels render their nav control
+hidden; use \code{\link[bslib:nav_show]{bslib::nav_show()}} to reveal it.}
 
 \item{toolbar}{Optional home-page-scoped UI displayed with the navigation
 controls. Use \code{\link[bslib:toolbar]{bslib::toolbar()}} to group toolbar controls. A panel's
@@ -119,6 +124,11 @@ on the mounted chat. Do not wrap \code{page_chat()} in another page container or
 content-width options. It also accepts \code{\link[bslib:nav_panel]{bslib::nav_panel()}},
 \code{\link[bslib:nav_panel_hidden]{bslib::nav_panel_hidden()}}, \code{\link[bslib:nav_menu]{bslib::nav_menu()}}, \code{\link[bslib:nav_item]{bslib::nav_item()}}, and
 \code{\link[bslib:nav_spacer]{bslib::nav_spacer()}}.
+Programmatic navigation uses standard bslib helpers against the derived
+\code{"<id>_page"} id: \code{\link[bslib:nav_select]{bslib::nav_select()}} to switch pages (including hidden
+panels and \code{nav_menu()} children), \code{\link[bslib:nav_show]{bslib::nav_show()}} and
+\code{\link[bslib:nav_hide]{bslib::nav_hide()}} to reveal or hide nav controls. The active page is
+readable as \verb{input$<id>_page} (\code{"__home__"} when the chat home is active).
 Sidebar navigation is not yet implemented.
 Each panel can use the default sidebar, no page-specific sidebar, or its
 own \code{\link[=chat_sidebar]{chat_sidebar()}} or \code{\link[bslib:sidebar]{bslib::sidebar()}} configuration. The \code{sidebar}
