@@ -771,6 +771,16 @@ def test_page_chat_rejects_invalid_pages(
         page_chat("Assistant", pages_navbar=pages_navbar)
 
 
+def test_page_chat_allows_home_as_a_user_page_value() -> None:
+    html = page_chat(
+        "Assistant",
+        pages_navbar=[chat_nav_panel("Home", value="home")],
+    ).get_html_string()
+
+    assert 'data-page-value="home"' in html
+    assert 'data-page-value="__home__"' in html
+
+
 @pytest.mark.parametrize("name", ["height", "fill", "show_history"])
 def test_page_chat_rejects_overriding_owned_chat_arguments(name: str) -> None:
     with pytest.raises(TypeError, match=rf"`page_chat\(\)` owns `{name}`"):

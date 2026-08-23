@@ -683,12 +683,15 @@ export class ChatPageElement extends HTMLElement {
       return
     }
     const control = this.navControlFor(target)
-    if (!control || control.hidden) return
 
+    // Hiding the selected page returns home even when its control is
+    // already hidden (e.g. a selected nav_panel_hidden panel).
     if (this.dataset.activePage === target) {
       // Selecting home first keeps sidebar and toolbar sync on one path.
       this.selectPage(HOME_PAGE_VALUE)
     }
+    if (!control || control.hidden) return
+
     control.hidden = true
     if (control.contains(document.activeElement)) {
       this.identity?.focus()

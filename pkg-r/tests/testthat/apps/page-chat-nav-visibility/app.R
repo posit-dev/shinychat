@@ -8,6 +8,31 @@ library(shinychat)
 # on a page_chat() root element. The server wires action buttons to each
 # operation so shinytest2 can trigger them and read DOM + Shiny input state.
 
+# bslib >= 0.12.0 hosts the nav-driving buttons in an offcanvas (mirroring
+# the paired navigation example); older bslib keeps them in the toolbar.
+offcanvas_supported <- utils::compareVersion(
+  as.character(utils::packageVersion("bslib")),
+  "0.12.0"
+) >=
+  0
+
+nav_action_buttons <- function(ctor) {
+  list(
+    ctor("select_about", "Select About"),
+    ctor("select_nested", "Select Nested"),
+    ctor("select_secret", "Select Secret"),
+    ctor("select_home", "Select Home"),
+    ctor("hide_about", "Hide About"),
+    ctor("hide_nested", "Hide Nested"),
+    ctor("hide_secret", "Hide Secret"),
+    ctor("show_about", "Show About"),
+    ctor("show_nested", "Show Nested"),
+    ctor("show_secret_select", "Show Secret & Select"),
+    ctor("hide_home", "Hide Home (error)"),
+    ctor("hide_unknown", "Hide Unknown (error)")
+  )
+}
+
 ui <- page_chat(
   title = "Nav visibility test",
   id = "chat",
@@ -38,15 +63,26 @@ ui <- page_chat(
       )
     )
   ),
-  # A single persistent trigger keeps the header deterministic (replacing the
-  # default dark-mode toggle); the nav-driving buttons live in an offcanvas,
-  # mirroring the paired navigation example, so they stay reachable while any
-  # page is active without crowding the header. The active page value output
-  # must stay visible, so it remains in the global toolbar.
-  toolbar_global = bslib::toolbar(
-    bslib::toolbar_input_button("nav_controls", "Navigation controls"),
-    textOutput("page_value", inline = TRUE)
-  ),
+  # The nav-driving buttons live in an offcanvas on bslib >= 0.12.0 and in
+  # the global toolbar on older bslib, so they stay reachable while any page
+  # is active without crowding the header. The active page value output must
+  # stay visible, so it remains in the global toolbar. Supplying
+  # toolbar_global also replaces the default dark-mode toggle, keeping the
+  # header deterministic.
+  toolbar_global = if (offcanvas_supported) {
+    bslib::toolbar(
+      bslib::toolbar_input_button("nav_controls", "Navigation controls"),
+      textOutput("page_value", inline = TRUE)
+    )
+  } else {
+    do.call(
+      tagList,
+      c(
+        nav_action_buttons(actionButton),
+        list(textOutput("page_value", inline = TRUE))
+      )
+    )
+  },
   artifact_panel = FALSE
 )
 
@@ -58,21 +94,16 @@ server <- function(input, output, session) {
 
   observeEvent(input$nav_controls, {
     bslib::show_offcanvas(
-      bslib::offcanvas(
-        title = "Navigation controls",
-        id = "nav_controls_panel",
-        placement = "right",
-        actionButton("select_about", "Select About"),
-        actionButton("select_nested", "Select Nested"),
-        actionButton("select_secret", "Select Secret"),
-        actionButton("select_home", "Select Home"),
-        actionButton("hide_about", "Hide About"),
-        actionButton("hide_nested", "Hide Nested"),
-        actionButton("show_about", "Show About"),
-        actionButton("show_nested", "Show Nested"),
-        actionButton("show_secret_select", "Show Secret & Select"),
-        actionButton("hide_home", "Hide Home (error)"),
-        actionButton("hide_unknown", "Hide Unknown (error)")
+      do.call(
+        bslib::offcanvas,
+        c(
+          list(
+            title = "Navigation controls",
+            id = "nav_controls_panel",
+            placement = "right"
+          ),
+          nav_action_buttons(actionButton)
+        )
       ),
       session = session
     )
@@ -100,6 +131,10 @@ server <- function(input, output, session) {
 
   observeEvent(input$hide_nested, {
     bslib::nav_hide("chat_page", "nested")
+  })
+
+  observeEvent(input$hide_secret, {
+    bslib::nav_hide("chat_page", "secret")
   })
 
   observeEvent(input$show_about, {

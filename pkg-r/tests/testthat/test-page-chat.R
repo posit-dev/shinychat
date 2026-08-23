@@ -935,6 +935,25 @@ test_that("page_chat() preserves icon on hidden nav controls", {
   expect_match(as.character(icon_spans[[1]]), "<span>A</span>", fixed = TRUE)
 })
 
+test_that("page_chat() allows 'home' as a user page value", {
+  page <- page_chat(
+    "Assistant",
+    pages_navbar = list(
+      chat_nav_panel("Home", htmltools::tags$p("User home"), value = "home")
+    )
+  )
+
+  sections <- page_chat_tags(page, ".shiny-chat-page-panel")
+  expect_equal(
+    unname(vapply(
+      sections,
+      function(section) section$attribs[["data-page-value"]],
+      character(1)
+    )),
+    c("__home__", "home")
+  )
+})
+
 test_that("page_chat() keeps global and custom panel toolbars separate", {
   page <- page_chat(
     "Assistant",

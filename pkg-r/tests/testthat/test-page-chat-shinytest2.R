@@ -233,6 +233,14 @@ nav_visibility_wait_input <- function(app, value) {
 }
 
 nav_visibility_open_offcanvas <- function(app) {
+  # bslib < 0.12.0 has no offcanvas; the fixture keeps the nav-driving
+  # buttons in the global toolbar instead.
+  has_trigger <- isTRUE(app$get_js(
+    "!!document.querySelector('#nav_controls');"
+  ))
+  if (!has_trigger) {
+    return(invisible(NULL))
+  }
   app$click(selector = "#nav_controls")
   app$wait_for_js(
     "!!document.querySelector('.offcanvas.show #select_about');",
@@ -242,7 +250,6 @@ nav_visibility_open_offcanvas <- function(app) {
 
 test_that("page_chat supports bslib nav_select in a real Shiny app", {
   skip_if_shinytest2_unavailable()
-  skip_if_not_installed("bslib", minimum_version = "0.12.0")
 
   app <- shinytest2::AppDriver$new(
     test_path("apps/page-chat-nav-visibility"),
@@ -283,7 +290,14 @@ test_that("page_chat supports bslib nav_select in a real Shiny app", {
   secret <- nav_visibility_state(app)
   expect_true(isTRUE(secret$controls$secret))
 
+  # Hiding a selected pre-hidden page returns home.
+  app$click(selector = "#hide_secret")
+  nav_visibility_wait_active(app, "__home__")
+  nav_visibility_wait_input(app, "__home__")
+
   # nav_select returns home via the reserved value.
+  app$click(selector = "#select_nested")
+  nav_visibility_wait_active(app, "nested")
   app$click(selector = "#select_home")
   nav_visibility_wait_active(app, "__home__")
   nav_visibility_wait_input(app, "__home__")
@@ -291,7 +305,6 @@ test_that("page_chat supports bslib nav_select in a real Shiny app", {
 
 test_that("page_chat supports bslib nav_hide/nav_show in a real Shiny app", {
   skip_if_shinytest2_unavailable()
-  skip_if_not_installed("bslib", minimum_version = "0.12.0")
 
   app <- shinytest2::AppDriver$new(
     test_path("apps/page-chat-nav-visibility"),

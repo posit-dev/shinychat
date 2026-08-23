@@ -120,6 +120,7 @@ function pageFixture({
   layoutWidth = 1000,
   menu = false,
   hiddenPage = false,
+  homeValuePage = false,
 }: {
   identity?: boolean
   pages?: boolean
@@ -140,6 +141,7 @@ function pageFixture({
   layoutWidth?: number
   menu?: boolean
   hiddenPage?: boolean
+  homeValuePage?: boolean
 } = {}) {
   const page = document.createElement("shiny-chat-page")
   page.dataset.chatId = chatId
@@ -221,6 +223,17 @@ function pageFixture({
                     data-page-target="hidden-page"
                     hidden
                   >Hidden</button>
+                `
+                : ""
+            }
+            ${
+              homeValuePage
+                ? `
+                  <button
+                    type="button"
+                    class="shiny-chat-page-nav-link"
+                    data-page-target="home"
+                  >User home</button>
                 `
                 : ""
             }
@@ -363,6 +376,15 @@ function pageFixture({
                 data-page-value="hidden-page"
                 hidden
               >Hidden page</section>`
+            : ""
+        }
+        ${
+          homeValuePage
+            ? `<section
+                class="shiny-chat-page-panel"
+                data-page-value="home"
+                hidden
+              >User home page</section>`
             : ""
         }
       </main>
@@ -1814,6 +1836,24 @@ describe("shiny-chat-page programmatic navigation", () => {
     ).toBe(true)
   })
 
+  it('selects a user-defined "home" page value distinctly from "__home__"', () => {
+    const page = pageFixture({ homeValuePage: true })
+    const el = page as unknown as ChatPageElement
+
+    el.navSelect("home")
+    expect(page.dataset.activePage).toBe("home")
+    expect(
+      page.querySelector<HTMLElement>('[data-page-value="home"]')!.hidden,
+    ).toBe(false)
+    expect(
+      page.querySelector<HTMLElement>('[data-page-value="__home__"]')!.hidden,
+    ).toBe(true)
+
+    el.navSelect("__home__")
+    expect(page.dataset.activePage).toBe("__home__")
+    expect(consoleError).not.toHaveBeenCalled()
+  })
+
   it("reports unknown page values without changing state", () => {
     const page = pageFixture()
     const el = page as unknown as ChatPageElement
@@ -1863,6 +1903,18 @@ describe("shiny-chat-page programmatic navigation", () => {
     expect(binding.getValue(page)).toBe("__home__")
     expect(callback).toHaveBeenCalledTimes(2)
     expect(navButtons[0]!.hidden).toBe(true)
+  })
+
+  it("returns home when hiding a selected pre-hidden page", () => {
+    const page = pageFixture({ hiddenPage: true })
+    const el = page as unknown as ChatPageElement
+
+    el.navSelect("hidden-page")
+    expect(page.dataset.activePage).toBe("hidden-page")
+
+    el.navHide("hidden-page")
+    expect(page.dataset.activePage).toBe("__home__")
+    expect(consoleError).not.toHaveBeenCalled()
   })
 
   it("refuses to hide the home page", () => {
