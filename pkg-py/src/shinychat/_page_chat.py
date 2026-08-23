@@ -115,7 +115,7 @@ def page_chat(
         Unique ID shared by the page shell and its chat. The root element
         receives the derived ID ``"<id>_page"`` (e.g. ``"chat_page"``), so
         :func:`shiny.ui.update_navset` works against it. The active page is
-        readable server-side as ``input["<id>_page"]``, whose value is
+        readable server-side as ``input["<id>_page"]()``, whose value is
         ``"__home__"`` when the chat home is active.
     pages_navbar
         Secondary navbar items. In addition to
