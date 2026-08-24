@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Optional, Sequence, Union
 
-from htmltools import HTML, Tag, TagChild, TagList
+from htmltools import HTML, MetadataNode, Tag, TagChild, TagList
 
 from .._page_chat import (
     ChatArtifactPanel,
@@ -15,6 +15,7 @@ from .._page_chat import (
 from .._utils_types import MISSING, MISSING_TYPE
 
 if TYPE_CHECKING:
+    from shiny.types import NavSetArg
     from shiny.ui import Theme
     from shiny.ui._html_deps_external import ThemeProvider
     from shiny.ui.css import CssUnit
@@ -32,7 +33,8 @@ def page_chat(
     *,
     id: str = "chat",
     icon: TagChild | None = None,
-    pages_navbar: Sequence[ChatNavPanel | Any] | None = None,
+    pages_navbar: Sequence[ChatNavPanel | NavSetArg | MetadataNode]
+    | None = None,
     toolbar: TagChild | None = None,
     toolbar_global: TagChild | None | MISSING_TYPE = MISSING,
     navbar_options: Any = None,
