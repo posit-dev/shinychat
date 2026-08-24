@@ -479,6 +479,16 @@ def test_desktop_dropdown_navigation_is_clickable_and_closes_after_selection(
     menu_items = menu.locator(".shiny-chat-page-nav-menu-items")
     page.wait_for_function(
         """(element) => {
+          if (
+            !element.style.getPropertyValue(
+              '--shiny-chat-page-nav-menu-left',
+            ) ||
+            !element.style.getPropertyValue(
+              '--shiny-chat-page-nav-menu-top',
+            )
+          ) {
+            return false;
+          }
           const bounds = element.getBoundingClientRect();
           return bounds.left >= 0 && bounds.right <= window.innerWidth;
         }""",
