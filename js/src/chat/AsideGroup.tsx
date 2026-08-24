@@ -275,7 +275,7 @@ export const AsideGroupView = memo(function AsideGroupView({
           >
             <div
               ref={refs.setFloating}
-              className="shiny-aside-popover"
+              className="shiny-aside-popover shiny-floating-overlay"
               style={{ ...portal.style, ...floatingStyles }}
               data-bs-theme={portal.theme}
               aria-label={pillLabel}
