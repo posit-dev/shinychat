@@ -46,11 +46,6 @@ test_that("page-chat R examples parse and construct", {
         "chat_enable_history",
         fixed = TRUE
       )
-      expect_no_error(env$require_offcanvas_support("0.12.0"))
-      expect_error(
-        env$require_offcanvas_support("0.11.0"),
-        "requires bslib >= 0.12.0"
-      )
     }
   }
 })

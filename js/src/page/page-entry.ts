@@ -37,6 +37,9 @@ const FOCUSABLE_SELECTOR = [
   "[tabindex]:not([tabindex='-1'])",
 ].join(",")
 
+// Mirrors the custom message handler name registered by Shiny's built-in
+// tabset binding (see `addMessageHandler("shiny-change-tab-visibility", ...)`
+// in shiny.js). bslib's nav_hide()/nav_show() dispatch through it.
 const TAB_VISIBILITY_MESSAGE = "shiny-change-tab-visibility"
 
 declare global {
@@ -665,20 +668,20 @@ export class ChatPageElement extends HTMLElement {
     // Hidden panels stay selectable, matching bslib's hidden tabs.
     if (this.selectPage(value)) return
     this.reportNavigationError(
-      `Cannot select page "${value}": no page-chat page has that value.`,
+      `Cannot select page "${value}": no page_chat() page has that value.`,
     )
   }
 
   navHide(target: string) {
     if (target === HOME_PAGE_VALUE) {
       this.reportNavigationError(
-        `Cannot hide page "${target}": the page-chat home page is always available.`,
+        `Cannot hide page "${target}": the page_chat() home page is always available.`,
       )
       return
     }
     if (!this.pageSection(target)) {
       this.reportNavigationError(
-        `Cannot hide page "${target}": no page-chat page has that value.`,
+        `Cannot hide page "${target}": no page_chat() page has that value.`,
       )
       return
     }
@@ -702,7 +705,7 @@ export class ChatPageElement extends HTMLElement {
   navShow(target: string) {
     if (!this.pageSection(target)) {
       this.reportNavigationError(
-        `Cannot show page "${target}": no page-chat page has that value.`,
+        `Cannot show page "${target}": no page_chat() page has that value.`,
       )
       return
     }

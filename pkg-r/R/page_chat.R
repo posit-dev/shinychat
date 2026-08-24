@@ -1,3 +1,5 @@
+HOME_PAGE_VALUE <- "__home__"
+
 #' Create a full-window chat page
 #'
 #' @description
@@ -40,7 +42,7 @@
 #' `"<id>_page"` id: [bslib::nav_select()] to switch pages (including hidden
 #' panels and `nav_menu()` children), [bslib::nav_show()] and
 #' [bslib::nav_hide()] to reveal or hide nav controls. The active page is
-#' readable as `input$<id>_page` (`"__home__"` when the chat home is active).
+#' readable as `input$<id>_page` (`"__home__"` when the main chat page is active).
 #' Sidebar navigation is not yet implemented.
 #' Each panel can use the default sidebar, no page-specific sidebar, or its
 #' own [chat_sidebar()] or [bslib::sidebar()] configuration. The `sidebar`
@@ -78,11 +80,10 @@
 #' @param ... Named lower-frequency [chat_ui()] arguments and HTML attributes.
 #'   `page_chat()` owns `height`, `fill`, and `show_history`; attempts to pass
 #'   those arguments are rejected.
-#' @param id A non-empty string identifying the chat. The page shell's root
-#'   element receives the derived id `"<id>_page"` (e.g. `"chat_page"`), so
-#'   [bslib::nav_select()], [bslib::nav_show()], and [bslib::nav_hide()] work
-#'   against it. The active page is readable server-side as `input$<id>_page`,
-#'   whose value is `"__home__"` when the chat home is active.
+#' @param id A non-empty string identifying the chat. The currently selected
+#'   page is readable server-side as `input$<id>_page` and settable via
+#'   [bslib::nav_select()], [bslib::nav_show()], and [bslib::nav_hide()]. The
+#'   reserved value `"__home__"` represents the main chat page.
 #' @param pages_navbar `NULL` or a list of [chat_nav_panel()] configurations
 #'   and supported standard bslib navigation items. Standard content panels
 #'   use the normal page-chat content width with no page-specific sidebar or
@@ -394,7 +395,7 @@ page_chat <- function(
     list(
       id = paste0(resolved_id, "_page"),
       `data-chat-id` = resolved_id,
-      `data-active-page` = "__home__",
+      `data-active-page` = HOME_PAGE_VALUE,
       header,
       htmltools::tags$div(
         class = "shiny-chat-page-body",
@@ -419,7 +420,7 @@ page_chat <- function(
           class = "shiny-chat-page-main",
           htmltools::tags$section(
             class = "shiny-chat-page-panel shiny-chat-page-home",
-            `data-page-value` = "__home__",
+            `data-page-value` = HOME_PAGE_VALUE,
             `data-sidebar-key` = normalized$home_sidebar_key,
             `data-page-toolbar-source` = "home",
             chat
@@ -512,7 +513,8 @@ chat_sidebar <- function(
 #'
 #' @param title The panel title.
 #' @param ... UI content to display when the panel is active.
-#' @param value An optional unique navigation value.
+#' @param value An optional unique navigation value. Defaults to `title`.
+#'   The value `"__home__"` is reserved for the main chat page.
 #' @param icon An optional icon to display with the title.
 #' @param sidebar Whether to use the default sidebar (`TRUE`), no
 #'   page-specific sidebar (`FALSE`), or a
@@ -770,9 +772,9 @@ normalize_chat_pages <- function(pages_navbar) {
     },
     character(1)
   )
-  if ("__home__" %in% values) {
+  if (HOME_PAGE_VALUE %in% values) {
     cli::cli_abort(
-      "{.val __home__} is reserved for the chat home and cannot be used as a page value."
+      "{.val {HOME_PAGE_VALUE}} is reserved for the main chat page and cannot be used as a page value."
     )
   }
   duplicate <- duplicated(values)

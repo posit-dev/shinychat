@@ -245,7 +245,7 @@
       page_chat("Assistant", pages_navbar = list(chat_nav_panel("Home", value = "__home__")))
     Condition
       Error in `normalize_chat_pages()`:
-      ! "__home__" is reserved for the chat home and cannot be used as a page value.
+      ! "__home__" is reserved for the main chat page and cannot be used as a page value.
 
 ---
 

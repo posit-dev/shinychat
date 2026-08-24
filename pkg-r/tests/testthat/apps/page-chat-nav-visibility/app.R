@@ -8,14 +8,6 @@ library(shinychat)
 # on a page_chat() root element. The server wires action buttons to each
 # operation so shinytest2 can trigger them and read DOM + Shiny input state.
 
-# bslib >= 0.12.0 hosts the nav-driving buttons in an offcanvas (mirroring
-# the paired navigation example); older bslib keeps them in the toolbar.
-offcanvas_supported <- utils::compareVersion(
-  as.character(utils::packageVersion("bslib")),
-  "0.12.0"
-) >=
-  0
-
 nav_action_buttons <- function(ctor) {
   list(
     ctor("select_about", "Select About"),
@@ -63,26 +55,15 @@ ui <- page_chat(
       )
     )
   ),
-  # The nav-driving buttons live in an offcanvas on bslib >= 0.12.0 and in
-  # the global toolbar on older bslib, so they stay reachable while any page
-  # is active without crowding the header. The active page value output must
-  # stay visible, so it remains in the global toolbar. Supplying
-  # toolbar_global also replaces the default dark-mode toggle, keeping the
-  # header deterministic.
-  toolbar_global = if (offcanvas_supported) {
-    bslib::toolbar(
-      bslib::toolbar_input_button("nav_controls", "Navigation controls"),
-      textOutput("page_value", inline = TRUE)
-    )
-  } else {
-    do.call(
-      tagList,
-      c(
-        nav_action_buttons(actionButton),
-        list(textOutput("page_value", inline = TRUE))
-      )
-    )
-  },
+  # The nav-driving buttons live in an offcanvas so they stay reachable
+  # while any page is active without crowding the header. The active page
+  # value output must stay visible, so it remains in the global toolbar.
+  # Supplying toolbar_global also replaces the default dark-mode toggle,
+  # keeping the header deterministic.
+  toolbar_global = bslib::toolbar(
+    bslib::toolbar_input_button("nav_controls", "Navigation controls"),
+    textOutput("page_value", inline = TRUE)
+  ),
   artifact_panel = FALSE
 )
 

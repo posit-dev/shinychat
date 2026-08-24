@@ -243,10 +243,7 @@ def app_ui(request: Request) -> ui.Tag:
                 value="global toolbar initial",
             ),
             ui.input_action_button("show_toast", "Show toast"),
-            ui.input_action_button("select_settings", "Goto cfg"),
-            ui.input_action_button("select_secret", "Goto hidden"),
-            ui.input_action_button("select_home", "Goto start"),
-            ui.input_action_button("select_unknown", "Goto void"),
+            ui.input_action_button("nav_controls", "Navigation controls"),
             ui.output_text("active_page_value", inline=True),
         ),
         sidebar=True,
@@ -270,6 +267,21 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     @reactive.event(input.show_toast)
     def _show_toast() -> None:
         ui.show_toast(ui.toast("Toast content", header="Toast", type="info"))
+
+    @reactive.effect
+    @reactive.event(input.nav_controls)
+    def _show_nav_controls() -> None:
+        ui.show_offcanvas(
+            ui.offcanvas(
+                ui.input_action_button("select_settings", "Goto cfg"),
+                ui.input_action_button("select_secret", "Goto hidden"),
+                ui.input_action_button("select_home", "Goto start"),
+                ui.input_action_button("select_unknown", "Goto void"),
+                title="Navigation controls",
+                id="nav_controls_panel",
+                placement="right",
+            )
+        )
 
     @reactive.effect
     @reactive.event(input.select_settings)

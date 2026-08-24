@@ -37,11 +37,10 @@ page_chat(
 \code{page_chat()} owns \code{height}, \code{fill}, and \code{show_history}; attempts to pass
 those arguments are rejected.}
 
-\item{id}{A non-empty string identifying the chat. The page shell's root
-element receives the derived id \code{"<id>_page"} (e.g. \code{"chat_page"}), so
-\code{\link[bslib:nav_select]{bslib::nav_select()}}, \code{\link[bslib:nav_show]{bslib::nav_show()}}, and \code{\link[bslib:nav_hide]{bslib::nav_hide()}} work
-against it. The active page is readable server-side as \verb{input$<id>_page},
-whose value is \code{"__home__"} when the chat home is active.}
+\item{id}{A non-empty string identifying the chat. The currently selected
+page is readable server-side as \verb{input$<id>_page} and settable via
+\code{\link[bslib:nav_select]{bslib::nav_select()}}, \code{\link[bslib:nav_show]{bslib::nav_show()}}, and \code{\link[bslib:nav_hide]{bslib::nav_hide()}}. The
+reserved value \code{"__home__"} represents the main chat page.}
 
 \item{pages_navbar}{\code{NULL} or a list of \code{\link[=chat_nav_panel]{chat_nav_panel()}} configurations
 and supported standard bslib navigation items. Standard content panels
@@ -128,7 +127,7 @@ Programmatic navigation uses standard bslib helpers against the derived
 \code{"<id>_page"} id: \code{\link[bslib:nav_select]{bslib::nav_select()}} to switch pages (including hidden
 panels and \code{nav_menu()} children), \code{\link[bslib:nav_show]{bslib::nav_show()}} and
 \code{\link[bslib:nav_hide]{bslib::nav_hide()}} to reveal or hide nav controls. The active page is
-readable as \verb{input$<id>_page} (\code{"__home__"} when the chat home is active).
+readable as \verb{input$<id>_page} (\code{"__home__"} when the main chat page is active).
 Sidebar navigation is not yet implemented.
 Each panel can use the default sidebar, no page-specific sidebar, or its
 own \code{\link[=chat_sidebar]{chat_sidebar()}} or \code{\link[bslib:sidebar]{bslib::sidebar()}} configuration. The \code{sidebar}

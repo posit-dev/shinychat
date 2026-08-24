@@ -233,14 +233,6 @@ nav_visibility_wait_input <- function(app, value) {
 }
 
 nav_visibility_open_offcanvas <- function(app) {
-  # bslib < 0.12.0 has no offcanvas; the fixture keeps the nav-driving
-  # buttons in the global toolbar instead.
-  has_trigger <- isTRUE(app$get_js(
-    "!!document.querySelector('#nav_controls');"
-  ))
-  if (!has_trigger) {
-    return(invisible(NULL))
-  }
   app$click(selector = "#nav_controls")
   app$wait_for_js(
     "!!document.querySelector('.offcanvas.show #select_about');",

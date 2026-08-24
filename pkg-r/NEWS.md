@@ -8,12 +8,7 @@
   `bslib::page_fillable(chat_ui(...))` when shinychat owns the page
   composition; continue using `chat_ui()` for embedded or mixed layouts.
 
-* `page_chat()` now supports standard bslib programmatic navigation. The
-  page shell's root element carries the derived id `"<id>_page"`, so
-  `bslib::nav_select()`, `bslib::nav_show()`, and `bslib::nav_hide()` work
-  against it. The active page is readable server-side as `input$<id>_page`
-  (`"__home__"` when the chat home is active). `nav_insert()` and
-  `nav_remove()` are not yet supported.
+* `page_chat()` now supports standard bslib programmatic navigation. The page shell's root element carries the derived id `"<id>_page"`, so `bslib::nav_select()`, `bslib::nav_show()`, and `bslib::nav_hide()` work against it. The active page is readable server-side as `input$<id>_page` (`"__home__"` when the chat home is active). `nav_insert()` and `nav_remove()` are not yet supported.
 
 * Web search and web fetch responses from ellmer now show their activity and citations directly in the chat. Readers can open a citation beside its claim or use the message-wide Sources pill. `ContentCitation@grounded_span` links each citation to the answer text that it supports.
 

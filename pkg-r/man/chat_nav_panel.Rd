@@ -19,7 +19,8 @@ chat_nav_panel(
 
 \item{...}{UI content to display when the panel is active.}
 
-\item{value}{An optional unique navigation value.}
+\item{value}{An optional unique navigation value. Defaults to \code{title}.
+The value \code{"__home__"} is reserved for the main chat page.}
 
 \item{icon}{An optional icon to display with the title.}
 

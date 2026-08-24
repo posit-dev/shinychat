@@ -10,6 +10,12 @@ from shinychat.playwright import ChatController
 TIMEOUT = 30_000
 
 
+def open_nav_offcanvas(page: Page) -> None:
+    """Open the offcanvas hosting the nav-driving action buttons."""
+    page.locator("#nav_controls").click()
+    page.wait_for_selector(".offcanvas.show #select_settings", timeout=TIMEOUT)
+
+
 def open_page(
     page: Page,
     local_app: ShinyAppProc,
@@ -1002,6 +1008,7 @@ def test_update_navset_selects_a_non_home_page(
     expect(shell).to_have_attribute("data-active-page", "__home__")
     expect(active_page).to_have_text("__home__")
 
+    open_nav_offcanvas(page)
     page.locator("#select_settings").click()
 
     expect(shell).to_have_attribute("data-active-page", "settings")
@@ -1020,6 +1027,7 @@ def test_update_navset_returns_home(
     expect(shell).to_have_attribute("data-active-page", "settings")
     expect(active_page).to_have_text("settings")
 
+    open_nav_offcanvas(page)
     page.locator("#select_home").click()
 
     expect(shell).to_have_attribute("data-active-page", "__home__")
@@ -1037,6 +1045,7 @@ def test_update_navset_selects_a_page_inside_a_nav_menu(
 
     expect(shell).to_have_attribute("data-active-page", "__home__")
 
+    open_nav_offcanvas(page)
     page.locator("#select_secret").click()
 
     expect(shell).to_have_attribute("data-active-page", "secret")
@@ -1060,6 +1069,7 @@ def test_update_navset_with_unknown_value_reports_error_without_changing_state(
         lambda msg: msg.type == "error" and "nonexistent-page" in msg.text,
         timeout=TIMEOUT,
     ):
+        open_nav_offcanvas(page)
         page.locator("#select_unknown").click()
 
     expect(shell).to_have_attribute("data-active-page", "about")

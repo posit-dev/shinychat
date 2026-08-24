@@ -2,19 +2,6 @@ library(shiny)
 library(shinychat)
 library(ellmer)
 
-require_offcanvas_support <- function(
-  bslib_version = utils::packageVersion("bslib")
-) {
-  if (utils::compareVersion(as.character(bslib_version), "0.12.0") < 0) {
-    stop(
-      "The page-chat-navigation example requires bslib >= 0.12.0 for offcanvas settings.",
-      call. = FALSE
-    )
-  }
-}
-
-require_offcanvas_support()
-
 setClass(
   "PageChatEchoProvider",
   representation(name = "character", model = "character")

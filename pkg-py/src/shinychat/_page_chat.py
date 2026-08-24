@@ -38,6 +38,8 @@ __all__ = (
     "page_chat",
 )
 
+HOME_PAGE_VALUE = "__home__"
+
 ChatSidebarOpen = Literal["auto", "open", "closed", "always"]
 
 
@@ -112,11 +114,10 @@ def page_chat(
     icon
         Optional HTML child displayed next to ``title``.
     id
-        Unique ID shared by the page shell and its chat. The root element
-        receives the derived ID ``"<id>_page"`` (e.g. ``"chat_page"``), so
-        :func:`shiny.ui.update_navset` works against it. The active page is
-        readable server-side as ``input["<id>_page"]()``, whose value is
-        ``"__home__"`` when the chat home is active.
+        Unique ID shared by the page shell and its chat. The currently
+        selected page is readable server-side as ``input["<id>_page"]()``
+        and settable via :func:`shiny.ui.update_navset`. The reserved value
+        ``"__home__"`` represents the main chat page.
     pages_navbar
         Secondary navbar items. In addition to
         :func:`~shinychat.chat_nav_panel`, this accepts Shiny's
@@ -460,7 +461,7 @@ def chat_nav_panel(
         HTML children to display on the page.
     value
         Optional unique navigation value. Defaults to ``title``. The value
-        ``"__home__"`` is reserved for the chat page.
+        ``"__home__"`` is reserved for the main chat page.
     icon
         Optional HTML child displayed with the navigation label.
     sidebar
@@ -832,7 +833,7 @@ def _normalize_page_config(
     nav_control_indexes = _nav_control_page_indexes(nav_items)
 
     normalized_pages: list[_NormalizedPage] = []
-    values = {"__home__"}
+    values = {HOME_PAGE_VALUE}
     for index, panel in enumerate(page_items):
         if not isinstance(panel, ChatNavPanel):
             raise TypeError(
@@ -859,8 +860,10 @@ def _normalize_page_config(
         value = panel.title if panel.value is None else panel.value
         if not value.strip():
             raise ValueError("Navigation page values must not be empty.")
-        if value == "__home__":
-            raise ValueError('Navigation page value "__home__" is reserved.')
+        if value == HOME_PAGE_VALUE:
+            raise ValueError(
+                f'Navigation page value "{HOME_PAGE_VALUE}" is reserved.'
+            )
         if value in values:
             raise ValueError(f"Duplicate navigation page value {value!r}.")
         values.add(value)
@@ -1309,7 +1312,7 @@ def _render_page_chat(
                 "section",
                 chat_root,
                 class_="shiny-chat-page-panel shiny-chat-page-home",
-                data_page_value="__home__",
+                data_page_value=HOME_PAGE_VALUE,
                 data_sidebar_key=home_sidebar_key,
                 data_page_toolbar_source="home",
             ),
@@ -1357,7 +1360,7 @@ def _render_page_chat(
         toolbar_sources,
         id=f"{resolved_id}_page",
         data_chat_id=resolved_id,
-        data_active_page="__home__",
+        data_active_page=HOME_PAGE_VALUE,
     )
     _apply_page_chat_navbar_options(header, navbar_options)
 
