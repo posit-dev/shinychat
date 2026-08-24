@@ -1,7 +1,7 @@
 import pytest
-from playwright.sync_api import Locator, Page, expect
+from playwright.sync_api import Page, expect
 from shiny.run import ShinyAppProc
-from shinychat.playwright import ChatController
+from shinychat.playwright import ChatController, PageChatController
 
 TIMEOUT = 30_000
 
@@ -13,7 +13,7 @@ def open_page(
     artifact_width: str | None = None,
     chat_width: str | None = None,
     viewport: tuple[int, int] = (1440, 900),
-) -> tuple[ChatController, Locator]:
+) -> tuple[ChatController, PageChatController]:
     page.set_viewport_size({"width": viewport[0], "height": viewport[1]})
     query: list[str] = []
     if artifact_width:
@@ -23,22 +23,22 @@ def open_page(
     url = f"{local_app.url}?{'&'.join(query)}" if query else local_app.url
     page.goto(url)
     chat = ChatController(page, "chat")
-    shell = page.locator("shiny-chat-page")
-    expect(shell).to_be_visible(timeout=TIMEOUT)
+    page_chat = PageChatController(page, "chat")
+    expect(page_chat.loc).to_be_visible(timeout=TIMEOUT)
     expect(chat.loc).to_be_visible(timeout=TIMEOUT)
-    return chat, shell
+    return chat, page_chat
 
 
 def test_mobile_artifact_capable_chat_fills_page_and_keeps_composer_inset(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     viewport = (390, 760)
-    chat, shell = open_page(page, local_app, viewport=viewport)
-    main = shell.locator(".shiny-chat-page-main")
+    chat, page_chat = open_page(page, local_app, viewport=viewport)
+    main = page_chat.loc_main
     wrapper = chat.loc.locator(".shiny-chat-wrapper")
 
-    shell_box = shell.bounding_box()
-    header_box = shell.locator(".shiny-chat-page-header").bounding_box()
+    shell_box = page_chat.loc.bounding_box()
+    header_box = page_chat.loc_header.bounding_box()
     main_box = main.bounding_box()
     chat_box = chat.loc.bounding_box()
     wrapper_box = wrapper.bounding_box()
@@ -60,8 +60,14 @@ def test_mobile_artifact_capable_chat_fills_page_and_keeps_composer_inset(
     assert chat_box["height"] == pytest.approx(main_box["height"], abs=1)
     assert wrapper_box["height"] == pytest.approx(chat_box["height"], abs=1)
     assert input_box["x"] >= chat_box["x"] + 16
-    assert input_box["x"] + input_box["width"] <= chat_box["x"] + chat_box["width"] - 16
-    assert input_box["y"] + input_box["height"] >= chat_box["y"] + chat_box["height"] - 16
+    assert (
+        input_box["x"] + input_box["width"]
+        <= chat_box["x"] + chat_box["width"] - 16
+    )
+    assert (
+        input_box["y"] + input_box["height"]
+        >= chat_box["y"] + chat_box["height"] - 16
+    )
 
 
 def test_percentage_artifact_keeps_desktop_chat_width(
@@ -146,9 +152,9 @@ def test_artifact_open_preserves_configured_chat_width(
     assert layout_box is not None
     assert panel_box is not None
     assert wrapper_box is not None
-    assert wrapper.evaluate("(element) => getComputedStyle(element).maxWidth") == (
-        expected_max_width
-    )
+    assert wrapper.evaluate(
+        "(element) => getComputedStyle(element).maxWidth"
+    ) == (expected_max_width)
     assert wrapper_box["x"] >= layout_box["x"]
     assert wrapper_box["x"] + wrapper_box["width"] <= panel_box["x"]
 
@@ -244,9 +250,7 @@ def test_artifact_separator_uses_bslib_sized_trip_and_active_targets(
     def assert_bslib_sized_target(panel_direction: float) -> None:
         box = separator.bounding_box()
         assert box is not None
-        boundary = (
-            box["x"] if panel_direction > 0 else box["x"] + box["width"]
-        )
+        boundary = box["x"] if panel_direction > 0 else box["x"] + box["width"]
         y = box["y"] + box["height"] / 2
         target = separator.evaluate(
             """(element) => {
@@ -312,7 +316,9 @@ def test_artifact_separator_uses_bslib_sized_trip_and_active_targets(
     page.wait_for_timeout(220)
     rtl_box = separator.bounding_box()
     assert rtl_box is not None
-    previous_clicks = int(panel.get_attribute("data-resize-underlay-clicks") or "0")
+    previous_clicks = int(
+        panel.get_attribute("data-resize-underlay-clicks") or "0"
+    )
     page.mouse.click(rtl_box["x"] + 2, y)
     expect(panel).to_have_attribute(
         "data-resize-underlay-clicks", str(previous_clicks + 1)
@@ -325,7 +331,9 @@ def test_debug_resize_overlays_show_artifact_fine_targets(
 ) -> None:
     chat, _ = open_page(page, local_app, artifact_width="default")
     page.get_by_role("button", name="Show artifact").click()
-    artifact_resizer = page.get_by_role("separator", name="Resize artifact panel")
+    artifact_resizer = page.get_by_role(
+        "separator", name="Resize artifact panel"
+    )
     expect(artifact_resizer).to_be_visible(timeout=TIMEOUT)
     page.wait_for_timeout(220)
 
@@ -620,7 +628,7 @@ def test_relative_artifact_width_refreshes_without_layout_resize(
 def test_page_artifact_survives_navigation_and_history(
     page: Page, local_app: ShinyAppProc
 ) -> None:
-    chat, shell = open_page(page, local_app)
+    chat, page_chat = open_page(page, local_app)
     panel = chat.loc.locator(".shiny-chat-artifact")
 
     page.get_by_role("button", name="Show artifact").click()
@@ -636,13 +644,13 @@ def test_page_artifact_survives_navigation_and_history(
         timeout=TIMEOUT,
     )
 
-    shell.get_by_role("button", name="Details").click()
-    expect(shell).to_have_attribute("data-active-page", "details")
+    page_chat.select_page("Details")
+    page_chat.expect_active_page("details")
     expect(chat.loc).to_be_hidden()
     expect(panel).to_be_hidden()
     expect(page.locator("#details_page")).to_be_visible()
 
-    shell.get_by_role("button", name="Return to chat").click()
+    page_chat.return_home()
     expect(chat.loc).to_be_visible()
     expect(panel).to_be_visible()
     expect(artifact_input).to_have_value("edited artifact")
@@ -655,8 +663,8 @@ def test_page_artifact_survives_navigation_and_history(
     chat.send_user_input()
     chat.expect_latest_message("echo: first conversation", timeout=TIMEOUT)
 
-    sidebar = shell.locator(".shiny-chat-page-sidebar")
-    toggle = shell.locator(".shiny-chat-page-sidebar-toggle")
+    sidebar = page_chat.loc_sidebar
+    toggle = page_chat.loc_sidebar_toggle
     expect(sidebar).to_be_hidden()
     toggle.click()
     expect(sidebar).to_be_visible()
@@ -790,15 +798,15 @@ def test_artifact_motion_respects_reduced_motion_and_takeover(
 def test_artifact_stays_adjacent_with_open_desktop_sidebar(
     page: Page, local_app: ShinyAppProc
 ) -> None:
-    chat, shell = open_page(
+    chat, page_chat = open_page(
         page,
         local_app,
         artifact_width="default",
         viewport=(1024, 900),
     )
-    sidebar = shell.locator(".shiny-chat-page-sidebar")
+    sidebar = page_chat.loc_sidebar
     if sidebar.is_hidden():
-        shell.locator(".shiny-chat-page-sidebar-toggle").click()
+        page_chat.loc_sidebar_toggle.click()
     expect(sidebar).to_be_visible(timeout=TIMEOUT)
 
     page.get_by_role("button", name="Show artifact").click()
@@ -806,7 +814,9 @@ def test_artifact_stays_adjacent_with_open_desktop_sidebar(
     panel = chat.loc.locator(".shiny-chat-artifact")
     expect(panel).to_be_visible(timeout=TIMEOUT)
     expect(layout).not_to_have_attribute("data-artifact-takeover")
-    expect(page.get_by_role("separator", name="Resize artifact panel")).to_be_visible()
+    expect(
+        page.get_by_role("separator", name="Resize artifact panel")
+    ).to_be_visible()
 
 
 @pytest.mark.parametrize(
@@ -821,7 +831,7 @@ def test_compact_artifact_trigger_does_not_overlay_messages(
     local_app: ShinyAppProc,
     viewport: tuple[int, int],
 ) -> None:
-    chat, shell = open_page(page, local_app, viewport=viewport)
+    chat, page_chat = open_page(page, local_app, viewport=viewport)
 
     expect(chat.loc.locator(".shiny-chat-messages")).to_have_css(
         "padding-top", "0px"
@@ -831,7 +841,7 @@ def test_compact_artifact_trigger_does_not_overlay_messages(
     chat.expect_latest_message("echo: hi there", timeout=TIMEOUT)
 
     if viewport[0] <= 799:
-        shell.locator(".shiny-chat-page-sidebar-toggle").click()
+        page_chat.loc_sidebar_toggle.click()
     page.get_by_role("button", name="Show artifact").click()
     page.get_by_role("button", name="Close artifact").click()
 
