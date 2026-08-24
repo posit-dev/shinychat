@@ -223,7 +223,7 @@ def app_ui(request: Request) -> ui.Tag:
             ),
             ui.nav_menu(
                 "More",
-                chat_nav_panel(
+                chat_nav_panel(  # pyright: ignore[reportArgumentType]
                     "Secret",
                     ui.div("Secret page content", id="secret_page"),
                     value="secret",
