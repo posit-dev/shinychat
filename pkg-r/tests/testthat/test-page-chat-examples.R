@@ -12,13 +12,13 @@ page_chat_example_path <- function(...) {
 }
 
 page_chat_example_names <- c(
-  "page-chat-artifact-controls",
+  "page-chat-drawer-controls",
   "page-chat-navigation"
 )
 
 test_that("page-chat R examples parse and construct", {
   apps <- c(
-    page_chat_example_path("page-chat-artifact-controls", "app.R"),
+    page_chat_example_path("page-chat-drawer-controls", "app.R"),
     page_chat_example_path("page-chat-navigation", "app.R")
   )
 
@@ -115,7 +115,7 @@ test_that("page-chat navigation example returns home before showing artifact", {
   )
   expect_true(
     isTRUE(app$get_js(
-      "document.querySelector('#chat .shiny-chat-artifact')?.hidden === false"
+      "document.querySelector('#chat .shiny-chat-drawer')?.hidden === false"
     ))
   )
 })

@@ -10,14 +10,14 @@ def open_page(
     page: Page,
     local_app: ShinyAppProc,
     *,
-    artifact_width: str | None = None,
+    drawer_width: str | None = None,
     chat_width: str | None = None,
     viewport: tuple[int, int] = (1440, 900),
 ) -> tuple[ChatController, PageChatController]:
     page.set_viewport_size({"width": viewport[0], "height": viewport[1]})
     query: list[str] = []
-    if artifact_width:
-        query.append(f"artifact_width={artifact_width}")
+    if drawer_width:
+        query.append(f"drawer_width={drawer_width}")
     if chat_width:
         query.append(f"chat_width={chat_width}")
     url = f"{local_app.url}?{'&'.join(query)}" if query else local_app.url
@@ -29,7 +29,7 @@ def open_page(
     return chat, page_chat
 
 
-def test_mobile_artifact_capable_chat_fills_page_and_keeps_composer_inset(
+def test_mobile_drawer_capable_chat_fills_page_and_keeps_composer_inset(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     viewport = (390, 760)
@@ -70,13 +70,13 @@ def test_mobile_artifact_capable_chat_fills_page_and_keeps_composer_inset(
     )
 
 
-def test_percentage_artifact_keeps_desktop_chat_width(
+def test_percentage_drawer_keeps_desktop_chat_width(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     chat, _ = open_page(page, local_app)
-    page.get_by_role("button", name="Show artifact").click()
+    page.get_by_role("button", name="Show drawer").click()
 
-    panel = chat.loc.locator(".shiny-chat-artifact")
+    panel = chat.loc.locator(".shiny-chat-drawer")
     layout = chat.loc.locator(".shiny-chat-layout")
     wrapper = chat.loc.locator(".shiny-chat-wrapper")
     expect(panel).to_be_visible(timeout=TIMEOUT)
@@ -107,7 +107,7 @@ def test_percentage_artifact_keeps_desktop_chat_width(
     chat_track_center = layout_box["x"] + grid_tracks[0] / 2
     assert wrapper_center == pytest.approx(chat_track_center, abs=1)
 
-    separator = page.get_by_role("separator", name="Resize artifact panel")
+    separator = page.get_by_role("separator", name="Resize drawer panel")
     expect(separator).to_be_visible()
     minimum = int(separator.get_attribute("aria-valuemin") or "0")
     maximum = int(separator.get_attribute("aria-valuemax") or "0")
@@ -125,7 +125,7 @@ def test_percentage_artifact_keeps_desktop_chat_width(
         pytest.param("intrinsic", "fit-content", None, id="intrinsic"),
     ],
 )
-def test_artifact_open_preserves_configured_chat_width(
+def test_drawer_open_preserves_configured_chat_width(
     page: Page,
     local_app: ShinyAppProc,
     chat_width: str,
@@ -135,13 +135,13 @@ def test_artifact_open_preserves_configured_chat_width(
     chat, _ = open_page(
         page,
         local_app,
-        artifact_width="default",
+        drawer_width="default",
         chat_width=chat_width,
     )
-    page.get_by_role("button", name="Show artifact").click()
+    page.get_by_role("button", name="Show drawer").click()
 
     layout = chat.loc.locator(".shiny-chat-layout")
-    panel = chat.loc.locator(".shiny-chat-artifact")
+    panel = chat.loc.locator(".shiny-chat-drawer")
     wrapper = chat.loc.locator(".shiny-chat-wrapper")
     expect(panel).to_be_visible(timeout=TIMEOUT)
     page.wait_for_timeout(220)
@@ -172,14 +172,14 @@ def test_artifact_open_preserves_configured_chat_width(
         )
 
 
-def test_artifact_separator_remains_mouse_reachable_after_maximum_resize(
+def test_drawer_separator_remains_mouse_reachable_after_maximum_resize(
     page: Page, local_app: ShinyAppProc
 ) -> None:
-    chat, _ = open_page(page, local_app, artifact_width="default")
-    page.get_by_role("button", name="Show artifact").click()
+    chat, _ = open_page(page, local_app, drawer_width="default")
+    page.get_by_role("button", name="Show drawer").click()
 
-    panel = chat.loc.locator(".shiny-chat-artifact")
-    separator = page.get_by_role("separator", name="Resize artifact panel")
+    panel = chat.loc.locator(".shiny-chat-drawer")
+    separator = page.get_by_role("separator", name="Resize drawer panel")
     expect(panel).to_be_visible(timeout=TIMEOUT)
     expect(separator).to_be_visible()
     page.wait_for_timeout(220)
@@ -225,14 +225,14 @@ def test_artifact_separator_remains_mouse_reachable_after_maximum_resize(
     assert settled_box["width"] == pytest.approx(expected_width, abs=1)
 
 
-def test_artifact_separator_uses_bslib_sized_trip_and_active_targets(
+def test_drawer_separator_uses_bslib_sized_trip_and_active_targets(
     page: Page, local_app: ShinyAppProc
 ) -> None:
-    chat, _ = open_page(page, local_app, artifact_width="default")
-    page.get_by_role("button", name="Show artifact").click()
+    chat, _ = open_page(page, local_app, drawer_width="default")
+    page.get_by_role("button", name="Show drawer").click()
 
-    panel = chat.loc.locator(".shiny-chat-artifact")
-    separator = page.get_by_role("separator", name="Resize artifact panel")
+    panel = chat.loc.locator(".shiny-chat-drawer")
+    separator = page.get_by_role("separator", name="Resize drawer panel")
     expect(panel).to_be_visible(timeout=TIMEOUT)
     expect(separator).to_be_visible()
     page.wait_for_timeout(220)
@@ -326,18 +326,18 @@ def test_artifact_separator_uses_bslib_sized_trip_and_active_targets(
     assert_bslib_sized_target(-1)
 
 
-def test_debug_resize_overlays_show_artifact_fine_targets(
+def test_debug_resize_overlays_show_drawer_fine_targets(
     page: Page, local_app: ShinyAppProc
 ) -> None:
-    chat, _ = open_page(page, local_app, artifact_width="default")
-    page.get_by_role("button", name="Show artifact").click()
-    artifact_resizer = page.get_by_role(
-        "separator", name="Resize artifact panel"
+    chat, _ = open_page(page, local_app, drawer_width="default")
+    page.get_by_role("button", name="Show drawer").click()
+    drawer_resizer = page.get_by_role(
+        "separator", name="Resize drawer panel"
     )
-    expect(artifact_resizer).to_be_visible(timeout=TIMEOUT)
+    expect(drawer_resizer).to_be_visible(timeout=TIMEOUT)
     page.wait_for_timeout(220)
 
-    production_overlay = artifact_resizer.evaluate(
+    production_overlay = drawer_resizer.evaluate(
         """(element) => {
           const style = getComputedStyle(element, "::after");
           return {
@@ -351,7 +351,7 @@ def test_debug_resize_overlays_show_artifact_fine_targets(
     page.locator("body").evaluate(
         "(element) => element.classList.add('shiny-chat-debug-resize-handle')"
     )
-    idle_overlay = artifact_resizer.evaluate(
+    idle_overlay = drawer_resizer.evaluate(
         """(element) => {
           const style = getComputedStyle(element, "::after");
           return {
@@ -365,10 +365,10 @@ def test_debug_resize_overlays_show_artifact_fine_targets(
     assert idle_overlay["background"] != "rgba(0, 0, 0, 0)"
     assert idle_overlay["pointerEvents"] == production_overlay["pointerEvents"]
 
-    indicator = artifact_resizer.locator("[data-shiny-chat-resize-indicator]")
+    indicator = drawer_resizer.locator("[data-shiny-chat-resize-indicator]")
     expect(indicator).to_be_visible()
 
-    artifact_idle = artifact_resizer.evaluate(
+    drawer_idle = drawer_resizer.evaluate(
         """(element) => {
           const style = getComputedStyle(element, "::after");
           return {
@@ -377,21 +377,21 @@ def test_debug_resize_overlays_show_artifact_fine_targets(
           };
         }"""
     )
-    assert artifact_idle["width"] == 5
-    assert artifact_idle["background"] != "rgba(0, 0, 0, 0)"
+    assert drawer_idle["width"] == 5
+    assert drawer_idle["background"] != "rgba(0, 0, 0, 0)"
 
     indicator_color = indicator.evaluate(
         "(element) => getComputedStyle(element).backgroundColor"
     )
     assert indicator_color != "rgba(0, 0, 0, 0)"
 
-    artifact_box = artifact_resizer.bounding_box()
-    assert artifact_box is not None
-    artifact_y = artifact_box["y"] + artifact_box["height"] / 2
-    page.mouse.move(artifact_box["x"] - 4, artifact_y)
-    page.mouse.move(artifact_box["x"] + artifact_box["width"] + 4, artifact_y)
-    expect(artifact_resizer).to_have_attribute("data-boundary-armed", "")
-    artifact_armed = artifact_resizer.evaluate(
+    drawer_box = drawer_resizer.bounding_box()
+    assert drawer_box is not None
+    drawer_y = drawer_box["y"] + drawer_box["height"] / 2
+    page.mouse.move(drawer_box["x"] - 4, drawer_y)
+    page.mouse.move(drawer_box["x"] + drawer_box["width"] + 4, drawer_y)
+    expect(drawer_resizer).to_have_attribute("data-boundary-armed", "")
+    drawer_armed = drawer_resizer.evaluate(
         """(element) => {
           const style = getComputedStyle(element, "::after");
           return {
@@ -400,11 +400,11 @@ def test_debug_resize_overlays_show_artifact_fine_targets(
           };
         }"""
     )
-    assert artifact_armed["width"] == 24
-    assert artifact_armed["background"] != artifact_idle["background"]
+    assert drawer_armed["width"] == 24
+    assert drawer_armed["background"] != drawer_idle["background"]
 
 
-def test_artifact_resizer_uses_coarse_touch_geometry(
+def test_drawer_resizer_uses_coarse_touch_geometry(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     session = page.context.new_cdp_session(page)
@@ -412,10 +412,10 @@ def test_artifact_resizer_uses_coarse_touch_geometry(
         "Emulation.setTouchEmulationEnabled",
         {"enabled": True, "maxTouchPoints": 1},
     )
-    chat, _ = open_page(page, local_app, artifact_width="default")
-    page.get_by_role("button", name="Show artifact").click()
+    chat, _ = open_page(page, local_app, drawer_width="default")
+    page.get_by_role("button", name="Show drawer").click()
 
-    separator = page.get_by_role("separator", name="Resize artifact panel")
+    separator = page.get_by_role("separator", name="Resize drawer panel")
     expect(separator).to_be_visible(timeout=TIMEOUT)
     expect(separator).to_have_css("width", "26px")
     page.locator("body").evaluate(
@@ -464,26 +464,26 @@ def test_artifact_resizer_uses_coarse_touch_geometry(
     assert int(separator.get_attribute("aria-valuenow") or "0") > initial_width
 
 
-def test_artifact_resizer_recovers_after_responsive_takeover(
+def test_drawer_resizer_recovers_after_responsive_takeover(
     page: Page, local_app: ShinyAppProc
 ) -> None:
-    chat, _ = open_page(page, local_app, artifact_width="default")
-    page.get_by_role("button", name="Show artifact").click()
+    chat, _ = open_page(page, local_app, drawer_width="default")
+    page.get_by_role("button", name="Show drawer").click()
 
-    panel = chat.loc.locator(".shiny-chat-artifact")
-    separator = page.get_by_role("separator", name="Resize artifact panel")
+    panel = chat.loc.locator(".shiny-chat-drawer")
+    separator = page.get_by_role("separator", name="Resize drawer panel")
     expect(panel).to_be_visible(timeout=TIMEOUT)
     expect(separator).to_be_visible()
 
     page.set_viewport_size({"width": 600, "height": 900})
     expect(chat.loc.locator(".shiny-chat-layout")).to_have_attribute(
-        "data-artifact-takeover", ""
+        "data-drawer-takeover", ""
     )
     expect(separator).to_have_count(0)
 
     page.set_viewport_size({"width": 1440, "height": 900})
     expect(chat.loc.locator(".shiny-chat-layout")).not_to_have_attribute(
-        "data-artifact-takeover", ""
+        "data-drawer-takeover", ""
     )
     expect(separator).to_be_visible()
     width = int(separator.get_attribute("aria-valuenow") or "0")
@@ -491,16 +491,16 @@ def test_artifact_resizer_recovers_after_responsive_takeover(
     expect(separator).to_have_attribute("aria-valuenow", str(width + 10))
 
 
-def test_ninety_percent_artifact_is_bounded_before_reveal(
+def test_ninety_percent_drawer_is_bounded_before_reveal(
     page: Page, local_app: ShinyAppProc
 ) -> None:
-    chat, _ = open_page(page, local_app, artifact_width="90pct")
+    chat, _ = open_page(page, local_app, drawer_width="90pct")
     layout = chat.loc.locator(".shiny-chat-layout")
     wrapper = chat.loc.locator(".shiny-chat-wrapper")
 
-    page.get_by_role("button", name="Show artifact").click()
-    expect(layout).to_have_attribute("data-artifact-open", "")
-    expect(layout).to_have_css("--shiny-chat-artifact-width", "1056px")
+    page.get_by_role("button", name="Show drawer").click()
+    expect(layout).to_have_attribute("data-drawer-open", "")
+    expect(layout).to_have_css("--shiny-chat-drawer-width", "1056px")
     page.wait_for_timeout(70)
 
     grid_tracks = layout.evaluate(
@@ -517,12 +517,12 @@ def test_ninety_percent_artifact_is_bounded_before_reveal(
     assert wrapper_box["width"] >= 360
 
 
-def test_default_artifact_width_centers_chat_wrapper(
+def test_default_drawer_width_centers_chat_wrapper(
     page: Page, local_app: ShinyAppProc
 ) -> None:
-    chat, _ = open_page(page, local_app, artifact_width="default")
+    chat, _ = open_page(page, local_app, drawer_width="default")
     layout = chat.loc.locator(".shiny-chat-layout")
-    panel = chat.loc.locator(".shiny-chat-artifact")
+    panel = chat.loc.locator(".shiny-chat-drawer")
     wrapper = chat.loc.locator(".shiny-chat-wrapper")
 
     closed_box = wrapper.bounding_box()
@@ -535,9 +535,9 @@ def test_default_artifact_width_centers_chat_wrapper(
           if (!layout || !wrapper) {
             return;
           }
-          window.__shinychatArtifactOpeningX = new Promise((resolve) => {
+          window.__shinychatDrawerOpeningX = new Promise((resolve) => {
             const observer = new MutationObserver(() => {
-              if (!layout.hasAttribute("data-artifact-open")) return;
+              if (!layout.hasAttribute("data-drawer-open")) return;
               observer.disconnect();
               resolve(wrapper.getBoundingClientRect().x);
             });
@@ -545,9 +545,9 @@ def test_default_artifact_width_centers_chat_wrapper(
           });
         }"""
     )
-    page.get_by_role("button", name="Show artifact").click()
+    page.get_by_role("button", name="Show drawer").click()
     expect(panel).to_be_visible(timeout=TIMEOUT)
-    opening_x = page.evaluate("() => window.__shinychatArtifactOpeningX")
+    opening_x = page.evaluate("() => window.__shinychatDrawerOpeningX")
     page.wait_for_timeout(220)
 
     layout_box = layout.bounding_box()
@@ -576,13 +576,13 @@ def test_default_artifact_width_centers_chat_wrapper(
     assert opening_x == pytest.approx(closed_box["x"], abs=1)
     assert wrapper_box["x"] != pytest.approx(closed_box["x"], abs=1)
 
-    panel.get_by_role("button", name="Close artifact").click()
+    panel.get_by_role("button", name="Close drawer").click()
 
 
-def test_rtl_closed_artifact_wrapper_stays_centered(
+def test_rtl_closed_drawer_wrapper_stays_centered(
     page: Page, local_app: ShinyAppProc
 ) -> None:
-    chat, _ = open_page(page, local_app, artifact_width="default")
+    chat, _ = open_page(page, local_app, drawer_width="default")
     layout = chat.loc.locator(".shiny-chat-layout")
     wrapper = chat.loc.locator(".shiny-chat-wrapper")
 
@@ -602,22 +602,22 @@ def test_rtl_closed_artifact_wrapper_stays_centered(
     )
 
 
-def test_relative_artifact_width_refreshes_without_layout_resize(
+def test_relative_drawer_width_refreshes_without_layout_resize(
     page: Page, local_app: ShinyAppProc
 ) -> None:
-    chat, _ = open_page(page, local_app, artifact_width="relative")
+    chat, _ = open_page(page, local_app, drawer_width="relative")
     layout = chat.loc.locator(".shiny-chat-layout")
-    panel = chat.loc.locator(".shiny-chat-artifact")
+    panel = chat.loc.locator(".shiny-chat-drawer")
 
-    page.get_by_role("button", name="Show artifact").click()
+    page.get_by_role("button", name="Show drawer").click()
     expect(panel).to_be_visible(timeout=TIMEOUT)
-    expect(layout).to_have_css("--shiny-chat-artifact-width", "512px")
+    expect(layout).to_have_css("--shiny-chat-drawer-width", "512px")
     page.wait_for_timeout(220)
     initial_layout_box = layout.bounding_box()
     assert initial_layout_box is not None
 
     page.evaluate("document.documentElement.style.fontSize = '20px'")
-    expect(layout).to_have_css("--shiny-chat-artifact-width", "640px")
+    expect(layout).to_have_css("--shiny-chat-drawer-width", "640px")
     refreshed_layout_box = layout.bounding_box()
     assert refreshed_layout_box is not None
     assert refreshed_layout_box["width"] == pytest.approx(
@@ -625,22 +625,22 @@ def test_relative_artifact_width_refreshes_without_layout_resize(
     )
 
 
-def test_page_artifact_survives_navigation_and_history(
+def test_page_drawer_survives_navigation_and_history(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     chat, page_chat = open_page(page, local_app)
-    panel = chat.loc.locator(".shiny-chat-artifact")
+    panel = chat.loc.locator(".shiny-chat-drawer")
 
-    page.get_by_role("button", name="Show artifact").click()
+    page.get_by_role("button", name="Show drawer").click()
     expect(panel).to_be_visible(timeout=TIMEOUT)
-    expect(panel.get_by_role("heading")).to_have_text("Initial artifact")
+    expect(panel.get_by_role("heading")).to_have_text("Initial drawer")
 
-    page.get_by_role("button", name="Update artifact").click()
-    expect(panel.get_by_role("heading")).to_have_text("Updated artifact")
-    artifact_input = panel.locator("#artifact_text")
-    artifact_input.fill("edited artifact")
-    expect(panel.locator("#artifact_value")).to_have_text(
-        "Artifact value: edited artifact",
+    page.get_by_role("button", name="Update drawer").click()
+    expect(panel.get_by_role("heading")).to_have_text("Updated drawer")
+    drawer_input = panel.locator("#drawer_text")
+    drawer_input.fill("edited drawer")
+    expect(panel.locator("#drawer_value")).to_have_text(
+        "Drawer value: edited drawer",
         timeout=TIMEOUT,
     )
 
@@ -653,9 +653,9 @@ def test_page_artifact_survives_navigation_and_history(
     page_chat.return_home()
     expect(chat.loc).to_be_visible()
     expect(panel).to_be_visible()
-    expect(artifact_input).to_have_value("edited artifact")
-    expect(panel.locator("#artifact_value")).to_have_text(
-        "Artifact value: edited artifact",
+    expect(drawer_input).to_have_value("edited drawer")
+    expect(panel.locator("#drawer_value")).to_have_text(
+        "Drawer value: edited drawer",
         timeout=TIMEOUT,
     )
 
@@ -675,7 +675,7 @@ def test_page_artifact_survives_navigation_and_history(
     sidebar.locator(".shiny-chat-history-new").click()
     expect(chat.loc_messages.locator("> *")).to_have_count(0, timeout=TIMEOUT)
     expect(panel).to_be_visible()
-    expect(artifact_input).to_have_value("edited artifact")
+    expect(drawer_input).to_have_value("edited drawer")
 
     chat.set_user_input("second conversation")
     chat.send_user_input()
@@ -689,52 +689,52 @@ def test_page_artifact_survives_navigation_and_history(
     ).click()
     chat.expect_latest_message("echo: first conversation", timeout=TIMEOUT)
     expect(panel).to_be_visible()
-    expect(panel.get_by_role("heading")).to_have_text("Updated artifact")
-    expect(artifact_input).to_have_value("edited artifact")
-    expect(panel.locator("#artifact_value")).to_have_text(
-        "Artifact value: edited artifact",
+    expect(panel.get_by_role("heading")).to_have_text("Updated drawer")
+    expect(drawer_input).to_have_value("edited drawer")
+    expect(panel.locator("#drawer_value")).to_have_text(
+        "Drawer value: edited drawer",
         timeout=TIMEOUT,
     )
 
 
-def test_artifact_motion_retains_close_panel_and_suppresses_resize(
+def test_drawer_motion_retains_close_panel_and_suppresses_resize(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     chat, _ = open_page(page, local_app)
     layout = chat.loc.locator(".shiny-chat-layout")
-    panel = chat.loc.locator(".shiny-chat-artifact")
+    panel = chat.loc.locator(".shiny-chat-drawer")
 
-    assert "--shiny-chat-artifact-layout-width" in layout.evaluate(
+    assert "--shiny-chat-drawer-layout-width" in layout.evaluate(
         "(element) => getComputedStyle(element).transitionProperty"
     )
-    page.locator("#show_artifact").click()
+    page.locator("#show_drawer").click()
     expect(panel).to_have_attribute("data-motion", "open")
-    expect(layout).to_have_attribute("data-artifact-open", "")
+    expect(layout).to_have_attribute("data-drawer-open", "")
 
-    separator = page.get_by_role("separator", name="Resize artifact panel")
+    separator = page.get_by_role("separator", name="Resize drawer panel")
     separator.dispatch_event("resize-start")
-    expect(layout).to_have_attribute("data-artifact-resizing", "")
+    expect(layout).to_have_attribute("data-drawer-resizing", "")
     expect(layout).to_have_css("transition-duration", "0s")
 
-    panel.get_by_role("button", name="Close artifact").click()
+    panel.get_by_role("button", name="Close drawer").click()
     expect(panel).to_have_attribute("data-motion", "closing")
-    expect(layout).not_to_have_attribute("data-artifact-resizing", "")
+    expect(layout).not_to_have_attribute("data-drawer-resizing", "")
     expect(panel).to_have_attribute("aria-hidden", "true")
     assert panel.evaluate("(element) => element.hidden") is False
-    expect(layout).to_have_attribute("data-artifact-open", "")
+    expect(layout).to_have_attribute("data-drawer-open", "")
     expect(panel).to_be_hidden(timeout=TIMEOUT)
-    expect(layout).not_to_have_attribute("data-artifact-open", "")
+    expect(layout).not_to_have_attribute("data-drawer-open", "")
 
 
-def test_artifact_layout_track_interpolates_during_desktop_reveal(
+def test_drawer_layout_track_interpolates_during_desktop_reveal(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     chat, _ = open_page(page, local_app)
     layout = chat.loc.locator(".shiny-chat-layout")
-    panel = chat.loc.locator(".shiny-chat-artifact")
+    panel = chat.loc.locator(".shiny-chat-drawer")
 
-    page.locator("#show_artifact").click()
-    expect(layout).to_have_attribute("data-artifact-open", "")
+    page.locator("#show_drawer").click()
+    expect(layout).to_have_attribute("data-drawer-open", "")
     expect(panel).to_be_visible()
     page.wait_for_function(
         """() => {
@@ -745,7 +745,7 @@ def test_artifact_layout_track_interpolates_during_desktop_reveal(
           );
           const target = Number.parseFloat(
             getComputedStyle(element).getPropertyValue(
-              "--shiny-chat-artifact-width"
+              "--shiny-chat-drawer-width"
             )
           );
           return track > 0 && track < target;
@@ -771,37 +771,37 @@ def test_artifact_layout_track_interpolates_during_desktop_reveal(
     assert intermediate_track < final_track
 
 
-def test_artifact_motion_respects_reduced_motion_and_takeover(
+def test_drawer_motion_respects_reduced_motion_and_takeover(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     page.emulate_media(reduced_motion="reduce")
     chat, _ = open_page(page, local_app)
     layout = chat.loc.locator(".shiny-chat-layout")
-    panel = chat.loc.locator(".shiny-chat-artifact")
+    panel = chat.loc.locator(".shiny-chat-drawer")
     wrapper = chat.loc.locator(".shiny-chat-wrapper")
 
-    page.get_by_role("button", name="Show artifact").click()
+    page.get_by_role("button", name="Show drawer").click()
     expect(layout).to_have_css("transition-duration", "0s")
     expect(panel).to_have_css("transition-duration", "0s")
     expect(wrapper).to_have_css("transition-duration", "0s")
 
-    panel.get_by_role("button", name="Close artifact").click()
+    panel.get_by_role("button", name="Close drawer").click()
     expect(panel).to_be_hidden(timeout=TIMEOUT)
 
     page.emulate_media(reduced_motion="no-preference")
     page.set_viewport_size({"width": 600, "height": 900})
-    chat.loc.locator(".shiny-chat-artifact-trigger").click()
-    expect(layout).to_have_attribute("data-artifact-takeover", "")
+    chat.loc.locator(".shiny-chat-drawer-trigger").click()
+    expect(layout).to_have_attribute("data-drawer-takeover", "")
     expect(layout).to_have_css("transition-duration", "0s")
 
 
-def test_artifact_stays_adjacent_with_open_desktop_sidebar(
+def test_drawer_stays_adjacent_with_open_desktop_sidebar(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     chat, page_chat = open_page(
         page,
         local_app,
-        artifact_width="default",
+        drawer_width="default",
         viewport=(1024, 900),
     )
     sidebar = page_chat.loc_sidebar
@@ -809,13 +809,13 @@ def test_artifact_stays_adjacent_with_open_desktop_sidebar(
         page_chat.loc_sidebar_toggle.click()
     expect(sidebar).to_be_visible(timeout=TIMEOUT)
 
-    page.get_by_role("button", name="Show artifact").click()
+    page.get_by_role("button", name="Show drawer").click()
     layout = chat.loc.locator(".shiny-chat-layout")
-    panel = chat.loc.locator(".shiny-chat-artifact")
+    panel = chat.loc.locator(".shiny-chat-drawer")
     expect(panel).to_be_visible(timeout=TIMEOUT)
-    expect(layout).not_to_have_attribute("data-artifact-takeover")
+    expect(layout).not_to_have_attribute("data-drawer-takeover")
     expect(
-        page.get_by_role("separator", name="Resize artifact panel")
+        page.get_by_role("separator", name="Resize drawer panel")
     ).to_be_visible()
 
 
@@ -826,7 +826,7 @@ def test_artifact_stays_adjacent_with_open_desktop_sidebar(
         pytest.param((800, 760), id="constrained-container"),
     ],
 )
-def test_compact_artifact_trigger_does_not_overlay_messages(
+def test_compact_drawer_trigger_does_not_overlay_messages(
     page: Page,
     local_app: ShinyAppProc,
     viewport: tuple[int, int],
@@ -842,10 +842,10 @@ def test_compact_artifact_trigger_does_not_overlay_messages(
 
     if viewport[0] <= 799:
         page_chat.loc_sidebar_toggle.click()
-    page.get_by_role("button", name="Show artifact").click()
-    page.get_by_role("button", name="Close artifact").click()
+    page.get_by_role("button", name="Show drawer").click()
+    page.get_by_role("button", name="Close drawer").click()
 
-    trigger = chat.loc.locator(".shiny-chat-artifact-trigger")
+    trigger = chat.loc.locator(".shiny-chat-drawer-trigger")
     message = chat.loc.locator(".shiny-chat-user-message").first
     expect(trigger).to_be_visible()
     expect(message).to_be_visible()

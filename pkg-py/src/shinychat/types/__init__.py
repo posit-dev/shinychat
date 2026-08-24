@@ -1,4 +1,4 @@
-from .._artifact import ChatArtifactPanelController
+from .._drawer import ChatDrawerController
 from .._attachments import Attachment
 from .._chat import ChatMessage, ChatMessageDict
 from .._chat_client import ChatClient
@@ -10,7 +10,7 @@ from .._history_store import (
     FileConversationStore,
 )
 from .._history_types import ConversationMeta, ConversationRecord
-from .._page_chat import ChatArtifactPanel, ChatNavPanel, ChatSidebar
+from .._page_chat import ChatDrawer, ChatNavPanel, ChatSidebar
 
 try:
     from .._chat_normalize_chatlas import ToolResultDisplay
@@ -29,7 +29,7 @@ except ImportError:
 
 __all__ = [
     "Attachment",
-    "ChatArtifactPanelController",
+    "ChatDrawerController",
     "ChatClient",
     "ChatGreeting",
     "HistoryOptions",
@@ -41,7 +41,7 @@ __all__ = [
     "ConversationStore",
     "FileConversationStore",
     "ToolResultDisplay",
-    "ChatArtifactPanel",
+    "ChatDrawer",
     "ChatNavPanel",
     "ChatSidebar",
 ]

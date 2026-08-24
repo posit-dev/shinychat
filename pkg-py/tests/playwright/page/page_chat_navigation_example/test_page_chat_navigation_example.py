@@ -100,13 +100,13 @@ def test_navigation_example_mobile_menu_includes_home_link(
     page_chat.expect_active_page("__home__")
 
 
-def test_navigation_example_mobile_artifact_trigger_does_not_overlay_messages(
+def test_navigation_example_mobile_drawer_trigger_does_not_overlay_messages(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     page.set_viewport_size({"width": 390, "height": 760})
     page.goto(local_app.url)
     chat = ChatController(page, "chat")
-    trigger = chat.loc.locator(".shiny-chat-artifact-trigger")
+    trigger = chat.loc.locator(".shiny-chat-drawer-trigger")
     scroll = chat.loc.locator(".shiny-chat-messages")
     greeting = chat.loc.locator(".shiny-chat-greeting")
 
@@ -130,7 +130,7 @@ def test_navigation_example_mobile_artifact_trigger_does_not_overlay_messages(
     expect(scroll).to_have_css("padding-top", "48px")
 
 
-def test_navigation_example_home_toolbar_returns_home_before_showing_artifact(
+def test_navigation_example_home_toolbar_returns_home_before_showing_drawer(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     page.goto(local_app.url)
@@ -139,12 +139,12 @@ def test_navigation_example_home_toolbar_returns_home_before_showing_artifact(
 
     page_chat.select_page("Sources")
     page_chat.expect_active_page("Sources")
-    expect(chat.loc.locator(".shiny-chat-artifact")).to_be_hidden()
+    expect(chat.loc.locator(".shiny-chat-drawer")).to_be_hidden()
 
     page_chat.loc.get_by_role("button", name="Show Panel").click()
 
     page_chat.expect_active_page("__home__")
-    expect(chat.loc.locator(".shiny-chat-artifact")).to_be_visible()
+    expect(chat.loc.locator(".shiny-chat-drawer")).to_be_visible()
 
 
 def test_navigation_example_shows_settings_offcanvas_from_global_toolbar(

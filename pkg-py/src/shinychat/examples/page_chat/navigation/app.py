@@ -2,7 +2,7 @@ from shiny import App, reactive, ui
 
 from shinychat import (
     Chat,
-    chat_artifact_panel,
+    chat_drawer,
     chat_nav_panel,
     chat_sidebar,
     page_chat,
@@ -19,7 +19,7 @@ bs_icon_gear_fill = """
 """
 
 
-def artifact_content(label: str):
+def drawer_content(label: str):
     return ui.tags.section(
         ui.h3("Preview"),
         ui.p(label),
@@ -97,8 +97,8 @@ app_ui = page_chat(
             toolbar=None,
         ),
     ],
-    artifact_panel=chat_artifact_panel(
-        artifact_content("Use the home toolbar to open this preview."),
+    drawer=chat_drawer(
+        drawer_content("Use the home toolbar to open this preview."),
         title="Working preview",
         width=420,
         open=False,
@@ -125,9 +125,9 @@ def server(input, output, session):
     )
 
     @chat.on_user_submit
-    async def _update_artifact(user_input: str):
-        await chat.artifact_panel.update(
-            artifact_content(f"Latest request: {user_input}"),
+    async def _update_drawer(user_input: str):
+        await chat.drawer.update(
+            drawer_content(f"Latest request: {user_input}"),
             title="Latest request",
         )
 
@@ -136,13 +136,13 @@ def server(input, output, session):
     async def _show_preview():
         # The page-chat root element is addressable as "<id>_page".
         ui.update_navset("chat_page", "__home__")
-        await chat.artifact_panel.show(title="Working preview")
+        await chat.drawer.show(title="Working preview")
 
     @reactive.effect
     @reactive.event(input.show_preview_sources)
     async def _show_preview_from_sources():
         ui.update_navset("chat_page", "__home__")
-        await chat.artifact_panel.show(title="Working preview")
+        await chat.drawer.show(title="Working preview")
 
     @reactive.effect
     @reactive.event(input.show_settings)

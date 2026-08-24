@@ -38,7 +38,7 @@ test_that("chat_app() forwards page and browser-title options", {
     window_title = "Custom window",
     id = "custom-chat",
     sidebar = FALSE,
-    artifact_panel = FALSE
+    drawer = FALSE
   )
   html <- chat_app_html(app)
 
@@ -54,7 +54,7 @@ test_that("chat_app() forwards page and browser-title options", {
     html,
     fixed = TRUE
   ))
-  expect_false(grepl("<shiny-chat-artifact", html, fixed = TRUE))
+  expect_false(grepl("<shiny-chat-drawer", html, fixed = TRUE))
 })
 
 test_that("chat_app() preserves an explicitly supplied bslib theme", {

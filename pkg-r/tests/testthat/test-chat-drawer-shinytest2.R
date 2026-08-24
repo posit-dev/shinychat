@@ -1,29 +1,29 @@
-test_that("R artifact actions render dynamic Shiny content and preserve state", {
+test_that("R drawer actions render dynamic Shiny content and preserve state", {
   skip_if_shinytest2_unavailable()
 
   app <- shinytest2::AppDriver$new(
-    test_path("apps/page-chat-artifact"),
-    name = "page-chat-artifact",
+    test_path("apps/page-chat-drawer"),
+    name = "page-chat-drawer",
     width = 1440,
     height = 900,
     timeout = 30 * 1000
   )
   withr::defer(app$stop())
 
-  artifact_state <- function() {
+  drawer_state <- function() {
     jsonlite::fromJSON(app$get_js(
       paste(
         "(() => {",
-        "const panel = document.querySelector('#chat .shiny-chat-artifact');",
+        "const panel = document.querySelector('#chat .shiny-chat-drawer');",
         "const marker = panel?.querySelector(",
-        "'.artifact-dependency-marker');",
-        "const input = panel?.querySelector('#artifact_text');",
+        "'.drawer-dependency-marker');",
+        "const input = panel?.querySelector('#drawer_text');",
         "return JSON.stringify({",
         "  hidden: panel?.hidden,",
         "  title: panel?.querySelector('h2')?.innerText,",
-        "  label: panel?.querySelector('.artifact-content-label')?.innerText,",
+        "  label: panel?.querySelector('.drawer-content-label')?.innerText,",
         "  value: input?.value,",
-        "  echo: panel?.querySelector('#artifact_echo')?.innerText,",
+        "  echo: panel?.querySelector('#drawer_echo')?.innerText,",
         "  border: marker ? getComputedStyle(marker).borderTopColor : null",
         "});",
         "})()",
@@ -33,20 +33,20 @@ test_that("R artifact actions render dynamic Shiny content and preserve state", 
   }
 
   app$wait_for_js(
-    "document.querySelector('#chat .shiny-chat-artifact') !== null;",
+    "document.querySelector('#chat .shiny-chat-drawer') !== null;",
     timeout = 30 * 1000
   )
   app$wait_for_idle(timeout = 30 * 1000)
 
-  initial <- artifact_state()
+  initial <- drawer_state()
   expect_true(isTRUE(initial$hidden))
-  expect_identical(initial$title, "Initial artifact")
+  expect_identical(initial$title, "Initial drawer")
 
-  app$click(input = "show_artifact")
+  app$click(input = "show_drawer")
   app$wait_for_js(
     paste(
       "document.querySelector(",
-      "'#chat .shiny-chat-artifact:not([hidden]) .artifact-content-label'",
+      "'#chat .shiny-chat-drawer:not([hidden]) .drawer-content-label'",
       ")?.innerText === 'Initial content';",
       sep = "\n"
     ),
@@ -54,17 +54,17 @@ test_that("R artifact actions render dynamic Shiny content and preserve state", 
   )
   app$wait_for_idle(timeout = 30 * 1000)
 
-  shown <- artifact_state()
+  shown <- drawer_state()
   expect_false(isTRUE(shown$hidden))
-  expect_identical(shown$title, "Initial artifact")
+  expect_identical(shown$title, "Initial drawer")
   expect_identical(shown$label, "Initial content")
   expect_identical(shown$value, "Initial")
   expect_identical(shown$border, "rgb(24, 119, 242)")
 
-  app$set_inputs(artifact_text = "browser value")
+  app$set_inputs(drawer_text = "browser value")
   app$wait_for_js(
     paste(
-      "document.querySelector('#chat #artifact_echo')?.innerText ===",
+      "document.querySelector('#chat #drawer_echo')?.innerText ===",
       jsonlite::toJSON("Echo: browser value", auto_unbox = TRUE),
       ";",
       sep = "\n"
@@ -72,27 +72,27 @@ test_that("R artifact actions render dynamic Shiny content and preserve state", 
     timeout = 30 * 1000
   )
 
-  app$click(input = "update_artifact")
+  app$click(input = "update_drawer")
   app$wait_for_js(
     paste(
       "document.querySelector(",
-      "'#chat .shiny-chat-artifact:not([hidden]) h2'",
-      ")?.innerText === 'Updated artifact';",
+      "'#chat .shiny-chat-drawer:not([hidden]) h2'",
+      ")?.innerText === 'Updated drawer';",
       sep = "\n"
     ),
     timeout = 30 * 1000
   )
   app$wait_for_idle(timeout = 30 * 1000)
 
-  updated <- artifact_state()
-  expect_identical(updated$title, "Updated artifact")
+  updated <- drawer_state()
+  expect_identical(updated$title, "Updated drawer")
   expect_identical(updated$label, "Updated content")
   expect_identical(updated$value, "Updated")
   expect_identical(updated$border, "rgb(24, 119, 242)")
 
-  app$click(input = "hide_artifact")
+  app$click(input = "hide_drawer")
   app$wait_for_js(
-    "document.querySelector('#chat .shiny-chat-artifact')?.hidden === true;",
+    "document.querySelector('#chat .shiny-chat-drawer')?.hidden === true;",
     timeout = 30 * 1000
   )
   app$wait_for_idle(timeout = 30 * 1000)
@@ -101,28 +101,28 @@ test_that("R artifact actions render dynamic Shiny content and preserve state", 
   app$wait_for_js(
     paste(
       "document.querySelector(",
-      "'#chat .shiny-chat-artifact:not([hidden]) #artifact_text'",
+      "'#chat .shiny-chat-drawer:not([hidden]) #drawer_text'",
       ")?.value === 'Updated';",
       sep = "\n"
     ),
     timeout = 30 * 1000
   )
   app$wait_for_idle(timeout = 30 * 1000)
-  preserved <- artifact_state()
+  preserved <- drawer_state()
   expect_false(isTRUE(preserved$hidden))
-  expect_identical(preserved$title, "Updated artifact")
+  expect_identical(preserved$title, "Updated drawer")
   expect_identical(preserved$value, "Updated")
 
-  app$click(input = "toggle_artifact")
+  app$click(input = "toggle_drawer")
   app$wait_for_js(
-    "document.querySelector('#chat .shiny-chat-artifact')?.hidden === true;",
+    "document.querySelector('#chat .shiny-chat-drawer')?.hidden === true;",
     timeout = 30 * 1000
   )
-  app$click(input = "toggle_artifact")
+  app$click(input = "toggle_drawer")
   app$wait_for_js(
     paste(
       "document.querySelector(",
-      "'#chat .shiny-chat-artifact:not([hidden]) #artifact_text'",
+      "'#chat .shiny-chat-drawer:not([hidden]) #drawer_text'",
       ")?.value === 'Updated';",
       sep = "\n"
     ),
@@ -144,16 +144,16 @@ test_that("R artifact actions render dynamic Shiny content and preserve state", 
     paste(
       "document.querySelector('shiny-chat-page')?.dataset.activePage ===",
       "'__home__' && document.querySelector(",
-      "'#chat .shiny-chat-artifact:not([hidden]) #artifact_text'",
+      "'#chat .shiny-chat-drawer:not([hidden]) #drawer_text'",
       ")?.value === 'Updated';",
       sep = "\n"
     ),
     timeout = 30 * 1000
   )
   app$wait_for_idle(timeout = 30 * 1000)
-  after_navigation <- artifact_state()
+  after_navigation <- drawer_state()
   expect_false(isTRUE(after_navigation$hidden))
-  expect_identical(after_navigation$title, "Updated artifact")
+  expect_identical(after_navigation$title, "Updated drawer")
   expect_identical(after_navigation$value, "Updated")
   expect_identical(after_navigation$echo, "Echo: Updated")
 })

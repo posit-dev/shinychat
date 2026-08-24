@@ -3,25 +3,25 @@ library(htmltools)
 library(shiny)
 library(shinychat)
 
-artifact_dependency <- htmlDependency(
-  name = "page-chat-artifact-browser-test",
+drawer_dependency <- htmlDependency(
+  name = "page-chat-drawer-browser-test",
   version = "1.0.0",
   src = c(file = "assets"),
-  stylesheet = "artifact.css"
+  stylesheet = "drawer.css"
 )
 
-artifact_content <- function(version, dependency = TRUE) {
+drawer_content <- function(version, dependency = TRUE) {
   tagList(
-    if (dependency) artifact_dependency,
+    if (dependency) drawer_dependency,
     div(
-      class = "artifact-dependency-marker",
-      p(class = "artifact-content-label", paste(version, "content")),
+      class = "drawer-dependency-marker",
+      p(class = "drawer-content-label", paste(version, "content")),
       textInput(
-        "artifact_text",
-        "Artifact value",
+        "drawer_text",
+        "Drawer value",
         value = version
       ),
-      textOutput("artifact_echo")
+      textOutput("drawer_echo")
     )
   )
 }
@@ -30,10 +30,10 @@ ui <- page_chat(
   title = "Page chat browser test",
   id = "chat",
   toolbar = tagList(
-    actionButton("show_artifact", "Show artifact"),
-    actionButton("update_artifact", "Update artifact"),
-    actionButton("hide_artifact", "Hide artifact"),
-    actionButton("toggle_artifact", "Toggle artifact"),
+    actionButton("show_drawer", "Show drawer"),
+    actionButton("update_drawer", "Update drawer"),
+    actionButton("hide_drawer", "Hide drawer"),
+    actionButton("toggle_drawer", "Toggle drawer"),
     actionButton("show_preserved", "Show preserved"),
     textInput("home_toolbar", "Home toolbar", value = "home toolbar initial")
   ),
@@ -73,47 +73,47 @@ ui <- page_chat(
       sidebar = FALSE
     )
   ),
-  artifact_panel = chat_artifact_panel(
-    artifact_content("Initial", dependency = FALSE),
-    title = "Initial artifact",
+  drawer = chat_drawer(
+    drawer_content("Initial", dependency = FALSE),
+    title = "Initial drawer",
     open = FALSE
   )
 )
 
 server <- function(input, output, session) {
-  output$artifact_echo <- renderText({
-    value <- input$artifact_text
+  output$drawer_echo <- renderText({
+    value <- input$drawer_text
     paste0("Echo: ", if (is.null(value)) "" else value)
   })
 
-  observeEvent(input$show_artifact, {
-    chat_artifact_panel_show(
+  observeEvent(input$show_drawer, {
+    chat_drawer_show(
       "chat",
-      content = artifact_content("Initial"),
-      title = "Initial artifact",
+      content = drawer_content("Initial"),
+      title = "Initial drawer",
       session = session
     )
   })
 
-  observeEvent(input$update_artifact, {
-    chat_artifact_panel_update(
+  observeEvent(input$update_drawer, {
+    chat_drawer_update(
       "chat",
-      content = artifact_content("Updated"),
-      title = "Updated artifact",
+      content = drawer_content("Updated"),
+      title = "Updated drawer",
       session = session
     )
   })
 
-  observeEvent(input$hide_artifact, {
-    chat_artifact_panel_hide("chat", session = session)
+  observeEvent(input$hide_drawer, {
+    chat_drawer_hide("chat", session = session)
   })
 
-  observeEvent(input$toggle_artifact, {
-    chat_artifact_panel_toggle("chat", session = session)
+  observeEvent(input$toggle_drawer, {
+    chat_drawer_toggle("chat", session = session)
   })
 
   observeEvent(input$show_preserved, {
-    chat_artifact_panel_show("chat", session = session)
+    chat_drawer_show("chat", session = session)
   })
 }
 

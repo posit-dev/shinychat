@@ -66,14 +66,14 @@ The home page always contains the chat. Add secondary pages with
 `chat_nav_panel()` or Shiny's `ui.nav_panel()`, organize them with
 `ui.nav_menu()`, and add non-selecting navigation UI with `ui.nav_control()`
 or `ui.nav_spacer()`. Configure a home or page-specific sidebar with
-`chat_sidebar()`, and use `chat_artifact_panel()` for initial artifact content.
+`chat_sidebar()`, and use `chat_drawer()` for initial artifact content.
 This complete Core app echoes submitted text and shows it in the artifact panel.
 
 ```{.python file="app.py"}
 from shiny import App, reactive, ui
 from shinychat import (
     Chat,
-    chat_artifact_panel,
+    chat_drawer,
     chat_nav_panel,
     chat_sidebar,
     page_chat,
@@ -118,7 +118,7 @@ app_ui = page_chat(
             sidebar=False,
         ),
     ],
-    artifact_panel=chat_artifact_panel(
+    drawer=chat_drawer(
         ui.p("Submit a question to inspect it here."),
         title="Latest request",
         width=400,
@@ -137,7 +137,7 @@ def server(input, output, session):
     @chat.on_user_submit
     async def _(user_input: str):
         await chat.append_message(f"You asked: {user_input}")
-        await chat.artifact_panel.show(
+        await chat.drawer.show(
             ui.p(user_input),
             title="Latest request",
         )
@@ -183,9 +183,9 @@ It owns the full-window layout and responsive app menu, so
 `navbar_options(position=...)` and `navbar_options(collapsible=...)` are not
 supported.
 
-Configured artifacts start open by default; use `chat_artifact_panel(open=False)` to
-start one closed. Bare `artifact_panel=True` enables an empty, initially hidden
-artifact panel. From the server, `chat.artifact_panel.show()`, `.update()`,
+Configured artifacts start open by default; use `chat_drawer(open=False)` to
+start one closed. Bare `drawer=True` enables an empty, initially hidden
+artifact panel. From the server, `chat.drawer.show()`, `.update()`,
 `.hide()`, and `.toggle()` change the panel without replacing the chat.
 `show()` and `update()` accept htmltools or Shiny UI content, including Shiny
 inputs and outputs.
@@ -202,7 +202,7 @@ uv pip install "shinychat[providers]"
 shiny run shinychat.examples.page_chat.navigation:app
 ```
 
-Replace `navigation` with `artifact_control` to run the artifact-controls
+Replace `navigation` with `drawer_control` to run the artifact-controls
 example; it has no optional dependencies.
 
 The same composition helpers work with Shiny Express. Keep `page_chat()` as the

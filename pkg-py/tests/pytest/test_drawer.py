@@ -12,7 +12,7 @@ from shiny import Inputs, Session
 from shiny.module import ResolvedId
 from shiny.session import session_context
 from shinychat import Chat
-from shinychat.types import ChatArtifactPanelController
+from shinychat.types import ChatDrawerController
 
 
 class _ArtifactSession:
@@ -72,27 +72,27 @@ def _run_async(coro: Any) -> None:
         raise errors[0]
 
 
-def test_artifact_panel_controller_is_stable_and_public() -> None:
+def test_drawer_controller_is_stable_and_public() -> None:
     chat, _ = _make_chat()
 
-    assert isinstance(chat.artifact_panel, ChatArtifactPanelController)
-    assert chat.artifact_panel is chat.artifact_panel
+    assert isinstance(chat.drawer, ChatDrawerController)
+    assert chat.drawer is chat.drawer
 
 
-def test_artifact_controller_methods_are_async_with_expected_signatures() -> (
+def test_drawer_controller_methods_are_async_with_expected_signatures() -> (
     None
 ):
     for method in (
-        ChatArtifactPanelController.show,
-        ChatArtifactPanelController.hide,
-        ChatArtifactPanelController.toggle,
-        ChatArtifactPanelController.update,
+        ChatDrawerController.show,
+        ChatDrawerController.hide,
+        ChatDrawerController.toggle,
+        ChatDrawerController.update,
     ):
         assert inspect.iscoroutinefunction(method)
 
     for method in (
-        ChatArtifactPanelController.show,
-        ChatArtifactPanelController.update,
+        ChatDrawerController.show,
+        ChatDrawerController.update,
     ):
         parameters = inspect.signature(method).parameters
         assert tuple(parameters) == ("self", "content", "title")
@@ -100,8 +100,8 @@ def test_artifact_controller_methods_are_async_with_expected_signatures() -> (
         assert parameters["title"].default is None
 
     for method in (
-        ChatArtifactPanelController.hide,
-        ChatArtifactPanelController.toggle,
+        ChatDrawerController.hide,
+        ChatDrawerController.toggle,
     ):
         assert tuple(inspect.signature(method).parameters) == ("self",)
 
@@ -111,30 +111,30 @@ def test_artifact_actions_omit_unsupplied_fields_and_preserve_visibility() -> (
 ):
     chat, session = _make_chat()
 
-    _run_async(chat.artifact_panel.show())
-    _run_async(chat.artifact_panel.update(title="Preview"))
-    _run_async(chat.artifact_panel.hide())
-    _run_async(chat.artifact_panel.toggle())
+    _run_async(chat.drawer.show())
+    _run_async(chat.drawer.update(title="Preview"))
+    _run_async(chat.drawer.hide())
+    _run_async(chat.drawer.toggle())
 
     assert session.messages == [
         (
             "shinyChatMessage",
-            {"id": "chat", "action": {"type": "artifact_show"}},
+            {"id": "chat", "action": {"type": "drawer_show"}},
         ),
         (
             "shinyChatMessage",
             {
                 "id": "chat",
-                "action": {"type": "artifact_update", "title": "Preview"},
+                "action": {"type": "drawer_update", "title": "Preview"},
             },
         ),
         (
             "shinyChatMessage",
-            {"id": "chat", "action": {"type": "artifact_hide"}},
+            {"id": "chat", "action": {"type": "drawer_hide"}},
         ),
         (
             "shinyChatMessage",
-            {"id": "chat", "action": {"type": "artifact_toggle"}},
+            {"id": "chat", "action": {"type": "drawer_toggle"}},
         ),
     ]
 
@@ -143,7 +143,7 @@ def test_artifact_actions_omit_unsupplied_fields_and_preserve_visibility() -> (
 def test_artifact_empty_content_clears_dependencies(content: object) -> None:
     chat, session = _make_chat()
 
-    _run_async(chat.artifact_panel.update(cast(Any, content), title=""))
+    _run_async(chat.drawer.update(cast(Any, content), title=""))
 
     assert session.messages == [
         (
@@ -151,7 +151,7 @@ def test_artifact_empty_content_clears_dependencies(content: object) -> None:
             {
                 "id": "chat",
                 "action": {
-                    "type": "artifact_update",
+                    "type": "drawer_update",
                     "content": "",
                     "title": "",
                 },
@@ -171,7 +171,7 @@ def test_artifact_content_uses_chat_session_dependency_serialization() -> None:
     )
 
     _run_async(
-        chat.artifact_panel.show(
+        chat.drawer.show(
             tags.div(dependency, "Artifact content"), title="Preview"
         )
     )
@@ -182,7 +182,7 @@ def test_artifact_content_uses_chat_session_dependency_serialization() -> None:
             {
                 "id": "chat",
                 "action": {
-                    "type": "artifact_show",
+                    "type": "drawer_show",
                     "content": "<div>Artifact content</div>",
                     "title": "Preview",
                 },
@@ -212,7 +212,7 @@ def test_artifact_tagifiable_content_includes_tagified_dependencies() -> None:
 
     chat, session = _make_chat()
 
-    _run_async(chat.artifact_panel.show(cast(Any, ArtifactContent())))
+    _run_async(chat.drawer.show(cast(Any, ArtifactContent())))
 
     assert session.messages == [
         (
@@ -220,7 +220,7 @@ def test_artifact_tagifiable_content_includes_tagified_dependencies() -> None:
             {
                 "id": "chat",
                 "action": {
-                    "type": "artifact_show",
+                    "type": "drawer_show",
                     "content": "<div>Tagified artifact content</div>",
                 },
                 "html_deps": [
@@ -240,7 +240,7 @@ def test_artifact_uses_resolved_chat_id_and_envelope() -> None:
     with session_context(cast(Session, session)):
         chat = Chat("chat")
 
-    _run_async(chat.artifact_panel.show(tags.span("Artifact")))
+    _run_async(chat.drawer.show(tags.span("Artifact")))
 
     assert session.messages == [
         (
@@ -248,7 +248,7 @@ def test_artifact_uses_resolved_chat_id_and_envelope() -> None:
             {
                 "id": "module-chat",
                 "action": {
-                    "type": "artifact_show",
+                    "type": "drawer_show",
                     "content": "<span>Artifact</span>",
                 },
                 "html_deps": [],
@@ -261,6 +261,6 @@ def test_artifact_validates_title_and_content() -> None:
     chat, _ = _make_chat()
 
     with pytest.raises(TypeError, match="`title` must be a string or None"):
-        _run_async(chat.artifact_panel.show(title=cast(Any, 1)))
+        _run_async(chat.drawer.show(title=cast(Any, 1)))
     with pytest.raises(PydanticSerializationError, match="Unable to serialize"):
-        _run_async(chat.artifact_panel.show(cast(Any, object())))
+        _run_async(chat.drawer.show(cast(Any, object())))

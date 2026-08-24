@@ -84,7 +84,7 @@ ui <- page_chat(
       toolbar = actionButton("save_settings", "Save settings")
     )
   ),
-  artifact_panel = chat_artifact_panel(tags$p("Preview content"), title = "Preview")
+  drawer = chat_drawer(tags$p("Preview content"), title = "Preview")
 )
 ```
 
@@ -97,5 +97,5 @@ The package includes credential-free `page_chat()` examples. Run them with:
 
 ```r
 shiny::runExample("page-chat-navigation", package = "shinychat")
-shiny::runExample("page-chat-artifact-controls", package = "shinychat")
+shiny::runExample("page-chat-drawer-controls", package = "shinychat")
 ```

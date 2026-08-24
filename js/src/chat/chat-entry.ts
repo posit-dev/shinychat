@@ -3,7 +3,7 @@ import { createElement } from "react"
 import { ChatApp } from "./ChatApp"
 import type { ChatAppProps, InitialGreeting } from "./ChatApp"
 import { getShinyTransport } from "../transport/shiny-transport"
-import type { ChatArtifactState, ChatMessageData, ToolGrouping } from "./state"
+import type { ChatDrawerState, ChatMessageData, ToolGrouping } from "./state"
 import type { ContentType, GreetingOptions } from "../transport/types"
 import { uuid } from "../utils/uuid"
 import { DEFAULT_UPLOAD_ACCEPT } from "./attachments"
@@ -41,7 +41,7 @@ function getBrowserToken(): string {
 const CHAT_INPUT_TAG = "shiny-chat-input"
 const CHAT_MESSAGE_TAG = "shiny-chat-message"
 const CHAT_FOOTER_TAG = "shiny-chat-footer"
-const CHAT_ARTIFACT_TAG = "shiny-chat-artifact"
+const CHAT_DRAWER_TAG = "shiny-chat-drawer"
 
 function parseInitialMessages(container: HTMLElement): ChatMessageData[] {
   const messageEls = container.querySelectorAll(CHAT_MESSAGE_TAG)
@@ -90,10 +90,10 @@ function parseInitialGreeting(
   }
 }
 
-function parseInitialArtifact(
+function parseInitialDrawer(
   container: HTMLElement,
-): { state: ChatArtifactState; source: Element } | undefined {
-  const source = container.querySelector(CHAT_ARTIFACT_TAG)
+): { state: ChatDrawerState; source: Element } | undefined {
+  const source = container.querySelector(CHAT_DRAWER_TAG)
   if (!source) return undefined
 
   const title = source.getAttribute("title")
@@ -105,7 +105,7 @@ function parseInitialArtifact(
         source.getAttribute("open")?.toLowerCase() !== "false",
       title: title || null,
       // The original source element retains initial dependency nodes and is
-      // adopted by ChatArtifact on first render, rather than serialized.
+      // adopted by ChatDrawer on first render, rather than serialized.
       content: source.innerHTML,
       htmlDeps: [],
       width: source.getAttribute("width") || "400px",
@@ -126,7 +126,7 @@ function parseToolGrouping(value: string | null): ToolGrouping | undefined {
 class ChatContainerElement extends HTMLElement {
   private reactRoot: Root | null = null
   private footerEl: Element | null = null
-  private artifactEl: Element | null = null
+  private drawerEl: Element | null = null
   private pendingUnmount: ReturnType<typeof setTimeout> | null = null
   // Retained so an observed attribute can re-render with one field replaced
   // instead of rebuilding every prop (and re-parsing the initial messages,
@@ -187,13 +187,13 @@ class ChatContainerElement extends HTMLElement {
       : null
 
     const initialMessages = parseInitialMessages(this)
-    const initialArtifact = parseInitialArtifact(this)
+    const initialDrawer = parseInitialDrawer(this)
 
     if (!this.footerEl) {
       this.footerEl = this.querySelector(CHAT_FOOTER_TAG)
     }
-    if (!this.artifactEl && initialArtifact) {
-      this.artifactEl = initialArtifact.source
+    if (!this.drawerEl && initialDrawer) {
+      this.drawerEl = initialDrawer.source
     }
 
     const initialGreeting = parseInitialGreeting(this)
@@ -210,9 +210,9 @@ class ChatContainerElement extends HTMLElement {
     // elements (Shiny thinks the inputs are already bound by ID).
     transport.unbindAll(this)
     // Detach preserved DOM only after unbinding its server-owned subtree.
-    // RawDOM and ChatArtifact later adopt those children without serializing.
+    // RawDOM and ChatDrawer later adopt those children without serializing.
     this.footerEl?.remove()
-    this.artifactEl?.remove()
+    this.drawerEl?.remove()
 
     // Send the browser token once per element so the server can correlate
     // this client across sessions. The server reads it with req() as a
@@ -254,8 +254,8 @@ class ChatContainerElement extends HTMLElement {
       placeholder,
       initialMessages,
       initialGreeting,
-      initialArtifact: initialArtifact?.state,
-      artifactSource: this.artifactEl ?? undefined,
+      initialDrawer: initialDrawer?.state,
+      drawerSource: this.drawerEl ?? undefined,
       enableCancel,
       enableUpload,
       asideFavicon,

@@ -10,7 +10,7 @@ import shinychat
 from htmltools import HTMLDependency, Tag, tags
 from shiny import module, ui
 from shinychat import (
-    chat_artifact_panel,
+    chat_drawer,
     chat_nav_panel,
     chat_sidebar,
     chat_ui,
@@ -20,20 +20,20 @@ from shinychat import (
 )
 from shinychat._utils_types import MISSING
 from shinychat.express import Chat as ExpressChat
-from shinychat.types import ChatArtifactPanel, ChatNavPanel, ChatSidebar
+from shinychat.types import ChatDrawer, ChatNavPanel, ChatSidebar
 
 
 def test_public_page_chat_configuration_exports() -> None:
     assert isinstance(chat_sidebar(), ChatSidebar)
     assert chat_sidebar().history is MISSING
-    artifact = chat_artifact_panel()
-    assert isinstance(artifact, ChatArtifactPanel)
-    assert artifact.open is True
+    drawer = chat_drawer()
+    assert isinstance(drawer, ChatDrawer)
+    assert drawer.open is True
     assert isinstance(chat_nav_panel("About"), ChatNavPanel)
     assert callable(page_chat)
     assert callable(page_chat_theme)
-    assert not hasattr(shinychat, "ChatArtifactPanel")
-    assert not hasattr(shinychat, "ChatArtifactPanelController")
+    assert not hasattr(shinychat, "ChatDrawer")
+    assert not hasattr(shinychat, "ChatDrawerController")
     assert not hasattr(shinychat, "ChatNavPanel")
     assert not hasattr(shinychat, "ChatSidebar")
 
@@ -60,9 +60,9 @@ def test_page_chat_theme_composes_preset_and_caller_overrides() -> None:
         "--shiny-chat-input-padding-bottom: "
         "var(--shiny-chat-page-input-padding-bottom)" in css
     )
-    assert "background:var(--shiny-chat-page-artifact-bg)" in css
-    assert "box-shadow:var(--shiny-chat-page-artifact-box-shadow)" in css
-    assert "background:var(--shiny-chat-page-artifact-header-bg)" in css
+    assert "background:var(--shiny-chat-page-drawer-bg)" in css
+    assert "box-shadow:var(--shiny-chat-page-drawer-box-shadow)" in css
+    assert "background:var(--shiny-chat-page-drawer-header-bg)" in css
 
 
 def test_chat_sidebar_normalizes_and_validates_values() -> None:
@@ -109,28 +109,28 @@ def test_chat_sidebar_normalizes_and_validates_values() -> None:
         assert chat_sidebar(width=width).width == width
 
 
-def test_chat_artifact_normalizes_and_validates_values() -> None:
-    artifact = chat_artifact_panel(
+def test_chat_drawer_normalizes_and_validates_values() -> None:
+    drawer = chat_drawer(
         tags.p("Artifact"),
         title="Preview",
         width="32rem",
         resizable=False,
     )
 
-    assert artifact.title == "Preview"
-    assert artifact.width == "32rem"
-    assert artifact.open is True
-    assert artifact.resizable is False
-    assert chat_artifact_panel(open=False).open is False
+    assert drawer.title == "Preview"
+    assert drawer.width == "32rem"
+    assert drawer.open is True
+    assert drawer.resizable is False
+    assert chat_drawer(open=False).open is False
 
     with pytest.raises(TypeError, match="`title` must be a string"):
-        chat_artifact_panel(title=1)  # type: ignore[arg-type]
+        chat_drawer(title=1)  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="`open` must be a bool"):
-        chat_artifact_panel(open="true")  # type: ignore[arg-type]
+        chat_drawer(open="true")  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="`width` must be a CSS width"):
-        chat_artifact_panel(width=True)
-    assert chat_artifact_panel(width=400).width == "400px"
-    assert chat_artifact_panel(width=400.5).width == "400.5px"
+        chat_drawer(width=True)
+    assert chat_drawer(width=400).width == "400px"
+    assert chat_drawer(width=400.5).width == "400.5px"
 
 
 def test_chat_nav_panel_validates_sidebar_and_navigation_values() -> None:
@@ -229,35 +229,35 @@ def test_chat_ui_history_rejects_structural_and_invalid_attributes() -> None:
         )
 
 
-def test_chat_ui_defaults_to_closed_artifact_and_embedded_history() -> None:
+def test_chat_ui_defaults_to_closed_drawer_and_embedded_history() -> None:
     html = chat_ui("chat", fill=False).get_html_string()
 
-    assert html.count("<shiny-chat-artifact") == 1
+    assert html.count("<shiny-chat-drawer") == 1
     assert 'width="400px"' in html
     assert "show-history" not in html
     assert " open=" not in html
     assert "resizable=" not in html
 
 
-def test_chat_ui_artifact_false_omits_artifact_support() -> None:
-    html = chat_ui("chat", artifact_panel=False, fill=False).get_html_string()
+def test_chat_ui_drawer_false_omits_drawer_support() -> None:
+    html = chat_ui("chat", drawer=False, fill=False).get_html_string()
 
-    assert "shiny-chat-artifact" not in html
+    assert "shiny-chat-drawer" not in html
 
 
-def test_chat_ui_artifact_carries_content_and_dependencies() -> None:
+def test_chat_ui_drawer_carries_content_and_dependencies() -> None:
     dependency = HTMLDependency(
         "artifact-widget",
         "1.0.0",
         head="<meta name='artifact-widget'>",
     )
-    artifact = chat_artifact_panel(
+    drawer = chat_drawer(
         tags.div(dependency, "Artifact content"),
         title="Preview",
         width=320,
         resizable=False,
     )
-    tag = chat_ui("chat", artifact_panel=artifact, fill=False)
+    tag = chat_ui("chat", drawer=drawer, fill=False)
     html = tag.get_html_string()
 
     assert 'title="Preview"' in html
@@ -278,8 +278,8 @@ def test_chat_ui_show_history_false_is_explicit() -> None:
     ("kwargs", "match"),
     [
         (
-            {"artifact_panel": 1},
-            "`artifact_panel` must be a bool or a shinychat `ChatArtifactPanel`",
+            {"drawer": 1},
+            "`drawer` must be a bool or a shinychat `ChatDrawer`",
         ),
         ({"show_history": "false"}, "`show_history` must be a bool"),
     ],
@@ -294,11 +294,9 @@ def test_chat_ui_validates_page_chat_values(
 def test_core_and_express_ui_signatures_include_page_chat_values() -> None:
     for fn in (chat_ui, ExpressChat.ui):
         parameters = inspect.signature(fn).parameters
-        assert parameters["artifact_panel"].default is True
+        assert parameters["drawer"].default is True
         assert parameters["show_history"].default is True
-        assert (
-            parameters["artifact_panel"].kind is inspect.Parameter.KEYWORD_ONLY
-        )
+        assert parameters["drawer"].kind is inspect.Parameter.KEYWORD_ONLY
         assert parameters["show_history"].kind is inspect.Parameter.KEYWORD_ONLY
 
 
@@ -314,7 +312,7 @@ def test_page_chat_signature_makes_icon_keyword_only() -> None:
         "toolbar_global",
         "navbar_options",
         "sidebar",
-        "artifact_panel",
+        "drawer",
         "window_title",
         "lang",
         "theme",
@@ -333,7 +331,7 @@ def test_page_chat_signature_makes_icon_keyword_only() -> None:
     for name in list(parameters)[2:-1]:
         assert parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
     assert parameters["id"].default == "chat"
-    assert parameters["artifact_panel"].default is True
+    assert parameters["drawer"].default is True
     assert parameters["sidebar"].default is True
     assert parameters["toolbar"].default is None
     assert parameters["toolbar_global"].default is MISSING
@@ -856,7 +854,7 @@ def test_page_chat_forwards_original_id_and_chat_options(
             enable_cancel=True,
             allow_attachments=["text/plain"],
             footer=tags.small("Footer"),
-            artifact_panel=False,
+            drawer=False,
             submit_key="enter+modifier",
             tool_grouping="all",
             class_="chat-attrs",
@@ -875,7 +873,7 @@ def test_page_chat_forwards_original_id_and_chat_options(
     assert options["width"] == "40rem"
     assert options["enable_cancel"] is True
     assert options["allow_attachments"] == ["text/plain"]
-    assert options["artifact_panel"] is False
+    assert options["drawer"] is False
     assert options["submit_key"] == "enter+modifier"
     assert options["tool_grouping"] == "all"
     assert options["class_"] == "chat-attrs"

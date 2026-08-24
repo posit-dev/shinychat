@@ -1,11 +1,11 @@
-#' Show a chat artifact panel
+#' Show a chat drawer
 #'
 #' @description
-#' Shows a chat's artifact panel. Supplying `content` or `title` updates that
+#' Shows a chat's drawer. Supplying `content` or `title` updates that
 #' field before the panel is shown. Omitted fields preserve their current value.
 #'
-#' @family chat artifact panels
-#' @seealso [chat_artifact_panel()] to configure an artifact panel, and [chat_ui()] or
+#' @family chat drawers
+#' @seealso [chat_drawer()] to configure an drawer, and [chat_ui()] or
 #'   [page_chat()] to display one.
 #'
 #' @param id The ID of the chat element.
@@ -16,25 +16,25 @@
 #'
 #' @returns Invisibly, `NULL`.
 #' @export
-chat_artifact_panel_show <- function(
+chat_drawer_show <- function(
   id,
   content = NULL,
   title = NULL,
   session = shiny::getDefaultReactiveDomain()
 ) {
-  chat_artifact_panel_action(
+  chat_drawer_action(
     id = id,
-    type = "artifact_show",
+    type = "drawer_show",
     content = content,
     title = title,
     session = session
   )
 }
 
-#' Hide a chat artifact panel
+#' Hide a chat drawer
 #'
-#' @family chat artifact panels
-#' @seealso [chat_artifact_panel()] to configure an artifact panel, and [chat_ui()] or
+#' @family chat drawers
+#' @seealso [chat_drawer()] to configure an drawer, and [chat_ui()] or
 #'   [page_chat()] to display one.
 #'
 #' @param id The ID of the chat element.
@@ -42,17 +42,17 @@ chat_artifact_panel_show <- function(
 #'
 #' @returns Invisibly, `NULL`.
 #' @export
-chat_artifact_panel_hide <- function(
+chat_drawer_hide <- function(
   id,
   session = shiny::getDefaultReactiveDomain()
 ) {
-  chat_artifact_panel_action(id, type = "artifact_hide", session = session)
+  chat_drawer_action(id, type = "drawer_hide", session = session)
 }
 
-#' Toggle a chat artifact panel
+#' Toggle a chat drawer
 #'
-#' @family chat artifact panels
-#' @seealso [chat_artifact_panel()] to configure an artifact panel, and [chat_ui()] or
+#' @family chat drawers
+#' @seealso [chat_drawer()] to configure an drawer, and [chat_ui()] or
 #'   [page_chat()] to display one.
 #'
 #' @param id The ID of the chat element.
@@ -60,22 +60,22 @@ chat_artifact_panel_hide <- function(
 #'
 #' @returns Invisibly, `NULL`.
 #' @export
-chat_artifact_panel_toggle <- function(
+chat_drawer_toggle <- function(
   id,
   session = shiny::getDefaultReactiveDomain()
 ) {
-  chat_artifact_panel_action(id, type = "artifact_toggle", session = session)
+  chat_drawer_action(id, type = "drawer_toggle", session = session)
 }
 
-#' Update a chat artifact panel
+#' Update a chat drawer
 #'
 #' @description
-#' Updates a chat's artifact panel content or title without changing its visibility.
+#' Updates a chat's drawer content or title without changing its visibility.
 #' Omitted fields preserve their current value. Use an empty
 #' [htmltools::tagList()] to clear content or `""` to clear the title.
 #'
-#' @family chat artifact panels
-#' @seealso [chat_artifact_panel()] to configure an artifact panel, and [chat_ui()] or
+#' @family chat drawers
+#' @seealso [chat_drawer()] to configure an drawer, and [chat_ui()] or
 #'   [page_chat()] to display one.
 #'
 #' @param id The ID of the chat element.
@@ -85,22 +85,22 @@ chat_artifact_panel_toggle <- function(
 #'
 #' @returns Invisibly, `NULL`.
 #' @export
-chat_artifact_panel_update <- function(
+chat_drawer_update <- function(
   id,
   content = NULL,
   title = NULL,
   session = shiny::getDefaultReactiveDomain()
 ) {
-  chat_artifact_panel_action(
+  chat_drawer_action(
     id = id,
-    type = "artifact_update",
+    type = "drawer_update",
     content = content,
     title = title,
     session = session
   )
 }
 
-chat_artifact_panel_action <- function(
+chat_drawer_action <- function(
   id,
   type,
   content = NULL,
@@ -116,7 +116,7 @@ chat_artifact_panel_action <- function(
   action <- list(type = type)
   html_deps <- NULL
   if (!is.null(content)) {
-    chat_validate_artifact_panel_content(content)
+    chat_validate_drawer_content(content)
     ui <- process_ui(pre_process_ui(content), session)
     action$content <- as.character(ui[["html"]])
     html_deps <- ui[["deps"]]
@@ -134,7 +134,7 @@ chat_artifact_panel_action <- function(
   invisible(NULL)
 }
 
-chat_validate_artifact_panel_content <- function(content) {
+chat_validate_drawer_content <- function(content) {
   if (
     is.function(content) ||
       inherits(content, "coro_generator_instance") ||
@@ -156,20 +156,20 @@ chat_validate_artifact_panel_content <- function(content) {
   )
 }
 
-#' Create a chat artifact panel configuration
+#' Create a chat drawer configuration
 #'
 #' @description
-#' An artifact panel displays UI content adjacent to a chat interface, such as
+#' An drawer displays UI content adjacent to a chat interface, such as
 #' a preview, a generated report, or a detail view. Use
-#' `chat_artifact_panel()` to supply its initial content and layout to the
-#' `artifact_panel` argument of [chat_ui()] or [page_chat()]. Update the panel
-#' later with the other artifact panel functions.
+#' `chat_drawer()` to supply its initial content and layout to the
+#' `drawer` argument of [chat_ui()] or [page_chat()]. Update the panel
+#' later with the other drawer functions.
 #'
-#' @family chat artifact panels
+#' @family chat drawers
 #' @seealso [chat_ui()] and [page_chat()] accept this configuration through
-#'   their `artifact_panel` argument.
+#'   their `drawer` argument.
 #'
-#' @param ... UI content to display in the artifact panel.
+#' @param ... UI content to display in the drawer.
 #' @param title An optional artifact title.
 #' @param width The initial artifact width. Positive numbers are converted to
 #'   pixels; character values must be valid CSS lengths.
@@ -178,7 +178,7 @@ chat_validate_artifact_panel_content <- function(content) {
 #'
 #' @returns A configuration object for use with [chat_ui()] or [page_chat()].
 #' @export
-chat_artifact_panel <- function(
+chat_drawer <- function(
   ...,
   title = NULL,
   width = 400,
@@ -201,13 +201,13 @@ chat_artifact_panel <- function(
       open = open,
       resizable = resizable
     ),
-    class = "chat_artifact_panel"
+    class = "chat_drawer"
   )
 }
 
-chat_artifact_panel_tag <- function(panel) {
+chat_drawer_tag <- function(panel) {
   htmltools::tag(
-    "shiny-chat-artifact",
+    "shiny-chat-drawer",
     rlang::list2(
       title = panel$title,
       width = panel$width,

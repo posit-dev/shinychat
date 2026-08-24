@@ -1,6 +1,6 @@
-artifact_child <- function(ui) {
+drawer_child <- function(ui) {
   children <- Filter(
-    function(child) identical(child$name, "shiny-chat-artifact"),
+    function(child) identical(child$name, "shiny-chat-drawer"),
     ui$children
   )
   expect_length(children, 1)
@@ -42,26 +42,26 @@ test_that("chat_sidebar() validates and normalizes configuration", {
   expect_snapshot(error = TRUE, chat_sidebar(class = "not-an-attribute"))
 })
 
-test_that("chat_artifact_panel() validates configuration", {
-  artifact <- chat_artifact_panel(
-    htmltools::tags$p("Artifact content"),
+test_that("chat_drawer() validates configuration", {
+  drawer <- chat_drawer(
+    htmltools::tags$p("Drawer content"),
     title = "Preview",
     width = 480,
     resizable = FALSE
   )
 
-  expect_s3_class(artifact, "chat_artifact_panel")
-  expect_equal(artifact$title, "Preview")
-  expect_equal(artifact$width, "480px")
-  expect_true(artifact$open)
-  expect_false(artifact$resizable)
-  expect_false(chat_artifact_panel(open = FALSE)$open)
+  expect_s3_class(drawer, "chat_drawer")
+  expect_equal(drawer$title, "Preview")
+  expect_equal(drawer$width, "480px")
+  expect_true(drawer$open)
+  expect_false(drawer$resizable)
+  expect_false(chat_drawer(open = FALSE)$open)
 
-  expect_snapshot(error = TRUE, chat_artifact_panel(title = list()))
-  expect_snapshot(error = TRUE, chat_artifact_panel(width = -1))
-  expect_snapshot(error = TRUE, chat_artifact_panel(width = "bogus"))
-  expect_snapshot(error = TRUE, chat_artifact_panel(open = "yes"))
-  expect_snapshot(error = TRUE, chat_artifact_panel(data_role = "artifact"))
+  expect_snapshot(error = TRUE, chat_drawer(title = list()))
+  expect_snapshot(error = TRUE, chat_drawer(width = -1))
+  expect_snapshot(error = TRUE, chat_drawer(width = "bogus"))
+  expect_snapshot(error = TRUE, chat_drawer(open = "yes"))
+  expect_snapshot(error = TRUE, chat_drawer(data_role = "drawer"))
 })
 
 test_that("page_chat_theme() composes caller overrides over a preset", {
@@ -101,7 +101,7 @@ test_that("page_chat_theme() contains the page-specific baseline tokens", {
     "shiny-chat-page-nav-link-font-size",
     "shiny-chat-page-panel-padding-block",
     "shiny-chat-page-fill-padding",
-    "shiny-chat-page-artifact-box-shadow"
+    "shiny-chat-page-drawer-box-shadow"
   )
 
   expect_false(anyNA(bslib::bs_get_variables(page_theme, tokens)))
@@ -127,17 +127,17 @@ test_that("page_chat_theme() contains the page-specific baseline tokens", {
   )
   expect_match(
     css,
-    "background:var(--shiny-chat-page-artifact-bg)",
+    "background:var(--shiny-chat-page-drawer-bg)",
     fixed = TRUE
   )
   expect_match(
     css,
-    "box-shadow:var(--shiny-chat-page-artifact-box-shadow)",
+    "box-shadow:var(--shiny-chat-page-drawer-box-shadow)",
     fixed = TRUE
   )
   expect_match(
     css,
-    "background:var(--shiny-chat-page-artifact-header-bg)",
+    "background:var(--shiny-chat-page-drawer-header-bg)",
     fixed = TRUE
   )
 })
@@ -332,7 +332,7 @@ test_that("page_chat() has the agreed public signature", {
       "enable_cancel",
       "allow_attachments",
       "footer",
-      "artifact_panel",
+      "drawer",
       "window_title",
       "lang",
       "theme"
@@ -1185,53 +1185,53 @@ test_that("page_chat() derives window title only from a scalar text title", {
   ))
 })
 
-test_that("chat_ui() keeps default artifact support hidden", {
+test_that("chat_ui() keeps default drawer support hidden", {
   ui <- chat_ui("chat")
-  artifact <- artifact_child(ui)
+  drawer <- drawer_child(ui)
 
-  expect_equal(artifact$name, "shiny-chat-artifact")
-  expect_equal(artifact$attribs$width, "400px")
-  expect_null(artifact$attribs$open)
-  expect_null(artifact$attribs$resizable)
+  expect_equal(drawer$name, "shiny-chat-drawer")
+  expect_equal(drawer$attribs$width, "400px")
+  expect_null(drawer$attribs$open)
+  expect_null(drawer$attribs$resizable)
   expect_null(ui$attribs[["show-history"]])
 })
 
-test_that("chat_ui() renders configured artifact content and dependencies", {
-  artifact_dep <- htmltools::htmlDependency("artifact-dep", "1.0.0", "")
+test_that("chat_ui() renders configured drawer content and dependencies", {
+  artifact_dep <- htmltools::htmlDependency("drawer-dep", "1.0.0", "")
   ui <- chat_ui(
     "chat",
-    artifact_panel = chat_artifact_panel(
-      htmltools::tags$div("Artifact", artifact_dep),
+    drawer = chat_drawer(
+      htmltools::tags$div("Drawer", artifact_dep),
       title = "",
       width = "30rem",
       resizable = FALSE
     )
   )
-  artifact <- artifact_child(ui)
+  drawer <- drawer_child(ui)
 
-  expect_equal(artifact$attribs$title, "")
-  expect_equal(artifact$attribs$width, "30rem")
-  expect_true(is.na(artifact$attribs$open))
-  expect_equal(artifact$attribs$resizable, "false")
-  expect_match(as.character(artifact), "Artifact", fixed = TRUE)
+  expect_equal(drawer$attribs$title, "")
+  expect_equal(drawer$attribs$width, "30rem")
+  expect_true(is.na(drawer$attribs$open))
+  expect_equal(drawer$attribs$resizable, "false")
+  expect_match(as.character(drawer), "Drawer", fixed = TRUE)
   expect_match(
     render_tags(ui)$deps,
-    "artifact-dep",
+    "drawer-dep",
     fixed = TRUE
   )
   expect_snapshot(ui)
 })
 
-test_that("chat_ui() omits disabled artifact support and history presentation", {
-  ui <- chat_ui("chat", artifact_panel = FALSE, show_history = FALSE)
+test_that("chat_ui() omits disabled drawer support and history presentation", {
+  ui <- chat_ui("chat", drawer = FALSE, show_history = FALSE)
 
   expect_equal(ui$attribs[["show-history"]], "false")
   expect_false(any(vapply(
     ui$children,
-    function(child) identical(child$name, "shiny-chat-artifact"),
+    function(child) identical(child$name, "shiny-chat-drawer"),
     logical(1)
   )))
 
-  expect_snapshot(error = TRUE, chat_ui("chat", artifact_panel = list()))
+  expect_snapshot(error = TRUE, chat_ui("chat", drawer = list()))
   expect_snapshot(error = TRUE, chat_ui("chat", show_history = NA))
 })

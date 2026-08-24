@@ -101,17 +101,17 @@ export interface ChatHistoryState {
   activeId: string | null
 }
 
-export interface ChatArtifactState {
-  /** Whether the server emitted a `<shiny-chat-artifact>` configuration. */
+export interface ChatDrawerState {
+  /** Whether the server emitted a `<shiny-chat-drawer>` configuration. */
   enabled: boolean
   visible: boolean
   /** `null` represents a title explicitly cleared with `title: ""`. */
   title: string | null
-  /** Raw HTML emitted by the server for the artifact body. */
+  /** Raw HTML emitted by the server for the drawer body. */
   content: string
-  /** Dependencies belonging to the current artifact content. */
+  /** Dependencies belonging to the current drawer content. */
   htmlDeps: HtmlDep[]
-  /** Initial desktop width parsed from the server-owned artifact markup. */
+  /** Initial desktop width parsed from the server-owned drawer markup. */
   width: string
   resizable: boolean
 }
@@ -141,13 +141,13 @@ export interface ChatState extends ChatInputState {
   /** How tool calls are aggregated in the condensed view. Client-reflected. */
   toolGrouping: ToolGrouping
   history: ChatHistoryState
-  artifact: ChatArtifactState
+  drawer: ChatDrawerState
 }
 
 // Actions that originate from the UI (not from the server)
 export type UIAction =
   | { type: "SET_TOOL_GROUPING"; grouping: ToolGrouping }
-  | { type: "SET_ARTIFACT_WIDTH"; width: string }
+  | { type: "SET_DRAWER_WIDTH"; width: string }
   | {
       type: "INPUT_SENT"
       content: string
@@ -175,7 +175,7 @@ export const initialState: ChatState = {
   toolGrouping: "tool",
   slashCommands: [],
   history: { enabled: false, conversations: [], activeId: null },
-  artifact: {
+  drawer: {
     enabled: false,
     visible: false,
     title: null,
@@ -221,18 +221,18 @@ function mergeHtmlDeps(
   return incoming ? [...(existing ?? []), ...incoming] : existing
 }
 
-function updateArtifact(
-  artifact: ChatArtifactState,
-  action: Extract<ChatAction, { type: "artifact_show" | "artifact_update" }>,
-): ChatArtifactState {
-  if (!artifact.enabled) return artifact
+function updateDrawer(
+  drawer: ChatDrawerState,
+  action: Extract<ChatAction, { type: "drawer_show" | "drawer_update" }>,
+): ChatDrawerState {
+  if (!drawer.enabled) return drawer
 
   const hasContent = "content" in action
   const hasTitle = "title" in action
-  if (!hasContent && !hasTitle) return artifact
+  if (!hasContent && !hasTitle) return drawer
 
   return {
-    ...artifact,
+    ...drawer,
     ...(hasContent
       ? {
           content: action.content ?? "",
@@ -967,11 +967,11 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       }
     }
 
-    case "SET_ARTIFACT_WIDTH":
-      if (!state.artifact.enabled) return state
+    case "SET_DRAWER_WIDTH":
+      if (!state.drawer.enabled) return state
       return {
         ...state,
-        artifact: { ...state.artifact, width: action.width },
+        drawer: { ...state.drawer, width: action.width },
       }
 
     case "clear": {
@@ -995,7 +995,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         enableUploadExplicit: state.enableUploadExplicit,
         toolGrouping: state.toolGrouping,
         history: state.history,
-        artifact: state.artifact,
+        drawer: state.drawer,
       }
     }
 
@@ -1143,33 +1143,33 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     case "update_slash_commands":
       return { ...state, slashCommands: action.commands }
 
-    case "artifact_show": {
-      if (!state.artifact.enabled) return state
+    case "drawer_show": {
+      if (!state.drawer.enabled) return state
       return {
         ...state,
-        artifact: { ...updateArtifact(state.artifact, action), visible: true },
+        drawer: { ...updateDrawer(state.drawer, action), visible: true },
       }
     }
 
-    case "artifact_hide":
-      if (!state.artifact.enabled) return state
+    case "drawer_hide":
+      if (!state.drawer.enabled) return state
       return {
         ...state,
-        artifact: { ...state.artifact, visible: false },
+        drawer: { ...state.drawer, visible: false },
       }
 
-    case "artifact_toggle":
-      if (!state.artifact.enabled) return state
+    case "drawer_toggle":
+      if (!state.drawer.enabled) return state
       return {
         ...state,
-        artifact: { ...state.artifact, visible: !state.artifact.visible },
+        drawer: { ...state.drawer, visible: !state.drawer.visible },
       }
 
-    case "artifact_update": {
-      if (!state.artifact.enabled) return state
+    case "drawer_update": {
+      if (!state.drawer.enabled) return state
       return {
         ...state,
-        artifact: updateArtifact(state.artifact, action),
+        drawer: updateDrawer(state.drawer, action),
       }
     }
 

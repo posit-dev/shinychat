@@ -58,17 +58,17 @@ HOME_PAGE_VALUE <- "__home__"
 #' Shiny input or output IDs. By default, `toolbar_global` contains
 #' [bslib::input_dark_mode()]; use `NULL` to opt out.
 #'
-#' Set `artifact_panel` to a [chat_artifact_panel()] configuration to provide
-#' initial content and layout options. Update the mounted artifact panel from
+#' Set `drawer` to a [chat_drawer()] configuration to provide
+#' initial content and layout options. Update the mounted drawer from
 #' the server
-#' with [chat_artifact_panel_show()], [chat_artifact_panel_update()],
-#' [chat_artifact_panel_hide()], and [chat_artifact_panel_toggle()]. Artifact content is
+#' with [chat_drawer_show()], [chat_drawer_update()],
+#' [chat_drawer_hide()], and [chat_drawer_toggle()]. Artifact content is
 #' static UI passed through those server functions; use ordinary Shiny
 #' inputs and outputs inside that content when needed.
 #' You can try navigation and artifact-control examples, which do not require
 #' credentials, through
 #' `shiny::runExample("page-chat-navigation", package = "shinychat")` and
-#' `shiny::runExample("page-chat-artifact-controls", package = "shinychat")`.
+#' `shiny::runExample("page-chat-drawer-controls", package = "shinychat")`.
 #'
 #' `page_chat()` owns page composition and accepts one chat root. Do not pass
 #' unrelated top-level UI or a second chat root. Existing apps that need those
@@ -109,7 +109,7 @@ HOME_PAGE_VALUE <- "__home__"
 #'   supplies its child content, width, initial open state, and resizability;
 #'   its history defaults to `FALSE`. A [chat_sidebar()] with `history = NULL`
 #'   defaults to `TRUE` here.
-#' @param messages,greeting,placeholder,width,icon_assistant,enable_cancel,allow_attachments,footer,artifact_panel
+#' @param messages,greeting,placeholder,width,icon_assistant,enable_cancel,allow_attachments,footer,drawer
 #'   Common arguments passed to [chat_ui()].
 #' @param window_title A static browser-window title. The default, `NA`,
 #'   derives the window title from `title` when `title` is a scalar string.
@@ -160,7 +160,7 @@ HOME_PAGE_VALUE <- "__home__"
 #'       toolbar = bslib::toolbar(actionButton("save_settings", "Save settings"))
 #'     )
 #'   ),
-#'   artifact_panel = chat_artifact_panel(
+#'   drawer = chat_drawer(
 #'     artifact_content("Initial preview"),
 #'     title = "Preview"
 #'   )
@@ -172,7 +172,7 @@ HOME_PAGE_VALUE <- "__home__"
 #'   })
 #'
 #'   observeEvent(input$show_preview, {
-#'     chat_artifact_panel_show(
+#'     chat_drawer_show(
 #'       "chat",
 #'       content = artifact_content("Preview opened from the server"),
 #'       title = "Preview"
@@ -200,7 +200,7 @@ page_chat <- function(
   enable_cancel = NULL,
   allow_attachments = NULL,
   footer = NULL,
-  artifact_panel = TRUE,
+  drawer = TRUE,
   window_title = NA,
   lang = NULL,
   theme = page_chat_theme()
@@ -261,7 +261,7 @@ page_chat <- function(
     enable_cancel = enable_cancel,
     allow_attachments = allow_attachments,
     footer = footer,
-    artifact_panel = artifact_panel,
+    drawer = drawer,
     show_history = TRUE
   )
   sidebar_id <- paste0(resolved_id, "-sidebar")
@@ -1250,17 +1250,17 @@ chat_validate_sidebar <- function(sidebar) {
   )
 }
 
-normalize_chat_artifact_panel <- function(panel) {
+normalize_chat_drawer <- function(panel) {
   if (isTRUE(panel)) {
-    return(chat_artifact_panel(open = FALSE))
+    return(chat_drawer(open = FALSE))
   }
   if (isFALSE(panel)) {
     return(NULL)
   }
-  if (inherits(panel, "chat_artifact_panel")) {
+  if (inherits(panel, "chat_drawer")) {
     return(panel)
   }
   cli::cli_abort(
-    "{.arg artifact_panel} must be {.code TRUE}, {.code FALSE}, or a {.fn chat_artifact_panel} configuration."
+    "{.arg drawer} must be {.code TRUE}, {.code FALSE}, or a {.fn chat_drawer} configuration."
   )
 }

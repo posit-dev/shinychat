@@ -56,7 +56,7 @@ def app_ui(request: Request) -> ui.Tag:
             "Standard theme",
             id="chat",
             sidebar=False,
-            artifact_panel=False,
+            drawer=False,
             theme=ui.Theme(preset="shiny"),
         )
 
@@ -66,7 +66,7 @@ def app_ui(request: Request) -> ui.Tag:
             id="chat",
             toolbar=ui.input_action_button("single_toolbar", "Action"),
             sidebar=False,
-            artifact_panel=False,
+            drawer=False,
         )
 
     if request.query_params.get("sidebarless") == "true":
@@ -82,7 +82,7 @@ def app_ui(request: Request) -> ui.Tag:
             ],
             toolbar=ui.input_action_button("sidebarless_toolbar", "Refresh"),
             sidebar=False,
-            artifact_panel=False,
+            drawer=False,
         )
 
     if request.query_params.get("controls_only") == "true":
@@ -96,7 +96,7 @@ def app_ui(request: Request) -> ui.Tag:
             ],
             sidebar=False,
             toolbar_global=None,
-            artifact_panel=False,
+            drawer=False,
         )
 
     if request.query_params.get("dropdown") == "true":
@@ -115,7 +115,7 @@ def app_ui(request: Request) -> ui.Tag:
             ],
             sidebar=False,
             toolbar_global=None,
-            artifact_panel=False,
+            drawer=False,
         )
 
     if request.query_params.get("crowded_dropdown") == "true":
@@ -142,7 +142,7 @@ def app_ui(request: Request) -> ui.Tag:
             ],
             sidebar=False,
             toolbar_global=None,
-            artifact_panel=False,
+            drawer=False,
         )
 
     title = "Research Assistant"
@@ -247,7 +247,7 @@ def app_ui(request: Request) -> ui.Tag:
             ui.output_text("active_page_value", inline=True),
         ),
         sidebar=True,
-        artifact_panel=False,
+        drawer=False,
         greeting="Start a conversation.",
         footer=ui.div("Page chat footer", class_="page-chat-footer"),
     )

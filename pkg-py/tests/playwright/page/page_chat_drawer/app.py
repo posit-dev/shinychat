@@ -8,7 +8,7 @@ import chatlas
 from chatlas import Turn
 from chatlas._turn import AssistantTurn
 from shiny import App, Inputs, Outputs, Session, reactive, render, ui
-from shinychat import Chat, chat_artifact_panel, chat_nav_panel, page_chat
+from shinychat import Chat, chat_drawer, chat_nav_panel, page_chat
 from shinychat.types import FileConversationStore, HistoryOptions
 from starlette.requests import Request
 
@@ -38,14 +38,14 @@ class EchoChatClient(chatlas.Chat):
         return _gen()
 
 
-store_dir = tempfile.mkdtemp(prefix="shinychat-page-artifact-history-")
+store_dir = tempfile.mkdtemp(prefix="shinychat-page-drawer-history-")
 
 
 def app_ui(request: Request) -> ui.Tag:
     query_params = request.query_params
-    requested_width = query_params.get("artifact_width") or ""
+    requested_width = query_params.get("drawer_width") or ""
     requested_chat_width = query_params.get("chat_width") or ""
-    artifact_width = {
+    drawer_width = {
         "default": "400px",
         "90pct": "90%",
         "relative": "32rem",
@@ -56,7 +56,7 @@ def app_ui(request: Request) -> ui.Tag:
         "intrinsic": "fit-content",
     }.get(requested_chat_width, "min(680px, 100%)")
     return page_chat(
-        "Artifact Assistant",
+        "Drawer Assistant",
         id="chat",
         width=chat_width,
         pages_navbar=[
@@ -68,24 +68,24 @@ def app_ui(request: Request) -> ui.Tag:
             ),
         ],
         toolbar=ui.div(
-            ui.input_action_button("show_artifact", "Show artifact"),
-            ui.input_action_button("update_artifact", "Update artifact"),
+            ui.input_action_button("show_drawer", "Show drawer"),
+            ui.input_action_button("update_drawer", "Update drawer"),
             class_="d-flex gap-2",
         ),
         sidebar=True,
-        artifact_panel=chat_artifact_panel(width=artifact_width, open=False),
+        drawer=chat_drawer(width=drawer_width, open=False),
     )
 
 
-def artifact_content(version: str) -> ui.Tag:
+def drawer_content(version: str) -> ui.Tag:
     return ui.div(
-        ui.p(f"{version} artifact content", class_="artifact-content-label"),
+        ui.p(f"{version} drawer content", class_="drawer-content-label"),
         ui.input_text(
-            "artifact_text",
-            "Artifact value",
+            "drawer_text",
+            "Drawer value",
             value=version,
         ),
-        ui.output_text("artifact_value"),
+        ui.output_text("drawer_value"),
     )
 
 
@@ -95,29 +95,29 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
         client=EchoChatClient(),
         history=HistoryOptions(
             store=FileConversationStore(dir=store_dir),
-            scope=f"page-artifact-test-{session.id}",
+            scope=f"page-drawer-test-{session.id}",
             title=None,
         ),
     )
 
     @render.text
-    def artifact_value() -> str:
-        return f"Artifact value: {input.artifact_text()}"
+    def drawer_value() -> str:
+        return f"Drawer value: {input.drawer_text()}"
 
     @reactive.effect
-    @reactive.event(input.show_artifact)
-    async def _show_artifact() -> None:
-        await chat.artifact_panel.show(
-            artifact_content("Initial"),
-            title="Initial artifact",
+    @reactive.event(input.show_drawer)
+    async def _show_drawer() -> None:
+        await chat.drawer.show(
+            drawer_content("Initial"),
+            title="Initial drawer",
         )
 
     @reactive.effect
-    @reactive.event(input.update_artifact)
-    async def _update_artifact() -> None:
-        await chat.artifact_panel.update(
-            artifact_content("Updated"),
-            title="Updated artifact",
+    @reactive.event(input.update_drawer)
+    async def _update_drawer() -> None:
+        await chat.drawer.update(
+            drawer_content("Updated"),
+            title="Updated drawer",
         )
 
 

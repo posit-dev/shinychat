@@ -6,7 +6,7 @@ import inspect
 import pytest
 
 EXAMPLES = (
-    "shinychat.examples.page_chat.artifact_control",
+    "shinychat.examples.page_chat.drawer_control",
     "shinychat.examples.page_chat.navigation",
 )
 

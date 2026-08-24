@@ -40,10 +40,10 @@
       Error in `chat_config_content()`:
       ! Arguments in ... must be unnamed UI content.
 
-# chat_artifact_panel() validates configuration
+# chat_drawer() validates configuration
 
     Code
-      chat_artifact_panel(title = list())
+      chat_drawer(title = list())
     Condition
       Error in `chat_validate_string()`:
       ! `title` must be a single string, not an empty list.
@@ -51,7 +51,7 @@
 ---
 
     Code
-      chat_artifact_panel(width = -1)
+      chat_drawer(width = -1)
     Condition
       Error in `chat_validate_width()`:
       ! `width` must be a positive number or a non-empty CSS length.
@@ -59,7 +59,7 @@
 ---
 
     Code
-      chat_artifact_panel(width = "bogus")
+      chat_drawer(width = "bogus")
     Condition
       Error in `chat_validate_width()`:
       ! `width` must be a valid CSS length.
@@ -69,7 +69,7 @@
 ---
 
     Code
-      chat_artifact_panel(open = "yes")
+      chat_drawer(open = "yes")
     Condition
       Error in `chat_validate_boolean()`:
       ! `open` must be `TRUE` or `FALSE`.
@@ -77,7 +77,7 @@
 ---
 
     Code
-      chat_artifact_panel(data_role = "artifact")
+      chat_drawer(data_role = "drawer")
     Condition
       Error in `chat_config_content()`:
       ! Arguments in ... must be unnamed UI content.
@@ -169,7 +169,7 @@
                 <shiny-chat-container class="html-fill-item html-fill-container" data-app-role="primary" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill id="chat" max-attachment-size="31457280" placeholder="Enter a message..." style="--_chat-width:min(680px, 100%);height:100%;" submit-key="enter+modifier">
                   <shiny-chat-messages></shiny-chat-messages>
                   <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
-                  <shiny-chat-artifact width="400px"></shiny-chat-artifact>
+                  <shiny-chat-drawer width="400px"></shiny-chat-drawer>
                 </shiny-chat-container>
               </section>
             </main>
@@ -272,7 +272,7 @@
       Error in `chat_validate_plain_string()`:
       ! `lang` must be a single string, not the empty string "".
 
-# chat_ui() renders configured artifact content and dependencies
+# chat_ui() renders configured drawer content and dependencies
 
     Code
       ui
@@ -280,18 +280,18 @@
       <shiny-chat-container class="html-fill-item html-fill-container" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill id="chat" max-attachment-size="31457280" placeholder="Enter a message..." style="--_chat-width:min(680px, 100%);height:auto;">
         <shiny-chat-messages></shiny-chat-messages>
         <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
-        <shiny-chat-artifact title="" width="30rem" open resizable="false">
-          <div>Artifact</div>
-        </shiny-chat-artifact>
+        <shiny-chat-drawer title="" width="30rem" open resizable="false">
+          <div>Drawer</div>
+        </shiny-chat-drawer>
       </shiny-chat-container>
 
-# chat_ui() omits disabled artifact support and history presentation
+# chat_ui() omits disabled drawer support and history presentation
 
     Code
-      chat_ui("chat", artifact_panel = list())
+      chat_ui("chat", drawer = list())
     Condition
-      Error in `normalize_chat_artifact_panel()`:
-      ! `artifact_panel` must be `TRUE`, `FALSE`, or a `chat_artifact_panel()` configuration.
+      Error in `normalize_chat_drawer()`:
+      ! `drawer` must be `TRUE`, `FALSE`, or a `chat_drawer()` configuration.
 
 ---
 

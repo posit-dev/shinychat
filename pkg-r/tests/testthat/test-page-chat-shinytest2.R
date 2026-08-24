@@ -2,7 +2,7 @@ test_that("page_chat navigation and sidebars work in a real Shiny app", {
   skip_if_shinytest2_unavailable()
 
   app <- shinytest2::AppDriver$new(
-    test_path("apps/page-chat-artifact"),
+    test_path("apps/page-chat-drawer"),
     name = "page-chat-navigation",
     width = 1440,
     height = 900,

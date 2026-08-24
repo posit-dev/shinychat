@@ -295,7 +295,7 @@ ui <- page_chat(
       )
     )
   ),
-  artifact_panel = chat_artifact_panel(
+  drawer = chat_drawer(
     artifact_content("Initial preview"),
     title = "Preview"
   )
@@ -307,7 +307,7 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$show_preview, {
-    chat_artifact_panel_show(
+    chat_drawer_show(
       "chat",
       content = artifact_content("Preview opened from the server"),
       title = "Preview"
@@ -326,8 +326,8 @@ when the chat is embedded alongside other top-level UI or inside an existing
 `bslib` layout.
 
 Set `history = TRUE` in a `chat_sidebar()` when the chat is connected to
-`chat_server()` or `chat_enable_history()`. Use `chat_artifact_panel_update()`,
-`chat_artifact_panel_hide()`, and `chat_artifact_panel_toggle()` for subsequent artifact
+`chat_server()` or `chat_enable_history()`. Use `chat_drawer_update()`,
+`chat_drawer_hide()`, and `chat_drawer_toggle()` for subsequent artifact
 updates. Artifact content may contain ordinary Shiny inputs and outputs.
 
 ### Screen-filling layout
@@ -367,7 +367,7 @@ use local echo responses, so no provider credentials are required:
 
 ```r
 shiny::runExample("page-chat-navigation", package = "shinychat")
-shiny::runExample("page-chat-artifact-controls", package = "shinychat")
+shiny::runExample("page-chat-drawer-controls", package = "shinychat")
 ```
 
 The [R example source](https://github.com/posit-dev/shinychat/tree/main/pkg-r/inst/examples-shiny)

@@ -8,7 +8,7 @@ import {
   useState,
 } from "react"
 import { ShinyLifecycleContext } from "./context"
-import type { ChatArtifactState } from "./state"
+import type { ChatDrawerState } from "./state"
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion"
 import {
   getResizeHandleProvider,
@@ -16,17 +16,17 @@ import {
   type ResizeRequestDetail,
 } from "../resize-handle"
 
-const MIN_ARTIFACT_WIDTH = 240
+const MIN_DRAWER_WIDTH = 240
 const MIN_CHAT_WIDTH = 360
-const MAX_ARTIFACT_LAYOUT_GAP = 24
-const ARTIFACT_LAYOUT_TRANSITION_DURATION = 180
+const MAX_DRAWER_LAYOUT_GAP = 24
+const DRAWER_LAYOUT_TRANSITION_DURATION = 180
 // Keep both columns adjacent until their established minimums need more room.
 // The extra margin avoids switching layouts at the exact mathematical limit.
-export const ARTIFACT_TAKEOVER_WIDTH =
-  MIN_ARTIFACT_WIDTH + MIN_CHAT_WIDTH + MAX_ARTIFACT_LAYOUT_GAP + 16
+export const DRAWER_TAKEOVER_WIDTH =
+  MIN_DRAWER_WIDTH + MIN_CHAT_WIDTH + MAX_DRAWER_LAYOUT_GAP + 16
 
 function clampWidth(width: number, maxWidth: number): number {
-  return Math.round(Math.min(Math.max(width, MIN_ARTIFACT_WIDTH), maxWidth))
+  return Math.round(Math.min(Math.max(width, MIN_DRAWER_WIDTH), maxWidth))
 }
 
 function pixelWidth(width: string): number | undefined {
@@ -38,7 +38,7 @@ function triggerResize(): void {
   window.dispatchEvent(new Event("resize"))
 }
 
-function ArtifactCloseIcon() {
+function DrawerCloseIcon() {
   return (
     <svg
       aria-hidden="true"
@@ -56,14 +56,14 @@ function ArtifactCloseIcon() {
   )
 }
 
-function ArtifactContent({
+function DrawerContent({
   content,
   htmlDeps,
   source,
   visible,
 }: {
   content: string
-  htmlDeps: ChatArtifactState["htmlDeps"]
+  htmlDeps: ChatDrawerState["htmlDeps"]
   source?: Element
   visible: boolean
 }) {
@@ -88,7 +88,7 @@ function ArtifactContent({
     let cancelled = false
     const isCurrent = () => generationRef.current === generation
     const wrapper = document.createElement("div")
-    wrapper.className = "shiny-chat-artifact-generation"
+    wrapper.className = "shiny-chat-drawer-generation"
 
     const replaceContent = async () => {
       // A server action makes the artifact visible before its dependencies
@@ -163,11 +163,11 @@ function ArtifactContent({
     if (visible) triggerResize()
   }, [visible])
 
-  return <div ref={hostRef} className="shiny-chat-artifact-content" />
+  return <div ref={hostRef} className="shiny-chat-drawer-content" />
 }
 
-export interface ChatArtifactProps {
-  artifact: ChatArtifactState
+export interface ChatDrawerProps {
+  drawer: ChatDrawerState
   source?: Element
   panelId?: string
   titleId: string
@@ -179,8 +179,8 @@ export interface ChatArtifactProps {
   onResizeStateChange?(resizing: boolean): void
 }
 
-export function ChatArtifact({
-  artifact,
+export function ChatDrawer({
+  drawer,
   source,
   panelId,
   titleId,
@@ -190,21 +190,21 @@ export function ChatArtifact({
   onWidthChange,
   onPresentationChange,
   onResizeStateChange,
-}: ChatArtifactProps) {
+}: ChatDrawerProps) {
   const panelRef = useRef<HTMLElement>(null)
   const prefersReducedMotion = usePrefersReducedMotion()
-  const [present, setPresent] = useState(artifact.visible)
-  const [motion, setMotion] = useState(artifact.visible ? "open" : "closed")
+  const [present, setPresent] = useState(drawer.visible)
+  const [motion, setMotion] = useState(drawer.visible ? "open" : "closed")
   const [resizing, setResizing] = useState(false)
-  const wasVisibleRef = useRef(artifact.visible)
+  const wasVisibleRef = useRef(drawer.visible)
   const motionFrameRef = useRef<number | null>(null)
   const motionTimerRef = useRef<number | null>(null)
   const layoutReadyTimerRef = useRef<number | null>(null)
-  const [layoutReady, setLayoutReady] = useState(artifact.visible)
-  const [width, setWidth] = useState(() => artifact.width || "400px")
+  const [layoutReady, setLayoutReady] = useState(drawer.visible)
+  const [width, setWidth] = useState(() => drawer.width || "400px")
   const [maximumWidth, setMaximumWidth] = useState(840)
   const [renderedWidth, setRenderedWidth] = useState(
-    () => pixelWidth(artifact.width || "400px") ?? 400,
+    () => pixelWidth(drawer.width || "400px") ?? 400,
   )
   const [resizeHandleProvider] = useState(() =>
     getResizeHandleProvider(customElements, { boundaryActivation: true }),
@@ -224,14 +224,14 @@ export function ChatArtifact({
     }
     if (
       layoutReadyTimerRef.current !== null &&
-      (!artifact.visible || !wasVisible)
+      (!drawer.visible || !wasVisible)
     ) {
       window.clearTimeout(layoutReadyTimerRef.current)
       layoutReadyTimerRef.current = null
     }
 
-    wasVisibleRef.current = artifact.visible
-    if (artifact.visible) {
+    wasVisibleRef.current = drawer.visible
+    if (drawer.visible) {
       setPresent(true)
       if (!wasVisible) {
         setMotion("opening")
@@ -242,7 +242,7 @@ export function ChatArtifact({
           layoutReadyTimerRef.current = window.setTimeout(() => {
             layoutReadyTimerRef.current = null
             setLayoutReady(true)
-          }, ARTIFACT_LAYOUT_TRANSITION_DURATION)
+          }, DRAWER_LAYOUT_TRANSITION_DURATION)
         }
         motionFrameRef.current = window.requestAnimationFrame(() => {
           motionFrameRef.current = null
@@ -274,8 +274,8 @@ export function ChatArtifact({
       motionTimerRef.current = null
       setPresent(false)
       setMotion("closed")
-    }, ARTIFACT_LAYOUT_TRANSITION_DURATION)
-  }, [artifact.visible, prefersReducedMotion, takeover])
+    }, DRAWER_LAYOUT_TRANSITION_DURATION)
+  }, [drawer.visible, prefersReducedMotion, takeover])
 
   useEffect(() => {
     onPresentationChange?.(present)
@@ -308,29 +308,26 @@ export function ChatArtifact({
     // Match ChatContainer's layout reservation. The computed gap can be
     // smaller at constrained widths, but the grid still reserves this maximum.
     return Math.max(
-      MIN_ARTIFACT_WIDTH,
-      available - MIN_CHAT_WIDTH - MAX_ARTIFACT_LAYOUT_GAP,
+      MIN_DRAWER_WIDTH,
+      available - MIN_CHAT_WIDTH - MAX_DRAWER_LAYOUT_GAP,
     )
   }, [])
 
   const measureAndClampWidth = useCallback(() => {
     const panel = panelRef.current
-    if (!panel || !artifact.visible) return
+    if (!panel || !drawer.visible) return
 
     const maximum = maxWidth()
     setMaximumWidth(maximum)
     const layout = panel.closest(".shiny-chat-layout")
     const layoutWidth = layout?.getBoundingClientRect().width ?? 0
     const measured = Math.round(panel.getBoundingClientRect().width)
-    const configured = pixelWidth(artifact.width)
+    const configured = pixelWidth(drawer.width)
 
     // A child observer can run before ChatContainer applies its takeover
     // state. The panel is full-width in this range, so never persist that
-    // temporary measurement as an adjacent artifact width.
-    if (
-      takeover ||
-      (layoutWidth > 0 && layoutWidth < ARTIFACT_TAKEOVER_WIDTH)
-    ) {
+    // temporary measurement as an adjacent drawer width.
+    if (takeover || (layoutWidth > 0 && layoutWidth < DRAWER_TAKEOVER_WIDTH)) {
       pendingWidthRef.current = null
       return
     }
@@ -378,8 +375,8 @@ export function ChatArtifact({
       onWidthChange(`${bounded}px`)
     }
   }, [
-    artifact.visible,
-    artifact.width,
+    drawer.visible,
+    drawer.width,
     layoutReady,
     takeover,
     maxWidth,
@@ -419,11 +416,11 @@ export function ChatArtifact({
 
     handle.configure({
       value: currentWidth,
-      min: MIN_ARTIFACT_WIDTH,
+      min: MIN_DRAWER_WIDTH,
       max: maximumWidth,
       panelSide: "inline-start",
-      disabled: !artifact.resizable || takeover || !artifact.visible,
-      label: "Resize artifact panel",
+      disabled: !drawer.resizable || takeover || !drawer.visible,
+      label: "Resize drawer panel",
       boundaryActivation: true,
     })
     const onResizeRequest = (event: Event) => {
@@ -440,56 +437,56 @@ export function ChatArtifact({
       handle.removeEventListener("resize-end", onResizeEnd)
     }
   }, [
-    artifact.resizable,
-    artifact.visible,
+    drawer.resizable,
+    drawer.visible,
     currentWidth,
     maximumWidth,
     setBoundedWidth,
     takeover,
   ])
 
-  const title = artifact.title || "Artifact"
+  const title = drawer.title || "Drawer"
   const style = {
-    "--shiny-chat-artifact-width": width,
+    "--shiny-chat-drawer-width": width,
   } as React.CSSProperties
 
   return (
     <aside
       ref={panelRef}
       id={panelId}
-      className="shiny-chat-artifact"
+      className="shiny-chat-drawer"
       aria-labelledby={titleId}
-      aria-hidden={!artifact.visible || undefined}
+      aria-hidden={!drawer.visible || undefined}
       hidden={!present}
       data-takeover={takeover ? "" : undefined}
       data-motion={motion}
-      data-artifact-resizing={resizing ? "" : undefined}
+      data-drawer-resizing={resizing ? "" : undefined}
       style={style}
     >
-      {artifact.resizable &&
+      {drawer.resizable &&
         !takeover &&
         createElement(resizeHandleProvider.tagName, {
           ref: resizeHandleRef,
-          className: "shiny-chat-artifact-resizer",
+          className: "shiny-chat-drawer-resizer",
           "data-shiny-chat-resize-handle-provider": resizeHandleProvider.name,
         })}
-      <div className="shiny-chat-artifact-header">
+      <div className="shiny-chat-drawer-header">
         <h2 id={titleId}>{title}</h2>
         <button
           ref={closeButtonRef}
           type="button"
-          className="shiny-chat-artifact-close"
-          aria-label="Close artifact"
+          className="shiny-chat-drawer-close"
+          aria-label="Close drawer"
           onClick={onClose}
         >
-          <ArtifactCloseIcon />
+          <DrawerCloseIcon />
         </button>
       </div>
-      <ArtifactContent
-        content={artifact.content}
-        htmlDeps={artifact.htmlDeps}
+      <DrawerContent
+        content={drawer.content}
+        htmlDeps={drawer.htmlDeps}
         source={source}
-        visible={artifact.visible}
+        visible={drawer.visible}
       />
     </aside>
   )

@@ -40,7 +40,7 @@ record_exchange <- function(client, user_text, assistant_text) {
   ))
 }
 
-artifact_content <- function(label) {
+drawer_content <- function(label) {
   tags$section(
     tags$h3("Preview"),
     tags$p(label)
@@ -124,8 +124,8 @@ ui <- page_chat(
       toolbar = NULL
     )
   ),
-  artifact_panel = chat_artifact_panel(
-    artifact_content("Use the home toolbar to open this preview."),
+  drawer = chat_drawer(
+    drawer_content("Use the home toolbar to open this preview."),
     title = "Working preview",
     width = 420,
     open = FALSE
@@ -162,9 +162,9 @@ server <- function(input, output, session) {
     )
     record_exchange(client, user_text, assistant_text)
     chat_append("chat", assistant_text)
-    chat_artifact_panel_update(
+    chat_drawer_update(
       "chat",
-      artifact_content(paste("Latest request:", user_text)),
+      drawer_content(paste("Latest request:", user_text)),
       title = "Latest request"
     )
   })
@@ -172,12 +172,12 @@ server <- function(input, output, session) {
   observeEvent(input$show_preview, {
     # The page-chat root element is addressable as "<id>_page".
     bslib::nav_select("chat_page", "__home__", session = session)
-    chat_artifact_panel_show("chat", title = "Working preview")
+    chat_drawer_show("chat", title = "Working preview")
   })
 
   observeEvent(input$show_preview_sources, {
     bslib::nav_select("chat_page", "__home__", session = session)
-    chat_artifact_panel_show("chat", title = "Working preview")
+    chat_drawer_show("chat", title = "Working preview")
   })
 
   observeEvent(input$show_settings, {

@@ -31,10 +31,10 @@ if TYPE_CHECKING:
     from ._chat_types import ChatGreeting, ChatMessage, ChatMessageDict
 
 __all__ = (
-    "ChatArtifactPanel",
+    "ChatDrawer",
     "ChatNavPanel",
     "ChatSidebar",
-    "chat_artifact_panel",
+    "chat_drawer",
     "chat_nav_panel",
     "chat_sidebar",
     "chat_ui_history",
@@ -56,7 +56,7 @@ class ChatSidebar:
 
 
 @dataclass(frozen=True)
-class ChatArtifactPanel:
+class ChatDrawer:
     content: tuple[TagChild, ...]
     title: str | None
     width: str
@@ -86,7 +86,7 @@ def page_chat(
     toolbar_global: TagChild | None | MISSING_TYPE = MISSING,
     navbar_options: Any = None,
     sidebar: bool | ChatSidebar = True,
-    artifact_panel: bool | ChatArtifactPanel = True,
+    drawer: bool | ChatDrawer = True,
     window_title: str | None = None,
     lang: str | None = None,
     theme: str | Path | Theme | ThemeProvider | None = None,
@@ -155,9 +155,9 @@ def page_chat(
         :class:`~shinychat.types.ChatSidebar` supplies custom content and behavior.
         A sidebar created without ``history=`` defaults to ``True`` here.
         Raw :class:`shiny.ui.Sidebar` objects are not supported.
-    artifact_panel
+    drawer
         Whether the chat has an artifact panel. Pass a
-        :class:`~shinychat.types.ChatArtifactPanel` to configure its initial content and
+        :class:`~shinychat.types.ChatDrawer` to configure its initial content and
         behavior.
     window_title
         Optional document title. Use this when ``title`` is an HTML child or
@@ -225,12 +225,12 @@ def page_chat(
     :func:`~shinychat.chat_ui` : Embed chat in an existing page layout.
     :func:`~shinychat.chat_sidebar` : Configure page sidebars.
     :func:`~shinychat.chat_nav_panel` : Configure secondary navbar pages.
-    :func:`~shinychat.chat_artifact_panel` : Configure the artifact panel.
+    :func:`~shinychat.chat_drawer` : Configure the artifact panel.
     :func:`~shinychat.express.page_chat` : Create the same layout in Express.
     """
     chat_root = _create_page_chat_root(
         id=id,
-        artifact_panel=artifact_panel,
+        drawer=drawer,
         messages=messages,
         greeting=greeting,
         placeholder=placeholder,
@@ -374,19 +374,19 @@ def chat_sidebar(
     )
 
 
-def chat_artifact_panel(
+def chat_drawer(
     *content: TagChild,
     title: str | None = None,
     width: "CssUnit" = 400,
     open: bool = True,
     resizable: bool = True,
-) -> ChatArtifactPanel:
+) -> ChatDrawer:
     """
     Configure content displayed adjacent to a chat interface.
 
     An artifact panel can show a preview, generated report, or detail view beside
-    the conversation. Pass this configuration to ``chat_ui(artifact_panel=)`` or
-    ``page_chat(artifact_panel=)`` for its initial content and layout, then update it
+    the conversation. Pass this configuration to ``chat_ui(drawer=)`` or
+    ``page_chat(drawer=)`` for its initial content and layout, then update it
     through the chat artifact controller.
 
     Parameters
@@ -405,17 +405,17 @@ def chat_artifact_panel(
 
     Returns
     -------
-    ChatArtifactPanel
-        An artifact-panel configuration for ``page_chat(artifact_panel=)`` or
-        ``chat_ui(artifact_panel=)``.
+    ChatDrawer
+        An artifact-panel configuration for ``page_chat(drawer=)`` or
+        ``chat_ui(drawer=)``.
 
     Examples
     --------
     ```python
     from shiny import ui
-    from shinychat import chat_artifact_panel
+    from shinychat import chat_drawer
 
-    artifact = chat_artifact_panel(
+    artifact = chat_drawer(
         ui.p("No result selected."),
         title="Result",
         width=480,
@@ -426,14 +426,14 @@ def chat_artifact_panel(
     --------
     :func:`~shinychat.page_chat` : Create a page with an artifact panel.
     :func:`~shinychat.chat_ui` : Create an embedded chat with an artifact panel.
-    :class:`~shinychat.types.ChatArtifactPanelController` : Update the panel from the server.
+    :class:`~shinychat.types.ChatDrawerController` : Update the panel from the server.
     """
-    _validate_content(content, "chat_artifact_panel()")
+    _validate_content(content, "chat_drawer()")
     if title is not None and not isinstance(title, str):
         raise TypeError(
             f"`title` must be a string or None, not {type(title).__name__}."
         )
-    return ChatArtifactPanel(
+    return ChatDrawer(
         content=content,
         title=title,
         width=_validate_css_width(width, "width"),
@@ -604,14 +604,14 @@ def chat_ui_history(id: str, **attrs: TagAttrValue) -> Tag:
     )
 
 
-def render_chat_artifact_panel(artifact_panel: ChatArtifactPanel) -> Tag:
+def render_chat_drawer(drawer: ChatDrawer) -> Tag:
     return Tag(
-        "shiny-chat-artifact",
-        *artifact_panel.content,
-        title=artifact_panel.title,
-        width=artifact_panel.width,
-        open=artifact_panel.open,
-        resizable="false" if not artifact_panel.resizable else None,
+        "shiny-chat-drawer",
+        *drawer.content,
+        title=drawer.title,
+        width=drawer.width,
+        open=drawer.open,
+        resizable="false" if not drawer.resizable else None,
     )
 
 
@@ -1072,7 +1072,7 @@ def _apply_page_chat_navbar_options(header: Tag, options: Any) -> None:
 def _create_page_chat_root(
     *,
     id: str = "chat",
-    artifact_panel: bool | ChatArtifactPanel = True,
+    drawer: bool | ChatDrawer = True,
     messages: Optional[
         Iterable[str | TagChild | "ChatMessageDict" | "ChatMessage" | Any]
     ] = None,
@@ -1109,7 +1109,7 @@ def _create_page_chat_root(
         enable_cancel=enable_cancel,
         allow_attachments=allow_attachments,
         footer=footer,
-        artifact_panel=artifact_panel,
+        drawer=drawer,
         show_history=True,
         **kwargs,
     )

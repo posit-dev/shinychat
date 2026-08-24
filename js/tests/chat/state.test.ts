@@ -9,7 +9,7 @@ import {
   type ChatState,
   type ChatMessageData,
   type GreetingData,
-  type ChatArtifactState,
+  type ChatDrawerState,
   type MessageBlock,
   type ToolLoopBlock,
   type ToolGrouping,
@@ -29,9 +29,9 @@ function makeState(overrides: Partial<ChatState> = {}): ChatState {
 }
 
 function makeArtifact(
-  overrides: Partial<ChatArtifactState> = {},
-): ChatArtifactState {
-  return { ...initialState.artifact, enabled: true, ...overrides }
+  overrides: Partial<ChatDrawerState> = {},
+): ChatDrawerState {
+  return { ...initialState.drawer, enabled: true, ...overrides }
 }
 
 function makeAssistantMsg(
@@ -713,8 +713,10 @@ describe("chatReducer", () => {
         content: "<p>Artifact</p>",
         htmlDeps: [{ name: "preview", version: "1.0.0" }],
       })
-      const next = chatReducer(makeState({ artifact }), { type: "clear" })
-      expect(next.artifact).toEqual(artifact)
+      const next = chatReducer(makeState({ drawer: artifact }), {
+        type: "clear",
+      })
+      expect(next.drawer).toEqual(artifact)
     })
   })
 
@@ -1661,13 +1663,13 @@ describe("chatReducer", () => {
         visible: true,
         content: "<div>Retained</div>",
       })
-      const next = chatReducer(makeState({ artifact }), {
+      const next = chatReducer(makeState({ drawer: artifact }), {
         type: "history_update",
         enabled: true,
         conversations: [],
         active_id: null,
       })
-      expect(next.artifact).toBe(artifact)
+      expect(next.drawer).toBe(artifact)
     })
   })
 

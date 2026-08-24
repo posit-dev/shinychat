@@ -64,7 +64,7 @@ ui <- page_chat(
     bslib::toolbar_input_button("nav_controls", "Navigation controls"),
     textOutput("page_value", inline = TRUE)
   ),
-  artifact_panel = FALSE
+  drawer = FALSE
 )
 
 server <- function(input, output, session) {

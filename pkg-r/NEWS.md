@@ -4,7 +4,7 @@
 
 * Added `page_chat()` for full-window chat pages with persistent chat
   navigation, responsive sidebars, optional page-specific sidebars, and
-  artifact panels. Use it instead of
+  drawers. Use it instead of
   `bslib::page_fillable(chat_ui(...))` when shinychat owns the page
   composition; continue using `chat_ui()` for embedded or mixed layouts.
 

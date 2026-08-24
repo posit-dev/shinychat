@@ -22,7 +22,7 @@ page_chat(
   enable_cancel = NULL,
   allow_attachments = NULL,
   footer = NULL,
-  artifact_panel = TRUE,
+  drawer = TRUE,
   window_title = NA,
   lang = NULL,
   theme = page_chat_theme()
@@ -72,7 +72,7 @@ supplies its child content, width, initial open state, and resizability;
 its history defaults to \code{FALSE}. A \code{\link[=chat_sidebar]{chat_sidebar()}} with \code{history = NULL}
 defaults to \code{TRUE} here.}
 
-\item{messages, greeting, placeholder, width, icon_assistant, enable_cancel, allow_attachments, footer, artifact_panel}{Common arguments passed to \code{\link[=chat_ui]{chat_ui()}}.}
+\item{messages, greeting, placeholder, width, icon_assistant, enable_cancel, allow_attachments, footer, drawer}{Common arguments passed to \code{\link[=chat_ui]{chat_ui()}}.}
 
 \item{window_title}{A static browser-window title. The default, \code{NA},
 derives the window title from \code{title} when \code{title} is a scalar string.
@@ -144,17 +144,17 @@ the app menu above the active page's sidebar content without duplicating
 Shiny input or output IDs. By default, \code{toolbar_global} contains
 \code{\link[bslib:input_dark_mode]{bslib::input_dark_mode()}}; use \code{NULL} to opt out.
 
-Set \code{artifact_panel} to a \code{\link[=chat_artifact_panel]{chat_artifact_panel()}} configuration to provide
-initial content and layout options. Update the mounted artifact panel from
+Set \code{drawer} to a \code{\link[=chat_drawer]{chat_drawer()}} configuration to provide
+initial content and layout options. Update the mounted drawer from
 the server
-with \code{\link[=chat_artifact_panel_show]{chat_artifact_panel_show()}}, \code{\link[=chat_artifact_panel_update]{chat_artifact_panel_update()}},
-\code{\link[=chat_artifact_panel_hide]{chat_artifact_panel_hide()}}, and \code{\link[=chat_artifact_panel_toggle]{chat_artifact_panel_toggle()}}. Artifact content is
+with \code{\link[=chat_drawer_show]{chat_drawer_show()}}, \code{\link[=chat_drawer_update]{chat_drawer_update()}},
+\code{\link[=chat_drawer_hide]{chat_drawer_hide()}}, and \code{\link[=chat_drawer_toggle]{chat_drawer_toggle()}}. Artifact content is
 static UI passed through those server functions; use ordinary Shiny
 inputs and outputs inside that content when needed.
 You can try navigation and artifact-control examples, which do not require
 credentials, through
 \code{shiny::runExample("page-chat-navigation", package = "shinychat")} and
-\code{shiny::runExample("page-chat-artifact-controls", package = "shinychat")}.
+\code{shiny::runExample("page-chat-drawer-controls", package = "shinychat")}.
 
 \code{page_chat()} owns page composition and accepts one chat root. Do not pass
 unrelated top-level UI or a second chat root. Existing apps that need those
@@ -202,7 +202,7 @@ ui <- page_chat(
       toolbar = bslib::toolbar(actionButton("save_settings", "Save settings"))
     )
   ),
-  artifact_panel = chat_artifact_panel(
+  drawer = chat_drawer(
     artifact_content("Initial preview"),
     title = "Preview"
   )
@@ -214,7 +214,7 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$show_preview, {
-    chat_artifact_panel_show(
+    chat_drawer_show(
       "chat",
       content = artifact_content("Preview opened from the server"),
       title = "Preview"

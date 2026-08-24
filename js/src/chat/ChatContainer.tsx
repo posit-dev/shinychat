@@ -17,7 +17,7 @@ import { ChatInput, type ChatInputHandle } from "./ChatInput"
 import { ScrollToBottomButton } from "./ScrollToBottomButton"
 import { ExternalLinkDialogComponent } from "./ExternalLinkDialog"
 import { RawDOM } from "./RawDOM"
-import { ARTIFACT_TAKEOVER_WIDTH, ChatArtifact } from "./ChatArtifact"
+import { DRAWER_TAKEOVER_WIDTH, ChatDrawer } from "./ChatDrawer"
 import {
   ChatScrollContext,
   SlashCommandsContext,
@@ -31,7 +31,7 @@ import {
 import type { HistoryStore } from "./historyStore"
 import { useFillPaddingTransfer } from "./useFillPaddingTransfer"
 import { useOverlapNudge } from "./useOverlapNudge"
-import type { ChatArtifactState, ChatMessageData, GreetingData } from "./state"
+import type { ChatDrawerState, ChatMessageData, GreetingData } from "./state"
 import type { ChatTransport, SlashCommandDef } from "../transport/types"
 import type { SubmitKey } from "./tiptap/submitShortcut"
 import type { AttachmentPayload } from "./attachments"
@@ -42,22 +42,22 @@ declare global {
   }
 }
 
-const DEFAULT_ARTIFACT_LAYOUT_WIDTH = 400
-const MIN_ARTIFACT_LAYOUT_WIDTH = 240
+const DEFAULT_DRAWER_LAYOUT_WIDTH = 400
+const MIN_DRAWER_LAYOUT_WIDTH = 240
 const MIN_CHAT_LAYOUT_WIDTH = 360
-const MAX_ARTIFACT_LAYOUT_GAP = 24
+const MAX_DRAWER_LAYOUT_GAP = 24
 
 function openLink(url: string): void {
   window.open(url, "_blank", "noopener,noreferrer")
 }
 
-function resolveArtifactLayoutWidth(
+function resolveDrawerLayoutWidth(
   configuredWidth: string,
   layout: HTMLElement,
   probe: HTMLElement | null,
 ): string {
   const layoutWidth = layout.getBoundingClientRect().width
-  if (layoutWidth <= 0) return `${DEFAULT_ARTIFACT_LAYOUT_WIDTH}px`
+  if (layoutWidth <= 0) return `${DEFAULT_DRAWER_LAYOUT_WIDTH}px`
 
   const pixels = /^\s*(\d+(?:\.\d+)?)px\s*$/i.exec(configuredWidth)
   const percent = /^\s*(\d+(?:\.\d+)?)%\s*$/.exec(configuredWidth)
@@ -72,19 +72,19 @@ function resolveArtifactLayoutWidth(
   }
 
   if (!Number.isFinite(requested) || requested <= 0) {
-    requested = DEFAULT_ARTIFACT_LAYOUT_WIDTH
+    requested = DEFAULT_DRAWER_LAYOUT_WIDTH
   }
 
   const maximum = Math.max(
-    MIN_ARTIFACT_LAYOUT_WIDTH,
-    layoutWidth - MIN_CHAT_LAYOUT_WIDTH - MAX_ARTIFACT_LAYOUT_GAP,
+    MIN_DRAWER_LAYOUT_WIDTH,
+    layoutWidth - MIN_CHAT_LAYOUT_WIDTH - MAX_DRAWER_LAYOUT_GAP,
   )
   return `${Math.round(
-    Math.min(Math.max(requested, MIN_ARTIFACT_LAYOUT_WIDTH), maximum),
+    Math.min(Math.max(requested, MIN_DRAWER_LAYOUT_WIDTH), maximum),
   )}px`
 }
 
-function ArtifactRevealIcon() {
+function DrawerRevealIcon() {
   return (
     <svg
       aria-hidden="true"
@@ -138,8 +138,8 @@ export interface ChatContainerProps {
   slashCommandId: string
   submitKey?: SubmitKey
   historyStore: HistoryStore
-  artifact: ChatArtifactState
-  artifactSource?: Element
+  drawer: ChatDrawerState
+  drawerSource?: Element
   onEdit?: (
     index: number,
     content: string,
@@ -189,8 +189,8 @@ export const ChatContainer = forwardRef<
     slashCommandId,
     submitKey,
     historyStore,
-    artifact,
-    artifactSource,
+    drawer,
+    drawerSource,
     onEdit,
     onNavigate,
     siblingNavigationPending,
@@ -208,19 +208,19 @@ export const ChatContainer = forwardRef<
   )
 
   const chatInputRef = useRef<ChatInputHandle>(null)
-  const artifactCloseRef = useRef<HTMLButtonElement>(null)
-  const artifactRevealRef = useRef<HTMLButtonElement>(null)
-  const artifactReturnFocusRef = useRef<HTMLElement | null>(null)
-  const artifactRestoreFocusRef = useRef<HTMLElement | null>(null)
-  const artifactReturnToRevealRef = useRef(false)
-  const priorArtifactVisibleRef = useRef(artifact.visible)
-  const priorArtifactTakeoverRef = useRef(false)
-  const artifactLayoutRef = useRef<HTMLDivElement>(null)
-  const artifactWidthProbeRef = useRef<HTMLDivElement>(null)
+  const drawerCloseRef = useRef<HTMLButtonElement>(null)
+  const drawerRevealRef = useRef<HTMLButtonElement>(null)
+  const drawerReturnFocusRef = useRef<HTMLElement | null>(null)
+  const drawerRestoreFocusRef = useRef<HTMLElement | null>(null)
+  const drawerReturnToRevealRef = useRef(false)
+  const priorDrawerVisibleRef = useRef(drawer.visible)
+  const priorDrawerTakeoverRef = useRef(false)
+  const drawerLayoutRef = useRef<HTMLDivElement>(null)
+  const drawerWidthProbeRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<HTMLDivElement>(null)
-  const [artifactTakeover, setArtifactTakeover] = useState(false)
-  const [artifactPresented, setArtifactPresented] = useState(artifact.visible)
-  const [artifactResizing, setArtifactResizing] = useState(false)
+  const [drawerTakeover, setDrawerTakeover] = useState(false)
+  const [drawerPresented, setDrawerPresented] = useState(drawer.visible)
+  const [drawerResizing, setDrawerResizing] = useState(false)
   const [composerPosition, setComposerPosition] = useState<ComposerPosition>({
     centered: false,
     greetingOverflows: false,
@@ -232,8 +232,8 @@ export const ChatContainer = forwardRef<
   const [composerResizing, setComposerResizing] = useState(false)
   const composerPositionRef = useRef(composerPosition)
   composerPositionRef.current = composerPosition
-  const [artifactLayoutWidth, setArtifactLayoutWidth] = useState(
-    `${DEFAULT_ARTIFACT_LAYOUT_WIDTH}px`,
+  const [drawerLayoutWidth, setArtifactLayoutWidth] = useState(
+    `${DEFAULT_DRAWER_LAYOUT_WIDTH}px`,
   )
   const history = useSyncExternalStore(
     historyStore.subscribe,
@@ -330,7 +330,7 @@ export const ChatContainer = forwardRef<
   // multi-line greeting top-heavy; removing it from normal flow clips long
   // greetings before the overflow fallback can take effect.
   useLayoutEffect(() => {
-    const layout = artifactLayoutRef.current
+    const layout = drawerLayoutRef.current
     const composer = composerRef.current
     const isPageChat = document
       .getElementById(elementId)
@@ -464,44 +464,44 @@ export const ChatContainer = forwardRef<
     }
   }, [elementId, footerEl, greeting, messages.length, scrollRef, stopScroll])
 
-  const updateArtifactLayoutWidth = useCallback(() => {
-    const layout = artifactLayoutRef.current
-    if (!layout || !artifact.enabled) return
+  const updateDrawerLayoutWidth = useCallback(() => {
+    const layout = drawerLayoutRef.current
+    if (!layout || !drawer.enabled) return
 
-    const nextWidth = resolveArtifactLayoutWidth(
-      artifact.width,
+    const nextWidth = resolveDrawerLayoutWidth(
+      drawer.width,
       layout,
-      artifactWidthProbeRef.current,
+      drawerWidthProbeRef.current,
     )
     setArtifactLayoutWidth((currentWidth) =>
       currentWidth === nextWidth ? currentWidth : nextWidth,
     )
-  }, [artifact.enabled, artifact.width])
+  }, [drawer.enabled, drawer.width])
 
   useLayoutEffect(() => {
-    updateArtifactLayoutWidth()
+    updateDrawerLayoutWidth()
 
-    const layout = artifactLayoutRef.current
+    const layout = drawerLayoutRef.current
     if (!layout || typeof ResizeObserver === "undefined") return
-    const observer = new ResizeObserver(updateArtifactLayoutWidth)
+    const observer = new ResizeObserver(updateDrawerLayoutWidth)
     observer.observe(layout)
-    if (artifactWidthProbeRef.current) {
-      observer.observe(artifactWidthProbeRef.current)
+    if (drawerWidthProbeRef.current) {
+      observer.observe(drawerWidthProbeRef.current)
     }
     return () => observer.disconnect()
-  }, [artifact.visible, updateArtifactLayoutWidth])
+  }, [drawer.visible, updateDrawerLayoutWidth])
 
   useEffect(() => {
-    const layout = artifactLayoutRef.current
-    if (!layout || !artifact.enabled) {
-      setArtifactTakeover(false)
+    const layout = drawerLayoutRef.current
+    if (!layout || !drawer.enabled) {
+      setDrawerTakeover(false)
       return
     }
 
     const update = (width: number) => {
       // Preserve the adjacent layout whenever the chat and artifact can both
       // meet their established minimum widths.
-      setArtifactTakeover(width < ARTIFACT_TAKEOVER_WIDTH)
+      setDrawerTakeover(width < DRAWER_TAKEOVER_WIDTH)
     }
     update(layout.getBoundingClientRect().width)
 
@@ -512,89 +512,89 @@ export const ChatContainer = forwardRef<
     })
     observer.observe(layout)
     return () => observer.disconnect()
-  }, [artifact.enabled, artifact.visible])
+  }, [drawer.enabled, drawer.visible])
 
   useLayoutEffect(() => {
-    const wasVisible = priorArtifactVisibleRef.current
-    const wasTakeover = priorArtifactTakeoverRef.current
-    const isVisible = artifact.enabled && artifact.visible
+    const wasVisible = priorDrawerVisibleRef.current
+    const wasTakeover = priorDrawerTakeoverRef.current
+    const isVisible = drawer.enabled && drawer.visible
     const revealedFromControl =
-      isVisible && !wasVisible && artifactReturnToRevealRef.current
+      isVisible && !wasVisible && drawerReturnToRevealRef.current
     const entersTakeover =
-      isVisible && artifactTakeover && (!wasVisible || !wasTakeover)
+      isVisible && drawerTakeover && (!wasVisible || !wasTakeover)
 
     if (revealedFromControl) {
-      artifactReturnFocusRef.current = null
-      artifactRestoreFocusRef.current = null
-      requestAnimationFrame(() => artifactCloseRef.current?.focus())
+      drawerReturnFocusRef.current = null
+      drawerRestoreFocusRef.current = null
+      requestAnimationFrame(() => drawerCloseRef.current?.focus())
       if (historyOpen) setHistoryOpen(false)
     } else if (entersTakeover) {
-      artifactRestoreFocusRef.current = null
+      drawerRestoreFocusRef.current = null
       const active = document.activeElement
-      const chatWrapper = artifactLayoutRef.current?.querySelector(
+      const chatWrapper = drawerLayoutRef.current?.querySelector(
         ".shiny-chat-wrapper",
       )
       const activeInChat =
         active instanceof HTMLElement && chatWrapper?.contains(active)
       const activeOnHistoryTrigger = active === historyTriggerRef.current
       if (activeInChat || activeOnHistoryTrigger || historyOpen) {
-        artifactReturnFocusRef.current =
+        drawerReturnFocusRef.current =
           activeInChat && active instanceof HTMLElement
             ? active
             : historyTriggerRef.current
-        requestAnimationFrame(() => artifactCloseRef.current?.focus())
-      } else if (artifactReturnToRevealRef.current) {
-        artifactReturnFocusRef.current = null
-        requestAnimationFrame(() => artifactCloseRef.current?.focus())
+        requestAnimationFrame(() => drawerCloseRef.current?.focus())
+      } else if (drawerReturnToRevealRef.current) {
+        drawerReturnFocusRef.current = null
+        requestAnimationFrame(() => drawerCloseRef.current?.focus())
       } else {
-        artifactReturnFocusRef.current = null
+        drawerReturnFocusRef.current = null
       }
       if (historyOpen) setHistoryOpen(false)
     } else if (wasVisible && !isVisible) {
-      const returnToReveal = artifactReturnToRevealRef.current
-      artifactReturnToRevealRef.current = false
+      const returnToReveal = drawerReturnToRevealRef.current
+      drawerReturnToRevealRef.current = false
       if (returnToReveal) {
-        requestAnimationFrame(() => artifactRevealRef.current?.focus())
+        requestAnimationFrame(() => drawerRevealRef.current?.focus())
       } else {
-        artifactRestoreFocusRef.current = artifactReturnFocusRef.current
+        drawerRestoreFocusRef.current = drawerReturnFocusRef.current
       }
-      artifactReturnFocusRef.current = null
+      drawerReturnFocusRef.current = null
     }
 
-    priorArtifactVisibleRef.current = isVisible
-    priorArtifactTakeoverRef.current = artifactTakeover
-  }, [artifact.enabled, artifact.visible, artifactTakeover, historyOpen])
+    priorDrawerVisibleRef.current = isVisible
+    priorDrawerTakeoverRef.current = drawerTakeover
+  }, [drawer.enabled, drawer.visible, drawerTakeover, historyOpen])
 
   useLayoutEffect(() => {
-    if (artifact.visible || artifactPresented) return
+    if (drawer.visible || drawerPresented) return
 
-    const returnFocus = artifactRestoreFocusRef.current
-    artifactRestoreFocusRef.current = null
+    const returnFocus = drawerRestoreFocusRef.current
+    drawerRestoreFocusRef.current = null
     if (!returnFocus?.isConnected) return
 
     requestAnimationFrame(() => {
       if (returnFocus.isConnected) returnFocus.focus()
     })
-  }, [artifact.visible, artifactPresented])
+  }, [drawer.visible, drawerPresented])
 
   useEffect(() => {
-    if (artifactTakeover && artifact.visible && historyOpen) {
+    if (drawerTakeover && drawer.visible && historyOpen) {
       setHistoryOpen(false)
     }
-  }, [artifact.visible, artifactTakeover, historyOpen])
+  }, [drawer.visible, drawerTakeover, historyOpen])
 
-  const closeArtifact = useCallback(() => {
-    dispatch({ type: "artifact_hide" })
+  const closeDrawer = useCallback(() => {
+    dispatch({ type: "drawer_hide" })
   }, [dispatch])
 
-  const revealArtifact = useCallback(() => {
-    artifactReturnToRevealRef.current = true
-    dispatch({ type: "artifact_toggle" })
+  const revealDrawer = useCallback(() => {
+    drawerReturnToRevealRef.current = true
+    dispatch({ type: "drawer_toggle" })
   }, [dispatch])
 
-  const setArtifactWidth = useCallback(
+  const setDrawerWidth = useCallback(
     (width: string) => {
-      dispatch({ type: "SET_ARTIFACT_WIDTH", width })
+      dispatch({ type: "SET_DRAWER_WIDTH", width })
     },
     [dispatch],
   )
@@ -865,10 +865,9 @@ export const ChatContainer = forwardRef<
     scrollToBottom()
   }, [scrollToBottom])
 
-  const artifactHasContent = artifact.content.trim().length > 0
-  const artifactTakeoverActive = artifactTakeover && artifactPresented
-  const artifactLayoutOpen =
-    artifact.enabled && (artifact.visible || artifactPresented)
+  const drawerHasContent = drawer.content.trim().length > 0
+  const drawerTakeoverActive = drawerTakeover && drawerPresented
+  const drawerLayoutOpen = drawer.enabled && (drawer.visible || drawerPresented)
 
   useLayoutEffect(() => {
     const container = document.getElementById(elementId)
@@ -878,8 +877,8 @@ export const ChatContainer = forwardRef<
     if (showHistory && history.enabled && !historyOwnedByPage) {
       controls.push("history")
     }
-    if (artifact.enabled && !artifact.visible && artifactHasContent) {
-      controls.push("artifact")
+    if (drawer.enabled && !drawer.visible && drawerHasContent) {
+      controls.push("drawer")
     }
 
     const value = controls.join(" ")
@@ -895,9 +894,9 @@ export const ChatContainer = forwardRef<
       }
     }
   }, [
-    artifact.enabled,
-    artifact.visible,
-    artifactHasContent,
+    drawer.enabled,
+    drawer.visible,
+    drawerHasContent,
     history.enabled,
     historyOwnedByPage,
     elementId,
@@ -913,40 +912,40 @@ export const ChatContainer = forwardRef<
           className="shiny-chat-history-trigger"
           aria-label="Conversation history"
           aria-expanded={historyOpen}
-          aria-hidden={artifactTakeoverActive || undefined}
-          disabled={artifactTakeoverActive}
-          tabIndex={artifactTakeoverActive ? -1 : undefined}
+          aria-hidden={drawerTakeoverActive || undefined}
+          disabled={drawerTakeoverActive}
+          tabIndex={drawerTakeoverActive ? -1 : undefined}
           onClick={() => setHistoryOpen((v) => !v)}
         >
           <HistoryIcon />
         </button>
       )}
-      {artifact.enabled && !artifact.visible && artifactHasContent && (
+      {drawer.enabled && !drawer.visible && drawerHasContent && (
         <button
           type="button"
-          ref={artifactRevealRef}
-          className="shiny-chat-artifact-trigger"
-          aria-label="Show artifact"
-          aria-controls={`${elementId}-artifact`}
+          ref={drawerRevealRef}
+          className="shiny-chat-drawer-trigger"
+          aria-label="Show drawer"
+          aria-controls={`${elementId}-drawer`}
           aria-expanded={false}
-          title="Show artifact"
-          onClick={revealArtifact}
+          title="Show drawer"
+          onClick={revealDrawer}
         >
-          <ArtifactRevealIcon />
+          <DrawerRevealIcon />
         </button>
       )}
       {/* Width-limited, centered content column. The container itself is
           full-width so the history trigger + drawer scrim (siblings of this
           wrapper) can span the whole element. */}
       <div
-        ref={artifactLayoutRef}
+        ref={drawerLayoutRef}
         className="shiny-chat-layout"
         style={
-          artifact.enabled || composerPosition.centered
+          drawer.enabled || composerPosition.centered
             ? ({
-                ...(artifact.enabled
+                ...(drawer.enabled
                   ? {
-                      "--shiny-chat-artifact-width": artifactLayoutWidth,
+                      "--shiny-chat-drawer-width": drawerLayoutWidth,
                     }
                   : {}),
                 "--shiny-chat-greeting-offset": `${composerPosition.greetingOffset}px`,
@@ -954,11 +953,11 @@ export const ChatContainer = forwardRef<
               } as React.CSSProperties)
             : undefined
         }
-        data-artifact-open={artifactLayoutOpen ? "" : undefined}
-        data-artifact-takeover={
-          artifactTakeover && artifactPresented ? "" : undefined
+        data-drawer-open={drawerLayoutOpen ? "" : undefined}
+        data-drawer-takeover={
+          drawerTakeover && drawerPresented ? "" : undefined
         }
-        data-artifact-resizing={artifactResizing ? "" : undefined}
+        data-drawer-resizing={drawerResizing ? "" : undefined}
         data-composer-centered={composerPosition.centered ? "" : undefined}
         data-greeting-overflow={
           composerPosition.greetingOverflows ? "" : undefined
@@ -1054,26 +1053,26 @@ export const ChatContainer = forwardRef<
           </div>
         </div>
 
-        {artifact.enabled && (
-          <ChatArtifact
-            artifact={artifact}
-            source={artifactSource}
-            panelId={`${elementId}-artifact`}
-            titleId={`${elementId}-artifact-title`}
-            takeover={artifactTakeover}
-            closeButtonRef={artifactCloseRef}
-            onClose={closeArtifact}
-            onWidthChange={setArtifactWidth}
-            onPresentationChange={setArtifactPresented}
-            onResizeStateChange={setArtifactResizing}
+        {drawer.enabled && (
+          <ChatDrawer
+            drawer={drawer}
+            source={drawerSource}
+            panelId={`${elementId}-drawer`}
+            titleId={`${elementId}-drawer-title`}
+            takeover={drawerTakeover}
+            closeButtonRef={drawerCloseRef}
+            onClose={closeDrawer}
+            onWidthChange={setDrawerWidth}
+            onPresentationChange={setDrawerPresented}
+            onResizeStateChange={setDrawerResizing}
           />
         )}
-        {artifact.enabled && (
+        {drawer.enabled && (
           <div
-            ref={artifactWidthProbeRef}
+            ref={drawerWidthProbeRef}
             aria-hidden="true"
-            className="shiny-chat-artifact-width-probe"
-            style={{ width: artifact.width }}
+            className="shiny-chat-drawer-width-probe"
+            style={{ width: drawer.width }}
           />
         )}
       </div>

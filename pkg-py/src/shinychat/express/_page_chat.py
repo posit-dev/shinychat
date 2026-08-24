@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Iterable, Optional, Sequence, Union
 from htmltools import HTML, MetadataNode, Tag, TagChild, TagList
 
 from .._page_chat import (
-    ChatArtifactPanel,
+    ChatDrawer,
     ChatNavPanel,
     ChatSidebar,
     _create_page_chat_root,
@@ -39,7 +39,7 @@ def page_chat(
     toolbar_global: TagChild | None | MISSING_TYPE = MISSING,
     navbar_options: Any = None,
     sidebar: bool | ChatSidebar = True,
-    artifact_panel: bool | ChatArtifactPanel = True,
+    drawer: bool | ChatDrawer = True,
     window_title: str | None = None,
     lang: str | None = None,
     theme: str | Path | Theme | ThemeProvider | None = None,
@@ -63,7 +63,7 @@ def page_chat(
     internally and owns the complete top-level page layout. Do not also call
     ``chat.ui()``, add unrelated top-level UI, wrap the returned chat root, or
     assign it to a variable. Compose additional UI through ``pages_navbar``,
-    ``toolbar``, ``toolbar_global``, ``sidebar``, and ``artifact_panel``.
+    ``toolbar``, ``toolbar_global``, ``sidebar``, and ``drawer``.
 
     Parameters
     ----------
@@ -106,9 +106,9 @@ def page_chat(
         sidebar, ``False`` removes it, and a
         :class:`~shinychat.types.ChatSidebar` supplies custom content and behavior.
         Raw :class:`shiny.ui.Sidebar` objects are not supported.
-    artifact_panel
+    drawer
         Whether the chat has an artifact panel. Pass a
-        :class:`~shinychat.types.ChatArtifactPanel` to configure its initial content and
+        :class:`~shinychat.types.ChatDrawer` to configure its initial content and
         behavior.
     window_title
         Optional document title. Use this when ``title`` is an HTML child or
@@ -172,13 +172,13 @@ def page_chat(
     :func:`~shinychat.page_chat` : Create the same layout in a Core app.
     :func:`~shinychat.chat_sidebar` : Configure page sidebars.
     :func:`~shinychat.chat_nav_panel` : Configure secondary navbar pages.
-    :func:`~shinychat.chat_artifact_panel` : Configure the artifact panel.
+    :func:`~shinychat.chat_drawer` : Configure the artifact panel.
     """
     from shiny.express import ui
 
     chat_root = _create_page_chat_root(
         id=id,
-        artifact_panel=artifact_panel,
+        drawer=drawer,
         messages=messages,
         greeting=greeting,
         placeholder=placeholder,

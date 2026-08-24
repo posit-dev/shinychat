@@ -1,10 +1,10 @@
 import { createRef } from "react"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
-import { ChatArtifact } from "../../src/chat/ChatArtifact"
+import { ChatDrawer } from "../../src/chat/ChatDrawer"
 import { ChatApp } from "../../src/chat/ChatApp"
 import { ShinyLifecycleContext } from "../../src/chat/context"
-import { initialState, type ChatArtifactState } from "../../src/chat/state"
+import { initialState, type ChatDrawerState } from "../../src/chat/state"
 import { RESIZE_HANDLE_EVENTS } from "../../src/resize-handle"
 import type { ShinyLifecycle } from "../../src/transport/types"
 import { createMockShinyLifecycle, createMockTransport } from "../helpers/mocks"
@@ -44,11 +44,9 @@ class ResizeObserverStub {
   }
 }
 
-function artifact(
-  overrides: Partial<ChatArtifactState> = {},
-): ChatArtifactState {
+function drawer(overrides: Partial<ChatDrawerState> = {}): ChatDrawerState {
   return {
-    ...initialState.artifact,
+    ...initialState.drawer,
     enabled: true,
     visible: true,
     content: "<p>Initial</p>",
@@ -65,8 +63,8 @@ function lifecycle(): ShinyLifecycle {
   }
 }
 
-function renderArtifact(
-  currentArtifact: ChatArtifactState,
+function renderDrawer(
+  currentDrawer: ChatDrawerState,
   options: {
     source?: Element
     shiny?: ShinyLifecycle
@@ -82,10 +80,10 @@ function renderArtifact(
   const onWidthChange = options.onWidthChange ?? vi.fn()
   const view = render(
     <ShinyLifecycleContext.Provider value={shiny}>
-      <ChatArtifact
-        artifact={currentArtifact}
+      <ChatDrawer
+        drawer={currentDrawer}
         source={options.source}
-        titleId="artifact-title"
+        titleId="drawer-title"
         takeover={options.takeover ?? false}
         closeButtonRef={closeButtonRef}
         onClose={onClose}
@@ -97,7 +95,7 @@ function renderArtifact(
   return { ...view, closeButtonRef, shiny, onClose, onWidthChange }
 }
 
-function armArtifactResizer(
+function armDrawerResizer(
   separator: HTMLElement,
   direction: "ltr" | "rtl" = "ltr",
 ) {
@@ -115,19 +113,19 @@ function armArtifactResizer(
   expect(separator).toHaveAttribute("data-boundary-armed")
 }
 
-describe("ChatArtifact", () => {
-  it("retains a closing artifact until its consumer motion completes", () => {
+describe("ChatDrawer", () => {
+  it("retains a closing drawer until its consumer motion completes", () => {
     vi.useFakeTimers()
     try {
       const shiny = lifecycle()
-      const { rerender } = renderArtifact(artifact(), { shiny })
+      const { rerender } = renderDrawer(drawer(), { shiny })
       const panel = screen.getByRole("complementary")
 
       rerender(
         <ShinyLifecycleContext.Provider value={shiny}>
-          <ChatArtifact
-            artifact={artifact({ visible: false })}
-            titleId="artifact-title"
+          <ChatDrawer
+            drawer={drawer({ visible: false })}
+            titleId="drawer-title"
             takeover={false}
             closeButtonRef={createRef<HTMLButtonElement>()}
             onClose={vi.fn()}
@@ -150,10 +148,10 @@ describe("ChatArtifact", () => {
 
   it("reports resize activity to its layout consumer", async () => {
     const onResizeStateChange = vi.fn()
-    renderArtifact(artifact(), { onResizeStateChange })
+    renderDrawer(drawer(), { onResizeStateChange })
 
     const separator = screen.getByRole("separator", {
-      name: "Resize artifact panel",
+      name: "Resize drawer panel",
     })
     fireEvent(
       separator,
@@ -172,16 +170,16 @@ describe("ChatArtifact", () => {
     )
   })
 
-  it("clears resize state when an active artifact starts closing", async () => {
+  it("clears resize state when an active drawer starts closing", async () => {
     const onResizeStateChange = vi.fn()
     const shiny = lifecycle()
-    const { rerender } = renderArtifact(artifact(), {
+    const { rerender } = renderDrawer(drawer(), {
       shiny,
       onResizeStateChange,
     })
     const panel = screen.getByRole("complementary")
     const separator = screen.getByRole("separator", {
-      name: "Resize artifact panel",
+      name: "Resize drawer panel",
     })
 
     fireEvent(
@@ -191,13 +189,13 @@ describe("ChatArtifact", () => {
     await waitFor(() =>
       expect(onResizeStateChange).toHaveBeenLastCalledWith(true),
     )
-    expect(panel).toHaveAttribute("data-artifact-resizing")
+    expect(panel).toHaveAttribute("data-drawer-resizing")
 
     rerender(
       <ShinyLifecycleContext.Provider value={shiny}>
-        <ChatArtifact
-          artifact={artifact({ visible: false })}
-          titleId="artifact-title"
+        <ChatDrawer
+          drawer={drawer({ visible: false })}
+          titleId="drawer-title"
           takeover={false}
           closeButtonRef={createRef<HTMLButtonElement>()}
           onClose={vi.fn()}
@@ -208,20 +206,20 @@ describe("ChatArtifact", () => {
     )
 
     await waitFor(() => {
-      expect(panel).not.toHaveAttribute("data-artifact-resizing")
+      expect(panel).not.toHaveAttribute("data-drawer-resizing")
       expect(onResizeStateChange).toHaveBeenLastCalledWith(false)
     })
   })
 
   it("adopts preserved initial DOM content while hidden", async () => {
-    const source = document.createElement("shiny-chat-artifact")
+    const source = document.createElement("shiny-chat-drawer")
     const initialChild = document.createElement("input")
     initialChild.value = "preserved"
     source.append(initialChild)
     const initialMarkup = source.innerHTML
 
-    const { rerender, shiny } = renderArtifact(
-      artifact({ visible: false, content: initialMarkup }),
+    const { rerender, shiny } = renderDrawer(
+      drawer({ visible: false, content: initialMarkup }),
       { source },
     )
 
@@ -234,10 +232,10 @@ describe("ChatArtifact", () => {
 
     rerender(
       <ShinyLifecycleContext.Provider value={shiny}>
-        <ChatArtifact
-          artifact={artifact({ visible: true, content: initialMarkup })}
+        <ChatDrawer
+          drawer={drawer({ visible: true, content: initialMarkup })}
           source={source}
-          titleId="artifact-title"
+          titleId="drawer-title"
           takeover={false}
           closeButtonRef={createRef<HTMLButtonElement>()}
           onClose={vi.fn()}
@@ -269,23 +267,23 @@ describe("ChatArtifact", () => {
       }),
       showClientMessage: vi.fn(),
     }
-    const first = artifact({
+    const first = drawer({
       content: "<p>First</p>",
       htmlDeps: [{ name: "first", version: "1.0.0" }],
     })
-    const { rerender } = renderArtifact(first, { shiny })
+    const { rerender } = renderDrawer(first, { shiny })
 
     await waitFor(() => expect(calls).toEqual(["deps", "bind"]))
     calls.length = 0
 
     rerender(
       <ShinyLifecycleContext.Provider value={shiny}>
-        <ChatArtifact
-          artifact={artifact({
+        <ChatDrawer
+          drawer={drawer({
             content: "<p>Second</p>",
             htmlDeps: [{ name: "second", version: "1.0.0" }],
           })}
-          titleId="artifact-title"
+          titleId="drawer-title"
           takeover={false}
           closeButtonRef={createRef<HTMLButtonElement>()}
           onClose={vi.fn()}
@@ -319,7 +317,7 @@ describe("ChatArtifact", () => {
       ),
       showClientMessage: vi.fn(),
     }
-    const { unmount } = renderArtifact(artifact(), { shiny })
+    const { unmount } = renderDrawer(drawer(), { shiny })
 
     await waitFor(() => expect(shiny.bindAll).toHaveBeenCalledTimes(1))
     unmount()
@@ -362,17 +360,17 @@ describe("ChatArtifact", () => {
       ),
       showClientMessage: vi.fn(),
     }
-    const first = artifact({ content: '<input id="shared-input">' })
-    const { rerender, unmount } = renderArtifact(first, { shiny })
+    const first = drawer({ content: '<input id="shared-input">' })
+    const { rerender, unmount } = renderDrawer(first, { shiny })
 
     await waitFor(() => expect(shiny.bindAll).toHaveBeenCalledTimes(1))
     rerender(
       <ShinyLifecycleContext.Provider value={shiny}>
-        <ChatArtifact
-          artifact={artifact({
+        <ChatDrawer
+          drawer={drawer({
             content: '<div><input id="shared-input"></div>',
           })}
-          titleId="artifact-title"
+          titleId="drawer-title"
           takeover={false}
           closeButtonRef={createRef<HTMLButtonElement>()}
           onClose={vi.fn()}
@@ -417,9 +415,9 @@ describe("ChatArtifact", () => {
     const shiny = lifecycle()
     render(
       <ShinyLifecycleContext.Provider value={shiny}>
-        <ChatArtifact
-          artifact={artifact({ width: "400px" })}
-          titleId="artifact-title"
+        <ChatDrawer
+          drawer={drawer({ width: "400px" })}
+          titleId="drawer-title"
           takeover={false}
           closeButtonRef={closeButtonRef}
           onClose={vi.fn()}
@@ -434,7 +432,7 @@ describe("ChatArtifact", () => {
       value: () => ({ width: 400 }),
     })
     const separator = screen.getByRole("separator", {
-      name: "Resize artifact panel",
+      name: "Resize drawer panel",
     })
     expect(separator).toHaveAttribute("aria-valuemin", "240")
     expect(separator).toHaveAttribute("aria-valuemax", "816")
@@ -442,7 +440,7 @@ describe("ChatArtifact", () => {
     fireEvent.keyDown(separator, { key: "ArrowRight" })
     expect(onWidthChange).toHaveBeenLastCalledWith("390px")
 
-    armArtifactResizer(separator)
+    armDrawerResizer(separator)
     fireEvent.pointerDown(separator, {
       button: 0,
       isPrimary: true,
@@ -457,11 +455,11 @@ describe("ChatArtifact", () => {
     expect(onWidthChange).toHaveBeenLastCalledWith("430px")
     fireEvent.pointerUp(separator, { isPrimary: true, pointerId: 1 })
     expect(screen.getByRole("complementary")).not.toHaveAttribute(
-      "data-artifact-resizing",
+      "data-drawer-resizing",
     )
   })
 
-  it("preserves non-pixel widths until the user resizes the artifact", async () => {
+  it("preserves non-pixel widths until the user resizes the drawer", async () => {
     ResizeObserverStub.reset()
     vi.stubGlobal("ResizeObserver", ResizeObserverStub)
     const shell = document.createElement("shiny-chat-container")
@@ -474,9 +472,9 @@ describe("ChatArtifact", () => {
 
     render(
       <ShinyLifecycleContext.Provider value={lifecycle()}>
-        <ChatArtifact
-          artifact={artifact({ width: "32rem" })}
-          titleId="artifact-title"
+        <ChatDrawer
+          drawer={drawer({ width: "32rem" })}
+          titleId="drawer-title"
           takeover={false}
           closeButtonRef={createRef<HTMLButtonElement>()}
           onClose={vi.fn()}
@@ -490,7 +488,7 @@ describe("ChatArtifact", () => {
     Object.defineProperty(panel, "getBoundingClientRect", {
       value: () => ({ width: panelWidth }),
     })
-    expect(panel.style.getPropertyValue("--shiny-chat-artifact-width")).toBe(
+    expect(panel.style.getPropertyValue("--shiny-chat-drawer-width")).toBe(
       "32rem",
     )
     expect(onWidthChange).not.toHaveBeenCalled()
@@ -500,9 +498,9 @@ describe("ChatArtifact", () => {
     })
 
     const separator = screen.getByRole("separator", {
-      name: "Resize artifact panel",
+      name: "Resize drawer panel",
     })
-    armArtifactResizer(separator)
+    armDrawerResizer(separator)
     fireEvent.pointerDown(separator, {
       button: 0,
       isPrimary: true,
@@ -516,7 +514,7 @@ describe("ChatArtifact", () => {
     })
 
     expect(onWidthChange).toHaveBeenLastCalledWith("552px")
-    expect(panel.style.getPropertyValue("--shiny-chat-artifact-width")).toBe(
+    expect(panel.style.getPropertyValue("--shiny-chat-drawer-width")).toBe(
       "552px",
     )
   })
@@ -536,9 +534,9 @@ describe("ChatArtifact", () => {
 
     render(
       <ShinyLifecycleContext.Provider value={lifecycle()}>
-        <ChatArtifact
-          artifact={artifact({ width: "100%" })}
-          titleId="artifact-title"
+        <ChatDrawer
+          drawer={drawer({ width: "100%" })}
+          titleId="drawer-title"
           takeover={false}
           closeButtonRef={createRef<HTMLButtonElement>()}
           onClose={vi.fn()}
@@ -557,9 +555,9 @@ describe("ChatArtifact", () => {
     })
 
     const separator = screen.getByRole("separator", {
-      name: "Resize artifact panel",
+      name: "Resize drawer panel",
     })
-    expect(panel.style.getPropertyValue("--shiny-chat-artifact-width")).toBe(
+    expect(panel.style.getPropertyValue("--shiny-chat-drawer-width")).toBe(
       "616px",
     )
     expect(separator).toHaveAttribute("aria-valuenow", "616")
@@ -582,9 +580,9 @@ describe("ChatArtifact", () => {
 
     render(
       <ShinyLifecycleContext.Provider value={lifecycle()}>
-        <ChatArtifact
-          artifact={artifact({ width: "70%" })}
-          titleId="artifact-title"
+        <ChatDrawer
+          drawer={drawer({ width: "70%" })}
+          titleId="drawer-title"
           takeover={false}
           closeButtonRef={createRef<HTMLButtonElement>()}
           onClose={vi.fn()}
@@ -603,12 +601,12 @@ describe("ChatArtifact", () => {
     })
 
     expect(onWidthChange).toHaveBeenLastCalledWith("616px")
-    expect(panel.style.getPropertyValue("--shiny-chat-artifact-width")).toBe(
+    expect(panel.style.getPropertyValue("--shiny-chat-drawer-width")).toBe(
       "616px",
     )
   })
 
-  it("resolves auto artifact widths to a pixel layout target before reveal", async () => {
+  it("resolves auto drawer widths to a pixel layout target before reveal", async () => {
     const original = Object.getOwnPropertyDescriptor(
       HTMLElement.prototype,
       "getBoundingClientRect",
@@ -628,9 +626,9 @@ describe("ChatArtifact", () => {
         <ChatApp
           transport={createMockTransport()}
           shinyLifecycle={createMockShinyLifecycle()}
-          elementId="artifact-auto-width"
-          inputId="artifact-auto-width-input"
-          initialArtifact={artifact({
+          elementId="drawer-auto-width"
+          inputId="drawer-auto-width-input"
+          initialDrawer={drawer({
             visible: false,
             width: "auto",
             content: "<p>Ready</p>",
@@ -641,7 +639,7 @@ describe("ChatArtifact", () => {
         ".shiny-chat-layout",
       ) as HTMLElement
 
-      expect(layout.style.getPropertyValue("--shiny-chat-artifact-width")).toBe(
+      expect(layout.style.getPropertyValue("--shiny-chat-drawer-width")).toBe(
         "400px",
       )
     } finally {
@@ -658,7 +656,7 @@ describe("ChatArtifact", () => {
     }
   })
 
-  it("clamps percentage artifact layout targets before desktop reveal", async () => {
+  it("clamps percentage drawer layout targets before desktop reveal", async () => {
     const original = Object.getOwnPropertyDescriptor(
       HTMLElement.prototype,
       "getBoundingClientRect",
@@ -678,9 +676,9 @@ describe("ChatArtifact", () => {
         <ChatApp
           transport={createMockTransport()}
           shinyLifecycle={createMockShinyLifecycle()}
-          elementId="artifact-percent-width"
-          inputId="artifact-percent-width-input"
-          initialArtifact={artifact({
+          elementId="drawer-percent-width"
+          inputId="drawer-percent-width-input"
+          initialDrawer={drawer({
             visible: false,
             width: "90%",
             content: "<p>Ready</p>",
@@ -691,7 +689,7 @@ describe("ChatArtifact", () => {
         ".shiny-chat-layout",
       ) as HTMLElement
 
-      expect(layout.style.getPropertyValue("--shiny-chat-artifact-width")).toBe(
+      expect(layout.style.getPropertyValue("--shiny-chat-drawer-width")).toBe(
         "1056px",
       )
     } finally {
@@ -708,7 +706,7 @@ describe("ChatArtifact", () => {
     }
   })
 
-  it("refreshes a relative artifact target when its persistent probe changes", async () => {
+  it("refreshes a relative drawer target when its persistent probe changes", async () => {
     let relativeWidth = 512
     const original = Object.getOwnPropertyDescriptor(
       HTMLElement.prototype,
@@ -720,7 +718,7 @@ describe("ChatArtifact", () => {
         if (this.classList.contains("shiny-chat-layout")) {
           return { width: 1440 }
         }
-        if (this.classList.contains("shiny-chat-artifact-width-probe")) {
+        if (this.classList.contains("shiny-chat-drawer-width-probe")) {
           return { width: relativeWidth }
         }
         return { width: 0 }
@@ -734,9 +732,9 @@ describe("ChatArtifact", () => {
         <ChatApp
           transport={createMockTransport()}
           shinyLifecycle={createMockShinyLifecycle()}
-          elementId="artifact-relative-width"
-          inputId="artifact-relative-width-input"
-          initialArtifact={artifact({
+          elementId="drawer-relative-width"
+          inputId="drawer-relative-width-input"
+          initialDrawer={drawer({
             visible: false,
             width: "32rem",
             content: "<p>Ready</p>",
@@ -747,10 +745,10 @@ describe("ChatArtifact", () => {
         ".shiny-chat-layout",
       ) as HTMLElement
       const probe = view.container.querySelector(
-        ".shiny-chat-artifact-width-probe",
+        ".shiny-chat-drawer-width-probe",
       ) as HTMLElement
 
-      expect(layout.style.getPropertyValue("--shiny-chat-artifact-width")).toBe(
+      expect(layout.style.getPropertyValue("--shiny-chat-drawer-width")).toBe(
         "512px",
       )
 
@@ -759,7 +757,7 @@ describe("ChatArtifact", () => {
         ResizeObserverStub.resize(probe, relativeWidth)
       })
 
-      expect(layout.style.getPropertyValue("--shiny-chat-artifact-width")).toBe(
+      expect(layout.style.getPropertyValue("--shiny-chat-drawer-width")).toBe(
         "640px",
       )
     } finally {
@@ -787,9 +785,9 @@ describe("ChatArtifact", () => {
 
     render(
       <ShinyLifecycleContext.Provider value={lifecycle()}>
-        <ChatArtifact
-          artifact={artifact({ width: "400px" })}
-          titleId="artifact-title"
+        <ChatDrawer
+          drawer={drawer({ width: "400px" })}
+          titleId="drawer-title"
           takeover={false}
           closeButtonRef={createRef<HTMLButtonElement>()}
           onClose={vi.fn()}
@@ -805,10 +803,10 @@ describe("ChatArtifact", () => {
       value: () => ({ width: 400 }),
     })
     const separator = screen.getByRole("separator", {
-      name: "Resize artifact panel",
+      name: "Resize drawer panel",
     })
 
-    armArtifactResizer(separator, "rtl")
+    armDrawerResizer(separator, "rtl")
     fireEvent.pointerDown(separator, {
       button: 0,
       isPrimary: true,
@@ -833,7 +831,7 @@ describe("ChatArtifact", () => {
       configurable: true,
       value: function () {
         if (this.matches("shiny-chat-container")) return { width: 1200 }
-        if (this.classList.contains("shiny-chat-artifact")) {
+        if (this.classList.contains("shiny-chat-drawer")) {
           return { width: 1000 }
         }
         return { width: 0 }
@@ -846,9 +844,9 @@ describe("ChatArtifact", () => {
       const onWidthChange = vi.fn()
       render(
         <ShinyLifecycleContext.Provider value={lifecycle()}>
-          <ChatArtifact
-            artifact={artifact({ width: "1000px" })}
-            titleId="artifact-title"
+          <ChatDrawer
+            drawer={drawer({ width: "1000px" })}
+            titleId="drawer-title"
             takeover={false}
             closeButtonRef={createRef<HTMLButtonElement>()}
             onClose={vi.fn()}
@@ -862,7 +860,7 @@ describe("ChatArtifact", () => {
         expect(onWidthChange).toHaveBeenCalledWith("816px")
       })
       const separator = screen.getByRole("separator", {
-        name: "Resize artifact panel",
+        name: "Resize drawer panel",
       })
       expect(separator).toHaveAttribute("aria-valuemax", "816")
       expect(separator).toHaveAttribute("aria-valuenow", "816")
@@ -881,7 +879,7 @@ describe("ChatArtifact", () => {
     }
   })
 
-  it("re-clamps an open desktop artifact when its container shrinks", async () => {
+  it("re-clamps an open desktop drawer when its container shrinks", async () => {
     let containerWidth = 1500
     const original = Object.getOwnPropertyDescriptor(
       HTMLElement.prototype,
@@ -893,7 +891,7 @@ describe("ChatArtifact", () => {
         if (this.matches("shiny-chat-container")) {
           return { width: containerWidth }
         }
-        if (this.classList.contains("shiny-chat-artifact")) {
+        if (this.classList.contains("shiny-chat-drawer")) {
           return { width: 1000 }
         }
         return { width: 0 }
@@ -913,9 +911,9 @@ describe("ChatArtifact", () => {
 
       render(
         <ShinyLifecycleContext.Provider value={lifecycle()}>
-          <ChatArtifact
-            artifact={artifact({ width: "1000px" })}
-            titleId="artifact-title"
+          <ChatDrawer
+            drawer={drawer({ width: "1000px" })}
+            titleId="drawer-title"
             takeover={false}
             closeButtonRef={createRef<HTMLButtonElement>()}
             onClose={vi.fn()}
@@ -935,7 +933,7 @@ describe("ChatArtifact", () => {
         expect(onWidthChange).toHaveBeenCalledWith("916px")
       })
       const separator = screen.getByRole("separator", {
-        name: "Resize artifact panel",
+        name: "Resize drawer panel",
       })
       expect(separator).toHaveAttribute("aria-valuemax", "916")
       expect(separator).toHaveAttribute("aria-valuenow", "916")
@@ -967,7 +965,7 @@ describe("ChatArtifact", () => {
         if (this.classList.contains("shiny-chat-layout")) {
           return { width: layoutWidth }
         }
-        if (this.classList.contains("shiny-chat-artifact")) {
+        if (this.classList.contains("shiny-chat-drawer")) {
           return { width: 1000 }
         }
         return { width: 0 }
@@ -986,9 +984,9 @@ describe("ChatArtifact", () => {
 
       render(
         <ShinyLifecycleContext.Provider value={lifecycle()}>
-          <ChatArtifact
-            artifact={artifact({ width: "1000px" })}
-            titleId="artifact-title"
+          <ChatDrawer
+            drawer={drawer({ width: "1000px" })}
+            titleId="drawer-title"
             takeover={false}
             closeButtonRef={createRef<HTMLButtonElement>()}
             onClose={vi.fn()}
@@ -1032,7 +1030,7 @@ describe("ChatArtifact", () => {
         if (this.matches("shiny-chat-container")) {
           return { width: containerWidth }
         }
-        if (this.classList.contains("shiny-chat-artifact")) {
+        if (this.classList.contains("shiny-chat-drawer")) {
           return { width: 400 }
         }
         return { width: 0 }
@@ -1052,9 +1050,9 @@ describe("ChatArtifact", () => {
 
       render(
         <ShinyLifecycleContext.Provider value={lifecycle()}>
-          <ChatArtifact
-            artifact={artifact({ width: "400px" })}
-            titleId="artifact-title"
+          <ChatDrawer
+            drawer={drawer({ width: "400px" })}
+            titleId="drawer-title"
             takeover={false}
             closeButtonRef={createRef<HTMLButtonElement>()}
             onClose={vi.fn()}
@@ -1065,7 +1063,7 @@ describe("ChatArtifact", () => {
       )
 
       const separator = screen.getByRole("separator", {
-        name: "Resize artifact panel",
+        name: "Resize drawer panel",
       })
       expect(separator).toHaveAttribute("aria-valuemax", "1116")
 
@@ -1095,16 +1093,16 @@ describe("ChatArtifact", () => {
   })
 
   it("does not render the resizer when server markup disables resizing", () => {
-    renderArtifact(artifact({ resizable: false }))
+    renderDrawer(drawer({ resizable: false }))
     expect(screen.queryByRole("separator")).toBeNull()
   })
 
   it.each([false, true])(
     "uses the close icon and semantics in %s takeover mode",
     (takeover) => {
-      renderArtifact(artifact(), { takeover })
+      renderDrawer(drawer(), { takeover })
 
-      const close = screen.getByRole("button", { name: "Close artifact" })
+      const close = screen.getByRole("button", { name: "Close drawer" })
       expect(close.querySelector("svg path")).toHaveAttribute(
         "d",
         "m3 3 10 10M13 3 3 13",
@@ -1143,9 +1141,9 @@ describe("ChatArtifact", () => {
           <ChatApp
             transport={createMockTransport()}
             shinyLifecycle={createMockShinyLifecycle()}
-            elementId="artifact-reveal"
-            inputId="artifact-reveal-input"
-            initialArtifact={artifact({
+            elementId="drawer-reveal"
+            inputId="drawer-reveal-input"
+            initialDrawer={drawer({
               visible: false,
               content: "<p>Ready</p>",
             })}
@@ -1153,7 +1151,7 @@ describe("ChatArtifact", () => {
         )
 
         const reveal = await screen.findByRole("button", {
-          name: "Show artifact",
+          name: "Show drawer",
         })
         expect(
           screen.getByRole("complementary", { hidden: true }),
@@ -1162,16 +1160,14 @@ describe("ChatArtifact", () => {
         fireEvent.click(reveal)
 
         const close = await screen.findByRole("button", {
-          name: "Close artifact",
+          name: "Close drawer",
         })
         expect(close).toHaveFocus()
-        expect(
-          screen.queryByRole("button", { name: "Show artifact" }),
-        ).toBeNull()
+        expect(screen.queryByRole("button", { name: "Show drawer" })).toBeNull()
 
         fireEvent.click(close)
         const restored = await screen.findByRole("button", {
-          name: "Show artifact",
+          name: "Show drawer",
         })
         expect(restored).toHaveFocus()
       } finally {
@@ -1190,29 +1186,29 @@ describe("ChatArtifact", () => {
     },
   )
 
-  it("removes the reveal control when artifact content is cleared", async () => {
+  it("removes the reveal control when drawer content is cleared", async () => {
     const transport = createMockTransport()
     render(
       <ChatApp
         transport={transport}
         shinyLifecycle={createMockShinyLifecycle()}
-        elementId="artifact-clear"
-        inputId="artifact-clear-input"
-        initialArtifact={artifact({
+        elementId="drawer-clear"
+        inputId="drawer-clear-input"
+        initialDrawer={drawer({
           visible: false,
           content: "<p>Ready</p>",
         })}
       />,
     )
 
-    await screen.findByRole("button", { name: "Show artifact" })
+    await screen.findByRole("button", { name: "Show drawer" })
     act(() => {
-      transport.fire("artifact-clear", {
-        type: "artifact_update",
+      transport.fire("drawer-clear", {
+        type: "drawer_update",
         content: "",
       })
     })
-    expect(screen.queryByRole("button", { name: "Show artifact" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Show drawer" })).toBeNull()
   })
 
   it("moves focus to the takeover close control and restores it when hidden", async () => {
@@ -1227,22 +1223,22 @@ describe("ChatArtifact", () => {
       <ChatApp
         transport={transport}
         shinyLifecycle={shinyLifecycle}
-        elementId="artifact-focus"
-        inputId="artifact-focus-input"
-        initialArtifact={artifact({ visible: false, content: "" })}
+        elementId="drawer-focus"
+        inputId="drawer-focus-input"
+        initialDrawer={drawer({ visible: false, content: "" })}
       />,
     )
     const priorFocus = await screen.findByRole("textbox")
     priorFocus.focus()
 
     act(() => {
-      transport.fire("artifact-focus", {
-        type: "artifact_show",
+      transport.fire("drawer-focus", {
+        type: "drawer_show",
         content: "<p>Ready</p>",
       })
     })
 
-    const close = await screen.findByRole("button", { name: "Close artifact" })
+    const close = await screen.findByRole("button", { name: "Close drawer" })
     expect(close).toHaveFocus()
 
     fireEvent.click(close)
@@ -1250,7 +1246,7 @@ describe("ChatArtifact", () => {
     vi.unstubAllGlobals()
   })
 
-  it("moves focus to Close when a visible artifact transitions to takeover", async () => {
+  it("moves focus to Close when a visible drawer transitions to takeover", async () => {
     let layoutWidth = 1200
     const original = Object.getOwnPropertyDescriptor(
       HTMLElement.prototype,
@@ -1262,7 +1258,7 @@ describe("ChatArtifact", () => {
         if (this.classList.contains("shiny-chat-layout")) {
           return { width: layoutWidth }
         }
-        if (this.classList.contains("shiny-chat-artifact")) {
+        if (this.classList.contains("shiny-chat-drawer")) {
           return { width: 400 }
         }
         return { width: 0 }
@@ -1282,9 +1278,9 @@ describe("ChatArtifact", () => {
         <ChatApp
           transport={transport}
           shinyLifecycle={shinyLifecycle}
-          elementId="artifact-resize-focus"
-          inputId="artifact-resize-focus-input"
-          initialArtifact={artifact()}
+          elementId="drawer-resize-focus"
+          inputId="drawer-resize-focus-input"
+          initialDrawer={drawer()}
         />,
       )
 
@@ -1300,7 +1296,7 @@ describe("ChatArtifact", () => {
       })
 
       const close = await screen.findByRole("button", {
-        name: "Close artifact",
+        name: "Close drawer",
       })
       expect(close).toHaveFocus()
 
@@ -1333,7 +1329,7 @@ describe("ChatArtifact", () => {
         if (this.classList.contains("shiny-chat-layout")) {
           return { width: layoutWidth }
         }
-        if (this.classList.contains("shiny-chat-artifact")) {
+        if (this.classList.contains("shiny-chat-drawer")) {
           return { width: 240 }
         }
         return { width: 0 }
@@ -1347,9 +1343,9 @@ describe("ChatArtifact", () => {
         <ChatApp
           transport={createMockTransport()}
           shinyLifecycle={createMockShinyLifecycle()}
-          elementId="artifact-layout-boundary"
-          inputId="artifact-layout-boundary-input"
-          initialArtifact={artifact()}
+          elementId="drawer-layout-boundary"
+          inputId="drawer-layout-boundary-input"
+          initialDrawer={drawer()}
         />,
       )
       const layout = view.container.querySelector(
@@ -1357,7 +1353,7 @@ describe("ChatArtifact", () => {
       ) as HTMLElement
 
       await waitFor(() =>
-        expect(layout).not.toHaveAttribute("data-artifact-takeover"),
+        expect(layout).not.toHaveAttribute("data-drawer-takeover"),
       )
 
       layoutWidth = 639
@@ -1365,7 +1361,7 @@ describe("ChatArtifact", () => {
         ResizeObserverStub.resize(layout, layoutWidth)
       })
       await waitFor(() =>
-        expect(layout).toHaveAttribute("data-artifact-takeover", ""),
+        expect(layout).toHaveAttribute("data-drawer-takeover", ""),
       )
     } finally {
       vi.unstubAllGlobals()
@@ -1394,7 +1390,7 @@ describe("ChatArtifact", () => {
         if (this.classList.contains("shiny-chat-layout")) {
           return { width: layoutWidth }
         }
-        if (this.classList.contains("shiny-chat-artifact")) {
+        if (this.classList.contains("shiny-chat-drawer")) {
           return { width: 400 }
         }
         return { width: 0 }
@@ -1413,13 +1409,13 @@ describe("ChatArtifact", () => {
         <ChatApp
           transport={transport}
           shinyLifecycle={createMockShinyLifecycle()}
-          elementId="artifact-history-takeover"
-          inputId="artifact-history-takeover-input"
-          initialArtifact={artifact({ visible: false, content: "" })}
+          elementId="drawer-history-takeover"
+          inputId="drawer-history-takeover-input"
+          initialDrawer={drawer({ visible: false, content: "" })}
         />,
       )
       await act(async () => {
-        transport.fire("artifact-history-takeover", {
+        transport.fire("drawer-history-takeover", {
           type: "history_update",
           enabled: true,
           conversations: [],
@@ -1439,19 +1435,19 @@ describe("ChatArtifact", () => {
       })
 
       await act(async () => {
-        transport.fire("artifact-history-takeover", {
-          type: "artifact_show",
+        transport.fire("drawer-history-takeover", {
+          type: "drawer_show",
           content: "<p>Ready</p>",
         })
       })
 
-      await screen.findByRole("button", { name: "Close artifact" })
-      expect(layout).toHaveAttribute("data-artifact-takeover", "")
+      await screen.findByRole("button", { name: "Close drawer" })
+      expect(layout).toHaveAttribute("data-drawer-takeover", "")
       expect(history).toBeDisabled()
       expect(history).toHaveAttribute("aria-hidden", "true")
       expect(history).toHaveAttribute("tabindex", "-1")
 
-      fireEvent.click(screen.getByRole("button", { name: "Close artifact" }))
+      fireEvent.click(screen.getByRole("button", { name: "Close drawer" }))
       await waitFor(() => expect(history).not.toBeDisabled())
     } finally {
       vi.unstubAllGlobals()
@@ -1468,7 +1464,7 @@ describe("ChatArtifact", () => {
     }
   })
 
-  it("keeps non-chat focus outside the artifact during a takeover transition", async () => {
+  it("keeps non-chat focus outside the drawer during a takeover transition", async () => {
     let layoutWidth = 1200
     const original = Object.getOwnPropertyDescriptor(
       HTMLElement.prototype,
@@ -1480,7 +1476,7 @@ describe("ChatArtifact", () => {
         if (this.classList.contains("shiny-chat-layout")) {
           return { width: layoutWidth }
         }
-        if (this.classList.contains("shiny-chat-artifact")) {
+        if (this.classList.contains("shiny-chat-drawer")) {
           return { width: 400 }
         }
         return { width: 0 }
@@ -1501,9 +1497,9 @@ describe("ChatArtifact", () => {
         <ChatApp
           transport={createMockTransport()}
           shinyLifecycle={createMockShinyLifecycle()}
-          elementId="artifact-outside-focus"
-          inputId="artifact-outside-focus-input"
-          initialArtifact={artifact()}
+          elementId="drawer-outside-focus"
+          inputId="drawer-outside-focus-input"
+          initialDrawer={drawer()}
         />,
       )
       outsideControl.focus()
@@ -1516,7 +1512,7 @@ describe("ChatArtifact", () => {
         ResizeObserverStub.resize(layout, layoutWidth)
       })
 
-      await screen.findByRole("button", { name: "Close artifact" })
+      await screen.findByRole("button", { name: "Close drawer" })
       expect(outsideControl).toHaveFocus()
     } finally {
       vi.unstubAllGlobals()
@@ -1545,7 +1541,7 @@ describe("ChatArtifact", () => {
         if (this.classList.contains("shiny-chat-layout")) {
           return { width: layoutWidth }
         }
-        if (this.classList.contains("shiny-chat-artifact")) {
+        if (this.classList.contains("shiny-chat-drawer")) {
           return { width: 400 }
         }
         return { width: 0 }
@@ -1563,9 +1559,9 @@ describe("ChatArtifact", () => {
         <ChatApp
           transport={createMockTransport()}
           shinyLifecycle={createMockShinyLifecycle()}
-          elementId="artifact-stale-focus"
-          inputId="artifact-stale-focus-input"
-          initialArtifact={artifact()}
+          elementId="drawer-stale-focus"
+          inputId="drawer-stale-focus-input"
+          initialDrawer={drawer()}
         />,
       )
       const chatControl = await screen.findByRole("textbox")
@@ -1578,13 +1574,13 @@ describe("ChatArtifact", () => {
       await act(async () => {
         ResizeObserverStub.resize(layout, layoutWidth)
       })
-      await screen.findByRole("button", { name: "Close artifact" })
+      await screen.findByRole("button", { name: "Close drawer" })
 
       layoutWidth = 1200
       await act(async () => {
         ResizeObserverStub.resize(layout, layoutWidth)
       })
-      await screen.findByRole("button", { name: "Close artifact" })
+      await screen.findByRole("button", { name: "Close drawer" })
 
       const outsideControl = document.createElement("button")
       outsideControl.textContent = "Outside chat"
@@ -1596,7 +1592,7 @@ describe("ChatArtifact", () => {
         ResizeObserverStub.resize(layout, layoutWidth)
       })
       const close = await screen.findByRole("button", {
-        name: "Close artifact",
+        name: "Close drawer",
       })
       expect(outsideControl).toHaveFocus()
 
@@ -1637,13 +1633,11 @@ describe("ChatArtifact", () => {
 
     try {
       const onWidthChange = vi.fn()
-      const { container, rerender, shiny } = renderArtifact(
-        artifact({ title: "Before bslib" }),
+      const { container, rerender, shiny } = renderDrawer(
+        drawer({ title: "Before bslib" }),
         { onWidthChange },
       )
-      const localHandle = container.querySelector(
-        ".shiny-chat-artifact-resizer",
-      )
+      const localHandle = container.querySelector(".shiny-chat-drawer-resizer")
       expect(localHandle?.tagName).toBe("SHINY-CHAT-RESIZE-HANDLE")
       expect(localHandle).toHaveAttribute(
         "data-shiny-chat-resize-handle-provider",
@@ -1653,9 +1647,9 @@ describe("ChatArtifact", () => {
       get.mockRestore()
       rerender(
         <ShinyLifecycleContext.Provider value={shiny}>
-          <ChatArtifact
-            artifact={artifact({ title: "After bslib" })}
-            titleId="artifact-title"
+          <ChatDrawer
+            drawer={drawer({ title: "After bslib" })}
+            titleId="drawer-title"
             takeover={false}
             closeButtonRef={createRef<HTMLButtonElement>()}
             onClose={vi.fn()}
@@ -1665,7 +1659,7 @@ describe("ChatArtifact", () => {
       )
 
       const rerenderedHandle = container.querySelector(
-        ".shiny-chat-artifact-resizer",
+        ".shiny-chat-drawer-resizer",
       )
       expect(rerenderedHandle).toBe(localHandle)
       expect(rerenderedHandle?.tagName).toBe("SHINY-CHAT-RESIZE-HANDLE")
@@ -1686,21 +1680,21 @@ describe("ChatArtifact", () => {
     }
   })
 
-  it("does not render or activate an artifact when support is disabled", () => {
+  it("does not render or activate an drawer when support is disabled", () => {
     const transport = createMockTransport()
     const shinyLifecycle = createMockShinyLifecycle()
     render(
       <ChatApp
         transport={transport}
         shinyLifecycle={shinyLifecycle}
-        elementId="artifact-disabled"
-        inputId="artifact-disabled-input"
+        elementId="drawer-disabled"
+        inputId="drawer-disabled-input"
       />,
     )
 
     act(() => {
-      transport.fire("artifact-disabled", {
-        type: "artifact_show",
+      transport.fire("drawer-disabled", {
+        type: "drawer_show",
         content: "<p>Ignored</p>",
       })
     })

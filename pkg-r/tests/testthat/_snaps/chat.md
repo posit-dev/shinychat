@@ -6,7 +6,7 @@
       <shiny-chat-container class="html-fill-item html-fill-container" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill id="chat" max-attachment-size="31457280" placeholder="Enter a message..." style="--_chat-width:min(680px, 100%);height:auto;">
         <shiny-chat-messages></shiny-chat-messages>
         <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
-        <shiny-chat-artifact width="400px"></shiny-chat-artifact>
+        <shiny-chat-drawer width="400px"></shiny-chat-drawer>
       </shiny-chat-container>
 
 ---
@@ -20,7 +20,7 @@
           <shiny-chat-message data-role="assistant" content="Bar"></shiny-chat-message>
         </shiny-chat-messages>
         <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
-        <shiny-chat-artifact width="400px"></shiny-chat-artifact>
+        <shiny-chat-drawer width="400px"></shiny-chat-drawer>
       </shiny-chat-container>
 
 ---
@@ -35,7 +35,7 @@
           <shiny-chat-message data-role="user" content="User"></shiny-chat-message>
         </shiny-chat-messages>
         <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
-        <shiny-chat-artifact width="400px"></shiny-chat-artifact>
+        <shiny-chat-drawer width="400px"></shiny-chat-drawer>
       </shiny-chat-container>
 
 ---
@@ -49,7 +49,7 @@
           <shiny-chat-message data-role="assistant" content="&lt;shiny-chat-raw-html&gt;&#10;  &lt;span&gt;world&lt;/span&gt;&#10;&lt;/shiny-chat-raw-html&gt;"></shiny-chat-message>
         </shiny-chat-messages>
         <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
-        <shiny-chat-artifact width="400px"></shiny-chat-artifact>
+        <shiny-chat-drawer width="400px"></shiny-chat-drawer>
       </shiny-chat-container>
 
 ---
@@ -68,7 +68,7 @@
           <shiny-chat-message data-role="assistant" content="&lt;shiny-chat-raw-html&gt;&#10;  &lt;span&gt;world&lt;/span&gt;&#10;&lt;/shiny-chat-raw-html&gt;"></shiny-chat-message>
         </shiny-chat-messages>
         <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
-        <shiny-chat-artifact width="400px"></shiny-chat-artifact>
+        <shiny-chat-drawer width="400px"></shiny-chat-drawer>
       </shiny-chat-container>
       
 
@@ -84,7 +84,7 @@
           <shiny-chat-message data-role="assistant" content="&lt;shiny-chat-raw-html&gt;&#10;  &lt;div&gt;before&lt;/div&gt;&#10;&lt;/shiny-chat-raw-html&gt;&#10;&lt;div data-shinychat-react&gt;react&lt;/div&gt;&#10;&lt;shiny-chat-raw-html&gt;&#10;  &lt;div&gt;after&lt;/div&gt;&#10;&lt;/shiny-chat-raw-html&gt;"></shiny-chat-message>
         </shiny-chat-messages>
         <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
-        <shiny-chat-artifact width="400px"></shiny-chat-artifact>
+        <shiny-chat-drawer width="400px"></shiny-chat-drawer>
       </shiny-chat-container>
 
 # chat_ui() emits tool-grouping only when non-default
@@ -95,7 +95,7 @@
       <shiny-chat-container class="html-fill-item html-fill-container" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill id="chat" max-attachment-size="31457280" placeholder="Enter a message..." style="--_chat-width:min(680px, 100%);height:auto;" tool-grouping="all">
         <shiny-chat-messages></shiny-chat-messages>
         <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
-        <shiny-chat-artifact width="400px"></shiny-chat-artifact>
+        <shiny-chat-drawer width="400px"></shiny-chat-drawer>
       </shiny-chat-container>
 
 # chat_ui() errors for an invalid tool_grouping value
