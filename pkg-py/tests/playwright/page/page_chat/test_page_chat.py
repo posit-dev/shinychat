@@ -145,6 +145,7 @@ def test_page_chat_footer_aligns_with_the_composer(
     page: Page,
     local_app: ShinyAppProc,
 ) -> None:
+    page.emulate_media(reduced_motion="reduce")
     chat, _ = open_page(page, local_app, viewport=(800, 760))
     input_area = chat.loc.locator(".shiny-chat-input")
     input_editor = input_area.locator(".tiptap")
