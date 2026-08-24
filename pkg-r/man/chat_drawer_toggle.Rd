@@ -18,7 +18,7 @@ Invisibly, \code{NULL}.
 Toggle a chat drawer
 }
 \seealso{
-\code{\link[=chat_drawer]{chat_drawer()}} to configure an drawer, and \code{\link[=chat_ui]{chat_ui()}} or
+\code{\link[=chat_drawer]{chat_drawer()}} to configure a drawer, and \code{\link[=chat_ui]{chat_ui()}} or
 \code{\link[=page_chat]{page_chat()}} to display one.
 
 Other chat drawers:

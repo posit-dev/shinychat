@@ -14,9 +14,9 @@ chat_drawer_update(
 \arguments{
 \item{id}{The ID of the chat element.}
 
-\item{content}{Optional UI content for the artifact.}
+\item{content}{Optional UI content for the drawer.}
 
-\item{title}{Optional artifact title.}
+\item{title}{Optional drawer title.}
 
 \item{session}{The Shiny session object.}
 }
@@ -29,7 +29,7 @@ Omitted fields preserve their current value. Use an empty
 \code{\link[htmltools:tagList]{htmltools::tagList()}} to clear content or \code{""} to clear the title.
 }
 \seealso{
-\code{\link[=chat_drawer]{chat_drawer()}} to configure an drawer, and \code{\link[=chat_ui]{chat_ui()}} or
+\code{\link[=chat_drawer]{chat_drawer()}} to configure a drawer, and \code{\link[=chat_ui]{chat_ui()}} or
 \code{\link[=page_chat]{page_chat()}} to display one.
 
 Other chat drawers:

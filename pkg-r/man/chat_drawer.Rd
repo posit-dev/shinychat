@@ -9,14 +9,14 @@ chat_drawer(..., title = NULL, width = 400, open = TRUE, resizable = TRUE)
 \arguments{
 \item{...}{UI content to display in the drawer.}
 
-\item{title}{An optional artifact title.}
+\item{title}{An optional drawer title.}
 
-\item{width}{The initial artifact width. Positive numbers are converted to
+\item{width}{The initial drawer width. Positive numbers are converted to
 pixels; character values must be valid CSS lengths.}
 
-\item{open}{Whether the artifact is initially visible.}
+\item{open}{Whether the drawer is initially visible.}
 
-\item{resizable}{Whether the artifact can be resized on desktop.}
+\item{resizable}{Whether the drawer can be resized on desktop.}
 }
 \value{
 A configuration object for use with \code{\link[=chat_ui]{chat_ui()}} or \code{\link[=page_chat]{page_chat()}}.

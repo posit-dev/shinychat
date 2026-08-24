@@ -156,7 +156,7 @@ def page_chat(
         A sidebar created without ``history=`` defaults to ``True`` here.
         Raw :class:`shiny.ui.Sidebar` objects are not supported.
     drawer
-        Whether the chat has an artifact panel. Pass a
+        Whether the chat has a drawer. Pass a
         :class:`~shinychat.types.ChatDrawer` to configure its initial content and
         behavior.
     window_title
@@ -225,7 +225,7 @@ def page_chat(
     :func:`~shinychat.chat_ui` : Embed chat in an existing page layout.
     :func:`~shinychat.chat_sidebar` : Configure page sidebars.
     :func:`~shinychat.chat_nav_panel` : Configure secondary navbar pages.
-    :func:`~shinychat.chat_drawer` : Configure the artifact panel.
+    :func:`~shinychat.chat_drawer` : Configure the drawer.
     :func:`~shinychat.express.page_chat` : Create the same layout in Express.
     """
     chat_root = _create_page_chat_root(
@@ -384,29 +384,29 @@ def chat_drawer(
     """
     Configure content displayed adjacent to a chat interface.
 
-    An artifact panel can show a preview, generated report, or detail view beside
+    An drawer can show a preview, generated report, or detail view beside
     the conversation. Pass this configuration to ``chat_ui(drawer=)`` or
     ``page_chat(drawer=)`` for its initial content and layout, then update it
-    through the chat artifact controller.
+    through the chat drawer controller.
 
     Parameters
     ----------
     *content
-        Initial HTML children for the artifact panel.
+        Initial HTML children for the drawer panel.
     title
-        Optional accessible and visible title for the artifact panel.
+        Optional accessible and visible title for the drawer panel.
     width
-        Initial artifact-panel width. A positive number is interpreted as pixels; a
+        Initial drawer width. A positive number is interpreted as pixels; a
         string may use any valid CSS width.
     open
-        Whether the artifact panel is initially visible.
+        Whether the drawer is initially visible.
     resizable
-        Whether the artifact panel can be resized on desktop.
+        Whether the drawer can be resized on desktop.
 
     Returns
     -------
     ChatDrawer
-        An artifact-panel configuration for ``page_chat(drawer=)`` or
+        An drawer configuration for ``page_chat(drawer=)`` or
         ``chat_ui(drawer=)``.
 
     Examples
@@ -415,7 +415,7 @@ def chat_drawer(
     from shiny import ui
     from shinychat import chat_drawer
 
-    artifact = chat_drawer(
+    drawer = chat_drawer(
         ui.p("No result selected."),
         title="Result",
         width=480,
@@ -424,8 +424,8 @@ def chat_drawer(
 
     See Also
     --------
-    :func:`~shinychat.page_chat` : Create a page with an artifact panel.
-    :func:`~shinychat.chat_ui` : Create an embedded chat with an artifact panel.
+    :func:`~shinychat.page_chat` : Create a page with a drawer.
+    :func:`~shinychat.chat_ui` : Create an embedded chat with a drawer.
     :class:`~shinychat.types.ChatDrawerController` : Update the panel from the server.
     """
     _validate_content(content, "chat_drawer()")

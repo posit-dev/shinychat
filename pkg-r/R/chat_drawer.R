@@ -5,13 +5,13 @@
 #' field before the panel is shown. Omitted fields preserve their current value.
 #'
 #' @family chat drawers
-#' @seealso [chat_drawer()] to configure an drawer, and [chat_ui()] or
+#' @seealso [chat_drawer()] to configure a drawer, and [chat_ui()] or
 #'   [page_chat()] to display one.
 #'
 #' @param id The ID of the chat element.
-#' @param content Optional UI content for the artifact. Use an empty
+#' @param content Optional UI content for the drawer. Use an empty
 #'   [htmltools::tagList()] to clear the content.
-#' @param title Optional artifact title. Use `""` to clear the title.
+#' @param title Optional drawer title. Use `""` to clear the title.
 #' @param session The Shiny session object.
 #'
 #' @returns Invisibly, `NULL`.
@@ -34,7 +34,7 @@ chat_drawer_show <- function(
 #' Hide a chat drawer
 #'
 #' @family chat drawers
-#' @seealso [chat_drawer()] to configure an drawer, and [chat_ui()] or
+#' @seealso [chat_drawer()] to configure a drawer, and [chat_ui()] or
 #'   [page_chat()] to display one.
 #'
 #' @param id The ID of the chat element.
@@ -52,7 +52,7 @@ chat_drawer_hide <- function(
 #' Toggle a chat drawer
 #'
 #' @family chat drawers
-#' @seealso [chat_drawer()] to configure an drawer, and [chat_ui()] or
+#' @seealso [chat_drawer()] to configure a drawer, and [chat_ui()] or
 #'   [page_chat()] to display one.
 #'
 #' @param id The ID of the chat element.
@@ -75,12 +75,12 @@ chat_drawer_toggle <- function(
 #' [htmltools::tagList()] to clear content or `""` to clear the title.
 #'
 #' @family chat drawers
-#' @seealso [chat_drawer()] to configure an drawer, and [chat_ui()] or
+#' @seealso [chat_drawer()] to configure a drawer, and [chat_ui()] or
 #'   [page_chat()] to display one.
 #'
 #' @param id The ID of the chat element.
-#' @param content Optional UI content for the artifact.
-#' @param title Optional artifact title.
+#' @param content Optional UI content for the drawer.
+#' @param title Optional drawer title.
 #' @param session The Shiny session object.
 #'
 #' @returns Invisibly, `NULL`.
@@ -170,11 +170,11 @@ chat_validate_drawer_content <- function(content) {
 #'   their `drawer` argument.
 #'
 #' @param ... UI content to display in the drawer.
-#' @param title An optional artifact title.
-#' @param width The initial artifact width. Positive numbers are converted to
+#' @param title An optional drawer title.
+#' @param width The initial drawer width. Positive numbers are converted to
 #'   pixels; character values must be valid CSS lengths.
-#' @param open Whether the artifact is initially visible.
-#' @param resizable Whether the artifact can be resized on desktop.
+#' @param open Whether the drawer is initially visible.
+#' @param resizable Whether the drawer can be resized on desktop.
 #'
 #' @returns A configuration object for use with [chat_ui()] or [page_chat()].
 #' @export
