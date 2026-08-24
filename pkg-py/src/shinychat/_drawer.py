@@ -41,9 +41,7 @@ class ChatDrawerController:
         title: str | None = None,
     ) -> None:
         """Update supplied panel fields without changing its visibility."""
-        await self._send_mutation(
-            "drawer_update", content=content, title=title
-        )
+        await self._send_mutation("drawer_update", content=content, title=title)
 
     async def _send_mutation(
         self,

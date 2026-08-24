@@ -79,9 +79,7 @@ def test_drawer_controller_is_stable_and_public() -> None:
     assert chat.drawer is chat.drawer
 
 
-def test_drawer_controller_methods_are_async_with_expected_signatures() -> (
-    None
-):
+def test_drawer_controller_methods_are_async_with_expected_signatures() -> None:
     for method in (
         ChatDrawerController.show,
         ChatDrawerController.hide,

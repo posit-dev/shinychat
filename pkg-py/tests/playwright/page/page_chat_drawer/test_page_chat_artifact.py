@@ -331,9 +331,7 @@ def test_debug_resize_overlays_show_drawer_fine_targets(
 ) -> None:
     chat, _ = open_page(page, local_app, drawer_width="default")
     page.get_by_role("button", name="Show drawer").click()
-    drawer_resizer = page.get_by_role(
-        "separator", name="Resize drawer panel"
-    )
+    drawer_resizer = page.get_by_role("separator", name="Resize drawer panel")
     expect(drawer_resizer).to_be_visible(timeout=TIMEOUT)
     page.wait_for_timeout(220)
 

@@ -119,9 +119,7 @@ def test_drawer_explicitly_clears_content_and_title(
     )
 
     page.locator("#clear_drawer").click()
-    expect(panel.get_by_role("heading")).to_have_text(
-        "Drawer", timeout=TIMEOUT
-    )
+    expect(panel.get_by_role("heading")).to_have_text("Drawer", timeout=TIMEOUT)
     expect(panel.locator(".drawer-content-label")).to_have_count(0)
     expect(panel.locator("#drawer_text")).to_have_count(0)
     expect(panel.locator("#drawer_output")).to_have_count(0)

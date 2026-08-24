@@ -36,7 +36,6 @@ from htmltools import (
 from pydantic import ValidationError
 
 from . import _utils
-from ._drawer import ChatDrawerController
 from ._attachments import (
     Attachment,
     attachment_to_content,
@@ -76,6 +75,7 @@ from ._chat_types import (
     StoredMessage,
     chat_greeting,
 )
+from ._drawer import ChatDrawerController
 from ._history import ChatHistory, HistoryOptions
 from ._html_deps_py_shiny import shinychat_dependency
 from ._page_chat import (
@@ -365,9 +365,7 @@ class Chat:
         )
         self._history_enabled: bool = history is not False
         self.history: ChatHistory = ChatHistory(self, config=history_config)
-        self.drawer: ChatDrawerController = (
-            ChatDrawerController(self)
-        )
+        self.drawer: ChatDrawerController = ChatDrawerController(self)
         self._cancel_bookmarking_callbacks: CancelCallback | None = None
         self._greeting_content: str | None = None
 
@@ -2696,9 +2694,7 @@ def chat_ui(
     else:
         drawer_config = None
     drawer_tag = (
-        render_chat_drawer(drawer_config)
-        if drawer_config is not None
-        else None
+        render_chat_drawer(drawer_config) if drawer_config is not None else None
     )
 
     # Tri-state attribute: omitted = "no explicit preference" (lets a `client=`

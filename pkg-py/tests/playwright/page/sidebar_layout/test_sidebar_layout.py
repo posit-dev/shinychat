@@ -140,7 +140,9 @@ def test_debug_resize_overlay_shows_sidebar_fine_targets(
         indicator_box["x"] + indicator_box["width"] / 2,
         indicator_box["y"] + indicator_box["height"] / 2,
     )
-    resizer.evaluate("(element) => element.removeAttribute('data-boundary-armed')")
+    resizer.evaluate(
+        "(element) => element.removeAttribute('data-boundary-armed')"
+    )
     page.mouse.down()
     expect(resizer).to_have_attribute("data-resizing", "")
     page.mouse.up()
