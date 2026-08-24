@@ -108,6 +108,15 @@
 #'     * `client`: The current chat client object (an active binding that
 #'       always reflects the latest client, even after `set_client()`
 #'       is called).
+#'     * `history$conversation_id()`: A reactive expression returning the
+#'       active conversation ID: `NULL` when history is disabled or the chat
+#'       is still an empty draft, otherwise the ID allocated on the first
+#'       user submission -- before the model call -- that the saved
+#'       conversation record carries. The ID is stable across retries,
+#'       restores, conversation switches, and `set_client()` calls. Each
+#'       managed response is also wrapped in a `shinychat.response`
+#'       OpenTelemetry span carrying the ID as the `gen_ai.conversation.id`
+#'       attribute (a no-op unless an OpenTelemetry provider is configured).
 #'     * `set_client(new_client, sync = TRUE)`: Replace the chat client used by
 #'       the module. When `sync` is `TRUE` (the default), the new client
 #'       inherits conversation turns, system prompt, and tools from the previous
@@ -178,6 +187,15 @@ check_ellmer_chat <- function(client) {
   if (!inherits(client, "Chat")) {
     abort("`client` must be an `ellmer::Chat` object.")
   }
+}
+
+# The tracer is resolved fresh at each managed response (not cached at load)
+# because otel binds tracers to the default provider active at get_tracer()
+# time, and apps/tests may configure a provider (e.g. via otelsdk) after
+# shinychat is loaded. Tracing is observational: a tracer failure must never
+# prevent the model call, so fall back to no tracer on error.
+shinychat_otel_tracer <- function() {
+  tryCatch(otel::get_tracer("shinychat"), error = function(e) NULL)
 }
 
 #' Deprecated chat module functions
@@ -321,17 +339,44 @@ chat_server <- function(
   }
 
   append_stream_task <- shiny::ExtendedTask$new(
-    function(client, ui_id, user_input, controller = NULL) {
-      stream <- client$stream_async(
-        !!!user_input,
-        stream = "content",
-        controller = controller
-      )
+    function(
+      client,
+      ui_id,
+      user_input,
+      controller = NULL,
+      conversation_id = NULL
+    ) {
+      run <- function() {
+        stream <- client$stream_async(
+          !!!user_input,
+          stream = "content",
+          controller = controller
+        )
 
-      p <- promises::promise_resolve(stream)
-      promises::then(p, function(stream) {
-        chat_append(ui_id, stream)
-      })
+        p <- promises::promise_resolve(stream)
+        promises::then(p, function(stream) {
+          chat_append(ui_id, stream)
+        })
+      }
+
+      tracer <- shinychat_otel_tracer()
+      if (is.null(conversation_id) || is.null(tracer)) {
+        return(run())
+      }
+
+      # One span per managed response, opened before the model call and
+      # closed after the response stream is fully consumed, so Commons/ellmer
+      # spans nest beneath it. `conversation_id` was captured synchronously
+      # at submission; nothing here re-reads reactive history state, so
+      # in-flight work keeps its identity across switches or client swaps.
+      promises::with_otel_promise_domain(
+        promises::with_otel_span(
+          "shinychat.response",
+          run(),
+          tracer = tracer,
+          attributes = list("gen_ai.conversation.id" = conversation_id)
+        )
+      )
     }
   )
 
@@ -369,6 +414,17 @@ chat_server <- function(
     NULL
   }
 
+  # Reactive reference to the live history controller, so the public
+  # `history$conversation_id()` reactive stays stable across the controller
+  # replacement that set_client() performs.
+  history_controller <- shiny::reactiveVal(NULL, label = "history_controller")
+  if (!isFALSE(history)) {
+    history_controller(get_session_chat_bookmark_info(
+      session,
+      paste0(id, ".history-controller")
+    ))
+  }
+
   last_turn <- shiny::reactiveVal(NULL, label = "last_turn")
   last_input <- shiny::reactiveVal(NULL, label = "last_input")
   pending_swap <- shiny::reactiveVal(NULL, label = "pending_swap")
@@ -381,6 +437,18 @@ chat_server <- function(
       new_client$set_tools(client$get_tools())
     }
     client <<- new_client
+
+    # Capture the active conversation identity before re-registering history,
+    # so the replacement controller can inherit it below.
+    old_ctrl <- get_session_chat_bookmark_info(
+      session,
+      paste0(id, ".history-controller")
+    )
+    active_id <- if (!is.null(old_ctrl)) {
+      shiny::isolate(old_ctrl$conversation_id())
+    } else {
+      NULL
+    }
 
     if (!is.null(cancel_history)) {
       cancel_history()
@@ -412,7 +480,14 @@ chat_server <- function(
       session,
       paste0(id, ".history-controller")
     )
+    history_controller(new_ctrl)
     if (!is.null(new_ctrl)) {
+      if (!is.null(active_id)) {
+        # If the active conversation has a saved record, init restores it and
+        # confirms the same ID; this seed is what carries an unsaved
+        # identified draft's ID without creating a record.
+        new_ctrl$seed_conversation_id(active_id)
+      }
       for (fn in saved_on_save_fns) {
         new_ctrl$add_save_callback(fn)
       }
@@ -438,12 +513,24 @@ chat_server <- function(
     session$input[[paste0(id, "_user_input")]],
     label = "on_chat_user_input",
     {
-      last_input(session$input[[paste0(id, "_user_input")]])
+      user_input <- session$input[[paste0(id, "_user_input")]]
+      last_input(user_input)
+
+      # Resolve the active conversation ID synchronously, before model work
+      # begins, and hand the task a scalar: later history switches, new-chat
+      # actions, or client swaps must not relabel in-flight work.
+      conversation_id <- NULL
+      hist_ctrl <- history_controller()
+      if (!is.null(hist_ctrl)) {
+        conversation_id <- hist_ctrl$ensure_conversation_id()
+      }
+
       append_stream_task$invoke(
         client,
         id,
-        session$input[[paste0(id, "_user_input")]],
-        controller = ctrl
+        user_input,
+        controller = ctrl,
+        conversation_id = conversation_id
       )
     }
   )
@@ -787,6 +874,14 @@ chat_server <- function(
     }
     invisible(fn)
   }
+
+  hist_env$conversation_id <- shiny::reactive(label = "mod_conversation_id", {
+    hist_ctrl <- history_controller()
+    if (is.null(hist_ctrl)) {
+      return(NULL)
+    }
+    hist_ctrl$conversation_id()
+  })
 
   lockEnvironment(hist_env)
   ret$history <- hist_env

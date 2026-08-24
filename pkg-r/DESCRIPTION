@@ -29,7 +29,8 @@ Imports:
     htmltools,
     jsonlite,
     lifecycle,
-    promises (>= 1.3.2),
+    otel,
+    promises (>= 1.5.0),
     R6 (>= 2.5.0),
     rlang (>= 1.1.0),
     S7,
@@ -38,6 +39,7 @@ Suggests:
     covr,
     knitr,
     later,
+    otelsdk,
     shinytest2,
     testthat (>= 3.0.0),
     withr
