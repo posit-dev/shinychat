@@ -478,8 +478,10 @@ def test_desktop_dropdown_navigation_is_clickable_and_closes_after_selection(
     expect(details).to_be_visible()
     menu_items = menu.locator(".shiny-chat-page-nav-menu-items")
     page.wait_for_function(
-        """(element) =>
-        element.style.getPropertyValue('--shiny-chat-page-nav-menu-left') !== ''""",
+        """(element) => {
+          const bounds = element.getBoundingClientRect();
+          return bounds.left >= 0 && bounds.right <= window.innerWidth;
+        }""",
         arg=menu_items.element_handle(),
     )
 
@@ -538,6 +540,19 @@ def test_desktop_dropdown_navigation_aligns_in_rtl(
     expect(page_chat.loc).to_be_visible(timeout=TIMEOUT)
     page.locator("html").evaluate("(element) => { element.dir = 'rtl' }")
     summary.click()
+    page.wait_for_function(
+        """(element) => {
+          const summary = element.parentElement?.querySelector(
+            ':scope > summary',
+          );
+          if (!summary) return false;
+          return Math.abs(
+            element.getBoundingClientRect().right -
+              summary.getBoundingClientRect().right,
+          ) <= 1;
+        }""",
+        arg=items.element_handle(),
+    )
     summary_box = summary.bounding_box()
     items_box = items.bounding_box()
     assert summary_box is not None
@@ -657,6 +672,7 @@ def test_page_chat_centers_fitting_greeting_composer_and_pins_overflow(
     page: Page,
     local_app: ShinyAppProc,
 ) -> None:
+    page.emulate_media(reduced_motion="reduce")
     chat, _ = open_page(page, local_app, viewport=(1280, 800))
     layout = chat.loc.locator(".shiny-chat-layout")
     greeting = chat.loc_greeting
@@ -691,7 +707,6 @@ def test_page_chat_centers_fitting_greeting_composer_and_pins_overflow(
     expect(layout).not_to_have_attribute(
         "data-composer-centered", timeout=TIMEOUT
     )
-    page.wait_for_timeout(400)
     input_box = chat.loc_input_container.bounding_box()
     chat_box = chat.loc.bounding_box()
     assert input_box is not None
@@ -709,7 +724,6 @@ def test_page_chat_centers_fitting_greeting_composer_and_pins_overflow(
     expect(layout).not_to_have_attribute(
         "data-composer-centered", timeout=TIMEOUT
     )
-    page.wait_for_timeout(400)
     input_box = chat.loc_input_container.bounding_box()
     chat_box = chat.loc.bounding_box()
     assert input_box is not None
@@ -732,6 +746,7 @@ def test_page_chat_remeasures_greeting_after_history_new(
     page: Page,
     local_app: ShinyAppProc,
 ) -> None:
+    page.emulate_media(reduced_motion="reduce")
     chat, page_chat = open_page(page, local_app, viewport=(1280, 800))
     layout = chat.loc.locator(".shiny-chat-layout")
 
