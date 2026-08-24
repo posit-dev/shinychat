@@ -542,6 +542,104 @@ test_that("with history = FALSE the conversation_id() reactive stays NULL", {
   )
 })
 
+test_that("set_client() does not seed a saved conversation's ID", {
+  skip_if_not_installed("ellmer")
+
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+  mod <- NULL
+  client$stream_async <- function(...) "response"
+
+  shiny::testServer(
+    function(input, output, session) {
+      mod <<- chat_server(
+        "chat",
+        client,
+        # init never restores in this mode, so a seeded saved-ID would be
+        # orphaned and the next save would overwrite the stored record.
+        history = history_options(
+          store = store,
+          title = NULL,
+          restore_mode = "none"
+        ),
+        session = session
+      )
+    },
+    {
+      session$setInputs(
+        chat_history_browser_token = "tok",
+        chat_user_input = "hi"
+      )
+      cid_wait_idle(session, mod)
+
+      # Save the active conversation: its ID now belongs to a stored record.
+      ctrl <- get_session_chat_bookmark_info(
+        session,
+        "chat.history-controller"
+      )
+      ctrl$on_response(cid_make_turns())
+      saved_id <- ctrl$record$id
+      saved_record <- ctrl$record
+      expect_false(is.null(saved_id))
+
+      new_client <- mock_chat_client()
+      new_client$stream_async <- function(...) "fresh response"
+      mod$set_client(new_client, sync = FALSE)
+      cid_pump(session)
+
+      # The replacement controller must not inherit the saved ID.
+      new_ctrl <- get_session_chat_bookmark_info(
+        session,
+        "chat.history-controller"
+      )
+      expect_null(new_ctrl$record)
+      expect_null(shiny::isolate(new_ctrl$conversation_id()))
+
+      # The next submission mints a fresh ID, and the stored conversation
+      # survives the swap untouched.
+      session$setInputs(chat_user_input = "hello again")
+      cid_wait_idle(session, mod)
+      new_ctrl$on_response(cid_make_turns(user_text = "hello again"))
+
+      expect_false(identical(new_ctrl$record$id, saved_id))
+      expect_identical(store$get(new_ctrl$partition, saved_id), saved_record)
+    }
+  )
+})
+
+# Regression: the greeting block in chat_server() used to assign a plain
+# local over the `history_controller` reactiveVal, breaking every
+# submission (and conversation_id()) whenever `greeting` was set.
+test_that("submission and conversation_id() work when greeting is set", {
+  skip_if_not_installed("ellmer")
+
+  client <- mock_chat_client()
+  mod <- NULL
+  client$stream_async <- function(...) "response"
+
+  shiny::testServer(
+    function(input, output, session) {
+      mod <<- chat_server(
+        "chat",
+        client,
+        greeting = "Hello!",
+        history = history_options(store = "memory", title = NULL),
+        session = session
+      )
+    },
+    {
+      session$setInputs(
+        chat_history_browser_token = "tok",
+        chat_user_input = "hi"
+      )
+      cid_wait_idle(session, mod)
+
+      expect_identical(shiny::isolate(mod$status()), "idle")
+      expect_match(shiny::isolate(mod$history$conversation_id()), "^c_")
+    }
+  )
+})
+
 # --- OpenTelemetry ------------------------------------------------------------
 
 test_that("a managed response produces one shinychat.response span carrying the ID", {

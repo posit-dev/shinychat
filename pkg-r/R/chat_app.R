@@ -438,13 +438,19 @@ chat_server <- function(
     }
     client <<- new_client
 
-    # Capture the active conversation identity before re-registering history,
-    # so the replacement controller can inherit it below.
+    # Capture the active conversation identity before re-registering
+    # history, but only when it's an unsaved draft. A saved conversation's
+    # ID belongs to a stored record: if the replacement controller's init
+    # won't restore it (e.g. restore_mode = "none", or any failed restore),
+    # seeding that ID would leave the controller thinking the record is an
+    # unsaved draft, and the next save would overwrite the stored record.
+    # Saved conversations instead get their ID back when init restores the
+    # record, or a fresh ID on the next submission when it doesn't.
     old_ctrl <- get_session_chat_bookmark_info(
       session,
       paste0(id, ".history-controller")
     )
-    active_id <- if (!is.null(old_ctrl)) {
+    active_id <- if (!is.null(old_ctrl) && is.null(old_ctrl$record)) {
       shiny::isolate(old_ctrl$conversation_id())
     } else {
       NULL
@@ -483,9 +489,9 @@ chat_server <- function(
     history_controller(new_ctrl)
     if (!is.null(new_ctrl)) {
       if (!is.null(active_id)) {
-        # If the active conversation has a saved record, init restores it and
-        # confirms the same ID; this seed is what carries an unsaved
-        # identified draft's ID without creating a record.
+        # Carries an unsaved identified draft's ID across the swap without
+        # creating a record. (Saved conversations are deliberately not
+        # seeded -- see above.)
         new_ctrl$seed_conversation_id(active_id)
       }
       for (fn in saved_on_save_fns) {
@@ -604,7 +610,10 @@ chat_server <- function(
 
   if (!is.null(greeting)) {
     history_enabled <- !isFALSE(history)
-    history_controller <- if (history_enabled) {
+    # NB: not `history_controller` -- that name is the reactiveVal above
+    # tracking the live controller, and a plain assignment here would
+    # clobber it in this scope.
+    hist_ctrl <- if (history_enabled) {
       get_session_chat_bookmark_info(
         session,
         paste0(id, ".history-controller")
@@ -613,10 +622,10 @@ chat_server <- function(
       NULL
     }
 
-    if (!is.null(history_controller)) {
+    if (!is.null(hist_ctrl)) {
       # Defer to history's own restore-decision instead of racing the
       # client's independent `_greeting_requested` request.
-      history_controller$on_settled <- function(restored) {
+      hist_ctrl$on_settled <- function(restored) {
         if (!restored) {
           resolve_greeting_mod()
         }
