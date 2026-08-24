@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Pattern, Union
 
 from playwright.sync_api import Locator, Page
@@ -12,6 +13,12 @@ PatternOrStr = Union[str, PatternStr]
 Timeout = Union[float, None]
 
 _DEFAULT_TIMEOUT = 30_000
+
+# Matches any non-empty attribute value.  When the attribute is absent,
+# Playwright passes "" to the regex, which does not match ".+"; so
+# not_to_have_attribute(name, _ANY_VALUE) asserts the attribute is
+# fully absent, not just that it lacks a specific value.
+_ANY_VALUE = re.compile(r".+")
 
 
 class PageChatController(UiBase):
@@ -150,7 +157,7 @@ class PageChatController(UiBase):
         exact
             Whether to match the name exactly. Defaults to ``False``.
         """
-        self.loc.get_by_role("button", name=name, exact=exact).click()
+        self.loc_nav.get_by_role("button", name=name, exact=exact).click()
 
     def return_home(self) -> None:
         """Clicks the ``Return to chat`` button to navigate to the chat home."""
@@ -210,12 +217,14 @@ class PageChatController(UiBase):
         playwright_expect(self.loc_sidebar).to_be_hidden(timeout=timeout)
 
     def open_sidebar(self) -> None:
-        """Clicks the sidebar toggle to open the sidebar (desktop) or app menu (mobile)."""
-        self.loc_sidebar_toggle.click()
+        """Opens the sidebar (desktop) or app menu (mobile) if not already open."""
+        if self.loc_sidebar_toggle.get_attribute("aria-expanded") != "true":
+            self.loc_sidebar_toggle.click()
 
     def close_sidebar(self) -> None:
-        """Clicks the sidebar toggle to close the sidebar (desktop) or app menu (mobile)."""
-        self.loc_sidebar_toggle.click()
+        """Closes the sidebar (desktop) or app menu (mobile) if not already closed."""
+        if self.loc_sidebar_toggle.get_attribute("aria-expanded") == "true":
+            self.loc_sidebar_toggle.click()
 
     def expect_mobile_menu_open(
         self,
@@ -242,18 +251,23 @@ class PageChatController(UiBase):
         """
         Expects the mobile app menu to be closed.
 
+        The application removes ``data-mobile-menu-open`` entirely when
+        the menu closes, so this asserts the attribute is absent rather
+        than merely checking for a specific value.
+
         Parameters
         ----------
         timeout
             The maximum time to wait for the expectation to pass.
         """
         playwright_expect(self.loc).not_to_have_attribute(
-            "data-mobile-menu-open", "true", timeout=timeout
+            "data-mobile-menu-open", _ANY_VALUE, timeout=timeout
         )
 
     def open_mobile_menu(self) -> None:
-        """Clicks the sidebar toggle to open the mobile app menu."""
-        self.loc_sidebar_toggle.click()
+        """Opens the mobile app menu if not already open."""
+        if self.loc.get_attribute("data-mobile-menu-open") != "true":
+            self.loc_sidebar_toggle.click()
 
     def close_mobile_menu(self) -> None:
         """Closes the mobile app menu by pressing Escape."""
