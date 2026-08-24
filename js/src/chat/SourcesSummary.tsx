@@ -74,7 +74,7 @@ export function SourcesSummaryView({ sources }: { sources: CitationEntry[] }) {
           >
             <div
               ref={refs.setFloating}
-              className="shiny-sources-popover"
+              className="shiny-sources-popover shiny-floating-overlay"
               style={{ ...portal.style, ...floatingStyles }}
               data-bs-theme={portal.theme}
               aria-label={label}

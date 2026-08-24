@@ -974,10 +974,7 @@ shinychat-raw-html {
 }
 
 // Keep portal hosts from participating in flex or grid app-shell layout.
-[data-floating-ui-portal]:has(
-  > .shiny-aside-popover,
-  > .shiny-sources-popover
-) {
+[data-floating-ui-portal]:has(> .shiny-floating-overlay) {
   position: fixed;
 }
 
