@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### New features
 
+* `Chat` now allocates a stable conversation ID on the first user submission -- before any model work begins -- instead of at the first completed save. The active ID is available reactively via `chat.history.conversation_id()` (`None` when history is disabled or the chat is still empty), survives retries, restores, conversation switches, and `chat.client.set()` calls, and becomes the saved `ConversationRecord.id`. Each managed response is also wrapped in a `shinychat.response` OpenTelemetry span carrying the ID as the `gen_ai.conversation.id` attribute, so telemetry consumers can group model work by the saved shinychat conversation (a no-op unless an OpenTelemetry provider is configured). (#307)
+
 * Chatlas web search and web fetch responses now show their activity and citations directly in the chat. Readers can open a citation beside its claim or use the message-wide Sources pill. `ContentCitation.grounded_span` links each citation to the answer text that it supports.
 
 * Assistant messages can now attach source details to specific claims with the `<shiny-aside>` markup convention. This convention powers shinychat's web citations and can also support custom RAG workflows. Add an inline `<shiny-aside>` tag with source details and an optional `grounded-span`. Shinychat shows a compact source pill and highlights the related text when the pill is open. See the `Asides` callout in the `append_message` and `append_message_stream` documentation.

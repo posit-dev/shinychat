@@ -39,6 +39,7 @@ test = [
     "coverage>=7.8.2",
     "faicons",
     "ipyleaflet",
+    "opentelemetry-sdk>=1.30.0",
     "pandas",
     "plotly",
     "pyright>=1.1.398",

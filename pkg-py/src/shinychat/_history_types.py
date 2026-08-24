@@ -10,10 +10,15 @@ from pydantic import BaseModel, Field
 TitleSource = Literal["llm", "user"]
 
 
-def new_conversation_record(*, title: str) -> ConversationRecord:
+def new_conversation_record(
+    *, title: str, id: str | None = None
+) -> ConversationRecord:
     now = utcnow()
     return ConversationRecord(
-        id=new_conversation_id(),
+        # A preallocated ID (from HistoryController.ensure_conversation_id())
+        # lets the record carry the identity model work was already tagged
+        # with; standalone callers get a fresh one.
+        id=id if id is not None else new_conversation_id(),
         title=title,
         created_at=now,
         updated_at=now,
