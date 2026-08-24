@@ -256,8 +256,13 @@ class PageChatController(UiBase):
             The maximum time to wait for the expectation to pass.
         """
         self.page.wait_for_function(
-            "(el) => !el.hasAttribute('data-mobile-menu-open')",
-            arg=self.loc.element_handle(),
+            (
+                "(selector) => {"
+                " const el = document.querySelector(selector);"
+                " return el && !el.hasAttribute('data-mobile-menu-open');"
+                " }"
+            ),
+            arg=f'shiny-chat-page[data-chat-id="{self.id}"]',
             timeout=timeout if timeout is not None else _DEFAULT_TIMEOUT,
         )
 
