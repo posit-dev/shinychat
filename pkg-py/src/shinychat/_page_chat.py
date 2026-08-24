@@ -11,18 +11,21 @@ from typing import (
     Literal,
     Optional,
     Sequence,
+    TypeGuard,
     Union,
     cast,
 )
 
-from htmltools import HTML, Tag, TagAttrValue, TagChild, TagList
+from htmltools import HTML, MetadataNode, Tag, TagAttrValue, TagChild, TagList
 
 from ._page_chat_theme import page_chat_theme
 from ._utils_types import MISSING, MISSING_TYPE
 
 if TYPE_CHECKING:
+    from shiny.types import NavSetArg
     from shiny.ui import Theme
     from shiny.ui._html_deps_external import ThemeProvider
+    from shiny.ui._navs import NavMenu, NavPanel
     from shiny.ui.css import CssUnit
 
     from ._chat_types import ChatGreeting, ChatMessage, ChatMessageDict
@@ -77,7 +80,8 @@ def page_chat(
     *,
     id: str = "chat",
     icon: TagChild | None = None,
-    pages_navbar: Sequence[ChatNavPanel | Any] | None = None,
+    pages_navbar: Sequence[ChatNavPanel | NavSetArg | MetadataNode]
+    | None = None,
     toolbar: TagChild | None = None,
     toolbar_global: TagChild | None | MISSING_TYPE = MISSING,
     navbar_options: Any = None,
@@ -656,15 +660,19 @@ def _normalize_sidebar_config(
     )
 
 
-def _is_shiny_nav_panel(value: object) -> bool:
-    return hasattr(value, "nav") and hasattr(value, "content")
+def is_shiny_nav_panel(value: object) -> TypeGuard[NavPanel]:
+    from shiny.ui._navs import NavPanel
+
+    return isinstance(value, NavPanel)
 
 
-def _is_shiny_nav_menu(value: object) -> bool:
-    return hasattr(value, "nav_controls") and hasattr(value, "title")
+def is_shiny_nav_menu(value: object) -> TypeGuard[NavMenu]:
+    from shiny.ui._navs import NavMenu
+
+    return isinstance(value, NavMenu)
 
 
-def _nav_panel_label(panel: Any) -> tuple[TagChild, ...]:
+def _nav_panel_label(panel: NavPanel) -> tuple[TagChild, ...]:
     nav = panel.nav
     if not isinstance(nav, Tag) or not nav.children:
         raise TypeError(
@@ -686,7 +694,7 @@ def _nav_panel_title(label: tuple[TagChild, ...], value: str) -> str:
 
 
 def _normalize_standard_nav_items(
-    pages_navbar: Sequence[ChatNavPanel | Any] | None,
+    pages_navbar: Sequence[ChatNavPanel | NavSetArg | MetadataNode] | None,
 ) -> tuple[tuple[ChatNavPanel, ...], tuple[_PageNavItem, ...]]:
     if pages_navbar is None:
         return (), ()
@@ -700,7 +708,11 @@ def _normalize_standard_nav_items(
 
     pages: list[ChatNavPanel] = []
 
-    def normalize_item(item: Any, location: str, in_menu: bool) -> _PageNavItem:
+    def normalize_item(
+        item: ChatNavPanel | NavSetArg | MetadataNode | str,
+        location: str,
+        in_menu: bool,
+    ) -> _PageNavItem:
         if isinstance(item, str):
             if not in_menu:
                 raise TypeError(
@@ -715,16 +727,12 @@ def _normalize_standard_nav_items(
             pages.append(item)
             return _PageNavItem("page", page_index=len(pages) - 1)
 
-        if _is_shiny_nav_menu(item):
-            controls = getattr(item, "nav_controls")
+        if is_shiny_nav_menu(item):
+            controls = item.nav_controls
             if not isinstance(controls, list):
                 raise TypeError(f"`pages_navbar` menu {location} is malformed.")
-            title = getattr(item, "title")
-            label = (
-                tuple(title)
-                if isinstance(title, TagList)
-                else (cast(TagChild, title),)
-            )
+            title = item.title
+            label = tuple(title) if isinstance(title, TagList) else (title,)
             return _PageNavItem(
                 "menu",
                 label=label,
@@ -734,9 +742,9 @@ def _normalize_standard_nav_items(
                 ),
             )
 
-        if _is_shiny_nav_panel(item):
-            content = getattr(item, "content")
-            nav = getattr(item, "nav")
+        if is_shiny_nav_panel(item):
+            content = item.content
+            nav = item.nav
             if not isinstance(nav, Tag):
                 raise TypeError(f"`pages_navbar` item {location} is malformed.")
             if content is None:
@@ -795,7 +803,7 @@ def _nav_control_page_indexes(items: Sequence[_PageNavItem]) -> set[int]:
 
 
 def _normalize_page_config(
-    pages_navbar: Sequence[ChatNavPanel | Any] | None,
+    pages_navbar: Sequence[ChatNavPanel | NavSetArg | MetadataNode] | None,
     sidebar: bool | ChatSidebar,
 ) -> tuple[
     tuple[_NormalizedPage, ...],
@@ -1113,7 +1121,8 @@ def _render_page_chat(
     icon: TagChild | None = None,
     *,
     id: str = "chat",
-    pages_navbar: Sequence[ChatNavPanel | Any] | None = None,
+    pages_navbar: Sequence[ChatNavPanel | NavSetArg | MetadataNode]
+    | None = None,
     toolbar: TagChild | None = None,
     toolbar_global: TagChild | None | MISSING_TYPE = MISSING,
     navbar_options: Any = None,
