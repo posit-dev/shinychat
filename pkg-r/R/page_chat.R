@@ -82,8 +82,9 @@ HOME_PAGE_VALUE <- "__home__"
 #'   those arguments are rejected.
 #' @param id A non-empty string identifying the chat. The currently selected
 #'   page is readable server-side as `input$<id>_page` and settable via
-#'   [bslib::nav_select()], [bslib::nav_show()], and [bslib::nav_hide()]. The
-#'   reserved value `"__home__"` represents the main chat page.
+#'   [bslib::nav_select()]. Use [bslib::nav_show()] and [bslib::nav_hide()]
+#'   to reveal or hide nav controls. The reserved value `"__home__"`
+#'   represents the main chat page.
 #' @param pages_navbar `NULL` or a list of [chat_nav_panel()] configurations
 #'   and supported standard bslib navigation items. Standard content panels
 #'   use the normal page-chat content width with no page-specific sidebar or

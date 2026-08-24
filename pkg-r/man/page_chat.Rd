@@ -39,8 +39,9 @@ those arguments are rejected.}
 
 \item{id}{A non-empty string identifying the chat. The currently selected
 page is readable server-side as \verb{input$<id>_page} and settable via
-\code{\link[bslib:nav_select]{bslib::nav_select()}}, \code{\link[bslib:nav_show]{bslib::nav_show()}}, and \code{\link[bslib:nav_hide]{bslib::nav_hide()}}. The
-reserved value \code{"__home__"} represents the main chat page.}
+\code{\link[bslib:nav_select]{bslib::nav_select()}}. Use \code{\link[bslib:nav_show]{bslib::nav_show()}} and \code{\link[bslib:nav_hide]{bslib::nav_hide()}}
+to reveal or hide nav controls. The reserved value \code{"__home__"}
+represents the main chat page.}
 
 \item{pages_navbar}{\code{NULL} or a list of \code{\link[=chat_nav_panel]{chat_nav_panel()}} configurations
 and supported standard bslib navigation items. Standard content panels
