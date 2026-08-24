@@ -384,7 +384,7 @@ def chat_drawer(
     """
     Configure content displayed adjacent to a chat interface.
 
-    An drawer can show a preview, generated report, or detail view beside
+    A drawer can show a preview, generated report, or detail view beside
     the conversation. Pass this configuration to ``chat_ui(drawer=)`` or
     ``page_chat(drawer=)`` for its initial content and layout, then update it
     through the chat drawer controller.
@@ -406,7 +406,7 @@ def chat_drawer(
     Returns
     -------
     ChatDrawer
-        An drawer configuration for ``page_chat(drawer=)`` or
+        A drawer configuration for ``page_chat(drawer=)`` or
         ``chat_ui(drawer=)``.
 
     Examples
