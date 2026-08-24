@@ -453,7 +453,6 @@ export class ChatPageElement extends HTMLElement {
         .querySelectorAll<HTMLDetailsElement>(".shiny-chat-page-nav-menu")
         .forEach((menu) => {
           this.listen(menu, "toggle", () => {
-            this.positionNavigationMenus()
             // A details toggle can expose a menu wider than its closed state.
             // Reposition after the browser has applied its open-state layout.
             window.requestAnimationFrame(() => this.positionNavigationMenus())

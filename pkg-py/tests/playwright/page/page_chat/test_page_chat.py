@@ -476,11 +476,15 @@ def test_desktop_dropdown_navigation_is_clickable_and_closes_after_selection(
     menu.locator("summary").click()
     expect(menu).to_have_attribute("open", "")
     expect(details).to_be_visible()
+    menu_items = menu.locator(".shiny-chat-page-nav-menu-items")
+    page.wait_for_function(
+        """(element) =>
+        element.style.getPropertyValue('--shiny-chat-page-nav-menu-left') !== ''""",
+        arg=menu_items.element_handle(),
+    )
 
     details_box = details.bounding_box()
-    menu_items_box = menu.locator(
-        ".shiny-chat-page-nav-menu-items"
-    ).bounding_box()
+    menu_items_box = menu_items.bounding_box()
     assert details_box is not None
     assert menu_items_box is not None
     assert menu_items_box["x"] >= 0

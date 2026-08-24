@@ -316,9 +316,9 @@ button.shiny-chat-page-identity:focus-visible,
 @media (min-width: 800px) {
   .shiny-chat-page-nav-menu[open] .shiny-chat-page-nav-menu-items {
     position: fixed;
-    top: var(--shiny-chat-page-nav-menu-top);
+    top: var(--shiny-chat-page-nav-menu-top, 0.5rem);
     inset-inline-start: auto;
-    left: var(--shiny-chat-page-nav-menu-left);
+    left: var(--shiny-chat-page-nav-menu-left, 0.5rem);
     box-sizing: border-box;
     width: max-content;
     min-width: 0;
