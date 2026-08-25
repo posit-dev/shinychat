@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changes
 
+* `chat_ui()` / `Chat.ui()` and `page_chat()` no longer show an assistant icon by default. Pass `icon_assistant=True` to restore the built-in robot icon, or supply your own icon as before.
+
 * The CSS classes used by the external-link dialog, thinking display, and tool-result images/PDFs now use the `.shiny-chat-*` prefix instead of `.shinychat-*`. The thinking display's custom properties and animation names have likewise changed from `--shinychat-thinking-*` / `shinychat-thinking-*` to `--shiny-chat-thinking-*` / `shiny-chat-thinking-*`. Update any custom CSS that targets these identifiers. (#285, #286)
 
 * The record of displayed messages is now sourced from the browser rather than a server-side accumulator. As a consequence, `chat.messages()` is *eventually* consistent: it returns an empty tuple until the client's first report, and a message passed to `chat.append_message()` does not appear there until the browser has rendered it and reported back. Read it reactively rather than expecting a synchronous update immediately after appending. (#272)
