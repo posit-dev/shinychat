@@ -344,6 +344,15 @@ shiny-chat-container:not([fill]) {
   .shiny-chat-message-content {
     align-self: center;
     padding-right: 1px;
+    // Positioning context for the pending indicator overlay below, so it can
+    // sit exactly where the first line of content will land.
+    position: relative;
+
+    // Reserve room for the overlaid indicator while there's no real content
+    // yet to give the row height itself (see .shiny-chat-pending-indicator).
+    &[data-pending] {
+      min-height: 1.5em;
+    }
   }
 
   /* When the icon is removed (icon_assistant=False / icon=False), collapse the
@@ -359,12 +368,21 @@ shiny-chat-container:not([fill]) {
 // thinking/tool rows' leading glyph (--_row-pad, see .shiny-chat-thinking in
 // this file) so the "something is happening" marker doesn't jump sideways if
 // a thinking block appears next.
+//
+// Positioned absolutely over the content's first line (not in normal flow)
+// so it never reserves its own layout space: the first content lands in the
+// same spot instead of appearing below the dots and jumping up when they're
+// removed. `.shiny-chat-message-content` is the positioning context.
 .shiny-chat-pending-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
   display: inline-flex;
   align-items: center;
   height: 1.5em;
   padding-left: 0.4rem;
   opacity: 0;
+  pointer-events: none;
   animation: shiny-chat-pending-indicator-appear 0.2s ease forwards;
 
   > svg {
@@ -390,8 +408,10 @@ shiny-chat-container:not([fill]) {
 }
 
 // Crossfades the first content in as the pending indicator above fades out
-// (see PENDING_INDICATOR_FADE_MS in ChatMessage.tsx).
-.shiny-chat-message-content[data-entering] {
+// (see PENDING_INDICATOR_FADE_MS in ChatMessage.tsx). Scoped to this wrapper
+// rather than .shiny-chat-message-content itself so the fade-in doesn't also
+// multiply against the indicator's own (independent) fade-out opacity.
+.shiny-chat-message-body[data-entering] {
   animation: shiny-chat-content-enter 0.2s ease;
 }
 
@@ -413,12 +433,12 @@ shiny-chat-container:not([fill]) {
     }
   }
 
-  .shiny-chat-message-content[data-entering] {
+  .shiny-chat-message-body[data-entering] {
     animation: none;
   }
 }
 
-.shiny-chat-message-content > hr:first-child {
+.shiny-chat-message-content > .shiny-chat-message-body > hr:first-child {
   display: none;
 }
 

@@ -512,7 +512,7 @@ export const ChatMessage = memo(function ChatMessage({
       )}
       <div
         className="shiny-chat-message-content"
-        data-entering={contentEntering || undefined}
+        data-pending={showInlinePendingDots || undefined}
       >
         {isEditing ? (
           <div
@@ -584,10 +584,15 @@ export const ChatMessage = memo(function ChatMessage({
             {/* User attachments sit above their text (mirroring the input tray);
                 assistant attachments come after the prose that introduces them. */}
             {isUser && attachmentsEl}
-            <CitationCollectorProvider>
-              {messageBlocks}
-              {!isUser && <SourcesSummary />}
-            </CitationCollectorProvider>
+            <div
+              className="shiny-chat-message-body"
+              data-entering={contentEntering || undefined}
+            >
+              <CitationCollectorProvider>
+                {messageBlocks}
+                {!isUser && <SourcesSummary />}
+              </CitationCollectorProvider>
+            </div>
             {!isUser && attachmentsEl}
             {message.cancelled && (
               <div className="shiny-chat-message-cancelled">
