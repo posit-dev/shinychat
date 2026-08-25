@@ -762,6 +762,91 @@ def test_response_span_failure_falls_back_to_noop(monkeypatch: Any):
     assert finished_spans(exporter) == []
 
 
+class _FailingSpanCM:
+    """Context manager that fails on __enter__ and/or __exit__."""
+
+    def __init__(self, *, fail_enter: bool = False, fail_exit: bool = False):
+        self.fail_enter = fail_enter
+        self.fail_exit = fail_exit
+
+    def __enter__(self) -> Any:
+        if self.fail_enter:
+            raise RuntimeError("span start boom")
+        return self
+
+    def __exit__(self, *args: Any) -> bool:
+        if self.fail_exit:
+            raise RuntimeError("span end boom")
+        return False
+
+
+class _StaticTracer:
+    def __init__(self, cm: Any) -> None:
+        self.cm = cm
+
+    def start_as_current_span(self, *args: Any, **kwargs: Any) -> Any:
+        return self.cm
+
+
+def test_response_span_start_failure_falls_back_to_noop(monkeypatch: Any):
+    exporter = otel_exporter()
+
+    import opentelemetry.trace
+
+    monkeypatch.setattr(
+        opentelemetry.trace,
+        "get_tracer",
+        lambda *a, **k: _StaticTracer(_FailingSpanCM(fail_enter=True)),
+    )
+
+    with response_span("c_abc123"):
+        pass
+    assert finished_spans(exporter) == []
+
+
+def test_response_span_end_failure_does_not_break_work(monkeypatch: Any):
+    import opentelemetry.trace
+
+    monkeypatch.setattr(
+        opentelemetry.trace,
+        "get_tracer",
+        lambda *a, **k: _StaticTracer(_FailingSpanCM(fail_exit=True)),
+    )
+
+    # Clean body: completes despite the span-end failure.
+    with response_span("c_abc123"):
+        pass
+
+    # Failing body: the body's exception propagates, unmasked by the
+    # span-end failure.
+    with pytest.raises(ValueError, match="body boom"):
+        with response_span("c_abc123"):
+            raise ValueError("body boom")
+
+
+def test_traced_stream_survives_span_start_failure(monkeypatch: Any):
+    import opentelemetry.trace
+
+    monkeypatch.setattr(
+        opentelemetry.trace,
+        "get_tracer",
+        lambda *a, **k: _StaticTracer(_FailingSpanCM(fail_enter=True)),
+    )
+
+    chunks: list[str] = []
+
+    async def gen():
+        yield "a"
+        yield "b"
+
+    async def main() -> None:
+        async for chunk in trace_response_stream(gen(), "c_abc123"):
+            chunks.append(chunk)
+
+    run_async(main)
+    assert chunks == ["a", "b"]
+
+
 def test_traced_stream_keeps_span_active_through_consumption():
     exporter = otel_exporter()
     from opentelemetry import trace

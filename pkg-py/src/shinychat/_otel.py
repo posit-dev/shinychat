@@ -8,43 +8,65 @@ consumption of the response stream, so chatlas (or other client) spans nest
 beneath it.
 
 Tracing is strictly observational: with no SDK provider configured the spans
-are non-recording no-ops, and any tracer/span failure falls back to a plain
-nullcontext so telemetry can never break the model call.
+are non-recording no-ops, and any telemetry failure — tracer resolution,
+span start, or span end — degrades to an untraced context, so tracing can
+never break the model call.
 """
 
 from __future__ import annotations
 
-from contextlib import nullcontext
-from typing import TYPE_CHECKING, Any, AsyncIterable, AsyncIterator
-
-if TYPE_CHECKING:
-    from contextlib import AbstractContextManager
+from contextlib import contextmanager
+from typing import Any, AsyncIterable, AsyncIterator, Iterator
 
 
-def response_span(conversation_id: str | None) -> "AbstractContextManager[Any]":
+@contextmanager
+def response_span(conversation_id: str | None) -> Iterator[None]:
     """
     Context manager for a managed response's ``shinychat.response`` span.
 
-    Returns a no-op context when there is no conversation ID (history
-    disabled or empty draft) or when OpenTelemetry is unavailable/fails.
+    Yields an untraced context when there is no conversation ID (history
+    disabled or empty draft) or when OpenTelemetry is unavailable or fails
+    at any point — tracer resolution, span start, or span end.
     """
     if conversation_id is None:
-        return nullcontext()
+        yield
+        return
     try:
         from opentelemetry import trace
     except ImportError:
-        return nullcontext()
+        yield
+        return
     try:
         # Resolved fresh per response: a tracer cached at import time would
         # still delegate dynamically (the OTel API returns a proxy tracer),
         # but resolving here keeps failure isolation trivial.
         tracer = trace.get_tracer("shinychat")
-        return tracer.start_as_current_span(
+        span_cm = tracer.start_as_current_span(
             "shinychat.response",
             attributes={"gen_ai.conversation.id": conversation_id},
         )
+        span_cm.__enter__()
     except Exception:
-        return nullcontext()
+        yield
+        return
+
+    # Forward any exception from the wrapped work to the span's __exit__
+    # (so the span records the error), and guard the exit itself: a failing
+    # processor/exporter must not mask or break the model call.
+    exc: BaseException | None = None
+    try:
+        yield
+    except BaseException as e:
+        exc = e
+        raise
+    finally:
+        try:
+            if exc is None:
+                span_cm.__exit__(None, None, None)
+            else:
+                span_cm.__exit__(type(exc), exc, exc.__traceback__)
+        except Exception:
+            pass
 
 
 async def trace_response_stream(
