@@ -4,6 +4,29 @@
 
 ### New features and improvements
 
+- Added
+  [`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md)
+  for full-window chat pages with persistent chat navigation, responsive
+  sidebars, optional page-specific sidebars, and drawers. Use it instead
+  of `bslib::page_fillable(chat_ui(...))` when shinychat owns the page
+  composition; continue using
+  [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
+  for embedded or mixed layouts.
+
+- [`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md)
+  now supports standard bslib programmatic navigation. The page shell’s
+  root element carries the derived id `"<id>_page"`, so
+  [`bslib::nav_select()`](https://rstudio.github.io/bslib/reference/nav_select.html),
+  [`bslib::nav_show()`](https://rstudio.github.io/bslib/reference/nav_select.html),
+  and
+  [`bslib::nav_hide()`](https://rstudio.github.io/bslib/reference/nav_select.html)
+  work against it. The active page is readable server-side as
+  `input$<id>_page` (`"__home__"` when the chat home is active).
+  [`nav_insert()`](https://rstudio.github.io/bslib/reference/nav_select.html)
+  and
+  [`nav_remove()`](https://rstudio.github.io/bslib/reference/nav_select.html)
+  are not yet supported.
+
 - Web search and web fetch responses from ellmer now show their activity
   and citations directly in the chat. Readers can open a citation beside
   its claim or use the message-wide Sources pill.
@@ -133,6 +156,27 @@
   ([\#251](https://github.com/posit-dev/shinychat/issues/251))
 
 ### Breaking changes
+
+- [`chat_app()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  now configures its full-window page through
+  [`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md).
+  Arguments in `...` are passed to
+  [`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md)
+  instead of
+  [`shiny::shinyApp()`](https://rdrr.io/pkg/shiny/man/shinyApp.html):
+  use `app_options` instead of `options`, `bookmark_store` instead of
+  `enableBookmarking`, and compose
+  [`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md)
+  with
+  [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  when you need `onStart` or `uiPattern`.
+  [`chat_app()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  now owns the page layout, so its `title`, `icon`, and `id` configure
+  the page-chat shell. Existing layouts that embed chat should use
+  [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
+  and
+  [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  directly.
 
 - The CSS classes used by the external-link dialog, thinking display,
   and tool-result images/PDFs now use the `.shiny-chat-*` prefix instead

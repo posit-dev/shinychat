@@ -22,6 +22,41 @@
 - [`update_chat_user_input()`](https://posit-dev.github.io/shinychat/r/dev/reference/update_chat_user_input.md)
   : Update the user input of a chat control
 
+## Page chat
+
+- [`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md)
+  : Create a full-window chat page
+
+- [`page_chat_theme()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat_theme.md)
+  :
+
+  Create a theme for
+  [`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md)
+
+- [`chat_nav_panel()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_nav_panel.md)
+  : Create a page-chat navigation panel
+
+- [`chat_sidebar()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_sidebar.md)
+  : Create a chat sidebar configuration
+
+- [`chat_ui_history()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui_history.md)
+  : Create a chat history selector
+
+- [`chat_drawer()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_drawer.md)
+  : Create a chat drawer configuration
+
+- [`chat_drawer_show()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_drawer_show.md)
+  : Show a chat drawer
+
+- [`chat_drawer_hide()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_drawer_hide.md)
+  : Hide a chat drawer
+
+- [`chat_drawer_toggle()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_drawer_toggle.md)
+  : Toggle a chat drawer
+
+- [`chat_drawer_update()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_drawer_update.md)
+  : Update a chat drawer
+
 ## Streaming markdown interface
 
 - [`markdown_stream()`](https://posit-dev.github.io/shinychat/r/dev/reference/markdown_stream.md)

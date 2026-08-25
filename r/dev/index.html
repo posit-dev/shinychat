@@ -111,12 +111,10 @@
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://shiny.posit.co/" class="external-link">shiny</a></span><span class="op">)</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://posit-dev.github.io/shinychat/r/">shinychat</a></span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">ui</span> <span class="op">&lt;-</span> <span class="fu">bslib</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/bslib/reference/page_fillable.html" class="external-link">page_fillable</a></span><span class="op">(</span></span>
-<span>  <span class="fu"><a href="reference/chat_ui.html">chat_ui</a></span><span class="op">(</span></span>
-<span>    id <span class="op">=</span> <span class="st">"chat"</span>,</span>
-<span>    messages <span class="op">=</span> <span class="st">"**Hello!** How can I help you today?"</span></span>
-<span>  <span class="op">)</span>,</span>
-<span>  fillable_mobile <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span><span class="va">ui</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/page_chat.html">page_chat</a></span><span class="op">(</span></span>
+<span>  <span class="st">"Assistant"</span>,</span>
+<span>  id <span class="op">=</span> <span class="st">"chat"</span>,</span>
+<span>  messages <span class="op">=</span> <span class="st">"**Hello!** How can I help you today?"</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">server</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">input</span>, <span class="va">output</span>, <span class="va">session</span><span class="op">)</span> <span class="op">{</span></span>
@@ -138,6 +136,35 @@
 <h2 id="next-steps">Next steps<a class="anchor" aria-label="anchor" href="#next-steps"></a>
 </h2>
 <p>Ready to start building a chatbot with shinychat? See <a href="https://posit-dev.github.io/shinychat/r/articles/get-started.html">Get Started</a> to learn more.</p>
+<p>Use <code><a href="reference/page_chat.html">page_chat()</a></code> when the chat owns the full browser window. It includes responsive navigation and sidebar support:</p>
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">ui</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/page_chat.html">page_chat</a></span><span class="op">(</span></span>
+<span>  <span class="st">"Assistant"</span>,</span>
+<span>  toolbar <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/pkg/shiny/man/actionButton.html" class="external-link">actionButton</a></span><span class="op">(</span><span class="st">"clear_chat"</span>, <span class="st">"Clear conversation"</span><span class="op">)</span>,</span>
+<span>  toolbar_global <span class="op">=</span> <span class="fu">bslib</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/bslib/reference/toolbar.html" class="external-link">toolbar</a></span><span class="op">(</span></span>
+<span>    <span class="fu">bslib</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/bslib/reference/input_dark_mode.html" class="external-link">input_dark_mode</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>    <span class="fu"><a href="https://rdrr.io/pkg/shiny/man/actionButton.html" class="external-link">actionButton</a></span><span class="op">(</span><span class="st">"help"</span>, <span class="st">"Help"</span><span class="op">)</span></span>
+<span>  <span class="op">)</span>,</span>
+<span>  sidebar <span class="op">=</span> <span class="fu"><a href="reference/chat_sidebar.html">chat_sidebar</a></span><span class="op">(</span><span class="va">tags</span><span class="op">$</span><span class="fu">p</span><span class="op">(</span><span class="st">"Tools"</span><span class="op">)</span>, history <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span>,</span>
+<span>  pages_navbar <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
+<span>    <span class="fu"><a href="reference/chat_nav_panel.html">chat_nav_panel</a></span><span class="op">(</span></span>
+<span>      <span class="st">"About"</span>,</span>
+<span>      <span class="va">tags</span><span class="op">$</span><span class="fu">p</span><span class="op">(</span><span class="st">"About this app."</span><span class="op">)</span>,</span>
+<span>      value <span class="op">=</span> <span class="st">"about"</span>,</span>
+<span>    <span class="op">)</span>,</span>
+<span>    <span class="fu"><a href="reference/chat_nav_panel.html">chat_nav_panel</a></span><span class="op">(</span></span>
+<span>      <span class="st">"Settings"</span>,</span>
+<span>      <span class="va">tags</span><span class="op">$</span><span class="fu">p</span><span class="op">(</span><span class="st">"Settings"</span><span class="op">)</span>,</span>
+<span>      toolbar <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/pkg/shiny/man/actionButton.html" class="external-link">actionButton</a></span><span class="op">(</span><span class="st">"save_settings"</span>, <span class="st">"Save settings"</span><span class="op">)</span></span>
+<span>    <span class="op">)</span></span>
+<span>  <span class="op">)</span>,</span>
+<span>  drawer <span class="op">=</span> <span class="fu"><a href="reference/chat_drawer.html">chat_drawer</a></span><span class="op">(</span><span class="va">tags</span><span class="op">$</span><span class="fu">p</span><span class="op">(</span><span class="st">"Preview content"</span><span class="op">)</span>, title <span class="op">=</span> <span class="st">"Preview"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p>For an embedded chat or a layout with other top-level content, continue using <code><a href="reference/chat_ui.html">chat_ui()</a></code> inside <code><a href="https://rstudio.github.io/bslib/reference/page_fillable.html" class="external-link">bslib::page_fillable()</a></code>, <code><a href="https://rstudio.github.io/bslib/reference/page_sidebar.html" class="external-link">bslib::page_sidebar()</a></code>, or another suitable container. <code><a href="reference/page_chat.html">page_chat()</a></code> owns its page composition and should not be wrapped in another page container.</p>
+<p>The package includes credential-free <code><a href="reference/page_chat.html">page_chat()</a></code> examples. Run them with:</p>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu">shiny</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/runExample.html" class="external-link">runExample</a></span><span class="op">(</span><span class="st">"page-chat-navigation"</span>, package <span class="op">=</span> <span class="st">"shinychat"</span><span class="op">)</span></span>
+<span><span class="fu">shiny</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/runExample.html" class="external-link">runExample</a></span><span class="op">(</span><span class="st">"page-chat-drawer-controls"</span>, package <span class="op">=</span> <span class="st">"shinychat"</span><span class="op">)</span></span></code></pre></div>
 </div>
 </div>
   </main><aside class="col-md-3"><div class="links">

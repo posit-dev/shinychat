@@ -263,6 +263,109 @@ prompt:
 
 ## Layouts
 
+### Full-window page with navigation
+
+For a full-window chat with navigation, use
+[`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md).
+It owns the page container, the mounted chat, and the responsive
+app-menu sidebar. The example below uses a local echo response, so it
+can be run without an LLM provider:
+
+``` r
+
+library(shiny)
+library(shinychat)
+
+artifact_content <- function(label) {
+  tags$div(
+    tags$h3("Preview"),
+    tags$p(label)
+  )
+}
+
+ui <- page_chat(
+  "Assistant",
+  messages = "Welcome! Ask a question to get started.",
+  toolbar = bslib::toolbar(
+    actionButton("show_preview", "Show preview")
+  ),
+  toolbar_global = bslib::toolbar(
+    bslib::input_dark_mode(),
+    actionButton("help", "Help")
+  ),
+  sidebar = chat_sidebar(
+    tags$p("Home tools"),
+    history = FALSE,
+    open = "open"
+  ),
+  pages_navbar = list(
+    chat_nav_panel(
+      "About",
+      tags$p("This is a secondary page."),
+      value = "about",
+    ),
+    chat_nav_panel(
+      "Settings",
+      tags$p("Settings live here."),
+      value = "settings",
+      sidebar = chat_sidebar(
+        tags$p("Settings menu"),
+        width = 320,
+        open = "closed"
+      ),
+      toolbar = bslib::toolbar(
+        actionButton("save_settings", "Save settings")
+      )
+    )
+  ),
+  drawer = chat_drawer(
+    artifact_content("Initial preview"),
+    title = "Preview"
+  )
+)
+
+server <- function(input, output, session) {
+  observeEvent(input$chat_user_input, {
+    chat_append("chat", paste0("You said: ", input$chat_user_input))
+  })
+
+  observeEvent(input$show_preview, {
+    chat_drawer_show(
+      "chat",
+      content = artifact_content("Preview opened from the server"),
+      title = "Preview"
+    )
+  })
+}
+
+shinyApp(ui, server)
+```
+
+This is the
+[`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md)
+equivalent of `bslib::page_fillable(chat_ui("chat", fill = TRUE))`. Do
+not wrap
+[`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md)
+in another page container or pass `height`, `fill`, or `show_history`;
+those options belong to the page. Use
+[`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
+directly when the chat is embedded alongside other top-level UI or
+inside an existing `bslib` layout.
+
+Set `history = TRUE` in a
+[`chat_sidebar()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_sidebar.md)
+when the chat is connected to
+[`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+or
+[`chat_enable_history()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_enable_history.md).
+Use
+[`chat_drawer_update()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_drawer_update.md),
+[`chat_drawer_hide()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_drawer_hide.md),
+and
+[`chat_drawer_toggle()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_drawer_toggle.md)
+for subsequent artifact updates. Artifact content may contain ordinary
+Shiny inputs and outputs.
+
 ### Screen-filling layout
 
 Use
@@ -271,6 +374,10 @@ with `fillable_mobile = TRUE` if you want the chatbot input to stay
 anchored at the bottom of the page and the chat to fill the remaining
 space.
 
+This remains the compatible choice when the page contains other
+top-level content or when you need to compose the chat with an existing
+`bslib` layout.
+
 ``` r
 
 ui <- bslib::page_fillable(
@@ -278,6 +385,47 @@ ui <- bslib::page_fillable(
   fillable_mobile = TRUE
 )
 ```
+
+Use
+[`bslib::toolbar()`](https://rstudio.github.io/bslib/reference/toolbar.html)
+to group controls in every page-chat toolbar. `toolbar` is scoped to the
+home page. Navigation pages default to `toolbar = NULL`, which omits the
+scoped segment; their `chat_nav_panel(toolbar = bslib::toolbar(...))`
+supplies a page-specific replacement. Use
+`toolbar_global = bslib::toolbar(...)` for actions that remain mounted
+across every page. It is rendered after the active scoped toolbar. When
+omitted, `toolbar_global` contains bslib’s dark/light mode toggle; pass
+`toolbar_global = NULL` to opt out. The controls move between the
+desktop header and mobile app menu without duplicating their Shiny IDs
+or losing state.
+
+`pages_navbar` also accepts bslib navigation items. A standard
+[`bslib::nav_panel()`](https://rstudio.github.io/bslib/reference/nav-items.html)
+uses the normal page-chat content width with no page-specific sidebar or
+toolbar; use
+[`chat_nav_panel()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_nav_panel.md)
+when a page needs those options.
+[`bslib::nav_menu()`](https://rstudio.github.io/bslib/reference/nav-items.html)
+supports nested menus,
+[`bslib::nav_item()`](https://rstudio.github.io/bslib/reference/nav-items.html)
+adds non-selecting navigation UI, and
+[`bslib::nav_spacer()`](https://rstudio.github.io/bslib/reference/nav-items.html)
+separates items.
+[`bslib::nav_panel_hidden()`](https://rstudio.github.io/bslib/reference/nav-items.html)
+creates an unlisted panel.
+
+The package includes runnable navigation and artifact-control examples.
+They use local echo responses, so no provider credentials are required:
+
+``` r
+
+shiny::runExample("page-chat-navigation", package = "shinychat")
+shiny::runExample("page-chat-drawer-controls", package = "shinychat")
+```
+
+The [R example
+source](https://github.com/posit-dev/shinychat/tree/main/pkg-r/inst/examples-shiny)
+is available in the repository.
 
 ![Screenshot of a chatbot filling the
 page.](images/chat-page_fillable.png)

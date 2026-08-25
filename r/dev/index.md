@@ -38,12 +38,10 @@ package (with `install.packages("ellmer")`).
 library(shiny)
 library(shinychat)
 
-ui <- bslib::page_fillable(
-  chat_ui(
-    id = "chat",
-    messages = "**Hello!** How can I help you today?"
-  ),
-  fillable_mobile = TRUE
+ui <- page_chat(
+  "Assistant",
+  id = "chat",
+  messages = "**Hello!** How can I help you today?"
 )
 
 server <- function(input, output, session) {
@@ -68,3 +66,55 @@ shinyApp(ui, server)
 Ready to start building a chatbot with shinychat? See [Get
 Started](https://posit-dev.github.io/shinychat/r/articles/get-started.html)
 to learn more.
+
+Use
+[`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md)
+when the chat owns the full browser window. It includes responsive
+navigation and sidebar support:
+
+``` r
+
+ui <- page_chat(
+  "Assistant",
+  toolbar = actionButton("clear_chat", "Clear conversation"),
+  toolbar_global = bslib::toolbar(
+    bslib::input_dark_mode(),
+    actionButton("help", "Help")
+  ),
+  sidebar = chat_sidebar(tags$p("Tools"), history = FALSE),
+  pages_navbar = list(
+    chat_nav_panel(
+      "About",
+      tags$p("About this app."),
+      value = "about",
+    ),
+    chat_nav_panel(
+      "Settings",
+      tags$p("Settings"),
+      toolbar = actionButton("save_settings", "Save settings")
+    )
+  ),
+  drawer = chat_drawer(tags$p("Preview content"), title = "Preview")
+)
+```
+
+For an embedded chat or a layout with other top-level content, continue
+using
+[`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
+inside
+[`bslib::page_fillable()`](https://rstudio.github.io/bslib/reference/page_fillable.html),
+[`bslib::page_sidebar()`](https://rstudio.github.io/bslib/reference/page_sidebar.html),
+or another suitable container.
+[`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md)
+owns its page composition and should not be wrapped in another page
+container.
+
+The package includes credential-free
+[`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md)
+examples. Run them with:
+
+``` r
+
+shiny::runExample("page-chat-navigation", package = "shinychat")
+shiny::runExample("page-chat-drawer-controls", package = "shinychat")
+```

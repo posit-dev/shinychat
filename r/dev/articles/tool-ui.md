@@ -400,7 +400,8 @@ get_weather_forecast <- tool(
           show_request = FALSE,
           open = TRUE,
           full_screen = TRUE,
-          footer = htmltools::tags$small("Forecast data from weather.gov")
+          footer = htmltools::tags$small("Forecast data from weather.gov"),
+          open_style = "framed"
         )
       )
     )
@@ -421,7 +422,10 @@ get_weather_forecast <- tool(
 
 This result opens its drill-down card by default. Its rich table,
 footer, and fullscreen toggle all live in that card; the compact
-activity row remains available as the summary.
+activity row remains available as the summary. `presentation = "framed"`
+opts this expanded normal rich result into Shiny Chat’s frame. Omit it,
+or use the default `"default"`, to retain the existing drill-down
+presentation.
 
 #### Alternative markdown display
 
@@ -497,9 +501,11 @@ for the extension pattern.
 
 For most rich results, prefer
 [`tool_result_display()`](https://posit-dev.github.io/shinychat/r/dev/reference/tool_result_display.md)
-because it preserves the normal activity row and drill-down card. A
-custom method is the deliberate escape hatch for owning the entire
-settled result UI.
+because it preserves the normal activity row and drill-down card. Use
+`presentation = "framed"` there to frame an expanded normal rich result.
+A custom method is the deliberate escape hatch for owning the entire
+settled result UI; custom standalone output remains separate and does
+not receive a framed activity result.
 
 ### Display Options
 
@@ -534,6 +540,10 @@ These options apply to the drill-down card beneath the activity row:
   easy to inspect large or detailed content like maps, tables, and
   plots. Users can exit fullscreen by pressing `Escape`, clicking the
   backdrop, or using the close button.
+
+- **`presentation = "framed"`**: Opt an expanded normal rich result into
+  Shiny Chat’s frame. The default `"default"` keeps the existing
+  drill-down presentation.
 
 - **`footer`**: Add HTML content below the drill-down card body. Use it
   for attribution, a compact summary, or related controls.

@@ -14,7 +14,18 @@ user session.
 ## Usage
 
 ``` r
-chat_app(client, ..., bookmark_store = "url", allow_attachments = TRUE)
+chat_app(
+  client,
+  ...,
+  title = NULL,
+  icon = NULL,
+  window_title = NULL,
+  id = "chat",
+  greeting = NULL,
+  history = TRUE,
+  bookmark_store = "url",
+  app_options = list()
+)
 
 chat_server(
   id,
@@ -37,51 +48,29 @@ chat_server(
 
 - ...:
 
-  Additional arguments passed to
-  [`shiny::shinyApp()`](https://rdrr.io/pkg/shiny/man/shinyApp.html).
+  Named arguments passed to
+  [`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md).
 
-- bookmark_store:
+- title:
 
-  The bookmarking store to use for the app. Passed to
-  `enable_bookmarking` in
-  [`shiny::shinyApp()`](https://rdrr.io/pkg/shiny/man/shinyApp.html).
-  Defaults to `"url"`, which uses the URL to store the chat state.
-  URL-based bookmarking is limited in size; use `"server"` to store the
-  state on the server side without size limitations; or disable
-  bookmarking by setting this to `"disable"`.
+  The title displayed in the page header. If `NULL` (the default), a
+  `"{model} ({provider})"` title is derived from `client`.
 
-- allow_attachments:
+- icon:
 
-  Controls the file-attachment affordance (an attach button, plus
-  clipboard paste and drag-and-drop) in the chat input. `NULL` (default)
-  defers to `chat_server()`, which enables attachments automatically.
-  Pass `TRUE` to accept all supported types (PNG, JPEG, GIF, WebP, PDF,
-  and common text/code files such as Markdown, plain text, CSV, JSON,
-  and source files), `FALSE` to disable, or a character vector of MIME
-  types to restrict what is accepted (each must be one of the supported
-  types).
+  Optional UI displayed before `title`. See
+  [`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md).
 
-  The shape of `input$<id>_user_input` is determined by this argument,
-  so it is predictable for a given app. When attachments are disabled
-  (the default), it is the typed text as a character string, exactly as
-  before. When attachments are enabled, it is always a list of ellmer
-  [ellmer::Content](https://ellmer.tidyverse.org/reference/Content.html)
-  objects (the typed text, if any, followed by one content object per
-  attachment) - a list even when no files were attached. Splice the list
-  into a chat method's `...` with `!!!`, e.g.
-  `client$stream_async(!!!input$<id>_user_input)`. (No
-  [`rlang::inject()`](https://rlang.r-lib.org/reference/inject.html) is
-  needed: ellmer's chat methods collect `...` with dynamic dots.)
+- window_title:
 
-  The maximum combined size of all attachments in a single message is
-  controlled globally by the `SHINYCHAT_MAX_ATTACHMENT_SIZE` environment
-  variable (a raw byte count; defaults to approximately 30 MB). Files
-  that would push the total over this cap are rejected in the browser
-  with a notice.
+  The browser-window title. If `NULL` (the default), uses
+  `"shinychat | {model} | {date}"` derived from `client`.
 
 - id:
 
-  The ID of the chat element
+  The ID shared by
+  [`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md)
+  and `chat_server()`.
 
 - greeting:
 
@@ -100,6 +89,21 @@ chat_server(
   with default settings; `FALSE` disables it; pass a
   [`history_options()`](https://posit-dev.github.io/shinychat/r/dev/reference/history_options.md)
   object to customise storage, identity, titling, or hooks.
+
+- bookmark_store:
+
+  The bookmarking store to use for the app. Passed to
+  `enableBookmarking` in
+  [`shiny::shinyApp()`](https://rdrr.io/pkg/shiny/man/shinyApp.html).
+  Defaults to `"url"`, which uses the URL to store the chat state.
+  URL-based bookmarking is limited in size; use `"server"` to store the
+  state on the server side without size limitations; or disable
+  bookmarking by setting this to `"disable"`.
+
+- app_options:
+
+  A list passed to the `options` argument of
+  [`shiny::shinyApp()`](https://rdrr.io/pkg/shiny/man/shinyApp.html).
 
 - bookmark_on_input:
 
@@ -214,6 +218,22 @@ chat_server(
   by passing it the same `id`; see *Pairing with `chat_server()`* in
   [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
   for the top-level and module-based patterns.
+
+## Migration
+
+`...` now configures
+[`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md)
+instead of
+[`shiny::shinyApp()`](https://rdrr.io/pkg/shiny/man/shinyApp.html). Pass
+Shiny app options through `app_options`, and use `bookmark_store`
+instead of `enableBookmarking`. To customize `onStart` or `uiPattern`,
+compose
+[`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md)
+and `chat_server()` manually.
+
+This is a breaking change: `...` no longer accepts arguments for
+[`shiny::shinyApp()`](https://rdrr.io/pkg/shiny/man/shinyApp.html),
+including `options`, `enableBookmarking`, `onStart`, and `uiPattern`.
 
 ## Greeting
 

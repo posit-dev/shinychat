@@ -20,7 +20,8 @@ tool_result_display(
   full_screen = FALSE,
   footer = NULL,
   label = NULL,
-  value_preview = NULL
+  value_preview = NULL,
+  open_style = "minimal"
 )
 ```
 
@@ -87,6 +88,11 @@ tool_result_display(
 
   A terse, per-call preview of the tool result, shown in the activity
   row before its drill-down card is opened.
+
+- open_style:
+
+  Whether the result uses the minimal drill-down style or a framed style
+  when open.
 
 ## Value
 

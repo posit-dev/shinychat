@@ -119,7 +119,10 @@ you write to.</p>
 <span>  enable_cancel <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  submit_key <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"enter"</span>, <span class="st">"enter+modifier"</span><span class="op">)</span>,</span>
 <span>  allow_attachments <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  toolbar_input <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  footer <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  drawer <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  show_history <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  tool_grouping <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"tool"</span>, <span class="st">"none"</span>, <span class="st">"all"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -226,13 +229,30 @@ variable (a raw byte count; defaults to approximately 30 MB). Files that
 would push the total over this cap are rejected in the browser with a notice.</p></dd>
 
 
+<dt id="arg-toolbar-input">toolbar_input<a class="anchor" aria-label="anchor" href="#arg-toolbar-input"></a></dt>
+<dd><p>Optional HTML content to display directly below the chat
+input. Use <code><a href="https://rstudio.github.io/bslib/reference/toolbar.html" class="external-link">bslib::toolbar()</a></code> to group toolbar controls.</p></dd>
+
+
 <dt id="arg-footer">footer<a class="anchor" aria-label="anchor" href="#arg-footer"></a></dt>
-<dd><p>Optional HTML content to display below the chat input.
+<dd><p>Optional HTML content to display in a bottom-pinned, full-width
+chat region.
 This can be any HTML content (tags, tag lists, or character strings).
 Useful for adding disclaimers, attribution, or other information.
 The footer text is styled slightly smaller and lighter than body text
 by default. Customize with CSS properties <code>--shiny-chat-footer-font-size</code>
 and <code>--shiny-chat-footer-color</code> on the chat container or footer element.</p></dd>
+
+
+<dt id="arg-drawer">drawer<a class="anchor" aria-label="anchor" href="#arg-drawer"></a></dt>
+<dd><p>Whether to enable the drawer. <code>TRUE</code> (the default)
+enables an initially hidden panel with default options, <code>FALSE</code> omits it,
+and <code><a href="chat_drawer.html">chat_drawer()</a></code> supplies its initial configuration.</p></dd>
+
+
+<dt id="arg-show-history">show_history<a class="anchor" aria-label="anchor" href="#arg-show-history"></a></dt>
+<dd><p>Whether to show the built-in history selector. Defaults
+to <code>TRUE</code>; setting it to <code>FALSE</code> only hides its presentation.</p></dd>
 
 
 <dt id="arg-tool-grouping">tool_grouping<a class="anchor" aria-label="anchor" href="#arg-tool-grouping"></a></dt>

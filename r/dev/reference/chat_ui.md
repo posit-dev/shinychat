@@ -38,7 +38,10 @@ chat_ui(
   enable_cancel = NULL,
   submit_key = c("enter", "enter+modifier"),
   allow_attachments = NULL,
+  toolbar_input = NULL,
   footer = NULL,
+  drawer = TRUE,
+  show_history = TRUE,
   tool_grouping = c("tool", "none", "all")
 )
 ```
@@ -164,14 +167,33 @@ chat_ui(
   that would push the total over this cap are rejected in the browser
   with a notice.
 
+- toolbar_input:
+
+  Optional HTML content to display directly below the chat input. Use
+  [`bslib::toolbar()`](https://rstudio.github.io/bslib/reference/toolbar.html)
+  to group toolbar controls.
+
 - footer:
 
-  Optional HTML content to display below the chat input. This can be any
-  HTML content (tags, tag lists, or character strings). Useful for
-  adding disclaimers, attribution, or other information. The footer text
-  is styled slightly smaller and lighter than body text by default.
-  Customize with CSS properties `--shiny-chat-footer-font-size` and
-  `--shiny-chat-footer-color` on the chat container or footer element.
+  Optional HTML content to display in a bottom-pinned, full-width chat
+  region. This can be any HTML content (tags, tag lists, or character
+  strings). Useful for adding disclaimers, attribution, or other
+  information. The footer text is styled slightly smaller and lighter
+  than body text by default. Customize with CSS properties
+  `--shiny-chat-footer-font-size` and `--shiny-chat-footer-color` on the
+  chat container or footer element.
+
+- drawer:
+
+  Whether to enable the drawer. `TRUE` (the default) enables an
+  initially hidden panel with default options, `FALSE` omits it, and
+  [`chat_drawer()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_drawer.md)
+  supplies its initial configuration.
+
+- show_history:
+
+  Whether to show the built-in history selector. Defaults to `TRUE`;
+  setting it to `FALSE` only hides its presentation.
 
 - tool_grouping:
 
