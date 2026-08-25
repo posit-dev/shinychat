@@ -43,16 +43,13 @@ chat_enable_history(
 - on_restore:
 
   An optional `function(values)` called when a conversation is loaded —
-  on page-load restore and on in-session switches. Use it to sync
-  auxiliary UI state (tabs, model selectors, etc.) to match the restored
-  conversation. Call the appropriate `updateXxx()` functions here.
-  Receives the `values` list captured by `on_save`. Multiple callbacks
-  may be registered; they are called in registration order.
-
-  **Note:** This callback does not fire when
-  `restore_mode = "bookmark"`. In that mode Shiny's native bookmark
-  restore cycle handles app state; use `session$onRestore()` directly if
-  needed.
+  after it becomes active, on page-load restore and on in-session
+  switches. Use it to sync auxiliary UI state (tabs, model selectors,
+  etc.) to match the restored conversation. Call the appropriate
+  `updateXxx()` functions here. Receives the `values` list captured by
+  `on_save`. Multiple callbacks may be registered; they are called in
+  registration order. In `restore_mode = "bookmark"`, this callback also
+  runs while Shiny restores native bookmarked inputs.
 
 - options:
 

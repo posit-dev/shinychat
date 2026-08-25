@@ -96,14 +96,13 @@ be registered; they are called in registration order.</p></dd>
 
 <dt id="arg-on-restore">on_restore<a class="anchor" aria-label="anchor" href="#arg-on-restore"></a></dt>
 <dd><p>An optional <code>function(values)</code> called when a conversation
-is loaded — on page-load restore and on in-session switches. Use it to
-sync auxiliary UI state (tabs, model selectors, etc.) to match the restored
-conversation. Call the appropriate <code>updateXxx()</code> functions here. Receives
-the <code>values</code> list captured by <code>on_save</code>. Multiple callbacks may be
-registered; they are called in registration order.</p>
-<p><strong>Note:</strong> This callback does not fire when <code>restore_mode = "bookmark"</code>.
-In that mode Shiny's native bookmark restore cycle handles app state;
-use <code>session$onRestore()</code> directly if needed.</p></dd>
+is loaded — after it becomes active, on page-load restore and on in-session
+switches. Use it to sync auxiliary UI state (tabs, model selectors, etc.)
+to match the restored conversation. Call the appropriate <code>updateXxx()</code>
+functions here. Receives the <code>values</code> list captured by <code>on_save</code>. Multiple
+callbacks may be registered; they are called in registration order. In
+<code>restore_mode = "bookmark"</code>, this callback also runs while Shiny restores
+native bookmarked inputs.</p></dd>
 
 
 <dt id="arg-options">options<a class="anchor" aria-label="anchor" href="#arg-options"></a></dt>

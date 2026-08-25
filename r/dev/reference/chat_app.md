@@ -170,6 +170,11 @@ chat_server(
     state. Returns `"idle"` when no response is in progress, or
     `"streaming"` while a response is actively being received.
 
+  - `history`: A namespace for managing conversation-history callbacks
+    and persistence. `saved <- chat_module$history$save()` saves only
+    the existing active conversation and returns whether it was saved.
+    Storage and bookmark errors propagate to the caller.
+
   - `last_error`: A reactive value holding the condition from the most
     recent response if it failed, and `NULL` otherwise. Both a finished
     and a failed response read as `"idle"` in `status`, so this is what
