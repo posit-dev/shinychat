@@ -66,9 +66,10 @@ container, if the container is
 
 \item{icon_assistant}{The icon to use for the assistant chat messages.
 Can be HTML or a tag in the form of \code{\link[htmltools:HTML]{htmltools::HTML()}} or
-\code{\link[htmltools:tags]{htmltools::tags()}}. If \code{NULL} (or \code{TRUE}), a default robot icon is used.
-Pass \code{FALSE} to remove the assistant icon entirely (individual messages
-can still opt back in via the \code{icon} argument of \code{\link[=chat_append]{chat_append()}}).}
+\code{\link[htmltools:tags]{htmltools::tags()}}. \code{NULL} (the default) or \code{FALSE} omits the assistant
+icon entirely. Pass \code{TRUE} to use the built-in robot icon (individual
+messages can still opt in to a different icon via the \code{icon} argument of
+\code{\link[=chat_append]{chat_append()}}).}
 
 \item{enable_cancel}{Whether to show a stop button during streaming that
 allows the user to cancel the in-progress response. When using

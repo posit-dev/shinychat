@@ -118,14 +118,19 @@ test_that("chat_ui(icon_assistant = FALSE) removes the icon", {
   expect_match(html, 'icon=""', fixed = TRUE)
 })
 
-test_that("chat_ui(icon_assistant = TRUE/NULL) omits the icon attribute", {
+test_that("chat_ui(icon_assistant = TRUE) omits the icon attribute", {
   ui_true <- chat_ui("chat", messages = list("Hello"), icon_assistant = TRUE)
   expect_null(ui_true$attribs[["icon-assistant"]])
   expect_no_match(as.character(ui_true), "icon-assistant", fixed = TRUE)
+})
 
+test_that("chat_ui(icon_assistant = NULL) (the default) removes the icon", {
   ui_null <- chat_ui("chat", messages = list("Hello"))
-  expect_null(ui_null$attribs[["icon-assistant"]])
-  expect_no_match(as.character(ui_null), "icon-assistant", fixed = TRUE)
+  expect_equal(ui_null$attribs[["icon-assistant"]], "")
+
+  html <- as.character(ui_null)
+  expect_match(html, 'icon-assistant=""', fixed = TRUE)
+  expect_match(html, 'icon=""', fixed = TRUE)
 })
 
 test_that("chat_ui() does not put the assistant icon on user messages", {
