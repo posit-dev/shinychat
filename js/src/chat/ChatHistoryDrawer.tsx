@@ -1,35 +1,67 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {
+  FloatingFocusManager,
+  FloatingPortal,
+  autoUpdate,
+  flip,
+  offset,
+  shift,
+  useClick,
+  useDismiss,
+  useFloating,
+  useInteractions,
+} from "@floating-ui/react"
 import type { ConversationMeta } from "../transport/types"
+import { portalTheme } from "./portalTheme"
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion"
 
 // Matches the 0.2s CSS animation in _history.scss, plus a margin of safety.
 const DRAWER_CLOSE_FALLBACK_MS = 300
 
+const HISTORY_PORTAL_VARIABLES = [
+  "--shiny-chat-history-accent",
+  "--shiny-chat-history-bg",
+  "--shiny-chat-history-border-color",
+  "--shiny-chat-history-item-hover-bg",
+  "--shiny-chat-history-item-active-bg",
+  "--_history-accent",
+  "--_history-bg",
+  "--_history-border-color",
+  "--_history-muted",
+  "--_history-fg",
+  "--_history-danger",
+  "--_history-item-hover-bg",
+  "--_history-item-active-bg",
+] as const
+
+const HistoryMenuPortalContext = React.createContext<HTMLElement | null>(null)
+
 export interface ChatHistoryDrawerProps {
   isOpen: boolean
   onClose: () => void
   triggerRef: React.RefObject<HTMLButtonElement | null>
-  conversations: ConversationMeta[]
+  children: React.ReactNode
+}
+
+export interface ChatHistoryContentProps {
+  conversations: readonly ConversationMeta[]
   activeId: string | null
-  /** True while a stream is in flight: disables select, + New, and Delete. */
+  /** True while a stream is in flight: disables unsafe conversation actions. */
   busy: boolean
+  /** False while the chat's transport is temporarily unavailable. */
+  connected?: boolean
   onSelect: (id: string) => void
   onNew: () => void
   onRename: (id: string, title: string) => void
   onDelete: (id: string) => void
+  onActionComplete?: () => void
 }
 
 export function ChatHistoryDrawer({
   isOpen,
   onClose,
   triggerRef,
-  conversations,
-  activeId,
-  busy,
-  onSelect,
-  onNew,
-  onRename,
-  onDelete,
+  children,
 }: ChatHistoryDrawerProps) {
   // visible stays true through the close animation, unlike isOpen
   const [visible, setVisible] = useState(isOpen)
@@ -38,18 +70,12 @@ export function ChatHistoryDrawer({
   const visibleRef = useRef(isOpen)
   visibleRef.current = visible
   const reducedMotion = usePrefersReducedMotion()
-  const [query, setQuery] = useState("")
-  const [menuFor, setMenuFor] = useState<string | null>(null)
-  const [renaming, setRenaming] = useState<string | null>(null)
-  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
   const drawerRef = useRef<HTMLDivElement>(null)
-  const searchRef = useRef<HTMLInputElement>(null)
+  const [menuPortalRoot, setMenuPortalRoot] = useState<HTMLDivElement | null>(
+    null,
+  )
 
   const handleClose = useCallback(() => {
-    setQuery("")
-    setMenuFor(null)
-    setRenaming(null)
-    setConfirmingDelete(null)
     onClose()
   }, [onClose])
 
@@ -91,21 +117,14 @@ export function ChatHistoryDrawer({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         // Scope Escape to whatever sub-state is active before closing the
-        // whole drawer, so a stray Escape can't skip handleClose()'s reset.
-        if (confirmingDelete) {
-          setConfirmingDelete(null)
-          return
-        }
-        if (menuFor) {
-          setMenuFor(null)
-          return
-        }
+        // whole drawer. Inline history controls stop propagation when they
+        // need to consume Escape themselves.
         handleClose()
         return
       }
       if (e.key === "Tab") {
         const focusable = drawer.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"]):not([data-floating-ui-focus-guard])',
         )
         if (focusable.length === 0) return
         const first = focusable[0]!
@@ -125,7 +144,7 @@ export function ChatHistoryDrawer({
     }
     document.addEventListener("keydown", onKey)
     return () => document.removeEventListener("keydown", onKey)
-  }, [visible, closing, confirmingDelete, menuFor, handleClose])
+  }, [visible, closing, handleClose])
 
   // Move focus into the drawer on open (so Escape / focus-trap work and screen
   // readers announce the dialog) without landing on the search field — search
@@ -134,45 +153,12 @@ export function ChatHistoryDrawer({
     if (visible && !closing) drawerRef.current?.focus({ preventScroll: true })
   }, [visible, closing])
 
-  useEffect(() => {
-    if (!menuFor) return
-    const onPointerDown = (e: PointerEvent) => {
-      const target = e.target as Element
-      if (!target.closest(`[data-menu-id="${menuFor}"]`)) {
-        setMenuFor(null)
-      }
-    }
-    document.addEventListener("pointerdown", onPointerDown, true)
-    return () =>
-      document.removeEventListener("pointerdown", onPointerDown, true)
-  }, [menuFor])
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (!q) return conversations
-    return conversations.filter((c) => c.title.toLowerCase().includes(q))
-  }, [conversations, query])
-
-  const groups = useMemo(() => groupByRecency(filtered), [filtered])
-
   function handleDrawerAnimationEnd(e: React.AnimationEvent<HTMLDivElement>) {
     // onAnimationEnd bubbles from descendants; only react to the drawer's
     // own close animation, not a child's.
     if (e.target !== e.currentTarget) return
     if (!closing) return
     finishClosing()
-  }
-
-  function handleSelect(id: string) {
-    if (busy) return
-    onSelect(id)
-    handleClose()
-  }
-
-  function handleNew() {
-    if (busy) return
-    onNew()
-    handleClose()
   }
 
   if (!visible) return null
@@ -187,95 +173,184 @@ export function ChatHistoryDrawer({
       aria-label="Conversation history"
       tabIndex={-1}
     >
-      <div className="shiny-chat-history-scrim" onClick={handleClose} />
-      <div
-        className="shiny-chat-history-drawer"
-        onAnimationEnd={handleDrawerAnimationEnd}
-      >
-        <div className="shiny-chat-history-header">
-          <h2 className="shiny-chat-history-title">History</h2>
-          <button
-            type="button"
-            className="shiny-chat-history-close"
-            aria-label="Close history"
-            onClick={handleClose}
-          >
-            <CloseIcon />
-          </button>
+      <HistoryMenuPortalContext.Provider value={menuPortalRoot}>
+        <div className="shiny-chat-history-scrim" onClick={handleClose} />
+        <div
+          className="shiny-chat-history-drawer"
+          onAnimationEnd={handleDrawerAnimationEnd}
+        >
+          <div className="shiny-chat-history-header">
+            <h2 className="shiny-chat-history-title">History</h2>
+            <button
+              type="button"
+              className="shiny-chat-history-close"
+              aria-label="Close history"
+              onClick={handleClose}
+            >
+              <CloseIcon />
+            </button>
+          </div>
+          {children}
         </div>
-        <div className="shiny-chat-history-toprow">
-          <button
-            type="button"
-            className="shiny-chat-history-new"
-            disabled={busy}
-            title={busy ? "Wait for the response to finish" : undefined}
-            aria-label="New conversation"
-            onClick={handleNew}
-          >
-            <NewChatIcon />
-            New
-          </button>
-          <span className="shiny-chat-history-search-wrap">
-            <span className="shiny-chat-history-search-icon">
-              <SearchIcon />
-            </span>
-            <input
-              className="shiny-chat-history-search form-control"
-              ref={searchRef}
-              placeholder="Search…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              aria-label="Search conversations"
-            />
+        <div ref={setMenuPortalRoot} />
+      </HistoryMenuPortalContext.Provider>
+    </div>
+  )
+}
+
+export function ChatHistoryContent({
+  conversations,
+  activeId,
+  busy,
+  connected = true,
+  onSelect,
+  onNew,
+  onRename,
+  onDelete,
+  onActionComplete,
+}: ChatHistoryContentProps) {
+  const [query, setQuery] = useState("")
+  const [menuFor, setMenuFor] = useState<string | null>(null)
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const dialogPortalRoot = React.useContext(HistoryMenuPortalContext)
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return conversations
+    return conversations.filter((c) => c.title.toLowerCase().includes(q))
+  }, [conversations, query])
+
+  const groups = useMemo(() => groupByRecency(filtered), [filtered])
+
+  function handleSelect(id: string) {
+    if (busy || !connected) return
+    onSelect(id)
+    onActionComplete?.()
+  }
+
+  function handleNew() {
+    if (busy || !connected) return
+    onNew()
+    onActionComplete?.()
+  }
+
+  const handleEscape = useCallback((): boolean => {
+    if (confirmingDelete) {
+      setConfirmingDelete(null)
+      return true
+    }
+    if (menuFor) {
+      setMenuFor(null)
+      return true
+    }
+    return false
+  }, [confirmingDelete, menuFor])
+
+  useEffect(() => {
+    if (!menuFor && !confirmingDelete) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return
+      event.stopPropagation()
+      handleEscape()
+    }
+    window.addEventListener("keydown", onKeyDown, true)
+    return () => window.removeEventListener("keydown", onKeyDown, true)
+  }, [menuFor, confirmingDelete, handleEscape])
+
+  return (
+    <div
+      ref={contentRef}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && handleEscape()) {
+          event.stopPropagation()
+        }
+      }}
+    >
+      <div className="shiny-chat-history-toprow">
+        <button
+          type="button"
+          className="shiny-chat-history-new"
+          disabled={busy || !connected}
+          title={
+            busy
+              ? "Wait for the response to finish"
+              : !connected
+                ? "History is unavailable while chat reconnects"
+                : undefined
+          }
+          aria-label="New conversation"
+          onClick={handleNew}
+        >
+          <NewChatIcon />
+          New
+        </button>
+        <span className="shiny-chat-history-search-wrap">
+          <span className="shiny-chat-history-search-icon">
+            <SearchIcon />
           </span>
-        </div>
-        <div className="shiny-chat-history-list">
-          {filtered.length === 0 && (
-            <div className="shiny-chat-history-empty">
-              {query.trim() ? "No conversations found" : "No conversations yet"}
-            </div>
-          )}
-          {groups.map(([label, items]) => (
-            <React.Fragment key={label}>
-              <div className="shiny-chat-history-section">{label}</div>
-              {items.map((c) => (
-                <ConversationItem
-                  key={c.id}
-                  meta={c}
-                  active={c.id === activeId}
-                  busy={busy}
-                  menuOpen={menuFor === c.id}
-                  renaming={renaming === c.id}
-                  confirmingDelete={confirmingDelete === c.id}
-                  onToggleMenu={() =>
-                    setMenuFor(menuFor === c.id ? null : c.id)
-                  }
-                  onStartRename={() => {
-                    setRenaming(c.id)
-                    setMenuFor(null)
-                  }}
-                  onStartDelete={() => {
-                    setConfirmingDelete(c.id)
-                    setMenuFor(null)
-                  }}
-                  onCancelEdit={() => {
-                    setRenaming(null)
-                    setConfirmingDelete(null)
-                  }}
-                  onRename={(title) => {
-                    onRename(c.id, title)
-                    setRenaming(null)
-                  }}
-                  onDelete={() => {
-                    onDelete(c.id)
-                    setConfirmingDelete(null)
-                  }}
-                  onSelect={() => handleSelect(c.id)}
-                />
-              ))}
-            </React.Fragment>
-          ))}
-        </div>
+          <input
+            className="shiny-chat-history-search form-control"
+            ref={searchRef}
+            placeholder="Search…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search conversations"
+          />
+        </span>
+      </div>
+      <div className="shiny-chat-history-list">
+        {filtered.length === 0 && (
+          <div className="shiny-chat-history-empty">
+            {query.trim() ? "No conversations found" : "No conversations yet"}
+          </div>
+        )}
+        {groups.map(([label, items]) => (
+          <React.Fragment key={label}>
+            <div className="shiny-chat-history-section">{label}</div>
+            {items.map((c) => (
+              <ConversationItem
+                key={c.id}
+                meta={c}
+                active={c.id === activeId}
+                busy={busy}
+                connected={connected}
+                portalRoot={dialogPortalRoot ?? contentRef.current}
+                menuOpen={menuFor === c.id}
+                renaming={renaming === c.id}
+                confirmingDelete={confirmingDelete === c.id}
+                onMenuOpenChange={(open) => setMenuFor(open ? c.id : null)}
+                onStartRename={() => {
+                  if (!connected) return
+                  setRenaming(c.id)
+                  setMenuFor(null)
+                }}
+                onStartDelete={() => {
+                  if (busy || !connected) return
+                  setConfirmingDelete(c.id)
+                  setMenuFor(null)
+                }}
+                onCancelEdit={() => {
+                  setRenaming(null)
+                  setConfirmingDelete(null)
+                }}
+                onRename={(title) => {
+                  if (!connected) return
+                  onRename(c.id, title)
+                  setRenaming(null)
+                }}
+                onDelete={() => {
+                  if (busy || !connected) return
+                  onDelete(c.id)
+                  setConfirmingDelete(null)
+                }}
+                onSelect={() => handleSelect(c.id)}
+              />
+            ))}
+          </React.Fragment>
+        ))}
       </div>
     </div>
   )
@@ -285,10 +360,12 @@ interface ConversationItemProps {
   meta: ConversationMeta
   active: boolean
   busy: boolean
+  connected: boolean
+  portalRoot: HTMLElement | null
   menuOpen: boolean
   renaming: boolean
   confirmingDelete: boolean
-  onToggleMenu: () => void
+  onMenuOpenChange: (open: boolean) => void
   onStartRename: () => void
   onStartDelete: () => void
   onCancelEdit: () => void
@@ -301,10 +378,12 @@ function ConversationItem({
   meta,
   active,
   busy,
+  connected,
+  portalRoot,
   menuOpen,
   renaming,
   confirmingDelete,
-  onToggleMenu,
+  onMenuOpenChange,
   onStartRename,
   onStartDelete,
   onCancelEdit,
@@ -313,6 +392,23 @@ function ConversationItem({
   onSelect,
 }: ConversationItemProps) {
   const [draft, setDraft] = useState(meta.title)
+  const { refs, floatingStyles, context } = useFloating({
+    open: menuOpen,
+    onOpenChange: onMenuOpenChange,
+    strategy: "fixed",
+    placement: "bottom-end",
+    middleware: [offset(4), flip(), shift({ padding: 8, crossAxis: true })],
+    whileElementsMounted: autoUpdate,
+  })
+  const click = useClick(context)
+  const dismiss = useDismiss(context, { outsidePressEvent: "mousedown" })
+  const { getReferenceProps, getFloatingProps } = useInteractions([
+    click,
+    dismiss,
+  ])
+  const portal = menuOpen
+    ? portalTheme(refs.domReference.current, HISTORY_PORTAL_VARIABLES)
+    : null
 
   // Resync if meta.title changes from outside this component (e.g. rename from another tab)
   useEffect(() => {
@@ -327,6 +423,7 @@ function ConversationItem({
         <input
           className="shiny-chat-history-rename-input form-control form-control-sm"
           autoFocus
+          disabled={!connected}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
@@ -354,8 +451,14 @@ function ConversationItem({
       <button
         type="button"
         className="shiny-chat-history-item-select"
-        disabled={busy}
-        title={busy ? "Wait for the response to finish" : undefined}
+        disabled={busy || !connected}
+        title={
+          busy
+            ? "Wait for the response to finish"
+            : !connected
+              ? "History is unavailable while chat reconnects"
+              : undefined
+        }
         onClick={onSelect}
       >
         <span className="shiny-chat-history-item-title">{meta.title}</span>
@@ -369,6 +472,7 @@ function ConversationItem({
           <button
             type="button"
             className="shiny-chat-history-confirm-yes"
+            disabled={busy || !connected}
             onClick={onDelete}
             aria-label="Confirm delete"
           >
@@ -384,31 +488,72 @@ function ConversationItem({
           </button>
         </span>
       ) : (
-        <span className="shiny-chat-history-itemmenu" data-menu-id={meta.id}>
+        <span
+          className="shiny-chat-history-itemmenu"
+          data-menu-id={meta.id}
+          data-menu-open={menuOpen || undefined}
+        >
           <button
+            ref={refs.setReference}
             type="button"
             aria-label="Conversation actions"
-            onClick={onToggleMenu}
+            disabled={!connected}
+            title={
+              !connected
+                ? "History is unavailable while chat reconnects"
+                : undefined
+            }
+            {...getReferenceProps()}
           >
             <MoreIcon />
           </button>
           {menuOpen && (
-            <span className="shiny-chat-history-menu">
-              <button type="button" onClick={onStartRename}>
-                <PencilIcon />
-                Rename
-              </button>
-              <button
-                type="button"
-                className="shiny-chat-history-menu-danger"
-                disabled={busy}
-                title={busy ? "Wait for the response to finish" : undefined}
-                onClick={onStartDelete}
+            <FloatingPortal root={portalRoot}>
+              <FloatingFocusManager
+                context={context}
+                modal={false}
+                initialFocus={-1}
+                returnFocus
               >
-                <TrashIcon />
-                Delete
-              </button>
-            </span>
+                <div
+                  ref={refs.setFloating}
+                  className="shiny-chat-history-menu"
+                  style={{ ...portal?.style, ...floatingStyles }}
+                  data-bs-theme={portal?.theme}
+                  {...getFloatingProps()}
+                >
+                  <button
+                    type="button"
+                    disabled={!connected}
+                    title={
+                      !connected
+                        ? "History is unavailable while chat reconnects"
+                        : undefined
+                    }
+                    onClick={onStartRename}
+                  >
+                    <PencilIcon />
+                    Rename
+                  </button>
+                  <button
+                    type="button"
+                    className="shiny-chat-history-menu-danger"
+                    disabled={busy || !connected}
+                    title={
+                      busy
+                        ? "Wait for the response to finish"
+                        : !connected
+                          ? "History is unavailable while chat reconnects"
+                          : undefined
+                    }
+                    onClick={onStartDelete}
+                  >
+                    <TrashIcon />
+                    Delete
+                  </button>
+                </div>
+              </FloatingFocusManager>
+            </FloatingPortal>
           )}
         </span>
       )}
@@ -417,8 +562,8 @@ function ConversationItem({
 }
 
 function groupByRecency(
-  items: ConversationMeta[],
-): Array<[string, ConversationMeta[]]> {
+  items: readonly ConversationMeta[],
+): Array<[string, readonly ConversationMeta[]]> {
   const startOfToday = new Date()
   startOfToday.setHours(0, 0, 0, 0)
 

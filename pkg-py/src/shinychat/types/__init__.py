@@ -2,6 +2,7 @@ from .._attachments import Attachment
 from .._chat import ChatMessage, ChatMessageDict
 from .._chat_client import ChatClient
 from .._chat_types import ChatGreeting
+from .._drawer import ChatDrawerController
 from .._history import HistoryOptions
 from .._history_store import (
     ConversationPartition,
@@ -9,6 +10,7 @@ from .._history_store import (
     FileConversationStore,
 )
 from .._history_types import ConversationMeta, ConversationRecord
+from .._page_chat import ChatDrawer, ChatNavPanel, ChatSidebar
 
 try:
     from .._chat_normalize_chatlas import ToolResultDisplay
@@ -27,6 +29,7 @@ except ImportError:
 
 __all__ = [
     "Attachment",
+    "ChatDrawerController",
     "ChatClient",
     "ChatGreeting",
     "HistoryOptions",
@@ -38,4 +41,7 @@ __all__ = [
     "ConversationStore",
     "FileConversationStore",
     "ToolResultDisplay",
+    "ChatDrawer",
+    "ChatNavPanel",
+    "ChatSidebar",
 ]

@@ -3,8 +3,9 @@ import { render, screen, fireEvent, act, within } from "@testing-library/react"
 import React from "react"
 import type { ConversationMeta } from "../../src/transport/types"
 import {
+  ChatHistoryContent,
   ChatHistoryDrawer,
-  type ChatHistoryDrawerProps,
+  type ChatHistoryContentProps,
   HistoryIcon,
 } from "../../src/chat/ChatHistoryDrawer"
 
@@ -63,10 +64,7 @@ const DEFAULT_CONVOS: ConversationMeta[] = [
 ]
 
 // Mimics how ChatContainer wires up the trigger + drawer.
-type WrapperProps = Omit<
-  ChatHistoryDrawerProps,
-  "isOpen" | "onClose" | "triggerRef"
-> & { startOpen?: boolean }
+type WrapperProps = ChatHistoryContentProps & { startOpen?: boolean }
 
 function DrawerWrapper(props: WrapperProps) {
   const { startOpen = false, ...rest } = props
@@ -88,11 +86,15 @@ function DrawerWrapper(props: WrapperProps) {
           to play the slide-out animation before unmounting. */}
       {isOpen && (
         <ChatHistoryDrawer
-          {...rest}
           isOpen={true}
           onClose={() => setIsOpen(false)}
           triggerRef={triggerRef}
-        />
+        >
+          <ChatHistoryContent
+            {...rest}
+            onActionComplete={() => setIsOpen(false)}
+          />
+        </ChatHistoryDrawer>
       )}
     </>
   )
@@ -109,6 +111,7 @@ function renderDrawer(props: Partial<WrapperProps> = {}) {
       conversations={props.conversations ?? DEFAULT_CONVOS}
       activeId={props.activeId ?? null}
       busy={props.busy ?? false}
+      connected={props.connected}
       startOpen={props.startOpen}
       onSelect={props.onSelect ?? onSelect}
       onNew={props.onNew ?? onNew}
@@ -129,14 +132,14 @@ function openDrawer() {
 function openMenuFor(title: string): HTMLElement {
   const titleEl = screen.getByText(title)
   const row = titleEl.closest(".shiny-chat-history-item") as HTMLElement
-  const menuWrapper = row.querySelector(
+  const menuTrigger = row.querySelector(
     ".shiny-chat-history-itemmenu",
   ) as HTMLElement
-  const menuBtn = within(menuWrapper).getByRole("button", {
+  const menuBtn = within(menuTrigger).getByRole("button", {
     name: /conversation actions/i,
   })
   fireEvent.click(menuBtn)
-  return menuWrapper
+  return document.querySelector(".shiny-chat-history-menu") as HTMLElement
 }
 
 // ---------------------------------------------------------------------------
@@ -387,8 +390,39 @@ describe("rename flow", () => {
   it("opens actions menu for a conversation", () => {
     renderDrawer()
     openDrawer()
-    const menuWrapper = openMenuFor("Today's chat")
-    expect(within(menuWrapper).getByText("Rename")).toBeTruthy()
+    const menu = openMenuFor("Today's chat")
+    expect(within(menu).getByText("Rename")).toBeTruthy()
+  })
+
+  it("portals the actions menu outside the scrollable history list", () => {
+    renderDrawer()
+    openDrawer()
+    const menu = openMenuFor("Today's chat")
+
+    expect(menu.closest(".shiny-chat-history-list")).toBeNull()
+    expect(
+      menu.closest("[data-floating-ui-portal]")?.closest("[role=dialog]"),
+    ).toBe(screen.getByRole("dialog"))
+  })
+
+  it("keeps the portaled actions menu inside an RTL history scope", () => {
+    const { container } = render(
+      <div dir="rtl">
+        <DrawerWrapper
+          conversations={DEFAULT_CONVOS}
+          activeId={null}
+          busy={false}
+          onSelect={vi.fn()}
+          onNew={vi.fn()}
+          onRename={vi.fn()}
+          onDelete={vi.fn()}
+        />
+      </div>,
+    )
+    openDrawer()
+    const menu = openMenuFor("Today's chat")
+
+    expect(menu.closest("[dir='rtl']")).toBe(container.firstElementChild)
   })
 
   it("shows inline rename input after clicking Rename", () => {
@@ -542,14 +576,14 @@ describe("busy state", () => {
     openDrawer()
     const titleEl = screen.getByText("Today's chat")
     const row = titleEl.closest(".shiny-chat-history-item") as HTMLElement
-    const menuWrapper = row.querySelector(
+    const menuTrigger = row.querySelector(
       ".shiny-chat-history-itemmenu",
     ) as HTMLElement
-    const menuBtn = within(menuWrapper).getByRole("button", {
+    const menuBtn = within(menuTrigger).getByRole("button", {
       name: /conversation actions/i,
     })
     fireEvent.click(menuBtn)
-    const deleteBtn = within(menuWrapper).getByText("Delete")
+    const deleteBtn = within(document.body).getByText("Delete")
     expect((deleteBtn as HTMLButtonElement).disabled).toBe(true)
   })
 
@@ -558,14 +592,14 @@ describe("busy state", () => {
     openDrawer()
     const titleEl = screen.getByText("Today's chat")
     const row = titleEl.closest(".shiny-chat-history-item") as HTMLElement
-    const menuWrapper = row.querySelector(
+    const menuTrigger = row.querySelector(
       ".shiny-chat-history-itemmenu",
     ) as HTMLElement
-    const menuBtn = within(menuWrapper).getByRole("button", {
+    const menuBtn = within(menuTrigger).getByRole("button", {
       name: /conversation actions/i,
     })
     fireEvent.click(menuBtn)
-    const renameBtn = within(menuWrapper).getByText("Rename")
+    const renameBtn = within(document.body).getByText("Rename")
     expect((renameBtn as HTMLButtonElement).disabled).toBe(false)
   })
 
@@ -587,6 +621,69 @@ describe("busy state", () => {
       .closest(".shiny-chat-history-item-select") as HTMLButtonElement
     expect(selectBtn.disabled).toBe(false)
     expect(selectBtn.getAttribute("title")).toBeNull()
+  })
+})
+
+describe("detached transport state", () => {
+  it("disables history controls while the transport is unavailable", () => {
+    renderDrawer({ connected: false })
+    openDrawer()
+
+    expect(
+      screen.getByRole("button", { name: /new conversation/i }),
+    ).toHaveProperty("disabled", true)
+    expect(
+      screen.getAllByRole("button", { name: /conversation actions/i })[0],
+    ).toHaveProperty("disabled", true)
+    const select = screen
+      .getByText("Today's chat")
+      .closest(".shiny-chat-history-item-select") as HTMLButtonElement
+    expect(select.disabled).toBe(true)
+  })
+
+  it("disables an already-open Rename command after disconnect", () => {
+    const onRename = vi.fn()
+    const { rerender } = render(
+      <ChatHistoryContent
+        conversations={DEFAULT_CONVOS}
+        activeId={null}
+        busy={false}
+        connected={true}
+        onSelect={vi.fn()}
+        onNew={vi.fn()}
+        onRename={onRename}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    const menuWrapper = openMenuFor("Today's chat")
+    expect(within(menuWrapper).getByText("Rename")).toHaveProperty(
+      "disabled",
+      false,
+    )
+
+    rerender(
+      <ChatHistoryContent
+        conversations={DEFAULT_CONVOS}
+        activeId={null}
+        busy={false}
+        connected={false}
+        onSelect={vi.fn()}
+        onNew={vi.fn()}
+        onRename={onRename}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    const rename = within(menuWrapper).getByText("Rename")
+    expect(rename).toHaveProperty("disabled", true)
+    expect(rename).toHaveAttribute(
+      "title",
+      "History is unavailable while chat reconnects",
+    )
+    fireEvent.click(rename)
+    expect(onRename).not.toHaveBeenCalled()
+    expect(screen.queryByLabelText("Rename conversation")).toBeNull()
   })
 })
 
@@ -621,6 +718,42 @@ describe("closing behavior", () => {
       .closest(".shiny-chat-history-item-select") as HTMLElement
     fireEvent.click(selectBtn!)
     expect(screen.queryByRole("dialog")).toBeNull()
+  })
+})
+
+describe("actions menu focus boundary", () => {
+  it("wraps Tab from the final portaled action to the first drawer control", () => {
+    renderDrawer()
+    openDrawer()
+    const menu = openMenuFor("Today's chat")
+    const deleteButton = within(menu).getByRole("button", {
+      name: "Delete",
+    })
+    deleteButton.focus()
+
+    fireEvent.keyDown(document, { key: "Tab" })
+
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Close history" }),
+    )
+  })
+
+  it("does not read computed styles for closed conversation menus", () => {
+    const getComputedStyle = vi.spyOn(window, "getComputedStyle")
+
+    render(
+      <ChatHistoryContent
+        conversations={DEFAULT_CONVOS}
+        activeId={null}
+        busy={false}
+        onSelect={vi.fn()}
+        onNew={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    expect(getComputedStyle).not.toHaveBeenCalled()
   })
 })
 
@@ -673,11 +806,15 @@ function PersistentWrapper(props: WrapperProps) {
         <HistoryIcon />
       </button>
       <ChatHistoryDrawer
-        {...rest}
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}
         triggerRef={triggerRef}
-      />
+      >
+        <ChatHistoryContent
+          {...rest}
+          onActionComplete={() => setIsOpen(false)}
+        />
+      </ChatHistoryDrawer>
     </>
   )
 }
@@ -693,6 +830,7 @@ function renderPersistentDrawer(props: Partial<WrapperProps> = {}) {
       conversations={props.conversations ?? DEFAULT_CONVOS}
       activeId={props.activeId ?? null}
       busy={props.busy ?? false}
+      connected={props.connected}
       startOpen={props.startOpen}
       onSelect={props.onSelect ?? onSelect}
       onNew={props.onNew ?? onNew}

@@ -766,20 +766,30 @@ def test_restore_bookmark_message_warns_and_skips_malformed():
         chat._send_action = _capture  # type: ignore[method-assign]
 
         saved: list[Any] = [
-            {"role": "user", "segments": [{"content": "before", "content_type": "markdown"}]},
+            {
+                "role": "user",
+                "segments": [{"content": "before", "content_type": "markdown"}],
+            },
             {"role": "user"},  # missing required `segments`
-            {"role": "assistant", "segments": [{"content": "after", "content_type": "markdown"}]},
+            {
+                "role": "assistant",
+                "segments": [{"content": "after", "content_type": "markdown"}],
+            },
         ]
 
         async def _exercise() -> None:
-            with pytest.warns(UserWarning, match="incompatible shinychat version"):
+            with pytest.warns(
+                UserWarning, match="incompatible shinychat version"
+            ):
                 for message_dict in saved:
                     await chat._restore_bookmark_message(message_dict)
 
         run_async(_exercise)
 
     contents = [
-        a["message"]["segments"][0]["content"] for a in sent if a["type"] == "message"
+        a["message"]["segments"][0]["content"]
+        for a in sent
+        if a["type"] == "message"
     ]
     assert contents == ["before", "after"]
 

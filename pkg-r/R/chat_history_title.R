@@ -63,7 +63,7 @@ generate_title <- function(title_fn, client, recorded_turns) {
       )
       excerpt_text <- paste(excerpt, collapse = "\n\n")
 
-      titler$chat_async(excerpt_text, echo = "none") |>
+      titler$chat_async(excerpt_text) |>
         promises::then(normalize_title) |>
         promises::catch(function(e) {
           rlang::warn("Title generation failed", parent = e)

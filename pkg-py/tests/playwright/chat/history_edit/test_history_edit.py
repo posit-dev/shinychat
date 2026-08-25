@@ -391,6 +391,7 @@ def test_sibling_navigation_preserves_manual_scroll_position(
     expect(sibling_nav.locator("span")).to_have_text("2 / 2", timeout=5_000)
 
     scroll_container = chat.loc_scroll_container
+    scroll_container.evaluate("el => (el.scrollTop = 0)")
     scroll_top_before = scroll_container.evaluate("el => el.scrollTop")
     assert scroll_top_before <= 1, (
         "test setup failed: edited branch should begin at the top"

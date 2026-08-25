@@ -268,12 +268,20 @@ chat_greeting <- function(
 #'   controlled globally by the `SHINYCHAT_MAX_ATTACHMENT_SIZE` environment
 #'   variable (a raw byte count; defaults to approximately 30 MB). Files that
 #'   would push the total over this cap are rejected in the browser with a notice.
-#' @param footer Optional HTML content to display below the chat input.
+#' @param toolbar_input Optional HTML content to display directly below the chat
+#'   input. Use [bslib::toolbar()] to group toolbar controls.
+#' @param footer Optional HTML content to display in a bottom-pinned, full-width
+#'   chat region.
 #'   This can be any HTML content (tags, tag lists, or character strings).
 #'   Useful for adding disclaimers, attribution, or other information.
 #'   The footer text is styled slightly smaller and lighter than body text
 #'   by default. Customize with CSS properties `--shiny-chat-footer-font-size`
 #'   and `--shiny-chat-footer-color` on the chat container or footer element.
+#' @param drawer Whether to enable the drawer. `TRUE` (the default)
+#'   enables an initially hidden panel with default options, `FALSE` omits it,
+#'   and [chat_drawer()] supplies its initial configuration.
+#' @param show_history Whether to show the built-in history selector. Defaults
+#'   to `TRUE`; setting it to `FALSE` only hides its presentation.
 #' @param tool_grouping Controls how tool calls are grouped together in the
 #'   compact activity rows:
 #'   * `"tool"` (default): calls to the *same* tool within a turn's
@@ -374,11 +382,16 @@ chat_ui <- function(
   enable_cancel = NULL,
   submit_key = c("enter", "enter+modifier"),
   allow_attachments = NULL,
+  toolbar_input = NULL,
   footer = NULL,
+  drawer = TRUE,
+  show_history = TRUE,
   tool_grouping = c("tool", "none", "all")
 ) {
   submit_key <- rlang::arg_match(submit_key)
   tool_grouping <- rlang::arg_match(tool_grouping)
+  chat_validate_boolean(show_history, "show_history")
+  drawer <- normalize_chat_drawer(drawer)
 
   attrs <- rlang::list2(...)
   if (!all(nzchar(rlang::names2(attrs)))) {
@@ -418,9 +431,16 @@ chat_ui <- function(
     )
   })
 
+  toolbar_tag <- NULL
+  if (!is.null(toolbar_input)) {
+    toolbar_tag <- tag("shiny-chat-input-toolbar", list(toolbar_input))
+  }
   footer_tag <- NULL
   if (!is.null(footer)) {
     footer_tag <- tag("shiny-chat-footer", list(footer))
+  }
+  artifact_tag <- if (!is.null(drawer)) {
+    chat_drawer_tag(drawer)
   }
 
   # Process greeting -------------------------------------------------------
@@ -510,6 +530,7 @@ chat_ui <- function(
       },
       `submit-key` = if (submit_key != "enter") submit_key,
       `tool-grouping` = if (tool_grouping != "tool") tool_grouping,
+      `show-history` = if (!show_history) "false",
       `allow-attachments` = attachment_attrs$allow,
       `attachment-accept` = attachment_attrs$accept,
       `max-attachment-size` = max_attachment_size,
@@ -523,7 +544,9 @@ chat_ui <- function(
         "shiny-chat-input",
         list(id = paste0(id, "_user_input"), placeholder = placeholder)
       ),
+      toolbar_tag,
       footer_tag,
+      artifact_tag,
       shinychat_deps(),
       htmltools::findDependencies(icon_assistant),
       greeting_deps
