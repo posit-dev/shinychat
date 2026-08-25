@@ -420,10 +420,12 @@ shiny-chat-container:not([fill]) {
     cursor: not-allowed;
     color: var(--bs-gray-500, #8d959e);
   }
-  &.shiny-chat-btn-cancel {
+  &[data-state="cancel"],
+  &[data-state="cancelling"] {
     color: var(--bs-danger, #dc3545);
   }
-  &.shiny-chat-btn-spinner {
+  &[data-state="pending"],
+  &[data-state="cancelling"] {
     pointer-events: none;
     cursor: default;
     svg {

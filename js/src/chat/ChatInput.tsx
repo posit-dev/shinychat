@@ -266,11 +266,53 @@ export const ChatInput = memo(
       ],
     )
 
+    type SendButtonState =
+      | "empty"
+      | "ready"
+      | "pending"
+      | "cancel"
+      | "cancelling"
+
+    const hasContent = hasText || attachments.length > 0
+    const sendButtonState: SendButtonState = cancelRequested
+      ? "cancelling"
+      : !!enableCancel && !!isStreaming
+        ? "cancel"
+        : disabled
+          ? "pending" // also covers isStreaming && !enableCancel, a pre-existing ambiguous case
+          : hasContent
+            ? "ready"
+            : "empty"
+
+    const sendButtonIcon =
+      sendButtonState === "cancel"
+        ? stopCircleFill
+        : sendButtonState === "pending" || sendButtonState === "cancelling"
+          ? spinnerArc
+          : arrowUpCircleFill
+
+    const sendButtonLabel =
+      sendButtonState === "cancel"
+        ? "Stop generating"
+        : sendButtonState === "pending" || sendButtonState === "cancelling"
+          ? "Loading"
+          : "Send message"
+
     const sendButtonDisabled =
-      disabled || (!hasText && attachments.length === 0)
-    const isPending = disabled && !isStreaming
-    const showCancelButton = !!enableCancel && !!isStreaming && !cancelRequested
-    const showSpinner = isPending || !!cancelRequested
+      sendButtonState !== "ready" && sendButtonState !== "cancel"
+
+    const handleSendClick =
+      sendButtonState === "cancel"
+        ? onCancel
+        : sendButtonState === "ready"
+          ? () => {
+              const content = tiptapRef.current?.serializeEditor() ?? ""
+              if (submitValue(content)) {
+                tiptapRef.current?.setInputValue("")
+                tiptapRef.current?.focus()
+              }
+            }
+          : undefined
 
     return (
       // The whole input region is a drop zone, so files can be dropped onto
@@ -300,39 +342,16 @@ export const ChatInput = memo(
           submitKey={submitKey}
           canSubmitEmpty={canSubmitEmpty}
         />
-        {showCancelButton ? (
-          <button
-            type="button"
-            className="shiny-chat-btn-send shiny-chat-btn-cancel"
-            title="Stop generating"
-            aria-label="Stop generating"
-            onClick={onCancel}
-            dangerouslySetInnerHTML={{ __html: stopCircleFill }}
-          />
-        ) : showSpinner ? (
-          <button
-            type="button"
-            className={`shiny-chat-btn-send shiny-chat-btn-spinner${cancelRequested ? " shiny-chat-btn-cancel" : ""}`}
-            aria-label="Loading"
-            dangerouslySetInnerHTML={{ __html: spinnerArc }}
-          />
-        ) : (
-          <button
-            type="button"
-            className="shiny-chat-btn-send"
-            title="Send message"
-            aria-label="Send message"
-            disabled={sendButtonDisabled}
-            onClick={() => {
-              const content = tiptapRef.current?.serializeEditor() ?? ""
-              if (submitValue(content)) {
-                tiptapRef.current?.setInputValue("")
-                tiptapRef.current?.focus()
-              }
-            }}
-            dangerouslySetInnerHTML={{ __html: arrowUpCircleFill }}
-          />
-        )}
+        <button
+          type="button"
+          className="shiny-chat-btn-send"
+          data-state={sendButtonState}
+          title={sendButtonLabel}
+          aria-label={sendButtonLabel}
+          disabled={sendButtonDisabled}
+          onClick={handleSendClick}
+          dangerouslySetInnerHTML={{ __html: sendButtonIcon }}
+        />
       </div>
     )
   }),
