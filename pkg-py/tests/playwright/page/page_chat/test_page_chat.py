@@ -655,10 +655,10 @@ def test_page_chat_keeps_content_inset_and_fills_its_page_region(
     local_app: ShinyAppProc,
     viewport: tuple[int, int],
 ) -> None:
-    chat, shell = open_page(
+    chat, page_chat = open_page(
         page, local_app, viewport=viewport, toolbar_input=True
     )
-    main = shell.locator(".shiny-chat-page-main")
+    main = page_chat.loc_main
     wrapper = chat.loc.locator(".shiny-chat-wrapper")
     footer = chat.loc.locator(".shiny-chat-footer")
 
