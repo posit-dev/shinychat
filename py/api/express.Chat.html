@@ -1415,7 +1415,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td>icon_assistant</td>
 <td><a href="`htmltools.HTML`">HTML</a> | <a href="`htmltools.Tag`">Tag</a> | <a href="`htmltools.TagList`">TagList</a> | <a href="`bool`">bool</a> | None</td>
-<td>The icon to use for the assistant chat messages. Can be a HTML or a tag in the form of :class:<code>~htmltools.HTML</code> or :class:<code>~htmltools.Tag</code>. If <code>None</code> (or <code>True</code>), a default robot icon is used. Pass <code>False</code> to remove the assistant icon entirely (individual messages can still opt back in via the <code>icon</code> argument of <code>.append_message()</code>).</td>
+<td>The icon to use for the assistant chat messages. Can be a HTML or a tag in the form of :class:<code>~htmltools.HTML</code> or :class:<code>~htmltools.Tag</code>. <code>None</code> (the default) or <code>False</code> omits the assistant icon entirely. Pass <code>True</code> to use the built-in robot icon (individual messages can still opt in to a different icon via the <code>icon</code> argument of <code>.append_message()</code>).</td>
 <td><code>None</code></td>
 </tr>
 <tr class="even">
