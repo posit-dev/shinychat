@@ -166,9 +166,9 @@ def test_chat_nav_panel_validates_sidebar_and_navigation_values() -> None:
         chat_nav_panel(cast(Any, tags.span("About")))
     with pytest.raises(ValueError, match="empty CSS width"):
         chat_nav_panel("About", content_width=" ")
-    assert chat_nav_panel("About", toolbar=cast(Any, {"class": "bad"})).toolbar == {
-        "class": "bad"
-    }
+    assert chat_nav_panel(
+        "About", toolbar=cast(Any, {"class": "bad"})
+    ).toolbar == {"class": "bad"}
 
 
 def test_chat_ui_history_resolves_id_and_forwards_html_attributes() -> None:
@@ -275,8 +275,8 @@ def test_page_chat_signature_has_only_title_and_icon_positional() -> None:
         "id",
         "pages",
         "toolbar",
-        "toolbar_input",
         "toolbar_global",
+        "toolbar_input",
         "navbar_options",
         "sidebar",
         "artifact",
@@ -424,7 +424,7 @@ def test_page_chat_normalizes_navigation_toolbar_and_sidebars() -> None:
     assert 'aria-controls="mod-assistant-sidebar"' in html
     assert 'id="mod-assistant-sidebar"' in html
     assert '<button type="button" class="shiny-chat-page-identity"' in html
-    assert html.count('<span>Reactive title</span>') == 1
+    assert html.count("<span>Reactive title</span>") == 1
     assert 'data-page-home=""' in html
     assert 'aria-label="Return to chat"' in html
     assert html.count('data-page-target="About"') == 1
@@ -736,13 +736,17 @@ def test_page_chat_validates_page_arguments(
 
 def test_page_chat_passes_generic_ui_children_to_htmltools() -> None:
     assert page_chat("Assistant", icon=cast(Any, False)) is not None
-    assert page_chat("Assistant", toolbar=cast(Any, {"class": "bad"})) is not None
-    assert page_chat("Assistant", toolbar_input=cast(Any, {"class": "bad"})) is not None
-    assert chat_nav_panel("About", icon=cast(Any, False)).icon is False
     assert (
-        chat_nav_panel("About", toolbar=cast(Any, {"class": "bad"})).toolbar
-        == {"class": "bad"}
+        page_chat("Assistant", toolbar=cast(Any, {"class": "bad"})) is not None
     )
+    assert (
+        page_chat("Assistant", toolbar_input=cast(Any, {"class": "bad"}))
+        is not None
+    )
+    assert chat_nav_panel("About", icon=cast(Any, False)).icon is False
+    assert chat_nav_panel(
+        "About", toolbar=cast(Any, {"class": "bad"})
+    ).toolbar == {"class": "bad"}
 
 
 def test_page_chat_forwards_original_id_and_chat_options(

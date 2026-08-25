@@ -31,8 +31,8 @@ def page_chat(
     id: str = "chat",
     pages: Sequence[ChatNavPanel] | None = None,
     toolbar: TagChild | None = None,
-    toolbar_input: TagChild | None = None,
     toolbar_global: TagChild | None = None,
+    toolbar_input: TagChild | None = None,
     navbar_options: Any = None,
     sidebar: bool | ChatSidebar = True,
     artifact: bool | ChatArtifact = True,
@@ -77,12 +77,12 @@ def page_chat(
         Optional home-page-scoped HTML child displayed with the navigation
         controls. A page's ``chat_nav_panel(toolbar=)`` can replace this
         segment.
-    toolbar_input
-        Optional HTML content displayed directly below the chat input. This is
-        independent of the navigation ``toolbar``.
     toolbar_global
         Optional persistent HTML child displayed after the page-scoped toolbar
         in the navigation controls.
+    toolbar_input
+        Optional HTML content displayed directly below the chat input. This is
+        independent of the navigation ``toolbar``.
     navbar_options
         Optional :func:`shiny.ui.navbar_options` that styles the page title bar.
         ``position`` and ``collapsible`` are unsupported because ``page_chat()``
