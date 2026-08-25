@@ -403,18 +403,19 @@ def test_chat_ui_icon_assistant_false_removes_icon():
 
 
 def test_chat_ui_icon_assistant_true_omits_attribute():
-    # True (like None) defers to the default robot: no icon attribute emitted.
+    # True opts into the default robot icon: no icon attribute emitted.
     tag = chat_ui("myid", messages=["Hello there"], icon_assistant=True)
     html = tag.get_html_string()
     assert "icon-assistant" not in html
     assert "icon=" not in html
 
 
-def test_chat_ui_icon_assistant_none_omits_attribute():
+def test_chat_ui_icon_assistant_none_removes_icon():
+    # None (the default) removes the icon, same as False.
     tag = chat_ui("myid", messages=["Hello there"])
     html = tag.get_html_string()
-    assert "icon-assistant" not in html
-    assert "icon=" not in html
+    assert 'icon-assistant=""' in html
+    assert 'icon=""' in html
 
 
 def test_chat_ui_icon_assistant_skips_user_messages():
