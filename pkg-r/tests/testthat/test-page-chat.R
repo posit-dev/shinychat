@@ -322,6 +322,7 @@ test_that("page_chat() has the agreed public signature", {
       "pages_navbar",
       "toolbar",
       "toolbar_global",
+      "toolbar_input",
       "navbar_options",
       "sidebar",
       "messages",

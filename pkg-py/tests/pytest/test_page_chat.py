@@ -294,6 +294,7 @@ def test_chat_ui_validates_page_chat_values(
 def test_core_and_express_ui_signatures_include_page_chat_values() -> None:
     for fn in (chat_ui, ExpressChat.ui):
         parameters = inspect.signature(fn).parameters
+        assert parameters["toolbar_input"].default is None
         assert parameters["drawer"].default is True
         assert parameters["show_history"].default is True
         assert parameters["drawer"].kind is inspect.Parameter.KEYWORD_ONLY
@@ -310,6 +311,7 @@ def test_page_chat_signature_makes_icon_keyword_only() -> None:
         "pages_navbar",
         "toolbar",
         "toolbar_global",
+        "toolbar_input",
         "navbar_options",
         "sidebar",
         "drawer",
@@ -825,6 +827,10 @@ def test_page_chat_passes_generic_ui_children_to_htmltools() -> None:
     assert (
         page_chat("Assistant", toolbar=cast(Any, {"class": "bad"})) is not None
     )
+    assert (
+        page_chat("Assistant", toolbar_input=cast(Any, {"class": "bad"}))
+        is not None
+    )
     assert chat_nav_panel("About", icon=cast(Any, False)).icon is False
     assert chat_nav_panel(
         "About", toolbar=cast(Any, {"class": "bad"})
@@ -853,6 +859,7 @@ def test_page_chat_forwards_original_id_and_chat_options(
             width="40rem",
             enable_cancel=True,
             allow_attachments=["text/plain"],
+            toolbar_input=tags.button("Toolbar input"),
             footer=tags.small("Footer"),
             drawer=False,
             submit_key="enter+modifier",
@@ -873,6 +880,7 @@ def test_page_chat_forwards_original_id_and_chat_options(
     assert options["width"] == "40rem"
     assert options["enable_cancel"] is True
     assert options["allow_attachments"] == ["text/plain"]
+    assert str(options["toolbar_input"]) == str(tags.button("Toolbar input"))
     assert options["drawer"] is False
     assert options["submit_key"] == "enter+modifier"
     assert options["tool_grouping"] == "all"

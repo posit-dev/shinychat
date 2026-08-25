@@ -12,6 +12,7 @@ page_chat(
   pages_navbar = NULL,
   toolbar = NULL,
   toolbar_global = bslib::toolbar(bslib::input_dark_mode()),
+  toolbar_input = NULL,
   navbar_options = NULL,
   sidebar = TRUE,
   messages = NULL,
@@ -59,6 +60,10 @@ toolbar controls. Defaults to a toolbar containing
 \code{\link[bslib:input_dark_mode]{bslib::input_dark_mode()}}; use \code{NULL} to opt out. It remains mounted
 while secondary pages are selected and while controls move between desktop
 and mobile layouts.}
+
+\item{toolbar_input}{Optional UI displayed directly below the chat input.
+Use \code{\link[bslib:toolbar]{bslib::toolbar()}} to group toolbar controls. This is independent of
+the navigation \code{toolbar}.}
 
 \item{navbar_options}{Optional \code{\link[bslib:navbar_options]{bslib::navbar_options()}} that styles the
 page title bar. Its \code{bg}, \code{theme}, \code{underline}, and HTML attributes are

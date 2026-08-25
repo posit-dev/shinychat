@@ -99,6 +99,9 @@ HOME_PAGE_VALUE <- "__home__"
 #'   [bslib::input_dark_mode()]; use `NULL` to opt out. It remains mounted
 #'   while secondary pages are selected and while controls move between desktop
 #'   and mobile layouts.
+#' @param toolbar_input Optional UI displayed directly below the chat input.
+#'   Use [bslib::toolbar()] to group toolbar controls. This is independent of
+#'   the navigation `toolbar`.
 #' @param navbar_options Optional [bslib::navbar_options()] that styles the
 #'   page title bar. Its `bg`, `theme`, `underline`, and HTML attributes are
 #'   supported. `position` and `collapsible` are unsupported because
@@ -190,6 +193,7 @@ page_chat <- function(
   pages_navbar = NULL,
   toolbar = NULL,
   toolbar_global = bslib::toolbar(bslib::input_dark_mode()),
+  toolbar_input = NULL,
   navbar_options = NULL,
   sidebar = TRUE,
   messages = NULL,
@@ -235,6 +239,7 @@ page_chat <- function(
   }
   chat_validate_page_ui(icon, "icon")
   chat_validate_page_ui(toolbar, "toolbar")
+  chat_validate_page_ui(toolbar_input, "toolbar_input")
   chat_validate_page_ui(toolbar_global, "toolbar_global")
   navbar_options <- normalize_page_chat_navbar_options(navbar_options)
   chat_validate_sidebar(sidebar)
@@ -260,6 +265,7 @@ page_chat <- function(
     icon_assistant = icon_assistant,
     enable_cancel = enable_cancel,
     allow_attachments = allow_attachments,
+    toolbar_input = toolbar_input,
     footer = footer,
     drawer = drawer,
     show_history = TRUE

@@ -17,6 +17,7 @@ chat_ui(
   enable_cancel = NULL,
   submit_key = c("enter", "enter+modifier"),
   allow_attachments = NULL,
+  toolbar_input = NULL,
   footer = NULL,
   drawer = TRUE,
   show_history = TRUE,
@@ -106,7 +107,11 @@ controlled globally by the \code{SHINYCHAT_MAX_ATTACHMENT_SIZE} environment
 variable (a raw byte count; defaults to approximately 30 MB). Files that
 would push the total over this cap are rejected in the browser with a notice.}
 
-\item{footer}{Optional HTML content to display below the chat input.
+\item{toolbar_input}{Optional HTML content to display directly below the chat
+input. Use \code{\link[bslib:toolbar]{bslib::toolbar()}} to group toolbar controls.}
+
+\item{footer}{Optional HTML content to display in a bottom-pinned, full-width
+chat region.
 This can be any HTML content (tags, tag lists, or character strings).
 Useful for adding disclaimers, attribution, or other information.
 The footer text is styled slightly smaller and lighter than body text

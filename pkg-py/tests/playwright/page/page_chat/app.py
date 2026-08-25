@@ -152,6 +152,15 @@ def app_ui(request: Request) -> ui.Tag:
             "multi-step investigations"
         )
 
+    chat_kwargs: dict[str, Any] = {}
+    if request.query_params.get("toolbar_input") == "true":
+        chat_kwargs["toolbar_input"] = ui.div(
+            "Page chat input toolbar", class_="page-chat-input-toolbar"
+        )
+        chat_kwargs["footer"] = ui.div(
+            "Page chat footer", class_="page-chat-footer"
+        )
+
     return page_chat(
         title,
         id="chat",
@@ -249,7 +258,7 @@ def app_ui(request: Request) -> ui.Tag:
         sidebar=True,
         drawer=False,
         greeting="Start a conversation.",
-        footer=ui.div("Page chat footer", class_="page-chat-footer"),
+        **chat_kwargs,
     )
 
 

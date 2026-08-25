@@ -84,6 +84,7 @@ def page_chat(
     | None = None,
     toolbar: TagChild | None = None,
     toolbar_global: TagChild | None | MISSING_TYPE = MISSING,
+    toolbar_input: TagChild | None = None,
     navbar_options: Any = None,
     sidebar: bool | ChatSidebar = True,
     drawer: bool | ChatDrawer = True,
@@ -144,6 +145,10 @@ def page_chat(
         toggle; pass ``None`` to opt out. It remains mounted while secondary
         pages are selected and while controls move between desktop and mobile
         layouts.
+    toolbar_input
+        Optional HTML content displayed directly below the chat input. Use
+        :func:`shiny.ui.toolbar` to group toolbar controls. This is independent
+        of the navigation ``toolbar``.
     navbar_options
         Optional :func:`shiny.ui.navbar_options` that styles the page title bar.
         Its ``bg``, ``theme``, ``underline``, and HTML attributes are supported.
@@ -187,7 +192,7 @@ def page_chat(
         omitted, a chat constructed with ``client=`` enables them
         automatically.
     footer
-        Optional HTML content below the chat input.
+        Optional HTML content in a bottom-pinned, full-width chat region.
     **kwargs
         Additional :func:`~shinychat.chat_ui` options and HTML attributes.
         ``page_chat()`` owns ``height``, ``fill``, and ``show_history``; these
@@ -238,6 +243,7 @@ def page_chat(
         icon_assistant=icon_assistant,
         enable_cancel=enable_cancel,
         allow_attachments=allow_attachments,
+        toolbar_input=toolbar_input,
         footer=footer,
         **kwargs,
     )
@@ -1082,6 +1088,7 @@ def _create_page_chat_root(
     icon_assistant: Optional[HTML | Tag | TagList | bool] = None,
     enable_cancel: "bool | MISSING_TYPE" = MISSING,
     allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
+    toolbar_input: Optional[TagChild] = None,
     footer: Optional[TagChild] = None,
     **kwargs: Any,
 ) -> Tag:
@@ -1108,6 +1115,7 @@ def _create_page_chat_root(
         icon_assistant=icon_assistant,
         enable_cancel=enable_cancel,
         allow_attachments=allow_attachments,
+        toolbar_input=toolbar_input,
         footer=footer,
         drawer=drawer,
         show_history=True,

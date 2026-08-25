@@ -49,6 +49,24 @@ app_ui = page_chat(
             tooltip="Help",
         ),
     ),
+    toolbar_input=ui.toolbar(
+        ui.toolbar_input_select(
+            "model",
+            "Model",
+            choices=["Haiku", "Sonnet", "Opus"],
+            selected="Sonnet",
+            show_label=True,
+        ),
+        ui.toolbar_input_select(
+            "reasoning",
+            "Effort",
+            choices=["high", "med", "low", "off"],
+            selected="med",
+            show_label=True,
+        ),
+        align="left",
+    ),
+    footer=ui.p("AI can be wrong. Check your work."),
     sidebar=chat_sidebar(
         ui.h3("Workspace", class_="h6"),
         ui.input_text("project_name", "Project", "Coastal survey"),
@@ -120,7 +138,12 @@ Try the local echo response.
 def server(input, output, session):
     chat = Chat(
         "chat",
-        client=EchoChatClient(),
+        client=EchoChatClient(
+            lambda user_input: (
+                f"{input.model()} [{input.reasoning()}] replied to your "
+                f"message: {user_input}"
+            )
+        ),
         history=HistoryOptions(store="memory", title=None),
     )
 
