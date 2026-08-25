@@ -25,7 +25,6 @@ from shinychat._history_store import (
     ConversationPartition,
     InMemoryConversationStore,
 )
-from shinychat._otel import response_span, trace_response_stream
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -104,6 +103,7 @@ class MockClient:
         self._turns: list[Any] = []
         self.system_prompt: str | None = None
         self._tools: list[Any] = []
+        self.conversation_id: str | None = None
 
     def get_turns(self) -> list[Any]:
         return list(self._turns)
@@ -467,7 +467,7 @@ class StreamClient(MockClient):
         self.attempts = 0
         # Test hooks: on_stream fires when stream_async is called, on_consume
         # when the returned generator is consumed (where chatlas does its
-        # provider I/O — and creates its otel spans).
+        # provider I/O — and creates its spans).
         self.on_stream: Any = None
         self.on_consume: Any = None
         self.fail_first_attempt = False
@@ -687,311 +687,36 @@ def test_history_disabled_stays_none():
     run_async(main)
 
 
+
 # ---------------------------------------------------------------------------
-# OpenTelemetry
+# Client telemetry handoff
 # ---------------------------------------------------------------------------
 
-# Process-wide exporter holder (the tracer provider can only be set once).
-_EXPORTER: list[Any] = []
 
-
-def otel_exporter() -> Any:
-    """Return the shared InMemorySpanExporter, cleared for the calling test."""
-    if _EXPORTER:
-        exporter = _EXPORTER[0]
-        exporter.clear()
-        return exporter
-
-    from opentelemetry import trace
-    from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-    from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
-        InMemorySpanExporter,
-    )
-
-    provider = trace.get_tracer_provider()
-    if not isinstance(provider, TracerProvider):
-        provider = TracerProvider()
-        trace.set_tracer_provider(provider)
-    exporter = InMemorySpanExporter()
-    provider.add_span_processor(SimpleSpanProcessor(exporter))
-    _EXPORTER.append(exporter)
-    return exporter
-
-
-def finished_spans(exporter: Any) -> list[Any]:
-    return list(exporter.get_finished_spans())
-
-
-def test_response_span_without_id_is_a_noop():
-    exporter = otel_exporter()
-    with response_span(None):
-        pass
-    assert finished_spans(exporter) == []
-
-
-def test_response_span_records_name_kind_and_attribute():
-    exporter = otel_exporter()
-    from opentelemetry.trace import SpanKind
-
-    with response_span("c_abc123"):
-        pass
-
-    spans = finished_spans(exporter)
-    assert len(spans) == 1
-    span = spans[0]
-    assert span.name == "shinychat.response"
-    assert span.kind == SpanKind.INTERNAL
-    assert span.attributes is not None
-    assert span.attributes["gen_ai.conversation.id"] == "c_abc123"
-
-
-def test_response_span_failure_falls_back_to_noop(monkeypatch: Any):
-    exporter = otel_exporter()
-
-    import opentelemetry.trace
-
-    def boom(*args: Any, **kwargs: Any) -> Any:
-        raise RuntimeError("no tracer for you")
-
-    monkeypatch.setattr(opentelemetry.trace, "get_tracer", boom)
-
-    with response_span("c_abc123"):
-        pass
-    assert finished_spans(exporter) == []
-
-
-class _FailingSpanCM:
-    """Context manager that fails on __enter__ and/or __exit__."""
-
-    def __init__(self, *, fail_enter: bool = False, fail_exit: bool = False):
-        self.fail_enter = fail_enter
-        self.fail_exit = fail_exit
-
-    def __enter__(self) -> Any:
-        if self.fail_enter:
-            raise RuntimeError("span start boom")
-        return self
-
-    def __exit__(self, *args: Any) -> bool:
-        if self.fail_exit:
-            raise RuntimeError("span end boom")
-        return False
-
-
-class _StaticTracer:
-    def __init__(self, cm: Any) -> None:
-        self.cm = cm
-
-    def start_as_current_span(self, *args: Any, **kwargs: Any) -> Any:
-        return self.cm
-
-
-def test_response_span_start_failure_falls_back_to_noop(monkeypatch: Any):
-    exporter = otel_exporter()
-
-    import opentelemetry.trace
-
-    monkeypatch.setattr(
-        opentelemetry.trace,
-        "get_tracer",
-        lambda *a, **k: _StaticTracer(_FailingSpanCM(fail_enter=True)),
-    )
-
-    with response_span("c_abc123"):
-        pass
-    assert finished_spans(exporter) == []
-
-
-def test_response_span_end_failure_does_not_break_work(monkeypatch: Any):
-    import opentelemetry.trace
-
-    monkeypatch.setattr(
-        opentelemetry.trace,
-        "get_tracer",
-        lambda *a, **k: _StaticTracer(_FailingSpanCM(fail_exit=True)),
-    )
-
-    # Clean body: completes despite the span-end failure.
-    with response_span("c_abc123"):
-        pass
-
-    # Failing body: the body's exception propagates, unmasked by the
-    # span-end failure.
-    with pytest.raises(ValueError, match="body boom"):
-        with response_span("c_abc123"):
-            raise ValueError("body boom")
-
-
-def test_traced_stream_survives_span_start_failure(monkeypatch: Any):
-    import opentelemetry.trace
-
-    monkeypatch.setattr(
-        opentelemetry.trace,
-        "get_tracer",
-        lambda *a, **k: _StaticTracer(_FailingSpanCM(fail_enter=True)),
-    )
-
-    chunks: list[str] = []
-
-    async def gen():
-        yield "a"
-        yield "b"
-
+def test_managed_response_hands_the_conversation_id_to_the_client():
     async def main() -> None:
-        async for chunk in trace_response_stream(gen(), "c_abc123"):
-            chunks.append(chunk)
-
-    run_async(main)
-    assert chunks == ["a", "b"]
-
-
-def test_traced_stream_keeps_span_active_through_consumption():
-    exporter = otel_exporter()
-    from opentelemetry import trace
-
-    active_ids: list[int] = []
-
-    async def inner():
-        # Runs at consumption time; the response span must be active here.
-        async def gen():
-            span = trace.get_current_span()
-            active_ids.append(span.get_span_context().span_id)
-            # A child span, as chatlas would emit inside the model call.
-            with trace.get_tracer("test").start_as_current_span(
-                "inner_model_call"
-            ):
-                pass
-            yield "chunk"
-
-        return gen()
-
-    async def main() -> None:
-        stream = await inner()
-        async for _ in trace_response_stream(stream, "c_abc123"):
-            pass
-
-    run_async(main)
-
-    spans = {s.name: s for s in finished_spans(exporter)}
-    response_span_rec = spans.get("shinychat.response")
-    assert response_span_rec is not None
-    assert active_ids == [response_span_rec.context.span_id]
-
-    inner_span = spans.get("inner_model_call")
-    assert inner_span is not None
-    assert inner_span.parent is not None
-    assert inner_span.parent.span_id == response_span_rec.context.span_id
-
-
-def test_traced_stream_failure_closes_span_with_error():
-    exporter = otel_exporter()
-    from opentelemetry.trace import StatusCode
-
-    async def inner():
-        async def gen():
-            raise RuntimeError("boom")
-            yield
-
-        return gen()
-
-    async def main() -> None:
-        stream = await inner()
-        with pytest.raises(RuntimeError, match="boom"):
-            async for _ in trace_response_stream(stream, "c_abc123"):
-                pass
-
-    run_async(main)
-
-    spans = finished_spans(exporter)
-    assert len(spans) == 1
-    assert spans[0].name == "shinychat.response"
-    assert spans[0].status.status_code == StatusCode.ERROR
-    assert spans[0].attributes is not None
-    assert spans[0].attributes["gen_ai.conversation.id"] == "c_abc123"
-
-
-def test_managed_response_produces_one_span_carrying_the_id():
-    async def main() -> None:
-        exporter = otel_exporter()
-        from opentelemetry import trace
-
         chat, mock, session = make_chat()
+        ids_seen: list[str | None] = []
+        # The client property must be set before the model call begins.
+        mock.on_stream = lambda: ids_seen.append(mock.conversation_id)
 
-        def emit_inner() -> None:
-            # A child span, as chatlas would emit inside the model call
-            # (chatlas creates its spans at stream consumption time).
-            with trace.get_tracer("test").start_as_current_span(
-                "inner_model_call"
-            ):
-                pass
-
-        mock.on_consume = emit_inner
-
-        session.input["chat_history_browser_token"] = reactive.Value("tok")
-        await reactive.flush()
+        assert mock.conversation_id is None
         status = await submit_and_wait(chat, session, "hi")
-        assert status == "success"
-
-        spans = finished_spans(exporter)
-        response_spans = [s for s in spans if s.name == "shinychat.response"]
-        assert len(response_spans) == 1
-
-        span = response_spans[0]
-        assert span.attributes is not None
-        assert span.attributes[
-            "gen_ai.conversation.id"
-        ] == public_conversation_id(chat)
-
-        inner = [s for s in spans if s.name == "inner_model_call"]
-        assert len(inner) == 1
-        assert inner[0].parent is not None
-        assert inner[0].parent.span_id == span.context.span_id
-
-    run_async(main)
-
-
-def test_failed_and_retried_calls_each_close_a_span_with_the_same_id():
-    async def main() -> None:
-        exporter = otel_exporter()
-
-        mock = StreamClient()
-        mock.fail_first_attempt = True
-        chat, _, session = make_chat(mock)
-
-        session.input["chat_history_browser_token"] = reactive.Value("tok")
-        await reactive.flush()
-
-        status = await submit_and_wait(chat, session, "hi")
-        assert status == "error"
-        status = await submit_and_wait(chat, session, "retry")
         assert status == "success"
 
         id = public_conversation_id(chat)
         assert id is not None
-
-        spans = finished_spans(exporter)
-        response_spans = [s for s in spans if s.name == "shinychat.response"]
-        # Both the failed and the retried response produced a span, each
-        # closed with the same captured conversation ID.
-        assert len(response_spans) == 2
-        for span in response_spans:
-            assert span.attributes is not None
-            assert span.attributes["gen_ai.conversation.id"] == id
+        assert ids_seen == [id]
+        assert mock.conversation_id == id
 
     run_async(main)
 
 
-def test_history_disabled_responses_produce_no_span():
+def test_history_disabled_responses_leave_the_client_conversation_id_unset():
     async def main() -> None:
-        exporter = otel_exporter()
-
-        chat, _, session = make_chat(history=False)
+        chat, mock, session = make_chat(history=False)
         status = await submit_and_wait(chat, session, "hi")
         assert status == "success"
-
-        spans = finished_spans(exporter)
-        assert [s for s in spans if s.name == "shinychat.response"] == []
-        assert public_conversation_id(chat) is None
+        assert mock.conversation_id is None
 
     run_async(main)

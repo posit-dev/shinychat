@@ -26,7 +26,7 @@ Changelog = "https://github.com/posit-dev/shinychat/blob/main/pkg-py/CHANGELOG.m
 [project.optional-dependencies]
 providers = [
     "anthropic;python_version>='3.11'",
-    "chatlas[mcp]>=0.20.0",
+    "chatlas[mcp]>=0.22.0",
     "google-genai",
     "langchain-core>=1.0.0",
     "ollama>=0.4.0",
@@ -39,7 +39,6 @@ test = [
     "coverage>=7.8.2",
     "faicons",
     "ipyleaflet",
-    "opentelemetry-sdk>=1.30.0",
     "pandas",
     "plotly",
     "pyright>=1.1.398",
@@ -181,3 +180,7 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 docstring-code-format = true
 docstring-code-line-length = "dynamic"
+
+[tool.uv.sources]
+# TODO: drop once chatlas 0.22.0 is released
+chatlas = { git = "https://github.com/posit-dev/chatlas", branch = "feat/conversation-id" }

@@ -2,7 +2,7 @@
 
 ## New features and improvements
 
-* Conversations now have a stable, publicly accessible ID, available reactively via `chat$history$conversation_id()` (`NULL` when history is disabled or the chat is still empty). The ID is stable across retries, restores, conversation switches, and `set_client()` calls, and becomes the saved `ConversationRecord$id`. Each managed response is also wrapped in a `shinychat.response` OpenTelemetry span carrying the ID as the standard `gen_ai.conversation.id` attribute ([OTel GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/)), so telemetry consumers can group model work by conversation (a no-op unless an OpenTelemetry provider is configured). (#307)
+* Conversations now have a stable, publicly accessible ID, available reactively via `chat$history$conversation_id()` (`NULL` when history is disabled or the chat is still empty). The ID is stable across retries, restores, conversation switches, and `set_client()` calls, and becomes the saved `ConversationRecord$id`. The ID is also handed to the chat client, which records it as the standard `gen_ai.conversation.id` attribute on its own OpenTelemetry spans ([OTel GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/)), so telemetry consumers can group model work by conversation. (#307)
 
 * Web search and web fetch responses from ellmer now show their activity and citations directly in the chat. Readers can open a citation beside its claim or use the message-wide Sources pill. `ContentCitation@grounded_span` links each citation to the answer text that it supports.
 

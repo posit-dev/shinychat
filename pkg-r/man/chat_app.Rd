@@ -119,10 +119,10 @@ active conversation ID: \code{NULL} when history is disabled or the chat
 is still an empty draft, otherwise the ID allocated on the first
 user submission -- before the model call -- that the saved
 conversation record carries. The ID is stable across retries,
-restores, conversation switches, and \code{set_client()} calls. Each
-managed response is also wrapped in a \code{shinychat.response}
-OpenTelemetry span carrying the ID as the \code{gen_ai.conversation.id}
-attribute (a no-op unless an OpenTelemetry provider is configured).
+restores, conversation switches, and \code{set_client()} calls. The ID
+is also handed to the client (via its \code{conversation_id} binding,
+when supported), which records it as the \code{gen_ai.conversation.id}
+attribute on its own OpenTelemetry spans.
 \item \code{set_client(new_client, sync = TRUE)}: Replace the chat client used by
 the module. When \code{sync} is \code{TRUE} (the default), the new client
 inherits conversation turns, system prompt, and tools from the previous

@@ -640,184 +640,60 @@ test_that("submission and conversation_id() work when greeting is set", {
   )
 })
 
-# --- OpenTelemetry ------------------------------------------------------------
+# --- Client telemetry handoff -------------------------------------------------
 
-test_that("a managed response produces one shinychat.response span carrying the ID", {
+test_that("a managed response hands the conversation ID to the client", {
   skip_if_not_installed("ellmer")
-  skip_if_not_installed("otelsdk")
 
-  session <- shiny::MockShinySession$new()
   client <- mock_chat_client()
   mod <- NULL
+  id_seen_by_client <- NULL
   client$stream_async <- function(...) {
-    # A child span, as Commons/ellmer would emit inside the model call.
-    span <- otel::get_tracer("test")$start_span("inner_model_call")
-    span$end()
+    # The client binding must be set before the model call begins.
+    id_seen_by_client <<- client$conversation_id
     "response"
   }
 
-  recorded <- otelsdk::with_otel_record({
-    mod <- shiny::withReactiveDomain(session, {
-      chat_server(
+  shiny::testServer(
+    function(input, output, session) {
+      mod <<- chat_server(
         "chat",
         client,
         history = history_options(store = "memory", title = NULL),
         session = session
       )
-    })
-    shiny::withReactiveDomain(session, {
-      session$setInputs(chat_history_browser_token = "tok")
-      session$flushReact()
-      session$setInputs(chat_user_input = "hi")
-      cid_wait_idle(session, mod)
-    })
-  })
+    },
+    {
+      expect_null(client$conversation_id)
 
-  spans <- recorded$traces
-  response_spans <- spans[names(spans) == "shinychat.response"]
-  expect_length(response_spans, 1)
-
-  span <- response_spans[[1]]
-  expect_equal(span$kind, "internal")
-  expect_identical(
-    span$attributes[["gen_ai.conversation.id"]],
-    shiny::isolate(mod$history$conversation_id())
-  )
-
-  # The inner model span is a descendant of the response span.
-  inner <- spans[["inner_model_call"]]
-  expect_false(is.null(inner))
-  expect_identical(inner$parent, span$span_id)
-})
-
-test_that("the response span stays active through lazy stream consumption", {
-  skip_if_not_installed("ellmer")
-  skip_if_not_installed("otelsdk")
-
-  session <- shiny::MockShinySession$new()
-  client <- mock_chat_client()
-  mod <- NULL
-  active_span_id_during_stream <- NULL
-  client$stream_async <- function(...) {
-    coro::async_generator(function() {
-      # Runs when chat_append() consumes the stream, after stream_async()
-      # has returned: the response span must still be active here.
-      active <- otel::get_active_span()
-      if (!is.null(active)) {
-        active_span_id_during_stream <<- active$get_context()$get_span_id()
-      }
-      yield("chunk")
-    })()
-  }
-
-  recorded <- otelsdk::with_otel_record({
-    mod <- shiny::withReactiveDomain(session, {
-      chat_server(
-        "chat",
-        client,
-        history = history_options(store = "memory", title = NULL),
-        session = session
+      session$setInputs(
+        chat_history_browser_token = "tok",
+        chat_user_input = "hi"
       )
-    })
-    shiny::withReactiveDomain(session, {
-      session$setInputs(chat_history_browser_token = "tok")
-      session$flushReact()
-      session$setInputs(chat_user_input = "hi")
-      cid_wait_idle(session, mod)
-    })
-  })
+      cid_pump(session)
 
-  span <- recorded$traces[["shinychat.response"]]
-  expect_false(is.null(span))
-  expect_false(is.null(active_span_id_during_stream))
-  expect_identical(active_span_id_during_stream, span$span_id)
-})
-
-test_that("failure closes the span without changing the conversation ID", {
-  skip_if_not_installed("ellmer")
-  skip_if_not_installed("otelsdk")
-
-  session <- shiny::MockShinySession$new()
-  client <- mock_chat_client()
-  mod <- NULL
-  attempts <- 0
-  client$stream_async <- function(...) {
-    attempts <<- attempts + 1
-    if (attempts == 1) {
-      stop("boom")
+      active_id <- shiny::isolate(mod$history$conversation_id())
+      expect_false(is.null(active_id))
+      expect_identical(id_seen_by_client, active_id)
+      expect_identical(client$conversation_id, active_id)
     }
-    "recovered"
-  }
-
-  recorded <- otelsdk::with_otel_record({
-    mod <- shiny::withReactiveDomain(session, {
-      chat_server(
-        "chat",
-        client,
-        history = history_options(store = "memory", title = NULL),
-        session = session
-      )
-    })
-    shiny::withReactiveDomain(session, {
-      session$setInputs(chat_history_browser_token = "tok")
-      session$flushReact()
-
-      suppressWarnings(session$setInputs(chat_user_input = "hi"))
-      deadline <- Sys.time() + 5
-      while (
-        is.null(shiny::isolate(mod$last_error())) && Sys.time() < deadline
-      ) {
-        later::run_now(0.05)
-        session$flushReact()
-      }
-
-      session$setInputs(chat_user_input = "retry")
-      deadline <- Sys.time() + 5
-      while (
-        (!is.null(shiny::isolate(mod$last_error())) ||
-          shiny::isolate(mod$status()) != "idle") &&
-          Sys.time() < deadline
-      ) {
-        later::run_now(0.05)
-        session$flushReact()
-      }
-      later::run_now(0.05)
-      session$flushReact()
-    })
-  })
-
-  id <- shiny::isolate(mod$history$conversation_id())
-  expect_equal(attempts, 2)
-
-  spans <- recorded$traces
-  response_spans <- spans[names(spans) == "shinychat.response"]
-  # Both the failed and the retried response produced a span, each closed
-  # with the same captured conversation ID.
-  expect_length(response_spans, 2)
-  for (span in response_spans) {
-    expect_identical(span$attributes[["gen_ai.conversation.id"]], id)
-  }
+  )
 })
 
-test_that("history-disabled responses produce no shinychat.response span", {
+test_that("history-disabled responses leave the client conversation ID unset", {
   skip_if_not_installed("ellmer")
-  skip_if_not_installed("otelsdk")
 
-  session <- shiny::MockShinySession$new()
   client <- mock_chat_client()
-  mod <- NULL
   client$stream_async <- function(...) "response"
 
-  recorded <- otelsdk::with_otel_record({
-    mod <- shiny::withReactiveDomain(session, {
+  shiny::testServer(
+    function(input, output, session) {
       chat_server("chat", client, history = FALSE, session = session)
-    })
-    shiny::withReactiveDomain(session, {
+    },
+    {
       session$setInputs(chat_user_input = "hi")
-      cid_wait_idle(session, mod)
-    })
-  })
-
-  expect_false("shinychat.response" %in% names(recorded$traces))
-  expect_null(shiny::isolate(mod$history$conversation_id()))
+      cid_pump(session)
+      expect_null(client$conversation_id)
+    }
+  )
 })

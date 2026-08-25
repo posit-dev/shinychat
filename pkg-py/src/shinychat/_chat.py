@@ -77,7 +77,6 @@ from ._chat_types import (
 )
 from ._history import ChatHistory, HistoryOptions
 from ._html_deps_py_shiny import shinychat_dependency
-from ._otel import trace_response_stream
 from ._utils_types import DEPRECATED, DEPRECATED_TYPE, MISSING, MISSING_TYPE
 
 if TYPE_CHECKING:
@@ -515,15 +514,18 @@ class Chat:
                 contents = [attachment_to_content(a) for a in attachments]
 
                 # Resolve the active conversation ID before model work
-                # begins, and keep it as a scalar: later history switches,
-                # new-chat actions, or client swaps must not relabel
-                # in-flight work.
+                # begins, and hand it to the client as a scalar: later
+                # history switches, new-chat actions, or client swaps must
+                # not relabel in-flight work. shinychat itself emits no
+                # OpenTelemetry spans; the client records the ID as
+                # `gen_ai.conversation.id` on its own spans.
                 conversation_id: str | None = None
                 history_controller = self.history._controller
                 if history_controller is not None:
                     conversation_id = (
                         await history_controller.ensure_conversation_id()
                     )
+                chat_client.value.conversation_id = conversation_id
 
                 response = await chat_client.value.stream_async(
                     user_input,
@@ -531,12 +533,7 @@ class Chat:
                     content="all",
                     controller=controller,
                 )
-                # append_message_stream() consumes the stream in a
-                # background task; wrapping the generator keeps the
-                # shinychat.response span active for the full consumption.
-                await self.append_message_stream(
-                    trace_response_stream(response, conversation_id)
-                )
+                await self.append_message_stream(response)
 
             # A `client=` wires up cancellation, so enable the stop button
             # without requiring `enable_cancel=True` in `chat_ui()`. It only

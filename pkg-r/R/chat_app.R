@@ -113,10 +113,10 @@
 #'       is still an empty draft, otherwise the ID allocated on the first
 #'       user submission -- before the model call -- that the saved
 #'       conversation record carries. The ID is stable across retries,
-#'       restores, conversation switches, and `set_client()` calls. Each
-#'       managed response is also wrapped in a `shinychat.response`
-#'       OpenTelemetry span carrying the ID as the `gen_ai.conversation.id`
-#'       attribute (a no-op unless an OpenTelemetry provider is configured).
+#'       restores, conversation switches, and `set_client()` calls. The ID
+#'       is also handed to the client (via its `conversation_id` binding,
+#'       when supported), which records it as the `gen_ai.conversation.id`
+#'       attribute on its own OpenTelemetry spans.
 #'     * `set_client(new_client, sync = TRUE)`: Replace the chat client used by
 #'       the module. When `sync` is `TRUE` (the default), the new client
 #'       inherits conversation turns, system prompt, and tools from the previous
@@ -189,13 +189,19 @@ check_ellmer_chat <- function(client) {
   }
 }
 
-# The tracer is resolved fresh at each managed response (not cached at load)
-# because otel binds tracers to the default provider active at get_tracer()
-# time, and apps/tests may configure a provider (e.g. via otelsdk) after
-# shinychat is loaded. Tracing is observational: a tracer failure must never
-# prevent the model call, so fall back to no tracer on error.
-shinychat_otel_tracer <- function() {
-  tryCatch(otel::get_tracer("shinychat"), error = function(e) NULL)
+# shinychat does not emit OpenTelemetry spans itself. Instead it hands the
+# active conversation ID to the client, which records it as the
+# `gen_ai.conversation.id` attribute on its own spans (ellmer's
+# `conversation_id` active binding). Clients without the binding (older
+# ellmer) are left alone: identity features keep working, just without
+# telemetry.
+# TODO: replace the capability check with an ellmer version floor once the
+# binding is in a released ellmer version.
+set_client_conversation_id <- function(client, id) {
+  if ("conversation_id" %in% names(client)) {
+    client$conversation_id <- id
+  }
+  invisible()
 }
 
 #' Deprecated chat module functions
@@ -359,22 +365,12 @@ chat_server <- function(
         })
       }
 
-      tracer <- shinychat_otel_tracer()
-      if (is.null(conversation_id) || is.null(tracer)) {
-        return(run())
-      }
-
-      # One span per managed response, opened before the model call and
-      # closed after the response stream is fully consumed, so Commons/ellmer
-      # spans nest beneath it.
-      promises::with_otel_promise_domain(
-        promises::with_otel_span(
-          "shinychat.response",
-          run(),
-          tracer = tracer,
-          attributes = list("gen_ai.conversation.id" = conversation_id)
-        )
-      )
+      # Hand the client's spans the active conversation ID. The ID was
+      # captured as a scalar at submission time, so in-flight work is never
+      # relabeled by later history switches, new-chat actions, or client
+      # swaps.
+      set_client_conversation_id(client, conversation_id)
+      run()
     }
   )
 
