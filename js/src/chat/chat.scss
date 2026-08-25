@@ -354,6 +354,21 @@ shiny-chat-container:not([fill]) {
   }
 }
 
+// Inline stand-in for the icon-slot dots_fade animation when the assistant
+// icon is disabled — same visual size as the icon slot, without the circular
+// avatar chrome, sitting where the icon would have been.
+.shiny-chat-pending-indicator {
+  height: 2rem;
+  width: 2rem;
+  display: grid;
+  place-items: center;
+
+  > svg {
+    max-height: 66%;
+    max-width: 66%;
+  }
+}
+
 .shiny-chat-message-content > hr:first-child {
   display: none;
 }

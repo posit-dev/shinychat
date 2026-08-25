@@ -30,6 +30,9 @@ import { SourcesSummary } from "./SourcesSummary"
 
 const TOUCH_HOLD_MS = 500
 const TOUCH_MOVE_CANCEL_PX = 10
+// Delay before the icon-off pending indicator appears, so a fast response
+// never flashes it in.
+const PENDING_INDICATOR_DELAY_MS = 400
 
 function parseLeadingCommand(
   content: string,
@@ -283,18 +286,35 @@ export const ChatMessage = memo(function ChatMessage({
     (message.attachments?.length ?? 0) > 0 ||
     message.cancelled
 
+  const resolvedIcon = isUser ? undefined : (message.icon ?? iconAssistant)
+  const [showPendingDots, setShowPendingDots] = useState(false)
+  useEffect(() => {
+    if (isUser || resolvedIcon !== "" || hasContent) {
+      setShowPendingDots(false)
+      return
+    }
+    const timer = setTimeout(
+      () => setShowPendingDots(true),
+      PENDING_INDICATOR_DELAY_MS,
+    )
+    return () => clearTimeout(timer)
+  }, [isUser, resolvedIcon, hasContent])
+
   let iconHtml: string | undefined
+  let showInlinePendingDots = false
   if (isUser) {
     iconHtml = message.icon || undefined
   } else {
     // Resolve the assistant icon through the per-message -> container chain. An
     // explicit "" (from icon_assistant=False / icon=False) removes the icon
-    // entirely: no glyph and no streaming dots in the icon slot.
-    const resolved = message.icon ?? iconAssistant
-    if (resolved === "") {
+    // entirely: no glyph in the icon slot. The pending dots move inline into
+    // the content area instead (see showPendingDots below), so waiting for a
+    // response still reads as "in progress" rather than dead air.
+    if (resolvedIcon === "") {
       iconHtml = undefined
+      showInlinePendingDots = !hasContent && showPendingDots
     } else {
-      iconHtml = hasContent ? (resolved ?? robot) : dots_fade
+      iconHtml = hasContent ? (resolvedIcon ?? robot) : dots_fade
     }
   }
 
@@ -530,6 +550,13 @@ export const ChatMessage = memo(function ChatMessage({
           </div>
         ) : (
           <>
+            {showInlinePendingDots && (
+              <div
+                className="shiny-chat-pending-indicator"
+                aria-hidden="true"
+                dangerouslySetInnerHTML={{ __html: dots_fade }}
+              />
+            )}
             {/* User attachments sit above their text (mirroring the input tray);
                 assistant attachments come after the prose that introduces them. */}
             {isUser && attachmentsEl}

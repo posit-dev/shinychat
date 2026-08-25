@@ -471,6 +471,37 @@ describe("ChatMessage attachments", () => {
     expect(container.querySelector(".message-icon")).toBeNull()
   })
 
+  it("shows inline pending dots after a delay when the icon is removed and a response is pending", () => {
+    vi.useFakeTimers()
+    try {
+      const { container } = render(
+        <ChatMessage
+          index={0}
+          message={{
+            ...userMessage({ content: "", blocks: [] }),
+            role: "assistant",
+            icon: "",
+            isPlaceholder: true,
+          }}
+        />,
+      )
+      expect(container.querySelector(".message-icon")).toBeNull()
+      expect(
+        container.querySelector(".shiny-chat-pending-indicator"),
+      ).toBeNull()
+
+      act(() => {
+        vi.advanceTimersByTime(400)
+      })
+
+      const indicator = container.querySelector(".shiny-chat-pending-indicator")
+      expect(indicator).not.toBeNull()
+      expect(indicator!.querySelector(".spinner_S1WN")).not.toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("lets a per-message icon override a suppressed container default", () => {
     const { container } = render(
       <ChatMessage
