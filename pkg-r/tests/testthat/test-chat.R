@@ -154,6 +154,31 @@ test_that("resolve_icon_attr() translates the boolean sentinel", {
   expect_equal(resolve_icon_attr("<span>x</span>"), "<span>x</span>")
 })
 
+test_that("chat_ui(icon_send = ...) sets the icon-send attribute", {
+  ui <- chat_ui("chat", icon_send = htmltools::HTML("<span>UP</span>"))
+  expect_equal(ui$attribs[["icon-send"]], "<span>UP</span>")
+  expect_match(
+    as.character(ui),
+    'icon-send="&lt;span&gt;UP&lt;/span&gt;"',
+    fixed = TRUE
+  )
+})
+
+test_that("chat_ui(icon_send = TRUE/FALSE/NULL) omits the icon-send attribute", {
+  for (icon_send in list(NULL, TRUE, FALSE)) {
+    ui <- chat_ui("chat", icon_send = icon_send)
+    expect_null(ui$attribs[["icon-send"]])
+    expect_no_match(as.character(ui), "icon-send", fixed = TRUE)
+  }
+})
+
+test_that("resolve_send_icon_attr() has no blank/FALSE state", {
+  expect_null(resolve_send_icon_attr(NULL))
+  expect_null(resolve_send_icon_attr(TRUE))
+  expect_null(resolve_send_icon_attr(FALSE))
+  expect_equal(resolve_send_icon_attr("<span>x</span>"), "<span>x</span>")
+})
+
 test_that("chat_append_stream() returns the stream contents as string if all text", {
   local_mocked_bindings(
     chat_append_message = coro::async(function(...) invisible())

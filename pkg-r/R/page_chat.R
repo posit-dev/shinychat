@@ -112,7 +112,7 @@ HOME_PAGE_VALUE <- "__home__"
 #'   supplies its child content, width, initial open state, and resizability;
 #'   its history defaults to `FALSE`. A [chat_sidebar()] with `history = NULL`
 #'   defaults to `TRUE` here.
-#' @param messages,greeting,placeholder,width,icon_assistant,enable_cancel,allow_attachments,footer,drawer
+#' @param messages,greeting,placeholder,width,icon_assistant,icon_send,enable_cancel,allow_attachments,footer,drawer
 #'   Common arguments passed to [chat_ui()].
 #' @param window_title A static browser-window title. The default, `NA`,
 #'   derives the window title from `title` when `title` is a scalar string.
@@ -201,6 +201,7 @@ page_chat <- function(
   placeholder = "Enter a message...",
   width = "min(680px, 100%)",
   icon_assistant = NULL,
+  icon_send = NULL,
   enable_cancel = NULL,
   allow_attachments = NULL,
   footer = NULL,
@@ -263,6 +264,7 @@ page_chat <- function(
     height = "100%",
     fill = TRUE,
     icon_assistant = icon_assistant,
+    icon_send = icon_send,
     enable_cancel = enable_cancel,
     allow_attachments = allow_attachments,
     toolbar_input = toolbar_input,

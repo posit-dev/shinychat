@@ -234,6 +234,10 @@ chat_greeting <- function(
 #'   [htmltools::tags()]. If `NULL` (or `TRUE`), a default robot icon is used.
 #'   Pass `FALSE` to remove the assistant icon entirely (individual messages
 #'   can still opt back in via the `icon` argument of [chat_append()]).
+#' @param icon_send The icon to use for the chat input's ready-state submit
+#'   button. Can be HTML or a tag in the form of [htmltools::HTML()] or
+#'   [htmltools::tags()]. If `NULL`, `TRUE`, or `FALSE`, a default arrow icon
+#'   is used.
 #' @param enable_cancel Whether to show a stop button during streaming that
 #'   allows the user to cancel the in-progress response. When using
 #'   [chat_server()], cancellation is wired up automatically and this defaults
@@ -379,6 +383,7 @@ chat_ui <- function(
   height = "auto",
   fill = TRUE,
   icon_assistant = NULL,
+  icon_send = NULL,
   enable_cancel = NULL,
   submit_key = c("enter", "enter+modifier"),
   allow_attachments = NULL,
@@ -537,6 +542,7 @@ chat_ui <- function(
       # Also include icon on the parent so that when messages are dynamically added,
       # we know the default icon has changed
       `icon-assistant` = resolve_icon_attr(icon_assistant),
+      `icon-send` = resolve_send_icon_attr(icon_send),
       greeting = greeting_attr,
       ...,
       tag("shiny-chat-messages", message_tags),
@@ -549,6 +555,7 @@ chat_ui <- function(
       artifact_tag,
       shinychat_deps(),
       htmltools::findDependencies(icon_assistant),
+      htmltools::findDependencies(icon_send),
       greeting_deps
     )
   )

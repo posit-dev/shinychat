@@ -2267,6 +2267,7 @@ class ChatExpress(Chat):
         height: "CssUnit" = "auto",
         fill: bool = True,
         icon_assistant: HTML | Tag | TagList | bool | None = None,
+        icon_send: HTML | Tag | TagList | bool | None = None,
         enable_cancel: "bool | MISSING_TYPE" = MISSING,
         submit_key: 'Literal["enter", "enter+modifier"]' = "enter",
         allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
@@ -2306,6 +2307,11 @@ class ChatExpress(Chat):
             (or `True`), a default robot icon is used. Pass `False` to remove the
             assistant icon entirely (individual messages can still opt back in via
             the `icon` argument of `.append_message()`).
+        icon_send
+            The icon to use for the chat input's ready-state submit button. Can be a
+            HTML or a tag in the form of :class:`~htmltools.HTML` or
+            :class:`~htmltools.Tag`. If `None`, `True`, or `False`, a default arrow
+            icon is used.
         enable_cancel
             Whether to show a stop button during streaming that allows the user to
             cancel the in-progress response. When ``True``, the chat UI shows a stop
@@ -2398,6 +2404,7 @@ class ChatExpress(Chat):
             height=height,
             fill=fill,
             icon_assistant=icon_assistant,
+            icon_send=icon_send,
             enable_cancel=enable_cancel,
             submit_key=submit_key,
             allow_attachments=allow_attachments,
@@ -2478,6 +2485,20 @@ def _resolve_icon_attr(
     return str(icon)
 
 
+def _resolve_send_icon_attr(
+    icon: "HTML | Tag | TagList | bool | None",
+) -> "str | None":
+    """Translate an ``icon_send`` value into its wire attribute.
+
+    Unlike ``_resolve_icon_attr()``, there's no blank state: ``False``,
+    ``True``, and ``None`` all defer to the default arrow icon (attribute
+    omitted); anything else is stringified HTML.
+    """
+    if icon is None or icon is True or icon is False:
+        return None
+    return str(icon)
+
+
 def _container_style(width: "str | None", height: "str | None") -> "str | None":
     # `width` is emitted as a pseudo-private custom property consumed by
     # `.shiny-chat-wrapper` (as max-width), so the container itself stays
@@ -2503,6 +2524,7 @@ def chat_ui(
     height: "CssUnit" = "auto",
     fill: bool = True,
     icon_assistant: Optional[HTML | Tag | TagList | bool] = None,
+    icon_send: Optional[HTML | Tag | TagList | bool] = None,
     enable_cancel: "bool | MISSING_TYPE" = MISSING,
     submit_key: 'Literal["enter", "enter+modifier"]' = "enter",
     allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
@@ -2566,6 +2588,10 @@ def chat_ui(
             (or `True`), a default robot icon is used. Pass `False` to remove the
             assistant icon entirely (individual messages can still opt back in via
             the `icon` argument of `.append_message()`).
+    icon_send
+        The icon to use for the chat input's ready-state submit button. Can be a HTML
+        or a tag in the form of :class:`~htmltools.HTML` or :class:`~htmltools.Tag`.
+        If `None`, `True`, or `False`, a default arrow icon is used.
     enable_cancel
         Whether to show a stop button during streaming that allows the user to
         cancel the in-progress response. When ``True``, the chat UI shows a stop
@@ -2671,10 +2697,15 @@ def chat_ui(
         )
 
     icon_attr = _resolve_icon_attr(icon_assistant)
+    icon_send_attr = _resolve_send_icon_attr(icon_send)
 
     icon_deps = None
     if isinstance(icon_assistant, (Tag, TagList)):
         icon_deps = icon_assistant.get_dependencies()
+
+    icon_send_deps = None
+    if isinstance(icon_send, (Tag, TagList)):
+        icon_send_deps = icon_send.get_dependencies()
 
     message_tags: list[Tag] = []
     if messages is None:
@@ -2764,6 +2795,7 @@ def chat_ui(
         drawer_tag,
         shinychat_dependency(),
         icon_deps,
+        icon_send_deps,
         {"style": _container_style(as_css_unit(width), as_css_unit(height))},
         id=id,
         placeholder=placeholder,
@@ -2777,6 +2809,7 @@ def chat_ui(
         # Also include icon on the parent so that when messages are dynamically added,
         # we know the default icon has changed
         icon_assistant=icon_attr,
+        icon_send=icon_send_attr,
         submit_key=submit_key if submit_key != "enter" else None,
         tool_grouping=tool_grouping if tool_grouping != "tool" else None,
         show_history="false" if not show_history else None,

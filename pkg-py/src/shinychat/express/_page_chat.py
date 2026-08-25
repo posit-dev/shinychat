@@ -51,6 +51,7 @@ def page_chat(
     placeholder: str = "Enter a message...",
     width: "CssUnit" = "min(680px, 100%)",
     icon_assistant: Optional[HTML | Tag | TagList | bool] = None,
+    icon_send: Optional[HTML | Tag | TagList | bool] = None,
     enable_cancel: "bool | MISSING_TYPE" = MISSING,
     allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
     footer: Optional[TagChild] = None,
@@ -134,6 +135,9 @@ def page_chat(
         Maximum width of the chat content.
     icon_assistant
         Default icon for assistant messages. ``False`` removes it.
+    icon_send
+        The icon to use for the chat input's ready-state submit button.
+        ``None``, ``True``, or ``False`` all use the default arrow icon.
     enable_cancel
         Whether to show the streaming cancel control. When omitted, a chat
         constructed with ``client=`` enables it automatically.
@@ -189,6 +193,7 @@ def page_chat(
         placeholder=placeholder,
         width=width,
         icon_assistant=icon_assistant,
+        icon_send=icon_send,
         enable_cancel=enable_cancel,
         allow_attachments=allow_attachments,
         toolbar_input=toolbar_input,

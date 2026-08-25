@@ -37,6 +37,7 @@ export interface ChatInputProps {
   slashCommands?: SlashCommandDef[]
   slashCommandId?: string
   submitKey?: SubmitKey
+  iconSend?: string
 }
 
 export interface ChatInputHandle {
@@ -88,6 +89,7 @@ export const ChatInput = memo(
       slashCommands = [],
       slashCommandId = "",
       submitKey = "enter",
+      iconSend,
     },
     ref,
   ) {
@@ -289,7 +291,7 @@ export const ChatInput = memo(
         ? stopCircleFill
         : sendButtonState === "pending" || sendButtonState === "cancelling"
           ? spinnerArc
-          : arrowUpCircleFill
+          : (iconSend ?? arrowUpCircleFill)
 
     const sendButtonLabel =
       sendButtonState === "cancel"
