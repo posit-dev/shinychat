@@ -108,8 +108,7 @@ variable (a raw byte count; defaults to approximately 30 MB). Files that
 would push the total over this cap are rejected in the browser with a notice.}
 
 \item{toolbar_input}{Optional HTML content to display directly below the chat
-input. Use it for compact controls such as a model selector or input
-actions.}
+input. Use \code{\link[bslib:toolbar]{bslib::toolbar()}} to group toolbar controls.}
 
 \item{footer}{Optional HTML content to display in a bottom-pinned, full-width
 chat region.

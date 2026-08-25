@@ -70,10 +70,10 @@
 #' @param pages `NULL` or a list of [chat_nav_panel()] configurations.
 #' @param toolbar Optional home-page-scoped UI displayed with the navigation
 #'   controls. A panel's `chat_nav_panel(toolbar = )` can replace this segment.
-#' @param toolbar_input Optional UI displayed directly below the chat input.
-#'   This is independent of the navigation `toolbar`.
 #' @param toolbar_global Optional persistent UI displayed after the page-scoped
 #'   toolbar in the navigation controls.
+#' @param toolbar_input Optional UI displayed directly below the chat input.
+#'   This is independent of the navigation `toolbar`.
 #' @param navbar_options Optional [bslib::navbar_options()] that styles the
 #'   page title bar. Its `bg`, `theme`, `underline`, and HTML attributes are
 #'   supported. `position` and `collapsible` are unsupported because
@@ -164,8 +164,8 @@ page_chat <- function(
   id = "chat",
   pages = NULL,
   toolbar = NULL,
-  toolbar_input = NULL,
   toolbar_global = NULL,
+  toolbar_input = NULL,
   navbar_options = NULL,
   sidebar = TRUE,
   messages = NULL,

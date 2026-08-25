@@ -11,8 +11,8 @@ page_chat(
   id = "chat",
   pages = NULL,
   toolbar = NULL,
-  toolbar_input = NULL,
   toolbar_global = NULL,
+  toolbar_input = NULL,
   navbar_options = NULL,
   sidebar = TRUE,
   messages = NULL,
@@ -45,11 +45,11 @@ those arguments are rejected.}
 \item{toolbar}{Optional home-page-scoped UI displayed with the navigation
 controls. A panel's \code{chat_nav_panel(toolbar = )} can replace this segment.}
 
-\item{toolbar_input}{Optional UI displayed directly below the chat input.
-This is independent of the navigation \code{toolbar}.}
-
 \item{toolbar_global}{Optional persistent UI displayed after the page-scoped
 toolbar in the navigation controls.}
+
+\item{toolbar_input}{Optional UI displayed directly below the chat input.
+This is independent of the navigation \code{toolbar}.}
 
 \item{navbar_options}{Optional \code{\link[bslib:navbar_options]{bslib::navbar_options()}} that styles the
 page title bar. Its \code{bg}, \code{theme}, \code{underline}, and HTML attributes are
