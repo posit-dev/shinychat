@@ -428,10 +428,17 @@ shiny-chat-container:not([fill]) {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
+  // icon_send accepts arbitrary author-supplied HTML (e.g. bsicons/faicons),
+  // which typically carries its own inline style="width/height/margin/..."
+  // meant for inline-text icon usage. Inline styles beat any selector in an
+  // external stylesheet regardless of specificity, so !important is the only
+  // way to make --shiny-chat-input-icon-size and true centering hold for
+  // icons we don't control the markup of.
   svg {
-    display: block;
-    width: var(--_input-icon-size);
-    height: var(--_input-icon-size);
+    display: block !important;
+    width: var(--_input-icon-size) !important;
+    height: var(--_input-icon-size) !important;
+    margin: 0 !important;
   }
   &:hover:not(:disabled) {
     color: var(--shiny-chat-btn-send-color-hover, var(--_btn-send-color-state));
