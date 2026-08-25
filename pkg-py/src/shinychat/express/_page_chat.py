@@ -81,8 +81,9 @@ def page_chat(
         Optional persistent HTML child displayed after the page-scoped toolbar
         in the navigation controls.
     toolbar_input
-        Optional HTML content displayed directly below the chat input. This is
-        independent of the navigation ``toolbar``.
+        Optional HTML content displayed directly below the chat input. Use
+        :func:`shiny.ui.toolbar` to group toolbar controls. This is independent
+        of the navigation ``toolbar``.
     navbar_options
         Optional :func:`shiny.ui.navbar_options` that styles the page title bar.
         ``position`` and ``collapsible`` are unsupported because ``page_chat()``

@@ -2342,7 +2342,7 @@ class ChatExpress(Chat):
             limits with ``bookmark_store="url"``.
         toolbar_input
             Optional HTML content displayed directly below the chat input.
-            Use it for compact controls such as a model selector or input actions.
+            Use :func:`shiny.ui.toolbar` to group toolbar controls.
         footer
             Optional HTML content displayed in a bottom-pinned, full-width chat
             region.
@@ -2602,8 +2602,8 @@ def chat_ui(
         attachment data is saved in the bookmark and can exceed URL length
         limits with ``bookmark_store="url"``.
     toolbar_input
-        Optional HTML content displayed directly below the chat input. Use it
-        for compact controls such as a model selector or input actions.
+        Optional HTML content displayed directly below the chat input. Use
+        :func:`shiny.ui.toolbar` to group toolbar controls.
     footer
         Optional HTML content displayed in a bottom-pinned, full-width chat
         region.

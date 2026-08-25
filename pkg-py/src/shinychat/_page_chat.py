@@ -122,8 +122,9 @@ def page_chat(
         in the navigation controls. It remains mounted while pages are
         selected and while controls move between desktop and mobile layouts.
     toolbar_input
-        Optional HTML content displayed directly below the chat input. This is
-        independent of the navigation ``toolbar``.
+        Optional HTML content displayed directly below the chat input. Use
+        :func:`shiny.ui.toolbar` to group toolbar controls. This is independent
+        of the navigation ``toolbar``.
     navbar_options
         Optional :func:`shiny.ui.navbar_options` that styles the page title bar.
         Its ``bg``, ``theme``, ``underline``, and HTML attributes are supported.
