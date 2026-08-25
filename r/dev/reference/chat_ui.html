@@ -183,9 +183,10 @@ container, if the container is
 <dt id="arg-icon-assistant">icon_assistant<a class="anchor" aria-label="anchor" href="#arg-icon-assistant"></a></dt>
 <dd><p>The icon to use for the assistant chat messages.
 Can be HTML or a tag in the form of <code><a href="https://rstudio.github.io/htmltools/reference/HTML.html" class="external-link">htmltools::HTML()</a></code> or
-<code><a href="https://rstudio.github.io/htmltools/reference/builder.html" class="external-link">htmltools::tags()</a></code>. If <code>NULL</code> (or <code>TRUE</code>), a default robot icon is used.
-Pass <code>FALSE</code> to remove the assistant icon entirely (individual messages
-can still opt back in via the <code>icon</code> argument of <code><a href="chat_append.html">chat_append()</a></code>).</p></dd>
+<code><a href="https://rstudio.github.io/htmltools/reference/builder.html" class="external-link">htmltools::tags()</a></code>. <code>NULL</code> (the default) or <code>FALSE</code> omits the assistant
+icon entirely. Pass <code>TRUE</code> to use the built-in robot icon (individual
+messages can still opt in to a different icon via the <code>icon</code> argument of
+<code><a href="chat_append.html">chat_append()</a></code>).</p></dd>
 
 
 <dt id="arg-enable-cancel">enable_cancel<a class="anchor" aria-label="anchor" href="#arg-enable-cancel"></a></dt>

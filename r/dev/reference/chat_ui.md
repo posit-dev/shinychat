@@ -113,9 +113,9 @@ chat_ui(
   [`htmltools::HTML()`](https://rstudio.github.io/htmltools/reference/HTML.html)
   or
   [`htmltools::tags()`](https://rstudio.github.io/htmltools/reference/builder.html).
-  If `NULL` (or `TRUE`), a default robot icon is used. Pass `FALSE` to
-  remove the assistant icon entirely (individual messages can still opt
-  back in via the `icon` argument of
+  `NULL` (the default) or `FALSE` omits the assistant icon entirely.
+  Pass `TRUE` to use the built-in robot icon (individual messages can
+  still opt in to a different icon via the `icon` argument of
   [`chat_append()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_append.md)).
 
 - enable_cancel:

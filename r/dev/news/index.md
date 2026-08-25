@@ -155,6 +155,14 @@
   blocked, not typing.
   ([\#251](https://github.com/posit-dev/shinychat/issues/251))
 
+- [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
+  and
+  [`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md)
+  no longer show an assistant icon by default. Pass
+  `icon_assistant = TRUE` to restore the built-in robot icon, or supply
+  your own icon as before.
+  ([\#345](https://github.com/posit-dev/shinychat/issues/345))
+
 ### Breaking changes
 
 - [`chat_app()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
