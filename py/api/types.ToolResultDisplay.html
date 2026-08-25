@@ -437,29 +437,30 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p>Customize the condensed display for a tool result.</p>
 <p>Assign a <code>ToolResultDisplay</code> instance to a <a href="https://posit-dev.github.io/chatlas/reference/types.ContentToolResult.html"><code>chatlas.ContentToolResult</code></a> in its <code>extra={"display": ...}</code> metadata. Tool calls normally appear as a compact activity row, optionally expand into a grouped call list, and drill into a full request/result card. <code>ToolResultDisplay</code> customizes that row and card without replacing either.</p>
 <p>Use a present-tense definition title while the tool is running, then a settled result title here when that improves the wording. For example, register a tool with <code>annotations={"title": "Looking up weather"}</code> and return <code>title="Looked up weather for Duluth"</code>. In a single-call row, the result title replaces the definition title when the result arrives. A multi-call group keeps the shared definition title in its group row and can use distinct result titles to identify calls in the expanded list. shinychat does not conjugate titles automatically.</p>
-<p><code>label</code> and <code>value_preview</code> are compact, per-call metadata shown in the activity row and grouped call list. Use them to distinguish repeated calls without opening the card. <code>html</code>, <code>markdown</code>, and <code>text</code> customize the result body inside the drill-down card. To replace the card with standalone UI instead, register a custom <code>message_content</code> or <code>message_content_chunk</code> handler for a <code>ContentToolResult</code> subclass.</p>
+<p><code>label</code> and <code>value_preview</code> are compact, per-call metadata shown in the activity row and grouped call list. Use them to distinguish repeated calls without opening the card. <code>html</code>, <code>markdown</code>, and <code>text</code> customize the result body inside the drill-down card. <code>open_style="framed"</code> opts a substantial rich result into Shiny Chat’s expanded frame; <code>open_style="minimal"</code> retains the existing drill-down presentation. Framing belongs to the normal tool UI. To replace the card with standalone UI instead, register a custom <code>message_content</code> or <code>message_content_chunk</code> handler for a <code>ContentToolResult</code> subclass; standalone output is not framed.</p>
 <p>See the <a href="https://shiny.posit.co/py/docs/genai-tools.html">Tool calling guide</a> for complete tool-display examples.</p>
 <section id="examples" class="level2 doc-section doc-section-examples">
 <h2 class="doc-section doc-section-examples anchored" data-anchor-id="examples">Examples</h2>
 <div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> chatlas <span class="im">as</span> ctl</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shinychat.types <span class="im">import</span> ToolResultDisplay</span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shiny <span class="im">import</span> ui</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shinychat.types <span class="im">import</span> ToolResultDisplay</span>
 <span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> my_tool():</span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    display <span class="op">=</span> ToolResultDisplay(</span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>        title<span class="op">=</span><span class="st">"Looked up weather for Duluth"</span>,</span>
-<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>        label<span class="op">=</span><span class="st">"Duluth, MN"</span>,</span>
-<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>        value_preview<span class="op">=</span><span class="st">"18 C, clear"</span>,</span>
-<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>        markdown<span class="op">=</span><span class="st">"A _markdown_ message shown to user."</span>,</span>
-<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> ctl.ContentToolResult(</span>
-<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>        value<span class="op">=</span><span class="st">"Value the model sees"</span>,</span>
-<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>        extra<span class="op">=</span>{<span class="st">"display"</span>: display},</span>
-<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> my_tool():</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    display <span class="op">=</span> ToolResultDisplay(</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>        html<span class="op">=</span>ui.div(...),</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>        footer<span class="op">=</span>ui.div(...),</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>        full_screen<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>        open_style<span class="op">=</span><span class="st">"framed"</span>,</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> ctl.ContentToolResult(</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>        value<span class="op">=</span><span class="st">"Value the model sees"</span>,</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>        extra<span class="op">=</span>{<span class="st">"display"</span>: display},</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>    )</span>
 <span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>chat_client <span class="op">=</span> ctl.ChatAuto()</span>
-<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>chat_client.register_tool(my_tool)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>chat_client <span class="op">=</span> ctl.ChatAuto()</span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>chat_client.register_tool(my_tool)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </section>
 <section id="display-fields" class="level2 doc-section doc-section-display-fields">
 <h2 class="doc-section doc-section-display-fields anchored" data-anchor-id="display-fields">Display fields</h2>
@@ -471,6 +472,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li><code>show_request</code>: Whether to show the tool request inside the drill-down card.</li>
 <li><code>open</code>: Whether the drill-down card is expanded by default.</li>
 <li><code>full_screen</code>: Whether to display a fullscreen toggle button on the drill-down card.</li>
+<li><code>open_style</code>: Use <code>"framed"</code> to opt an expanded normal rich result into Shiny Chat’s frame. <code>"minimal"</code> retains the existing presentation.</li>
 <li><code>html</code>: Custom HTML content inside the drill-down card, in place of the default result display.</li>
 <li><code>markdown</code>: Custom Markdown string inside the drill-down card, in place of the default result display.</li>
 <li><code>text</code>: Custom plain text string inside the drill-down card, in place of the default result display.</li>
