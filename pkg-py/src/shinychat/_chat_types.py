@@ -129,6 +129,26 @@ class UpdateSlashCommandsAction(TypedDict):
     commands: list[SlashCommandDef]
 
 
+class DrawerShowAction(TypedDict):
+    type: Literal["drawer_show"]
+    content: NotRequired[str]
+    title: NotRequired[str]
+
+
+class DrawerHideAction(TypedDict):
+    type: Literal["drawer_hide"]
+
+
+class DrawerToggleAction(TypedDict):
+    type: Literal["drawer_toggle"]
+
+
+class DrawerUpdateAction(TypedDict):
+    type: Literal["drawer_update"]
+    content: NotRequired[str]
+    title: NotRequired[str]
+
+
 class HistoryUpdateAction(TypedDict):
     type: Literal["history_update"]
     enabled: bool
@@ -164,6 +184,10 @@ ChatAction = Union[
     GreetingEndAction,
     GreetingClearAction,
     UpdateSlashCommandsAction,
+    DrawerShowAction,
+    DrawerHideAction,
+    DrawerToggleAction,
+    DrawerUpdateAction,
     HistoryUpdateAction,
     HistoryNavigateAction,
     UpdateSiblingsAction,

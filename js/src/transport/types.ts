@@ -59,6 +59,17 @@ export type MessagePayload = {
   siblings?: { index: number; total: number }
 }
 
+/**
+ * Fields shared by drawer content mutations. Omitted fields retain their
+ * prior value; an empty string explicitly clears content or title.
+ */
+export type DrawerMutationPayload = {
+  content?: string
+  title?: string
+  /** Dependencies accompanying replacement content. */
+  html_deps?: HtmlDep[]
+}
+
 export type ChatAction =
   | { type: "message"; message: MessagePayload; html_deps?: HtmlDep[] }
   | { type: "chunk_start"; message: MessagePayload; html_deps?: HtmlDep[] }
@@ -104,6 +115,10 @@ export type ChatAction =
   | { type: "greeting_end" }
   | { type: "greeting_clear" }
   | { type: "update_slash_commands"; commands: SlashCommandDef[] }
+  | ({ type: "drawer_show" } & DrawerMutationPayload)
+  | { type: "drawer_hide" }
+  | { type: "drawer_toggle" }
+  | ({ type: "drawer_update" } & DrawerMutationPayload)
   | {
       type: "history_update"
       enabled: boolean

@@ -3,7 +3,7 @@ import { createElement } from "react"
 import { ChatApp } from "./ChatApp"
 import type { ChatAppProps, InitialGreeting } from "./ChatApp"
 import { getShinyTransport } from "../transport/shiny-transport"
-import type { ChatMessageData, ToolGrouping } from "./state"
+import type { ChatDrawerState, ChatMessageData, ToolGrouping } from "./state"
 import type { ContentType, GreetingOptions } from "../transport/types"
 import { uuid } from "../utils/uuid"
 import { DEFAULT_UPLOAD_ACCEPT } from "./attachments"
@@ -40,7 +40,9 @@ function getBrowserToken(): string {
 
 const CHAT_INPUT_TAG = "shiny-chat-input"
 const CHAT_MESSAGE_TAG = "shiny-chat-message"
+const CHAT_TOOLBAR_TAG = "shiny-chat-input-toolbar"
 const CHAT_FOOTER_TAG = "shiny-chat-footer"
+const CHAT_DRAWER_TAG = "shiny-chat-drawer"
 
 function parseInitialMessages(container: HTMLElement): ChatMessageData[] {
   const messageEls = container.querySelectorAll(CHAT_MESSAGE_TAG)
@@ -89,6 +91,31 @@ function parseInitialGreeting(
   }
 }
 
+function parseInitialDrawer(
+  container: HTMLElement,
+): { state: ChatDrawerState; source: Element } | undefined {
+  const source = container.querySelector(CHAT_DRAWER_TAG)
+  if (!source) return undefined
+
+  const title = source.getAttribute("title")
+  return {
+    state: {
+      enabled: true,
+      visible:
+        source.hasAttribute("open") &&
+        source.getAttribute("open")?.toLowerCase() !== "false",
+      title: title || null,
+      // The original source element retains initial dependency nodes and is
+      // adopted by ChatDrawer on first render, rather than serialized.
+      content: source.innerHTML,
+      htmlDeps: [],
+      width: source.getAttribute("width") || "400px",
+      resizable: source.getAttribute("resizable")?.toLowerCase() !== "false",
+    },
+    source,
+  }
+}
+
 // `tool-grouping` is an enum, not a tri-state: a recognized value wins, and
 // anything else (including absent) defers to the client default in ChatApp.
 function parseToolGrouping(value: string | null): ToolGrouping | undefined {
@@ -99,14 +126,16 @@ function parseToolGrouping(value: string | null): ToolGrouping | undefined {
 
 class ChatContainerElement extends HTMLElement {
   private reactRoot: Root | null = null
+  private toolbarEl: Element | null = null
   private footerEl: Element | null = null
+  private drawerEl: Element | null = null
   private pendingUnmount: ReturnType<typeof setTimeout> | null = null
   // Retained so an observed attribute can re-render with one field replaced
   // instead of rebuilding every prop (and re-parsing the initial messages,
   // which by then have been superseded by live reducer state).
   private appProps: ChatAppProps | null = null
 
-  static observedAttributes = ["tool-grouping"]
+  static observedAttributes = ["tool-grouping", "show-history"]
 
   connectedCallback() {
     // Moving the element in the DOM fires disconnectedCallback then
@@ -137,6 +166,7 @@ class ChatContainerElement extends HTMLElement {
       enableUploadAttr === null ? undefined : enableUploadAttr !== "false"
 
     const toolGrouping = parseToolGrouping(this.getAttribute("tool-grouping"))
+    const showHistory = this.getAttribute("show-history") !== "false"
 
     const inputEl = this.querySelector(CHAT_INPUT_TAG)
     const placeholder = inputEl?.getAttribute("placeholder") ?? undefined
@@ -159,12 +189,16 @@ class ChatContainerElement extends HTMLElement {
       : null
 
     const initialMessages = parseInitialMessages(this)
+    const initialDrawer = parseInitialDrawer(this)
 
+    if (!this.toolbarEl) {
+      this.toolbarEl = this.querySelector(CHAT_TOOLBAR_TAG)
+    }
     if (!this.footerEl) {
       this.footerEl = this.querySelector(CHAT_FOOTER_TAG)
-      // Detach from the DOM before React takes over this container.
-      // RawDOM later adopts the children, preserving their DOM state.
-      this.footerEl?.remove()
+    }
+    if (!this.drawerEl && initialDrawer) {
+      this.drawerEl = initialDrawer.source
     }
 
     const initialGreeting = parseInitialGreeting(this)
@@ -180,6 +214,11 @@ class ChatContainerElement extends HTMLElement {
     // retains stale references, preventing re-binding of the new React-rendered
     // elements (Shiny thinks the inputs are already bound by ID).
     transport.unbindAll(this)
+    // Detach preserved DOM only after unbinding its server-owned subtree.
+    // RawDOM and ChatDrawer later adopt those children without serializing.
+    this.toolbarEl?.remove()
+    this.footerEl?.remove()
+    this.drawerEl?.remove()
 
     // Send the browser token once per element so the server can correlate
     // this client across sessions. The server reads it with req() as a
@@ -221,10 +260,14 @@ class ChatContainerElement extends HTMLElement {
       placeholder,
       initialMessages,
       initialGreeting,
+      initialDrawer: initialDrawer?.state,
+      drawerSource: this.drawerEl ?? undefined,
       enableCancel,
       enableUpload,
       asideFavicon,
+      showHistory,
       toolGrouping,
+      toolbarEl: this.toolbarEl ?? undefined,
       footerEl: this.footerEl ?? undefined,
       slashCommandId,
       submitKey,
@@ -233,17 +276,25 @@ class ChatContainerElement extends HTMLElement {
     this.reactRoot.render(createElement(ChatApp, this.appProps))
   }
 
-  // Changing the mode re-routes the transcript in place rather than rebuilding
-  // the chat, so an app can offer it as a display setting without discarding the
-  // conversation. Attribute changes before connect are picked up by
-  // connectedCallback's own read, hence the guard rather than a queue.
+  // These display settings update in place rather than rebuilding the chat.
+  // Attribute changes before connect are picked up by connectedCallback's own
+  // read, hence the guard rather than a queue.
   attributeChangedCallback(
     name: string,
     _old: string | null,
     next: string | null,
   ) {
-    if (name !== "tool-grouping" || !this.reactRoot || !this.appProps) return
-    this.appProps = { ...this.appProps, toolGrouping: parseToolGrouping(next) }
+    if (!this.reactRoot || !this.appProps) return
+    if (name === "tool-grouping") {
+      this.appProps = {
+        ...this.appProps,
+        toolGrouping: parseToolGrouping(next),
+      }
+    } else if (name === "show-history") {
+      this.appProps = { ...this.appProps, showHistory: next !== "false" }
+    } else {
+      return
+    }
     this.reactRoot.render(createElement(ChatApp, this.appProps))
   }
 

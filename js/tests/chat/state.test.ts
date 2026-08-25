@@ -9,6 +9,7 @@ import {
   type ChatState,
   type ChatMessageData,
   type GreetingData,
+  type ChatDrawerState,
   type MessageBlock,
   type ToolLoopBlock,
   type ToolGrouping,
@@ -25,6 +26,12 @@ beforeEach(() => {
 
 function makeState(overrides: Partial<ChatState> = {}): ChatState {
   return { ...initialState, ...overrides }
+}
+
+function makeArtifact(
+  overrides: Partial<ChatDrawerState> = {},
+): ChatDrawerState {
+  return { ...initialState.drawer, enabled: true, ...overrides }
 }
 
 function makeAssistantMsg(
@@ -697,6 +704,19 @@ describe("chatReducer", () => {
         conversations,
         activeId: "conv-1",
       })
+    })
+
+    it("preserves artifact state across clear", () => {
+      const artifact = makeArtifact({
+        visible: true,
+        title: "Preview",
+        content: "<p>Artifact</p>",
+        htmlDeps: [{ name: "preview", version: "1.0.0" }],
+      })
+      const next = chatReducer(makeState({ drawer: artifact }), {
+        type: "clear",
+      })
+      expect(next.drawer).toEqual(artifact)
     })
   })
 
@@ -1636,6 +1656,20 @@ describe("chatReducer", () => {
       })
       expect(next.inputDisabled).toBe(true)
       expect(next.messages).toBe(state.messages)
+    })
+
+    it("does not reset artifact state", () => {
+      const artifact = makeArtifact({
+        visible: true,
+        content: "<div>Retained</div>",
+      })
+      const next = chatReducer(makeState({ drawer: artifact }), {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+      })
+      expect(next.drawer).toBe(artifact)
     })
   })
 
