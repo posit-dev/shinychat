@@ -165,6 +165,23 @@ HistoryController <- R6::R6Class(
       }
     },
 
+    save = function() {
+      if (is.null(self$record) || is.null(self$partition)) {
+        return(FALSE)
+      }
+
+      self$save_current()
+      private$evict_if_needed()
+
+      if (!is.null(self$on_response_saved)) {
+        self$on_response_saved(self$record)
+      }
+
+      self$send_history_update()
+      self$send_sibling_metadata()
+      TRUE
+    },
+
     switch_to = function(conv_id) {
       if (!is.null(self$record) && identical(conv_id, self$record$id)) {
         return(invisible())
@@ -184,8 +201,8 @@ HistoryController <- R6::R6Class(
 
       set_turns_recorded(private$client, record_path_turns(target))
       self$replay_ui(target)
-      self$restore_app_state(target$values %||% list())
       self$record <- target
+      self$restore_app_state(target$values %||% list())
       self$send_sibling_metadata()
       if (!is.null(self$on_active_id_change)) {
         self$on_active_id_change(target$id)
@@ -331,7 +348,7 @@ HistoryController <- R6::R6Class(
 
     save_current = function() {
       if (is.null(self$record) || is.null(self$partition)) {
-        return(invisible())
+        return(FALSE)
       }
 
       recorded_turns <- get_turns_recorded(private$client)
@@ -343,9 +360,10 @@ HistoryController <- R6::R6Class(
         ui_offset = self$ui_offset,
         tools = private$client$get_tools()
       )
-      self$ui_offset <- length(messages)
       self$record$values <- private$capture_app_state()
       self$put_record(self$partition, self$record)
+      self$ui_offset <- length(messages)
+      TRUE
     },
 
     restore_app_state = function(values) {
@@ -696,15 +714,13 @@ history_options <- function(
 #'   response and when the user switches conversations. Multiple callbacks may
 #'   be registered; they are called in registration order.
 #' @param on_restore An optional `function(values)` called when a conversation
-#'   is loaded — on page-load restore and on in-session switches. Use it to
-#'   sync auxiliary UI state (tabs, model selectors, etc.) to match the restored
-#'   conversation. Call the appropriate `updateXxx()` functions here. Receives
-#'   the `values` list captured by `on_save`. Multiple callbacks may be
-#'   registered; they are called in registration order.
-#'
-#'   **Note:** This callback does not fire when `restore_mode = "bookmark"`.
-#'   In that mode Shiny's native bookmark restore cycle handles app state;
-#'   use `session$onRestore()` directly if needed.
+#'   is loaded — after it becomes active, on page-load restore and on in-session
+#'   switches. Use it to sync auxiliary UI state (tabs, model selectors, etc.)
+#'   to match the restored conversation. Call the appropriate `updateXxx()`
+#'   functions here. Receives the `values` list captured by `on_save`. Multiple
+#'   callbacks may be registered; they are called in registration order. In
+#'   `restore_mode = "bookmark"`, this callback also runs while Shiny restores
+#'   native bookmarked inputs.
 #' @param options A [history_options()] object controlling storage, identity,
 #'   titling, and restore behaviour.
 #' @param restore_ui Whether to render the active conversation into the chat
@@ -954,13 +970,13 @@ chat_enable_history <- function(
           set_turns_recorded(client, record_path_turns(target))
           if (restore_ui) {
             controller$replay_ui(target)
-            if (!identical(restore_mode, "bookmark")) {
-              restore_after_first_flush(target$values)
-            }
+          }
+          controller$record <- target
+          if (restore_ui) {
+            restore_after_first_flush(target$values)
           } else {
             controller$ui_offset <- record_ui_count(target)
           }
-          controller$record <- target
           controller$send_sibling_metadata()
           controller$send_history_update()
           initialized <<- TRUE
@@ -991,11 +1007,13 @@ chat_enable_history <- function(
         set_turns_recorded(client, record_path_turns(target))
         if (restore_ui) {
           controller$replay_ui(target)
+        }
+        controller$record <- target
+        if (restore_ui) {
           restore_after_first_flush(target$values)
         } else {
           controller$ui_offset <- record_ui_count(target)
         }
-        controller$record <- target
         controller$send_sibling_metadata()
       }
     }

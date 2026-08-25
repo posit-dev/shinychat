@@ -77,6 +77,9 @@ def test_bookmark_mode_with_state_reload_restores_conversation(
     controller.InputText(page, "filter_text").expect_value(
         "gentoo", timeout=30_000
     )
+    controller.OutputText(page, "history_restore_state").expect_value(
+        "restored: gentoo", timeout=30_000
+    )
     ChatController(page, "chat").expect_latest_message(
         "echo: reload me", timeout=30_000
     )
