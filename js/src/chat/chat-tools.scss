@@ -698,9 +698,28 @@ shinychat-raw-html {
   list-style: none;
   margin: 0;
   padding: 0;
+  position: relative;
 
   &[hidden] {
     display: none;
+  }
+
+  // The group header's own drill-in rule: a straight vertical line under the
+  // header's glyph, running the full height of the call list down through the
+  // final tool result. A pseudo-element rather than a border so the rows'
+  // geometry is untouched. The x-position follows the same convention as the
+  // leaf cards' rules (see the __detail padding below): the line's inline
+  // start edge sits on the glyph's center.
+  &::before {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: calc(var(--_row-pad) + var(--_row-glyph-width) / 2);
+    width: $shiny-chat-tool-detail-rule;
+    background-color: var(--bs-border-color);
+    // Match the dimming the rows and leaf cards get, so the line reads as the
+    // same subordinate-activity chrome rather than a stronger rule.
+    opacity: var(--_activity-opacity);
   }
 }
 
@@ -841,6 +860,13 @@ shinychat-raw-html {
   &:focus-visible {
     outline-offset: -2px;
   }
+}
+
+// Opening a framed call row must not move or widen the box the collapsed row
+// occupied: the indent moves from the summary (zeroed below) onto the frame
+// itself, so the frame's border box is exactly the collapsed row's border box.
+.shiny-chat-tool-call-row--framed {
+  margin-inline-start: var(--_row-indent);
 }
 
 .shiny-chat-tool-call-row--framed > .shiny-chat-tool-call-row__summary {
