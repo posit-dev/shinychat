@@ -351,6 +351,7 @@ export const ChatInput = memo(
           type="button"
           className="shiny-chat-btn-send"
           data-state={sendButtonState}
+          data-custom-icon={iconSend ? "" : undefined}
           title={sendButtonLabel}
           aria-label={sendButtonLabel}
           disabled={sendButtonDisabled}

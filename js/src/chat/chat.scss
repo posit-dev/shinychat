@@ -415,14 +415,26 @@ shiny-chat-container:not([fill]) {
   // change one of them. Setting --shiny-chat-input-icon-size unifies both.
   --_input-icon-size: var(--shiny-chat-input-icon-size, 24px);
 
+  // Two default treatments, chosen by whether icon_send supplied a custom
+  // icon (see [data-custom-icon] below): the built-in icon already draws its
+  // own filled circle in one color, so no surface is needed behind it; a
+  // custom icon_send glyph is typically bare, so it gets a real surface by
+  // default instead. Both remain fully overridable by the public vars below.
+  --_btn-send-bg-default: transparent;
+  --_btn-send-color-default: var(--_btn-send-color-state);
+  --_btn-send-padding-default: 0;
+
   position: absolute;
   bottom: var(--_input-control-inset, 8px);
   right: var(--_input-control-inset, 8px);
-  background-color: var(--shiny-chat-btn-send-bg, transparent);
-  color: var(--shiny-chat-btn-send-color, var(--_btn-send-color-state));
+  background-color: var(--shiny-chat-btn-send-bg, var(--_btn-send-bg-default));
+  color: var(--shiny-chat-btn-send-color, var(--_btn-send-color-default));
   border: var(--shiny-chat-btn-send-border, none);
-  transition: color 0.25s ease-in-out;
-  padding: var(--shiny-chat-btn-send-padding, 0);
+  transition:
+    color 0.25s ease-in-out,
+    background-color 0.25s ease-in-out,
+    filter 0.25s ease-in-out;
+  padding: var(--shiny-chat-btn-send-padding, var(--_btn-send-padding-default));
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -464,6 +476,33 @@ shiny-chat-container:not([fill]) {
     svg {
       animation: shiny-chat-spin 0.75s linear infinite;
       transform-origin: center;
+    }
+  }
+
+  // A custom icon_send glyph is usually bare (no enclosing shape). Give it a
+  // real filled surface instead of the built-in icon's baked-in circle:
+  // background carries the same per-state color the built-in icon's fill
+  // carries, foreground becomes a fixed high-contrast white, and padding
+  // auto-sizes to a comfortable badge instead of hugging the icon's own
+  // bounding box. Hover/active darken via filter rather than swapping to a
+  // separate color-mix per state, so it works uniformly across the
+  // ready/disabled/cancel colors above.
+  &[data-custom-icon] {
+    --_btn-send-bg-default: var(--_btn-send-color-state);
+    --_btn-send-color-default: #fff;
+    --_btn-send-padding-default: calc(
+      (var(--shiny-chat-btn-send-size, 32px) - var(--_input-icon-size)) / 2
+    );
+
+    &:hover:not(:disabled) {
+      color: var(--shiny-chat-btn-send-color-hover, var(--_btn-send-color-default));
+      background-color: var(--shiny-chat-btn-send-bg-hover, var(--_btn-send-bg-default));
+      filter: brightness(0.92);
+    }
+    &:active:not(:disabled) {
+      color: var(--shiny-chat-btn-send-color-active, var(--_btn-send-color-default));
+      background-color: var(--shiny-chat-btn-send-bg-active, var(--_btn-send-bg-default));
+      filter: brightness(0.85);
     }
   }
 }
