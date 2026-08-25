@@ -73,7 +73,8 @@
 #' @param toolbar_global Optional persistent UI displayed after the page-scoped
 #'   toolbar in the navigation controls.
 #' @param toolbar_input Optional UI displayed directly below the chat input.
-#'   This is independent of the navigation `toolbar`.
+#'   Use [bslib::toolbar()] to group toolbar controls. This is independent of
+#'   the navigation `toolbar`.
 #' @param navbar_options Optional [bslib::navbar_options()] that styles the
 #'   page title bar. Its `bg`, `theme`, `underline`, and HTML attributes are
 #'   supported. `position` and `collapsible` are unsupported because

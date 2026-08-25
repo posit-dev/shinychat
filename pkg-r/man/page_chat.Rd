@@ -49,7 +49,8 @@ controls. A panel's \code{chat_nav_panel(toolbar = )} can replace this segment.}
 toolbar in the navigation controls.}
 
 \item{toolbar_input}{Optional UI displayed directly below the chat input.
-This is independent of the navigation \code{toolbar}.}
+Use \code{\link[bslib:toolbar]{bslib::toolbar()}} to group toolbar controls. This is independent of
+the navigation \code{toolbar}.}
 
 \item{navbar_options}{Optional \code{\link[bslib:navbar_options]{bslib::navbar_options()}} that styles the
 page title bar. Its \code{bg}, \code{theme}, \code{underline}, and HTML attributes are
