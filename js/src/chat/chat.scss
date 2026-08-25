@@ -422,7 +422,7 @@ shiny-chat-container:not([fill]) {
   color: var(--shiny-chat-btn-send-color, var(--_btn-send-color-state));
   border: var(--shiny-chat-btn-send-border, none);
   transition: color 0.25s ease-in-out;
-  padding: 0;
+  padding: var(--shiny-chat-btn-send-padding, 0);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
