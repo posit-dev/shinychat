@@ -405,31 +405,54 @@ shiny-chat-container:not([fill]) {
 }
 
 .shiny-chat-btn-send {
+  // Single public override wins across every state; [data-state] selectors
+  // below only change the internal default it falls back to.
+  --_btn-send-color-state: var(--bs-primary, #007bc2);
+  // Shared with .shiny-chat-btn-attach, but each button keeps its own current
+  // rendered size as the default (send is intrinsically 24px via its SVG's
+  // own width/height attributes; attach is explicitly forced to 22px below) —
+  // the two aren't visually identical today, so one universal default would
+  // change one of them. Setting --shiny-chat-input-icon-size unifies both.
+  --_input-icon-size: var(--shiny-chat-input-icon-size, 24px);
+
   position: absolute;
-  bottom: 8px;
-  right: 8px;
-  background-color: transparent;
-  color: var(--bs-primary, #007bc2);
+  bottom: var(--_input-control-inset, 8px);
+  right: var(--_input-control-inset, 8px);
+  background-color: var(--shiny-chat-btn-send-bg, transparent);
+  color: var(--shiny-chat-btn-send-color, var(--_btn-send-color-state));
+  border: var(--shiny-chat-btn-send-border, none);
   transition: color 0.25s ease-in-out;
-  border: none;
   padding: 0;
   cursor: pointer;
   line-height: 16px;
   border-radius: 50%;
+  svg {
+    display: block;
+    width: var(--_input-icon-size);
+    height: var(--_input-icon-size);
+  }
+  &:hover:not(:disabled) {
+    color: var(--shiny-chat-btn-send-color-hover, var(--_btn-send-color-state));
+    background-color: var(--shiny-chat-btn-send-bg-hover, transparent);
+    border-color: var(--shiny-chat-btn-send-border-color-hover, transparent);
+  }
+  &:active:not(:disabled) {
+    color: var(--shiny-chat-btn-send-color-active, var(--_btn-send-color-state));
+    background-color: var(--shiny-chat-btn-send-bg-active, transparent);
+  }
   &:disabled {
     cursor: not-allowed;
-    color: var(--bs-gray-500, #8d959e);
+    --_btn-send-color-state: var(--bs-gray-500, #8d959e);
   }
   &[data-state="cancel"],
   &[data-state="cancelling"] {
-    color: var(--bs-danger, #dc3545);
+    --_btn-send-color-state: var(--bs-danger, #dc3545);
   }
   &[data-state="pending"],
   &[data-state="cancelling"] {
     pointer-events: none;
     cursor: default;
     svg {
-      display: block;
       animation: shiny-chat-spin 0.75s linear infinite;
       transform-origin: center;
     }
@@ -437,9 +460,13 @@ shiny-chat-container:not([fill]) {
 }
 
 .shiny-chat-btn-attach {
+  // See .shiny-chat-btn-send above — same shared token, own default (22px)
+  // to match this button's current forced SVG size.
+  --_input-icon-size: var(--shiny-chat-input-icon-size, 22px);
+
   position: absolute;
-  bottom: 8px;
-  left: 8px;
+  bottom: var(--_input-control-inset, 8px);
+  left: var(--_input-control-inset, 8px);
   // The button renders before the editor (AttachmentTray comes first in the
   // DOM) and .ProseMirror is position: relative, so without a z-index the
   // editor's opaque form-control background paints over the button.
@@ -458,8 +485,8 @@ shiny-chat-container:not([fill]) {
   border-radius: 50%;
   svg {
     display: block;
-    width: 22px;
-    height: 22px;
+    width: var(--_input-icon-size);
+    height: var(--_input-icon-size);
   }
   &:hover:not(:disabled) {
     color: var(--bs-primary, #007bc2);
@@ -473,6 +500,9 @@ shiny-chat-container:not([fill]) {
 .shiny-chat-input {
   --_input-padding-top: 0;
   --_input-padding-bottom: var(--_chat-composer-input-padding-bottom);
+  // Shared base inset for the send/attach buttons; the tighter 6px used
+  // below is this value minus 2px, not an unrelated literal.
+  --_input-control-inset: 8px;
 
   margin-top: calc(-1 * var(--_input-padding-top));
   position: sticky;
@@ -492,7 +522,10 @@ shiny-chat-container:not([fill]) {
       pointer-events: none;
     }
   }
-  // Only reserve left space when the attach button is actually rendered
+  // Only reserve left space when the attach button is actually rendered.
+  // 36px ~= inset (8px) + button width (24px) + a 4px gap, but that gap isn't
+  // backed by any existing token, so this stays a literal rather than a
+  // derived value that would just relocate the magic number.
   &:has(.shiny-chat-btn-attach) {
     .tiptap {
       padding-left: 36px !important;
@@ -515,10 +548,14 @@ shiny-chat-container:not([fill]) {
     }
   }
   .shiny-chat-btn-send {
-    bottom: calc(6px + var(--_input-padding-bottom));
+    bottom: calc(
+      var(--_input-control-inset) - 2px + var(--_input-padding-bottom)
+    );
   }
   .shiny-chat-btn-attach {
-    bottom: calc(6px + var(--_input-padding-bottom));
+    bottom: calc(
+      var(--_input-control-inset) - 2px + var(--_input-padding-bottom)
+    );
   }
 }
 
