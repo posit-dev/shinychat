@@ -25,6 +25,7 @@ import {
 } from "./tool-presentation"
 import { ToolResult, ToolResultValue } from "./ToolResult"
 import { ToolRequest } from "./ToolRequest"
+import { useChatStopScroll } from "./context"
 import { useFadingValue } from "./useFadingText"
 import { bareDot, chevronDown, exclamationCircleFill } from "../utils/icons"
 
@@ -181,6 +182,7 @@ function ToolCallRow({
   heterogeneous: boolean
 }): ReactNode {
   const [open, setOpen] = useExpandable(item.expanded)
+  const stopScroll = useChatStopScroll()
   const framed =
     open && item.status === "success" && item.openStyle === "framed"
   const label = toolCallLabel(item, segmentTitle, false)
@@ -216,7 +218,10 @@ function ToolCallRow({
         className="shiny-chat-tool-call-row__summary"
         aria-expanded={open}
         aria-controls={contentId}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          stopScroll?.()
+          setOpen((v) => !v)
+        }}
       >
         <span
           className={`shiny-chat-tool-call-row__status${statusClass}`}
@@ -332,6 +337,7 @@ function ToolGroupRow({
   bodyId: string
 }): ReactNode {
   const { identity, single, anyRunning, failedCount, heterogeneous } = row
+  const stopScroll = useChatStopScroll()
   const framed =
     expanded && single?.status === "success" && single.openStyle === "framed"
   const label = single && toolCallLabel(single, identity.title, true)
@@ -348,7 +354,10 @@ function ToolGroupRow({
         className="shiny-chat-tool-group__row"
         aria-expanded={expanded}
         aria-controls={bodyId}
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => {
+          stopScroll?.()
+          setExpanded((v) => !v)
+        }}
       >
         <span
           className={`shiny-chat-tool-group__glyph${anyRunning ? " running" : ""}`}
