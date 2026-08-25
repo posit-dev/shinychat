@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>index – shinychat</title>
+<title>chat_ui_history – shinychat</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -19,6 +19,41 @@ ul.task-list li input[type="checkbox"] {
   width: 0.8em;
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
 }
 </style>
 
@@ -76,8 +111,10 @@ ul.task-list li input[type="checkbox"] {
 
 
 <meta property="og:title" content="shinychat">
+<meta property="og:description" content="Chat UI Component for Shiny">
 <meta property="og:site_name" content="shinychat">
 <meta name="twitter:title" content="shinychat">
+<meta name="twitter:description" content="Chat UI Component for Shiny">
 <meta name="twitter:card" content="summary">
 </head>
 
@@ -136,7 +173,7 @@ ul.task-list li input[type="checkbox"] {
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../api/index.html">shinychat Reference</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../api/types.ChatDrawerController.html">Page chat</a></li><li class="breadcrumb-item"><a href="../api/chat_ui_history.html">chat_ui_history</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
     </div>
@@ -150,7 +187,7 @@ ul.task-list li input[type="checkbox"] {
     <ul class="list-unstyled mt-1">
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../api/index.html" class="sidebar-item-text sidebar-link active">
+  <a href="../api/index.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">shinychat Reference</span></a>
   </div>
 </li>
@@ -248,7 +285,7 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../api/chat_ui_history.html" class="sidebar-item-text sidebar-link">
+  <a href="../api/chat_ui_history.html" class="sidebar-item-text sidebar-link active">
  <span class="menu-text">chat_ui_history</span></a>
   </div>
 </li>
@@ -380,167 +417,86 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#shinychat-reference" id="toc-shinychat-reference" class="nav-link active" data-scroll-target="#shinychat-reference">shinychat Reference</a>
+  <li><a href="#shinychat.chat_ui_history" id="toc-shinychat.chat_ui_history" class="nav-link active" data-scroll-target="#shinychat.chat_ui_history">chat_ui_history</a>
   <ul class="collapse">
-  <li><a href="#shiny-core" id="toc-shiny-core" class="nav-link" data-scroll-target="#shiny-core">Shiny Core</a></li>
-  <li><a href="#page-chat" id="toc-page-chat" class="nav-link" data-scroll-target="#page-chat">Page chat</a></li>
-  <li><a href="#tool-display" id="toc-tool-display" class="nav-link" data-scroll-target="#tool-display">Tool display</a></li>
-  <li><a href="#shiny-express" id="toc-shiny-express" class="nav-link" data-scroll-target="#shiny-express">Shiny Express</a></li>
-  <li><a href="#conversation-history" id="toc-conversation-history" class="nav-link" data-scroll-target="#conversation-history">Conversation history</a></li>
-  <li><a href="#testing" id="toc-testing" class="nav-link" data-scroll-target="#testing">Testing</a></li>
+  <li><a href="#parameters" id="toc-parameters" class="nav-link" data-scroll-target="#parameters">Parameters</a></li>
+  <li><a href="#returns" id="toc-returns" class="nav-link" data-scroll-target="#returns">Returns</a></li>
+  <li><a href="#examples" id="toc-examples" class="nav-link" data-scroll-target="#examples">Examples</a></li>
+  <li><a href="#see-also" id="toc-see-also" class="nav-link" data-scroll-target="#see-also">See Also</a></li>
   </ul></li>
   </ul>
-<div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/shinychat/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li><li><a href="https://github.com/posit-dev/shinychat/edit/main/pkg-py/docs/api/index.qmd" class="toc-action"><i class="bi empty"></i>Edit this page</a></li></ul></div></nav>
+<div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/shinychat/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li><li><a href="https://github.com/posit-dev/shinychat/edit/main/pkg-py/docs/api/chat_ui_history.qmd" class="toc-action"><i class="bi empty"></i>Edit this page</a></li></ul></div></nav>
     </div>
 <!-- main -->
-<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"></header>
+<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../api/types.ChatDrawerController.html">Page chat</a></li><li class="breadcrumb-item"><a href="../api/chat_ui_history.html">chat_ui_history</a></li></ol></nav></header>
 
 
 
 
-<section id="shinychat-reference" class="level1 doc doc-index">
-<h1 class="doc doc-index">shinychat Reference</h1>
-<section id="shiny-core" class="level2">
-<h2 class="anchored" data-anchor-id="shiny-core">Shiny Core</h2>
+<section id="shinychat.chat_ui_history" class="level1">
+<h1>chat_ui_history</h1>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>chat_ui_history(<span class="bu">id</span>, <span class="op">**</span>attrs)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Create a conversation-history view bound to a chat.</p>
+<p>Use this helper for a custom placement of chat history. A :func:<code>~shinychat.page_chat</code> sidebar can include the same view more directly with <code>chat_sidebar(history=True)</code>.</p>
+<section id="parameters" class="level2 doc-section doc-section-parameters">
+<h2 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h2>
 <table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
 <tbody>
 <tr class="odd">
-<td><a href="../api/Chat.html#shinychat.Chat">Chat</a></td>
-<td>Create a chat interface.</td>
+<td>id</td>
+<td><a href="`str`">str</a></td>
+<td>ID of the target chat. The ID is resolved in the current Shiny module namespace.</td>
+<td><em>required</em></td>
 </tr>
 <tr class="even">
-<td><a href="../api/types.ChatClient.html#shinychat.types.ChatClient">types.ChatClient</a></td>
-<td>Wraps a chatlas client bound to a :class:<code>~shinychat.Chat</code> instance.</td>
+<td>**attrs</td>
+<td><a href="`htmltools.TagAttrValue`">TagAttrValue</a></td>
+<td>Additional HTML attributes for the history element. The <code>for</code> attribute is owned by this helper and cannot be overridden.</td>
+<td><code>{}</code></td>
 </tr>
+</tbody>
+</table>
+</section>
+<section id="returns" class="level2 doc-section doc-section-returns">
+<h2 class="doc-section doc-section-returns anchored" data-anchor-id="returns">Returns</h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
 <tr class="odd">
-<td><a href="../api/types.ChatMessage.html#shinychat.types.ChatMessage">types.ChatMessage</a></td>
 <td></td>
-</tr>
-<tr class="even">
-<td><a href="../api/types.Attachment.html#shinychat.types.Attachment">types.Attachment</a></td>
-<td>An image, PDF, or text file to attach to a chat message.</td>
-</tr>
-<tr class="odd">
-<td><a href="../api/chat_ui.html#shinychat.chat_ui">chat_ui</a></td>
-<td>UI container for a chat component (Shiny Core).</td>
-</tr>
-<tr class="even">
-<td><a href="../api/chat_greeting.html#shinychat.chat_greeting">chat_greeting</a></td>
-<td>Create a greeting for a chat UI.</td>
+<td><a href="`htmltools.Tag`">Tag</a></td>
+<td>A <code>&lt;shiny-chat-history&gt;</code> element connected to <code>id</code>.</td>
 </tr>
 </tbody>
 </table>
 </section>
-<section id="page-chat" class="level2">
-<h2 class="anchored" data-anchor-id="page-chat">Page chat</h2>
-<table class="caption-top table">
-<tbody>
-<tr class="odd">
-<td><a href="../api/types.ChatDrawerController.html#shinychat.types.ChatDrawerController">types.ChatDrawerController</a></td>
-<td>Control the artifact panel associated with a :class:<code>~shinychat.Chat</code>.</td>
-</tr>
-<tr class="even">
-<td><a href="../api/page_chat.html#shinychat.page_chat">page_chat</a></td>
-<td>Create a full-window page containing one persistent chat interface.</td>
-</tr>
-<tr class="odd">
-<td><a href="../api/page_chat_theme.html#shinychat.page_chat_theme">page_chat_theme</a></td>
-<td>Create a theme for :func:<code>~shinychat.page_chat</code>.</td>
-</tr>
-<tr class="even">
-<td><a href="../api/chat_sidebar.html#shinychat.chat_sidebar">chat_sidebar</a></td>
-<td>Configure a sidebar for :func:<code>~shinychat.page_chat</code>.</td>
-</tr>
-<tr class="odd">
-<td><a href="../api/chat_nav_panel.html#shinychat.chat_nav_panel">chat_nav_panel</a></td>
-<td>Configure a secondary navigation page for :func:<code>~shinychat.page_chat</code>.</td>
-</tr>
-<tr class="even">
-<td><a href="../api/chat_drawer.html#shinychat.chat_drawer">chat_drawer</a></td>
-<td>Configure content displayed adjacent to a chat interface.</td>
-</tr>
-<tr class="odd">
-<td><a href="../api/chat_ui_history.html#shinychat.chat_ui_history">chat_ui_history</a></td>
-<td>Create a conversation-history view bound to a chat.</td>
-</tr>
-</tbody>
-</table>
+<section id="examples" class="level2 doc-section doc-section-examples">
+<h2 class="doc-section doc-section-examples anchored" data-anchor-id="examples">Examples</h2>
+<div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shiny <span class="im">import</span> ui</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shinychat <span class="im">import</span> chat_ui, chat_ui_history</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>ui.div(</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    chat_ui(<span class="st">"chat"</span>, show_history<span class="op">=</span><span class="va">False</span>),</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    chat_ui_history(<span class="st">"chat"</span>, class_<span class="op">=</span><span class="st">"conversation-list"</span>),</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </section>
-<section id="tool-display" class="level2">
-<h2 class="anchored" data-anchor-id="tool-display">Tool display</h2>
-<table class="caption-top table">
-<tbody>
-<tr class="odd">
-<td><a href="../api/types.ToolResultDisplay.html#shinychat.types.ToolResultDisplay">types.ToolResultDisplay</a></td>
-<td>Customize the condensed display for a tool result.</td>
-</tr>
-<tr class="even">
-<td><a href="../api/message_content.html#shinychat.message_content">message_content</a></td>
-<td>Extract content from various message types into a ChatMessage.</td>
-</tr>
-<tr class="odd">
-<td><a href="../api/message_content_chunk.html#shinychat.message_content_chunk">message_content_chunk</a></td>
-<td>Extract content from various message chunk types into a ChatMessage.</td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="shiny-express" class="level2">
-<h2 class="anchored" data-anchor-id="shiny-express">Shiny Express</h2>
-<table class="caption-top table">
-<tbody>
-<tr class="odd">
-<td><a href="../api/express.Chat.html#shinychat.express.Chat">express.Chat</a></td>
-<td></td>
-</tr>
-<tr class="even">
-<td><a href="../api/express.page_chat.html#shinychat.express.page_chat">express.page_chat</a></td>
-<td>Create the sole top-level UI item for a full-window Express chat page.</td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="conversation-history" class="level2">
-<h2 class="anchored" data-anchor-id="conversation-history">Conversation history</h2>
-<table class="caption-top table">
-<tbody>
-<tr class="odd">
-<td><a href="../api/types.HistoryOptions.html#shinychat.types.HistoryOptions">types.HistoryOptions</a></td>
-<td>Configuration for :class:<code>~shinychat.Chat</code> conversation history.</td>
-</tr>
-<tr class="even">
-<td><a href="../api/types.ConversationPartition.html#shinychat.types.ConversationPartition">types.ConversationPartition</a></td>
-<td>Storage partition for a chat history collection.</td>
-</tr>
-<tr class="odd">
-<td><a href="../api/types.ConversationStore.html#shinychat.types.ConversationStore">types.ConversationStore</a></td>
-<td>Storage interface for chat conversation history.</td>
-</tr>
-<tr class="even">
-<td><a href="../api/types.FileConversationStore.html#shinychat.types.FileConversationStore">types.FileConversationStore</a></td>
-<td>Default store: each conversation is a directory at</td>
-</tr>
-<tr class="odd">
-<td><a href="../api/types.ConversationRecord.html#shinychat.types.ConversationRecord">types.ConversationRecord</a></td>
-<td></td>
-</tr>
-<tr class="even">
-<td><a href="../api/types.ConversationMeta.html#shinychat.types.ConversationMeta">types.ConversationMeta</a></td>
-<td></td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="testing" class="level2">
-<h2 class="anchored" data-anchor-id="testing">Testing</h2>
-<table class="caption-top table">
-<tbody>
-<tr class="odd">
-<td><a href="../api/playwright.ChatController.html#shinychat.playwright.ChatController">playwright.ChatController</a></td>
-<td>Controller for :func:<code>shiny.ui.chat</code>.</td>
-</tr>
-</tbody>
-</table>
+<section id="see-also" class="level2 doc-section doc-section-see-also">
+<h2 class="doc-section doc-section-see-also anchored" data-anchor-id="see-also">See Also</h2>
+<p><a href=":func:`~shinychat.chat_sidebar`"></a> : Include history in a page sidebar. <a href=":func:`~shinychat.chat_ui`"></a> : Create the target chat UI.</p>
 
 
 </section>
@@ -954,7 +910,7 @@ ul.task-list li input[type="checkbox"] {
 </div>   
     <div class="nav-footer-center">
       &nbsp;
-    <div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/posit-dev/shinychat/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li><li><a href="https://github.com/posit-dev/shinychat/edit/main/pkg-py/docs/api/index.qmd" class="toc-action"><i class="bi empty"></i>Edit this page</a></li></ul></div></div>
+    <div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/posit-dev/shinychat/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li><li><a href="https://github.com/posit-dev/shinychat/edit/main/pkg-py/docs/api/chat_ui_history.qmd" class="toc-action"><i class="bi empty"></i>Edit this page</a></li></ul></div></div>
     <div class="nav-footer-right">
       &nbsp;
     </div>

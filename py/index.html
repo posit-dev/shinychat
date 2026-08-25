@@ -144,6 +144,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span class="menu-text">Get Started</span></a>
   </li>  
   <li class="nav-item">
+    <a class="nav-link" href="./page-chat.html"> 
+<span class="menu-text">Page chat</span></a>
+  </li>  
+  <li class="nav-item">
     <a class="nav-link" href="./api/index.html"> 
 <span class="menu-text">API Reference</span></a>
   </li>  
@@ -180,6 +184,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <ul>
   <li><a href="#installation" id="toc-installation" class="nav-link active" data-scroll-target="#installation">Installation</a></li>
   <li><a href="#quick-start" id="toc-quick-start" class="nav-link" data-scroll-target="#quick-start">Quick start</a></li>
+  <li><a href="#full-page-chat" id="toc-full-page-chat" class="nav-link" data-scroll-target="#full-page-chat">Full-page chat</a></li>
   <li><a href="#slash-commands" id="toc-slash-commands" class="nav-link" data-scroll-target="#slash-commands">Slash commands</a>
   <ul class="collapse">
   <li><a href="#prompt-expansion" id="toc-prompt-expansion" class="nav-link" data-scroll-target="#prompt-expansion">Prompt expansion</a></li>
@@ -245,6 +250,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>app <span class="op">=</span> App(app_ui, server, bookmark_store<span class="op">=</span><span class="st">"url"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>The <code>chat.client</code> property provides a <code>.set()</code> method for swapping models mid-session and <code>.clear()</code> for resetting the conversation. For lower-level chat methods such as appending messages, updating the input, or inspecting stream state, call them directly on <code>chat</code>. See the <a href="./api/index.html">API reference</a> for the full interface.</p>
+</section>
+<section id="full-page-chat" class="level2">
+<h2 class="anchored" data-anchor-id="full-page-chat">Full-page chat</h2>
+<p>Use <code>page_chat()</code> when chat is the application’s primary surface. It provides a full-window chat home, navigation pages, responsive sidebars, and an artifact region while keeping the chat mounted as users move between pages. See <a href="./page-chat.html">Page chat</a> for Core and Express examples, migration guidance, and composition boundaries.</p>
 </section>
 <section id="slash-commands" class="level2">
 <h2 class="anchored" data-anchor-id="slash-commands">Slash commands</h2>
