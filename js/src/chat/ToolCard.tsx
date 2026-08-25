@@ -2,6 +2,7 @@ import { useState, useMemo, useId, type ReactNode, type Ref } from "react"
 import { bareDot, plus } from "../utils/icons"
 import { fullscreenEnter } from "./useFullscreen"
 import { RawHTML } from "./RawHTML"
+import { useChatStopScroll } from "./context"
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -44,6 +45,7 @@ export function ToolCard({
   children,
 }: ToolCardProps) {
   const [expanded, setExpanded] = useState(initialExpanded)
+  const stopScroll = useChatStopScroll()
 
   // Not derived from the tool's `request-id`: that is optional in routed
   // content (anonymous calls get a loop-local synthetic id) and can repeat
@@ -71,7 +73,8 @@ export function ToolCard({
     const card = e.currentTarget.closest(".shiny-tool-card")
     if (card?.hasAttribute("fullscreen")) return
 
-    setExpanded(!expanded)
+    stopScroll?.()
+    setExpanded((v) => !v)
     requestAnimationFrame(() => window.dispatchEvent(new Event("resize")))
   }
 
