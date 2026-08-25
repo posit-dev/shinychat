@@ -15,9 +15,6 @@ def new_conversation_record(
 ) -> ConversationRecord:
     now = utcnow()
     return ConversationRecord(
-        # A preallocated ID (from HistoryController.ensure_conversation_id())
-        # lets the record carry the identity model work was already tagged
-        # with; standalone callers get a fresh one.
         id=id if id is not None else new_conversation_id(),
         title=title,
         created_at=now,

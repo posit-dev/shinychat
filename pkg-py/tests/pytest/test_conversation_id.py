@@ -756,7 +756,6 @@ def test_response_span_failure_falls_back_to_noop(monkeypatch: Any):
 
     monkeypatch.setattr(opentelemetry.trace, "get_tracer", boom)
 
-    # Telemetry failure must not break the wrapped work.
     with response_span("c_abc123"):
         pass
     assert finished_spans(exporter) == []

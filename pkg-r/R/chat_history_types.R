@@ -113,9 +113,6 @@ check_schema_version <- function(version) {
   as.integer(version)
 }
 
-# `id` lets the caller preallocate the conversation identity (e.g. at first
-# user submission, before model work begins) so the saved record adopts the
-# already-active ID instead of minting a new one at save time.
 new_conversation_record <- function(title, client_info = list(), id = NULL) {
   now <- utcnow_iso()
   list(

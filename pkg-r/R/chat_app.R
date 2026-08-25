@@ -366,9 +366,7 @@ chat_server <- function(
 
       # One span per managed response, opened before the model call and
       # closed after the response stream is fully consumed, so Commons/ellmer
-      # spans nest beneath it. `conversation_id` was captured synchronously
-      # at submission; nothing here re-reads reactive history state, so
-      # in-flight work keeps its identity across switches or client swaps.
+      # spans nest beneath it.
       promises::with_otel_promise_domain(
         promises::with_otel_span(
           "shinychat.response",
@@ -489,9 +487,6 @@ chat_server <- function(
     history_controller(new_ctrl)
     if (!is.null(new_ctrl)) {
       if (!is.null(active_id)) {
-        # Carries an unsaved identified draft's ID across the swap without
-        # creating a record. (Saved conversations are deliberately not
-        # seeded -- see above.)
         new_ctrl$seed_conversation_id(active_id)
       }
       for (fn in saved_on_save_fns) {
