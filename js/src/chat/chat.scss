@@ -355,17 +355,66 @@ shiny-chat-container:not([fill]) {
 }
 
 // Inline stand-in for the icon-slot dots_fade animation when the assistant
-// icon is disabled — same visual size as the icon slot, without the circular
-// avatar chrome, sitting where the icon would have been.
+// icon is disabled. The leading dot lands at the same inset used by the
+// thinking/tool rows' leading glyph (--_row-pad, see .shiny-chat-thinking in
+// this file) so the "something is happening" marker doesn't jump sideways if
+// a thinking block appears next.
 .shiny-chat-pending-indicator {
-  height: 2rem;
-  width: 2rem;
-  display: grid;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
+  height: 1.5em;
+  padding-left: 0.4rem;
+  opacity: 0;
+  animation: shiny-chat-pending-indicator-appear 0.2s ease forwards;
 
   > svg {
-    max-height: 66%;
-    max-width: 66%;
+    width: 1.35em;
+    height: auto;
+  }
+
+  &[data-exiting] {
+    animation: shiny-chat-pending-indicator-exit 0.2s ease forwards;
+  }
+}
+
+@keyframes shiny-chat-pending-indicator-appear {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes shiny-chat-pending-indicator-exit {
+  to {
+    opacity: 0;
+  }
+}
+
+// Crossfades the first content in as the pending indicator above fades out
+// (see PENDING_INDICATOR_FADE_MS in ChatMessage.tsx).
+.shiny-chat-message-content[data-entering] {
+  animation: shiny-chat-content-enter 0.2s ease;
+}
+
+@keyframes shiny-chat-content-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shiny-chat-pending-indicator {
+    animation: shiny-chat-pending-indicator-appear 0s ease forwards;
+
+    &[data-exiting] {
+      animation: shiny-chat-pending-indicator-exit 0s ease forwards;
+    }
+  }
+
+  .shiny-chat-message-content[data-entering] {
+    animation: none;
   }
 }
 

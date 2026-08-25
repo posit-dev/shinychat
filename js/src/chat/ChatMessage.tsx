@@ -32,7 +32,11 @@ const TOUCH_HOLD_MS = 500
 const TOUCH_MOVE_CANCEL_PX = 10
 // Delay before the icon-off pending indicator appears, so a fast response
 // never flashes it in.
-const PENDING_INDICATOR_DELAY_MS = 400
+const PENDING_INDICATOR_DELAY_MS = 500
+// Crossfade duration between the pending indicator and the first content --
+// matches the site-wide 0.2s micro-transition used elsewhere (thinking dot
+// appear, thinking label crossfade, disclosure rotation).
+const PENDING_INDICATOR_FADE_MS = 200
 
 function parseLeadingCommand(
   content: string,
@@ -288,11 +292,12 @@ export const ChatMessage = memo(function ChatMessage({
 
   const resolvedIcon = isUser ? undefined : (message.icon ?? iconAssistant)
   const [showPendingDots, setShowPendingDots] = useState(false)
+  const [pendingExiting, setPendingExiting] = useState(false)
+  const [contentEntering, setContentEntering] = useState(false)
+
+  // Arm the delayed pending indicator while waiting for the first token.
   useEffect(() => {
-    if (isUser || resolvedIcon !== "" || hasContent) {
-      setShowPendingDots(false)
-      return
-    }
+    if (isUser || resolvedIcon !== "" || hasContent) return
     const timer = setTimeout(
       () => setShowPendingDots(true),
       PENDING_INDICATOR_DELAY_MS,
@@ -300,19 +305,34 @@ export const ChatMessage = memo(function ChatMessage({
     return () => clearTimeout(timer)
   }, [isUser, resolvedIcon, hasContent])
 
+  // Once content arrives, crossfade the indicator out and the first content
+  // in instead of swapping instantly. A response fast enough to beat the
+  // delay above never showed the indicator, so there's nothing to fade from.
+  useEffect(() => {
+    if (!hasContent || !showPendingDots) return
+    setPendingExiting(true)
+    setContentEntering(true)
+    const timer = setTimeout(() => {
+      setShowPendingDots(false)
+      setPendingExiting(false)
+      setContentEntering(false)
+    }, PENDING_INDICATOR_FADE_MS)
+    return () => clearTimeout(timer)
+  }, [hasContent, showPendingDots])
+
   let iconHtml: string | undefined
-  let showInlinePendingDots = false
+  const showInlinePendingDots =
+    !isUser && resolvedIcon === "" && showPendingDots
   if (isUser) {
     iconHtml = message.icon || undefined
   } else {
     // Resolve the assistant icon through the per-message -> container chain. An
     // explicit "" (from icon_assistant=False / icon=False) removes the icon
     // entirely: no glyph in the icon slot. The pending dots move inline into
-    // the content area instead (see showPendingDots below), so waiting for a
+    // the content area instead (see showPendingDots above), so waiting for a
     // response still reads as "in progress" rather than dead air.
     if (resolvedIcon === "") {
       iconHtml = undefined
-      showInlinePendingDots = !hasContent && showPendingDots
     } else {
       iconHtml = hasContent ? (resolvedIcon ?? robot) : dots_fade
     }
@@ -490,7 +510,10 @@ export const ChatMessage = memo(function ChatMessage({
           dangerouslySetInnerHTML={{ __html: iconHtml }}
         />
       )}
-      <div className="shiny-chat-message-content">
+      <div
+        className="shiny-chat-message-content"
+        data-entering={contentEntering || undefined}
+      >
         {isEditing ? (
           <div
             className="shiny-chat-edit-wrap"
@@ -553,6 +576,7 @@ export const ChatMessage = memo(function ChatMessage({
             {showInlinePendingDots && (
               <div
                 className="shiny-chat-pending-indicator"
+                data-exiting={pendingExiting || undefined}
                 aria-hidden="true"
                 dangerouslySetInnerHTML={{ __html: dots_fade }}
               />

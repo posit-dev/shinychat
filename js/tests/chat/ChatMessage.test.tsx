@@ -491,7 +491,7 @@ describe("ChatMessage attachments", () => {
       ).toBeNull()
 
       act(() => {
-        vi.advanceTimersByTime(400)
+        vi.advanceTimersByTime(500)
       })
 
       const indicator = container.querySelector(".shiny-chat-pending-indicator")
