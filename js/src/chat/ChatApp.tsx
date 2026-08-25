@@ -1,6 +1,7 @@
 import {
   useReducer,
   useEffect,
+  useLayoutEffect,
   useRef,
   useMemo,
   useState,
@@ -25,11 +26,13 @@ import {
   buildMessagesSnapshot,
   type ChatMessageData,
   type ChatToolState,
+  type ChatDrawerState,
   type GreetingData,
   type ToolGrouping,
 } from "./state"
 import { useSupersededRequests } from "./useSupersededRequests"
 import { ChatContainer, type ChatContainerHandle } from "./ChatContainer"
+import { acquireHistoryStore, getHistoryStore } from "./historyStore"
 import type {
   ChatTransport,
   ShinyLifecycle,
@@ -56,10 +59,14 @@ export interface ChatAppProps {
   placeholder?: string
   initialMessages?: ChatMessageData[]
   initialGreeting?: InitialGreeting
+  initialDrawer?: ChatDrawerState
+  drawerSource?: Element
   enableCancel?: boolean
   enableUpload?: boolean
   asideFavicon?: boolean
+  showHistory?: boolean
   toolGrouping?: ToolGrouping
+  toolbarEl?: Element
   footerEl?: Element
   slashCommandId?: string
   submitKey?: SubmitKey
@@ -100,10 +107,14 @@ export function ChatApp({
   placeholder,
   initialMessages,
   initialGreeting,
+  initialDrawer,
+  drawerSource,
   enableCancel,
   enableUpload,
   asideFavicon = true,
+  showHistory = true,
   toolGrouping,
+  toolbarEl,
   footerEl,
   slashCommandId = "",
   submitKey,
@@ -137,6 +148,7 @@ export function ChatApp({
     enableUpload: enableUpload ?? initialState.enableUpload,
     enableUploadExplicit: enableUpload !== undefined,
     toolGrouping: resolvedToolGrouping,
+    drawer: initialDrawer ?? initialState.drawer,
   })
 
   // `tool-grouping` is a live attribute: the custom element re-renders this
@@ -148,6 +160,11 @@ export function ChatApp({
 
   const stateRef = useRef(state)
   stateRef.current = state
+  const historyStore = useMemo(() => getHistoryStore(elementId), [elementId])
+
+  useEffect(() => {
+    return acquireHistoryStore(elementId, transport).release
+  }, [elementId, historyStore, transport])
 
   const reportSnapshot = useCallback(() => {
     // Reports the entire settled transcript (all messages plus retained
@@ -208,11 +225,6 @@ export function ChatApp({
   useEffect(() => {
     const unsubscribe = transport.onMessage(elementId, (action) => {
       if (action.type === "history_navigate") {
-        // localStorage is also written below from state.history.activeId
-        // (set by the "history_update" reducer case). The server always
-        // sends these two messages with the same id, in order, on a single
-        // connection, so the two writers never disagree in practice — but
-        // that's a server-side invariant, not something enforced here.
         setCurrentConversationId(elementId, action.active_id)
         navigateTo(action.url, action.reload === true)
         return
@@ -238,18 +250,26 @@ export function ChatApp({
         }
         return
       }
-      dispatch(action)
-      if (
-        action.type === "history_update" &&
-        siblingNavigationPendingRef.current
-      ) {
-        siblingNavigationPendingRef.current = false
-        setSiblingNavigationPending(false)
-        containerRef.current?.endSiblingNavigation()
+      if (action.type === "history_update") {
+        historyStore.updateHistory({
+          enabled: action.enabled,
+          conversations: action.conversations,
+          activeId: action.active_id,
+        })
+        if (action.enabled) {
+          setCurrentConversationId(elementId, action.active_id)
+        }
+        if (siblingNavigationPendingRef.current) {
+          siblingNavigationPendingRef.current = false
+          setSiblingNavigationPending(false)
+          containerRef.current?.endSiblingNavigation()
+        }
+        return
       }
+      dispatch(action)
     })
     return unsubscribe
-  }, [transport, elementId])
+  }, [transport, elementId, historyStore])
 
   // State-driven `<inputId>_greeting_requested` input.
   //
@@ -315,10 +335,9 @@ export function ChatApp({
     }
   }, [greetingIsDismissed, elementId])
 
-  useEffect(() => {
-    if (!state.history.enabled) return
-    setCurrentConversationId(elementId, state.history.activeId)
-  }, [elementId, state.history.enabled, state.history.activeId])
+  useLayoutEffect(() => {
+    historyStore.setBusy(state.streamingMessage !== null)
+  }, [historyStore, state.streamingMessage])
 
   const handleEdit = useCallback(
     (index: number, content: string, attachments: AttachmentPayload[]) => {
@@ -372,16 +391,18 @@ export function ChatApp({
                   enableCancel={state.enableCancel}
                   enableUpload={state.enableUpload}
                   cancelRequested={state.cancelRequested}
+                  toolbarEl={toolbarEl}
                   footerEl={footerEl}
                   slashCommands={state.slashCommands}
                   slashCommandId={slashCommandId}
                   submitKey={submitKey}
-                  historyEnabled={state.history.enabled}
-                  historyConversations={state.history.conversations}
-                  historyActiveId={state.history.activeId}
+                  historyStore={historyStore}
                   onEdit={handleEdit}
                   onNavigate={handleNavigate}
                   siblingNavigationPending={siblingNavigationPending}
+                  showHistory={showHistory}
+                  drawer={state.drawer}
+                  drawerSource={drawerSource}
                 />
               </AsideFaviconContext.Provider>
             </ChatSubmitContext.Provider>

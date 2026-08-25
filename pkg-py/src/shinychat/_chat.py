@@ -75,8 +75,14 @@ from ._chat_types import (
     StoredMessage,
     chat_greeting,
 )
+from ._drawer import ChatDrawerController
 from ._history import ChatHistory, HistoryOptions
 from ._html_deps_py_shiny import shinychat_dependency
+from ._page_chat import (
+    ChatDrawer,
+    chat_drawer,
+    render_chat_drawer,
+)
 from ._utils_types import DEPRECATED, DEPRECATED_TYPE, MISSING, MISSING_TYPE
 
 if TYPE_CHECKING:
@@ -359,6 +365,7 @@ class Chat:
         )
         self._history_enabled: bool = history is not False
         self.history: ChatHistory = ChatHistory(self, config=history_config)
+        self.drawer: ChatDrawerController = ChatDrawerController(self)
         self._cancel_bookmarking_callbacks: CancelCallback | None = None
         self._greeting_content: str | None = None
 
@@ -2038,7 +2045,7 @@ class Chat:
             "id": self.id,
             "action": action,
         }
-        if html_deps:
+        if html_deps is not None:
             envelope["html_deps"] = html_deps
         await self._session.send_custom_message("shinyChatMessage", envelope)
 
@@ -2278,8 +2285,11 @@ class ChatExpress(Chat):
         enable_cancel: "bool | MISSING_TYPE" = MISSING,
         submit_key: 'Literal["enter", "enter+modifier"]' = "enter",
         allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
+        toolbar_input: Optional[TagChild] = None,
         footer: Optional[TagChild] = None,
         tool_grouping: 'Literal["none", "tool", "all"]' = "tool",
+        drawer: bool | ChatDrawer = True,
+        show_history: bool = True,
         **kwargs: TagAttrValue,
     ) -> Tag:
         """
@@ -2347,8 +2357,12 @@ class ChatExpress(Chat):
             When bookmarking is enabled, prefer ``bookmark_store="server"``:
             attachment data is saved in the bookmark and can exceed URL length
             limits with ``bookmark_store="url"``.
+        toolbar_input
+            Optional HTML content displayed directly below the chat input.
+            Use :func:`shiny.ui.toolbar` to group toolbar controls.
         footer
-            Optional HTML content to display below the chat input.
+            Optional HTML content displayed in a bottom-pinned, full-width chat
+            region.
             This can be any HTML content (tags, tag lists, or strings).
             Useful for adding disclaimers, attribution, or other information.
             The footer text is styled slightly smaller and lighter than body text
@@ -2377,6 +2391,12 @@ class ChatExpress(Chat):
             ``ToolAnnotations``, so type checkers reject it. Chat-level
             ``"none"`` always disables grouping, even when a tool annotation
             requests ``"tool"`` or ``"all"``.
+        drawer
+            Whether the artifact panel is available. Pass a
+            :class:`~shinychat.types.ChatDrawer` to supply its initial content and
+            configuration.
+        show_history
+            Whether to render the chat's built-in history selector.
         kwargs
             Additional attributes for the chat container element.
         """
@@ -2396,8 +2416,11 @@ class ChatExpress(Chat):
             enable_cancel=enable_cancel,
             submit_key=submit_key,
             allow_attachments=allow_attachments,
+            toolbar_input=toolbar_input,
             footer=footer,
             tool_grouping=tool_grouping,
+            drawer=drawer,
+            show_history=show_history,
             **kwargs,
         )
 
@@ -2498,8 +2521,11 @@ def chat_ui(
     enable_cancel: "bool | MISSING_TYPE" = MISSING,
     submit_key: 'Literal["enter", "enter+modifier"]' = "enter",
     allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
+    toolbar_input: Optional[TagChild] = None,
     footer: Optional[TagChild] = None,
     tool_grouping: 'Literal["none", "tool", "all"]' = "tool",
+    drawer: bool | ChatDrawer = True,
+    show_history: bool = True,
     **kwargs: TagAttrValue,
 ) -> Tag:
     """
@@ -2592,8 +2618,12 @@ def chat_ui(
         When bookmarking is enabled, prefer ``bookmark_store="server"``:
         attachment data is saved in the bookmark and can exceed URL length
         limits with ``bookmark_store="url"``.
+    toolbar_input
+        Optional HTML content displayed directly below the chat input. Use
+        :func:`shiny.ui.toolbar` to group toolbar controls.
     footer
-        Optional HTML content to display below the chat input.
+        Optional HTML content displayed in a bottom-pinned, full-width chat
+        region.
         This can be any HTML content (tags, tag lists, or strings).
         Useful for adding disclaimers, attribution, or other information.
         The footer text is styled slightly smaller and lighter than body text
@@ -2621,6 +2651,12 @@ def chat_ui(
         chatlas' ``ToolAnnotations``, so type checkers reject it. Chat-level
         ``"none"`` always disables grouping, even when a tool annotation
         requests ``"tool"`` or ``"all"``.
+    drawer
+        Whether the artifact panel is available. Pass a
+        :class:`~shinychat.types.ChatDrawer` to supply its initial content and
+        configuration.
+    show_history
+        Whether to render the chat's built-in history selector.
     kwargs
         Additional attributes for the chat container element.
     """
@@ -2637,6 +2673,16 @@ def chat_ui(
         raise ValueError(
             '`tool_grouping` must be one of "none", "tool", or "all", '
             f"not {tool_grouping!r}."
+        )
+
+    if not isinstance(drawer, (bool, ChatDrawer)):
+        raise TypeError(
+            "`drawer` must be a bool or a shinychat `ChatDrawer`, "
+            f"not {type(drawer).__name__}."
+        )
+    if not isinstance(show_history, bool):
+        raise TypeError(
+            f"`show_history` must be a bool, not {type(show_history).__name__}."
         )
 
     icon_attr = _resolve_icon_attr(icon_assistant)
@@ -2662,9 +2708,24 @@ def chat_ui(
             )
         )
 
+    toolbar_tag = None
+    if toolbar_input is not None:
+        toolbar_tag = Tag("shiny-chat-input-toolbar", toolbar_input)
+
     footer_tag = None
     if footer is not None:
         footer_tag = Tag("shiny-chat-footer", footer)
+
+    drawer_config: ChatDrawer | None
+    if isinstance(drawer, ChatDrawer):
+        drawer_config = drawer
+    elif drawer:
+        drawer_config = chat_drawer(open=False)
+    else:
+        drawer_config = None
+    drawer_tag = (
+        render_chat_drawer(drawer_config) if drawer_config is not None else None
+    )
 
     # Tri-state attribute: omitted = "no explicit preference" (lets a `client=`
     # auto-enable the stop button at runtime), "true"/"false" = explicit choice
@@ -2713,7 +2774,9 @@ def chat_ui(
             id=f"{id}_user_input",
             placeholder=placeholder,
         ),
+        toolbar_tag,
         footer_tag,
+        drawer_tag,
         shinychat_dependency(),
         icon_deps,
         {"style": _container_style(as_css_unit(width), as_css_unit(height))},
@@ -2731,6 +2794,7 @@ def chat_ui(
         icon_assistant=icon_attr,
         submit_key=submit_key if submit_key != "enter" else None,
         tool_grouping=tool_grouping if tool_grouping != "tool" else None,
+        show_history="false" if not show_history else None,
         **kwargs,
     )
 

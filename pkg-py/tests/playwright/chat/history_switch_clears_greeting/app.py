@@ -50,7 +50,9 @@ def _get_store_dir() -> str:
 
 
 def app_ui(request: object) -> ui.Tag:
-    return chat_ui("chat", greeting=chat_greeting("## Welcome!", persistent=True))
+    return chat_ui(
+        "chat", greeting=chat_greeting("## Welcome!", persistent=True)
+    )
 
 
 def server(input: Inputs, output: Outputs, session: Session) -> None:

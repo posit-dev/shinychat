@@ -6,7 +6,8 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 dependencies = [
     "htmltools>=0.7.0",
-    "shiny>=1.4.0",
+    "libsass>=0.23.0",
+    "shiny>=1.7.0",
     "pydantic>=2.11"
 ]
 dynamic = ["version"]
@@ -36,6 +37,7 @@ providers = [
 
 [dependency-groups]
 test = [
+    "chatlas[mcp]>=0.20.0",
     "coverage>=7.8.2",
     "faicons",
     "ipyleaflet",

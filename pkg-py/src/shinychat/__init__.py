@@ -2,14 +2,28 @@ from ._attachments import Attachment, attachment_to_content
 from ._chat import Chat, UserInput, chat_greeting, chat_ui
 from ._chat_normalize import message_content, message_content_chunk
 from ._markdown_stream import MarkdownStream, output_markdown_stream
+from ._page_chat import (
+    chat_drawer,
+    chat_nav_panel,
+    chat_sidebar,
+    chat_ui_history,
+    page_chat,
+)
+from ._page_chat_theme import page_chat_theme
 
 __all__ = [
     "Attachment",
     "attachment_to_content",
     "Chat",
     "UserInput",
+    "chat_drawer",
     "chat_greeting",
+    "chat_nav_panel",
+    "chat_sidebar",
     "chat_ui",
+    "chat_ui_history",
+    "page_chat",
+    "page_chat_theme",
     "MarkdownStream",
     "output_markdown_stream",
     "message_content",

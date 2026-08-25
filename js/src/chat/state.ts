@@ -101,6 +101,21 @@ export interface ChatHistoryState {
   activeId: string | null
 }
 
+export interface ChatDrawerState {
+  /** Whether the server emitted a `<shiny-chat-drawer>` configuration. */
+  enabled: boolean
+  visible: boolean
+  /** `null` represents a title explicitly cleared with `title: ""`. */
+  title: string | null
+  /** Raw HTML emitted by the server for the drawer body. */
+  content: string
+  /** Dependencies belonging to the current drawer content. */
+  htmlDeps: HtmlDep[]
+  /** Initial desktop width parsed from the server-owned drawer markup. */
+  width: string
+  resizable: boolean
+}
+
 export interface ChatState extends ChatInputState {
   messages: ChatMessageData[]
   streamingMessage: ChatMessageData | null
@@ -126,11 +141,13 @@ export interface ChatState extends ChatInputState {
   /** How tool calls are aggregated in the condensed view. Client-reflected. */
   toolGrouping: ToolGrouping
   history: ChatHistoryState
+  drawer: ChatDrawerState
 }
 
 // Actions that originate from the UI (not from the server)
 export type UIAction =
   | { type: "SET_TOOL_GROUPING"; grouping: ToolGrouping }
+  | { type: "SET_DRAWER_WIDTH"; width: string }
   | {
       type: "INPUT_SENT"
       content: string
@@ -158,6 +175,15 @@ export const initialState: ChatState = {
   toolGrouping: "tool",
   slashCommands: [],
   history: { enabled: false, conversations: [], activeId: null },
+  drawer: {
+    enabled: false,
+    visible: false,
+    title: null,
+    content: "",
+    htmlDeps: [],
+    width: "400px",
+    resizable: true,
+  },
 }
 
 function messagePayloadToData(
@@ -193,6 +219,29 @@ function mergeHtmlDeps(
   incoming: HtmlDep[] | undefined,
 ): HtmlDep[] | undefined {
   return incoming ? [...(existing ?? []), ...incoming] : existing
+}
+
+function updateDrawer(
+  drawer: ChatDrawerState,
+  action: Extract<ChatAction, { type: "drawer_show" | "drawer_update" }>,
+): ChatDrawerState {
+  if (!drawer.enabled) return drawer
+
+  const hasContent = "content" in action
+  const hasTitle = "title" in action
+  if (!hasContent && !hasTitle) return drawer
+
+  return {
+    ...drawer,
+    ...(hasContent
+      ? {
+          content: action.content ?? "",
+          // Content replacement owns the dependency set, even when empty.
+          htmlDeps: action.html_deps ? [...action.html_deps] : [],
+        }
+      : {}),
+    ...(hasTitle ? { title: action.title || null } : {}),
+  }
 }
 
 function dismissGreeting(greeting: GreetingData | null): GreetingData | null {
@@ -918,6 +967,13 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       }
     }
 
+    case "SET_DRAWER_WIDTH":
+      if (!state.drawer.enabled) return state
+      return {
+        ...state,
+        drawer: { ...state.drawer, width: action.width },
+      }
+
     case "clear": {
       // action.greeting=true means "also clear the greeting"; otherwise restore it as visible
       const greetingAfterClear = action.greeting
@@ -939,6 +995,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         enableUploadExplicit: state.enableUploadExplicit,
         toolGrouping: state.toolGrouping,
         history: state.history,
+        drawer: state.drawer,
       }
     }
 
@@ -1085,6 +1142,36 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
 
     case "update_slash_commands":
       return { ...state, slashCommands: action.commands }
+
+    case "drawer_show": {
+      if (!state.drawer.enabled) return state
+      return {
+        ...state,
+        drawer: { ...updateDrawer(state.drawer, action), visible: true },
+      }
+    }
+
+    case "drawer_hide":
+      if (!state.drawer.enabled) return state
+      return {
+        ...state,
+        drawer: { ...state.drawer, visible: false },
+      }
+
+    case "drawer_toggle":
+      if (!state.drawer.enabled) return state
+      return {
+        ...state,
+        drawer: { ...state.drawer, visible: !state.drawer.visible },
+      }
+
+    case "drawer_update": {
+      if (!state.drawer.enabled) return state
+      return {
+        ...state,
+        drawer: updateDrawer(state.drawer, action),
+      }
+    }
 
     case "history_update": {
       return {

@@ -382,6 +382,7 @@ def test_chat_ui_forwards_kwargs():
         placeholder="Ask me anything",
         height="400px",
         greeting="Hello!",
+        toolbar_input=tags.p("toolbar input text"),
         footer=tags.p("footer text"),
         icon_assistant=icon,
     )
@@ -389,6 +390,7 @@ def test_chat_ui_forwards_kwargs():
     assert "Ask me anything" in html
     assert "400px" in html
     assert "Hello!" in html
+    assert "toolbar input text" in html
     assert "footer text" in html
 
 

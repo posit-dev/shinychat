@@ -1,0 +1,275 @@
+---
+title: "Page chat"
+---
+
+`page_chat()` creates a full-window chat application with a persistent chat home,
+optional navigation pages, page-aware sidebars, and an artifact panel. Use it
+when chat is the primary application surface. For an embedded chat in a larger
+Shiny layout, continue to use [`chat_ui()`](api/chat_ui.qmd).
+
+## Migrate an existing chat
+
+For a Shiny Core app, replace the outer `ui.page_fillable()` and `chat_ui()`
+combination with `page_chat()`. The server-side `Chat` instance keeps the same
+ID and behavior.
+
+```{.python file="app.py"}
+# Before
+from shiny import App, ui
+from shinychat import Chat, chat_ui
+
+app_ui = ui.page_fillable(chat_ui("chat"))
+
+def server(input, output, session):
+    chat = Chat("chat")
+
+app = App(app_ui, server)
+```
+
+```{.python file="app.py"}
+# After
+from shiny import App
+from shinychat import Chat, page_chat
+
+app_ui = page_chat("Assistant", id="chat")
+
+def server(input, output, session):
+    chat = Chat("chat")
+
+app = App(app_ui, server)
+```
+
+For Shiny Express, call `page_chat()` in place of `chat.ui()` and
+`ui.page_opts(fillable=True)`. The helper configures the page itself.
+
+```{.python file="app.py"}
+# Before
+from shiny.express import ui
+from shinychat.express import Chat
+
+chat = Chat("chat")
+chat.ui()
+ui.page_opts(title="Assistant", fillable=True)
+```
+
+```{.python file="app.py"}
+# After
+from shinychat.express import Chat, page_chat
+
+chat = Chat("chat")
+page_chat("Assistant", id="chat")
+```
+
+## Compose a page
+
+The home page always contains the chat. Add secondary pages with
+`chat_nav_panel()` or Shiny's `ui.nav_panel()`, organize them with
+`ui.nav_menu()`, and add non-selecting navigation UI with `ui.nav_control()`
+or `ui.nav_spacer()`. Configure a home or page-specific sidebar with
+`chat_sidebar()`, and use `chat_drawer()` for initial artifact content.
+This complete Core app echoes submitted text and shows it in the artifact panel.
+
+```{.python file="app.py"}
+from shiny import App, reactive, ui
+from shinychat import (
+    Chat,
+    chat_drawer,
+    chat_nav_panel,
+    chat_sidebar,
+    page_chat,
+)
+
+app_ui = page_chat(
+    "Research assistant",
+    id="chat",
+    toolbar=ui.toolbar(
+        ui.input_action_button("clear_chat", "Clear conversation"),
+    ),
+    toolbar_global=ui.toolbar(
+        ui.input_dark_mode(),
+        ui.input_action_button("help", "Help"),
+    ),
+    sidebar=chat_sidebar(
+        ui.p("Recent conversations"),
+        history=False,
+        width=300,
+    ),
+    pages_navbar=[
+        chat_nav_panel(
+            "Sources",
+            ui.p("Sources selected during this session appear here."),
+            sidebar=True,
+        ),
+        chat_nav_panel(
+            "Settings",
+            ui.input_switch("compact", "Compact answers"),
+            sidebar=chat_sidebar(
+                ui.p("Settings"),
+                open="closed",
+                width=260,
+            ),
+            toolbar=ui.toolbar(
+                ui.input_action_button("save_settings", "Save settings"),
+            ),
+        ),
+        chat_nav_panel(
+            "About",
+            ui.p("This app demonstrates page_chat()."),
+            sidebar=False,
+        ),
+    ],
+    drawer=chat_drawer(
+        ui.p("Submit a question to inspect it here."),
+        title="Latest request",
+        width=400,
+    ),
+)
+
+
+def server(input, output, session):
+    chat = Chat("chat")
+
+    @reactive.effect
+    @reactive.event(input.clear_chat)
+    async def _():
+        await chat.clear_messages()
+
+    @chat.on_user_submit
+    async def _(user_input: str):
+        await chat.append_message(f"You asked: {user_input}")
+        await chat.drawer.show(
+            ui.p(user_input),
+            title="Latest request",
+        )
+
+
+app = App(app_ui, server)
+```
+
+`sidebar=True` supplies the default conversation-history sidebar. Pass a
+`chat_sidebar()` object when the page needs additional content or a different
+initial width and open state. If its `history` argument is omitted,
+`page_chat()` enables history and `chat_nav_panel()` disables it. A navigation
+page can set `sidebar=False` to
+remove its page-specific sidebar, use `sidebar=True` to use the default history
+sidebar, or supply its own `chat_sidebar()`. `chat_ui_history("chat")` is available when an advanced
+layout needs a history view bound to a specific chat ID outside a
+`page_chat()` sidebar.
+
+`pages_navbar` supplies the header/navbar navigation only. A standard
+`ui.nav_panel()` receives the normal page-chat content width and no
+page-specific sidebar or toolbar; use `chat_nav_panel()` when a page needs
+those options. `ui.nav_menu()` supports nested menus, while menu strings remain
+section headers or dividers. Shiny for Python currently has no
+`nav_panel_hidden()` or `nav_item()` equivalent; use `ui.nav_control()` for
+non-selecting navigation UI. Sidebar navigation is not yet implemented; a
+future `pages_sidebar` argument will configure it.
+
+Use `shiny.ui.toolbar()` to group controls in every page-chat toolbar.
+`toolbar` is scoped to the chat home page. A navigation page defaults to
+`toolbar=None`, which omits that scoped segment; its
+`chat_nav_panel(toolbar=ui.toolbar(...))` supplies a page-specific replacement.
+Use `toolbar_global=ui.toolbar(...)` for actions that must remain mounted and
+visible across every selected page. It is rendered after the active scoped
+toolbar. When omitted, `toolbar_global` contains Shiny's dark/light mode
+toggle; pass `toolbar_global=None` to opt out. The controls move between the
+desktop header and mobile app menu without duplicating their Shiny IDs or
+losing state.
+
+Use `navbar_options=ui.navbar_options(...)` to style the title bar with its
+background, color theme, underline navigation treatment, and HTML attributes.
+`page_chat()` uses underline navigation by default, matching `page_navbar()`.
+It owns the full-window layout and responsive app menu, so
+`navbar_options(position=...)` and `navbar_options(collapsible=...)` are not
+supported.
+
+Configured artifacts start open by default; use `chat_drawer(open=False)` to
+start one closed. Bare `drawer=True` enables an empty, initially hidden
+artifact panel. From the server, `chat.drawer.show()`, `.update()`,
+`.hide()`, and `.toggle()` change the panel without replacing the chat.
+`show()` and `update()` accept htmltools or Shiny UI content, including Shiny
+inputs and outputs.
+
+On narrow screens, the same navigation and toolbar controls move into the app
+menu above the active page's sidebar content. The controls are moved rather
+than duplicated, so Shiny IDs and control state stay unique. The [paired
+runnable examples](https://github.com/posit-dev/shinychat/tree/main/pkg-py/src/shinychat/examples/page_chat)
+are installed with the package and require no credentials. Run the navigation
+example with:
+
+```sh
+uv pip install "shinychat[providers]"
+shiny run shinychat.examples.page_chat.navigation:app
+```
+
+Replace `navigation` with `drawer_control` to run the artifact-controls
+example; it has no optional dependencies.
+
+The same composition helpers work with Shiny Express. Keep `page_chat()` as the
+only top-level UI item and place application UI in its `toolbar`, `pages_navbar`,
+sidebars, or artifact panel.
+
+```{.python file="app.py"}
+from shiny import reactive, ui
+from shiny.express import input
+from shinychat import chat_nav_panel, chat_sidebar
+from shinychat.express import Chat, page_chat
+
+chat = Chat("chat")
+
+page_chat(
+    "Research assistant",
+    id="chat",
+    toolbar=ui.toolbar(
+        ui.input_action_button("clear_chat", "Clear conversation"),
+    ),
+    toolbar_global=ui.toolbar(
+        ui.input_dark_mode(),
+        ui.input_action_button("help", "Help"),
+    ),
+    sidebar=chat_sidebar(history=False),
+    pages_navbar=[
+        chat_nav_panel(
+            "About",
+            ui.p("This page keeps the chat mounted."),
+            sidebar=False,
+        ),
+        chat_nav_panel(
+            "Settings",
+            ui.p("Settings"),
+            toolbar=ui.toolbar(
+                ui.input_action_button("save_settings", "Save settings"),
+            ),
+        )
+    ],
+)
+
+
+@reactive.effect
+@reactive.event(input.clear_chat)
+async def _():
+    await chat.clear_messages()
+```
+
+## Ownership and compatibility
+
+`page_chat()` owns the page shell, full-height chat layout, chat history
+placement, navigation controls, and responsive sidebar behavior. It fixes the
+chat's `height`, `fill`, and `show_history` settings, so do not pass those
+arguments through to `page_chat()`.
+
+Do not wrap `page_chat()` in `ui.page_fillable()`, `ui.layout_sidebar()`, or a
+raw `ui.sidebar()`. `chat_sidebar()` deliberately uses Shiny's sidebar
+vocabulary but is a shinychat configuration object, not a `shiny.ui.Sidebar`.
+This lets page chat manage one header toggle, mobile navigation, page-specific
+sidebars, and a chat that remains mounted while users navigate.
+
+In Express, `page_chat()` owns the complete top-level page composition. Extra
+top-level UI, including a second chat root, is rejected. In Core, make
+`page_chat()` the application's page UI and compose supporting UI through its
+arguments. Existing `chat_ui()` applications remain supported and are the
+right choice when chat is only one region of an application.
+
+For signatures and all configuration options, see the
+[Shiny Core reference](api/index.qmd#shiny-core) and
+[Shiny Express `page_chat()` reference](api/express.page_chat.qmd).

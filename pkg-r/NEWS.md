@@ -2,7 +2,13 @@
 
 ## New features and improvements
 
-* Conversations now have a stable, publicly accessible ID, available reactively via `chat$history$conversation_id()` (`NULL` when history is disabled or the chat is still empty). The ID is stable across retries, restores, conversation switches, and `set_client()` calls, and becomes the saved `ConversationRecord$id`. The ID is also handed to the chat client, which records it as the standard `gen_ai.conversation.id` attribute on its own OpenTelemetry spans ([OTel GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/)), so telemetry consumers can group model work by conversation. (#307)
+* Added `page_chat()` for full-window chat pages with persistent chat
+  navigation, responsive sidebars, optional page-specific sidebars, and
+  drawers. Use it instead of
+  `bslib::page_fillable(chat_ui(...))` when shinychat owns the page
+  composition; continue using `chat_ui()` for embedded or mixed layouts.
+
+* `page_chat()` now supports standard bslib programmatic navigation. The page shell's root element carries the derived id `"<id>_page"`, so `bslib::nav_select()`, `bslib::nav_show()`, and `bslib::nav_hide()` work against it. The active page is readable server-side as `input$<id>_page` (`"__home__"` when the chat home is active). `nav_insert()` and `nav_remove()` are not yet supported.
 
 * Web search and web fetch responses from ellmer now show their activity and citations directly in the chat. Readers can open a citation beside its claim or use the message-wide Sources pill. `ContentCitation@grounded_span` links each citation to the answer text that it supports.
 
@@ -26,6 +32,15 @@
 * Added `submit_key` parameter to `chat_ui()`: `"enter"` (default, Enter submits) or `"enter+modifier"` (Ctrl/Cmd+Enter submits, plain Enter inserts a line break). The input remains editable while a response is streaming — only submission is blocked, not typing. (#251)
 
 ## Breaking changes
+
+* `chat_app()` now configures its full-window page through `page_chat()`.
+  Arguments in `...` are passed to `page_chat()` instead of
+  `shiny::shinyApp()`: use `app_options` instead of `options`,
+  `bookmark_store` instead of `enableBookmarking`, and compose `page_chat()`
+  with `chat_server()` when you need `onStart` or `uiPattern`. `chat_app()`
+  now owns the page layout, so its `title`, `icon`, and `id` configure the
+  page-chat shell. Existing layouts that embed chat should use `chat_ui()`
+  and `chat_server()` directly.
 
 * The CSS classes used by the external-link dialog, thinking display, and tool-result images/PDFs now use the `.shiny-chat-*` prefix instead of `.shinychat-*`. The thinking display's custom properties and animation names have likewise changed from `--shinychat-thinking-*` / `shinychat-thinking-*` to `--shiny-chat-thinking-*` / `shiny-chat-thinking-*`. Update any custom CSS that targets these identifiers. (#285, #286)
 
