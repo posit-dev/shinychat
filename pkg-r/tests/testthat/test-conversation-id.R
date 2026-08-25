@@ -157,6 +157,36 @@ test_that("switch_to() adopts the stored record ID", {
   expect_identical(ctrl$record$id, id2)
 })
 
+test_that("new_chat() announces the cleared ID even from an empty draft", {
+  ctrl <- cid_new_controller()
+  announced <- list()
+  ctrl$on_active_id_change <- function(id) {
+    announced[[length(announced) + 1L]] <<- list(id)
+  }
+
+  ctrl$new_chat()
+
+  # URL restore mode relies on this to clear a stale conversation param in
+  # the address bar even when the active ID was already NULL (e.g. after a
+  # failed restore).
+  expect_length(announced, 1L)
+  expect_null(announced[[1L]][[1L]])
+})
+
+test_that("new_chat() announces the cleared ID exactly once from an identified draft", {
+  ctrl <- cid_new_controller()
+  ctrl$ensure_conversation_id()
+  announced <- list()
+  ctrl$on_active_id_change <- function(id) {
+    announced[[length(announced) + 1L]] <<- list(id)
+  }
+
+  ctrl$new_chat()
+
+  expect_length(announced, 1L)
+  expect_null(announced[[1L]][[1L]])
+})
+
 test_that("a failed switch leaves the current ID unchanged", {
   ctrl <- cid_new_controller()
 
@@ -676,6 +706,53 @@ test_that("a managed response hands the conversation ID to the client", {
       expect_false(is.null(active_id))
       expect_identical(id_seen_by_client, active_id)
       expect_identical(client$conversation_id, active_id)
+    }
+  )
+})
+
+test_that("set_client_conversation_id() skips clients without the binding", {
+  # `.make_test_client()` has no `conversation_id` member, standing in for
+  # an ellmer release that predates the binding.
+  old_client <- .make_test_client()
+  set_client_conversation_id(old_client, "abc")
+  expect_false("conversation_id" %in% names(old_client))
+
+  new_client <- mock_chat_client()
+  set_client_conversation_id(new_client, "abc")
+  expect_identical(new_client$conversation_id, "abc")
+})
+
+test_that("a managed response still works for clients without the binding", {
+  skip_if_not_installed("ellmer")
+
+  client <- .make_test_client()
+  client$last_turn <- function() NULL
+  stream_called <- FALSE
+  client$stream_async <- function(...) {
+    stream_called <<- TRUE
+    "response"
+  }
+
+  shiny::testServer(
+    function(input, output, session) {
+      chat_server(
+        "chat",
+        client,
+        history = history_options(store = "memory", title = NULL),
+        session = session
+      )
+    },
+    {
+      session$setInputs(
+        chat_history_browser_token = "tok",
+        chat_user_input = "hi"
+      )
+      cid_pump(session)
+
+      # The response runs and no member is added: identity features keep
+      # working, only the telemetry handoff is skipped.
+      expect_true(stream_called)
+      expect_false("conversation_id" %in% names(client))
     }
   )
 })

@@ -42,6 +42,120 @@ test_that("chat_server() accepts history = FALSE", {
   )
 })
 
+test_that("chat_server() history save returns FALSE before a conversation exists", {
+  skip_if_not_installed("ellmer")
+
+  client <- mock_chat_client()
+  chat_module <- NULL
+
+  shiny::testServer(
+    function(input, output, session) {
+      chat_module <<- chat_server(
+        "chat",
+        client,
+        history = TRUE,
+        session = session
+      )
+    },
+    {
+      expect_identical(chat_module$history$save(), FALSE)
+    }
+  )
+})
+
+test_that("chat_server() history save persists an active conversation", {
+  skip_if_not_installed("ellmer")
+
+  client <- mock_chat_client()
+  store <- InMemoryConversationStore$new()
+  chat_module <- NULL
+
+  shiny::testServer(
+    function(input, output, session) {
+      chat_module <<- chat_server(
+        "chat",
+        client,
+        history = history_options(
+          store = store,
+          scope = "test-user",
+          title = NULL
+        ),
+        session = session
+      )
+    },
+    {
+      session$setInputs(chat_history_browser_token = "browser-token")
+      ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
+      ctrl$record <- new_conversation_record("Saved conversation")
+
+      expect_identical(chat_module$history$save(), TRUE)
+      expect_equal(
+        store$get(ctrl$partition, ctrl$record$id)$title,
+        "Saved conversation"
+      )
+    }
+  )
+})
+
+test_that("chat_server() history save finds a non-default controller", {
+  skip_if_not_installed("ellmer")
+
+  client <- mock_chat_client()
+  store <- InMemoryConversationStore$new()
+  chat_module <- NULL
+
+  shiny::testServer(
+    function(input, output, session) {
+      chat_module <<- chat_server(
+        "mychat",
+        client,
+        history = history_options(
+          store = store,
+          scope = "test-user",
+          title = NULL
+        ),
+        session = session
+      )
+    },
+    {
+      session$setInputs(mychat_history_browser_token = "browser-token")
+      ctrl <- get_session_chat_bookmark_info(
+        session,
+        "mychat.history-controller"
+      )
+      ctrl$record <- new_conversation_record("Saved conversation")
+
+      expect_false(is.null(ctrl$partition))
+      expect_identical(chat_module$history$save(), TRUE)
+      expect_equal(
+        store$get(ctrl$partition, ctrl$record$id)$title,
+        "Saved conversation"
+      )
+    }
+  )
+})
+
+test_that("chat_server() history save returns FALSE when history is disabled", {
+  skip_if_not_installed("ellmer")
+
+  client <- mock_chat_client()
+  chat_module <- NULL
+
+  shiny::testServer(
+    function(input, output, session) {
+      chat_module <<- chat_server(
+        "chat",
+        client,
+        history = FALSE,
+        session = session
+      )
+    },
+    {
+      expect_identical(chat_module$history$save(), FALSE)
+    }
+  )
+})
+
 test_that("chat_server() accepts history = history_options() config", {
   skip_if_not_installed("ellmer")
 
@@ -487,6 +601,58 @@ test_that("init waits for browser token when session$user is set (browser restor
 
     # Init should now have fired and restored the saved conversation.
     expect_equal(ctrl$record$id, rec$id)
+  })
+})
+
+test_that("bookmark startup restores history state after activating conversation", {
+  skip_if_not_installed("ellmer")
+
+  old_bookmark_store <- shiny::getShinyOption("bookmarkStore", NULL)
+  withr::defer(shiny::shinyOptions(bookmarkStore = old_bookmark_store))
+
+  client <- mock_chat_client()
+  session <- shiny::MockShinySession$new()
+  store <- InMemoryConversationStore$new()
+  record <- new_conversation_record("Prior conversation")
+  record$values <- list(marker = "from-history")
+  store$put(
+    conversation_partition(session$ns("chat"), "test-user"),
+    record
+  )
+  session$restoreContext <- list(
+    active = TRUE,
+    values = list(chat_history_conversation_id = record$id)
+  )
+
+  restored_marker <- NULL
+  observed_id <- NULL
+  server <- function(input, output, session) {
+    shiny::shinyOptions(bookmarkStore = "server")
+    chat_enable_history(
+      "chat",
+      client,
+      on_restore = function(values) {
+        restored_marker <<- values$marker
+        ctrl <- get_session_chat_bookmark_info(
+          session,
+          "chat.history-controller"
+        )
+        observed_id <<- ctrl$record$id
+      },
+      options = history_options(
+        restore_mode = "bookmark",
+        store = store,
+        scope = "test-user",
+        title = NULL
+      )
+    )
+  }
+
+  shiny::testServer(server, session = session, {
+    session$flushReact()
+
+    expect_identical(restored_marker, "from-history")
+    expect_identical(observed_id, record$id)
   })
 })
 
