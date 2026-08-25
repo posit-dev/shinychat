@@ -77,6 +77,124 @@ describe("ToolGroup", () => {
     expect(container.querySelector(".shiny-tool-card")).toBeTruthy()
   })
 
+  it("frames an expanded successful single framed result", () => {
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          title: "Rendered chart",
+          calls: [
+            call({
+              requestId: "chart",
+              openStyle: "framed",
+              value: "chart output",
+              valueType: "text",
+              footer: "<span>Chart footer</span>",
+            }),
+          ],
+        })}
+      />,
+    )
+    const groupEl = container.querySelector(".shiny-chat-tool-group")!
+    const row = container.querySelector(".shiny-chat-tool-group__row")!
+
+    expect(groupEl.classList.contains("shiny-chat-tool-group--framed")).toBe(
+      false,
+    )
+
+    fireEvent.click(row)
+
+    expect(groupEl.classList.contains("shiny-chat-tool-group--framed")).toBe(
+      true,
+    )
+    expect(groupEl.querySelectorAll(".shiny-tool-card")).toHaveLength(1)
+    expect(groupEl.querySelector(".card-footer")?.textContent).toBe(
+      "Chart footer",
+    )
+  })
+
+  it("frames only an expanded successful framed call in a multi-call group", () => {
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          title: "Rendered charts",
+          calls: [
+            call({
+              requestId: "chart",
+              label: "revenue",
+              openStyle: "framed",
+              value: "chart output",
+              valueType: "text",
+            }),
+            call({
+              requestId: "table",
+              label: "summary",
+              value: "table output",
+              valueType: "text",
+            }),
+          ],
+        })}
+      />,
+    )
+    const groupEl = container.querySelector(".shiny-chat-tool-group")!
+
+    fireEvent.click(
+      container.querySelector(".shiny-chat-tool-group__row") as Element,
+    )
+    const rows = container.querySelectorAll(".shiny-chat-tool-call-row")
+    fireEvent.click(rows[0]!.querySelector("button") as Element)
+
+    expect(groupEl.classList.contains("shiny-chat-tool-group--framed")).toBe(
+      false,
+    )
+    expect(
+      rows[0]!.classList.contains("shiny-chat-tool-call-row--framed"),
+    ).toBe(true)
+    expect(
+      rows[1]!.classList.contains("shiny-chat-tool-call-row--framed"),
+    ).toBe(false)
+  })
+
+  it("does not frame an expanded error result", () => {
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          title: "Rendered charts",
+          calls: [
+            call({
+              requestId: "failed-chart",
+              label: "revenue",
+              openStyle: "framed",
+              status: "error",
+              value: "chart failed",
+              valueType: "text",
+            }),
+            call({
+              requestId: "table",
+              label: "summary",
+              value: "table output",
+              valueType: "text",
+            }),
+          ],
+        })}
+      />,
+    )
+
+    fireEvent.click(
+      container.querySelector(".shiny-chat-tool-group__row") as Element,
+    )
+    const errorRow = container.querySelectorAll(".shiny-chat-tool-call-row")[0]!
+    fireEvent.click(errorRow.querySelector("button") as Element)
+
+    expect(
+      container
+        .querySelector(".shiny-chat-tool-group")
+        ?.classList.contains("shiny-chat-tool-group--framed"),
+    ).toBe(false)
+    expect(
+      errorRow.classList.contains("shiny-chat-tool-call-row--framed"),
+    ).toBe(false)
+  })
+
   it("shows a title: label colon form for a single call with a label", () => {
     const { container } = render(
       <ToolGroup
