@@ -74,7 +74,7 @@ export function ToolCard({
     if (card?.hasAttribute("fullscreen")) return
 
     stopScroll?.()
-    setExpanded(!expanded)
+    setExpanded((v) => !v)
     requestAnimationFrame(() => window.dispatchEvent(new Event("resize")))
   }
 
