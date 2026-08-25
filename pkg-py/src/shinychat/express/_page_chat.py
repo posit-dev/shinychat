@@ -133,7 +133,8 @@ def page_chat(
     width
         Maximum width of the chat content.
     icon_assistant
-        Default icon for assistant messages. ``False`` removes it.
+        Default icon for assistant messages. ``None`` (the default) or
+        ``False`` omits it; ``True`` uses the built-in robot icon.
     enable_cancel
         Whether to show the streaming cancel control. When omitted, a chat
         constructed with ``client=`` enables it automatically.

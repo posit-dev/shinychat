@@ -17,7 +17,7 @@ with ui.layout_columns():
         ui.h2("Default Bot")
         chat_default.ui(
             messages=["Hello! I'm Default Bot. How can I help you today?"],
-            icon_assistant=None,
+            icon_assistant=True,
         )
 
     @chat_default.on_user_submit

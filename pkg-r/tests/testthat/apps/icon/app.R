@@ -21,7 +21,7 @@ ui <- page_fillable(
             role = "assistant"
           )
         ),
-        icon_assistant = NULL # Uses default robot icon
+        icon_assistant = TRUE # Uses default robot icon
       )
     ),
 

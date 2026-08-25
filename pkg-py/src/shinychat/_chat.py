@@ -2302,10 +2302,10 @@ class ChatExpress(Chat):
             container.
         icon_assistant
             The icon to use for the assistant chat messages. Can be a HTML or a tag in
-            the form of :class:`~htmltools.HTML` or :class:`~htmltools.Tag`. If `None`
-            (or `True`), a default robot icon is used. Pass `False` to remove the
-            assistant icon entirely (individual messages can still opt back in via
-            the `icon` argument of `.append_message()`).
+            the form of :class:`~htmltools.HTML` or :class:`~htmltools.Tag`. `None`
+            (the default) or `False` omits the assistant icon entirely. Pass `True`
+            to use the built-in robot icon (individual messages can still opt in to
+            a different icon via the `icon` argument of `.append_message()`).
         enable_cancel
             Whether to show a stop button during streaming that allows the user to
             cancel the in-progress response. When ``True``, the chat UI shows a stop
@@ -2562,10 +2562,10 @@ def chat_ui(
         Whether the chat should vertically take available space inside a fillable container.
     icon_assistant
             The icon to use for the assistant chat messages. Can be a HTML or a tag in
-            the form of :class:`~htmltools.HTML` or :class:`~htmltools.Tag`. If `None`
-            (or `True`), a default robot icon is used. Pass `False` to remove the
-            assistant icon entirely (individual messages can still opt back in via
-            the `icon` argument of `.append_message()`).
+            the form of :class:`~htmltools.HTML` or :class:`~htmltools.Tag`. `None`
+            (the default) or `False` omits the assistant icon entirely. Pass `True`
+            to use the built-in robot icon (individual messages can still opt in to
+            a different icon via the `icon` argument of `.append_message()`).
     enable_cancel
         Whether to show a stop button during streaming that allows the user to
         cancel the in-progress response. When ``True``, the chat UI shows a stop
@@ -2669,6 +2669,11 @@ def chat_ui(
         raise TypeError(
             f"`show_history` must be a bool, not {type(show_history).__name__}."
         )
+
+    # `None` (the default) means no assistant icon; `True` opts back into the
+    # built-in robot icon (see `_resolve_icon_attr()`).
+    if icon_assistant is None:
+        icon_assistant = False
 
     icon_attr = _resolve_icon_attr(icon_assistant)
 

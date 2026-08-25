@@ -344,6 +344,15 @@ shiny-chat-container:not([fill]) {
   .shiny-chat-message-content {
     align-self: center;
     padding-right: 1px;
+    // Positioning context for the pending indicator overlay below, so it can
+    // sit exactly where the first line of content will land.
+    position: relative;
+
+    // Reserve room for the overlaid indicator while there's no real content
+    // yet to give the row height itself (see .shiny-chat-pending-indicator).
+    &[data-pending] {
+      min-height: 1.5em;
+    }
   }
 
   /* When the icon is removed (icon_assistant=False / icon=False), collapse the
@@ -354,7 +363,82 @@ shiny-chat-container:not([fill]) {
   }
 }
 
-.shiny-chat-message-content > hr:first-child {
+// Inline stand-in for the icon-slot dots_fade animation when the assistant
+// icon is disabled. The leading dot lands at the same inset used by the
+// thinking/tool rows' leading glyph (--_row-pad, see .shiny-chat-thinking in
+// this file) so the "something is happening" marker doesn't jump sideways if
+// a thinking block appears next.
+//
+// Positioned absolutely over the content's first line (not in normal flow)
+// so it never reserves its own layout space: the first content lands in the
+// same spot instead of appearing below the dots and jumping up when they're
+// removed. `.shiny-chat-message-content` is the positioning context.
+.shiny-chat-pending-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  height: 1.5em;
+  padding-left: 0.4rem;
+  opacity: 0;
+  pointer-events: none;
+  animation: shiny-chat-pending-indicator-appear 0.2s ease forwards;
+
+  > svg {
+    width: 1.35em;
+    height: auto;
+  }
+
+  &[data-exiting] {
+    animation: shiny-chat-pending-indicator-exit 0.2s ease forwards;
+  }
+}
+
+@keyframes shiny-chat-pending-indicator-appear {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes shiny-chat-pending-indicator-exit {
+  to {
+    opacity: 0;
+  }
+}
+
+// Crossfades the first content in as the pending indicator above fades out
+// (see PENDING_INDICATOR_FADE_MS in ChatMessage.tsx). Scoped to this wrapper
+// rather than .shiny-chat-message-content itself so the fade-in doesn't also
+// multiply against the indicator's own (independent) fade-out opacity.
+.shiny-chat-message-body[data-entering] {
+  animation: shiny-chat-content-enter 0.2s ease;
+}
+
+@keyframes shiny-chat-content-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shiny-chat-pending-indicator {
+    animation: shiny-chat-pending-indicator-appear 0s ease forwards;
+
+    &[data-exiting] {
+      animation: shiny-chat-pending-indicator-exit 0s ease forwards;
+    }
+  }
+
+  .shiny-chat-message-body[data-entering] {
+    animation: none;
+  }
+}
+
+.shiny-chat-message-content > .shiny-chat-message-body > hr:first-child {
   display: none;
 }
 
