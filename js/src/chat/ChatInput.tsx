@@ -300,8 +300,11 @@ export const ChatInput = memo(
           ? "Loading"
           : "Send message"
 
-    const sendButtonDisabled =
-      sendButtonState !== "ready" && sendButtonState !== "cancel"
+    // Only "empty" gets the native disabled attribute (matches prior
+    // behavior); "pending"/"cancelling" are non-interactive via CSS
+    // (pointer-events: none) only, so they don't trigger the :disabled
+    // color rule and keep their state-driven color instead of turning gray.
+    const sendButtonDisabled = sendButtonState === "empty"
 
     const handleSendClick =
       sendButtonState === "cancel"
