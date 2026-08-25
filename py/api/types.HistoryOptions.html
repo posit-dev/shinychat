@@ -445,9 +445,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h2>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 0%">
+<col style="width: 1%">
 <col style="width: 4%">
-<col style="width: 94%">
+<col style="width: 93%">
 <col style="width: 0%">
 </colgroup>
 <thead>
@@ -462,7 +462,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td>restore_mode</td>
 <td>"Literal['browser', 'url', 'none', 'bookmark']"</td>
-<td>How a previous conversation is reloaded when the page opens. <code>"browser"</code> (the default) stores the active conversation ID in localStorage so it survives page reloads without changing the URL. <code>"url"</code> keeps the active conversation ID as a plain <code>?shinychat_conversation_id=&lt;id&gt;</code> query parameter so users can bookmark or share a link to a specific conversation; no Shiny server bookmarking is required. <code>"none"</code> disables automatic restore entirely. <code>"bookmark"</code> participates in Shiny server bookmarking: after every LLM response a fresh server bookmark is minted and the address bar updates to <code>?_state_id_=...</code>. Requires <code>bookmark_store="server"</code> in the Shiny app. On in-session conversation switches, navigates to the target conversation’s bookmark URL if one exists. Use this mode when the app uses Shiny bookmarks to capture full input state alongside the chat. Note: only the <code>values</code> dict captured by <code>@chat.history.on_save</code> callbacks is restored on in-session conversation switches — raw Shiny input values (sliders, text boxes, etc.) are <strong>not</strong> synced automatically. For <code>"browser"</code> and <code>"url"</code> modes, use <code>@chat.history.on_restore</code> to update them on both page-load and in-session switches. For <code>"bookmark"</code> mode, <code>@chat.history.on_restore</code> does <strong>not</strong> fire — Shiny’s native bookmark restore handles app state. Use <code>session.bookmark.on_restore</code> directly if you need to restore auxiliary UI state alongside the conversation. Values captured by <code>@chat.history.on_save</code> are persisted in the conversation record in this mode, but are never passed to <code>on_restore</code>.</td>
+<td>How a previous conversation is reloaded when the page opens. <code>"browser"</code> (the default) stores the active conversation ID in localStorage so it survives page reloads without changing the URL. <code>"url"</code> keeps the active conversation ID as a plain <code>?shinychat_conversation_id=&lt;id&gt;</code> query parameter so users can bookmark or share a link to a specific conversation; no Shiny server bookmarking is required. <code>"none"</code> disables automatic restore entirely. <code>"bookmark"</code> participates in Shiny server bookmarking: after every LLM response a fresh server bookmark is minted and the address bar updates to <code>?_state_id_=...</code>. Requires <code>bookmark_store="server"</code> in the Shiny app. On in-session conversation switches, navigates to the target conversation’s bookmark URL if one exists. Use this mode when the app uses Shiny bookmarks to capture full input state alongside the chat. The <code>values</code> dict captured by <code>@chat.history.on_save</code> callbacks is restored by <code>@chat.history.on_restore</code> in every restore mode, including <code>"bookmark"</code>. Callbacks run after the target conversation becomes active. Raw Shiny input values (sliders, text boxes, etc.) are not synced automatically; use <code>on_restore</code> to update them on both page-load restores and in-session switches.</td>
 <td><code>'browser'</code></td>
 </tr>
 <tr class="even">
