@@ -31,7 +31,7 @@
 
 * Added `submit_key` parameter to `chat_ui()`: `"enter"` (default, Enter submits) or `"enter+modifier"` (Ctrl/Cmd+Enter submits, plain Enter inserts a line break). The input remains editable while a response is streaming — only submission is blocked, not typing. (#251)
 
-* `chat_ui()` and `page_chat()` no longer show an assistant icon by default. Pass `icon_assistant = TRUE` to restore the built-in robot icon, or supply your own icon as before.
+* `chat_ui()` and `page_chat()` no longer show an assistant icon by default. Pass `icon_assistant = TRUE` to restore the built-in robot icon, or supply your own icon as before. (#345)
 
 ## Breaking changes
 
